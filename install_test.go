@@ -85,7 +85,41 @@ func TestShellBootstrapExplainsLegacyInstallerHandoff(t *testing.T) {
 	}
 }
 
-func TestBootstrapScriptsContainOnlyDeliveryLogic(t *testing.T) {
+func TestShellBootstrapStartsRefreshedShellOnlyWhenRequested(t *testing.T) {
+	tmp := t.TempDir()
+	installer := filepath.Join(tmp, "installer")
+	shell := filepath.Join(tmp, "shell")
+	if err := os.WriteFile(installer, []byte("#!/bin/sh\nprintf 'native installer\\n'\nprintf 'refresh\\n' >\"$WAGO_PATH_REFRESH_FILE\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\nprintf 'refreshed shell\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(), "WAGO_INSTALLER="+installer, "SHELL="+shell)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refresh shell handoff: %v\n%s", err, output)
+	}
+	if got, want := string(output), "native installer\nrefreshed shell\n"; got != want {
+		t.Fatalf("refresh shell output = %q, want %q", got, want)
+	}
+
+	if err := os.WriteFile(installer, []byte("#!/bin/sh\nprintf 'native installer\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command = exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(), "WAGO_INSTALLER="+installer, "SHELL="+shell)
+	output, err = command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("non-refresh shell handoff: %v\n%s", err, output)
+	}
+	if got, want := string(output), "native installer\n"; got != want {
+		t.Fatalf("non-refresh output = %q, want %q", got, want)
+	}
+}
+
+func TestBootstrapScriptsKeepInstallationInNativeBinary(t *testing.T) {
 	for _, path := range []string{"install.sh", "install.cmd"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -97,6 +131,64 @@ func TestBootstrapScriptsContainOnlyDeliveryLogic(t *testing.T) {
 				t.Errorf("%s contains installer implementation detail %q", path, forbidden)
 			}
 		}
+	}
+}
+
+func TestWineCmdBootstrapRefreshesPathFromAnyDrive(t *testing.T) {
+	wine, err := exec.LookPath("wine")
+	if err != nil {
+		t.Skip("Wine is not installed")
+	}
+	tmp := t.TempDir()
+	source := filepath.Join(tmp, "marker.go")
+	if err := os.WriteFile(source, []byte(`package main
+import "os"
+func main() {
+	if path := os.Getenv("WAGO_PATH_REFRESH_FILE"); path != "" && os.Getenv("WAGO_FAKE_PATH_ADDED") == "1" {
+		_ = os.WriteFile(path, []byte("refresh\n"), 0600)
+	}
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	installer := filepath.Join(tmp, "installer.exe")
+	command := exec.Command("go", "build", "-o", installer, source)
+	command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=windows", "GOARCH=amd64")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build PATH refresh fixture: %v\n%s", err, output)
+	}
+	windowsPath := `Z:` + strings.ReplaceAll(installer, "/", `\`)
+	command = exec.Command(wine, "cmd", "/V:ON", "/D", "/C", "call install.cmd & echo PATH_AFTER=!PATH!")
+	command.Env = append(os.Environ(),
+		"WINEDEBUG=-all",
+		"WAGO_INSTALLER="+windowsPath,
+		"WAGO_FAKE_PATH_ADDED=1",
+		`WAGO_TEST_MACHINE_PATH=D:\Windows\System32`,
+		`WAGO_TEST_USER_PATH=D:\Users\wago\.wago\bin`,
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Wine CMD PATH refresh: %v\n%s", err, output)
+	}
+	text := strings.ReplaceAll(string(output), "\r", "")
+	if !strings.Contains(text, `PATH_AFTER=D:\Windows\System32;D:\Users\wago\.wago\bin`) {
+		t.Fatalf("Wine CMD did not retain refreshed D: PATH:\n%s", text)
+	}
+
+	command = exec.Command(wine, "cmd", "/V:ON", "/D", "/C", "call install.cmd & echo PATH_AFTER=!PATH!")
+	command.Env = append(os.Environ(),
+		"WINEDEBUG=-all",
+		"WAGO_INSTALLER="+windowsPath,
+		`WAGO_TEST_MACHINE_PATH=D:\Windows\System32`,
+		`WAGO_TEST_USER_PATH=D:\Users\wago\.wago\bin`,
+	)
+	output, err = command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Wine CMD without PATH addition: %v\n%s", err, output)
+	}
+	text = strings.ReplaceAll(string(output), "\r", "")
+	if strings.Contains(text, `PATH_AFTER=D:\Windows\System32;D:\Users\wago\.wago\bin`) {
+		t.Fatalf("Wine CMD refreshed PATH without an add request:\n%s", text)
 	}
 }
 

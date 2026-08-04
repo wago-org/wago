@@ -32,6 +32,32 @@ func TestWindowsPathSetupUsesUserPathWithoutShellFiles(t *testing.T) {
 	}
 }
 
+func TestWindowsInstallPathsDoNotAssumeCDrive(t *testing.T) {
+	home := `D:\Users\wago`
+	binDir := filepath.Join(home, ".wago", "bin")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("WAGO_BIN_DIR", binDir)
+	t.Setenv("WAGO_TEST_USER_PATH", `D:\Windows\System32`)
+	t.Setenv("NO_COLOR", "1")
+
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.installLocation()
+	if got, want := output.String(), "Install location: ~\\.wago\\bin\n"; got != want {
+		t.Fatalf("install location = %q, want %q", got, want)
+	}
+	if already, err := addPath(binDir, "", "cmd"); err != nil || already {
+		t.Fatalf("D: PATH setup = %v, %v", already, err)
+	}
+	if !pathContains(binDir) {
+		t.Fatalf("process PATH does not contain D: install directory %q", binDir)
+	}
+}
+
 func TestWindowsPathPromptMatchesWarmInstaller(t *testing.T) {
 	if got, want := pathSetupQuestion(), "Add Wago to PATH?"; got != want {
 		t.Fatalf("PATH prompt = %q, want %q", got, want)
