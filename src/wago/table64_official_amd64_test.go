@@ -133,7 +133,6 @@ func stagedTable64KnownGate(err error) bool {
 		"requires funcref table",
 		"table.init on imported table64 remains outside the staged boundary",
 		"imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary",
-		"table.copy on imported table64 remains outside the staged boundary",
 	} {
 		if bytes.Contains([]byte(text), []byte(gate)) {
 			return true

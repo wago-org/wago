@@ -242,6 +242,27 @@ func table64ImportLifecycleModule(min uint64, max *uint64) []byte {
 	)
 }
 
+func table64ImportedCopyModule() []byte {
+	imported := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	imported = append(imported, byte(wasm.ExternTable), 0x70, 0x05, 0x04, 0x04)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(imported)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("is_null", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("copy", byte(wasm.ExternFunc), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}),
+		)),
+	)
+}
+
 func table64CopyModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -1975,6 +1996,79 @@ func TestStagedTable64ExternrefGrowAndFourLocalSizeDirectoryCodecRoundTrip(t *te
 	}
 }
 
+func TestCoreFeaturesV3ImportedTable64Copy(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
+	ownerCompiled, err := Compile(cfg, boundedTable64Module(4))
+	if err != nil {
+		t.Fatalf("compile table64 copy owner: %v", err)
+	}
+	defer ownerCompiled.Close()
+	owner, err := Instantiate(ownerCompiled)
+	if err != nil {
+		t.Fatalf("instantiate table64 copy owner: %v", err)
+	}
+	defer owner.Close()
+	if got, err := owner.Invoke("grow", 2); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("grow table64 copy owner = %v, err=%v", got, err)
+	}
+	if _, err := owner.Invoke("fill", 0, 4); err != nil {
+		t.Fatalf("initialize table64 copy owner: %v", err)
+	}
+	for _, index := range []uint64{1, 2} {
+		if _, err := owner.Invoke("clear", index); err != nil {
+			t.Fatalf("clear table64 copy owner index %d: %v", index, err)
+		}
+	}
+	table, err := owner.ExportedTable("table")
+	if err != nil {
+		t.Fatalf("export table64 copy owner: %v", err)
+	}
+
+	consumerCompiled, err := Compile(cfg, table64ImportedCopyModule())
+	if err != nil {
+		table.Close()
+		t.Fatalf("compile imported table64.copy: %v", err)
+	}
+	defer consumerCompiled.Close()
+	consumer, err := Instantiate(consumerCompiled, Imports{"env.table": table})
+	if err != nil {
+		table.Close()
+		t.Fatalf("instantiate imported table64.copy: %v", err)
+	}
+	defer consumer.Close()
+	if err := table.Close(); err != nil {
+		t.Fatalf("close table64 export handle: %v", err)
+	}
+
+	state := func() [4]uint64 {
+		var out [4]uint64
+		for i := range out {
+			got, err := consumer.Invoke("is_null", uint64(i))
+			if err != nil || len(got) != 1 {
+				t.Fatalf("imported table64 state[%d] = %v, err=%v", i, got, err)
+			}
+			out[i] = got[0]
+		}
+		return out
+	}
+	if got := state(); got != [4]uint64{0, 1, 1, 0} {
+		t.Fatalf("initial imported table64 state = %v", got)
+	}
+	if _, err := consumer.Invoke("copy", 1, 0, 3); err != nil {
+		t.Fatalf("overlapping imported table64.copy: %v", err)
+	}
+	if got := state(); got != [4]uint64{0, 0, 1, 1} {
+		t.Fatalf("imported table64.copy state = %v", got)
+	}
+	before := state()
+	if _, err := consumer.Invoke("copy", ^uint64(0), 0, 2); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
+		t.Fatalf("trapping imported table64.copy = %v", err)
+	}
+	if got := state(); got != before {
+		t.Fatalf("trapping imported table64.copy changed state: got %v want %v", got, before)
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -2509,17 +2603,11 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatalf("bounded table64 import compile: %v", err)
 	}
 	imported.Close()
-	importedCopyEntry := append(wasmtest.Name("env"), wasmtest.Name("table")...)
-	importedCopyEntry = append(importedCopyEntry, byte(wasm.ExternTable), 0x70, 0x05, 0x01, 0x04)
-	importedCopy := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, nil))),
-		wasmtest.Section(2, wasmtest.Vec(importedCopyEntry)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}))),
-	)
-	if _, err := compileStagedTable64(importedCopy); err == nil || !strings.Contains(err.Error(), "imported table64") {
-		t.Fatalf("imported table64.copy gate = %v", err)
+	importedCopy, err := compileStagedTable64(table64ImportedCopyModule())
+	if err != nil {
+		t.Fatalf("imported table64.copy admission: %v", err)
 	}
+	importedCopy.Close()
 	producerCompiled, err := compileStagedTable64(boundedTable64Module(4))
 	if err != nil {
 		t.Fatal(err)

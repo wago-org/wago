@@ -27,8 +27,8 @@ func TestStagedTable64ASTAdmitsGetSetGrowSizeFillCopyAndCallIndirect(t *testing.
 	imported.Tables = nil
 	imported.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.ExternType{Kind: wasm.ExternTable, Table: base.Tables[0].Type}}}
 	imported.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableCopy}}}}}
-	if err := RejectUnsupportedWithFeatures(&imported, features); err == nil || !strings.Contains(err.Error(), "imported table64") {
-		t.Fatalf("imported table64.copy gate = %v", err)
+	if err := RejectUnsupportedWithFeatures(&imported, features); err != nil {
+		t.Fatalf("imported table64.copy AST: %v", err)
 	}
 }
 

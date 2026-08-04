@@ -1591,9 +1591,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if (p.tableAddr64(dstTable) || p.tableAddr64(srcTable)) && !p.feat.Table64 {
 			return p.unsupported("table64 instruction", "table.copy (table64 disabled)", context())
 		}
-		if (p.tableAddr64(dstTable) && p.tableImported(dstTable)) || (p.tableAddr64(srcTable) && p.tableImported(srcTable)) {
-			return p.unsupported("table64 instruction", "table.copy on imported table64 remains outside the staged boundary", context())
-		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.copy (reference-types disabled)", context())
 		}
@@ -1915,9 +1912,6 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 	case wasm.InstrTableCopy:
 		if (p.tableAddr64(in.Index) || p.tableAddr64(in.Index2)) && !p.feat.Table64 {
 			return p.unsupported("table64 instruction", in.Kind.String()+" (table64 disabled)", context)
-		}
-		if (p.tableAddr64(in.Index) && p.tableImported(in.Index)) || (p.tableAddr64(in.Index2) && p.tableImported(in.Index2)) {
-			return p.unsupported("table64 instruction", in.Kind.String()+" on imported table64 remains outside the staged boundary", context)
 		}
 	case wasm.InstrRefNull:
 		if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) && !p.supportedStagedExternRef(in.RefType()) && !p.supportedNullReference(in.RefType()) && !p.supportedGCReference(in.RefType()) {
