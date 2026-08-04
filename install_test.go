@@ -243,7 +243,6 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 		"Verified installation",
 		"Sweet, we've installed Wago " + tag,
 		"wago version install",
-		"Have fun!",
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("Wine install output missing %q:\n%s", fragment, text)

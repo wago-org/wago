@@ -31,7 +31,7 @@ func TestInstallerDryRunPresentation(t *testing.T) {
 		t.Fatal(err)
 	}
 	separator := string(os.PathSeparator)
-	want := "Welcome to wago! Let's get you set up!\n\n" +
+	want := "Welcome to wago! Let's get you set up.\n\n" +
 		"Where should Wago be installed? ~" + separator + ".wago" + separator + "bin\n\n" +
 		"Plan\n  Version  canary\n  Command  ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n  Source   ~" + separator + ".wago" + separator + "src\n\n" +
 		"Dry run · no changes made.\n"
@@ -157,6 +157,9 @@ func TestInstallerScriptedInstallDirectoryAndReinstallMode(t *testing.T) {
 	if err != nil || !ok || mode != "partial" {
 		t.Fatalf("reinstall mode = %q, %v, %v", mode, ok, err)
 	}
+	if !installer.reinstall {
+		t.Fatal("existing installation was not recorded as a reinstall")
+	}
 }
 
 func TestInstallerScriptedPathSetupKeepsStatusDetails(t *testing.T) {
@@ -179,7 +182,7 @@ func TestInstallerScriptedPathSetupKeepsStatusDetails(t *testing.T) {
 	if !ready || configFile != filepath.Join(home, ".zshrc") {
 		t.Fatalf("PATH setup = %v, %q", ready, configFile)
 	}
-	want := "Want to add Wago to PATH? ~/.zshrc\n\n✓ Added Wago to PATH\n"
+	want := "\nWant to add Wago to PATH? ~/.zshrc\n\n✓ Added Wago to PATH\n"
 	if got := output.String(); got != want {
 		t.Fatalf("PATH setup output = %q, want %q", got, want)
 	}
@@ -191,7 +194,7 @@ func TestInstallerScriptedPathSetupKeepsStatusDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	installer.offerPathSetup()
-	if got, want := output.String(), "Want to add Wago to PATH? Not now\n\n"; got != want {
+	if got, want := output.String(), "\nWant to add Wago to PATH? Not now\n\n"; got != want {
 		t.Fatalf("skipped PATH output = %q, want %q", got, want)
 	}
 }
@@ -225,13 +228,24 @@ func TestInstallerWarmFinishAfterPathSetup(t *testing.T) {
 	installed := filepath.Join(home, ".wago", "bin", "wago")
 	installer.finish("canary-deadbee", installed, true, filepath.Join(home, ".zshrc"))
 	want := "\nSweet, we've installed Wago canary-deadbee at ~/.wago/bin/wago\n" +
-		"Since we added it to your PATH just now, please run\n\n" +
+		"Since we added it to your PATH just now, open a new terminal or run,\n\n" +
 		"source ~/.zshrc\n\n" +
 		"And then, go ahead and install a version of your choice with,\n\n" +
-		"wago version install\n\n" +
-		"Have fun!\n"
+		"wago version install\n"
 	if got := output.String(); got != want {
 		t.Fatalf("warm finish:\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+
+	output.Reset()
+	installer.reinstall = true
+	installer.finish("canary-deadbee", installed, true, filepath.Join(home, ".zshrc"))
+	want = "\nSweet, we've installed Wago canary-deadbee at ~/.wago/bin/wago\n" +
+		"Since we added it to your PATH just now, open a new shell or run\n\n" +
+		"source ~/.zshrc\n\n" +
+		"And then, go ahead and install a version of your choice with,\n\n" +
+		"wago version install\n"
+	if got := output.String(); got != want {
+		t.Fatalf("warm reinstall finish:\n--- got ---\n%s--- want ---\n%s", got, want)
 	}
 }
 
