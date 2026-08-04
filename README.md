@@ -3,7 +3,7 @@
 ╚╩╝ ╩ ╩ ╚═╝ ╚═╝</pre></h1>
 
 <p align="center">
-  A pure-Go, no-cgo WebAssembly JIT.
+  A wonderfully quick, compact, and extensible WebAssembly runtime for Go
 </p>
 
 <p align="center">
