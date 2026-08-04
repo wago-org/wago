@@ -2,7 +2,12 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 rem Wago installer bootstrap for native Windows Command Prompt.
-rem Downloads, verifies, and launches the native Wago installer. Nothing else.
+rem Downloads, verifies, and launches the native Wago installer, then refreshes
+rem this Command Prompt's PATH when requested.
+
+set "path_refresh_file=%TEMP%\wago-refresh-!RANDOM!-!RANDOM!-!RANDOM!.request"
+del /f /q "!path_refresh_file!" >nul 2>&1
+set "WAGO_PATH_REFRESH_FILE=!path_refresh_file!"
 
 if defined WAGO_INSTALLER (
   if not exist "%WAGO_INSTALLER%" (
@@ -15,7 +20,8 @@ if defined WAGO_INSTALLER (
     echo wago: this installer release predates the native install flow; wait for the channel to update and try again>&2
     exit /b 1
   )
-  exit /b !installer_status!
+  if not "!installer_status!"=="0" exit /b !installer_status!
+  goto success
 )
 
 set "version=main"
@@ -68,7 +74,14 @@ if "!installer_status!"=="2" (
   echo wago: this installer release predates the native install flow; wait for the channel to update and try again>&2
   exit /b 1
 )
-exit /b !installer_status!
+if not "!installer_status!"=="0" exit /b !installer_status!
+goto success
+
+:success
+if exist "!path_refresh_file!" call :refresh_path
+del /f /q "!path_refresh_file!" >nul 2>&1
+if defined refreshed_path for /f "delims=" %%P in ("!refreshed_path!") do endlocal & set "PATH=%%P"
+exit /b 0
 
 :target
 set "arch="
@@ -160,4 +173,26 @@ exit /b 1
 
 :cleanup
 if defined tmp_dir if exist "!tmp_dir!" rmdir /s /q "!tmp_dir!"
+exit /b 0
+
+:refresh_path
+rem Adapted from Chocolatey's RefreshEnv.cmd. Read both registry PATH values
+rem through %%WinDir%% so Windows may live on any drive.
+rem https://github.com/chocolatey/choco/blob/develop/src/chocolatey.resources/redirects/RefreshEnv.cmd
+set "machine_path="
+set "user_path="
+if defined WAGO_TEST_MACHINE_PATH (
+  set "machine_path=!WAGO_TEST_MACHINE_PATH!"
+) else (
+  "!WinDir!\System32\reg.exe" query "HKLM\System\CurrentControlSet\Control\Session Manager\Environment" /v Path >"!path_refresh_file!.machine" 2>nul
+  for /f "usebackq skip=2 tokens=2,*" %%A in ("!path_refresh_file!.machine") do set "machine_path=%%B"
+)
+if defined WAGO_TEST_USER_PATH (
+  set "user_path=!WAGO_TEST_USER_PATH!"
+) else (
+  "!WinDir!\System32\reg.exe" query "HKCU\Environment" /v Path >"!path_refresh_file!.user" 2>nul
+  for /f "usebackq skip=2 tokens=2,*" %%A in ("!path_refresh_file!.user") do set "user_path=%%B"
+)
+del /f /q "!path_refresh_file!.machine" "!path_refresh_file!.user" >nul 2>&1
+call set "refreshed_path=%%machine_path%%;%%user_path%%"
 exit /b 0

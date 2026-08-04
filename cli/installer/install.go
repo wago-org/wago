@@ -47,6 +47,7 @@ type installer struct {
 	progressStop        chan struct{}
 	progressDone        chan struct{}
 	pathAdded           bool
+	pathRefresh         bool
 }
 
 type release struct {
@@ -174,12 +175,47 @@ func (i *installer) run() error {
 	if pathReady && configFile != "" && !i.noCompletions {
 		i.offerCompletions(installed, configFile)
 	}
+	i.offerPathRefresh(configFile)
 	stamp := i.managerTag
 	if stamp == "" {
 		stamp = i.version
 	}
 	i.finish(stamp, installed, pathReady, configFile)
 	return nil
+}
+
+func (i *installer) offerPathRefresh(configFile string) {
+	requestFile := os.Getenv("WAGO_PATH_REFRESH_FILE")
+	if !i.pathAdded || requestFile == "" {
+		return
+	}
+	choice := os.Getenv("WAGO_REFRESH_PATH")
+	if choice == "" && i.noTUI {
+		return
+	}
+	fmt.Fprintln(i.out)
+	question := "Refresh PATH now?"
+	if choice == "" {
+		value, ok := radio(question, []radioItem{
+			{"Yes", "Use Wago without reopening the terminal", "yes", ""},
+			{"No", "", "no", ""},
+		}, 0)
+		if !ok {
+			return
+		}
+		choice = value
+	}
+	yes := strings.EqualFold(choice, "yes") || strings.EqualFold(choice, "y")
+	if yes {
+		i.answer(question, "Yes")
+		if err := os.WriteFile(requestFile, []byte(configFile+"\n"), 0o600); err != nil {
+			i.retry("Could not prepare PATH refresh")
+			return
+		}
+		i.pathRefresh = true
+		return
+	}
+	i.answer(question, "No")
 }
 
 func (i *installer) welcome() {
@@ -744,21 +780,23 @@ func (i *installer) finish(stamp, installed string, pathReady bool, configFile s
 	s := colors()
 	pathReady = pathReady || pathContains(i.binDir)
 	fmt.Fprintf(i.out, "\n%sSweet, Wago %s is ready at %s%s\n", s.bold, stamp, displayPath(installed, i.home), s.reset)
-	if i.pathAdded {
-		fmt.Fprintln(i.out)
-		if command := sourceCommand(configFile); command != "" {
+	if !i.pathRefresh {
+		if i.pathAdded {
+			fmt.Fprintln(i.out)
+			if command := sourceCommand(configFile); command != "" {
+				fmt.Fprintln(i.out, "Open a new terminal or run:")
+				fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, command, s.reset)
+			} else {
+				fmt.Fprintln(i.out, "Open a new terminal.")
+			}
+		} else if pathReady && configFile != "" && !pathContains(i.binDir) {
+			fmt.Fprintln(i.out)
 			fmt.Fprintln(i.out, "Open a new terminal or run:")
-			fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, command, s.reset)
-		} else {
-			fmt.Fprintln(i.out, "Open a new terminal.")
+			fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, sourceCommand(configFile), s.reset)
+		} else if !pathReady {
+			fmt.Fprintln(i.out)
+			fmt.Fprintf(i.out, "Before you continue, add %s to your PATH.\n", displayPath(i.binDir, i.home))
 		}
-	} else if pathReady && configFile != "" && !pathContains(i.binDir) {
-		fmt.Fprintln(i.out)
-		fmt.Fprintln(i.out, "Open a new terminal or run:")
-		fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, sourceCommand(configFile), s.reset)
-	} else if !pathReady {
-		fmt.Fprintln(i.out)
-		fmt.Fprintf(i.out, "Before you continue, add %s to your PATH.\n", displayPath(i.binDir, i.home))
 	}
 	fmt.Fprintln(i.out, "\nThen install the Wago version you want:")
 	fmt.Fprintf(i.out, "\n%s%s%s\n", s.cyan, "wago version install", s.reset)

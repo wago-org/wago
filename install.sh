@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://wago.sh/install.sh | sh
 #
-# This script only downloads, verifies, and launches the native Wago installer.
+# It also starts a refreshed shell when the native installer requests one.
 set -eu
 
 release_repo="${WAGO_RELEASE_REPO:-wago-org/wago}"
@@ -108,7 +108,7 @@ verify_checksum() {
 run_installer() {
 	installer=$1
 	shift
-	if "$installer" install "$@"; then
+	if WAGO_PATH_REFRESH_FILE="$tmp/path-refresh" "$installer" install "$@"; then
 		return 0
 	else
 		status=$?
@@ -119,13 +119,25 @@ run_installer() {
 	return "$status"
 }
 
+start_refreshed_shell() {
+	[ -f "$tmp/path-refresh" ] || return 0
+	shell=${SHELL:-/bin/sh}
+	[ -x "$shell" ] || die "could not start a refreshed shell: $shell"
+	cleanup
+	tmp=""
+	trap - EXIT HUP INT TERM
+	exec "$shell" -i
+}
+
+tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago) || die "could not create a temporary directory"
+
 if [ -n "${WAGO_INSTALLER:-}" ]; then
 	[ -x "$WAGO_INSTALLER" ] || die "WAGO_INSTALLER is not executable: $WAGO_INSTALLER"
 	run_installer "$WAGO_INSTALLER" "$@"
-	exit $?
+	start_refreshed_shell
+	exit 0
 fi
 
-tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago) || die "could not create a temporary directory"
 asset=$(target_name) || die "this operating system or architecture is not supported"
 if ! resolve_release; then
 	die "the installer is unavailable; check your internet connection and try again"
@@ -139,3 +151,4 @@ if ! verify_checksum "$tmp/installer" "$tmp/installer.sha256"; then
 fi
 chmod +x "$tmp/installer"
 run_installer "$tmp/installer" "$@"
+start_refreshed_shell

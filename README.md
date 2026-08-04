@@ -23,8 +23,10 @@ On Windows, run this from Command Prompt. The installer provides the same
 interactive install-directory, reinstall, progress, and PATH flow without
 requiring script-execution policy changes. Both bootstrap scripts download the
 same checksummed Go installer for their platform, then hand off the complete
-installation flow. Go is only needed when a release manager is unavailable and
-must be built from source:
+installation flow. If Wago was newly added to PATH, the installer can refresh
+the invoking Command Prompt on Windows or start a refreshed interactive shell
+on Unix. Go is only needed when a release manager is unavailable and must be
+built from source:
 
 ```bat
 curl.exe -fsSLo "%TEMP%\wago-install.cmd" https://raw.githubusercontent.com/wago-org/wago/main/install.cmd && call "%TEMP%\wago-install.cmd" && del "%TEMP%\wago-install.cmd"

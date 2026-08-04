@@ -212,6 +212,38 @@ func TestInstallerPromptWordingMatchesWarmFlow(t *testing.T) {
 	}
 }
 
+func TestPathRefreshIsOfferedOnlyAfterAddingPath(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("WAGO_REFRESH_PATH", "yes")
+	requestFile := filepath.Join(t.TempDir(), "refresh-path")
+	t.Setenv("WAGO_PATH_REFRESH_FILE", requestFile)
+
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.offerPathRefresh("/home/wago/.zshrc")
+	if output.Len() != 0 {
+		t.Fatalf("refresh offered before PATH was added: %q", output.String())
+	}
+	if _, err := os.Stat(requestFile); !os.IsNotExist(err) {
+		t.Fatalf("refresh request created before PATH was added: %v", err)
+	}
+
+	installer.pathAdded = true
+	installer.offerPathRefresh("/home/wago/.zshrc")
+	if got, want := output.String(), "\nRefresh PATH now? Yes\n"; got != want {
+		t.Fatalf("refresh prompt = %q, want %q", got, want)
+	}
+	if got, err := os.ReadFile(requestFile); err != nil || string(got) != "/home/wago/.zshrc\n" {
+		t.Fatalf("refresh request = %q, %v", got, err)
+	}
+	if !installer.pathRefresh {
+		t.Fatal("accepted PATH refresh was not recorded")
+	}
+}
+
 func TestInstallerTranscriptParity(t *testing.T) {
 	t.Run("fresh install", func(t *testing.T) {
 		assertInstallerTranscript(t, false)
@@ -239,6 +271,8 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("WAGO_BIN_DIR", filepath.Join(home, ".wago", "bin"))
+	t.Setenv("WAGO_PATH_REFRESH_FILE", filepath.Join(home, "refresh-path"))
+	t.Setenv("WAGO_REFRESH_PATH", "yes")
 
 	var output bytes.Buffer
 	installer, err := newInstaller(&output)
@@ -277,6 +311,7 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 		}
 		installer.offerCompletions(installed, configFile)
 	}
+	installer.offerPathRefresh(configFile)
 	installer.finish("canary-deadbee", installed, pathReady, configFile)
 
 	separator := string(os.PathSeparator)
@@ -299,18 +334,17 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 	if runtime.GOOS == "windows" {
 		want += "Add Wago to PATH? Yes\n" +
 			"✓ Added Wago to PATH\n\n" +
-			"Sweet, Wago canary-deadbee is ready at " + command + "\n\n" +
-			"Open a new terminal.\n\n"
+			"Refresh PATH now? Yes\n\n" +
+			"Sweet, Wago canary-deadbee is ready at " + command + "\n"
 	} else {
 		want += "Add Wago to PATH in ~/.zshrc? Yes\n" +
 			"✓ Added Wago to PATH\n\n" +
 			"Enable zsh completions? Yes\n" +
 			"✓ Enabled zsh completions\n\n" +
-			"Sweet, Wago canary-deadbee is ready at " + command + "\n\n" +
-			"Open a new terminal or run:\n\n" +
-			"source ~/.zshrc\n\n"
+			"Refresh PATH now? Yes\n\n" +
+			"Sweet, Wago canary-deadbee is ready at " + command + "\n"
 	}
-	want += "Then install the Wago version you want:\n\n" +
+	want += "\nThen install the Wago version you want:\n\n" +
 		"wago version install\n"
 	if got := output.String(); got != want {
 		t.Fatalf("installer transcript:\n--- got ---\n%s--- want ---\n%s", got, want)

@@ -4,8 +4,9 @@ Start with the Wago CLI for your platform:
 
 `wago-<os>-<arch>`
 
-The bootstrap scripts download and launch the matching installer executable;
-the executable owns the complete cross-platform installation flow:
+The bootstrap scripts download and launch the matching installer executable.
+The executable owns the cross-platform installation flow; the bootstrap only
+applies a requested PATH refresh to its shell after installation:
 
 `wago-installer-<os>-<arch>`
 
