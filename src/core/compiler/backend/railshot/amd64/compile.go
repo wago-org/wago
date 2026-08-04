@@ -1014,7 +1014,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	localCounts := make([]int, n)
 	totalLocals := 0
 	moduleHasTailCall := false
-	moduleEH := moduleUsesExceptionHandling(m)
+	moduleEH := m.TagCount() != 0
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -1059,6 +1059,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		localAt += nLocals
 		allHints[i] = h
 		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
+		moduleEH = moduleEH || h.moduleEH
 		for g := 0; g < nGlobals; g++ {
 			agg[g] += int64(h.globalScore[g])
 		}
@@ -1317,33 +1318,6 @@ type regExhausted struct{}
 // compileFunc can distinguish a recoverable register-pressure failure (retry with
 // pinning off) from a genuine compile error (propagate).
 var errRegExhausted = errors.New("amd64: no register available to spill")
-
-func moduleUsesExceptionHandling(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	if m.TagCount() != 0 {
-		return true
-	}
-	for i := range m.Code {
-		r := wasm.NewReader(m.Code[i].BodyBytes)
-		for r.HasNext() {
-			op, err := r.Byte()
-			if err != nil {
-				return false
-			}
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
-				return false
-			}
-			switch imm.Kind {
-			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
-				return true
-			}
-		}
-	}
-	return false
-}
 
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed

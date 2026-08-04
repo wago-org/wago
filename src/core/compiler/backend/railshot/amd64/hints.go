@@ -202,6 +202,10 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			switch in.Kind {
+			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
+				h.moduleEH = true
+			}
 			// Inline-candidacy control-flow signals (matches scanInlineFactsAST).
 			switch in.Kind {
 			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
@@ -477,6 +481,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
+		}
+		switch op {
+		case 0x08, 0x0a, 0x1f: // throw, throw_ref, try_table
+			s.h.moduleEH = true
 		}
 		// Inline-candidacy signals (folded in so buildInlineTargets needs no second
 		// walk). Exactly scanInlineFactsBytes's control-flow set — try_table (0x1f)
