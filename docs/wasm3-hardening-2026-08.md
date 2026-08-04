@@ -65,6 +65,41 @@ Representative serial cold results after the change:
 | wasm3, 184,108 bytes | 20.1–21.1 ms | 8.25 MB | 1,380,480 bytes |
 | sqlite3, 938,882 bytes | 115.6–121.3 ms | 22.64 MB | 5,170,945 bytes |
 
+A follow-on compiler audit compared the `bd45d76d` branch baseline with this
+change on the same Ryzen 7 8845HS host, Go 1.24.4, `GOMAXPROCS=1`, pinned to CPU
+0. Five repeated public-`Compile` measurements per side gave these medians:
+
+| Fixture | Compile time | Allocated bytes | Allocations |
+|---|---:|---:|---:|
+| wasm3 | 27.29 ms → 26.02 ms (-4.6%) | 8.245 MB → 8.244 MB | 23,722 → 23,680 |
+| sqlite3 | 148.02 ms → 138.54 ms (-6.4%) | 22.636 MB → 22.598 MB | 84,973 → 84,730 |
+| Ruby | 1.718 s → 1.567 s (-8.8%) | 132.749 MB → 132.672 MB | 589,194 → 589,396 |
+| esbuild | 1.302 s → 1.045 s (-19.7%) | 94.046 MB → 93.944 MB | 156,992 → 154,018 |
+| Dew Map/Set WasmGC | 4.737 s → 157.7 ms (-96.7%, 30.0x) | 210.489 MB → 147.224 MB (-30.1%) | 704,372 → 104,962 (-85.1%) |
+
+The Dew result exposed a quadratic trap-stub grouping pass: each trap site
+rescanned every earlier site even when all sites belonged to one inlined source
+function. Sorting sites once by source function makes grouping and patching
+linear after the sort. The Dew native-code result remains exactly 6,886,271
+bytes, so the compile-time reduction does not trade for more generated code.
+A 16,384-site synthetic reproducer fell from a 43.56 ms median to 12.08 ms.
+
+Exact GC-frame liveness now builds compact 40-byte CFG nodes, keeps ordinary
+successors inline, stores `br_table` targets in one arena, folds reachability into
+the node, omits the unused `liveOut` array, and computes allocation and call maps
+in one dataflow pass. Its 16,384-operation microbenchmark changed from 2.786 ms,
+9,929,337 B, and 34,834 allocations to 0.997 ms, 4,399,104 B, and 5 allocations.
+Merge-state buffers likewise store one byte per pinned local rather than one per
+Wasm local, and non-lazy functions skip impossible `lsConstZero` scans.
+
+Immediately dropped, side-effect-free deferred expression trees are erased
+before materialization. A 512-tree synthetic compile changed from approximately
+283.0 to 245.5 microseconds while generated code fell from 5,240 to 120 bytes.
+Integer div/rem and signals-backed loads remain materialized so their traps are
+preserved; explicit-bounds loads may be discarded only after their check has
+already executed. The stripped standard and minimal Go runtime binaries are both
+4,096 bytes smaller than the `bd45d76d` baseline.
+
 Reflection-free returning host benchmarks remain allocation-free at approximately
 176–191 ns/op for direct and table-indirect calls on the audit machine.
 
@@ -84,7 +119,10 @@ The pass added regressions for:
 - Linux signal install ordering, distinct chaining, and rollback;
 - full 4-GiB initial memory and growth from 65,535 to 65,536 pages;
 - executable-code single-copy residency and post-map serialization;
-- array-root scratch correctness under forced collection; and
+- array-root scratch correctness under forced collection;
+- dropped deferred div/rem and explicit/signals-backed load traps;
+- compact exact GC-frame liveness across if, loop, and `br_table` edges;
+- large inlined trap-site groups without quadratic patching; and
 - geometric Throughput backing growth.
 
 Both the default and `wago_guardpage` runtime/Wago suites are expected to remain
