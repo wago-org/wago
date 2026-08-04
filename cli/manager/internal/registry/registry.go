@@ -29,3 +29,4 @@ func Unpublish(request UnpublishRequest)        { registryUnpublish(request) }
 func Deprecate(request DeprecateRequest)        { registryDeprecate(request) }
 func ResolveModule(name string) (string, error) { return resolveRegistryModule(name) }
 func RecordInstall(module, version string)      { recordRegistryInstall(module, version) }
+func Closest(module string) string              { return closestModule(module) }
