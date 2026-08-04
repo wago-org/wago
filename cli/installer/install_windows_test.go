@@ -107,7 +107,7 @@ func TestWindowsWarmFinishAfterPathSetup(t *testing.T) {
 	installer.pathAdded = false
 	installer.finish("canary-deadbee", installed, true, "")
 	want = "\nSweet, Wago canary-deadbee is ready at ~\\.wago\\bin\\wago.exe\n\n" +
-		"Then install the Wago version you want:\n\n" +
+		"Now, install the Wago version you want:\n\n" +
 		"wago version install\n"
 	if got := output.String(); got != want {
 		t.Fatalf("Windows finish without activation:\n--- got ---\n%s--- want ---\n%s", got, want)

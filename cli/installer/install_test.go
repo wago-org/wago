@@ -214,6 +214,7 @@ func TestInstallerPromptWordingMatchesWarmFlow(t *testing.T) {
 
 func TestPathRefreshIsOfferedOnlyAfterAddingPath(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
+	t.Setenv("PATH", "")
 	t.Setenv("WAGO_REFRESH_PATH", "yes")
 	requestFile := filepath.Join(t.TempDir(), "refresh-path")
 	t.Setenv("WAGO_PATH_REFRESH_FILE", requestFile)
@@ -241,6 +242,18 @@ func TestPathRefreshIsOfferedOnlyAfterAddingPath(t *testing.T) {
 	}
 	if !installer.pathRefresh {
 		t.Fatal("accepted PATH refresh was not recorded")
+	}
+
+	output.Reset()
+	t.Setenv("PATH", installer.binDir)
+	installer, err = newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.pathAdded = true
+	installer.offerPathRefresh("/home/wago/.zshrc")
+	if output.Len() != 0 {
+		t.Fatalf("refresh offered when Wago is already on PATH: %q", output.String())
 	}
 }
 
@@ -344,7 +357,7 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 			"Refresh PATH now? Yes\n\n" +
 			"Sweet, Wago canary-deadbee is ready at " + command + "\n"
 	}
-	want += "\nThen install the Wago version you want:\n\n" +
+	want += "\nNow, install the Wago version you want:\n\n" +
 		"wago version install\n"
 	if got := output.String(); got != want {
 		t.Fatalf("installer transcript:\n--- got ---\n%s--- want ---\n%s", got, want)
@@ -374,6 +387,30 @@ func TestInstallerWarmFinishAfterPathSetup(t *testing.T) {
 		"wago version install\n"
 	if got := output.String(); got != want {
 		t.Fatalf("warm finish:\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestInstallerFinishWhenPathIsAlreadyReady(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".wago", "bin")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("WAGO_BIN_DIR", binDir)
+	t.Setenv("PATH", binDir)
+	t.Setenv("NO_COLOR", "1")
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed := filepath.Join(binDir, executableName("wago"))
+	installer.finish("canary-deadbee", installed, true, "")
+	separator := string(os.PathSeparator)
+	want := "\nSweet, Wago canary-deadbee is ready at ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n\n" +
+		"Now, install the Wago version you want:\n\n" +
+		"wago version install\n"
+	if got := output.String(); got != want {
+		t.Fatalf("ready PATH finish:\n--- got ---\n%s--- want ---\n%s", got, want)
 	}
 }
 
