@@ -35,3 +35,7 @@ _Avoid_: Backend knob, boolean pointer
 **Optimization Selection**:
 The immutable set of enabled and disabled Optimization Definitions used for one runtime compilation configuration.
 _Avoid_: Global knobs, optimization state
+
+**Runtime Compilation Configuration**:
+The immutable Core feature set, function-worker policy, bounds-checking policy, and Optimization Selection used for one compilation.
+_Avoid_: Compiler settings, run flags

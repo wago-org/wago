@@ -4,9 +4,11 @@ package validate
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
 	"github.com/wago-org/wago/internal/functionworkers"
@@ -35,19 +37,18 @@ func run(c *command.Ctx) {
 	if err != nil {
 		ui.Fatal("%v", err)
 	}
-	defaults, configured, err := runcmd.LoadDefaults()
+	selection, err := settings.ResolveCompilation(settings.CompilationRequest{Arch: runtime.GOARCH, Parallel: c.Str("parallel")})
 	if err != nil {
-		ui.Fatal("validate: %v", err)
-	}
-	policy, err := runcmd.ParallelPolicy(runcmd.ResolveParallel(c.Str("parallel"), defaults, configured))
-	if err != nil {
+		if settings.IsCompilationSettingsError(err) {
+			ui.Fatal("validate: %v", err)
+		}
 		ui.Usage("validate: %v", err)
 	}
-	if err := ModuleBytesWithPolicy(src, policy); err != nil {
+	if err := ModuleBytesWithPolicy(src, selection.FunctionWorkers); err != nil {
 		ui.Fatal("%v", err)
 	}
 	if automation.JSON() {
-		ui.PrintJSON(map[string]any{"valid": true, "file": c.Args[0], "bytes": len(src), "workers": policy})
+		ui.PrintJSON(map[string]any{"valid": true, "file": c.Args[0], "bytes": len(src), "workers": selection.FunctionWorkers})
 	}
 }
 
