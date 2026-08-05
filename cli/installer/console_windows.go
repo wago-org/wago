@@ -88,6 +88,9 @@ func consoleInputFile() *os.File {
 }
 
 func openConsole() (*console, bool) {
+	if !stderrIsConsole() {
+		return nil, false
+	}
 	input := consoleInputFile()
 	c := &console{input: syscall.Handle(input.Fd())}
 	if input != os.Stdin {
