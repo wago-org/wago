@@ -53,7 +53,7 @@ hooks-ensure:
 	@[ "$$(git config --get core.hooksPath)" = ".githooks" ] || scripts/install-hooks.sh
 
 .PHONY: lint
-lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (host)
+lint: lint-fmt lint-generate lint-vet lint-staticcheck lint-website-generator ## Run all lint checks (host)
 
 .PHONY: lint-fmt
 lint-fmt:
@@ -85,6 +85,10 @@ lint-staticcheck:
 	else \
 		echo "make: staticcheck not found, skipping (go install honnef.co/go/tools/cmd/staticcheck@2024.1.1)"; \
 	fi
+
+.PHONY: lint-website-generator
+lint-website-generator:
+	node --test scripts/update-website-bench.test.mjs
 
 .PHONY: test
 test: ## Build and run the test suite (host)
