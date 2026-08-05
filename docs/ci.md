@@ -52,8 +52,9 @@ public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
 Big Go. TinyGo runtime tests use verbose output so architecture-specific panics
 identify the active test instead of reporting only an anonymous package failure.
 `SupportedFeatures` and `RuntimeConfig.Validate` expose the complete Core 3
-families only on linux/amd64; other runtime targets reject backend-incomplete
-families before decoding or native lowering.
+families on linux/amd64 plus linux/arm64 and darwin/arm64. Other runtime targets
+retain the portable Release 2 surface plus extended constant expressions and
+reject incomplete Core 3 families before decoding or native lowering.
 The pull-request CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
 for visibility without making their current gaps required checks. The final
 `CI` aggregation job is the stable branch-protection check and fails if any

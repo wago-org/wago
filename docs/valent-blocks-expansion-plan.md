@@ -1,4 +1,9 @@
-# Valent-block expansion plan (Workstream V, 2026-07-02 handoff)
+# Historical Valent-block expansion plan — Workstream V, 2026-07-02
+
+> **Status: historical design and measurement record.** The plan below captures
+> the July 2 workstream; its ordering and open-item wording are not current.
+> See [OPTIMIZATIONS.md](../OPTIMIZATIONS.md) and [ROADMAP.md](../ROADMAP.md) for
+> current optimization status.
 
 Plan for generalizing railshot's valent-block model beyond WARP and the paper.
 Written for a fresh session with no conversation context. Read

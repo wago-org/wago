@@ -1,4 +1,9 @@
-# Exec-codegen optimization pass (2026-07-07)
+# Historical exec-codegen optimization pass — 2026-07-07
+
+> **Status: historical worktree plan.** The branch, baseline, and ranking below
+> describe the July 7 pass, not current priorities. See
+> [OPTIMIZATIONS.md](../OPTIMIZATIONS.md) and [ROADMAP.md](../ROADMAP.md) for
+> current optimization status.
 
 Worktree: `../wago-exec-codegen`, branch `perf/exec-codegen`. Scope chosen by the
 user: **generated machine-code quality** in `src/core/compiler/backend/railshot`
