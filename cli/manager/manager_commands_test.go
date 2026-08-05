@@ -48,7 +48,7 @@ func TestManagerCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		"plugin list", "plugin inspect", "plugin add", "plugin remove", "plugin grant", "plugin update", "plugin outdated", "plugin tree", "plugin rebuild", "plugin publish", "plugin unpublish", "plugin deprecate",
 		"self update", "self uninstall", "cache dir", "cache size", "cache prune", "cache clean",
 		"config list", "config diff", "config get", "config set", "config reset", "config completions",
-		"run", "module imports", "module capabilities", "build", "validate",
+		"run", "module imports", "module exports", "module capabilities", "build", "validate",
 	}, "\n")
 	if got := strings.Join(leaves, "\n"); got != want {
 		t.Fatalf("manager command leaves:\n%s\nwant:\n%s", got, want)
