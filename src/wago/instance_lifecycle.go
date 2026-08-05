@@ -106,9 +106,7 @@ func (in *Instance) closeOnce() error {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
-	if store != nil {
-		appendStep("close reference store instance", func() { store.instanceClosed(in) })
-	}
+	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
 	appendStep("finalize instance resources", in.tryFinalize)
 	if hctx != nil {
 		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
@@ -173,51 +171,10 @@ func (in *Instance) endInvocation() {
 	}
 }
 
-// tryFinalize owns the exactly-once transition from logically closed to
-// physically released. The final imported-table/global scan runs only after the
-// invocation gate is closed and the active count is zero, so it observes every
-// write made by a resumed host-parked activation. Resource-root release races
-// are resolved by the final locked recheck before resourcesClosed is committed.
+// tryFinalize delegates the reference-lifetime transition. Keeping this small
+// call point lets resource-root and invocation paths remain direct.
 func (in *Instance) tryFinalize() {
-	if in == nil {
-		return
-	}
-	in.lifeMu.Lock()
-	if !in.closed || in.finalizing || in.resourcesClosed || in.invocationState.Load()&instanceInvocationCount != 0 {
-		in.lifeMu.Unlock()
-		return
-	}
-	in.finalizing = true
-	in.lifeMu.Unlock()
-
-	retainProducerRootsInImportedTablesForFinalization(in)
-	retainProducerRootsInImportedGlobalsForFinalization(in)
-
-	// Reference-token teardown may release roots needed by this instance, so the
-	// store is notified only after the invocation count is zero and every
-	// persistent table/global reference has been transferred. The notification is
-	// idempotent and deliberately precedes the final resource-root recheck.
-	in.lifeMu.Lock()
-	store := in.refStore
-	in.lifeMu.Unlock()
-	if store != nil {
-		store.instanceQuiesced(in)
-	}
-
-	in.lifeMu.Lock()
-	in.finalizing = false
-	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
-		in.lifeMu.Unlock()
-		return
-	}
-	in.resourcesClosed = true // commit the one physical-release owner
-	store = in.refStore
-	in.lifeMu.Unlock()
-
-	if store != nil {
-		store.resourceOwnerReleased(in)
-	}
-	in.releaseResources()
+	in.referenceLifetime().finalize()
 }
 
 // releaseResources performs the physical teardown after tryFinalize has claimed

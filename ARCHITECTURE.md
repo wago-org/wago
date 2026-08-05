@@ -167,6 +167,7 @@ src/wago/                         public API implementation (package wago)
   instantiate.go                  staged instance-construction transaction
   instance.go                     live instance state and native-visible handles
   instance_lifecycle.go           close/physical-release ownership transfer
+  reference_lifetime.go           close/quiescence/root-transfer convergence
   import_attachments.go           imported owner attachment and root retention
 wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)

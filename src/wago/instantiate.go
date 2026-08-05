@@ -272,7 +272,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	b.tableAttachments.detachAll()
 	b.tagAttachments.detachAll()
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
-		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
+		b.registeredInstance.referenceLifetime().notifyStore(b.registeredInstance.refStore, referenceLifetimeClosed)
 	}
 	if b.collector != nil {
 		if b.collectorShared && b.opts.store != nil && (b.registeredInstance == nil || b.registeredInstance.refStore == nil) {

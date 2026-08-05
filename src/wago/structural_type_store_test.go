@@ -47,9 +47,9 @@ func TestReferenceStoreResolvesNativeStructuralKeyCollisionsExactly(t *testing.T
 	}
 
 	closeStoreInstance := func(in *Instance) {
-		store.instanceClosed(in)
-		store.instanceQuiesced(in)
-		store.resourceOwnerReleased(in)
+		store.advanceInstanceLifetime(in, referenceLifetimeClosed)
+		store.advanceInstanceLifetime(in, referenceLifetimeQuiesced)
+		store.advanceInstanceLifetime(in, referenceLifetimeResourcesReleased)
 	}
 	closeStoreInstance(first)
 	if err := store.registerInstance(distinct); err == nil {
