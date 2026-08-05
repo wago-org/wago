@@ -1,8 +1,13 @@
-# Sync host imports with results — plan (P8.1, the WASI unlock)
+# Historical sync host imports-with-results plan — P8.1
 
-Status: design. Supersedes the ARCHITECTURE §11 "V2 spike" paragraph as the
-implementation plan. `no-ir-plan.md` §P8.1 calls this the single highest-value
-item in the file.
+> **Status: historical implementation plan.** Synchronous parked-host dispatch
+> now supports typed results. WASI product integration is plugin-owned by
+> `wago-org/wasi`; see [FEATURES.md](../FEATURES.md) and
+> [ROADMAP.md](../ROADMAP.md) for current status.
+
+Original design status: this superseded the ARCHITECTURE §11 "V2 spike"
+paragraph as the implementation plan. `no-ir-plan.md` §P8.1 called it the
+single highest-value item in the file.
 
 ## 0. Goal
 

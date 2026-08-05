@@ -1,8 +1,10 @@
-# Guard-page bounds-check elision (experimental spike)
+# Guard-page bounds-check elision
 
-**Status: experimental and opt-in behind the `wago_guardpage` build tag.** The
-default build still uses explicit bounds checks; tagged builds can select
-signals-based checks through `RuntimeConfig`.
+**Status: supported opt-in build configuration behind the `wago_guardpage` build
+tag.** The default build still uses explicit bounds checks; tagged builds can
+select signals-based checks through `RuntimeConfig`. Guard-page coverage runs in
+the native CI matrix, and signal-backed Core 3 conformance is a required gate on
+linux/amd64, linux/arm64, and darwin/arm64.
 
 This proves that wago can use the MMU to eliminate per-access linear-memory
 bounds checks — the technique WARP uses on targets with passive memory

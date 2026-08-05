@@ -1,4 +1,8 @@
-# Perf session 3 plan (2026-07-02 handoff, post B1/B2/B3)
+# Historical performance session 3 plan — 2026-07-02
+
+> **Status: historical handoff.** The branch, PR, and performance claims below
+> describe the July 2 session. See [OPTIMIZATIONS.md](../OPTIMIZATIONS.md) and
+> [ROADMAP.md](../ROADMAP.md) for current optimization status.
 
 Continuation of `docs/perf-plan-2026-07.md` — read that first for the measurement
 protocol (§1), gate battery (§1), and pitfalls (§8); they all still apply. This doc

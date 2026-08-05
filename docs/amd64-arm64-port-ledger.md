@@ -1,4 +1,9 @@
-# AMD64 ↔ ARM64 port ledger
+# Historical AMD64 ↔ ARM64 port ledger — July 2026
+
+> **Status: historical porting record.** This ledger preserves the July 2026
+> parity work and its focused-test rationale. It is not the current work queue;
+> see [amd64-arm64-backend-status.md](amd64-arm64-backend-status.md) for current
+> backend status and [ROADMAP.md](../ROADMAP.md) for current priorities.
 
 This is the actionable bidirectional parity ledger for the railshot backends.
 It complements `docs/amd64-arm64-backend-status.md`: that document records the
