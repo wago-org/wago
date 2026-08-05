@@ -3,7 +3,6 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
-	"sync"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -190,51 +189,6 @@ func (a *globalImportAttachments) detachAll() {
 	a.set.reset()
 }
 
-type transferredImportAttachmentState struct {
-	mu      sync.Mutex
-	tables  map[*Table]struct{}
-	globals map[*Global]struct{}
-}
-
-var transferredImportAttachments sync.Map // map[*Instance]*transferredImportAttachmentState
-
-func transferredImportState(in *Instance) *transferredImportAttachmentState {
-	state := &transferredImportAttachmentState{}
-	actual, _ := transferredImportAttachments.LoadOrStore(in, state)
-	return actual.(*transferredImportAttachmentState)
-}
-
-func (in *Instance) transferImportedGlobalAttachment(global *Global) {
-	if in == nil || global == nil {
-		return
-	}
-	state := transferredImportState(in)
-	state.mu.Lock()
-	if state.globals == nil {
-		state.globals = make(map[*Global]struct{})
-	}
-	_, exists := state.globals[global]
-	if !exists {
-		state.globals[global] = struct{}{}
-	}
-	state.mu.Unlock()
-	if !exists {
-		global.detachReferenceImporter()
-	}
-}
-
-func (in *Instance) ownsTransferredGlobalAttachment(global *Global) bool {
-	value, ok := transferredImportAttachments.Load(in)
-	if !ok {
-		return false
-	}
-	state := value.(*transferredImportAttachmentState)
-	state.mu.Lock()
-	_, ok = state.globals[global]
-	state.mu.Unlock()
-	return ok
-}
-
 func detachImportedGlobals(in *Instance) {
 	if in == nil || in.c == nil {
 		return
@@ -352,37 +306,6 @@ func (c *Compiled) preflightImportBindings(imports Imports) error {
 		}
 	}
 	return nil
-}
-
-func (in *Instance) transferImportedTableAttachment(table *Table) {
-	if in == nil || table == nil {
-		return
-	}
-	state := transferredImportState(in)
-	state.mu.Lock()
-	if state.tables == nil {
-		state.tables = make(map[*Table]struct{})
-	}
-	_, exists := state.tables[table]
-	if !exists {
-		state.tables[table] = struct{}{}
-	}
-	state.mu.Unlock()
-	if !exists {
-		table.detachImporter()
-	}
-}
-
-func (in *Instance) ownsTransferredTableAttachment(table *Table) bool {
-	value, ok := transferredImportAttachments.Load(in)
-	if !ok {
-		return false
-	}
-	state := value.(*transferredImportAttachmentState)
-	state.mu.Lock()
-	_, ok = state.tables[table]
-	state.mu.Unlock()
-	return ok
 }
 
 func detachImportedTables(in *Instance) {
