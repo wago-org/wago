@@ -16,7 +16,7 @@
 ## Install
 
 ```sh
-curl -fsSL https://wago.sh/install.sh | sh
+curl -fsSL https://install.wago.sh | sh
 ```
 
 On Windows, run this from Command Prompt. The installer provides the same
@@ -29,7 +29,7 @@ on Unix. Go is only needed when a release manager is unavailable and must be
 built from source:
 
 ```bat
-curl.exe -fsSLo "%TEMP%\wago-install.cmd" https://raw.githubusercontent.com/wago-org/wago/main/install.cmd && call "%TEMP%\wago-install.cmd" && del "%TEMP%\wago-install.cmd"
+curl -fsSL https://install.wago.sh | cmd
 ```
 
 For the Go package:
