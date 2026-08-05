@@ -10,6 +10,44 @@ import (
 	"testing"
 )
 
+func TestWindowsConsoleInputUsesConsoleDeviceWhenStdinIsRedirected(t *testing.T) {
+	redirectedRead, redirectedWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = redirectedRead.Close()
+		_ = redirectedWrite.Close()
+	})
+	oldStdin := os.Stdin
+	os.Stdin = redirectedRead
+	t.Cleanup(func() { os.Stdin = oldStdin })
+
+	consoleInput, err := os.CreateTemp(t.TempDir(), "console-input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = consoleInput.Close() })
+	oldOpen := openConsoleDevice
+	openConsoleDevice = func() (*os.File, error) { return consoleInput, nil }
+	t.Cleanup(func() { openConsoleDevice = oldOpen })
+
+	input := consoleInputFile()
+	if input == os.Stdin || input.Fd() != consoleInput.Fd() {
+		t.Fatalf("console input = %v, want dedicated console device %v", input, consoleInput)
+	}
+}
+
+func TestWindowsConsoleInputFallsBackWithoutConsole(t *testing.T) {
+	oldOpen := openConsoleDevice
+	openConsoleDevice = func() (*os.File, error) { return nil, os.ErrNotExist }
+	t.Cleanup(func() { openConsoleDevice = oldOpen })
+
+	if input := consoleInputFile(); input != os.Stdin {
+		t.Fatalf("console input = %v, want stdin fallback %v", input, os.Stdin)
+	}
+}
+
 func TestWindowsPathSetupUsesUserPathWithoutShellFiles(t *testing.T) {
 	binDir := filepath.Join(t.TempDir(), ".wago", "bin")
 	t.Setenv("WAGO_TEST_USER_PATH", `C:\Windows\System32`)
