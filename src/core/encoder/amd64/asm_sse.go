@@ -151,12 +151,7 @@ func (a *Asm) vex3MemDisp(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 boo
 func (a *Asm) vex3MemDispL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, disp int32, l byte) {
 	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, 0, false, l)
 	a.emit(op)
-	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
-		a.emit(0x80|((byte(reg)&7)<<3)|0x04, 0x24) // mod=10 disp32, SIB=base only
-	} else {
-		a.emit(0x80 | ((byte(reg) & 7) << 3) | byte(base&7)) // mod=10 disp32
-	}
-	a.imm32(disp)
+	a.baseAddr(byte(reg), base, disp)
 }
 
 func (a *Asm) vex3MemIdx(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base, index Reg, disp int32) {
@@ -667,12 +662,7 @@ func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
 		a.emit(rex(false, xmm >= 8, false, base >= 8))
 	}
 	a.emit(0x0F, op)
-	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
-		a.emit(0x80|((byte(xmm)&7)<<3)|0x04, 0x24) // mod=10 disp32, SIB=base only
-	} else {
-		a.emit(0x80 | ((byte(xmm) & 7) << 3) | byte(base&7)) // mod=10 disp32
-	}
-	a.imm32(disp)
+	a.baseAddr(byte(xmm), base, disp)
 }
 
 func (a *Asm) FLoadDisp(xmm, base Reg, disp int32, f64 bool) { a.fmemDisp(0x10, xmm, base, disp, f64) }
