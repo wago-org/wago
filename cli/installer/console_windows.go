@@ -71,18 +71,41 @@ type keyEventRecord struct {
 
 type console struct {
 	input     syscall.Handle
+	inputFile *os.File
 	inputMode uint32
 }
 
+var openConsoleDevice = func() (*os.File, error) {
+	return os.OpenFile("CONIN$", os.O_RDWR, 0)
+}
+
+func consoleInputFile() *os.File {
+	input, err := openConsoleDevice()
+	if err == nil {
+		return input
+	}
+	return os.Stdin
+}
+
 func openConsole() (*console, bool) {
-	c := &console{input: syscall.Handle(os.Stdin.Fd())}
+	input := consoleInputFile()
+	c := &console{input: syscall.Handle(input.Fd())}
+	if input != os.Stdin {
+		c.inputFile = input
+	}
 	result, _, _ := getConsoleMode.Call(uintptr(c.input), uintptr(unsafe.Pointer(&c.inputMode)))
 	if result == 0 {
+		if c.inputFile != nil {
+			_ = c.inputFile.Close()
+		}
 		return nil, false
 	}
 	mode := c.inputMode &^ (enableEcho | enableLine)
 	result, _, _ = setConsoleMode.Call(uintptr(c.input), uintptr(mode))
 	if result == 0 {
+		if c.inputFile != nil {
+			_ = c.inputFile.Close()
+		}
 		return nil, false
 	}
 	enableVirtualTerminal()
@@ -91,6 +114,9 @@ func openConsole() (*console, bool) {
 
 func (c *console) close() {
 	setConsoleMode.Call(uintptr(c.input), uintptr(c.inputMode))
+	if c.inputFile != nil {
+		_ = c.inputFile.Close()
+	}
 }
 
 func (c *console) readKey() key {
