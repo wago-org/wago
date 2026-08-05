@@ -68,6 +68,7 @@ func TestPowerShellBootstrapIsQuietAndExecutesCmdBootstrap(t *testing.T) {
 			return
 		}
 		_, _ = fmt.Fprintln(w, "@echo off")
+		_, _ = fmt.Fprintln(w, "if not \"%WAGO_REFRESH_PATH%\"==\"no\" exit /b 9")
 		_, _ = fmt.Fprintln(w, "echo PowerShell loader ok")
 		_, _ = fmt.Fprintln(w, "if defined WAGO_PATH_REFRESH_FILE echo refresh>\"%WAGO_PATH_REFRESH_FILE%\"")
 	}))
