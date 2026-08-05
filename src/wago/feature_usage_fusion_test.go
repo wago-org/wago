@@ -79,6 +79,39 @@ func TestAnalyzeModuleRequirementsFusesAtomicWaitHelpers(t *testing.T) {
 	}
 }
 
+func TestAnalyzeModuleRequirementsFusesIndexedFunctionRefOps(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		Code: []wasm.Func{{BodyBytes: []byte{
+			0xfb, 0x14, 0x00, // ref.test (ref null 0)
+			0xfb, 0x16, 0x00, // ref.cast (ref null 0)
+			0x0b,
+		}}},
+	}
+	requirements := analyzeModuleRequirements(m)
+	if !requirements.indexedFuncRefTest || !requirements.indexedFuncRefCast || requirements.arm64GCRefTestHelper {
+		t.Fatalf("function ref requirements = test:%v cast:%v helper:%v, want true/true/false", requirements.indexedFuncRefTest, requirements.indexedFuncRefCast, requirements.arm64GCRefTestHelper)
+	}
+
+	abstract := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{
+		0xfb, 0x14, 0x70, // ref.test funcref
+		0x0b,
+	}}}}
+	requirements = analyzeModuleRequirements(abstract)
+	if requirements.indexedFuncRefTest || requirements.indexedFuncRefCast {
+		t.Fatalf("abstract ref op selected indexed function metadata: %+v", requirements)
+	}
+
+	gcHeap := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompStruct}}}}},
+		Code:  []wasm.Func{{BodyBytes: []byte{0xfb, 0x14, 0x00, 0x0b}}},
+	}
+	requirements = analyzeModuleRequirements(gcHeap)
+	if !requirements.arm64GCRefTestHelper || requirements.indexedFuncRefTest || requirements.indexedFuncRefCast {
+		t.Fatalf("gc ref.test requirements = test:%v cast:%v helper:%v, want false/false/true", requirements.indexedFuncRefTest, requirements.indexedFuncRefCast, requirements.arm64GCRefTestHelper)
+	}
+}
+
 func TestAnalyzeModuleRequirementsFusesDeclarationRefFunc(t *testing.T) {
 	for _, init := range []wasm.Expr{
 		{BodyBytes: []byte{0xd2, 0x00, 0x0b}},

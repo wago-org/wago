@@ -251,50 +251,6 @@ func moduleUsesGCExternConversion(m *wasm.Module) bool {
 	return false
 }
 
-func moduleUsesIndexedFunctionRefTestOrCast(m *wasm.Module) (refTest, refCast bool) {
-	if m == nil {
-		return false, false
-	}
-	for i := range m.Code {
-		r := wasm.NewReader(m.Code[i].BodyBytes)
-		for r.HasNext() {
-			op, err := r.Byte()
-			if err != nil {
-				return false, false
-			}
-			probe := *r
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
-				return false, false
-			}
-			if op != 0xfb || (imm.Kind != wasm.InstrRefTest && imm.Kind != wasm.InstrRefCast) {
-				continue
-			}
-			sub, err := probe.U32()
-			if err != nil || (sub != 20 && sub != 21 && sub != 22 && sub != 23) {
-				continue
-			}
-			heap, err := probe.S33()
-			if err != nil || heap < 0 {
-				continue
-			}
-			if _, ok := m.TypeFunc(uint32(heap)); !ok {
-				continue
-			}
-			switch imm.Kind {
-			case wasm.InstrRefTest:
-				refTest = true
-			case wasm.InstrRefCast:
-				refCast = true
-			}
-			if refTest && refCast {
-				return true, true
-			}
-		}
-	}
-	return refTest, refCast
-}
-
 func moduleHasGCHeapType(m *wasm.Module) bool {
 	if m == nil {
 		return false

@@ -6,11 +6,14 @@ import (
 )
 
 type moduleRequirements struct {
-	features          CoreFeatures
-	elemStateCount    int
-	dataStateCount    int
-	moduleFacts       *frontend.ModuleFacts
-	atomicWaitHelpers bool
+	features             CoreFeatures
+	elemStateCount       int
+	dataStateCount       int
+	moduleFacts          *frontend.ModuleFacts
+	atomicWaitHelpers    bool
+	indexedFuncRefTest   bool
+	indexedFuncRefCast   bool
+	arm64GCRefTestHelper bool
 }
 
 // moduleRequiredFeatures records optional core features that remain execution
@@ -35,6 +38,8 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		MemoryExported: make([]bool, m.MemCount()),
 	}
 	atomicWaitHelpers := false
+	indexedFuncRefTest, indexedFuncRefCast := false, false
+	arm64GCRefTestHelper := false
 	if frontend.ModuleNonCodeRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
@@ -170,7 +175,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 			out |= requiredFeaturesForValType(local.Type)
 		}
 		if len(fn.BodyBytes) != 0 {
-			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers)
+			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers, m, &indexedFuncRefTest, &indexedFuncRefCast, &arm64GCRefTestHelper)
 		} else if len(fn.Body.Instrs) != 0 {
 			programmaticCode = true
 			instrsModuleRequirements(fn.Body.Instrs, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers)
@@ -180,11 +185,14 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		out |= CoreFeatureSIMD
 	}
 	return moduleRequirements{
-		features:          out,
-		elemStateCount:    elemStateCount,
-		dataStateCount:    dataStateCount,
-		moduleFacts:       moduleFacts,
-		atomicWaitHelpers: atomicWaitHelpers,
+		features:             out,
+		elemStateCount:       elemStateCount,
+		dataStateCount:       dataStateCount,
+		moduleFacts:          moduleFacts,
+		atomicWaitHelpers:    atomicWaitHelpers,
+		indexedFuncRefTest:   indexedFuncRefTest,
+		indexedFuncRefCast:   indexedFuncRefCast,
+		arm64GCRefTestHelper: arm64GCRefTestHelper,
 	}
 }
 
@@ -281,10 +289,10 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 
 func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 	elemStateCount, dataStateCount := 0, 0
-	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount, nil, nil)
+	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount, nil, nil, nil, nil, nil, nil)
 }
 
-func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool) CoreFeatures {
+func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool, m *wasm.Module, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper *bool) CoreFeatures {
 	var out CoreFeatures
 	r := wasm.NewReader(body)
 	for r.HasNext() {
@@ -428,18 +436,65 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 			}
 			continue
 		}
+		var probe wasm.Reader
+		if op == 0xfb {
+			probe = *r
+		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
 			break
 		}
 		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemStateCount, dataStateCount)
 		recordModuleRequirementFact(imm.Kind, imm.Index, facts, atomicWaitHelpers)
+		if op == 0xfb {
+			recordRefTypeRequirements(m, imm.Kind, &probe, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper)
+		}
 		out |= requiredFeaturesForInstructionKind(imm.Kind)
 		if imm.Kind == wasm.InstrCallIndirect && imm.Index2 != 0 {
 			out |= CoreFeatureReferenceTypes
 		}
 	}
 	return out
+}
+
+func recordRefTypeRequirements(m *wasm.Module, kind wasm.InstrKind, probe *wasm.Reader, refTest, refCast, arm64GCRefTestHelper *bool) {
+	if m == nil || (kind != wasm.InstrRefTest && kind != wasm.InstrRefCast) {
+		return
+	}
+	subopcode, err := probe.U32()
+	if err != nil || (subopcode != 20 && subopcode != 21 && subopcode != 22 && subopcode != 23) {
+		return
+	}
+	heap, err := probe.S33()
+	if err != nil {
+		return
+	}
+	if kind == wasm.InstrRefTest && (subopcode == 20 || subopcode == 21) && arm64GCRefTestHelper != nil {
+		if heap >= 0 {
+			if _, isFunc := m.TypeFunc(uint32(heap)); !isFunc {
+				*arm64GCRefTestHelper = true
+			}
+		} else {
+			switch heap {
+			case -16, -17, -13, -14:
+			default:
+				*arm64GCRefTestHelper = true
+			}
+		}
+	}
+	if heap < 0 {
+		return
+	}
+	if _, ok := m.TypeFunc(uint32(heap)); !ok {
+		return
+	}
+	if kind == wasm.InstrRefTest {
+		if refTest != nil {
+			*refTest = true
+		}
+	} else if refCast != nil {
+		*refCast = true
+	}
 }
 
 func instrsModuleRequirements(instrs []wasm.Instruction, elemCount, dataCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool) {
