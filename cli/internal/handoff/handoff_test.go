@@ -1,8 +1,13 @@
 package handoff
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/cli/internal/command"
 )
 
 func TestMetadataEnvironment(t *testing.T) {
@@ -26,6 +31,35 @@ func TestMetadataEnvironment(t *testing.T) {
 			t.Fatalf("environment missing %q: %#v", want, env)
 		}
 	}
+}
+
+func TestRuntimeCommandsCarryRoutingAndCompilationSurface(t *testing.T) {
+	commands := RuntimeCommands()
+	root := commandRoot(commands)
+	run := root["run"]
+	if run == nil || root["build"] == nil || root["validate"] == nil || root["module"] == nil {
+		t.Fatalf("runtime commands = %#v", root)
+	}
+	flags := map[string]bool{}
+	for _, flag := range run.AllFlags() {
+		flags[flag.Name] = true
+	}
+	for _, name := range []string{"core", "parallel", "deferred-bounds-checking", "no-deferred-bounds-checking", "plugin", "bare"} {
+		if !flags[name] {
+			t.Errorf("runtime run description omits --%s", name)
+		}
+	}
+	if len(run.Knobs) < 4 || !strings.HasPrefix(run.Knobs[1].Name, "no-") {
+		t.Fatalf("runtime optimization description = %#v", run.Knobs)
+	}
+}
+
+func commandRoot(commands []*command.Cmd) map[string]*command.Cmd {
+	result := make(map[string]*command.Cmd, len(commands))
+	for _, cmd := range commands {
+		result[cmd.Name] = cmd
+	}
+	return result
 }
 
 func TestMetadataEnvironmentOmitsEmptyFields(t *testing.T) {
@@ -57,12 +91,18 @@ func TestRuntimeOwnsPluginCommand(t *testing.T) {
 }
 
 func TestLooksLikeRuntimeTarget(t *testing.T) {
-	for _, value := range []string{"module.wasm", "module.wat", "build/module", "./module"} {
+	file := filepath.Join(t.TempDir(), "module-without-extension")
+	if err := os.WriteFile(file, []byte("wasm"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"module.wasm", "MODULE.WAGO", file} {
 		if !LooksLikeRuntimeTarget(value) {
 			t.Fatalf("LooksLikeRuntimeTarget(%q) = false", value)
 		}
 	}
-	if LooksLikeRuntimeTarget("version") {
-		t.Fatal("command name looked like a runtime target")
+	for _, value := range []string{"version", "module.wat", "missing/module", "module.bin", t.TempDir()} {
+		if LooksLikeRuntimeTarget(value) {
+			t.Fatalf("LooksLikeRuntimeTarget(%q) = true", value)
+		}
 	}
 }

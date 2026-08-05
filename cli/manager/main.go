@@ -157,31 +157,7 @@ func runtimeSchemaCommands() []*command.Cmd {
 }
 
 func fallbackRuntimeSchemaCommands() []*command.Cmd {
-	parallel := command.Flag{Name: "parallel", Short: "p", Arg: "[workers]", Help: "parallel function validation and compilation"}
-	pluginFlags := []command.Flag{
-		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable"},
-		{Name: "plugins", Arg: "<names>", Help: "alias for --plugin"},
-		{Name: "local", Bool: true, Help: "use this project's plugins"},
-		{Name: "global", Short: "g", Bool: true, Help: "use shared user-wide plugins"},
-		{Name: "bare", Bool: true, Help: "run without plugins"},
-	}
-	runFlags := []command.Flag{
-		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
-		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval"},
-		parallel,
-	}
-	runFlags = append(runFlags, pluginFlags...)
-	buildFlags := append([]command.Flag{{Name: "output", Short: "o", Arg: "<file>", Help: "output path"}, parallel}, pluginFlags...)
-	return []*command.Cmd{
-		{Name: "run", Summary: "compile and execute a WebAssembly module (default)", Args: "<file> [args...]", Flags: runFlags, PassThrough: true},
-		{Name: "module", Summary: "inspect a module's imports and required capabilities", Children: []*command.Cmd{
-			{Name: "imports", Summary: "list a module's imports", Args: "<file>", Automation: command.JSONOutput},
-			{Name: "capabilities", Aliases: []string{"caps"}, Summary: "list required capabilities", Args: "<file>", Automation: command.JSONOutput},
-		}},
-		{Name: "build", Summary: "precompile a WebAssembly module", Args: "<file>", Flags: buildFlags, Automation: command.DryRun},
-		{Name: "validate", Aliases: []string{"check"}, Summary: "decode and validate a module", Args: "<file>", Flags: []command.Flag{parallel}, Automation: command.JSONOutput},
-	}
+	return handoff.RuntimeCommands()
 }
 
 func activeRuntimeSchemaCommands() []*command.Cmd {
