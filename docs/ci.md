@@ -95,7 +95,7 @@ scheduled reconciler recovers the release within its next polling interval.
 `tests/scripts/dispatch-docs-release.sh` verifies the dispatch payload and input
 validation without contacting GitHub.
 
-Pushes to `main` that change `install.sh` or `install.cmd` run the
+Pushes to `main` that change `install.sh`, `install.cmd`, or `install.ps1` run the
 `Publish installers` workflow. It uses `INSTALL_REPO_TOKEN` to copy only those
 bootstraps to `wago-org/install`; that repository deploys them
 to `https://install.wago.sh` with GitHub Pages. The installer site owns its

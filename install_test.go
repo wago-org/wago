@@ -120,7 +120,7 @@ func TestShellBootstrapStartsRefreshedShellOnlyWhenRequested(t *testing.T) {
 }
 
 func TestBootstrapScriptsKeepInstallationInNativeBinary(t *testing.T) {
-	for _, path := range []string{"install.sh", "install.cmd"} {
+	for _, path := range []string{"install.sh", "install.cmd", "install.ps1"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

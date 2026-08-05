@@ -19,17 +19,17 @@
 curl -fsSL https://install.wago.sh | sh
 ```
 
-On Windows, run this from Command Prompt. The installer provides the same
+On Windows, run this from PowerShell. The installer provides the same
 interactive install-directory, reinstall, progress, and PATH flow without
-requiring script-execution policy changes. Both bootstrap scripts download the
+requiring script-execution policy changes. The bootstrap scripts download the
 same checksummed Go installer for their platform, then hand off the complete
 installation flow. If Wago was newly added to PATH, the installer can refresh
-the invoking Command Prompt on Windows or start a refreshed interactive shell
-on Unix. Go is only needed when a release manager is unavailable and must be
-built from source:
+the invoking PowerShell session on Windows or start a refreshed interactive
+shell on Unix. Go is only needed when a release manager is unavailable and must
+be built from source:
 
-```bat
-curl -fsSL https://install.wago.sh | cmd /q
+```powershell
+irm https://install.wago.sh/install.ps1 | iex
 ```
 
 For the Go package:
