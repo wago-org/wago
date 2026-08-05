@@ -29,7 +29,7 @@ on Unix. Go is only needed when a release manager is unavailable and must be
 built from source:
 
 ```bat
-curl -fsSL https://install.wago.sh | cmd
+curl -fsSL https://install.wago.sh | cmd /q
 ```
 
 For the Go package:
