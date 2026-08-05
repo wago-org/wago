@@ -1,7 +1,7 @@
 #!/bin/sh
 # Wago installer bootstrap.
 #
-#   curl -fsSL https://install.wago.sh/install.sh | sh
+#   curl -fsSL https://install.wago.sh | sh
 #
 # It also starts a refreshed shell when the native installer requests one.
 set -eu
