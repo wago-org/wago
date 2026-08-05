@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -72,7 +73,12 @@ func TestPowerShellBootstrapIsQuietAndExecutesCmdBootstrap(t *testing.T) {
 	}))
 	defer server.Close()
 
-	command := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "install.ps1")
+	script, err := os.ReadFile("install.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-Command", "-")
+	command.Stdin = bytes.NewReader(script)
 	command.Env = append(os.Environ(), "WAGO_INSTALL_BASE_URL="+server.URL)
 	output, err := command.CombinedOutput()
 	if err != nil {

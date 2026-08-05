@@ -29,7 +29,7 @@ shell on Unix. Go is only needed when a release manager is unavailable and must
 be built from source:
 
 ```powershell
-irm https://install.wago.sh/install.ps1 | iex
+curl.exe -fsSL https://install.wago.sh/win | powershell -c -
 ```
 
 For the Go package:
