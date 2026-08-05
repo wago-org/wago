@@ -1104,7 +1104,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		functionIndex++
 	}
 	customInstructions := resolveInstructionLowerings(m, instructions)
-	atomicWaitHelpers := moduleUsesAtomicWaitHelpers(m)
+	atomicWaitHelpers := requirements.atomicWaitHelpers
 	structuralProduct := stagedStructuralTypeProduct(0)
 	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
@@ -1319,10 +1319,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
 		return nil, fmt.Errorf("gc array descriptors: %w", err)
 	}
-	moduleFacts, err := frontend.AnalyzeModuleFacts(m)
-	if err != nil {
-		return nil, fmt.Errorf("compile module facts: %w", err)
-	}
+	moduleFacts := requirements.moduleFacts
 	if err := frontend.RejectUnsupportedWithFeaturesAndFacts(m, features, moduleFacts); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}

@@ -229,8 +229,15 @@ current optimization priorities. The Core 3.0 implementation ledger is
   forwarding, and a CPUID-gated BMI2 path remain.
 <!-- roadmap:P4 status=planned -->
 - [ ] **P4 — restricted pending `local.set`/`tee`** *(gated on P1 counters)*
-<!-- roadmap:P7 status=planned -->
-- [ ] **P7 — compile path** *(premise re-measured post-#96)*: fused validate+compile
+<!-- roadmap:P7 status=partial -->
+- 🚧 **P7 — compile path**: post-#96 profiling rejected validator/codegen
+  entanglement as the first move. The existing requirements scan now also
+  produces module footprint facts, passive-segment state bounds, and atomic
+  wait-helper selection, removing two later whole-body walks. Identical-commit
+  full-compile A/Bs on darwin/arm64 show latency improvements of 7.70–9.90% on
+  ruby, esbuild, sqlite3, and json-as, with allocation traffic and peak RSS
+  neutral. Fusing support admission and backend hints remains premise-gated on
+  preserving validation/error order and per-architecture code identity.
 
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
 - [x] **Synchronous host-import results** — returning host imports use the no-cgo
