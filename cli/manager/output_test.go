@@ -46,7 +46,7 @@ Commands:
   commands                         describe commands as JSON
 
 Flags:
-  --version, -v               show version and supported features
+  --version, -v               show version information
   --help, -h                  show this help
   --json, -j                  emit JSON when supported
 

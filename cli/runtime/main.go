@@ -119,7 +119,7 @@ func usage(w *os.File) {
 
 	// Global flags, aligned to the same column as the footer links below.
 	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
-	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
+	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "show version information")
 	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
 	fmt.Fprintf(w, "  %-27s %s\n", "--json, -j", "emit machine-readable JSON when supported")
 	fmt.Fprintf(w, "  %-27s %s\n", "--no-input", "never prompt; fail when input is missing")
