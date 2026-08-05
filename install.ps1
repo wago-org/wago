@@ -10,10 +10,15 @@ $temporaryDirectory = [IO.Path]::GetTempPath()
 $loader = Join-Path $temporaryDirectory ("wago-install-{0}.cmd" -f [guid]::NewGuid().ToString("N"))
 $refreshRequest = Join-Path $temporaryDirectory ("wago-refresh-{0}.request" -f [guid]::NewGuid().ToString("N"))
 $previousRefreshRequest = $env:WAGO_PATH_REFRESH_FILE
+$previousRefreshChoice = $env:WAGO_REFRESH_PATH
+$runsInChildShell = [Environment]::GetCommandLineArgs()[-1] -eq "-"
 
 try {
     Invoke-WebRequest "$baseURL/install.cmd" -OutFile $loader -UseBasicParsing
     $env:WAGO_PATH_REFRESH_FILE = $refreshRequest
+    if ($runsInChildShell) {
+        $env:WAGO_REFRESH_PATH = "no"
+    }
 
     $commandProcessor = if ($env:ComSpec) {
         $env:ComSpec
@@ -37,6 +42,11 @@ try {
         Remove-Item Env:WAGO_PATH_REFRESH_FILE -ErrorAction SilentlyContinue
     } else {
         $env:WAGO_PATH_REFRESH_FILE = $previousRefreshRequest
+    }
+    if ($null -eq $previousRefreshChoice) {
+        Remove-Item Env:WAGO_REFRESH_PATH -ErrorAction SilentlyContinue
+    } else {
+        $env:WAGO_REFRESH_PATH = $previousRefreshChoice
     }
     Remove-Item -LiteralPath $loader, $refreshRequest -Force -ErrorAction SilentlyContinue
 }
