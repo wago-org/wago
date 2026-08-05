@@ -14,6 +14,8 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
   const work = await mkdtemp(join(tmpdir(), "wago-bench-site-"));
   try {
     const index = join(work, "index.html");
+    const amd64 = join(work, "amd64.json");
+    const arm64 = join(work, "arm64.json");
     await writeFile(index, `<!doctype html>
 <body>
             <!-- ░░░ PERFORMANCE ░░░ -->
@@ -22,11 +24,18 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
             <section id="architecture"></section>
 </body>
 `);
+    await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", metrics: {} }));
+    await writeFile(arm64, JSON.stringify({ goos: "darwin", goarch: "arm64", metrics: {} }));
 
-    runUpdater(work);
+    const benchmarkEnv = {
+      WAGO_BENCH_JSON_AMD64: amd64,
+      WAGO_BENCH_JSON_ARM64: arm64,
+    };
+
+    runUpdater(work, benchmarkEnv);
     assertDOMContract(await readFile(index, "utf8"));
 
-    runUpdater(work, { WAGO_BENCH_UPDATE_ARCH: "amd64" });
+    runUpdater(work, { ...benchmarkEnv, WAGO_BENCH_UPDATE_ARCH: "amd64" });
     assertDOMContract(await readFile(index, "utf8"));
   } finally {
     await rm(work, { recursive: true, force: true });
