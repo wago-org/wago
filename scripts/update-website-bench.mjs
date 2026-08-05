@@ -7,9 +7,9 @@
 // It then runs the website's normal stats sync and build if npm is available.
 //
 // The section is rendered as a tabbed control (General / Compile / Instantiate /
-// Exec): each tab sorts its payloads into grouped wago-vs-wazero rows. Tabs are
-// driven by src/tabs.ts on the website side; the markup here is the source of
-// truth for which benchmarks land in which tab.
+// Memory / Exec): each tab sorts its payloads into grouped wago-vs-wazero rows.
+// Tabs are driven by src/tabs.ts on the website side; the markup here is the
+// source of truth for which benchmarks land in which tab.
 
 import { access, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -131,6 +131,29 @@ const TABS = [
       rs("CRC-32", "crc · 51 KB", "InstBigWago/crcsum", "InstBigWazero/crcsum"),
       rs("rhai", "scripting engine · 2.4 MB", "InstBigWago/script", "InstBigWazero/script"),
       rs("regex", "regex engine · 1.2 MB", "InstBigWago/regexmatch", "InstBigWazero/regexmatch"),
+    ],
+  },
+  {
+    id: "memory",
+    label: "Memory",
+    items: [
+      grp("Instantiation"),
+      rs("fib_rec instance", "bytes allocated per fresh instance", "Instantiate_wago", "Instantiate_wazero", "leaner", "bytes"),
+      rs("fib_rec instance", "allocation objects per fresh instance", "Instantiate_wago", "Instantiate_wazero", "leaner", "count"),
+      grp("Full compile — allocation bytes"),
+      rs("tiny", "smallest module", "CompileFull/tiny", "WazeroCompile/tiny", "leaner", "bytes"),
+      rs("memory tree", "calls + linear-memory access", "CompileFull/memory_tree", "WazeroCompile/memory_tree", "leaner", "bytes"),
+      rs("json-as", "AssemblyScript JSON", "CompileFull/json-as", "WazeroCompile/json-as", "leaner", "bytes"),
+      rs("blake-as", "AssemblyScript BLAKE3", "CompileFull/blake-as", "WazeroCompile/blake-as", "leaner", "bytes"),
+      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild", "leaner", "bytes"),
+      rs("Ruby 3.3", "interpreter · 16 MB", "CompileFull/ruby", "WazeroCompile/ruby", "leaner", "bytes"),
+      grp("Full compile — allocation objects"),
+      rs("tiny", "smallest module", "CompileFull/tiny", "WazeroCompile/tiny", "leaner", "count"),
+      rs("memory tree", "calls + linear-memory access", "CompileFull/memory_tree", "WazeroCompile/memory_tree", "leaner", "count"),
+      rs("json-as", "AssemblyScript JSON", "CompileFull/json-as", "WazeroCompile/json-as", "leaner", "count"),
+      rs("blake-as", "AssemblyScript BLAKE3", "CompileFull/blake-as", "WazeroCompile/blake-as", "leaner", "count"),
+      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild", "leaner", "count"),
+      rs("Ruby 3.3", "interpreter · 16 MB", "CompileFull/ruby", "WazeroCompile/ruby", "leaner", "count"),
     ],
   },
   {
@@ -372,16 +395,12 @@ function trim(v, digits) {
 
 function renderSection(tabs, sets) {
   const multiArch = sets.length > 1;
-  const archTabs = multiArch
-    ? `<div class="vs__tabs" role="tablist" aria-label="Benchmark architecture" data-tabs>
-${sets.map((set, i) => `                        <button class="vs__tab" role="tab" id="arch-tab-${set.arch}" aria-controls="arch-panel-${set.arch}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${esc(archLabel(set))}</button>`).join("\n")}
-                    </div>`
-    : "";
-  const archPanels = sets.map((set, i) => renderArchitecture(tabs, set, i, multiArch)).join("\n");
+  const archTabs = sets.map((set, i) => `                            <button class="vs__archbtn" role="tab" id="arch-tab-${set.arch}" aria-controls="arch-panel-${set.arch}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${esc(set.arch || "host")}</button>`).join("\n");
+  const archPanels = sets.map((set, i) => renderArchitecture(tabs, set, i)).join("\n");
   const foot = multiArch
     ? "Measured separately on each listed architecture; compare values within an architecture, not across machines."
     : `Measured on ${archLabel(sets[0])} with the single-pass backend; wago vs wazero over the same corpus.`;
-  return `            <section id="performance" class="section">
+  const out = `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
                     No IR,
@@ -395,14 +414,14 @@ ${sets.map((set, i) => `                        <button class="vs__tab" role="ta
                     wazero.
                 </p>
                 <div class="vs">
-                    <div class="vs__head">
-                        ${archTabs}
-                        <div class="vs__legend">
-                            <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
-                            <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
+                    <div class="vs__body">
+                        <div class="vs__side" role="tablist" aria-label="Benchmark platform" data-arch-toggle>
+${archTabs}
+                        </div>
+                        <div class="vs__stage">
+${archPanels}
                         </div>
                     </div>
-${archPanels}
                 </div>
                 <p class="vs__foot">
                     ${foot} Numbers shift as the engine evolves — see the
@@ -410,13 +429,19 @@ ${archPanels}
                 </p>
             </section>
 `;
+  for (const marker of ["vs__body", "vs__side", "data-arch-toggle", "vs__stage"]) {
+    if (!out.includes(marker)) {
+      throw new Error(`benchmark section renderer lost required ${marker} markup`);
+    }
+  }
+  return out;
 }
 
 function archLabel(set) {
   return [set.goos, set.arch].filter(Boolean).join("/") || "current host";
 }
 
-function renderArchitecture(tabs, set, index, multiArch) {
+function renderArchitecture(tabs, set, index) {
   const tablist = tabs
     .map(
       (t, i) => `                        <button
@@ -430,14 +455,7 @@ function renderArchitecture(tabs, set, index, multiArch) {
     )
     .join("\n");
   const panels = tabs.map((t, i) => renderPanel(t, i, set.metrics, set.arch || "host")).join("\n");
-  const content = `<div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
-${tablist}
-                    </div>
-${panels}`;
-  if (!multiArch) return content;
-  return `                    <div class="vs__panel" role="tabpanel" id="arch-panel-${set.arch}" aria-labelledby="arch-tab-${set.arch}"${index === 0 ? "" : " hidden"}>
-${content}
-                    </div>`;
+  return renderArchitecturePanel(set, index, tablist, panels);
 }
 
 // The website may already contain architecture tabs whose other panel came from
@@ -458,24 +476,41 @@ function renderExistingArchitecture(tabs, set) {
     )
     .join("\n");
   const panels = tabs.map((tab, i) => renderPanel(tab, i, set.metrics, arch)).join("\n");
-  return `                    <div
-                        class="vs__panel"
-                        role="tabpanel"
+  return renderArchitecturePanel(set, arch === "amd64" ? 0 : 1, tablist, panels);
+}
+
+// Keep the platform rail, category tabs, and capped row viewport separate. The
+// website CSS and tabs controller target this exact structure; flattening it
+// makes long Compile/Exec tabs expand the whole card after every regeneration.
+function renderArchitecturePanel(set, index, tablist, panels) {
+  const arch = set.arch || "host";
+  const spec = [set.goos, set.arch, set.cpu].filter(Boolean).join(" · ");
+  const out = `                    <div
                         class="vs__archpanel"
+                        role="tabpanel"
                         id="arch-panel-${arch}"
-                        aria-labelledby="arch-tab-${arch}"${arch === "amd64" ? "" : "\n                        hidden"}
+                        aria-labelledby="arch-tab-${arch}"${index === 0 ? "" : "\n                        hidden"}
                     >
-                    <div class="vs__head">
-                        <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
+                        <div class="vs__main">
+                            <div class="vs__toprow">
+                                <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
 ${tablist}
-                        </div>
-                        <div class="vs__legend">
-                            <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
-                            <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
-                        </div>
-                    </div>
+                                </div>
+                                <div class="vs__legend">
+                                    <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
+                                    <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
+                                </div>
+                            </div>
 ${panels}
+                        </div>
+                        <div class="vs__specs">${esc(spec)}</div>
                     </div>`;
+  for (const marker of ["vs__archpanel", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
+    if (!out.includes(marker)) {
+      throw new Error(`benchmark architecture renderer lost required ${marker} markup`);
+    }
+  }
+  return out;
 }
 
 function replaceDivByID(html, id, replacement) {
