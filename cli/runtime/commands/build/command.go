@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
 )
@@ -45,15 +47,11 @@ type implementation struct {
 }
 
 func (cmd implementation) Run(c *command.Ctx) {
-	defaults, configured, err := runcmd.LoadDefaults()
+	deferredBoundsChecking, err := runcmd.DeferredBoundsOverride(c)
 	if err != nil {
-		ui.Fatal("build: %v", err)
+		ui.Usage("build: %v", err)
 	}
-	deferredDefault := true
-	if configured {
-		deferredDefault = defaults.Runtime.DeferredBoundsChecking
-	}
-	deferredBoundsChecking, err := runcmd.DeferredBoundsChecking(c, deferredDefault)
+	optimizations, err := runcmd.OptimizationOverrides(c)
 	if err != nil {
 		ui.Usage("build: %v", err)
 	}
@@ -63,8 +61,23 @@ func (cmd implementation) Run(c *command.Ctx) {
 		ext := filepath.Ext(input)
 		output = strings.TrimSuffix(input, ext) + ".wago"
 	}
+	selection, err := settings.ResolveCompilation(settings.CompilationRequest{
+		Arch: runtime.GOARCH, Parallel: c.Str("parallel"), DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
+	})
+	if err != nil {
+		if settings.IsCompilationSettingsError(err) {
+			ui.Fatal("build: %v", err)
+		}
+		ui.Usage("build: %v", err)
+	}
 	if automation.DryRun() {
-		plan := map[string]any{"input": input, "output": output, "parallel": c.Str("parallel"), "deferredBoundsChecking": deferredBoundsChecking}
+		plan := map[string]any{
+			"input": input, "output": output, "parallel": c.Str("parallel"),
+			"functionWorkers": selection.FunctionWorkers, "deferredBoundsChecking": selection.DeferredBoundsChecking,
+		}
+		if len(selection.Optimizations) != 0 {
+			plan["optimizations"] = selection.Optimizations
+		}
 		if plugins := runcmd.PluginList(c); plugins != "" {
 			plan["plugins"] = plugins
 		}
@@ -78,13 +91,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if wago.IsCompiled(source) {
 		ui.Fatal("build: %s is already a .wago artifact", input)
 	}
-	cfg, err := runcmd.Config("", deferredBoundsChecking, runcmd.ResolveParallel(c.Str("parallel"), defaults, configured))
-	if err != nil {
-		ui.Usage("build: %v", err)
-	}
-	cfg = runcmd.ApplyFeatureDefaults(cfg, defaults, configured)
-	cfg = runcmd.ApplyOptimizationDefaults(cfg, defaults, configured)
-	cfg = runcmd.ApplyOptimizationFlags(c, cfg)
+	cfg := selection.RuntimeConfig()
 	rt := cmd.environment.LoadRuntime(cfg, runcmd.PluginList(c))
 	defer rt.Close()
 	module, err := rt.Compile(source)

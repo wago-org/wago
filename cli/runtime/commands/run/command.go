@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
@@ -61,15 +63,7 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		watchModule(ctx.Args[0], ctx.Str("watch-interval"))
 		return
 	}
-	defaults, configured, err := LoadDefaults()
-	if err != nil {
-		ui.Fatal("run: %v", err)
-	}
-	deferredDefault := true
-	if configured {
-		deferredDefault = defaults.Runtime.DeferredBoundsChecking
-	}
-	deferredBoundsChecking, err := DeferredBoundsChecking(ctx, deferredDefault)
+	deferredBoundsChecking, err := DeferredBoundsOverride(ctx)
 	if err != nil {
 		ui.Usage("run: %v", err)
 	}
@@ -78,13 +72,21 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Usage("run: need a <file>")
 	}
 	wago.SetGuestArgs(positionals)
-	config, err := Config(ctx.Str("core"), deferredBoundsChecking, ResolveParallel(ctx.Str("parallel"), defaults, configured))
+	optimizations, err := OptimizationOverrides(ctx)
 	if err != nil {
 		ui.Usage("run: %v", err)
 	}
-	config = ApplyFeatureDefaults(config, defaults, configured)
-	config = ApplyOptimizationDefaults(config, defaults, configured)
-	config = ApplyOptimizationFlags(ctx, config)
+	selection, err := settings.ResolveCompilation(settings.CompilationRequest{
+		Arch: runtime.GOARCH, Core: ctx.Str("core"), Parallel: ctx.Str("parallel"),
+		DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
+	})
+	if err != nil {
+		if settings.IsCompilationSettingsError(err) {
+			ui.Fatal("run: %v", err)
+		}
+		ui.Usage("run: %v", err)
+	}
+	config := selection.RuntimeConfig()
 	runtime := cmd.environment.LoadRuntime(config, PluginList(ctx))
 	defer runtime.Close()
 	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache())
