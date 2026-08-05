@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"fmt"
@@ -80,29 +79,6 @@ func TestInstallerDownloadsNewestChannelManager(t *testing.T) {
 	}
 	if installer.managerTag != "canary-deadbee" || !installer.managerFromRelease {
 		t.Fatalf("manager resolution = %q, %v", installer.managerTag, installer.managerFromRelease)
-	}
-}
-
-func TestUnzipSingleRootRejectsTraversal(t *testing.T) {
-	archive := filepath.Join(t.TempDir(), "source.zip")
-	file, err := os.Create(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writer := zip.NewWriter(file)
-	entry, err := writer.Create("root/../../escape")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _ = entry.Write([]byte("bad"))
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := unzipSingleRoot(archive, filepath.Join(t.TempDir(), "out")); err == nil {
-		t.Fatal("traversing source archive unexpectedly succeeded")
 	}
 }
 

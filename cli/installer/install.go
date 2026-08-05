@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wago-org/wago/internal/sourcearchive"
 )
 
 type installer struct {
@@ -542,87 +543,12 @@ func (i *installer) fetchSource() (string, error) {
 	if err := i.download(archiveURL, archive); err != nil {
 		return "", fmt.Errorf("fetch source with Git (%v: %s) or archive: %w", gitErr, strings.TrimSpace(string(gitLog)), err)
 	}
-	if err := unzipSingleRoot(archive, target); err != nil {
+	if err := sourcearchive.Extract(archive, target); err != nil {
 		return "", fmt.Errorf("unpack source archive: %w", err)
 	}
 	i.sourceMethod = "archive"
 	i.done("Fetched Wago source")
 	return target, nil
-}
-
-func unzipSingleRoot(archive, target string) error {
-	reader, err := zip.OpenReader(archive)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	root := ""
-	for _, entry := range reader.File {
-		name := filepath.ToSlash(entry.Name)
-		part := strings.SplitN(name, "/", 2)[0]
-		if part == "" || part == "." || part == ".." {
-			return errors.New("archive contains an invalid root")
-		}
-		if root == "" {
-			root = part
-		} else if root != part {
-			return errors.New("archive contains multiple roots")
-		}
-	}
-	if root == "" {
-		return errors.New("archive is empty")
-	}
-	const maxExpandedSize = 512 << 20
-	var expanded uint64
-	for _, entry := range reader.File {
-		name := filepath.ToSlash(entry.Name)
-		rel := strings.TrimPrefix(name, root+"/")
-		if rel == "" {
-			continue
-		}
-		destination := filepath.Join(target, filepath.FromSlash(rel))
-		if !strings.HasPrefix(filepath.Clean(destination), filepath.Clean(target)+string(os.PathSeparator)) {
-			return errors.New("archive path escapes destination")
-		}
-		if entry.FileInfo().IsDir() {
-			if err := os.MkdirAll(destination, 0o755); err != nil {
-				return err
-			}
-			continue
-		}
-		expanded += entry.UncompressedSize64
-		if expanded > maxExpandedSize {
-			return errors.New("source archive expands beyond 512 MiB limit")
-		}
-		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-			return err
-		}
-		source, err := entry.Open()
-		if err != nil {
-			return err
-		}
-		file, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, entry.Mode().Perm())
-		if err != nil {
-			source.Close()
-			return err
-		}
-		_, copyErr := io.Copy(file, source)
-		closeErr := file.Close()
-		sourceErr := source.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if sourceErr != nil {
-			return sourceErr
-		}
-	}
-	if _, err := os.Stat(filepath.Join(target, "go.mod")); err != nil {
-		return errors.New("source archive does not contain go.mod")
-	}
-	return nil
 }
 
 func (i *installer) buildManager(sourceDir, target string) error {
