@@ -95,6 +95,14 @@ scheduled reconciler recovers the release within its next polling interval.
 `tests/scripts/dispatch-docs-release.sh` verifies the dispatch payload and input
 validation without contacting GitHub.
 
+Pushes to `main` that change `install.sh` or `install.cmd` run the
+`Publish installers` workflow. It uses `INSTALL_REPO_TOKEN` to copy only those
+bootstraps to `wago-org/install`; that repository deploys them
+to `https://install.wago.sh` with GitHub Pages. The installer site owns its
+Pages workflow and custom domain, while this repository remains the source of
+truth for installer behavior. `INSTALL_REPO_TOKEN` must grant Contents write
+access to `wago-org/install`.
+
 For a local native approximation, run the commands below. The formatting gate
 checks tracked Go files only, so toolchains or diagnostics retained under `.git/`
 do not contaminate `make lint`.
