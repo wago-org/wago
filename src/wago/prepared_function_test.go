@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -171,6 +172,12 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
+	if in.c.boundsMode == BoundsChecksSignalsBased {
+		if in.preparedPrivateEligible() || in.preparedIsolatedEligible() {
+			t.Fatal("signals-based instance must use the guarded entry")
+		}
+		return
+	}
 	if !in.preparedIsolatedEligible() {
 		t.Fatalf("plain scalar instance should be isolated: private=%v dir=%v sharedctx=%v sync=%v memory=%v owns=%v globals=%d table=%#x gc=%v imports=%d refs=%v",
 			in.preparedPrivateEligible(), in.memoryDir != nil, in.nativeControlShared, in.syncMode, in.memory != nil, in.ownsMem,
@@ -200,6 +207,9 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 
 func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
 	c := MustCompile(benchAddOneModule())
+	if c.boundsMode == BoundsChecksSignalsBased {
+		t.Skip("signals-based execution requires the guarded entry")
+	}
 	instances := make([]*Instance, 2)
 	prepared := make([]*PreparedFunction, 2)
 	for i := range instances {
@@ -241,6 +251,75 @@ func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+}
+
+func TestInvokeScalarUsesIsolatedEntry(t *testing.T) {
+	savedInvoke := invokePrivateEntryEnabled
+	savedIsolated := preparedIsolatedEntryEnabled
+	invokePrivateEntryEnabled = true
+	preparedIsolatedEntryEnabled = true
+	defer func() {
+		invokePrivateEntryEnabled = savedInvoke
+		preparedIsolatedEntryEnabled = savedIsolated
+	}()
+
+	in, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	if !in.preparedIsolatedEligible() {
+		if in.c.boundsMode == BoundsChecksSignalsBased {
+			t.Skip("signals-based execution requires the guarded entry")
+		}
+		t.Fatal("plain scalar instance should be eligible for isolated entry")
+	}
+	if _, err := in.Invoke("f", I32(0)); err != nil {
+		t.Fatalf("warm invoke: %v", err)
+	}
+
+	type result struct {
+		values []uint64
+		err    error
+	}
+	done := make(chan result, 1)
+	nativeExecutionMu.Lock()
+	go func() {
+		values, err := in.Invoke("f", I32(41))
+		done <- result{values: values, err: err}
+	}()
+	select {
+	case got := <-done:
+		nativeExecutionMu.Unlock()
+		if got.err != nil || len(got.values) != 1 || AsI32(got.values[0]) != 42 {
+			t.Fatalf("isolated invoke = %v, %v", got.values, got.err)
+		}
+	case <-time.After(time.Second):
+		nativeExecutionMu.Unlock()
+		<-done
+		t.Fatal("isolated Invoke waited for the process-wide native execution lease")
+	}
+
+	// Attachment can make native control shared after this export was cached.
+	// The cached scalar shape must then fall back to rebinding under the lease.
+	in.nativeControlShared = true
+	done = make(chan result, 1)
+	nativeExecutionMu.Lock()
+	go func() {
+		values, err := in.Invoke("f", I32(42))
+		done <- result{values: values, err: err}
+	}()
+	select {
+	case got := <-done:
+		nativeExecutionMu.Unlock()
+		t.Fatalf("shared-control invoke bypassed the execution lease: %v, %v", got.values, got.err)
+	case <-time.After(20 * time.Millisecond):
+		nativeExecutionMu.Unlock()
+	}
+	got := <-done
+	if got.err != nil || len(got.values) != 1 || AsI32(got.values[0]) != 43 {
+		t.Fatalf("shared-control invoke = %v, %v", got.values, got.err)
 	}
 }
 
