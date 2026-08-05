@@ -9,8 +9,8 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/ui"
-	runcommand "github.com/wago-org/wago/cli/runtime/commands/run"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 	"github.com/wago-org/wago/cli/runtime/internal/profile"
 	runtimeversion "github.com/wago-org/wago/cli/runtime/internal/version"
@@ -76,7 +76,7 @@ func Main(v string) {
 	}
 	// Not a known command. A file path (or a leading flag) is an implicit `run`;
 	// anything else is an unknown command rather than a mystery file-open.
-	if runcommand.LooksLikeTarget(args[0]) || strings.HasPrefix(args[0], "-") {
+	if handoff.LooksLikeRuntimeTarget(args[0]) || strings.HasPrefix(args[0], "-") {
 		root.Child("run").Dispatch("wago run", args)
 		return
 	}

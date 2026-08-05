@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
@@ -87,7 +88,7 @@ func withoutWatchFlags(arguments []string) []string {
 			continue
 		}
 		result = append(result, argument)
-		if LooksLikeTarget(argument) {
+		if handoff.LooksLikeRuntimeTarget(argument) {
 			passThrough = true
 		}
 	}

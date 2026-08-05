@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/handoff"
 )
 
 func TestUsageDocumentsCommandSurface(t *testing.T) {
@@ -80,6 +81,42 @@ func TestRuntimeCommandSurfaceCoversEveryLeaf(t *testing.T) {
 	if got, want := strings.Join(leaves, ","), "run,plugin list,plugin inspect,module imports,module capabilities,build,validate"; got != want {
 		t.Fatalf("runtime command leaves = %q, want %q", got, want)
 	}
+}
+
+func TestRuntimeHandoffDescriptionMatchesRuntimeSurface(t *testing.T) {
+	described := &command.Cmd{Name: "wago", Children: handoff.RuntimeCommands()}
+	for _, name := range []string{"run", "module", "build", "validate"} {
+		assertRuntimeDescription(t, described.Child(name), root.Child(name), name)
+	}
+}
+
+func assertRuntimeDescription(t *testing.T, described, actual *command.Cmd, path string) {
+	t.Helper()
+	if described == nil || actual == nil {
+		t.Fatalf("%s description=%v actual=%v", path, described, actual)
+	}
+	if described.Name != actual.Name || described.Args != actual.Args || described.PassThrough != actual.PassThrough || described.Automation != actual.Automation {
+		t.Errorf("%s command contract differs: described=%#v actual=%#v", path, described, actual)
+	}
+	describedFlags, actualFlags := flagNames(described.AllFlags()), flagNames(actual.AllFlags())
+	if strings.Join(describedFlags, ",") != strings.Join(actualFlags, ",") {
+		t.Errorf("%s flags differ: described=%v actual=%v", path, describedFlags, actualFlags)
+	}
+	if len(described.Children) != len(actual.Children) {
+		t.Errorf("%s children differ: described=%d actual=%d", path, len(described.Children), len(actual.Children))
+		return
+	}
+	for index := range described.Children {
+		assertRuntimeDescription(t, described.Children[index], actual.Children[index], path+" "+described.Children[index].Name)
+	}
+}
+
+func flagNames(flags []command.Flag) []string {
+	result := make([]string, len(flags))
+	for index, flag := range flags {
+		result[index] = flag.Name
+	}
+	return result
 }
 
 func TestRuntimeHelpDoesNotInjectManagerCommands(t *testing.T) {
