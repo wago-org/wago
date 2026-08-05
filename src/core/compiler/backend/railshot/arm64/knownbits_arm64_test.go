@@ -63,6 +63,19 @@ func swarPack4BodyArm64() []byte {
 	return append(b, 0x84, 0x84, 0x84, 0xa7, 0x0b)
 }
 
+func swarParse4BodyArm64() []byte {
+	b := []byte{0x00, 0x20, 0x00, 0x42, 0x0a, 0x7e, 0x20, 0x00, 0x42, 0x10, 0x88, 0x7c, 0x42}
+	b = append(b, wasmtest.SLEB64(0x0000ffff0000ffff)...)
+	b = append(b, 0x83, 0x42)
+	b = append(b, wasmtest.SLEB64(0x0000006400000001)...)
+	return append(b, 0x7e, 0x42, 0x20, 0x88, 0xa7, 0x0b)
+}
+
+func swarParse4Reference(x uint64) uint32 {
+	pairs := (x*10 + x>>16) & 0x0000ffff0000ffff
+	return uint32((pairs * 0x0000006400000001) >> 32)
+}
+
 func mulHighU64BodyArm64() []byte {
 	b := []byte{0x01, 0x02, 0x7e, 0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x02, 0x20, 0x01, 0x42}
 	b = append(b, wasmtest.SLEB64(0xffffffff)...)
@@ -248,6 +261,59 @@ func TestSWARPack4FusionWithoutWrapArm64(t *testing.T) {
 		if got := uint64(runArm64Internal2(t, m, uintptr(x), 0)); got != want {
 			t.Fatalf("pack64(%#x) = %#x, want %#x", x, got, want)
 		}
+	}
+}
+
+func TestSWARParse4FusionArm64(t *testing.T) {
+	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
+	m := mod1(t, i64, i32, swarParse4BodyArm64())
+	on := compileWithStats(t, m, false).Funcs[0]
+	if got := on.Peephole["swar-parse4"]; got != 1 {
+		t.Fatalf("swar-parse4 = %d, want 1 (all: %v)", got, on.Peephole)
+	}
+	var off *CodegenStats
+	func() {
+		saved := swarIdiomsEnabled
+		defer func() { swarIdiomsEnabled = saved }()
+		swarIdiomsEnabled = false
+		off = compileWithStats(t, m, false).Funcs[0]
+	}()
+	if on.CodeBytes >= off.CodeBytes {
+		t.Fatalf("fused code = %d bytes, scalar = %d; want smaller", on.CodeBytes, off.CodeBytes)
+	}
+	for _, x := range []uint64{
+		0,
+		0x0001000200030004,
+		0x0009000800070006,
+		0xffffffffffffffff,
+		0xf2fd910b3caa11b0,
+		0x123456789abcdef0,
+	} {
+		want := swarParse4Reference(x)
+		if got := uint32(runArm64Internal2(t, m, uintptr(x), 0)); got != want {
+			t.Fatalf("parse4(%#x) = %#x, want %#x", x, got, want)
+		}
+	}
+	x := uint64(0x9e3779b97f4a7c15)
+	for range 1000 {
+		x ^= x << 13
+		x ^= x >> 7
+		x ^= x << 17
+		want := swarParse4Reference(x)
+		if got := uint32(runArm64Internal2(t, m, uintptr(x), 0)); got != want {
+			t.Fatalf("parse4(%#x) = %#x, want %#x", x, got, want)
+		}
+	}
+}
+
+func TestSWARParse4RejectsNearMatchArm64(t *testing.T) {
+	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
+	body := swarParse4BodyArm64()
+	// Change the first decimal multiplier while leaving a valid expression.
+	body[4] = 0x0b
+	m := mod1(t, i64, i32, body)
+	if got := compileWithStats(t, m, false).Funcs[0].Peephole["swar-parse4"]; got != 0 {
+		t.Fatalf("swar-parse4 = %d, want 0 for near-match", got)
 	}
 }
 

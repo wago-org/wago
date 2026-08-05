@@ -4,6 +4,79 @@ package arm64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
+// trySWARParse4 recognizes the broadword decimal reduction used by json-as:
+//
+//	pairs = (digits*10 + digits>>16) & 0x0000ffff0000ffff
+//	value = (pairs * 0x0000006400000001) >> 32
+//
+// The source has four u16 lanes. The masks make the second multiply exactly
+// p0*100+p1 modulo 2^32, so the lowering can expose the two independent pair
+// reductions and shorten the critical path without assuming that the lanes are
+// valid decimal digits. This is the multiplication-based lane collapse from
+// the broadword literature, selected only for the exact Wasm expression.
+func (f *fn) trySWARParse4(root *elem) bool {
+	if root != nil && root.kind == ekDeferred && root.op == opSWARParse4 {
+		return true
+	}
+	if !swarIdiomsEnabled || root == nil || root.kind != ekDeferred || root.op != opShrU || root.typ != mtI64 ||
+		!isSWARConst(root.arg1, 32) {
+		return false
+	}
+	product, ok := swarOtherConst(root.arg0, 0x0000006400000001, opMul)
+	if !ok {
+		return false
+	}
+	sum, ok := swarOtherConst(product, 0x0000ffff0000ffff, opAnd)
+	if !ok || sum == nil || sum.kind != ekDeferred || sum.op != opAdd || sum.typ != mtI64 {
+		return false
+	}
+	var mul10, shift16 *elem
+	if other, matched := swarOtherConst(sum.arg0, 10, opMul); matched {
+		mul10, shift16 = other, sum.arg1
+	} else if other, matched := swarOtherConst(sum.arg1, 10, opMul); matched {
+		mul10, shift16 = other, sum.arg0
+	} else {
+		return false
+	}
+	if shift16 == nil || shift16.kind != ekDeferred || shift16.op != opShrU || shift16.typ != mtI64 ||
+		!isSWARConst(shift16.arg1, 16) || !sameSWARSource(mul10, shift16.arg0) {
+		return false
+	}
+	root.op, root.arg0, root.arg1 = opSWARParse4, mul10, nil
+	root.deferDepth = 1 + deferDepthOf(mul10)
+	f.stats.peep("swar-parse4")
+	return true
+}
+
+func isSWARConst(e *elem, want uint64) bool {
+	return e != nil && e.kind == ekValue && e.st.kind == stConst && uint64(e.st.cval) == want
+}
+
+func swarOtherConst(e *elem, want uint64, op wOp) (*elem, bool) {
+	if e == nil || e.kind != ekDeferred || e.op != op || e.typ != mtI64 {
+		return nil, false
+	}
+	if isSWARConst(e.arg0, want) {
+		return e.arg1, true
+	}
+	if isSWARConst(e.arg1, want) {
+		return e.arg0, true
+	}
+	return nil, false
+}
+
+func sameSWARSource(a, b *elem) bool {
+	if a == b {
+		return true
+	}
+	if a == nil || b == nil || a.kind != ekValue || b.kind != ekValue || a.st.typ != mtI64 || b.st.typ != mtI64 {
+		return false
+	}
+	aLocal := a.st.kind == stLocalRef || a.st.kind == stLocalReg
+	bLocal := b.st.kind == stLocalRef || b.st.kind == stLocalReg
+	return aLocal && bLocal && a.st.idx == b.st.idx
+}
+
 // trySWARPack4 recognizes utf-as's exact inverse of swar-widen4. The OR tree
 // may be associated or ordered differently, but must contain exactly the four
 // masked byte gathers from one local.

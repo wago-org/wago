@@ -364,6 +364,16 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			return
 		}
 	}
+	if op == opShrU && typ == mtI64 {
+		candidate := elem{kind: ekDeferred, op: op, typ: typ, arg0: left, arg1: right}
+		candidate.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
+		if f.trySWARParse4(&candidate) {
+			node := f.s.alloc()
+			*node = candidate
+			f.s.push(node)
+			return
+		}
+	}
 	// Cap deferred-tree height: condense the deeper operand now if deferring this
 	// op would push the subtree past maxDeferDepth, so the tree condense() later
 	// walks never pins more registers than the file holds. Rare on real code
@@ -527,7 +537,7 @@ func log2u(v uint64) int {
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operand := f.s.back()
-	if op == opWrap && f.trySWARPack4(operand) {
+	if op == opWrap && (f.trySWARPack4(operand) || operand.kind == ekDeferred && operand.op == opSWARParse4) {
 		operand.typ = mtI32
 		return
 	}

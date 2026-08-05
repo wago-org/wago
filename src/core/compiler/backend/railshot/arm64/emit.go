@@ -988,6 +988,38 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.NeonXtnBfromH(v, v)
 		f.a.FmovToGpr(result, v, w)
 		f.releaseF(v)
+	case opSWARParse4:
+		// MADD exposes the first multiply-plus-shift sum. After the mask,
+		// pairs = p0 | p1<<32 exactly, so the second 64-bit multiply and shift
+		// are equivalent to the 32-bit p0*100+p1 MADD. This remains exact for
+		// every i64 input; no decimal-digit range assumption is made.
+		hi := f.allocReg(maskOf(src, result))
+		f.a.LsrImm(hi, src, 16, false)
+		k := f.allocReg(maskOf(src, result, hi))
+		f.a.MovImm32(k, 10)
+		final := result
+		raw := final
+		if raw == regNone || raw == src && !srcOwned {
+			if srcOwned {
+				raw = src
+			} else {
+				raw = f.allocReg(maskOf(src, hi, k))
+			}
+		}
+		f.a.Madd64(raw, src, k, hi)
+		f.andImm(raw, int64(0x0000ffff0000ffff), true)
+		f.a.LsrImm(hi, raw, 32, false)
+		f.a.MovImm32(k, 100)
+		if final == regNone {
+			final = raw
+		}
+		f.a.Madd32(final, raw, k, hi)
+		if final != raw {
+			f.release(raw)
+		}
+		result = final
+		f.release(k)
+		f.release(hi)
 	}
 	if srcOwned && result != src {
 		f.release(src)
