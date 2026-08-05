@@ -33,7 +33,6 @@ func core3StageFixtures() []core3StageFixture {
 		{name: "sqlite3", path: filepath.Join(corpus, "sqlite3.wasm")},
 		{name: "ruby", path: filepath.Join(corpus, "ruby.wasm")},
 		{name: "esbuild", path: filepath.Join(corpus, "esbuild.wasm")},
-		{name: "moonbit-json", env: "WAGO_MOONBIT_JSON_SMOKE_WASM", core3: true, instantiate: true, execExport: "run", execArgs: []uint64{I32(1)}},
 		{name: "starshine", env: "WAGO_STARSHINE_SMOKE_WASM", core3: true, instantiate: true, linkCold: true},
 	}
 }

@@ -32,18 +32,6 @@ The smoke is environment-gated through `WAGO_STARSHINE_SMOKE_WASM`, or via
 `make test-starshine STARSHINE_WASM=/path/to/cmd.wasm`, so the external payload
 is not vendored into this repository.
 
-A smaller deterministic execution fixture lives in
-`testdata/moonbit-json-smoke`. With the pinned MoonBit 0.1.20260703 compiler it
-produces a 44,023-byte import-free WasmGC module with SHA-256
-`b4e33e0685aa5572516ab037be12a3ad1aee93ab9891ba4071c42c23a3e9ca2d`.
-Its exported `run(i32) -> i64` parses, stringifies, reparses, compares, and
-checksums a nested JSON corpus; `make test-moonbit-json` verifies the compiler,
-canonical artifact, and Node-derived results for 1, 2, and 8 iterations. Unlike
-the Starshine startup smoke, this fixture has deterministic semantic output.
-It also exposed a backend bug where dead-code scanning failed to consume
-`0xfb` GC immediates; amd64 and arm64 now delegate those immediates to the
-canonical bytecode classifier.
-
 Exact native frame-root publication is still incomplete for general generated
 modules. Those modules therefore force `ProfileThroughput` and keep collection
 disabled while a native invocation is active: objects remain stable, no
@@ -169,11 +157,9 @@ numeric/reference/vector words without constructing an intermediate `[]Value`.
 The generic public constructors keep their complete independent validation.
 
 A pinned single-CPU benchmark pass on July 16, 2026 (Ryzen 7 8845HS, Go 1.24.4)
-measured the 44,023-byte MoonBit JSON module at 0.276 ms decode, 1.380 ms
-validation, 10.641 ms production compile including native codegen, 0.170 ms
-instantiate, and 4.733 ms for fresh instantiate plus `run(1)`. Starshine measured
-1.027 s for the pre-link compile/classification stage, 0.602 s for an isolated
-cold link/JIT from a fresh unlinked product, 1.522 s for end-to-end compile+link,
+measured Starshine at 1.027 s for the pre-link compile/classification stage,
+0.602 s for an isolated cold link/JIT from a fresh unlinked product, 1.522 s for
+end-to-end compile+link,
 and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.

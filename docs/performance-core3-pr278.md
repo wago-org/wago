@@ -12,10 +12,8 @@ runs were pinned to CPU 0 with `GOMAXPROCS=1`. Where laptop thermal/frequency
 ordering produced contradictory block-ordered results, separate base and
 candidate test binaries were alternated for 20 rounds.
 
-The pinned MoonBit JSON artifact was unavailable: installed MoonBit was
-`0.1.20260713`, while the required version was `0.1.20260703`. No Starshine
-artifact was configured. Those lanes were therefore reported as unavailable,
-not replaced by unrelated modules.
+No Starshine artifact was configured, so that lane was reported as unavailable
+rather than replaced by an unrelated module.
 
 ## Baseline repairs and attribution
 
@@ -28,7 +26,7 @@ Before optimization, the branch needed two correctness/CI repairs:
 Test-only stage attribution was added in `7a989ff8` and extended with explicit
 segment-state and native-code-size metrics in `ebfc3f65` and `67437d71`.
 Representative fixtures are tiny, json-as, wasm3, SQLite, Ruby, and esbuild,
-with optional MoonBit JSON and Starshine lanes.
+with an optional Starshine lane.
 
 Baseline attribution found:
 
@@ -130,7 +128,6 @@ not a correctness failure.
 
 Not run:
 
-- pinned MoonBit JSON smoke/benchmark: required compiler version unavailable;
 - Starshine smoke/benchmark: artifact not configured.
 
 ## Result

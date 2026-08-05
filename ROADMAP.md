@@ -366,26 +366,6 @@ cross-instance object ownership, persistence/snapshot semantics, guard-page GC,
 and non-amd64 native lowering. The Starshine smoke does not convert those items
 into a general-purpose WasmGC claim.
 
-## Iteration 76 deterministic MoonBit JSON smoke
-
-A checked-in source fixture under `testdata/moonbit-json-smoke` now supplies a
-small, reproducible semantic gate alongside the large Starshine startup test.
-MoonBit 0.1.20260703 builds it into a 44,023-byte import-free WasmGC module with
-SHA-256 `b4e33e0685aa5572516ab037be12a3ad1aee93ab9891ba4071c42c23a3e9ca2d`.
-The exported `run(i32) -> i64` parses, stringifies, reparses, compares, and
-checksums a nested JSON corpus; pinned results cover 1, 2, and 8 iterations.
-`make test-moonbit-json` checks the exact compiler version, rebuilds the module,
-verifies its canonical bytes, and executes it through Wago.
-
-The fixture found a shape-independent compiler bug before execution: dead-code
-lowering did not consume `0xfb` GC instruction immediates, so an unreachable
-`struct.new` desynchronized the remaining function body. Both amd64 and arm64
-now use the canonical bytecode classifier for GC-prefix immediates, with direct
-regression tests. Starshine remains the scale/startup benchmark; the JSON module
-is the deterministic execution gate. Its pinned production compile baseline is
-10.641 ms, with 0.276 ms decode, 1.380 ms validation, 0.170 ms instantiate, and
-4.733 ms for fresh instantiate plus one checked JSON run.
-
 ## Iteration 77 first native WasmGC frame roots
 
 The first linux/amd64 native-root slice enabled collection inside one generated
