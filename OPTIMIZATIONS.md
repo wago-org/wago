@@ -644,9 +644,10 @@ its 72 B frame and spill, and passes native execution, liveness, and near-miss t
 ### utf-as pack / broadword fixture A/B (2026-07-18)
 
 Five repeated 1 s samples per mode. The focused fixture preserves utf-as's exact
-four-halfword low-byte pack plus json-as's unchecked four-digit fold. Only the pack is
-selected: rewriting the digit fold lane-wise would change its cross-lane borrow behavior
-for arbitrary inputs, so it remains scalar until a checked-domain pattern is proved.
+four-halfword low-byte pack plus json-as's unchecked four-digit fold. At this point only
+the pack was selected: rewriting the digit fold lane-wise would change its cross-lane
+carry behavior for arbitrary inputs. The follow-up below instead selects the complete
+expression and preserves that behavior exactly.
 
 | host / workload | idioms off | idioms on | change | memory |
 |---|---:|---:|---:|---:|
@@ -683,6 +684,35 @@ Five real utf-as SIMD sites select. AMD64 generated code shrinks by 138 B across
 three hit functions (8056→8014 B, 4444→4380 B, 2628→2596 B). Focused exact-pattern
 tests shrink AND + ANY_TRUE by 21 B (124→103 B) and NOT + AND by 10 B (152→142 B),
 with arbitrary-bit inputs, non-adjacent near misses, and kill-switch equivalence covered.
+
+### Research-guided reduction follow-up (2026-08-04)
+
+The follow-up keeps Railshot's bounded, exact selector model. Souper and Minotaur's
+useful lesson here is to match a small functional DAG and prove the replacement over
+the full input domain, rather than attach optimistic range assumptions. The broadword
+papers supply the multiplication-based lane-collapse shape; Valent Blocks supplies the
+existing deferred expression tree on which the matcher operates.
+
+ARM64 now recognizes json-as's complete unchecked four-lane decimal fold. Two `MADD`
+instructions expose the multiply-plus-add reductions while retaining the original
+cross-lane carries for every i64 input. Adversarial arbitrary-bit tests, including a
+case that disproved an earlier independent-lane candidate, protect that requirement;
+a one-constant near miss does not select. The focused function shrinks **140→124 B**,
+and the mixed `runN(1000)` fixture shrinks **252→240 B**. Seven native 2 s samples on
+an Apple M4 Max improve the latter from **1.030→1.004 us median** (**−2.5%**), with
+0 B/op and 0 allocs/op.
+
+AMD64's general `v128.any_true` lowering now uses `VPTEST x,x; SETNE` directly instead
+of constructing a zero vector, comparing bytes, extracting a movemask, and comparing
+that mask. Six standalone sites in utf-as SIMD select in addition to the five existing
+AND + ANY_TRUE superops, removing **96 native-code bytes** across the two affected
+functions (6952→6936 B and 2450→2370 B). A 64-reduction throughput watchpoint, measured
+as seven 2 s samples under linux/amd64 Rosetta (`VirtualApple`, GOMAXPROCS=1), improves
+from **57.21→39.59 ns/op median** (**−30.8%**), with 0 B/op and 0 allocs/op. This is a
+focused instruction-throughput result, not a whole-library claim: five matched 1 s
+`utf-as-simd.validateN(200)` samples are flat at **320.484→319.610 us** (**−0.3%**).
+The complete official SIMD proposal suite remains green at 470 modules and 24,325
+assertions with zero failures, skips, or gaps on linux/amd64.
 
 ### SWAR versus SIMD corpus comparison (2026-07-18)
 
