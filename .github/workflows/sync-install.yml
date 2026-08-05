@@ -6,6 +6,7 @@ on:
     paths:
       - install.sh
       - install.cmd
+      - install.ps1
       - .github/workflows/sync-install.yml
   workflow_dispatch:
 
@@ -33,21 +34,22 @@ jobs:
 
       - name: Synchronize installer bootstraps
         run: |
-          cp install.sh install.cmd published/
+          cp install.sh install.cmd install.ps1 published/
           chmod 0755 published/install.sh
-          chmod 0644 published/install.cmd
+          chmod 0644 published/install.cmd published/install.ps1
           cmp install.sh published/install.sh
           cmp install.cmd published/install.cmd
+          cmp install.ps1 published/install.ps1
 
       - name: Publish changed scripts
         working-directory: published
         run: |
-          if git diff --quiet -- install.sh install.cmd; then
+          if git diff --quiet -- install.sh install.cmd install.ps1; then
             echo "Installer bootstraps are already current."
             exit 0
           fi
           git config user.name "wago-bot"
           git config user.email "wago-bot@users.noreply.github.com"
-          git add install.sh install.cmd
+          git add install.sh install.cmd install.ps1
           git commit -m "sync: update installer bootstraps"
           git push origin HEAD:main

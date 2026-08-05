@@ -5,9 +5,15 @@ rem Wago installer bootstrap for native Windows Command Prompt.
 rem Downloads, verifies, and launches the native Wago installer, then refreshes
 rem this Command Prompt's PATH when requested.
 
-set "path_refresh_file=%TEMP%\wago-refresh-!RANDOM!-!RANDOM!-!RANDOM!.request"
+set "path_refresh_owner="
+if defined WAGO_PATH_REFRESH_FILE (
+  set "path_refresh_file=!WAGO_PATH_REFRESH_FILE!"
+  set "path_refresh_owner=caller"
+) else (
+  set "path_refresh_file=%TEMP%\wago-refresh-!RANDOM!-!RANDOM!-!RANDOM!.request"
+  set "WAGO_PATH_REFRESH_FILE=!path_refresh_file!"
+)
 del /f /q "!path_refresh_file!" >nul 2>&1
-set "WAGO_PATH_REFRESH_FILE=!path_refresh_file!"
 
 if defined WAGO_INSTALLER (
   if not exist "%WAGO_INSTALLER%" (
@@ -78,8 +84,8 @@ if not "!installer_status!"=="0" exit /b !installer_status!
 goto success
 
 :success
-if exist "!path_refresh_file!" call :refresh_path
-del /f /q "!path_refresh_file!" >nul 2>&1
+if exist "!path_refresh_file!" if not defined path_refresh_owner call :refresh_path
+if not defined path_refresh_owner del /f /q "!path_refresh_file!" >nul 2>&1
 if defined refreshed_path for /f "delims=" %%P in ("!refreshed_path!") do endlocal & set "PATH=%%P"
 exit /b 0
 

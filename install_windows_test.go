@@ -1,6 +1,9 @@
 package wago
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,5 +54,31 @@ func TestCmdBootstrapExecutesNativeInstaller(t *testing.T) {
 		if !strings.Contains(string(output), fragment) {
 			t.Fatalf("CMD bootstrap output missing %q:\n%s", fragment, output)
 		}
+	}
+}
+
+func TestPowerShellBootstrapIsQuietAndExecutesCmdBootstrap(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("PowerShell and cmd.exe are available together on native Windows CI")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/install.cmd" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = fmt.Fprintln(w, "@echo off")
+		_, _ = fmt.Fprintln(w, "echo PowerShell loader ok")
+		_, _ = fmt.Fprintln(w, "if defined WAGO_PATH_REFRESH_FILE echo refresh>\"%WAGO_PATH_REFRESH_FILE%\"")
+	}))
+	defer server.Close()
+
+	command := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "install.ps1")
+	command.Env = append(os.Environ(), "WAGO_INSTALL_BASE_URL="+server.URL)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("PowerShell bootstrap: %v\n%s", err, output)
+	}
+	if got, want := strings.TrimSpace(string(output)), "PowerShell loader ok"; got != want {
+		t.Fatalf("PowerShell bootstrap output = %q, want %q", got, want)
 	}
 }
