@@ -15,7 +15,68 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/internal/installbootstrap"
 )
+
+type bootstrapContractCatalog struct {
+	latest   installbootstrap.Release
+	releases []installbootstrap.Release
+}
+
+func (catalog bootstrapContractCatalog) Latest() (installbootstrap.Release, error) {
+	return catalog.latest, nil
+}
+
+func (catalog bootstrapContractCatalog) Releases() ([]installbootstrap.Release, error) {
+	return append([]installbootstrap.Release(nil), catalog.releases...), nil
+}
+
+func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
+	catalog := bootstrapContractCatalog{
+		latest: installbootstrap.Release{TagName: "v1.2.3", PublishedAt: "2026-08-04T00:00:00Z"},
+		releases: []installbootstrap.Release{
+			{TagName: "canary-old", PublishedAt: "2026-08-01T00:00:00Z"},
+			{TagName: "nightly-new", PublishedAt: "2026-08-04T00:00:00Z"},
+			{TagName: "canary-new", PublishedAt: "2026-08-03T00:00:00Z"},
+		},
+	}
+	for _, version := range []string{"latest", "main", "nightly", "canary-pinned"} {
+		t.Run(version, func(t *testing.T) {
+			wantTag, err := installbootstrap.Resolve(version, catalog)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload := []byte("#!/bin/sh\nexit 0\n")
+			hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+			asset := "wago-installer-" + runtime.GOOS + "-" + runtime.GOARCH
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/releases/latest":
+					_, _ = fmt.Fprintf(w, "{\n  \"tag_name\": %q,\n  \"published_at\": %q\n}\n", catalog.latest.TagName, catalog.latest.PublishedAt)
+				case "/releases":
+					_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"canary-old\",\n    \"published_at\": \"2026-08-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"nightly-new\",\n    \"published_at\": \"2026-08-04T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"canary-new\",\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n")
+				case "/download/" + wantTag + "/" + asset:
+					_, _ = w.Write(payload)
+				case "/download/" + wantTag + "/" + asset + ".sha256":
+					_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			command := exec.Command("sh", "install.sh")
+			command.Env = append(os.Environ(),
+				"WAGO_VERSION="+version,
+				"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+				"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+			)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("shell bootstrap: %v\n%s", err, output)
+			}
+		})
+	}
+}
 
 func TestShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	payload := []byte("#!/bin/sh\nprintf 'native installer: %s\\n' \"$WAGO_VERSION\"\n")
@@ -242,6 +303,11 @@ func TestNativeAndWineDryRunOutputParity(t *testing.T) {
 	}
 	normalize := func(value string) string {
 		value = strings.ReplaceAll(value, "\r", "")
+		// Wine may emit host graphics-driver diagnostics before cmd starts. Compare
+		// the installer transcript itself, beginning at its stable greeting.
+		if start := strings.Index(value, "Welcome to Wago!"); start >= 0 {
+			value = value[start:]
+		}
 		value = strings.ReplaceAll(value, `\`, "/")
 		value = strings.ReplaceAll(value, "wago.exe", "wago")
 		return value
