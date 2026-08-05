@@ -101,6 +101,18 @@ func benchSIMDShiftBody(a [16]byte, count int32, sub uint32) []byte {
 	return body
 }
 
+func benchSIMDRepeatedAnyTrueBody(n int) []byte {
+	body := []byte{0x00}
+	for range n {
+		body = append(body, v128ConstBytes(i8x16Bytes(0, 0, 0, 0, 0, 0, 0, 1))...)
+		body = append(body, simdOp(83)...) // v128.any_true
+		body = append(body, 0x1a)          // drop
+	}
+	body = append(body, v128ConstBytes(i8x16Bytes(1))...)
+	body = append(body, 0x0b)
+	return body
+}
+
 func BenchmarkSIMDF32x4MinOrdinary(b *testing.B) {
 	benchmarkSIMDV128Body(b, v128BinaryBody(
 		f32x4Bytes(1, -2, 3.5, 4),
@@ -255,6 +267,10 @@ func BenchmarkSIMDI64x2SignedCmpGeS(b *testing.B) {
 		i64x2Bytes(5, 99),
 		219,
 	))
+}
+
+func BenchmarkSIMDRepeatedAnyTrue64(b *testing.B) {
+	benchmarkSIMDV128Body(b, benchSIMDRepeatedAnyTrueBody(64))
 }
 
 func BenchmarkSIMDRelaxedDotI16x8I8x16I7x16S(b *testing.B) {

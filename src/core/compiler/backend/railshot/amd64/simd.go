@@ -1888,16 +1888,12 @@ func (f *fn) v128Movemask() Reg {
 func (f *fn) v128AnyTrue() {
 	v := f.popValue()
 	x := f.materializeV128(v)
-	z := f.allocFReg(maskOf(x))
-	f.a.VPxor(z, z, z)
-	f.a.VPcmpeqb(x, x, z) // byte lanes are all-ones only where the original byte was zero.
-	f.releaseF(z)
-	r := f.allocReg(0)
-	f.a.VPmovmskb(r, x)
+	f.a.VPtest(x, x)
 	f.releaseF(x)
-	f.a.AluRI(7, r, 0xffff, false) // cmp r, 0xffff: every byte was zero.
+	r := f.allocReg(0)
 	f.a.SetccReg(condNE, r)
 	f.pushReg(r, mtI32)
+	f.stats.peep("simd-anytrue-vptest")
 }
 
 // tryV128AndAnyTrue selects `(a & b) != 0` before v128.and materializes its

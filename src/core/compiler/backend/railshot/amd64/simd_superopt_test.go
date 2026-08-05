@@ -17,6 +17,37 @@ func simdAndAnyTrueBody(a, b [16]byte) []byte {
 	return append(body, 0x0b)
 }
 
+func simdAnyTrueBody(a [16]byte) []byte {
+	body := []byte{0x00}
+	body = append(body, v128ConstBytes(a)...)
+	body = append(body, simdOp(83)...) // v128.any_true
+	return append(body, 0x0b)
+}
+
+func TestSIMDAnyTrueUsesVPTEST(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	for _, tc := range []struct {
+		name string
+		a    [16]byte
+		want uint64
+	}{
+		{"zero", i8x16Bytes(), 0},
+		{"low-bit", i8x16Bytes(1), 1},
+		{"high-bit", i8x16Bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -128), 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, i32, simdAnyTrueBody(tc.a))
+			stats := compileWithStats(t, m, false).Funcs[0]
+			if got := stats.Peephole["simd-anytrue-vptest"]; got != 1 {
+				t.Fatalf("simd-anytrue-vptest = %d, want 1 (all: %v)", got, stats.Peephole)
+			}
+			if got := runAmd64u(t, m); got != tc.want {
+				t.Fatalf("any_true = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSIMDAndAnyTrueSuperopt(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	for _, tc := range []struct {
