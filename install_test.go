@@ -134,6 +134,23 @@ func TestBootstrapScriptsKeepInstallationInNativeBinary(t *testing.T) {
 	}
 }
 
+func TestCmdPipedLoaderClearsOnlyItsHeader(t *testing.T) {
+	data, err := os.ReadFile("install.cmd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ToLower(string(data))
+	if !strings.Contains(text, `"%~nx0"=="wago-pipe.cmd"`) {
+		t.Fatal("CMD bootstrap does not limit cursor cleanup to the piped loader")
+	}
+	if !strings.Contains(text, `set "wago_cmd_pipe=1"`) {
+		t.Fatal("CMD bootstrap does not request terminal-aware header cleanup")
+	}
+	if bytes.Contains(data, []byte("\x1b")) || strings.Contains(text, "cls") {
+		t.Fatal("CMD bootstrap clears the terminal instead of only its header")
+	}
+}
+
 func TestWineCmdBootstrapRefreshesPathFromAnyDrive(t *testing.T) {
 	wine, err := exec.LookPath("wine")
 	if err != nil {

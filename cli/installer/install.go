@@ -66,6 +66,7 @@ type pathTarget struct {
 }
 
 func runInstaller() error {
+	clearPipedCmdHeader()
 	i, err := newInstaller(os.Stderr)
 	if err != nil {
 		return err
