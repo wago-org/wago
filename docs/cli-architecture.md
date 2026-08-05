@@ -165,6 +165,13 @@ registry requests are domain-owned values assembled by the root environment
 adapter. Command packages do not coordinate download, build, migration, or
 installation steps.
 
+Runtime Installation bootstrap policy lives in `internal/installbootstrap`.
+It owns release-channel selection, target asset naming, and checksum validation.
+The Unix and Windows scripts remain native adapters because no Wago executable
+exists at their seam yet; semantic bootstrap tests keep those adapters aligned
+with the same release contract. The downloaded native installer uses the module
+directly for manager selection and verification.
+
 All interactive manager workflows also expose flags for automation. A command
 without enough information may open a selector, but CI and scripts can always
 provide the version, profile, build, scope, confirmation, and capability policy
