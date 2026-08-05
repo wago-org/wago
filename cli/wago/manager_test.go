@@ -275,11 +275,62 @@ func TestManagerVersionUpgradesLegacyRunnerOutput(t *testing.T) {
 		"platform     linux/amd64",
 		"manager      manager-test",
 		"plugins      unavailable",
-		"features     simd|multi-value",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("manager report missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "features") {
+		t.Fatalf("manager report exposes legacy features:\n%s", text)
+	}
+}
+
+func TestManagerVersionFiltersFeaturesFromSelectedRuntime(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WAGO_HOME", root)
+	config := filepath.Join(root, "config")
+	runner := filepath.Join(root, "data", "versions", "canary", "standard", "normal", "wago-runtime")
+	if err := os.MkdirAll(filepath.Dir(runner), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(config, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{
+		"active-version": "canary\n",
+		"active-profile": "standard\n",
+		"active-build":   "normal\n",
+	} {
+		if err := os.WriteFile(filepath.Join(config, name), []byte(value), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := "#!/bin/sh\nprintf 'Wago\\n  release      canary-test\\n  features     simd|gc\\n  guard pages  available\\n'\n"
+	if err := os.WriteFile(runner, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldArgs, oldStdout := os.Args, os.Stdout
+	t.Cleanup(func() { os.Args, os.Stdout = oldArgs, oldStdout })
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	os.Args = []string{"wago", "-v"}
+	main()
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	_ = read.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(output)
+	if !strings.Contains(text, "release      canary-test") || !strings.Contains(text, "guard pages  available") {
+		t.Fatalf("manager version report lost diagnostics:\n%s", text)
+	}
+	if strings.Contains(text, "features") {
+		t.Fatalf("manager version report exposes features:\n%s", text)
 	}
 }
 

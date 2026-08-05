@@ -99,4 +99,7 @@ func TestPrintKeepsStatusCompact(t *testing.T) {
 			t.Errorf("output does not contain %q:\n%s", want, output.String())
 		}
 	}
+	if strings.Contains(output.String(), "features") {
+		t.Fatalf("status exposes features:\n%s", output.String())
+	}
 }

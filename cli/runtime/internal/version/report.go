@@ -25,7 +25,7 @@ func Print(release, defaultProfile, defaultBuild, plugins string) {
 			"profile": fallback(launch.RuntimeProfile, defaultProfile), "build": fallback(launch.RuntimeBuild, defaultBuild),
 			"platform": runtime.GOOS + "/" + runtime.GOARCH, "toolchain": runtime.Compiler + " " + runtime.Version(),
 			"managerVersion": launch.ManagerVersion, "managerPath": launch.ManagerExecutable,
-			"runtimePath": executable, "plugins": plugins, "features": fmt.Sprint(wago.SupportedFeatures()), "guardPages": guardPages,
+			"runtimePath": executable, "plugins": plugins, "guardPages": guardPages,
 		})
 		return
 	}
@@ -46,7 +46,6 @@ func Print(release, defaultProfile, defaultBuild, plugins string) {
 	}
 	printVersionDetail("runtime", executable)
 	printVersionDetail("plugins", plugins)
-	printVersionDetail("features", fmt.Sprint(wago.SupportedFeatures()))
 	printVersionDetail("guard pages", guardPages)
 }
 

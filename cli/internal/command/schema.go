@@ -36,7 +36,7 @@ func Describe(root *Cmd) CommandSchema {
 		SchemaVersion: 1,
 		Name:          root.Name,
 		Flags: describeFlags([]Flag{
-			{Name: "version", Short: "v", Bool: true, Help: "print version and supported features"},
+			{Name: "version", Short: "v", Bool: true, Help: "show version information"},
 			{Name: "help", Short: "h", Bool: true, Help: "show help or emit the command schema with --json"},
 			{Name: "json", Short: "j", Bool: true, Help: "emit machine-readable JSON when supported"},
 			{Name: "no-input", Bool: true, Help: "never prompt; fail when required input is missing"},

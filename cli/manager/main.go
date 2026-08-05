@@ -278,7 +278,7 @@ func printManagerVersion() {
 		}).Environment(os.Environ())
 		output, err := command.Output()
 		if err == nil && strings.HasPrefix(string(output), "Wago\n") {
-			_, _ = os.Stdout.Write(output)
+			_, _ = os.Stdout.Write(versionWithoutFeatures(output))
 			return
 		}
 		printLegacyManagerVersion(active, profile, build, path, output)
@@ -293,8 +293,21 @@ func printManagerVersion() {
 	printVersionDetail("runtime", "none selected")
 }
 
+func versionWithoutFeatures(output []byte) []byte {
+	lines := strings.SplitAfter(string(output), "\n")
+	filtered := lines[:0]
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && strings.TrimSuffix(fields[0], ":") == "features" {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return []byte(strings.Join(filtered, ""))
+}
+
 func printLegacyManagerVersion(active string, profile wagopaths.Profile, build wagopaths.Build, path string, output []byte) {
-	release, platform, features := legacyRunnerVersionFields(string(output))
+	release, platform := legacyRunnerVersionFields(string(output))
 	if release == "" {
 		release = active
 	}
@@ -311,12 +324,9 @@ func printLegacyManagerVersion(active string, profile wagopaths.Profile, build w
 	printVersionDetail("manager", versionString()+"  "+executablePath())
 	printVersionDetail("runtime", path)
 	printVersionDetail("plugins", "unavailable (update runtime for details)")
-	if features != "" {
-		printVersionDetail("features", features)
-	}
 }
 
-func legacyRunnerVersionFields(output string) (release, platform, features string) {
+func legacyRunnerVersionFields(output string) (release, platform string) {
 	for index, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if index == 0 {
@@ -328,11 +338,8 @@ func legacyRunnerVersionFields(output string) (release, platform, features strin
 				platform = line[open+1 : close]
 			}
 		}
-		if strings.HasPrefix(line, "features:") {
-			features = strings.TrimSpace(strings.TrimPrefix(line, "features:"))
-		}
 	}
-	return release, platform, features
+	return release, platform
 }
 
 func executablePath() string {
@@ -407,7 +414,7 @@ func managerUsage(w *os.File) {
 		fmt.Fprintf(w, "  %-*s  %s  %s\n", nameWidth, command.name, dim(fmt.Sprintf("%-*s", argsWidth, command.args)), command.summary)
 	}
 	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
-	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "show version and supported features")
+	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "show version information")
 	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
 	fmt.Fprintf(w, "  %-27s %s\n", "--json, -j", "emit JSON when supported")
 	fmt.Fprintf(w, "\n%-13s%s\n", "Repository:", "https://github.com/wago-org/wago")
