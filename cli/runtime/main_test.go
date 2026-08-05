@@ -78,7 +78,7 @@ func TestRuntimeCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		}
 	}
 	walk(root, nil)
-	if got, want := strings.Join(leaves, ","), "run,plugin list,plugin inspect,module imports,module capabilities,build,validate"; got != want {
+	if got, want := strings.Join(leaves, ","), "run,plugin list,plugin inspect,module imports,module exports,module capabilities,build,validate"; got != want {
 		t.Fatalf("runtime command leaves = %q, want %q", got, want)
 	}
 }

@@ -27,8 +27,9 @@ func RuntimeCommands() []*command.Cmd {
 	buildFlags := append([]command.Flag{{Name: "output", Short: "o", Arg: "<file>", Help: "output path"}, parallel}, profileFlags...)
 	return []*command.Cmd{
 		{Name: "run", Summary: "compile and execute a WebAssembly module (default)", Args: "<file> [args...]", Flags: runFlags, Knobs: cloneFlags(knobs), PassThrough: true},
-		{Name: "module", Aliases: []string{"mod"}, Summary: "inspect a module's imports and required capabilities", Children: []*command.Cmd{
+		{Name: "module", Aliases: []string{"mod"}, Summary: "inspect a module's imports, exports, and required capabilities", Children: []*command.Cmd{
 			{Name: "imports", Summary: "list a module's imports", Args: "<file>", Automation: command.JSONOutput},
+			{Name: "exports", Summary: "list a module's exports and types", Args: "<file>", Automation: command.JSONOutput},
 			{Name: "capabilities", Aliases: []string{"caps"}, Summary: "list required capabilities", Args: "<file>", Automation: command.JSONOutput},
 		}},
 		{Name: "build", Summary: "precompile a WebAssembly module to a .wago artifact", Args: "<file>", Flags: buildFlags, Knobs: cloneFlags(knobs), Automation: command.DryRun},

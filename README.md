@@ -101,6 +101,7 @@ Inspect its host requirements:
 
 ```sh
 wago module imports fib.wasm
+wago module exports fib.wasm
 wago module capabilities fib.wasm
 ```
 
