@@ -1,6 +1,8 @@
 package version
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -170,6 +172,63 @@ func TestBuildRunnerFromSourceUsesProfileTag(t *testing.T) {
 	}
 	if body, err := os.ReadFile(dest); err != nil || string(body) != "built" {
 		t.Fatalf("built runner = %q, %v", body, err)
+	}
+}
+
+func TestBuildRunnerFromSourceFallsBackToArchiveWithoutGit(t *testing.T) {
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	mod, err := zw.Create("wago-source/go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mod.Write([]byte("module github.com/wago-org/wago\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive.Bytes())
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_ARCHIVE_URL", server.URL+"/source.zip")
+
+	old := runSourceCommand
+	t.Cleanup(func() { runSourceCommand = old })
+	var commands []string
+	runSourceCommand = func(dir string, _ []string, name string, args ...string) ([]byte, error) {
+		commands = append(commands, name+" "+strings.Join(args, " "))
+		if name == "git" {
+			return nil, errors.New(`exec: "git": executable file not found in %PATH%`)
+		}
+		if name != "go" {
+			return nil, errors.New("unexpected command")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+			return nil, err
+		}
+		output := args[slices.Index(args, "-o")+1]
+		return nil, os.WriteFile(output, []byte("built"), 0o755)
+	}
+
+	dest := filepath.Join(t.TempDir(), "runner")
+	if err := buildRunnerFromSource("v1.2.3", wagopaths.ProfileStandard, wagopaths.BuildNormal, dest, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 2 || !strings.HasPrefix(commands[0], "git ") || !strings.HasPrefix(commands[1], "go ") {
+		t.Fatalf("source commands = %#v", commands)
+	}
+}
+
+func TestSourceArchiveURLUsesExactCanaryCommit(t *testing.T) {
+	t.Setenv("WAGO_ARCHIVE_URL", "")
+	t.Setenv("WAGO_RELEASE_API", "https://example.test/api")
+	const sha = "deadbee123456789012345678901234567890123"
+	got := sourceArchiveURL(canaryCommitTarget(sha))
+	want := "https://example.test/api/repos/wago-org/wago/zipball/" + sha
+	if got != want {
+		t.Fatalf("source archive URL = %q, want %q", got, want)
 	}
 }
 

@@ -1,7 +1,11 @@
 package version
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +13,7 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
+	"github.com/wago-org/wago/internal/sourcearchive"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -22,6 +27,16 @@ func sourceRepository() string {
 		return value
 	}
 	return "https://github.com/wago-org/wago.git"
+}
+
+func sourceArchiveURL(ref string) string {
+	if value := os.Getenv("WAGO_ARCHIVE_URL"); value != "" {
+		return value
+	}
+	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
+		ref = sha
+	}
+	return strings.TrimRight(releaseAPI(), "/") + "/repos/wago-org/wago/zipball/" + url.PathEscape(ref)
 }
 
 func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *managerprogress.Progress) error {
@@ -116,8 +131,31 @@ func checkoutWagoSourceIn(parent, ref string, progress *managerprogress.Progress
 		progress.Begin("fetching source")
 	}
 	stamp = ref
-	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
+	gitErr := checkoutWagoSourceWithGit(ref, source)
+	if gitErr != nil {
+		_ = os.RemoveAll(source)
+		if progress != nil {
+			progress.Begin("fetching source archive")
+		}
+		if archiveErr := checkoutWagoSourceArchive(ref, temp, source); archiveErr != nil {
+			if progress != nil {
+				progress.Fail("could not fetch source")
+			}
+			os.RemoveAll(temp)
+			return "", "", "", fmt.Errorf("fetch source with Git (%v) or archive: %w", gitErr, archiveErr)
+		}
+	}
+	if _, canaryCommit := canaryCommitSHA(ref); canaryCommit {
 		stamp = canaryCommitVersion(ref)
+	}
+	if progress != nil {
+		progress.Done("fetched source")
+	}
+	return temp, source, stamp, nil
+}
+
+func checkoutWagoSourceWithGit(ref, source string) error {
+	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
 		commands := [][]string{
 			{"init", "--quiet", source},
 			{"-C", source, "remote", "add", "origin", sourceRepository()},
@@ -126,24 +164,46 @@ func checkoutWagoSourceIn(parent, ref string, progress *managerprogress.Progress
 		}
 		for _, args := range commands {
 			if output, err := runSourceCommand("", nil, "git", args...); err != nil {
-				if progress != nil {
-					progress.Fail("could not fetch source")
-				}
-				os.RemoveAll(temp)
-				return "", "", "", commandFailure("git "+args[0], err, output)
+				return commandFailure("git "+args[0], err, output)
 			}
 		}
 	} else if output, err := runSourceCommand("", nil, "git", "clone", "--depth", "1", "--single-branch", "--branch", ref, "--", sourceRepository(), source); err != nil {
-		if progress != nil {
-			progress.Fail("could not fetch source")
-		}
-		os.RemoveAll(temp)
-		return "", "", "", commandFailure("git clone", err, output)
+		return commandFailure("git clone", err, output)
 	}
-	if progress != nil {
-		progress.Done("fetched source")
+	return nil
+}
+
+func checkoutWagoSourceArchive(ref, temp, source string) error {
+	archive := filepath.Join(temp, "source.zip")
+	if err := downloadSourceArchive(sourceArchiveURL(ref), archive); err != nil {
+		return err
 	}
-	return temp, source, stamp, nil
+	return sourcearchive.Extract(archive, source)
+}
+
+func downloadSourceArchive(address, target string) error {
+	response, err := http.Get(address)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return &httpStatusError{url: address, code: response.StatusCode, status: response.Status}
+	}
+	file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	const maxDownloadSize = 256 << 20
+	written, copyErr := io.Copy(file, io.LimitReader(response.Body, maxDownloadSize+1))
+	closeErr := file.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if written > maxDownloadSize {
+		return errors.New("source archive exceeds 256 MiB limit")
+	}
+	return closeErr
 }
 
 func syncInstalledSource(ref, dest string, progress *managerprogress.Progress) error {
