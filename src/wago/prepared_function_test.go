@@ -145,7 +145,11 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("div", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6d, 0x0b}))),
 	)
-	in, err = Instantiate(MustCompile(div), InstantiateOptions{})
+	compiled, err = Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), div)
+	if err != nil {
+		t.Fatalf("compile div: %v", err)
+	}
+	in, err = Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate div: %v", err)
 	}
