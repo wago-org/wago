@@ -36,6 +36,24 @@ func TestNoImportSynchronousArenaNeedIncludesControlFrame(t *testing.T) {
 	}
 }
 
+func TestHostControlModeDependsOnModuleBoundaryNotArchitecture(t *testing.T) {
+	compiled := MustCompile(wasmtest.Module())
+	defer compiled.Close()
+	if compiled.importsRequireSync(nil, false) {
+		t.Fatal("host-free module unexpectedly requires synchronous host control")
+	}
+	if !compiled.importsRequireSync(nil, true) {
+		t.Fatal("explicit synchronous-host option was ignored")
+	}
+
+	importer := MustCompile(voidI32ImportCallerModule())
+	defer importer.Close()
+	imports := Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})}
+	if !importer.importsRequireSync(imports, false) {
+		t.Fatal("actual host binding did not require synchronous host control")
+	}
+}
+
 func requireBoundedInstanceFootprint(t *testing.T, got uintptr) {
 	t.Helper()
 	// Go 1.22 and Go 1.26 lay out synchronization primitives differently.

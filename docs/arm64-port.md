@@ -225,9 +225,10 @@ earlier this session; not part of the arm64 branch.)
   `guardmem` twins, and Darwin explicit-bounds `mem` twins now cover wrapper calls,
   explicit trap-cell unwinds, and sync host-call parking/resume.
 - **Package selectors**: `src/wago/railshot_{amd64,arm64}.go` keep the backend concrete
-  inside each arch package while avoiding a public facade package. `hostpolicy_arm64.go`
-  forces host imports through the sync dispatcher until the legacy async host-log path is
-  deliberately ported or retired.
+  inside each arch package while avoiding a public facade package. Host-control mode is
+  architecture-independent: actual host bindings, transitive parked cross-instance
+  targets, mutable imported funcref tables, GC helpers, dynamic ref tests, and atomic
+  waits select the synchronous dispatcher; host-free modules retain direct native entry.
 - **Tests**: `arm64/compilesmoke_arm64_test.go` (codegen runs), `arm64/portexec_arm64_test.go`
   (ported code executes), `arm64/_beachhead/exec_arm64_test.go` (hand-beachhead fib exec).
   Runtime arm64 native-call tests now build for both Linux and Darwin, so Apple Silicon

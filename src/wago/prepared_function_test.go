@@ -90,7 +90,7 @@ func TestPreparedFunctionPrivateFastPath(t *testing.T) {
 }
 
 func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
-	if forceSyncHostImports || !preparedDirectIntSupported {
+	if !preparedDirectIntSupported {
 		t.Log("architecture does not support direct prepared integer entry")
 		return
 	}
@@ -166,10 +166,6 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 }
 
 func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
-	if forceSyncHostImports {
-		t.Log("architecture forces synchronous native entry")
-		return
-	}
 	in, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
@@ -203,10 +199,6 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 }
 
 func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
-	if forceSyncHostImports {
-		t.Log("architecture forces synchronous native entry")
-		return
-	}
 	c := MustCompile(benchAddOneModule())
 	instances := make([]*Instance, 2)
 	prepared := make([]*PreparedFunction, 2)
