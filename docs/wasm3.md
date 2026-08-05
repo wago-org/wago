@@ -5117,36 +5117,3 @@ flattened type converter. Compile+link changed from about 2.02 s and 2.38 GB to
 isolated cold link/JIT from a fresh unlinked product is 0.602 s and 166.2 MB;
 linked instantiation/start is 31.7 ms and 3.13 MB. A synthetic subtype
 construct/set/get benchmark is 383-416 ns/op with 0 allocs/op.
-
-### Iteration 76: deterministic MoonBit JSON execution
-
-The Starshine payload remains useful for compile memory, link/code size, and
-startup breadth, but successful startup alone is not a deterministic semantic
-oracle. `testdata/moonbit-json-smoke` therefore adds a source-controlled
-MoonBit workload that parses, stringifies, reparses, compares, and checksums a
-nested JSON corpus. MoonBit 0.1.20260703 (`6fbf8c3`, July 3, 2026) produces a
-44,023-byte import-free module with SHA-256
-`b4e33e0685aa5572516ab037be12a3ad1aee93ab9891ba4071c42c23a3e9ca2d`.
-The exact Node 26.3.0 reference results are `run(1) = 1808148174`,
-`run(2) = 1512327905`, and `run(8) = 828453439`.
-
-`make test-moonbit-json` rejects a different compiler version, rebuilds the
-release `wasm-gc` artifact, verifies its size and hash, compiles and instantiates
-it with explicit Core 3 features and explicit bounds, then checks all three
-results through Wago. The artifact itself remains ignored under `_build/`; only
-source and reproducibility metadata are committed.
-
-The first run exposed an allocation-independent backend decode defect. Once a
-branch made code unreachable, the railshot dead-code walker did not consume
-`0xfb` GC-prefix immediates. An unreachable `struct.new` therefore left its
-subopcode and type index to be interpreted as instructions and consumed the
-function end. The amd64 and arm64 walkers now route GC-prefix immediates through
-the canonical allocation-free bytecode classifier, and direct tests pin the
-cursor at the following `end` opcode.
-
-A July 16, 2026 single-CPU baseline on the Ryzen 7 8845HS with Go 1.24.4 measured
-0.276 ms decode, 1.380 ms validation, 10.641 ms production compile including
-native codegen, 0.170 ms instantiate, and 4.733 ms for a fresh instance plus
-`run(1)`. The production compile allocates 3.57 MB in 17,507 allocations. These
-numbers are pinned as a starting point for reducing generated-WasmGC compile
-allocation rather than as a claim that the path is already optimized.

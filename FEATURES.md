@@ -27,10 +27,8 @@ Release 1 and Release 2 defaults
 remain unchanged. This official-suite result is not an unrestricted WasmGC
 claim. Shape-independent struct/array helper admission now also compiles, links,
 and starts the 3,225,249-byte MoonBit Starshine CLI smoke payload (SHA-256
-`3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`). A
-separate checked-in MoonBit JSON source fixture builds a pinned 44,023-byte,
-import-free WasmGC module and verifies deterministic parse/stringify/reparse
-checksums through `make test-moonbit-json`. Linux/amd64 generated code publishes exact roots across the admitted local,
+`3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`).
+Linux/amd64 generated code publishes exact roots across the admitted local,
 indirect, reference, host-re-entry, EH, and same-Runtime cross-instance boundaries;
 Throughput and Tiny collectors may collect while those native frames are active.
 Codec v31 reloads and strictly validates the root metadata. Snapshot v4 captures
