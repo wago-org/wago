@@ -159,6 +159,21 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		return r
 	}
 
+	// The two-address lowering below evaluates right before left. For a
+	// commutative, non-trapping tree, make the child with the larger bounded
+	// register need the right child so it is condensed first and only its result
+	// stays live while the cheaper child is emitted. This is the local
+	// Sethi-Ullman choice, applied directly to Valent's existing tree.
+	if node.op.commutative() && left.kind == ekDeferred &&
+		treeRegisterNeed(left) > treeRegisterNeed(right) &&
+		treeReorderSafe(left) && treeReorderSafe(right) {
+		f.stats.peep("tree-order-candidate")
+		if treeOrderEnabled {
+			left, right = right, left
+			f.stats.peep("tree-order")
+		}
+	}
+
 	// Commutative reassociation (selectInstr): swap operands so the cheaper form
 	// falls out. (1) a constant left folds as an immediate rather than being loaded
 	// into dest. (2) a memory left (spill slot / frame local / deferred load) with an

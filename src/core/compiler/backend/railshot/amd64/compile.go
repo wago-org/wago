@@ -130,6 +130,11 @@ var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
 // WAGO_AMD64_NO_AFFINE_LEA=1 disables it for A/B.
 var affineLeaEnabled = os.Getenv("WAGO_AMD64_NO_AFFINE_LEA") != "1"
 
+// treeOrderEnabled lets commutative, non-trapping Valent trees choose which
+// child is evaluated first from a bounded register-need estimate. It adds no
+// per-node state: maxDeferDepth bounds the recursive inspection.
+var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.

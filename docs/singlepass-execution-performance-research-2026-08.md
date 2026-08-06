@@ -865,3 +865,64 @@ A broad pre-pull-to-rebased comparison also showed large net wins in BLAKE3 SIMD
 ns), matrix multiply (166,138 to 139,967 ns), and memory tree (10,455 to 8,980
 ns). Those numbers span many intervening main commits and therefore describe the
 new combined compiler, not the isolated effect of `daec329`.
+
+## Pressure-aware Valent tree ordering (2026-08-06)
+
+The next AMD64 step makes the existing deferred tree choose its evaluation order
+instead of merely making the tree deeper. Railshot's two-address integer path
+condenses the right child before the left. For a commutative expression this is
+needlessly expensive when the left child requires more registers: the cheap
+right result stays live while the larger left subtree is emitted.
+
+The retained selector computes a bounded Sethi-Ullman-style register need from
+the existing Valent nodes and commutes the root when the left child needs more
+registers. It is deliberately constrained:
+
+- only commutative integer ALU operations are reordered;
+- both subtrees must be non-trapping;
+- deferred memory loads, `ref.func`, division/remainder, and every other
+  trapping or fixed-register operation preserve Wasm evaluation order;
+- the walk inherits Valent's existing height-six cap, so its work and native Go
+  stack use are bounded;
+- no annotation was added to `elem` or `fn`, and no slice, map, CFG, or IR is
+  retained.
+
+The full corpus contains **46,963** eligible roots. This is not just a source
+pattern count: with the selector enabled, explicit-bounds allocator spills fall
+from 7,422 to 6,002 (**-19.13%**) and guard-mode spills from 4,848 to 3,927
+(**-19.00%**). Reload counts fall from 19,234 to 19,227 and 22,447 to 22,443,
+respectively. Total emitted native code falls by 7,037 bytes in explicit mode
+and 1,342 bytes in guard mode.
+
+Execution was measured with the same Ryzen 7 7800X3D, `GOMAXPROCS=1`, and
+`taskset -c 2` protocol as the preceding work. Two alternating disabled/enabled
+passes contributed 14 samples per row at 200 ms each. Both passes independently
+improved the 36-row geometric mean (-0.51% and -0.64%); combined medians improve
+it by **0.70%**. Every execution row remains at 0 B/op and 0 allocs/op.
+
+| Current-corpus workload | Disabled | Enabled | Delta |
+|---|---:|---:|---:|
+| SIMD UTF conversion | 58,301 ns | 53,069 ns | -8.97% |
+| scalar BLAKE3 | 827,539 ns | 807,485 ns | -2.42% |
+| spectral norm | 646,220 ns | 631,424 ns | -2.29% |
+| quicksort | 68,640 ns | 67,075 ns | -2.28% |
+| JSON serialize | 23,266 ns | 22,918 ns | -1.50% |
+| SIMD BLAKE3 | 609,745 ns | 602,956 ns | -1.11% |
+
+Repeated full-corpus `CompileFull` runs show no meaningful latency or memory
+cost. Across combined per-module medians, weighted time changes by **-0.16%**
+and the equal-module geometric mean by +0.24%. Summed allocation bytes change
+from 272,328,001 to 272,267,136 (**-0.022%**) and allocation count from 942,122
+to 941,555 (**-0.060%**). Median Ruby compile peak RSS is identical at
+161,136 KiB in five alternating samples. The feature is exposed as the
+runtime-local `tree-order` optimization and has the process-level A/B oracle
+`WAGO_AMD64_NO_TREE_ORDER=1`.
+
+### Rejected: raising the Valent height cap
+
+A separate experiment allowed proven non-trapping trees to remain deferred from
+height six through height twelve. It found 1,203 extensions, but made the
+allocator worse: guard-mode spills rose from 3,927 to 4,013, reloads from 22,443
+to 22,453, and native code grew by 1,927 bytes. The experiment was removed.
+More deferred structure is useful only when the cover and scheduler can exploit
+it; extending live ranges by itself is counterproductive.

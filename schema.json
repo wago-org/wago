@@ -204,6 +204,7 @@
               "store-load-fwd",
               "tee-sink",
               "three-op-sink",
+              "tree-order",
               "unary-sink",
               "uxtw-add",
               "v128-const-cache",
