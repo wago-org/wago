@@ -3,6 +3,8 @@ package settings
 import (
 	"runtime"
 	"testing"
+
+	"github.com/wago-org/wago"
 )
 
 func TestResolveCompilationOwnsPrecedence(t *testing.T) {
@@ -26,8 +28,8 @@ func TestResolveCompilationOwnsPrecedence(t *testing.T) {
 	if selection.Core != 3 || selection.FunctionWorkers != 2 || !selection.DeferredBoundsChecking || !selection.Optimizations[name] {
 		t.Fatalf("selection = %#v", selection)
 	}
-	if err := selection.RuntimeConfig().Validate(); err != nil {
-		t.Fatalf("runtime config: %v", err)
+	if got := selection.RuntimeConfig().CoreFeatures(); !got.IsEnabled(wago.CoreFeaturesV3) {
+		t.Fatalf("runtime config features = %s, missing Core 3 set %s", got, wago.CoreFeaturesV3)
 	}
 }
 
@@ -44,5 +46,8 @@ func TestResolveCompilationFiltersTargetOptimizations(t *testing.T) {
 	}
 	if _, err := ResolveCompilationFrom(config, true, CompilationRequest{Arch: "amd64", Optimizations: map[string]bool{"arm64-only-missing": true}}); err == nil {
 		t.Fatal("unsupported target optimization was accepted")
+	}
+	if err := selection.RuntimeConfig().Validate(); err != nil {
+		t.Fatalf("supported runtime config: %v", err)
 	}
 }
