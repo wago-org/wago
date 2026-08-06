@@ -121,6 +121,36 @@ var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 // disables it for A/B.
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
+// callNextUseEnabled skips stores of dirty pinned locals whose next bounded
+// post-call access overwrites the local before reading it.
+var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
+
+// affineLeaEnabled extends scaled-index LEA selection across one-level affine
+// base/index subtrees, folding their constants into the LEA displacement.
+// WAGO_AMD64_NO_AFFINE_LEA=1 disables it for A/B.
+var affineLeaEnabled = os.Getenv("WAGO_AMD64_NO_AFFINE_LEA") != "1"
+
+// treeOrderEnabled lets commutative, non-trapping Valent trees choose which
+// child is evaluated first from a bounded register-need estimate. It adds no
+// per-node state: maxDeferDepth bounds the recursive inspection.
+var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
+
+// associativeTreeEnabled covers small, trap-free associative trees as one
+// accumulator instead of materializing their internal binary nodes.
+var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
+
+// intervalRegionPinsEnabled reuses GP registers across integer local lifetimes
+// in bounded, call-free straight-line functions. Unlike whole-function hot-local
+// pins, the regional cache is pressure-spillable and returns a register at the
+// local's final get. WAGO_AMD64_INTERVAL_REGIONS=0 keeps the old whole-function
+// pin allocator as an A/B and correctness oracle.
+var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
+
+// bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
+// the low-level backend default and selected by the public runtime only after
+// host CPUID confirms BMI2.
+var bmi2RorxEnabled bool
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
@@ -187,6 +217,18 @@ type fn struct {
 	usesCalls bool
 	usesWide  bool
 	moduleEH  bool
+	// Bounded post-call next-use state. Pinned registers are numbered 0..15,
+	// so two uint16 masks fit in the bool cluster's existing alignment padding.
+	callDeadGP uint16
+	callDeadFP uint16
+
+	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
+	// an eligible local; locals[x].reg is populated only while its cached value is
+	// live. Physical registers are selected and reclaimed dynamically.
+	intervalReg   []Reg
+	intervalLast  []uint32
+	intervalScore []uint32
+	intervalOwner [16]int
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -237,7 +279,7 @@ type fn struct {
 	singleRegResult bool
 	resultFloat     bool
 	resultF64       bool
-	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
+	regMerge        bool // reconcile single-result blocks in mergeReg/mergeFReg
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
 	// Each admitted table has a finite proof that every non-null entry targets this
@@ -351,22 +393,23 @@ type fn struct {
 }
 
 type transient struct {
-	lsPool        [][]locState
-	endsPool      [][]int
-	tmpRoots      []*elem
-	tmpTypes      []machineType
-	tmpTypes2     []machineType
-	tmpGCRoots    []bool
-	tmpGCRoots2   []bool
-	tmpFlushTypes []machineType
-	tmpRegs       []Reg
-	tmpSlots      []int
-	tmpMoves      []regMove
-	tmpLabels     []uint32
-	tmpDeferred   []deferredArg
-	tmpBelow      []*elem
-	tmpGpCand     []gpCand
-	tmpInts       []int
+	lsPool         [][]locState
+	endsPool       [][]int
+	tmpRoots       []*elem
+	tmpTypes       []machineType
+	tmpTypes2      []machineType
+	tmpGCRoots     []bool
+	tmpGCRoots2    []bool
+	tmpFlushTypes  []machineType
+	tmpRegs        []Reg
+	tmpSlots       []int
+	tmpMoves       []regMove
+	tmpLabels      []uint32
+	tmpDeferred    []deferredArg
+	tmpBelow       []*elem
+	tmpGpCand      []gpCand
+	tmpInts        []int
+	tmpIntervalReg []Reg
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -425,8 +468,9 @@ type gcStructAllocStubSite struct {
 }
 
 type scratch struct {
-	stack *stack     // the valent-block operand stack
-	asm   *amd64.Asm // the x86-64 encoder byte buffer
+	stack          *stack     // the valent-block operand stack
+	asm            *amd64.Asm // the x86-64 encoder byte buffer
+	directPrepared bool
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
@@ -462,6 +506,8 @@ func newScratch() *scratch {
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
+	sc.asm.UsesBMI2 = false
+	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
@@ -482,20 +528,30 @@ func (sc *scratch) reset() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch *scratch
-	arena   []byte
+	scratch  *scratch
+	arena    []byte
+	usesBMI2 bool
 }
 
 // funcResult is one independently compiled local function. worker/start/end
 // identify its owned bytes after the worker pool joins; relocs is independently
 // owned by the fn compiler state (it is not backed by scratch).
 type funcResult struct {
-	worker      int
-	start       int
-	end         int
-	internalOff int
-	relocs      []callReloc
-	err         error
+	worker         int
+	start          int
+	end            int
+	internalOff    int
+	directPrepared bool
+	relocs         []callReloc
+	err            error
+}
+
+func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
+	if bits == nil {
+		bits = make([]uint64, (n+63)/64)
+	}
+	bits[bit>>6] |= uint64(1) << uint(bit&63)
+	return bits
 }
 
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
@@ -787,6 +843,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	}
 	requiresAVX2 := false
 	requiresAVX512 := false
+	requiresBMI2 := false
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
@@ -815,6 +872,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		code := make([]byte, 0, codeCap)
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, cap(code))
+		var directPrepared []uint64
 		for i := range m.Code {
 			hints := allHints[i]
 			var st *CodegenStats
@@ -827,12 +885,16 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 			}
+			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
 			// 16-byte align each function (append zeros without a temp allocation).
 			if pad := (16 - len(code)%16) % 16; pad != 0 {
 				code = append(code, alignPad[:pad]...)
 			}
 			entry[i] = len(code)
 			internalEntry[i] = len(code) + internalOff
+			if sc.directPrepared {
+				directPrepared = markDirectPrepared(directPrepared, n, i)
+			}
 			relocs[i] = rl
 			code = append(code, fnCode...)
 			if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
@@ -854,7 +916,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)
@@ -903,9 +965,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					results[i].err = err
 					continue
 				}
+				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, relocs: rl}
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -922,6 +985,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	// Join in original function order so layout, alignment, entry metadata, and
 	// relocation patching are byte-for-byte identical to the serial compiler.
 	code := make([]byte, 0, codeCap)
+	var directPrepared []uint64
 	for i := range results {
 		r := &results[i]
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
@@ -929,6 +993,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		entry[i] = len(code)
 		internalEntry[i] = len(code) + r.internalOff
+		if r.directPrepared {
+			directPrepared = markDirectPrepared(directPrepared, n, i)
+		}
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
@@ -947,13 +1014,17 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	requiresAVX2 := false
 	requiresAVX512 := false
+	requiresBMI2 := false
+	for i := range states {
+		requiresBMI2 = requiresBMI2 || states[i].usesBMI2
+	}
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			requiresAVX2 = requiresAVX2 || lowering.Features&plugincodegen.FeatureAVX2 != 0
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -1043,6 +1114,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
 	localScores := make([]uint32, totalLocals)
+	localLastGets := make([]uint32, totalLocals)
 	globalScores := make([]uint32, n*nGlobals)
 	globalEligibility := make([]bool, n*nGlobals)
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -1059,6 +1131,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		nLocals := localCounts[i]
 		globalAt := i * nGlobals
 		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		var err error
 		h, err = scanFuncBodyIntoMemory64(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64)
@@ -1445,6 +1518,18 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	regABI := regABIEnabled && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
 	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
+	// Tiny prepared integer leaves can use a slimmer host trampoline when their
+	// generated code is constrained to caller-saved GPRs. Reserve every Go
+	// callee-saved allocatable register up front; RBX remains the explicit linMem
+	// input. The body/local bounds keep any spill tradeoff away from larger code.
+	volatilePrepared := regABI && preparedDirectIntSig(ft) && !hasCall && !touchesMemory && len(modGlobals) == 0 && !moduleEH &&
+		len(c.BodyBytes) <= 96 && nLocals <= 8
+	if volatilePrepared {
+		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {
+			gpPool = withoutReg(gpPool, r)
+			f.reserved = f.reserved.add(r)
+		}
+	}
 	if moduleEH {
 		// Staged EH carries the active handler in RBP. Keep it a module-wide
 		// invariant across local and exact cross-instance calls rather than sharing
@@ -1522,6 +1607,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	if !pinLocals {
 		fpPinLimit = 0
 	}
+	intervalRegion := regABI && !hasCall && !hints.hasControlFlow && !hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	if intervalRegion {
+		gpPool = nil // regional GP assignments supersede whole-function GP pins
+	}
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, pinLocals && v128LocalPinsEnabled && !hasCall)
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
@@ -1531,7 +1620,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 	}
 	if f.pinnedLocalMask.has(RBP) {
-		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
+		f.regMerge = false // RBP now holds a pinned local/global
 	}
 	// STACK_REG (lazy pinned-local spill) for every call-making function,
 	// including memory-touching ones: dirty-only stores before a call, lazy reload
@@ -1564,6 +1653,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 
 	if regABI {
+		// A host trampoline may enter this internal ABI directly when no adapter
+		// state beyond RBX is required. Keep this deliberately leaf-only: a local
+		// callee could itself expect the module memory-size cache to be live.
+		sc.directPrepared = volatilePrepared
 		internalOff, err := f.emitRegABI(c)
 		if err != nil {
 			return nil, nil, 0, err
@@ -2100,6 +2193,20 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.emitStackFenceCheck(RBX, RSI)
 	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
 	gp, fp = 0, 0
+	if len(f.intervalReg) != 0 {
+		// Home all incoming integer parameters so the regional cache can claim and
+		// release any parameter lazily without preserving argument-register cycles.
+		for i := 0; i < np; i++ {
+			mt := f.localType[i]
+			if mt.isFloat() {
+				fp++
+				continue
+			}
+			a.Store64(RSP, f.localOff(i), intArgRegs[gp])
+			gp++
+		}
+		gp, fp = 0, 0
+	}
 	for i := 0; i < np; i++ {
 		mt := f.localType[i]
 		if mt.isFloat() {
@@ -2110,6 +2217,8 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 				a.FStoreDisp(RSP, f.localOff(i), src, mt == mtF64)
 			}
 			fp++
+		} else if len(f.intervalReg) != 0 {
+			// Already homed; the regional cache loads it on first use.
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			a.MovReg64(pr, intArgRegs[gp])
 		} else {

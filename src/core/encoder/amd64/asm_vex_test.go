@@ -14,6 +14,8 @@ func TestVexEncoding(t *testing.T) {
 		want []byte
 	}{
 		{"vaddsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFAdd(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x58, 0xC2}},
+		{"rorx eax,ecx,7", func(a *Asm) { a.Rorx(RAX, RCX, 7, false) }, []byte{0xC4, 0xE3, 0x7B, 0xF0, 0xC1, 0x07}},
+		{"rorx r8,r9,13", func(a *Asm) { a.Rorx(R8, R9, 13, true) }, []byte{0xC4, 0x43, 0xFB, 0xF0, 0xC1, 0x0D}},
 		{"vmulsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFMul(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x59, 0xC2}},
 		{"vmulsd xmm2,xmm12,[rbx+r13]", func(a *Asm) { a.VFMemIdx(0x59, 2, 12, RBX, R13, 0, true) }, []byte{0xC4, 0xA1, 0x1B, 0x59, 0x14, 0x2B}},
 		{"vsubss xmm0,xmm1,xmm2", func(a *Asm) { a.VFSub(0, 1, 2, false) }, []byte{0xC4, 0xE1, 0x72, 0x5C, 0xC2}},
@@ -74,6 +76,7 @@ func TestVexEncoding(t *testing.T) {
 		{"vpsubusw xmm0,xmm9,xmm2", func(a *Asm) { a.VPsubusw(0, 9, 2) }, []byte{0xC4, 0xE1, 0x31, 0xD9, 0xC2}},
 		{"vpxor xmm3,xmm3,xmm5", func(a *Asm) { a.VPxor(3, 3, 5) }, []byte{0xC4, 0xE1, 0x61, 0xEF, 0xDD}},
 		{"vpshufb xmm0,xmm1,xmm2", func(a *Asm) { a.VPshufb(0, 1, 2) }, []byte{0xC4, 0xE2, 0x71, 0x00, 0xC2}},
+		{"vptest xmm0,xmm1", func(a *Asm) { a.VPtest(0, 1) }, []byte{0xC4, 0xE2, 0x79, 0x17, 0xC1}},
 		{"vphaddw xmm0,xmm1,xmm2", func(a *Asm) { a.VPhaddw(0, 1, 2) }, []byte{0xC4, 0xE2, 0x71, 0x01, 0xC2}},
 		{"vphaddw xmm8,xmm1,xmm2", func(a *Asm) { a.VPhaddw(8, 1, 2) }, []byte{0xC4, 0x62, 0x71, 0x01, 0xC2}},
 		{"vphaddw xmm0,xmm1,xmm10", func(a *Asm) { a.VPhaddw(0, 1, 10) }, []byte{0xC4, 0xC2, 0x71, 0x01, 0xC2}},

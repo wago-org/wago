@@ -23,3 +23,12 @@ func architectureSupportsSIMD() bool {
 	xcr0, _ := xgetbv()
 	return xcr0&0x6 == 0x6 // OS preserves both XMM and YMM state.
 }
+
+func architectureSupportsBMI2() bool {
+	maxID, _, _, _ := cpuid(0, 0)
+	if maxID < 7 {
+		return false
+	}
+	_, ebx, _, _ := cpuid(7, 0)
+	return ebx&(uint32(1)<<8) != 0
+}

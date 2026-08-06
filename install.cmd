@@ -1,5 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
+if /i "%~nx0"=="wago-pipe.cmd" set "WAGO_CMD_PIPE=1"
 
 rem Wago installer bootstrap for native Windows Command Prompt.
 rem Downloads, verifies, and launches the native Wago installer, then refreshes

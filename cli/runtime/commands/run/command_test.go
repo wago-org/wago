@@ -48,17 +48,13 @@ func TestOptimizationFlags(t *testing.T) {
 		}
 	}
 	name := knobs[0].Name
-	base := wago.NewRuntimeConfig().WithOptimization(name, false)
-	enabled := ApplyOptimizationFlags(command.NewContext(nil, nil, map[string]bool{name: true}), base)
-	if !enabled.OptimizationInfos()[0].On {
-		t.Fatalf("--%s did not enable knob", name)
+	enabled, err := OptimizationOverrides(command.NewContext(nil, nil, map[string]bool{name: true}))
+	if err != nil || !enabled[name] {
+		t.Fatalf("--%s override = %v, %v", name, enabled, err)
 	}
-	disabled := ApplyOptimizationFlags(command.NewContext(nil, nil, map[string]bool{"no-" + name: true}), enabled)
-	if disabled.OptimizationInfos()[0].On {
-		t.Fatalf("--no-%s did not disable knob", name)
-	}
-	if base.OptimizationInfos()[0].On {
-		t.Fatal("optimization flags mutated the base runtime config")
+	disabled, err := OptimizationOverrides(command.NewContext(nil, nil, map[string]bool{"no-" + name: true}))
+	if err != nil || disabled[name] {
+		t.Fatalf("--no-%s override = %v, %v", name, disabled, err)
 	}
 }
 
@@ -238,129 +234,6 @@ func TestRunParallelFlagForms(t *testing.T) {
 	}
 	if ctx.Str("parallel") != "" || len(ctx.Args) != 2 || ctx.Args[1] != "-p8" {
 		t.Fatalf("guest -p8 was consumed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
-	}
-}
-
-func TestRunConfigCoreVersion(t *testing.T) {
-	defaultConfig, err := Config("", true, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if defaultConfig.CoreFeatures().IsEnabled(wago.CoreFeatureGC) {
-		t.Fatal("default run config unexpectedly enabled Core 3 GC")
-	}
-	core3, err := Config("3", true, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if core3.CoreFeatures() != wago.CoreFeaturesV3 {
-		t.Fatalf("--core 3 features = %v, want %v", core3.CoreFeatures(), wago.CoreFeaturesV3)
-	}
-	if _, err := Config("4", true, ""); err == nil {
-		t.Fatal("unsupported core version accepted")
-	}
-}
-
-func TestRunConfigParallelism(t *testing.T) {
-	for _, tc := range []struct {
-		parallel string
-		want     int
-	}{
-		{"", 1},
-		{"auto", 0},
-		{"0", 0},
-		{"1", 1},
-		{"8", 8},
-	} {
-		cfg, err := Config("", true, tc.parallel)
-		if err != nil {
-			t.Fatalf("parallel %q: %v", tc.parallel, err)
-		}
-		if got := cfg.FunctionWorkers(); got != tc.want {
-			t.Fatalf("parallel %q workers = %d, want %d", tc.parallel, got, tc.want)
-		}
-	}
-	for _, value := range []string{"-1", "many"} {
-		if _, err := Config("", true, value); err == nil {
-			t.Fatalf("parallel %q accepted", value)
-		}
-	}
-	cfg, err := Config("", false, "8")
-	if err != nil || cfg.DeferBoundsChecks() {
-		t.Fatalf("combined config = %v, %v", cfg, err)
-	}
-}
-
-func TestDeferredBoundsCheckingFlags(t *testing.T) {
-	cmd := Command(testEnvironment{})
-	for _, tc := range []struct {
-		args []string
-		want bool
-	}{
-		{nil, true},
-		{[]string{"--deferred-bounds-checking"}, true},
-		{[]string{"--no-deferred-bounds-checking"}, false},
-	} {
-		ctx, err := cmd.Parse("wago run", tc.args)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := DeferredBoundsChecking(ctx, true)
-		if err != nil || got != tc.want {
-			t.Fatalf("DeferredBoundsChecking(%v) = %v, %v; want %v", tc.args, got, err, tc.want)
-		}
-	}
-	ctx, err := cmd.Parse("wago run", []string{"--deferred-bounds-checking", "--no-deferred-bounds-checking"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := DeferredBoundsChecking(ctx, true); err == nil {
-		t.Fatal("conflicting deferred bounds checking flags accepted")
-	}
-}
-
-func TestDeferredBoundsCheckingUsesConfiguredDefaultAndCLIWins(t *testing.T) {
-	if got, err := DeferredBoundsChecking(command.NewContext(nil, nil, nil), false); err != nil || got {
-		t.Fatalf("configured default = %v, %v; want false", got, err)
-	}
-	if got, err := DeferredBoundsChecking(command.NewContext(nil, nil, map[string]bool{deferredBoundsCheckingFlag: true}), false); err != nil || !got {
-		t.Fatalf("explicit enable = %v, %v; want true", got, err)
-	}
-}
-
-func TestConfiguredFeaturesAndOptimizationsMatchRuntimeCatalog(t *testing.T) {
-	defaults := settings.Default()
-	config := ApplyFeatureDefaults(wago.NewRuntimeConfig(), defaults, true)
-	if config.CoreFeatures() != wago.NewRuntimeConfig().CoreFeatures() {
-		t.Fatalf("configured features = %s, want %s", config.CoreFeatures(), wago.NewRuntimeConfig().CoreFeatures())
-	}
-	known := map[string]bool{}
-	for _, setting := range settings.Optimizations() {
-		known[strings.TrimPrefix(setting.Key, "optimizations.")] = true
-	}
-	for _, knob := range wago.NewRuntimeConfig().OptimizationInfos() {
-		if !known[knob.Name] {
-			t.Fatalf("runtime knob %q is missing from the settings catalog", knob.Name)
-		}
-	}
-}
-
-func TestEveryRegisteredFeatureCanBeAppliedWithoutCLIMapping(t *testing.T) {
-	defaults := settings.Default()
-	var selected wago.FeatureInfo
-	for _, feature := range wago.FeatureInfos() {
-		if feature.Experimental && feature.Available {
-			selected = feature
-			break
-		}
-	}
-	if selected.Name == "" {
-		t.Skip("build has no available experimental feature")
-	}
-	defaults.Features[selected.Name] = true
-	configured := ApplyFeatureDefaults(wago.NewRuntimeConfig(), defaults, true)
-	if !configured.CoreFeatures().IsEnabled(selected.Feature) {
-		t.Fatalf("registered feature %q was not applied", selected.Name)
 	}
 }
 

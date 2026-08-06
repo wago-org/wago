@@ -9,8 +9,8 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/ui"
-	runcommand "github.com/wago-org/wago/cli/runtime/commands/run"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 	"github.com/wago-org/wago/cli/runtime/internal/profile"
 	runtimeversion "github.com/wago-org/wago/cli/runtime/internal/version"
@@ -76,7 +76,7 @@ func Main(v string) {
 	}
 	// Not a known command. A file path (or a leading flag) is an implicit `run`;
 	// anything else is an unknown command rather than a mystery file-open.
-	if runcommand.LooksLikeTarget(args[0]) || strings.HasPrefix(args[0], "-") {
+	if handoff.LooksLikeRuntimeTarget(args[0]) || strings.HasPrefix(args[0], "-") {
 		root.Child("run").Dispatch("wago run", args)
 		return
 	}
@@ -119,7 +119,7 @@ func usage(w *os.File) {
 
 	// Global flags, aligned to the same column as the footer links below.
 	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
-	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
+	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "show version information")
 	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
 	fmt.Fprintf(w, "  %-27s %s\n", "--json, -j", "emit machine-readable JSON when supported")
 	fmt.Fprintf(w, "  %-27s %s\n", "--no-input", "never prompt; fail when input is missing")

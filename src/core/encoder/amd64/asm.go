@@ -27,7 +27,10 @@ const (
 	R15 Reg = 15
 )
 
-type Asm struct{ B []byte }
+type Asm struct {
+	B        []byte
+	UsesBMI2 bool
+}
 
 // Grow ensures B has capacity for at least n bytes, reusing the existing backing
 // array when it is already large enough. Used to pre-size a reused encoder buffer
@@ -265,11 +268,29 @@ func (a *Asm) shiftCL(digit byte, r Reg, w bool) {
 }
 
 func (a *Asm) TestSelf(r Reg, w bool) {
-	if w || r >= 8 {
-		a.emit(rex(w, r >= 8, false, r >= 8))
+	a.TestReg(r, r, w)
+}
+
+// TestReg emits TEST dst,src. Unlike AND it only updates flags, which lets the
+// compiler fuse packed-word mask predicates without materializing the masked
+// value first.
+func (a *Asm) TestReg(dst, src Reg, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(rex(w, src >= 8, false, dst >= 8))
 	}
 	a.emit(0x85)
-	a.emit(0xC0 | ((byte(r) & 7) << 3) | byte(r&7))
+	a.emit(0xC0 | ((byte(src) & 7) << 3) | byte(dst&7))
+}
+
+// TestImm emits TEST r,imm32. In the 64-bit form the immediate is sign-extended,
+// matching the architectural encoding; callers must materialize wider masks.
+func (a *Asm) TestImm(r Reg, imm uint32, w bool) {
+	if w || r >= 8 {
+		a.emit(rex(w, false, false, r >= 8))
+	}
+	a.emit(0xF7)
+	a.emit(0xC0 | byte(r&7)) // /0
+	a.imm32(int32(imm))
 }
 
 type Cond byte
@@ -443,21 +464,21 @@ func (a *Asm) CallReg(r Reg) {
 	a.emit(0xFF, 0xD0|byte(r&7))
 }
 
-func (a *Asm) LeaScaled(dst, base, index Reg, scaleLog uint8, disp int8) {
+func (a *Asm) LeaScaled(dst, base, index Reg, scaleLog uint8, disp int32) {
 	a.LeaScaledW(dst, base, index, scaleLog, disp, true)
 }
 
 // LeaScaledW is LeaScaled with an explicit destination width. w=false yields a
 // 32-bit result (the address is computed in 64-bit and truncated+zero-extended),
 // which matches i32 wraparound arithmetic.
-func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int8, w bool) {
+func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int32, w bool) {
 	if w || dst >= 8 || index >= 8 || base >= 8 {
 		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
 	}
-	mod := addrMode(base, int32(disp))
+	mod := addrMode(base, disp)
 	a.emit(0x8D, mod|((byte(dst)&7)<<3)|0x04)
 	a.emit((scaleLog << 6) | ((byte(index) & 7) << 3) | byte(base&7))
-	a.emitDisp(mod, int32(disp))
+	a.emitDisp(mod, disp)
 }
 
 // LeaDispW is `lea dst, [base + disp]` with an explicit destination width.

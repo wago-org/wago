@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,11 +11,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/wago-org/wago/internal/installbootstrap"
 	"github.com/wago-org/wago/internal/sourcearchive"
 )
 
@@ -52,11 +50,6 @@ type installer struct {
 	pathInitiallyReady  bool
 }
 
-type release struct {
-	TagName     string `json:"tag_name"`
-	PublishedAt string `json:"published_at"`
-}
-
 type pathTarget struct {
 	label       string
 	description string
@@ -66,6 +59,7 @@ type pathTarget struct {
 }
 
 func runInstaller() error {
+	clearPipedCmdHeader()
 	i, err := newInstaller(os.Stderr)
 	if err != nil {
 		return err
@@ -385,7 +379,10 @@ func (i *installer) downloadManager(target string) error {
 			return err
 		}
 	}
-	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	asset, err := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
 	url := base + "/" + asset
 	if override := os.Getenv("WAGO_MANAGER_URL"); override != "" {
 		url = override
@@ -403,38 +400,25 @@ func (i *installer) downloadManager(target string) error {
 }
 
 func (i *installer) resolveRelease() (string, string, error) {
-	version := i.version
-	switch {
-	case version == "latest":
-		var item release
-		if err := i.getJSON(i.releaseAPI+"/latest", &item); err != nil {
-			return "", "", err
-		}
-		if item.TagName == "" {
-			return "", "", errors.New("release response did not contain a tag")
-		}
-		return item.TagName, i.releaseDownloadBase + "/download/" + item.TagName, nil
-	case strings.HasPrefix(version, "v") || strings.HasPrefix(version, "canary-") || strings.HasPrefix(version, "nightly-"):
-		return version, i.releaseDownloadBase + "/download/" + version, nil
-	}
-	prefix := version
-	if version == "main" {
-		prefix = "canary"
-	}
-	if prefix != "canary" && prefix != "nightly" {
-		return "", "", errors.New("custom source ref requires a source build")
-	}
-	var releases []release
-	if err := i.getJSON(i.releaseAPI+"?per_page=100", &releases); err != nil {
+	tag, err := installbootstrap.Resolve(i.version, installerReleaseCatalog{i})
+	if err != nil {
 		return "", "", err
 	}
-	sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
-	for _, item := range releases {
-		if strings.HasPrefix(item.TagName, prefix+"-") {
-			return item.TagName, i.releaseDownloadBase + "/download/" + item.TagName, nil
-		}
-	}
-	return "", "", fmt.Errorf("no %s installer release found", prefix)
+	return tag, i.releaseDownloadBase + "/download/" + tag, nil
+}
+
+type installerReleaseCatalog struct{ installer *installer }
+
+func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error) {
+	var item installbootstrap.Release
+	err := catalog.installer.getJSON(catalog.installer.releaseAPI+"/latest", &item)
+	return item, err
+}
+
+func (catalog installerReleaseCatalog) Releases() ([]installbootstrap.Release, error) {
+	var releases []installbootstrap.Release
+	err := catalog.installer.getJSON(catalog.installer.releaseAPI+"?per_page=100", &releases)
+	return releases, err
 }
 
 func (i *installer) getJSON(url string, value any) error {
@@ -468,29 +452,8 @@ func (i *installer) downloadChecked(url, target string) error {
 	if err != nil {
 		return err
 	}
-	fields := strings.Fields(string(wantData))
-	if len(fields) == 0 || len(fields[0]) != 64 {
-		return errors.New("release checksum is malformed")
-	}
-	want, err := hex.DecodeString(fields[0])
-	if err != nil {
-		return errors.New("release checksum is malformed")
-	}
-	file, err := os.Open(payload)
-	if err != nil {
+	if err := installbootstrap.VerifyFile(payload, wantData); err != nil {
 		return err
-	}
-	hash := sha256.New()
-	_, copyErr := io.Copy(hash, file)
-	closeErr := file.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), hex.EncodeToString(want)) {
-		return errors.New("release checksum did not match")
 	}
 	return os.Rename(payload, target)
 }
@@ -574,11 +537,17 @@ func (i *installer) cleanExisting(mode string) error {
 }
 
 func (i *installer) installManager(source, target string) error {
+	return i.installManagerUsing(source, target, os.Rename, isCrossDeviceError)
+}
+
+type pathRenamer func(string, string) error
+
+func (i *installer) installManagerUsing(source, target string, rename pathRenamer, crossDevice func(error) bool) error {
 	i.begin("Installing Wago")
 	if err := os.MkdirAll(i.binDir, 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(source, target); err != nil {
+	if err := movePathUsing(source, target, rename, crossDevice); err != nil {
 		return fmt.Errorf("install Wago command: %w", err)
 	}
 	if err := os.Chmod(target, 0o755); err != nil {
@@ -589,18 +558,32 @@ func (i *installer) installManager(source, target string) error {
 }
 
 func (i *installer) saveSource(source string) error {
+	return i.saveSourceUsing(source, os.Rename, isCrossDeviceError)
+}
+
+func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevice func(error) bool) error {
 	i.begin("Saving Wago source")
 	if err := os.MkdirAll(filepath.Dir(i.srcDir), 0o755); err != nil {
 		return err
 	}
-	backup := filepath.Join(i.tmpDir, "source-backup")
+	var backupRoot, backup string
 	if _, err := os.Stat(i.srcDir); err == nil {
-		if err := os.Rename(i.srcDir, backup); err != nil {
+		backupRoot, err = os.MkdirTemp(filepath.Dir(i.srcDir), ".wago-source-backup-")
+		if err != nil {
 			return err
 		}
+		defer os.RemoveAll(backupRoot)
+		backup = filepath.Join(backupRoot, "source")
+		if err := rename(i.srcDir, backup); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-	if err := os.Rename(source, i.srcDir); err != nil {
-		_ = os.Rename(backup, i.srcDir)
+	if err := movePathUsing(source, i.srcDir, rename, crossDevice); err != nil {
+		if backup != "" {
+			_ = rename(backup, i.srcDir)
+		}
 		return fmt.Errorf("save Wago source: %w", err)
 	}
 	i.done("Saved Wago source")

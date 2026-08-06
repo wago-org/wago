@@ -3,10 +3,8 @@ package run
 import (
 	"fmt"
 
-	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/settings"
-	"github.com/wago-org/wago/cli/internal/ui"
 )
 
 const deferredBoundsCheckingFlag = "deferred-bounds-checking"
@@ -26,19 +24,23 @@ func DeferredBoundsCheckingFlags() []command.Flag {
 
 // DeferredBoundsChecking resolves the paired CLI flags. The optimization is on
 // by default, matching wago.NewRuntimeConfig.
-func DeferredBoundsChecking(ctx *command.Ctx, defaultValue bool) (bool, error) {
+// DeferredBoundsOverride returns only an explicit paired-flag choice. Settings
+// precedence belongs to settings.ResolveCompilation.
+func DeferredBoundsOverride(ctx *command.Ctx) (*bool, error) {
 	on := ctx.Bool(deferredBoundsCheckingFlag)
 	off := ctx.Bool("no-" + deferredBoundsCheckingFlag)
 	if on && off {
-		return false, fmt.Errorf("conflicting --%s and --no-%s", deferredBoundsCheckingFlag, deferredBoundsCheckingFlag)
+		return nil, fmt.Errorf("conflicting --%s and --no-%s", deferredBoundsCheckingFlag, deferredBoundsCheckingFlag)
 	}
 	if on {
-		return true, nil
+		value := true
+		return &value, nil
 	}
 	if off {
-		return false, nil
+		value := false
+		return &value, nil
 	}
-	return defaultValue, nil
+	return nil, nil
 }
 
 // OptimizationFlags exposes every backend knob as --<name>/--no-<name>.
@@ -63,29 +65,20 @@ func OptimizationFlags() []command.Flag {
 	return flags
 }
 
-// ApplyOptimizationFlags applies explicit CLI overrides before compilation.
-func ApplyOptimizationFlags(ctx *command.Ctx, config *wago.RuntimeConfig) *wago.RuntimeConfig {
-	for _, knob := range config.OptimizationInfos() {
-		on, off := ctx.Bool(knob.Name), ctx.Bool("no-"+knob.Name)
+// OptimizationOverrides returns the explicit paired-flag choices without
+// applying settings precedence or mutating a runtime configuration.
+func OptimizationOverrides(ctx *command.Ctx) (map[string]bool, error) {
+	overrides := map[string]bool{}
+	for _, knob := range settings.Optimizations() {
+		on, off := ctx.Bool(knob.Name()), ctx.Bool("no-"+knob.Name())
 		if on && off {
-			ui.Usage("run: conflicting --%s and --no-%s", knob.Name, knob.Name)
+			return nil, fmt.Errorf("conflicting --%s and --no-%s", knob.Name(), knob.Name())
 		}
-		switch {
-		case on:
-			config = config.WithOptimization(knob.Name, true)
-		case off:
-			config = config.WithOptimization(knob.Name, false)
+		if on {
+			overrides[knob.Name()] = true
+		} else if off {
+			overrides[knob.Name()] = false
 		}
 	}
-	return config
-}
-
-func ApplyOptimizationDefaults(runtimeConfig *wago.RuntimeConfig, config settings.Config, configured bool) *wago.RuntimeConfig {
-	if !configured {
-		return runtimeConfig
-	}
-	for name, enabled := range config.Optimizations {
-		runtimeConfig = runtimeConfig.WithOptimization(name, enabled)
-	}
-	return runtimeConfig
+	return overrides, nil
 }

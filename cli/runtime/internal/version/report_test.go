@@ -1,10 +1,13 @@
 package version
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 )
 
 func TestVersionReportIncludesDiagnostics(t *testing.T) {
@@ -36,12 +39,41 @@ func TestVersionReportIncludesDiagnostics(t *testing.T) {
 		"manager      manager-test  /opt/wago/bin/wago",
 		"runtime",
 		"plugins",
-		"features",
 		"guard pages",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("version report missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "features") {
+		t.Fatalf("version report exposes features:\n%s", text)
+	}
+}
+
+func TestVersionJSONOmitsFeatures(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	automation.Configure(automation.Options{JSON: true})
+	t.Cleanup(automation.Reset)
+	oldStdout := os.Stdout
+	t.Cleanup(func() { os.Stdout = oldStdout })
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	Print("canary-test", "standard", "normal", "none")
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	_ = read.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report map[string]any
+	if err := json.Unmarshal(output, &report); err != nil {
+		t.Fatalf("decode version report: %v\n%s", err, output)
+	}
+	if _, exists := report["features"]; exists {
+		t.Fatalf("JSON version report exposes features: %s", output)
 	}
 }
 

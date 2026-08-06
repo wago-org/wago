@@ -99,6 +99,8 @@ func stderrIsConsole() bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0 && os.Getenv("TERM") != "dumb"
 }
 
+func clearPipedCmdHeader() {}
+
 func enableVirtualTerminal() {}
 
 func clearProgressLine() {

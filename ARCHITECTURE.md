@@ -167,6 +167,7 @@ src/wago/                         public API implementation (package wago)
   instantiate.go                  staged instance-construction transaction
   instance.go                     live instance state and native-visible handles
   instance_lifecycle.go           close/physical-release ownership transfer
+  reference_lifetime.go           close/quiescence/root-transfer convergence
   import_attachments.go           imported owner attachment and root retention
 wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)
@@ -292,10 +293,11 @@ re-decoding:
 (`MarshalBinary`/`UnmarshalBinary`, magic `WAGO` + version byte). `Load` accepts
 either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
 load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
-malformed metadata before any memory is mapped. Codec v21 persists the
+malformed metadata before any memory is mapped. The codec persists the
 binding-independent imported-call shape, so modules with function imports can be
 serialized before host or instance targets are known; live addresses and store
-identity are installed only during instantiation.
+identity are installed only during instantiation. See the codec-version comment
+at the top of this file for the current wire version.
 
 ---
 
@@ -510,10 +512,12 @@ to build and test the Go module.
 - Linux, macOS, and Windows on amd64 and arm64 execute the native JIT and are
   required CI and release targets. Signal-backed guard pages remain specific to
   Linux/amd64, Linux/arm64, and Darwin/arm64; other targets use explicit bounds.
-- WebAssembly 1.0 and the documented WebAssembly 2.0 feature set are complete on
-  the supported amd64 baseline. Tail calls, threads/atomics, multi-memory,
-  exception handling, and the Wasm GC proposal remain outside the current
-  supported feature set unless [FEATURES.md](FEATURES.md) says otherwise.
+- WebAssembly 1.0, the documented WebAssembly 2.0 feature set, and the
+  opt-in WebAssembly Core 3.0 feature families (tail calls, typed references,
+  WasmGC, exception handling, multi-memory, memory64, table64, extended
+  constants, and relaxed SIMD) are complete on linux/amd64, linux/arm64, and
+  darwin/arm64. Threads & atomics remain planned. [FEATURES.md](FEATURES.md)
+  is the source of truth for per-feature status.
 - The off-path `src/core/compiler/ir` package is a research/debug oracle, not an
   execution tier. Railshot is the only production backend.
 

@@ -1,3 +1,7 @@
+> **Status: historical design record.** This plan describes a porting effort that
+> was completed and subsumed into the current `railshot/amd64` backend.
+> See [ARCHITECTURE.md](../ARCHITECTURE.md) for the current architecture.
+
 # WARP x64 Port Plan
 
 ## Summary

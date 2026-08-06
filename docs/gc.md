@@ -7,6 +7,9 @@ than a non-goal. The current implementation is an initial foundation under
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
 knobs, and tests.
 
+The decision-grade collector measurement contract and roadmap-aligned benchmark
+matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
+
 ## Current generated-payload boundary
 
 The mandatory pinned Core 3 corpus is complete, but that result is narrower than

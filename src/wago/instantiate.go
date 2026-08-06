@@ -272,7 +272,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	b.tableAttachments.detachAll()
 	b.tagAttachments.detachAll()
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
-		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
+		b.registeredInstance.referenceLifetime().notifyStore(b.registeredInstance.refStore, referenceLifetimeClosed)
 	}
 	if b.collector != nil {
 		if b.collectorShared && b.opts.store != nil && (b.registeredInstance == nil || b.registeredInstance.refStore == nil) {
@@ -653,8 +653,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
 				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
-				if !localFuncrefsMayEscape && li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
-					code = uint64(base) + uint64(c.InternalEntry[li])
+				if !localFuncrefsMayEscape && li < len(c.InternalEntry) && internalEntryOffset(c.InternalEntry[li]) != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
+					code = uint64(base) + uint64(internalEntryOffset(c.InternalEntry[li]))
 					kind = abi.FuncRefEntryInternal
 				}
 			} else if fidx < c.NumImports {

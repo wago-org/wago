@@ -769,49 +769,28 @@ func (s *referenceStore) abortRegisteredInstance(in *Instance) {
 	releaseReferenceEntries(release)
 }
 
-func (s *referenceStore) instanceClosed(in *Instance) {
-	var release referenceTokenEntries
-	s.mu.Lock()
-	if entry := s.instances[in]; entry != nil {
-		if !entry.closeAccounted {
-			entry.closeAccounted = true
-			if s.liveInstances > 0 {
-				s.liveInstances--
-			}
-		}
-		if entry.quiesced && entry.resourcesReleased {
-			s.unregisterInstanceTypesLocked(in)
-			delete(s.instances, in)
-		}
-	}
-	release = s.maybeReleaseEntriesLocked()
-	s.mu.Unlock()
-	releaseReferenceEntries(release)
-}
-
-func (s *referenceStore) instanceQuiesced(in *Instance) {
-	var release referenceTokenEntries
-	s.mu.Lock()
-	if entry := s.instances[in]; entry != nil {
-		entry.quiesced = true
-		if entry.closeAccounted && entry.resourcesReleased {
-			s.unregisterInstanceTypesLocked(in)
-			delete(s.instances, in)
-		}
-	}
-	release = s.maybeReleaseEntriesLocked()
-	s.mu.Unlock()
-	releaseReferenceEntries(release)
-}
-
-func (s *referenceStore) resourceOwnerReleased(in *Instance) {
+func (s *referenceStore) advanceInstanceLifetime(in *Instance, event referenceLifetimeEvent) {
 	var release referenceTokenEntries
 	var collector *gc.Collector
 	s.mu.Lock()
 	if entry := s.instances[in]; entry != nil {
-		entry.resourcesReleased = true
-		collector = s.releaseGCDomainLocked(entry)
-		if entry.closeAccounted && entry.quiesced {
+		switch event {
+		case referenceLifetimeClosed:
+			if !entry.closeAccounted {
+				entry.closeAccounted = true
+				if s.liveInstances > 0 {
+					s.liveInstances--
+				}
+			}
+		case referenceLifetimeQuiesced:
+			entry.quiesced = true
+		case referenceLifetimeResourcesReleased:
+			if !entry.resourcesReleased {
+				entry.resourcesReleased = true
+				collector = s.releaseGCDomainLocked(entry)
+			}
+		}
+		if entry.closeAccounted && entry.quiesced && entry.resourcesReleased {
 			s.unregisterInstanceTypesLocked(in)
 			delete(s.instances, in)
 		}

@@ -1,3 +1,7 @@
+> **Status: historical design record.** This status report describes a
+> completed cutover that was subsumed into the current `railshot/amd64` backend.
+> See [ARCHITECTURE.md](../ARCHITECTURE.md) for the current architecture.
+
 # WARP x64 backend — status & game plan (2026-07-01, HEAD 826f0d2)
 
 Branch `port/warp-x64`. Worktree `/home/hub/Code/Wago/wago/.claude/worktrees/json-as-bench`.

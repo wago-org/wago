@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -32,6 +33,7 @@ var (
 	setCursor        = kernel32.NewProc("SetConsoleCursorPosition")
 	fillCharacters   = kernel32.NewProc("FillConsoleOutputCharacterW")
 	fillAttributes   = kernel32.NewProc("FillConsoleOutputAttribute")
+	readCharacters   = kernel32.NewProc("ReadConsoleOutputCharacterW")
 )
 
 type coord struct {
@@ -164,6 +166,53 @@ func stderrIsConsole() bool {
 	var mode uint32
 	result, _, _ := getConsoleMode.Call(uintptr(syscall.Handle(os.Stderr.Fd())), uintptr(unsafe.Pointer(&mode)))
 	return result != 0
+}
+
+func clearPipedCmdHeader() {
+	if os.Getenv("WAGO_CMD_PIPE") != "1" || os.Getenv("NO_COLOR") != "" || !stderrIsConsole() {
+		return
+	}
+	output := syscall.Handle(os.Stderr.Fd())
+	var info consoleScreenBufferInfo
+	if result, _, _ := getConsoleInfo.Call(uintptr(output), uintptr(unsafe.Pointer(&info))); result == 0 {
+		return
+	}
+	width := int(info.Size.X)
+	if width <= 0 || info.CursorPosition.Y <= 0 {
+		return
+	}
+	startY := int(info.CursorPosition.Y) - 1
+	minimumY := startY - 15
+	if minimumY < 0 {
+		minimumY = 0
+	}
+	bannerY := -1
+	buffer := make([]uint16, width)
+	for y := startY; y >= minimumY; y-- {
+		var read uint32
+		position := uintptr(uint32(uint16(y))) << 16
+		result, _, _ := readCharacters.Call(
+			uintptr(output),
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(width),
+			position,
+			uintptr(unsafe.Pointer(&read)),
+		)
+		if result != 0 && strings.Contains(string(utf16.Decode(buffer[:read])), "Microsoft Windows") {
+			bannerY = y
+			break
+		}
+	}
+	if bannerY < 0 {
+		return
+	}
+	rows := int(info.CursorPosition.Y) - bannerY
+	cells := uint32(width * rows)
+	position := uintptr(uint32(uint16(bannerY))) << 16
+	var written uint32
+	fillCharacters.Call(uintptr(output), uintptr(' '), uintptr(cells), position, uintptr(unsafe.Pointer(&written)))
+	fillAttributes.Call(uintptr(output), uintptr(info.Attributes), uintptr(cells), position, uintptr(unsafe.Pointer(&written)))
+	setCursor.Call(uintptr(output), position)
 }
 
 func enableVirtualTerminal() {

@@ -1,6 +1,7 @@
 package handoff
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -19,12 +20,17 @@ func RuntimeOwnsPluginCommand(args []string) bool {
 	}
 }
 
-// LooksLikeRuntimeTarget reports whether value is plausibly a module path.
+// LooksLikeRuntimeTarget reports whether value should enter the runtime's
+// implicit-run path. Manager and runtime both use this decision so a handoff
+// can never turn a manager-recognized target into a runtime-unknown command.
 func LooksLikeRuntimeTarget(value string) bool {
 	lower := strings.ToLower(value)
 	return strings.HasSuffix(lower, ".wasm") ||
-		strings.HasSuffix(lower, ".wat") ||
 		strings.HasSuffix(lower, ".wago") ||
-		strings.ContainsAny(value, `/\`) ||
-		filepath.Ext(value) != ""
+		existingFile(value)
+}
+
+func existingFile(path string) bool {
+	info, err := os.Stat(filepath.Clean(path))
+	return err == nil && !info.IsDir()
 }
