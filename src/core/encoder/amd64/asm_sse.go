@@ -112,6 +112,13 @@ func (a *Asm) vex3RRReserved(opcodeMap, pp, op byte, reg, rm Reg) {
 }
 
 func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
+	a.vex3RRReservedWL(opcodeMap, pp, op, reg, rm, false, l)
+}
+
+// vex3RRReservedWL is the reserved-vvvv VEX register form with an explicit W
+// bit. Most SIMD instructions use W=0; BMI2's scalar RORX uses W to select the
+// 32- or 64-bit operand width.
+func (a *Asm) vex3RRReservedWL(opcodeMap, pp, op byte, reg, rm Reg, w bool, l byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
 	if reg >= 8 {
 		rBit = 0
@@ -119,9 +126,21 @@ func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
 	if rm >= 8 {
 		bBit = 0
 	}
-	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03)                 // vvvv=1111, W=0
+	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03) // vvvv=1111
+	if w {
+		byte2 |= 0x80
+	}
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
+}
+
+// Rorx emits BMI2 RORX dst,src,imm. Unlike legacy ROR it is non-destructive,
+// which lets the compiler rotate a borrowed/local value without first copying
+// it into the destination register.
+func (a *Asm) Rorx(dst, src Reg, count byte, w bool) {
+	a.UsesBMI2 = true
+	a.vex3RRReservedWL(vexMap0F3A, 0b11, 0xF0, dst, src, w, 0)
+	a.emit(count)
 }
 
 func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool, l byte) {

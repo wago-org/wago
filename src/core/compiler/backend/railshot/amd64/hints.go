@@ -55,6 +55,10 @@ type funcHints struct {
 	// per enclosing loop level.
 	localScore  []uint32
 	globalScore []uint32
+	// localLastGet records the byte offset immediately after each local's final
+	// local.get. It is filled by the production byte scanner and lets bounded
+	// regional allocation release a cache register without another body walk.
+	localLastGet []uint32
 	// entryInitialized marks locals (up to 64) whose first access in the
 	// function's straight-line entry prefix is local.set/tee. Their Wasm zero
 	// value cannot be observed, so the prologue may skip initializing them.
@@ -77,6 +81,7 @@ type funcHints struct {
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
 	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+	h.localLastGet = make([]uint32, nLocals)
 	h.nLocals = nLocals
 	return h
 }
@@ -601,6 +606,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				if op == 0x20 {
 					addHotness(s.h.localScore, idx, loopWeight(loopDepth))
+					if int(idx) < len(s.h.localLastGet) {
+						s.h.localLastGet[idx] = uint32(s.r.off())
+					}
 				} else {
 					addHotness(s.h.localScore, idx, 2*loopWeight(loopDepth))
 				}

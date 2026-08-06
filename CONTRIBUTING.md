@@ -3,10 +3,10 @@
 `wago` is a small Go-first WebAssembly JIT. Keep changes direct, tested, and
 easy to audit.
 
-Primary performance and conformance target: **linux/amd64** with Go **1.22+**.
-Native runtime paths, CI, and release assets also cover Linux, macOS, and
-Windows on amd64 and arm64; see [FEATURES.md](FEATURES.md) for feature-level
-platform admission.
+First-class targets: **linux/amd64**, **linux/arm64**, **darwin/amd64**,
+**darwin/arm64**, **windows/amd64**, and **windows/arm64** with Go **1.22+**.
+All six targets have native CI, release assets, and conformance gates;
+see [FEATURES.md](FEATURES.md) for feature-level platform admission.
 
 ## Setup
 
@@ -129,7 +129,7 @@ pre-reference-types commit so the file set is MVP). `TestSpecExec` (in
 assertions in an isolated subprocess and scores it; it skips unless the
 submodule is checked out and `wast2json` (wabt) is on `PATH`.
 
-Note: `TestSpecExec` is currently only built on linux/amd64 (the JIT backend’s supported platform).
+Note: `TestSpecExec` runs on linux/amd64, linux/arm64, and darwin/arm64.
 
 ```bash
 git submodule update --init tests/spec        # one time

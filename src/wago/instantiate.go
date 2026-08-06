@@ -653,8 +653,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
 				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
-				if !localFuncrefsMayEscape && li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
-					code = uint64(base) + uint64(c.InternalEntry[li])
+				if !localFuncrefsMayEscape && li < len(c.InternalEntry) && internalEntryOffset(c.InternalEntry[li]) != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
+					code = uint64(base) + uint64(internalEntryOffset(c.InternalEntry[li]))
 					kind = abi.FuncRefEntryInternal
 				}
 			} else if fidx < c.NumImports {

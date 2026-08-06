@@ -122,6 +122,23 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	return true
 }
 
+func preparedDirectIntSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isIntValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isIntValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
 // sigFitsReferenceResultRegABI is the staged typed-tail extension of the native
 // register ABI. It admits one funcref result in RAX with numeric parameters only.
 // The descriptor pointer remains owned by the instance's bounded descriptor arena;
@@ -226,6 +243,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
+			f.planCallDeadLocals(r)
 			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
 		}
 		// A module with any returning host import uses the synchronous control
@@ -233,10 +251,12 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		// never both occupy offCustomCtx. Otherwise void imports keep the cheaper
 		// async log-and-replay path.
 		if f.syncHostCalls || len(ft.Results) != 0 {
+			f.planCallDeadLocals(r)
 			return f.callHostSync(int(idx), ft) // synchronous re-entry
 		}
 		return f.callHost(int(idx), ft) // void: async log-and-replay
 	}
+	f.planCallDeadLocals(r)
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
 	// int result feeds a pinned local moves RAX straight into the local's
 	// register — no intermediate result register, no separate set lowering.

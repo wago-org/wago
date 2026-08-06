@@ -160,6 +160,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			}
 		}
 		var value *elem
+		f.activateIntervalLocal(int(x), r.Offset(), true)
+		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
+			value = f.pushReg(reg, f.localType[x])
+			value.st.gcRoot = f.gcFrameLocal(int(x))
+			f.markLocalGetExactGCType(value, int(x))
+			break
+		}
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
@@ -992,6 +999,9 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
+	if reader != nil {
+		f.activateIntervalLocal(x, reader.Offset(), false)
+	}
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {
 		// Register-pinned local: compute/load directly into the local's register.
 		// condenseInto may temporarily mark pr as an owned result for deferred
