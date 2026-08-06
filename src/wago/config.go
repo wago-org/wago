@@ -244,6 +244,11 @@ func NewRuntimeConfig() *RuntimeConfig {
 	for _, info := range OptKnobs() {
 		optimizations[info.Name] = info.On
 	}
+	if runtime.GOARCH == "amd64" && hostSupportsBMI2() && os.Getenv("WAGO_AMD64_NO_BMI2_RORX") != "1" {
+		if _, ok := optimizations["bmi2-rorx"]; ok {
+			optimizations["bmi2-rorx"] = true
+		}
+	}
 	return &RuntimeConfig{
 		features:        defaultCoreFeatures,
 		optimizations:   optimizations,
@@ -540,6 +545,9 @@ func (c *RuntimeConfig) Validate() error {
 		if _, ok := optimization.Lookup(runtime.GOARCH, name); !ok {
 			return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
 		}
+	}
+	if c.optimizations["bmi2-rorx"] && !hostSupportsBMI2() {
+		return fmt.Errorf("wago: bmi2-rorx optimization requires BMI2 CPU support")
 	}
 	// SIMD remains configurable on builds whose host CPU cannot execute it so
 	// scalar modules still compile under the default config; the frontend clears

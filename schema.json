@@ -172,8 +172,12 @@
           "type": "object",
           "propertyNames": {
             "enum": [
+              "affine-lea",
+              "assoc-tree",
+              "bmi2-rorx",
               "bounds-facts",
               "branch-fold",
+              "call-next-use",
               "deep-fp-pins",
               "entry-arg-pins",
               "ext-fp-pins",
@@ -202,6 +206,7 @@
               "store-load-fwd",
               "tee-sink",
               "three-op-sink",
+              "tree-order",
               "unary-sink",
               "uxtw-add",
               "v128-const-cache",

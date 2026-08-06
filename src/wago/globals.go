@@ -1089,9 +1089,23 @@ type Compiled struct {
 
 	codeCache          *compiledCodeCache
 	customInstructions map[uint32]railshot.CustomInstruction
+	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
 }
+
+// The sign bit of a fresh compilation's internal-entry offset carries the
+// optional direct-prepared selection without growing Compiled. Native code
+// offsets are non-negative and bounded far below the host int range. The codec
+// strips this compile-only bit, so decoded artifacts retain the wrapper fallback.
+var directPreparedEntryMask = ^(^uint(0) >> 1)
+
+func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
+func directPreparedEntry(off int) bool    { return uint(off)&directPreparedEntryMask != 0 }
+func internalEntryOffset(off int) int     { return int(uint(off) &^ directPreparedEntryMask) }
+
+// RequiresBMI2 reports whether compilation selected BMI2 instructions.
+func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }
 
 // RequiresAVX2 reports whether compilation selected an AVX2 plugin lowering.
 func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }

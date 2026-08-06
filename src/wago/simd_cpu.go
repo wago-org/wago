@@ -14,6 +14,8 @@ var simdHostFeaturesSupported = cachedSIMDHostFeatures
 var (
 	simdHostFeaturesOnce sync.Once
 	simdHostFeaturesOK   bool
+	bmi2HostFeaturesOnce sync.Once
+	bmi2HostFeaturesOK   bool
 )
 
 func cachedSIMDHostFeatures() bool {
@@ -22,6 +24,15 @@ func cachedSIMDHostFeatures() bool {
 }
 
 func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
+
+var bmi2HostFeaturesSupported = cachedBMI2HostFeatures
+
+func cachedBMI2HostFeatures() bool {
+	bmi2HostFeaturesOnce.Do(func() { bmi2HostFeaturesOK = architectureSupportsBMI2() })
+	return bmi2HostFeaturesOK
+}
+
+func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
 
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
 
@@ -49,6 +60,23 @@ func simdCPUFlagsSupported(data []byte) bool {
 			sse41 = sse41 || token[0] == 's' && token[1] == 's' && token[2] == 'e' && token[3] == '4' && token[4] == '_' && token[5] == '1'
 		}
 		if avx && ssse3 && sse41 {
+			return true
+		}
+	}
+	return false
+}
+
+func bmi2CPUFlagsSupported(data []byte) bool {
+	for i := 0; i < len(data); {
+		for i < len(data) && data[i] <= ' ' {
+			i++
+		}
+		start := i
+		for i < len(data) && data[i] > ' ' {
+			i++
+		}
+		token := data[start:i]
+		if len(token) == 4 && token[0] == 'b' && token[1] == 'm' && token[2] == 'i' && token[3] == '2' {
 			return true
 		}
 	}
