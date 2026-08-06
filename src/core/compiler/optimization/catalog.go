@@ -177,6 +177,7 @@ var catalog = []Definition{
 	amd64("call-next-use", "Call next-use", "skip dead pinned-local stores before calls"),
 	amd64("affine-lea", "Affine LEA", "fold bounded affine index trees into scaled addressing"),
 	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
+	amd64("assoc-tree", "Associative tree cover", "cover bounded associative trees with one accumulator"),
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
 	amd64("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),

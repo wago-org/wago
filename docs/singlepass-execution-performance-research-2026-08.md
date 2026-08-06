@@ -918,6 +918,48 @@ to 941,555 (**-0.060%**). Median Ruby compile peak RSS is identical at
 runtime-local `tree-order` optimization and has the process-level A/B oracle
 `WAGO_AMD64_NO_TREE_ORDER=1`.
 
+### Bounded associative accumulator cover
+
+A second retained cover handles balanced trees of the same trap-free integer
+`add`, `and`, `or`, or `xor`. When such a tree needs at least three registers,
+the cover collects at most eight leaves into a fixed stack array, starts with the
+most expensive leaf, and consumes the others directly into one accumulator.
+Internal binary results therefore never become simultaneously live. Trees with
+a destination hint keep the established local-sink path, and variable shifts
+are excluded because their fixed RCX role could evict the accumulator.
+
+The corpus has 4,858 potential roots. On top of tree ordering, the cover reduces
+explicit-mode spills from 6,002 to 5,421 (-9.68%) and guard-mode spills from
+3,927 to 3,845 (-2.09%). Reloads remain effectively flat (19,227 to 19,225 and
+22,443 to 22,444), while native code falls by 25,429 bytes in explicit mode and
+9,090 bytes in guard mode. In two alternating
+passes, both 36-row geometric means improve (-0.56% and -0.18%); the 14 samples
+total per row improve the combined-median geometric mean by **0.33%**.
+
+| Current-corpus workload | Disabled | Enabled | Delta |
+|---|---:|---:|---:|
+| SHA-256 | 43,113 ns | 41,485 ns | -3.78% |
+| focused mulhi run | 2,566 ns | 2,512 ns | -2.12% |
+| quicksort | 69,588 ns | 68,286 ns | -1.87% |
+| JSON serialize | 23,626 ns | 23,484 ns | -0.60% |
+| SIMD UTF validation | 152,001 ns | 151,234 ns | -0.50% |
+
+Weighted `CompileFull` time changes by +0.24%, while summed allocation bytes
+fall from 272,265,228 to 272,106,855 (-0.058%) and allocation count from 941,504
+to 940,133 (-0.146%). Median Ruby peak RSS is again unchanged at 161,080 KiB.
+The runtime-local knob is `assoc-tree`; `WAGO_AMD64_NO_ASSOC_TREE=1` is its
+process-level A/B oracle. Like tree ordering, the cover adds no persistent
+per-node or per-function state.
+
+With both new tree features disabled versus both enabled in the final binary,
+the exact combined 36-row execution geometric mean improves by **1.13%**; the
+two alternating passes improve independently by 0.90% and 1.47%. Weighted
+`CompileFull` time is effectively unchanged at -0.03%, summed allocation bytes
+fall by 0.081%, and allocation count falls by 0.211%. Median Ruby RSS is 161,208
+KiB disabled and 161,080 KiB enabled. Together they remove 32,466 native bytes
+and 2,001 spills in explicit mode, and 10,432 native bytes and 1,003 spills in
+guard mode.
+
 ### Rejected: raising the Valent height cap
 
 A separate experiment allowed proven non-trapping trees to remain deferred from

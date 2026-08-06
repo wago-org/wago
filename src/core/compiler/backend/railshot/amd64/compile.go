@@ -135,6 +135,10 @@ var affineLeaEnabled = os.Getenv("WAGO_AMD64_NO_AFFINE_LEA") != "1"
 // per-node state: maxDeferDepth bounds the recursive inspection.
 var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
 
+// associativeTreeEnabled covers small, trap-free associative trees as one
+// accumulator instead of materializing their internal binary nodes.
+var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.

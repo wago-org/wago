@@ -173,6 +173,7 @@
           "propertyNames": {
             "enum": [
               "affine-lea",
+              "assoc-tree",
               "bounds-facts",
               "branch-fold",
               "call-next-use",

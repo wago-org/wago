@@ -213,6 +213,10 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 	}
 
+	if r := f.tryAssociativeTree(node, dest); r != regNone {
+		return r
+	}
+
 	// Materialize the RHS into a safe, foldable operand BEFORE the LHS overwrites
 	// dest: condense a deferred RHS to a fresh register, and copy a register RHS
 	// out if it aliases dest.
