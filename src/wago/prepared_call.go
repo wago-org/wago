@@ -10,3 +10,8 @@ var preparedCallEnabled = os.Getenv("WAGO_PREPARED_CALL") != "0"
 // once instantiation has already proved the common instance-owned prepared path.
 // WAGO_DIRECT_PREPARED=0 restores routing through callNative for clean A/B.
 var directPreparedCallEnabled = os.Getenv("WAGO_DIRECT_PREPARED") != "0"
+
+// preparedScalarFastEnabled selects the bounded scalar PreparedFunction path.
+// WAGO_PREPARED_SCALAR_FAST=0 restores generic slot marshaling for same-binary
+// benchmark comparisons.
+var preparedScalarFastEnabled = os.Getenv("WAGO_PREPARED_SCALAR_FAST") != "0"

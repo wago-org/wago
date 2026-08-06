@@ -23,6 +23,9 @@ type PreparedFunction struct {
 	resultExact         []ValueTypeDescriptor
 	hasReferenceParams  bool
 	hasReferenceResults bool
+	scalarWideMask      uint8
+	scalarFast          bool
+	scalarResultWide    bool
 	resultWide          []bool
 }
 
@@ -55,12 +58,35 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		return nil, fmt.Errorf("wago: prepare function %q exact signature: %w", export, err)
 	}
 	wide := append([]bool(nil), ic.resultWide...)
+	scalarFast := preparedScalarFastEnabled &&
+		!hasReferenceValType(sig.Params) &&
+		!hasReferenceValType(sig.Results) &&
+		ic.paramSlots <= 4 &&
+		ic.resultSlots <= 1
+	var scalarWideMask uint8
+	if scalarFast {
+		slot := 0
+		for _, typ := range sig.Params {
+			if typ == ValV128 {
+				scalarWideMask |= 3 << slot
+				slot += 2
+			} else {
+				if isWideValType(typ) {
+					scalarWideMask |= 1 << slot
+				}
+				slot++
+			}
+		}
+	}
 	return &PreparedFunction{
 		in:                  in,
 		export:              export,
 		entry:               in.base + uintptr(in.c.Entry[ic.li]),
 		paramSlots:          ic.paramSlots,
 		resultSlots:         ic.resultSlots,
+		scalarWideMask:      scalarWideMask,
+		scalarFast:          scalarFast,
+		scalarResultWide:    ic.resultSlots == 1 && wide[0],
 		paramTypes:          append([]ValType(nil), sig.Params...),
 		resultTypes:         append([]ValType(nil), sig.Results...),
 		paramExact:          append([]ValueTypeDescriptor(nil), params...),
@@ -74,6 +100,13 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 // Invoke calls the prepared export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
 func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
+	if fn != nil && fn.in != nil && fn.scalarFast && len(args) == fn.paramSlots {
+		return fn.invokeScalar(args)
+	}
+	return fn.invokeGeneral(args)
+}
+
+func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 	if fn == nil || fn.in == nil {
 		return nil, fmt.Errorf("wago: invoke closed prepared function")
 	}
@@ -139,6 +172,63 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	if fn.hasReferenceResults {
 		if err := in.translatePublicReferenceResults(fn.export, out, fn.resultTypes, fn.resultExact); err != nil {
 			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if err := in.beginInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+	}
+	defer in.endInvocation()
+	put := func(slot int) {
+		bits := args[slot]
+		if fn.scalarWideMask&(1<<slot) == 0 {
+			bits = uint64(uint32(bits))
+		}
+		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
+	}
+	switch len(args) {
+	case 4:
+		put(3)
+		fallthrough
+	case 3:
+		put(2)
+		fallthrough
+	case 2:
+		put(1)
+		fallthrough
+	case 1:
+		put(0)
+	}
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	}
+	if in.syncMode {
+		if err := in.callNativeSync(fn.entry); err != nil {
+			return nil, err
+		}
+	} else {
+		prepared := directPreparedCallEnabled && preparedCallEnabled && in.ownsMem
+		if err := in.callNativeAsync(fn.entry, prepared); err != nil {
+			return nil, err
+		}
+		if len(in.hostLog) != 0 {
+			if err := in.replayHostLog(); err != nil {
+				return nil, err
+			}
+		}
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 1 {
+		if fn.scalarResultWide {
+			out[0] = binary.LittleEndian.Uint64(in.results)
+		} else {
+			out[0] = uint64(binary.LittleEndian.Uint32(in.results))
 		}
 	}
 	return out, nil
