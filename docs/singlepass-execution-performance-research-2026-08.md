@@ -968,3 +968,91 @@ allocator worse: guard-mode spills rose from 3,927 to 4,013, reloads from 22,443
 to 22,453, and native code grew by 1,927 bytes. The experiment was removed.
 More deferred structure is useful only when the cover and scheduler can exploit
 it; extending live ranges by itself is counterproductive.
+
+## Private prepared entry and regional local residency (2026-08-06)
+
+Two later changes spend a little more bounded compile work where the measurements
+show a repeatable execution return.
+
+### Private prepared entry
+
+Prepared scalar calls already avoid generic slice marshaling, but every call still
+repeated the instance lifecycle CAS and rebound a native context whose address is
+stable for the lifetime of a private instance. The retained fast entry skips those
+two operations only when the instance has no imported or shared memory, memory
+directory, shared native-control state, or synchronization mode. It continues to
+take the global native-execution lock, refreshes native control, and uses the normal
+prepared engine entry, so host-visible global synchronization and trap behavior do
+not change. `WAGO_PREPARED_PRIVATE_ENTRY=0` is the process-level A/B oracle.
+
+An earlier prototype also bypassed global native-execution synchronization. It was
+faster but unsound for host-visible globals and was removed. A second prototype
+retained an extra instance resource root and finalizer in each handle; that lifetime
+and memory complexity was unnecessary. The final handle instead documents the
+existing rule that `Invoke` must not race `Instance.Close`, adds no retained root or
+finalizer, and preserves deterministic instance teardown.
+
+On the Ryzen 7 7800X3D, `BenchmarkPreparedInvokeAddOne` improves from 29.37 to
+18.55 ns/op (**-36.84%**) with 0 B/op and 0 allocs/op.
+
+### Reusable interval regions
+
+The regional local cache uses the existing bytecode hint scan to record the final
+`local.get` for integer locals, then reuses up to nine physical registers across
+non-overlapping local lifetimes. A dirty local is written back when its register is
+evicted; a later lifetime may reactivate the register, and a final get can transfer
+it directly to the operand stack. This is intentionally not a CFG or whole-function
+linear-scan allocator:
+
+- admission is limited to call-free, control-free register-ABI functions from 128
+  bytes through 16 KiB with 16 through 256 locals;
+- the only variable state is O(number of locals): four-byte last-use hints plus a
+  reusable one-byte marker per local;
+- four fixed-role scratch GPRs remain reserved, and cached locals remain
+  pressure-spillable;
+- pending memory-reference borrows prevent eviction until materialized;
+- existing floating-point pins remain active, while whole-function integer pins are
+  disabled only for admitted regions; and
+- `WAGO_AMD64_INTERVAL_REGIONS=0` is the process-level A/B oracle.
+
+With six alternating samples per row, enabling the cache in the final binary makes
+scalar BLAKE3 **10.30%** faster and SIMD BLAKE3 **7.72%** faster. The fixed 25-row
+execution geometric mean improves by **0.79%**; all other rows are statistically
+flat and every row remains at 0 B/op and 0 allocs/op. The scalar BLAKE3 hot function
+shrinks from 9,376 to 8,728 native bytes (**-6.91%**). Its full-compile path costs
+about 9.24% more, while SIMD BLAKE3 full compile costs 0.64% more. Across the four
+representative compile rows used during tuning, weighted full-compile time increases
+by 2.41%.
+
+Nine cache registers beat eight by 2.22% geometric mean across the focused tuning
+set. Ten registers changed that mean by only 0.14% and weighted time by 0.06%, so
+the extra pressure was rejected. Lowering admission from 16 locals to eight admitted
+additional Lua, Ruby, and script functions but no additional fixed-gate execution
+rows; without measured execution value, the broader compile and code-size exposure
+was rejected too. Broad admission also interfered with established bounds, folding,
+store-forwarding, and SWAR peepholes in tiny functions, which is why the final size
+and local-count thresholds are conservative.
+
+### Cumulative branch result
+
+The exact PR merge base (`daec329`) and final head (`e4b4eb17`) were compiled into
+separate benchmark binaries and run in alternating order, pinned to one Ryzen core
+with `GOMAXPROCS=1`. Six samples per row on the fixed 25-row general gate produce:
+
+| Metric | Merge base | Final head | Delta |
+|---|---:|---:|---:|
+| execution geometric mean | 31.30 us | 27.81 us | **-11.15%** |
+| summed mean execution time | 4.946 ms | 4.701 ms | **-4.95%** |
+| full-compile geometric mean | 271.4 us | 278.2 us | **+2.51%** |
+| summed mean full-compile time | 10.141 ms | 10.487 ms | **+3.41%** |
+| full-compile allocation bytes | 4,860,123 | 4,945,131 | **+1.75%** |
+| full-compile allocation count | 11,321.7 | 11,409.5 | **+0.78%** |
+| execution allocation bytes/count | 0 / 0 | 0 / 0 | unchanged |
+
+The largest execution wins are focused prepared calls and pack/parse operations
+(about 54%), scalar BLAKE3 (18.84%), SIMD BLAKE3 (12.60%), SIMD UTF conversion
+(9.50%), and SHA-256 (6.84%). SIMD UTF validation regresses 0.28%; the remaining
+rows are flat or improve. The exploratory 20% broad target was not reached, but
+the retained branch is a measured balance: an 11.15% equal-workload execution win
+for a 2.51% full-compile geomean cost, bounded per-function state, smaller hot BLAKE3
+code, and no runtime allocation increase.
