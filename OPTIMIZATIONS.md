@@ -471,6 +471,28 @@ see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough ord
   identities (`x==x`/`x<=x`/`x>=x→1`, `x!=x`/`x<x`/`x>x→0`) alongside the existing
   `x-x`/`x&x` ones. All at `pushBinOp`/`pushUnOp`, fire only on compile-time-known inputs
   (`const-fold` / `same-operand` counters), so no node/SETcc is emitted (`fold.go`).
+- **Packed-word mask tests** — Lamport-style `(word & laneMask) == 0` predicates
+  lower directly to `TEST` (amd64) or `TST` (arm64), avoiding the temporary masked
+  value (`swar-mask-test`). The earlier recursive known-bits estimator was removed:
+  its four utf-as mask-elision hits blocked a second, more valuable `swar-widen4`
+  selection and added a general constant-RHS compile tax. The direct fusion has no
+  solver, cache, persistent IR, or tree walk; `WAGO_NO_SWAR_MASK_TEST=1` is its A/B
+  oracle.
+- **Curated broadword idioms** — Minotaur's offline-discovery/online-selection split is
+  adopted without putting an SMT solver or e-graph in the JIT. Exact, bounded bytecode
+  matchers recognize (1) utf-as's four-byte-to-four-u16 SWAR widening tree and lower it
+  to `UXTL` on arm64 or `VPUNPCKLBW` on amd64, (2) its inverse four-u16-low-byte pack
+  tree and lower it to `XTN` or `VPSHUFB`, and (3) xjb-as's function-tail unsigned
+  64x64 multiply-high expansion and lower it to `UMULH` or the native `RDX:RAX` `MUL`.
+  The widening matcher proves its overwritten temporary dead before rewriting; the
+  multiply matcher requires the final function `end`. `WAGO_NO_SWAR_IDIOMS=1` disables
+  both for correctness and performance A/B checks.
+- **Bounded SIMD superops** — the same offline-discovery/online-selection split now
+  covers exact adjacent Wasm SIMD operations without retaining a SIMD IR. The first
+  selectors fold `v128.not; v128.and` to one `VPANDN`/`BIC`, and fold
+  `v128.and; v128.any_true` to `VPTEST; SETNE` on AMD64 or a directly owned NEON
+  AND/reduction on ARM64. Lookahead is two bytecode operations, allocation-free, and
+  restored on every near miss. `WAGO_NO_SIMD_SUPEROPT=1` is the differential A/B oracle.
 - **Scaled-index LEA fusion** — `add(x, shl(y, k≤3))` → `lea [x + y*2ᵏ]` (the
   AssemblyScript array-address shape).
 - **`br_table` jump tables** (old P7) — n≥5 dispatches through a RIP-relative offset
@@ -581,6 +603,244 @@ per unit — **serialize now beats WARP (97)**; deser is 1.07× WARP (164). wago
 beats wazero (147/305) on both json directions. The serialize chase is closed;
 see R4.
 
+### Curated-idiom A/B (2026-07-17, Apple M4 Max, darwin/arm64)
+
+Five repeated 500 ms samples, explicit bounds. Medians are shown; compilation memory is
+unchanged because the matchers use the existing reader and deferred nodes.
+
+| workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| utf-as backend compile | 100.0 us | 102.1 us | +2.1% | 178,256 B / 161 allocs (same) |
+| utf-as full compile | 240.8 us | 241.8 us | +0.4% | 228,522 B / 240 allocs (same) |
+| utf-as `convertN(200)` | 116.6 us | 107.0 us | **−8.2%** | 0 B / 0 allocs per call |
+| xjb fixture backend compile | 10.07 us | 9.46 us | **−6.1%** | 28,968 B / 53 allocs (same) |
+| xjb fixture full compile | 22.14 us | 21.28 us | **−3.9%** | 36,035 B / 111 allocs (same) |
+| native `mulhi64` execution | 5.17 ns | 4.54 ns | **−12.2%** | 0 B / 0 allocs per call |
+
+Generated function code shrinks by 16 B for utf-as's matched decoder function
+(3448→3432 B) and by 72 B for the xjb multiply-high export (168→96 B). The isolated
+ARM64 widen microbenchmark is smaller but slower (4.25→4.57 ns); the real utf-as result
+is the acceptance signal because the widened value feeds its surrounding decoder loop.
+
+### Native AMD64 A/B (2026-07-18, Ryzen 7 7800X3D, linux/amd64)
+
+Seven repeated 1 s samples on the remote native AMD64 host. These are raw medians from
+sequential off/on runs; no-hit json-as controls moved +1–3%, so compile changes in that
+range should be treated as noise rather than attributed to the selectors.
+
+| workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| utf-as backend compile | 111.46 us | 114.16 us | +2.4% | 179,200 B / 156 allocs (same) |
+| utf-as full compile | 300.34 us | 304.30 us | +1.3% | 229,474 B / 235 allocs (same) |
+| utf-as `convertN(200)` | 185.92 us | 181.43 us | **−2.4%** | 0 B / 0 allocs per call |
+| xjb fixture backend compile | 11.114 us | 11.051 us | −0.6% | 28,144 B / 49 allocs (same) |
+| xjb fixture full compile | 26.138 us | 25.569 us | **−2.2%** | 35,201 B / 107 allocs (same) |
+| xjb exported `mulhi64` | 14.58 ns | 14.01 ns | **−3.9%** | 0 B / 0 allocs per call |
+
+AMD64 generated code shrinks by 32 B in utf-as's matched decoder function
+(4694→4662 B). The xjb multiply-high export shrinks by 112 B (201→89 B), eliminates
+its 72 B frame and spill, and passes native execution, liveness, and near-miss tests.
+
+### utf-as pack / broadword fixture A/B (2026-07-18)
+
+Five repeated 1 s samples per mode. The focused fixture preserves utf-as's exact
+four-halfword low-byte pack plus json-as's unchecked four-digit fold. At this point only
+the pack was selected: rewriting the digit fold lane-wise would change its cross-lane
+carry behavior for arbitrary inputs. The follow-up below instead selects the complete
+expression and preserves that behavior exactly.
+
+| host / workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| M4 Max backend compile | 10.523 us | 10.049 us | **−4.5%** | 29,568 B / 72 allocs (same) |
+| M4 Max full compile | 22.000 us | 21.937 us | −0.3% | 36,851 B / 135 allocs (same) |
+| M4 Max exported `pack` | 21.77 ns | 20.88 ns | **−4.1%** | 0 B / 0 allocs |
+| M4 Max mixed `runN(1000)` | 1.300 us | 1.019 us | **−21.6%** | 0 B / 0 allocs |
+| Ryzen backend compile | 12.576 us | 11.923 us | **−5.2%** | 28,440 B / 60 allocs (same) |
+| Ryzen full compile | 28.035 us | 27.444 us | **−2.1%** | 35,721 B / 127 allocs (same) |
+| Ryzen exported `pack` | 13.56 ns | 13.69 ns | +1.0% (host-call noise) | 0 B / 0 allocs |
+| Ryzen mixed `runN(1000)` | 1.926 us | 1.630 us | **−15.4%** | 0 B / 0 allocs |
+
+On ARM64, the pack export shrinks 116→72 B and the mixed loop 260→220 B; on AMD64
+they shrink 119→78 B and 256→219 B. The matcher
+also runs when AssemblyScript removes the final `i32.wrap_i64`, preserving the exact
+zero-extended i64 result. Native AMD64 measurements are recorded from the Ryzen host
+alongside the other AMD64 broadword numbers above.
+
+### Native SIMD superop A/B (2026-07-18)
+
+The checked-in utf-as SIMD entrypoint now exercises both length and validation paths.
+Five compile samples and seven validation-execution samples were taken on the Ryzen
+7 7800X3D host; medians are shown. The M4 Max uses the same matcher and passes the
+same differential tests, but its AND + ANY_TRUE NEON instruction sequence is already
+minimal, so its validation runtime remains flat (361.1 vs 361.7 us).
+
+| workload | superops off | superops on | change | memory |
+|---|---:|---:|---:|---:|
+| AMD64 utf-as SIMD backend compile | 397.24 us | 396.96 us | −0.1% (flat) | 262,267 B / 523 allocs (same) |
+| AMD64 utf-as SIMD full compile | 957.88 us | 956.91 us | −0.1% (flat) | 433,980 B / 953 allocs (same) |
+| AMD64 utf-as SIMD `validateN(200)` | 187.34 us | 183.61 us | **−2.0%** | 0 B / 0 allocs |
+
+Five real utf-as SIMD sites select. AMD64 generated code shrinks by 138 B across the
+three hit functions (8056→8014 B, 4444→4380 B, 2628→2596 B). Focused exact-pattern
+tests shrink AND + ANY_TRUE by 21 B (124→103 B) and NOT + AND by 10 B (152→142 B),
+with arbitrary-bit inputs, non-adjacent near misses, and kill-switch equivalence covered.
+
+### Research-guided reduction follow-up (2026-08-04)
+
+The follow-up keeps Railshot's bounded, exact selector model. Souper and Minotaur's
+useful lesson here is to match a small functional DAG and prove the replacement over
+the full input domain, rather than attach optimistic range assumptions. The broadword
+papers supply the multiplication-based lane-collapse shape; Valent Blocks supplies the
+existing deferred expression tree on which the matcher operates.
+
+ARM64 now recognizes json-as's complete unchecked four-lane decimal fold. Two `MADD`
+instructions expose the multiply-plus-add reductions while retaining the original
+cross-lane carries for every i64 input. Adversarial arbitrary-bit tests, including a
+case that disproved an earlier independent-lane candidate, protect that requirement;
+a one-constant near miss does not select. The focused function shrinks **140→124 B**,
+and the mixed `runN(1000)` fixture shrinks **252→240 B**. Seven native 2 s samples on
+an Apple M4 Max improve the latter from **1.030→1.004 us median** (**−2.5%**), with
+0 B/op and 0 allocs/op.
+
+AMD64's general `v128.any_true` lowering now uses `VPTEST x,x; SETNE` directly instead
+of constructing a zero vector, comparing bytes, extracting a movemask, and comparing
+that mask. Six standalone sites in utf-as SIMD select in addition to the five existing
+AND + ANY_TRUE superops, removing **96 native-code bytes** across the two affected
+functions (6952→6936 B and 2450→2370 B). A 64-reduction throughput watchpoint, measured
+as seven 2 s samples under linux/amd64 Rosetta (`VirtualApple`, GOMAXPROCS=1), improves
+from **57.21→39.59 ns/op median** (**−30.8%**), with 0 B/op and 0 allocs/op. This is a
+focused instruction-throughput result, not a whole-library claim: five matched 1 s
+`utf-as-simd.validateN(200)` samples are flat at **320.484→319.610 us** (**−0.3%**).
+The complete official SIMD proposal suite remains green at 470 modules and 24,325
+assertions with zero failures, skips, or gaps on linux/amd64.
+
+### Known-bits and SWAR probe compile-cost removal (2026-08-05)
+
+The recursive known-bits mask simplifier was removed after an exact PR-head A/B.
+It fired only four times in the representative corpus, all in utf-as, and those
+rewrites prevented a second `swar-widen4` selector from seeing its exact source
+shape. Direct packed-mask `TEST`/`TST` fusion remains; it does not recursively
+walk deferred trees.
+
+The SWAR pack/parse probes now inspect the two existing operands and allocate an
+arena node only after a match. Previously every candidate OR (and ARM64 shift)
+passed a temporary 112-byte `elem` through a non-inlined rewriting matcher, making
+the temporary escape even on a near miss. Focused tests require a non-matching pack
+probe to remain allocation-free on both backends.
+
+Backend compile measurements used exact `main`, PR-head, and optimized binaries
+with `GOMAXPROCS=1`. The Apple M4 Max rows are five interleaved 300 ms samples;
+the Ryzen 7 7800X3D rows are six interleaved 1 s samples pinned to CPU 7. Medians
+put the low-memory tree 0.5-2.6% behind `main`, while remaining faster than PR
+head in every measured row:
+
+| host | workload | main | PR head | low-memory final |
+|---|---|---:|---:|---:|
+| M4 Max / ARM64 | json-as | 702.73 us | 714.85 us | 706.36 us |
+| M4 Max / ARM64 | blake-as | 171.44 us | 176.94 us | 175.91 us |
+| M4 Max / ARM64 | utf-as | 103.59 us | 107.81 us | 104.64 us |
+| Ryzen / AMD64 | json-as | 914.42 us | 928.28 us | 926.25 us |
+| Ryzen / AMD64 | blake-as | 183.08 us | 189.54 us | 186.28 us |
+| Ryzen / AMD64 | utf-as | 127.63 us | 131.65 us | 129.25 us |
+
+Compile memory is now exactly back to `main` on both hosts. Against PR head,
+json-as drops 3,696 B and 33 allocations per compile, while utf-as drops 1,680 B
+and 15 allocations. On ARM64, the focused `swar-pack-parse` fixture also returns
+47,392 B / 77 allocs to main's 46,720 B / 71 allocs, and utf-as SIMD returns
+334,840 B / 357 allocs to 333,720 B / 347 allocs. Blake-as and xjb-mulhi were
+already equal to main and remain so. Against `main`, ARM64
+`convertN(200)` moves from 123.14 us to 105.24 us and total utf-as native code
+shrinks 4432 to 4352 bytes. AMD64 `convertN(200)` moves from 195.58 us to
+167.49 us, remains 0 B/op and 0 allocs/op, and total utf-as native code shrinks
+5052 to 4956 bytes. Relative to PR head alone, the estimator removal shrinks the
+ARM64 function by another 16 bytes and grows the AMD64 function by 8 bytes. The
+small AMD64 code-size cost is retained in exchange for the simpler compile path,
+main-level compile allocation, and the second ARM64 selector hit.
+
+### SWAR versus SIMD corpus comparison (2026-07-18)
+
+Five repeated 500 ms samples per row, explicit bounds, from the same
+`b9875a2` tree. Values are medians. `Compile` starts from an already decoded and
+validated module; `CompileFull` is the public decode + validate + compile path.
+Instantiation starts from an already compiled module. Native code size is the sum of
+the function bodies reported by `bench/cmd/explain`.
+
+The pairs are the checked-in AssemblyScript SWAR and SIMD corpus programs with matching
+manifest exports and iteration counts. They are representative end-to-end library
+choices, not a one-instruction A/B: the Wasm programs differ in size and structure.
+The focused superop A/B above isolates Railshot's selector impact.
+
+#### Artifact and native code size
+
+| library | mode | Wasm | ARM64 native code | AMD64 native code |
+|---|---|---:|---:|---:|
+| json | SWAR | 22.9 KiB | 61.8 KiB | 70.8 KiB |
+| json | SIMD | 25.0 KiB | 71.5 KiB | 83.1 KiB |
+| blake | SWAR | 4.6 KiB | 10.8 KiB | 14.9 KiB |
+| blake | SIMD | 22.9 KiB | 65.0 KiB | 67.3 KiB |
+| utf | SWAR | 19.7 KiB | 3.8 KiB | 5.1 KiB |
+| utf | SIMD | 29.1 KiB | 30.5 KiB | 23.7 KiB |
+
+#### Pipeline latency
+
+| host | library | mode | decode | validate | backend compile | full compile | instantiate |
+|---|---|---|---:|---:|---:|---:|---:|
+| M4 Max / ARM64 | json | SWAR | 62.36 us | 284.26 us | 691.87 us | 1569.95 us | 1.51 us |
+| M4 Max / ARM64 | json | SIMD | 69.34 us | 325.71 us | 775.38 us | 1738.82 us | 1.54 us |
+| M4 Max / ARM64 | blake | SWAR | 16.94 us | 88.44 us | 177.44 us | 421.35 us | 0.81 us |
+| M4 Max / ARM64 | blake | SIMD | 73.60 us | 371.65 us | 661.52 us | 1651.17 us | 0.82 us |
+| M4 Max / ARM64 | utf | SWAR | 14.45 us | 50.85 us | 101.40 us | 246.23 us | 1.71 us |
+| M4 Max / ARM64 | utf | SIMD | 35.92 us | 175.10 us | 322.03 us | 733.42 us | 1.99 us |
+| Ryzen / AMD64 | json | SWAR | 67.63 us | 317.46 us | 886.15 us | 1992.46 us | 2.00 us |
+| Ryzen / AMD64 | json | SIMD | 76.15 us | 365.59 us | 1038.03 us | 2150.81 us | 2.05 us |
+| Ryzen / AMD64 | blake | SWAR | 17.57 us | 102.76 us | 187.00 us | 499.32 us | 1.13 us |
+| Ryzen / AMD64 | blake | SIMD | 78.88 us | 426.76 us | 848.64 us | 2069.97 us | 1.14 us |
+| Ryzen / AMD64 | utf | SWAR | 18.50 us | 63.16 us | 118.01 us | 303.47 us | 2.25 us |
+| Ryzen / AMD64 | utf | SIMD | 42.01 us | 196.13 us | 395.49 us | 961.04 us | 2.61 us |
+
+#### Compile and instantiate memory
+
+`B/op` measures total allocation volume for the operation, not retained heap. Execution
+memory is reported separately below.
+
+| host | library | mode | backend compile | full compile | instantiate |
+|---|---|---|---:|---:|---:|
+| M4 Max / ARM64 | json | SWAR | 322.1 KiB / 1287 allocs | 482.7 KiB / 1640 allocs | 2.8 KiB / 14 allocs |
+| M4 Max / ARM64 | json | SIMD | 342.0 KiB / 1478 allocs | 545.8 KiB / 1952 allocs | 2.8 KiB / 14 allocs |
+| M4 Max / ARM64 | blake | SWAR | 197.4 KiB / 166 allocs | 214.7 KiB / 283 allocs | 1.9 KiB / 9 allocs |
+| M4 Max / ARM64 | blake | SIMD | 487.0 KiB / 280 allocs | 640.6 KiB / 768 allocs | 1.9 KiB / 9 allocs |
+| M4 Max / ARM64 | utf | SWAR | 175.2 KiB / 176 allocs | 224.3 KiB / 255 allocs | 1.3 KiB / 9 allocs |
+| M4 Max / ARM64 | utf | SIMD | 244.4 KiB / 344 allocs | 413.9 KiB / 775 allocs | 1.7 KiB / 14 allocs |
+| Ryzen / AMD64 | json | SWAR | 330.1 KiB / 1434 allocs | 399.5 KiB / 1781 allocs | 2.8 KiB / 14 allocs |
+| Ryzen / AMD64 | json | SIMD | 349.9 KiB / 1691 allocs | 451.5 KiB / 2158 allocs | 2.8 KiB / 14 allocs |
+| Ryzen / AMD64 | blake | SWAR | 193.6 KiB / 179 allocs | 210.9 KiB / 301 allocs | 1.9 KiB / 9 allocs |
+| Ryzen / AMD64 | blake | SIMD | 514.9 KiB / 467 allocs | 668.6 KiB / 959 allocs | 1.9 KiB / 9 allocs |
+| Ryzen / AMD64 | utf | SWAR | 175.8 KiB / 172 allocs | 224.9 KiB / 256 allocs | 1.2 KiB / 9 allocs |
+| Ryzen / AMD64 | utf | SIMD | 256.1 KiB / 523 allocs | 423.8 KiB / 953 allocs | 1.7 KiB / 14 allocs |
+
+#### Execution latency and memory
+
+| host | workload | SWAR | SIMD | SIMD change | memory |
+|---|---|---:|---:|---:|---:|
+| M4 Max / ARM64 | `json serializeN(200)` | 19.18 us | 24.65 us | +28.5% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `json deserializeN(200)` | 38.48 us | 49.78 us | +29.4% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `blake hashN(100)` | 451.49 us | 634.88 us | +40.6% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `utf convertN(200)` | 107.36 us | 143.87 us | +34.0% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `utf validateN(200)` (SIMD-only) | - | 361.55 us | n/a | 0 B / 0 allocs |
+| Ryzen / AMD64 | `json serializeN(200)` | 25.17 us | 29.96 us | +19.0% | 0 B / 0 allocs |
+| Ryzen / AMD64 | `json deserializeN(200)` | 45.25 us | 57.37 us | +26.8% | 0 B / 0 allocs |
+| Ryzen / AMD64 | `blake hashN(100)` | 884.18 us | 892.33 us | +0.9% | 0 B / 0 allocs |
+| Ryzen / AMD64 | `utf convertN(200)` | 173.22 us | 63.82 us | **-63.2%** | 0 B / 0 allocs |
+| Ryzen / AMD64 | `utf validateN(200)` (SIMD-only) | - | 188.85 us | n/a | 0 B / 0 allocs |
+
+For these artifacts, SWAR is the better default on ARM64 and for JSON on both hosts:
+it is faster in seven of the eight matched host/workload rows, while also producing
+smaller modules and cheaper validation/compilation. SIMD is decisively worthwhile for
+UTF conversion on AMD64, where it is 63.2% faster. BLAKE SIMD is effectively tied on
+AMD64 execution but pays roughly 4x full-compile latency and 3.2x allocation volume;
+its current entrypoint does not earn that footprint cost. All measured execution paths
+remain allocation-free.
+
 ---
 
 ## Remaining roadmap (priority-ordered)
@@ -664,7 +924,7 @@ flat/GC-bound; no further wago-side lever identified.
 Codegen, cheap-and-safe first: **alias-aware pending loads** (any store currently
 flushes ALL deferred loads — keep same-base provably-disjoint ones, plan P2.1) ·
 **pure-tree `drop` discard** (P2.2) · ~~**const-fold pack** — compares/eqz/clz/ctz/
-popcnt/extensions (P2.3)~~ ✅ DONE (narrow-load mask elision still open) · ~~**same-operand
+popcnt/extensions (P2.3)~~ ✅ DONE (including bounded narrow-load/shift mask elision) · ~~**same-operand
 int compare identities** (P2.4)~~ ✅ DONE. Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
 unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** +
 **hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
@@ -677,7 +937,7 @@ caches** behind a table epoch (P8.6) · **`.wago` cache keys + CLI**
 (compile/run/inspect, P8.7) · **call-surviving valent trees** and a **tiny bytecode
 inliner** (both decision-gated on R0 counters, P5.4–.5) · **fused validate+compile**
 (premise re-measured post-#96, P7). Rejected (with reasons — plan §1.3): `stAddrExpr`,
-known-bits lattice, general pending sets with owned regs, tiny unroll, SIMD copy/fill
+persistent/general known-bits state, general pending sets with owned regs, tiny unroll, SIMD copy/fill
 now, `memory.size` micro-opt.
 
 ### Greenfield (not in WARP either)
