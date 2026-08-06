@@ -139,6 +139,13 @@ var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
 // accumulator instead of materializing their internal binary nodes.
 var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 
+// intervalRegionPinsEnabled reuses GP registers across integer local lifetimes
+// in bounded, call-free straight-line functions. Unlike whole-function hot-local
+// pins, the regional cache is pressure-spillable and returns a register at the
+// local's final get. WAGO_AMD64_INTERVAL_REGIONS=0 keeps the old whole-function
+// pin allocator as an A/B and correctness oracle.
+var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
+
 // bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
 // the low-level backend default and selected by the public runtime only after
 // host CPUID confirms BMI2.
@@ -214,6 +221,14 @@ type fn struct {
 	// so two uint16 masks fit in the bool cluster's existing alignment padding.
 	callDeadGP uint16
 	callDeadFP uint16
+
+	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
+	// an eligible local; locals[x].reg is populated only while its cached value is
+	// live. Physical registers are selected and reclaimed dynamically.
+	intervalReg   []Reg
+	intervalLast  []uint32
+	intervalScore []uint32
+	intervalOwner [16]int
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -378,22 +393,23 @@ type fn struct {
 }
 
 type transient struct {
-	lsPool        [][]locState
-	endsPool      [][]int
-	tmpRoots      []*elem
-	tmpTypes      []machineType
-	tmpTypes2     []machineType
-	tmpGCRoots    []bool
-	tmpGCRoots2   []bool
-	tmpFlushTypes []machineType
-	tmpRegs       []Reg
-	tmpSlots      []int
-	tmpMoves      []regMove
-	tmpLabels     []uint32
-	tmpDeferred   []deferredArg
-	tmpBelow      []*elem
-	tmpGpCand     []gpCand
-	tmpInts       []int
+	lsPool         [][]locState
+	endsPool       [][]int
+	tmpRoots       []*elem
+	tmpTypes       []machineType
+	tmpTypes2      []machineType
+	tmpGCRoots     []bool
+	tmpGCRoots2    []bool
+	tmpFlushTypes  []machineType
+	tmpRegs        []Reg
+	tmpSlots       []int
+	tmpMoves       []regMove
+	tmpLabels      []uint32
+	tmpDeferred    []deferredArg
+	tmpBelow       []*elem
+	tmpGpCand      []gpCand
+	tmpInts        []int
+	tmpIntervalReg []Reg
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -1079,6 +1095,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
 	localScores := make([]uint32, totalLocals)
+	localLastGets := make([]uint32, totalLocals)
 	globalScores := make([]uint32, n*nGlobals)
 	globalEligibility := make([]bool, n*nGlobals)
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -1095,6 +1112,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		nLocals := localCounts[i]
 		globalAt := i * nGlobals
 		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		var err error
 		h, err = scanFuncBodyIntoMemory64(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64)
@@ -1557,6 +1575,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	if !pinLocals {
 		fpPinLimit = 0
+	}
+	intervalRegion := regABI && !hasCall && !hints.hasControlFlow && !hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	if intervalRegion {
+		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, pinLocals && v128LocalPinsEnabled && !hasCall)
 	if regABI && !hasCall && f.nParams > 4 {
@@ -2136,6 +2158,20 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.emitStackFenceCheck(RBX, RSI)
 	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
 	gp, fp = 0, 0
+	if len(f.intervalReg) != 0 {
+		// Home all incoming integer parameters so the regional cache can claim and
+		// release any parameter lazily without preserving argument-register cycles.
+		for i := 0; i < np; i++ {
+			mt := f.localType[i]
+			if mt.isFloat() {
+				fp++
+				continue
+			}
+			a.Store64(RSP, f.localOff(i), intArgRegs[gp])
+			gp++
+		}
+		gp, fp = 0, 0
+	}
 	for i := 0; i < np; i++ {
 		mt := f.localType[i]
 		if mt.isFloat() {
@@ -2146,6 +2182,8 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 				a.FStoreDisp(RSP, f.localOff(i), src, mt == mtF64)
 			}
 			fp++
+		} else if len(f.intervalReg) != 0 {
+			// Already homed; the regional cache loads it on first use.
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			a.MovReg64(pr, intArgRegs[gp])
 		} else {
