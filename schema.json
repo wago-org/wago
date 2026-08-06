@@ -172,8 +172,10 @@
           "type": "object",
           "propertyNames": {
             "enum": [
+              "affine-lea",
               "bounds-facts",
               "branch-fold",
+              "call-next-use",
               "deep-fp-pins",
               "entry-arg-pins",
               "ext-fp-pins",
