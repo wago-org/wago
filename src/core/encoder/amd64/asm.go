@@ -461,21 +461,21 @@ func (a *Asm) CallReg(r Reg) {
 	a.emit(0xFF, 0xD0|byte(r&7))
 }
 
-func (a *Asm) LeaScaled(dst, base, index Reg, scaleLog uint8, disp int8) {
+func (a *Asm) LeaScaled(dst, base, index Reg, scaleLog uint8, disp int32) {
 	a.LeaScaledW(dst, base, index, scaleLog, disp, true)
 }
 
 // LeaScaledW is LeaScaled with an explicit destination width. w=false yields a
 // 32-bit result (the address is computed in 64-bit and truncated+zero-extended),
 // which matches i32 wraparound arithmetic.
-func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int8, w bool) {
+func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int32, w bool) {
 	if w || dst >= 8 || index >= 8 || base >= 8 {
 		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
 	}
-	mod := addrMode(base, int32(disp))
+	mod := addrMode(base, disp)
 	a.emit(0x8D, mod|((byte(dst)&7)<<3)|0x04)
 	a.emit((scaleLog << 6) | ((byte(index) & 7) << 3) | byte(base&7))
-	a.emitDisp(mod, int32(disp))
+	a.emitDisp(mod, disp)
 }
 
 // LeaDispW is `lea dst, [base + disp]` with an explicit destination width.
