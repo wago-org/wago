@@ -196,6 +196,10 @@ type fn struct {
 	usesCalls bool
 	usesWide  bool
 	moduleEH  bool
+	// Bounded post-call next-use state. Pinned registers are numbered 0..15,
+	// so two uint16 masks fit in the bool cluster's existing alignment padding.
+	callDeadGP uint16
+	callDeadFP uint16
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -261,13 +265,6 @@ type fn struct {
 	storeFwd storeForward
 	// Keep the extra protected register out of large/high-pressure functions.
 	storeForwardOK bool
-
-	// Bounded post-call next-use scan. A dirty pinned local whose next access is
-	// an overwrite does not need a pre-call store; the callee cannot observe the
-	// caller's locals. GP and XMM masks are separate because register numbers
-	// overlap between the two banks. See call_liveness.go.
-	callDeadGP regMask
-	callDeadFP regMask
 
 	// globalCellReg caches the cell pointer (&global[globalCellIdx]) of the most
 	// recently accessed global in a register across a straight-line run, so repeated

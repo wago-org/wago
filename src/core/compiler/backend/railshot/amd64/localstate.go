@@ -185,9 +185,9 @@ func (f *fn) spillLocalsForCall() {
 			continue // a clobbered register does not change the wasm local's zero value
 		}
 		if f.locals[x].state == lsReg { // dirty: write it back
-			dead := f.callDeadGP.has(reg)
+			dead := f.callDeadGP&(uint16(1)<<uint(reg)) != 0
 			if isFloat {
-				dead = f.callDeadFP.has(reg)
+				dead = f.callDeadFP&(uint16(1)<<uint(reg)) != 0
 			}
 			if dead {
 				f.stats.peep("call-dead-local-store")

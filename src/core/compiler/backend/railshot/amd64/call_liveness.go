@@ -43,8 +43,8 @@ func (f *fn) planCallDeadLocals(r *wasm.Reader) {
 		}
 		switch op {
 		case 0x0f: // return: operand-producing local.gets were already scanned.
-			f.callDeadGP |= candGP
-			f.callDeadFP |= candFP
+			f.callDeadGP |= uint16(candGP)
+			f.callDeadFP |= uint16(candFP)
 			return
 		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e:
 			return // trap or structured-control boundary: keep canonical stores
@@ -67,7 +67,7 @@ func (f *fn) planCallDeadLocals(r *wasm.Reader) {
 				continue
 			}
 			if op != 0x20 {
-				*dead = dead.add(reg) // overwritten before any read
+				*dead |= uint16(1) << uint(reg) // overwritten before any read
 			}
 			*cand = cand.remove(reg)
 			if candGP == 0 && candFP == 0 {
