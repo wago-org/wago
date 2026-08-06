@@ -122,10 +122,27 @@ func (in *Instance) preparedPrivateEligible() bool {
 	return !shared
 }
 
+// preparedIsolatedEligible identifies instances whose native execution has no
+// process-visible state that direct host access or another instance can observe.
+// PreparedFunction already forbids concurrent calls on one Instance; each such
+// instance owns its Engine, stack, trap cell, argument/result buffers, and memory.
+func (in *Instance) preparedIsolatedEligible() bool {
+	return in != nil && in.preparedPrivateEligible() && in.c != nil &&
+		len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
+		in.c.NumImports == 0 && !in.c.NeedsFuncRefDescs
+}
+
 func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
 	nativeExecutionMu.Lock()
 	nativeExecutionEpoch++
 	defer nativeExecutionMu.Unlock()
+	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
+		return err
+	}
+	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
+}
+
+func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte) error {
 	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 		return err
 	}

@@ -468,8 +468,9 @@ type gcStructAllocStubSite struct {
 }
 
 type scratch struct {
-	stack *stack     // the valent-block operand stack
-	asm   *amd64.Asm // the x86-64 encoder byte buffer
+	stack          *stack     // the valent-block operand stack
+	asm            *amd64.Asm // the x86-64 encoder byte buffer
+	directPrepared bool
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
@@ -506,6 +507,7 @@ func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
+	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
@@ -535,12 +537,21 @@ type workerState struct {
 // identify its owned bytes after the worker pool joins; relocs is independently
 // owned by the fn compiler state (it is not backed by scratch).
 type funcResult struct {
-	worker      int
-	start       int
-	end         int
-	internalOff int
-	relocs      []callReloc
-	err         error
+	worker         int
+	start          int
+	end            int
+	internalOff    int
+	directPrepared bool
+	relocs         []callReloc
+	err            error
+}
+
+func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
+	if bits == nil {
+		bits = make([]uint64, (n+63)/64)
+	}
+	bits[bit>>6] |= uint64(1) << uint(bit&63)
+	return bits
 }
 
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
@@ -861,6 +872,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		code := make([]byte, 0, codeCap)
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, cap(code))
+		var directPrepared []uint64
 		for i := range m.Code {
 			hints := allHints[i]
 			var st *CodegenStats
@@ -880,6 +892,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			entry[i] = len(code)
 			internalEntry[i] = len(code) + internalOff
+			if sc.directPrepared {
+				directPrepared = markDirectPrepared(directPrepared, n, i)
+			}
 			relocs[i] = rl
 			code = append(code, fnCode...)
 			if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
@@ -901,7 +916,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)
@@ -953,7 +968,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, relocs: rl}
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -970,6 +985,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	// Join in original function order so layout, alignment, entry metadata, and
 	// relocation patching are byte-for-byte identical to the serial compiler.
 	code := make([]byte, 0, codeCap)
+	var directPrepared []uint64
 	for i := range results {
 		r := &results[i]
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
@@ -977,6 +993,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		entry[i] = len(code)
 		internalEntry[i] = len(code) + r.internalOff
+		if r.directPrepared {
+			directPrepared = markDirectPrepared(directPrepared, n, i)
+		}
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
@@ -1005,7 +1024,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -1499,6 +1518,18 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	regABI := regABIEnabled && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
 	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
+	// Tiny prepared integer leaves can use a slimmer host trampoline when their
+	// generated code is constrained to caller-saved GPRs. Reserve every Go
+	// callee-saved allocatable register up front; RBX remains the explicit linMem
+	// input. The body/local bounds keep any spill tradeoff away from larger code.
+	volatilePrepared := regABI && preparedDirectIntSig(ft) && !hasCall && !touchesMemory && len(modGlobals) == 0 && !moduleEH &&
+		len(c.BodyBytes) <= 96 && nLocals <= 8
+	if volatilePrepared {
+		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {
+			gpPool = withoutReg(gpPool, r)
+			f.reserved = f.reserved.add(r)
+		}
+	}
 	if moduleEH {
 		// Staged EH carries the active handler in RBP. Keep it a module-wide
 		// invariant across local and exact cross-instance calls rather than sharing
@@ -1622,6 +1653,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 
 	if regABI {
+		// A host trampoline may enter this internal ABI directly when no adapter
+		// state beyond RBX is required. Keep this deliberately leaf-only: a local
+		// callee could itself expect the module memory-size cache to be live.
+		sc.directPrepared = volatilePrepared
 		internalOff, err := f.emitRegABI(c)
 		if err != nil {
 			return nil, nil, 0, err

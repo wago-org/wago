@@ -15,6 +15,7 @@ type PreparedFunction struct {
 	in                  *Instance
 	export              string
 	entry               uintptr
+	directEntry         uintptr
 	paramSlots          int
 	resultSlots         int
 	paramTypes          []ValType
@@ -28,6 +29,30 @@ type PreparedFunction struct {
 	scalarResultWide    bool
 	resultWide          []bool
 	privateFast         bool
+	isolatedFast        bool
+	directIntFast       bool
+}
+
+func (c *Compiled) directPreparedAt(local int) bool {
+	return c != nil && local >= 0 && local>>6 < len(c.directPrepared) &&
+		c.directPrepared[local>>6]&(uint64(1)<<uint(local&63)) != 0
+}
+
+func preparedDirectIntSignature(sig FuncSig) bool {
+	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+		return false
+	}
+	for _, typ := range sig.Params {
+		if typ != ValI32 && typ != ValI64 {
+			return false
+		}
+	}
+	for _, typ := range sig.Results {
+		if typ != ValI32 && typ != ValI64 {
+			return false
+		}
+	}
+	return true
 }
 
 // PrepareFunction resolves a locally-defined function export once. The returned
@@ -98,6 +123,11 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	}
 	if scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
 		fn.privateFast = true
+		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
+		if fn.isolatedFast && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
+			fn.directIntFast = true
+			fn.directEntry = in.base + uintptr(in.c.InternalEntry[ic.li])
+		}
 	}
 	return fn, nil
 }
@@ -105,10 +135,37 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 // Invoke calls the prepared export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
 func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
-	if fn != nil && fn.in != nil && fn.scalarFast && len(args) == fn.paramSlots {
-		return fn.invokeScalar(args)
+	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
+		if fn.directIntFast {
+			return fn.invokeDirectInt(args)
+		}
+		if fn.scalarFast {
+			return fn.invokeScalar(args)
+		}
 	}
 	return fn.invokeGeneral(args)
+}
+
+func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	}
+	result, err := in.callPreparedDirectInt(fn.directEntry, args, fn.scalarWideMask, in.trap)
+	if err != nil {
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 1 {
+		if fn.scalarResultWide {
+			out[0] = result
+		} else {
+			out[0] = uint64(uint32(result))
+		}
+	}
+	return out, nil
 }
 
 func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
@@ -223,7 +280,9 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 		}
 	} else {
 		var err error
-		if fn.privateFast {
+		if fn.isolatedFast {
+			err = in.callPreparedIsolated(fn.entry, in.trap)
+		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {
 			prepared := directPreparedCallEnabled && preparedCallEnabled && in.ownsMem
