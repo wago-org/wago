@@ -407,6 +407,42 @@ func leaOperandSafe(e *elem) bool {
 	return false
 }
 
+// leaAffineValue recognizes a value plus or minus a constant and returns the
+// concrete value with its byte displacement multiplied by scale. This is a
+// deliberately tiny tree cover: one deferred ALU node, one concrete value, one
+// constant. It cannot encounter a fixed-register operation or reorder a trap.
+func leaAffineValue(e *elem, scale int64) (*elem, int64, bool) {
+	if e == nil {
+		return nil, 0, false
+	}
+	if e.kind == ekValue {
+		if e.st.kind == stMemRef {
+			return nil, 0, false
+		}
+		return e, 0, true
+	}
+	if e.kind != ekDeferred || (e.op != opAdd && e.op != opSub) {
+		return nil, 0, false
+	}
+	value, constant := e.arg0, e.arg1
+	sign := int64(1)
+	if e.op == opAdd && value.kind == ekValue && value.st.kind == stConst {
+		value, constant = constant, value
+	} else if e.op == opSub {
+		sign = -1
+	}
+	if value == nil || value.kind != ekValue || value.st.kind == stMemRef ||
+		constant == nil || constant.kind != ekValue || constant.st.kind != stConst {
+		return nil, 0, false
+	}
+	c := constant.st.cval * sign
+	const minDisp, maxDisp = int64(-1 << 31), int64(1<<31 - 1)
+	if c < minDisp/scale || c > maxDisp/scale {
+		return nil, 0, false
+	}
+	return value, c * scale, true
+}
+
 // tryLeaScaledAdd lowers add(x, shl(y,k)) (either operand order) as a single
 // scaled-index LEA. Returns the result register, or regNone when the shape
 // doesn't match.
@@ -424,24 +460,49 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	if shl == left {
 		other = right
 	}
-	// Materialize nested ALU address expressions too, but reject any subtree that
-	// can reserve fixed registers underneath the other live input. Materialize the
-	// base and the unshifted index in original Wasm operand order so deferred loads
-	// retain precise trap ordering.
-	if !leaOperandSafe(other) || !leaOperandSafe(shl.arg0) {
+	if shl.arg0 == nil {
 		return regNone
 	}
-	firstElem, secondElem := other, shl.arg0
-	if shl == left {
-		firstElem, secondElem = shl.arg0, other
+
+	var x, y Reg
+	var xOwned, yOwned bool
+	var disp int32
+	deferredCover := false
+	// Keep the affine extension to the measured index needle. Main's broader LEA
+	// cover remains the fallback for every other safe nested expression.
+	if affineLeaEnabled && other.kind == ekValue && shl.arg0.kind != ekValue {
+		base, baseDisp, baseOK := leaAffineValue(other, 1)
+		indexScale := int64(1 << k)
+		index, indexDisp, indexOK := leaAffineValue(shl.arg0, indexScale)
+		if d := baseDisp + indexDisp; baseOK && indexOK && fitsImm32(d) {
+			y, yOwned = f.materializeRead(index)
+			f.pinned = f.pinned.add(y)
+			x, xOwned = f.materializeRead(base)
+			f.pinned = f.pinned.remove(y)
+			disp = int32(d)
+			deferredCover = true
+		}
 	}
-	first, firstOwned := f.materializeRead(firstElem)
-	f.pinned = f.pinned.add(first)
-	second, secondOwned := f.materializeRead(secondElem)
-	f.pinned = f.pinned.remove(first)
-	x, xOwned, y, yOwned := first, firstOwned, second, secondOwned
-	if shl == left {
-		x, xOwned, y, yOwned = second, secondOwned, first, firstOwned
+	if !deferredCover {
+		// Materialize nested ALU address expressions too, but reject any subtree that
+		// can reserve fixed registers underneath the other live input. Materialize the
+		// base and the unshifted index in original Wasm operand order so deferred loads
+		// retain precise trap ordering.
+		if !leaOperandSafe(other) || !leaOperandSafe(shl.arg0) {
+			return regNone
+		}
+		firstElem, secondElem := other, shl.arg0
+		if shl == left {
+			firstElem, secondElem = shl.arg0, other
+		}
+		first, firstOwned := f.materializeRead(firstElem)
+		f.pinned = f.pinned.add(first)
+		second, secondOwned := f.materializeRead(secondElem)
+		f.pinned = f.pinned.remove(first)
+		x, xOwned, y, yOwned = first, firstOwned, second, secondOwned
+		if shl == left {
+			x, xOwned, y, yOwned = second, secondOwned, first, firstOwned
+		}
 	}
 	if dest == regNone {
 		switch {
@@ -454,7 +515,10 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 		}
 	}
 	f.stats.peep("lea-scaled-index")
-	f.a.LeaScaledW(dest, x, y, uint8(k), 0, w)
+	if deferredCover {
+		f.stats.peep("affine-lea-cover")
+	}
+	f.a.LeaScaledW(dest, x, y, uint8(k), disp, w)
 	if yOwned && y != dest {
 		f.release(y)
 	}
