@@ -537,11 +537,17 @@ func (i *installer) cleanExisting(mode string) error {
 }
 
 func (i *installer) installManager(source, target string) error {
+	return i.installManagerUsing(source, target, os.Rename, isCrossDeviceError)
+}
+
+type pathRenamer func(string, string) error
+
+func (i *installer) installManagerUsing(source, target string, rename pathRenamer, crossDevice func(error) bool) error {
 	i.begin("Installing Wago")
 	if err := os.MkdirAll(i.binDir, 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(source, target); err != nil {
+	if err := movePathUsing(source, target, rename, crossDevice); err != nil {
 		return fmt.Errorf("install Wago command: %w", err)
 	}
 	if err := os.Chmod(target, 0o755); err != nil {
@@ -552,18 +558,32 @@ func (i *installer) installManager(source, target string) error {
 }
 
 func (i *installer) saveSource(source string) error {
+	return i.saveSourceUsing(source, os.Rename, isCrossDeviceError)
+}
+
+func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevice func(error) bool) error {
 	i.begin("Saving Wago source")
 	if err := os.MkdirAll(filepath.Dir(i.srcDir), 0o755); err != nil {
 		return err
 	}
-	backup := filepath.Join(i.tmpDir, "source-backup")
+	var backupRoot, backup string
 	if _, err := os.Stat(i.srcDir); err == nil {
-		if err := os.Rename(i.srcDir, backup); err != nil {
+		backupRoot, err = os.MkdirTemp(filepath.Dir(i.srcDir), ".wago-source-backup-")
+		if err != nil {
 			return err
 		}
+		defer os.RemoveAll(backupRoot)
+		backup = filepath.Join(backupRoot, "source")
+		if err := rename(i.srcDir, backup); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-	if err := os.Rename(source, i.srcDir); err != nil {
-		_ = os.Rename(backup, i.srcDir)
+	if err := movePathUsing(source, i.srcDir, rename, crossDevice); err != nil {
+		if backup != "" {
+			_ = rename(backup, i.srcDir)
+		}
 		return fmt.Errorf("save Wago source: %w", err)
 	}
 	i.done("Saved Wago source")
