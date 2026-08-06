@@ -3,42 +3,35 @@ package artifactcache
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
+	"sync"
 
 	"github.com/wago-org/wago"
 )
 
-// Cache is a best-effort store for regenerable .wago artifacts. Executable is
-// hashed into every key so plugin-built runtimes and compiler upgrades cannot
-// share native code accidentally. Identity is an injectable equivalent used by
-// tests and embedders that do not have a stable executable path.
+// Cache is a best-effort store for regenerable .wago artifacts. The runtime
+// build is represented in every key so plugin-built runtimes and compiler
+// upgrades cannot share native code accidentally. Identity overrides the
+// embedded Go build identity for tests and custom embedders.
 type Cache struct {
-	Dir        string
-	Executable string
-	Identity   []byte
+	Dir      string
+	Identity []byte
 }
 
-type signature struct {
-	Source             [sha256.Size]byte  `json:"source"`
-	Runtime            [sha256.Size]byte  `json:"runtime"`
-	GOOS               string             `json:"goos"`
-	GOARCH             string             `json:"goarch"`
-	Features           uint64             `json:"features"`
-	BoundsChecks       string             `json:"boundsChecks"`
-	DeferredBounds     bool               `json:"deferredBoundsChecks"`
-	MaximumMemoryPages uint32             `json:"maximumMemoryPages"`
-	OptimizationKnobs  []optimizationKnob `json:"optimizationKnobs"`
-}
+const cacheKeyFormat = 1
 
-type optimizationKnob struct {
-	Name string `json:"name"`
-	On   bool   `json:"on"`
-}
+var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return [sha256.Size]byte{}, false
+	}
+	return buildIdentity(info)
+})
 
 // LoadOrCompile loads a matching artifact or compiles source and saves the
 // result. Cache read/write failures never prevent execution; compilation and
@@ -76,46 +69,123 @@ func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool
 	if cache.Dir == "" || config == nil {
 		return "", false
 	}
-	identity, err := cache.runtimeIdentity()
-	if err != nil {
+	identity, ok := cache.runtimeIdentity()
+	if !ok {
 		return "", false
 	}
+	var storage [256]byte
+	encoded := storage[:0]
+	encoded = append(encoded, "wago-artifact-cache"...)
+	encoded = binary.LittleEndian.AppendUint32(encoded, cacheKeyFormat)
+	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(len(runtime.GOOS)))
+	encoded = append(encoded, runtime.GOOS...)
+	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(len(runtime.GOARCH)))
+	encoded = append(encoded, runtime.GOARCH...)
+	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(config.CoreFeatures()))
+	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(config.BoundsChecks()))
+	encoded = append(encoded, 0)
+	if config.DeferBoundsChecks() {
+		encoded[len(encoded)-1] = 1
+	}
+	encoded = binary.LittleEndian.AppendUint32(encoded, config.MemoryLimitPages())
+	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(config.FunctionWorkers()))
+
 	knobs := config.OptimizationInfos()
-	sig := signature{
-		Source:             sha256.Sum256(source),
-		Runtime:            identity,
-		GOOS:               runtime.GOOS,
-		GOARCH:             runtime.GOARCH,
-		Features:           uint64(config.CoreFeatures()),
-		BoundsChecks:       config.BoundsChecks().String(),
-		DeferredBounds:     config.DeferBoundsChecks(),
-		MaximumMemoryPages: config.MemoryLimitPages(),
-		OptimizationKnobs:  make([]optimizationKnob, len(knobs)),
+	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(len(knobs)))
+	for base := 0; base < len(knobs); base += 8 {
+		var selected byte
+		for bit := 0; bit < 8 && base+bit < len(knobs); bit++ {
+			if knobs[base+bit].On {
+				selected |= 1 << bit
+			}
+		}
+		encoded = append(encoded, selected)
 	}
-	for index, knob := range knobs {
-		sig.OptimizationKnobs[index] = optimizationKnob{Name: knob.Name, On: knob.On}
-	}
-	encoded, err := json.Marshal(sig)
-	if err != nil {
-		return "", false
-	}
-	key := sha256.Sum256(encoded)
+
+	h := sha256.New()
+	h.Write(identity[:])
+	h.Write(encoded)
+	h.Write(source)
+	var key [sha256.Size]byte
+	h.Sum(key[:0])
 	hexKey := hex.EncodeToString(key[:])
 	return filepath.Join(cache.Dir, hexKey[:2], hexKey[2:]+".wago"), true
 }
 
-func (cache Cache) runtimeIdentity() ([sha256.Size]byte, error) {
+func (cache Cache) runtimeIdentity() ([sha256.Size]byte, bool) {
 	if len(cache.Identity) != 0 {
-		return sha256.Sum256(cache.Identity), nil
+		return sha256.Sum256(cache.Identity), true
 	}
-	if cache.Executable == "" {
-		return [sha256.Size]byte{}, errors.New("artifact cache: runtime identity unavailable")
+	return defaultIdentity()
+}
+
+func buildIdentity(info *debug.BuildInfo) ([sha256.Size]byte, bool) {
+	if info == nil {
+		return [sha256.Size]byte{}, false
 	}
-	binary, err := os.ReadFile(cache.Executable)
-	if err != nil {
-		return [sha256.Size]byte{}, err
+	cleanRevision := false
+	cleanTree := false
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			cleanRevision = setting.Value != ""
+		case "vcs.modified":
+			if setting.Value != "false" {
+				return [sha256.Size]byte{}, false
+			}
+			cleanTree = true
+		}
 	}
-	return sha256.Sum256(binary), nil
+	versionedModule := info.Main.Version != "" && info.Main.Version != "(devel)" && info.Main.Sum != ""
+	if !(cleanRevision && cleanTree) && !versionedModule {
+		return [sha256.Size]byte{}, false
+	}
+	h := sha256.New()
+	h.Write([]byte("wago-build-identity"))
+	writeString(h, info.GoVersion)
+	writeString(h, info.Path)
+	writeModule(h, info.Main)
+	writeUint32(h, uint32(len(info.Deps)))
+	for _, dependency := range info.Deps {
+		writeModule(h, *dependency)
+	}
+	writeUint32(h, uint32(len(info.Settings)))
+	for _, setting := range info.Settings {
+		writeString(h, setting.Key)
+		writeString(h, setting.Value)
+	}
+	var identity [sha256.Size]byte
+	copy(identity[:], h.Sum(nil))
+	return identity, true
+}
+
+func writeModule(h interface{ Write([]byte) (int, error) }, module debug.Module) {
+	writeString(h, module.Path)
+	writeString(h, module.Version)
+	writeString(h, module.Sum)
+	if module.Replace == nil {
+		h.Write([]byte{0})
+		return
+	}
+	h.Write([]byte{1})
+	writeModule(h, *module.Replace)
+}
+
+func writeString(h interface{ Write([]byte) (int, error) }, value string) {
+	writeUint64(h, uint64(len(value)))
+	h.Write([]byte(value))
+}
+
+func writeUint32(h interface{ Write([]byte) (int, error) }, value uint32) {
+	var encoded [4]byte
+	binary.LittleEndian.PutUint32(encoded[:], value)
+	h.Write(encoded[:])
+}
+
+func writeUint64(h interface{ Write([]byte) (int, error) }, value uint64) {
+	var encoded [8]byte
+	binary.LittleEndian.PutUint64(encoded[:], value)
+	h.Write(encoded[:])
 }
 
 func writeAtomic(path string, artifact []byte) error {

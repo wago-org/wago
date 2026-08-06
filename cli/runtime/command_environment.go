@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"os"
 	"path/filepath"
 
 	"github.com/wago-org/wago"
@@ -24,10 +23,8 @@ func (commandEnvironment) LoadRuntime(config *wago.RuntimeConfig, plugins string
 }
 
 func (commandEnvironment) ArtifactCache() artifactcache.Cache {
-	executable, _ := os.Executable()
 	return artifactcache.Cache{
-		Dir:        filepath.Join(wagopaths.DirsFor(versionString()).Cache, "modules"),
-		Executable: executable,
+		Dir: filepath.Join(wagopaths.DirsFor(versionString()).Cache, "modules"),
 	}
 }
 
