@@ -139,6 +139,11 @@ var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
 // accumulator instead of materializing their internal binary nodes.
 var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 
+// bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
+// the low-level backend default and selected by the public runtime only after
+// host CPUID confirms BMI2.
+var bmi2RorxEnabled bool
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
@@ -484,6 +489,7 @@ func newScratch() *scratch {
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
+	sc.asm.UsesBMI2 = false
 	sc.retSites = sc.retSites[:0]
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
@@ -504,8 +510,9 @@ func (sc *scratch) reset() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch *scratch
-	arena   []byte
+	scratch  *scratch
+	arena    []byte
+	usesBMI2 bool
 }
 
 // funcResult is one independently compiled local function. worker/start/end
@@ -809,6 +816,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	}
 	requiresAVX2 := false
 	requiresAVX512 := false
+	requiresBMI2 := false
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
@@ -849,6 +857,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 			}
+			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
 			// 16-byte align each function (append zeros without a temp allocation).
 			if pad := (16 - len(code)%16) % 16; pad != 0 {
 				code = append(code, alignPad[:pad]...)
@@ -876,7 +885,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)
@@ -925,6 +934,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					results[i].err = err
 					continue
 				}
+				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
 				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, relocs: rl}
@@ -969,13 +979,17 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	requiresAVX2 := false
 	requiresAVX512 := false
+	requiresBMI2 := false
+	for i := range states {
+		requiresBMI2 = requiresBMI2 || states[i].usesBMI2
+	}
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			requiresAVX2 = requiresAVX2 || lowering.Features&plugincodegen.FeatureAVX2 != 0
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {

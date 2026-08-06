@@ -14,3 +14,11 @@ func architectureSupportsSIMD() bool {
 	}
 	return simdCPUFlagsSupported(data)
 }
+
+func architectureSupportsBMI2() bool {
+	data, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return false
+	}
+	return bmi2CPUFlagsSupported(data)
+}

@@ -3,3 +3,4 @@
 package wago
 
 func architectureSupportsSIMD() bool { return true }
+func architectureSupportsBMI2() bool { return false }

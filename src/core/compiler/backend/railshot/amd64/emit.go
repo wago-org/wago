@@ -630,6 +630,35 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	right := node.arg1
 
 	if right.kind == ekValue && right.st.kind == stConst {
+		if bmi2RorxEnabled && (node.op == opRotr || node.op == opRotl) {
+			mask := int64(31)
+			if w {
+				mask = 63
+			}
+			count := right.st.cval & mask
+			if node.op == opRotl {
+				count = (-count) & mask
+			}
+			if dest != regNone {
+				f.pinned = f.pinned.add(dest)
+			}
+			src, owned := f.materializeRead(left)
+			if dest == regNone {
+				f.pinned = f.pinned.add(src)
+				dest = f.allocReg(maskOf(src))
+				f.pinned = f.pinned.remove(src)
+			}
+			f.a.Rorx(dest, src, byte(count), w)
+			if owned && src != dest {
+				f.release(src)
+			}
+			f.pinned = f.pinned.remove(dest)
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			node.op = opNone
+			f.stats.peep("bmi2-rorx")
+			return dest
+		}
 		if dest == regNone {
 			dest = f.allocReg(0)
 		}

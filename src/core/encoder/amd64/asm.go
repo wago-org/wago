@@ -27,7 +27,10 @@ const (
 	R15 Reg = 15
 )
 
-type Asm struct{ B []byte }
+type Asm struct {
+	B        []byte
+	UsesBMI2 bool
+}
 
 // Grow ensures B has capacity for at least n bytes, reusing the existing backing
 // array when it is already large enough. Used to pre-size a reused encoder buffer

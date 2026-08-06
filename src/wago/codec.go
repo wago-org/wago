@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	// Codec-v30 internal execution bits share the persisted u64 requirement word
-	// but are stripped before exposing CoreFeatures. Public feature bits occupy
-	// the low range; reserving the top three bits avoids growing every artifact.
+	// Codec-v30 internal CPU/execution bits share the persisted u64 requirement
+	// word but are stripped before exposing CoreFeatures. Public feature bits
+	// occupy the low range; reserving the top four bits avoids growing artifacts.
+	compiledCPUFeatureBMI2                uint64 = 1 << 60
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
@@ -131,6 +132,9 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	}
 	if c.usesDynamicFuncRefTest() {
 		required |= compiledGCExecutionDynamicFuncRefTest
+	}
+	if c.requiresBMI2 {
+		required |= compiledCPUFeatureBMI2
 	}
 	w.u64(required)
 	w.gcTypeDescs(c.GCTypeDescs)
@@ -665,7 +669,8 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
-	c.requiredFeatures = CoreFeatures(required &^ compiledGCExecutionMask)
+	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
+	c.requiredFeatures = CoreFeatures(required &^ (compiledGCExecutionMask | compiledCPUFeatureBMI2))
 	c.GCTypeDescs, err = r.gcTypeDescs()
 	if err != nil {
 		return err

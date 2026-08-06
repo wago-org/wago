@@ -1089,9 +1089,13 @@ type Compiled struct {
 
 	codeCache          *compiledCodeCache
 	customInstructions map[uint32]railshot.CustomInstruction
+	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
 }
+
+// RequiresBMI2 reports whether compilation selected BMI2 instructions.
+func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }
 
 // RequiresAVX2 reports whether compilation selected an AVX2 plugin lowering.
 func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
