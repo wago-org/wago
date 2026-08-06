@@ -33,111 +33,69 @@ func TestAVX512Encoding(t *testing.T) {
 	}
 }
 
-func TestEVEXIndexedMemoryDisplacements(t *testing.T) {
+func TestEVEXCompressedDisplacements(t *testing.T) {
 	tests := []struct {
-		name   string
-		encode func(*Asm)
-		want   []byte
+		name             string
+		dst, base, index Reg
+		disp             int32
+		want             []byte
 	}{
-		{
-			name:   "load disp32 below compressed range",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, -8256) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0xc0, 0xdf, 0xff, 0xff},
-		},
-		{
-			name:   "load compressed negative limit",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, -8192) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0x80},
-		},
-		{
-			name:   "load compressed negative one",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, -64) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0xff},
-		},
-		{
-			name:   "load no displacement",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 0) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x0c, 0x13},
-		},
-		{
-			name:   "load compressed positive one",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 64) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0x01},
-		},
-		{
-			name:   "load compressed positive limit",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 8128) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0x7f},
-		},
-		{
-			name:   "load disp32 above compressed range",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 8192) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x00, 0x20, 0x00, 0x00},
-		},
-		{
-			name:   "load unaligned one uses disp32",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 1) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x01, 0x00, 0x00, 0x00},
-		},
-		{
-			name:   "load unaligned sixty-three uses disp32",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 63) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x3f, 0x00, 0x00, 0x00},
-		},
-		{
-			name:   "load unaligned sixty-five uses disp32",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 65) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x41, 0x00, 0x00, 0x00},
-		},
-		{
-			name:   "load unaligned one-twenty-seven uses disp32",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBX, R10, 127) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x7f, 0x00, 0x00, 0x00},
-		},
-		{
-			name:   "load rbp zero uses compressed zero",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RBP, R10, 0) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x15, 0x00},
-		},
-		{
-			name:   "load r13 zero uses compressed zero",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, R13, R10, 0) },
-			want:   []byte{0x62, 0x91, 0xfe, 0x48, 0x6f, 0x4c, 0x15, 0x00},
-		},
-		{
-			name:   "load rsp zero retains sib",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, RSP, R10, 0) },
-			want:   []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x0c, 0x14},
-		},
-		{
-			name:   "load r12 zero retains sib and base extension",
-			encode: func(a *Asm) { a.ZMovdqu64LoadIdx(RCX, R12, R10, 0) },
-			want:   []byte{0x62, 0x91, 0xfe, 0x48, 0x6f, 0x0c, 0x14},
-		},
-		{
-			name:   "store compressed displacement with extended source",
-			encode: func(a *Asm) { a.ZMovdqu64StoreIdx(RBX, R10, R9, 64) },
-			want:   []byte{0x62, 0xa1, 0xfe, 0x48, 0x7f, 0x4c, 0x13, 0x01},
-		},
-		{
-			name:   "store unaligned displacement uses disp32",
-			encode: func(a *Asm) { a.ZMovdqu64StoreIdx(RBX, R10, R9, 65) },
-			want:   []byte{0x62, 0xa1, 0xfe, 0x48, 0x7f, 0x8c, 0x13, 0x41, 0x00, 0x00, 0x00},
-		},
-		{
-			name:   "store rbp zero uses compressed zero",
-			encode: func(a *Asm) { a.ZMovdqu64StoreIdx(RBP, R10, R9, 0) },
-			want:   []byte{0x62, 0xa1, 0xfe, 0x48, 0x7f, 0x4c, 0x15, 0x00},
-		},
+		{"below negative boundary", RCX, RBX, R10, -8256, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0xc0, 0xdf, 0xff, 0xff}},
+		{"negative boundary", RCX, RBX, R10, -8192, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0x80}},
+		{"negative one tuple", RCX, RBX, R10, -64, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0xff}},
+		{"zero", RCX, RBX, R10, 0, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x0c, 0x13}},
+		{"one tuple", RCX, RBX, R10, 64, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0x01}},
+		{"positive boundary", RCX, RBX, R10, 8128, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x13, 0x7f}},
+		{"above positive boundary", RCX, RBX, R10, 8192, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x00, 0x20, 0x00, 0x00}},
+		{"unaligned one", RCX, RBX, R10, 1, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x01, 0x00, 0x00, 0x00}},
+		{"unaligned 63", RCX, RBX, R10, 63, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x3f, 0x00, 0x00, 0x00}},
+		{"unaligned 65", RCX, RBX, R10, 65, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x41, 0x00, 0x00, 0x00}},
+		{"unaligned 127", RCX, RBX, R10, 127, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x8c, 0x13, 0x7f, 0x00, 0x00, 0x00}},
+		{"RSP base", RCX, RSP, R10, 0, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x0c, 0x14}},
+		{"R12 base", RCX, R12, R10, 0, []byte{0x62, 0x91, 0xfe, 0x48, 0x6f, 0x0c, 0x14}},
+		{"RBP base", RCX, RBP, R10, 0, []byte{0x62, 0xb1, 0xfe, 0x48, 0x6f, 0x4c, 0x15, 0x00}},
+		{"R13 base", RCX, R13, R10, 0, []byte{0x62, 0x91, 0xfe, 0x48, 0x6f, 0x4c, 0x15, 0x00}},
+		{"extended destination base and index", R9, R13, R10, 64, []byte{0x62, 0x81, 0xfe, 0x48, 0x6f, 0x4c, 0x15, 0x01}},
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			var a Asm
-			tc.encode(&a)
-			if !bytes.Equal(a.B, tc.want) {
-				t.Fatalf("encoding\n got % x\nwant % x", a.B, tc.want)
+			a.ZMovdqu64LoadIdx(tt.dst, tt.base, tt.index, tt.disp)
+			if !bytes.Equal(a.B, tt.want) {
+				t.Fatalf("load encoding\n got % x\nwant % x", a.B, tt.want)
+			}
+			wantStore := append([]byte(nil), tt.want...)
+			wantStore[4] = 0x7f
+			a.B = a.B[:0]
+			a.ZMovdqu64StoreIdx(tt.base, tt.index, tt.dst, tt.disp)
+			if !bytes.Equal(a.B, wantStore) {
+				t.Fatalf("store encoding\n got % x\nwant % x", a.B, wantStore)
 			}
 		})
+	}
+}
+
+func TestEVEXCompressedDisplacementNoAlloc(t *testing.T) {
+	a := Asm{B: make([]byte, 0, 16)}
+	if got := testing.AllocsPerRun(1000, func() {
+		a.B = a.B[:0]
+		a.ZMovdqu64LoadIdx(RCX, RBX, R10, 64)
+	}); got != 0 {
+		t.Fatalf("allocations per instruction = %v, want 0", got)
+	}
+}
+
+func TestEVEXRepresentativeFixtureSize(t *testing.T) {
+	var a Asm
+	for _, disp := range []int32{0, 64, 65} {
+		a.ZMovdqu64LoadIdx(RCX, RBX, R10, disp)
+		a.ZMovdqu64StoreIdx(RBX, R10, RCX, disp)
+	}
+	// Two operands select each form: no displacement (7 bytes), compressed
+	// disp8 (8 bytes), and disp32 (11 bytes). The old always-disp32 encoding
+	// used 66 bytes for the same six-instruction fixture.
+	const want = 2*7 + 2*8 + 2*11
+	if got := len(a.B); got != want {
+		t.Fatalf("fixture bytes = %d, want %d (14 fewer than always-disp32)", got, want)
 	}
 }
