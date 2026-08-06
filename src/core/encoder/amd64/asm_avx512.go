@@ -33,8 +33,10 @@ func (a *Asm) evexRR(opcodeMap, pp, op byte, w bool, dst, src Reg) {
 	a.emit(op, 0xc0|byte(dst&7)<<3|byte(src&7))
 }
 
-// evexAddrMode selects an EVEX memory displacement form. EVEX disp8 values
-// are tuple-scaled, unlike ordinary x86 disp8 values.
+// evexAddrMode selects the shortest EVEX displacement form for a memory tuple.
+// Unlike ordinary ModRM disp8, EVEX disp8 is multiplied by tupleScale by the
+// processor. RBP/R13 still require an explicit displacement because SIB base=5
+// with mod=00 denotes no base.
 func evexAddrMode(base Reg, disp, tupleScale int32) (mod byte, encodedDisp int32) {
 	if disp == 0 && base&7 != 5 {
 		return 0x00, 0
@@ -53,12 +55,7 @@ func (a *Asm) evexMemIdx(opcodeMap, pp, op byte, w bool, reg, base, index Reg, d
 	mod, encodedDisp := evexAddrMode(base, disp, tupleScale)
 	a.emit(op, mod|byte(reg&7)<<3|0x04)
 	a.emit(byte(index&7)<<3 | byte(base&7))
-	switch mod {
-	case 0x40:
-		a.emit(byte(encodedDisp))
-	case 0x80:
-		a.imm32(disp)
-	}
+	a.emitDisp(mod, encodedDisp)
 }
 
 // ZMovdqu64 uses an unaligned 64-byte memory operand. W=1 selects the
