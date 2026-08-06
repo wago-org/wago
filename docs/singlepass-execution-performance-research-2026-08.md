@@ -1105,3 +1105,44 @@ the focused call from about 9.1 ns to 9.7 ns, so it was removed. Arity-specific
 trampolines, a Go-stack leaf entry, a carrier-register save scheme, larger
 associative trees, multiplication-tree reassociation, and control-flow regional
 caching were likewise neutral or regressive and were removed rather than retained.
+
+### Final prepared boundary split and completion gate
+
+The last retained refinement separates the successful-call fast path from cold trap
+construction. `Engine.EnterPreparedInt` is small enough for Go to inline through
+the wago boundary; the caller reads the already-bound trap cell directly and calls
+the error decoder only when it is nonzero. Argument normalization, the foreign
+stack transition, logical-close checking, trap clearing/decorating, result-width
+normalization, and object liveness remain unchanged. Moving the architecture-
+specific argument marshaler and result publisher into one direct method also
+removes one Go call frame.
+
+On a back-to-back 12-sample focused run, this changes
+`BenchmarkPreparedInvokeAddOne` from 10.340 to 8.638 ns/op (**-16.46%**) relative
+to the preceding published path, still at 0 B/op and 0 allocs/op.
+
+The first direct metadata representation used an optional `[]uint64`. Although its
+backing store was lazy, the slice header enlarged every `Compiled` from 680 to 704
+bytes. The final representation packs the selection into the unused sign bit of
+the existing non-negative internal-entry offset, restoring `Compiled` to **680
+bytes** with no per-module field or allocation. The bit is masked at every native
+address use and while encoding artifacts; decoded artifacts continue to select the
+documented wrapper fallback. The fixed footprint tests cover the restored size and
+the direct-entry codec test covers selection removal and offset preservation.
+
+Because the AMD64 host became busy during the final pass, the completion gate was
+run per row in a base/new/new/base sandwich on one pinned core rather than as two
+long sequential suites. Six samples for every one of the same 25 rows give:
+
+| Metric | Exact merge base | Final branch | Delta |
+|---|---:|---:|---:|
+| execution geometric mean | 35.15 us | 27.93 us | **-20.54%** |
+| full-compile geometric mean | 246.6 us | 255.4 us | **+3.55%** |
+| full-compile allocation bytes geomean | 165.0 KiB | 169.5 KiB | **+2.72%** |
+| full-compile allocation count geomean | 370.1 | 378.4 | **+2.24%** |
+| execution allocation bytes/count | 0 / 0 | 0 / 0 | unchanged |
+
+This reaches the original 20% general-corpus target without a CFG/SSA pass,
+additional retained module memory, runtime allocation, or an unchecked execution
+mode. The compiler cost remains a bounded low-single-digit trade: roughly 3.6% in
+equal-module latency and 2.7% in allocation bytes for a 20.5% execution gain.
