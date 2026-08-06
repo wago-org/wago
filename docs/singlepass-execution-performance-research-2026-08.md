@@ -1056,3 +1056,52 @@ rows are flat or improve. The exploratory 20% broad target was not reached, but
 the retained branch is a measured balance: an 11.15% equal-workload execution win
 for a 2.51% full-compile geomean cost, bounded per-function state, smaller hot BLAKE3
 code, and no runtime allocation increase.
+
+## Isolated and direct prepared entry (2026-08-06)
+
+The next retained boundary change separates genuinely isolated instances from the
+broader private-entry class. An instance is isolated only when it owns its native
+context and has no imports, globals, tables, GC state, function-reference
+descriptors, or other process-visible native state. Prepared handles already forbid
+concurrent calls on one instance; distinct isolated instances own separate engines,
+foreign stacks, trap cells, memories, and result buffers. They can therefore enter
+without the process-wide native-execution mutex while retaining normal trap and
+close checks. The fallback remains unchanged for every stateful module.
+`WAGO_PREPARED_ISOLATED_ENTRY=0` restores the serialized path.
+
+Tiny call-free integer exports have a second, more selective path. The AMD64
+compiler marks register-ABI leaves with at most four integer arguments and one
+integer result only when they touch no memory or globals, make no calls, use no EH,
+and stay within bounded body/local limits. For these leaves it reserves the five Go
+callee-saved allocatable registers, allowing a small foreign-stack trampoline to
+enter the internal ABI directly with RBX as linear-memory base and
+RAX/RCX/RDX/R8 as arguments. The normal wrapper remains available, and division,
+unreachable, close, and trap semantics are still checked. Metadata is a lazily
+allocated one-bit-per-function vector; modules without a candidate allocate
+nothing. Decoded artifacts safely fall back because this optional selection is not
+yet serialized. `WAGO_PREPARED_DIRECT_INT=0` is the A/B oracle.
+
+Six-sample isolated A/B runs on the fixed 25-row gate measured the isolated entry
+at **-2.51%** geometric mean. Adding direct integer entry measured a further
+**-3.09%**; focused tiny integer calls fell from roughly 41 ns to 9 ns. Against the
+exact PR merge base, the retained combined branch currently measures:
+
+| Metric | Merge base | Retained branch | Delta |
+|---|---:|---:|---:|
+| execution geometric mean | 31.20 us | 25.41 us | **-18.55%** |
+| scalar BLAKE3 | 675.6 us | 547.8 us | **-18.91%** |
+| SIMD BLAKE3 | 531.1 us | 463.0 us | **-12.82%** |
+| SHA-256 | 42.57 us | 39.70 us | **-6.74%** |
+| focused mulhi | 41.22 ns | 9.089 ns | **-77.95%** |
+| focused SWAR pack | 40.72 ns | 9.023 ns | **-77.84%** |
+| focused parse | 40.76 ns | 9.247 ns | **-77.31%** |
+| execution allocation bytes/count | 0 / 0 | 0 / 0 | unchanged |
+
+The optional direct-selection analysis adds about 0.10% compile allocation bytes
+and 0.16% allocation count relative to the preceding PR head; weighted totals are
+only +0.039% and +0.024%. It adds no execution allocation. A trap-free sub-mode was
+also prototyped with two bits per function, but its extra Go-side dispatch raised
+the focused call from about 9.1 ns to 9.7 ns, so it was removed. Arity-specific
+trampolines, a Go-stack leaf entry, a carrier-register save scheme, larger
+associative trees, multiplication-tree reassociation, and control-flow regional
+caching were likewise neutral or regressive and were removed rather than retained.
