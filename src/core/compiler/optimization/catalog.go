@@ -174,6 +174,8 @@ var catalog = []Definition{
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),
 	both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
+	amd64("call-next-use", "Call next-use", "skip dead pinned-local stores before calls"),
+	amd64("affine-lea", "Affine LEA", "fold bounded affine index trees into scaled addressing"),
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
 	amd64("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),

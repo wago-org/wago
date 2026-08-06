@@ -121,6 +121,10 @@ var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 // disables it for A/B.
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
+// callNextUseEnabled skips stores of dirty pinned locals whose next bounded
+// post-call access overwrites the local before reading it.
+var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
+
 // affineLeaEnabled extends scaled-index LEA selection across one-level affine
 // base/index subtrees, folding their constants into the LEA displacement.
 // WAGO_AMD64_NO_AFFINE_LEA=1 disables it for A/B.
@@ -242,7 +246,7 @@ type fn struct {
 	singleRegResult bool
 	resultFloat     bool
 	resultF64       bool
-	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
+	regMerge        bool // reconcile single-result blocks in mergeReg/mergeFReg
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
 	// Each admitted table has a finite proof that every non-null entry targets this
@@ -257,6 +261,13 @@ type fn struct {
 	storeFwd storeForward
 	// Keep the extra protected register out of large/high-pressure functions.
 	storeForwardOK bool
+
+	// Bounded post-call next-use scan. A dirty pinned local whose next access is
+	// an overwrite does not need a pre-call store; the callee cannot observe the
+	// caller's locals. GP and XMM masks are separate because register numbers
+	// overlap between the two banks. See call_liveness.go.
+	callDeadGP regMask
+	callDeadFP regMask
 
 	// globalCellReg caches the cell pointer (&global[globalCellIdx]) of the most
 	// recently accessed global in a register across a straight-line run, so repeated
@@ -1536,7 +1547,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 	}
 	if f.pinnedLocalMask.has(RBP) {
-		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
+		f.regMerge = false // RBP now holds a pinned local/global
 	}
 	// STACK_REG (lazy pinned-local spill) for every call-making function,
 	// including memory-touching ones: dirty-only stores before a call, lazy reload
