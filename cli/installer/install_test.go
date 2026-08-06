@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,101 @@ import (
 	"testing"
 	"time"
 )
+
+func TestInstallerMovesPayloadsAcrossFilesystems(t *testing.T) {
+	downloadRoot := t.TempDir()
+	installRoot := t.TempDir()
+	crossDevice := errors.New("invalid cross-device link")
+	device := func(path string) string {
+		path = filepath.Clean(path)
+		if path == downloadRoot || strings.HasPrefix(path, downloadRoot+string(os.PathSeparator)) {
+			return "download"
+		}
+		return "install"
+	}
+	rename := func(source, target string) error {
+		if device(source) != device(target) {
+			return &os.LinkError{Op: "rename", Old: source, New: target, Err: crossDevice}
+		}
+		return os.Rename(source, target)
+	}
+	isCrossDevice := func(err error) bool { return errors.Is(err, crossDevice) }
+
+	managerSource := filepath.Join(downloadRoot, "wago")
+	managerTarget := filepath.Join(installRoot, "bin", "wago")
+	if err := os.WriteFile(managerSource, []byte("manager"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installer := &installer{out: &bytes.Buffer{}, binDir: filepath.Dir(managerTarget), tmpDir: downloadRoot}
+	if err := installer.installManagerUsing(managerSource, managerTarget, rename, isCrossDevice); err != nil {
+		t.Fatalf("install manager across filesystems: %v", err)
+	}
+	if payload, err := os.ReadFile(managerTarget); err != nil || string(payload) != "manager" {
+		t.Fatalf("installed manager = %q, %v", payload, err)
+	}
+	if info, err := os.Stat(managerTarget); err != nil {
+		t.Fatalf("stat installed manager: %v", err)
+	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
+		t.Fatalf("installed manager mode = %v", info.Mode().Perm())
+	}
+	if _, err := os.Stat(managerSource); !os.IsNotExist(err) {
+		t.Fatalf("staged manager remains: %v", err)
+	}
+
+	source := filepath.Join(downloadRoot, "src")
+	installer.srcDir = filepath.Join(installRoot, "src")
+	if err := os.MkdirAll(filepath.Join(source, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "nested", "new.go"), []byte("new"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(installer.srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installer.srcDir, "old.go"), []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.saveSourceUsing(source, rename, isCrossDevice); err != nil {
+		t.Fatalf("save source across filesystems: %v", err)
+	}
+	if payload, err := os.ReadFile(filepath.Join(installer.srcDir, "nested", "new.go")); err != nil || string(payload) != "new" {
+		t.Fatalf("saved source = %q, %v", payload, err)
+	}
+	if info, err := os.Stat(filepath.Join(installer.srcDir, "nested", "new.go")); err != nil {
+		t.Fatalf("stat saved source: %v", err)
+	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0o640 {
+		t.Fatalf("saved source mode = %v", info.Mode().Perm())
+	}
+	if _, err := os.Stat(filepath.Join(installer.srcDir, "old.go")); !os.IsNotExist(err) {
+		t.Fatalf("old source remains: %v", err)
+	}
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		t.Fatalf("staged source remains: %v", err)
+	}
+	for _, pattern := range []string{filepath.Join(installRoot, ".wago-source-*"), filepath.Join(filepath.Dir(managerTarget), ".wago-install-*")} {
+		if matches, err := filepath.Glob(pattern); err != nil || len(matches) != 0 {
+			t.Fatalf("temporary paths for %q = %v, %v", pattern, matches, err)
+		}
+	}
+}
+
+func TestMovePathDoesNotMaskOrdinaryRenameErrors(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "wago")
+	if err := os.WriteFile(source, []byte("manager"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("permission denied")
+	err := movePathUsing(source, filepath.Join(t.TempDir(), "wago"), func(string, string) error {
+		return want
+	}, func(error) bool { return false })
+	if !errors.Is(err, want) {
+		t.Fatalf("move error = %v, want %v", err, want)
+	}
+	if _, err := os.Stat(source); err != nil {
+		t.Fatalf("source changed after ordinary rename error: %v", err)
+	}
+}
 
 func TestInstallerDryRunPresentation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
