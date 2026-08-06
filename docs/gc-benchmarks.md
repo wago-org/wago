@@ -29,8 +29,9 @@ Report at least:
   participates; and
 - a semantic checksum or expected trap for every timed fixture.
 
-Percentiles are derived from a bounded 64-bucket log2 nanosecond histogram. This
-keeps measurement memory fixed even for long runs. A percentile is the upper
+Percentiles are derived from a bounded histogram with 16 linear sub-buckets per
+power-of-two nanosecond interval. Relative bucket width is at most 6.25%, and
+measurement memory stays fixed even for long runs. A percentile is the upper
 bound of its bucket; raw `ns/op` remains available for comparison tools.
 
 Deterministic counters (objects, slots, bytes, roots, cards, search steps, and
@@ -49,6 +50,9 @@ A/B runs on an otherwise idle machine.
 
 Allocation and cleanup occur outside the benchmark timer. Each operation checks
 the exact live-object count and every surviving object's type before cleanup.
+Reference-bearing fixtures store non-null self edges in every traced slot and
+validate them after collection; they therefore exercise traversal rather than
+only iterating null slots.
 This matrix is the primary discriminator for tracing density, promotion cost,
 zero-survivor cleanup, and future age-based tenuring.
 
@@ -108,6 +112,19 @@ compile without executing benchmarks:
 
 ```sh
 go test ./src/core/runtime/gc -run '^$'
+```
+
+Ordinary `TestGC*WorkloadSmoke` tests execute one correctness cycle through
+every benchmark family, including the largest sparse array and Tiny scan, without
+invoking Go's adaptive benchmark runner.
+
+To validate timing plumbing cheaply, select exact sub-benchmarks and force a
+fixed iteration count. For example:
+
+```sh
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkGCCollectionMatrix/throughput-minor/dense-array-refs/survival=50$' \
+  -benchtime=2x
 ```
 
 For a controlled run, disable frequency scaling/turbo when practical, pin the

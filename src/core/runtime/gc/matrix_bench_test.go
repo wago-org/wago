@@ -7,22 +7,56 @@ import (
 	"time"
 )
 
-// pauseHistogram is a bounded, allocation-free log2 nanosecond histogram. It
-// deliberately trades sub-bucket precision for stable memory use across long
-// benchmark runs. The reported percentile is the upper bound of its bucket.
+const pauseSubBuckets = 16
+
+// pauseHistogram is a bounded, allocation-free nanosecond histogram with 16
+// linear sub-buckets per power-of-two interval. Its relative bucket width is at
+// most 6.25%, while memory remains fixed across arbitrarily long benchmark runs.
+// The reported percentile is the upper bound of its bucket.
 type pauseHistogram struct {
-	buckets [64]uint64
+	buckets [1 + 63*pauseSubBuckets]uint64
 	count   uint64
 	maxNS   uint64
 }
 
 func (h *pauseHistogram) record(d time.Duration) {
 	ns := uint64(d)
-	h.buckets[bits.Len64(ns)]++
+	h.buckets[pauseBucket(ns)]++
 	h.count++
 	if ns > h.maxNS {
 		h.maxNS = ns
 	}
+}
+
+func pauseBucket(ns uint64) int {
+	if ns == 0 {
+		return 0
+	}
+	exponent := bits.Len64(ns) - 1
+	base := uint64(1) << exponent
+	width := base / pauseSubBuckets
+	if width == 0 {
+		width = 1
+	}
+	sub := int((ns - base) / width)
+	if sub >= pauseSubBuckets {
+		sub = pauseSubBuckets - 1
+	}
+	return 1 + exponent*pauseSubBuckets + sub
+}
+
+func pauseBucketUpper(index int) uint64 {
+	if index == 0 {
+		return 0
+	}
+	index--
+	exponent, sub := index/pauseSubBuckets, index%pauseSubBuckets
+	base := uint64(1) << exponent
+	width := base / pauseSubBuckets
+	if width == 0 {
+		width = 1
+	}
+	return base + uint64(sub+1)*width - 1
 }
 
 func (h *pauseHistogram) percentile(numerator, denominator uint64) uint64 {
@@ -34,10 +68,7 @@ func (h *pauseHistogram) percentile(numerator, denominator uint64) uint64 {
 	for i, n := range h.buckets {
 		seen += n
 		if seen >= target {
-			if i == 0 {
-				return 0
-			}
-			upper := (uint64(1) << i) - 1
+			upper := pauseBucketUpper(i)
 			if upper > h.maxNS {
 				return h.maxNS
 			}
@@ -60,11 +91,11 @@ func TestGCPauseHistogram(t *testing.T) {
 	for _, ns := range []time.Duration{0, 1, 2, 3, 4, 8, 16, 32, 64, 128} {
 		h.record(ns * time.Nanosecond)
 	}
-	if got := h.percentile(50, 100); got != 7 {
-		t.Fatalf("p50 = %d ns, want bucket upper bound 7", got)
+	if got := h.percentile(50, 100); got != 4 {
+		t.Fatalf("p50 = %d ns, want bucket upper bound 4", got)
 	}
-	if got := h.percentile(90, 100); got != 127 {
-		t.Fatalf("p90 = %d ns, want bucket upper bound 127", got)
+	if got := h.percentile(90, 100); got != 67 {
+		t.Fatalf("p90 = %d ns, want bucket upper bound 67", got)
 	}
 	if got := h.percentile(99, 100); got != 128 {
 		t.Fatalf("p99 = %d ns, want bucket upper bound 128", got)
@@ -72,6 +103,58 @@ func TestGCPauseHistogram(t *testing.T) {
 	if h.maxNS != 128 || h.count != 10 {
 		t.Fatalf("histogram max/count = %d/%d, want 128/10", h.maxNS, h.count)
 	}
+}
+
+func populateGCMatrixObject(c *Collector, layout gcMatrixLayout, r Ref) error {
+	d := c.types[c.typeIndex[layout.typeID]]
+	if !d.HasRefs {
+		return nil
+	}
+	if d.Kind == KindStruct {
+		for i, field := range d.Fields {
+			if isCollectorRefKind(field.Kind) {
+				if err := c.StructSet(r, uint32(i), RefValue(r)); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	for i := uint32(0); i < c.header(r).Aux; i++ {
+		if err := c.ArraySet(r, i, RefValue(r)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateGCMatrixObject(c *Collector, layout gcMatrixLayout, r Ref) (uint64, error) {
+	d := c.types[c.typeIndex[layout.typeID]]
+	if !d.HasRefs {
+		return uint64(layout.typeID) + 1, nil
+	}
+	var checksum uint64
+	if d.Kind == KindStruct {
+		for i, field := range d.Fields {
+			if !isCollectorRefKind(field.Kind) {
+				continue
+			}
+			v, err := c.StructGet(r, uint32(i))
+			if err != nil || v.Ref != r {
+				return 0, fmt.Errorf("self reference field %d = %v, %v; want %v", i, v.Ref, err, r)
+			}
+			checksum += uint64(v.Ref)
+		}
+		return checksum, nil
+	}
+	for i := uint32(0); i < c.header(r).Aux; i++ {
+		v, err := c.ArrayGet(r, i)
+		if err != nil || v.Ref != r {
+			return 0, fmt.Errorf("self reference element %d = %v, %v; want %v", i, v.Ref, err, r)
+		}
+		checksum += uint64(v.Ref)
+	}
+	return checksum, nil
 }
 
 type gcMatrixLayout struct {
@@ -169,6 +252,9 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 							if err != nil {
 								b.Fatal(err)
 							}
+							if err := populateGCMatrixObject(c, layout, r); err != nil {
+								b.Fatal(err)
+							}
 							if j < survival {
 								rootValues[j] = Root(r)
 							}
@@ -180,8 +266,9 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 						} else {
 							err = c.CollectFull(roots)
 						}
-						pauses.record(time.Since(start))
+						elapsed := time.Since(start)
 						b.StopTimer()
+						pauses.record(elapsed)
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -193,7 +280,11 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 							if err != nil || typeID != layout.typeID {
 								b.Fatalf("survivor type = %d, %v; want %d", typeID, err, layout.typeID)
 							}
-							checksum += uint64(typeID) + uint64(j) + 1
+							objectChecksum, err := validateGCMatrixObject(c, layout, Ref(rootValues[j]))
+							if err != nil {
+								b.Fatal(err)
+							}
+							checksum += objectChecksum + uint64(typeID) + uint64(j) + 1
 							rootValues[j] = Root(Null())
 						}
 						if err := c.CollectFull(nil); err != nil {
@@ -268,8 +359,9 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 					b.StartTimer()
 					start := time.Now()
 					err = c.CollectMinor(roots)
-					pauses.record(time.Since(start))
+					elapsed := time.Since(start)
 					b.StopTimer()
+					pauses.record(elapsed)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -357,8 +449,11 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 						if err := c.CollectFull(roots); err != nil {
 							b.Fatal(err)
 						}
-						pauses.record(time.Since(start))
+						elapsed := time.Since(start)
+						b.StopTimer()
+						pauses.record(elapsed)
 						checksum += uint64(c.Stats().LiveObjects)
+						b.StartTimer()
 					}
 					b.StopTimer()
 					if checksum != uint64(b.N) {
@@ -403,9 +498,13 @@ func BenchmarkGCTinyStepMatrix(b *testing.B) {
 					if err := c.Step(roots); err != nil {
 						b.Fatal(err)
 					}
-					stepPauses.record(time.Since(start))
+					elapsed := time.Since(start)
+					b.StopTimer()
+					stepPauses.record(elapsed)
 					steps++
-					if c.tinyGC.state == tinyIdle {
+					idle := c.tinyGC.state == tinyIdle
+					b.StartTimer()
+					if idle {
 						break
 					}
 				}
@@ -417,5 +516,181 @@ func BenchmarkGCTinyStepMatrix(b *testing.B) {
 			b.ReportMetric(float64(steps)/float64(b.N), "steps/op")
 			stepPauses.report(b, "step")
 		})
+	}
+}
+
+func TestGCMatrixWorkloadSmoke(t *testing.T) {
+	types, layouts := gcMatrixTypes(t)
+	collections := []struct {
+		name       string
+		profile    Profile
+		collection string
+	}{
+		{name: "throughput-minor", profile: ProfileThroughput, collection: "minor"},
+		{name: "throughput-full", profile: ProfileThroughput, collection: "full"},
+		{name: "tiny-full", profile: ProfileTiny, collection: "full"},
+	}
+	for _, collection := range collections {
+		for _, layout := range layouts {
+			t.Run(collection.name+"/"+layout.name, func(t *testing.T) {
+				c, err := NewCollector(gcMatrixConfig(collection.profile), types)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				var root Root
+				for i := 0; i < 10; i++ {
+					r, err := layout.alloc(c)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := populateGCMatrixObject(c, layout, r); err != nil {
+						t.Fatal(err)
+					}
+					if i == 0 {
+						root = Root(r)
+					}
+				}
+				roots := Slots{&root}
+				if collection.collection == "minor" {
+					err = c.CollectMinor(roots)
+				} else {
+					err = c.CollectFull(roots)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := c.Stats().LiveObjects; got != 1 {
+					t.Fatalf("live objects = %d, want 1", got)
+				}
+				if _, err := validateGCMatrixObject(c, layout, Ref(root)); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+func TestGCSparseRememberedArrayWorkloadSmoke(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := NewArrayDesc(1, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		length uint32
+		writes int
+	}{{length: 256 << 10, writes: 2}, {length: 4 << 10, writes: 1024}} {
+		t.Run(fmt.Sprintf("elements=%d/writes=%d", tc.length, tc.writes), func(t *testing.T) {
+			c, err := NewCollector(Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20}, []TypeDesc{leaf, refs})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			array, err := c.NewArrayDefault(1, tc.length)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ForcePromote(array); err != nil {
+				t.Fatal(err)
+			}
+			root := Root(array)
+			for i := 0; i < tc.writes; i++ {
+				child, err := c.NewStructDefault(0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				index := uint32(uint64(i) * uint64(tc.length-1) / uint64(max(1, tc.writes-1)))
+				if err := c.ArraySet(array, index, RefValue(child)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := c.CollectMinor(Slots{&root}); err != nil {
+				t.Fatal(err)
+			}
+			if got := c.Stats().LiveObjects; got != uint32(tc.writes+1) {
+				t.Fatalf("live objects = %d, want %d", got, tc.writes+1)
+			}
+		})
+	}
+}
+
+func TestGCRootClassWorkloadSmoke(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range []Profile{ProfileThroughput, ProfileTiny} {
+		for _, rootClass := range []string{"direct", "global", "table"} {
+			t.Run(fmt.Sprintf("profile=%d/%s", profile, rootClass), func(t *testing.T) {
+				c, err := NewCollector(gcMatrixConfig(profile), []TypeDesc{leaf})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				object, err := c.NewStructDefault(0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var roots RootSet
+				switch rootClass {
+				case "direct":
+					values := make([]Root, 64)
+					slots := make(Slots, len(values))
+					for i := range values {
+						values[i], slots[i] = Root(object), &values[i]
+					}
+					roots = slots
+				case "global":
+					for i := 0; i < 64; i++ {
+						c.NewGlobalSlot(object)
+					}
+				case "table":
+					for i := 0; i < 64; i++ {
+						c.NewTableSlot(object)
+					}
+				}
+				if err := c.CollectFull(roots); err != nil {
+					t.Fatal(err)
+				}
+				if got := c.Stats().LiveObjects; got != 1 {
+					t.Fatalf("live objects = %d, want 1", got)
+				}
+			})
+		}
+	}
+}
+
+func TestGCTinyStepWorkloadSmoke(t *testing.T) {
+	refs, err := NewArrayDesc(0, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 8 << 20, TinyBlockBytes: 16}, []TypeDesc{refs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	array, err := c.NewArrayDefault(0, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(array)
+	for steps := 0; ; steps++ {
+		if steps > len(c.handles)+8 {
+			t.Fatal("Tiny cycle did not finish within bounded state/handle steps")
+		}
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+		if c.tinyGC.state == tinyIdle {
+			break
+		}
+	}
+	if got := c.Stats().LiveObjects; got != 1 {
+		t.Fatalf("live objects = %d, want 1", got)
 	}
 }
