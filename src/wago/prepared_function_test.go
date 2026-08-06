@@ -40,6 +40,34 @@ func TestPreparedFunctionInvokeAndCacheIndependence(t *testing.T) {
 	}
 }
 
+func TestPreparedFunctionPrivateFastPath(t *testing.T) {
+	saved := preparedPrivateEntryEnabled
+	defer func() { preparedPrivateEntryEnabled = saved }()
+
+	for _, enabled := range []bool{true, false} {
+		preparedPrivateEntryEnabled = enabled
+		in, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate enabled=%v: %v", enabled, err)
+		}
+		fn, err := in.PrepareFunction("f")
+		if err != nil {
+			t.Fatalf("prepare enabled=%v: %v", enabled, err)
+		}
+		wantFast := enabled && in.preparedPrivateEligible()
+		if fn.privateFast != wantFast {
+			t.Fatalf("private fast enabled=%v: got %v, want %v", enabled, fn.privateFast, wantFast)
+		}
+		got, err := fn.Invoke(I32(41))
+		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+			t.Fatalf("invoke enabled=%v: got %v, err %v", enabled, got, err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("close enabled=%v: %v", enabled, err)
+		}
+	}
+}
+
 func BenchmarkPreparedInvokeAddOne(b *testing.B) {
 	c := benchMustCompile(b, benchAddOneModule())
 	in, err := Instantiate(c, InstantiateOptions{})

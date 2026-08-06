@@ -107,3 +107,27 @@ func (in *Instance) callNativeAsyncWithTrap(entry uintptr, prepared bool, active
 	}
 	return in.decorateTrap(callNative(in.c, in.eng, in.jm, true, entry, in.serArgs, activeTrap, in.results))
 }
+
+func (in *Instance) preparedPrivateEligible() bool {
+	if in == nil || in.memoryDir != nil || in.nativeControlShared || in.syncMode {
+		return false
+	}
+	if in.memory == nil {
+		return true
+	}
+	if !in.ownsMem {
+		return false
+	}
+	_, shared := in.memory.importShape()
+	return !shared
+}
+
+func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
+	nativeExecutionMu.Lock()
+	nativeExecutionEpoch++
+	defer nativeExecutionMu.Unlock()
+	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
+		return err
+	}
+	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
+}

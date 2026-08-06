@@ -15,3 +15,8 @@ var directPreparedCallEnabled = os.Getenv("WAGO_DIRECT_PREPARED") != "0"
 // WAGO_PREPARED_SCALAR_FAST=0 restores generic slot marshaling for same-binary
 // benchmark comparisons.
 var preparedScalarFastEnabled = os.Getenv("WAGO_PREPARED_SCALAR_FAST") != "0"
+
+// preparedPrivateEntryEnabled lets a PreparedFunction with a private,
+// already-bound native context bypass the process-wide rebinding lease.
+// WAGO_PREPARED_PRIVATE_ENTRY=0 restores the ordinary entry path for A/B.
+var preparedPrivateEntryEnabled = os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0"

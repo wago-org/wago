@@ -10,7 +10,7 @@ import (
 // It caches export lookup, signature layout, and the native entry address. Like
 // Instance, it is not safe for concurrent calls: calls reuse the instance's
 // argument and result buffers, and returned results remain valid only until the
-// next call on that instance.
+// next call on that instance. Invoke must not race Instance.Close.
 type PreparedFunction struct {
 	in                  *Instance
 	export              string
@@ -27,6 +27,7 @@ type PreparedFunction struct {
 	scalarFast          bool
 	scalarResultWide    bool
 	resultWide          []bool
+	privateFast         bool
 }
 
 // PrepareFunction resolves a locally-defined function export once. The returned
@@ -78,7 +79,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 			}
 		}
 	}
-	return &PreparedFunction{
+	fn := &PreparedFunction{
 		in:                  in,
 		export:              export,
 		entry:               in.base + uintptr(in.c.Entry[ic.li]),
@@ -94,7 +95,11 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
-	}, nil
+	}
+	if scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
+		fn.privateFast = true
+	}
+	return fn, nil
 }
 
 // Invoke calls the prepared export. Arguments and results use the same raw slot
@@ -179,10 +184,16 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+	if fn.privateFast {
+		if in.isLogicallyClosed() {
+			return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+		}
+	} else {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		}
+		defer in.endInvocation()
 	}
-	defer in.endInvocation()
 	put := func(slot int) {
 		bits := args[slot]
 		if fn.scalarWideMask&(1<<slot) == 0 {
@@ -211,8 +222,14 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 			return nil, err
 		}
 	} else {
-		prepared := directPreparedCallEnabled && preparedCallEnabled && in.ownsMem
-		if err := in.callNativeAsync(fn.entry, prepared); err != nil {
+		var err error
+		if fn.privateFast {
+			err = in.callPreparedPrivate(fn.entry, in.trap)
+		} else {
+			prepared := directPreparedCallEnabled && preparedCallEnabled && in.ownsMem
+			err = in.callNativeAsync(fn.entry, prepared)
+		}
+		if err != nil {
 			return nil, err
 		}
 		if len(in.hostLog) != 0 {
