@@ -27,6 +27,22 @@ func TestSIMDCPUFlagsSupported(t *testing.T) {
 	}
 }
 
+func TestBMI2CPUFlagsSupported(t *testing.T) {
+	for _, tc := range []struct {
+		data string
+		want bool
+	}{
+		{data: "flags : fpu bmi1 bmi2 avx2\n", want: true},
+		{data: "bmi2", want: true},
+		{data: "flags : bmi1 avx2", want: false},
+		{data: "flags : xbmi2 bmi20", want: false},
+	} {
+		if got := bmi2CPUFlagsSupported([]byte(tc.data)); got != tc.want {
+			t.Fatalf("bmi2CPUFlagsSupported(%q) = %v, want %v", tc.data, got, tc.want)
+		}
+	}
+}
+
 var simdCPUFlagsSink bool
 
 func BenchmarkSIMDCPUFlags(b *testing.B) {

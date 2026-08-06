@@ -67,15 +67,15 @@ in a leaf, so this optimization is specific to AArch64's register file.
   of the conservative call-making model. Gated by `WAGO_AMD64_NO_INLINE_CALLFREE`,
   stat `all-calls-inlined`; covered by `amd64/inline_callfree_test.go` (hint
   fires + is gated) and `src/wago/inline_callfree_test.go` (cross-arch execution).
-- Deeper FP local pinning, x86-adapted (was priority 1). A call-free function now
-  extends the float pin pool past the base XMM12-15 into XMM8-10 (never XMM11 =
-  `mergeFReg`), holding more hot float locals when no call can clobber those
-  operand registers. Deliberately shallow and call-free-only: amd64 has 16 XMM
-  (vs arm64's 32 V), so each extra pin shrinks the float operand pool — matching
-  arm64's residency is impossible, but the call-free bump is safe. Gated by
+- Deeper FP local pinning, x86-adapted (was priority 1). Functions now extend
+  the float pin pool past the base XMM12-15 into XMM4-10, leaving XMM0-3 and
+  XMM11 available for scratch and result merges. Call-making functions use the
+  existing dirty-only pre-call store and lazy post-call reload. The eleven-pin
+  pool remains fixed-size because amd64 has 16 XMM registers versus arm64's 32
+  V registers. Gated by
   `WAGO_AMD64_NO_EXTFPPINS`, stat `deep-fp-local-pin`; covered by
-  `amd64/deepfppin_test.go` (fires + gated) and `src/wago/deepfppin_test.go`
-  (cross-arch execution).
+  `amd64/deepfppin_test.go` (real-call preservation and gate) and
+  `src/wago/deepfppin_test.go` (cross-arch execution).
 - Small-frame elision (was priority 1–4). A register-homed call-free
   single-result reg-ABI leaf never touches its frame — the register-returning
   internal entry doesn't use the results-ptr header, all locals live permanently

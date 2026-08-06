@@ -14,6 +14,14 @@ type CompiledModule struct {
 	// calls with a register-ABI-compatible signature bypass the wrapper adapter.
 	InternalEntry []int
 
+	// DirectPrepared marks small register-ABI internal entries constrained to
+	// caller-saved GPRs and needing only RBX (linMem) from the host trampoline.
+	// The optional bitset uses one bit per local function.
+	DirectPrepared []uint64
+
+	// RequiresBMI2 reports that Code contains a BMI2 instruction.
+	RequiresBMI2 bool
+
 	// RequiresAVX2 reports that Code contains AVX2/YMM instructions selected by
 	// the backend (including plugin-provided portable intrinsics).
 	RequiresAVX2 bool

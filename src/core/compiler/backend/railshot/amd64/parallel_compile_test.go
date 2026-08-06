@@ -120,4 +120,7 @@ func assertCompiledModuleEqual(t *testing.T, got, want *encoder.CompiledModule) 
 	if !reflect.DeepEqual(got.InternalEntry, want.InternalEntry) {
 		t.Fatalf("InternalEntry differs\n got: %v\nwant: %v", got.InternalEntry, want.InternalEntry)
 	}
+	if !reflect.DeepEqual(got.DirectPrepared, want.DirectPrepared) {
+		t.Fatalf("DirectPrepared differs\n got: %v\nwant: %v", got.DirectPrepared, want.DirectPrepared)
+	}
 }
