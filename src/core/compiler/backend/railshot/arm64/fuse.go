@@ -19,7 +19,7 @@ func isFusableCompare(e *elem) bool {
 }
 
 func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
-	if !knownBitsEnabled || node == nil || node.op != opEqz {
+	if !swarMaskTestEnabled || node == nil || node.op != opEqz {
 		return 0, false
 	}
 	inner := node.arg0

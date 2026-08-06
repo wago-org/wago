@@ -22,13 +22,27 @@ func (f *fn) trySWARParse4(root *elem) bool {
 		!isSWARConst(root.arg1, 32) {
 		return false
 	}
-	product, ok := swarOtherConst(root.arg0, 0x0000006400000001, opMul)
-	if !ok {
+	mul10 := matchSWARParse4(root.arg0)
+	if mul10 == nil {
 		return false
+	}
+	root.op, root.arg0, root.arg1 = opSWARParse4, mul10, nil
+	root.deferDepth = 1 + deferDepthOf(mul10)
+	f.stats.peep("swar-parse4")
+	return true
+}
+
+func matchSWARParse4(left *elem) *elem {
+	if !swarIdiomsEnabled {
+		return nil
+	}
+	product, ok := swarOtherConst(left, 0x0000006400000001, opMul)
+	if !ok {
+		return nil
 	}
 	sum, ok := swarOtherConst(product, 0x0000ffff0000ffff, opAnd)
 	if !ok || sum == nil || sum.kind != ekDeferred || sum.op != opAdd || sum.typ != mtI64 {
-		return false
+		return nil
 	}
 	var mul10, shift16 *elem
 	if other, matched := swarOtherConst(sum.arg0, 10, opMul); matched {
@@ -36,16 +50,13 @@ func (f *fn) trySWARParse4(root *elem) bool {
 	} else if other, matched := swarOtherConst(sum.arg1, 10, opMul); matched {
 		mul10, shift16 = other, sum.arg0
 	} else {
-		return false
+		return nil
 	}
 	if shift16 == nil || shift16.kind != ekDeferred || shift16.op != opShrU || shift16.typ != mtI64 ||
 		!isSWARConst(shift16.arg1, 16) || !sameSWARSource(mul10, shift16.arg0) {
-		return false
+		return nil
 	}
-	root.op, root.arg0, root.arg1 = opSWARParse4, mul10, nil
-	root.deferDepth = 1 + deferDepthOf(mul10)
-	f.stats.peep("swar-parse4")
-	return true
+	return mul10
 }
 
 func isSWARConst(e *elem, want uint64) bool {
@@ -87,6 +98,20 @@ func (f *fn) trySWARPack4(root *elem) bool {
 	if !swarIdiomsEnabled || root == nil || root.kind != ekDeferred || root.op != opOr || root.typ != mtI64 {
 		return false
 	}
+	source := matchSWARPack4(root.arg0, root.arg1)
+	if source == nil {
+		return false
+	}
+	root.op, root.arg0, root.arg1 = opSWARPack4, source, nil
+	root.deferDepth = 1 + deferDepthOf(source)
+	f.stats.peep("swar-pack4")
+	return true
+}
+
+func matchSWARPack4(left, right *elem) *elem {
+	if !swarIdiomsEnabled {
+		return nil
+	}
 	var terms [4]*elem
 	n := 0
 	var flatten func(*elem) bool
@@ -101,55 +126,52 @@ func (f *fn) trySWARPack4(root *elem) bool {
 		n++
 		return true
 	}
-	if !flatten(root) || n != len(terms) {
-		return false
+	if !flatten(left) || !flatten(right) || n != len(terms) {
+		return nil
 	}
 	var source *elem
 	local := -1
 	seen := uint8(0)
 	for _, term := range terms {
 		if term == nil || term.kind != ekDeferred || term.op != opAnd || term.typ != mtI64 {
-			return false
+			return nil
 		}
 		expr, mask := term.arg0, term.arg1
 		if expr != nil && expr.kind == ekValue && expr.st.kind == stConst {
 			expr, mask = mask, expr
 		}
 		if mask == nil || mask.kind != ekValue || mask.st.kind != stConst {
-			return false
+			return nil
 		}
 		shift := uint64(0)
 		leaf := expr
 		if expr != nil && expr.kind == ekDeferred && expr.op == opShrU && expr.typ == mtI64 {
 			leaf = expr.arg0
 			if expr.arg1 == nil || expr.arg1.kind != ekValue || expr.arg1.st.kind != stConst {
-				return false
+				return nil
 			}
 			shift = uint64(expr.arg1.st.cval)
 		}
 		if shift > 24 || shift&7 != 0 || uint64(mask.st.cval) != uint64(0xff)<<shift ||
 			leaf == nil || leaf.kind != ekValue || leaf.st.typ != mtI64 ||
 			(leaf.st.kind != stLocalRef && leaf.st.kind != stLocalReg) {
-			return false
+			return nil
 		}
 		if local < 0 {
 			local, source = leaf.st.idx, leaf
 		} else if leaf.st.idx != local {
-			return false
+			return nil
 		}
 		bit := uint8(1 << (shift / 8))
 		if seen&bit != 0 {
-			return false
+			return nil
 		}
 		seen |= bit
 	}
 	if seen != 0x0f {
-		return false
+		return nil
 	}
-	root.op, root.arg0, root.arg1 = opSWARPack4, source, nil
-	root.deferDepth = 1 + deferDepthOf(source)
-	f.stats.peep("swar-pack4")
-	return true
+	return source
 }
 
 // tryMulHighU recognizes the exact straight-line unsigned 64x64 multiply-high

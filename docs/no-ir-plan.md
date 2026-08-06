@@ -83,12 +83,13 @@ execution path. Railshot is the one and only backend.** The prior framing
 - **General pending `local.set` with owned registers** (VB §5 options a/b) —
   allocator-invisible trees; only the register-free restriction (c) is
   scheduled (P4). Revisit a/b only if (c) measures well but misses cases.
-- **Persistent/general known-bits lattice state** — rejected. Revisited 2026-07-17
-  after the Souper and packed-byte/SWAR designs: Railshot now has a bounded,
-  allocation-free estimator that recursively visits only its existing depth-capped
-  deferred tree. It carries no facts across nodes or blocks. The profitable cases
-  remain narrow/shift mask elision (P2) and direct `(word & laneMask) == 0` flag
-  lowering; boolean-ness remains subsumed by `stFlags` (P3).
+- **Persistent/general known-bits lattice state** — rejected. A bounded recursive
+  estimator was tried, then removed after measurement: its four utf-as mask-elision
+  hits blocked a second `swar-widen4` selection and did not earn their general
+  constant-RHS compile cost. Direct `(word & laneMask) == 0` flag lowering remains
+  as a shape check with no fact propagation; boolean-ness remains subsumed by
+  `stFlags` (P3). Exact SWAR matchers inspect existing operand nodes and allocate
+  only after a hit; near-miss probes must remain allocation-free.
 - **Persistent SIMD expression trees** — rejected. Exact adjacent SIMD superops use
   bounded bytecode lookahead and immediately select a native lowering; near misses
   restore the reader. This keeps SIMD eager, allocation-free, and outside the scalar

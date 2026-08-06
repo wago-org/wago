@@ -24,7 +24,7 @@ func isFusableCompare(e *elem) bool {
 // without writing the temporary. The helper consumes the two deferred nodes but
 // leaves the outer node for either a branch consumer or SETcc materialization.
 func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
-	if !knownBitsEnabled || node == nil || node.op != opEqz {
+	if !swarMaskTestEnabled || node == nil || node.op != opEqz {
 		return 0, false
 	}
 	inner := node.arg0

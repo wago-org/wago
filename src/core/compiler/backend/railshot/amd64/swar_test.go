@@ -12,12 +12,6 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func knownBitsShiftBody() []byte {
-	b := []byte{0x00, 0x20, 0x00, 0x41, 0x08, 0x76, 0x41} // x >>u 8; i32.const 0x00ffffff
-	b = append(b, wasmtest.SLEB32(0x00ffffff)...)
-	return append(b, 0x71, 0x0b) // and; end
-}
-
 func swarMaskEqzBody() []byte {
 	b := []byte{0x00, 0x20, 0x00, 0x42}                            // local.get 0; i64.const lane-high-bit mask
 	b = append(b, wasmtest.SLEB64(int64(-9187201950435737472))...) // 0x8080808080808080
@@ -72,29 +66,6 @@ func mulHighU64Body() []byte {
 	return append(b, 0x83, 0x7c, 0x42, 0x20, 0x88, 0x7c, 0x0b)
 }
 
-func TestKnownBitsMaskElision(t *testing.T) {
-	i32 := []wasm.ValType{wasm.I32}
-	m := mod1(t, i32, i32, knownBitsShiftBody())
-	s := compileWithStats(t, m, false).Funcs[0]
-	if got := s.Peephole["known-bits"]; got != 1 {
-		t.Fatalf("known-bits = %d, want 1 (all: %v)", got, s.Peephole)
-	}
-	for _, x := range []uint32{0, 0xff, 0x12345678, 0xffffffff} {
-		if got := uint32(runAmd64u(t, m, uint64(x))); got != x>>8 {
-			t.Fatalf("x=%#x: got %#x, want %#x", x, got, x>>8)
-		}
-	}
-}
-
-func TestKnownBitsNarrowLoadMaskElision(t *testing.T) {
-	i32 := []wasm.ValType{wasm.I32}
-	body := []byte{0x00, 0x20, 0x00, 0x2d, 0x00, 0x00, 0x41, 0xff, 0x01, 0x71, 0x0b}
-	m := modMem(t, 1, i32, i32, body) // load8_u(address) & 0xff
-	if got := compileWithStats(t, m, false).Funcs[0].Peephole["known-bits"]; got != 1 {
-		t.Fatalf("known-bits = %d, want 1 for load8_u mask", got)
-	}
-}
-
 func TestSWARMaskTestFusion(t *testing.T) {
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	m := mod1(t, i64, i32, swarMaskEqzBody())
@@ -104,9 +75,9 @@ func TestSWARMaskTestFusion(t *testing.T) {
 	}
 	var off *CodegenStats
 	func() {
-		saved := knownBitsEnabled
-		defer func() { knownBitsEnabled = saved }()
-		knownBitsEnabled = false
+		saved := swarMaskTestEnabled
+		defer func() { swarMaskTestEnabled = saved }()
+		swarMaskTestEnabled = false
 		off = compileWithStats(t, m, false).Funcs[0]
 	}()
 	if s.CodeBytes >= off.CodeBytes {
@@ -120,14 +91,14 @@ func TestSWARMaskTestFusion(t *testing.T) {
 	}
 }
 
-func TestKnownBitsKillSwitchEquivalent(t *testing.T) {
-	saved := knownBitsEnabled
-	defer func() { knownBitsEnabled = saved }()
+func TestSWARMaskTestKillSwitchEquivalent(t *testing.T) {
+	saved := swarMaskTestEnabled
+	defer func() { swarMaskTestEnabled = saved }()
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	for _, x := range []uint64{0, 0x80, 0x8080, 0x7f7f7f7f7f7f7f7f} {
-		knownBitsEnabled = true
+		swarMaskTestEnabled = true
 		on := uint32(runAmd64u(t, mod1(t, i64, i32, swarMaskEqzBody()), x))
-		knownBitsEnabled = false
+		swarMaskTestEnabled = false
 		off := uint32(runAmd64u(t, mod1(t, i64, i32, swarMaskEqzBody()), x))
 		if on != off {
 			t.Fatalf("x=%#x: on=%d off=%d", x, on, off)
@@ -228,6 +199,19 @@ func TestSWARPack4RejectsNearMatch(t *testing.T) {
 	m := mod1(t, i64, i32, body)
 	if got := compileWithStats(t, m, false).Funcs[0].Peephole["swar-pack4"]; got != 0 {
 		t.Fatalf("swar-pack4 = %d, want 0 for near-match", got)
+	}
+}
+
+func TestSWARPack4ProbeDoesNotAllocate(t *testing.T) {
+	f := fn{s: newStack()}
+	allocs := testing.AllocsPerRun(100, func() {
+		f.s.reset()
+		f.s.pushValue(storage{kind: stLocalRef, typ: mtI64, idx: 0})
+		f.s.pushValue(storage{kind: stLocalRef, typ: mtI64, idx: 1})
+		f.pushBinOp(opOr, mtI64)
+	})
+	if allocs != 0 {
+		t.Fatalf("non-matching swar-pack4 probe allocated %.1f objects, want 0", allocs)
 	}
 }
 

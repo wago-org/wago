@@ -13,13 +13,7 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-var knownBitsBenchmarkSink uintptr
-
-func knownBitsShiftBodyArm64() []byte {
-	b := []byte{0x00, 0x20, 0x00, 0x41, 0x08, 0x76, 0x41}
-	b = append(b, wasmtest.SLEB32(0x00ffffff)...)
-	return append(b, 0x71, 0x0b)
-}
+var swarBenchmarkSink uintptr
 
 func swarMaskEqzBodyArm64() []byte {
 	b := []byte{0x00, 0x20, 0x00, 0x42}
@@ -88,30 +82,6 @@ func mulHighU64BodyArm64() []byte {
 	return append(b, 0x83, 0x7c, 0x42, 0x20, 0x88, 0x7c, 0x0b)
 }
 
-func TestKnownBitsMaskElisionArm64(t *testing.T) {
-	i32 := []wasm.ValType{wasm.I32}
-	m := mod1(t, i32, i32, knownBitsShiftBodyArm64())
-	s := compileWithStats(t, m, false).Funcs[0]
-	if got := s.Peephole["known-bits"]; got != 1 {
-		t.Fatalf("known-bits = %d, want 1 (all: %v)", got, s.Peephole)
-	}
-	for _, x := range []uint32{0, 0xff, 0x12345678, 0xffffffff} {
-		got := uint32(runArm64Internal2(t, m, uintptr(x), 0))
-		if got != x>>8 {
-			t.Fatalf("x=%#x: got %#x, want %#x", x, got, x>>8)
-		}
-	}
-}
-
-func TestKnownBitsNarrowLoadMaskElisionArm64(t *testing.T) {
-	i32 := []wasm.ValType{wasm.I32}
-	body := []byte{0x00, 0x20, 0x00, 0x2d, 0x00, 0x00, 0x41, 0xff, 0x01, 0x71, 0x0b}
-	m := modMem(t, 1, i32, i32, body)
-	if got := compileWithStats(t, m, false).Funcs[0].Peephole["known-bits"]; got != 1 {
-		t.Fatalf("known-bits = %d, want 1 for load8_u mask", got)
-	}
-}
-
 func TestSWARMaskTestFusionArm64(t *testing.T) {
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	m := mod1(t, i64, i32, swarMaskEqzBodyArm64())
@@ -121,9 +91,9 @@ func TestSWARMaskTestFusionArm64(t *testing.T) {
 	}
 	var off *CodegenStats
 	func() {
-		saved := knownBitsEnabled
-		defer func() { knownBitsEnabled = saved }()
-		knownBitsEnabled = false
+		saved := swarMaskTestEnabled
+		defer func() { swarMaskTestEnabled = saved }()
+		swarMaskTestEnabled = false
 		off = compileWithStats(t, m, false).Funcs[0]
 	}()
 	if s.CodeBytes >= off.CodeBytes {
@@ -138,14 +108,14 @@ func TestSWARMaskTestFusionArm64(t *testing.T) {
 	}
 }
 
-func TestKnownBitsKillSwitchEquivalentArm64(t *testing.T) {
-	saved := knownBitsEnabled
-	defer func() { knownBitsEnabled = saved }()
+func TestSWARMaskTestKillSwitchEquivalentArm64(t *testing.T) {
+	saved := swarMaskTestEnabled
+	defer func() { swarMaskTestEnabled = saved }()
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	for _, x := range []uint64{0, 0x80, 0x8080, 0x7f7f7f7f7f7f7f7f} {
-		knownBitsEnabled = true
+		swarMaskTestEnabled = true
 		on := uint32(runArm64Internal2(t, mod1(t, i64, i32, swarMaskEqzBodyArm64()), uintptr(x), 0))
-		knownBitsEnabled = false
+		swarMaskTestEnabled = false
 		off := uint32(runArm64Internal2(t, mod1(t, i64, i32, swarMaskEqzBodyArm64()), uintptr(x), 0))
 		if on != off {
 			t.Fatalf("x=%#x: on=%d off=%d", x, on, off)
@@ -245,6 +215,19 @@ func TestSWARPack4RejectsNearMatchArm64(t *testing.T) {
 	m := mod1(t, i64, i32, body)
 	if got := compileWithStats(t, m, false).Funcs[0].Peephole["swar-pack4"]; got != 0 {
 		t.Fatalf("swar-pack4 = %d, want 0 for near-match", got)
+	}
+}
+
+func TestSWARPack4ProbeDoesNotAllocateArm64(t *testing.T) {
+	f := fn{s: newStack()}
+	allocs := testing.AllocsPerRun(100, func() {
+		f.s.reset()
+		f.s.pushValue(storage{kind: stLocalRef, typ: mtI64, idx: 0})
+		f.s.pushValue(storage{kind: stLocalRef, typ: mtI64, idx: 1})
+		f.pushBinOp(opOr, mtI64)
+	})
+	if allocs != 0 {
+		t.Fatalf("non-matching swar-pack4 probe allocated %.1f objects, want 0", allocs)
 	}
 }
 
@@ -352,7 +335,7 @@ func TestMulHighU64MatcherIsFunctionTailOnlyArm64(t *testing.T) {
 	}
 }
 
-func BenchmarkKnownBitsCompileArm64(b *testing.B) {
+func BenchmarkSWARMaskCompileArm64(b *testing.B) {
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	m := mod1(b, i64, i32, swarMaskEqzBodyArm64())
 	b.ReportAllocs()
@@ -365,7 +348,7 @@ func BenchmarkKnownBitsCompileArm64(b *testing.B) {
 		}
 		cmLen ^= uintptr(len(cm.Code))
 	}
-	knownBitsBenchmarkSink = cmLen
+	swarBenchmarkSink = cmLen
 }
 
 func BenchmarkSWARMaskExecArm64(b *testing.B) {
@@ -385,7 +368,7 @@ func BenchmarkSWARMaskExecArm64(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		result ^= arm64spike.Call2(entry, uintptr(i), 0)
 	}
-	knownBitsBenchmarkSink = result
+	swarBenchmarkSink = result
 	b.ReportMetric(float64(len(cm.Code)), "code-B")
 	runtime.KeepAlive(code)
 }
@@ -407,7 +390,7 @@ func BenchmarkSWARWiden4ExecArm64(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		result ^= arm64spike.Call2(entry, uintptr(i), 0)
 	}
-	knownBitsBenchmarkSink = result
+	swarBenchmarkSink = result
 	b.ReportMetric(float64(len(cm.Code)), "code-B")
 	runtime.KeepAlive(code)
 }
@@ -429,7 +412,7 @@ func BenchmarkMulHighU64ExecArm64(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		result ^= arm64spike.Call2(entry, uintptr(i)*0x9e3779b9, uintptr(i)^0xd6e8feb8)
 	}
-	knownBitsBenchmarkSink = result
+	swarBenchmarkSink = result
 	b.ReportMetric(float64(len(cm.Code)), "code-B")
 	runtime.KeepAlive(code)
 }
@@ -484,7 +467,7 @@ func BenchmarkSWARPack4ExecArm64(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				result ^= arm64spike.Call2(entry, uintptr(i)*0x9e3779b97f4a7c15, 0)
 			}
-			knownBitsBenchmarkSink = result
+			swarBenchmarkSink = result
 			runtime.KeepAlive(code)
 		})
 	}

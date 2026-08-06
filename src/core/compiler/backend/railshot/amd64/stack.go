@@ -334,10 +334,6 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	// One-constant algebraic simplification + strength reduction (P4): identities
 	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
 	if right.kind == ekValue && right.st.kind == stConst {
-		if f.simplifyKnownBitsRHS(op, typ, left, right) {
-			f.stats.peep("known-bits")
-			return
-		}
 		if op2, done := f.simplifyConstRHS(op, typ, left, right); done {
 			f.stats.peep("alu-identity")
 			return
@@ -351,12 +347,13 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		return
 	}
 	if op == opOr && typ == mtI64 {
-		candidate := elem{kind: ekDeferred, op: op, typ: typ, arg0: left, arg1: right}
-		candidate.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
-		if f.trySWARPack4(&candidate) {
+		if source := matchSWARPack4(left, right); source != nil {
 			node := f.s.alloc()
-			*node = candidate
+			node.kind, node.op, node.typ = ekDeferred, opSWARPack4, mtI64
+			node.arg0 = source
+			node.deferDepth = 1 + deferDepthOf(source)
 			f.s.push(node)
+			f.stats.peep("swar-pack4")
 			return
 		}
 	}
