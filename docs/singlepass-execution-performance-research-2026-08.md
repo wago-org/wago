@@ -778,3 +778,90 @@ versus 289 in Wazero. Closing that gap likely needs a bounded regional IR or
 allocator-quality step, not another unmeasured peephole. That should be a
 separate design with an explicit scratch/RSS cap and a fallback to today's
 direct codegen.
+
+## Post-merge AMD64 integration (2026-08-06)
+
+The branch was rebased onto `daec329`, which brought in the generalized compact
+AMD64 memory encoder, the WARP-sized eleven-float-local policy, and the bounded
+SWAR/SIMD superoptimizer. The rebase deliberately kept the stronger mainline
+forms instead of replaying older branch machinery:
+
+- main's `addrMode`/`emitDisp` implementation now owns compact addressing; the
+  branch only widens scaled-LEA displacement input to `int32`, which the affine
+  cover requires;
+- main's fixed float pin pool is XMM12-15 plus XMM4-10, leaving XMM0-3 and XMM11
+  for scratch and result merges. This supersedes the branch's eight-pin/XMM11
+  experiment, so the separate integer/float merge flags were dropped;
+- affine index folding gets first chance only on its measured constant-bearing
+  shape. Main's broader safe nested-LEA materialization remains the fallback;
+- `call-next-use` and `affine-lea` are registered in the new runtime-local
+  optimization catalog rather than restoring the old process-global registry.
+
+All measurements below used the same Ryzen 7 7800X3D, `GOMAXPROCS=1`, core 2,
+alternating order, and seven or more 200 ms execution samples.
+
+### Does the merged superoptimizer help?
+
+Yes. An exact `daec329^` versus `daec329` comparison across the 29 unchanged
+execution rows improves geometric-mean execution by **0.50%**. The dominant
+existing-corpus win is scalar UTF conversion, from 192,429 to 164,604 ns/op
+(**-14.46%**, 7/7 wins). The changed UTF SIMD artifact and newly added focused
+modules were excluded from that commit-to-parent comparison.
+
+A stronger same-binary oracle compiled the complete current corpus with
+`WAGO_NO_SWAR_MASK_TEST=1`, `WAGO_NO_SWAR_IDIOMS=1`, and
+`WAGO_NO_SIMD_SUPEROPT=1`, then compared it with all three recognizers enabled.
+That removes fixture and harness differences:
+
+| Current-corpus workload | Disabled | Enabled | Delta |
+|---|---:|---:|---:|
+| SWAR pack/parse run | 1,729 ns | 1,365 ns | -21.05% |
+| scalar UTF conversion | 191,510 ns | 164,679 ns | -14.01% |
+| SIMD UTF validation | 153,095 ns | 145,984 ns | -4.65% |
+| focused unsigned mulhi | 40.72 ns | 39.89 ns | -2.04% |
+| BLAKE3 SIMD | 607,647 ns | 604,332 ns | -0.55% |
+
+Across all 36 current execution rows the enabled recognizers improve the
+geometric mean by **1.26%**. Their weighted full-compile cost is **+0.05%**;
+weighted allocation bytes change by **+0.0003%** and allocation count by
+**+0.0018%**. Total emitted native code falls by 11,160 bytes (-0.0145%). Ruby
+compile peak RSS is 215,116 KiB enabled versus 215,052 KiB disabled, which is
+noise-sized. This is a clear keep: bounded pattern matching buys double-digit
+wins on its target kernels without a meaningful compile or memory tax.
+
+### Does the earlier branch still add value on top?
+
+Compared directly with `daec329` on identical current artifacts, the rebased
+branch improves execution geometric mean by **0.45%** across 36 rows. The
+strongest repeatable rows are:
+
+| Workload | Main | Rebased branch | Delta |
+|---|---:|---:|---:|
+| SIMD UTF conversion | 58,110.5 ns | 56,595.5 ns | -2.61% |
+| JSON serialize | 23,348.5 ns | 22,847.5 ns | -2.15% |
+| JSON deserialize | 41,480.5 ns | 40,904.5 ns | -1.39% |
+| SWAR pack/parse | 40.02 ns | 39.59 ns | -1.08% |
+
+Feature-isolated 15-sample runs show affine LEA folding improves JSON serialize
+by 0.54% and deserialize by 0.70%; its weighted full-compile cost is 0.07%.
+Call next-use improves the same rows by 0.39% and 0.41%, respectively, for a
+0.45% weighted full-compile cost. The total rebased branch is **+2.09%** weighted
+full-compile time versus main, while weighted full-compile bytes are **+0.003%**
+and Ruby peak RSS is 215,060 versus 215,116 KiB. It emits 310,625 fewer native
+bytes (-0.402%). That remains inside the intended balanced point: a small,
+bounded compilation-time spend, no retained-memory growth, and smaller code.
+
+The first rebase placed two 64-bit dead-local masks directly in `fn`. Main's
+larger compiler state made that cross a Go allocator size class, raising weighted
+full-compile bytes by 2.58%. The final form stores the two 16-register banks as
+`uint16` masks in the existing boolean-cluster padding. After packing, weighted
+full-compile bytes returned to +0.003% and peak RSS to neutral. This is the kind
+of scaling check that must accompany every future bounded analysis: O(1) state
+can still be too expensive when it changes the allocation class of a per-function
+object.
+
+A broad pre-pull-to-rebased comparison also showed large net wins in BLAKE3 SIMD
+(839,945 to 604,679 ns), globals (863.5 to 476.5 ns), CRC32 (19,480 to 16,346
+ns), matrix multiply (166,138 to 139,967 ns), and memory tree (10,455 to 8,980
+ns). Those numbers span many intervening main commits and therefore describe the
+new combined compiler, not the isolated effect of `daec329`.
