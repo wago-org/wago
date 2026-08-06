@@ -34,8 +34,7 @@ type PreparedFunction struct {
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
-	return c != nil && local >= 0 && local>>6 < len(c.directPrepared) &&
-		c.directPrepared[local>>6]&(uint64(1)<<uint(local&63)) != 0
+	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedEntry(c.InternalEntry[local])
 }
 
 func preparedDirectIntSignature(sig FuncSig) bool {
@@ -126,7 +125,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if fn.isolatedFast && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
 			fn.directIntFast = true
-			fn.directEntry = in.base + uintptr(in.c.InternalEntry[ic.li])
+			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 		}
 	}
 	return fn, nil
@@ -144,28 +143,6 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 		}
 	}
 	return fn.invokeGeneral(args)
-}
-
-func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
-	in := fn.in
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
-	}
-	result, err := in.callPreparedDirectInt(fn.directEntry, args, fn.scalarWideMask, in.trap)
-	if err != nil {
-		return nil, err
-	}
-	goruntime.KeepAlive(in)
-	goruntime.KeepAlive(in.c)
-	out := in.resultVals[:fn.resultSlots]
-	if fn.resultSlots == 1 {
-		if fn.scalarResultWide {
-			out[0] = result
-		} else {
-			out[0] = uint64(uint32(result))
-		}
-	}
-	return out, nil
 }
 
 func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {

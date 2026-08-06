@@ -80,7 +80,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.u8(wagoVersion)
 	w.bytes(c.Code)
 	w.intSlice(c.Entry)
-	w.intSlice(c.InternalEntry)
+	w.internalEntrySlice(c.InternalEntry)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
 	if err := w.typeDescriptors(c.Types); err != nil {
@@ -192,6 +192,12 @@ func (w *compiledWriter) intSlice(v []int) {
 	w.uvar(uint64(len(v)))
 	for _, x := range v {
 		w.ivar(x)
+	}
+}
+func (w *compiledWriter) internalEntrySlice(v []int) {
+	w.uvar(uint64(len(v)))
+	for _, x := range v {
+		w.ivar(internalEntryOffset(x))
 	}
 }
 func (w *compiledWriter) u64Slice(v []uint64) {

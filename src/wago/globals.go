@@ -999,18 +999,13 @@ type Compiled struct {
 	// entry offset (== Entry[i] when none): indirect calls to compatible
 	// signatures bypass the wrapper adapter via the table's delta field.
 	InternalEntry []int
-	// directPrepared is an optional compile-time bitset for local functions whose
-	// register-ABI internal entry needs no wrapper-established state beyond RBX.
-	// It is intentionally not retained by the artifact codec yet; decoded modules
-	// simply use the ordinary prepared adapter.
-	directPrepared []uint64
-	Funcs          []FuncSig               // signature per local function
-	Types          []DefinedTypeDescriptor // flattened structural type graph for indexed references
-	ValueTypes     []ValueTypeDescriptor   // deduplicated exact global/table/element types
-	Imports        []string                // "module.name" per imported function
-	Exports        map[string]int          // exported function name -> global function index
-	NumImports     int
-	Names          *wasm.NameSec // parsed debug names from the wasm name custom section
+	Funcs         []FuncSig               // signature per local function
+	Types         []DefinedTypeDescriptor // flattened structural type graph for indexed references
+	ValueTypes    []ValueTypeDescriptor   // deduplicated exact global/table/element types
+	Imports       []string                // "module.name" per imported function
+	Exports       map[string]int          // exported function name -> global function index
+	NumImports    int
+	Names         *wasm.NameSec // parsed debug names from the wasm name custom section
 
 	GlobalImports          []GlobalImportDef // imported global entries, preceding local globals
 	Globals                []GlobalDef       // global entries in wasm global-index order
@@ -1098,6 +1093,16 @@ type Compiled struct {
 	requiresAVX2       bool
 	requiresAVX512     bool
 }
+
+// The sign bit of a fresh compilation's internal-entry offset carries the
+// optional direct-prepared selection without growing Compiled. Native code
+// offsets are non-negative and bounded far below the host int range. The codec
+// strips this compile-only bit, so decoded artifacts retain the wrapper fallback.
+var directPreparedEntryMask = ^(^uint(0) >> 1)
+
+func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
+func directPreparedEntry(off int) bool    { return uint(off)&directPreparedEntryMask != 0 }
+func internalEntryOffset(off int) int     { return int(uint(off) &^ directPreparedEntryMask) }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
 func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }

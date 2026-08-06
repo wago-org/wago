@@ -2,36 +2,57 @@
 
 package wago
 
-func (in *Instance) callPreparedDirectInt(entry uintptr, args []uint64, wideMask uint8, activeTrap []byte) (uint64, error) {
+import (
+	"fmt"
+	goruntime "runtime"
+
+	wruntime "github.com/wago-org/wago/src/core/runtime"
+)
+
+func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	}
 	var a0, a1, a2, a3 uint64
 	switch len(args) {
 	case 4:
 		a3 = args[3]
-		if wideMask&8 == 0 {
+		if fn.scalarWideMask&8 == 0 {
 			a3 = uint64(uint32(a3))
 		}
 		fallthrough
 	case 3:
 		a2 = args[2]
-		if wideMask&4 == 0 {
+		if fn.scalarWideMask&4 == 0 {
 			a2 = uint64(uint32(a2))
 		}
 		fallthrough
 	case 2:
 		a1 = args[1]
-		if wideMask&2 == 0 {
+		if fn.scalarWideMask&2 == 0 {
 			a1 = uint64(uint32(a1))
 		}
 		fallthrough
 	case 1:
 		a0 = args[0]
-		if wideMask&1 == 0 {
+		if fn.scalarWideMask&1 == 0 {
 			a0 = uint64(uint32(a0))
 		}
 	}
-	result, err := in.eng.CallPreparedInt(entry, in.jm.LinMemBase(), a0, a1, a2, a3, activeTrap)
-	if err != nil {
-		return 0, in.decorateTrap(err)
+	result := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
-	return result, nil
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 1 {
+		if fn.scalarResultWide {
+			out[0] = result
+		} else {
+			out[0] = uint64(uint32(result))
+		}
+	}
+	return out, nil
 }

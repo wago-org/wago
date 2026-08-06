@@ -99,7 +99,23 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x7c, 0x0b}))),
 	)
-	in, err := Instantiate(MustCompile(add64), InstantiateOptions{})
+	compiled := MustCompile(add64)
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("fresh i64 add did not retain packed direct-entry selection")
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal direct-entry module: %v", err)
+	}
+	var decoded Compiled
+	if err := decoded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("unmarshal direct-entry module: %v", err)
+	}
+	if decoded.directPreparedAt(0) || decoded.InternalEntry[0] != internalEntryOffset(compiled.InternalEntry[0]) {
+		t.Fatalf("decoded direct metadata = selected %v, entry %d; want wrapper fallback entry %d",
+			decoded.directPreparedAt(0), decoded.InternalEntry[0], internalEntryOffset(compiled.InternalEntry[0]))
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate add64: %v", err)
 	}
