@@ -1,3 +1,7 @@
+> **Note:** [AGENTS.md](../AGENTS.md) is the authoritative source for agent
+> direction, engineering rules, and workflow. This file supplements it with
+> commit discipline, measurement expectations, and review guidance.
+
 # Agent Workflow
 
 This project welcomes agent-assisted development, but the bar is the same as for

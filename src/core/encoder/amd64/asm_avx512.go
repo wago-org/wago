@@ -33,21 +33,42 @@ func (a *Asm) evexRR(opcodeMap, pp, op byte, w bool, dst, src Reg) {
 	a.emit(op, 0xc0|byte(dst&7)<<3|byte(src&7))
 }
 
-func (a *Asm) evexMemIdx(opcodeMap, pp, op byte, w bool, reg, base, index Reg, disp int32) {
+// evexAddrMode selects an EVEX memory displacement form. EVEX disp8 values
+// are tuple-scaled, unlike ordinary x86 disp8 values.
+func evexAddrMode(base Reg, disp, tupleScale int32) (mod byte, encodedDisp int32) {
+	if disp == 0 && base&7 != 5 {
+		return 0x00, 0
+	}
+	if tupleScale > 0 && disp%tupleScale == 0 {
+		q := disp / tupleScale
+		if q >= -128 && q <= 127 {
+			return 0x40, q
+		}
+	}
+	return 0x80, disp
+}
+
+func (a *Asm) evexMemIdx(opcodeMap, pp, op byte, w bool, reg, base, index Reg, disp, tupleScale int32) {
 	a.evexPrefix(opcodeMap, pp, w, reg, 0, base, index, true)
-	a.emit(op, 0x80|byte(reg&7)<<3|0x04)
+	mod, encodedDisp := evexAddrMode(base, disp, tupleScale)
+	a.emit(op, mod|byte(reg&7)<<3|0x04)
 	a.emit(byte(index&7)<<3 | byte(base&7))
-	a.imm32(disp)
+	switch mod {
+	case 0x40:
+		a.emit(byte(encodedDisp))
+	case 0x80:
+		a.imm32(disp)
+	}
 }
 
 // ZMovdqu64 uses an unaligned 64-byte memory operand. W=1 selects the
 // AVX-512F vmovdqu64 form and avoids imposing alignment on guest pointers.
 func (a *Asm) ZMovdqu64LoadIdx(dst, base, index Reg, disp int32) {
-	a.evexMemIdx(vexMap0F, 0b10, 0x6f, true, dst, base, index, disp)
+	a.evexMemIdx(vexMap0F, 0b10, 0x6f, true, dst, base, index, disp, 64)
 }
 
 func (a *Asm) ZMovdqu64StoreIdx(base, index, src Reg, disp int32) {
-	a.evexMemIdx(vexMap0F, 0b10, 0x7f, true, src, base, index, disp)
+	a.evexMemIdx(vexMap0F, 0b10, 0x7f, true, src, base, index, disp, 64)
 }
 
 // ZSIMDRRR emits one unmasked 512-bit EVEX register operation. It is kept
