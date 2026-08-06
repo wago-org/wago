@@ -24,7 +24,8 @@ func (commandEnvironment) LoadRuntime(config *wago.RuntimeConfig, plugins string
 
 func (commandEnvironment) ArtifactCache() artifactcache.Cache {
 	return artifactcache.Cache{
-		Dir: filepath.Join(wagopaths.DirsFor(versionString()).Cache, "modules"),
+		Dir:      filepath.Join(wagopaths.DirsFor(versionString()).Cache, "modules"),
+		Identity: []byte(artifactCacheIdentity),
 	}
 }
 

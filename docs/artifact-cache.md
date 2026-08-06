@@ -15,11 +15,22 @@ and an explicit `vcs.modified=false` setting are present. Dirty trees and builds
 without a versioned module or clean VCS identity disable the cache; they never
 reuse an identity based only on a path or version placeholder.
 
-Plugin builders and custom embedders may set `artifactcache.Cache.Identity` to
-a generated fingerprint that covers their generated code, plugin codegen ABI,
-lock state, and build inputs. This explicit identity replaces automatic build
-metadata and must change whenever native output or artifact interpretation can
-change.
+Generated plugin runtimes call `runtime.MainWithArtifactCacheIdentity` with a
+fresh SHA-256 identity embedded on every actual binary rebuild. Reusing an
+unchanged plugin binary preserves its identity; rebuilding it creates a new
+module-cache namespace even when mutable local replacements keep the same module
+paths or versions. If the builder cannot obtain cryptographic randomness, it
+embeds an empty identity and the generated runtime safely bypasses the artifact
+cache. Custom runtime-CLI builders may use the same entry point with
+an identity covering their generated code, plugin codegen ABI, lock state, and
+build inputs. An explicit identity replaces automatic build metadata and must
+change whenever native output or artifact interpretation can change.
+
+Automatic identity also requires every dependency and replacement to have an
+immutable module version and checksum. Filesystem replacements, development
+dependencies, missing checksums, malformed dependency records, and excessive
+replacement chains disable caching. Builders that intentionally use those
+inputs must compute and supply their own content-aware identity.
 
 ## Configuration signature
 

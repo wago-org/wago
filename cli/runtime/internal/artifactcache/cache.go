@@ -136,9 +136,14 @@ func buildIdentity(info *debug.BuildInfo) ([sha256.Size]byte, bool) {
 			cleanTree = true
 		}
 	}
-	versionedModule := info.Main.Version != "" && info.Main.Version != "(devel)" && info.Main.Sum != ""
+	versionedModule := immutableModule(&info.Main, 0)
 	if !(cleanRevision && cleanTree) && !versionedModule {
 		return [sha256.Size]byte{}, false
+	}
+	for _, dependency := range info.Deps {
+		if !immutableModule(dependency, 0) {
+			return [sha256.Size]byte{}, false
+		}
 	}
 	h := sha256.New()
 	h.Write([]byte("wago-build-identity"))
@@ -157,6 +162,16 @@ func buildIdentity(info *debug.BuildInfo) ([sha256.Size]byte, bool) {
 	var identity [sha256.Size]byte
 	copy(identity[:], h.Sum(nil))
 	return identity, true
+}
+
+func immutableModule(module *debug.Module, depth int) bool {
+	if module == nil || depth > 8 {
+		return false
+	}
+	if module.Replace != nil {
+		return immutableModule(module.Replace, depth+1)
+	}
+	return module.Path != "" && module.Version != "" && module.Version != "(devel)" && module.Sum != ""
 }
 
 func writeModule(h interface{ Write([]byte) (int, error) }, module debug.Module) {

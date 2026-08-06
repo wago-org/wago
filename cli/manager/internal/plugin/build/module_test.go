@@ -52,6 +52,17 @@ func TestBuildModuleFilesystemAndGoModHelpers(t *testing.T) {
 	}
 }
 
+func TestNewBuildIdentityIsPerBinary(t *testing.T) {
+	first := newBuildIdentity("stable-build-inputs")
+	second := newBuildIdentity("stable-build-inputs")
+	if len(first) != 64 || len(second) != 64 {
+		t.Fatalf("identity lengths = %d/%d, want 64/64", len(first), len(second))
+	}
+	if first == second {
+		t.Fatal("separate plugin binary builds reused one cache identity")
+	}
+}
+
 func TestInstalledSource(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

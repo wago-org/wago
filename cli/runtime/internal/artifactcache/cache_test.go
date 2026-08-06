@@ -159,6 +159,52 @@ func TestBuildIdentityAcceptsVersionedModule(t *testing.T) {
 	}
 }
 
+func TestBuildIdentityRejectsMutableDependencies(t *testing.T) {
+	base := debug.BuildInfo{
+		GoVersion: "go1.25.0",
+		Path:      "github.com/wago-org/wago/cli/wago",
+		Main:      debug.Module{Path: "github.com/wago-org/wago", Version: "(devel)"},
+		Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: "0123456789abcdef"},
+			{Key: "vcs.modified", Value: "false"},
+		},
+	}
+	immutable := debug.Module{Path: "example.com/plugin", Version: "v1.2.3", Sum: "h1:plugin-sum"}
+	base.Deps = []*debug.Module{&immutable}
+	if _, ok := buildIdentity(&base); !ok {
+		t.Fatal("checksummed dependency was rejected")
+	}
+
+	tests := []struct {
+		name string
+		dep  *debug.Module
+	}{
+		{name: "nil record", dep: nil},
+		{name: "missing checksum", dep: &debug.Module{Path: "example.com/plugin", Version: "v1.2.3"}},
+		{name: "development version", dep: &debug.Module{Path: "example.com/plugin", Version: "(devel)", Sum: "h1:plugin-sum"}},
+		{name: "filesystem replacement", dep: &debug.Module{
+			Path: "example.com/plugin", Version: "v1.2.3", Sum: "h1:plugin-sum",
+			Replace: &debug.Module{Path: "/work/plugin"},
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			info := base
+			info.Deps = []*debug.Module{tc.dep}
+			if _, ok := buildIdentity(&info); ok {
+				t.Fatal("mutable dependency produced a reusable identity")
+			}
+		})
+	}
+
+	versionedReplacement := immutable
+	versionedReplacement.Replace = &debug.Module{Path: "example.com/plugin-fork", Version: "v1.2.4", Sum: "h1:fork-sum"}
+	base.Deps = []*debug.Module{&versionedReplacement}
+	if _, ok := buildIdentity(&base); !ok {
+		t.Fatal("checksummed module replacement was rejected")
+	}
+}
+
 func BenchmarkCachePath(b *testing.B) {
 	cache := Cache{Dir: b.TempDir(), Identity: []byte("benchmark-runtime")}
 	config := wago.NewRuntimeConfig()

@@ -9,6 +9,7 @@ package build
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -246,10 +247,10 @@ func Update(dir, target string, verbose bool) error {
 // writeBuildMain generates .wago/main.go: import wago's CLI as a library and
 // blank-import each dependency's register package.
 func WriteMain(dir string, deps []string, config Config) error {
-	return withBuildLock(dir, func() error { return writeMain(dir, deps, config) })
+	return withBuildLock(dir, func() error { return writeMain(dir, deps, config, newBuildIdentity(Hash(deps, config))) })
 }
 
-func writeMain(dir string, deps []string, config Config) error {
+func writeMain(dir string, deps []string, config Config, buildIdentity string) error {
 	sorted := append([]string(nil), deps...)
 	sort.Strings(sorted)
 	var b strings.Builder
@@ -259,8 +260,9 @@ func writeMain(dir string, deps []string, config Config) error {
 		fmt.Fprintf(&b, "\t_ %q\n", registerImport(m))
 	}
 	b.WriteString(")\n\n")
-	fmt.Fprintf(&b, "const version = %q\n\n", config.RuntimeVersion)
-	b.WriteString("func main() { runtime.Main(version) }\n")
+	fmt.Fprintf(&b, "const version = %q\n", config.RuntimeVersion)
+	fmt.Fprintf(&b, "const buildIdentity = %q\n\n", buildIdentity)
+	b.WriteString("func main() { runtime.MainWithArtifactCacheIdentity(version, buildIdentity) }\n")
 	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(b.String()), 0o644)
 }
 
@@ -292,7 +294,8 @@ func ensureBinary(dir string, deps []string, force, verbose bool, config Config)
 	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
 		return "", false, err
 	}
-	if err := writeMain(dir, deps, config); err != nil {
+	buildIdentity := newBuildIdentity(want)
+	if err := writeMain(dir, deps, config, buildIdentity); err != nil {
 		return "", false, err
 	}
 	// Resolve the import graph (fetch any published plugins; local replaces stay
@@ -331,6 +334,18 @@ func ensureBinary(dir string, deps []string, force, verbose bool, config Config)
 	return bin, false, nil
 }
 
+func newBuildIdentity(buildHash string) string {
+	var nonce [32]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return ""
+	}
+	h := sha256.New()
+	h.Write([]byte("wago-plugin-runtime\x00"))
+	h.Write([]byte(buildHash))
+	h.Write(nonce[:])
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // ModuleVersion returns a module's selected version from a generated plugin
 // build module while excluding concurrent edits to that module.
 func ModuleVersion(dir, module string) (version string, ok bool) {
@@ -365,7 +380,7 @@ func Hash(deps []string, config Config) string {
 	for _, d := range sorted {
 		fmt.Fprintf(h, "%s\x00", d)
 	}
-	return hex.EncodeToString(h.Sum(nil))[:16]
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func localSourceFingerprint(src string) string {
