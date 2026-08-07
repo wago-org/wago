@@ -61,7 +61,7 @@ call graphs and recursion. Throughput collect-every-allocation/forced-major veri
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec v31 persists and revalidates
+call-sites, and adapter returns fail closed. Codec v32 persists and revalidates
 safepoint, liveness, spill, callsite, frame-size, and adapter-return metadata; it
 never persists collector handles or live frames. Five 500 ms samples of
 `BenchmarkGCSingleNativeFrameRoots` measured 432.5-443.5 ns/op, 0 B/op, and
@@ -167,7 +167,7 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec v31 persists generic helper admission, vector layout, and bounded native
+Codec v32 persists generic helper admission, vector layout, and bounded native
 root maps; compact handles remain process-local. Snapshot format v4 separately
 serializes every object reachable from owned local GC globals using one-based
 stable IDs, exact type IDs, array lengths, and typed field/element payloads.
@@ -203,7 +203,7 @@ memory64 state and same-domain imported memory64 aliases preserve exact address 
 grown pages, bytes, and alias identity. Completed EH invocations carry no additional mutable
 snapshot state and round-trip through their compiled member and ordinary GC graph.
 
-Numeric host imports may re-enter the same instance: codec-v31 callsites carry
+Numeric host imports may re-enter the same instance: codec-v32 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
 outer frames remain roots during boundary and helper collection. A bounded
@@ -231,7 +231,7 @@ ordinary zero-valued constant expressions. Indexed function-identity lowering is
 selected only for function heap targets; GC struct casts continue through collector
 supertype metadata, including final concrete closure structs cast to non-final bases.
 Arm64 publishes liveness-exact locals and hidden
-spills from parked SP. Codec v31 callsites carry caller frame size, return PC,
+spills from parked SP. Codec v32 callsites carry caller frame size, return PC,
 stack adjustment, and exact roots; saved-LR walking spans direct/recursive calls,
 suspended direct-host activations (including sync-thunk records), and same-domain
 foreign instances. Mutable local GC globals synchronize checked collector slots,
@@ -402,7 +402,7 @@ Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Logical obj
 
 ## Compiled metadata and instantiation
 
-Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v31 retains the appended `StorageV128` kind and 16-byte layout contract and adds validated native safepoint/callsite root maps; older codec versions are rejected.
+Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v32 retains the appended `StorageV128` kind, the 16-byte layout contract, and validated native safepoint/callsite root maps; older codec versions are rejected.
 
 Each `Instance` normally owns its own `gc.Collector` when its executable product can create or retain heap objects. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
 
@@ -412,7 +412,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec v31 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec v32 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,

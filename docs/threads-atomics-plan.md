@@ -1,17 +1,16 @@
 # Project Forge: concurrent native Wasm and threads/atomics
 
-> **Status: proposed implementation plan (2026-08-06).**
+> **Status: bounded first product implemented (2026-08-06).**
 > [ROADMAP.md](../ROADMAP.md) remains authoritative for scheduling and feature
-> status. This document defines the architecture, staged product boundary,
-> implementation order, and acceptance gates for the roadmap's threads and
-> atomics bigger bet.
+> status. Sections 1–9 retain the architecture and acceptance gates that drove
+> the implementation; section 10 records the resulting product and evidence.
 
 ## 1. Outcome
 
 Build a bounded first threads product in which multiple Wago instances execute
 native Wasm concurrently against one shared linear memory, with classic
 WebAssembly atomic loads, stores, read-modify-write operations,
-compare-exchange, fences, and eventually wait/notify on amd64 and arm64.
+compare-exchange, fences, and wait/notify on amd64 and arm64.
 
 The first product is deliberately narrower than every combination Wago can
 eventually support. It must provide real parallel native execution, not merely
@@ -342,3 +341,103 @@ Acceptance:
 No public feature commit should land before the native-overlap test, atomic
 corpus, lifecycle tests, and both advertised backends agree.
 
+## 10. Implemented product and evidence
+
+### Enabling it
+
+Threads are experimental and intentionally absent from `CoreFeaturesV3`.
+Callers opt in, select explicit bounds, and provide one exact-size shared
+memory import:
+
+```go
+config := wago.NewRuntimeConfig().
+	WithCoreFeatures(wago.CoreFeaturesV2 | wago.CoreFeatureThreads).
+	WithBoundsChecks(wago.BoundsChecksExplicit)
+
+compiled, err := wago.Compile(config, wasmBytes)
+memory, err := wago.NewSharedMemory(1, 1)
+instance, err := wago.Instantiate(compiled, wago.Imports{"env.memory": memory})
+```
+
+The admitted module boundary is one imported shared memory32 with an exact
+maximum, numeric functions and globals, no function imports, no tables, tags,
+or segments, and memory operations limited to the classic atomic family.
+Memory growth, memory64, multi-memory, signal bounds, WasmGC, exceptions,
+snapshots, same-instance concurrent entry, and shared-everything GC remain
+rejected before native code generation. The feature is advertised only on
+Linux and macOS amd64/arm64.
+
+Distinct eligible instances have private basedata and execution leases, so they
+can execute native Wasm concurrently against the same backing. Ordinary modules
+retain the process-wide execution lease and produce byte-identical code whether
+or not Threads is present in the configured feature set.
+
+### Native implementation
+
+Both Railshot backends consume one architecture-neutral atomic descriptor.
+AMD64 lowers the direct path with locked operations, `XCHG`, `MFENCE`, and CAS;
+ARM64 uses acquire/release loads and stores, `DMB`, and exclusive-load/store
+loops. Loads, stores, add/sub/and/or/xor/exchange RMWs, compare-exchange, and
+fence remain direct native code. Address overflow, bounds, and natural
+alignment are checked before mutation.
+
+Wait32, wait64, and notify use the synchronous helper boundary. Their shared
+memory sidecar is allocated lazily, keyed by exact memory identity and offset,
+stores only active waiters, and disappears after the last waiter leaves. It
+does not create a goroutine per waiter or memory. Timeout, cancellation,
+notification, instance close, and memory close converge on the same bounded
+removal path.
+
+Compiled artifact format v32 persists the exact Threads requirement and
+wait-helper admission. Direct-only atomic artifacts do not acquire helper
+admission, and v31 blobs are rejected rather than reinterpreted.
+
+### Verification record
+
+Local execution on an Apple M4 Max passed native Darwin/arm64 and Rosetta
+Darwin/amd64. The checked-in official `atomic.0.wasm` bodies produced 63 setup
+actions, 149 exact returns, and 45 exact traps. The official wait/notify module
+produced three exact returns and six bounds/alignment traps. The product also
+passes the full operation/width matrix, end-of-memory and effective-address
+overflow checks for every write/RMW form, contention invariants, true-overlap
+rendezvous, waiter lifecycle tests, and 250 instantiate/invoke/close cycles.
+
+Race-focused waiter and lifecycle tests pass under `go test -race`. Test
+binaries cross-compile for linux, darwin, and windows on amd64 and arm64; Windows
+does not advertise Threads, and this local run did not provide native Linux or
+Windows execution.
+
+Relevant local commands included:
+
+```sh
+go test ./src/core/encoder/arm64 \
+  ./src/core/compiler/backend/railshot/shared \
+  ./src/core/compiler/backend/railshot/arm64 \
+  ./src/core/runtime ./src/wago -count=1
+go test -race ./src/wago -run 'Threads.*(Wait|Close|Contention|Barrier)'
+```
+
+### Performance and footprint
+
+Measurements below are raw `go test -bench` ranges on Apple M4 Max,
+Darwin/arm64, with a 200 ms benchtime and three samples:
+
+| Operation | Time | Generated code | Allocations |
+|---|---:|---:|---:|
+| atomic load | 88.02–95.03 ns/op | 576 B | 0 |
+| atomic store | 88.89–89.86 ns/op | 576 B | 0 |
+| `rmw.add` | 90.11–93.28 ns/op | 304 B | 0 |
+| compare-exchange | 90.16–94.03 ns/op | 328 B | 0 |
+| wait mismatch | 249.9–261.6 ns/op | 996 B | 200 B/op, 5 allocs |
+| notify with no waiters | 247.7–252.8 ns/op | 996 B | 200 B/op, 5 allocs |
+| parked wait/notify round trip | 4.188–4.291 µs/op | — | 1129–1130 B/op, 21 allocs |
+
+The round-trip benchmark includes its caller goroutine and coordination. A
+warmed direct atomic call has a hard zero-allocation test. Ordinary entry was
+79.31–81.55 ns/op versus 89.70–91.77 ns/op for threaded atomic-load entry, both
+at zero allocations. Compiling the wait/notify fixture took 15.2–17.8 µs and
+53,891–53,892 B across 140 allocations.
+
+Static Go object sizes were 680 B for `Compiled`, 832 B for `Instance`, 16 B for
+`Memory`, 24 B for `memoryState`, 16 B for the active waiter sidecar, and 40 B
+per active waiter.

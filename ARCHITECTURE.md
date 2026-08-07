@@ -58,7 +58,7 @@ callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec v31
+collection and the root walker remain zero-allocation after warm-up. Codec v32
 persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
@@ -92,7 +92,7 @@ cross-Runtime compact-handle sharing remains impossible. `CaptureDomain` separat
 collector domain and persists every member, internal function/global/table edge,
 memory32/memory64 and tag aliases, typed live passive roots, and one stable-ID heap
 graph in `WGDN` v3 with strict v1/v2 loading; restore publishes the complete member
-slice only after transactional graph reconstruction. Codec v31 persists helper admission and
+slice only after transactional graph reconstruction. Codec v32 persists helper admission and
 the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
