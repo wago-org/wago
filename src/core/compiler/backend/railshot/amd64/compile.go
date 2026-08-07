@@ -471,6 +471,7 @@ type scratch struct {
 	stack          *stack     // the valent-block operand stack
 	asm            *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared bool
+	fnState        fn // per-function compiler state, reused across the module
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
@@ -1502,7 +1503,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, bou
 		// foreign stack cannot expose a stale compact handle at that safepoint.
 		entryInitialized = 0
 	}
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH}
+	f := &sc.fnState
+	localType, localSlot, localExactGCType, locals := f.localType, f.localSlot, f.localExactGCType, f.locals
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1515,8 +1518,17 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, bou
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
-	f.localType = make([]machineType, nLocals)
-	f.localExactGCType = make([]uint32, nLocals)
+	if cap(f.localType) < nLocals {
+		f.localType = make([]machineType, nLocals)
+	} else {
+		f.localType = f.localType[:nLocals]
+	}
+	if cap(f.localExactGCType) < nLocals {
+		f.localExactGCType = make([]uint32, nLocals)
+	} else {
+		f.localExactGCType = f.localExactGCType[:nLocals]
+		clear(f.localExactGCType)
+	}
 	i := 0
 	for _, p := range ft.Params {
 		f.localType[i] = mtOf(p)
@@ -1528,7 +1540,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, bou
 			i++
 		}
 	}
-	f.localSlot = make([]int, nLocals)
+	if cap(f.localSlot) < nLocals {
+		f.localSlot = make([]int, nLocals)
+	} else {
+		f.localSlot = f.localSlot[:nLocals]
+	}
 	for i, mt := range f.localType {
 		f.localSlot[i] = f.nLocalSlots
 		f.nLocalSlots += mt.stackSlots()
@@ -1821,7 +1837,11 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 }
 
 func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, sparseGlobals []shared.GlobalHint, gpPool []Reg, fpPinLimit int, hasCall, pinV128 bool) {
-	f.locals = make([]localDef, f.nLocals)
+	if cap(f.locals) < f.nLocals {
+		f.locals = make([]localDef, f.nLocals)
+	} else {
+		f.locals = f.locals[:f.nLocals]
+	}
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}

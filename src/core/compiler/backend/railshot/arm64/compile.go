@@ -406,8 +406,9 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
-	stack *stack   // the valent-block operand stack
-	asm   *a64.Asm // the AArch64 encoder byte buffer
+	stack   *stack   // the valent-block operand stack
+	asm     *a64.Asm // the AArch64 encoder byte buffer
+	fnState fn       // per-function compiler state, reused across the module
 
 	retSites      []int
 	ctrl          []ctrlFrame
@@ -1289,7 +1290,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, bou
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
+	f := &sc.fnState
+	localType, localSlot, locals := f.localType, f.localSlot, f.locals
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
@@ -1300,7 +1303,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, bou
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = X27 // explicit bounds: X27 = memBytes for the whole module
 	}
-	f.localType = make([]machineType, nLocals)
+	if cap(f.localType) < nLocals {
+		f.localType = make([]machineType, nLocals)
+	} else {
+		f.localType = f.localType[:nLocals]
+	}
 	i := 0
 	for _, p := range ft.Params {
 		f.localType[i] = mtOf(p)
@@ -1312,7 +1319,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, bou
 			i++
 		}
 	}
-	f.localSlot = make([]int, nLocals)
+	if cap(f.localSlot) < nLocals {
+		f.localSlot = make([]int, nLocals)
+	} else {
+		f.localSlot = f.localSlot[:nLocals]
+	}
 	for i, mt := range f.localType {
 		f.localSlot[i] = f.nLocalSlots
 		f.nLocalSlots += mt.stackSlots()
@@ -1635,7 +1646,11 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 }
 
 func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, sparseGlobals []shared.GlobalHint, gpPool []Reg, hasCall, pinLocals bool) {
-	f.locals = make([]localDef, f.nLocals)
+	if cap(f.locals) < f.nLocals {
+		f.locals = make([]localDef, f.nLocals)
+	} else {
+		f.locals = f.locals[:f.nLocals]
+	}
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}

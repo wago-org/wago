@@ -1391,8 +1391,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	for li := range m.FuncTypes {
-		ft, ok := m.ResolvedLocalFuncType(li)
-		if !ok {
+		var ft wasm.CompType
+		if !m.ResolveLocalFuncType(li, &ft) {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
 		params, err := typeConverter.abiTypes(ft.Params, c.Types)

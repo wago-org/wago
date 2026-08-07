@@ -420,6 +420,16 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) map[int]*inlineTar
 	if !inlineEnabled {
 		return nil
 	}
+	hasCall := false
+	for i := range allHints {
+		if allHints[i].hasCall {
+			hasCall = true
+			break
+		}
+	}
+	if !hasCall {
+		return nil
+	}
 	importedFuncs := m.ImportedFuncCount()
 	var targets map[int]*inlineTarget
 	for i := range m.Code {
