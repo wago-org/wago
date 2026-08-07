@@ -172,6 +172,32 @@ func TestTinyAllocatorInvalidFreesDoNotMutateMetadata(t *testing.T) {
 	assertTinyHeapMetadata(t, &h)
 }
 
+func TestTinyAllocatorPoisonSurvivesRepeatedCoalescing(t *testing.T) {
+	h := newTinyHeap(make([]byte, 8*16), 8, 16, true)
+	offsets := make([]uint32, 4)
+	for i := range offsets {
+		off, _, err := h.alloc(32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		offsets[i] = off
+		for j := off; j < off+32; j++ {
+			h.mem[j] = 0xaa
+		}
+	}
+	for _, i := range []int{1, 3, 2, 0} {
+		if err := h.free(offsets[i]); err != nil {
+			t.Fatal(err)
+		}
+		assertTinyHeapMetadata(t, &h)
+	}
+	for i, got := range h.mem[tinyFreeLinkBytes:] {
+		if got != 0xdd {
+			t.Fatalf("coalesced free byte %d = %#x, want poison", i+tinyFreeLinkBytes, got)
+		}
+	}
+}
+
 func TestTinyVerifyRejectsCompactMetadataCorruption(t *testing.T) {
 	t.Run("bin summary", func(t *testing.T) {
 		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
@@ -268,7 +294,15 @@ func maxFreeGap(live []tinyTestAllocation, total uint32) uint32 {
 func assertTinyHeapMetadata(t *testing.T, h *tinyHeap) {
 	t.Helper()
 	seen := make([]bool, h.blockCount)
+	var summary uint64
 	for bin, head := range h.binHeads {
+		marked := h.binWords[uint32(bin)>>6]&(uint64(1)<<(uint32(bin)&63)) != 0
+		if marked != (head != tinyNoBlock) {
+			t.Fatalf("bin %d occupancy=%v head=%d", bin, marked, head)
+		}
+		if marked {
+			summary |= uint64(1) << (uint32(bin) >> 6)
+		}
 		prev := tinyNoBlock
 		for b := head; b != tinyNoBlock; {
 			if b >= h.blockCount || seen[b] {
@@ -285,6 +319,9 @@ func assertTinyHeapMetadata(t *testing.T, h *tinyHeap) {
 			}
 			prev, b = b, next
 		}
+	}
+	if h.binSummary != summary {
+		t.Fatalf("bin summary=%#x want %#x", h.binSummary, summary)
 	}
 	for b := uint32(0); b < h.blockCount; {
 		size := h.spanSize(b)
