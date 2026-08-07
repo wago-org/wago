@@ -96,9 +96,6 @@ func (c *Collector) Verify(roots RootSet) error {
 // whose young edges were overwritten, so verification requires completeness
 // rather than exact equality between collections.
 func (c *Collector) verifyRememberedShadow() error {
-	if c.cfg.Profile != ProfileThroughput {
-		return nil
-	}
 	seenRemembered := make([]bool, len(c.handles))
 	for _, h := range c.remembered {
 		if h == 0 || !slotIndexOK(h, len(c.handles)) || c.handles[h].space == spaceFree || !c.handles[h].remembered {
@@ -112,6 +109,9 @@ func (c *Collector) verifyRememberedShadow() error {
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].remembered != seenRemembered[h] {
 			return fmt.Errorf("gc: handle %d remembered bit/list mismatch", h)
+		}
+		if c.cfg.Profile != ProfileThroughput {
+			continue
 		}
 		sp := c.handles[h].space
 		if sp != spaceOld && sp != spaceLarge {

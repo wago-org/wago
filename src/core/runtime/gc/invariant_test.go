@@ -412,6 +412,18 @@ func TestCollectMinorRunsRememberedShadowBeforeEvacuation(t *testing.T) {
 	}
 }
 
+func TestVerifyTinyRetainsRememberedMetadataChecks(t *testing.T) {
+	c := newTinyTestCollector(t, Config{})
+	r, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.handles[handleOf(r)].remembered = true
+	if err := c.Verify(nil); err == nil || !strings.Contains(err.Error(), "remembered bit/list mismatch") {
+		t.Fatalf("Verify error = %v, want Tiny remembered bit/list mismatch", err)
+	}
+}
+
 func TestRememberedCardMetadataIsBoundedAndPruned(t *testing.T) {
 	t.Run("throughput", func(t *testing.T) {
 		c := newTestCollector(t, Config{})
