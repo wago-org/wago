@@ -2125,7 +2125,9 @@ The injection matrix covers promotion planning, destination allocation, commit
 preflight, handle publication, object-card growth, slot-card growth, and backing
 growth. Promotion failures at every survivor index must restore handles, object
 bytes, nursery allocation state, marks, remembered/card metadata, and the
-throughput allocator. Native handle-batch tests bracket both collection and
+throughput allocator. Armed failures are scoped to one collector (or its
+throughput heap), so concurrent collectors cannot consume each other's test
+faults. Native handle-batch tests bracket both collection and
 `Close` and require reservation cancellation plus epoch advancement.
 
 Randomized Throughput and Tiny operation fuzzers feed every full collection

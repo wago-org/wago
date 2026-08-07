@@ -4,6 +4,6 @@ package gc
 
 const failureInjectionEnabled = false
 
-func injectFailure(failurePoint) error { return nil }
+func injectFailure(any, failurePoint) error { return nil }
 func stressFullCollection() bool       { return false }
 func isInjectedFailure(error) bool     { return false }

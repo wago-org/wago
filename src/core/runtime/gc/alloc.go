@@ -29,7 +29,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			}
 			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
 		}
-		if err := injectFailure(failHandlePublication); err != nil {
+		if err := injectFailure(c, failHandlePublication); err != nil {
 			c.throughput.restoreAlloc(undo)
 			c.throughput.restoreAllocTransaction(tx)
 			return Null(), err
@@ -131,7 +131,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	if sp == spaceNursery {
 		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
 	}
-	if err := injectFailure(failHandlePublication); err != nil {
+	if err := injectFailure(c, failHandlePublication); err != nil {
 		if sp == spaceNursery {
 			c.nurseryBump = oldNurseryBump
 		} else {

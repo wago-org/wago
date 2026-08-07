@@ -405,7 +405,7 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 			}
 		}
 	}
-	if err := injectFailure(failHandlePublication); err != nil {
+	if err := injectFailure(c, failHandlePublication); err != nil {
 		return Null(), err
 	}
 	off, _, err := c.tiny.alloc(size)

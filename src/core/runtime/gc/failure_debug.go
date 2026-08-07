@@ -14,6 +14,10 @@ var errInjectedFailure = errors.New("gc: injected failure")
 
 var debugFailures struct {
 	sync.Mutex
+	armed map[any]debugFailure
+}
+
+type debugFailure struct {
 	point failurePoint
 	after int
 }
@@ -31,27 +35,32 @@ func stressFullCollection() bool {
 
 func isInjectedFailure(err error) bool { return errors.Is(err, errInjectedFailure) }
 
-func injectFailure(point failurePoint) error {
+func injectFailure(target any, point failurePoint) error {
 	debugFailures.Lock()
 	defer debugFailures.Unlock()
-	if debugFailures.point != point {
+	failure, ok := debugFailures.armed[target]
+	if !ok || failure.point != point {
 		return nil
 	}
-	if debugFailures.after > 0 {
-		debugFailures.after--
+	if failure.after > 0 {
+		failure.after--
+		debugFailures.armed[target] = failure
 		return nil
 	}
-	debugFailures.point = 0
+	delete(debugFailures.armed, target)
 	return errInjectedFailure
 }
 
-func armFailure(point failurePoint, after int) func() {
+func armFailure(target any, point failurePoint, after int) func() {
 	debugFailures.Lock()
-	debugFailures.point, debugFailures.after = point, after
+	if debugFailures.armed == nil {
+		debugFailures.armed = make(map[any]debugFailure)
+	}
+	debugFailures.armed[target] = debugFailure{point: point, after: after}
 	debugFailures.Unlock()
 	return func() {
 		debugFailures.Lock()
-		debugFailures.point, debugFailures.after = 0, 0
+		delete(debugFailures.armed, target)
 		debugFailures.Unlock()
 	}
 }

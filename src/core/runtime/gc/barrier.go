@@ -173,7 +173,7 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		}
 		return
 	}
-	if injectFailure(failObjectCardGrowth) != nil {
+	if injectFailure(c, failObjectCardGrowth) != nil {
 		return
 	}
 	c.objectCards = append(c.objectCards, objectCard{handle: h, index: start, end: end})
@@ -204,7 +204,7 @@ func (c *Collector) addSlotCard(kind SlotKind, index uint32) {
 	if c.slotCardSlot != nil && c.slotCardSlot[key] != 0 {
 		return
 	}
-	if injectFailure(failSlotCardGrowth) != nil {
+	if injectFailure(c, failSlotCardGrowth) != nil {
 		return
 	}
 	if c.slotCardSlot == nil {

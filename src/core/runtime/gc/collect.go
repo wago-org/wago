@@ -142,7 +142,7 @@ func (c *Collector) promoteMarkedNursery() error {
 	}
 	for _, h := range c.nurseryHandles {
 		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
-			if err := injectFailure(failPromotionPlan); err != nil {
+			if err := injectFailure(c, failPromotionPlan); err != nil {
 				rollback(nil)
 				return err
 			}
@@ -152,7 +152,7 @@ func (c *Collector) promoteMarkedNursery() error {
 				rollback(&undo)
 				return err
 			}
-			if err := injectFailure(failPromotionDestination); err != nil {
+			if err := injectFailure(c, failPromotionDestination); err != nil {
 				rollback(&undo)
 				return err
 			}
@@ -160,7 +160,7 @@ func (c *Collector) promoteMarkedNursery() error {
 		}
 	}
 	for range plans {
-		if err := injectFailure(failPromotionCommit); err != nil {
+		if err := injectFailure(c, failPromotionCommit); err != nil {
 			rollback(nil)
 			return err
 		}
@@ -178,8 +178,12 @@ func (c *Collector) promoteHandle(h uint32) error {
 	if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
 		return nil
 	}
+	tx := c.throughput.beginAllocTransaction()
+	undo := c.throughput.checkpointAlloc(c.handles[h].size, spaceOld)
 	oldEntry, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 	if err != nil {
+		c.throughput.restoreAlloc(undo)
+		c.throughput.restoreAllocTransaction(tx)
 		return err
 	}
 	c.promoteHandleTo(h, oldEntry)
