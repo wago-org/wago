@@ -177,6 +177,40 @@ func (a *Asm) Stlxr32(status, src, addr Reg) {
 	a.word(0x8800FC00 | r(status)<<16 | r(addr)<<5 | r(src))
 }
 
+func (a *Asm) Ldaxr(dst, addr Reg, size int) {
+	var base uint32
+	switch size {
+	case 1:
+		base = 0x085FFC00
+	case 2:
+		base = 0x485FFC00
+	case 4:
+		base = 0x885FFC00
+	case 8:
+		base = 0xC85FFC00
+	default:
+		panic("arm64: unsupported LDAXR size")
+	}
+	a.word(base | r(addr)<<5 | r(dst))
+}
+
+func (a *Asm) Stlxr(status, src, addr Reg, size int) {
+	var base uint32
+	switch size {
+	case 1:
+		base = 0x0800FC00
+	case 2:
+		base = 0x4800FC00
+	case 4:
+		base = 0x8800FC00
+	case 8:
+		base = 0xC800FC00
+	default:
+		panic("arm64: unsupported STLXR size")
+	}
+	a.word(base | r(status)<<16 | r(addr)<<5 | r(src))
+}
+
 // Ldar and Stlr encode acquire loads and release stores for naturally aligned
 // byte, halfword, word, and doubleword atomic accesses.
 func (a *Asm) Ldar(dst, addr Reg, size int) {

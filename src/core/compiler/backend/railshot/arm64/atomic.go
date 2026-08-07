@@ -26,8 +26,8 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 		return f.atomicLoad(d)
 	case d.Class == railshared.AtomicStore:
 		return f.atomicStore(d)
-	case d.Class == railshared.AtomicRMW && d.Operation == railshared.AtomicAdd && d.Size == 4 && d.ResultSize == 4:
-		return f.atomicRMWAdd32(d.Offset)
+	case d.Class == railshared.AtomicRMW:
+		return f.atomicRMW(d)
 	default:
 		return fmt.Errorf("arm64: unsupported 0xFE opcode %d", d.Sub)
 	}
@@ -77,7 +77,7 @@ func (f *fn) atomicStore(d railshared.Atomic) error {
 	return nil
 }
 
-func (f *fn) atomicRMWAdd32(off uint64) error {
+func (f *fn) atomicRMW(d railshared.Atomic) error {
 	// Atomics are observable memory barriers: realize deferred reads and discard
 	// the scalar store-forwarding window before entering the exclusive loop.
 	f.materializePendingLoads()
@@ -86,15 +86,55 @@ func (f *fn) atomicRMWAdd32(off uint64) error {
 	value := f.popValue()
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
-	addr := f.atomicAddr(off, 4)
+	addr := f.atomicAddr(d.Offset, int(d.Size))
 
 	old := f.allocReg(maskOf(vreg, addr))
 	next := f.allocReg(maskOf(vreg, addr, old))
 	status := f.allocReg(maskOf(vreg, addr, old, next))
 	loop := f.a.Len()
-	f.a.Ldaxr32(old, addr)
-	f.a.Add32(next, old, vreg)
-	f.a.Stlxr32(status, next, addr)
+	f.a.Ldaxr(old, addr, int(d.Size))
+	wide := d.ResultSize == 8
+	switch d.Operation {
+	case railshared.AtomicAdd:
+		if wide {
+			f.a.Add64(next, old, vreg)
+		} else {
+			f.a.Add32(next, old, vreg)
+		}
+	case railshared.AtomicSub:
+		if wide {
+			f.a.Sub64(next, old, vreg)
+		} else {
+			f.a.Sub32(next, old, vreg)
+		}
+	case railshared.AtomicAnd:
+		if wide {
+			f.a.And64(next, old, vreg)
+		} else {
+			f.a.And32(next, old, vreg)
+		}
+	case railshared.AtomicOr:
+		if wide {
+			f.a.Orr64(next, old, vreg)
+		} else {
+			f.a.Orr32(next, old, vreg)
+		}
+	case railshared.AtomicXor:
+		if wide {
+			f.a.Eor64(next, old, vreg)
+		} else {
+			f.a.Eor32(next, old, vreg)
+		}
+	case railshared.AtomicXchg:
+		if wide {
+			f.a.MovReg64(next, vreg)
+		} else {
+			f.a.MovReg32(next, vreg)
+		}
+	default:
+		return fmt.Errorf("arm64: unsupported atomic RMW operation %d", d.Operation)
+	}
+	f.a.Stlxr(status, next, addr, int(d.Size))
 	f.a.PatchBranch19(f.a.Cbnz64(status), loop)
 
 	f.release(status)
@@ -104,6 +144,10 @@ func (f *fn) atomicRMWAdd32(off uint64) error {
 	if vOwned {
 		f.release(vreg)
 	}
-	f.pushReg(old, mtI32)
+	if wide {
+		f.pushReg(old, mtI64)
+	} else {
+		f.pushReg(old, mtI32)
+	}
 	return nil
 }
