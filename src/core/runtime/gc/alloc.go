@@ -14,9 +14,25 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		return Null(), err
 	}
 	if c.cfg.DisableCollection {
+		var tx throughputAllocTransaction
+		var undo throughputAllocCheckpoint
+		if failureInjectionEnabled {
+			tx = c.throughput.beginAllocTransaction()
+			undo = c.throughput.checkpointAlloc(size, spaceLarge)
+		}
 		e, err := c.throughput.alloc(size, spaceLarge)
 		if err != nil {
+			if isInjectedFailure(err) {
+				c.throughput.restoreAlloc(undo)
+				c.throughput.restoreAllocTransaction(tx)
+				return Null(), err
+			}
 			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
+		}
+		if err := injectFailure(failHandlePublication); err != nil {
+			c.throughput.restoreAlloc(undo)
+			c.throughput.restoreAllocTransaction(tx)
+			return Null(), err
 		}
 		h := c.newHandle(e)
 		r := makeObjRef(h)
@@ -33,7 +49,13 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		if roots == nil {
 			return Null(), errors.New("gc: allocation-triggered collection requires roots")
 		}
-		if err := c.CollectMinor(roots); err != nil {
+		var err error
+		if stressFullCollection() {
+			err = c.CollectFull(roots)
+		} else {
+			err = c.CollectMinor(roots)
+		}
+		if err != nil {
 			if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
 				return Null(), err
 			}
@@ -42,10 +64,22 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	sp := spaceNursery
 	var off uint32
 	var e handleEntry
+	var oldNurseryBump uint32
+	var allocationTx throughputAllocTransaction
+	var allocationUndo throughputAllocCheckpoint
 	if c.shouldAllocateLarge(size) {
 		var err error
+		if failureInjectionEnabled {
+			allocationTx = c.throughput.beginAllocTransaction()
+			allocationUndo = c.throughput.checkpointAlloc(size, spaceLarge)
+		}
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
+			if isInjectedFailure(err) {
+				c.throughput.restoreAlloc(allocationUndo)
+				c.throughput.restoreAllocTransaction(allocationTx)
+				return Null(), err
+			}
 			if errors.Is(err, ErrAllocationTooLarge) {
 				return Null(), err
 			}
@@ -54,6 +88,10 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			}
 			if err := c.CollectFull(roots); err != nil {
 				return Null(), err
+			}
+			if failureInjectionEnabled {
+				allocationTx = c.throughput.beginAllocTransaction()
+				allocationUndo = c.throughput.checkpointAlloc(size, spaceLarge)
 			}
 			e, err = c.throughput.alloc(size, spaceLarge)
 			if err != nil {
@@ -87,10 +125,20 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 				return Null(), errors.New("gc: nursery exhausted without roots")
 			}
 		}
+		oldNurseryBump = c.nurseryBump
 		c.nurseryBump = off + size
 	}
 	if sp == spaceNursery {
 		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
+	}
+	if err := injectFailure(failHandlePublication); err != nil {
+		if sp == spaceNursery {
+			c.nurseryBump = oldNurseryBump
+		} else {
+			c.throughput.restoreAlloc(allocationUndo)
+			c.throughput.restoreAllocTransaction(allocationTx)
+		}
+		return Null(), err
 	}
 	h := c.newHandle(e)
 	if sp == spaceNursery {

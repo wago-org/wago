@@ -130,20 +130,39 @@ func (c *Collector) promoteMarkedNursery() error {
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
+	rollback := func(current *throughputAllocCheckpoint) {
+		if current != nil {
+			c.throughput.restoreAlloc(*current)
+		}
+		for i := len(plans) - 1; i >= 0; i-- {
+			c.throughput.restoreAlloc(plans[i].undo)
+		}
+		c.throughput.restoreAllocTransaction(tx)
+		finish()
+	}
 	for _, h := range c.nurseryHandles {
 		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
+			if err := injectFailure(failPromotionPlan); err != nil {
+				rollback(nil)
+				return err
+			}
 			undo := c.throughput.checkpointAlloc(c.handles[h].size, spaceOld)
 			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 			if err != nil {
-				c.throughput.restoreAlloc(undo)
-				for i := len(plans) - 1; i >= 0; i-- {
-					c.throughput.restoreAlloc(plans[i].undo)
-				}
-				c.throughput.restoreAllocTransaction(tx)
-				finish()
+				rollback(&undo)
+				return err
+			}
+			if err := injectFailure(failPromotionDestination); err != nil {
+				rollback(&undo)
 				return err
 			}
 			plans = append(plans, plannedPromotion{handle: h, entry: e, undo: undo})
+		}
+	}
+	for range plans {
+		if err := injectFailure(failPromotionCommit); err != nil {
+			rollback(nil)
+			return err
 		}
 	}
 	for _, p := range plans {

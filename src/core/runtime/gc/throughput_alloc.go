@@ -278,6 +278,9 @@ func (h *throughputHeap) grow(size uint32) (uint32, error) {
 
 //go:noinline
 func (h *throughputHeap) growBacking(needed uint64) error {
+	if err := injectFailure(failBackingGrowth); err != nil {
+		return err
+	}
 	reserve := needed
 	current, pageBytes, limit := uint64(len(h.mem)), uint64(h.pageBytes), uint64(h.limit)
 	if current >= pageBytes {
