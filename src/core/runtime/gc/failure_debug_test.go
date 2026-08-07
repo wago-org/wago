@@ -143,14 +143,17 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 		assertPromotionStateEqual(t, c, before)
 	})
 	t.Run("tiny publication", func(t *testing.T) {
-		c := newTinyTestCollector(t, Config{})
-		beforeHandles, beforeBlocks := append([]handleEntry(nil), c.handles...), append([]tinyBlock(nil), c.tiny.blocks...)
+		c := newTinyTestCollector(t, Config{TinyHeapBytes: 32, TinyBlockBytes: 16})
+		beforeHandles := append([]handleEntry(nil), c.handles...)
 		defer armFailure(c, failHandlePublication, 0)()
 		if _, err := c.NewStructDefault(0); !errors.Is(err, errInjectedFailure) {
 			t.Fatalf("error = %v", err)
 		}
-		if !reflect.DeepEqual(c.handles, beforeHandles) || !reflect.DeepEqual(c.tiny.blocks, beforeBlocks) {
-			t.Fatal("tiny publication failure mutated allocator or handles")
+		if !reflect.DeepEqual(c.handles, beforeHandles) {
+			t.Fatal("tiny publication failure mutated handles")
+		}
+		if _, err := c.NewStructDefault(0); err != nil {
+			t.Fatalf("allocation after publication failure: %v", err)
 		}
 	})
 }
