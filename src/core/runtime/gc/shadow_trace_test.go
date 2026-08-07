@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+type shadowRootSink struct {
+	visit func(Ref) error
+	err   error
+}
+
+func (s *shadowRootSink) VisitRootRef(r Ref) bool {
+	s.err = s.visit(r)
+	return s.err == nil
+}
+
 // shadowTraceLive is deliberately independent of the collector's mark stack
 // and scanObjectRefs. It is a slow test oracle for exact root and layout
 // tracing; sharing either implementation would let the same scanner bug pass
@@ -28,13 +38,32 @@ func shadowTraceLive(c *Collector, roots RootSet) ([]bool, error) {
 		return nil
 	}
 	if roots != nil {
+		var slotRefs []Ref
 		var rootErr error
 		roots.RangeRoots(func(slot RootSlot) bool {
-			rootErr = visit(slot.GetRef())
-			return rootErr == nil
+			slotRefs = append(slotRefs, slot.GetRef())
+			return true
 		})
-		if rootErr != nil {
-			return nil, rootErr
+		rootRefs := slotRefs
+		if direct, ok := roots.(DirectRootRefSet); ok {
+			var directRefs []Ref
+			sink := shadowRootSink{visit: func(r Ref) error {
+				directRefs = append(directRefs, r)
+				return nil
+			}}
+			direct.RangeRootRefs(&sink)
+			if sink.err != nil {
+				return nil, sink.err
+			}
+			if !sameRootMultiset(slotRefs, directRefs) {
+				return nil, fmt.Errorf("shadow trace: direct and mutable root enumeration disagree: slots=%v direct=%v", slotRefs, directRefs)
+			}
+			rootRefs = directRefs
+		}
+		for _, r := range rootRefs {
+			if rootErr = visit(r); rootErr != nil {
+				return nil, rootErr
+			}
 		}
 	}
 	for _, r := range c.globalSlots {
@@ -96,6 +125,23 @@ func shadowTraceLive(c *Collector, roots RootSet) ([]bool, error) {
 		}
 	}
 	return live, nil
+}
+
+func sameRootMultiset(a, b []Ref) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[Ref]int, len(a))
+	for _, r := range a {
+		counts[r]++
+	}
+	for _, r := range b {
+		if counts[r] == 0 {
+			return false
+		}
+		counts[r]--
+	}
+	return true
 }
 
 func assertFullCollectionMatchesShadow(t *testing.T, c *Collector, roots RootSet) {
@@ -177,5 +223,46 @@ func TestShadowTraceRejectsInvalidReachableReference(t *testing.T) {
 	root := Root(parent)
 	if _, err := shadowTraceLive(c, Slots{&root}); err == nil {
 		t.Fatal("shadow trace accepted an invalid reachable reference")
+	}
+}
+
+type mismatchedShadowRoots struct {
+	slot   Root
+	direct Ref
+}
+
+func (r *mismatchedShadowRoots) RangeRoots(fn func(RootSlot) bool) { fn(&r.slot) }
+func (r *mismatchedShadowRoots) RangeRootRefs(sink RootRefSink)    { sink.VisitRootRef(r.direct) }
+
+func TestShadowTraceRejectsDivergentDirectRootEnumeration(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	first, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := &mismatchedShadowRoots{slot: Root(first), direct: second}
+	if _, err := shadowTraceLive(c, roots); err == nil {
+		t.Fatal("shadow trace accepted divergent direct and mutable root enumeration")
+	}
+}
+
+func TestFullCollectionMatchesShadowForDirectRoots(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	root, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unreachable, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := directTestRoots{root}
+	assertFullCollectionMatchesShadow(t, c, &roots)
+	if c.entry(unreachable).space != spaceFree {
+		t.Fatal("direct-root shadow trace retained unreachable object")
 	}
 }
