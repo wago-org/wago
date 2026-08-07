@@ -260,13 +260,12 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 
 				b.ReportAllocs()
 				b.ResetTimer()
+				b.StopTimer()
 				for i := 0; i < b.N; i++ {
 					if i != 0 && i%1024 == 0 {
-						b.StopTimer()
 						if err := c.CollectFull(oldRoots); err != nil {
 							b.Fatal(err)
 						}
-						b.StartTimer()
 					}
 					for j := 0; j < nurseryObjects; j++ {
 						r, err := c.NewStructDefault(0)
@@ -277,9 +276,11 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 							rootValues[j] = Root(r)
 						}
 					}
+					b.StartTimer()
 					if err := c.CollectMinor(roots); err != nil {
 						b.Fatal(err)
 					}
+					b.StopTimer()
 					for j := range rootValues {
 						rootValues[j] = Root(Null())
 					}
@@ -313,13 +314,12 @@ func BenchmarkMinorCollectionRememberedParentScaling(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
+			b.StopTimer()
 			for i := 0; i < b.N; i++ {
 				if i != 0 && i%1024 == 0 {
-					b.StopTimer()
 					if err := c.CollectFull(fullRoots); err != nil {
 						b.Fatal(err)
 					}
-					b.StartTimer()
 				}
 				child, err := c.NewStructDefault(0)
 				if err != nil {
@@ -328,9 +328,11 @@ func BenchmarkMinorCollectionRememberedParentScaling(b *testing.B) {
 				if err := c.ArraySet(parent, 0, RefValue(child)); err != nil {
 					b.Fatal(err)
 				}
+				b.StartTimer()
 				if err := c.CollectMinor(nil); err != nil {
 					b.Fatal(err)
 				}
+				b.StopTimer()
 				if err := c.ArraySet(parent, 0, RefValue(Null())); err != nil {
 					b.Fatal(err)
 				}
