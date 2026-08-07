@@ -4,6 +4,13 @@ on:
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/regression-stress.yml'
+      - 'docs/gc.md'
+      - 'src/core/runtime/gc/**'
+      - 'src/wago/*gc*'
 
 permissions:
   contents: read
@@ -52,6 +59,7 @@ jobs:
         run: go test -count=3 -tags '${{ matrix.tags }}' -run 'Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$' ./src/wago
 
   stress:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
