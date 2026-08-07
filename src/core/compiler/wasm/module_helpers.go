@@ -120,17 +120,18 @@ func IsNumericGlobalType(t ValType) bool {
 // helper intentionally observes RefType.Bare so an explicit (ref null ...)
 // value type is not silently rewritten as shorthand during a binary round trip.
 func EncodeValType(t ValType) (byte, bool) {
-	switch t.Kind {
+	switch t.Kind() {
 	case ValNum:
-		switch t.Num {
+		switch t.Num() {
 		case NumI32, NumI64, NumF32, NumF64:
-			return byte(t.Num), true
+			return byte(t.Num()), true
 		}
 	case ValVec:
 		return 0x7b, true
 	case ValRef:
-		if t.Ref.Bare && t.Ref.Nullable && !t.Ref.Exact && t.Ref.Heap.Kind == HeapAbs {
-			return byte(t.Ref.Heap.Abs), true
+		rt := t.Ref()
+		if rt.Bare() && rt.Nullable() && !rt.Exact() && rt.Heap().Kind() == HeapAbs {
+			return byte(rt.Heap().Abs()), true
 		}
 	}
 	return 0, false
@@ -263,12 +264,12 @@ func (m *Module) resolvedTypeFunc(idx TypeIdx) (*CompType, bool) {
 
 func funcTypeHasRecIndexes(ct *CompType) bool {
 	for _, t := range ct.Params {
-		if t.Kind == ValRef && t.Ref.Heap.Kind == HeapTypeIndex && t.Ref.Heap.Type.Rec {
+		if t.Kind() == ValRef && t.Ref().Heap().Kind() == HeapTypeIndex && t.Ref().Heap().Type().Rec {
 			return true
 		}
 	}
 	for _, t := range ct.Results {
-		if t.Kind == ValRef && t.Ref.Heap.Kind == HeapTypeIndex && t.Ref.Heap.Type.Rec {
+		if t.Kind() == ValRef && t.Ref().Heap().Kind() == HeapTypeIndex && t.Ref().Heap().Type().Rec {
 			return true
 		}
 	}
@@ -345,27 +346,26 @@ func (m *Module) resolveCompTypeRecIndexes(ct CompType, recGroup int) CompType {
 }
 
 func (m *Module) resolveFieldTypeRecIndexes(ft FieldType, recGroup int) FieldType {
-	if ft.Storage.Packed {
+	storage := ft.Storage()
+	if storage.Packed() {
 		return ft
 	}
-	ft.Storage.Val = m.resolveValTypeRecIndexes(ft.Storage.Val, recGroup)
-	return ft
+	return NewFieldType(StorageVal(m.resolveValTypeRecIndexes(storage.Val(), recGroup)), ft.Mut())
 }
 
 func (m *Module) resolveValTypeRecIndexes(t ValType, recGroup int) ValType {
-	if t.Kind != ValRef {
+	if t.Kind() != ValRef {
 		return t
 	}
-	t.Ref = m.resolveRefTypeRecIndexes(t.Ref, recGroup)
-	return t
+	return RefVal(m.resolveRefTypeRecIndexes(t.Ref(), recGroup))
 }
 
 func (m *Module) resolveRefTypeRecIndexes(rt RefType, recGroup int) RefType {
-	if rt.Heap.Kind != HeapTypeIndex {
+	heap := rt.Heap()
+	if heap.Kind() != HeapTypeIndex {
 		return rt
 	}
-	rt.Heap.Type = m.resolveTypeIdxRecIndex(rt.Heap.Type, recGroup)
-	return rt
+	return rt.WithHeap(IndexedHeap(m.resolveTypeIdxRecIndex(heap.Type(), recGroup)))
 }
 
 func (m *Module) resolveTypeIdxRecIndex(idx TypeIdx, recGroup int) TypeIdx {
@@ -521,16 +521,17 @@ func StructuralFuncTypeID(ft *CompType) uint32 {
 // key prevents collisions in the legacy 32-bit FNV discriminator from admitting
 // a wrong native target.
 func structuralLegacyValTypeByte(t ValType) byte {
-	switch t.Kind {
+	switch t.Kind() {
 	case ValNum:
-		return byte(t.Num)
+		return byte(t.Num())
 	case ValVec:
 		return 0x7b
 	case ValRef:
 		// Canonicalize shorthand and explicit nullable abstract references to
 		// the same legacy byte. Wider identity is provided by StructuralTypeKey.
-		if t.Ref.Nullable && !t.Ref.Exact && t.Ref.Heap.Kind == HeapAbs {
-			return byte(t.Ref.Heap.Abs)
+		rt := t.Ref()
+		if rt.Nullable() && !rt.Exact() && rt.Heap().Kind() == HeapAbs {
+			return byte(rt.Heap().Abs())
 		}
 	}
 	return 0
@@ -542,19 +543,20 @@ func StructuralFuncTypeKey(ft *CompType) uint64 {
 		encoded = append(encoded, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 	}
 	writeValue := func(t ValType) {
-		encoded = append(encoded, byte(t.Kind))
-		switch t.Kind {
+		encoded = append(encoded, byte(t.Kind()))
+		switch t.Kind() {
 		case ValNum:
-			encoded = append(encoded, byte(t.Num))
+			encoded = append(encoded, byte(t.Num()))
 		case ValRef:
 			flags := byte(0)
-			if t.Ref.Nullable {
+			rt := t.Ref()
+			if rt.Nullable() {
 				flags |= 1
 			}
-			if t.Ref.Exact {
+			if rt.Exact() {
 				flags |= 2
 			}
-			encoded = append(encoded, flags, byte(t.Ref.Heap.Kind), byte(t.Ref.Heap.Abs))
+			encoded = append(encoded, flags, byte(rt.Heap().Kind()), byte(rt.Heap().Abs()))
 		}
 	}
 	mixU32(uint32(len(ft.Params)))

@@ -366,11 +366,11 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.as_non_null")
 		}
 		if !x.unknown {
-			x.t.Ref.Nullable = false
+			x.t = RefVal(x.t.Ref().WithNullable(false))
 		}
 		v.vals = append(v.vals, x)
 	case InstrBrOnNull:
@@ -382,7 +382,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "br_on_null")
 		}
 		if err := v.popAll(lt); err != nil {
@@ -390,7 +390,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.pushAll(lt)
 		if !x.unknown {
-			x.t.Ref.Nullable = false
+			x.t = RefVal(x.t.Ref().WithNullable(false))
 		}
 		v.vals = append(v.vals, x)
 	case InstrBrOnNonNull:
@@ -402,11 +402,11 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if len(lt) == 0 || lt[len(lt)-1].Kind != ValRef || (!x.unknown && x.t.Kind != ValRef) {
+		if len(lt) == 0 || lt[len(lt)-1].Kind() != ValRef || (!x.unknown && x.t.Kind() != ValRef) {
 			return v.verr(ErrTypeMismatch, "br_on_non_null")
 		}
 		if !x.unknown {
-			x.t.Ref.Nullable = false
+			x.t = RefVal(x.t.Ref().WithNullable(false))
 			if !v.subtype(x.t, lt[len(lt)-1]) {
 				return v.verr(ErrTypeMismatch, x.t.String()+" is not "+lt[len(lt)-1].String())
 			}
@@ -564,7 +564,7 @@ func isConstInstruction(k InstrKind) bool {
 	return false
 }
 func isImplicitSelectType(t ValType) bool {
-	return t.Kind == ValNum || t.Kind == ValVec
+	return t.Kind() == ValNum || t.Kind() == ValVec
 }
 
 // matchValTypes reports whether actual values may flow to expected result
@@ -813,11 +813,11 @@ const (
 
 var effectValTypes = [...]ValType{
 	effectNone: {},
-	effectI32:  {Kind: ValNum, Num: NumI32},
-	effectI64:  {Kind: ValNum, Num: NumI64},
-	effectF32:  {Kind: ValNum, Num: NumF32},
-	effectF64:  {Kind: ValNum, Num: NumF64},
-	effectV128: {Kind: ValVec},
+	effectI32:  I32,
+	effectI64:  I64,
+	effectF32:  F32,
+	effectF64:  F64,
+	effectV128: V128,
 }
 
 func (t effectValue) valType() ValType { return effectValTypes[t] }

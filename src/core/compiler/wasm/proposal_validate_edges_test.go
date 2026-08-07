@@ -8,9 +8,9 @@ func structType(fields []FieldType, meta TypeMetadata) RecType {
 func arrayType(field FieldType) RecType {
 	return RecType{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompArray, Array: field}}}}
 }
-func field(v ValType, mut Mut) FieldType { return FieldType{Storage: StorageType{Val: v}, Mut: mut} }
+func field(v ValType, mut Mut) FieldType { return NewFieldType(StorageVal(v), mut) }
 func packedField(p PackType, mut Mut) FieldType {
-	return FieldType{Storage: StorageType{Packed: true, Pack: p}, Mut: mut}
+	return NewFieldType(StoragePacked(p), mut)
 }
 func refToType(idx uint32, nullable bool) ValType {
 	return RefVal(Ref(nullable, IndexedHeap(TypeIdx{Index: idx}), false))

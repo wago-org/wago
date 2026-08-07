@@ -521,10 +521,10 @@ func TestValidatorCoverageModuleLevelBranches(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Describes: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Descriptor: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompTypeKind(99)}}}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct, Fields: []FieldType{{Storage: StorageType{Packed: true, Pack: PackType(0xff)}}}}}}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{{Kind: ValTypeKind(99)}})}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: Ref(true, HeapType{Kind: HeapTypeKind(99)}, false)}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: Ref(true, HeapType{Kind: HeapDefType}, false)}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct, Fields: []FieldType{NewFieldType(StoragePacked(PackType(0xff)), Const)}}}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{newValType(ValTypeKind(99), 0)})}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: Ref(true, HeapType{lo: uint64(HeapTypeKind(99))}, false)}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: Ref(true, DefinedHeap(nil), false)}}}}, ErrUnknownType)
 	})
 	t.Run("extern imports all kinds validate", func(t *testing.T) {
 		max := uint64(1)
@@ -789,7 +789,7 @@ func TestDirectStartTryTableCatchPayloads(t *testing.T) {
 		bt   BlockType
 		c    []Catch
 	}{
-		{"invalid-block-type", coverageFuncValidator(&Module{}, nil), BlockType{Kind: BlockVal, Val: ValType{Kind: ValTypeKind(99)}}, nil},
+		{"invalid-block-type", coverageFuncValidator(&Module{}, nil), BlockType{Kind: BlockVal, Val: newValType(ValTypeKind(99), 0)}, nil},
 		{"unknown-label", coverageFuncValidator(&Module{}, nil), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchAll, Label: 1}}},
 		{"unknown-tag", coverageFuncValidator(tagged, []ValType{I32}), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchTag, Tag: 1, Label: 0}}},
 		{"tag-is-not-function", coverageFuncValidator(&Module{Types: []RecType{structType(nil, TypeMetadata{}), ft(nil, nil)}, Tags: []TagType{{Type: TypeIdx{Index: 0}}}}, nil), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}},
@@ -812,7 +812,7 @@ func TestValidatorCoverageModuleLevelNegativeBranches(t *testing.T) {
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("global has invalid value type", func(t *testing.T) {
-		expectValidateErr(t, &Module{Globals: []Global{{Type: GlobalType{Type: ValType{Kind: ValTypeKind(99)}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Globals: []Global{{Type: GlobalType{Type: newValType(ValTypeKind(99), 0)}}}}, ErrUnknownType)
 	})
 	t.Run("active data has unknown memory", func(t *testing.T) {
 		m := &Module{Data: []Data{{Mode: DataMode{Kind: DataActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}}}}
@@ -824,7 +824,7 @@ func TestValidatorCoverageModuleLevelNegativeBranches(t *testing.T) {
 		expectValidateErr(t, &Module{Types: types, Imports: []Import{{Type: ExternType{Kind: ExternTag, Tag: TagType{Type: TypeIdx{Index: 0}}}}}}, ErrUnknownType)
 	})
 	t.Run("function parameter has invalid value type", func(t *testing.T) {
-		expectValidateErr(t, &Module{Types: []RecType{ft([]ValType{{Kind: ValTypeKind(99)}}, nil)}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{ft([]ValType{newValType(ValTypeKind(99), 0)}, nil)}}, ErrUnknownType)
 	})
 	t.Run("active element has unknown table", func(t *testing.T) {
 		m := &Module{Elements: []Elem{{Mode: ElemMode{Kind: ElemActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}, Kind: ElemKind{Kind: ElemFuncExprs, Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}}}}}}}}
@@ -884,10 +884,10 @@ func TestValidatorCoverageInternalHelperBranches(t *testing.T) {
 	if mv.refSubtype(Ref(false, AbsHeap(HeapExtern), false), Ref(false, IndexedHeap(TypeIdx{Index: 0}), false)) {
 		t.Fatal("abstract heap should not subtype indexed heap")
 	}
-	if !coverageFuncValidator(mv.m, nil).subtype(ValType{Kind: ValBot}, I32) {
+	if !coverageFuncValidator(mv.m, nil).subtype(Bot, I32) {
 		t.Fatal("value bottom should subtype any value")
 	}
-	if _, _, err := coverageFuncValidator(&Module{}, nil).blockSig(BlockType{Kind: BlockVal, Val: ValType{Kind: ValTypeKind(99)}}); err == nil {
+	if _, _, err := coverageFuncValidator(&Module{}, nil).blockSig(BlockType{Kind: BlockVal, Val: newValType(ValTypeKind(99), 0)}); err == nil {
 		t.Fatal("invalid block result type accepted")
 	}
 	if _, _, err := coverageFuncValidator(&Module{}, nil).blockSig(BlockType{Kind: BlockTypeKind(99)}); err == nil {
@@ -899,7 +899,7 @@ func TestValidatorCoverageInternalHelperBranches(t *testing.T) {
 	if !mv.heapSubtype(AbsHeap(HeapExtern), AbsHeap(HeapExtern)) {
 		t.Fatal("equal heaps should subtype")
 	}
-	if err := mv.validateHeapType(HeapType{Kind: HeapDefType, Def: &DefType{}}); err != nil {
+	if err := mv.validateHeapType(DefinedHeap(&DefType{})); err != nil {
 		t.Fatalf("heap def type: %v", err)
 	}
 }
@@ -911,7 +911,7 @@ func TestValidatorCoverageCoreNegativeStepBranches(t *testing.T) {
 		expectStepErr(t, fv, Instruction{Kind: InstrNop}, ErrConstExprRequired)
 	})
 	t.Run("typed select validates immediate value type", func(t *testing.T) {
-		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrSelect, ext: &instrExt{ValTypes: []ValType{{Kind: ValTypeKind(99)}}}}), ErrUnknownType)
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrSelect, ext: &instrExt{ValTypes: []ValType{newValType(ValTypeKind(99), 0)}}}), ErrUnknownType)
 	})
 	t.Run("load and store stack failures", func(t *testing.T) {
 		expectStepErr(t, coverageFuncValidator(&Module{}, nil), Instruction{Kind: InstrI32Load}, ErrUnknownMemory)
@@ -941,7 +941,7 @@ func TestValidatorCoverageCoreNegativeStepBranches(t *testing.T) {
 		}
 	})
 	t.Run("if branch bookkeeping errors", func(t *testing.T) {
-		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrIf, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: ValType{Kind: ValTypeKind(99)}}}}), ErrUnknownType)
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrIf, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: newValType(ValTypeKind(99), 0)}}}), ErrUnknownType)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrIf, ext: &instrExt{Then: []Instruction{{Kind: InstrLocalGet, Index: 0}}}}), ErrUnknownLocal)
 		expectValidateErr(t, modWithFunc(nil, []ValType{I32}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrIf, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I32}, Then: []Instruction{{Kind: InstrI32Const}}}}), ErrTypeMismatch)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrIf, ext: &instrExt{Then: []Instruction{{Kind: InstrI32Const}}, Else: []Instruction{}}}), ErrTypeMismatch)
@@ -971,7 +971,7 @@ func TestValidatorCoverageCoreNegativeStepBranches(t *testing.T) {
 		expectValidateErr(t, &Module{Globals: []Global{{Type: GlobalType{Type: I32}, Init: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}}, Types: []RecType{ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 0}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrI32Const}, {Kind: InstrGlobalSet, Index: 0}}}}}}, ErrImmutableGlobal)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrTableGet, Index: 0}), ErrUnknownTable)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrTableSet, Index: 0}), ErrUnknownTable)
-		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: Ref(true, HeapType{Kind: HeapTypeKind(99)}, false)}}), ErrUnknownType)
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: Ref(true, HeapType{lo: uint64(HeapTypeKind(99))}, false)}}), ErrUnknownType)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrRefFunc, Index: 1}, Instruction{Kind: InstrDrop}), ErrUnknownFunc)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrRefIsNull}), ErrTypeMismatch)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrRefEq}), ErrTypeMismatch)
@@ -1137,7 +1137,7 @@ func TestValidatorCoverageProposalNegativeBranches(t *testing.T) {
 		}
 	})
 	t.Run("try_table negative paths", func(t *testing.T) {
-		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrTryTable, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: ValType{Kind: ValTypeKind(99)}}}}), ErrUnknownType)
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrTryTable, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: newValType(ValTypeKind(99), 0)}}}), ErrUnknownType)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrBlock, ext: &instrExt{Body: Expr{Instrs: []Instruction{{Kind: InstrTryTable, ext: &instrExt{Catches: []Catch{{Kind: CatchTag, Tag: 99, Label: 0}}}}}}}}), ErrUnknownTag)
 		m := &Module{Types: []RecType{ft([]ValType{I32}, nil), ft(nil, nil)}, Tags: []TagType{{Type: TypeIdx{Index: 0}}}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrBlock, ext: &instrExt{Body: Expr{Instrs: []Instruction{{Kind: InstrTryTable, ext: &instrExt{Catches: []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}}}}}}}}}}}}
 		expectValidateErr(t, m, ErrTypeMismatch)

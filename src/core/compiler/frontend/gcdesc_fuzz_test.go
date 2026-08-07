@@ -143,6 +143,6 @@ func fuzzGCStorage(r *gcDescFuzzBytes, total, recLen int) wasm.StorageType {
 		}
 		return concreteRec(nullable, uint32(r.n(recLen+2)))
 	default:
-		return wasm.StorageType{Packed: true, Pack: wasm.PackType(255)}
+		return wasm.StoragePacked(wasm.PackType(255))
 	}
 }

@@ -46,7 +46,7 @@ type Value struct {
 
 // IsRef reports whether v is a wasm reference value and therefore may need root
 // publication across allocating runtime calls.
-func (v Value) IsRef() bool { return v.Type.Kind == wasm.ValRef }
+func (v Value) IsRef() bool { return v.Type.Kind() == wasm.ValRef }
 
 // RefLayout documents the compact guest reference representation used by a heap
 // policy. The current runtime/gc.Ref layout is 32-bit: null is 0, i31 immediates

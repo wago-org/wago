@@ -543,12 +543,12 @@ func (p supportPass) types() error {
 					switch st.Comp.Kind {
 					case wasm.CompStruct:
 						for fi := range st.Comp.Fields {
-							if storageTypeRequiresSIMD(st.Comp.Fields[fi].Storage) {
+							if storageTypeRequiresSIMD(st.Comp.Fields[fi].Storage()) {
 								return p.unsupported("v128", "simd disabled", fmt.Sprintf("%s field %d", ctx, fi))
 							}
 						}
 					case wasm.CompArray:
-						if storageTypeRequiresSIMD(st.Comp.Array.Storage) {
+						if storageTypeRequiresSIMD(st.Comp.Array.Storage()) {
 							return p.unsupported("v128", "simd disabled", ctx+" array element")
 						}
 					}
@@ -990,7 +990,7 @@ func needsPublicFuncrefHostReentry(m *wasm.Module, tables []TableRuntimeShape) b
 			continue
 		}
 		for _, param := range ft.Params {
-			if param.Kind == wasm.ValRef && isFuncRef(param.Ref) {
+			if param.Kind() == wasm.ValRef && isFuncRef(param.Ref()) {
 				return true
 			}
 		}
@@ -2170,37 +2170,40 @@ func (p supportPass) supportedValTypes(vs []wasm.ValType) bool {
 }
 
 func (p supportPass) supportedValType(v wasm.ValType) bool {
-	if v.Kind == wasm.ValNum {
-		switch v.Num {
+	if v.Kind() == wasm.ValNum {
+		switch v.Num() {
 		case wasm.NumI32, wasm.NumI64, wasm.NumF32, wasm.NumF64:
 			return true
 		}
 	}
-	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
+	if p.feat.SIMD && v.Kind() == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedExceptionRef(v.Ref) || p.supportedNullReference(v.Ref) || p.supportedGCReference(v.Ref) || p.supportedStructuralTypeRef(v.Ref))
+	return p.feat.ReferenceTypes && v.Kind() == wasm.ValRef && (isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedExceptionRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref()))
 }
 
 func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
-	return p.feat.ExceptionReferences && rt.Heap.Kind == wasm.HeapAbs && (rt.Heap.Abs == wasm.HeapExn || rt.Heap.Abs == wasm.HeapNoExn)
+	heap := rt.Heap()
+	return p.feat.ExceptionReferences && heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapExn || heap.Abs() == wasm.HeapNoExn)
 }
 
 func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
-	if rt.Exact || rt.Heap.Kind != wasm.HeapAbs {
+	heap := rt.Heap()
+	if rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
-	if p.feat.GCI31Products && (rt.Heap.Abs == wasm.HeapI31 || rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapNone) {
+	if p.feat.GCI31Products && (heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapNone) {
 		return true
 	}
-	return (p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts || p.feat.GCArrayProducts) && (rt.Heap.Abs == wasm.HeapAny || rt.Heap.Abs == wasm.HeapEq || rt.Heap.Abs == wasm.HeapNone || rt.Heap.Abs == wasm.HeapStruct || rt.Heap.Abs == wasm.HeapArray)
+	return (p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts || p.feat.GCArrayProducts) && (heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapEq || heap.Abs() == wasm.HeapNone || heap.Abs() == wasm.HeapStruct || heap.Abs() == wasm.HeapArray)
 }
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
-	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || rt.Exact || rt.Heap.Kind != wasm.HeapTypeIndex {
+	heap := rt.Heap()
+	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || rt.Exact() || heap.Kind() != wasm.HeapTypeIndex {
 		return false
 	}
-	index := rt.Heap.Type.Index
+	index := heap.Type().Index
 	for gi := range p.m.Types {
 		if index < uint32(len(p.m.Types[gi].SubTypes)) {
 			kind := p.m.Types[gi].SubTypes[index].Comp.Kind
@@ -2212,10 +2215,11 @@ func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
 }
 
 func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
-	if !p.feat.NullReferenceProducts || !rt.Nullable || rt.Exact || rt.Heap.Kind != wasm.HeapAbs {
+	heap := rt.Heap()
+	if !p.feat.NullReferenceProducts || !rt.Nullable() || rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
-	switch rt.Heap.Abs {
+	switch heap.Abs() {
 	case wasm.HeapAny, wasm.HeapNone, wasm.HeapExn, wasm.HeapNoExn, wasm.HeapNoFunc, wasm.HeapNoExtern:
 		return true
 	default:
@@ -2255,14 +2259,14 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 	if p.supportedValType(v) {
 		return nil
 	}
-	if v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) && !p.feat.SIMD {
+	if v.Kind() == wasm.ValVec && wasm.EqualValType(v, wasm.V128) && !p.feat.SIMD {
 		return p.unsupported("value type", "v128 (simd disabled)", context)
 	}
-	if v.Kind == wasm.ValRef {
+	if v.Kind() == wasm.ValRef {
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
-		} else if p.isTypedFuncRef(v.Ref) && !p.feat.TypedFunctionReferences {
+		} else if p.isTypedFuncRef(v.Ref()) && !p.feat.TypedFunctionReferences {
 			feature += " (typed-function-references disabled)"
 		}
 		return p.unsupported("reference type", feature, context)
@@ -2271,14 +2275,14 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
-	if v.Kind == wasm.ValRef {
-		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref) || p.supportedStagedExternRef(v.Ref) || p.supportedNullReference(v.Ref) || p.supportedGCReference(v.Ref) || p.supportedStructuralTypeRef(v.Ref)) {
+	if v.Kind() == wasm.ValRef {
+		if p.feat.ReferenceTypes && (isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref())) {
 			return nil
 		}
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
-		} else if p.isTypedFuncRef(v.Ref) && !p.feat.TypedFunctionReferences {
+		} else if p.isTypedFuncRef(v.Ref()) && !p.feat.TypedFunctionReferences {
 			feature += " (typed-function-references disabled)"
 		}
 		return p.unsupported("global type", feature, context)
@@ -2290,8 +2294,8 @@ func (p supportPass) globalType(v wasm.ValType, context string) error {
 }
 
 func valTypeName(v wasm.ValType) string {
-	if v.Kind == wasm.ValRef {
-		return refTypeName(v.Ref)
+	if v.Kind() == wasm.ValRef {
+		return refTypeName(v.Ref())
 	}
 	return v.String()
 }
@@ -2300,7 +2304,8 @@ func refTypeName(rt wasm.RefType) string {
 	if isFuncRef(rt) {
 		return "funcref"
 	}
-	if rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern {
+	heap := rt.Heap()
+	if rt.Nullable() && rt.Bare() && !rt.Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapExtern {
 		return "externref"
 	}
 	return wasm.RefVal(rt).String()
@@ -2347,12 +2352,12 @@ func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 			switch comp.Kind {
 			case wasm.CompStruct:
 				for k := range comp.Fields {
-					if storageTypeRequiresSIMD(comp.Fields[k].Storage) {
+					if storageTypeRequiresSIMD(comp.Fields[k].Storage()) {
 						return true
 					}
 				}
 			case wasm.CompArray:
-				if storageTypeRequiresSIMD(comp.Array.Storage) {
+				if storageTypeRequiresSIMD(comp.Array.Storage()) {
 					return true
 				}
 			}
@@ -2410,11 +2415,11 @@ func compValTypesRequireSIMD(vs []wasm.ValType) bool {
 }
 
 func valTypeRequiresSIMD(v wasm.ValType) bool {
-	return v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
+	return v.Kind() == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
 }
 
 func storageTypeRequiresSIMD(s wasm.StorageType) bool {
-	return !s.Packed && valTypeRequiresSIMD(s.Val)
+	return !s.Packed() && valTypeRequiresSIMD(s.Val())
 }
 
 func exprRequiresSIMD(e wasm.Expr) bool {
@@ -2546,18 +2551,20 @@ func (p supportPass) supportedTypedFuncHeap(heap int64) bool {
 }
 
 func (p supportPass) supportedStagedExternRef(rt wasm.RefType) bool {
-	if !p.feat.TypedFunctionReferences || rt.Exact || rt.Heap.Kind != wasm.HeapAbs {
+	heap := rt.Heap()
+	if !p.feat.TypedFunctionReferences || rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
-	return rt.Heap.Abs == wasm.HeapExtern || rt.Heap.Abs == wasm.HeapNoExtern
+	return heap.Abs() == wasm.HeapExtern || heap.Abs() == wasm.HeapNoExtern
 }
 
 func (p supportPass) isTypedFuncRef(rt wasm.RefType) bool {
-	switch rt.Heap.Kind {
+	heap := rt.Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return !isFuncRef(rt) && (rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc)
+		return !isFuncRef(rt) && (heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc)
 	case wasm.HeapTypeIndex:
-		_, ok := p.m.TypeFunc(rt.Heap.Type.Index)
+		_, ok := p.m.TypeFunc(heap.Type().Index)
 		return ok
 	default:
 		return false
@@ -2565,18 +2572,21 @@ func (p supportPass) isTypedFuncRef(rt wasm.RefType) bool {
 }
 
 func isFuncRef(rt wasm.RefType) bool {
-	return rt.Nullable && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapFunc
+	heap := rt.Heap()
+	return rt.Nullable() && !rt.Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc
 }
 
 func isExternRef(rt wasm.RefType) bool {
-	return rt.Nullable && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern
+	heap := rt.Heap()
+	return rt.Nullable() && !rt.Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapExtern
 }
 
 func compactRefTableType(rt wasm.RefType) bool {
-	if isExternRef(rt) || rt.Exact || rt.Heap.Kind != wasm.HeapAbs {
+	heap := rt.Heap()
+	if isExternRef(rt) || rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return isExternRef(rt)
 	}
-	switch rt.Heap.Abs {
+	switch heap.Abs() {
 	case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return true
 	default:
@@ -2590,10 +2600,11 @@ func compactRefTableType(rt wasm.RefType) bool {
 // null (e.g. ref.null nofunc) as a subtype of func/extern, so the const-expr
 // support pass must accept it too or it rejects valid WebAssembly 2.0 modules.
 func isNullableAbsRef(rt wasm.RefType) bool {
-	if !(rt.Nullable && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs) {
+	heap := rt.Heap()
+	if !(rt.Nullable() && !rt.Exact() && heap.Kind() == wasm.HeapAbs) {
 		return false
 	}
-	switch rt.Heap.Abs {
+	switch heap.Abs() {
 	case wasm.HeapFunc, wasm.HeapExtern, wasm.HeapNoFunc, wasm.HeapNoExtern:
 		return true
 	}

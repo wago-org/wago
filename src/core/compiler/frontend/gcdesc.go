@@ -36,7 +36,7 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 		case wasm.CompStruct:
 			fields := make([]gc.StorageKind, len(st.Comp.Fields))
 			for j, f := range st.Comp.Fields {
-				fields[j], err = lowerGCStorage(f.Storage, resolver)
+				fields[j], err = lowerGCStorage(f.Storage(), resolver)
 				if err != nil {
 					return nil, fmt.Errorf("frontend: type %d field %d: %w", i, j, err)
 				}
@@ -47,7 +47,7 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 			}
 			d.Final = st.Final
 		case wasm.CompArray:
-			elem, err := lowerGCStorage(st.Comp.Array.Storage, resolver)
+			elem, err := lowerGCStorage(st.Comp.Array.Storage(), resolver)
 			if err != nil {
 				return nil, fmt.Errorf("frontend: type %d array: %w", i, err)
 			}
@@ -116,23 +116,23 @@ func flattenGCTypes(types []wasm.RecType) []flattenedGCType {
 }
 
 func lowerGCStorage(st wasm.StorageType, resolver gcTypeResolver) (gc.StorageKind, error) {
-	if st.Packed {
-		switch st.Pack {
+	if st.Packed() {
+		switch st.Pack() {
 		case wasm.PackI8:
 			return gc.StorageI8, nil
 		case wasm.PackI16:
 			return gc.StorageI16, nil
 		default:
-			return 0, fmt.Errorf("unsupported packed storage %d", st.Pack)
+			return 0, fmt.Errorf("unsupported packed storage %d", st.Pack())
 		}
 	}
-	return lowerGCValType(st.Val, resolver)
+	return lowerGCValType(st.Val(), resolver)
 }
 
 func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, error) {
-	switch v.Kind {
+	switch v.Kind() {
 	case wasm.ValNum:
-		switch v.Num {
+		switch v.Num() {
 		case wasm.NumI32:
 			return gc.StorageI32, nil
 		case wasm.NumI64:
@@ -142,7 +142,7 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 		case wasm.NumF64:
 			return gc.StorageF64, nil
 		default:
-			return 0, fmt.Errorf("unsupported numeric storage %d", v.Num)
+			return 0, fmt.Errorf("unsupported numeric storage %d", v.Num())
 		}
 	case wasm.ValVec:
 		if wasm.EqualValType(v, wasm.V128) {
@@ -151,16 +151,18 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 		return 0, fmt.Errorf("unsupported vector storage")
 	case wasm.ValRef:
 		opaque := gc.StorageKind(0)
-		if v.Ref.Heap.Kind == wasm.HeapTypeIndex {
-			idx, err := resolver.resolve(v.Ref.Heap.Type)
+		rt := v.Ref()
+		heap := rt.Heap()
+		if heap.Kind() == wasm.HeapTypeIndex {
+			idx, err := resolver.resolve(heap.Type())
 			if err != nil {
-				return 0, fmt.Errorf("invalid referenced type index %d", v.Ref.Heap.Type.Index)
+				return 0, fmt.Errorf("invalid referenced type index %d", heap.Type().Index)
 			}
 			if int(idx) < len(resolver.flat) && resolver.flat[idx].Comp.Kind == wasm.CompFunc {
 				opaque = gc.StorageFuncRef
 			}
 		} else {
-			switch v.Ref.Heap.Abs {
+			switch heap.Abs() {
 			case wasm.HeapFunc, wasm.HeapNoFunc:
 				opaque = gc.StorageFuncRef
 			case wasm.HeapExtern, wasm.HeapNoExtern:
@@ -168,7 +170,7 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 			}
 		}
 		if opaque != 0 {
-			if v.Ref.Nullable {
+			if rt.Nullable() {
 				if opaque == gc.StorageFuncRef {
 					return gc.StorageFuncRefNull, nil
 				}
@@ -176,7 +178,7 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 			}
 			return opaque, nil
 		}
-		if v.Ref.Nullable {
+		if rt.Nullable() {
 			return gc.StorageRefNull, nil
 		}
 		// GC-category references use compact collector handles. i31 immediates and
@@ -185,6 +187,6 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 	case wasm.ValBot:
 		return 0, fmt.Errorf("unsupported bottom storage")
 	default:
-		return 0, fmt.Errorf("unsupported value kind %d", v.Kind)
+		return 0, fmt.Errorf("unsupported value kind %d", v.Kind())
 	}
 }

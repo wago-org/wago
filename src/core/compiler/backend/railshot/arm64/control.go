@@ -989,10 +989,10 @@ func exceptionPayloadMachineType(m *wasm.Module, typ wasm.ValType) (machineType,
 	if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
 		return mtOf(typ), true
 	}
-	if typ.Kind != wasm.ValRef || typ.Ref.Nullable || typ.Ref.Exact || typ.Ref.Heap.Kind != wasm.HeapTypeIndex {
+	if typ.Kind() != wasm.ValRef || typ.Ref().Nullable() || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 		return mtNone, false
 	}
-	if ft, ok := m.ResolvedTypeFunc(typ.Ref.Heap.Type.Index); !ok || ft == nil {
+	if ft, ok := m.ResolvedTypeFunc(typ.Ref().Heap().Type().Index); !ok || ft == nil {
 		return mtNone, false
 	}
 	return mtI64, true

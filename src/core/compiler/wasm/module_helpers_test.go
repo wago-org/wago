@@ -8,7 +8,7 @@ func TestTypeMetadataHelpersUseCanonicalFields(t *testing.T) {
 	if got := GlobalValueType(GlobalType{Type: F32}); got != F32 {
 		t.Fatalf("GlobalValueType = %s, want f32", got)
 	}
-	if got := TableRefType(TableType{Ref: ExternRef.Ref}); !EqualValType(RefVal(got), ExternRef) {
+	if got := TableRefType(TableType{Ref: ExternRef.Ref()}); !EqualValType(RefVal(got), ExternRef) {
 		t.Fatalf("TableRefType = %s, want externref", RefVal(got))
 	}
 	if got := TableAddrType(TableType{}); got != I32 {
@@ -84,11 +84,11 @@ func TestModuleMetadataHelpers(t *testing.T) {
 		Types: []RecType{{SubTypes: []SubType{{Comp: func0}, {Comp: CompType{Kind: CompStruct}}}}, {SubTypes: []SubType{{Comp: func1}}}},
 		Imports: []Import{
 			{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}},
-			{Type: ExternType{Kind: ExternTable, Table: TableType{Ref: FuncRef.Ref}}},
+			{Type: ExternType{Kind: ExternTable, Table: TableType{Ref: FuncRef.Ref()}}},
 			{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I64}}},
 		},
 		FuncTypes: []TypeIdx{{Index: 2}},
-		Tables:    []Table{{Type: TableType{Ref: ExternRef.Ref, Limits: Limits{Addr64: true}}}},
+		Tables:    []Table{{Type: TableType{Ref: ExternRef.Ref(), Limits: Limits{Addr64: true}}}},
 		Globals:   []Global{{Type: GlobalType{Type: F32}}},
 	}
 	if got := m.flattenedTypeCount(); got != 3 {
@@ -215,13 +215,13 @@ func TestInstructionPayloadAccessorsAndErrorFormatting(t *testing.T) {
 	}}
 	if in.BlockType().Val != I32 || len(in.Body().Instrs) != 1 || len(in.Then()) != 1 || len(in.Else()) != 1 ||
 		len(in.Catches()) != 1 || len(in.Indices()) != 1 || len(in.ValTypes()) != 1 || in.MemArg().Mem == nil ||
-		len(in.Bytes()) != 1 || in.Lanes()[0] != 3 || !in.RefType().Nullable || in.HeapType().Abs != HeapFunc || in.HeapType2().Type.Index != 4 {
+		len(in.Bytes()) != 1 || in.Lanes()[0] != 3 || !in.RefType().Nullable() || in.HeapType().Abs() != HeapFunc || in.HeapType2().Type().Index != 4 {
 		t.Fatal("instruction payload accessors changed")
 	}
 	var zero Instruction
 	if zero.BlockType().Kind != BlockVoid || len(zero.Body().Instrs) != 0 || zero.Then() != nil || zero.Else() != nil ||
 		zero.Catches() != nil || zero.Indices() != nil || zero.ValTypes() != nil || zero.MemArg().Mem != nil || zero.Bytes() != nil ||
-		zero.Lanes()[0] != 0 || zero.RefType().Nullable || zero.HeapType().Kind != HeapAbs || zero.HeapType2().Kind != HeapAbs {
+		zero.Lanes()[0] != 0 || zero.RefType().Nullable() || zero.HeapType().Kind() != HeapAbs || zero.HeapType2().Kind() != HeapAbs {
 		t.Fatal("zero instruction accessors changed")
 	}
 	if !AbsRef(HeapFunc).IsDefaultable() || Ref(false, AbsHeap(HeapFunc), false).IsDefaultable() {
@@ -296,10 +296,10 @@ func TestDecodeTagType(t *testing.T) {
 }
 
 func TestDecodeNullableReferenceType(t *testing.T) {
-	if got, err := decodeRefTypeForNull(newReader([]byte{0x70})); err != nil || !got.Nullable || got.Exact || got.Heap.Abs != HeapFunc {
+	if got, err := decodeRefTypeForNull(newReader([]byte{0x70})); err != nil || !got.Nullable() || got.Exact() || got.Heap().Abs() != HeapFunc {
 		t.Fatalf("decodeRefTypeForNull(funcref) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefTypeForNull(newReader([]byte{0x62, 3})); err != nil || !got.Nullable || !got.Exact || got.Heap.Type != (TypeIdx{Index: 3}) {
+	if got, err := decodeRefTypeForNull(newReader([]byte{0x62, 3})); err != nil || !got.Nullable() || !got.Exact() || got.Heap().Type() != (TypeIdx{Index: 3}) {
 		t.Fatalf("decodeRefTypeForNull(exact indexed) = %#v, %v", got, err)
 	}
 	if _, err := decodeRefTypeForNull(newReader([]byte{0x62, 0x80})); err == nil {
@@ -430,20 +430,20 @@ func TestStructuralTypeEqualityHelpers(t *testing.T) {
 	if !equalCompType(fun, fun) || equalCompType(fun, CompType{Kind: CompFunc, Params: []ValType{I64}, Results: []ValType{I64}}) {
 		t.Fatal("function type equality changed")
 	}
-	field := FieldType{Storage: StorageType{Val: I32}, Mut: Var}
+	field := NewFieldType(StorageVal(I32), Var)
 	strct := CompType{Kind: CompStruct, Fields: []FieldType{field}}
-	if !equalCompType(strct, strct) || equalCompType(strct, CompType{Kind: CompStruct, Fields: []FieldType{{Storage: StorageType{Val: I32}, Mut: Const}}}) {
+	if !equalCompType(strct, strct) || equalCompType(strct, CompType{Kind: CompStruct, Fields: []FieldType{NewFieldType(StorageVal(I32), Const)}}) {
 		t.Fatal("struct type equality changed")
 	}
-	array := CompType{Kind: CompArray, Array: FieldType{Storage: StorageType{Packed: true, Pack: PackI8}}}
-	if !equalCompType(array, array) || equalCompType(array, CompType{Kind: CompArray, Array: FieldType{Storage: StorageType{Packed: true, Pack: PackI16}}}) {
+	array := CompType{Kind: CompArray, Array: NewFieldType(StoragePacked(PackI8), Const)}
+	if !equalCompType(array, array) || equalCompType(array, CompType{Kind: CompArray, Array: NewFieldType(StoragePacked(PackI16), Const)}) {
 		t.Fatal("array type equality changed")
 	}
 	if EqualValType(RefVal(AbsRef(HeapFunc)), RefVal(AbsRef(HeapExtern))) || !EqualValType(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 2}), true)), RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 2}), true))) {
 		t.Fatal("reference value type equality changed")
 	}
 	def := &DefType{GroupIndex: 1, Index: 2}
-	if !equalHeapType(HeapType{Kind: HeapDefType, Def: def}, HeapType{Kind: HeapDefType, Def: &DefType{GroupIndex: 1, Index: 2}}) || equalHeapType(HeapType{Kind: HeapDefType, Def: def}, HeapType{Kind: HeapDefType}) {
+	if !equalHeapType(DefinedHeap(def), DefinedHeap(&DefType{GroupIndex: 1, Index: 2})) || equalHeapType(DefinedHeap(def), DefinedHeap(nil)) {
 		t.Fatal("defined heap type equality changed")
 	}
 }
@@ -460,16 +460,16 @@ func TestDecodeSignedTypeIndex(t *testing.T) {
 }
 
 func TestDecodeReferenceTypeEncodings(t *testing.T) {
-	if got, err := decodeRefType(newReader([]byte{0x63, 0x70})); err != nil || !EqualValType(RefVal(got), FuncRef) || got.Bare {
+	if got, err := decodeRefType(newReader([]byte{0x63, 0x70})); err != nil || !EqualValType(RefVal(got), FuncRef) || got.Bare() {
 		t.Fatalf("decodeRefType(nullable funcref) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x64, 0x70})); err != nil || got.Nullable || got.Bare || got.Heap.Abs != HeapFunc {
+	if got, err := decodeRefType(newReader([]byte{0x64, 0x70})); err != nil || got.Nullable() || got.Bare() || got.Heap().Abs() != HeapFunc {
 		t.Fatalf("decodeRefType(non-null funcref) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x63, 0x62, 4})); err != nil || !got.Nullable || !got.Exact || got.Bare || got.Heap.Type != (TypeIdx{Index: 4}) {
+	if got, err := decodeRefType(newReader([]byte{0x63, 0x62, 4})); err != nil || !got.Nullable() || !got.Exact() || got.Bare() || got.Heap().Type() != (TypeIdx{Index: 4}) {
 		t.Fatalf("decodeRefType(exact index) = %#v, %v", got, err)
 	}
-	if got, err := decodeRefType(newReader([]byte{0x6f})); err != nil || !EqualValType(RefVal(got), ExternRef) || !got.Bare {
+	if got, err := decodeRefType(newReader([]byte{0x6f})); err != nil || !EqualValType(RefVal(got), ExternRef) || !got.Bare() {
 		t.Fatalf("decodeRefType(shorthand externref) = %#v, %v", got, err)
 	}
 	for _, data := range [][]byte{nil, {0x63}, {0xff}} {
@@ -491,7 +491,7 @@ func TestDecodeStorageAndFieldTypes(t *testing.T) {
 		{[]byte{0x7f}, false, 0, I32},
 	} {
 		got, err := decodeStorageType(newReader(tc.data))
-		if err != nil || got.Packed != tc.packed || got.Pack != tc.pack || got.Val != tc.val {
+		if err != nil || got.Packed() != tc.packed || got.Pack() != tc.pack || got.Val() != tc.val {
 			t.Fatalf("decodeStorageType(%x) = %#v, %v", tc.data, got, err)
 		}
 	}
@@ -500,10 +500,10 @@ func TestDecodeStorageAndFieldTypes(t *testing.T) {
 			t.Fatalf("decodeStorageType(%x) accepted malformed input", data)
 		}
 	}
-	if got, err := decodeFieldType(newReader([]byte{0x77, 1})); err != nil || !got.Storage.Packed || got.Mut != Var {
+	if got, err := decodeFieldType(newReader([]byte{0x77, 1})); err != nil || !got.Storage().Packed() || got.Mut() != Var {
 		t.Fatalf("decodeFieldType(packed) = %#v, %v", got, err)
 	}
-	if got, err := decodeFieldType(newReader([]byte{0x7e, 0})); err != nil || got.Storage.Val != I64 || got.Mut != Const {
+	if got, err := decodeFieldType(newReader([]byte{0x7e, 0})); err != nil || got.Storage().Val() != I64 || got.Mut() != Const {
 		t.Fatalf("decodeFieldType(value) = %#v, %v", got, err)
 	}
 	if _, err := decodeFieldType(newReader([]byte{0x7f, 2})); err == nil {
@@ -513,32 +513,32 @@ func TestDecodeStorageAndFieldTypes(t *testing.T) {
 
 func TestRecursiveTypeIndexMarkingIncludesStructAndArrayFields(t *testing.T) {
 	ref := func(index uint32) ValType {
-		return ValType{Kind: ValRef, Ref: Ref(true, IndexedHeap(TypeIdx{Index: index}), false)}
+		return RefVal(Ref(true, IndexedHeap(TypeIdx{Index: index}), false))
 	}
 	types := []RecType{
 		{SubTypes: []SubType{
-			{Comp: CompType{Kind: CompStruct, Fields: []FieldType{{Storage: StorageType{Val: ref(1)}}, {Storage: StorageType{Packed: true, Pack: PackI8}}}}},
-			{Comp: CompType{Kind: CompArray, Array: FieldType{Storage: StorageType{Val: ref(0)}}}},
+			{Comp: CompType{Kind: CompStruct, Fields: []FieldType{NewFieldType(StorageVal(ref(1)), Const), NewFieldType(StoragePacked(PackI8), Const)}}},
+			{Comp: CompType{Kind: CompArray, Array: NewFieldType(StorageVal(ref(0)), Const)}},
 		}},
 		{SubTypes: []SubType{{Comp: CompType{Kind: CompFunc, Params: []ValType{ref(0)}}}}},
 	}
 	markRecursiveTypeIndexes(types)
-	structRef := types[0].SubTypes[0].Comp.Fields[0].Storage.Val.Ref.Heap.Type
-	arrayRef := types[0].SubTypes[1].Comp.Array.Storage.Val.Ref.Heap.Type
-	outerRef := types[1].SubTypes[0].Comp.Params[0].Ref.Heap.Type
+	structRef := types[0].SubTypes[0].Comp.Fields[0].Storage().Val().Ref().Heap().Type()
+	arrayRef := types[0].SubTypes[1].Comp.Array.Storage().Val().Ref().Heap().Type()
+	outerRef := types[1].SubTypes[0].Comp.Params[0].Ref().Heap().Type()
 	if !structRef.Rec || structRef.Index != 1 || !arrayRef.Rec || arrayRef.Index != 0 || outerRef.Rec || outerRef.Index != 0 {
 		t.Fatalf("recursive type indexes = struct=%#v array=%#v outer=%#v", structRef, arrayRef, outerRef)
 	}
 	m := &Module{Types: types}
 	resolvedStruct := m.resolveCompTypeRecIndexes(types[0].SubTypes[0].Comp, 0)
 	resolvedArray := m.resolveCompTypeRecIndexes(types[0].SubTypes[1].Comp, 0)
-	if got := resolvedStruct.Fields[0].Storage.Val.Ref.Heap.Type; got.Rec || got.Index != 1 {
+	if got := resolvedStruct.Fields[0].Storage().Val().Ref().Heap().Type(); got.Rec || got.Index != 1 {
 		t.Fatalf("resolved struct field index = %#v", got)
 	}
-	if got := resolvedArray.Array.Storage.Val.Ref.Heap.Type; got.Rec || got.Index != 0 {
+	if got := resolvedArray.Array.Storage().Val().Ref().Heap().Type(); got.Rec || got.Index != 0 {
 		t.Fatalf("resolved array field index = %#v", got)
 	}
-	if !resolvedStruct.Fields[1].Storage.Packed {
+	if !resolvedStruct.Fields[1].Storage().Packed() {
 		t.Fatal("packed struct field was changed while resolving indexes")
 	}
 	if got := m.resolveValTypeRecIndexes(I32, 0); got != I32 {

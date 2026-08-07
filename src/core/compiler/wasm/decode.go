@@ -216,7 +216,7 @@ func decodeValType(r *reader) (ValType, error) {
 	switch b {
 	case 0x7f, 0x7e, 0x7d, 0x7c:
 		n, err := decodeNumType(r)
-		return ValType{Kind: ValNum, Num: n}, err
+		return newValType(ValNum, n), err
 	case 0x7b:
 		_, _ = r.byte()
 		return V128, nil
@@ -249,10 +249,10 @@ func decodeMut(r *reader) (Mut, error) {
 func decodeStorageType(r *reader) (StorageType, error) {
 	if b, ok := r.peek(); ok && (b == 0x77 || b == 0x78) {
 		_, _ = r.byte()
-		return StorageType{Packed: true, Pack: PackType(b)}, nil
+		return StoragePacked(PackType(b)), nil
 	}
 	vt, err := decodeValType(r)
-	return StorageType{Val: vt}, err
+	return StorageVal(vt), err
 }
 func decodeFieldType(r *reader) (FieldType, error) {
 	st, err := decodeStorageType(r)
@@ -263,7 +263,7 @@ func decodeFieldType(r *reader) (FieldType, error) {
 	if err != nil {
 		return FieldType{}, err
 	}
-	return FieldType{Storage: st, Mut: m}, nil
+	return NewFieldType(st, m), nil
 }
 
 func decodeCompType(r *reader) (CompType, error) {

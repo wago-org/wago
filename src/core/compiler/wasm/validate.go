@@ -234,7 +234,7 @@ func (v *moduleValidator) validateModule() error {
 				return err
 			}
 		}
-		if !hasInit && !t.Type.Ref.Nullable {
+		if !hasInit && !t.Type.Ref.Nullable() {
 			return v.err(ErrTypeMismatch, "non-defaultable table requires an initializer")
 		}
 	}
@@ -485,19 +485,19 @@ func (v *moduleValidator) validateCompTypeInRecGroup(ct CompType, recGroup int) 
 }
 
 func (v *moduleValidator) validateFieldTypeInRecGroup(ft FieldType, recGroup int) error {
-	return v.validateStorageTypeInRecGroup(ft.Storage, recGroup)
+	return v.validateStorageTypeInRecGroup(ft.Storage(), recGroup)
 }
 
 func (v *moduleValidator) validateStorageTypeInRecGroup(st StorageType, recGroup int) error {
-	if st.Packed {
-		switch st.Pack {
+	if st.Packed() {
+		switch st.Pack() {
 		case PackI8, PackI16:
 			return nil
 		default:
 			return v.err(ErrUnknownType, "packed storage")
 		}
 	}
-	return v.validateValTypeInRecGroup(st.Val, recGroup)
+	return v.validateValTypeInRecGroup(st.Val(), recGroup)
 }
 
 func (v *moduleValidator) validateValType(t ValType) error {
@@ -505,11 +505,11 @@ func (v *moduleValidator) validateValType(t ValType) error {
 }
 
 func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) error {
-	switch t.Kind {
+	switch t.Kind() {
 	case ValNum, ValVec:
 		return nil
 	case ValRef:
-		return v.validateRefTypeInRecGroup(t.Ref, recGroup)
+		return v.validateRefTypeInRecGroup(t.Ref(), recGroup)
 	default:
 		return v.err(ErrUnknownType, "value type")
 	}
@@ -520,7 +520,7 @@ func (v *moduleValidator) validateRefType(rt RefType) error {
 }
 
 func (v *moduleValidator) validateRefTypeInRecGroup(rt RefType, recGroup int) error {
-	return v.validateHeapTypeInRecGroup(rt.Heap, recGroup)
+	return v.validateHeapTypeInRecGroup(rt.Heap(), recGroup)
 }
 
 func (v *moduleValidator) validateHeapType(ht HeapType) error {
@@ -528,16 +528,16 @@ func (v *moduleValidator) validateHeapType(ht HeapType) error {
 }
 
 func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) error {
-	switch ht.Kind {
+	switch ht.Kind() {
 	case HeapAbs:
 		return nil
 	case HeapTypeIndex:
-		if !v.validTypeIdxInRecGroup(ht.Type, recGroup) {
+		if !v.validTypeIdxInRecGroup(ht.Type(), recGroup) {
 			return v.err(ErrUnknownType, "heap type")
 		}
 		return nil
 	case HeapDefType:
-		if ht.Def == nil {
+		if _, _, _, valid := ht.Def(); !valid {
 			return v.err(ErrUnknownType, "heap def type")
 		}
 		return nil
@@ -717,7 +717,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 				return RefType{}, err
 			}
 		}
-		return FuncRef.Ref, nil
+		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
 		// Validate the declared element reference type even when the segment has no
 		// initializer expressions; empty typed segments still carry type indexes.
@@ -748,7 +748,7 @@ func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
 	e := &v.m.Elements[index]
 	switch e.Kind.Kind {
 	case ElemFuncs, ElemFuncExprs:
-		return FuncRef.Ref, nil
+		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
 		return e.Kind.Ref, nil
 	default:
@@ -952,7 +952,7 @@ func (v *funcValidator) resetLocalInitialization() {
 func (v *funcValidator) localIsInitialized(idx uint32, t ValType) bool {
 	// Function parameters are initialized by the caller. Numeric, vector, and
 	// nullable reference locals have a default value at function entry.
-	if uint64(idx) < uint64(len(v.localParams)) || t.Kind != ValRef || t.Ref.Nullable {
+	if uint64(idx) < uint64(len(v.localParams)) || t.Kind() != ValRef || t.Ref().Nullable() {
 		return true
 	}
 	_, ok := v.initializedLocals[idx]
@@ -960,7 +960,7 @@ func (v *funcValidator) localIsInitialized(idx uint32, t ValType) bool {
 }
 
 func (v *funcValidator) initializeLocal(idx uint32, t ValType) {
-	if uint64(idx) < uint64(len(v.localParams)) || t.Kind != ValRef || t.Ref.Nullable {
+	if uint64(idx) < uint64(len(v.localParams)) || t.Kind() != ValRef || t.Ref().Nullable() {
 		return
 	}
 	if _, ok := v.initializedLocals[idx]; ok {
@@ -992,14 +992,14 @@ func (v *funcValidator) label(depth uint32) ([]ValType, error) {
 	return f.out, nil
 }
 func (v *funcValidator) subtype(a, b ValType) bool {
-	if b.Kind == ValBot || a.Kind == ValBot {
+	if b.Kind() == ValBot || a.Kind() == ValBot {
 		return true
 	}
 	if equalValType(a, b) {
 		return true
 	}
-	if a.Kind == ValRef && b.Kind == ValRef {
-		return v.refSubtype(a.Ref, b.Ref)
+	if a.Kind() == ValRef && b.Kind() == ValRef {
+		return v.refSubtype(a.Ref(), b.Ref())
 	}
 	return false
 }
@@ -1040,9 +1040,9 @@ var (
 )
 
 func singleValTypeSlice(t ValType) []ValType {
-	switch t.Kind {
+	switch t.Kind() {
 	case ValNum:
-		switch t.Num {
+		switch t.Num() {
 		case NumI32:
 			return blockOutI32
 		case NumI64:

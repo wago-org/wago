@@ -14,7 +14,7 @@ import (
 func typedRefControlModule(body []byte, result wasm.ValType) *wasm.Module {
 	indexedNullable := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
 	returnType := result
-	if result.Kind == wasm.ValRef {
+	if result.Kind() == wasm.ValRef {
 		returnType = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
 	}
 	return &wasm.Module{
