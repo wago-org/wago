@@ -189,10 +189,31 @@ func (m *Module) LocalFuncType(localIdx int) (*CompType, bool) {
 // ResolvedLocalFuncType returns a copy of the local function signature with any
 // recursive-local type indexes resolved to flattened absolute module indexes.
 func (m *Module) ResolvedLocalFuncType(localIdx int) (*CompType, bool) {
-	if localIdx < 0 || localIdx >= len(m.FuncTypes) {
+	var ct CompType
+	if !m.ResolveLocalFuncType(localIdx, &ct) {
 		return nil, false
 	}
-	return m.resolvedTypeFunc(m.FuncTypes[localIdx])
+	return &ct, true
+}
+
+// ResolveLocalFuncType writes the local function signature to dst with any
+// recursive-local type indexes resolved. Unlike ResolvedLocalFuncType, callers
+// that already own scratch storage need not allocate a CompType wrapper. When
+// no rewrite is needed, the immutable parameter/result slices alias the module.
+func (m *Module) ResolveLocalFuncType(localIdx int, dst *CompType) bool {
+	if localIdx < 0 || localIdx >= len(m.FuncTypes) {
+		return false
+	}
+	st, recGroup, ok := m.subtypeByTypeIdxWithRecGroup(m.FuncTypes[localIdx])
+	if !ok || st.Comp.Kind != CompFunc {
+		return false
+	}
+	if funcTypeHasRecIndexes(&st.Comp) {
+		*dst = m.resolveCompTypeRecIndexes(st.Comp, recGroup)
+	} else {
+		*dst = st.Comp
+	}
+	return true
 }
 
 func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
@@ -238,6 +259,20 @@ func (m *Module) resolvedTypeFunc(idx TypeIdx) (*CompType, bool) {
 	}
 	ct := m.resolveCompTypeRecIndexes(st.Comp, recGroup)
 	return &ct, true
+}
+
+func funcTypeHasRecIndexes(ct *CompType) bool {
+	for _, t := range ct.Params {
+		if t.Kind == ValRef && t.Ref.Heap.Kind == HeapTypeIndex && t.Ref.Heap.Type.Rec {
+			return true
+		}
+	}
+	for _, t := range ct.Results {
+		if t.Kind == ValRef && t.Ref.Heap.Kind == HeapTypeIndex && t.Ref.Heap.Type.Rec {
+			return true
+		}
+	}
+	return false
 }
 
 // TypeFunc returns the stored function type at a flattened module type index.

@@ -542,7 +542,7 @@ func (c *RuntimeConfig) Validate() error {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
 	for name := range c.optimizations {
-		if _, ok := optimization.Lookup(runtime.GOARCH, name); !ok {
+		if !optimization.Exists(runtime.GOARCH, name) {
 			return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
 		}
 	}

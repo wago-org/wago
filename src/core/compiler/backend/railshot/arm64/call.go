@@ -148,8 +148,8 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
 	// runs the body with localBase set. Straight-line callees touch no control frame,
 	// so this is a pure operand-stack/local transform.
-	if f.inlineTargets != nil {
-		if t := f.inlineTargets[int(idx)]; t != nil {
+	if !f.inlineTargets.empty() {
+		if t := f.inlineTargets.target(int(idx)); t != nil {
 			if _, ok := f.inlineBase[int(idx)]; ok && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				f.consumeGCFrameCallsite()
 				return f.inlineCall(t)
@@ -1350,15 +1350,20 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
-	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
-		f.stats.call(callKindRegisterABI)
-		preservesPins := f.directCalleePreservesPins(localIdx)
-		if recordRoots {
-			// Exact caller maps name frame slots. Force the ordinary spill-managed
-			// call path even for a leaf that could otherwise preserve caller pins.
-			preservesPins = false
+	if regABIEnabled && sigFitsRegABI(ft) {
+		if sigIsIntOnly(ft) {
+			f.stats.call(callKindRegisterABI)
+			preservesPins := f.directCalleePreservesPins(localIdx)
+			if recordRoots {
+				// Exact caller maps name frame slots. Force the ordinary spill-managed
+				// call path even for a leaf that could otherwise preserve caller pins.
+				preservesPins = false
+			}
+			f.emitRegisterCall(localIdx, ft, resHint, preservesPins)
+		} else {
+			f.stats.call(callKindMixed)
+			f.emitMixedRegisterCall(localIdx, ft)
 		}
-		f.emitRegisterCall(localIdx, ft, resHint, preservesPins)
 		finishRoots()
 		return nil
 	}

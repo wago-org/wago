@@ -994,10 +994,10 @@ type compiledTagDef struct {
 // exports remain isolated in the public Exports map.
 type Compiled struct {
 	Code  []byte
-	Entry []int // entry offset per local function
+	Entry []int // host-wrapper offset, or the internal offset for direct-only functions
 	// InternalEntry mirrors Entry with each function's register-ABI internal
-	// entry offset (== Entry[i] when none): indirect calls to compatible
-	// signatures bypass the wrapper adapter via the table's delta field.
+	// entry offset. Entry[i] == InternalEntry[i] for a direct-only register-ABI
+	// function whose unreachable host adapter was omitted.
 	InternalEntry []int
 	Funcs         []FuncSig               // signature per local function
 	Types         []DefinedTypeDescriptor // flattened structural type graph for indexed references

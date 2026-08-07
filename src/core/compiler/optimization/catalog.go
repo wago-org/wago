@@ -62,6 +62,7 @@ type Bindings struct {
 	arch    string
 	entries []binding
 	index   map[string]int
+	before  []bool
 }
 
 func NewBindings(arch string, specs ...BindingSpec) *Bindings {
@@ -79,7 +80,7 @@ func NewBindings(arch string, specs ...BindingSpec) *Bindings {
 		byName[spec.Name] = spec
 	}
 	definitions := ForArch(arch)
-	bindings := &Bindings{arch: arch, entries: make([]binding, 0, len(definitions)), index: make(map[string]int, len(definitions))}
+	bindings := &Bindings{arch: arch, entries: make([]binding, 0, len(definitions)), index: make(map[string]int, len(definitions)), before: make([]bool, len(definitions))}
 	for _, definition := range definitions {
 		spec, ok := byName[definition.Name]
 		if !ok {
@@ -132,15 +133,14 @@ func (b *Bindings) Set(name string, on bool) bool {
 // the process defaults and releases the compile lock.
 func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
 	b.mu.Lock()
-	before := make([]bool, len(b.entries))
 	for index, entry := range b.entries {
-		before[index] = *entry.value
+		b.before[index] = *entry.value
 	}
 	for name, on := range overrides {
 		index, ok := b.index[name]
 		if !ok {
 			for index, entry := range b.entries {
-				*entry.value = before[index]
+				*entry.value = b.before[index]
 			}
 			b.mu.Unlock()
 			return nil, fmt.Errorf("unknown %s optimization %q", b.arch, name)
@@ -153,7 +153,7 @@ func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
 	}
 	return func() {
 		for index, entry := range b.entries {
-			*entry.value = before[index]
+			*entry.value = b.before[index]
 		}
 		b.mu.Unlock()
 	}, nil
@@ -276,6 +276,17 @@ func Lookup(arch, name string) (Definition, bool) {
 		}
 	}
 	return Definition{}, false
+}
+
+// Exists reports whether name is registered for arch without copying the
+// public Definition's mutable architecture slice.
+func Exists(arch, name string) bool {
+	for _, definition := range catalog {
+		if definition.Name == name && supports(definition, arch) {
+			return true
+		}
+	}
+	return false
 }
 
 func supports(definition Definition, arch string) bool {

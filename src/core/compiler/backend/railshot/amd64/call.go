@@ -234,8 +234,8 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
 	// runs the body with localBase set. Straight-line callees touch no control frame,
 	// so this is a pure operand-stack/local transform.
-	if f.inlineTargets != nil {
-		if t := f.inlineTargets[int(idx)]; t != nil {
+	if !f.inlineTargets.empty() {
+		if t := f.inlineTargets.target(int(idx)); t != nil {
 			if _, ok := f.inlineBase[int(idx)]; ok {
 				return f.inlineCall(t)
 			}

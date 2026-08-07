@@ -558,7 +558,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: card-size
-          path: ci-card/size.md
+          path: |
+            ci-card/size.md
+            ci-card/size-profiles.tsv
+            ci-card/size-symbols.tsv
           if-no-files-found: error
 
   card-comment:

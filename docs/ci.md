@@ -46,6 +46,16 @@ directly from PowerShell rather than through Make.
 Linux/amd64 continues to host architecture-independent lint, TinyGo, and
 binary-size jobs on pull requests and pushes to `main`; coverage runs only for
 pull requests because it feeds the review card rather than the release gate.
+The size job runs `scripts/size-card.sh` for four explicit Linux/AMD64 release
+profiles: manager, Standard runtime, Minimal runtime, and the TinyGo Minimal
+runtime. It fails above the byte ceilings in
+`scripts/release-size-budgets.tsv`, reports pull-request deltas, and uploads
+`size-profiles.tsv` plus the 25 largest retained symbols for each standard-Go
+profile in `size-symbols.tsv`. Build flags are fixed to stripped,
+reproducible `-trimpath -buildvcs=false` outputs. The TinyGo profile additionally
+uses the same Linux section stripping as release assets. Budgets describe the
+current products rather than conflating them with the future artifact-only
+loader; update a ceiling only with a measured release-profile rationale.
 TinyGo mirrors the native matrix: Linux/amd64 and
 Linux/arm64 build, test, and smoke-run the CLI; Darwin/arm64 runs the runtime and
 public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
