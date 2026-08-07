@@ -102,6 +102,31 @@ func sharedAtomicCmpxchgModule(sub, align byte, typ wasm.ValType) []byte {
 	)
 }
 
+func sharedAtomicWriteAtModule(sub, align byte, typ wasm.ValType, operands int) []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	params := []wasm.ValType{wasm.I32}
+	for range operands {
+		params = append(params, typ)
+	}
+	results := []wasm.ValType(nil)
+	if sub >= 0x1e {
+		results = []wasm.ValType{typ}
+	}
+	body := []byte{0x20, 0x00}
+	for i := range operands {
+		body = append(body, 0x20, byte(i+1))
+	}
+	body = append(body, 0xfe, sub, align, 0x08, 0x0b) // offset=8
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("write", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
 func sharedAtomicLoadStoreWidthModule(loadSub, storeSub, align byte, typ wasm.ValType) []byte {
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
 	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
@@ -427,6 +452,82 @@ func TestThreadsAtomicRMWRejectsUnalignedAddressBeforeWrite(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 0 {
 		t.Fatalf("memory changed on alignment trap: %d", got)
+	}
+}
+
+func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	type atomicWrite struct {
+		name       string
+		sub, align byte
+		typ        wasm.ValType
+		operands   int
+	}
+	var writes []atomicWrite
+	widths := []struct {
+		name  string
+		align byte
+		typ   wasm.ValType
+	}{
+		{"i32", 2, wasm.I32}, {"i64", 3, wasm.I64}, {"i32_8", 0, wasm.I32},
+		{"i32_16", 1, wasm.I32}, {"i64_8", 0, wasm.I64}, {"i64_16", 1, wasm.I64},
+		{"i64_32", 2, wasm.I64},
+	}
+	for i, width := range widths {
+		writes = append(writes, atomicWrite{"store_" + width.name, byte(0x17 + i), width.align, width.typ, 1})
+	}
+	for _, operation := range []struct {
+		name string
+		base byte
+	}{
+		{"add", 0x1e}, {"sub", 0x25}, {"and", 0x2c}, {"or", 0x33},
+		{"xor", 0x3a}, {"xchg", 0x41},
+	} {
+		for i, width := range widths {
+			writes = append(writes, atomicWrite{operation.name + "_" + width.name, operation.base + byte(i), width.align, width.typ, 1})
+		}
+	}
+	for i, width := range widths {
+		writes = append(writes, atomicWrite{"cmpxchg_" + width.name, byte(0x48 + i), width.align, width.typ, 2})
+	}
+
+	for _, tc := range writes {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(config, sharedAtomicWriteAtModule(tc.sub, tc.align, tc.typ, tc.operands))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			memory, err := NewSharedMemory(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer memory.Close()
+			for i := range memory.Bytes() {
+				memory.Bytes()[i] = byte(i*131 + 17)
+			}
+			want := append([]byte(nil), memory.Bytes()...)
+			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+
+			for _, address := range []uint64{65528, uint64(uint32(0xfffffff8))} {
+				args := []uint64{address, 0x1122334455667788}
+				if tc.operands == 2 {
+					args = append(args, 0x8877665544332211)
+				}
+				_, err = instance.Invoke("write", args...)
+				var trap *TrapError
+				if !errors.As(err, &trap) || (trap.Code != TrapLinMemOutOfBounds && trap.Code != TrapLinkedMemOutOfBounds) {
+					t.Fatalf("address %#x error = %v, want memory bounds trap", address, err)
+				}
+				if !bytes.Equal(memory.Bytes(), want) {
+					t.Fatalf("address %#x mutated memory before trapping", address)
+				}
+			}
+		})
 	}
 }
 
