@@ -89,12 +89,15 @@ The cached maximum is a conservative upper bound after its span is consumed;
 the first later miss refreshes it while scanning, and later impossible misses
 are constant-time. On 64-bit builds this metadata changes `throughputHeap` from
 136 to 144 bytes and `Collector` from 904 to 912 bytes; handle, object, native
-ABI, and serialized layouts are unchanged. On linux/amd64, `go tool nm -size`
-over a GC package test binary that retains the allocator reports 256 additional
-text bytes: 134 for `findLarge`, 65 for the cold `findLargeDirty` helper, and 57
-of growth in `insertLargeFree`; `alloc` remains 1,616 bytes. Do not use the
-manager-only `cli/wago` binary for this comparison because its dependency graph
-dead-strips the collector.
+ABI, and serialized layouts are unchanged. On linux/amd64, a minimal executable
+that constructs the Throughput collector and allocates a 1,024-element `i32`
+array grows from 2,624,923 to 2,625,538 unstripped bytes (+615). Its stripped
+size remains 1,749,154 bytes because the retained growth fits existing file
+alignment. `go tool nm -size` attributes 256 text bytes directly to this change:
+134 for `findLarge`, 65 for the cold `findLargeDirty` helper, and 57 of growth in
+`insertLargeFree`; `alloc` remains 1,616 bytes. Do not use the manager-only
+`cli/wago` binary for this comparison because its dependency graph dead-strips
+the collector.
 
 ## Required companion layers
 

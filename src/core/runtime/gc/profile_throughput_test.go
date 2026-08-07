@@ -298,6 +298,7 @@ func BenchmarkThroughputLargeSpanMiss(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					found += benchmarkFindThroughputLargeSpan(&h, 64)
 				}
+				b.StopTimer()
 				benchmarkThroughputLargeSpan = found
 				if found != -b.N || h.largestFree != 32 || h.largestFreeDirty {
 					b.Fatalf("warm miss result=%d largest=%d dirty=%t", found, h.largestFree, h.largestFreeDirty)
