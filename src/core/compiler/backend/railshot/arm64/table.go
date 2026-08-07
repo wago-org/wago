@@ -71,17 +71,17 @@ func (f *fn) tableEntryAddr(dst, tbl Reg) {
 // 8-byte compact-reference table. Funcref descriptors remain 32 bytes.
 func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	tt, ok := f.m.TableType(tableIdx)
-	if !ok || tt.Ref.Exact {
+	if !ok || tt.Ref.Exact() {
 		return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
 	}
-	if tt.Ref.Heap.Kind == wasm.HeapTypeIndex {
-		sub, ok := stagedStructType(f.m, tt.Ref.Heap.Type.Index)
+	if tt.Ref.Heap().Kind() == wasm.HeapTypeIndex {
+		sub, ok := stagedStructType(f.m, tt.Ref.Heap().Type().Index)
 		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
 	}
-	if tt.Ref.Heap.Kind != wasm.HeapAbs {
+	if tt.Ref.Heap().Kind() != wasm.HeapAbs {
 		return false
 	}
-	switch tt.Ref.Heap.Abs {
+	switch tt.Ref.Heap().Abs() {
 	case wasm.HeapExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return true
 	default:
@@ -96,17 +96,17 @@ func (f *fn) tableIsGCFrameRef(tableIdx uint32) bool {
 
 func (f *fn) tableIsGCObjectRef(tableIdx uint32) bool {
 	tt, ok := f.m.TableType(tableIdx)
-	if !ok || tt.Ref.Exact {
+	if !ok || tt.Ref.Exact() {
 		return false
 	}
-	if tt.Ref.Heap.Kind == wasm.HeapTypeIndex {
-		sub, ok := stagedStructType(f.m, tt.Ref.Heap.Type.Index)
+	if tt.Ref.Heap().Kind() == wasm.HeapTypeIndex {
+		sub, ok := stagedStructType(f.m, tt.Ref.Heap().Type().Index)
 		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
 	}
-	if tt.Ref.Heap.Kind != wasm.HeapAbs {
+	if tt.Ref.Heap().Kind() != wasm.HeapAbs {
 		return false
 	}
-	switch tt.Ref.Heap.Abs {
+	switch tt.Ref.Heap().Abs() {
 	case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return true
 	default:

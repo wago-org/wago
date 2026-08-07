@@ -29,8 +29,8 @@ func TestReferenceEncodingFormIsNotSemanticTypeIdentity(t *testing.T) {
 		{name: "extern", bare: bareExtern, explicit: explicitExtern},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if !tc.bare.Ref.Bare || tc.explicit.Ref.Bare {
-				t.Fatalf("test encoding forms bare=%v explicit=%v", tc.bare.Ref.Bare, tc.explicit.Ref.Bare)
+			if !tc.bare.Ref().Bare() || tc.explicit.Ref().Bare() {
+				t.Fatalf("test encoding forms bare=%v explicit=%v", tc.bare.Ref().Bare(), tc.explicit.Ref().Bare())
 			}
 			if !EqualValType(tc.bare, tc.explicit) {
 				t.Fatalf("%s shorthand and explicit reference types differ semantically", tc.name)
@@ -75,10 +75,10 @@ func TestDecodePreservesReferenceEncodingFormWithoutChangingIdentity(t *testing.
 	if !ok {
 		t.Fatal("explicit function type unavailable")
 	}
-	if !bareType.Params[0].Ref.Bare || !bareType.Results[0].Ref.Bare {
+	if !bareType.Params[0].Ref().Bare() || !bareType.Results[0].Ref().Bare() {
 		t.Fatalf("shorthand form lost: %+v", bareType)
 	}
-	if explicitType.Params[0].Ref.Bare || explicitType.Results[0].Ref.Bare {
+	if explicitType.Params[0].Ref().Bare() || explicitType.Results[0].Ref().Bare() {
 		t.Fatalf("explicit form canonicalized to shorthand: %+v", explicitType)
 	}
 	if !FuncTypeEqual(bareType, explicitType) {
@@ -97,7 +97,7 @@ func TestStructuralTypeKeyIgnoresReferenceEncodingFormInRecursiveGroups(t *testi
 		}
 		return &Module{Types: []RecType{{SubTypes: []SubType{
 			{Final: true, Comp: CompType{Kind: CompFunc, Params: []ValType{ref}}},
-			{Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{{Storage: StorageType{Val: ref}}}}},
+			{Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{NewFieldType(StorageVal(ref), Const)}}},
 		}}}}
 	}
 	bare, explicit := module(true), module(false)

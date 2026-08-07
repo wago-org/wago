@@ -144,7 +144,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 // The descriptor pointer remains owned by the instance's bounded descriptor arena;
 // no GC-managed reference or foreign wrapper result is admitted by this shape.
 func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) != 1 || ft.Results[0].Kind != wasm.ValRef || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
+	if len(ft.Results) != 1 || ft.Results[0].Kind() != wasm.ValRef || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -171,7 +171,7 @@ func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
 	gp, fp := 0, 0
 	for _, typ := range ft.Params {
 		switch {
-		case isIntValType(typ), typ.Kind == wasm.ValRef:
+		case isIntValType(typ), typ.Kind() == wasm.ValRef:
 			gp++
 		case isFloatValType(typ):
 			fp++
@@ -183,7 +183,7 @@ func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
 		return false
 	}
 	for _, typ := range ft.Results {
-		if !isIntValType(typ) && !isFloatValType(typ) && typ.Kind != wasm.ValRef {
+		if !isIntValType(typ) && !isFloatValType(typ) && typ.Kind() != wasm.ValRef {
 			return false
 		}
 	}
@@ -207,7 +207,7 @@ func tailResultABICompatible(a, b []wasm.ValType) bool {
 		}
 		// Validation already proved reference-result covariance. Native tail
 		// transfer only needs the common one-slot descriptor-pointer ABI here.
-		if a[i].Kind != wasm.ValRef || b[i].Kind != wasm.ValRef {
+		if a[i].Kind() != wasm.ValRef || b[i].Kind() != wasm.ValRef {
 			return false
 		}
 	}

@@ -221,25 +221,28 @@ func appendValType(out *[]byte, t ValType) error {
 		*out = append(*out, b)
 		return nil
 	}
-	if t.Kind != ValRef || t.Ref.Bare {
+	if t.Kind() != ValRef || t.Ref().Bare() {
 		return fmt.Errorf("unsupported value type")
 	}
-	if t.Ref.Nullable {
+	rt := t.Ref()
+	if rt.Nullable() {
 		*out = append(*out, 0x63)
 	} else {
 		*out = append(*out, 0x64)
 	}
-	if t.Ref.Exact {
+	if rt.Exact() {
 		*out = append(*out, 0x62)
 	}
-	switch t.Ref.Heap.Kind {
+	heap := rt.Heap()
+	switch heap.Kind() {
 	case HeapAbs:
-		*out = append(*out, byte(t.Ref.Heap.Abs))
+		*out = append(*out, byte(heap.Abs()))
 	case HeapTypeIndex:
-		if t.Ref.Heap.Type.Rec {
-			return fmt.Errorf("recursive-local heap type %d", t.Ref.Heap.Type.Index)
+		idx := heap.Type()
+		if idx.Rec {
+			return fmt.Errorf("recursive-local heap type %d", idx.Index)
 		}
-		appendS64(out, int64(t.Ref.Heap.Type.Index))
+		appendS64(out, int64(idx.Index))
 	case HeapDefType:
 		return fmt.Errorf("defined heap type requires module index context")
 	default:

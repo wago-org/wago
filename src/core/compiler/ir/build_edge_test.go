@@ -92,7 +92,7 @@ func TestBuildCallMultipleParamsAndResults(t *testing.T) {
 
 func TestBuildCallIndirectCanonicalTypeID(t *testing.T) {
 	types := []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}, {Results: []wasm.ValType{wasm.I32}}}
-	m := decodeValidate(t, module(types, []uint32{1}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x01, 0x00, 0x0b))}))
+	m := decodeValidate(t, module(types, []uint32{1}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x01, 0x00, 0x0b))}))
 	f, dump := buildOne(t, m)
 	if !strings.Contains(dump, "call_indirect type=1 table=0 canon=0") {
 		t.Fatalf("unexpected dump:\n%s", dump)
@@ -157,7 +157,7 @@ func TestBuildFuncUsesFlattenedImportedMetadata(t *testing.T) {
 	}
 
 	tableMod := rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b))
-	tableMod.Imports = []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}}}
+	tableMod.Imports = []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}}}
 	if f, err := BuildFunc(tableMod, 0); err != nil {
 		t.Fatal(err)
 	} else if !strings.Contains(FormatFunc(f), "call_indirect type=0 table=0") {

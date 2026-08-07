@@ -308,7 +308,7 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 			}
 		} else {
 			result := st.Comp.Results[0]
-			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Exact || result.Ref.Heap.Kind != wasm.HeapTypeIndex || !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind() != wasm.ValRef || !result.Ref().Nullable() || result.Ref().Exact() || result.Ref().Heap().Kind() != wasm.HeapTypeIndex || !result.Ref().Heap().Type().Rec || result.Ref().Heap().Type().Index != 0 {
 				return 0, fmt.Errorf("link product type %d must extend type %d and return its own nullable reference", i, i-1)
 			}
 		}
@@ -378,7 +378,7 @@ func stagedGCTypeSubtypingExtendedRecursiveLinkShape(m *wasm.Module) (stagedGCTy
 			return 0, fmt.Errorf("extended recursive link group %d root super is outside the exact product", groupIndex)
 		}
 		result := child.Comp.Results
-		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind != wasm.ValRef || result[0].Ref.Nullable || result[0].Ref.Heap.Kind != wasm.HeapTypeIndex || !result[0].Ref.Heap.Type.Rec || result[0].Ref.Heap.Type.Index != 0 {
+		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind() != wasm.ValRef || result[0].Ref().Nullable() || result[0].Ref().Heap().Kind() != wasm.HeapTypeIndex || !result[0].Ref().Heap().Type().Rec || result[0].Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("extended recursive link group %d child is outside the exact product", groupIndex)
 		}
 	}
@@ -476,7 +476,7 @@ func stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m *wasm.Module) (stagedGCT
 			return 0, fmt.Errorf("duplicate recursive link group %d root must be open () -> (ref func)", groupIndex)
 		}
 		result := child.Comp.Results
-		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || child.Comp.Kind != wasm.CompFunc || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind != wasm.ValRef || result[0].Ref.Nullable || result[0].Ref.Exact || result[0].Ref.Heap.Kind != wasm.HeapTypeIndex || !result[0].Ref.Heap.Type.Rec || result[0].Ref.Heap.Type.Index != 0 {
+		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || child.Comp.Kind != wasm.CompFunc || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind() != wasm.ValRef || result[0].Ref().Nullable() || result[0].Ref().Exact() || result[0].Ref().Heap().Kind() != wasm.HeapTypeIndex || !result[0].Ref().Heap().Type().Rec || result[0].Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("duplicate recursive link group %d child must extend and return recursive member 0", groupIndex)
 		}
 	}
@@ -586,8 +586,8 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 		return 0, fmt.Errorf("struct link first-group companion must be a final one-field struct")
 	}
 	field := s.Comp.Fields[0]
-	ref := field.Storage.Val
-	if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+	ref := field.Storage().Val()
+	if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 		return 0, fmt.Errorf("struct link first-group field must be an immutable non-null reference to recursive member 0")
 	}
 	g := &m.Types[1].SubTypes[0]
@@ -661,8 +661,8 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 			}
 		}
 		field := m.Types[groupIndex].SubTypes[1].Comp.Fields[0]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("struct projection link root group %d field must be an immutable non-null reference to recursive member 0", groupIndex)
 		}
 	}
@@ -684,8 +684,8 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 	}
 	for fieldIndex, want := range wantFields {
 		field := last.SubTypes[1].Comp.Fields[fieldIndex]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 			return 0, fmt.Errorf("struct projection link final struct field %d is outside the exact ordered projection", fieldIndex)
 		}
 	}
@@ -745,9 +745,9 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 			return 0, fmt.Errorf("struct mismatch link root group %d must have no function super and one struct field", groupIndex)
 		}
 		field := s.Comp.Fields[0]
-		ref := field.Storage.Val
+		ref := field.Storage().Val()
 		want := wasm.TypeIdx{Index: 0, Rec: groupIndex == 0}
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 			return 0, fmt.Errorf("struct mismatch link root group %d field is outside the exact recursive projection", groupIndex)
 		}
 	}
@@ -803,8 +803,8 @@ func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTy
 				return 0, fmt.Errorf("independent struct link root group %d must have no function super and one struct field", groupIndex)
 			}
 			field := s.Comp.Fields[0]
-			ref := field.Storage.Val
-			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+			ref := field.Storage().Val()
+			if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 				return 0, fmt.Errorf("independent struct link root group %d field must be an immutable non-null self reference", groupIndex)
 			}
 			continue
@@ -866,8 +866,8 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 			return 0, fmt.Errorf("extended projection link root group %d must be an open self-recursive pair", groupIndex)
 		}
 		field := s.Comp.Fields[0]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("extended projection link root group %d field must be an immutable non-null self reference", groupIndex)
 		}
 	}
@@ -887,8 +887,8 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 	}
 	for fieldIndex, want := range wantFields {
 		field := projected.SubTypes[1].Comp.Fields[fieldIndex]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 			return 0, fmt.Errorf("extended projection link projected field %d is outside the exact ordered projection", fieldIndex)
 		}
 	}
@@ -991,7 +991,7 @@ func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubt
 			}
 		} else {
 			result := st.Comp.Results[0]
-			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Heap.Kind != wasm.HeapTypeIndex || !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind() != wasm.ValRef || !result.Ref().Nullable() || result.Ref().Heap().Kind() != wasm.HeapTypeIndex || !result.Ref().Heap().Type().Rec || result.Ref().Heap().Type().Index != 0 {
 				return 0, fmt.Errorf("runtime call/cast type %d must extend type %d and return its own nullable reference", i, i-1)
 			}
 		}

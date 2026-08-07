@@ -18,11 +18,11 @@ func TestBuildModuleCopiesMetadata(t *testing.T) {
 			{Module: "env", Name: "f", Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}},
 			{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64}}},
 			{Type: wasm.ExternType{Kind: wasm.ExternMem, Mem: wasm.MemType{Limits: wasm.Limits{Min: 1, Max: &maxMem}}}},
-			{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 3}}}},
+			{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 3}}}},
 		},
 		FuncTypes: []wasm.TypeIdx{{Index: 1}},
 		Globals:   []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
-		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 5}}}},
+		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 5}}}},
 		Elements:  []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive, Table: 1}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0, 1}}}},
 		Data:      []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataActive, Mem: 0}, Init: []byte{1, 2, 3}}},
 		Code:      []wasm.Func{{BodyBytes: bytes(0x41, 0x00, 0x0b)}},
@@ -316,7 +316,7 @@ func TestBuildMemory64UsesI64AddressesAndSizes(t *testing.T) {
 
 func TestBuildCallIndirectReferenceAndAddressTypes(t *testing.T) {
 	t.Run("non-bare funcref table", func(t *testing.T) {
-		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
+		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
 			wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)),
 		}))
 		m.Tables[0].Type.Ref = wasm.Ref(true, wasm.AbsHeap(wasm.HeapFunc), false)
@@ -327,7 +327,7 @@ func TestBuildCallIndirectReferenceAndAddressTypes(t *testing.T) {
 	})
 
 	t.Run("table64 index", func(t *testing.T) {
-		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1, Addr64: true}}}, nil, nil, [][]byte{
+		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1, Addr64: true}}}, nil, nil, [][]byte{
 			wasmtest.Code(bytes(0x42, 0x00, 0x11, 0x00, 0x00, 0x0b)),
 		}))
 		assertBuilds(t, m, "call_indirect type=0 table=0")
@@ -448,9 +448,9 @@ func TestMetadataAndReferenceHelpers(t *testing.T) {
 		{"indexed_nonfunction", wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false), false, false},
 		{"indexed_recursive", wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0, Rec: true}), false), true, false},
 		{"indexed_out_of_range", wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 9}), false), false, false},
-		{"defined_function", wasm.Ref(true, wasm.HeapType{Kind: wasm.HeapDefType, Def: funcDef}, false), true, true},
-		{"defined_nonfunction", wasm.Ref(true, wasm.HeapType{Kind: wasm.HeapDefType, Def: structDef}, false), false, false},
-		{"defined_invalid", wasm.Ref(true, wasm.HeapType{Kind: wasm.HeapDefType, Def: &wasm.DefType{Index: 1}}, false), false, false},
+		{"defined_function", wasm.Ref(true, wasm.DefinedHeap(funcDef), false), true, true},
+		{"defined_nonfunction", wasm.Ref(true, wasm.DefinedHeap(structDef), false), false, false},
+		{"defined_invalid", wasm.Ref(true, wasm.DefinedHeap(&wasm.DefType{Index: 1}), false), false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := isFuncRefTableType(wasmModule, tc.ref); got != tc.build {

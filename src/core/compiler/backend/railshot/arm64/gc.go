@@ -225,8 +225,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
 		for _, field := range st.Comp.Fields {
-			valueType := field.Storage.Val
-			if field.Storage.Packed {
+			valueType := field.Storage().Val()
+			if field.Storage().Packed() {
 				valueType = wasm.I32
 			}
 			params = append(params, valueType)
@@ -259,9 +259,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: struct.get type %d field %d is unavailable", typeIndex, fieldIndex)
 		}
-		helper, resultType := uint32(gcStructGet), field.Storage.Val
+		helper, resultType := uint32(gcStructGet), field.Storage().Val()
 		if sub == 3 || sub == 4 {
-			if !field.Storage.Packed {
+			if !field.Storage().Packed() {
 				return fmt.Errorf("arm64: struct.get_s/u field is not packed")
 			}
 			resultType = wasm.I32
@@ -270,7 +270,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			} else {
 				helper = gcStructGetU
 			}
-		} else if field.Storage.Packed {
+		} else if field.Storage().Packed() {
 			return fmt.Errorf("arm64: plain struct.get cannot access a packed field")
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -287,11 +287,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		field, ok := stagedStructField(f.m, typeIndex, fieldIndex)
-		if !ok || field.Mut != wasm.Var {
+		if !ok || field.Mut() != wasm.Var {
 			return fmt.Errorf("arm64: struct.set type %d field %d is unavailable or immutable", typeIndex, fieldIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -317,8 +317,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: array.new type %d is unavailable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -348,8 +348,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: array.new_fixed type %d is unavailable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
@@ -384,11 +384,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		helper := uint32(gcArrayAllocData)
 		if sub == 10 {
-			if field.Storage.Val.Kind != wasm.ValRef {
+			if field.Storage().Val().Kind() != wasm.ValRef {
 				return fmt.Errorf("arm64: array.new_elem type %d is not a reference array", typeIndex)
 			}
 			helper = gcArrayAllocElem
-		} else if field.Storage.Val.Kind == wasm.ValRef {
+		} else if field.Storage().Val().Kind() == wasm.ValRef {
 			return fmt.Errorf("arm64: array.new_data type %d has reference storage", typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -404,9 +404,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: array.get type %d is unavailable", typeIndex)
 		}
-		helper, resultType := uint32(gcArrayGet), field.Storage.Val
+		helper, resultType := uint32(gcArrayGet), field.Storage().Val()
 		if sub == 12 || sub == 13 {
-			if !field.Storage.Packed {
+			if !field.Storage().Packed() {
 				return fmt.Errorf("arm64: array.get_s/u type %d is not packed", typeIndex)
 			}
 			resultType = wasm.I32
@@ -415,7 +415,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			} else {
 				helper = gcArrayGetU
 			}
-		} else if field.Storage.Packed {
+		} else if field.Storage().Packed() {
 			return fmt.Errorf("arm64: plain array.get cannot access packed storage")
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -427,11 +427,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		field, ok := stagedArrayType(f.m, typeIndex)
-		if !ok || field.Mut != wasm.Var {
+		if !ok || field.Mut() != wasm.Var {
 			return fmt.Errorf("arm64: array.set type %d is unavailable or immutable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -446,11 +446,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		field, ok := stagedArrayType(f.m, typeIndex)
-		if !ok || field.Mut != wasm.Var {
+		if !ok || field.Mut() != wasm.Var {
 			return fmt.Errorf("arm64: array.fill type %d is unavailable or immutable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -466,7 +466,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		dstField, ok := stagedArrayType(f.m, dstType)
-		if !ok || dstField.Mut != wasm.Var {
+		if !ok || dstField.Mut() != wasm.Var {
 			return fmt.Errorf("arm64: array.copy destination is unavailable")
 		}
 		if _, ok := stagedArrayType(f.m, srcType); !ok {
@@ -487,13 +487,13 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		field, ok := stagedArrayType(f.m, typeIndex)
-		if !ok || field.Mut != wasm.Var {
+		if !ok || field.Mut() != wasm.Var {
 			return fmt.Errorf("arm64: array.init type %d is unavailable", typeIndex)
 		}
 		helper := uint32(gcArrayInitData)
 		if sub == 19 {
 			helper = gcArrayInitElem
-			if field.Storage.Val.Kind != wasm.ValRef {
+			if field.Storage().Val().Kind() != wasm.ValRef {
 				return fmt.Errorf("arm64: array.init_elem requires reference storage")
 			}
 		}
@@ -537,12 +537,12 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 		return false, err
 	}
 	field, ok := stagedStructField(f.m, accessType, fieldIndex)
-	if !ok || accessType != typeIndex || (sub == 2) == field.Storage.Packed {
+	if !ok || accessType != typeIndex || (sub == 2) == field.Storage().Packed() {
 		_ = r.JumpTo(start)
 		return false, nil
 	}
-	resultType := field.Storage.Val
-	if field.Storage.Packed {
+	resultType := field.Storage().Val()
+	if field.Storage().Packed() {
 		resultType = wasm.I32
 	}
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -867,26 +867,26 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 }
 
 func arm64GCFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind != wasm.ValRef {
+	if t.Kind() != wasm.ValRef {
 		return false
 	}
-	switch t.Ref.Heap.Kind {
+	heap := t.Ref().Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		switch t.Ref.Heap.Abs {
+		switch heap.Abs() {
 		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 			return true
 		default:
 			return false
 		}
 	case wasm.HeapDefType:
-		def := t.Ref.Heap.Def
-		if def == nil || def.Index >= uint32(len(def.Rec.SubTypes)) {
+		kind, valid := heap.DefCompKind()
+		if !valid {
 			return true
 		}
-		kind := def.Rec.SubTypes[def.Index].Comp.Kind
 		return kind == wasm.CompStruct || kind == wasm.CompArray
 	case wasm.HeapTypeIndex:
-		index := t.Ref.Heap.Type.Index
+		index := heap.Type().Index
 		for _, group := range m.Types {
 			if index < uint32(len(group.SubTypes)) {
 				kind := group.SubTypes[index].Comp.Kind

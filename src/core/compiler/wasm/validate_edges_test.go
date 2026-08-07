@@ -213,7 +213,7 @@ func TestValidateModuleLevelIndexes(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, nil)}, Imports: []Import{{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: badRef}}}}}, ErrUnknownType)
 	})
 	t.Run("table unknown heap type", func(t *testing.T) {
-		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: badRef.Ref, Limits: Limits{Min: 1}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: badRef.Ref(), Limits: Limits{Min: 1}}}}}, ErrUnknownType)
 	})
 	t.Run("unused local unknown heap type", func(t *testing.T) {
 		m := modWithFunc(nil, nil)

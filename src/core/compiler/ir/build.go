@@ -106,20 +106,19 @@ func minAddrType(a, b wasm.ValType) wasm.ValType {
 }
 
 func isFuncRefTableType(m *wasm.Module, rt wasm.RefType) bool {
-	switch rt.Heap.Kind {
+	heap := rt.Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc
+		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc
 	case wasm.HeapTypeIndex:
 		if m == nil {
 			return true
 		}
-		_, ok := m.TypeFunc(rt.Heap.Type.Index)
+		_, ok := m.TypeFunc(heap.Type().Index)
 		return ok
 	case wasm.HeapDefType:
-		if rt.Heap.Def == nil || int(rt.Heap.Def.Index) >= len(rt.Heap.Def.Rec.SubTypes) {
-			return false
-		}
-		return rt.Heap.Def.Rec.SubTypes[int(rt.Heap.Def.Index)].Comp.Kind == wasm.CompFunc
+		kind, valid := heap.DefCompKind()
+		return valid && kind == wasm.CompFunc
 	default:
 		return false
 	}

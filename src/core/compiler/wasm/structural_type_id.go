@@ -150,16 +150,17 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 	}
 
 	writeValue = func(dst *[]byte, value ValType, currentGroup int) bool {
-		if !appendByte(dst, byte(value.Kind)) {
+		if !appendByte(dst, byte(value.Kind())) {
 			return false
 		}
-		switch value.Kind {
+		switch value.Kind() {
 		case ValNum:
-			return appendByte(dst, byte(value.Num))
+			return appendByte(dst, byte(value.Num()))
 		case ValVec, ValBot:
 			return true
 		case ValRef:
-			for _, flag := range []bool{value.Ref.Nullable, value.Ref.Exact} {
+			rt := value.Ref()
+			for _, flag := range []bool{rt.Nullable(), rt.Exact()} {
 				b := byte(0)
 				if flag {
 					b = 1
@@ -168,20 +169,21 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 					return false
 				}
 			}
-			if !appendByte(dst, byte(value.Ref.Heap.Kind)) {
+			heap := rt.Heap()
+			if !appendByte(dst, byte(heap.Kind())) {
 				return false
 			}
-			switch value.Ref.Heap.Kind {
+			switch heap.Kind() {
 			case HeapAbs:
-				return appendByte(dst, byte(value.Ref.Heap.Abs))
+				return appendByte(dst, byte(heap.Abs()))
 			case HeapTypeIndex:
-				return writeRef(dst, value.Ref.Heap.Type, currentGroup)
+				return writeRef(dst, heap.Type(), currentGroup)
 			case HeapDefType:
-				def := value.Ref.Heap.Def
-				if def == nil || int(def.GroupIndex) >= len(starts) || def.Index >= uint32(len(m.Types[def.GroupIndex].SubTypes)) {
+				group, member, _, valid := heap.Def()
+				if !valid || int(group) >= len(starts) || member >= uint32(len(m.Types[group].SubTypes)) {
 					return false
 				}
-				return writeRef(dst, TypeIdx{Index: starts[def.GroupIndex] + def.Index}, currentGroup)
+				return writeRef(dst, TypeIdx{Index: starts[group] + member}, currentGroup)
 			default:
 				return false
 			}
@@ -191,14 +193,15 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 	}
 
 	writeField = func(dst *[]byte, field FieldType, currentGroup int) bool {
-		if field.Storage.Packed {
-			if !appendByte(dst, 1) || !appendByte(dst, byte(field.Storage.Pack)) {
+		storage := field.Storage()
+		if storage.Packed() {
+			if !appendByte(dst, 1) || !appendByte(dst, byte(storage.Pack())) {
 				return false
 			}
-		} else if !appendByte(dst, 0) || !writeValue(dst, field.Storage.Val, currentGroup) {
+		} else if !appendByte(dst, 0) || !writeValue(dst, storage.Val(), currentGroup) {
 			return false
 		}
-		return appendByte(dst, byte(field.Mut))
+		return appendByte(dst, byte(field.Mut()))
 	}
 
 	buildGroup = func(group int) ([]byte, bool) {
@@ -380,40 +383,42 @@ func (m *Module) writeStructuralIndexedFuncTypeExpanded(typeIdx uint32, mix func
 		if overflow {
 			return false
 		}
-		mix(byte(v.Kind))
-		switch v.Kind {
+		mix(byte(v.Kind()))
+		switch v.Kind() {
 		case ValNum:
-			mix(byte(v.Num))
+			mix(byte(v.Num()))
 		case ValVec, ValBot:
 			// The kind fully identifies these value types.
 		case ValRef:
-			if v.Ref.Nullable {
+			rt := v.Ref()
+			if rt.Nullable() {
 				mix(1)
 			} else {
 				mix(0)
 			}
-			if v.Ref.Exact {
+			if rt.Exact() {
 				mix(1)
 			} else {
 				mix(0)
 			}
-			mix(byte(v.Ref.Heap.Kind))
-			switch v.Ref.Heap.Kind {
+			heap := rt.Heap()
+			mix(byte(heap.Kind()))
+			switch heap.Kind() {
 			case HeapAbs:
-				mix(byte(v.Ref.Heap.Abs))
+				mix(byte(heap.Abs()))
 			case HeapTypeIndex:
-				idx, ok := flatIndex(v.Ref.Heap.Type, recGroup)
+				idx, ok := flatIndex(heap.Type(), recGroup)
 				return ok && writeType(idx)
 			case HeapDefType:
-				def := v.Ref.Heap.Def
-				if def == nil || int(def.GroupIndex) >= len(m.Types) || def.Index >= uint32(len(m.Types[def.GroupIndex].SubTypes)) {
+				group, member, _, valid := heap.Def()
+				if !valid || int(group) >= len(m.Types) || member >= uint32(len(m.Types[group].SubTypes)) {
 					return false
 				}
 				idx := uint32(0)
-				for gi := uint32(0); gi < def.GroupIndex; gi++ {
+				for gi := uint32(0); gi < group; gi++ {
 					idx += uint32(len(m.Types[gi].SubTypes))
 				}
-				return writeType(idx + def.Index)
+				return writeType(idx + member)
 			default:
 				return false
 			}
@@ -427,16 +432,17 @@ func (m *Module) writeStructuralIndexedFuncTypeExpanded(typeIdx uint32, mix func
 		if overflow {
 			return false
 		}
-		if field.Storage.Packed {
+		storage := field.Storage()
+		if storage.Packed() {
 			mix(1)
-			mix(byte(field.Storage.Pack))
+			mix(byte(storage.Pack()))
 		} else {
 			mix(0)
-			if !writeValue(field.Storage.Val, recGroup) {
+			if !writeValue(storage.Val(), recGroup) {
 				return false
 			}
 		}
-		mix(byte(field.Mut))
+		mix(byte(field.Mut()))
 		return true
 	}
 
@@ -556,7 +562,7 @@ func compTypeHasIndexedReferences(ft *CompType) bool {
 	}
 	for _, values := range [][]ValType{ft.Params, ft.Results} {
 		for _, value := range values {
-			if value.Kind == ValRef && value.Ref.Heap.Kind != HeapAbs {
+			if value.Kind() == ValRef && value.Ref().Heap().Kind() != HeapAbs {
 				return true
 			}
 		}

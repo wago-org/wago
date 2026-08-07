@@ -154,16 +154,16 @@ func TestEncodingHelpersAndStructuralTypeEquality(t *testing.T) {
 		t.Fatal("invalid block type accepted")
 	}
 
-	field := FieldType{Storage: StorageType{Val: I32}, Mut: Var}
-	if !equalFieldType(field, field) || equalFieldType(field, FieldType{Storage: StorageType{Val: I64}, Mut: Var}) {
+	field := NewFieldType(StorageVal(I32), Var)
+	if !equalFieldType(field, field) || equalFieldType(field, NewFieldType(StorageVal(I64), Var)) {
 		t.Fatal("field type structural equality mismatch")
 	}
-	packed := StorageType{Packed: true, Pack: PackI8}
-	if !equalStorageType(packed, packed) || equalStorageType(packed, StorageType{Packed: true, Pack: PackI16}) {
+	packed := StoragePacked(PackI8)
+	if !equalStorageType(packed, packed) || equalStorageType(packed, StoragePacked(PackI16)) {
 		t.Fatal("storage type structural equality mismatch")
 	}
-	ref := ValType{Kind: ValRef, Ref: Ref(true, IndexedHeap(TypeIdx{Index: 3}), false)}
-	if !EqualValType(ref, ref) || EqualValType(ref, ValType{Kind: ValRef, Ref: Ref(false, IndexedHeap(TypeIdx{Index: 3}), false)}) {
+	ref := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 3}), false))
+	if !EqualValType(ref, ref) || EqualValType(ref, RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 3}), false))) {
 		t.Fatal("reference value type structural equality mismatch")
 	}
 }

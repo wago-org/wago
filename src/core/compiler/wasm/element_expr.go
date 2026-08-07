@@ -27,7 +27,7 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 			}
 			return ElementExpr{RefType: ref, Null: true}, nil
 		case InstrRefFunc:
-			return ElementExpr{RefType: FuncRef.Ref, FuncIndex: in.Index}, nil
+			return ElementExpr{RefType: FuncRef.Ref(), FuncIndex: in.Index}, nil
 		case InstrGlobalGet:
 			return ElementExpr{HasGlobal: true, GlobalIndex: in.Index}, nil
 		default:
@@ -51,9 +51,9 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 		}
 		switch ht {
 		case -16, -13: // func (0x70) / nofunc (0x73): null funcref
-			out.RefType = FuncRef.Ref
+			out.RefType = FuncRef.Ref()
 		case -17, -14: // extern (0x6f) / noextern (0x72): null externref
-			out.RefType = ExternRef.Ref
+			out.RefType = ExternRef.Ref()
 		default:
 			return ElementExpr{}, fmt.Errorf("ref.null heap type %d is not funcref or externref", ht)
 		}
@@ -63,7 +63,7 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 		if err != nil {
 			return ElementExpr{}, err
 		}
-		out.RefType = FuncRef.Ref
+		out.RefType = FuncRef.Ref()
 		out.FuncIndex = idx
 	case 0x23: // global.get (extended constant expressions)
 		idx, err := r.U32()

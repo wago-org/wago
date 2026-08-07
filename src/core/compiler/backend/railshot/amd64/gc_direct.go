@@ -40,21 +40,21 @@ func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativ
 	maxAlign := uint32(1)
 	pointerFree = true
 	for _, field := range st.Comp.Fields {
-		align, size, valid := nativeGCStorageLayout(m, typeIndex, field.Storage)
-		if !valid || field.Storage.Packed || align == 0 || off > math.MaxUint32-(align-1) {
+		align, size, valid := nativeGCStorageLayout(m, typeIndex, field.Storage())
+		if !valid || field.Storage().Packed() || align == 0 || off > math.MaxUint32-(align-1) {
 			return nil, 0, 0, false, false
 		}
 		off = (off + align - 1) &^ (align - 1)
 		entry := nativeGCStructAllocField{offset: off, size: size, slot: slot}
-		if field.Storage.Val.Kind == wasm.ValRef {
-			heap := field.Storage.Val.Ref.Heap
-			if heap.Kind != wasm.HeapAbs || (heap.Abs != wasm.HeapAny && heap.Abs != wasm.HeapEq) || size != 4 {
+		if field.Storage().Val().Kind() == wasm.ValRef {
+			heap := field.Storage().Val().Ref().Heap()
+			if heap.Kind() != wasm.HeapAbs || (heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq) || size != 4 {
 				return nil, 0, 0, false, false
 			}
 			entry.ref = true
-			entry.nullable = field.Storage.Val.Ref.Nullable
+			entry.nullable = field.Storage().Val().Ref().Nullable()
 			pointerFree = false
-		} else if field.Storage.Val.Kind != wasm.ValNum && field.Storage.Val.Kind != wasm.ValVec {
+		} else if field.Storage().Val().Kind() != wasm.ValNum && field.Storage().Val().Kind() != wasm.ValVec {
 			return nil, 0, 0, false, false
 		}
 		fields = append(fields, entry)
@@ -89,8 +89,8 @@ func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativ
 }
 
 func directGCScalarStorage(st wasm.StorageType) (directGCScalar, bool) {
-	if st.Packed {
-		switch st.Pack {
+	if st.Packed() {
+		switch st.Pack() {
 		case wasm.PackI8:
 			return directGCScalar{size: 1, typ: mtI32}, true
 		case wasm.PackI16:
@@ -99,10 +99,10 @@ func directGCScalarStorage(st wasm.StorageType) (directGCScalar, bool) {
 			return directGCScalar{}, false
 		}
 	}
-	if st.Val.Kind != wasm.ValNum {
+	if st.Val().Kind() != wasm.ValNum {
 		return directGCScalar{}, false
 	}
-	switch st.Val.Num {
+	switch st.Val().Num() {
 	case wasm.NumI32:
 		return directGCScalar{size: 4, typ: mtI32}, true
 	case wasm.NumI64:
@@ -117,8 +117,8 @@ func directGCScalarStorage(st wasm.StorageType) (directGCScalar, bool) {
 }
 
 func nativeGCStorageLayout(m *wasm.Module, containingType uint32, st wasm.StorageType) (align, size uint32, ok bool) {
-	if st.Packed {
-		switch st.Pack {
+	if st.Packed() {
+		switch st.Pack() {
 		case wasm.PackI8:
 			return 1, 1, true
 		case wasm.PackI16:
@@ -127,9 +127,9 @@ func nativeGCStorageLayout(m *wasm.Module, containingType uint32, st wasm.Storag
 			return 0, 0, false
 		}
 	}
-	switch st.Val.Kind {
+	switch st.Val().Kind() {
 	case wasm.ValNum:
-		switch st.Val.Num {
+		switch st.Val().Num() {
 		case wasm.NumI32, wasm.NumF32:
 			return 4, 4, true
 		case wasm.NumI64, wasm.NumF64:
@@ -138,24 +138,25 @@ func nativeGCStorageLayout(m *wasm.Module, containingType uint32, st wasm.Storag
 	case wasm.ValVec:
 		return 16, 16, true
 	case wasm.ValRef:
-		h := st.Val.Ref.Heap
-		if h.Kind == wasm.HeapAbs {
-			switch h.Abs {
+		h := st.Val().Ref().Heap()
+		if h.Kind() == wasm.HeapAbs {
+			switch h.Abs() {
 			case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
 				return 8, 8, true
 			default:
 				return 4, 4, true
 			}
 		}
-		if h.Kind == wasm.HeapDefType && h.Def != nil {
-			if int(h.Def.Index) < len(h.Def.Rec.SubTypes) && h.Def.Rec.SubTypes[h.Def.Index].Comp.Kind == wasm.CompFunc {
+		if h.Kind() == wasm.HeapDefType {
+			kind, valid := h.DefCompKind()
+			if valid && kind == wasm.CompFunc {
 				return 8, 8, true
 			}
 			return 4, 4, true
 		}
-		if h.Kind == wasm.HeapTypeIndex {
-			target := h.Type.Index
-			if h.Type.Rec {
+		if h.Kind() == wasm.HeapTypeIndex {
+			target := h.Type().Index
+			if h.Type().Rec {
 				base, _, found := nativeGCRecGroup(m, containingType)
 				if !found {
 					return 0, 0, false
@@ -200,28 +201,28 @@ func nativeGCRecGroup(m *wasm.Module, index uint32) (base, length uint32, ok boo
 }
 
 func nativeGCCollectorRefStorage(m *wasm.Module, containingType uint32, st wasm.StorageType) bool {
-	if st.Packed || st.Val.Kind != wasm.ValRef {
+	if st.Packed() || st.Val().Kind() != wasm.ValRef {
 		return false
 	}
-	heap := st.Val.Ref.Heap
-	if heap.Kind == wasm.HeapAbs {
-		switch heap.Abs {
+	heap := st.Val().Ref().Heap()
+	if heap.Kind() == wasm.HeapAbs {
+		switch heap.Abs() {
 		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 			return true
 		default:
 			return false
 		}
 	}
-	if heap.Kind == wasm.HeapDefType && heap.Def != nil {
-		if int(heap.Def.Index) >= len(heap.Def.Rec.SubTypes) {
+	if heap.Kind() == wasm.HeapDefType {
+		kind, valid := heap.DefCompKind()
+		if !valid {
 			return false
 		}
-		kind := heap.Def.Rec.SubTypes[heap.Def.Index].Comp.Kind
 		return kind == wasm.CompStruct || kind == wasm.CompArray
 	}
-	if heap.Kind == wasm.HeapTypeIndex {
-		target := heap.Type.Index
-		if heap.Type.Rec {
+	if heap.Kind() == wasm.HeapTypeIndex {
+		target := heap.Type().Index
+		if heap.Type().Rec {
 			base, _, found := nativeGCRecGroup(m, containingType)
 			if !found {
 				return false
@@ -241,7 +242,7 @@ func nativeGCStructFieldLayout(m *wasm.Module, typeIndex, fieldIndex uint32) (pa
 	}
 	var off uint32
 	for i, field := range st.Comp.Fields {
-		align, fieldSize, valid := nativeGCStorageLayout(m, typeIndex, field.Storage)
+		align, fieldSize, valid := nativeGCStorageLayout(m, typeIndex, field.Storage())
 		if !valid || align == 0 || off > math.MaxUint32-(align-1) {
 			return 0, 0, false, false
 		}
@@ -262,13 +263,13 @@ func directGCStructLayout(m *wasm.Module, typeIndex, fieldIndex uint32) (payload
 	if !found || st.Comp.Kind != wasm.CompStruct || fieldIndex >= uint32(len(st.Comp.Fields)) {
 		return 0, directGCScalar{}, false, false
 	}
-	scalar, ok = directGCScalarStorage(st.Comp.Fields[fieldIndex].Storage)
+	scalar, ok = directGCScalarStorage(st.Comp.Fields[fieldIndex].Storage())
 	if !ok {
 		return 0, directGCScalar{}, false, false
 	}
 	var off uint32
 	for i, field := range st.Comp.Fields {
-		align, size, valid := nativeGCStorageLayout(m, typeIndex, field.Storage)
+		align, size, valid := nativeGCStorageLayout(m, typeIndex, field.Storage())
 		if !valid || align == 0 || off > math.MaxUint32-(align-1) {
 			return 0, directGCScalar{}, false, false
 		}
@@ -289,7 +290,7 @@ func directGCArrayLayout(m *wasm.Module, typeIndex uint32) (directGCScalar, bool
 	if !found || st.Comp.Kind != wasm.CompArray {
 		return directGCScalar{}, false, false
 	}
-	scalar, ok := directGCScalarStorage(st.Comp.Array.Storage)
+	scalar, ok := directGCScalarStorage(st.Comp.Array.Storage())
 	return scalar, st.Final, ok
 }
 

@@ -482,15 +482,15 @@ func stagedGCStructTypeGraph(m *wasm.Module) string {
 }
 
 func stagedGCStructFieldString(field wasm.FieldType) string {
-	storage := field.Storage.Val.String()
-	if field.Storage.Packed {
-		if field.Storage.Pack == wasm.PackI8 {
+	storage := field.Storage().Val().String()
+	if field.Storage().Packed() {
+		if field.Storage().Pack() == wasm.PackI8 {
 			storage = "i8"
 		} else {
 			storage = "i16"
 		}
 	}
-	if field.Mut == wasm.Var {
+	if field.Mut() == wasm.Var {
 		return "mut " + storage
 	}
 	return storage

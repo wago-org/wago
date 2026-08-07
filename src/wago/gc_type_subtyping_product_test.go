@@ -11,6 +11,22 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+// rewriteTestFieldRefIndex replaces an encoded field value instead of mutating
+// nested representation details, which are intentionally opaque scalar bits.
+func rewriteTestFieldRefIndex(field *wasm.FieldType, rewrite func(*wasm.TypeIdx)) {
+	storage := field.Storage()
+	rt := storage.Val().Ref()
+	idx := rt.Heap().Type()
+	rewrite(&idx)
+	*field = wasm.NewFieldType(wasm.StorageVal(wasm.RefVal(wasm.Ref(rt.Nullable(), wasm.IndexedHeap(idx), rt.Exact()))), field.Mut())
+}
+
+func setTestFieldRefNullable(field *wasm.FieldType, nullable bool) {
+	storage := field.Storage()
+	rt := storage.Val().Ref().WithNullable(nullable)
+	*field = wasm.NewFieldType(wasm.StorageVal(wasm.RefVal(rt)), field.Mut())
+}
+
 type stagedGCTypeSubtypingProductPin struct {
 	Filename string
 	Line     int
@@ -683,7 +699,7 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterInventory(t *testing.T) {
 				}
 			} else {
 				result := st.Comp.Results[0]
-				if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(typeIndex-1) || result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Heap.Kind != wasm.HeapTypeIndex || !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+				if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(typeIndex-1) || result.Kind() != wasm.ValRef || !result.Ref().Nullable() || result.Ref().Heap().Kind() != wasm.HeapTypeIndex || !result.Ref().Heap().Type().Rec || result.Ref().Heap().Type().Index != 0 {
 					t.Fatalf("%s type %d = %+v, want exact recursive subtype/result chain", pin.Filename, typeIndex, st)
 				}
 			}
@@ -876,8 +892,8 @@ func TestStagedGCTypeSubtypingStructLinkingClusterInventory(t *testing.T) {
 			t.Fatalf("%s first-group struct = %+v, want final one-field struct", pin.Filename, s)
 		}
 		field := s.Comp.Fields[0]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 			t.Fatalf("%s struct field = %+v, want immutable non-null reference to recursive member 0", pin.Filename, field)
 		}
 		g := m.Types[1].SubTypes[0]
@@ -1005,8 +1021,8 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterInventory(t *testing
 				}
 			}
 			field := m.Types[groupIndex].SubTypes[1].Comp.Fields[0]
-			ref := field.Storage.Val
-			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+			ref := field.Storage().Val()
+			if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 				t.Fatalf("%s root group %d field = %+v, want immutable non-null recursive function member 0", pin.Filename, groupIndex, field)
 			}
 		}
@@ -1027,8 +1043,8 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterInventory(t *testing
 		}
 		for fieldIndex, want := range wantFields {
 			field := last.SubTypes[1].Comp.Fields[fieldIndex]
-			ref := field.Storage.Val
-			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+			ref := field.Storage().Val()
+			if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 				t.Fatalf("%s projected struct field %d = %+v, want immutable non-null %v", pin.Filename, fieldIndex, field, want)
 			}
 		}
@@ -1140,9 +1156,9 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterInventory(t *testing.T
 				t.Fatalf("%s root group %d struct fields = %d, want 1", pin.Filename, groupIndex, len(s.Comp.Fields))
 			}
 			field := s.Comp.Fields[0]
-			ref := field.Storage.Val
+			ref := field.Storage().Val()
 			want := wasm.TypeIdx{Index: 0, Rec: groupIndex == 0}
-			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+			if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 				t.Fatalf("%s root group %d field = %+v, want immutable non-null reference %v", pin.Filename, groupIndex, field, want)
 			}
 		}
@@ -1241,8 +1257,8 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterInventory(t *testin
 					t.Fatalf("%s root group %d supers/fields = %v/%d, want none/one", pin.Filename, groupIndex, f.Supers, len(s.Comp.Fields))
 				}
 				field := s.Comp.Fields[0]
-				ref := field.Storage.Val
-				if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+				ref := field.Storage().Val()
+				if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 					t.Fatalf("%s root group %d field = %+v, want immutable non-null self reference", pin.Filename, groupIndex, field)
 				}
 				continue
@@ -1347,8 +1363,8 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterInventory(t *testi
 				t.Fatalf("%s root group %d is outside the exact open self-recursive pair", pin.Filename, groupIndex)
 			}
 			field := s.Comp.Fields[0]
-			ref := field.Storage.Val
-			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+			ref := field.Storage().Val()
+			if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 				t.Fatalf("%s root group %d field = %+v, want immutable non-null self reference", pin.Filename, groupIndex, field)
 			}
 		}
@@ -1367,8 +1383,8 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterInventory(t *testi
 		}
 		for fieldIndex, want := range wantFields {
 			field := projected.SubTypes[1].Comp.Fields[fieldIndex]
-			ref := field.Storage.Val
-			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+			ref := field.Storage().Val()
+			if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 				t.Fatalf("%s projected field %d = %+v, want immutable non-null %v", pin.Filename, fieldIndex, field, want)
 			}
 		}
@@ -1463,7 +1479,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterInventory(t *testi
 				t.Fatalf("%s group %d root = %+v, want open () -> (ref func)", pin.Filename, groupIndex, root)
 			}
 			result := child.Comp.Results
-			if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || child.Comp.Kind != wasm.CompFunc || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind != wasm.ValRef || result[0].Ref.Nullable || result[0].Ref.Heap.Kind != wasm.HeapTypeIndex || !result[0].Ref.Heap.Type.Rec || result[0].Ref.Heap.Type.Index != 0 {
+			if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || child.Comp.Kind != wasm.CompFunc || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind() != wasm.ValRef || result[0].Ref().Nullable() || result[0].Ref().Heap().Kind() != wasm.HeapTypeIndex || !result[0].Ref().Heap().Type().Rec || result[0].Ref().Heap().Type().Index != 0 {
 				t.Fatalf("%s group %d child = %+v, want open recursive subtype returning its root", pin.Filename, groupIndex, child)
 			}
 		}
@@ -1643,7 +1659,7 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	structProvider.Types[0].SubTypes[1].Comp.Fields[0].Storage.Val.Ref.Nullable = true
+	setTestFieldRefNullable(&structProvider.Types[0].SubTypes[1].Comp.Fields[0], true)
 	if product, err := stagedGCTypeSubtypingProductShape(structProvider); err == nil && product == stagedGCTypeSubtypingStructLinkProvider {
 		t.Fatal("struct link provider with a nullable recursive field unexpectedly retained exact admission")
 	}
@@ -1660,7 +1676,7 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	projectionProvider.Types[2].SubTypes[1].Comp.Fields[1].Storage.Val.Ref.Heap.Type.Index = 0
+	rewriteTestFieldRefIndex(&projectionProvider.Types[2].SubTypes[1].Comp.Fields[1], func(idx *wasm.TypeIdx) { idx.Index = 0 })
 	if product, err := stagedGCTypeSubtypingProductShape(projectionProvider); err == nil && product == stagedGCTypeSubtypingStructProjectionLinkProvider {
 		t.Fatal("struct projection provider with reordered field identity unexpectedly retained exact admission")
 	}
@@ -1677,7 +1693,7 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mismatchProvider.Types[1].SubTypes[1].Comp.Fields[0].Storage.Val.Ref.Heap.Type.Rec = true
+	rewriteTestFieldRefIndex(&mismatchProvider.Types[1].SubTypes[1].Comp.Fields[0], func(idx *wasm.TypeIdx) { idx.Rec = true })
 	if product, err := stagedGCTypeSubtypingProductShape(mismatchProvider); err == nil && product == stagedGCTypeSubtypingStructMismatchLinkProvider {
 		t.Fatal("struct mismatch provider with a self-recursive second group unexpectedly retained exact admission")
 	}
@@ -1694,7 +1710,7 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	independentProvider.Types[1].SubTypes[1].Comp.Fields[0].Storage.Val.Ref.Heap.Type.Rec = false
+	rewriteTestFieldRefIndex(&independentProvider.Types[1].SubTypes[1].Comp.Fields[0], func(idx *wasm.TypeIdx) { idx.Rec = false })
 	if product, err := stagedGCTypeSubtypingProductShape(independentProvider); err == nil && product == stagedGCTypeSubtypingIndependentStructLinkProvider {
 		t.Fatal("independent struct provider with an external second-group field unexpectedly retained exact admission")
 	}
@@ -1711,7 +1727,7 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	extendedProvider.Types[2].SubTypes[1].Comp.Fields[1].Storage.Val.Ref.Heap.Type.Index = 0
+	rewriteTestFieldRefIndex(&extendedProvider.Types[2].SubTypes[1].Comp.Fields[1], func(idx *wasm.TypeIdx) { idx.Index = 0 })
 	if product, err := stagedGCTypeSubtypingProductShape(extendedProvider); err == nil && product == stagedGCTypeSubtypingExtendedProjectionLinkProvider {
 		t.Fatal("extended projection provider with reordered field identity unexpectedly retained exact admission")
 	}

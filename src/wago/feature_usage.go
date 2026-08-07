@@ -212,18 +212,20 @@ func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
 }
 
 func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
-	switch typ.Kind {
+	switch typ.Kind() {
 	case wasm.ValRef:
 		out := CoreFeatureReferenceTypes
-		if typ.Ref.Heap.Kind == wasm.HeapAbs {
-			switch typ.Ref.Heap.Abs {
+		rt := typ.Ref()
+		heap := rt.Heap()
+		if heap.Kind() == wasm.HeapAbs {
+			switch heap.Abs() {
 			case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 				out |= CoreFeatureGC
 			case wasm.HeapExn, wasm.HeapNoExn:
 				out |= CoreFeatureExceptionHandling
 			}
 		}
-		if typ.Ref.Heap.Kind == wasm.HeapTypeIndex || !typ.Ref.Nullable || typ.Ref.Exact {
+		if heap.Kind() == wasm.HeapTypeIndex || !rt.Nullable() || rt.Exact() {
 			out |= CoreFeatureTypedFunctionReferences
 		}
 		return out

@@ -107,7 +107,7 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 			return got, nil
 		}
 	}
-	if want.Kind == wasm.ValRef && m != nil && len(b) != 0 && b[0] == 0xfb {
+	if want.Kind() == wasm.ValRef && m != nil && len(b) != 0 && b[0] == 0xfb {
 		return constExprResult{vtype: want, GlobalIndex: -1, FuncIndex: -1, Expr: append([]byte(nil), b...)}, nil
 	}
 	r := wasm.NewReader(b)
@@ -233,7 +233,7 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 		return constExprResult{}, fmt.Errorf("const expression missing end: %w", err)
 	}
 	if end != 0x0B {
-		if want.Kind == wasm.ValRef && m != nil {
+		if want.Kind() == wasm.ValRef && m != nil {
 			// Validation has already type-checked the complete Core 3 constant
 			// expression. Preserve object-building programs for collector-backed
 			// evaluation after preceding globals and function descriptors exist.
@@ -306,11 +306,11 @@ func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprRe
 }
 
 func isI31RefType(t wasm.ValType) bool {
-	return t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs && t.Ref.Heap.Abs == wasm.HeapI31
+	return t.Kind() == wasm.ValRef && t.Ref().Heap().Kind() == wasm.HeapAbs && t.Ref().Heap().Abs() == wasm.HeapI31
 }
 
 func isAnyRefType(t wasm.ValType) bool {
-	return t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs && t.Ref.Heap.Abs == wasm.HeapAny
+	return t.Kind() == wasm.ValRef && t.Ref().Heap().Kind() == wasm.HeapAbs && t.Ref().Heap().Abs() == wasm.HeapAny
 }
 
 func evalI31ConstExprBytes(b []byte, want wasm.ValType, ctx *constExprCompileContext) (constExprResult, bool, error) {
@@ -382,7 +382,7 @@ func constExprTypeMatches(actual, required wasm.ValType, ctx *constExprCompileCo
 	if valTypeEqual(actual, required) {
 		return true
 	}
-	if ctx == nil || actual.Kind != wasm.ValRef || required.Kind != wasm.ValRef {
+	if ctx == nil || actual.Kind() != wasm.ValRef || required.Kind() != wasm.ValRef {
 		return false
 	}
 	a, err := ctx.converter.valueType(actual, -1)
