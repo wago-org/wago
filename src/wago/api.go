@@ -1242,7 +1242,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
 	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizationValues(), ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1390,20 +1390,34 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{TypeIndex: m.Tags[i].Type.Index})
 		}
 	}
+	funcABIValueCount := 0
+	for li := range m.FuncTypes {
+		ft, ok := m.LocalFuncType(li)
+		if !ok {
+			return nil, fmt.Errorf("function %d: unknown type", li)
+		}
+		funcABIValueCount += len(ft.Params) + len(ft.Results)
+	}
+	c.Funcs = make([]FuncSig, len(m.FuncTypes))
+	funcABIValues := make([]ValType, funcABIValueCount)
+	funcABIValueAt := 0
 	for li := range m.FuncTypes {
 		var ft wasm.CompType
 		if !m.ResolveLocalFuncType(li, &ft) {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
-		params, err := typeConverter.abiTypes(ft.Params, c.Types)
-		if err != nil {
+		paramsEnd := funcABIValueAt + len(ft.Params)
+		params := funcABIValues[funcABIValueAt:paramsEnd:paramsEnd]
+		if err := typeConverter.abiTypesInto(params, ft.Params, c.Types); err != nil {
 			return nil, fmt.Errorf("function %d params: %w", li, err)
 		}
-		results, err := typeConverter.abiTypes(ft.Results, c.Types)
-		if err != nil {
+		resultsEnd := paramsEnd + len(ft.Results)
+		results := funcABIValues[paramsEnd:resultsEnd:resultsEnd]
+		if err := typeConverter.abiTypesInto(results, ft.Results, c.Types); err != nil {
 			return nil, fmt.Errorf("function %d results: %w", li, err)
 		}
-		c.Funcs = append(c.Funcs, FuncSig{Params: params, Results: results, TypeIndex: m.FuncTypes[li].Index, HasTypeIndex: true})
+		c.Funcs[li] = FuncSig{Params: params, Results: results, TypeIndex: m.FuncTypes[li].Index, HasTypeIndex: true}
+		funcABIValueAt = resultsEnd
 	}
 	for i := range m.Globals {
 		globalIndex := len(c.GlobalImports) + i
@@ -1598,6 +1612,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	// Function descriptors back every executable funcref table. Table 0 keeps the
 	// direct runtime slot; later table indexes use the bounded directory.
+	c.FuncTypeID = make([]uint64, importedFuncs+len(m.FuncTypes))
+	funcTypeIDAt := 0
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
 			typeIndex := m.Imports[i].Type.Type.Index
@@ -1605,7 +1621,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if !ok {
 				return nil, fmt.Errorf("import function type %d exceeds bounded native identity", typeIndex)
 			}
-			c.FuncTypeID = append(c.FuncTypeID, key)
+			c.FuncTypeID[funcTypeIDAt] = key
+			funcTypeIDAt++
 		}
 	}
 	for li := range m.FuncTypes {
@@ -1614,7 +1631,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if !ok {
 			return nil, fmt.Errorf("function type %d exceeds bounded native identity", typeIndex)
 		}
-		c.FuncTypeID = append(c.FuncTypeID, key)
+		c.FuncTypeID[funcTypeIDAt] = key
+		funcTypeIDAt++
 	}
 	elemStateCount, dataStateCount := requirements.elemStateCount, requirements.dataStateCount
 	if elemStateCount > 0 {

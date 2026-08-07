@@ -352,7 +352,7 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 
 func scanBodyBytesGlobalScores(body []byte, nGlobals int, add func(g uint32, score int64)) error {
 	r := wasm.ReaderFrom(body)
-	s := globalScoreByteScanner{r: byteScanReader{Reader: &r}, nGlobals: nGlobals, add: add}
+	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add}
 	term, err := s.scanExpr(0, 0, false)
 	if err != nil {
 		return err
@@ -387,7 +387,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 			}
 			return op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return 0, err
 			}
 			switch op {
@@ -437,7 +437,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 				s.add(idx, score)
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return 0, err
 			}
 			term, err := s.scanExpr(depth+1, loopDepth, false)
@@ -448,7 +448,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 				return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 		default:
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return 0, err
 			}
 		}
@@ -456,7 +456,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 }
 
 func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
-	return wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	return wasm.ClassifyInstructionImmediateInto(&s.r.Reader, op, imm)
 }
 
 // scanBodyBytes performs the same pre-scan over raw expression bytecode without
@@ -475,7 +475,7 @@ func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint3
 func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -539,7 +539,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
 			switch op {
@@ -675,7 +675,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
 			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
@@ -740,7 +740,7 @@ func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.Instruction
 		}
 		return nil
 	}
-	err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(s.r.Reader, op, imm, s.memory64)
+	err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(&s.r.Reader, op, imm, s.memory64)
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true
 	}
@@ -805,7 +805,7 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 	}
 }
 
-type byteScanReader struct{ *wasm.Reader }
+type byteScanReader struct{ wasm.Reader }
 
 func (r *byteScanReader) has() bool { return r.HasNext() }
 func (r *byteScanReader) off() int  { return r.Offset() }
