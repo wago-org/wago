@@ -264,6 +264,61 @@ func TestThroughputLargestFreeTracksMutations(t *testing.T) {
 	}
 }
 
+func TestThroughputLargestFreeTracksCompleteRemoval(t *testing.T) {
+	h := throughputHeap{
+		mem:       makeAlignedBytes(256, 16),
+		limit:     256,
+		pageBytes: 4096,
+		bump:      256,
+	}
+	h.insertLargeFree(throughputLargeFree{off: 0, size: 64})
+	h.insertLargeFree(throughputLargeFree{off: 128, size: 32})
+	entry, err := h.alloc(64, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.off != 0 || len(h.largeFree) != 1 || h.largestFree != 64 || !h.largestFreeDirty {
+		t.Fatalf("after removal: entry=%+v spans=%v largest=%d dirty=%t", entry, h.largeFree, h.largestFree, h.largestFreeDirty)
+	}
+	if err := h.verify(nil); err != nil {
+		t.Fatalf("verify conservative bound after removal: %v", err)
+	}
+	if h.findLarge(48) != -1 || h.largestFree != 32 || h.largestFreeDirty {
+		t.Fatalf("after removal refresh: largest=%d dirty=%t spans=%v", h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+}
+
+func TestThroughputLargestFreeTracksDuplicateMaxima(t *testing.T) {
+	h := throughputHeap{
+		mem:       makeAlignedBytes(256, 16),
+		limit:     256,
+		pageBytes: 4096,
+		bump:      256,
+	}
+	h.insertLargeFree(throughputLargeFree{off: 0, size: 64})
+	h.insertLargeFree(throughputLargeFree{off: 128, size: 64})
+	first, err := h.alloc(64, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.off != 0 || h.largestFree != 64 || !h.largestFreeDirty || h.findLarge(64) != 0 {
+		t.Fatalf("after first maximum: entry=%+v largest=%d dirty=%t spans=%v", first, h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+	if err := h.verify(nil); err != nil {
+		t.Fatalf("verify duplicate maximum bound: %v", err)
+	}
+	second, err := h.alloc(64, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.off != 128 || h.largestFree != 64 || !h.largestFreeDirty || len(h.largeFree) != 0 {
+		t.Fatalf("after second maximum: entry=%+v largest=%d dirty=%t spans=%v", second, h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+	if h.findLarge(1) != -1 || h.largestFree != 0 || h.largestFreeDirty {
+		t.Fatalf("after duplicate refresh: largest=%d dirty=%t spans=%v", h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+}
+
 func TestThroughputVerifyRejectsStaleLargestFree(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	c.throughput.largestFree = 32
