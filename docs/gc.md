@@ -2102,6 +2102,13 @@ Verification checks that live refs point to valid handles, object type IDs exist
 
 Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, roots, minor/full collection, and barrier metadata. Environment variables can be layered on later if needed; the first pass keeps the knobs explicit and testable.
 
+The GC package's randomized graph stress tests also run an independent shadow
+tracer before full collection. The oracle walks root slots, globals, tables, and
+descriptor layouts without calling the production mark or object-scan helpers,
+then checks both missing retention and unnecessary retention. Promotion-failure
+tests snapshot nursery, handle, card, mark, and old-space allocator state and
+require byte-for-byte-equivalent observable state after rollback.
+
 ## Current limitations
 
 - The mandatory Core 3 WasmGC corpus is complete on linux/amd64 explicit and
