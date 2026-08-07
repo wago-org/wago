@@ -86,7 +86,8 @@ The cached maximum is a conservative upper bound after its span is consumed;
 the first later miss refreshes it while scanning, and later impossible misses
 are constant-time. On 64-bit builds this metadata changes `throughputHeap` from
 136 to 144 bytes and `Collector` from 904 to 912 bytes; handle, object, native
-ABI, and serialized layouts are unchanged.
+ABI, and serialized layouts are unchanged. A stripped standard-Go `cli/wago`
+build remains 8,663,305 bytes on linux/amd64 before and after this change.
 
 ## Required companion layers
 
