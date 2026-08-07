@@ -37,11 +37,23 @@ func (f *fn) atomicRMWAdd32(r *wasm.Reader) error {
 	value := f.popValue()
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
-	ea, eaOwned, _, disp := f.memAddr(off, 4, true)
+	base := linMemReg
+	var ea Reg
+	var eaOwned bool
+	var disp int32
+	if f.threadedMemory0 {
+		base, ea, disp = f.indexedMemAddr(0, off, 4)
+		eaOwned = true
+	} else {
+		ea, eaOwned, _, disp = f.memAddr(off, 4, true)
+	}
 
-	addr := f.allocReg(maskOf(vreg, ea))
-	f.a.Add64(addr, linMemReg, ea)
+	addr := f.allocReg(maskOf(vreg, base, ea))
+	f.a.Add64(addr, base, ea)
 	f.addDisp(addr, addr, disp, true)
+	if f.threadedMemory0 {
+		f.release(base)
+	}
 	if eaOwned {
 		f.release(ea)
 	}

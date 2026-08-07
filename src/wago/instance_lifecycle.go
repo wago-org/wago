@@ -239,7 +239,12 @@ func (in *Instance) releaseResources() {
 			}
 		}
 	}
-	if in.ownsMem {
+	if in.c.threadedMemory0() {
+		runtime.ReleaseJobMemory(in.jm)
+		if in.memory != nil && detachedMemories.add(in.memory) {
+			in.memory.detachImporter()
+		}
+	} else if in.ownsMem {
 		if in.memory != nil {
 			in.memory.ownerClosed()
 		}

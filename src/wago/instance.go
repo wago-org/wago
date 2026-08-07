@@ -75,7 +75,8 @@ type Instance struct {
 type instanceMemoryDirectory struct {
 	memories []*Memory
 	owns     []bool
-	native   []byte // fixed 16-byte entries consumed by indexed native code
+	native   []byte     // fixed 16-byte entries consumed by indexed native code
+	nativeMu sync.Mutex // threaded memory zero: one mutable activation per instance
 }
 
 // invokeCache memoizes per-export work so hot Invoke loops skip the exports map

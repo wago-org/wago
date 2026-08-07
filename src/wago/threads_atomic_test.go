@@ -53,7 +53,7 @@ func sharedAtomicOverlapModule() []byte {
 }
 
 func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
-	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads)
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicAddModule())
 	if err != nil {
 		t.Fatalf("compile shared atomic module: %v", err)
@@ -85,7 +85,7 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 }
 
 func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
-	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads)
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicOverlapModule())
 	if err != nil {
 		t.Fatal(err)

@@ -939,6 +939,39 @@ func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
 	return bits, nil
 }
 
+func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) error {
+	if m == nil || m.ImportedMemCount() != 1 || len(m.Memories) != 0 || m.MemCount() != 1 {
+		return fmt.Errorf("threads currently require exactly one imported shared memory")
+	}
+	mt, _ := m.MemoryType(0)
+	if !mt.Shared || mt.Limits.Addr64 || mt.Limits.Max == nil {
+		return fmt.Errorf("threads currently require shared memory32 with an exact maximum")
+	}
+	if bounds != BoundsChecksExplicit {
+		return fmt.Errorf("threads currently require explicit bounds checks")
+	}
+	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.TagCount() != 0 || len(m.Data) != 0 || len(m.Elements) != 0 {
+		return fmt.Errorf("threads currently admit numeric functions and globals without host imports, tables, tags, or segments")
+	}
+	for function, fn := range m.Code {
+		r := wasm.NewReader(fn.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				return err
+			}
+			if (imm.TouchesMemory || imm.Kind == wasm.InstrMemorySize || imm.Kind == wasm.InstrMemoryGrow) && op != 0xfe {
+				return fmt.Errorf("threads function %d uses %s outside the initial atomic-only memory boundary", function, imm.Kind)
+			}
+		}
+	}
+	return nil
+}
+
 func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
 	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, features, nil)
 }
@@ -978,6 +1011,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: %w", unsupported)
 		}
 		return nil, fmt.Errorf("validate: %w", err)
+	}
+	if requiredByModule.IsEnabled(CoreFeatureThreads) {
+		if err := validateThreadedExecutionBoundary(m, cfg.boundsChecks); err != nil {
+			return nil, fmt.Errorf("compile: %w", err)
+		}
 	}
 	var functionIndex uint32
 	for i := range m.Imports {
@@ -3277,6 +3315,13 @@ func (c *Compiled) memoryCount() int {
 		return 1
 	}
 	return 0
+}
+
+func (c *Compiled) threadedMemory0() bool {
+	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureThreads) || c.memoryCount() != 1 {
+		return false
+	}
+	return c.memoryDef(0).Shared
 }
 
 func (c *Compiled) memoryImportCount() int {

@@ -328,11 +328,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// instance-owned mapping (guard-page-backed for signals-based modules, so the
 	// fault handler catches OOB accesses through the normal Invoke path).
 	var (
-		jm         *runtime.JobMemory
-		memObj     *Memory
-		ownsMem    bool
-		memoryObjs []*Memory
-		memoryOwns []bool
+		jm              *runtime.JobMemory
+		memObj          *Memory
+		ownsMem         bool
+		threadedControl bool
+		memoryObjs      []*Memory
+		memoryOwns      []bool
 	)
 	var memoryAttachments importDedup[*Memory]
 	attachMemory := func(memory *Memory) error {
@@ -372,7 +373,18 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
-		jm, memObj = m.jobMemory(), m
+		memObj = m
+		if c.threadedMemory0() {
+			jm, err = runtime.AcquireJobMemoryGrowable(0, 0)
+			if err != nil {
+				m.detachImporter()
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("allocate threaded instance control: %w", err)
+			}
+			threadedControl = true
+		} else {
+			jm = m.jobMemory()
+		}
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		// Restoring from a snapshot: size the fresh mapping to the snapshot's
@@ -398,7 +410,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		memObj, ownsMem = &Memory{jm: jm}, true
 	}
 	memoryCount := c.memoryCount()
-	if memoryCount > 1 {
+	if memoryCount > 1 || threadedControl {
 		memoryObjs = make([]*Memory, memoryCount)
 		memoryOwns = make([]bool, memoryCount)
 		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
@@ -407,6 +419,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// once. Multiple import declarations may deliberately alias one host Memory.
 	closeMem := func() {
 		if memoryCount <= 1 {
+			if threadedControl {
+				runtime.ReleaseJobMemory(jm)
+			}
 			if ownsMem {
 				runtime.ReleaseJobMemory(jm)
 			}
@@ -480,7 +495,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
-	if memoryCount > 1 {
+	if memoryCount > 1 || threadedControl {
 		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
 		for i, memory := range memoryObjs {
 			memoryJM := memory.jobMemory()
@@ -1358,7 +1373,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 		}()
 	}
-	if memoryCount > 1 {
+	if memoryCount > 1 || threadedControl {
 		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}
 	}
 	if gcGlobalRootCount != 0 {
