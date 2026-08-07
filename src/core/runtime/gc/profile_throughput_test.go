@@ -193,23 +193,20 @@ func TestThroughputClassLimitMustBeSupportedSizeClass(t *testing.T) {
 
 var benchmarkThroughputLargeSpan int
 
-type throughputLargeSpanBenchmarkFixture struct {
-	spans int
-	miss  throughputHeap
-	churn throughputHeap
-}
-
-func newThroughputLargeSpanBenchmarkFixture(spans int) throughputLargeSpanBenchmarkFixture {
-	miss := throughputHeap{
+func newThroughputLargeSpanMissFixture(spans int) throughputHeap {
+	h := throughputHeap{
 		largeFree:   make([]throughputLargeFree, spans),
 		largestFree: 32,
 	}
-	for i := range miss.largeFree {
-		miss.largeFree[i] = throughputLargeFree{off: uint32(i * 128), size: 32}
+	for i := range h.largeFree {
+		h.largeFree[i] = throughputLargeFree{off: uint32(i * 128), size: 32}
 	}
+	return h
+}
 
+func newThroughputLargeSpanChurnFixture(spans int) throughputHeap {
 	memBytes := uint32(spans*128 + 128)
-	churn := throughputHeap{
+	h := throughputHeap{
 		mem:         makeAlignedBytes(memBytes, 16),
 		limit:       memBytes,
 		pageBytes:   4096,
@@ -218,10 +215,10 @@ func newThroughputLargeSpanBenchmarkFixture(spans int) throughputLargeSpanBenchm
 		largestFree: 128,
 	}
 	for i := 0; i < spans; i++ {
-		churn.largeFree[i] = throughputLargeFree{off: uint32(i * 128), size: 32}
+		h.largeFree[i] = throughputLargeFree{off: uint32(i * 128), size: 32}
 	}
-	churn.largeFree[spans] = throughputLargeFree{off: uint32(spans * 128), size: 128}
-	return throughputLargeSpanBenchmarkFixture{spans: spans, miss: miss, churn: churn}
+	h.largeFree[spans] = throughputLargeFree{off: uint32(spans * 128), size: 128}
+	return h
 }
 
 func churnThroughputLargeSpan(h *throughputHeap) error {
@@ -294,13 +291,12 @@ func TestThroughputLargestFreeFootprint(t *testing.T) {
 func BenchmarkThroughputLargeSpanMiss(b *testing.B) {
 	for _, spans := range []int{64, 1024, 16384} {
 		b.Run(fmt.Sprintf("spans=%d", spans), func(b *testing.B) {
-			fixture := newThroughputLargeSpanBenchmarkFixture(spans)
+			h := newThroughputLargeSpanMissFixture(spans)
 			b.Run("warm", func(b *testing.B) {
-				h := &fixture.miss
 				var found int
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
-					found += benchmarkFindThroughputLargeSpan(h, 64)
+					found += benchmarkFindThroughputLargeSpan(&h, 64)
 				}
 				benchmarkThroughputLargeSpan = found
 				if found != -b.N || h.largestFree != 32 || h.largestFreeDirty {
@@ -308,17 +304,34 @@ func BenchmarkThroughputLargeSpanMiss(b *testing.B) {
 				}
 			})
 			b.Run("cold", func(b *testing.B) {
-				h := &fixture.miss
-				var found int
+				const batchSize = 64
+				var batch [batchSize]throughputHeap
+				var found, lastCount int
 				b.ReportAllocs()
-				for i := 0; i < b.N; i++ {
-					h.largestFree = 64
-					h.largestFreeDirty = true
-					found += benchmarkFindThroughputLargeSpan(h, 64)
+				for done := 0; done < b.N; {
+					count := min(batchSize, b.N-done)
+					lastCount = count
+					b.StopTimer()
+					for i := 0; i < count; i++ {
+						batch[i] = h
+						batch[i].largestFree = 64
+						batch[i].largestFreeDirty = true
+					}
+					b.StartTimer()
+					for i := 0; i < count; i++ {
+						found += benchmarkFindThroughputLargeSpan(&batch[i], 64)
+					}
+					done += count
 				}
+				b.StopTimer()
 				benchmarkThroughputLargeSpan = found
-				if found != -b.N || h.largestFree != 32 || h.largestFreeDirty {
-					b.Fatalf("cold miss result=%d largest=%d dirty=%t", found, h.largestFree, h.largestFreeDirty)
+				if found != -b.N {
+					b.Fatalf("cold miss result=%d, want %d", found, -b.N)
+				}
+				for i := 0; i < lastCount; i++ {
+					if batch[i].largestFree != 32 || batch[i].largestFreeDirty {
+						b.Fatalf("cold miss batch[%d] largest=%d dirty=%t", i, batch[i].largestFree, batch[i].largestFreeDirty)
+					}
 				}
 			})
 		})
@@ -328,27 +341,26 @@ func BenchmarkThroughputLargeSpanMiss(b *testing.B) {
 func BenchmarkThroughputLargeSpanChurn(b *testing.B) {
 	for _, spans := range []int{64, 1024, 16384} {
 		b.Run(fmt.Sprintf("spans=%d", spans), func(b *testing.B) {
-			fixture := newThroughputLargeSpanBenchmarkFixture(spans)
-			h := &fixture.churn
+			h := newThroughputLargeSpanChurnFixture(spans)
 			// The first insertion grows the free-span scratch capacity. Keep
 			// that one-time fixture cost outside the measured steady-state loop.
-			if err := churnThroughputLargeSpan(h); err != nil {
+			if err := churnThroughputLargeSpan(&h); err != nil {
 				b.Fatal(err)
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if err := churnThroughputLargeSpan(h); err != nil {
+				if err := churnThroughputLargeSpan(&h); err != nil {
 					b.Fatal(err)
 				}
 			}
 			b.StopTimer()
-			if len(h.largeFree) != fixture.spans+1 || h.largeFree[fixture.spans].size != 128 || h.largestFree != 128 || h.largestFreeDirty {
+			if len(h.largeFree) != spans+1 || h.largeFree[spans].size != 128 || h.largestFree != 128 || h.largestFreeDirty {
 				b.Fatalf("final churn state: spans=%d tail=%v largest=%d dirty=%t", len(h.largeFree), h.largeFree[len(h.largeFree)-1], h.largestFree, h.largestFreeDirty)
 			}
 			for i, span := range h.largeFree {
 				wantOff, wantSize := uint32(i*128), uint32(32)
-				if i == fixture.spans {
+				if i == spans {
 					wantSize = 128
 				}
 				if span.off != wantOff || span.size != wantSize {

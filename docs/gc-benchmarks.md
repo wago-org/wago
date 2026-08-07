@@ -77,7 +77,10 @@ amount of scan work.
 64, 1,024, and 16,384 fragmented free spans, none large enough for the request.
 Its `warm` case guards constant-time rejection after the bound is exact; its
 `cold` case measures the one scan that refreshes a conservative dirty bound.
-Both validate the miss result and final bound state after timing.
+The cold case prepares dirty metadata in untimed batches, so it does not charge
+the preceding allocation's summary writes to the miss. Both validate the miss
+result and final bound state after timing, and neither constructs the larger
+churn fixture.
 `BenchmarkThroughputLargeSpanChurn` repeatedly allocates from and returns the
 unique largest span at the same fragmentation levels. Run both benchmarks
 together so a faster miss cannot hide work shifted into successful allocation.
