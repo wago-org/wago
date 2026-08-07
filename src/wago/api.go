@@ -1290,6 +1290,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
+	keepCodeImage := false
+	defer func() {
+		if cm.CodeImage != nil && !keepCodeImage {
+			_ = cm.CodeImage.Close()
+		}
+	}()
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 	for i := range internalEntry {
 		if i>>6 < len(cm.DirectPrepared) && cm.DirectPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
@@ -1799,6 +1805,16 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.Data = append(c.Data, init)
 	}
 	compiled := installCompiledFinalizer(c)
+	if cm.CodeImage != nil {
+		mapping, base, err := cm.CodeImage.Take()
+		if err != nil {
+			return nil, fmt.Errorf("compile: transfer code image: %w", err)
+		}
+		compiled.codeCache.mem = mapping
+		compiled.codeCache.base = base
+		compiled.codeCache.flags |= compiledCacheWritableCode
+	}
+	keepCodeImage = true
 	if guardPageBuilt && cfg.boundsChecks == BoundsChecksSignalsBased {
 		compiled.codeCache.flags |= compiledCacheGuardMemory
 	}

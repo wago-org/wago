@@ -19,6 +19,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -874,9 +875,18 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratch()
-		code := make([]byte, 0, codeCap)
+		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
+		if err != nil {
+			return nil, fmt.Errorf("amd64: allocate code image: %w", err)
+		}
+		keepCodeBuffer := false
+		defer func() {
+			if !keepCodeBuffer {
+				_ = codeBuffer.Close()
+			}
+		}()
 		pressureDone := false
-		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, cap(code))
+		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared []uint64
 		for i := range m.Code {
 			hints := allHints[i]
@@ -892,22 +902,28 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
 			// 16-byte align each function (append zeros without a temp allocation).
-			if pad := (16 - len(code)%16) % 16; pad != 0 {
-				code = append(code, alignPad[:pad]...)
+			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
+				if err := codeBuffer.AppendZeros(pad); err != nil {
+					return nil, fmt.Errorf("amd64: grow code image: %w", err)
+				}
 			}
+			code := codeBuffer.Bytes()
 			entry[i] = len(code)
 			internalEntry[i] = len(code) + internalOff
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
 			relocs[i] = rl
-			code = append(code, fnCode...)
-			if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
+			if err := codeBuffer.Append(fnCode); err != nil {
+				return nil, fmt.Errorf("amd64: grow code image: %w", err)
+			}
+			if !pressureDone && opts.MemoryPressure != nil && len(codeBuffer.Bytes()) >= pressureAt {
 				pressureDone = true
 				opts.MemoryPressure()
 			}
 		}
 		// Patch call sites now that every function's entry offsets are known.
+		code := codeBuffer.Bytes()
 		for i := 0; i < n; i++ {
 			for _, rl := range relocs[i] {
 				site := entry[i] + rl.at
@@ -921,7 +937,8 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		keepCodeBuffer = true
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, hostAdapters, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)

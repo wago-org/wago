@@ -14,6 +14,7 @@ const (
 	compiledCacheDynamicFuncRefTest compiledCodeCacheFlags = 1 << iota
 	compiledCacheGuardMemory
 	compiledCacheAtomicWaitHelpers
+	compiledCacheWritableCode
 )
 
 type compiledCodeCache struct {
@@ -239,6 +240,12 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 		// padding would change codec bytes and binding-independent declarations.
 		// The original Go-heap backing can now be reclaimed.
 		c.Code = mem[:codeLen:codeLen]
+	}
+	if cc.flags&compiledCacheWritableCode != 0 {
+		if err := coreruntime.SealCode(cc.mem); err != nil {
+			return 0, err
+		}
+		cc.flags &^= compiledCacheWritableCode
 	}
 	cc.refs++
 	return cc.base, nil

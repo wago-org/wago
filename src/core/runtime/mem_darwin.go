@@ -31,18 +31,26 @@ func mmapRWReserve(n int) ([]byte, error) {
 	return mmapRW(n)
 }
 
+func mmapCodeRW(n int) ([]byte, error) {
+	return syscall.Mmap(-1, 0, roundUpPage(n),
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_ANON|syscall.MAP_PRIVATE|syscall.MAP_JIT)
+}
+
+func protectCodeRX(mem []byte) error {
+	return syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_EXEC)
+}
+
 // mmapExec maps executable code on macOS. MAP_JIT is required on many hardened
 // configurations; the mapping is writable only
 // during the copy and then flipped to RX to preserve W^X at the syscall level.
 func mmapExec(code []byte) ([]byte, error) {
-	mem, err := syscall.Mmap(-1, 0, roundUpPage(len(code)),
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_ANON|syscall.MAP_PRIVATE|syscall.MAP_JIT)
+	mem, err := mmapCodeRW(len(code))
 	if err != nil {
 		return nil, err
 	}
 	copy(mem, code)
-	if err := syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_EXEC); err != nil {
+	if err := protectCodeRX(mem); err != nil {
 		_ = syscall.Munmap(mem)
 		return nil, err
 	}
