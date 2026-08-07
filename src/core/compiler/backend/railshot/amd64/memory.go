@@ -943,23 +943,46 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fwd1)
 	joins = append(joins, f.a.JmpPlaceholder())
 
-	// Large: overlap-safe rep movsb. Backward (DF=1) is only REQUIRED when the
-	// regions truly overlap with dst ahead of src; a disjoint copy (dst >= src+n,
-	// e.g. AssemblyScript __renew growing a buffer) is forward-safe. This matters
-	// because backward `rep movsb` gets no ERMSB/FSRM acceleration — it runs at
-	// ~1 byte/cycle — while forward does, so route disjoint high-dst copies to
-	// the fast forward path instead of the slow backward one.
+	// Large: forward-safe copies retain ERMS/FSRM-accelerated rep movsb. True
+	// backward overlap uses a 64-byte vector loop: x86 string engines do not
+	// accelerate DF=1 and commonly fall to roughly one byte per cycle. Load the
+	// complete chunk before storing it so even a one-byte overlap retains memmove
+	// semantics. XMM0..3 are scratch after flush; pinned float/vector locals use
+	// the high register bank.
 	f.a.PatchRel32(big, f.a.Len())
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)  // dst <= src → forward
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
 	f.a.Cmp64(RDI, RDX)
 	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
-	f.a.LeaScaled(RDI, RDI, RCX, 0, -1)       // last dst byte
-	f.a.LeaScaled(RSI, RSI, RCX, 0, -1)       // last src byte
-	f.a.Std()
-	f.a.RepMovsb()
-	f.a.Cld()
+	back64 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 64, false)
+	backTail := f.a.JccPlaceholder(condB)
+	for i, disp := range [...]int32{-64, -48, -32, -16} {
+		f.a.VMovdquLoadIdx(Reg(i), RSI, RCX, disp)
+	}
+	for i, disp := range [...]int32{-64, -48, -32, -16} {
+		f.a.VMovdquStoreIdx(RDI, RCX, Reg(i), disp)
+	}
+	f.a.AluRI(5, RCX, 64, false)
+	f.a.JmpBack(back64)
+	f.a.PatchRel32(backTail, f.a.Len())
+	backTail8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	backTail1 := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false)
+	f.a.JmpBack(backTail8)
+	f.a.PatchRel32(backTail1, f.a.Len())
+	f.a.TestSelf(RCX, false)
+	backDone := f.a.JccPlaceholder(condE)
+	backByte := f.a.Len()
+	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
+	f.a.AluRI(5, RCX, 1, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), backByte)
+	f.a.PatchRel32(backDone, f.a.Len())
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(fwd, f.a.Len())
 	f.a.PatchRel32(fwdDisjoint, f.a.Len())
