@@ -230,20 +230,25 @@ func (h *throughputHeap) findLarge(size uint32) int {
 	if size > h.largestFree {
 		return -1
 	}
-	if !h.largestFreeDirty {
-		for i, span := range h.largeFree {
-			if span.size >= size {
-				return i
-			}
-		}
-		return -1
+	if h.largestFreeDirty {
+		return h.findLargeDirty(size)
 	}
-	largestFree := uint32(0)
-	for i, s := range h.largeFree {
-		if s.size > largestFree {
-			largestFree = s.size
+	for i, span := range h.largeFree {
+		if span.size >= size {
+			return i
 		}
-		if s.size >= size {
+	}
+	return -1
+}
+
+//go:noinline
+func (h *throughputHeap) findLargeDirty(size uint32) int {
+	largestFree := uint32(0)
+	for i, span := range h.largeFree {
+		if span.size > largestFree {
+			largestFree = span.size
+		}
+		if span.size >= size {
 			return i
 		}
 	}

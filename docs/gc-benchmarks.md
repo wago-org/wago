@@ -75,11 +75,13 @@ amount of scan work.
 
 `BenchmarkThroughputLargeSpanMiss` isolates an old-space allocation miss with
 64, 1,024, and 16,384 fragmented free spans, none large enough for the request.
-It guards the constant-time largest-span rejection path separately from
-successful first-fit search, splitting, and coalescing work.
+Its `warm` case guards constant-time rejection after the bound is exact; its
+`cold` case measures the one scan that refreshes a conservative dirty bound.
+Both validate the miss result and final bound state after timing.
 `BenchmarkThroughputLargeSpanChurn` repeatedly allocates from and returns the
 unique largest span at the same fragmentation levels. Run both benchmarks
 together so a faster miss cannot hide work shifted into successful allocation.
+It validates every final free-span offset and size after timing.
 The cached maximum is a conservative upper bound after its span is consumed;
 the first later miss refreshes it while scanning, and later impossible misses
 are constant-time. On 64-bit builds this metadata changes `throughputHeap` from
