@@ -9,6 +9,8 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
+const preparedDirectIntSupported = true
+
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	in := fn.in
 	if in.isLogicallyClosed() {

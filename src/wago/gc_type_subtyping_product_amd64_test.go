@@ -237,8 +237,8 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
 	}
-	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 419, 391, 31, 31, 31, 31, 156, 156, 68, 68, 68, 68, 109, 263, 339, 68, 68, 6092, 1131, 1458, 31, 0, 31, 0}
-	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 806, 927, 453, 611, 374, 709, 501, 755, 535, 693, 535, 456, 815, 601, 875, 357, 437, 6588, 1428, 1816, 268, 237, 358, 237}
+	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 419, 391, 31, 31, 31, 31, 156, 156, 68, 68, 68, 68, 109, 263, 339, 68, 68, 6094, 1133, 1458, 31, 0, 31, 0}
+	wantCodecBytes := []int{349, 385, 347, 219, 238, 386, 806, 927, 453, 611, 374, 709, 501, 755, 535, 693, 535, 456, 815, 601, 875, 357, 437, 6590, 1430, 1816, 268, 237, 358, 237}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)

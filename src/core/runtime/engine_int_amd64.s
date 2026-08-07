@@ -6,9 +6,10 @@
 TEXT ·enterNativeInt(SB), NOSPLIT, $0-64
 	MOVQ code+0(FP), R11
 	MOVQ foreignStackTop+48(FP), R10
-	SUBQ $16, R10
+	SUBQ $32, R10
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
+	MOVQ BP, 16(R10)
 
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), SI
@@ -23,6 +24,7 @@ TEXT ·enterNativeInt(SB), NOSPLIT, $0-64
 	CALL R11
 	MOVQ AX, DI
 
+	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
 	PXOR X15, X15

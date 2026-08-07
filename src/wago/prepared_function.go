@@ -123,7 +123,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	if scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
 		fn.privateFast = true
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
-		if fn.isolatedFast && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
+		if fn.isolatedFast && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
 			fn.directIntFast = true
 			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 		}

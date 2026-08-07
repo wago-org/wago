@@ -26,7 +26,7 @@ func TestBMI2OptimizationHostGateAndCodecRequirement(t *testing.T) {
 	}
 
 	bmi2HostFeaturesSupported = func() bool { return true }
-	cfg := NewRuntimeConfig()
+	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
 	found := false
 	for _, info := range cfg.OptimizationInfos() {
 		if info.Name == "bmi2-rorx" {
