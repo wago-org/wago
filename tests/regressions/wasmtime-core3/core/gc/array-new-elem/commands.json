@@ -1,0 +1,214 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 11,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 12,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 16,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 24,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "line": 28,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "line": 32,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "line": 36,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "array-new-elem",
+        "type": "invoke"
+      },
+      "line": 40,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 44,
+      "type": "module_definition"
+    },
+    {
+      "line": 55,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-elem-contents",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "187"
+        },
+        {
+          "type": "i32",
+          "value": "204"
+        }
+      ],
+      "line": 56,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

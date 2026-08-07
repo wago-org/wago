@@ -24,10 +24,10 @@ func mustRead(p string) []byte {
 }
 
 var (
-	fibWasm         = mustRead("../tests/testdata/fib.wasm")   // iterative fib (loop)
-	recurWasm       = mustRead("../tests/testdata/recur.wasm") // recursive fibrec (calls)
-	globalBenchWasm = mustRead("testdata/global_bench.wasm")   // globals/local/memory microbench fixture
-	hostcallWasm    = mustRead("testdata/hostcall.wasm")       // returning host import env.host(i32)->i32
+	fibWasm         = mustRead("../tests/fixtures/wasm/fib.wasm")           // iterative fib (loop)
+	recurWasm       = mustRead("../tests/fixtures/wasm/recur.wasm")         // recursive fibrec (calls)
+	globalBenchWasm = mustRead("../tests/fixtures/bench/global_bench.wasm") // globals/local/memory microbench fixture
+	hostcallWasm    = mustRead("../tests/fixtures/bench/hostcall.wasm")     // returning host import env.host(i32)->i32
 )
 
 func BenchmarkCompile_wago(b *testing.B) {

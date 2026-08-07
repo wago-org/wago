@@ -20,10 +20,18 @@ const (
 // Section order includes proposal sections by decode position, not numeric id:
 // tag is decoded after memory and before globals, while data_count is decoded
 // before code. IDs above 13 are reserved by the WebAssembly 2.0 core format.
-var sectionOrder = map[byte]int{
+var sectionOrder = [...]uint8{
 	secType: 1, secImport: 2, secFunction: 3, secTable: 4, secMemory: 5,
 	secTag: 6, secGlobal: 7, secExport: 8, secStart: 9,
 	secElement: 10, secDataCount: 11, secCode: 12, secData: 13,
+}
+
+func lookupSectionOrder(id byte) (uint8, bool) {
+	if int(id) >= len(sectionOrder) {
+		return 0, false
+	}
+	order := sectionOrder[id]
+	return order, order != 0
 }
 
 // DecodeModule decodes a WebAssembly binary into the compact module
@@ -69,11 +77,12 @@ func decodeSection(m *Module, r *reader, id byte) error {
 		markRecursiveTypeIndexes(v)
 		m.Types = v
 	case secImport:
-		v, err := readVec(r, decodeImport)
+		v, compact, err := decodeImports(r)
 		if err != nil {
 			return err
 		}
 		m.Imports = v
+		m.UsesCompactImports = compact
 	case secFunction:
 		v, err := readVec(r, func(r *reader) (TypeIdx, error) { return decodeTypeIdx(r) })
 		if err != nil {
@@ -183,9 +192,8 @@ func decodeRefType(r *reader) (RefType, error) {
 		if err != nil {
 			return RefType{}, err
 		}
-		if !exact && ht.Kind == HeapAbs {
-			return AbsRef(ht.Abs), nil
-		}
+		// Preserve the explicit (ref null ...) encoding form. Bare is retained
+		// only for binary round trips and must not affect semantic type identity.
 		return Ref(true, ht, exact), nil
 	case 0x64:
 		exact, ht, err := decodeRefHeapType(r)
@@ -473,8 +481,13 @@ func decodeExternType(r *reader) (ExternType, error) {
 	if err != nil {
 		return ExternType{}, err
 	}
-	et := ExternType{Kind: ExternKind(k)}
-	switch ExternKind(k) {
+	return decodeExternTypeKind(r, ExternKind(k))
+}
+
+func decodeExternTypeKind(r *reader, kind ExternKind) (ExternType, error) {
+	et := ExternType{Kind: kind}
+	var err error
+	switch kind {
 	case ExternFunc:
 		et.Type, err = decodeTypeIdx(r)
 	case ExternTable:
@@ -490,18 +503,85 @@ func decodeExternType(r *reader) (ExternType, error) {
 	}
 	return et, err
 }
-func decodeImport(r *reader) (Import, error) {
-	mod, err := r.name()
+
+func decodeImports(r *reader) ([]Import, bool, error) {
+	n, err := r.u32()
 	if err != nil {
-		return Import{}, err
+		return nil, false, err
 	}
-	nm, err := r.name()
-	if err != nil {
-		return Import{}, err
+	capHint := r.left()
+	if uint64(n) < uint64(capHint) {
+		capHint = int(n)
 	}
-	et, err := decodeExternType(r)
-	return Import{Module: mod, Name: nm, Type: et}, err
+	imports := make([]Import, 0, capHint)
+	compact := false
+	for uint32(len(imports)) < n {
+		mod, err := r.name()
+		if err != nil {
+			return nil, compact, err
+		}
+		name, err := r.name()
+		if err != nil {
+			return nil, compact, err
+		}
+		kindByte, err := r.byte()
+		if err != nil {
+			return nil, compact, err
+		}
+		if name != "" || (kindByte != 0x7e && kindByte != 0x7f) {
+			et, err := decodeExternTypeKind(r, ExternKind(kindByte))
+			if err != nil {
+				return nil, compact, err
+			}
+			imports = append(imports, Import{Module: mod, Name: name, Type: et})
+			continue
+		}
+
+		compact = true
+		var sharedKind *ExternKind
+		if kindByte == 0x7e {
+			k, err := r.byte()
+			if err != nil {
+				return nil, compact, err
+			}
+			kind := ExternKind(k)
+			if kind > ExternTag {
+				return nil, compact, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
+			}
+			sharedKind = &kind
+		}
+		count, err := r.u32()
+		if err != nil {
+			return nil, compact, err
+		}
+		remaining := n - uint32(len(imports))
+		if count > remaining {
+			return nil, compact, &DecodeError{Code: ErrInvalidImport, Offset: r.off()}
+		}
+		for i := uint32(0); i < count; i++ {
+			field, err := r.name()
+			if err != nil {
+				return nil, compact, err
+			}
+			kind := sharedKind
+			if kind == nil {
+				k, err := r.byte()
+				if err != nil {
+					return nil, compact, err
+				}
+				entryKind := ExternKind(k)
+				kind = &entryKind
+			}
+			et, err := decodeExternTypeKind(r, *kind)
+			if err != nil {
+				return nil, compact, err
+			}
+			imports = append(imports, Import{Module: mod, Name: field, Type: et})
+		}
+	}
+	return imports, compact, nil
 }
+
 func decodeExternIdx(r *reader) (ExternIdx, error) {
 	k, err := r.byte()
 	if err != nil {

@@ -1,10 +1,13 @@
 package wago
 
 import (
+	"encoding/binary"
+	"fmt"
 	"sync"
 	"unsafe"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // nativeExecutionMu is the initial correctness execution lease: exactly one
@@ -23,16 +26,52 @@ type executionLease struct{}
 // instance's pointer context before native code can observe basedata. Memory
 // size/growth fields remain backing-owned; invocation control is refreshed by
 // the engine entry/resume paths.
-func (in *Instance) beginNativeEntry() *executionLease {
+func (in *Instance) beginNativeEntry() (*executionLease, error) {
 	nativeExecutionMu.Lock()
 	nativeExecutionEpoch++
-	in.bindNativeContext()
-	return &executionLease{}
+	if err := in.bindNativeContext(); err != nil {
+		nativeExecutionMu.Unlock()
+		return nil, err
+	}
+	return &executionLease{}, nil
 }
 
-func (in *Instance) bindNativeContext() {
+func (in *Instance) bindNativeContext() error {
 	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), wruntime.InstanceContextBytes)
 	in.jm.BindInstanceContextBytes(ctx)
+	primary := in.jm.LinMemBase()
+	in.jm.SetGuardOwner(primary)
+	return in.refreshMemoryDirectory()
+}
+
+// refreshMemoryDirectory rebinds the instance-owned indexed-memory directory
+// and synchronizes every entry while the process-wide native execution lease is
+// held. This makes shared memory tenants safe without copying the whole basedata.
+func (in *Instance) refreshMemoryDirectory() error {
+	dir := in.memoryDir
+	if dir == nil {
+		return nil
+	}
+	if len(dir.native) < len(dir.memories)*abi.MemoryDirEntryBytes {
+		return fmt.Errorf("indexed memory directory is truncated")
+	}
+	for i, memory := range dir.memories {
+		if memory == nil {
+			return fmt.Errorf("indexed memory %d is unavailable", i)
+		}
+		jm := memory.jobMemory()
+		if jm == nil {
+			return fmt.Errorf("indexed memory %d owner is closed", i)
+		}
+		entry := dir.native[i*abi.MemoryDirEntryBytes:]
+		jm.SetGuardOwner(in.jm.LinMemBase())
+		pages := jm.CurrentPages()
+		binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(jm.LinMemBase()))
+		binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(pages)<<16)
+		binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], pages)
+	}
+	in.jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&dir.native[0])))
+	return nil
 }
 
 func (*executionLease) unlockExecution() { nativeExecutionMu.Unlock() }
@@ -55,13 +94,57 @@ func (in *Instance) callNativeAsync(entry uintptr, prepared bool) error {
 // callNativeAsyncWithTrap enters this instance while preserving an outer
 // caller's trap cell across a Go-level re-export delegation.
 func (in *Instance) callNativeAsyncWithTrap(entry uintptr, prepared bool, activeTrap []byte) error {
-	locked := in.beginNativeEntry()
+	locked, err := in.beginNativeEntry()
+	if err != nil {
+		return err
+	}
 	defer locked.unlockExecution()
 	if prepared {
 		if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 			return err
 		}
-		return in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results)
+		return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
 	}
-	return callNative(in.c, in.eng, in.jm, true, entry, in.serArgs, activeTrap, in.results)
+	return in.decorateTrap(callNative(in.c, in.eng, in.jm, true, entry, in.serArgs, activeTrap, in.results))
+}
+
+func (in *Instance) preparedPrivateEligible() bool {
+	if in == nil || in.memoryDir != nil || in.nativeControlShared || in.syncMode {
+		return false
+	}
+	if in.memory == nil {
+		return true
+	}
+	if !in.ownsMem {
+		return false
+	}
+	_, shared := in.memory.importShape()
+	return !shared
+}
+
+// preparedIsolatedEligible identifies instances whose native execution has no
+// process-visible state that direct host access or another instance can observe.
+// PreparedFunction already forbids concurrent calls on one Instance; each such
+// instance owns its Engine, stack, trap cell, argument/result buffers, and memory.
+func (in *Instance) preparedIsolatedEligible() bool {
+	return in != nil && in.preparedPrivateEligible() && in.c != nil &&
+		len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
+		in.c.NumImports == 0 && !in.c.NeedsFuncRefDescs
+}
+
+func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
+	nativeExecutionMu.Lock()
+	nativeExecutionEpoch++
+	defer nativeExecutionMu.Unlock()
+	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
+		return err
+	}
+	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
+}
+
+func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte) error {
+	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
+		return err
+	}
+	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
 }

@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build (linux || darwin || windows) && amd64
 
 package amd64
 
@@ -12,7 +12,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func f32b(v float32) uint64 { return uint64(math.Float32bits(v)) }
@@ -46,7 +46,7 @@ func TestDirectBackendUsesSharedCodegenOptions(t *testing.T) {
 
 // mod1 builds and decodes a one-function module exporting "f". funcBody is the
 // full code entry (local declarations + instruction stream).
-func mod1(t *testing.T, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
+func mod1(t testing.TB, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
 	t.Helper()
 	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
 	b := wasmtest.Module(
@@ -422,6 +422,21 @@ func TestAmd64HostImportSyncMultiParam(t *testing.T) {
 	host := func(_ uintptr, imp uint32, args, res []uint64) { res[0] = args[0] + args[1] }
 	if got := runHostSync(t, m, host, 20, 3); got != 43 { // env.add(20,3)=23, +a(20)=43
 		t.Fatalf("result = %d, want 43 (add(20,3)+20)", got)
+	}
+}
+
+func TestAmd64HostImportSyncFloatLocalSurvives(t *testing.T) {
+	// type 0: (f32)->(f32). The imported result is discarded; the caller must
+	// recover its f32 parameter after the parked-Go transition clobbers XMMs.
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32})
+	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x1a, 0x20, 0x00, 0x0b}
+	m := hostSyncModule(sig, body)
+	host := func(_ uintptr, imp uint32, args, res []uint64) { res[0] = uint64(math.Float32bits(99)) }
+	want := math.Float32bits(7)
+	for i := 0; i < 100; i++ {
+		if got := runHostSync(t, m, host, int32(want)); got != want {
+			t.Fatalf("iteration %d result = %#x, want preserved local %#x", i, got, want)
+		}
 	}
 }
 

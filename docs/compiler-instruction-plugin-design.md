@@ -39,10 +39,12 @@ recipe. Neither facility defines a SIMD vocabulary.
 
 ## Raw target lowerings
 
-Target-specific implementations are independent plugin callbacks. Wago does not
-define vector widths, lane types, SIMD opcodes, instruction selection,
-multi-register chunking, or equivalence between targets. A plugin that supports
-both AMD64 and ARM64 supplies both implementations and owns their compatibility.
+Target-specific implementations live in architecture-tagged plugin files. Wago
+does not define vector widths, lane types, SIMD opcodes, instruction selection,
+multi-register chunking, or equivalence between targets. A plugin compiles one
+lowering for the current target and owns compatibility between targets.
+
+Keep the instruction's identity, signature, and portable fallback shared:
 
 ```go
 reg.Compiler().Instruction(wago.InstructionSpec{
@@ -50,11 +52,27 @@ reg.Compiler().Instruction(wago.InstructionSpec{
 	Name:    "bytes.xor32",
 	Input:   []int32{32, 32, 32}, // destination, left, right pointers
 	Handler: portableFallback,
+	Codegen: bytesXor32Codegen(),
+})
+```
 
-	AMD64: &wago.AMD64InstructionLowering{
-		Compatibility: wago.AMD64CompatibilityFullAccess,
-		Features:      wago.AMD64FeatureAVX2,
-		Emit: func(ctx wago.AMD64LoweringContext) error {
+Then provide the target constructor in `codegen_amd64.go`:
+
+```go
+//go:build amd64
+
+package example
+
+import (
+	"github.com/wago-org/wago/codegen"
+	amd64 "github.com/wago-org/wago/codegen/amd64"
+)
+
+func bytesXor32Codegen() codegen.Lowering {
+	return &amd64.Lowering{
+		Compatibility: amd64.CompatibilityFullAccess,
+		Features:      amd64.FeatureAVX2,
+		Emit: func(ctx amd64.Context) error {
 			dstBase, dst, dstDisp, err := ctx.CheckedMemory(0, 0, 32)
 			if err != nil {
 				return err
@@ -76,23 +94,40 @@ reg.Compiler().Instruction(wago.InstructionSpec{
 			a.YMovdquStoreIdx(dstBase, dst, x, dstDisp)
 			return nil
 		},
-	},
+	}
+}
+```
 
-	ARM64: &wago.ARM64InstructionLowering{
-		Compatibility: wago.ARM64CompatibilityFullAccess,
-		Emit: func(ctx wago.ARM64LoweringContext) error {
+And the independent ARM64 implementation in `codegen_arm64.go`:
+
+```go
+//go:build arm64
+
+package example
+
+import (
+	"github.com/wago-org/wago/codegen"
+	arm64 "github.com/wago-org/wago/codegen/arm64"
+)
+
+func bytesXor32Codegen() codegen.Lowering {
+	return &arm64.Lowering{
+		Compatibility: arm64.CompatibilityFullAccess,
+		Emit: func(ctx arm64.Context) error {
 			// The plugin emits its own AArch64/NEON sequence here.
 			// Wago does not derive it from the AMD64 implementation.
 			return emitNEONXor32(ctx)
 		},
-	},
-})
+	}
+}
 ```
 
-The import name is the plugin's semantic contract. The two callbacks contain
-raw target instructions. A plugin may select AVX2, AVX-512, NEON, SVE, scalar
-code, or any other implementation supported by the exposed encoder. Feature
-selection and fallback between those implementations are plugin policy.
+The import name is the plugin's semantic contract. The target constructors
+contain raw target instructions. A plugin may select AVX2, AVX-512, NEON, SVE,
+scalar code, or any other implementation supported by the exposed encoder.
+Feature selection and fallback between those implementations are plugin policy.
+An ordinary instruction that lacks native code on one target can return `nil`
+from that target's constructor and retain its portable `Handler` fallback.
 
 ## Compatibility modes
 
@@ -106,16 +141,19 @@ emit instructions not yet covered by a typed encoder method. Wago cannot verify
 arbitrary machine code and treats a full-access plugin like backend code.
 
 Both modes run at compile time. AMD64 feature declarations are recorded in the
-compiled artifact. A target callback that is absent is not intercepted on that
-target; the ordinary imported function remains available as the fallback.
+compiled artifact. Registering a lowering for the wrong build target is an
+error; architecture build tags make that mismatch impossible in a normally
+structured plugin.
 
 ## Ownership boundary
 
 `src/core/plugins` owns registration, logical bit widths, validation, and the
-canonical references to target callbacks.
+current target's opaque `codegen.Lowering`.
 
-`src/core/compiler/machinecode` owns only raw lowering contexts and trust modes.
-It must not grow plugin-specific instruction semantics.
+`codegen/amd64` and `codegen/arm64` own their respective lowering contracts,
+trust modes, feature declarations, and encoder-facing contexts. The root
+`codegen` package is deliberately only the target-neutral interface between
+registration and a backend.
 
 Each Railshot backend adapts its stack, register allocator, checked linear
 memory, and raw encoder to the corresponding context. It invokes the callback
@@ -149,8 +187,7 @@ return compiler.Instruction(wago.InstructionSpec{
 		Inputs: []wago.CustomType{v256, v256},
 		Output: &v256,
 	},
-	AMD64: amd64Xor,
-	ARM64: arm64Xor,
+	Codegen: customXorCodegen(),
 })
 ```
 

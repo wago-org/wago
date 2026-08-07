@@ -1,0 +1,224 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "file": "gc/ref_test",
+  "leaders": [
+    {
+      "filename": "ref_test.0.wasm",
+      "command_line": 43,
+      "source_line": 3,
+      "size": 626,
+      "sha256": "526d5c1b457f847daf51141a7d63aba11d20415b7ef2a13f593e06f680a41403",
+      "class": "abstract",
+      "gate": "",
+      "type_graph": "rec[func()-\u003e()]|rec[struct{}]|rec[array{i8}]|rec[func(externref)-\u003e()]|rec[func(i32)-\u003e(i32)]",
+      "state_graph": "imports=0 funcs=12 globals=[] tables=3 memories=0 tags=0 elements=1 data=0 exports=[init=0:1,ref_test_null_data=0:2,ref_test_any=0:3,ref_test_eq=0:4,ref_test_i31=0:5,ref_test_struct=0:6,ref_test_array=0:7,ref_test_null_func=0:8,ref_test_func=0:9,ref_test_null_extern=0:10,ref_test_extern=0:11]",
+      "opcodes": [
+        {
+          "opcode": "AnyConvertExtern",
+          "count": 2
+        },
+        {
+          "opcode": "ArrayNewDefault",
+          "count": 1
+        },
+        {
+          "opcode": "ExternConvertAny",
+          "count": 3
+        },
+        {
+          "opcode": "I32Add",
+          "count": 10
+        },
+        {
+          "opcode": "I32Const",
+          "count": 20
+        },
+        {
+          "opcode": "LocalGet",
+          "count": 22
+        },
+        {
+          "opcode": "RefFunc",
+          "count": 1
+        },
+        {
+          "opcode": "RefI31",
+          "count": 2
+        },
+        {
+          "opcode": "RefIsNull",
+          "count": 3
+        },
+        {
+          "opcode": "RefNull",
+          "count": 9
+        },
+        {
+          "opcode": "RefTest",
+          "count": 17
+        },
+        {
+          "opcode": "StructNewDefault",
+          "count": 2
+        },
+        {
+          "opcode": "TableGet",
+          "count": 20
+        },
+        {
+          "opcode": "TableSet",
+          "count": 17
+        }
+      ],
+      "actions": [
+        "action:init",
+        "return:ref_test_null_data",
+        "return:ref_test_null_data",
+        "return:ref_test_null_data",
+        "return:ref_test_null_data",
+        "return:ref_test_null_data",
+        "return:ref_test_null_data",
+        "return:ref_test_null_data",
+        "return:ref_test_null_data",
+        "return:ref_test_any",
+        "return:ref_test_any",
+        "return:ref_test_any",
+        "return:ref_test_any",
+        "return:ref_test_any",
+        "return:ref_test_any",
+        "return:ref_test_any",
+        "return:ref_test_any",
+        "return:ref_test_eq",
+        "return:ref_test_eq",
+        "return:ref_test_eq",
+        "return:ref_test_eq",
+        "return:ref_test_eq",
+        "return:ref_test_eq",
+        "return:ref_test_eq",
+        "return:ref_test_eq",
+        "return:ref_test_i31",
+        "return:ref_test_i31",
+        "return:ref_test_i31",
+        "return:ref_test_i31",
+        "return:ref_test_i31",
+        "return:ref_test_i31",
+        "return:ref_test_i31",
+        "return:ref_test_i31",
+        "return:ref_test_struct",
+        "return:ref_test_struct",
+        "return:ref_test_struct",
+        "return:ref_test_struct",
+        "return:ref_test_struct",
+        "return:ref_test_struct",
+        "return:ref_test_struct",
+        "return:ref_test_struct",
+        "return:ref_test_array",
+        "return:ref_test_array",
+        "return:ref_test_array",
+        "return:ref_test_array",
+        "return:ref_test_array",
+        "return:ref_test_array",
+        "return:ref_test_array",
+        "return:ref_test_array",
+        "return:ref_test_null_func",
+        "return:ref_test_null_func",
+        "return:ref_test_null_func",
+        "return:ref_test_func",
+        "return:ref_test_func",
+        "return:ref_test_func",
+        "return:ref_test_null_extern",
+        "return:ref_test_null_extern",
+        "return:ref_test_null_extern",
+        "return:ref_test_null_extern",
+        "return:ref_test_null_extern",
+        "return:ref_test_null_extern",
+        "return:ref_test_extern",
+        "return:ref_test_extern",
+        "return:ref_test_extern",
+        "return:ref_test_extern",
+        "return:ref_test_extern",
+        "return:ref_test_extern"
+      ]
+    },
+    {
+      "filename": "ref_test.1.wasm",
+      "command_line": 174,
+      "source_line": 182,
+      "size": 976,
+      "sha256": "7a71f9662207799b262ccbc7909f4e9492c04f7173f84f29be69905d925f6426",
+      "class": "concrete",
+      "gate": "",
+      "type_graph": "rec[sub(final=false,supers=[],struct{})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32})]|rec[sub(final=false,supers=[{1 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{2 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{i32,i32})]|rec[sub(final=false,supers=[{0 false}],struct{})]|rec[sub(final=false,supers=[{6 false}],struct{i32,i32})]|rec[func()-\u003e()]",
+      "state_graph": "imports=0 funcs=3 globals=[] tables=1 memories=0 tags=0 elements=0 data=0 exports=[test-sub=0:1,test-canon=0:2]",
+      "opcodes": [
+        {
+          "opcode": "Block",
+          "count": 2
+        },
+        {
+          "opcode": "BrIf",
+          "count": 84
+        },
+        {
+          "opcode": "Call",
+          "count": 2
+        },
+        {
+          "opcode": "I32Const",
+          "count": 57
+        },
+        {
+          "opcode": "I32Eqz",
+          "count": 64
+        },
+        {
+          "opcode": "RefNull",
+          "count": 35
+        },
+        {
+          "opcode": "RefTest",
+          "count": 84
+        },
+        {
+          "opcode": "Return",
+          "count": 2
+        },
+        {
+          "opcode": "StructNewDefault",
+          "count": 8
+        },
+        {
+          "opcode": "TableGet",
+          "count": 49
+        },
+        {
+          "opcode": "TableSet",
+          "count": 8
+        },
+        {
+          "opcode": "Unreachable",
+          "count": 2
+        }
+      ],
+      "actions": [
+        "return:test-sub",
+        "return:test-canon"
+      ]
+    }
+  ],
+  "gates": [],
+  "counts": {
+    "commands": 73,
+    "modules_passed": 2,
+    "assertions_passed": 68,
+    "expected_invalid": 0,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

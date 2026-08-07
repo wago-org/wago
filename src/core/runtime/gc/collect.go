@@ -9,6 +9,8 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	c.discardNativeStructHandles()
+	defer c.refreshNativeView()
 	c.stats.FullCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -23,6 +25,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	c.markRoots(roots)
 	c.sweepAll()
 	c.pruneRemembered()
+	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
 	if c.cfg.VerifyAfterCollect {
 		return c.Verify(roots)
 	}
@@ -32,6 +35,8 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	c.discardNativeStructHandles()
+	defer c.refreshNativeView()
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
 		// Tiny is non-generational; minor collection is defined as a complete
@@ -44,22 +49,34 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 		return nil
 	}
-	// This first pass implements minor as exact marking of nursery reachability
-	// plus promotion of survivors into old space. Remembered old objects and
-	// global/table slots are treated as additional roots for young objects.
-	c.clearMarks()
-	c.markRoots(roots)
-	for _, h := range c.remembered {
-		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
-			c.scanObject(h)
+	// Minor collection traces nursery reachability only. Old/large roots are not
+	// recursively scanned; every direct old/large-to-nursery edge is represented
+	// by the remembered set, while global/table slots are scanned as roots.
+	c.clearNurseryMarks()
+	c.markNurseryRoots(roots)
+	if c.cfg.VerifyAfterCollect {
+		if err := c.verifyRememberedShadow(); err != nil {
+			return err
 		}
 	}
-	c.drainMarkStack()
-	if err := c.promoteMarkedNursery(); err != nil {
-		return err
+	for _, h := range c.remembered {
+		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
+			c.stats.MinorRememberedScanned++
+			c.scanObjectRefs(h, c.markNurseryRef)
+		}
 	}
-	c.sweepNurseryDead()
-	c.pruneRemembered()
+	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
+		if err := c.promoteMarkedNursery(); err != nil {
+			return err
+		}
+	}
+	c.finishMinorEvacuation()
+	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	if c.cfg.VerifyAfterCollect {
+		if err := c.verifyNurseryEvacuated(); err != nil {
+			return err
+		}
+	}
 	if c.cfg.ForceMajorEveryMinor {
 		if err := c.CollectFull(roots); err != nil {
 			return err
@@ -76,15 +93,27 @@ func (c *Collector) sweepAll() {
 			c.free(h)
 		}
 	}
+	c.compactNurseryHandles()
 	c.compactNurseryBump()
 }
-func (c *Collector) sweepNurseryDead() {
-	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space == spaceNursery && !c.mark[h] {
+
+// finishMinorEvacuation commits the destructive half of a successful minor
+// collection. promoteMarkedNursery has moved every live nursery object before
+// this is called, so every handle still pointing into the nursery is dead.
+func (c *Collector) finishMinorEvacuation() {
+	for _, h := range c.nurseryHandles {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		c.mark[h] = false
+		if c.handles[h].space == spaceNursery {
 			c.free(h)
 		}
 	}
-	c.compactNurseryBump()
+	clear(c.nurseryHandles)
+	c.nurseryHandles = c.nurseryHandles[:0]
+	c.nurseryBump = 0
+	c.clearRememberedMetadata()
 }
 
 type plannedPromotion struct {
@@ -93,14 +122,19 @@ type plannedPromotion struct {
 }
 
 func (c *Collector) promoteMarkedNursery() error {
-	plans := make([]plannedPromotion, 0)
-	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space == spaceNursery && c.mark[h] {
+	plans := c.promotionScratch[:0]
+	finish := func() {
+		clear(plans)
+		c.promotionScratch = plans[:0]
+	}
+	for _, h := range c.nurseryHandles {
+		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
 			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 			if err != nil {
 				for i := len(plans) - 1; i >= 0; i-- {
 					_ = c.throughput.free(plans[i].entry)
 				}
+				finish()
 				return err
 			}
 			plans = append(plans, plannedPromotion{handle: h, entry: e})
@@ -109,6 +143,7 @@ func (c *Collector) promoteMarkedNursery() error {
 	for _, p := range plans {
 		c.promoteHandleTo(p.handle, p.entry)
 	}
+	finish()
 	return nil
 }
 func (c *Collector) promoteHandle(h uint32) error {
@@ -174,6 +209,17 @@ func (c *Collector) free(h uint32) {
 	*e = handleEntry{}
 	c.freeHandles = append(c.freeHandles, h)
 }
+func (c *Collector) compactNurseryHandles() {
+	out := c.nurseryHandles[:0]
+	for _, h := range c.nurseryHandles {
+		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery {
+			out = append(out, h)
+		}
+	}
+	clear(c.nurseryHandles[len(out):])
+	c.nurseryHandles = out
+}
+
 func (c *Collector) compactNurseryBump() {
 	var max uint32
 	for _, e := range c.handles {

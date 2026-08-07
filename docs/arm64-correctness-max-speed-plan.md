@@ -493,11 +493,11 @@ go test -run '^$' -bench '^BenchmarkWazeroExec/isa_' \
 WARP focused execution uses:
 
 ```sh
-warp/build-bench/bin/vb_bench bench/corpus/<module>.wasm <export> <args...>
+$WARP_DIR/build-bench/bin/vb_bench bench/corpus/<module>.wasm <export> <args...>
 ```
 
-Run it five times and take the median. Preserve `warp/` exactly as-is: its dirty
-patched harness and code-dump support are intentional.
+Run it five times and take the median. Keep the independently cloned WARP tree's
+patched harness and code-dump support outside this repository.
 
 For every accepted phase, record:
 

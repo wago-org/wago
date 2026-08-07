@@ -113,27 +113,871 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, cfg.frontendFeatures(), instructions)
+}
+
+func stagedTwoLocalTableOperation(k wasm.InstrKind) (allowed bool, tableOperation bool) {
+	switch k {
+	case wasm.InstrTableCopy, wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableSize,
+		wasm.InstrTableGrow, wasm.InstrTableFill, wasm.InstrTableInit, wasm.InstrElemDrop:
+		return true, true
+	case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func stagedTableInstrsAllowed(instrs []wasm.Instruction, allowed func(wasm.InstrKind) bool) (bool, error) {
+	found := false
+	for i := range instrs {
+		in := &instrs[i]
+		if _, tableOperation := stagedTwoLocalTableOperation(in.Kind); tableOperation {
+			if !allowed(in.Kind) {
+				return false, fmt.Errorf("instruction %s is outside the exact table operation slice", in.Kind)
+			}
+			found = true
+		}
+		for _, nested := range [][]wasm.Instruction{in.Body().Instrs, in.Then(), in.Else()} {
+			nestedFound, err := stagedTableInstrsAllowed(nested, allowed)
+			if err != nil {
+				return false, err
+			}
+			found = found || nestedFound
+		}
+	}
+	return found, nil
+}
+
+func stagedTableBodyAllowed(body wasm.Expr, allowed func(wasm.InstrKind) bool) (bool, error) {
+	if len(body.BodyBytes) == 0 {
+		return stagedTableInstrsAllowed(body.Instrs, allowed)
+	}
+	found := false
+	r := wasm.NewReader(body.BodyBytes)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false, err
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return false, err
+		}
+		if _, tableOperation := stagedTwoLocalTableOperation(imm.Kind); tableOperation {
+			if !allowed(imm.Kind) {
+				return false, fmt.Errorf("instruction %s is outside the exact table operation slice", imm.Kind)
+			}
+			found = true
+		}
+	}
+	return found, nil
+}
+
+func stagedTwoLocalExternrefReadWriteShape(m *wasm.Module) bool {
+	return m.ImportedTableCount() == 0 && len(m.Tables) == 2 &&
+		m.Tables[0].Type.Limits.Addr64 && m.Tables[1].Type.Limits.Addr64 &&
+		m.Tables[0].Type.Limits.Max == nil && m.Tables[1].Type.Limits.Max == nil &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef) &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.FuncRef)
+}
+
+func stagedTwoLocalExternrefFillShape(m *wasm.Module) bool {
+	return m.ImportedTableCount() == 0 && len(m.Tables) == 2 &&
+		!m.Tables[0].Type.Limits.Addr64 && m.Tables[1].Type.Limits.Addr64 &&
+		m.Tables[0].Type.Limits.Max == nil && m.Tables[1].Type.Limits.Max == nil &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef) &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.ExternRef)
+}
+
+func stagedExactTableOperationShape(m *wasm.Module, label string, allowed func(wasm.InstrKind) bool) error {
+	found := false
+	for i := range m.Code {
+		bodyFound, err := stagedTableBodyAllowed(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, allowed)
+		if err != nil {
+			return fmt.Errorf("function %d: %w", i, err)
+		}
+		found = found || bodyFound
+	}
+	if !found {
+		return fmt.Errorf("the %s requires a table operation", label)
+	}
+	return nil
+}
+
+func stagedSoleExternrefGrowShape(m *wasm.Module) bool {
+	return m.ImportedTableCount() == 0 && len(m.Tables) == 1 &&
+		m.Tables[0].Type.Limits.Addr64 && m.Tables[0].Type.Limits.Max == nil &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef)
+}
+
+func stagedTwoLocalNoMaxTable64DeclarationShape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 || len(m.Code) != 0 || len(m.Elements) != 0 || len(m.Exports) != 0 {
+		return false
+	}
+	for i := range m.Tables {
+		t := &m.Tables[i]
+		if t.Init != nil || !t.Type.Limits.Addr64 || t.Type.Limits.Min != 0 || t.Type.Limits.Max != nil ||
+			!wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
+			return false
+		}
+	}
+	return true
+}
+
+func stagedImportedLocalNoMaxTable64DeclarationShape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 1 || len(m.Tables) != 1 || m.TableCount() != 2 || len(m.Code) != 0 || len(m.Elements) != 0 || len(m.Exports) != 0 {
+		return false
+	}
+	var imported *wasm.Import
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternTable {
+			if imported != nil {
+				return false
+			}
+			imported = &m.Imports[i]
+		} else {
+			return false
+		}
+	}
+	if imported == nil || imported.Module != "spectest" || imported.Name != "table64" {
+		return false
+	}
+	for _, tt := range []wasm.TableType{imported.Type.Table, m.Tables[0].Type} {
+		if !tt.Limits.Addr64 || tt.Limits.Min != 0 || tt.Limits.Max != nil ||
+			!wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
+			return false
+		}
+	}
+	return m.Tables[0].Init == nil
+}
+
+func stagedInertOversizedTable64Shape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 || len(m.Code) != 0 || len(m.Elements) != 0 {
+		return false
+	}
+	t := &m.Tables[0]
+	if t.Init != nil || !t.Type.Limits.Addr64 || t.Type.Limits.Max == nil ||
+		t.Type.Limits.Min > frontend.StagedTable64Max() || *t.Type.Limits.Max <= frontend.StagedTable64Max() ||
+		!wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
+		return false
+	}
+	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternTable {
+			return false
+		}
+	}
+	return true
+}
+
+func stagedFourLocalExternrefSizeGrowShape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 4 {
+		return false
+	}
+	for i := range m.Tables {
+		if !m.Tables[i].Type.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(m.Tables[i].Type.Ref), wasm.ExternRef) {
+			return false
+		}
+	}
+	return true
+}
+
+func stagedThreeLocalTableInit64Instruction(in wasm.Instruction) (bool, error) {
+	switch in.Kind {
+	case wasm.InstrTableInit:
+		if in.Index2 != 2 {
+			return false, fmt.Errorf("table.init targets table %d, want table64 index 2", in.Index2)
+		}
+		return true, nil
+	case wasm.InstrTableCopy:
+		if in.Index != 2 || in.Index2 != 2 {
+			return false, fmt.Errorf("table.copy indexes %d,%d, want table64 index 2", in.Index, in.Index2)
+		}
+		return true, nil
+	case wasm.InstrCallIndirect:
+		if in.Index2 != 2 {
+			return false, fmt.Errorf("call_indirect targets table %d, want table64 index 2", in.Index2)
+		}
+		return true, nil
+	case wasm.InstrElemDrop:
+		return true, nil
+	default:
+		if _, tableOperation := stagedTwoLocalTableOperation(in.Kind); tableOperation {
+			return false, fmt.Errorf("instruction %s is outside the exact three-local table.init64 slice", in.Kind)
+		}
+		return false, nil
+	}
+}
+
+func stagedThreeLocalTableInit64Instrs(instrs []wasm.Instruction) (foundInit, foundIndirect bool, err error) {
+	for i := range instrs {
+		in := &instrs[i]
+		found, checkErr := stagedThreeLocalTableInit64Instruction(*in)
+		if checkErr != nil {
+			return false, false, checkErr
+		}
+		foundInit = foundInit || (found && in.Kind == wasm.InstrTableInit)
+		foundIndirect = foundIndirect || (found && in.Kind == wasm.InstrCallIndirect)
+		for _, nested := range [][]wasm.Instruction{in.Body().Instrs, in.Then(), in.Else()} {
+			nestedInit, nestedIndirect, nestedErr := stagedThreeLocalTableInit64Instrs(nested)
+			if nestedErr != nil {
+				return false, false, nestedErr
+			}
+			foundInit = foundInit || nestedInit
+			foundIndirect = foundIndirect || nestedIndirect
+		}
+	}
+	return foundInit, foundIndirect, nil
+}
+
+func stagedThreeLocalTableInit64Body(body wasm.Expr) (foundInit, foundIndirect bool, err error) {
+	if len(body.BodyBytes) == 0 {
+		return stagedThreeLocalTableInit64Instrs(body.Instrs)
+	}
+	r := wasm.NewReader(body.BodyBytes)
+	for r.HasNext() {
+		op, readErr := r.Byte()
+		if readErr != nil {
+			return false, false, readErr
+		}
+		imm, classifyErr := wasm.ClassifyInstructionImmediate(r, op)
+		if classifyErr != nil {
+			return false, false, classifyErr
+		}
+		found, checkErr := stagedThreeLocalTableInit64Instruction(wasm.Instruction{Kind: imm.Kind, Index: uint32(imm.Index), Index2: uint32(imm.Index2)})
+		if checkErr != nil {
+			return false, false, checkErr
+		}
+		foundInit = foundInit || (found && imm.Kind == wasm.InstrTableInit)
+		foundIndirect = foundIndirect || (found && imm.Kind == wasm.InstrCallIndirect)
+	}
+	return foundInit, foundIndirect, nil
+}
+
+func stagedThreeLocalTableInit64Shape(m *wasm.Module) error {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 3 {
+		return fmt.Errorf("the exact three-local table.init64 slice requires three local tables and no table imports")
+	}
+	if m.ImportedFuncCount() == 0 {
+		return fmt.Errorf("the exact three-local table.init64 slice requires retained function imports")
+	}
+	for i := range m.Tables {
+		t := &m.Tables[i]
+		if !wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
+			return fmt.Errorf("table %d is not funcref in the exact three-local table.init64 slice", i)
+		}
+		if t.Init != nil {
+			return fmt.Errorf("table %d initializer expression is outside the exact three-local table.init64 slice", i)
+		}
+		if t.Type.Limits.Max == nil {
+			return fmt.Errorf("table %d requires an explicit maximum in the exact three-local table.init64 slice", i)
+		}
+		wantAddr64 := i == 2
+		if t.Type.Limits.Addr64 != wantAddr64 {
+			return fmt.Errorf("table %d address form does not match the exact table32/table32/table64 slice", i)
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 2 {
+			return fmt.Errorf("active element segment %d targets table %d, want table64 index 2", i, e.Mode.Table)
+		}
+	}
+	foundInit, foundIndirect := false, false
+	for i := range m.Code {
+		bodyInit, bodyIndirect, err := stagedThreeLocalTableInit64Body(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes})
+		if err != nil {
+			return fmt.Errorf("function %d: %w", i, err)
+		}
+		foundInit = foundInit || bodyInit
+		foundIndirect = foundIndirect || bodyIndirect
+	}
+	if !foundInit || !foundIndirect {
+		return fmt.Errorf("the exact three-local table.init64 slice requires table.init and call_indirect on table 2")
+	}
+	return nil
+}
+
+func stagedTwoLocalTableShape(m *wasm.Module) error {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 {
+		return fmt.Errorf("the exact two-local-table slice requires two local tables and no table imports")
+	}
+	for i := range m.Tables {
+		if m.Tables[i].Init != nil {
+			return fmt.Errorf("table %d initializer expression is outside the exact two-local-table slice", i)
+		}
+	}
+	exactExternrefReadWrite := stagedTwoLocalExternrefReadWriteShape(m)
+	exactExternrefFill := stagedTwoLocalExternrefFillShape(m)
+	if !exactExternrefReadWrite && !exactExternrefFill {
+		for i := range m.Tables {
+			if m.Tables[i].Type.Limits.Max == nil {
+				return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table slice", i)
+			}
+		}
+	}
+	allowed := func(k wasm.InstrKind) bool {
+		if exactExternrefReadWrite {
+			return k == wasm.InstrTableGet || k == wasm.InstrTableSet
+		}
+		if exactExternrefFill {
+			return k == wasm.InstrTableGet || k == wasm.InstrTableFill
+		}
+		ok, _ := stagedTwoLocalTableOperation(k)
+		return ok
+	}
+	return stagedExactTableOperationShape(m, "exact two-local-table slice", allowed)
+}
+
+func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
+	for i := range m.Imports {
+		im := &m.Imports[i]
+		if im.Type.Kind != wasm.ExternTag {
+			continue
+		}
+		if index == 0 {
+			ft, ok := m.ResolvedTypeFunc(im.Type.Tag.Type.Index)
+			return ft, ok
+		}
+		index--
+	}
+	if int(index) >= len(m.Tags) {
+		return nil, false
+	}
+	ft, ok := m.ResolvedTypeFunc(m.Tags[index].Type.Index)
+	return ft, ok
+}
+
+func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeIndex uint32, ok bool, err error) {
+	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
+		ft, found := stagedTagFuncType(m, tag)
+		if !found {
+			return 0, 0, false, fmt.Errorf("bounded exception handling tag %d signature is unavailable", tag)
+		}
+		for _, typ := range ft.Params {
+			if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
+				continue
+			}
+			if ok {
+				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one reference tag payload")
+			}
+			if m.TagCount() != 1 || len(ft.Params) != 1 || typ.Kind != wasm.ValRef || typ.Ref.Nullable || typ.Ref.Exact || typ.Ref.Heap.Kind != wasm.HeapTypeIndex {
+				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one local non-null indexed-function tag payload")
+			}
+			payloadFunc, found := m.ResolvedTypeFunc(typ.Ref.Heap.Type.Index)
+			if !found || payloadFunc == nil || len(payloadFunc.Params) != 0 || len(payloadFunc.Results) != 0 {
+				return 0, 0, false, fmt.Errorf("bounded exception handling indexed-function payload must have type () -> ()")
+			}
+			typeIndex, ok = typ.Ref.Heap.Type.Index, true
+		}
+	}
+	if !ok {
+		return 0, 0, false, nil
+	}
+	if m.ImportedFuncCount() != 0 || m.ImportedTagCount() != 0 || m.Start != nil {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload requires local functions, a local tag, and no start")
+	}
+	if len(m.Elements) != 1 || m.Elements[0].Mode.Kind != wasm.ElemDeclarative || m.Elements[0].Kind.Kind != wasm.ElemFuncs || len(m.Elements[0].Kind.Funcs) != 1 {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload requires one declarative local function element")
+	}
+	funcIndex = uint32(m.Elements[0].Kind.Funcs[0])
+	if int(funcIndex) >= m.FuncCount() || int(funcIndex) < m.ImportedFuncCount() {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload element must name one local function")
+	}
+	declaredType, found := m.FuncTypeIndex(funcIndex)
+	if !found || declaredType.Index != typeIndex {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload function must have the exact indexed type")
+	}
+	return funcIndex, typeIndex, true, nil
+}
+
+func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls bool) error {
+	const maxLocalTags = 9
+	const maxTryTables = 24
+	const maxCatches = 8
+	if m.TagCount() == 0 || m.TagCount() > maxLocalTags {
+		return fmt.Errorf("bounded exception handling requires one to %d total tags", maxLocalTags)
+	}
+	payloadFunc, payloadType, hasFuncrefPayload, err := stagedLocalFuncrefExceptionPayload(m)
+	if err != nil {
+		return err
+	}
+	exactTailTable := tailCalls && m.TableCount() == 1 && m.ImportedTableCount() == 0 && len(m.Elements) == 1
+	if m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Data) != 0 || (m.TableCount() != 0 && !exactTailTable) || (len(m.Elements) != 0 && !exactTailTable && !hasFuncrefPayload) {
+		return fmt.Errorf("bounded exception handling requires functions without memory/global/data state and only the exact immutable local tail table")
+	}
+	for _, ex := range m.Exports {
+		if ex.Index.Kind == wasm.ExternTable {
+			return fmt.Errorf("bounded exception handling rejects exported tables")
+		}
+		if ex.Index.Kind == wasm.ExternFunc {
+			ft, ok := m.FuncSignature(ex.Index.Index)
+			if !ok {
+				return fmt.Errorf("bounded exception handling export %q has no function signature", ex.Name)
+			}
+			if hasFuncrefPayload {
+				if len(ft.Params) != 0 || len(ft.Results) > 1 {
+					return fmt.Errorf("bounded exception handling reference-payload exports must be () -> () or return the sole nullable indexed function")
+				}
+				if len(ft.Results) == 1 {
+					result := ft.Results[0]
+					if result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Exact || result.Ref.Heap.Kind != wasm.HeapTypeIndex || result.Ref.Heap.Type.Index != payloadType {
+						return fmt.Errorf("bounded exception handling reference-payload export %q has an unsupported result", ex.Name)
+					}
+				}
+			}
+			for _, typ := range append(append([]wasm.ValType(nil), ft.Params...), ft.Results...) {
+				if typ.Kind == wasm.ValRef && typ.Ref.Heap.Kind == wasm.HeapAbs && (typ.Ref.Heap.Abs == wasm.HeapExn || typ.Ref.Heap.Abs == wasm.HeapNoExn) {
+					return fmt.Errorf("bounded exception handling rejects exported exception-reference ABI in %q", ex.Name)
+				}
+			}
+		}
+	}
+	for i := 0; i < m.ImportedFuncCount(); i++ {
+		ft, ok := m.FuncSignature(uint32(i))
+		if !ok || len(ft.Params) != 0 || len(ft.Results) != 0 {
+			return fmt.Errorf("bounded exception handling imported function %d requires the exact () -> () transfer ABI", i)
+		}
+	}
+	for i := uint32(0); i < uint32(m.TagCount()); i++ {
+		ft, ok := stagedTagFuncType(m, i)
+		if !ok || len(ft.Results) != 0 || len(ft.Params) > 2 {
+			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
+		}
+		for _, typ := range ft.Params {
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !hasFuncrefPayload {
+				return fmt.Errorf("bounded exception handling tag %d payloads must be i32/i64/f32/f64", i)
+			}
+		}
+	}
+	tryCount, throwCount, refFuncCount := 0, 0, 0
+	for i := range m.Code {
+		rootCount := 0
+		body := m.Code[i].BodyBytes
+		r := wasm.NewReader(body)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			switch op {
+			case 0x08:
+				tag, err := r.U32()
+				if err != nil || int(tag) >= m.TagCount() || (hasFuncrefPayload && tag != 0) {
+					return fmt.Errorf("bounded exception handling throw must target a declared tag")
+				}
+				throwCount++
+			case 0xd2:
+				function, err := r.U32()
+				if err != nil {
+					return err
+				}
+				if !hasFuncrefPayload || function != payloadFunc {
+					return fmt.Errorf("bounded exception handling ref.func must name the exact local payload function")
+				}
+				refFuncCount++
+			case 0x0a:
+				if !exceptionReferences {
+					return fmt.Errorf("bounded exception handling rejects throw_ref")
+				}
+			case 0x12:
+				if hasFuncrefPayload {
+					return fmt.Errorf("bounded exception handling reference payload rejects tail calls")
+				}
+				if !tailCalls {
+					return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
+				}
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+			case 0x13:
+				if hasFuncrefPayload {
+					return fmt.Errorf("bounded exception handling reference payload rejects tail calls")
+				}
+				if !tailCalls {
+					return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
+				}
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+			case 0x14:
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+				if hasFuncrefPayload {
+					return fmt.Errorf("bounded exception handling reference payload rejects call_ref")
+				}
+			case 0x15:
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+				return fmt.Errorf("bounded exception handling function %d rejects reference tail calls", i)
+			case 0x1f:
+				tryCount++
+				if tryCount > maxTryTables {
+					return fmt.Errorf("bounded exception handling admits at most %d try_table constructs per module", maxTryTables)
+				}
+				if _, err := r.S33(); err != nil {
+					return err
+				}
+				n, err := r.U32()
+				if err != nil || n > maxCatches {
+					return fmt.Errorf("bounded exception handling admits at most %d catches per try_table", maxCatches)
+				}
+				for j := uint32(0); j < n; j++ {
+					kind, err := r.Byte()
+					if err != nil {
+						return err
+					}
+					switch wasm.CatchKind(kind) {
+					case wasm.CatchTag, wasm.CatchRef:
+						tag, err := r.U32()
+						if err != nil || int(tag) >= m.TagCount() {
+							return fmt.Errorf("bounded exception handling catch must target a declared tag")
+						}
+						if wasm.CatchKind(kind) == wasm.CatchRef {
+							if !exceptionReferences {
+								return fmt.Errorf("bounded exception handling rejects exception-reference catches")
+							}
+							rootCount++
+						}
+					case wasm.CatchAll:
+					case wasm.CatchAllRef:
+						if !exceptionReferences {
+							return fmt.Errorf("bounded exception handling rejects exception-reference catches")
+						}
+						rootCount++
+					default:
+						return fmt.Errorf("bounded exception handling rejects unknown catch kind %d", kind)
+					}
+					if rootCount > 4 {
+						return fmt.Errorf("bounded exception handling admits at most 4 rooted exception values per function")
+					}
+					if _, err := r.U32(); err != nil {
+						return err
+					}
+				}
+			default:
+				if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+					return err
+				}
+			}
+		}
+		if hasFuncrefPayload && rootCount != 0 {
+			if rootCount != 1 || len(body) < 3 || body[len(body)-3] != 0x0b || body[len(body)-2] != 0x1a || body[len(body)-1] != 0x0b {
+				return fmt.Errorf("bounded exception handling reference catches must expose one rooted exn value and drop it immediately")
+			}
+		}
+	}
+	if hasFuncrefPayload && (refFuncCount != 1 || throwCount != 1) {
+		return fmt.Errorf("bounded exception handling reference payload requires one ref.func and one throw")
+	}
+	_ = throwCount // retained for bounded support-scan accounting and diagnostics
+	return nil
+}
+
+// compileWithFrontendFeatures is the internal staged path used to prove an
+// implementation family before SupportedFeatures admits its public bit. Public
+// entry points always validate RuntimeConfig first and pass its exact mapping.
+type stagedNullReferenceProduct uint8
+
+const (
+	stagedNullReferenceProductFirst stagedNullReferenceProduct = iota + 1
+	stagedNullReferenceProductBottomGlobals
+)
+
+func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct, error) {
+	if m == nil || len(m.Imports) != 0 || m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || m.TableCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
+		return 0, fmt.Errorf("null-reference product requires only local functions and immutable local globals")
+	}
+	if len(m.Types) == 10 && m.FuncCount() == 9 && len(m.Code) == 9 && len(m.Globals) == 18 && len(m.Exports) == 9 {
+		if err := stagedBottomNullReferenceProductShape(m); err != nil {
+			return 0, err
+		}
+		return stagedNullReferenceProductBottomGlobals, nil
+	}
+	if len(m.Types) != 6 || m.FuncCount() != 5 || len(m.Code) != 5 || len(m.Globals) != 5 || len(m.Exports) != 5 {
+		return 0, fmt.Errorf("null-reference product is not one of the two exact pinned module shapes")
+	}
+	base, ok := m.ResolvedTypeFunc(0)
+	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+		return 0, fmt.Errorf("first null-reference product type 0 must be () -> ()")
+	}
+	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	results := []wasm.ValType{
+		wasm.RefVal(wasm.AbsRef(wasm.HeapAny)),
+		wasm.FuncRef,
+		wasm.RefVal(wasm.AbsRef(wasm.HeapExn)),
+		wasm.ExternRef,
+		indexed,
+	}
+	heaps := []int64{-18, -16, -23, -17, 0}
+	exports := []string{"anyref", "funcref", "exnref", "externref", "ref"}
+	for i := range results {
+		ft, found := m.FuncSignature(uint32(i))
+		if !found || len(ft.Params) != 0 || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], results[i]) {
+			return 0, fmt.Errorf("first null-reference product function %d has an unexpected signature", i)
+		}
+		if len(m.Code[i].Locals.Runs) != 0 || !isExactRefNullBody(m.Code[i].BodyBytes, heaps[i]) {
+			return 0, fmt.Errorf("first null-reference product function %d must return exactly one null", i)
+		}
+		g := &m.Globals[i]
+		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, results[i]) || !isExactRefNullBody(g.Init.BodyBytes, heaps[i]) {
+			return 0, fmt.Errorf("first null-reference product global %d must be an immutable exact null", i)
+		}
+	}
+	for i, ex := range m.Exports {
+		if ex.Name != exports[i] || ex.Index.Kind != wasm.ExternFunc || int(ex.Index.Index) != i {
+			return 0, fmt.Errorf("first null-reference product export %d is outside the exact function export set", i)
+		}
+	}
+	return stagedNullReferenceProductFirst, nil
+}
+
+func stagedBottomNullReferenceProductShape(m *wasm.Module) error {
+	base, ok := m.ResolvedTypeFunc(0)
+	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+		return fmt.Errorf("bottom-global null-reference product type 0 must be () -> ()")
+	}
+	anyref := wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
+	nullref := wasm.RefVal(wasm.AbsRef(wasm.HeapNone))
+	exnref := wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
+	nullexnref := wasm.RefVal(wasm.AbsRef(wasm.HeapNoExn))
+	nullfuncref := wasm.RefVal(wasm.AbsRef(wasm.HeapNoFunc))
+	nullexternref := wasm.RefVal(wasm.AbsRef(wasm.HeapNoExtern))
+	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	results := []wasm.ValType{anyref, nullref, wasm.FuncRef, nullfuncref, exnref, nullexnref, wasm.ExternRef, nullexternref, indexed}
+	globalGets := []uint32{0, 0, 1, 1, 2, 2, 3, 3, 1}
+	exports := []string{"anyref", "nullref", "funcref", "nullfuncref", "exnref", "nullexnref", "externref", "nullexternref", "ref"}
+	for i := range results {
+		ft, found := m.FuncSignature(uint32(i))
+		if !found || len(ft.Params) != 0 || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], results[i]) {
+			return fmt.Errorf("bottom-global null-reference product function %d has an unexpected signature", i)
+		}
+		if len(m.Code[i].Locals.Runs) != 0 || !isExactGlobalGetBody(m.Code[i].BodyBytes, globalGets[i]) {
+			return fmt.Errorf("bottom-global null-reference product function %d must return one exact immutable global", i)
+		}
+	}
+	globalTypes := []wasm.ValType{
+		nullref, nullfuncref, nullexnref, nullexternref,
+		anyref, anyref, wasm.FuncRef, wasm.FuncRef, exnref, exnref, wasm.ExternRef, wasm.ExternRef,
+		nullref, nullfuncref, nullexnref, nullexternref, indexed, indexed,
+	}
+	globalHeaps := []int64{-15, -13, -12, -14, -18, -15, -16, -13, -23, -12, -17, -14, -15, -13, -12, -14, 0, -13}
+	for i := range globalTypes {
+		g := &m.Globals[i]
+		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, globalTypes[i]) || !isExactRefNullBody(g.Init.BodyBytes, globalHeaps[i]) {
+			return fmt.Errorf("bottom-global null-reference product global %d must be an immutable exact null", i)
+		}
+	}
+	for i, ex := range m.Exports {
+		if ex.Name != exports[i] || ex.Index.Kind != wasm.ExternFunc || int(ex.Index.Index) != i {
+			return fmt.Errorf("bottom-global null-reference product export %d is outside the exact function export set", i)
+		}
+	}
+	return nil
+}
+
+func isExactRefNullBody(body []byte, heap int64) bool {
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil || op != 0xd0 {
+		return false
+	}
+	got, err := r.S33()
+	if err != nil || got != heap {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && r.BytesLeft() == 0
+}
+
+func isExactGlobalGetBody(body []byte, index uint32) bool {
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil || op != 0x23 {
+		return false
+	}
+	got, err := r.U32()
+	if err != nil || got != index {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && r.BytesLeft() == 0
+}
+
+func moduleUsesTypedTableReferences(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for _, rec := range m.Types {
+		if len(rec.SubTypes) > 1 {
+			return true
+		}
+	}
+	check := func(ref wasm.RefType) bool {
+		return ref.Heap.Kind == wasm.HeapTypeIndex || !ref.Nullable || ref.Exact
+	}
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternTable && check(im.Type.Table.Ref) {
+			return true
+		}
+	}
+	for _, table := range m.Tables {
+		if check(table.Type.Ref) {
+			return true
+		}
+	}
+	for _, elem := range m.Elements {
+		if elem.Kind.Kind == wasm.ElemTypedExprs && check(elem.Kind.Ref) {
+			return true
+		}
+	}
+	return false
+}
+
+func directCrossTailRegABI(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Results) > 2 {
+		return false
+	}
+	if len(ft.Results) == 2 && (!isIntegerWasmType(ft.Results[0]) || !isIntegerWasmType(ft.Results[1])) {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Params {
+		switch {
+		case isIntegerWasmType(typ):
+			gp++
+		case wasm.EqualValType(typ, wasm.F32), wasm.EqualValType(typ, wasm.F64):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > 7 || fp > 8 {
+		return false
+	}
+	for _, typ := range ft.Results {
+		if !isIntegerWasmType(typ) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+			return false
+		}
+	}
+	return true
+}
+
+func isIntegerWasmType(typ wasm.ValType) bool {
+	return wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64)
+}
+
+func directCrossTailTargetABI(ft *wasm.CompType) bool {
+	integerOnly := true
+	for _, typ := range ft.Params {
+		integerOnly = integerOnly && isIntegerWasmType(typ)
+	}
+	for _, typ := range ft.Results {
+		integerOnly = integerOnly && isIntegerWasmType(typ)
+	}
+	if integerOnly {
+		return true
+	}
+	if len(ft.Params) == 2 && wasm.EqualValType(ft.Params[0], wasm.I32) && wasm.EqualValType(ft.Params[1], wasm.F64) &&
+		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.F64) {
+		return true
+	}
+	return len(ft.Params) == 1 && wasm.EqualValType(ft.Params[0], wasm.F64) &&
+		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.I32)
+}
+
+func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
+	imported := m.ImportedFuncCount()
+	if imported == 0 {
+		return nil, nil
+	}
+	var bits []uint64
+	for localIdx := range m.Code {
+		caller, ok := m.FuncSignature(uint32(imported + localIdx))
+		if !ok {
+			return nil, fmt.Errorf("function %d signature is unavailable", localIdx)
+		}
+		body := m.Code[localIdx].BodyBytes
+		if len(body) == 0 {
+			encoded, err := wasm.EncodeExpr(m.Code[localIdx].Body)
+			if err != nil {
+				return nil, fmt.Errorf("function %d body: %w", localIdx, err)
+			}
+			body = encoded
+		}
+		r := wasm.NewReader(body)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return nil, fmt.Errorf("function %d tail scan: %w", localIdx, err)
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				return nil, fmt.Errorf("function %d tail scan: %w", localIdx, err)
+			}
+			if imm.Kind != wasm.InstrReturnCall || int(imm.Index) >= imported {
+				continue
+			}
+			target, ok := m.FuncSignature(imm.Index)
+			if !ok {
+				return nil, fmt.Errorf("function %d return_call target %d signature is unavailable", localIdx, imm.Index)
+			}
+			if directCrossTailRegABI(caller) && directCrossTailRegABI(target) && directCrossTailTargetABI(target) {
+				continue
+			}
+			if bits == nil {
+				bits = make([]uint64, (imported+63)/64)
+			}
+			bits[imm.Index>>6] |= uint64(1) << (imm.Index & 63)
+		}
+	}
+	return bits, nil
+}
+
+func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
+	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, features, nil)
+}
+
+func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction) (*Compiled, error) {
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
+	requirements := analyzeModuleRequirements(m)
+	requiredByModule := requirements.features
+	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) && !moduleUsesTypedTableReferences(m) {
+		features.TypedFunctionReferences = false
+		features.TypedTailCalls = false
+	}
+	if !requiredByModule.IsEnabled(CoreFeatureTailCall) {
+		features.TailCalls = false
+		features.TypedTailCalls = false
+	}
+	if !requiredByModule.IsEnabled(CoreFeatureExceptionHandling) {
+		features.ExceptionHandling = false
+		features.ExceptionReferences = false
+	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
-	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
+	validationFeatures := wasm.ValidationFeatures{
+		CompactImports:       features.MultiMemory,
+		MultiMemory:          features.MultiMemory,
+		ExtendedConstGlobals: features.ExtendedConstGlobals,
+		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
+	}
+	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
 		// Compile must still fail clearly as unsupported rather than mislabeling a
 		// valid proposal module as an ordinary core type error.
-		if unsupported := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); unsupported != nil && isUnsupportedProposalError(unsupported) {
+		if unsupported := frontend.RejectUnsupportedWithFeatures(m, features); unsupported != nil && isUnsupportedProposalError(unsupported) {
 			return nil, fmt.Errorf("compile: %w", unsupported)
 		}
 		return nil, fmt.Errorf("validate: %w", err)
-	}
-	gcDescs, err := frontend.BuildGCTypeDescs(m)
-	if err != nil {
-		return nil, fmt.Errorf("gc descriptors: %w", err)
-	}
-	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
-		return nil, fmt.Errorf("compile: %w", err)
 	}
 	var functionIndex uint32
 	for i := range m.Imports {
@@ -154,6 +998,234 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 		functionIndex++
 	}
 	customInstructions := resolveInstructionLowerings(m, instructions)
+	structuralProduct := stagedStructuralTypeProduct(0)
+	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
+	gcStructProduct := stagedGCStructProduct(0)
+	gcArrayProduct := stagedGCArrayProduct(0)
+	gcI31Product := stagedGCI31Product(0)
+	nullReferenceProduct := false
+	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
+		// Structural execution is shape-proven; historical suite hashes no longer
+		// define the product boundary now that Core 3 support is complete.
+		if product, shapeErr := stagedStructuralTypeProductShape(m); shapeErr == nil {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+				return nil, fmt.Errorf("compile: unsupported collector-free structural product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			structuralProduct = product
+		}
+	}
+	if features.GCTypeSubtypingProducts && requiredByModule.IsEnabled(CoreFeatureGC) {
+		// Core 3 type-subtyping execution is no longer tied to hashes of the
+		// historical spec fixtures. The structural classifier remains deliberately
+		// strict because it selects the collector-free function-identity lowering,
+		// but any module with that proven shape receives the same semantics.
+		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			gcTypeSubtypingProduct = product
+		}
+	}
+	if features.GCStructProducts {
+		product, ok := stagedGCStructExecutionProduct(wasmBytes)
+		if !ok && moduleUsesGenericGCStructHelpers(m) {
+			product, ok = stagedGCStructGeneric, true
+		}
+		if ok {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			gcStructProduct = product
+		}
+	}
+	if features.GCArrayProducts && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
+		product, ok := stagedGCArrayExecutionProduct(wasmBytes)
+		if !ok {
+			product, ok = stagedGCArrayOpcodeProduct(m)
+		}
+		if ok {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			gcArrayProduct = product
+		}
+	}
+	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
+		if product, ok := stagedGCI31ExecutionProduct(wasmBytes); ok {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+			gcI31Product = product
+		}
+	}
+	if features.GCI31Products && requiredByModule.IsEnabled(CoreFeatureGC) && gcI31Product == 0 && !moduleHasGCHeapType(m) {
+		// Immediate i31 execution is complete and does not require a collector.
+		// Prefer the table/global initializer product when its structural proof
+		// succeeds; otherwise use the general non-allocating i31 lowering.
+		if _, initErr := stagedGCI31TableInitializer(m); initErr == nil {
+			gcI31Product = stagedGCI31ProductTableGlobalInitializer
+		} else {
+			gcI31Product = stagedGCI31ProductCore
+		}
+	}
+	if features.GCStructProducts && moduleUsesGCExternConversion(m) && !gcStructProduct.requiresExternConversion() {
+		// Conversion identity is an orthogonal runtime obligation. The extern
+		// product uses the same complete struct/array helpers while additionally
+		// provisioning the bounded anyref/externref identity bridge.
+		gcStructProduct = stagedGCStructExtern
+	}
+	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 {
+		// Generic GC lowering is the complete Core 3 fallback for modules that do
+		// not match a narrower collector-free or specialized product. Product
+		// recognizers select optimizations, not semantic admission boundaries.
+		gcStructProduct = stagedGCStructGeneric
+	}
+	if goruntime.GOARCH == "arm64" && !gcStructProduct.requiresHelpers() && moduleUsesArm64GCRefTestHelper(m) {
+		// ARM64 lowers collector-reference ref.test through the generic checked
+		// helper. Provision the collector and helper dispatch even when a narrower
+		// metadata-only product recognized the module.
+		gcStructProduct = stagedGCStructGeneric
+	}
+	if features.NullReferenceProducts {
+		if _, shapeErr := stagedNullReferenceProductShape(m); shapeErr == nil {
+			nullReferenceProduct = true
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+				return nil, fmt.Errorf("compile: unsupported null-reference product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+			}
+		}
+	}
+	if features.MultiMemory && m.MemCount() > 1 {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+	}
+	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+	}
+	if features.ExceptionHandling {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			return nil, fmt.Errorf("compile: unsupported exception handling staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+	}
+	usesMemory64 := false
+	for i := uint32(0); i < uint32(m.MemCount()); i++ {
+		if mt, ok := m.MemoryType(i); ok && mt.Limits.Addr64 {
+			usesMemory64 = true
+		}
+	}
+	usesTable64 := false
+	for i := uint32(0); i < uint32(m.TableCount()); i++ {
+		if tt, ok := m.TableType(i); ok && tt.Limits.Addr64 {
+			usesTable64 = true
+		}
+	}
+	if features.Table64 && usesTable64 {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			return nil, fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
+		twoLocalDeclaration := stagedTwoLocalNoMaxTable64DeclarationShape(m)
+		importedLocalDeclaration := stagedImportedLocalNoMaxTable64DeclarationShape(m)
+		threeLocalTableInit64 := m.TableCount() == 3 && m.ImportedTableCount() == 0 && len(m.Tables) == 3
+		soleExternrefGrow := m.TableCount() == 1 && stagedSoleExternrefGrowShape(m)
+		fourLocalExternrefSizeGrow := m.TableCount() == 4 && stagedFourLocalExternrefSizeGrowShape(m)
+		if m.TableCount() != 1 && !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && !fourLocalExternrefSizeGrow {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table or an exact bounded multi-table slice")
+		}
+		if m.TableCount() == 1 && m.ImportedTableCount() != 0 && len(m.Tables) != 0 {
+			return nil, fmt.Errorf("compile: staged table64 rejects mixed imported/local table shapes")
+		}
+		if twoLocal && !twoLocalDeclaration {
+			if err := stagedTwoLocalTableShape(m); err != nil {
+				return nil, fmt.Errorf("compile: staged table64 %w", err)
+			}
+		}
+		if threeLocalTableInit64 {
+			if err := stagedThreeLocalTableInit64Shape(m); err != nil {
+				return nil, fmt.Errorf("compile: staged table64 %w", err)
+			}
+		}
+		if soleExternrefGrow || fourLocalExternrefSizeGrow {
+			for i := range m.Tables {
+				if m.Tables[i].Init != nil {
+					return nil, fmt.Errorf("compile: staged table64 table %d initializer expression is outside the exact local externref size/grow slice", i)
+				}
+			}
+			if len(m.Elements) != 0 {
+				return nil, fmt.Errorf("compile: staged table64 element segments are outside the exact local externref size/grow slice")
+			}
+			allowed := func(k wasm.InstrKind) bool {
+				if fourLocalExternrefSizeGrow {
+					return k == wasm.InstrTableSize || k == wasm.InstrTableGrow
+				}
+				return k == wasm.InstrTableGet || k == wasm.InstrTableSet || k == wasm.InstrTableSize || k == wasm.InstrTableGrow
+			}
+			if err := stagedExactTableOperationShape(m, "exact local externref size/grow slice", allowed); err != nil {
+				return nil, fmt.Errorf("compile: staged table64 %w", err)
+			}
+		}
+		externrefLocal := (twoLocal && (stagedTwoLocalExternrefReadWriteShape(m) || stagedTwoLocalExternrefFillShape(m))) || soleExternrefGrow || fourLocalExternrefSizeGrow
+		inertOversized := stagedInertOversizedTable64Shape(m)
+		for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
+			tt, ok := m.TableType(uint32(tableIndex))
+			if !ok {
+				return nil, fmt.Errorf("compile: staged table64 table %d type is unavailable", tableIndex)
+			}
+			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) && !(externrefLocal && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)) {
+				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d outside an exact local externref slice", tableIndex)
+			}
+			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max() && !inertOversized) {
+				return nil, fmt.Errorf("compile: staged table64 table %d requires an executable runtime bound no greater than %d entries", tableIndex, frontend.StagedTable64Max())
+			}
+		}
+		for i := range m.Elements {
+			e := &m.Elements[i]
+			if e.Mode.Kind == wasm.ElemActive && (int(e.Mode.Table) < 0 || int(e.Mode.Table) >= m.TableCount()) {
+				return nil, fmt.Errorf("compile: staged table64 active element segment targets unavailable table %d", e.Mode.Table)
+			}
+			if !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
+				return nil, fmt.Errorf("compile: staged table64 active element segment targets table %d, want the sole table 0", e.Mode.Table)
+			}
+			if !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
+				return nil, fmt.Errorf("compile: imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary")
+			}
+		}
+	}
+	if features.Memory64 && usesMemory64 {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		for i := uint32(0); i < uint32(m.MemCount()); i++ {
+			mt, ok := m.MemoryType(i)
+			if !ok {
+				return nil, fmt.Errorf("compile: staged memory64 memory %d type is unavailable", i)
+			}
+			if mt.Limits.Addr64 && mt.Shared {
+				return nil, fmt.Errorf("compile: staged memory64 rejects shared memory %d", i)
+			}
+		}
+	}
+	gcDescs, err := frontend.BuildGCTypeDescs(m)
+	if err != nil {
+		return nil, fmt.Errorf("gc descriptors: %w", err)
+	}
+	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
+		return nil, fmt.Errorf("gc array descriptors: %w", err)
+	}
+	moduleFacts, err := frontend.AnalyzeModuleFacts(m)
+	if err != nil {
+		return nil, fmt.Errorf("compile module facts: %w", err)
+	}
+	if err := frontend.RejectUnsupportedWithFeaturesAndFacts(m, features, moduleFacts); err != nil {
+		return nil, fmt.Errorf("compile: %w", err)
+	}
+	var unsafeDirectTailImports []uint64
+	if features.TailCalls {
+		unsafeDirectTailImports, err = unsafeDirectTailImportBitset(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: direct imported tail metadata: %w", err)
+		}
+	}
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
 	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
@@ -161,22 +1233,88 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	importedFuncs := m.ImportedFuncCount()
 	dynamicBindings := make([]railshotImportBinding, importedFuncs)
 	for i := range dynamicBindings {
-		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i)}
+		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i), EHTransfer: features.ExceptionHandling}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
+	gcFrameRoots := newGCFrameRootPlan(m, genericGCExecution)
+	indexedFunctionRefTest, indexedFunctionRefCast := moduleUsesIndexedFunctionRefTestOrCast(m)
+	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
+	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
+	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
+	for i := range internalEntry {
+		if i>>6 < len(cm.DirectPrepared) && cm.DirectPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
+			internalEntry[i] = markDirectPreparedEntry(internalEntry[i])
+		}
+	}
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: uint8(moduleRequiredFeatures(m)), dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		return nil, fmt.Errorf("type metadata: %w", err)
+	}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
+	typeConverter := newWasmTypeDescriptorConverter(m)
+	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
+	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
+		init, err := stagedGCI31TableInitializer(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: staged i31 table initializer: %w", err)
+		}
+		c.memoryDir.gcI31TableInit = init
+	}
+	if gcStructProduct != 0 && gcStructProduct != stagedGCStructGeneric {
+		gcGlobals, err := stagedGCStructGlobalInitializers(m)
+		if err != nil {
+			return nil, fmt.Errorf("compile: staged GC struct globals: %w", err)
+		}
+		c.memoryDir.gcStructGlobals = gcGlobals
+	}
+	if gcArrayProduct != 0 {
+		if gcArrayProduct != stagedGCArrayProductNewData && gcArrayProduct != stagedGCArrayProductNewElem && gcArrayProduct != stagedGCArrayProductGeneric {
+			gcGlobals, err := stagedGCArrayGlobalInitializers(m, gcArrayProduct)
+			if err != nil {
+				return nil, fmt.Errorf("compile: staged GC array globals: %w", err)
+			}
+			c.memoryDir.gcArrayGlobals = gcGlobals
+		}
+		if gcArrayProduct == stagedGCArrayProductReferenceElements {
+			init, err := stagedGCArrayElementInitializer(m)
+			if err != nil {
+				return nil, fmt.Errorf("compile: staged GC array element segment: %w", err)
+			}
+			c.memoryDir.gcArrayElement = init
+		}
+	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
-			if ft, ok := m.FuncSignature(uint32(i)); ok {
-				c.importFuncSigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
+			typeIdx, ok := m.FuncTypeIndex(uint32(i))
+			if !ok {
+				continue
 			}
+			ft, ok := m.ResolvedTypeFunc(typeIdx.Index)
+			if !ok {
+				continue
+			}
+			params, err := typeConverter.abiTypes(ft.Params, c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("imported function %d params: %w", i, err)
+			}
+			results, err := typeConverter.abiTypes(ft.Results, c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("imported function %d results: %w", i, err)
+			}
+			unsafeCrossTail := false
+			word := i >> 6
+			if word < len(unsafeDirectTailImports) {
+				unsafeCrossTail = unsafeDirectTailImports[word]&(uint64(1)<<uint(i&63)) != 0
+			}
+			c.importFuncSigs[i] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true, unsafeCrossTail: unsafeCrossTail}
 		}
 	}
 	importedTables := m.ImportedTableCount()
@@ -191,61 +1329,121 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
 		case wasm.ExternGlobal:
-			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: valTypeFromWasm(im.Type.Global.Type), Mutable: im.Type.Global.Mutable}
+			exact, err := typeConverter.valueType(im.Type.Global.Type, -1)
+			if err != nil {
+				return nil, fmt.Errorf("global import %q.%q type: %w", im.Module, im.Name, err)
+			}
+			typeIndex := internValueType(&c.ValueTypes, exact)
+			abiType, err := typeConverter.abiType(im.Type.Global.Type, c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("global import %q.%q ABI type: %w", im.Module, im.Name, err)
+			}
+			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: abiType, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: im.Type.Global.Mutable}
 			c.GlobalImports = append(c.GlobalImports, imp)
-			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
+			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: imp.Mutable})
 		case wasm.ExternMem:
-			c.memoryImport = im.Module + "." + im.Name
-			c.HasMemory = true
-			c.MemMinPages = uint32(im.Type.Mem.Limits.Min)
-			c.MemMaxPages = 65535
-			if im.Type.Mem.Limits.Max != nil {
-				c.MemMaxPages = uint32(*im.Type.Mem.Limits.Max)
-				c.MemHasMax = true
+			def := memoryDefFromWasm(im.Type.Mem)
+			def.ImportKey = im.Module + "." + im.Name
+			c.memoryDir.defs = append(c.memoryDir.defs, def)
+			if c.memoryImport == "" {
+				c.memoryImport = def.ImportKey
 			}
 		case wasm.ExternTable:
-			def := tableImportDef{Key: im.Module + "." + im.Name, Type: valTypeFromWasm(wasm.RefVal(im.Type.Table.Ref))}
+			exact, err := typeConverter.valueType(wasm.RefVal(im.Type.Table.Ref), -1)
+			if err != nil {
+				return nil, fmt.Errorf("table import %q.%q type: %w", im.Module, im.Name, err)
+			}
+			abiType, err := typeConverter.abiType(wasm.RefVal(im.Type.Table.Ref), c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
+			}
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.Table.Limits.Addr64}
 			min := im.Type.Table.Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
 			}
-			def.Min = int(min)
+			def.Min = min
 			if im.Type.Table.Limits.Max != nil {
 				max := *im.Type.Table.Limits.Max
 				if max > uint64(maxInt()) {
 					return nil, fmt.Errorf("table import %q.%q maximum %d overflows int", im.Module, im.Name, max)
 				}
-				def.Max = int(max)
+				def.Max = max
 				def.HasMax = true
 			}
 			if tableImportIndex == 0 {
 				c.tableImport = def.Key
-				c.tableImportMin = def.Min
-				c.tableImportMax = def.Max
+				c.tableImportMin = int(def.Min)
+				c.tableImportMax = int(def.Max)
 				c.tableImportHasMax = def.HasMax
+				c.TableAddr64 = def.Addr64
 			} else {
 				additionalTableImports = append(additionalTableImports, def)
 			}
 			tableImportIndex++
+		case wasm.ExternTag:
+			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.Tag.Type.Index})
 		}
 	}
+	if features.ExceptionHandling {
+		for i := range m.Tags {
+			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{TypeIndex: m.Tags[i].Type.Index})
+		}
+	}
+	funcABIValueCount := 0
 	for li := range m.FuncTypes {
 		ft, ok := m.LocalFuncType(li)
 		if !ok {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
-		c.Funcs = append(c.Funcs, FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)})
+		funcABIValueCount += len(ft.Params) + len(ft.Results)
+	}
+	c.Funcs = make([]FuncSig, len(m.FuncTypes))
+	funcABIValues := make([]ValType, funcABIValueCount)
+	funcABIValueAt := 0
+	for li := range m.FuncTypes {
+		var ft wasm.CompType
+		if !m.ResolveLocalFuncType(li, &ft) {
+			return nil, fmt.Errorf("function %d: unknown type", li)
+		}
+		paramsEnd := funcABIValueAt + len(ft.Params)
+		params := funcABIValues[funcABIValueAt:paramsEnd:paramsEnd]
+		if err := typeConverter.abiTypesInto(params, ft.Params, c.Types); err != nil {
+			return nil, fmt.Errorf("function %d params: %w", li, err)
+		}
+		resultsEnd := paramsEnd + len(ft.Results)
+		results := funcABIValues[paramsEnd:resultsEnd:resultsEnd]
+		if err := typeConverter.abiTypesInto(results, ft.Results, c.Types); err != nil {
+			return nil, fmt.Errorf("function %d results: %w", li, err)
+		}
+		c.Funcs[li] = FuncSig{Params: params, Results: results, TypeIndex: m.FuncTypes[li].Index, HasTypeIndex: true}
+		funcABIValueAt = resultsEnd
 	}
 	for i := range m.Globals {
-		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
-		if err != nil {
-			return nil, fmt.Errorf("global %d initializer: %w", i, err)
+		globalIndex := len(c.GlobalImports) + i
+		_, gcStructGlobal := c.gcStructGlobalInit(globalIndex)
+		_, gcArrayGlobal := c.gcArrayGlobalInit(globalIndex)
+		gcGlobal := gcStructGlobal || gcArrayGlobal
+		v := constExprResult{GlobalIndex: -1, FuncIndex: -1}
+		if !gcGlobal {
+			var err error
+			v, err = evalConstExprWithContext(m.Globals[i].Init, m.Globals[i].Type.Type, constExprCtx)
+			if err != nil {
+				return nil, fmt.Errorf("global %d initializer: %w", i, err)
+			}
 		}
-		g := GlobalDef{Type: valTypeFromWasm(m.Globals[i].Type.Type), Mutable: m.Globals[i].Type.Mutable}
+		exact, err := typeConverter.valueType(m.Globals[i].Type.Type, -1)
+		if err != nil {
+			return nil, fmt.Errorf("global %d type: %w", i, err)
+		}
+		abiType, err := typeConverter.abiType(m.Globals[i].Type.Type, c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("global %d ABI type: %w", i, err)
+		}
+		g := GlobalDef{Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
-	memoryExported := false
 	for i := range m.Exports {
 		switch m.Exports[i].Index.Kind {
 		case wasm.ExternFunc:
@@ -258,29 +1456,43 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 			}
 			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
-			if c.tableExports == nil {
-				c.tableExports = make(map[string]int)
+			c.memoryDir.exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
+		case wasm.ExternTag:
+			if c.memoryDir.ehTagExports == nil {
+				c.memoryDir.ehTagExports = make(map[string]int)
 			}
-			c.tableExports[m.Exports[i].Name] = memoryExportSentinel
-			memoryExported = true
+			c.memoryDir.ehTagExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		}
 	}
 
-	tableShapes, err := frontend.SupportedTableRuntimeShapes(m)
+	tableShapes, err := frontend.SupportedTableRuntimeShapesFromFacts(m, moduleFacts)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	c.HasTable = len(tableShapes) != 0
 	if len(tableShapes) != 0 {
 		c.TableSize = tableShapes[0].Size
-		c.TableMax = tableShapes[0].Capacity
 		tt, ok := m.TableType(0)
 		if !ok {
 			return nil, fmt.Errorf("table 0 type unavailable")
 		}
-		c.TableType = valTypeFromWasm(wasm.RefVal(tt.Ref))
+		c.TableType, err = typeConverter.abiType(wasm.RefVal(tt.Ref), c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("table 0 ABI type: %w", err)
+		}
+		exact, err := typeConverter.valueType(wasm.RefVal(tt.Ref), -1)
+		if err != nil {
+			return nil, fmt.Errorf("table 0 type: %w", err)
+		}
+		c.TableValueTypeIndex = internValueType(&c.ValueTypes, exact)
+		c.TableHasValueType = true
+		c.TableAddr64 = tt.Limits.Addr64
 		if c.tableImport == "" {
 			c.TableHasMax = tt.Limits.Max != nil
+			c.TableMax = uint64(tableShapes[0].Capacity)
+			if tt.Limits.Max != nil {
+				c.TableMax = *tt.Limits.Max
+			}
 		}
 	}
 	if len(tableShapes) > 1 {
@@ -290,21 +1502,66 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 			if !ok {
 				return nil, fmt.Errorf("table %d type unavailable", i)
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: valTypeFromWasm(wasm.RefVal(tt.Ref)), HasMax: tt.Limits.Max != nil}
+			exact, err := typeConverter.valueType(wasm.RefVal(tt.Ref), -1)
+			if err != nil {
+				return nil, fmt.Errorf("table %d type: %w", i, err)
+			}
+			abiType, err := typeConverter.abiType(wasm.RefVal(tt.Ref), c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("table %d ABI type: %w", i, err)
+			}
+			persistedMax := uint64(tableShapes[i].Capacity)
+			if tt.Limits.Max != nil {
+				persistedMax = *tt.Limits.Max
+			}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil, Addr64: tt.Limits.Addr64}
 		}
 		for i, def := range additionalTableImports {
-			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ImportHasMax: def.HasMax}
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
 			continue
 		}
+		if c.memoryDir.gcI31TableInit != nil && c.memoryDir.gcI31TableInit.TableIndex == uint32(tableIndex) {
+			continue
+		}
+		initBody := m.Tables[i].Init.BodyBytes
+		if len(initBody) == 0 {
+			initBody, _ = wasm.EncodeExpr(*m.Tables[i].Init)
+		}
+		if _, matched, i31Err := evalI31ConstExprBytes(initBody, wasm.RefVal(m.Tables[i].Type.Ref), constExprCtx); matched && i31Err == nil {
+			def := c.tableDef(tableIndex)
+			values := make([]RefInit, def.Size)
+			for j := range values {
+				values[j] = RefInit{Expr: append([]byte(nil), initBody...)}
+			}
+			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+			continue
+		}
 		payload, err := funcrefExprPayload(*m.Tables[i].Init)
 		if err != nil {
-			return nil, fmt.Errorf("table %d initializer: %w", tableIndex, err)
+			body := m.Tables[i].Init.BodyBytes
+			if len(body) == 0 {
+				body, _ = wasm.EncodeExpr(*m.Tables[i].Init)
+			}
+			r := wasm.NewReader(body)
+			op, opErr := r.Byte()
+			globalIndex, indexErr := r.U32()
+			end, endErr := r.Byte()
+			if opErr != nil || op != 0x23 || indexErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 {
+				return nil, fmt.Errorf("table %d initializer: %w", tableIndex, err)
+			}
+			def := c.tableDef(tableIndex)
+			values := make([]RefInit, def.Size)
+			for j := range values {
+				values[j] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
+			}
+			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+			continue
 		}
 		if payload == nullFuncRefIndex {
 			continue
@@ -317,19 +1574,28 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 			c.extraTables[tableIndex-1].InitFunc = payload
 		}
 	}
-	if len(m.Memories) > 0 {
-		lim := m.Memories[0].Limits
+	for i := range m.Memories {
+		c.memoryDir.defs = append(c.memoryDir.defs, memoryDefFromWasm(m.Memories[i]))
+	}
+	if len(c.memoryDir.defs) > 0 {
+		memory0 := c.memoryDir.defs[0]
 		c.HasMemory = true
-		c.MemMinPages = uint32(lim.Min)
-		c.MemMaxPages = 65535 // default ceiling when the module declares no max
-		if lim.Max != nil {
-			c.MemMaxPages = uint32(*lim.Max)
-			c.MemHasMax = true
+		if memory0.Min <= uint64(^uint32(0)) {
+			c.MemMinPages = uint32(memory0.Min)
 		}
-		// Pin the reservation to the initial size only when this module never grows
-		// the memory AND doesn't export it — an exported memory may be grown by
-		// another instance that imports it (cross-instance shared memory).
-		if !moduleUsesMemoryGrow(m) && !memoryExported {
+		c.MemMaxPages = 65536 // full memory32 reservation ceiling
+		if memory0.Addr64 {
+			c.MemMaxPages = 65535 // staged memory64 keeps its finite product ceiling
+		}
+		c.MemHasMax = memory0.HasMax
+		if memory0.HasMax && memory0.Max < uint64(c.MemMaxPages) {
+			c.MemMaxPages = uint32(memory0.Max)
+		}
+		// Pin a local memory-0 reservation to its initial size only when this
+		// module never grows or exports it. Exact declared limits remain in the
+		// directory for inspection, policy, linking, and codec round trips.
+		memory0Observable := len(moduleFacts.MemoryGrowUsed) != 0 && (moduleFacts.MemoryGrowUsed[0] || moduleFacts.MemoryExported[0])
+		if memory0.ImportKey == "" && !memory0Observable {
 			c.MemMaxPages = c.MemMinPages
 		}
 	}
@@ -346,15 +1612,29 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	}
 	// Function descriptors back every executable funcref table. Table 0 keeps the
 	// direct runtime slot; later table indexes use the bounded directory.
+	c.FuncTypeID = make([]uint64, importedFuncs+len(m.FuncTypes))
+	funcTypeIDAt := 0
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
-			c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.Imports[i].Type.Type.Index))
+			typeIndex := m.Imports[i].Type.Type.Index
+			key, ok := m.StructuralTypeKeyChecked(typeIndex)
+			if !ok {
+				return nil, fmt.Errorf("import function type %d exceeds bounded native identity", typeIndex)
+			}
+			c.FuncTypeID[funcTypeIDAt] = key
+			funcTypeIDAt++
 		}
 	}
 	for li := range m.FuncTypes {
-		c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.FuncTypes[li].Index))
+		typeIndex := m.FuncTypes[li].Index
+		key, ok := m.StructuralTypeKeyChecked(typeIndex)
+		if !ok {
+			return nil, fmt.Errorf("function type %d exceeds bounded native identity", typeIndex)
+		}
+		c.FuncTypeID[funcTypeIDAt] = key
+		funcTypeIDAt++
 	}
-	elemStateCount, dataStateCount := moduleSegmentStateCounts(m)
+	elemStateCount, dataStateCount := requirements.elemStateCount, requirements.dataStateCount
 	if elemStateCount > 0 {
 		// table.init/elem.drop immediates address the module's original element
 		// index space. Active/declarative slots remain zero-length (dropped).
@@ -362,11 +1642,27 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		refType, values, err := elementPayloads(m, e)
-		if err != nil {
-			return nil, fmt.Errorf("element %d: %w", i, err)
+		var refType ValType
+		var exactType ValueTypeDescriptor
+		var values []RefInit
+		if gcArrayProduct == stagedGCArrayProductReferenceElements && c.memoryDir.gcArrayElement != nil && uint32(i) == c.memoryDir.gcArrayElement.SegmentIndex {
+			var err error
+			exactType, err = typeConverter.valueType(wasm.RefVal(e.Kind.Ref), -1)
+			if err != nil {
+				return nil, fmt.Errorf("element %d type: %w", i, err)
+			}
+			refType, err = typeConverter.abiType(wasm.RefVal(e.Kind.Ref), c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("element %d ABI type: %w", i, err)
+			}
+		} else {
+			var err error
+			refType, exactType, values, err = elementPayloads(m, c.Types, constExprCtx, e)
+			if err != nil {
+				return nil, fmt.Errorf("element %d: %w", i, err)
+			}
 		}
-		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
+		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: internValueType(&c.ValueTypes, exactType), HasValueType: true, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
 		if i < len(c.passiveElems) {
 			state := init
 			if e.Mode.Kind != wasm.ElemPassive {
@@ -378,11 +1674,31 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 		case wasm.ElemPassive, wasm.ElemDeclarative:
 			continue
 		case wasm.ElemActive:
-			base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
+			want := wasm.I32
+			table64 := false
+			if tt, ok := m.TableType(uint32(e.Mode.Table)); ok && tt.Limits.Addr64 {
+				want = wasm.I64
+				table64 = true
+			}
+			base, err := evalConstExprWithContext(e.Mode.Offset, want, constExprCtx)
 			if err != nil {
 				return nil, fmt.Errorf("element %d offset: %w", i, err)
 			}
-			applyElemOffset(&init, base.Init())
+			if table64 {
+				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
+				// validated i64 expression so codec v27 and instantiation retain every bit.
+				if len(e.Mode.Offset.BodyBytes) != 0 {
+					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
+				} else {
+					encoded, err := wasm.EncodeExpr(e.Mode.Offset)
+					if err != nil {
+						return nil, fmt.Errorf("element %d offset encode: %w", i, err)
+					}
+					init.Offset.Expr = encoded
+				}
+			} else {
+				applyElemOffset(&init, base.Init())
+			}
 			// Preserve even empty active segments: the offset must still be bounds-
 			// checked against the actual table length at instantiation time.
 			c.Elems = append(c.Elems, init)
@@ -409,15 +1725,100 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 			c.PassiveData[i] = PassiveDataInit{Bytes: append([]byte(nil), d.Init...)}
 			continue
 		}
-		off, err := evalConstExprWithModule(d.Mode.Offset, wasm.I32, m)
+		want := wasm.I32
+		memory64 := false
+		if mt, ok := m.MemoryType(uint32(d.Mode.Mem)); ok && mt.Limits.Addr64 {
+			want = wasm.I64
+			memory64 = true
+		}
+		off, err := evalConstExprWithContext(d.Mode.Offset, want, constExprCtx)
 		if err != nil {
 			return nil, fmt.Errorf("data %d offset: %w", i, err)
 		}
-		init := DataInit{Bytes: d.Init}
-		applyDataOffset(&init, off.Init())
+		init := DataInit{MemoryIndex: uint32(d.Mode.Mem), Bytes: d.Init}
+		if memory64 {
+			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
+			// Preserve the already validated i64 program in the existing Expr field so
+			// codec v27 retains the existing expression field while instantiation preserves all 64 address bits.
+			if len(d.Mode.Offset.BodyBytes) != 0 {
+				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
+			} else {
+				encoded, err := wasm.EncodeExpr(d.Mode.Offset)
+				if err != nil {
+					return nil, fmt.Errorf("data %d offset encode: %w", i, err)
+				}
+				init.Offset.Expr = encoded
+			}
+		} else {
+			applyDataOffset(&init, off.Init())
+		}
 		c.Data = append(c.Data, init)
 	}
-	return installCompiledFinalizer(c), nil
+	compiled := installCompiledFinalizer(c)
+	if guardPageBuilt && cfg.boundsChecks == BoundsChecksSignalsBased {
+		compiled.codeCache.flags |= compiledCacheGuardMemory
+	}
+	if validGCModuleFrameRootPlan(gcFrameRoots) {
+		rootMap := &compiledGCFrameRoots{}
+		for function, plan := range gcFrameRoots.Functions {
+			if plan == nil {
+				continue
+			}
+			functionBase := uint32(compiled.Entry[function])
+			if plan.AdapterReturnOffset != 0 {
+				rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, functionBase+plan.AdapterReturnOffset)
+			}
+			for i := range plan.Safepoints {
+				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: append([]uint32(nil), plan.Safepoints[i].Offsets...)})
+			}
+			for i := range plan.Callsites {
+				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, stackAdjust: plan.Callsites[i].StackAdjust, offsets: append([]uint32(nil), plan.Callsites[i].Offsets...)})
+			}
+		}
+		compiled.validateMemo.gcFrameRoots = rootMap
+	}
+	// GC/typed-reference admission follows validated source requirements; product
+	// classifiers below select representations and optimized paths. Exception
+	// modules with declared tags are inferred from persisted tag metadata, while
+	// tag-free catch_all/try_table modules need an explicit compile-only marker.
+	compiled.codeCache.stagedFeatures |= requiredByModule & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
+	if requiredByModule.IsEnabled(CoreFeatureExceptionHandling) && m.TagCount() == 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureExceptionHandling
+	}
+	if features.TypedFunctionReferences {
+		compiled.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	if features.TailCalls || features.TypedTailCalls {
+		compiled.codeCache.stagedFeatures |= CoreFeatureTailCall
+	}
+	if nullReferenceProduct {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC | CoreFeatureExceptionHandling
+	}
+	if structuralProduct != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.collectorFreeStructuralMetadata = true
+	}
+	if gcTypeSubtypingProduct != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.gcTypeSubtypingProduct = gcTypeSubtypingProduct
+	}
+	if dynamicFuncRefTest {
+		compiled.codeCache.flags |= compiledCacheDynamicFuncRefTest
+	}
+	if gcStructProduct != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.gcStructProduct = gcStructProduct
+	}
+	if gcArrayProduct != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.gcArrayProduct = gcArrayProduct
+		compiled.codeCache.collectorFreeGCArrayMetadata = gcArrayProduct.metadataOnly()
+	}
+	if gcI31Product != 0 {
+		compiled.codeCache.stagedFeatures |= CoreFeatureGC
+		compiled.codeCache.gcI31Product = gcI31Product
+	}
+	return compiled, nil
 }
 
 func isUnsupportedProposalError(err error) bool {
@@ -430,9 +1831,49 @@ func isUnsupportedProposalError(err error) bool {
 		"return_call", "tail call",
 		"reference instruction", "reference type", "ref func", "ref type ", "call_ref", "br_on_null", "br_on_non_null", "ref.as_non_null",
 		"shared memory", "atomic instruction", "atomic.",
+		"extended-constant-expressions", "extended-const-expressions",
 	} {
 		if strings.Contains(message, marker) {
 			return true
+		}
+	}
+	return false
+}
+
+func moduleUsesArm64GCRefTestHelper(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			if op == 0xfb {
+				peek := *r
+				sub, subErr := peek.U32()
+				if subErr != nil {
+					return false
+				}
+				if sub == 20 || sub == 21 {
+					heap, heapErr := peek.S33()
+					if heapErr != nil {
+						return false
+					}
+					if heap >= 0 {
+						if _, isFunc := m.TypeFunc(uint32(heap)); !isFunc {
+							return true
+						}
+					} else if heap != -16 && heap != -17 && heap != -13 && heap != -14 {
+						return true
+					}
+				}
+			}
+			if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+				return false
+			}
 		}
 	}
 	return false
@@ -486,47 +1927,110 @@ func elemModeFromWasm(mode wasm.ElemModeKind) ElemMode {
 	}
 }
 
-func elementPayloads(m *wasm.Module, e *wasm.Elem) (ValType, []RefInit, error) {
+func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx *constExprCompileContext, e *wasm.Elem) (ValType, ValueTypeDescriptor, []RefInit, error) {
 	switch e.Kind.Kind {
 	case wasm.ElemFuncs:
 		out := make([]RefInit, len(e.Kind.Funcs))
 		for i, fidx := range e.Kind.Funcs {
 			out[i] = RefInit{FuncIndex: uint32(fidx)}
 		}
-		return ValFuncRef, out, nil
+		exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapFunc), false)))
+		if err != nil {
+			return 0, ValueTypeDescriptor{}, nil, err
+		}
+		return ValFuncRef, exact, out, nil
 	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 		refType := ValFuncRef
+		exact, _ := valueTypeDescriptorFromValType(refType)
 		if e.Kind.Kind == wasm.ElemTypedExprs {
-			refType = valTypeFromWasm(wasm.RefVal(e.Kind.Ref))
+			var err error
+			exact, err = valueTypeDescriptorInModule(m, wasm.RefVal(e.Kind.Ref))
+			if err != nil {
+				return 0, ValueTypeDescriptor{}, nil, err
+			}
+			refType, err = valTypeFromWasmInModule(m, wasm.RefVal(e.Kind.Ref), types)
+			if err != nil {
+				return 0, ValueTypeDescriptor{}, nil, err
+			}
 		}
 		out := make([]RefInit, len(e.Kind.Exprs))
 		for i, ex := range e.Kind.Exprs {
-			payload, err := wasm.ParseElementExpr(ex)
-			if err != nil {
-				return 0, nil, fmt.Errorf("expression %d: %w", i, err)
+			body := ex.BodyBytes
+			if len(body) == 0 {
+				var err error
+				body, err = wasm.EncodeExpr(ex)
+				if err != nil {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d encode: %w", i, err)
+				}
 			}
-			if payload.HasGlobal {
-				gt, ok := m.GlobalTypeByIndex(payload.GlobalIndex)
-				if !ok {
-					return 0, nil, fmt.Errorf("expression %d global index %d out of range", i, payload.GlobalIndex)
+			r := wasm.NewReader(body)
+			if op, err := r.Byte(); err == nil && op == 0x23 {
+				globalIndex, readErr := r.U32()
+				end, endErr := r.Byte()
+				if readErr == nil && endErr == nil && end == 0x0b && r.BytesLeft() == 0 {
+					gt, ok := m.GlobalTypeByIndex(globalIndex)
+					if !ok || gt.Mutable {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has invalid global.get initializer", i)
+					}
+					globalType, err := valueTypeDescriptorInModule(m, gt.Type)
+					if err != nil || !valueTypeSubtype(globalType, types, exact, types) {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d global type does not match segment type", i)
+					}
+					out[i] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
+					continue
 				}
-				if int(payload.GlobalIndex) >= m.ImportedGlobalCount() || gt.Mutable {
-					return 0, nil, fmt.Errorf("expression %d global %d is not an immutable import", i, payload.GlobalIndex)
+			}
+			if refType == ValI31Ref {
+				body := ex.BodyBytes
+				if len(body) == 0 {
+					var err error
+					body, err = wasm.EncodeExpr(ex)
+					if err != nil {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d encode: %w", i, err)
+					}
 				}
-				if valTypeFromWasm(gt.Type) != refType {
-					return 0, nil, fmt.Errorf("expression %d global type does not match segment type %s", i, refType)
+				result, matched, err := evalI31ConstExprBytes(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
+				if err != nil || !matched {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
 				}
-				out[i] = RefInit{HasGlobal: true, GlobalIndex: payload.GlobalIndex}
+				if len(result.Expr) != 0 {
+					r := wasm.NewReader(result.Expr)
+					op, opErr := r.Byte()
+					globalIndex, indexErr := r.U32()
+					if opErr != nil || op != 0x23 || indexErr != nil {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has malformed i31 global initializer", i)
+					}
+					out[i] = RefInit{GlobalIndex: globalIndex, HasGlobal: true, I31Wrap: true}
+					continue
+				}
+				if result.bits == 0 || result.bits>>32 != 0 || uint32(result.bits)&1 == 0 {
+					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d has invalid i31 immediate", i)
+				}
+				out[i] = RefInit{FuncIndex: uint32(result.bits)}
 				continue
 			}
-			if valTypeFromWasm(wasm.RefVal(payload.RefType)) != refType {
-				return 0, nil, fmt.Errorf("expression %d type does not match segment type %s", i, refType)
+			result, exprErr := evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
+			if exprErr == nil && len(result.Expr) != 0 {
+				out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
+				continue
+			}
+			payload, err := wasm.ParseElementExpr(ex)
+			if err != nil {
+				return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d: %w", i, err)
+			}
+			payloadType, err := valueTypeDescriptorInModule(m, wasm.RefVal(payload.RefType))
+			if err != nil {
+				return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d type: %w", i, err)
+			}
+			payloadABI, ok := payloadType.ABIType(types)
+			if !ok || payloadABI != refType {
+				return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d type does not match segment ABI type %s", i, refType)
 			}
 			out[i] = RefInit{FuncIndex: payload.FuncIndex, Null: payload.Null}
 		}
-		return refType, out, nil
+		return refType, exact, out, nil
 	default:
-		return 0, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
+		return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
 	}
 }
 
@@ -567,7 +2071,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
-	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() {
+	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
 		return true
 	}
 	for _, key := range c.Imports {
@@ -600,9 +2104,37 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // compatibility. Imported calls are already compiled; instantiation only writes
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
+	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
+	moduleTransfersGC := false
+	for i := range c.Imports {
+		if i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref)) {
+			moduleTransfersGC = true
+			break
+		}
+	}
+	gcSubtypeLinkProduct := c.stagedGCTypeSubtypingProduct()
+	gcSubtypeLinkConsumer := gcSubtypeLinkProduct.isLinkConsumer()
+	gcSubtypeLinkProvider := gcSubtypeLinkProduct.linkProviderProduct()
 	for i, key := range c.Imports {
+		sigHasGCRefs := i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref))
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			if sigHasGCRefs {
+				owner, owned := imports[key].(*HostFuncRef)
+				if !owned || owner == nil || owner.gc == nil || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
+					return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef or a same-Runtime InstanceExport", key)
+				}
+				continue
+			}
+			if moduleTransfersGC {
+				return fmt.Errorf("cross-instance GC modules require every function import to be a same-Runtime InstanceExport; import %q is a host boundary", key)
+			}
+			if gcSubtypeLinkConsumer {
+				return fmt.Errorf("cross-instance import %q requires the exact gc/type-subtyping link provider", key)
+			}
+			// Synchronous host imports already park and restore the active EH/GC
+			// control state. Only direct cross-instance native transfers need the
+			// retained InstanceExport checks below.
 			continue
 		}
 		if ex == nil || ex.inst == nil {
@@ -614,40 +2146,85 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		if i >= len(c.importFuncSigs) {
 			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
+		if c.importFuncSigs[i].unsafeCrossTail {
+			return fmt.Errorf("cross-instance import %q requires unsupported cross-instance tail ABI", key)
+		}
+		if gcSubtypeLinkConsumer && ex.inst.c.stagedGCTypeSubtypingProduct() != gcSubtypeLinkProvider {
+			return fmt.Errorf("cross-instance import %q signature mismatch: producer is outside the exact gc/type-subtyping link product", key)
+		}
 		sig := c.importFuncSigs[i]
-		if len(sig.Params) != len(ex.params) || len(sig.Results) != len(ex.results) {
+		if !sigMatches(sig, c.Types, ex, gcSubtypeLinkConsumer || c.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences)) {
 			return fmt.Errorf("cross-instance import %q signature mismatch", key)
-		}
-		for j := range sig.Params {
-			if sig.Params[j] != ex.params[j] {
-				return fmt.Errorf("cross-instance import %q signature mismatch", key)
-			}
-		}
-		for j := range sig.Results {
-			if sig.Results[j] != ex.results[j] {
-				return fmt.Errorf("cross-instance import %q signature mismatch", key)
-			}
 		}
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
 			if store == nil || ex.inst.refStore != store {
 				return fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
 			}
 		}
+		if sigHasGCRefs {
+			if store == nil || ex.inst.refStore != store || ex.inst.gc == nil || !store.ownsGCCollector(ex.inst.gc) {
+				return fmt.Errorf("cross-instance GC import %q requires live instances in the same Runtime GC domain", key)
+			}
+			// Module-local GC type indexes are canonicalized when the consumer joins
+			// the producer's Runtime collector domain. Signature validation above
+			// proves structural compatibility; raw descriptor-table equality is not
+			// cross-module type identity.
+			if c.genericGCFrameRoots() == nil || ex.inst.c.genericGCFrameRoots() == nil {
+				return fmt.Errorf("cross-instance GC import %q requires exact native root maps", key)
+			}
+		}
+		if ehNativeCalls {
+			if !ex.inst.c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) {
+				return fmt.Errorf("exception-handler transfer import %q requires an exception-enabled producer", key)
+			}
+			if len(sig.Params) != 0 || len(sig.Results) != 0 {
+				return fmt.Errorf("exception-handler transfer import %q requires the exact () -> () ABI", key)
+			}
+		}
 	}
 	return nil
+
 }
 
-func sigMatches(ft *wasm.CompType, ex *InstanceExport) bool {
-	if len(ft.Params) != len(ex.params) || len(ft.Results) != len(ex.results) {
+func sigMatches(required FuncSig, requiredTypes []DefinedTypeDescriptor, ex *InstanceExport, allowSubtype bool) bool {
+	if ex == nil || ex.inst == nil || ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Funcs) {
 		return false
 	}
-	for i := range ft.Params {
-		if valTypeFromWasm(ft.Params[i]) != ex.params[i] {
+	actual := ex.inst.c.Funcs[ex.localIdx]
+	if required.HasTypeIndex && actual.HasTypeIndex {
+		if allowSubtype {
+			actualRef := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: actual.TypeIndex}}
+			requiredRef := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: required.TypeIndex}}
+			if !referenceTypeSubtype(actualRef, ex.inst.c.Types, requiredRef, requiredTypes) {
+				return false
+			}
+		} else if !tagTypeEquivalent(actual.TypeIndex, ex.inst.c.Types, required.TypeIndex, requiredTypes) {
 			return false
 		}
 	}
-	for i := range ft.Results {
-		if valTypeFromWasm(ft.Results[i]) != ex.results[i] {
+	requiredParams, requiredResults, err := exactFuncSignature(required, requiredTypes)
+	if err != nil {
+		return false
+	}
+	actualParams, actualResults, err := exactFuncSignature(ex.inst.c.Funcs[ex.localIdx], ex.inst.c.Types)
+	if err != nil || len(requiredParams) != len(actualParams) || len(requiredResults) != len(actualResults) {
+		return false
+	}
+	for i := range requiredParams {
+		if allowSubtype {
+			if !valueTypeSubtype(requiredParams[i], requiredTypes, actualParams[i], ex.inst.c.Types) {
+				return false
+			}
+		} else if !valueTypeEquivalent(actualParams[i], ex.inst.c.Types, requiredParams[i], requiredTypes) {
+			return false
+		}
+	}
+	for i := range requiredResults {
+		if allowSubtype {
+			if !valueTypeSubtype(actualResults[i], ex.inst.c.Types, requiredResults[i], requiredTypes) {
+				return false
+			}
+		} else if !valueTypeEquivalent(actualResults[i], ex.inst.c.Types, requiredResults[i], requiredTypes) {
 			return false
 		}
 	}
@@ -698,7 +2275,7 @@ func bodyBytesSegmentStateCounts(body []byte, elemCount, dataCount *int) bool {
 		if err != nil {
 			return false
 		}
-		segmentStateCount(imm.Kind, imm.Index, elemCount, dataCount)
+		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemCount, dataCount)
 	}
 	return true
 }
@@ -706,17 +2283,22 @@ func bodyBytesSegmentStateCounts(body []byte, elemCount, dataCount *int) bool {
 func instrsSegmentStateCounts(instrs []wasm.Instruction, elemCount, dataCount *int) {
 	for i := range instrs {
 		in := &instrs[i]
-		segmentStateCount(in.Kind, in.Index, elemCount, dataCount)
+		segmentStateCount(in.Kind, in.Index, in.Index2, elemCount, dataCount)
 		instrsSegmentStateCounts(in.Body().Instrs, elemCount, dataCount)
 		instrsSegmentStateCounts(in.Then(), elemCount, dataCount)
 		instrsSegmentStateCounts(in.Else(), elemCount, dataCount)
 	}
 }
 
-func segmentStateCount(kind wasm.InstrKind, index uint32, elemCount, dataCount *int) {
+func segmentStateCount(kind wasm.InstrKind, index, index2 uint32, elemCount, dataCount *int) {
 	count := int(index) + 1
 	switch kind {
 	case wasm.InstrTableInit, wasm.InstrElemDrop:
+		if count > *elemCount {
+			*elemCount = count
+		}
+	case wasm.InstrArrayNewElem, wasm.InstrArrayInitElem:
+		count = int(index2) + 1
 		if count > *elemCount {
 			*elemCount = count
 		}
@@ -724,61 +2306,12 @@ func segmentStateCount(kind wasm.InstrKind, index uint32, elemCount, dataCount *
 		if count > *dataCount {
 			*dataCount = count
 		}
-	}
-}
-
-func moduleUsesMemoryGrow(m *wasm.Module) bool {
-	for i := range m.Code {
-		fn := &m.Code[i]
-		// Byte-backed decode keeps function bodies as raw bytecode and leaves
-		// Body.Instrs empty, so walk the encoded stream when present and only fall
-		// back to the instruction tree for programmatically built bodies.
-		if len(fn.BodyBytes) != 0 {
-			if bodyBytesUseMemoryGrow(fn.BodyBytes) {
-				return true
-			}
-			continue
-		}
-		if instrsUseMemoryGrow(fn.Body.Instrs) {
-			return true
+	case wasm.InstrArrayNewData, wasm.InstrArrayInitData:
+		count = int(index2) + 1
+		if count > *dataCount {
+			*dataCount = count
 		}
 	}
-	return false
-}
-
-// bodyBytesUseMemoryGrow reports whether a validated, byte-backed function body
-// contains a memory.grow. The body is already validated, so a decode hiccup is
-// not expected; if one occurs it conservatively returns true so the caller does
-// not pin the memory reservation to its minimum size and break memory.grow.
-func bodyBytesUseMemoryGrow(body []byte) bool {
-	r := wasm.NewReader(body)
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return true
-		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
-			return true
-		}
-		if imm.Kind == wasm.InstrMemoryGrow {
-			return true
-		}
-	}
-	return false
-}
-
-func instrsUseMemoryGrow(instrs []wasm.Instruction) bool {
-	for i := range instrs {
-		in := &instrs[i]
-		if in.Kind == wasm.InstrMemoryGrow {
-			return true
-		}
-		if instrsUseMemoryGrow(in.Body().Instrs) || instrsUseMemoryGrow(in.Then()) || instrsUseMemoryGrow(in.Else()) {
-			return true
-		}
-	}
-	return false
 }
 
 // MustCompile is like Compile with the default config but panics on error, for
@@ -797,11 +2330,31 @@ func (c *Compiled) ExportedFunctions() []string { return sortedKeys(c.Exports) }
 // ExportedGlobals returns the names of the module's exported globals, sorted.
 func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.GlobalExports) }
 
-// MemoryImport returns the "module.name" key of the module's imported memory, if
-// it imports one; Instantiate then requires a *Memory for that key. The boolean
-// is false for a module that defines its own memory or none.
+// MemoryImport returns the "module.name" key when the module imports exactly one
+// memory. Modules with zero or multiple memory imports return false; use
+// MemoryImports for the complete ordered list.
 func (c *Compiled) MemoryImport() (string, bool) {
-	return c.memoryImport, c.memoryImport != ""
+	if c == nil || c.memoryImportCount() != 1 {
+		return "", false
+	}
+	def, _ := c.memoryImportAt(0)
+	return def.ImportKey, true
+}
+
+// MemoryImports returns every imported memory key in Wasm memory-index order.
+// Duplicate keys are preserved because distinct declarations may alias the same
+// host memory once indexed execution is admitted.
+func (c *Compiled) MemoryImports() []string {
+	if c == nil {
+		return nil
+	}
+	count := c.memoryImportCount()
+	keys := make([]string, count)
+	for i := range keys {
+		def, _ := c.memoryImportAt(i)
+		keys[i] = def.ImportKey
+	}
+	return keys
 }
 
 // TableImport returns the "module.name" key when the module imports exactly one
@@ -834,6 +2387,15 @@ func (c *Compiled) TableImports() []string {
 		keys[i] = def.Key
 	}
 	return keys
+}
+
+func memoryDefFromWasm(mt wasm.MemType) memoryDef {
+	def := memoryDef{Min: mt.Limits.Min, Addr64: mt.Limits.Addr64, Shared: mt.Shared}
+	if mt.Limits.Max != nil {
+		def.Max = *mt.Limits.Max
+		def.HasMax = true
+	}
+	return def
 }
 
 func sortedKeys(m map[string]int) []string {
@@ -869,6 +2431,47 @@ func (c *Compiled) Signature(export string) (params, results []ValType, err erro
 		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
 	return c.Funcs[li].Params, c.Funcs[li].Results, nil
+}
+
+// SignatureDescriptor returns the exact structural parameter and result types
+// of an exported function. Indexed references resolve against TypeDefinitions.
+func (c *Compiled) SignatureDescriptor(export string) (params, results []ValueTypeDescriptor, err error) {
+	if c == nil {
+		return nil, nil, fmt.Errorf("compiled module is nil")
+	}
+	gfi, ok := c.Exports[export]
+	if !ok {
+		return nil, nil, fmt.Errorf("no exported function %q", export)
+	}
+	var sig FuncSig
+	if gfi < 0 {
+		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+	} else if gfi < c.NumImports {
+		if gfi >= len(c.importFuncSigs) {
+			return nil, nil, fmt.Errorf("export %q imported function index %d has no signature", export, gfi)
+		}
+		sig = c.importFuncSigs[gfi]
+	} else {
+		li := gfi - c.NumImports
+		if li < 0 || li >= len(c.Funcs) {
+			return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+		}
+		sig = c.Funcs[li]
+	}
+	params, results, err = exactFuncSignature(sig, c.Types)
+	if err != nil {
+		return nil, nil, fmt.Errorf("export %q signature: %w", export, err)
+	}
+	return params, results, nil
+}
+
+// TypeDefinitions returns a copy of the compiled module's flattened structural
+// type graph.
+func (c *Compiled) TypeDefinitions() []DefinedTypeDescriptor {
+	if c == nil {
+		return nil
+	}
+	return cloneDefinedTypeDescriptors(c.Types)
 }
 
 // FuncName returns the name-section name for a global function index.
@@ -929,44 +2532,110 @@ func (c *Compiled) validate() error {
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
 	}
-	required := CoreFeatures(c.requiredFeatures)
-	if required&^coreFeaturesWago != 0 {
-		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
+	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
+		return err
 	}
-	if c.memoryImport != "" && !c.HasMemory {
-		return fmt.Errorf("compiled metadata invalid: memory import without memory limits")
+	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
+		return err
 	}
-	if c.HasMemory {
-		if c.MemMaxPages < c.MemMinPages {
-			return fmt.Errorf("compiled metadata invalid: memory max %d < min %d", c.MemMaxPages, c.MemMinPages)
+	if err := c.validateExactValueMetadata(); err != nil {
+		return err
+	}
+	validateSigs := func(kind string, sigs []FuncSig) error {
+		for i, sig := range sigs {
+			if _, _, err := exactFuncSignature(sig, c.Types); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s function %d signature: %w", kind, i, err)
+			}
 		}
-	} else if c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax {
-		return fmt.Errorf("compiled metadata invalid: memory limits without memory")
+		return nil
+	}
+	if err := validateSigs("imported", c.importFuncSigs); err != nil {
+		return err
+	}
+	if err := validateSigs("local", c.Funcs); err != nil {
+		return err
+	}
+	required := c.requiredFeatures
+	unsupported := required &^ defaultCoreFeatures
+	var staged CoreFeatures
+	if c.memoryDir != nil {
+		if c.memoryDir.staged {
+			staged |= CoreFeatureMultiMemory
+		}
+		if c.memoryDir.stagedMemory64 {
+			staged |= CoreFeatureMemory64
+		}
+	}
+	if c.stagedTable64 {
+		staged |= CoreFeatureTable64
+	}
+	// Indexed-memory/table address forms are completely described by persisted
+	// metadata and native code. Once the current platform advertises the family,
+	// codec reload does not need the original compile-only classifier marker.
+	staged |= required & platformCoreFeatures() & (CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64)
+	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		staged |= CoreFeatureExceptionHandling
+		importCount := 0
+		for i, tag := range c.memoryDir.ehTags {
+			if int(tag.TypeIndex) >= len(c.Types) || c.Types[tag.TypeIndex].Kind != CompositeTypeFunction || len(c.Types[tag.TypeIndex].Results) != 0 || len(c.Types[tag.TypeIndex].Params) > 2 {
+				return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
+			}
+			if tag.ImportKey != "" {
+				if i != importCount {
+					return fmt.Errorf("compiled metadata invalid: staged exception tag imports must precede locals")
+				}
+				importCount++
+			}
+		}
+		for name, index := range c.memoryDir.ehTagExports {
+			if name == "" || index < 0 || index >= len(c.memoryDir.ehTags) {
+				return fmt.Errorf("compiled metadata invalid: staged exception tag export")
+			}
+		}
+	}
+	staged |= c.stagedFeatures()
+	if c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+		staged |= compiledStructuralRequiredFeatures(c) & CoreFeatureTypedFunctionReferences
+	}
+	if unsupported&^staged != 0 {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported&^staged))
+	}
+	if err := c.validateMemoryMetadata(required); err != nil {
+		return err
 	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
 	}
-	if c.TableMax < 0 {
-		return fmt.Errorf("compiled metadata invalid: negative TableMax %d", c.TableMax)
-	}
-	if c.TableMax != 0 && c.TableMax < c.TableSize {
+	if c.TableMax != 0 && c.TableMax < uint64(c.TableSize) {
 		return fmt.Errorf("compiled metadata invalid: TableMax %d < TableSize %d", c.TableMax, c.TableSize)
+	}
+	if c.TableAddr64 && !required.IsEnabled(CoreFeatureTable64) {
+		return fmt.Errorf("compiled metadata invalid: table 0 uses 64-bit indexes without table64 feature")
+	}
+	if c.TableMax > uint64(maxInt()) && !c.stagedInertOversizedTable64(0) {
+		return fmt.Errorf("compiled metadata invalid: table 0 maximum %d overflows executable capacity", c.TableMax)
 	}
 	if len(c.extraTables) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
 	}
-	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef {
+	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef && c.TableType != ValExnRef && c.TableType != ValI31Ref && c.TableType != ValAnyRef {
 		return fmt.Errorf("compiled metadata invalid: table 0 element type %s is unsupported", c.TableType)
 	}
 	for i, table := range c.extraTables {
-		if table.Size < 0 || table.Max < 0 {
-			return fmt.Errorf("compiled metadata invalid: negative table %d limits", i+1)
+		if table.Size < 0 {
+			return fmt.Errorf("compiled metadata invalid: negative table %d size", i+1)
 		}
-		if table.Max != 0 && table.Max < table.Size {
+		if table.Max != 0 && table.Max < uint64(table.Size) {
 			return fmt.Errorf("compiled metadata invalid: table %d maximum %d < size %d", i+1, table.Max, table.Size)
 		}
-		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef {
+		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef && table.Type != ValI31Ref && table.Type != ValAnyRef {
 			return fmt.Errorf("compiled metadata invalid: table %d element type %s is unsupported", i+1, table.Type)
+		}
+		if table.Addr64 && !required.IsEnabled(CoreFeatureTable64) {
+			return fmt.Errorf("compiled metadata invalid: table %d uses 64-bit indexes without table64 feature", i+1)
+		}
+		if table.Max > uint64(maxInt()) {
+			return fmt.Errorf("compiled metadata invalid: table %d maximum %d overflows executable capacity", i+1, table.Max)
 		}
 	}
 	if !c.HasTable && c.TableSize != 0 {
@@ -974,6 +2643,9 @@ func (c *Compiled) validate() error {
 	}
 	if !c.HasTable && c.TableMax != 0 {
 		return fmt.Errorf("compiled metadata invalid: TableMax %d without table", c.TableMax)
+	}
+	if !c.HasTable && c.TableAddr64 {
+		return fmt.Errorf("compiled metadata invalid: table64 address form without table")
 	}
 	if !c.HasTable && c.tableImport != "" {
 		return fmt.Errorf("compiled metadata invalid: table import %q without table", c.tableImport)
@@ -1027,7 +2699,7 @@ func (c *Compiled) validate() error {
 		if !table.ImportHasMax && table.Max != 0 {
 			return fmt.Errorf("compiled metadata invalid: imported table %d max without max flag", index)
 		}
-		if table.ImportHasMax && table.Max < table.Size {
+		if table.ImportHasMax && table.Max < uint64(table.Size) {
 			return fmt.Errorf("compiled metadata invalid: imported table %d max %d < min %d", index, table.Max, table.Size)
 		}
 	}
@@ -1056,10 +2728,23 @@ func (c *Compiled) validate() error {
 		if uint64(c.TableInitFunc) >= uint64(totalFuncs) {
 			return fmt.Errorf("compiled metadata invalid: table initializer function index %d out of range", c.TableInitFunc)
 		}
+		actual, actualErr := c.functionRefExactType(c.TableInitFunc)
+		required, requiredErr := c.tableExactType(0)
+		if actualErr != nil || requiredErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: table 0 initializer function type mismatch")
+		}
 	}
 	for i, table := range c.extraTables {
-		if table.HasInitFunc && uint64(table.InitFunc) >= uint64(totalFuncs) {
+		if !table.HasInitFunc {
+			continue
+		}
+		if uint64(table.InitFunc) >= uint64(totalFuncs) {
 			return fmt.Errorf("compiled metadata invalid: table %d initializer function index %d out of range", i+1, table.InitFunc)
+		}
+		actual, actualErr := c.functionRefExactType(table.InitFunc)
+		required, requiredErr := c.tableExactType(i + 1)
+		if actualErr != nil || requiredErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: table %d initializer function type mismatch", i+1)
 		}
 	}
 	for name, gfi := range c.Exports {
@@ -1068,15 +2753,9 @@ func (c *Compiled) validate() error {
 		}
 	}
 	if len(c.tableExports) != 0 && !c.hasTableExportMetadata {
-		return fmt.Errorf("compiled metadata invalid: table/memory exports without exact export metadata marker")
+		return fmt.Errorf("compiled metadata invalid: table exports without exact export metadata marker")
 	}
 	for name, tableIndex := range c.tableExports {
-		if tableIndex == memoryExportSentinel {
-			if !c.HasMemory {
-				return fmt.Errorf("compiled metadata invalid: memory export %q without memory", name)
-			}
-			continue
-		}
 		if tableIndex < 0 || tableIndex >= c.tableCount() {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
 		}
@@ -1092,6 +2771,11 @@ func (c *Compiled) validate() error {
 		if g.Type != imp.Type || g.Mutable != imp.Mutable {
 			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
 		}
+		gt, gerr := exactValueType(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types)
+		it, ierr := exactValueType(imp.Type, imp.HasValueType, imp.ValueTypeIndex, c.ValueTypes, c.Types)
+		if gerr != nil || ierr != nil || gt != it {
+			return fmt.Errorf("compiled metadata invalid: imported global %d structural type mismatch", i)
+		}
 	}
 	for name, idx := range c.GlobalExports {
 		if idx < 0 || idx >= len(c.Globals) {
@@ -1099,35 +2783,41 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for i, g := range c.Globals {
-		initializerKinds := 0
+		initKinds := 0
 		if g.HasInitGlobal {
-			initializerKinds++
+			initKinds++
 		}
 		if g.HasInitFunc {
-			initializerKinds++
+			initKinds++
 		}
 		if len(g.InitExpr) != 0 {
-			initializerKinds++
+			initKinds++
 		}
-		if initializerKinds > 1 {
-			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		if initKinds > 1 {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer forms", i)
 		}
-		if len(g.InitExpr) != 0 {
-			if err := validateCompiledConstExpr(g.InitExpr, g.Type, c); err != nil {
-				return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", i, err)
-			}
+		if i < len(c.GlobalImports) && initKinds != 0 {
+			return fmt.Errorf("compiled metadata invalid: imported global %d has initializer metadata", i)
 		}
 		if g.HasInitGlobal {
 			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
 			}
 			src := c.Globals[g.InitGlobal]
-			if g.InitGlobal >= len(c.GlobalImports) || src.Mutable {
-				return fmt.Errorf("compiled metadata invalid: global %d initializer references non-imported or mutable global %d", i, g.InitGlobal)
+			if src.Mutable {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer references mutable global %d", i, g.InitGlobal)
 			}
 			if src.Type != g.Type {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
 			}
+			srcExact, srcErr := exactValueType(src.Type, src.HasValueType, src.ValueTypeIndex, c.ValueTypes, c.Types)
+			dstExact, dstErr := exactValueType(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types)
+			if srcErr != nil || dstErr != nil || !valueTypeSubtype(srcExact, c.Types, dstExact, c.Types) {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer structural type mismatch with source global %d", i, g.InitGlobal)
+			}
+		}
+		if err := c.validateGlobalInitExpr(i, g); err != nil {
+			return err
 		}
 		if g.HasInitFunc {
 			if g.Type != ValFuncRef {
@@ -1139,22 +2829,81 @@ func (c *Compiled) validate() error {
 			if !c.needsFuncRefDescs() {
 				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer without descriptor arena", i)
 			}
+			actual, actualErr := c.functionRefExactType(g.InitFunc)
+			required, requiredErr := c.globalExactType(i)
+			if actualErr != nil || requiredErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer structural type mismatch", i)
+			}
 		}
 	}
-	validateElementValues := func(kind string, seg int, refType ValType, values []RefInit) error {
-		if refType != ValFuncRef && refType != ValExternRef {
+	validateOffset := func(kind string, seg int, offset OffsetInit, want ValType, context constExprContext) error {
+		if offset.HasGlobal && len(offset.Expr) != 0 {
+			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, seg)
+		}
+		if offset.HasGlobal {
+			if want != ValI32 {
+				return fmt.Errorf("compiled metadata invalid: %s %d uses compact i32 global offset for %s address", kind, seg, want)
+			}
+			return c.validateDeferredOffsetGlobal(kind, seg, offset.Global)
+		}
+		if len(offset.Expr) != 0 {
+			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, constExprGlobalScope{context: context, limit: len(c.Globals)}); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s %d extended %s offset: %w", kind, seg, want, err)
+			}
+		}
+		return nil
+	}
+	validateElementValues := func(kind string, seg int, elem ElemInit) error {
+		refType := normalizedElemRefType(elem.RefType)
+		if refType != ValFuncRef && refType != ValExternRef && refType != ValExnRef && refType != ValI31Ref && refType != ValAnyRef {
 			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
 		}
-		for k, value := range values {
-			if value.Null {
-				if value.HasGlobal {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has both null and global initializers", kind, seg, k)
+		required, err := c.elemExactType(elem)
+		if err != nil {
+			return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
+		}
+		for k, value := range elem.Values {
+			if len(value.Expr) != 0 {
+				if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
+				}
+				gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
+				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
+				}
+				if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, seg, k, err)
 				}
 				continue
 			}
 			if value.HasGlobal {
-				if err := c.validateElementGlobalInitializer(kind, seg, k, refType, value.GlobalIndex); err != nil {
-					return err
+				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global %d is unavailable or mutable", kind, seg, k, value.GlobalIndex)
+				}
+				if value.I31Wrap {
+					if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
+						return fmt.Errorf("compiled metadata invalid: %s element %d value %d i31 global type mismatch", kind, seg, k)
+					}
+					continue
+				}
+				actual, actualErr := c.globalExactType(int(value.GlobalIndex))
+				if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global type mismatch", kind, seg, k)
+				}
+				continue
+			}
+			if value.I31Wrap {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has i31 wrapper without global", kind, seg, k)
+			}
+			if value.Null {
+				if required.Kind != ValueTypeReference || !required.Ref.Nullable {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
+				}
+				continue
+			}
+			if refType == ValI31Ref {
+				if value.FuncIndex&1 == 0 {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid i31 immediate", kind, seg, k)
 				}
 				continue
 			}
@@ -1163,6 +2912,10 @@ func (c *Compiled) validate() error {
 			}
 			if int(value.FuncIndex) >= totalFuncs {
 				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
+			}
+			actual, actualErr := c.functionRefExactType(value.FuncIndex)
+			if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d function type mismatch", kind, seg, k)
 			}
 		}
 		return nil
@@ -1175,28 +2928,26 @@ func (c *Compiled) validate() error {
 		if uint64(el.TableIndex) >= uint64(c.tableCount()) {
 			return fmt.Errorf("compiled metadata invalid: active element %d table index %d out of range", seg, el.TableIndex)
 		}
-		if c.tableElementType(int(el.TableIndex)) != refType {
-			return fmt.Errorf("compiled metadata invalid: active element %d type %s does not match table %d type %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
+		if c.tableEntryBytes(int(el.TableIndex)) != elemEntryBytes(refType) {
+			return fmt.Errorf("compiled metadata invalid: active element %d type %s has incompatible table %d storage %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
 		}
-		if el.Offset.HasGlobal && len(el.Offset.Expr) != 0 {
-			return fmt.Errorf("compiled metadata invalid: element %d has multiple offset initializer forms", seg)
+		elemExact, elemErr := c.elemExactType(el)
+		tableExact, tableErr := c.tableExactType(int(el.TableIndex))
+		if elemErr != nil || tableErr != nil || !valueTypeSubtype(elemExact, c.Types, tableExact, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: active element %d structural type does not match table %d", seg, el.TableIndex)
 		}
-		if el.Offset.HasGlobal {
-			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
-				return err
-			}
+		offsetType := ValI32
+		if c.tableDef(int(el.TableIndex)).Addr64 {
+			offsetType = ValI64
 		}
-		if len(el.Offset.Expr) != 0 {
-			if err := validateCompiledConstExpr(el.Offset.Expr, ValI32, c); err != nil {
-				return fmt.Errorf("compiled metadata invalid: element %d extended offset: %w", seg, err)
-			}
+		if err := validateOffset("element", seg, el.Offset, offsetType, constExprElementOffset); err != nil {
+			return err
 		}
-		if err := validateElementValues("active", seg, refType, el.Values); err != nil {
+		if err := validateElementValues("active", seg, el); err != nil {
 			return err
 		}
 	}
 	for seg, el := range c.passiveElems {
-		refType := normalizedElemRefType(el.RefType)
 		mode := el.Mode
 		if mode == ElemModeActive || mode == ElemModeDeclarative {
 			if len(el.Values) != 0 {
@@ -1208,23 +2959,22 @@ func (c *Compiled) validate() error {
 		} else if mode != ElemModePassive {
 			return fmt.Errorf("compiled metadata invalid: element-state slot %d has mode %d", seg, mode)
 		}
-		if err := validateElementValues("element-state", seg, refType, el.Values); err != nil {
+		if err := validateElementValues("element-state", seg, el); err != nil {
 			return err
 		}
 	}
 	for seg, d := range c.Data {
-		if d.Offset.HasGlobal && len(d.Offset.Expr) != 0 {
-			return fmt.Errorf("compiled metadata invalid: data %d has multiple offset initializer forms", seg)
-		}
-		if d.Offset.HasGlobal {
-			if err := c.validateDeferredOffsetGlobal("data", seg, d.Offset.Global); err != nil {
-				return err
+		if count := c.memoryCount(); d.MemoryIndex != 0 || count != 0 {
+			if uint64(d.MemoryIndex) >= uint64(count) {
+				return fmt.Errorf("compiled metadata invalid: active data %d memory index %d out of range", seg, d.MemoryIndex)
 			}
 		}
-		if len(d.Offset.Expr) != 0 {
-			if err := validateCompiledConstExpr(d.Offset.Expr, ValI32, c); err != nil {
-				return fmt.Errorf("compiled metadata invalid: data %d extended offset: %w", seg, err)
-			}
+		want := ValI32
+		if count := c.memoryCount(); count != 0 && c.memoryDef(int(d.MemoryIndex)).Addr64 {
+			want = ValI64
+		}
+		if err := validateOffset("data", seg, d.Offset, want, constExprDataOffset); err != nil {
+			return err
 		}
 	}
 	for seg, d := range c.PassiveData {
@@ -1249,105 +2999,165 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 		if g.Type == ValFuncRef && g.Bits != 0 {
 			return fmt.Errorf("compiled metadata invalid: non-structural funcref global initializer at global %d is unsupported", i)
 		}
+		if g.Type == ValExnRef && g.Bits != 0 {
+			return fmt.Errorf("compiled metadata invalid: non-null %s global initializer at global %d is unsupported", g.Type, i)
+		}
+		if g.Type == ValAnyRef && g.Bits != 0 && (g.Bits>>32 != 0 || uint32(g.Bits)&1 == 0) {
+			return fmt.Errorf("compiled metadata invalid: non-i31 anyref global initializer at global %d is unsupported", i)
+		}
+		if g.Type == ValI31Ref && g.Bits != 0 && (g.Bits>>32 != 0 || uint32(g.Bits)&1 == 0) {
+			return fmt.Errorf("compiled metadata invalid: invalid i31 global initializer at global %d", i)
+		}
 	}
 	return nil
 }
 
-func (c *Compiled) validateCodecV23Metadata() error {
-	if unsupported := compiledStructuralRequiredFeatures(c) &^ coreFeaturesWago; unsupported != 0 {
+func (c *Compiled) validateExactValueMetadata() error {
+	check := func(context string, legacy ValType, has bool, index uint32) error {
+		if _, err := exactValueType(legacy, has, index, c.ValueTypes, c.Types); err != nil {
+			return fmt.Errorf("compiled metadata invalid: %s: %w", context, err)
+		}
+		return nil
+	}
+	for i, g := range c.GlobalImports {
+		if err := check(fmt.Sprintf("global import %d type", i), g.Type, g.HasValueType, g.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	for i, g := range c.Globals {
+		if err := check(fmt.Sprintf("global %d type", i), g.Type, g.HasValueType, g.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	if c.HasTable {
+		if err := check("table 0 type", c.tableElementType(0), c.TableHasValueType, c.TableValueTypeIndex); err != nil {
+			return err
+		}
+		for i, table := range c.extraTables {
+			if err := check(fmt.Sprintf("table %d type", i+1), c.tableElementType(i+1), table.HasValueType, table.ValueTypeIndex); err != nil {
+				return err
+			}
+		}
+	}
+	for i, elem := range c.Elems {
+		if err := check(fmt.Sprintf("active element %d type", i), normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	for i, elem := range c.passiveElems {
+		if err := check(fmt.Sprintf("element-state %d type", i), normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Compiled) validateCodecMetadata() error {
+	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
+		return err
+	}
+	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
+		return err
+	}
+	if err := c.validateExactValueMetadata(); err != nil {
+		return err
+	}
+	for _, set := range []struct {
+		kind string
+		sigs []FuncSig
+	}{{"imported", c.importFuncSigs}, {"local", c.Funcs}} {
+		for i, sig := range set.sigs {
+			if _, _, err := exactFuncSignature(sig, c.Types); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s function %d signature: %w", set.kind, i, err)
+			}
+		}
+	}
+	structural := compiledStructuralRequiredFeatures(c)
+	if unsupported := structural &^ (CoreFeaturesV3 | CoreFeatureExtendedConst); unsupported != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
+	}
+	if err := c.validateMemoryMetadata(structural); err != nil {
+		return err
 	}
 	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
 		return err
 	}
 	for i, g := range c.Globals {
-		initializerKinds := 0
+		initKinds := 0
 		if g.HasInitGlobal {
-			initializerKinds++
+			initKinds++
 		}
 		if g.HasInitFunc {
-			initializerKinds++
+			initKinds++
 		}
 		if len(g.InitExpr) != 0 {
-			initializerKinds++
+			initKinds++
 		}
-		if initializerKinds > 1 {
-			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		if initKinds > 1 {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer forms", i)
 		}
-		if len(g.InitExpr) != 0 {
-			if err := validateCompiledConstExpr(g.InitExpr, g.Type, c); err != nil {
-				return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", i, err)
-			}
+		if err := c.validateGlobalInitExpr(i, g); err != nil {
+			return err
 		}
 		if g.HasInitFunc && g.Type != ValFuncRef {
 			return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
 		}
 	}
 	for name, tableIndex := range c.tableExports {
-		if tableIndex == memoryExportSentinel {
-			if !c.HasMemory {
-				return fmt.Errorf("compiled metadata invalid: memory export %q without memory", name)
-			}
-			continue
-		}
 		if tableIndex < 0 || tableIndex >= c.tableCount() {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
 		}
 	}
-	checkElems := func(kind string, elems []ElemInit) error {
-		for i, elem := range elems {
-			if elem.Offset.HasGlobal && len(elem.Offset.Expr) != 0 {
-				return fmt.Errorf("compiled metadata invalid: %s element %d has multiple offset initializer forms", kind, i)
-			}
-			if len(elem.Offset.Expr) != 0 {
-				if err := validateCompiledConstExpr(elem.Offset.Expr, ValI32, c); err != nil {
-					return fmt.Errorf("compiled metadata invalid: %s element %d extended offset: %w", kind, i, err)
-				}
-			}
-			refType := normalizedElemRefType(elem.RefType)
-			for j, value := range elem.Values {
-				if value.HasGlobal {
-					if err := c.validateElementGlobalInitializer(kind, i, j, refType, value.GlobalIndex); err != nil {
-						return err
-					}
-					continue
-				}
-				if !value.Null && refType != ValFuncRef {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
-				}
+	checkOffset := func(kind string, i int, offset OffsetInit, want ValType, context constExprContext) error {
+		if offset.HasGlobal && len(offset.Expr) != 0 {
+			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, i)
+		}
+		if offset.HasGlobal && want != ValI32 {
+			return fmt.Errorf("compiled metadata invalid: %s %d uses compact i32 global offset for %s address", kind, i, want)
+		}
+		if len(offset.Expr) != 0 {
+			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, constExprGlobalScope{context: context, limit: len(c.Globals)}); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s %d extended %s offset: %w", kind, i, want, err)
 			}
 		}
 		return nil
 	}
-	if err := checkElems("active", c.Elems); err != nil {
+	checkElems := func(kind string, elems []ElemInit, active bool) error {
+		for i, elem := range elems {
+			offsetType := ValI32
+			if active && int(elem.TableIndex) < c.tableCount() && c.tableDef(int(elem.TableIndex)).Addr64 {
+				offsetType = ValI64
+			}
+			if err := checkOffset(kind, i, elem.Offset, offsetType, constExprElementOffset); err != nil {
+				return err
+			}
+			refType := normalizedElemRefType(elem.RefType)
+			for j, value := range elem.Values {
+				if value.HasGlobal || value.Null || refType == ValFuncRef {
+					continue
+				}
+				if refType == ValI31Ref && value.FuncIndex&1 == 1 {
+					continue
+				}
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
+			}
+		}
+		return nil
+	}
+	if err := checkElems("active", c.Elems, true); err != nil {
 		return err
 	}
-	if err := checkElems("element-state", c.passiveElems); err != nil {
+	if err := checkElems("element-state", c.passiveElems, false); err != nil {
 		return err
 	}
 	for i, data := range c.Data {
-		if data.Offset.HasGlobal && len(data.Offset.Expr) != 0 {
-			return fmt.Errorf("compiled metadata invalid: data %d has multiple offset initializer forms", i)
+		want := ValI32
+		if c.memoryCount() != 0 && c.memoryDef(int(data.MemoryIndex)).Addr64 {
+			want = ValI64
 		}
-		if len(data.Offset.Expr) != 0 {
-			if err := validateCompiledConstExpr(data.Offset.Expr, ValI32, c); err != nil {
-				return fmt.Errorf("compiled metadata invalid: data %d extended offset: %w", i, err)
-			}
+		if err := checkOffset("data", i, data.Offset, want, constExprDataOffset); err != nil {
+			return err
 		}
-	}
-	return nil
-}
-
-func (c *Compiled) validateElementGlobalInitializer(kind string, seg, valueIndex int, refType ValType, globalIndex uint32) error {
-	if uint64(globalIndex) >= uint64(len(c.Globals)) {
-		return fmt.Errorf("compiled metadata invalid: %s element %d global %d index %d out of range", kind, seg, valueIndex, globalIndex)
-	}
-	source := c.Globals[globalIndex]
-	if uint64(globalIndex) >= uint64(len(c.GlobalImports)) || source.Mutable {
-		return fmt.Errorf("compiled metadata invalid: %s element %d global %d must reference an immutable imported global", kind, seg, globalIndex)
-	}
-	if source.Type != refType {
-		return fmt.Errorf("compiled metadata invalid: %s element %d global %d type %s does not match %s", kind, seg, globalIndex, source.Type, refType)
 	}
 	return nil
 }
@@ -1392,17 +3202,19 @@ func (c *Compiled) needsFuncRefDescs() bool {
 }
 
 func normalizedElemRefType(t ValType) ValType {
-	if t == ValExternRef {
-		return ValExternRef
+	if t == ValExternRef || t == ValExnRef || t == ValAnyRef || t == ValI31Ref {
+		return t
 	}
 	return ValFuncRef
 }
 
 func normalizedTableElementType(t ValType) ValType {
-	if t == ValExternRef {
-		return ValExternRef
+	switch t {
+	case ValExternRef, ValExnRef, ValAnyRef, ValI31Ref:
+		return t
+	default:
+		return ValFuncRef
 	}
-	return ValFuncRef
 }
 
 func (c *Compiled) tableElementType(index int) ValType {
@@ -1412,11 +3224,17 @@ func (c *Compiled) tableElementType(index int) ValType {
 	return normalizedTableElementType(c.extraTables[index-1].Type)
 }
 
-func (c *Compiled) tableEntryBytes(index int) int {
-	if c.tableElementType(index) == ValExternRef {
+func elemEntryBytes(t ValType) int {
+	switch normalizedElemRefType(t) {
+	case ValExternRef, ValExnRef, ValAnyRef, ValI31Ref:
 		return 8
+	default:
+		return wruntime.TableEntryBytes
 	}
-	return wruntime.TableEntryBytes
+}
+
+func (c *Compiled) tableEntryBytes(index int) int {
+	return elemEntryBytes(c.tableElementType(index))
 }
 
 func (c *Compiled) hasFuncrefTable() bool {
@@ -1435,6 +3253,115 @@ func (c *Compiled) hasExternrefTable() bool {
 		}
 	}
 	return false
+}
+
+func (c *Compiled) memoryExportMap() map[string]int {
+	if c == nil || c.memoryDir == nil {
+		return nil
+	}
+	return c.memoryDir.exports
+}
+
+func (c *Compiled) hasExactMemoryExports() bool {
+	return c != nil && c.memoryDir != nil && c.memoryDir.exactExports
+}
+
+func (c *Compiled) memoryCount() int {
+	if c == nil {
+		return 0
+	}
+	if c.memoryDir != nil && len(c.memoryDir.defs) != 0 {
+		return len(c.memoryDir.defs)
+	}
+	if c.HasMemory || c.memoryImport != "" {
+		return 1
+	}
+	return 0
+}
+
+func (c *Compiled) memoryImportCount() int {
+	count := 0
+	for i := 0; i < c.memoryCount(); i++ {
+		def := c.memoryDef(i)
+		if def.ImportKey == "" {
+			break
+		}
+		count++
+	}
+	return count
+}
+
+func (c *Compiled) memoryImportAt(index int) (memoryDef, bool) {
+	if c == nil || index < 0 || index >= c.memoryCount() {
+		return memoryDef{}, false
+	}
+	def := c.memoryDef(index)
+	return def, def.ImportKey != ""
+}
+
+func (c *Compiled) memoryDef(index int) memoryDef {
+	if c.memoryDir != nil && len(c.memoryDir.defs) != 0 {
+		return c.memoryDir.defs[index]
+	}
+	if index != 0 {
+		return memoryDef{}
+	}
+	def := memoryDef{ImportKey: c.memoryImport, Min: uint64(c.MemMinPages), Max: uint64(c.MemMaxPages), HasMax: c.MemHasMax}
+	return def
+}
+
+func (c *Compiled) validateMemoryMetadata(required CoreFeatures) error {
+	seenLocal := false
+	for i := 0; i < c.memoryCount(); i++ {
+		memory := c.memoryDef(i)
+		if memory.HasMax && memory.Max < memory.Min {
+			return fmt.Errorf("compiled metadata invalid: memory %d maximum %d < minimum %d", i, memory.Max, memory.Min)
+		}
+		if memory.Shared && !memory.HasMax {
+			return fmt.Errorf("compiled metadata invalid: shared memory %d has no maximum", i)
+		}
+		if memory.ImportKey == "" {
+			seenLocal = true
+		} else if seenLocal {
+			return fmt.Errorf("compiled metadata invalid: imported memory %d follows a local memory", i)
+		}
+		if memory.Addr64 && !required.IsEnabled(CoreFeatureMemory64) {
+			return fmt.Errorf("compiled metadata invalid: memory %d uses 64-bit addresses without memory64 feature", i)
+		}
+	}
+	if c.memoryCount() > 1 && !required.IsEnabled(CoreFeatureMultiMemory) {
+		return fmt.Errorf("compiled metadata invalid: multiple memories require multi-memory feature")
+	}
+	for name, index := range c.memoryExportMap() {
+		if index < 0 || index >= c.memoryCount() {
+			return fmt.Errorf("compiled metadata invalid: memory export %q index %d out of range", name, index)
+		}
+	}
+	return nil
+}
+
+func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
+	const pageBytes = uint64(65536)
+	var total uint64
+	for i := 0; i < c.memoryCount(); i++ {
+		def := c.memoryDef(i)
+		pages := def.Max
+		if !def.HasMax {
+			// The exact Wasm type remains unbounded in metadata. Policy and managed-
+			// instance accounting charge the finite implementation reservation used
+			// by instantiation, matching the existing memory32 resource model.
+			pages = 65535
+		}
+		if pages > ^uint64(0)/pageBytes {
+			return 0, fmt.Errorf("memory %d maximum %d pages overflows bytes", i, pages)
+		}
+		bytes := pages * pageBytes
+		if total > ^uint64(0)-bytes {
+			return 0, fmt.Errorf("memory maximum total overflows uint64")
+		}
+		total += bytes
+	}
+	return total, nil
 }
 
 func (c *Compiled) tableCount() int {
@@ -1463,12 +3390,12 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 		return tableImportDef{}, false
 	}
 	if index == 0 && c.tableImport != "" {
-		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), HasMax: c.tableImportHasMax}, true
+		return tableImportDef{Key: c.tableImport, Min: uint64(c.tableImportMin), Max: uint64(c.tableImportMax), Type: c.tableElementType(0), ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasMax: c.tableImportHasMax, Addr64: c.TableAddr64}, true
 	}
 	if index > 0 && index-1 < len(c.extraTables) {
 		table := c.extraTables[index-1]
 		if table.ImportKey != "" {
-			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), HasMax: table.ImportHasMax}, true
+			return tableImportDef{Key: table.ImportKey, Min: uint64(table.Size), Max: table.Max, Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax, Addr64: table.Addr64}, true
 		}
 	}
 	return tableImportDef{}, false
@@ -1476,14 +3403,40 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 
 func (c *Compiled) tableDef(index int) tableDef {
 	if index == 0 {
-		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, InitFunc: c.TableInitFunc}
+		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, Addr64: c.TableAddr64, InitFunc: c.TableInitFunc}
 	}
 	return c.extraTables[index-1]
 }
 
+func (c *Compiled) inertUnobservableTableDeclaration(index int) bool {
+	return c != nil && index == 0 && c.tableCount() == 1 && c.tableImport == "" && len(c.Funcs) == 0 && c.NumImports == 0 && len(c.Elems) == 0 && len(c.passiveElems) == 0 && len(c.tableExports) == 0
+}
+
+func (c *Compiled) stagedInertOversizedTable64(index int) bool {
+	if !c.inertUnobservableTableDeclaration(index) {
+		return false
+	}
+	def := c.tableDef(0)
+	return def.Addr64 && def.HasMax && def.Size >= 0 && uint64(def.Size) <= frontend.StagedTable64Max() && def.Max > frontend.StagedTable64Max()
+}
+
+func (c *Compiled) tableRuntimeCapacity(index int) int {
+	def := c.tableDef(index)
+	if def.Max == 0 {
+		return def.Size
+	}
+	entryBytes := c.tableEntryBytes(index)
+	if def.HasMax && c.inertUnobservableTableDeclaration(index) && def.Max > uint64((wruntime.InstantiateArenaSize-8)/entryBytes) {
+		return def.Size
+	}
+	return int(def.Max)
+}
+
 func (c *Compiled) tableMinimum(index int) int {
 	if def, ok := c.tableImportAt(index); ok {
-		return def.Min
+		// Import admission and codec validation prove the executable minimum fits int;
+		// tableImportDef retains the exact uint64 declaration for metadata/linking.
+		return int(def.Min)
 	}
 	return c.tableDef(index).Size
 }
@@ -1493,11 +3446,24 @@ func (c *Compiled) validateArenaFootprint() error {
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
-	funcRefCount := 0
+	funcRefCount, funcRefTypeIDCount := 0, 0
 	if c.needsFuncRefDescs() {
 		funcRefCount = len(c.FuncTypeID) + 1
+		if c.usesDynamicFuncRefTest() {
+			funcRefTypeIDCount = len(c.FuncTypeID)
+		}
 	}
-	tableSize, tableCapacity := c.TableSize, c.TableMax
+	tagCount := 0
+	if c.memoryDir != nil {
+		tagCount = len(c.memoryDir.ehTags)
+	}
+	v128GlobalCount := 0
+	for _, global := range c.Globals {
+		if global.Type == ValV128 {
+			v128GlobalCount++
+		}
+	}
+	tableSize, tableCapacity := c.TableSize, c.tableRuntimeCapacity(0)
 	var tableCaps []int
 	var tableEntryBytes []int
 	if c.HasTable {
@@ -1510,11 +3476,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		tableSize, tableCapacity = 0, 0
 		tableCaps = make([]int, c.tableCount())
 		for i := range tableCaps {
-			def := c.tableDef(i)
-			tableCaps[i] = def.Max
-			if tableCaps[i] == 0 {
-				tableCaps[i] = def.Size
-			}
+			tableCaps[i] = c.tableRuntimeCapacity(i)
 		}
 	}
 	passiveElemBytes := 0
@@ -1529,14 +3491,18 @@ func (c *Compiled) validateArenaFootprint() error {
 		passiveElemBytes += len(elem.Values) * stride
 	}
 	hostCallBytes := 0
-	if c.needsPublicFuncrefHostReentry() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
 		hostCallBytes = wruntime.HostCtrlFrameBytes
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
+		FuncRefTypeIDCount: funcRefTypeIDCount,
+		TagCount:           tagCount,
 		GlobalCount:        len(c.Globals),
+		V128GlobalCount:    v128GlobalCount,
+		MemoryCount:        c.memoryCount(),
 		HasTable:           c.HasTable,
 		TableSize:          tableSize,
 		TableCapacity:      tableCapacity,
@@ -1586,24 +3552,47 @@ func (c *Compiled) maxCallSlots() (params, results int, err error) {
 	return params, results, nil
 }
 
+func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
+	if len(g.InitExpr) == 0 {
+		return nil
+	}
+	gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion()
+	if gcConstExpr && (g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
+		want, err := c.globalExactType(index)
+		if err != nil {
+			return fmt.Errorf("compiled metadata invalid: global %d GC initializer type: %w", index, err)
+		}
+		if err := c.validateGCConstExpr(g.InitExpr, want, index); err != nil {
+			return fmt.Errorf("compiled metadata invalid: global %d GC initializer: %w", index, err)
+		}
+		return nil
+	}
+	if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: index}); err != nil {
+		return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", index, err)
+	}
+	return nil
+}
+
 func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error {
 	if idx < 0 || idx >= len(c.Globals) {
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d out of range", kind, seg, idx)
 	}
 	g := c.Globals[idx]
-	if idx >= len(c.GlobalImports) || g.Mutable || g.Type != ValI32 {
-		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be imported immutable i32", kind, seg, idx)
+	if g.Mutable || g.Type != ValI32 {
+		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be immutable i32", kind, seg, idx)
 	}
 	return nil
 }
 
 const wagoMagic = "WAGO"
 
-// Version 23 adds extended constant-expression metadata to the imported-global
-// element initializer, binding-independent imported-call, structural-reference,
-// indexed-table, typed-element, and feature data. It never serializes live reference tokens,
-// target addresses, thunk addresses, owners, or store identity.
-const wagoVersion = 23
+// Version 30 added validated per-safepoint native WasmGC frame-root metadata.
+// Version 31 moves generated memory bounds to the u64 byte-size cache and widens
+// indexed-memory directory entries, so older native code must not be loaded by a
+// runtime using the new basedata ABI (or vice versa). Older blobs are rejected.
+// The codec never serializes live owners, collector handles, mappings, tokens,
+// active handlers, thunk addresses, or store identity.
+const wagoVersion = 31
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -1612,11 +3601,17 @@ const wagoVersion = 23
 // which a loaded blob has no way to record. Recompile from wasm with the desired
 // config at load time instead.
 func (c *Compiled) MarshalBinary() ([]byte, error) {
+	if c == nil {
+		return nil, errors.New("wago: compiled module is nil")
+	}
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if c.codeCache.closed {
+		return nil, errors.New("wago: compiled module is closed")
+	}
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
-	}
-	if c.requiresAVX2 || c.requiresAVX512 {
-		return nil, errors.New("wago: wide-SIMD plugin code cannot be serialized until the artifact format records CPU requirements")
 	}
 	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
 		return nil, errors.New("wago: compiled module has functions but no native entries")
@@ -1624,7 +3619,7 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.NumImports > 0 && !c.dynamicImports {
 		return nil, errors.New("wago: imported-function code lacks dynamic dispatch metadata")
 	}
-	if err := c.validateCodecV23Metadata(); err != nil {
+	if err := c.validateCodecMetadata(); err != nil {
 		return nil, err
 	}
 	return marshalCompiled(c)
@@ -1646,14 +3641,24 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 		decoded.tableExports = nil
 	}
 	decoded.hasTableExportMetadata = true
-	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^CoreFeatures(decoded.requiredFeatures) != 0 {
-		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^CoreFeatures(decoded.requiredFeatures))
+	if decoded.memoryDir == nil {
+		decoded.memoryDir = &compiledMemoryDirectory{}
+	}
+	if len(decoded.memoryDir.exports) == 0 {
+		decoded.memoryDir.exports = nil
+	}
+	decoded.memoryDir.exactExports = true
+	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^decoded.requiredFeatures != 0 {
+		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
 	}
 	if err := decoded.validate(); err != nil {
 		return err
 	}
-	if CoreFeatures(decoded.requiredFeatures).IsEnabled(CoreFeatureSIMD) && !hostSupportsSIMD() {
+	if decoded.requiredFeatures.IsEnabled(CoreFeatureSIMD) && !hostSupportsSIMD() {
 		return fmt.Errorf("wago: compiled module requires SIMD CPU features unavailable on this host")
+	}
+	if decoded.requiresBMI2 && !hostSupportsBMI2() {
+		return fmt.Errorf("wago: compiled module requires BMI2 CPU features unavailable on this host")
 	}
 	*c = decoded
 	installCompiledFinalizer(c)
@@ -1736,15 +3741,14 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		if importIdx < 0 || importIdx >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
 		}
-		ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport)
-		if !ok || ex == nil || ex.inst == nil {
-			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		if ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+			// Native cross-instance calls carry only the caller's invocation lease and
+			// trap cell; the import attachment retains the producer's physical resources.
+			// Keep this Go-level re-export path identical so producer Close neither owns
+			// nor strands an invocation initiated through the relay.
+			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
 		}
-		// Native cross-instance calls carry only the caller's invocation lease and
-		// trap cell; the import attachment retains the producer's physical resources.
-		// Keep this Go-level re-export path identical so producer Close neither owns
-		// nor strands an invocation initiated through the relay.
-		return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
+		return in.invokeReexportedHost(export, importIdx, args)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -1755,8 +3759,16 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	if ic.resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, fmt.Errorf("%s GC boundary collection: %w", export, err)
+	}
 	if ic.hasFuncRefParams {
-		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params); err != nil {
+		defer in.clearGCRefArgumentRoots()
+		params, _, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("%s exact parameters: %w", export, err)
+		}
+		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params, params); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1766,26 +3778,29 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
+	if in.importsFuncrefStorage() || in.table != nil {
+		defer in.reconcileFuncrefRoots()
+	}
 	stopCancel := noOpCancellationWatch
 	if cancel != nil {
 		stopCancel = in.startCancellationWatch(cancel, in.trap)
 	}
+	defer stopCancel()
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	} else {
 		if err := in.callNativeAsync(entry, false); err != nil {
-			stopCancel()
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	}
-	stopCancel()
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		return nil, err
+	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
@@ -1801,7 +3816,11 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		}
 	}
 	if ic.hasFuncRefResults {
-		if err := in.translatePublicReferenceResults(export, out, in.c.Funcs[li].Results); err != nil {
+		_, results, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("%s exact results: %w", export, err)
+		}
+		if err := in.translatePublicReferenceResults(export, out, in.c.Funcs[li].Results, results); err != nil {
 			return nil, err
 		}
 	}
@@ -1828,7 +3847,8 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 
 // invokeAttachedLocalContext enters a producer retained by the caller's function
 // import attachment. The caller owns the invocation lease and active trap cell,
-// exactly as for a native dynamic import call.
+// exactly as for a native dynamic import call. attachedResult permits first-time
+// funcref tokenization to transfer the attachment's finalization lifetime.
 func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte, attachedResult bool) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
@@ -1851,8 +3871,16 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	if resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
 	}
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, fmt.Errorf("function GC boundary collection: %w", err)
+	}
 	if hasReferenceValType(sig.Params) {
-		if err := in.marshalPublicReferenceArgs("function", args, sig.Params); err != nil {
+		defer in.clearGCRefArgumentRoots()
+		params, _, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("function exact parameters: %w", err)
+		}
+		if err := in.marshalPublicReferenceArgs("function", args, sig.Params, params); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1865,26 +3893,29 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	if len(activeTrap) < 4 {
 		activeTrap = in.trap
 	}
+	if in.importsFuncrefStorage() || in.table != nil {
+		defer in.reconcileFuncrefRoots()
+	}
 	stopCancel := noOpCancellationWatch
 	if cancel != nil {
 		stopCancel = in.startCancellationWatch(cancel, activeTrap)
 	}
+	defer stopCancel()
 	if in.syncMode {
 		if err := in.callNativeSyncWithTrap(entry, activeTrap); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	} else {
 		if err := in.callNativeAsyncWithTrap(entry, false, activeTrap); err != nil {
-			stopCancel()
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
-			stopCancel()
 			return nil, err
 		}
 	}
-	stopCancel()
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		return nil, err
+	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:resultSlots]
@@ -1913,7 +3944,11 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 		resSlot++
 	}
 	if hasReferenceValType(sig.Results) {
-		if err := in.translatePublicReferenceResultsMode("function", out, sig.Results, attachedResult); err != nil {
+		_, results, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("function exact results: %w", err)
+		}
+		if err := in.translatePublicReferenceResultsMode("function", out, sig.Results, results, attachedResult); err != nil {
 			return nil, err
 		}
 	}
@@ -1943,20 +3978,26 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 	}
 	stopCallback := context.AfterFunc(cancel, func() {
 		defer close(stopped)
-		// Keep publishing until native code observes the request. Linux/amd64 also
-		// re-sends the thread-directed signal, closing entry/exit and host-return
-		// races without generated-code polls.
-		for {
+		// The trap cell remains armed until invocation cleanup, so retries only
+		// need to bridge native entry/exit races. Bound the process-wide signal
+		// broadcasts: a guest parked indefinitely in a host call will observe the
+		// trap when it returns, without scanning /proc/self/task forever.
+		retry := time.NewTicker(50 * time.Microsecond)
+		defer retry.Stop()
+		for attempt := 0; attempt < 256; attempt++ {
 			wruntime.RequestInterrupt(activeTrap)
 			select {
 			case <-done:
 				return
-			default:
-				time.Sleep(50 * time.Microsecond)
+			case <-retry.C:
 			}
 		}
 	})
+	var stopOnce atomic.Bool
 	return func() {
+		if !stopOnce.CompareAndSwap(false, true) {
+			return
+		}
 		clearDeadline()
 		close(done)
 		if !stopCallback() {
@@ -2012,6 +4053,62 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
+func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64) (results []uint64, err error) {
+	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
+		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
+	}
+	sig := in.c.importFuncSigs[importIdx]
+	for _, typ := range sig.Params {
+		if isReferenceValType(typ) {
+			return nil, fmt.Errorf("export %q re-exported host reference parameters require an owned host funcref", export)
+		}
+	}
+	for _, typ := range sig.Results {
+		if isReferenceValType(typ) {
+			return nil, fmt.Errorf("export %q re-exported host reference results require an owned host funcref", export)
+		}
+	}
+	paramSlots, slotErr := valTypesSlots(sig.Params)
+	if slotErr != nil {
+		return nil, fmt.Errorf("%s parameter slots: %w", export, slotErr)
+	}
+	resultSlots, slotErr := valTypesSlots(sig.Results)
+	if slotErr != nil {
+		return nil, fmt.Errorf("%s result slots: %w", export, slotErr)
+	}
+	if len(args) != paramSlots {
+		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, paramSlots, len(args))
+	}
+	params := append([]uint64(nil), args...)
+	results = make([]uint64, resultSlots)
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			switch value := recovered.(type) {
+			case HostExit:
+				err = &ExitError{Code: value.Code}
+				results = nil
+			case *HostExit:
+				if value == nil {
+					panic(recovered)
+				}
+				err = &ExitError{Code: value.Code}
+				results = nil
+			default:
+				panic(recovered)
+			}
+		}
+	}()
+	fn := in.syncHosts[importIdx]
+	if in.rt == nil || !in.rt.scopedHostCalls() {
+		fn(staticHostModule{in: in}, params, results)
+	} else {
+		caller := in.beginHostCallScope()
+		defer caller.scope.end(caller.generation)
+		fn(caller, params, results)
+	}
+	return results, nil
+}
+
 // fillInvokeCache resolves export and memoizes it so subsequent Invokes skip the
 // exports map probe. Local functions store their local index; an imported
 // InstanceExport stores -1-importIndex and forwards through its original owner.
@@ -2027,9 +4124,8 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
 		}
-		ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport)
-		if !ok || ex == nil || ex.inst == nil {
-			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || in.syncHosts[gfi] == nil) {
+			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
 		slot := &in.ic[int(in.icNext)%len(in.ic)]
 		in.icNext++
@@ -2103,10 +4199,25 @@ func hasValType(types []ValType, want ValType) bool {
 }
 
 func hasReferenceValType(types []ValType) bool {
-	return hasValType(types, ValFuncRef) || hasValType(types, ValExternRef)
+	for _, typ := range types {
+		if isReferenceValType(typ) {
+			return true
+		}
+	}
+	return false
 }
 
-func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType) error {
+func exactReferenceType(types []ValueTypeDescriptor, index int, legacy ValType) (ValueTypeDescriptor, bool) {
+	if index >= 0 && index < len(types) {
+		if types[index].Kind != ValueTypeReference {
+			return ValueTypeDescriptor{}, false
+		}
+		return types[index], true
+	}
+	return valueTypeDescriptorFromValType(legacy)
+}
+
+func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -2118,7 +4229,15 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 		bits := values[slot]
 		switch typ {
 		case ValFuncRef:
-			if bits != 0 {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("%s: missing exact funcref type for argument %d", subject, i)
+			}
+			if bits == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("%s: null funcref for non-null argument %d", subject, i)
+				}
+			} else {
 				if in.refStore == nil {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
 				}
@@ -2126,11 +4245,70 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 				if !ok {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
 				}
+				actual, actualTypes, valid := in.refStore.tokenFuncrefExactType(bits)
+				if !valid {
+					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					return fmt.Errorf("%s: funcref argument %d does not match its exact structural type", subject, i)
+				}
 				bits = descriptor
 			}
 		case ValExternRef:
-			if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
+			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					return fmt.Errorf("%s: extern conversion state is unavailable for argument %d", subject, i)
+				}
+				internal, err := conversion.internalExternFromPublic(bits)
+				if err != nil {
+					return fmt.Errorf("%s: invalid externref token for argument %d: %w", subject, i, err)
+				}
+				bits = internal
+			} else if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
 				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
+			}
+		case ValAnyRef, ValExnRef:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("%s: missing exact %s type for argument %d", subject, typ, i)
+			}
+			if typ == ValAnyRef && in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					return fmt.Errorf("%s: anyref conversion state is unavailable for argument %d", subject, i)
+				}
+				internal, err := conversion.internalAnyFromPublic(bits)
+				if err != nil {
+					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
+				}
+				bits = internal
+			} else if typ == ValAnyRef && bits != 0 {
+				if in.refStore == nil {
+					return fmt.Errorf("%s: invalid anyref token for argument %d", subject, i)
+				}
+				internal, err := in.refStore.stageGCRefArgument(in, bits, required)
+				if err != nil {
+					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
+				}
+				bits = uint64(internal)
+			} else if bits != 0 {
+				return fmt.Errorf("%s: non-null %s argument %d is outside the null-only product", subject, typ, i)
+			}
+			if bits == 0 && !required.Ref.Nullable {
+				return fmt.Errorf("%s: null %s for non-null argument %d", subject, typ, i)
+			}
+		case ValI31Ref:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapI31 {
+				return fmt.Errorf("%s: missing exact i31 type for argument %d", subject, i)
+			}
+			if bits == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("%s: null i31ref for non-null argument %d", subject, i)
+				}
+			} else if bits>>32 != 0 || uint32(bits)&1 == 0 {
+				return fmt.Errorf("%s: invalid i31ref argument %d", subject, i)
 			}
 		}
 		if !isWideValType(typ) {
@@ -2142,40 +4320,176 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 	return nil
 }
 
-func (in *Instance) translatePublicReferenceResults(subject string, values []uint64, types []ValType) error {
-	return in.translatePublicReferenceResultsMode(subject, values, types, false)
+func (in *Instance) translatePublicReferenceResults(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
+	return in.translatePublicReferenceResultsMode(subject, values, types, exact, false)
 }
 
-func (in *Instance) translatePublicReferenceResultsMode(subject string, values []uint64, types []ValType, attachedResult bool) error {
+func (in *Instance) translatePublicReferenceResultsMode(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor, attachedResult bool) (err error) {
+	var issuedGCRefs [gcPublicSlotLimit]struct {
+		store *referenceStore
+		token uint64
+	}
+	issuedGCRefCount := 0
+	defer func() {
+		if err == nil {
+			return
+		}
+		for i := issuedGCRefCount - 1; i >= 0; i-- {
+			if releaseErr := issuedGCRefs[i].store.releaseGCRef(in, issuedGCRefs[i].token); releaseErr != nil {
+				err = fmt.Errorf("%w; rollback GC result token: %v", err, releaseErr)
+			}
+		}
+	}()
 	slot := 0
 	for i, typ := range types {
-		if typ == ValFuncRef && values[slot] != 0 {
-			var store *referenceStore
-			var err error
-			if attachedResult {
-				store, err = in.funcrefStoreForAttachedEgress()
-			} else {
-				store, err = in.funcrefStoreForEgress()
-			}
-			if err != nil {
+		if typ == ValFuncRef {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
 				clear(values)
-				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+				return fmt.Errorf("%s: missing exact funcref type for result %d", subject, i)
 			}
-			var token uint64
-			if attachedResult {
-				token, err = store.issueAttachedResult(in, values[slot])
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					clear(values)
+					return fmt.Errorf("%s: null funcref for non-null result %d", subject, i)
+				}
 			} else {
-				token, err = store.issue(in, values[slot])
+				var store *referenceStore
+				var err error
+				if attachedResult {
+					store, err = in.funcrefStoreForAttachedEgress()
+				} else {
+					store, err = in.funcrefStoreForEgress()
+				}
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+				}
+				actual, actualTypes, valid := store.descriptorFuncrefExactType(in, values[slot])
+				if !valid {
+					clear(values)
+					return fmt.Errorf("%s: invalid funcref result %d", subject, i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					clear(values)
+					return fmt.Errorf("%s: funcref result %d does not match its exact structural type", subject, i)
+				}
+				var token uint64
+				if attachedResult {
+					token, err = store.issueAttachedResult(in, values[slot])
+				} else {
+					token, err = store.issue(in, values[slot])
+				}
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+				}
+				values[slot] = token
 			}
-			if err != nil {
-				clear(values)
-				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
-			}
-			values[slot] = token
 		}
-		if typ == ValExternRef && values[slot] != 0 && !in.validExternrefToken(values[slot]) {
-			clear(values)
-			return fmt.Errorf("%s: invalid externref result %d", subject, i)
+		if typ == ValExternRef {
+			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					clear(values)
+					return fmt.Errorf("%s: extern conversion state is unavailable for result %d", subject, i)
+				}
+				public, err := conversion.publicExternFromInternal(values[slot])
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: invalid externref result %d: %w", subject, i, err)
+				}
+				values[slot] = public
+			} else if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
+				clear(values)
+				return fmt.Errorf("%s: invalid externref result %d", subject, i)
+			}
+		}
+		if typ == ValAnyRef {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				clear(values)
+				return fmt.Errorf("%s: missing exact anyref type for result %d", subject, i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					clear(values)
+					return fmt.Errorf("%s: null anyref for non-null result %d", subject, i)
+				}
+			} else if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+				conversion := in.existingGCExternConversionState()
+				if conversion == nil {
+					clear(values)
+					return fmt.Errorf("%s: anyref conversion state is unavailable for result %d", subject, i)
+				}
+				public, err := conversion.publicAnyFromInternal(values[slot])
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
+				}
+				values[slot] = public
+			} else {
+				if values[slot] != uint64(uint32(values[slot])) {
+					clear(values)
+					return fmt.Errorf("%s: invalid non-null anyref result %d", subject, i)
+				}
+				ref := gc.Ref(uint32(values[slot]))
+				if ref.IsI31() {
+					if !in.gcRefMatchesValueType(ref, required) {
+						clear(values)
+						return fmt.Errorf("%s: i31 anyref result %d does not match its exact type", subject, i)
+					}
+					slot++
+					continue
+				}
+				store, err := in.referenceStoreForBoundary()
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
+				}
+				token, err := store.issueGCRef(in, ref, required)
+				if err != nil {
+					clear(values)
+					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
+				}
+				issuedGCRefs[issuedGCRefCount] = struct {
+					store *referenceStore
+					token uint64
+				}{store: store, token: token}
+				issuedGCRefCount++
+				values[slot] = token
+			}
+		}
+		if typ == ValI31Ref {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapI31 {
+				clear(values)
+				return fmt.Errorf("%s: missing exact i31 type for result %d", subject, i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					clear(values)
+					return fmt.Errorf("%s: null i31ref for non-null result %d", subject, i)
+				}
+			} else if values[slot]>>32 != 0 || uint32(values[slot])&1 == 0 {
+				clear(values)
+				return fmt.Errorf("%s: invalid i31ref result %d", subject, i)
+			}
+		}
+		if typ == ValExnRef {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				clear(values)
+				return fmt.Errorf("%s: missing exact exnref type for result %d", subject, i)
+			}
+			if values[slot] != 0 {
+				clear(values)
+				return fmt.Errorf("%s: non-null exnref result %d is outside the null-only product", subject, i)
+			}
+			if !required.Ref.Nullable {
+				clear(values)
+				return fmt.Errorf("%s: null exnref for non-null result %d", subject, i)
+			}
 		}
 		if typ == ValV128 {
 			slot += 2

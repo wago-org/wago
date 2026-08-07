@@ -11,6 +11,10 @@ package amd64
 // every push/pop/replace with no reader on the other side.
 
 func (f *fn) replaceStorage(e *elem, st storage) {
+	// Replacements move the same semantic value between registers, locals, and
+	// spills. Preserve collector-root identity unless the producer explicitly
+	// marks a newly-created value below.
+	st.gcRoot = st.gcRoot || e.st.gcRoot
 	e.st = st
 }
 

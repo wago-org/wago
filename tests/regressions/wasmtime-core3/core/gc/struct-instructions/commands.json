@@ -1,0 +1,366 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 36,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "f32",
+            "value": "1065353216"
+          },
+          {
+            "type": "i32",
+            "value": "4294967295"
+          },
+          {
+            "type": "ref",
+            "value": "null"
+          }
+        ],
+        "field": "new",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 37,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-f32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "f32",
+          "value": "1065353216"
+        }
+      ],
+      "line": 40,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 41,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-u-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "255"
+        }
+      ],
+      "line": 42,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-anyref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "ref",
+          "value": "null"
+        }
+      ],
+      "line": 43,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "new-default",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 44,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-f32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "f32",
+          "value": "0"
+        }
+      ],
+      "line": 45,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 46,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-u-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 47,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-anyref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "ref",
+          "value": "null"
+        }
+      ],
+      "line": 48,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "f32",
+            "value": "1073741824"
+          }
+        ],
+        "field": "set-f32",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 49,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-f32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "f32",
+          "value": "1073741824"
+        }
+      ],
+      "line": 50,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4294967295"
+          }
+        ],
+        "field": "set-i8",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 51,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4294967295"
+        }
+      ],
+      "line": 52,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-u-i8",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "255"
+        }
+      ],
+      "line": 53,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-anyref-non-null",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 54,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-anyref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "struct",
+          "type": "ref"
+        }
+      ],
+      "line": 55,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "ref",
+            "value": "null"
+          }
+        ],
+        "field": "set-anyref",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 56,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-anyref",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "ref",
+          "value": "null"
+        }
+      ],
+      "line": 57,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 58,
+      "type": "module_definition"
+    },
+    {
+      "line": 72,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "ref",
+            "value": "null"
+          }
+        ],
+        "field": "struct.get-null",
+        "type": "invoke"
+      },
+      "line": 73,
+      "text": "null structure reference",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "ref",
+            "value": "null"
+          }
+        ],
+        "field": "struct.get_s-null",
+        "type": "invoke"
+      },
+      "line": 77,
+      "text": "null structure reference",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "ref",
+            "value": "null"
+          }
+        ],
+        "field": "struct.get_u-null",
+        "type": "invoke"
+      },
+      "line": 81,
+      "text": "null structure reference",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "ref",
+            "value": "null"
+          }
+        ],
+        "field": "struct.set-null",
+        "type": "invoke"
+      },
+      "line": 85,
+      "text": "null structure reference",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

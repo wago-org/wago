@@ -1,4 +1,10 @@
-# No-IR plan — railshot optimization & product roadmap (2026-07-03)
+# No-IR plan — historical railshot optimization & product plan (2026-07-03)
+
+> **Status: historical design record.** This document preserves the July 3,
+> 2026 no-IR decision and the original P0–P8 designs. It is not the current work
+> queue: [ROADMAP.md](../ROADMAP.md) and [OPTIMIZATIONS.md](../OPTIMIZATIONS.md)
+> track priorities and completion status. The no-IR architectural decision in
+> §0 remains current.
 
 Triage of an external repo review (LLM with GitHub read access; code/doc
 inspection only — no local build or bench run) against actual repo state,
@@ -77,9 +83,18 @@ execution path. Railshot is the one and only backend.** The prior framing
 - **General pending `local.set` with owned registers** (VB §5 options a/b) —
   allocator-invisible trees; only the register-free restriction (c) is
   scheduled (P4). Revisit a/b only if (c) measures well but misses cases.
-- **known-bits lattice struct** — rejected as a struct; its two profitable
-  cases ship as plain peepholes: narrow-load mask elision (P2) and boolean-ness
-  (subsumed by `stFlags`, P3).
+- **Persistent/general known-bits lattice state** — rejected. A bounded recursive
+  estimator was tried, then removed after measurement: its four utf-as mask-elision
+  hits blocked a second `swar-widen4` selection and did not earn their general
+  constant-RHS compile cost. Direct `(word & laneMask) == 0` flag lowering remains
+  as a shape check with no fact propagation; boolean-ness remains subsumed by
+  `stFlags` (P3). Exact SWAR matchers inspect existing operand nodes and allocate
+  only after a hit; near-miss probes must remain allocation-free.
+- **Persistent SIMD expression trees** — rejected. Exact adjacent SIMD superops use
+  bounded bytecode lookahead and immediately select a native lowering; near misses
+  restore the reader. This keeps SIMD eager, allocation-free, and outside the scalar
+  valent-tree model while still admitting offline-synthesized `VPTEST`/`BIC`/`VPANDN`
+  patterns. `WAGO_NO_SIMD_SUPEROPT=1` remains the differential oracle.
 - **Tiny unroll (const trip ≤4)** — layout-luck risk (±20% swings) exceeds the
   expected win; not now.
 - **Induction/accumulator pattern recognition + extra hint scoring terms** —
@@ -89,7 +104,8 @@ execution path. Railshot is the one and only backend.** The prior framing
 - **Store queue beyond a one-entry combining window** — no; V6 is already the
   delicate edge of what trap semantics allow.
 - **`memory.size` micro-optimization** — skip until it shows up in a profile.
-- **Deleting `warp/` or `ir/`** — no. Reference axis + future oracle.
+- **Deleting the external WARP reference axis or `ir/`** — no. They remain useful
+  as reference and future oracle, respectively.
 
 ## 2. Phase plan
 
@@ -184,8 +200,10 @@ The original P2 design, retained for when a workload justifies it:
 3. **Const-fold pack** (`stack.go` fold table): compares, eqz, clz/ctz/popcnt,
    sign/zero extensions, wrap/extend, reinterpret-of-const; div/rem only when
    divisor is a nonzero const and the `INT_MIN / −1` case is excluded.
-   Plus **narrow-load mask elision**: `load8_u & 0xff` / `load16_u & 0xffff`
-   drop the `and` on the deferred-load node (the useful half of known-bits).
+   Plus **narrow-load/known-zero mask elision** (landed 2026-07-17):
+   `load8_u & 0xff`, `load16_u & 0xffff`, and masks already implied by constant
+   shifts/bitwise trees drop the outer `and`. The same bounded facts support direct
+   `TEST`/`TST` lowering for packed-word mask predicates.
 4. **Same-operand int compare identities**: `x==x→1`, `x!=x→0`, `≤/≥→1`,
    `</>→0` — same-local-no-intervening-set keying as the existing `x-x→0`.
    **Int only** (NaN forbids it for floats).
@@ -325,8 +343,22 @@ differential-fuzzed old-vs-fused on accept/reject agreement. Keep the
 standalone validator as the API surface either way. Add compile-side stats
 (allocs, arena high-water) to P1's stats while in here.
 
-### P8. Runtime & product track (parallel; feature value, not exec perf)
-In order:
+### P8. Runtime & product track (original plan; feature value, not exec perf)
+
+The list below is retained as the original July plan. Current disposition:
+
+| Original item | Current disposition |
+|---|---|
+| Synchronous host-import results | Done; see [FEATURES.md](../FEATURES.md). |
+| WASI Preview 1 | Product/plugin work; the `wago-org/wasi` plugin owns it. |
+| Invocation cancellation | Done on amd64 and arm64; see [ROADMAP.md](../ROADMAP.md). |
+| Wasm trap source frames | Landed; full caller-chain unwind metadata remains follow-up work. |
+| Release 2 bulk/reference completion | Done; see [FEATURES.md](../FEATURES.md). |
+| `call_indirect` inline caches | Still planned. |
+| `.wago` productization | Done; see [ROADMAP.md](../ROADMAP.md). |
+| Arm64 backend | Done; see [FEATURES.md](../FEATURES.md). |
+
+Original priority order:
 1. **Sync host imports with results** (⭐ — the WASI unlock; runtime half
    already spiked per ARCHITECTURE §V2). Design per review §P1: host-call
    frame in basedata, HOST_CALL status back through the trampoline, Go invokes,
@@ -384,7 +416,10 @@ Existing: `WAGO_BOUNDS`, `WAGO_REG_MERGE`, `WAGO_Amd64_NOREGABI`,
 KNOWN: `src/wago` package tests segfault under `-tags wago_guardpage`
 (pre-existing, needs its own session — see `perf-session3-plan.md` §3).
 
-## 5. Sequencing (the review's closing advice, adjusted)
+## 5. Original sequencing (the review's closing advice, adjusted)
+
+This sequence is preserved for the rationale behind the original plan; it is
+not a current priority order.
 
 ```
 P0 docs (this PR + ROADMAP refresh)
@@ -399,6 +434,6 @@ P8 runs in parallel whenever exec-perf work is blocked or a feature is wanted;
    P8.1 (sync host imports) is the single highest-value item in this file.
 ```
 
-Pitfalls: VB §12 applies verbatim (branch before first edit; warp/ submodule
-stays dirty; wat idx = wago idx + 1; short commit subjects; explicit merge
-consent; layout-luck discipline).
+Pitfalls: VB §12 applies verbatim (branch before first edit; keep external WARP
+checkouts outside this repository; wat idx = wago idx + 1; short commit subjects;
+explicit merge consent; layout-luck discipline).

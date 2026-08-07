@@ -1,0 +1,131 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 9,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "v128-simple",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "lane_type": "i32",
+          "type": "v128",
+          "value": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ]
+        }
+      ],
+      "line": 10,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 11,
+      "type": "module_definition"
+    },
+    {
+      "line": 19,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "v128-struct-default",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "lane_type": "i32",
+          "type": "v128",
+          "value": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        }
+      ],
+      "line": 20,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 24,
+      "type": "module_definition"
+    },
+    {
+      "line": 39,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "v128-array-len",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "2"
+        }
+      ],
+      "line": 40,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "v128-array-elem0",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "lane_type": "i32",
+          "type": "v128",
+          "value": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ]
+        }
+      ],
+      "line": 41,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "v128-array-elem1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "lane_type": "i32",
+          "type": "v128",
+          "value": [
+            "5",
+            "6",
+            "7",
+            "8"
+          ]
+        }
+      ],
+      "line": 42,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

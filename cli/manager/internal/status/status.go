@@ -1,0 +1,134 @@
+// Package status reports the manager, runtime, project, and plugin state that
+// determines how the next Wago invocation will run.
+package status
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/internal/settings"
+	"github.com/wago-org/wago/cli/internal/ui"
+	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
+	"github.com/wago-org/wago/internal/wagopaths"
+)
+
+type Report struct {
+	ManagerVersion  string `json:"managerVersion"`
+	ManagerPath     string `json:"managerPath"`
+	RuntimeVersion  string `json:"runtimeVersion,omitempty"`
+	RuntimeProfile  string `json:"runtimeProfile,omitempty"`
+	RuntimeBuild    string `json:"runtimeBuild,omitempty"`
+	RuntimePath     string `json:"runtimePath,omitempty"`
+	Scope           string `json:"scope"`
+	ProjectDir      string `json:"projectDirectory,omitempty"`
+	ManifestPath    string `json:"manifestPath,omitempty"`
+	LockPath        string `json:"lockPath,omitempty"`
+	LockState       string `json:"lockState"`
+	Plugins         int    `json:"plugins"`
+	ConfigScope     string `json:"configScope"`
+	ConfigPath      string `json:"configPath"`
+	ConfigOverrides int    `json:"configOverrides"`
+}
+
+func Inspect(dirs wagopaths.Dirs, managerVersion, managerPath string) (Report, error) {
+	report := Report{ManagerVersion: managerVersion, ManagerPath: managerPath, Scope: "global", LockState: "not needed"}
+	if path, version, profile, build, ok := managerversion.ActiveRunner(dirs); ok {
+		report.RuntimePath, report.RuntimeVersion = path, version
+		report.RuntimeProfile, report.RuntimeBuild = string(profile), string(build)
+	}
+	scope, err := project.ResolveScope(".", dirs.Data)
+	if err != nil {
+		return Report{}, err
+	}
+	report.Scope = project.ScopeLabel(scope)
+	config, err := settings.Open(project.Truthy(project.GlobalEnv), project.Truthy(project.LocalEnv))
+	if err != nil {
+		return Report{}, err
+	}
+	report.ConfigScope, report.ConfigPath, report.ConfigOverrides = config.Scope(), config.Path(), len(config.Overrides())
+	if scope.Name == "bare" {
+		return report, nil
+	}
+	report.ProjectDir, err = filepath.Abs(scope.ManifestDir)
+	if err != nil {
+		return Report{}, err
+	}
+	report.ManifestPath = project.Path(scope.ManifestDir)
+	report.LockPath = project.LockPath(scope.ManifestDir)
+	requirements, err := project.Requirements(scope.ManifestDir)
+	if err != nil {
+		return Report{}, err
+	}
+	report.Plugins = len(requirements)
+	if len(requirements) == 0 {
+		return report, nil
+	}
+	lock, err := project.ReadLock(scope.ManifestDir)
+	if err != nil {
+		report.LockState = "invalid"
+		return report, nil
+	}
+	report.LockState = "up to date"
+	for _, requirement := range requirements {
+		if lock.Packages[requirement.ID].Version == "" {
+			report.LockState = "needs update"
+			break
+		}
+	}
+	return report, nil
+}
+
+func Print(out io.Writer, report Report) {
+	if automation.JSON() {
+		ui.PrintJSON(report)
+		return
+	}
+	fmt.Fprintln(out, ui.Bold("Wago status"))
+	ui.Detail(out, "manager", value(report.ManagerVersion, report.ManagerPath))
+	if report.RuntimeVersion == "" {
+		ui.Detail(out, "runtime", "none selected")
+	} else {
+		ui.Detail(out, "runtime", fmt.Sprintf("%s (%s/%s)", report.RuntimeVersion, report.RuntimeProfile, report.RuntimeBuild))
+		ui.Detail(out, "location", ui.DisplayPath(report.RuntimePath))
+	}
+	ui.Detail(out, "scope", report.Scope)
+	config := report.ConfigScope
+	if report.ConfigOverrides == 1 {
+		config += " (1 override)"
+	} else if report.ConfigOverrides > 1 {
+		config += fmt.Sprintf(" (%d overrides)", report.ConfigOverrides)
+	}
+	ui.Detail(out, "config", config)
+	ui.Detail(out, "settings", ui.DisplayPath(report.ConfigPath))
+	if report.ManifestPath != "" {
+		ui.Detail(out, "directory", ui.DisplayPath(report.ProjectDir))
+		ui.Detail(out, "project", ui.DisplayPath(report.ManifestPath))
+		ui.Detail(out, "plugins", fmt.Sprintf("%d enabled", report.Plugins))
+		ui.Detail(out, "lockfile", report.LockState)
+	}
+}
+
+func value(version, path string) string {
+	if path == "" {
+		return version
+	}
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	return version + "  " + ui.DisplayPath(path)
+}
+
+func ExecutablePath() string {
+	path, err := os.Executable()
+	if err != nil {
+		return os.Args[0]
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+}

@@ -1,4 +1,4 @@
-//go:build wago_guardpage && ((linux && (amd64 || arm64)) || (darwin && arm64))
+//go:build wago_guardpage && (linux || darwin || windows) && (amd64 || arm64)
 
 package wago
 
@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func TestGuardedImportedGrownMemoryAcceptsActiveData(t *testing.T) {
@@ -193,6 +193,44 @@ func activeDataImportedMemoryModule(offset int32, value byte) []byte {
 		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
 		wasmtest.Section(11, wasmtest.Vec(segment)),
 	)
+}
+
+func TestSignalsRequestedExplicitFallbackStillExportsGuardedSecondaryMemory(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	module := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x01, 0x00, 0x00}, // memory 0: min=0 max=0 (ARM64 explicit fallback)
+			[]byte{0x01, 0x01, 0x05}, // memory 1: min=1 max=5
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("mem1", 2, 1))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksSignalsBased), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	memory, err := in.ExportedMemory("mem1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guarded, _ := memory.importShape(); !guarded {
+		t.Fatal("signals-requested secondary memory should remain guard-page backed")
+	}
+	importer, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased), importMemModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer importer.Close()
+	imported, err := Instantiate(importer, InstantiateOptions{Imports: Imports{"env.mem": memory}})
+	if err != nil {
+		t.Fatalf("re-import guarded secondary memory: %v", err)
+	}
+	defer imported.Close()
 }
 
 func TestImportedMemoryGuardPageRejectsPlainMemory(t *testing.T) {

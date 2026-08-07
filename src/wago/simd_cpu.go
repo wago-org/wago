@@ -1,11 +1,6 @@
 package wago
 
-import (
-	"os"
-	"runtime"
-	"strings"
-	"sync"
-)
+import "sync"
 
 // simdHostFeaturesSupported reports whether generated SIMD code can execute on
 // this host. On amd64, the railshot SIMD backend emits VEX.128 instructions and
@@ -19,6 +14,8 @@ var simdHostFeaturesSupported = cachedSIMDHostFeatures
 var (
 	simdHostFeaturesOnce sync.Once
 	simdHostFeaturesOK   bool
+	bmi2HostFeaturesOnce sync.Once
+	bmi2HostFeaturesOK   bool
 )
 
 func cachedSIMDHostFeatures() bool {
@@ -28,22 +25,60 @@ func cachedSIMDHostFeatures() bool {
 
 func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
 
-func detectSIMDHostFeatures() bool {
-	if runtime.GOARCH == "arm64" {
-		return true
+var bmi2HostFeaturesSupported = cachedBMI2HostFeatures
+
+func cachedBMI2HostFeatures() bool {
+	bmi2HostFeaturesOnce.Do(func() { bmi2HostFeaturesOK = architectureSupportsBMI2() })
+	return bmi2HostFeaturesOK
+}
+
+func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
+
+func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
+
+// simdCPUFlagsSupported recognizes the three exact whitespace-delimited Linux
+// cpuinfo flags without converting the complete file to a string, lowercasing it,
+// splitting every token, or building a hash map. It normally returns from the
+// first processor's flags line and performs no allocation.
+func simdCPUFlagsSupported(data []byte) bool {
+	var avx, ssse3, sse41 bool
+	for i := 0; i < len(data); {
+		for i < len(data) && data[i] <= ' ' {
+			i++
+		}
+		start := i
+		for i < len(data) && data[i] > ' ' {
+			i++
+		}
+		token := data[start:i]
+		switch len(token) {
+		case 3:
+			avx = avx || token[0] == 'a' && token[1] == 'v' && token[2] == 'x'
+		case 5:
+			ssse3 = ssse3 || token[0] == 's' && token[1] == 's' && token[2] == 's' && token[3] == 'e' && token[4] == '3'
+		case 6:
+			sse41 = sse41 || token[0] == 's' && token[1] == 's' && token[2] == 'e' && token[3] == '4' && token[4] == '_' && token[5] == '1'
+		}
+		if avx && ssse3 && sse41 {
+			return true
+		}
 	}
-	if runtime.GOARCH != "amd64" {
-		return false
+	return false
+}
+
+func bmi2CPUFlagsSupported(data []byte) bool {
+	for i := 0; i < len(data); {
+		for i < len(data) && data[i] <= ' ' {
+			i++
+		}
+		start := i
+		for i < len(data) && data[i] > ' ' {
+			i++
+		}
+		token := data[start:i]
+		if len(token) == 4 && token[0] == 'b' && token[1] == 'm' && token[2] == 'i' && token[3] == '2' {
+			return true
+		}
 	}
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		// Be conservative: without a reliable feature source, don't admit SIMD wasm.
-		return false
-	}
-	flags := strings.Fields(strings.ToLower(string(data)))
-	seen := map[string]bool{}
-	for _, f := range flags {
-		seen[f] = true
-	}
-	return seen["avx"] && seen["ssse3"] && seen["sse4_1"]
+	return false
 }

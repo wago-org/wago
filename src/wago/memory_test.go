@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux || darwin || windows) && (amd64 || arm64)
 
 package wago
 
@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // importMemModule imports "env.mem" (memory 1) and exports
@@ -248,7 +248,7 @@ func TestMemoryOwnershipSidecarPreservesScalarHandleFootprint(t *testing.T) {
 		t.Fatalf("Memory size = %d, want 16 bytes", got)
 	}
 	if got := unsafe.Sizeof(memoryState{}); got != 24 {
-		t.Fatalf("memoryState size = %d, want 24 bytes", got)
+		t.Fatalf("memoryState size = %d, want 24 bytes with packed exact memory64 declaration", got)
 	}
 	local := &Memory{}
 	if local.state.Load() != nil {

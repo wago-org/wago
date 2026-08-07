@@ -1,0 +1,4 @@
+{"source_filename":"testdata/wasmtime/core/winch/use-innermost-frame/source.wast","commands":[
+  {"type":"module","line":1,"filename":"commands.0.wasm"},
+  {"type":"assert_trap","line":1944,"action":{"type":"invoke","field":"main","args":[]},"text":"unreachable"}
+]}

@@ -2,7 +2,11 @@
 
 package amd64
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 func TestNewStackArenaDefaultCapacity(t *testing.T) {
 	s := newStack()
@@ -163,9 +167,10 @@ func TestAssignPinnedLocalsUsesLocalDefs(t *testing.T) {
 	f := &fn{
 		nLocals:   3,
 		localType: []machineType{mtI32, mtF64, mtI32},
+		m:         &wasm.Module{},
 		sc:        &scratch{},
 	}
-	f.assignPinnedLocals([]uint32{1, 10, 5}, nil, nil, pinnedLocalRegs, baseFPPins, false)
+	f.assignPinnedLocals([]uint32{1, 10, 5}, nil, nil, nil, pinnedLocalRegs, baseFPPins, false, false)
 
 	r, isFloat, ok := f.pinReg(1)
 	if !ok || !isFloat || r != pinnedFLocalRegs[0] {

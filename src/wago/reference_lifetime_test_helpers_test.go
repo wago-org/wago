@@ -1,4 +1,4 @@
-//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
+//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
 
 package wago
 
@@ -29,10 +29,8 @@ func itoa32(v int32) string {
 
 func assertRetainedInstanceState(t *testing.T, name string, in *Instance, wantRefs int, wantPhysical bool) {
 	t.Helper()
-	in.lifeMu.Lock()
-	refs, physical := in.resourceRefs, !in.resourcesClosed
-	in.lifeMu.Unlock()
-	if refs != int32(wantRefs) || physical != wantPhysical {
-		t.Fatalf("%s: roots=%d physical=%v, want roots=%d physical=%v", name, refs, physical, wantRefs, wantPhysical)
+	state := in.referenceLifetime().snapshot()
+	if state.ResourceRoots != wantRefs || state.PhysicalResources != wantPhysical {
+		t.Fatalf("%s: roots=%d physical=%v, want roots=%d physical=%v", name, state.ResourceRoots, state.PhysicalResources, wantRefs, wantPhysical)
 	}
 }

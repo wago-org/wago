@@ -1,0 +1,179 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 3,
+      "name": "memory",
+      "type": "module"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 7,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "grow",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "65535"
+        }
+      ],
+      "line": 15,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "65535"
+        }
+      ],
+      "line": 16,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "grow",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "-1"
+        }
+      ],
+      "line": 17,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "65535"
+        }
+      ],
+      "line": 18,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 20,
+      "name": "offset",
+      "type": "module"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 23,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "4294836224"
+          }
+        ],
+        "field": "load32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "67305985"
+        }
+      ],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 33,
+      "name": "offset",
+      "type": "module"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 36,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "4294836228"
+          }
+        ],
+        "field": "load32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "67305985"
+        }
+      ],
+      "line": 43,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.6.wasm",
+      "line": 45,
+      "name": "offset",
+      "type": "module"
+    },
+    {
+      "filename": "commands.7.wasm",
+      "line": 48,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "2"
+          }
+        ],
+        "field": "load32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "33620995"
+        }
+      ],
+      "line": 55,
+      "type": "assert_return"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

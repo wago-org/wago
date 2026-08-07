@@ -1,0 +1,1170 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 6,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 29,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m1",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 32,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m1",
+        "type": "invoke"
+      },
+      "line": 33,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m1",
+        "type": "invoke"
+      },
+      "line": 34,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m1",
+        "type": "invoke"
+      },
+      "line": 35,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m1",
+        "type": "invoke"
+      },
+      "line": 36,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "grow_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 37,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "2"
+        }
+      ],
+      "line": 38,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "grow_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "-1"
+        }
+      ],
+      "line": 39,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 40,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m1",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 41,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 42,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m1",
+        "type": "invoke"
+      },
+      "line": 43,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m1",
+        "type": "invoke"
+      },
+      "line": 44,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 45,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m2",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 46,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "load_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 47,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 48,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m2",
+        "type": "invoke"
+      },
+      "line": 49,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m2",
+        "type": "invoke"
+      },
+      "line": 50,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m2",
+        "type": "invoke"
+      },
+      "line": 51,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m2",
+        "type": "invoke"
+      },
+      "line": 52,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "grow_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 53,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "2"
+        }
+      ],
+      "line": 54,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "grow_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "-1"
+        }
+      ],
+      "line": 55,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 56,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m2",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 57,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 58,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m2",
+        "type": "invoke"
+      },
+      "line": 59,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m2",
+        "type": "invoke"
+      },
+      "line": 60,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "load_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 61,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m9",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 62,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "load_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 63,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1"
+        }
+      ],
+      "line": 64,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m9",
+        "type": "invoke"
+      },
+      "line": 65,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m9",
+        "type": "invoke"
+      },
+      "line": 66,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m9",
+        "type": "invoke"
+      },
+      "line": 67,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m9",
+        "type": "invoke"
+      },
+      "line": 68,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "grow_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1"
+        }
+      ],
+      "line": 69,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "2"
+        }
+      ],
+      "line": 70,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "grow_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "-1"
+        }
+      ],
+      "line": 71,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 72,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m9",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 73,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m9",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 74,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m9",
+        "type": "invoke"
+      },
+      "line": 75,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m9",
+        "type": "invoke"
+      },
+      "line": 76,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "load_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 77,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m10",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 78,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "load_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 79,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1"
+        }
+      ],
+      "line": 80,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m10",
+        "type": "invoke"
+      },
+      "line": 81,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m10",
+        "type": "invoke"
+      },
+      "line": 82,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m10",
+        "type": "invoke"
+      },
+      "line": 83,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m10",
+        "type": "invoke"
+      },
+      "line": 84,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "1"
+          }
+        ],
+        "field": "grow_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1"
+        }
+      ],
+      "line": 85,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "size_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "2"
+        }
+      ],
+      "line": 86,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "grow_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "-1"
+        }
+      ],
+      "line": 87,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 88,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "store_m10",
+        "type": "invoke"
+      },
+      "expected": [],
+      "line": 89,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "65536"
+          }
+        ],
+        "field": "load_m10",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 90,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          }
+        ],
+        "field": "load_m10",
+        "type": "invoke"
+      },
+      "line": 91,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "-1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "store_m10",
+        "type": "invoke"
+      },
+      "line": 92,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

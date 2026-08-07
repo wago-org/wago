@@ -1,0 +1,65 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "name": "$A",
+      "type": "module_definition"
+    },
+    {
+      "line": 8,
+      "module": "$A",
+      "name": "$A",
+      "type": "module_instance"
+    },
+    {
+      "as": "A",
+      "line": 9,
+      "name": "$A",
+      "type": "register"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 10,
+      "name": "$B",
+      "type": "module_definition"
+    },
+    {
+      "line": 22,
+      "module": "$B",
+      "name": "$B",
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "test_super",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "99"
+        }
+      ],
+      "line": 23,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "test_sub",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "99"
+        }
+      ],
+      "line": 24,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

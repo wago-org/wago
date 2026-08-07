@@ -1,0 +1,5 @@
+{"source_filename": "testdata/wasmtime/wasm2/many_table_gets_lead_to_gc/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "action", "line": 36, "action": {"type": "invoke", "field": "init", "args": [{"type": "externref", "value": "1"}]}, "expected": []}, 
+  {"type": "action", "line": 37, "action": {"type": "invoke", "field": "get-many-externrefs", "args": [{"type": "i32", "value": "8192"}]}, "expected": []}]}

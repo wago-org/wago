@@ -8,6 +8,33 @@ import (
 	"unsafe"
 )
 
+func TestCompiledReleasesHeapCodeAfterExecutableMapping(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), fibWasm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	original := unsafe.Pointer(&c.Code[0])
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if len(c.codeCache.mem) == 0 || len(c.Code) == 0 {
+		t.Fatal("executable mapping or readable code view is empty")
+	}
+	mapped := unsafe.Pointer(&c.codeCache.mem[0])
+	if got := unsafe.Pointer(&c.Code[0]); got != mapped {
+		t.Fatalf("compiled code still uses heap backing %p (mapped %p, original %p)", got, mapped, original)
+	}
+	if mapped == original {
+		t.Fatal("test did not observe a distinct executable mapping")
+	}
+	if _, err := c.MarshalBinary(); err != nil {
+		t.Fatalf("marshal mapped code: %v", err)
+	}
+}
+
 func TestCompiledCloseRejectsFutureInstantiate(t *testing.T) {
 	c, err := Compile(nil, fibWasm)
 	if err != nil {

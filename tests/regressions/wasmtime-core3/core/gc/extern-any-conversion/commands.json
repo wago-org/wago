@@ -1,0 +1,140 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-extern-to-any",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 11,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-any-to-extern",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 12,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 13,
+      "type": "module_definition"
+    },
+    {
+      "line": 20,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "i31-roundtrip",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 22,
+      "type": "module_definition"
+    },
+    {
+      "line": 30,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "struct-roundtrip",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "77"
+        }
+      ],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 32,
+      "type": "module_definition"
+    },
+    {
+      "line": 40,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "identity",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 41,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 42,
+      "type": "module_definition"
+    },
+    {
+      "line": 49,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "any-to-extern-non-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 50,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

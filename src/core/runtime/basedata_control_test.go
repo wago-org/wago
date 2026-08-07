@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux || darwin || windows) && (amd64 || arm64)
 
 package runtime
 
@@ -103,6 +103,20 @@ func TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite(t *testing.T) {
 	jm.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap))+8)
 	if jm.HasTrapCell(trap) {
 		t.Fatal("overwritten trap-cell pointer was not detected")
+	}
+}
+
+func TestTrapMessagesStayCompactAndComplete(t *testing.T) {
+	if got := unsafe.Sizeof(trapMessages); got != 320 {
+		t.Fatalf("trap message storage = %d bytes, want 320", got)
+	}
+	for code, message := range trapMessages {
+		if message == "" {
+			t.Fatalf("trap code %d has no message", code)
+		}
+		if got := TrapCode(code).String(); got != message {
+			t.Errorf("trap code %d string = %q, want %q", code, got, message)
+		}
 	}
 }
 

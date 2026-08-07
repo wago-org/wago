@@ -1,4 +1,9 @@
-# ARM64 wazero-gap closure plan
+# Historical ARM64 wazero-gap closure plan
+
+> **Status: historical performance plan.** The Apple M4 measurements and work
+> ordering below describe the original ARM64 gap-closure effort. See
+> [amd64-arm64-backend-status.md](amd64-arm64-backend-status.md) and
+> [ROADMAP.md](../ROADMAP.md) for current status and priorities.
 
 ## Goal
 
@@ -27,8 +32,8 @@ to improve one of the listed gaps if it materially regresses those control rows.
 
 ## Current worktree state and recent work
 
-The worktree intentionally has uncommitted ARM64 work. Preserve it; in
-particular, `warp/` is intentionally dirty and must not be reset or cleaned.
+The worktree intentionally has uncommitted ARM64 work. Preserve it. Any patched
+WARP reference checkout should live outside this repository.
 
 Recent ARM64 changes include:
 

@@ -4,7 +4,30 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"unsafe"
 )
+
+func TestSectionOrderTableStaysCompactAndComplete(t *testing.T) {
+	want := [...]uint8{0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 11, 6}
+	if got := unsafe.Sizeof(sectionOrder); got != 14 {
+		t.Fatalf("section order storage = %d bytes, want 14", got)
+	}
+	for id, order := range want {
+		got, ok := lookupSectionOrder(byte(id))
+		if id == secCustom {
+			if ok || got != 0 {
+				t.Errorf("custom section lookup = (%d, %v), want (0, false)", got, ok)
+			}
+			continue
+		}
+		if !ok || got != order {
+			t.Errorf("section %d lookup = (%d, %v), want (%d, true)", id, got, ok, order)
+		}
+	}
+	if got, ok := lookupSectionOrder(byte(len(sectionOrder))); ok || got != 0 {
+		t.Fatalf("reserved section lookup = (%d, %v), want (0, false)", got, ok)
+	}
+}
 
 func TestDecodeRejectsHugeVectorLengthWithoutLargeAllocation(t *testing.T) {
 	_, err := DecodeModule(module(section(secType, u32(^uint32(0))...)))

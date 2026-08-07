@@ -1,0 +1,167 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 8,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "100"
+          }
+        ],
+        "field": "copy",
+        "type": "invoke"
+      },
+      "line": 9,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "4294967296"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ],
+        "field": "copy",
+        "type": "invoke"
+      },
+      "line": 10,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 14,
+      "type": "module_definition"
+    },
+    {
+      "line": 21,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "copy",
+        "type": "invoke"
+      },
+      "line": 22,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "4294967296"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "copy",
+        "type": "invoke"
+      },
+      "line": 23,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 27,
+      "type": "module_definition"
+    },
+    {
+      "line": 34,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "100"
+          }
+        ],
+        "field": "copy",
+        "type": "invoke"
+      },
+      "line": 35,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i64",
+            "value": "4294967296"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "copy",
+        "type": "invoke"
+      },
+      "line": 36,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

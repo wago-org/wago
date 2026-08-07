@@ -49,7 +49,7 @@ func TestDecodeLocalsRejectsAggregateCountOverflow(t *testing.T) {
 
 			codePayload := append([]byte{0x01}, u32(uint32(len(body)))...)
 			codePayload = append(codePayload, body...)
-			if _, _, err := decodeDirectCodeSection(newReader(codePayload), false); err == nil {
+			if _, _, err := decodeDirectCodeSection(newReader(codePayload), false, false); err == nil {
 				t.Fatal("decodeDirectCodeSection accepted aggregate local-count overflow")
 			}
 		})
@@ -85,7 +85,7 @@ func TestDecodeLocalsPreservesUint32BoundaryAndZeroRuns(t *testing.T) {
 
 	codePayload := append([]byte{0x01}, u32(uint32(len(body)))...)
 	codePayload = append(codePayload, body...)
-	funcs, _, err := decodeDirectCodeSection(newReader(codePayload), false)
+	funcs, _, err := decodeDirectCodeSection(newReader(codePayload), false, false)
 	if err != nil {
 		t.Fatalf("decodeDirectCodeSection rejected boundary local count: %v", err)
 	}

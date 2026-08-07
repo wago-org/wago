@@ -388,28 +388,56 @@ func envDefaultOn(v string) bool {
 // inlineTarget is a callee that will be spliced at its call sites: a straight-line
 // leaf with an int-only register-ABI signature and a small body.
 type inlineTarget struct {
-	globalIdx   int           // global function index (what a `call` immediate names)
-	body        []byte        // the callee's expression bytecode (ends in the terminating `end`)
-	params      int           // param count (callee locals 0..params-1)
-	nLocals     int           // params + declared locals
-	localTypes  []machineType // length nLocals: the callee's local machine types
-	resultTypes []machineType // the callee's result machine types
-	res0        machineType   // first result type (mtNone if none) — for the single-result merge
-	touchesMem  bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
-	touchesGlob bool          // the body reads or writes a global
-	hasCtrl     bool          // the body has control flow → splice through a synthetic boundary frame
+	valid          bool
+	globalIdx      int // global function index (what a `call` immediate names)
+	localDeclBytes uint32
+	body           []byte        // the callee's expression bytecode (ends in the terminating `end`)
+	params         int           // param count (callee locals 0..params-1)
+	nLocals        int           // params + declared locals
+	localTypes     []machineType // length nLocals: the callee's local machine types
+	resultTypes    []machineType // the callee's result machine types
+	res0           machineType   // first result type (mtNone if none) — for the single-result merge
+	touchesMem     bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	touchesGlob    bool          // the body reads or writes a global
+	hasCtrl        bool          // the body has control flow → splice through a synthetic boundary frame
 }
 
-// buildInlineTargets returns the straight-line leaf inline candidates keyed by
-// GLOBAL function index, or nil when inlining is disabled. Candidacy here is a
-// property of the callee alone (the call-site count only mattered for the report),
-// so a call to one of these can be spliced wherever it appears.
-func buildInlineTargets(m *wasm.Module, allHints []funcHints) map[int]*inlineTarget {
-	if !inlineEnabled {
+type inlineTargetTable struct {
+	first   int
+	targets []inlineTarget
+}
+
+func (ts inlineTargetTable) target(globalIdx int) *inlineTarget {
+	localIdx := globalIdx - ts.first
+	if localIdx < 0 || localIdx >= len(ts.targets) || !ts.targets[localIdx].valid {
 		return nil
 	}
+	return &ts.targets[localIdx]
+}
+
+func (ts inlineTargetTable) empty() bool { return len(ts.targets) == 0 }
+
+// buildInlineTargets returns the straight-line leaf inline candidates keyed by
+// GLOBAL function index, or an empty table when inlining is disabled. Candidacy
+// here is a property of the callee alone (the call-site count only mattered for the report),
+// so a call to one of these can be spliced wherever it appears.
+func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable {
+	if !inlineEnabled {
+		return inlineTargetTable{}
+	}
+	hasCall := false
+	for i := range allHints {
+		if allHints[i].hasCall {
+			hasCall = true
+			break
+		}
+	}
+	if !hasCall {
+		return inlineTargetTable{}
+	}
 	importedFuncs := m.ImportedFuncCount()
-	var targets map[int]*inlineTarget
+	var targets inlineTargetTable
+	var typeArena []machineType
 	for i := range m.Code {
 		body := m.Code[i].BodyBytes
 		if len(body) == 0 {
@@ -450,32 +478,50 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) map[int]*inlineTar
 		if !inlineOK(facts) {
 			continue
 		}
-		lt := calleeLocalTypes(m, i)
-		if lt == nil {
-			continue
+		if targets.empty() {
+			targets.first = importedFuncs
+			targets.targets = make([]inlineTarget, len(m.Code))
+			typeCount := 0
+			for j := range m.Code {
+				if candidateType, ok := m.LocalFuncType(j); ok {
+					typeCount += allHints[j].nLocals + len(candidateType.Results)
+				}
+			}
+			typeArena = make([]machineType, 0, typeCount)
 		}
-		var rt []machineType
-		res0 := mtNone
-		if ft != nil {
-			rt = typesOfVals(ft.Results)
-			if len(rt) > 0 {
-				res0 = rt[0]
+		localStart := len(typeArena)
+		for _, p := range ft.Params {
+			typeArena = append(typeArena, mtOf(p))
+		}
+		for _, run := range m.Code[i].Locals.Runs {
+			for k := 0; k < int(run.Count); k++ {
+				typeArena = append(typeArena, mtOf(run.Type))
 			}
 		}
-		if targets == nil {
-			targets = map[int]*inlineTarget{}
+		localEnd := len(typeArena)
+		for _, result := range ft.Results {
+			typeArena = append(typeArena, mtOf(result))
 		}
-		targets[importedFuncs+i] = &inlineTarget{
-			globalIdx:   importedFuncs + i,
-			body:        body,
-			params:      facts.params,
-			nLocals:     len(lt),
-			localTypes:  lt,
-			resultTypes: rt,
-			res0:        res0,
-			touchesMem:  facts.touchesMem,
-			touchesGlob: facts.touchesGlobal,
-			hasCtrl:     facts.hasControlFlow,
+		resultEnd := len(typeArena)
+		lt := typeArena[localStart:localEnd:localEnd]
+		rt := typeArena[localEnd:resultEnd:resultEnd]
+		res0 := mtNone
+		if len(rt) > 0 {
+			res0 = rt[0]
+		}
+		targets.targets[i] = inlineTarget{
+			valid:          true,
+			globalIdx:      importedFuncs + i,
+			localDeclBytes: m.Code[i].LocalDeclBytes,
+			body:           body,
+			params:         facts.params,
+			nLocals:        len(lt),
+			localTypes:     lt,
+			resultTypes:    rt,
+			res0:           res0,
+			touchesMem:     facts.touchesMem,
+			touchesGlob:    facts.touchesGlobal,
+			hasCtrl:        facts.hasControlFlow,
 		}
 	}
 	return targets
@@ -489,25 +535,6 @@ func (t *inlineTarget) inlineInLoopIsRegressive() bool {
 	return t.nLocals == t.params && !t.touchesMem && !t.touchesGlob && !t.hasCtrl
 }
 
-// calleeLocalTypes returns the machine types of a local function's params and
-// declared locals, in index order, or nil if the type is unavailable.
-func calleeLocalTypes(m *wasm.Module, localIdx int) []machineType {
-	ft, ok := m.LocalFuncType(localIdx)
-	if !ok {
-		return nil
-	}
-	lt := make([]machineType, 0, len(ft.Params))
-	for _, p := range ft.Params {
-		lt = append(lt, mtOf(p))
-	}
-	for _, run := range m.Code[localIdx].Locals.Runs {
-		for k := 0; k < int(run.Count); k++ {
-			lt = append(lt, mtOf(run.Type))
-		}
-	}
-	return lt
-}
-
 // reserveInlineLocals scans the caller body for calls to inline targets and, for
 // each distinct spliced callee, reserves its params+locals as fresh frame locals
 // PAST f.nLocals (so the prologue's zeroDeclaredLocals — bounded by f.nLocals —
@@ -516,7 +543,7 @@ func calleeLocalTypes(m *wasm.Module, localIdx int) []machineType {
 // locals are appended unpinned. All splice sites of the same callee share one
 // region — inlined bodies never overlap (a straight-line leaf fully completes
 // before the next splice), so the region is safely reused.
-func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets map[int]*inlineTarget) {
+func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTable) {
 	if len(callees) == 0 {
 		return
 	}
@@ -538,8 +565,8 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets map[int]*inlin
 // inline targets it calls, in first-call order. Computed before frame setup so
 // the caller's guard-page pin exclusion can be re-derived from the callees
 // (whether any touches memory), and reused by reserveInlineLocals.
-func collectInlinedCallees(caller *wasm.Func, targets map[int]*inlineTarget) []*inlineTarget {
-	if targets == nil || len(caller.BodyBytes) == 0 {
+func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inlineTarget {
+	if targets.empty() || len(caller.BodyBytes) == 0 {
 		return nil
 	}
 	var out []*inlineTarget
@@ -557,7 +584,7 @@ func collectInlinedCallees(caller *wasm.Func, targets map[int]*inlineTarget) []*
 		if imm.Kind != wasm.InstrCall {
 			continue
 		}
-		t := targets[int(imm.Index)]
+		t := targets.target(int(imm.Index))
 		if t == nil || seen[t.globalIdx] {
 			continue
 		}
@@ -574,8 +601,8 @@ func collectInlinedCallees(caller *wasm.Func, targets map[int]*inlineTarget) []*
 // the current inline plan will splice. This lets frame/register planning treat
 // such a caller as truly call-free: no BL remains to clobber LR or local pins.
 // Calls in loops honor the same regression guard as callOp.
-func allCallsWillInline(caller *wasm.Func, targets map[int]*inlineTarget) bool {
-	if targets == nil || len(caller.BodyBytes) == 0 {
+func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable) bool {
+	if targets.empty() || len(caller.BodyBytes) == 0 {
 		return false
 	}
 	r := wasm.NewReader(caller.BodyBytes)
@@ -608,7 +635,7 @@ func allCallsWillInline(caller *wasm.Func, targets map[int]*inlineTarget) bool {
 		switch imm.Kind {
 		case wasm.InstrCall:
 			sawCall = true
-			t := targets[int(imm.Index)]
+			t := targets.target(int(imm.Index))
 			if t == nil || (loopDepth != 0 && t.inlineInLoopIsRegressive() && !inlineLoopCallees) {
 				return false
 			}
@@ -644,7 +671,9 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.bindInlineParams(t, base)
 
 	old := f.localBase
+	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
 	f.localBase = base
+	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclBytes
 	var err error
 	if t.hasCtrl {
 		err = f.inlineBodyCtrl(t)
@@ -652,6 +681,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 		err = f.inlineBody(t.body)
 	}
 	f.localBase = old
+	f.traceFuncIdx, f.tracePCBase, f.wasmPC = oldTraceFunc, oldTraceBase, oldPC
 	if err != nil {
 		return err
 	}
@@ -728,6 +758,7 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 func (f *fn) inlineBody(body []byte) error {
 	r := wasm.NewReader(body)
 	for {
+		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
 			return err

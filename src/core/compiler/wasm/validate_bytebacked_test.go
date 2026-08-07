@@ -268,7 +268,7 @@ func TestValidateByteBackedModuleConstExprSummaries(t *testing.T) {
 }
 
 func TestValidateByteBackedModuleASTDifferentialTestdata(t *testing.T) {
-	entries, err := os.ReadDir(filepath.Join("..", "..", "..", "..", "tests", "testdata"))
+	entries, err := os.ReadDir(filepath.Join("..", "..", "..", "..", "tests", "fixtures", "wasm"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestValidateByteBackedModuleASTDifferentialTestdata(t *testing.T) {
 		}
 		name := entry.Name()
 		t.Run(name, func(t *testing.T) {
-			b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "tests", "testdata", name))
+			b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "tests", "fixtures", "wasm", name))
 			if err != nil {
 				t.Fatal(err)
 			}

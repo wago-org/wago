@@ -1,21 +1,24 @@
-# Guard-page bounds-check elision (experimental spike)
+# Guard-page bounds-check elision
 
-**Status: experimental and opt-in behind the `wago_guardpage` build tag.** The
-default build still uses explicit bounds checks; tagged builds can select
-signals-based checks through `RuntimeConfig`.
+**Status: supported opt-in build configuration behind the `wago_guardpage` build
+tag.** The default build still uses explicit bounds checks; tagged builds can
+select signals-based checks through `RuntimeConfig`. Guard-page coverage runs in
+the native CI matrix, and signal-backed Core 3 conformance is a required gate on
+linux/amd64, linux/arm64, and darwin/arm64.
 
 This proves that wago can use the MMU to eliminate per-access linear-memory
 bounds checks — the technique WARP uses on targets with passive memory
 protection — **in pure Go, with no cgo**. Linux installs SIGSEGV/SIGBUS handlers
-via raw `rt_sigaction` and assembly stubs; Darwin/arm64 calls libSystem's
-`sigaction` through a dynamic import and uses an assembly signal-context
-rewriter. Darwin deliberately does not install Mach exception ports: a Mach
+via raw `rt_sigaction` and assembly stubs; Darwin calls libSystem's `sigaction`
+through a dynamic import and uses architecture-specific assembly signal-context
+rewriters. Windows installs a first-priority vectored exception handler and
+commits grown pages with `VirtualAlloc`. Darwin deliberately does not install Mach exception ports: a Mach
 receiver implemented as a Go goroutine can deadlock while all scheduler Ps are
 inside `enterNative`, whereas signal delivery runs synchronously on the faulting
 thread.
 
-Supported tagged hosts are currently `linux/amd64`, `linux/arm64`, and
-`darwin/arm64`.
+Supported tagged hosts are `linux/amd64`, `linux/arm64`, `darwin/amd64`,
+`darwin/arm64`, `windows/amd64`, and `windows/arm64`.
 
 ## How it works
 
@@ -29,8 +32,9 @@ Supported tagged hosts are currently `linux/amd64`, `linux/arm64`, and
    `lea`/`cmp memBytes`/`jbe`/trap sequence and emits only the address
    computation + the load/store. An out-of-range `linMem+addr+offset` lands on a
    `PROT_NONE` page and faults.
-3. **Handler** (`sigtrap_{amd64,arm64}.s`, installed by
-   `InstallGuardTrapHandler`): a pure-asm SA_SIGINFO/SA_ONSTACK handler.
+3. **Handler** (`sigtrap_*`, installed by `InstallGuardTrapHandler`): Unix uses
+   a pure-assembly SA_SIGINFO/SA_ONSTACK handler; Windows uses a vectored
+   exception callback and the Go runtime's supported Windows callback bridge.
    It derives **everything per-fault** from the faulting thread — there is no
    per-call shared state:
    - It scans a registry of live reservations (`guardRegions`, populated by

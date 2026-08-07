@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/interesting-float-splat/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 9, "action": {"type": "invoke", "field": "", "args": []}, "expected": [{"type": "v128", "lane_type": "i32", "value": ["1065369472", "1065369472", "1065369472", "1065369472"]}]}]}

@@ -14,14 +14,14 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-// testdata loads a checked-in wasm fixture from the repo-root tests/testdata
+// testdata loads a checked-in wasm fixture from the repo-root tests/fixtures/wasm
 // directory. Go runs tests with the working directory set to the package dir,
 // so the fixtures live two levels up from src/wago.
 func testdata(name string) []byte {
-	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "testdata", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "wasm", name))
 	if err != nil {
 		panic(err)
 	}

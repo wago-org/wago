@@ -7,7 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wago "github.com/wago-org/wago/src/wago"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // addModule exports add(i32, i32) -> i32.
@@ -41,17 +41,17 @@ func Example_compileAndInvoke() {
 func ExampleSupportedFeatures() {
 	features := wago.SupportedFeatures()
 	fmt.Println(features.IsEnabled(wago.CoreFeatureMutableGlobal))
-	fmt.Println(features.IsEnabled(wago.CoreFeatureTailCall))
+	fmt.Println(features.IsEnabled(wago.CoreFeatureExtendedConstExpressions))
 	// Output:
 	// true
-	// false
+	// true
 }
 
 // A config is immutable; WithFeature returns a copy with one proposal toggled.
 func ExampleRuntimeConfig_WithFeature() {
 	cfg := wago.NewRuntimeConfig().WithFeature(wago.CoreFeatureBulkMemoryOperations, false)
 	fmt.Println(cfg.CoreFeatures())
-	// Output: multi-value|mutable-global|nontrapping-float-to-int-conversion|reference-types|sign-extension-ops|simd|extended-constant-expressions
+	// Output: multi-value|mutable-global|nontrapping-float-to-int-conversion|reference-types|sign-extension-ops|simd|extended-constant-expressions|extended-const-expressions
 }
 
 func ExampleCoreFeatures_IsEnabled() {

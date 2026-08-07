@@ -22,6 +22,40 @@ func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
 	}
 }
 
+func TestInstantiateArenaNeedAccountsDynamicFuncrefTypeIDs(t *testing.T) {
+	base, err := InstantiateArenaNeed(InstantiateFootprint{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withIDs, err := InstantiateArenaNeed(InstantiateFootprint{FuncRefTypeIDCount: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := withIDs-base, 16; got != want {
+		t.Fatalf("three compact funcref type IDs add %d bytes, want aligned %d", got, want)
+	}
+	if _, err := InstantiateArenaNeed(InstantiateFootprint{FuncRefTypeIDCount: -1}); err == nil {
+		t.Fatal("negative funcref type-ID count unexpectedly accepted")
+	}
+}
+
+func TestInstantiateArenaNeedAccountsV128GlobalCells(t *testing.T) {
+	scalar, err := InstantiateArenaNeed(InstantiateFootprint{GlobalCount: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withV128, err := InstantiateArenaNeed(InstantiateFootprint{GlobalCount: 2, V128GlobalCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := withV128-scalar, 8; got != want {
+		t.Fatalf("one v128 global footprint delta = %d, want %d", got, want)
+	}
+	if _, err := InstantiateArenaNeed(InstantiateFootprint{GlobalCount: 1, V128GlobalCount: 2}); err == nil || !strings.Contains(err.Error(), "exceeds global count") {
+		t.Fatalf("excess v128 global count error = %v", err)
+	}
+}
+
 func TestInstantiateArenaNeedZeroLengthTableDescriptor(t *testing.T) {
 	base := InstantiateFootprint{}
 	withoutTable, err := InstantiateArenaNeed(base)
@@ -74,6 +108,12 @@ func TestInstantiateArenaNeedExcludesImportedTableDescriptors(t *testing.T) {
 	}
 	if got, want := withLocal-twoImported, 48; got != want {
 		t.Fatalf("local table after two imports footprint delta = %d, want 40-byte descriptor plus 8-byte directory growth", got)
+	}
+}
+
+func TestFuncRefDescriptorLayout(t *testing.T) {
+	if TableEntryBytes != 32 || FuncRefContextOffset != 32 || FuncRefDescBytes != 40 {
+		t.Fatalf("funcref descriptor layout = table %d context %d bytes %d", TableEntryBytes, FuncRefContextOffset, FuncRefDescBytes)
 	}
 }
 

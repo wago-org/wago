@@ -35,19 +35,23 @@ const (
 type Config struct {
 	// Profile selects the heap profile. The zero value preserves the default
 	// throughput collector behavior.
-	Profile               Profile
-	Allocator             AllocatorKind
-	Runtime               RuntimeKind
-	NurseryBytes          uint32
-	OldBlockBytes         uint32
-	LargeObjectBytes      uint32
-	CollectEveryAlloc     bool
-	StressNurseryBytes    uint32
-	ForceMajorEveryMinor  bool
-	VerifyAfterCollect    bool
-	PoisonFreed           bool
-	StressBarriers        bool
-	DisableMovingNursery  bool
+	Profile              Profile
+	Allocator            AllocatorKind
+	Runtime              RuntimeKind
+	NurseryBytes         uint32
+	OldBlockBytes        uint32
+	LargeObjectBytes     uint32
+	CollectEveryAlloc    bool
+	StressNurseryBytes   uint32
+	ForceMajorEveryMinor bool
+	VerifyAfterCollect   bool
+	PoisonFreed          bool
+	StressBarriers       bool
+	DisableMovingNursery bool
+	// DisableCollection keeps every object in the bounded throughput heap and
+	// returns an allocation error on exhaustion. It is used by general WasmGC
+	// code until native frame roots can be published at every safepoint.
+	DisableCollection     bool
 	TinyHeapBytes         uint32
 	TinyBlockBytes        uint32
 	TinyStepBudget        uint32
@@ -62,10 +66,12 @@ type Config struct {
 }
 
 type Stats struct {
-	Allocations      uint64
-	MinorCollections uint64
-	FullCollections  uint64
-	LiveObjects      uint32
+	Allocations            uint64
+	MinorCollections       uint64
+	FullCollections        uint64
+	MinorObjectsScanned    uint64
+	MinorRememberedScanned uint64
+	LiveObjects            uint32
 }
 
 type spaceKind uint8
@@ -79,32 +85,42 @@ const (
 )
 
 type handleEntry struct {
-	off, size uint32
-	allocSize uint32
-	class     uint16
-	space     spaceKind
+	off, size  uint32
+	allocSize  uint32
+	cardSlot   uint32 // one-based index in Collector.objectCards
+	class      uint16
+	space      spaceKind
+	remembered bool
 }
 
 type Collector struct {
-	cfg         Config
-	types       []TypeDesc
-	typeIndex   []int
-	nursery     []byte
-	nurseryBump uint32
-	tiny        tinyHeap
-	tinyGC      tinyGC
-	throughput  throughputHeap
-	handles     []handleEntry // index 0 is never used; Ref stores index<<1.
-	freeHandles []uint32
-	mark        []bool
-	markStack   []uint32
-	remembered  []uint32
-	objectCards []objectCard
-	slotCards   []slotCard
-	globalSlots []Ref
-	tableSlots  []Ref
-	stats       Stats
-	closed      bool
+	cfg               Config
+	nativeView        *NativeCollectorView
+	nativeStructAlloc nativeStructAllocState
+	nativeAllocEpoch  uint32
+	types             []TypeDesc
+	typeIndex         []int
+	objectAlign       uint32
+	nursery           []byte
+	nurseryBump       uint32
+	tiny              tinyHeap
+	tinyGC            tinyGC
+	throughput        throughputHeap
+	handles           []handleEntry // index 0 is never used; Ref stores index<<1.
+	freeHandles       []uint32
+	nurseryHandles    []uint32 // dense live nursery set; minor collection never scans all old handles
+	mark              []bool
+	markStack         []uint32
+	promotionScratch  []plannedPromotion
+	remembered        []uint32
+	objectCards       []objectCard
+	slotCards         []slotCard
+	slotCardSlot      map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
+	globalSlots       []Ref
+	tableSlots        []Ref
+	stats             Stats
+	rootMarkMode      uint8
+	closed            bool
 }
 
 const defaultNursery = 64 << 10
@@ -133,13 +149,21 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := ValidateTypeDescs(types); err != nil {
 		return nil, err
 	}
-	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), nursery: make([]byte, config.NurseryBytes), handles: []handleEntry{{}}}
+	objectAlign := requiredObjectAlignment(types)
+	if objectAlign < 16 {
+		// Runtime GC domains may append canonically distinct module types after
+		// construction. Wasm storage alignment is capped at v128's 16 bytes, so
+		// reserving that alignment once avoids relocating a live nursery later.
+		objectAlign = 16
+	}
+	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, nursery: makeAlignedBytes(config.NurseryBytes, uintptr(objectAlign)), handles: []handleEntry{{}}}
 	if err := c.initTypeIndex(); err != nil {
 		return nil, err
 	}
 	if err := c.throughput.Init(config); err != nil {
 		return nil, err
 	}
+	c.initNativeView()
 	return c, nil
 }
 
@@ -147,21 +171,59 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.discardNativeStructHandles()
 	c.closed = true
 	c.nursery = nil
 	c.tiny.Close()
 	c.throughput.Close()
 	c.handles = nil
 	c.freeHandles = nil
+	c.nurseryHandles = nil
 	c.mark = nil
 	c.markStack = nil
+	c.promotionScratch = nil
 	c.remembered = nil
 	c.objectCards = nil
 	c.slotCards = nil
+	c.slotCardSlot = nil
 	c.globalSlots = nil
 	c.tableSlots = nil
+	c.refreshNativeView()
 	c.tinyGC.color = nil
 	c.tinyGC.grayStack = nil
+}
+
+// AddTypes appends immutable Runtime-domain type descriptors without relocating
+// live objects. Callers serialize this with allocation and collection. IDs must
+// be new, and any appended supertype must already exist or appear in the same
+// append batch.
+func (c *Collector) AddTypes(types []TypeDesc) error {
+	if c == nil || c.closed {
+		return errCollectorClosed
+	}
+	if len(types) == 0 {
+		return nil
+	}
+	combined := make([]TypeDesc, 0, len(c.types)+len(types))
+	combined = append(combined, c.types...)
+	combined = append(combined, types...)
+	if err := ValidateTypeDescs(combined); err != nil {
+		return err
+	}
+	requiredAlign := requiredObjectAlignment(combined)
+	if requiredAlign > c.objectAlign {
+		return errors.New("gc: appended type alignment exceeds collector backing alignment")
+	}
+	if c.cfg.Profile == ProfileTiny && requiredAlign > c.tiny.blockBytes {
+		return errors.New("gc: appended type alignment exceeds tiny block size")
+	}
+	oldTypes, oldIndex := c.types, c.typeIndex
+	c.types = combined
+	if err := c.initTypeIndex(); err != nil {
+		c.types, c.typeIndex = oldTypes, oldIndex
+		return err
+	}
+	return nil
 }
 
 func (c *Collector) errIfClosed() error {

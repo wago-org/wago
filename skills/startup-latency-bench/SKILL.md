@@ -78,7 +78,9 @@ Sanity: `wasm-tools print /tmp/json-startup.wasm | grep -c '(import'` must be 0.
 
 ## 2. Get the runtimes
 
-- **wago**: `go build -o /tmp/bin/wago ./cli/wago` (matches `make build`).
+- **wago runtime**:
+  `go build -tags wago_runtime -o /tmp/bin/wago ./cli/wago`
+  (matches `make build-runtime-standard`).
 - **wasmtime, wazero, wasmer, wavm**: upstream release binaries.
 - **wasm3**: build from source; its FetchContent pins uvwasi to a dead
   `master` branch, so use the built-in WASI backend:

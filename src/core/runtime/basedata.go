@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux || darwin || windows) && (amd64 || arm64)
 
 package runtime
 
@@ -18,24 +18,28 @@ import (
 // ACTIVE_STACK_OVERFLOW_CHECK=1, BUILTIN_FUNCTIONS=0, no stacktrace,
 // STACKSIZE_LEFT_BEFORE_NATIVE_CALL=0).
 const (
-	offLinMemWasmSize       = 4  // u32 (pages)
-	offActualLinMemByteSize = 8  // u32 (bytes); memSize cache = this-8
-	offMaxLinMemPages       = 12 // u32 (pages); wago extension: grow ceiling (reserved size)
-	offTrapHandlerPtr       = 16 // u64
-	offTrapStackReentry     = 24 // u64
-	offRuntimePtr           = 32 // u64
-	offCustomCtx            = 40 // u64 (V2 host-import ctx pointer)
-	offSpillRegion          = 48 // 8B scratch
-	offJobMemoryDataPtrPtr  = 56 // u64
-	offMemoryHelperPtr      = 64 // u64
-	offStackFence           = 72 // u64
-	offTablePtr             = 80 // u64: indirect-call table descriptor (wago extension)
-	offFuncRefDescPtr       = abi.FuncRefDescPtrOffset
-	offPassiveElemPtr       = abi.PassiveElemPtrOffset
-	offGlobalsPtr           = abi.GlobalsPtrOffset
-	offPassiveDataPtr       = abi.PassiveDataPtrOffset
-	offTableDirPtr          = abi.TableDirPtrOffset
-	offImportDispatchPtr    = abi.ImportDispatchPtrOffset
+	offLinMemWasmSize         = 4                                // u32 (pages)
+	offActualLinMemByteSize   = 8                                // legacy u32 byte-size cache
+	offMaxLinMemPages         = 12                               // u32 (pages); grow ceiling
+	offActualLinMemByteSize64 = abi.ActualLinMemByteSize64Offset // authoritative u64 bytes
+	offTrapHandlerPtr         = 16                               // u64
+	offTrapStackReentry       = 24                               // u64
+	offRuntimePtr             = 32                               // u64
+	offCustomCtx              = 40                               // u64 (V2 host-import ctx pointer)
+	offSpillRegion            = 48                               // 8B scratch
+	offJobMemoryDataPtrPtr    = 56                               // u64
+	offMemoryDirPtr           = abi.MemoryDirPtrOffset           // u64: indexed memory directory
+	offStackFence             = 72                               // u64
+	offTablePtr               = 80                               // u64: indirect-call table descriptor (wago extension)
+	offFuncRefDescPtr         = abi.FuncRefDescPtrOffset
+	offPassiveElemPtr         = abi.PassiveElemPtrOffset
+	offGlobalsPtr             = abi.GlobalsPtrOffset
+	offPassiveDataPtr         = abi.PassiveDataPtrOffset
+	offTableDirPtr            = abi.TableDirPtrOffset
+	offImportDispatchPtr      = abi.ImportDispatchPtrOffset
+	offEHTagDirPtr            = abi.EHTagDirPtrOffset
+	offTailArgs               = abi.TailArgsOffset
+	offGCNativeViewPtr        = abi.GCNativeViewPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -56,7 +60,7 @@ type JobMemory struct {
 }
 
 const (
-	maxClassicLinMemBytes        = 65535 * 65536
+	maxClassicLinMemBytes        = 65536 * 65536
 	minClassicLinMemReserveBytes = 65536
 )
 
@@ -86,8 +90,8 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 }
 
 func normalizeMemorySizes(initialBytes, maxBytes int) (int, int, int) {
-	// 65536 pages is 4 GiB, whose byte size (2^32) does not fit the u32 size
-	// cache, so cap the logical size at 65535 pages (0xFFFF0000 bytes).
+	// memory32 is bounded at 65,536 pages (4 GiB). The authoritative byte-size
+	// cache is u64; the legacy u32 cache wraps only at this exact boundary.
 	if initialBytes > maxClassicLinMemBytes {
 		initialBytes = maxClassicLinMemBytes
 	}
@@ -116,6 +120,7 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 	j.reserveBase = 0
 	j.reserveLen = 0
 	j.putU32(offActualLinMemByteSize, uint32(initialBytes))
+	j.putU64(offActualLinMemByteSize64, uint64(initialBytes))
 	j.putU32(offLinMemWasmSize, uint32(initialBytes/65536))
 	j.putU32(offMaxLinMemPages, uint32(maxBytes/65536))
 }
@@ -180,7 +185,12 @@ func (j *JobMemory) reclaimForReuse() error {
 
 // curBytes is the current in-bounds linear-memory size, read from the cache that
 // native code maintains (memory.grow updates it without involving Go).
-func (j *JobMemory) curBytes() int { return int(j.getU32(offActualLinMemByteSize)) }
+func (j *JobMemory) curBytes() int { return int(j.getU64(offActualLinMemByteSize64)) }
+
+// CurrentPages and MaxPages expose the native size caches for exact import
+// matching and indexed-memory directory construction.
+func (j *JobMemory) CurrentPages() uint32 { return j.getU32(offLinMemWasmSize) }
+func (j *JobMemory) MaxPages() uint32     { return j.getU32(offMaxLinMemPages) }
 
 // RestoreLinear reloads linear memory from data (a full snapshot image whose
 // length is the desired logical size) and resets the size caches to match, so
@@ -204,6 +214,7 @@ func (j *JobMemory) RestoreLinear(data []byte) {
 		clear(lin[n:old]) // drop grown/dirtied tail back to zero
 	}
 	j.putU32(offActualLinMemByteSize, uint32(n))
+	j.putU64(offActualLinMemByteSize64, uint64(n))
 	j.putU32(offLinMemWasmSize, uint32(n/65536))
 }
 
@@ -213,11 +224,6 @@ func (j *JobMemory) CurrentBytes() []byte {
 	n := j.curBytes()
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
 }
-
-// MaxPages returns the declared/runtime memory.grow ceiling retained in the
-// basedata control block. Unlike len(LinearMemory), this is exact in both classic
-// and guard-page layouts, where the Go view may cover only committed pages.
-func (j *JobMemory) MaxPages() uint32 { return j.getU32(offMaxLinMemPages) }
 
 // LinearMemory returns the native-facing view spanning the full reservation, so
 // its base pointer is always valid; native code enforces the current logical
@@ -293,10 +299,25 @@ type InstanceContext struct {
 	GlobalsPtr     uintptr
 	PassiveDataPtr uintptr
 	TableDirPtr    uintptr
+	MemoryDirPtr   uintptr
 	ImportDispatch uintptr
 }
 
-const InstanceContextBytes = 8 * 8
+const (
+	// InstanceContextGCDomainOffset is trailing immutable metadata, not a basedata
+	// pointer field. Native typed-reference tails compare it before transferring
+	// compact GC references across instance contexts. The following three words
+	// are process-serialized tail-transfer scratch, kept outside basedata so EH tag
+	// directories and the wrapper argument bank remain immutable.
+	InstanceContextGCDomainOffset      = 9 * 8
+	InstanceContextTailCodeOffset      = 10 * 8
+	InstanceContextTailHomeOffset      = 11 * 8
+	InstanceContextTailTargetCtxOffset = 12 * 8
+	// InstanceContextGCNativeViewOffset carries the per-instance checked GC
+	// metadata pointer for context switches over shared linear-memory basedata.
+	InstanceContextGCNativeViewOffset = 13 * 8
+	InstanceContextBytes              = 14 * 8
+)
 
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
 // installed in basedata.
@@ -309,6 +330,7 @@ func (j *JobMemory) CaptureInstanceContext() InstanceContext {
 		GlobalsPtr:     uintptr(j.getU64(offGlobalsPtr)),
 		PassiveDataPtr: uintptr(j.getU64(offPassiveDataPtr)),
 		TableDirPtr:    uintptr(j.getU64(offTableDirPtr)),
+		MemoryDirPtr:   uintptr(j.getU64(offMemoryDirPtr)),
 		ImportDispatch: uintptr(j.getU64(offImportDispatchPtr)),
 	}
 }
@@ -323,6 +345,7 @@ func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
 	j.putU64(offGlobalsPtr, uint64(ctx.GlobalsPtr))
 	j.putU64(offPassiveDataPtr, uint64(ctx.PassiveDataPtr))
 	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
+	j.putU64(offMemoryDirPtr, uint64(ctx.MemoryDirPtr))
 	j.putU64(offImportDispatchPtr, uint64(ctx.ImportDispatch))
 }
 
@@ -333,9 +356,10 @@ func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
 		panic("runtime: short instance context buffer")
 	}
 	ctx := j.CaptureInstanceContext()
-	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.ImportDispatch} {
+	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.MemoryDirPtr, ctx.ImportDispatch} {
 		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
 	}
+	clear(dst[InstanceContextGCDomainOffset:InstanceContextBytes])
 }
 
 // BindInstanceContextBytes restores a context captured by
@@ -344,17 +368,28 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	if len(src) < InstanceContextBytes {
 		panic("runtime: short instance context buffer")
 	}
-	j.BindInstanceContext(InstanceContext{
-		CustomCtx:      uintptr(binary.LittleEndian.Uint64(src[0:])),
-		TablePtr:       uintptr(binary.LittleEndian.Uint64(src[8:])),
-		FuncRefDescPtr: uintptr(binary.LittleEndian.Uint64(src[16:])),
-		PassiveElemPtr: uintptr(binary.LittleEndian.Uint64(src[24:])),
-		GlobalsPtr:     uintptr(binary.LittleEndian.Uint64(src[32:])),
-		PassiveDataPtr: uintptr(binary.LittleEndian.Uint64(src[40:])),
-		TableDirPtr:    uintptr(binary.LittleEndian.Uint64(src[48:])),
-		ImportDispatch: uintptr(binary.LittleEndian.Uint64(src[56:])),
-	})
+	// These basedata destinations are naturally uint64-aligned. Store directly
+	// into the already bounds-checked basedata image instead of constructing an
+	// InstanceContext and taking ten separate slice/method bounds paths on every
+	// native entry. Source loads stay byte-based because callers may supply an
+	// arbitrarily aligned context slice.
+	base := unsafe.Pointer(&j.mem[j.linOff-basedataSize])
+	*(*uint64)(unsafe.Add(base, basedataSize-offCustomCtx)) = binary.LittleEndian.Uint64(src[0:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offTablePtr)) = binary.LittleEndian.Uint64(src[8:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offFuncRefDescPtr)) = binary.LittleEndian.Uint64(src[16:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offPassiveElemPtr)) = binary.LittleEndian.Uint64(src[24:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offGlobalsPtr)) = binary.LittleEndian.Uint64(src[32:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offPassiveDataPtr)) = binary.LittleEndian.Uint64(src[40:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offTableDirPtr)) = binary.LittleEndian.Uint64(src[48:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offMemoryDirPtr)) = binary.LittleEndian.Uint64(src[56:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[64:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offGCNativeViewPtr)) = binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])
 }
+
+// ClearEHHandler removes any native-stack handler left behind when a non-EH
+// trap unwound across an active staged try_table. It is called only on the cold
+// prepared-call error path; successful calls restore their prior handler.
+func (j *JobMemory) ClearEHHandler() { j.putU64(abi.EHHandlerPtrOffset, 0) }
 
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }
@@ -371,11 +406,21 @@ func (j *JobMemory) SetFuncRefDesc(ptr uintptr) {
 // SetPassiveElemPtr writes the passive element descriptor pointer.
 func (j *JobMemory) SetPassiveElemPtr(v uintptr) { j.putU64(offPassiveElemPtr, uint64(v)) }
 
+// PassiveElemPtr returns the currently installed passive-element descriptor
+// array. Exact parked helpers use it only while the owning instance arena lives.
+func (j *JobMemory) PassiveElemPtr() uintptr { return uintptr(j.getU64(offPassiveElemPtr)) }
+
 // SetGlobalsPtr writes the globals pointer-table address at offGlobalsPtr.
 func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)) }
 
 // SetPassiveDataPtr writes the passive data descriptor array address at offPassiveDataPtr.
 func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, uint64(v)) }
+
+// SetMemoryDirPtr writes the indexed memory directory pointer.
+func (j *JobMemory) SetMemoryDirPtr(v uintptr) { j.putU64(offMemoryDirPtr, uint64(v)) }
+
+// MemoryDirPtr returns the runtime-owned indexed memory directory.
+func (j *JobMemory) MemoryDirPtr() uintptr { return uintptr(j.getU64(offMemoryDirPtr)) }
 
 // SetTableDirPtr writes the indexed table descriptor directory pointer.
 func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(v)) }
@@ -386,13 +431,37 @@ func (j *JobMemory) SetImportDispatchPtr(v uintptr) { j.putU64(offImportDispatch
 // TableDirPtr returns the runtime-owned indexed table descriptor directory.
 func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }
 
+// SetEHTagDirPtr writes the bounded exact exception-tag identity directory.
+func (j *JobMemory) SetEHTagDirPtr(v uintptr) { j.putU64(offEHTagDirPtr, uint64(v)) }
+
+// SetGCNativeViewPtr writes the versioned checked collector metadata view.
+func (j *JobMemory) SetGCNativeViewPtr(v uintptr) { j.putU64(offGCNativeViewPtr, uint64(v)) }
+
+// GCNativeViewPtr returns the installed checked collector metadata view.
+func (j *JobMemory) GCNativeViewPtr() uintptr { return uintptr(j.getU64(offGCNativeViewPtr)) }
+
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).
 func (j *JobMemory) ReserveRange() (base, length uintptr) { return j.reserveBase, j.reserveLen }
 
+// SetGuardOwner identifies the primary linMem currently executing accesses to
+// this guarded reservation. Memory 0 owns itself; indexed memories are rebound
+// to the invoking instance's primary linMem before native entry so a lazy-commit
+// fault can be authenticated without confusing the indexed base with RBX/X26.
+func (j *JobMemory) SetGuardOwner(ownerLinMem uintptr) {
+	if j != nil && j.reserveBase != 0 && guardOwnerHook != nil {
+		guardOwnerHook(j.reserveBase, ownerLinMem)
+	}
+}
+
 // guardCloseHook, set by the wago_guardpage build, removes a guarded reservation
 // from the trap handler's registry before it is unmapped. nil otherwise.
 var guardCloseHook func(reserveBase uintptr)
+
+// guardOwnerHook updates the active primary linMem associated with a guarded
+// reservation. Native execution serialization makes each update quiescent with
+// respect to Wasm, while handlers consume the published pointer locklessly.
+var guardOwnerHook func(reserveBase, ownerLinMem uintptr)
 
 // guardReleaseHook, set by the wago_guardpage build, offers a released guarded
 // reservation to the guard-page reuse cache (keeping its registry entry) instead

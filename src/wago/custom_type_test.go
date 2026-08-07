@@ -5,12 +5,11 @@ package wago
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 type customCarrierExtension struct{}
@@ -34,56 +33,15 @@ func (customCarrierExtension) Register(reg *Registry) error {
 		}
 		if err := compiler.Instruction(InstructionSpec{
 			Module: "test:custom", Name: name, Output: []int32{256},
-			Custom: &CustomSignature{Output: &typ},
-			AMD64: &AMD64InstructionLowering{
-				Compatibility: AMD64CompatibilityFullAccess,
-				Emit: func(ctx AMD64LoweringContext) error {
-					reg := ctx.AllocYMM()
-					ctx.Encoder().YPxor(reg, reg, reg)
-					return ctx.OutputCustom(reg)
-				},
-			},
-			ARM64: &ARM64InstructionLowering{
-				Compatibility: ARM64CompatibilityFullAccess,
-				Emit: func(ctx ARM64LoweringContext) error {
-					a, b := ctx.AllocVector(), ctx.AllocVector()
-					ctx.Encoder().Eor16b(a, a, a)
-					ctx.Encoder().Eor16b(b, b, b)
-					return ctx.OutputCustom(a, b)
-				},
-			},
+			Custom:  &CustomSignature{Output: &typ},
+			Codegen: customProducerCodegen(),
 		}); err != nil {
 			return err
 		}
 		if err := compiler.Instruction(InstructionSpec{
 			Module: "test:custom", Name: name + ".drop", Input: []int32{256},
-			Custom: &CustomSignature{Inputs: []CustomType{typ}},
-			AMD64: &AMD64InstructionLowering{
-				Compatibility: AMD64CompatibilityFullAccess,
-				Emit: func(ctx AMD64LoweringContext) error {
-					regs, err := ctx.InputCustom(0)
-					if err != nil {
-						return err
-					}
-					for _, reg := range regs {
-						ctx.ReleaseVector(reg)
-					}
-					return nil
-				},
-			},
-			ARM64: &ARM64InstructionLowering{
-				Compatibility: ARM64CompatibilityFullAccess,
-				Emit: func(ctx ARM64LoweringContext) error {
-					regs, err := ctx.InputCustom(0)
-					if err != nil {
-						return err
-					}
-					for _, reg := range regs {
-						ctx.ReleaseVector(reg)
-					}
-					return nil
-				},
-			},
+			Custom:  &CustomSignature{Inputs: []CustomType{typ}},
+			Codegen: customConsumerCodegen(),
 		}); err != nil {
 			return err
 		}
@@ -94,40 +52,12 @@ func (customCarrierExtension) Register(reg *Registry) error {
 	}
 	return compiler.Instruction(InstructionSpec{
 		Module: "test:custom", Name: "test.value.alias.drop",
-		Custom: &CustomSignature{Inputs: []CustomType{alias}},
-		AMD64: &AMD64InstructionLowering{
-			Compatibility: AMD64CompatibilityFullAccess,
-			Emit: func(ctx AMD64LoweringContext) error {
-				regs, err := ctx.InputCustom(0)
-				if err != nil {
-					return err
-				}
-				for _, reg := range regs {
-					ctx.ReleaseVector(reg)
-				}
-				return nil
-			},
-		},
-		ARM64: &ARM64InstructionLowering{
-			Compatibility: ARM64CompatibilityFullAccess,
-			Emit: func(ctx ARM64LoweringContext) error {
-				regs, err := ctx.InputCustom(0)
-				if err != nil {
-					return err
-				}
-				for _, reg := range regs {
-					ctx.ReleaseVector(reg)
-				}
-				return nil
-			},
-		},
+		Custom:  &CustomSignature{Inputs: []CustomType{alias}},
+		Codegen: customConsumerCodegen(),
 	})
 }
 
 func TestCustomTypeCarriersCompileAndExecuteAsErasedValues(t *testing.T) {
-	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-		t.Skip("custom machine-code lowering is available on amd64 and arm64")
-	}
 	rt := NewRuntime()
 	if err := rt.Use(customCarrierExtension{}); err != nil {
 		t.Fatal(err)
@@ -199,11 +129,8 @@ func TestCustomTypeRegistrationRejectsConflictsAndForeignTokens(t *testing.T) {
 	second := (&Registry{}).Compiler()
 	if err := second.Instruction(InstructionSpec{
 		Module: "test", Name: "foreign", Output: []int32{256},
-		Custom: &CustomSignature{Output: &typ},
-		AMD64: &AMD64InstructionLowering{
-			Compatibility: AMD64CompatibilityFullAccess,
-			Emit:          func(AMD64LoweringContext) error { return nil },
-		},
+		Custom:  &CustomSignature{Output: &typ},
+		Codegen: customConsumerCodegen(),
 	}); err == nil {
 		t.Fatal("custom type token from another registry accepted")
 	}

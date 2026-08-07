@@ -1,4 +1,4 @@
-//go:build wago_guardpage && ((linux && (amd64 || arm64)) || (darwin && arm64))
+//go:build wago_guardpage && (linux || darwin || windows) && (amd64 || arm64)
 
 package wago
 
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // loadModule exports f(i32)->i32 = i32.load(local0) over a 1-page memory.

@@ -23,10 +23,15 @@ const (
 )
 
 // guardReserveBytes is the total virtual reservation per guarded memory.
-var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + maxLinMemBytes + offsetGuardBytes)))
+var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + wasmPageBytes - 1 + maxLinMemBytes + offsetGuardBytes)))
 
 // wasmPageBytes is the wasm linear-memory page size (64 KiB).
 const wasmPageBytes = 1 << 16
+
+func guardedLinOff(base uintptr) int {
+	linMem := (base + uintptr(basedataSize) + wasmPageBytes - 1) &^ uintptr(wasmPageBytes-1)
+	return int(linMem - base)
+}
 
 // NewJobMemoryGuarded lays out [ basedata | linear memory ] inside a large
 // PROT_NONE reservation, committing (RW) only basedata + the initial linear
@@ -37,18 +42,18 @@ const wasmPageBytes = 1 << 16
 // compiled in signals-based bounds mode (the arm64 backend's guard mode, which
 // elides the inline bounds checks and relies on the guard-page fault instead).
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
-	// Place linMem on a page boundary (basedata sits in the page just below it) so
-	// that, because wasm linear memory is always a multiple of the 64 KiB wasm
-	// page, linMem+linBytes lands exactly on a guard page. An access at offset
-	// linBytes then faults — page-granular trapping is byte-exact for wasm.
-	linOff := roundUpPage(basedataSize)
-	commit := uintptr(linOff + linBytes)
+	// Place linMem on a 64 KiB wasm-page boundary. The signal handler commits one
+	// whole wasm page at a time, so host-page alignment alone is insufficient:
+	// mmap may return a base whose 64 KiB phase would make that commit straddle the
+	// logical page. The reservation includes one page of alignment slack.
 	base, _, errno := syscall.Syscall6(syscall.SYS_MMAP, 0, guardReserveBytes,
 		syscall.PROT_NONE, syscall.MAP_ANON|syscall.MAP_PRIVATE|syscall.MAP_NORESERVE,
 		^uintptr(0), 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("guard mmap reserve: %w", errno)
 	}
+	linOff := guardedLinOff(base)
+	commit := uintptr(linOff + linBytes)
 	if _, _, errno := syscall.Syscall(syscall.SYS_MPROTECT, base, commit,
 		syscall.PROT_READ|syscall.PROT_WRITE); errno != 0 {
 		_, _, _ = syscall.Syscall(syscall.SYS_MUNMAP, base, guardReserveBytes, 0)
@@ -73,14 +78,15 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 // putGuardedSizeCaches writes the three basedata size caches native code reads:
 // the current byte size, the current wasm-page count, and the grow ceiling.
 // memory.grow raises the logical size (and thus the region the fault handler
-// commits on demand) up to maxBytes; cap at 65535 pages, since 65536 pages
-// (4 GiB) overflows the u32 byte-size cache.
+// commits on demand) up to the complete 65,536-page memory32 limit. The u64
+// byte-size cache represents the 4-GiB boundary exactly.
 func (j *JobMemory) putGuardedSizeCaches(linBytes, maxBytes int) {
 	j.putU32(offActualLinMemByteSize, uint32(linBytes))
+	j.putU64(offActualLinMemByteSize64, uint64(linBytes))
 	j.putU32(offLinMemWasmSize, uint32(linBytes/wasmPageBytes))
 	maxPages := maxBytes / wasmPageBytes
-	if maxPages > 65535 {
-		maxPages = 65535
+	if maxPages > 65536 {
+		maxPages = 65536
 	}
 	if maxPages < linBytes/wasmPageBytes {
 		maxPages = linBytes / wasmPageBytes
@@ -185,7 +191,7 @@ func (j *JobMemory) rearmGuarded(linBytes, maxBytes int) error {
 	// committed initial region without a uintptr->Pointer round-trip.
 	j.mem = unsafe.Slice(&j.mem[0], j.linOff+linBytes)
 	j.linLen = linBytes
-	clear(j.mem[:j.linOff]) // basedata: match fresh-mmap zeroing
+	clear(j.mem[j.linOff-basedataSize : j.linOff]) // basedata: match fresh-mmap zeroing
 	j.putGuardedSizeCaches(linBytes, maxBytes)
 	return nil
 }

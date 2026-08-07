@@ -2,6 +2,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/src/core/runtime"
+
 // On-the-fly register allocator — the core of WARP's speed. Values (locals,
 // temporaries, deferred results) live in registers over the whole general-purpose
 // file and are spilled to frame slots only when the allocator runs out. Ported
@@ -61,6 +63,11 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 		if f.regUser[r] == nil && !block.has(r) {
 			return r
 		}
+	}
+	// Regional local pins are a cache, not a hard reservation. Under pressure,
+	// spill a non-borrowed cached local before spilling a live Valent operand.
+	if r := f.evictIntervalLocal(avoid); r != regNone {
+		return r
 	}
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
@@ -183,6 +190,14 @@ func (f *fn) materialize(e *elem) Reg {
 	case stConst:
 		r := f.allocReg(0)
 		f.loadConst(r, e.st)
+		f.occupy(e, r)
+		return r
+	case stFuncRef:
+		r := f.allocReg(0)
+		f.a.Load64(r, RBX, -int32(offFuncRefDescPtr))
+		f.a.TestSelf(r, true)
+		f.trapIf(condE, trapIndirectOOB)
+		f.a.LeaDisp(r, r, int32((uint32(e.st.idx)+1)*runtime.FuncRefDescBytes))
 		f.occupy(e, r)
 		return r
 	case stSlot:

@@ -5,7 +5,7 @@ destroying the reason it exists* (fast compile, no cgo, tiny footprint, single p
 
 1. **Make the single-pass backend smarter** — better-informed choices inside the existing
    railshot tier.
-2. **Port what's still worth porting from WARP** (`warp/`) — the C++ reference engine the
+2. **Port what's still worth porting from [WARP](https://github.com/wago-org/warp)** — the C++ reference engine the
    backend is a port of. Used as a *reference axis*, not a target to clone.
 
 The headline architectural decision (see the end, **revised 2026-07-03**): **no IR on any
@@ -17,11 +17,423 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ---
 
-## What's in place (updated 2026-07-03)
+## What's in place (updated 2026-08-01)
 
-The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
-single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
-condense engine) with an on-the-fly whole-register-file allocator. Landed, in rough order:
+**Memory64 and global-element snapshot watchpoints (2026-08-01).** Owned memory64
+snapshot instantiation, including a grown two-page image, measures **3.72–3.76 µs/op**,
+1,184 B/op, and 6 allocs/op on linux/amd64 (Ryzen 7 8845HS, three samples). Full
+single-member `WGDN` v3 restore of an immutable-global object shared with a live
+passive element measures **10.90–11.66 µs/op**, 83,928 B/op, and 76 allocs/op; this
+includes creating and closing a Runtime, collector domain, native instance, restored
+heap graph, and passive payload. These are lifecycle watchpoints, not hot invocation
+paths. `DomainSnapshot` remains 112 bytes; the per-member in-memory record grows from
+80 to 104 bytes for one optional passive-root slice. Existing v1/v2 blobs remain
+loadable, while memory64 and global-dependent element ownership require v3.
+
+**Direct module-fact scalar scanning (2026-08-02).** `AnalyzeModuleFacts`
+needs only `memory.grow`, `table.grow`, and `ref.func`, but previously built full
+instruction metadata for every unrelated scalar operation. It now consumes
+immediate-free operations, constants, branches, calls, and local/global/table
+indices directly while preserving strict immediate validation; uncommon and
+fact-bearing forms retain the general classifier. On linux/amd64 (Ryzen 7
+8845HS, GOMAXPROCS=1, one pinned CPU), the 96 KiB scalar facts watchpoint improves
+from **1.073 ms to 209.0 µs median** (**−80.5%**), and the real 8.47 MiB esbuild
+body-facts stage improves **77.11→30.14 ms** (**−60.9%**), both with unchanged
+allocations. Across two surrounding seven-sample full esbuild runs, the pooled
+post-change median is **816.5 ms** versus the interposed **846.5 ms** baseline
+(**−3.5%**, allocations unchanged) despite host-frequency noise. A same-session
+plugin-complete stripped TinyGo A/B costs **352 bytes**
+(**1,736,916→1,737,268 bytes**, +0.020%).
+
+**Fast bytecode requirement summaries (2026-08-02).** Compiled-artifact
+feature discovery and other summary walkers used the full immediate classifier
+for every instruction, including immediate-free scalar ALU operations and common
+constants/local/global accesses. The wasm walker now exposes the dense
+immediate-free opcode table and keeps common scalar immediates on the exported
+reader; feature discovery consumes those forms directly while preserving exact
+LEB validation and proposal classification. On linux/amd64 (Ryzen 7 8845HS,
+GOMAXPROCS=1, one pinned CPU, 10–12 one-second/one-iteration samples), a 96 KiB
+scalar requirement scan improves from a **1.198 ms to 238.8 µs median**
+(**−80.1%**, 0 B/op), `AnalyzeModuleFacts` on the same stream improves
+**1.154→1.073 ms** (**−7.0%**), and full esbuild decode+validate+compile improves
+**899.3→776.3 ms** (**−13.7%**) with unchanged allocation counts. The common
+walker fast paths cost 1,008 bytes in a same-session plugin-complete stripped
+TinyGo A/B build (**1,735,844→1,736,852 bytes**, +0.058%). Differential
+feature-family tests keep
+tail calls, typed references, exception handling, sign extension, SIMD, GC, and
+segment lifecycle detection exact.
+
+**Dense `br_table` compile scratch (2026-08-02).** Duplicate-heavy jump tables
+previously allocated a `map[uint32]int` per instruction to deduplicate branch
+stubs. Branch labels are bounded control-stack depths, so amd64 and ARM64 now
+reuse one dense position slice per compiler worker and initialize only depths
+used by the current table. On linux/amd64 (Ryzen 7 8845HS, GOMAXPROCS=1, one
+pinned CPU), the new 256-entry mixed-label watchpoint improves from a
+**505.9 to 458.5 µs/op median** (**−9.4%**, ten one-second samples); existing
+small duplicate/mixed watchpoints improve **75.41→72.68 µs** (**−3.6%**) and
+**118.45→113.13 µs** (**−4.5%**). The real esbuild codegen benchmark removes
+**8,335,959 B/op** (**80,910,800→72,574,841, −10.3%**) and **15,713 allocs/op**
+(**126,583→110,870, −12.4%**); median latency is within noise at
+414.4→412.6 ms. This focused compile-memory/synthetic-speed win costs 160 bytes
+in the plugin-complete stripped TinyGo release (1,734,452→1,734,612), leaving the
+combined context-binding plus jump-table changes 16 bytes above the prior
+1,734,596-byte release.
+
+**Direct native-context rebinding (2026-08-02).** Every public native entry
+restores ten stable context pointers into basedata. The prior path decoded those
+bytes into an `InstanceContext` and then performed ten separate slice-backed
+setter operations. The native platforms now decode potentially unaligned source
+bytes safely but store directly into the already bounds-checked, naturally aligned
+off-heap basedata image. On linux/amd64 (Ryzen 7 8845HS, GOMAXPROCS=1, one pinned
+CPU, 15 one-second samples), `BenchmarkBindInstanceContextBytes` improves from a
+**11.24 to 2.987 ns/op median** (**−73.4%**). End-to-end prepared `tiny.add`
+invocation improves **47.87→39.24 ns/op** (**−18.0%**), remaining at 0 B/op and
+0 allocs/op. The plugin-complete stripped TinyGo release also falls
+**1,734,596→1,734,452 bytes** (**−144 bytes**). Unaligned-source, exact-field,
+race, full-suite, and Linux/Darwin ARM64 cross-build coverage preserve the
+112-byte context ABI and leave GC-domain/tail metadata untouched.
+
+**Mutable imported-funcref proper tails (2026-08-01).** Descriptor-driven
+`return_call_ref` now tail-transfers through a mutable imported funcref table while
+preserving exact same-Runtime GC-domain ownership and zero-allocation invocation.
+On linux/amd64 (Ryzen 7 8845HS, five samples), the collection-capable public
+`Invoke` benchmark measures **474.7–481.6 ns/op**, 0 B/op, and 0 allocs/op. Existing
+direct cross-instance `return_call` watchpoints remain **89.52–94.63 ns/op** across
+integer, mixed-float, and float-parameter/integer-result shapes, also allocation-free.
+The ownership check itself adds no collector metadata or descriptor words. Stable
+domain identity and descriptor-tail scratch first extended the off-heap native
+instance-context buffer from 72 to 104 bytes. The checked-object work below adds the
+per-instance view pointer at byte 104, making the buffer 112 bytes (**+40 bytes from
+the original context**), and grows basedata from 272 to 288 bytes for its active slot.
+ARM64 uses the same bounded descriptor semantics but still has the existing
+spill/reload staging optimization headroom.
+
+**Checked direct WasmGC object access (2026-08-01).** The measured prototype is now
+an AMD64 production path for final scalar struct/array get/set. Collector ABI v2
+publishes one stable 128-byte view preserving the v1 handle/space/generation prefix
+and appending object-card pointer/count metadata; allocation, collection, and card
+backing changes republish it in place. Each collector-backed instance retains one 32-byte
+native prefix with the immutable local-to-domain type map and publishes it at basedata
+offset 280. Generated accesses validate both ABI versions, handle tag/range, space,
+heap/object extent, exact canonical type, and array index. Numeric stores are
+pointer-free; non-final, reference, `v128`, bulk, and barrier-requiring paths stay on
+helpers. On linux/amd64 (Ryzen 7 8845HS, five samples), end-to-end struct set/get is
+**227.9–229.4 ns/op**, struct get **218.2–219.9 ns/op**, and array set/get
+**265.2–265.6 ns/op**, all 0 B/op and 0 allocs/op. The underlying checked metadata
+walk remains **4.05–4.71 ns** versus **20.26–29.82 ns** through collector methods.
+The stripped TinyGo release grows 1,985,784→1,999,256 bytes for this production
+slice (**+13,472, +0.68%**). The subsequent bounded foreign-clone API brings the
+combined candidate to 2,000,232 bytes (**+976 bytes further**).
+
+**V8/Cranelift/Binaryen WasmGC optimizer research (2026-08-02).** Current V8
+Turboshaft propagates path-sensitive exact/non-null facts, removes redundant
+casts/null checks, forwards struct fields and immutable array lengths, marks fresh
+allocations non-aliasing, and recursively removes dead allocation/store trees.
+Current Cranelift specializes static reference classes and its copying collector
+emits overflow-safe inline bump allocation with one cold collection/growth slow
+path. A Binaryen type-flow oracle on Dew removed exactly 1,024 dead
+`array.new_fixed` + `struct.new` trees: Wago `hostsync` fell **8,188→6,140**,
+fresh median **0.94→0.63 ms**, host allocation **924,536→524,512 B/op**, and
+native code **7,479,004→7,112,416 bytes**. Heap2Local alone was neutral-to-slower
+and expanded the frame **24,808→82,152 bytes**, so broad scalar replacement is
+rejected as the next step. Recursive dead-constructor elimination is now shipped
+on AMD64: a bounded postfix lookahead recognizes constructor values flowing
+untouched into an immediately dropped struct, while direct constructor/drop pairs
+are removed at the constructor. Non-trapping valent trees disappear completely;
+any deferred trap forces original bottom-to-top evaluation. Dense GC safepoint IDs
+are retired without becoming publishable native call sites. On Dew it fires exactly
+**2,048** times, cuts `hostsync` **8,188→6,140**, generated code
+**7,479,004→7,104,256 bytes**, fresh median about **0.94→0.62-0.67 ms**, and host
+allocation **924,536→524,512 B/op**. The stripped plugin-complete TinyGo binary is
+**1,776,700 bytes**, +2,512 bytes over the preceding 1,774,188-byte build. The next
+order is structured exact/non-null facts and bounded GC load forwarding, then native
+bump allocation for constructors that remain live. See
+`docs/wasmgc-v8-cranelift-research-2026-08.md`.
+
+**Structured exact WasmGC reference facts (2026-08-02).** AMD64 now retains one
+compact exact-non-null canonical type per reference local inside conservative
+straight-line structured regions. Constructors and successful non-null final casts
+produce facts; local copies preserve them, local writes replace/clear them, and
+control boundaries clear the table rather than building SSA merge state. Facts carry
+compact identity only and survive collection; no raw heap pointer is cached. Adjacent
+cast/access fusion remains higher priority, so facts remove only standalone repeated
+casts. Dew reports **7,158** `gc-ref-cast-elide` hits, `gcnative`
+**50,101→42,943**, flushes **91,011→83,853**, and native code
+**7,104,256→6,957,024 bytes**. Interleaved fresh medians improve about
+**0.60-0.61→0.57-0.58 ms** (roughly 5-6%) with host allocation unchanged;
+sustained medians improve about **0.90-0.93→0.80-0.86 ms**. The stripped
+plugin-complete TinyGo binary is **1,777,788 bytes**, +1,088 bytes over the dead-new
+build. `WAGO_AMD64_NO_GC_REF_FACTS=1` restores the validated cast path.
+
+**Executed WasmGC helper counters (2026-08-02).** The diagnostic
+`wago_gcstats` build tag exposes `Instance.SetGCHelperStatsTracking(true)` and
+`Instance.GCHelperStats()`, separating total, allocation, struct/array mutation,
+reference-mutation, parent-space, and remembered-state transitions. Production
+builds compile the hook away. Before old-struct specialization, fresh Dew executed
+1,724 helpers (1,038 allocation, 686 mutation) versus static `hostsync=6,140`;
+the per-call counts remained exact through 100 and 500 repeated calls. The
+production stripped TinyGo binary was **1,780,332 bytes**, +328 bytes over the
+count-only build; the tagged diagnostic product is not the authoritative release
+artifact.
+
+**Barrier-safe old/large struct reference stores (2026-08-02).** The shared AMD64
+final-reference-field store stub now admits a Throughput old/large parent when the
+validated child is non-young, or when a nursery child is written behind a parent
+whose stable remembered bit is already set. Stores that must append remembered
+metadata and every Tiny store still take the exact helper. Dew executes **426 fewer
+mutation helpers per call**, reducing dynamic transitions **1,724→1,298** while
+leaving the 1,038 allocation helpers unchanged. Generated code grows only **71 bytes**
+(**6,957,024→6,957,095**). Across six interleaved rounds, the median of fresh
+medians improves about **0.846→0.755 ms** and the median of sustained medians about
+**0.880→0.839 ms**, with host allocation unchanged. The plugin-complete stripped
+TinyGo candidate is **1,780,668 bytes**, +336 bytes over the helper-counter build.
+The remaining 260 mutations are 258 array stores plus two unremembered old-to-young
+struct stores; native array-card reconciliation remains the next write-barrier target.
+
+**Existing-card old/large array reference stores (2026-08-02).** Collector native
+ABI v2 appends a stable object-card pointer/count to the prior 112-byte prefix. The
+shared AMD64 final-reference array-store stub now admits a Throughput old/large
+parent only when remembered membership and a valid preallocated card slot already
+exist. It widens that card interval in place and never grows collector metadata;
+cardless/unremembered and Tiny stores retain exact helper fallback. Dew removes
+another **254 mutation helpers per call**, reducing dynamic transitions
+**1,298→1,044** and mutations **260→6**. Generated code grows **226 bytes**
+(**6,957,095→6,957,321**). Across six interleaved rounds against the old-struct
+build, the median of fresh medians improves about **0.671→0.660 ms** and sustained
+about **0.763→0.725 ms**, with host allocation unchanged. The plugin-complete
+stripped TinyGo candidate is **1,778,388 bytes**, 2,280 bytes smaller than the
+preceding old-struct candidate despite the 16-byte collector-view growth. The
+remaining six mutation helpers are precisely the metadata-creating cold stores.
+Tagged allocation-family counters split the remaining 1,038 calls into **1,026
+fully initialized `struct.new` helpers** and **12 `array.new_default` helpers**,
+with zero struct-default or other-array allocations; these counts remain exact
+through 500 calls. Native allocation should therefore specialize the initialized
+struct path first rather than introducing a broad allocator for twelve cold arrays.
+
+A one-ticket nursery prototype was measured and rejected. Each allocating helper
+reserved one unpublished free handle plus nursery extent for one subsequent native
+constructor. It reduced executed helpers **1,044→736** and initialized-struct helpers
+**1,026→718**, but grew generated code **6,957,321→6,992,108 bytes** (+34,787),
+reduced fresh host allocation by only 1,984 B/op with allocations unchanged, and was
+roughly neutral in six noisy fresh A/B rounds (median-of-medians about
+0.690→0.683 ms). More importantly, sustained repeated execution exposed a cast-failure
+lifecycle bug after collection. The complete prototype was reverted.
+
+**Transactional batched native struct allocation (2026-08-02).** The retained
+replacement reserves 32 unpublished handle identities without consuming nursery
+bytes. Native collector ABI v3 preserves the 128-byte v2 prefix and appends pointers
+to the fixed 144-byte batch state, an explicit collection epoch, the real nursery
+bump, and the semantic allocation counter. Generated code validates the complete
+constructor before advancing the bump or publishing a handle; collection and Close
+recycle every unused identity. Tiny, collect-every-allocation, collection-disabled,
+unsupported, exhausted, and malformed cases retain the rooted helper. Dew helpers
+fall **1,044→50**: initialized structs **1,026→32**, arrays remain 12, and the six
+metadata-growing mutations remain unchanged. Generated code grows only **18,870
+bytes** (**6,957,321→6,976,191**, +0.27%). Across six interleaved rounds, fresh
+median-of-medians improves about **0.658→0.527 ms** (-20.0%) and sustained about
+**0.692→0.573 ms** (-17.3%). Fresh host cost is **524,576 B/op and 69 allocations**
+versus 524,512/68 disabled; sustained execution remains allocation-free. The
+plugin-complete stripped TinyGo binary is **1,787,076 bytes**, +8,688 (+0.49%).
+`WAGO_AMD64_NO_GC_NATIVE_ALLOC=1` restores helper-only allocation. A 64-handle
+batch was also measured and rejected: it cut initialized-struct refills 32→17 per
+call but made four-round fresh median-of-medians about 10% slower, added 800 B/op
+and two host allocations, increased fixed collector state by 128 bytes, and was
+neutral sustained. The retained 32-handle batch is the speed/footprint point.
+
+**WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
+4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022
+repeated immutable `array.len` operations on the same unchanged exact local in
+Dew. Conservative same-field get/get and set/get counts are both zero. A
+one-entry runtime length cache (+8,208 generated bytes, neutral fresh and mostly
+slower sustained) and separate exact-known resolver stubs (-64,919 generated
+bytes, neutral-to-slightly slower execution) were measured and reverted. Static
+site count alone is not a dynamic-hotness signal; executed transition/stub
+instrumentation precedes further load-forwarding work.
+
+**Release unwind-table removal (2026-08-01).** TinyGo `-no-debug` Linux
+releases do not use DWARF `.eh_frame` data for panic text or Wago's native
+trap/signal path. In the historical monolithic CLI, removing that allocated
+section shrank **2,000,192 to 1,742,072 bytes** (**−258,120, −12.9%**) and
+removed the same mapped read-only bytes. A no-unwind panic probe still printed
+its message and exited through the expected abort path; Core 3 `fib` and
+malformed-module diagnostics were unchanged. Across 200 randomized cached
+`wago --version` subprocesses per binary, startup was flat within noise (median
+898.2 vs 899.4 µs). Removing compiler comments and the now-unused ELF
+section-name/header table saved another 956 bytes in that historical product;
+ELF loading uses program headers. The split release pipeline now applies the same
+stripping to Linux Tiny runtime assets; their profile-specific sizes must be
+measured independently.
+
+**Retired Core 3 fixture-hash admission on structural products (2026-08-01).**
+Collector-free function-identity products now rely on their existing strict
+decoded structural proofs rather than additionally hashing historical
+spec-generated binaries. Non-GC modules also skip the large type-subtyping
+classifier entirely. On the original small-scalar Core 3 watchpoint, median
+compile time fell **11.619→11.333 µs/op** (**−2.5%**), with 42,701→42,541 B/op
+and 99→95 allocs/op. Historical monolithic full/engine releases each shrank by
+about **6.5 KiB**. Official Core 3 behavior and strict malformed/type validation
+remain unchanged; fixture identity is no longer a production gate.
+
+**Execution-only CLI prototype (2026-08-01).** The superseded monolithic
+`wago_engine` experiment measured **1,529,176 bytes** versus **1,742,072 bytes**
+for the full CLI (**−212,896, −12.2%**) while retaining the Core 3 execution
+engine. In the split CLI architecture, `make build-engine` is only a diagnostic
+alias for the existing run-only `wago_runtime,wago_lean,wago_minimal` product.
+The complete plugin-capable Standard runtime remains the authoritative product,
+and split artifacts require fresh size measurements.
+
+**Dense byte-backed section tracking (2026-08-01).** The byte-backed decoder
+now tracks the standard-section ID set in one `uint16` instead of a hash map. A
+13-section module decodes in **348.0–359.9 ns/op** versus **796.9–809.5 ns/op**,
+with 864→776 B/op and 9→6 allocs/op; the larger decode+validate watchpoint remains
+within noise. The stripped TinyGo release falls 2,000,232→2,000,024 bytes
+(**−208 bytes**).
+
+**Allocation-free SIMD feature detection (2026-08-01).** Linux SIMD admission
+now scans exact `/proc/cpuinfo` tokens directly and returns after the first
+complete flag set instead of lowercasing, splitting, and hashing the whole file.
+On a 16-processor synthetic image the token pass measures **236.6–240.2 ns/op**,
+0 B/op, and 0 allocs/op versus **22.05–22.44 µs/op**, 22,408 B/op, and 9
+allocs/op. The scanner adds 64 bytes after the section-tracking change, leaving
+the combined stripped TinyGo release at 2,000,088 bytes: still **144 bytes below**
+the 2,000,232-byte starting point.
+
+**Compact validator effect tables (2026-08-01).** Numeric and SIMD validation
+lookup entries now store four one-byte fields instead of embedding full recursive
+`ValType` descriptors. On linux/amd64 this shrinks `opEffects` and `simdEffects`
+from 59,808 + 34,176 bytes to 2,136 + 2,136 bytes, cuts the stripped TinyGo
+release `.bss` from 133,888 to 44,176 bytes (**−89,712 bytes, −67.0%**), and
+reduces the release file from 1,983,792 to 1,983,216 bytes (gzip-9: 899,459 to
+898,903). Twelve 1-second `BenchmarkDecodeValidate` samples improved from a
+96,406 ns/op median to 90,917.5 ns/op (**−5.7%**) with allocations unchanged.
+The four-byte layouts are test-locked so later reference-type growth cannot
+silently re-inflate this hot table.
+
+**Packed instruction names (2026-08-01).** `InstrKind.String` now slices one
+5,834-byte name blob through generated `uint16` offsets instead of retaining 534
+independent string headers and relocations. With identical build flags/version,
+the stripped TinyGo release falls from 1,983,232 to 1,975,712 bytes
+(**−7,520 bytes**; gzip-9 898,906 to 898,167), and `.rodata` falls from 303,056
+to 295,616 bytes (**−7,440**). `go generate` derives the blob directly from the
+authoritative `InstrKind` enum; compile-time count assertions and name/offset
+coverage prevent stale generated metadata.
+
+**Map-free core validation metadata (2026-08-01).** The seven numeric unary,
+binary, compare, test, conversion, load, and store maps existed only to populate
+`opEffects` during package initialization. Compact range/list initialization now
+writes the same 151 tested effects directly and releases the source maps entirely.
+Against the packed-name baseline, the stripped TinyGo release falls from
+1,975,712 to 1,958,080 bytes (**−17,632**; gzip-9 898,167 to 894,216), `.data`
+falls 47,116→36,716 bytes, and `.bss` falls 44,176→22,368 bytes. The stripped
+Go `wago_lean` CLI falls 6,496,440→6,475,960 bytes. In 150 randomized subprocess
+samples, `wago version` median startup fell 1.251→1.216 ms (**−2.8%**) and mean
+fell 1.212→1.166 ms (**−3.8%**); validation allocations remain unchanged.
+
+**Compact SIMD source metadata (2026-08-01).** Ten SIMD load/lane/scalar/limit/
+unary/binary/ternary maps now use four-byte descriptor arrays and compact
+instruction-kind lists while retaining the existing admission/effect cross-check.
+The stripped TinyGo release falls another 1,958,080→1,941,720 bytes
+(**−16,360**; gzip-9 894,216→889,055), with `.text` down 12,485 bytes, `.data`
+down 3,768, and `.bss` down 6,336. The stripped Go lean CLI falls
+6,475,960→6,459,576 bytes. Across 150 randomized TinyGo subprocess samples,
+`wago version` median startup falls 0.507→0.470 ms (**−7.2%**) and mean falls
+0.481→0.448 ms (**−6.8%**). All compact source/effect layouts and the 268-entry
+inventory are test-locked.
+
+**Dense prefix decoding (2026-08-01).** The FC/FB/FE/FD subopcode maps now use
+six bounds-checked `InstrKind` arrays totaling 948 bytes. Ten one-second samples
+show median lookup wins of **5.7%** for FC, **3.6%** for FB, **7.9%** for FE
+memory, **21.3%** for core SIMD FD, and **25.2%** for relaxed-SIMD FD; end-to-end
+`BenchmarkDecodeValidate` improves 91,178→90,607.5 ns/op (**−0.6%**). The
+stripped TinyGo release falls 1,941,720→1,926,360 bytes (**−15,360**; gzip-9
+889,055→882,596), and the stripped Go lean CLI falls 6,447,252→6,443,156 bytes.
+TinyGo `wago version` median startup falls 0.478→0.462 ms (**−3.4%**, n=150).
+Populated-entry counts and exact 948-byte storage are test-locked.
+
+**Compact atomic validation (2026-08-01).** The seven load and seven store
+validation effects now share two-byte array entries instead of full `ValType`
+map values. `BenchmarkValidateAtomicEffects` improves 12,320.5→10,400 ns/op
+(**−15.6%**, 224 lookups/op, 12 one-second samples). The stripped TinyGo release
+falls 1,926,360→1,923,896 bytes (**−2,464**; gzip-9 882,596→882,035), `.bss`
+falls 10,960→9,040 bytes, and the stripped Go lean CLI falls
+6,443,156→6,439,060 bytes. TinyGo startup shifts 0.453→0.449 ms median
+(**−0.8%**, n=150). Layout, effect identity, range rejection, and counts are
+test-locked.
+
+**Allocation-free SIMD admission scans (2026-08-01).** The frontend now queries
+the validator's compact SIMD effect array directly instead of constructing a
+268-entry map at every recursive instruction-list scan. On a 256-instruction
+non-SIMD body, `BenchmarkInstrsRequireSIMD` improves 4,600,977→1,653.5 ns/op,
+2,097,833→0 B/op, and 2,307→0 allocs/op; finding SIMD in the last slot improves
+4,471,060.5→1,641 ns/op with the same zero-allocation result. The stripped
+TinyGo release falls 1,923,896→1,921,848 bytes (**−2,048**; gzip-9
+882,035→880,352), `.bss` falls 9,040→6,896 bytes, and the stripped Go lean CLI
+falls 6,439,060→6,434,964 bytes. TinyGo startup falls 0.423→0.396 ms median
+(**−6.4%**, n=150). Admission/snapshot parity, out-of-range rejection, and the
+zero-allocation scan are test-locked.
+
+**Dense section ordering (2026-08-01).** The 13 standard section IDs now use a
+14-byte direct-order table instead of a hash map. Thirteen lookups improve
+192.05→6.0265 ns/op (**31.9×**), while a synthetic module containing every
+standard section decodes in 1,028.5→822.1 ns/op (**−20.1%**, 12 one-second
+samples). The stripped TinyGo release falls 1,921,848→1,920,272 bytes
+(**−1,576**; gzip-9 880,352→879,889), `.bss` falls 6,896→6,544 bytes, and the
+stripped Go lean CLI falls 6,434,964→6,430,868 bytes. Exact order identity,
+reserved/custom rejection, and 14-byte storage are test-locked.
+
+**Dense reverse encoding (2026-08-01).** The expression encoder now reverses
+simple and memory opcodes through two fixed byte arrays instead of hash maps.
+Encoding 256 simple instructions improves 4,890→1,186 ns/op (**4.1×**), and 256
+memory instructions improve 6,263.5→2,139 ns/op (**2.9×**, 12 one-second
+samples), with unchanged per-call allocations. This speed trade adds 32 bytes
+to the stripped TinyGo ELF (1,920,272→1,920,304) while reducing gzip-9
+879,889→879,411 bytes, `.text` by 860 bytes, and `.bss` by 16 bytes; the
+stripped Go lean CLI is unchanged at 6,430,868 bytes. TinyGo startup is flat
+within noise at 0.319→0.317 ms median (n=150). Reverse-map identity,
+`unreachable` opcode zero, typed-select exclusion, out-of-range rejection, and
+1,068-byte table storage are test-locked.
+
+**Skip empty nested SIMD scans (2026-08-01).** The frontend now checks nested
+body/then/else lengths before recursive SIMD admission calls. On a flat
+256-instruction body, absent-SIMD scanning improves 1,635.5→573.25 ns/op
+(**−65.0%**) and last-position SIMD improves 1,638→576.45 ns/op (**−64.8%**),
+remaining at zero allocations. The stripped TinyGo ELF adds 16 bytes
+(1,920,304→1,920,320), gzip-9 shifts 879,411→879,409 bytes, and the stripped Go
+lean CLI remains 6,430,868 bytes. Existing byte-backed and structured nested
+expression coverage preserves recursive semantics.
+
+**Dense backend ALU metadata (2026-08-01).** amd64 and ARM64 now select the five
+basic integer ALU encodings through fixed arrays instead of hash maps. On amd64,
+256 lookups improve 2,783.5→344.05 ns/op (**8.1×**); a synthetic 512-add
+function compiles in 60,869→59,467 ns/op (**−2.3%** median, 12 one-second
+samples), while the medium-control compile benchmark remains flat. The stripped
+TinyGo release falls 1,920,320→1,919,680 bytes (**−640**; gzip-9
+879,409→878,931); the stripped Go lean CLI remains 6,430,868 bytes. Exact amd64
+and ARM64 encoding identity and 24/12-byte storage are test-locked.
+
+**Fixed runtime metadata without maps (2026-08-01).** Trap-code strings now use
+a 20-entry array, and the 12 reserved `wago_*` import namespaces use a static
+string switch. Across 256 lookups, trap formatting improves 1,289→250.9 ns/op
+(**5.1×**) and reserved-module classification improves 1,944.5→394.6 ns/op
+(**4.9×**, 12 one-second samples), both allocation-free. The stripped TinyGo
+release falls 1,919,680→1,918,600 bytes (**−1,080**; gzip-9 878,931→878,298),
+`.bss` falls 6,544→5,824 bytes, and the stripped Go lean CLI remains 6,430,868
+bytes. Exact trap messages, 320-byte storage, and reserved/non-reserved names
+are test-locked.
+
+**Earlier metadata campaign total:** from `19d000ba` through fixed runtime
+metadata, the stripped TinyGo release shrank 1,983,792→1,918,600 bytes
+(**−65,192, −3.3%**), gzip-9
+shrinks 899,459→878,298 bytes, and `.bss` shrinks 133,888→5,824 bytes
+(**−128,064, −95.6%**). The latest stable randomized subprocess median for
+TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;
+`BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
+
+The AMD64 backend (`src/core/compiler/backend/railshot/amd64`) is the full
+WARP-architecture port: single-pass x86-64 codegen over a valent-block operand
+stack (deferred-action trees, condense engine) with an on-the-fly
+whole-register-file allocator. ARM64 has an architecture-specific direct backend;
+see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough order:
 
 **Storage model / register allocation**
 - **Register-ABI internal calls** (old P1) — args/results in registers between wasm
@@ -59,6 +471,28 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
   identities (`x==x`/`x<=x`/`x>=x→1`, `x!=x`/`x<x`/`x>x→0`) alongside the existing
   `x-x`/`x&x` ones. All at `pushBinOp`/`pushUnOp`, fire only on compile-time-known inputs
   (`const-fold` / `same-operand` counters), so no node/SETcc is emitted (`fold.go`).
+- **Packed-word mask tests** — Lamport-style `(word & laneMask) == 0` predicates
+  lower directly to `TEST` (amd64) or `TST` (arm64), avoiding the temporary masked
+  value (`swar-mask-test`). The earlier recursive known-bits estimator was removed:
+  its four utf-as mask-elision hits blocked a second, more valuable `swar-widen4`
+  selection and added a general constant-RHS compile tax. The direct fusion has no
+  solver, cache, persistent IR, or tree walk; `WAGO_NO_SWAR_MASK_TEST=1` is its A/B
+  oracle.
+- **Curated broadword idioms** — Minotaur's offline-discovery/online-selection split is
+  adopted without putting an SMT solver or e-graph in the JIT. Exact, bounded bytecode
+  matchers recognize (1) utf-as's four-byte-to-four-u16 SWAR widening tree and lower it
+  to `UXTL` on arm64 or `VPUNPCKLBW` on amd64, (2) its inverse four-u16-low-byte pack
+  tree and lower it to `XTN` or `VPSHUFB`, and (3) xjb-as's function-tail unsigned
+  64x64 multiply-high expansion and lower it to `UMULH` or the native `RDX:RAX` `MUL`.
+  The widening matcher proves its overwritten temporary dead before rewriting; the
+  multiply matcher requires the final function `end`. `WAGO_NO_SWAR_IDIOMS=1` disables
+  both for correctness and performance A/B checks.
+- **Bounded SIMD superops** — the same offline-discovery/online-selection split now
+  covers exact adjacent Wasm SIMD operations without retaining a SIMD IR. The first
+  selectors fold `v128.not; v128.and` to one `VPANDN`/`BIC`, and fold
+  `v128.and; v128.any_true` to `VPTEST; SETNE` on AMD64 or a directly owned NEON
+  AND/reduction on ARM64. Lookahead is two bytecode operations, allocation-free, and
+  restored on every near miss. `WAGO_NO_SIMD_SUPEROPT=1` is the differential A/B oracle.
 - **Scaled-index LEA fusion** — `add(x, shl(y, k≤3))` → `lea [x + y*2ᵏ]` (the
   AssemblyScript array-address shape).
 - **`br_table` jump tables** (old P7) — n≥5 dispatches through a RIP-relative offset
@@ -169,13 +603,252 @@ per unit — **serialize now beats WARP (97)**; deser is 1.07× WARP (164). wago
 beats wazero (147/305) on both json directions. The serialize chase is closed;
 see R4.
 
+### Curated-idiom A/B (2026-07-17, Apple M4 Max, darwin/arm64)
+
+Five repeated 500 ms samples, explicit bounds. Medians are shown; compilation memory is
+unchanged because the matchers use the existing reader and deferred nodes.
+
+| workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| utf-as backend compile | 100.0 us | 102.1 us | +2.1% | 178,256 B / 161 allocs (same) |
+| utf-as full compile | 240.8 us | 241.8 us | +0.4% | 228,522 B / 240 allocs (same) |
+| utf-as `convertN(200)` | 116.6 us | 107.0 us | **−8.2%** | 0 B / 0 allocs per call |
+| xjb fixture backend compile | 10.07 us | 9.46 us | **−6.1%** | 28,968 B / 53 allocs (same) |
+| xjb fixture full compile | 22.14 us | 21.28 us | **−3.9%** | 36,035 B / 111 allocs (same) |
+| native `mulhi64` execution | 5.17 ns | 4.54 ns | **−12.2%** | 0 B / 0 allocs per call |
+
+Generated function code shrinks by 16 B for utf-as's matched decoder function
+(3448→3432 B) and by 72 B for the xjb multiply-high export (168→96 B). The isolated
+ARM64 widen microbenchmark is smaller but slower (4.25→4.57 ns); the real utf-as result
+is the acceptance signal because the widened value feeds its surrounding decoder loop.
+
+### Native AMD64 A/B (2026-07-18, Ryzen 7 7800X3D, linux/amd64)
+
+Seven repeated 1 s samples on the remote native AMD64 host. These are raw medians from
+sequential off/on runs; no-hit json-as controls moved +1–3%, so compile changes in that
+range should be treated as noise rather than attributed to the selectors.
+
+| workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| utf-as backend compile | 111.46 us | 114.16 us | +2.4% | 179,200 B / 156 allocs (same) |
+| utf-as full compile | 300.34 us | 304.30 us | +1.3% | 229,474 B / 235 allocs (same) |
+| utf-as `convertN(200)` | 185.92 us | 181.43 us | **−2.4%** | 0 B / 0 allocs per call |
+| xjb fixture backend compile | 11.114 us | 11.051 us | −0.6% | 28,144 B / 49 allocs (same) |
+| xjb fixture full compile | 26.138 us | 25.569 us | **−2.2%** | 35,201 B / 107 allocs (same) |
+| xjb exported `mulhi64` | 14.58 ns | 14.01 ns | **−3.9%** | 0 B / 0 allocs per call |
+
+AMD64 generated code shrinks by 32 B in utf-as's matched decoder function
+(4694→4662 B). The xjb multiply-high export shrinks by 112 B (201→89 B), eliminates
+its 72 B frame and spill, and passes native execution, liveness, and near-miss tests.
+
+### utf-as pack / broadword fixture A/B (2026-07-18)
+
+Five repeated 1 s samples per mode. The focused fixture preserves utf-as's exact
+four-halfword low-byte pack plus json-as's unchecked four-digit fold. At this point only
+the pack was selected: rewriting the digit fold lane-wise would change its cross-lane
+carry behavior for arbitrary inputs. The follow-up below instead selects the complete
+expression and preserves that behavior exactly.
+
+| host / workload | idioms off | idioms on | change | memory |
+|---|---:|---:|---:|---:|
+| M4 Max backend compile | 10.523 us | 10.049 us | **−4.5%** | 29,568 B / 72 allocs (same) |
+| M4 Max full compile | 22.000 us | 21.937 us | −0.3% | 36,851 B / 135 allocs (same) |
+| M4 Max exported `pack` | 21.77 ns | 20.88 ns | **−4.1%** | 0 B / 0 allocs |
+| M4 Max mixed `runN(1000)` | 1.300 us | 1.019 us | **−21.6%** | 0 B / 0 allocs |
+| Ryzen backend compile | 12.576 us | 11.923 us | **−5.2%** | 28,440 B / 60 allocs (same) |
+| Ryzen full compile | 28.035 us | 27.444 us | **−2.1%** | 35,721 B / 127 allocs (same) |
+| Ryzen exported `pack` | 13.56 ns | 13.69 ns | +1.0% (host-call noise) | 0 B / 0 allocs |
+| Ryzen mixed `runN(1000)` | 1.926 us | 1.630 us | **−15.4%** | 0 B / 0 allocs |
+
+On ARM64, the pack export shrinks 116→72 B and the mixed loop 260→220 B; on AMD64
+they shrink 119→78 B and 256→219 B. The matcher
+also runs when AssemblyScript removes the final `i32.wrap_i64`, preserving the exact
+zero-extended i64 result. Native AMD64 measurements are recorded from the Ryzen host
+alongside the other AMD64 broadword numbers above.
+
+### Native SIMD superop A/B (2026-07-18)
+
+The checked-in utf-as SIMD entrypoint now exercises both length and validation paths.
+Five compile samples and seven validation-execution samples were taken on the Ryzen
+7 7800X3D host; medians are shown. The M4 Max uses the same matcher and passes the
+same differential tests, but its AND + ANY_TRUE NEON instruction sequence is already
+minimal, so its validation runtime remains flat (361.1 vs 361.7 us).
+
+| workload | superops off | superops on | change | memory |
+|---|---:|---:|---:|---:|
+| AMD64 utf-as SIMD backend compile | 397.24 us | 396.96 us | −0.1% (flat) | 262,267 B / 523 allocs (same) |
+| AMD64 utf-as SIMD full compile | 957.88 us | 956.91 us | −0.1% (flat) | 433,980 B / 953 allocs (same) |
+| AMD64 utf-as SIMD `validateN(200)` | 187.34 us | 183.61 us | **−2.0%** | 0 B / 0 allocs |
+
+Five real utf-as SIMD sites select. AMD64 generated code shrinks by 138 B across the
+three hit functions (8056→8014 B, 4444→4380 B, 2628→2596 B). Focused exact-pattern
+tests shrink AND + ANY_TRUE by 21 B (124→103 B) and NOT + AND by 10 B (152→142 B),
+with arbitrary-bit inputs, non-adjacent near misses, and kill-switch equivalence covered.
+
+### Research-guided reduction follow-up (2026-08-04)
+
+The follow-up keeps Railshot's bounded, exact selector model. Souper and Minotaur's
+useful lesson here is to match a small functional DAG and prove the replacement over
+the full input domain, rather than attach optimistic range assumptions. The broadword
+papers supply the multiplication-based lane-collapse shape; Valent Blocks supplies the
+existing deferred expression tree on which the matcher operates.
+
+ARM64 now recognizes json-as's complete unchecked four-lane decimal fold. Two `MADD`
+instructions expose the multiply-plus-add reductions while retaining the original
+cross-lane carries for every i64 input. Adversarial arbitrary-bit tests, including a
+case that disproved an earlier independent-lane candidate, protect that requirement;
+a one-constant near miss does not select. The focused function shrinks **140→124 B**,
+and the mixed `runN(1000)` fixture shrinks **252→240 B**. Seven native 2 s samples on
+an Apple M4 Max improve the latter from **1.030→1.004 us median** (**−2.5%**), with
+0 B/op and 0 allocs/op.
+
+AMD64's general `v128.any_true` lowering now uses `VPTEST x,x; SETNE` directly instead
+of constructing a zero vector, comparing bytes, extracting a movemask, and comparing
+that mask. Six standalone sites in utf-as SIMD select in addition to the five existing
+AND + ANY_TRUE superops, removing **96 native-code bytes** across the two affected
+functions (6952→6936 B and 2450→2370 B). A 64-reduction throughput watchpoint, measured
+as seven 2 s samples under linux/amd64 Rosetta (`VirtualApple`, GOMAXPROCS=1), improves
+from **57.21→39.59 ns/op median** (**−30.8%**), with 0 B/op and 0 allocs/op. This is a
+focused instruction-throughput result, not a whole-library claim: five matched 1 s
+`utf-as-simd.validateN(200)` samples are flat at **320.484→319.610 us** (**−0.3%**).
+The complete official SIMD proposal suite remains green at 470 modules and 24,325
+assertions with zero failures, skips, or gaps on linux/amd64.
+
+### Known-bits and SWAR probe compile-cost removal (2026-08-05)
+
+The recursive known-bits mask simplifier was removed after an exact PR-head A/B.
+It fired only four times in the representative corpus, all in utf-as, and those
+rewrites prevented a second `swar-widen4` selector from seeing its exact source
+shape. Direct packed-mask `TEST`/`TST` fusion remains; it does not recursively
+walk deferred trees.
+
+The SWAR pack/parse probes now inspect the two existing operands and allocate an
+arena node only after a match. Previously every candidate OR (and ARM64 shift)
+passed a temporary 112-byte `elem` through a non-inlined rewriting matcher, making
+the temporary escape even on a near miss. Focused tests require a non-matching pack
+probe to remain allocation-free on both backends.
+
+Backend compile measurements used exact `main`, PR-head, and optimized binaries
+with `GOMAXPROCS=1`. The Apple M4 Max rows are five interleaved 300 ms samples;
+the Ryzen 7 7800X3D rows are six interleaved 1 s samples pinned to CPU 7. Medians
+put the low-memory tree 0.5-2.6% behind `main`, while remaining faster than PR
+head in every measured row:
+
+| host | workload | main | PR head | low-memory final |
+|---|---|---:|---:|---:|
+| M4 Max / ARM64 | json-as | 702.73 us | 714.85 us | 706.36 us |
+| M4 Max / ARM64 | blake-as | 171.44 us | 176.94 us | 175.91 us |
+| M4 Max / ARM64 | utf-as | 103.59 us | 107.81 us | 104.64 us |
+| Ryzen / AMD64 | json-as | 914.42 us | 928.28 us | 926.25 us |
+| Ryzen / AMD64 | blake-as | 183.08 us | 189.54 us | 186.28 us |
+| Ryzen / AMD64 | utf-as | 127.63 us | 131.65 us | 129.25 us |
+
+Compile memory is now exactly back to `main` on both hosts. Against PR head,
+json-as drops 3,696 B and 33 allocations per compile, while utf-as drops 1,680 B
+and 15 allocations. On ARM64, the focused `swar-pack-parse` fixture also returns
+47,392 B / 77 allocs to main's 46,720 B / 71 allocs, and utf-as SIMD returns
+334,840 B / 357 allocs to 333,720 B / 347 allocs. Blake-as and xjb-mulhi were
+already equal to main and remain so. Against `main`, ARM64
+`convertN(200)` moves from 123.14 us to 105.24 us and total utf-as native code
+shrinks 4432 to 4352 bytes. AMD64 `convertN(200)` moves from 195.58 us to
+167.49 us, remains 0 B/op and 0 allocs/op, and total utf-as native code shrinks
+5052 to 4956 bytes. Relative to PR head alone, the estimator removal shrinks the
+ARM64 function by another 16 bytes and grows the AMD64 function by 8 bytes. The
+small AMD64 code-size cost is retained in exchange for the simpler compile path,
+main-level compile allocation, and the second ARM64 selector hit.
+
+### SWAR versus SIMD corpus comparison (2026-07-18)
+
+Five repeated 500 ms samples per row, explicit bounds, from the same
+`b9875a2` tree. Values are medians. `Compile` starts from an already decoded and
+validated module; `CompileFull` is the public decode + validate + compile path.
+Instantiation starts from an already compiled module. Native code size is the sum of
+the function bodies reported by `bench/cmd/explain`.
+
+The pairs are the checked-in AssemblyScript SWAR and SIMD corpus programs with matching
+manifest exports and iteration counts. They are representative end-to-end library
+choices, not a one-instruction A/B: the Wasm programs differ in size and structure.
+The focused superop A/B above isolates Railshot's selector impact.
+
+#### Artifact and native code size
+
+| library | mode | Wasm | ARM64 native code | AMD64 native code |
+|---|---|---:|---:|---:|
+| json | SWAR | 22.9 KiB | 61.8 KiB | 70.8 KiB |
+| json | SIMD | 25.0 KiB | 71.5 KiB | 83.1 KiB |
+| blake | SWAR | 4.6 KiB | 10.8 KiB | 14.9 KiB |
+| blake | SIMD | 22.9 KiB | 65.0 KiB | 67.3 KiB |
+| utf | SWAR | 19.7 KiB | 3.8 KiB | 5.1 KiB |
+| utf | SIMD | 29.1 KiB | 30.5 KiB | 23.7 KiB |
+
+#### Pipeline latency
+
+| host | library | mode | decode | validate | backend compile | full compile | instantiate |
+|---|---|---|---:|---:|---:|---:|---:|
+| M4 Max / ARM64 | json | SWAR | 62.36 us | 284.26 us | 691.87 us | 1569.95 us | 1.51 us |
+| M4 Max / ARM64 | json | SIMD | 69.34 us | 325.71 us | 775.38 us | 1738.82 us | 1.54 us |
+| M4 Max / ARM64 | blake | SWAR | 16.94 us | 88.44 us | 177.44 us | 421.35 us | 0.81 us |
+| M4 Max / ARM64 | blake | SIMD | 73.60 us | 371.65 us | 661.52 us | 1651.17 us | 0.82 us |
+| M4 Max / ARM64 | utf | SWAR | 14.45 us | 50.85 us | 101.40 us | 246.23 us | 1.71 us |
+| M4 Max / ARM64 | utf | SIMD | 35.92 us | 175.10 us | 322.03 us | 733.42 us | 1.99 us |
+| Ryzen / AMD64 | json | SWAR | 67.63 us | 317.46 us | 886.15 us | 1992.46 us | 2.00 us |
+| Ryzen / AMD64 | json | SIMD | 76.15 us | 365.59 us | 1038.03 us | 2150.81 us | 2.05 us |
+| Ryzen / AMD64 | blake | SWAR | 17.57 us | 102.76 us | 187.00 us | 499.32 us | 1.13 us |
+| Ryzen / AMD64 | blake | SIMD | 78.88 us | 426.76 us | 848.64 us | 2069.97 us | 1.14 us |
+| Ryzen / AMD64 | utf | SWAR | 18.50 us | 63.16 us | 118.01 us | 303.47 us | 2.25 us |
+| Ryzen / AMD64 | utf | SIMD | 42.01 us | 196.13 us | 395.49 us | 961.04 us | 2.61 us |
+
+#### Compile and instantiate memory
+
+`B/op` measures total allocation volume for the operation, not retained heap. Execution
+memory is reported separately below.
+
+| host | library | mode | backend compile | full compile | instantiate |
+|---|---|---|---:|---:|---:|
+| M4 Max / ARM64 | json | SWAR | 322.1 KiB / 1287 allocs | 482.7 KiB / 1640 allocs | 2.8 KiB / 14 allocs |
+| M4 Max / ARM64 | json | SIMD | 342.0 KiB / 1478 allocs | 545.8 KiB / 1952 allocs | 2.8 KiB / 14 allocs |
+| M4 Max / ARM64 | blake | SWAR | 197.4 KiB / 166 allocs | 214.7 KiB / 283 allocs | 1.9 KiB / 9 allocs |
+| M4 Max / ARM64 | blake | SIMD | 487.0 KiB / 280 allocs | 640.6 KiB / 768 allocs | 1.9 KiB / 9 allocs |
+| M4 Max / ARM64 | utf | SWAR | 175.2 KiB / 176 allocs | 224.3 KiB / 255 allocs | 1.3 KiB / 9 allocs |
+| M4 Max / ARM64 | utf | SIMD | 244.4 KiB / 344 allocs | 413.9 KiB / 775 allocs | 1.7 KiB / 14 allocs |
+| Ryzen / AMD64 | json | SWAR | 330.1 KiB / 1434 allocs | 399.5 KiB / 1781 allocs | 2.8 KiB / 14 allocs |
+| Ryzen / AMD64 | json | SIMD | 349.9 KiB / 1691 allocs | 451.5 KiB / 2158 allocs | 2.8 KiB / 14 allocs |
+| Ryzen / AMD64 | blake | SWAR | 193.6 KiB / 179 allocs | 210.9 KiB / 301 allocs | 1.9 KiB / 9 allocs |
+| Ryzen / AMD64 | blake | SIMD | 514.9 KiB / 467 allocs | 668.6 KiB / 959 allocs | 1.9 KiB / 9 allocs |
+| Ryzen / AMD64 | utf | SWAR | 175.8 KiB / 172 allocs | 224.9 KiB / 256 allocs | 1.2 KiB / 9 allocs |
+| Ryzen / AMD64 | utf | SIMD | 256.1 KiB / 523 allocs | 423.8 KiB / 953 allocs | 1.7 KiB / 14 allocs |
+
+#### Execution latency and memory
+
+| host | workload | SWAR | SIMD | SIMD change | memory |
+|---|---|---:|---:|---:|---:|
+| M4 Max / ARM64 | `json serializeN(200)` | 19.18 us | 24.65 us | +28.5% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `json deserializeN(200)` | 38.48 us | 49.78 us | +29.4% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `blake hashN(100)` | 451.49 us | 634.88 us | +40.6% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `utf convertN(200)` | 107.36 us | 143.87 us | +34.0% | 0 B / 0 allocs |
+| M4 Max / ARM64 | `utf validateN(200)` (SIMD-only) | - | 361.55 us | n/a | 0 B / 0 allocs |
+| Ryzen / AMD64 | `json serializeN(200)` | 25.17 us | 29.96 us | +19.0% | 0 B / 0 allocs |
+| Ryzen / AMD64 | `json deserializeN(200)` | 45.25 us | 57.37 us | +26.8% | 0 B / 0 allocs |
+| Ryzen / AMD64 | `blake hashN(100)` | 884.18 us | 892.33 us | +0.9% | 0 B / 0 allocs |
+| Ryzen / AMD64 | `utf convertN(200)` | 173.22 us | 63.82 us | **-63.2%** | 0 B / 0 allocs |
+| Ryzen / AMD64 | `utf validateN(200)` (SIMD-only) | - | 188.85 us | n/a | 0 B / 0 allocs |
+
+For these artifacts, SWAR is the better default on ARM64 and for JSON on both hosts:
+it is faster in seven of the eight matched host/workload rows, while also producing
+smaller modules and cheaper validation/compilation. SIMD is decisively worthwhile for
+UTF conversion on AMD64, where it is 63.2% faster. BLAKE SIMD is effectively tied on
+AMD64 execution but pays roughly 4x full-compile latency and 3.2x allocation volume;
+its current entrypoint does not earn that footprint cost. All measured execution paths
+remain allocation-free.
+
 ---
 
 ## Remaining roadmap (priority-ordered)
 
-The detailed, phase-by-phase execution plan for everything below is
-**`docs/no-ir-plan.md`** (2026-07-03, incorporating an external repo review that was
-triaged against the tree). R-numbers here are stable labels; Pn are that plan's phases.
+The original phase-by-phase design record is **`docs/no-ir-plan.md`**
+(2026-07-03, incorporating an external repo review that was triaged against the
+tree). This document is authoritative for current optimization status;
+R-numbers remain stable labels and Pn identify the original plan phases.
 
 ### R0. `CodegenStats` + explain mode  · ✅ LANDED (`perf/codegen-stats`)
 Per-function counters (spills/flushes/condenses/store-forced deferred loads/bounds
@@ -235,17 +908,15 @@ V0 measurement discipline that found this is now doctrine: profile before chasin
 hypothesis (memory `wago-serialize-memcopy-win`; ≤0x18 perf bins). Serialize is now
 flat/GC-bound; no further wago-side lever identified.
 
-### R5. Runtime / infra from WARP (plan P8)
-| Item | Effort | Value | Notes |
-|---|:--:|:--:|---|
-| Sync host calls w/ return values (V2 imports) | L | ⭐ | runtime half spiked; biggest functional unlock (WASI). #111/#115 added typed params + host funcrefs; **results** still missing |
-| WASI preview 1 (minimal) | M | 🟩 | after sync imports |
-| Interruption / cooperative cancel | S–M | 🟩 | loop backedges + entries; same machinery as Go-GC safe points |
-| Wasm-level stack trace on trap | M | 🟩 | trap site → func idx → wasm pc |
-| Debug mode + bytecode→machine map | M | 🟦 | |
-| arm64 backend | L | 🟩¹ | WARP `backend/aarch64` as reference |
-
-¹ if Apple Silicon / arm64 Linux matters.
+### R5. Runtime / infrastructure status (original plan P8)
+| Item | Status | Notes |
+|---|:--:|---|
+| Sync host calls with return values | ✅ done | Synchronous parked-host dispatch supports results. |
+| WASI Preview 1 | plugin-owned | `wago-org/wasi` owns the product integration. |
+| Invocation cancellation | ✅ done | Native asynchronous cancellation on Linux amd64/arm64; cooperative safepoints elsewhere. |
+| Wasm-level trap source frames | 🚧 partial | Function and exact single-site Wasm PCs land; full caller-chain metadata remains follow-up work. |
+| Debug mode + bytecode→machine map | [ ] planned | No current product commitment. |
+| Arm64 backend | ✅ done | Native runtime paths, CI, and release assets cover all six supported OS/architecture targets. |
 
 ### R6. Measurement hardening → **promoted to R0**, see above.
 
@@ -253,7 +924,7 @@ flat/GC-bound; no further wago-side lever identified.
 Codegen, cheap-and-safe first: **alias-aware pending loads** (any store currently
 flushes ALL deferred loads — keep same-base provably-disjoint ones, plan P2.1) ·
 **pure-tree `drop` discard** (P2.2) · ~~**const-fold pack** — compares/eqz/clz/ctz/
-popcnt/extensions (P2.3)~~ ✅ DONE (narrow-load mask elision still open) · ~~**same-operand
+popcnt/extensions (P2.3)~~ ✅ DONE (including bounded narrow-load/shift mask elision) · ~~**same-operand
 int compare identities** (P2.4)~~ ✅ DONE. Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
 unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** +
 **hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
@@ -266,7 +937,7 @@ caches** behind a table epoch (P8.6) · **`.wago` cache keys + CLI**
 (compile/run/inspect, P8.7) · **call-surviving valent trees** and a **tiny bytecode
 inliner** (both decision-gated on R0 counters, P5.4–.5) · **fused validate+compile**
 (premise re-measured post-#96, P7). Rejected (with reasons — plan §1.3): `stAddrExpr`,
-known-bits lattice, general pending sets with owned regs, tiny unroll, SIMD copy/fill
+persistent/general known-bits state, general pending sets with owned regs, tiny unroll, SIMD copy/fill
 now, `memory.size` micro-opt.
 
 ### Greenfield (not in WARP either)

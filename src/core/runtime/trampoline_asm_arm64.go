@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && arm64 && !tinygo
+//go:build (linux || darwin || windows) && arm64 && !tinygo
 
 package runtime
 

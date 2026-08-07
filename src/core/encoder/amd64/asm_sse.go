@@ -112,6 +112,13 @@ func (a *Asm) vex3RRReserved(opcodeMap, pp, op byte, reg, rm Reg) {
 }
 
 func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
+	a.vex3RRReservedWL(opcodeMap, pp, op, reg, rm, false, l)
+}
+
+// vex3RRReservedWL is the reserved-vvvv VEX register form with an explicit W
+// bit. Most SIMD instructions use W=0; BMI2's scalar RORX uses W to select the
+// 32- or 64-bit operand width.
+func (a *Asm) vex3RRReservedWL(opcodeMap, pp, op byte, reg, rm Reg, w bool, l byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
 	if reg >= 8 {
 		rBit = 0
@@ -119,9 +126,21 @@ func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
 	if rm >= 8 {
 		bBit = 0
 	}
-	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03)                 // vvvv=1111, W=0
+	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03) // vvvv=1111
+	if w {
+		byte2 |= 0x80
+	}
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
+}
+
+// Rorx emits BMI2 RORX dst,src,imm. Unlike legacy ROR it is non-destructive,
+// which lets the compiler rotate a borrowed/local value without first copying
+// it into the destination register.
+func (a *Asm) Rorx(dst, src Reg, count byte, w bool) {
+	a.UsesBMI2 = true
+	a.vex3RRReservedWL(vexMap0F3A, 0b11, 0xF0, dst, src, w, 0)
+	a.emit(count)
 }
 
 func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool, l byte) {
@@ -151,12 +170,7 @@ func (a *Asm) vex3MemDisp(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 boo
 func (a *Asm) vex3MemDispL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, disp int32, l byte) {
 	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, 0, false, l)
 	a.emit(op)
-	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
-		a.emit(0x80|((byte(reg)&7)<<3)|0x04, 0x24) // mod=10 disp32, SIB=base only
-	} else {
-		a.emit(0x80 | ((byte(reg) & 7) << 3) | byte(base&7)) // mod=10 disp32
-	}
-	a.imm32(disp)
+	a.baseAddr(byte(reg), base, disp)
 }
 
 func (a *Asm) vex3MemIdx(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base, index Reg, disp int32) {
@@ -477,6 +491,7 @@ func (a *Asm) VPcmpgtb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x64, dst, s1, s2) }
 func (a *Asm) VPcmpgtw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
 func (a *Asm) VPcmpgtd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
 func (a *Asm) VPmovmskb(dst, src Reg)   { a.vex3RRReserved(vexMap0F, 0b01, 0xD7, dst, src) }
+func (a *Asm) VPtest(a1, a2 Reg)        { a.vex3RRReserved(vexMap0F38, 0b01, 0x17, a1, a2) }
 func (a *Asm) VPabsb(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1C, dst, src) }
 func (a *Asm) VPabsw(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1D, dst, src) }
 func (a *Asm) VPabsd(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1E, dst, src) }
@@ -667,12 +682,7 @@ func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
 		a.emit(rex(false, xmm >= 8, false, base >= 8))
 	}
 	a.emit(0x0F, op)
-	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
-		a.emit(0x80|((byte(xmm)&7)<<3)|0x04, 0x24) // mod=10 disp32, SIB=base only
-	} else {
-		a.emit(0x80 | ((byte(xmm) & 7) << 3) | byte(base&7)) // mod=10 disp32
-	}
-	a.imm32(disp)
+	a.baseAddr(byte(xmm), base, disp)
 }
 
 func (a *Asm) FLoadDisp(xmm, base Reg, disp int32, f64 bool) { a.fmemDisp(0x10, xmm, base, disp, f64) }

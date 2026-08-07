@@ -40,30 +40,31 @@ jobs:
             goos: darwin
             goarch: amd64
             target: darwin-amd64
-            best_effort: true
+            best_effort: false
           - runner: macos-15
             goos: darwin
             goarch: arm64
             target: darwin-arm64
-            best_effort: true
-          - runner: windows-2022
+            best_effort: false
+          - runner: windows-2025
             goos: windows
             goarch: amd64
             target: windows-amd64
-            best_effort: true
-          - runner: windows-2022
+            best_effort: false
+          - runner: windows-11-arm
             goos: windows
             goarch: arm64
             target: windows-arm64
-            best_effort: true
+            best_effort: false
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - uses: acifani/setup-tinygo@v2
+      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
+        if: matrix.target != 'windows-arm64'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
@@ -79,12 +80,14 @@ jobs:
         run: |
           scripts/build-release-assets.sh
       - name: Upload release files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-${{ matrix.target }}
           path: |
             wago-${{ matrix.target }}
             wago-${{ matrix.target }}.sha256
+            wago-installer-${{ matrix.target }}
+            wago-installer-${{ matrix.target }}.sha256
             wago-runtime-*-${{ matrix.target }}
             wago-runtime-*-${{ matrix.target }}.sha256
           if-no-files-found: error
@@ -94,9 +97,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Download release files
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: release-*
           merge-multiple: true
@@ -122,9 +125,23 @@ jobs:
           else
             gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --verify-tag --generate-notes --notes "$notes" "${assets[@]}"
           fi
+      - name: Create documentation synchronization token
+        id: docs-sync-token
+        if: startsWith(github.ref, 'refs/tags/') && vars.DOCS_SYNC_APP_ID != ''
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.DOCS_SYNC_APP_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          owner: wago-org
+          repositories: docs
+      - name: Synchronize stable documentation
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          DOCS_SYNC_TOKEN: ${{ steps.docs-sync-token.outputs.token }}
+        run: scripts/dispatch-docs-release.sh release "${{ github.ref_name }}" "$(git rev-parse HEAD)"
       - name: Upload manual build artifacts
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: wago-release-files
           path: release

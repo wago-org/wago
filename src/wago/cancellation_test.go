@@ -1,15 +1,17 @@
-//go:build ((linux && amd64) || arm64) && !tinygo
+//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
 
 package wago
 
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func TestCallContextInterruptsNativeLoop(t *testing.T) {
@@ -109,6 +111,46 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 	// interruption, not a synthetic bound, is what stopped it.
 	if calls <= 1<<20 {
 		t.Fatalf("host calls = %d, want > %d (loop must exceed the old cap to be a real regression guard)", calls, 1<<20)
+	}
+}
+
+func TestInvokeContextHostPanicStopsCancellationWatch(t *testing.T) {
+	void := wasmtest.FuncType(nil, nil)
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("panic")...), 0x00, 0x00)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(void)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	compiled := MustCompile(mod)
+	defer compiled.Close()
+	panicValue := errors.New("host panic sentinel")
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.panic": HostFunc(func(HostModule, []uint64, []uint64) {
+		panic(panicValue)
+	})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	func() {
+		defer func() {
+			if got := recover(); got != panicValue {
+				t.Fatalf("host panic = %v, want exact sentinel", got)
+			}
+		}()
+		_, _ = in.InvokeContext(ctx, "run")
+	}()
+	trapPtr := (*uint32)(unsafe.Pointer(&in.trap[0]))
+	beforeCancel := atomic.LoadUint32(trapPtr)
+	cancel()
+	time.Sleep(2 * time.Millisecond)
+	afterCancel := atomic.LoadUint32(trapPtr)
+	if afterCancel != beforeCancel {
+		t.Fatalf("cancellation callback survived host panic: trap %d -> %d", beforeCancel, afterCancel)
 	}
 }
 

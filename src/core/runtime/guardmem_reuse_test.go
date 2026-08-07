@@ -1,4 +1,4 @@
-//go:build wago_guardpage && ((linux && (amd64 || arm64)) || (darwin && arm64))
+//go:build wago_guardpage && (linux || darwin) && (amd64 || arm64)
 
 package runtime
 
@@ -32,6 +32,21 @@ func peekByte(j *JobMemory, off uintptr) byte {
 	return *(*byte)(unsafe.Pointer(j.reserveBase + uintptr(j.linOff) + off))
 }
 
+func TestGuardedHostBytesTracksLogicalGrowth(t *testing.T) {
+	const page = wasmPageBytes
+	j, err := NewJobMemoryGuarded(page, 5*page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+
+	j.putU32(offActualLinMemByteSize, 5*page)
+	j.putU64(offActualLinMemByteSize64, 5*page)
+	if got := len(j.HostBytes()); got != 5*page {
+		t.Fatalf("HostBytes length after logical growth = %d, want %d", got, 5*page)
+	}
+}
+
 // TestGuardedJobMemoryReuse verifies the one-slot guard-page reuse cache: a
 // released reservation is handed back by the next Acquire (same base, proving no
 // re-mmap), and every page the previous instance dirtied — the initial region and
@@ -59,6 +74,7 @@ func TestGuardedJobMemoryReuse(t *testing.T) {
 	// Simulate a memory.grow to 3 pages and dirty a byte in the third page, as a
 	// faulting store would after growing the logical size.
 	j1.putU32(offActualLinMemByteSize, uint32(3*page))
+	j1.putU64(offActualLinMemByteSize64, uint64(3*page))
 	pokeByte(t, j1, 2*page+123, 0xCD)
 
 	// Release -> parked in the cache (decommitted + re-armed + zero-reclaimed).

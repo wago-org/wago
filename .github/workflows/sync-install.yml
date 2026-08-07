@@ -1,0 +1,55 @@
+name: Publish installers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - install.cmd
+      - install.ps1
+      - .github/workflows/sync-install.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-installers
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Sync install.wago.sh
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Wago
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check out installer site
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: wago-org/install
+          path: published
+          token: ${{ secrets.INSTALL_REPO_TOKEN }}
+
+      - name: Synchronize installer bootstraps
+        run: |
+          cp install.sh install.cmd install.ps1 published/
+          chmod 0755 published/install.sh
+          chmod 0644 published/install.cmd published/install.ps1
+          cmp install.sh published/install.sh
+          cmp install.cmd published/install.cmd
+          cmp install.ps1 published/install.ps1
+
+      - name: Publish changed scripts
+        working-directory: published
+        run: |
+          if git diff --quiet -- install.sh install.cmd install.ps1; then
+            echo "Installer bootstraps are already current."
+            exit 0
+          fi
+          git config user.name "wago-bot"
+          git config user.email "wago-bot@users.noreply.github.com"
+          git add install.sh install.cmd install.ps1
+          git commit -m "sync: update installer bootstraps"
+          git push origin HEAD:main

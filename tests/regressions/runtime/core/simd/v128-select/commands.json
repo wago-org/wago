@@ -1,0 +1,5 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/v128-select/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 11, "action": {"type": "invoke", "field": "select", "args": [{"type": "v128", "lane_type": "i64", "value": ["1", "1"]}, {"type": "v128", "lane_type": "i64", "value": ["2", "2"]}, {"type": "i32", "value": "0"}]}, "expected": [{"type": "v128", "lane_type": "i64", "value": ["2", "2"]}]}, 
+  {"type": "assert_return", "line": 17, "action": {"type": "invoke", "field": "select", "args": [{"type": "v128", "lane_type": "i64", "value": ["1", "1"]}, {"type": "v128", "lane_type": "i64", "value": ["2", "2"]}, {"type": "i32", "value": "1"}]}, "expected": [{"type": "v128", "lane_type": "i64", "value": ["1", "1"]}]}]}

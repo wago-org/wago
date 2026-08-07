@@ -5,7 +5,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func val(v wasm.ValType) wasm.StorageType     { return wasm.StorageType{Val: v} }
@@ -100,7 +100,7 @@ func TestLowerMixedStructRefOffsets(t *testing.T) {
 }
 
 func TestLowerArraysPointerFreeAndPointerful(t *testing.T) {
-	types := []wasm.StorageType{packed(wasm.PackI8), packed(wasm.PackI16), val(wasm.I32), val(wasm.I64), val(wasm.F32), val(wasm.F64)}
+	types := []wasm.StorageType{packed(wasm.PackI8), packed(wasm.PackI16), val(wasm.I32), val(wasm.I64), val(wasm.F32), val(wasm.F64), val(wasm.V128)}
 	var subs []wasm.SubType
 	for _, typ := range types {
 		subs = append(subs, arr(typ))
@@ -114,6 +114,10 @@ func TestLowerArraysPointerFreeAndPointerful(t *testing.T) {
 		if descs[i].HasRefs {
 			t.Fatalf("array %d unexpectedly pointerful", i)
 		}
+	}
+	vec := descs[len(types)-1]
+	if vec.Elem != gc.StorageV128 || vec.ElemSize != 16 || vec.Align != 16 {
+		t.Fatalf("v128 array descriptor = %+v", vec)
 	}
 	if !descs[len(types)].HasRefs || !descs[len(types)+1].HasRefs {
 		t.Fatal("ref arrays should be pointerful")
@@ -258,10 +262,20 @@ func TestLowerFunctionTypesAreSentinels(t *testing.T) {
 	}
 }
 
-func TestLowerErrors(t *testing.T) {
-	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(field(val(wasm.V128)))}}}); err == nil {
-		t.Fatal("expected v128 error")
+func TestLowerV128StructField(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(
+		field(val(wasm.I32)), field(val(wasm.V128)), field(val(wasm.I64)),
+	)}}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	d := descs[0]
+	if d.HasRefs || d.Align != 16 || d.Size != 48 || d.Fields[1].Kind != gc.StorageV128 || d.Fields[1].Offset != 16 || d.Fields[2].Offset != 32 {
+		t.Fatalf("v128 struct descriptor = %+v", d)
+	}
+}
+
+func TestLowerErrors(t *testing.T) {
 	child := st(field(val(wasm.I32)))
 	child.Supers = []wasm.TypeIdx{{Index: 9}}
 	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{child}}}); err == nil {
@@ -298,7 +312,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 			0x4e, 0x03, // rec group with three struct subtypes; flattened base is type 1.
 			0x50, 0x00, 0x4d, 0x03, 0x5f, 0x00, // type 1: open struct, descriptor type 3.
 			0x50, 0x01, 0x01, 0x5f, 0x01, 0x7f, 0x00, // type 2: open struct <: type 1, i32 field.
-			0x4f, 0x01, 0x02, 0x5f, 0x01, 0x63, 0x02, 0x00, // type 3: final struct <: type 2, (ref null type 2) field.
+			0x4f, 0x01, 0x02, 0x5f, 0x02, 0x7f, 0x00, 0x63, 0x02, 0x00, // type 3: final struct <: type 2, i32 prefix plus (ref null type 2).
 		},
 	)))
 	m, err := wasm.DecodeModule(mod)
@@ -315,7 +329,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	if idx := group[2].Supers[0]; !idx.Rec || idx.Index != 1 {
 		t.Fatalf("child super index = %#v, want rec 1", idx)
 	}
-	fieldHeap := group[2].Comp.Fields[0].Storage.Val.Ref.Heap
+	fieldHeap := group[2].Comp.Fields[1].Storage.Val.Ref.Heap
 	if fieldHeap.Kind != wasm.HeapTypeIndex || !fieldHeap.Type.Rec || fieldHeap.Type.Index != 1 {
 		t.Fatalf("child field heap = %#v, want rec type 1", fieldHeap)
 	}
@@ -335,7 +349,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	if !descs[3].HasSuper || descs[3].Super != 2 {
 		t.Fatalf("type 3 super = %d has=%v, want flattened type 2", descs[3].Super, descs[3].HasSuper)
 	}
-	if descs[3].Fields[0].Kind != gc.StorageRefNull || descs[3].Fields[0].Offset != 0 {
-		t.Fatalf("type 3 field = %+v, want nullable ref at offset 0", descs[3].Fields[0])
+	if len(descs[3].Fields) != 2 || descs[3].Fields[1].Kind != gc.StorageRefNull || descs[3].Fields[1].Offset != 4 {
+		t.Fatalf("type 3 fields = %+v, want i32 prefix plus nullable ref at offset 4", descs[3].Fields)
 	}
 }

@@ -8,7 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 type funcDef struct {
@@ -90,8 +90,8 @@ func TestMixedCallWrapperArgsExec(t *testing.T) {
 		funcDef{[]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xb7, 0xa0, 0x0b}},
 	)
 	stats := compileWithStats(t, m, false).Funcs[0]
-	if got := stats.Calls["wrapper"]; got != 1 {
-		t.Fatalf("wrapper calls = %d, want 1 (all: %v)", got, stats.Calls)
+	if got := stats.Calls["mixed"]; got != 1 {
+		t.Fatalf("mixed register calls = %d, want 1 (all: %v)", got, stats.Calls)
 	}
 	cm, err := CompileModule(m)
 	if err != nil {

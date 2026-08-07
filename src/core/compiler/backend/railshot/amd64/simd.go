@@ -128,7 +128,7 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	// MOVDQU, instead of rebuilding the 128-bit immediate (3-4 ops). This is what
 	// makes real SIMD kernels — which use many constant tables/masks that overflow
 	// the reserved-register cache — competitive: one load per use, no register
-	// reserved. Mirrors wazero's rodata constant loads.
+	// reserved.
 	site := f.a.MovdquRipPlaceholder(x)
 	f.recordV128Const(lo, hi, site)
 	return x
@@ -233,7 +233,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // emulation constants (read-only masks/tables, never loop-carried) are still
 // reserved. Mirrors preloadFloatConsts / arm64 preloadV128Consts.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || !v128ConstCacheEnabled {
+	if f.usesCalls || f.syncHostCalls || !v128ConstCacheEnabled {
 		return
 	}
 	highPressure := f.pinnedV128LocalCount() >= 2
@@ -894,7 +894,7 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 // TODO(simd): Vectorize signed packed trunc_sat with SSE/AVX where practical;
 // keep unsigned and saturating scalar fallback as the correctness baseline.
 // v128I32x4TruncSat lowers the saturating float->i32 conversions. The f32x4
-// forms use a fully vectorized branchless sequence (wazero/V8-proven); the
+// forms use a fully vectorized branchless sequence; the
 // f64x2 *_zero forms still use the per-lane scalar fallback below.
 func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	switch {
@@ -910,7 +910,7 @@ func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 // v128TruncSatF64x2UnsignedZero lowers i32x4.trunc_sat_f64x2_u_zero: clamp to
 // [0, UINT32_MAX], round toward zero, then extract the low 32 bits via the 2^52
 // magic bias and a SHUFPS that packs lanes 0,2 and zeroes the upper half.
-// Branchless; mirrors wazero's f64x2 unsigned path.
+// The lowering is branchless.
 func (f *fn) v128TruncSatF64x2UnsignedZero() {
 	xx := f.materializeV128(f.popValue())
 	f.fpinned = f.fpinned.add(xx)
@@ -935,7 +935,7 @@ func (f *fn) v128TruncSatF64x2UnsignedZero() {
 // v128TruncSatF64x2SignedZero lowers i32x4.trunc_sat_f64x2_s_zero: clamp NaN to 0
 // and positive overflow to INT_MAX via MINPD against 2147483647.0, then narrow
 // with CVTTPD2DQ (which handles negative overflow and zeroes the upper 2 lanes).
-// Branchless; mirrors wazero's f64x2 signed path.
+// The lowering is branchless.
 func (f *fn) v128TruncSatF64x2SignedZero() {
 	xx := f.materializeV128(f.popValue())
 	f.fpinned = f.fpinned.add(xx)
@@ -957,8 +957,8 @@ func (f *fn) v128TruncSatF64x2SignedZero() {
 // v128TruncSatF32x4 lowers i32x4.trunc_sat_f32x4_{s,u} with no branches and no
 // per-lane extract/insert. CVTTPS2DQ yields 0x80000000 for NaN and out-of-range
 // lanes; the surrounding mask arithmetic patches NaN->0 and positive-overflow->
-// INT_MAX (signed) / clamps to [0, UINT32_MAX] (unsigned). Mirrors wazero's
-// lowerVFcvtToIntSat, translated to 3-operand VEX.
+// INT_MAX (signed) / clamps to [0, UINT32_MAX] (unsigned), translated to
+// 3-operand VEX.
 func (f *fn) v128TruncSatF32x4(signed bool) {
 	xx := f.materializeV128(f.popValue()) // owned; becomes the result
 	f.fpinned = f.fpinned.add(xx)
@@ -1888,16 +1888,87 @@ func (f *fn) v128Movemask() Reg {
 func (f *fn) v128AnyTrue() {
 	v := f.popValue()
 	x := f.materializeV128(v)
-	z := f.allocFReg(maskOf(x))
-	f.a.VPxor(z, z, z)
-	f.a.VPcmpeqb(x, x, z) // byte lanes are all-ones only where the original byte was zero.
-	f.releaseF(z)
-	r := f.allocReg(0)
-	f.a.VPmovmskb(r, x)
+	f.a.VPtest(x, x)
 	f.releaseF(x)
-	f.a.AluRI(7, r, 0xffff, false) // cmp r, 0xffff: every byte was zero.
+	r := f.allocReg(0)
 	f.a.SetccReg(condNE, r)
 	f.pushReg(r, mtI32)
+	f.stats.peep("simd-anytrue-vptest")
+}
+
+// tryV128AndAnyTrue selects `(a & b) != 0` before v128.and materializes its
+// result. VPTEST sets ZF directly from the bitwise intersection, eliminating
+// the temporary vector, zero vector, byte compare, movemask, and integer cmp.
+func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
+	save := r.Offset()
+	prefix, err := r.Byte()
+	if err != nil || prefix != 0xfd {
+		_ = r.JumpTo(save)
+		return false
+	}
+	sub, err := r.U32()
+	if err != nil || sub != want {
+		_ = r.JumpTo(save)
+		return false
+	}
+	return true
+}
+
+func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 83) {
+		return false
+	}
+	b := f.popValue()
+	a := f.popValue()
+	sa, oa := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(sa)
+	sb, ob := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(sa)
+	f.a.VPtest(sa, sb)
+	if oa {
+		f.releaseF(sa)
+	}
+	if ob {
+		f.releaseF(sb)
+	}
+	result := f.allocReg(0)
+	f.a.SetccReg(condNE, result)
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-and-anytrue")
+	return true
+}
+
+// tryV128NotAnd selects `a & ~b` when producers spell it as v128.not followed
+// immediately by v128.and. The Wasm v128.andnot opcode and VPANDN use opposite
+// source order, so VPANDN(dst,b,a) is the exact one-instruction result.
+func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 78) {
+		return false
+	}
+	b := f.popValue()
+	a := f.popValue()
+	sa, oa := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(sa)
+	sb, ob := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(sa)
+	dst := sa
+	if !oa {
+		if ob {
+			dst = sb
+		} else {
+			dst = f.allocFReg(maskOf(sa, sb))
+		}
+	}
+	f.a.VPandn(dst, sb, sa)
+	if oa && dst != sa {
+		f.releaseF(sa)
+	}
+	if ob && dst != sb {
+		f.releaseF(sb)
+	}
+	f.pushVReg(dst)
+	f.stats.peep("simd-not-and")
+	return true
 }
 
 func (f *fn) v128AllTrue(cmpEqZero func(dst, s1, s2 Reg)) {
@@ -2117,38 +2188,52 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 	f.pushVReg(x)
 }
 
-func (f *fn) v128Load(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
+func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
+	if memoryIndex != 0 {
+		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
+		f.pinned = f.pinned.add(base).add(ea)
+		return base, ea, disp, true, true
 	}
-	off, err := r.U32()
-	if err != nil {
-		return err
+	if f.memoryAddr64(0) {
+		ea, eaOwned, _, disp = f.memAddr64(off, size)
+		return RBX, ea, disp, false, eaOwned
 	}
-	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
-	x := f.allocFReg(0)
-	f.a.VMovdquLoadIdx(x, RBX, ea, disp)
+	ea, eaOwned, _, disp = f.memAddr(uint32(off), size, true)
+	return RBX, ea, disp, false, eaOwned
+}
+
+func (f *fn) releaseSIMDMemAddr(base, ea Reg, baseOwned, eaOwned bool) {
+	if baseOwned {
+		f.pinned = f.pinned.remove(base).remove(ea)
+		f.release(base)
+	}
 	if eaOwned {
 		f.release(ea)
 	}
+}
+
+func (f *fn) v128Load(r *wasm.Reader) error {
+	memoryIndex, off, err := f.readMemArg(r)
+	if err != nil {
+		return err
+	}
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
+	x := f.allocFReg(0)
+	f.a.VMovdquLoadIdx(x, base, ea, disp)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.pushVReg(x)
 	return nil
 }
 
 func (f *fn) v128LoadExtend(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
-	ea, eaOwned, _, disp := f.memAddr(off, 8, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 8)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, 8, false, true)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, 8, false, true)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	x := f.allocFReg(0)
 	f.a.MovGprToXmm(x, t, true)
 	f.release(t)
@@ -2205,20 +2290,15 @@ func simdLoadSplatSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadSplat(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
 	size := simdLoadSplatSize(sub)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, size, false, size == 8)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	x := f.v128SplatScalar(t, size)
 	f.release(t)
 	f.pushVReg(x)
@@ -2236,20 +2316,15 @@ func simdLoadZeroSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
 	size := simdLoadZeroSize(sub)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, size, false, size == 8)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	x := f.allocFReg(0)
 	f.a.MovGprToXmm(x, t, size == 8)
 	f.release(t)
@@ -2258,10 +2333,7 @@ func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
 }
 
 func (f *fn) v128Store(r *wasm.Reader) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -2269,12 +2341,10 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
-	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
-	f.a.VMovdquStoreIdx(RBX, ea, x, disp)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
+	f.a.VMovdquStoreIdx(base, ea, x, disp)
 	f.fpinned = f.fpinned.remove(x)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.releaseF(x)
 	return nil
 }
@@ -2294,10 +2364,7 @@ func simdLaneMemSize(sub uint32) int {
 }
 
 func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -2310,12 +2377,10 @@ func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
-	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.a.LoadIdx(t, base, ea, disp, size, false, size == 8)
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.fpinned = f.fpinned.remove(x)
 	switch size {
 	case 1:
@@ -2333,10 +2398,7 @@ func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
 }
 
 func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
-	if _, err := r.U32(); err != nil { // align
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -2350,7 +2412,7 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, size)
 	t := f.allocReg(0)
 	switch size {
 	case 1:
@@ -2362,12 +2424,10 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	case 8:
 		f.a.Pextrq(t, x, lane)
 	}
-	f.a.StoreIdx(RBX, ea, t, disp, size)
+	f.a.StoreIdx(base, ea, t, disp, size)
 	f.release(t)
 	f.fpinned = f.fpinned.remove(x)
-	if eaOwned {
-		f.release(ea)
-	}
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.releaseF(x)
 	return nil
 }
@@ -2836,8 +2896,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 193: // i64x2.neg
 		f.v128IntegerNeg(f.a.VPsubq)
 	case 77: // v128.not
+		if f.tryV128NotAnd(r) {
+			break
+		}
 		f.v128UnaryNot()
 	case 78: // v128.and
+		if f.tryV128AndAnyTrue(r) {
+			break
+		}
 		f.v128BinMem(r, f.a.VPand, f.a.VPandMemDisp)
 	case 79: // v128.andnot (a & ~b). VPANDN(dst, s1, s2) = ~s1 & s2, so
 		// VPANDN(dst, b, a) = ~b & a = the Wasm result in one instruction.

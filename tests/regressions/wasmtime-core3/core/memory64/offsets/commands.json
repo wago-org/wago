@@ -1,0 +1,34 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "load1",
+        "type": "invoke"
+      },
+      "line": 11,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "load2",
+        "type": "invoke"
+      },
+      "line": 12,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

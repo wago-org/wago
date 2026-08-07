@@ -46,15 +46,19 @@ trap pointer matches the request, then acknowledges the matching table entry.
 This moves thread discovery and all registry traffic to the cold request side.
 
 The trap is stored before the broadcast. Entry and host-return boundaries
-preserve it, and cancellation retries close the small check-to-entry race.
+preserve it, and bounded cancellation retries close the small check-to-entry
+race. Context callbacks retry at most 256 times at 50-microsecond intervals; if
+execution remains parked in host code, the trap stays armed and is consumed when
+the host returns without continuing process-wide task enumeration indefinitely.
 `Instance.Close` uses a bounded asynchronous retry whose stop function remains
 attached to the close state until physical resource release; stale retries
 therefore cannot outlive the arena containing the trap cell.
 
 Context-aware calls register their interruption callback with
 `context.AfterFunc`; they do not keep a watchdog goroutine blocked for the
-duration of the call. The retry callback starts only if cancellation or the
-deadline actually fires.
+duration of the call. Cleanup is deferred and idempotent, so arbitrary host
+panics stop the callback before propagating. The retry callback starts only if
+cancellation or the deadline actually fires.
 
 Deadline contexts alone lock their goroutine for the duration of the call and
 arm a `timer_create(CLOCK_MONOTONIC, SIGEV_THREAD_ID)` timer for that Linux TID.
@@ -85,7 +89,7 @@ Run the Linux architecture-specific gates on native amd64 and arm64 machines
 (qemu-user is also useful for arm64 context-layout regression coverage):
 
 ```sh
-go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|WazeroPortCloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'
+go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|CloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'
 go test ./src/core/runtime ./src/wago
 ```
 

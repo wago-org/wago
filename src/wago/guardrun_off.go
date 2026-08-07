@@ -1,4 +1,4 @@
-//go:build !wago_guardpage || (!linux && !darwin) || (linux && !amd64 && !arm64) || (darwin && !arm64)
+//go:build !wago_guardpage || (!linux && !darwin && !windows) || ((linux || darwin || windows) && !amd64 && !arm64)
 
 package wago
 
@@ -20,7 +20,11 @@ func callNative(_ *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, refre
 		return err
 	}
 	if preparedCallEnabled {
-		return eng.CallPrepared(entry, serArgs, jm.LinMemBase(), trap, results)
+		err := eng.CallPrepared(entry, serArgs, jm.LinMemBase(), trap, results)
+		if err != nil {
+			jm.ClearEHHandler()
+		}
+		return err
 	}
 	return eng.Call(entry, serArgs, jm.LinearMemory(), trap, results)
 }

@@ -1,0 +1,371 @@
+# upstream-path	status	reason
+# Exact inventory of every .wast under Wasmtime tests/misc_testsuite at the pinned revision.
+aarch64-extr.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+add.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+alias-region-imported-globals.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+alias-region-imported-memories.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+alias-region-imported-tables.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+alias-region-memory-copy.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+big-memory-behavior.wast	ported-adapted	provenance-linked equivalent Wago product coverage
+bit-and-conditions.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+br-table-fuzzbug.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+branch-hinting-invalid.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+branch-hinting.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+call_indirect.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+canonicalize-nan-scalar.wast	excluded-nonstandard	assertions require Wasmtime-specific NaN canonicalization configuration
+component-model-threading/drop-subtask-on-separate-thread.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/many-threads-indexed.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/stackful-cancellation.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/subtask-drop-multithreaded.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/suspend-trap.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/thread-new-indirect-multi-table.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/threading-builtins.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/threading-trap-in-post-return.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model-threading/yield-cancellable.wast	outside-core3	component-model threading is outside WebAssembly Core 3
+component-model/adapter.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/aliasing.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/async-builtins.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/backpressure-deadlock.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/backpressure-overflow.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/callback-yield-then-exit.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/cancel-host.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/cancel-sibling-subtask.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/cancel-starting-subtask-does-not-leak.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/cancel-sync-and-waitable.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/drop-deadlock.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/drop-host.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/drop-waitable-set-stackful.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/error-context.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/exceptions.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/fused.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/future-cancel-read-dropped.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/future-cancel-write-completed.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/future-cancel-write-dropped.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/future-drop-writable-after-notified-drop.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/future-read.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/futures-must-write.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/futures-must-write2.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/futures.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/intra-futures.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/intra-streams.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/join-during-sync-read.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/lift.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/lower.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/many-params-with-retptr.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/partial-stream-copies.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/reenter-during-yield.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/reentrance.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/stackful.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/stream-big-read-and-writes.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/stream-cancel-finished-op.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/stream-zero-ops.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/streams-massive-send.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/streams.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/subtask-wait.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/sync-and-async-waitable.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/sync-call-context-slots.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/sync-call-context-trap.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/sync-call-context.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/sync-streams.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/task-builtins.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/task-deletion.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/task-return-traps.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/trap-if-done.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/trap-if-transfer-in-waitable-set.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/wait-forever.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/wait-forever2.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/waitable-set-stale-entry.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/async/yield-when-cancelled.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/big-strings.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/enum_discriminant.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/enums.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/error-context-trap-in-post-return.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/exceptions.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/fixed_length_lists.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/gc/empty.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/implements-disabled.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/implements.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/import.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/instance.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/linking.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/map-types.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/memory64.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/modules.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/nested-many-instantiations.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/nested.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/resources.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/restrictions.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/simple.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/string-transcode-invalid.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/strings.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/tags.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/trap.wast	outside-core3	component model is outside WebAssembly Core 3
+component-model/types.wast	outside-core3	component model is outside WebAssembly Core 3
+control-flow.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+custom-page-sizes/custom-page-sizes-invalid.wast	outside-core3	custom page sizes are outside mandatory WebAssembly Core 3
+custom-page-sizes/custom-page-sizes.wast	outside-core3	custom page sizes are outside mandatory WebAssembly Core 3
+custom-page-sizes/max-size-invalid-shared-memory.wast	outside-core3	custom page sizes are outside mandatory WebAssembly Core 3
+custom-page-sizes/max-size-invalid.wast	outside-core3	custom page sizes are outside mandatory WebAssembly Core 3
+div-rem.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+elem-ref-null.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+elem_drop.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+embenchen_fannkuch.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+embenchen_fasta.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+embenchen_ifs.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+embenchen_primes.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+empty.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+export-large-signature.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+externref-id-function.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+externref-segment.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+externref-table-dropped-segment-issue-8281.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+f64-copysign.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+fib.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+float-round-doesnt-load-too-much.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+func-400-params.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+function-references/call_indirect.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+function-references/instance.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+function-references/table_fill.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+function-references/table_get.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+function-references/table_grow.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+function-references/table_set.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/active-space-end-readonly.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/alias-region-array-copy.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/alias-region-table-copy.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/alloc-v128-struct.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/anyref_that_is_i31_barriers.wast	ported-core3	exact source replay via pinned parser
+gc/array-alloc-too-large.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-copy-gc-refs.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-copy-inline.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-copy-non-gc-refs.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-copy-overwrite-i31.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-fill-gc-refs.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-fill-null-funcref.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-gc-refs.wast	ported-core3	exact interpreter replay
+gc/array-get-s.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-init-data.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-len.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-new-data-missing-stack-map.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-new-data.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-new-elem-missing-stack-map.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-new-elem.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/array-set.wast	ported-core3	exact interpreter replay
+gc/array-types.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/arrays-of-different-types.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/big-array-overflow.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/binary-tree.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/br-on-cast.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/br-on-null.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/bump-ptr-can-move.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/component-async-suspended-fiber-roots.wast	outside-core3	stack switching or component execution is outside WebAssembly Core 3
+gc/const-expr-gc-simd.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/const-expr-gc.wast	ported-core3	exact interpreter replay
+gc/deeply-nested-struct-survives-gc.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/empty-struct.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/eval-const-expr-once.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/extern-any-conversion.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/externrefs-can-be-i31refs.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/func-refs-in-gc-heap.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/funcref-field.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/fuzz-segfault.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/gc-pressure.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/gc-ref-array-pressure.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/heap-data-ptr-readonly.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/i31-as-externref-in-passive-element-segment.wast	ported-core3	exact interpreter replay
+gc/i31ref-in-struct.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/i31ref-of-global-initializers.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/i31ref-tables.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-10171.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-10182.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-10353.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-10397.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-10459.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-10467.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-11753.wast	ported-core3	exact interpreter replay
+gc/issue-13034.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-13066.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-13095.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-13134.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-13152.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-13247.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/issue-13417.wast	ported-core3	replayed exactly with isolated thread-Store retirement
+gc/issue-13480.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/kotlin-benchmark-bug.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/linked-list.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/more-rec-groups-than-types.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/null-i31ref.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/packed-struct-fields.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/rec-group-funcs.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/ref-as-non-null.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/ref-eq.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/ref-test-readonly.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/ref-test.wast	ported-core3	exact interpreter replay
+gc/semispace-capacity.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/struct-instructions.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/struct-mixed-fields.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/struct-refs-survive-gc.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/struct-set-gc-ref.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/struct-types.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/struct-with-v128.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+gc/v128-with-gc-ref.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+imported-memory-copy.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+int-to-float-splat.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue11561.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+issue11748.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue12318.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue1809.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue4840.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue4857.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue4890.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue6562.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+issue694.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+linking-errors.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+many-results-with-exceptions.wast	ported-core3	exact interpreter replay
+many-results.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+many-return-values.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+many_table_gets_lead_to_gc.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+memory-combos.wast	ported-adapted	provenance-linked equivalent Wago product coverage
+memory-copy.wast	ported-core3	exact source replay via pinned parser
+memory64/bounds.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/codegen.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/linking-errors.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/linking.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/more-than-4gb.wast	ported-adapted	provenance-linked equivalent Wago product coverage
+memory64/multi-memory.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/offsets.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/simd.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/table-too-big.wast	ported-adapted	provenance-linked equivalent Wago product coverage
+memory64/tables-without-bulk-memory.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+memory64/threads.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+memory_fill.wast	ported-adapted	provenance-linked equivalent Wago product coverage
+memory_init.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+misc_traps.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+mul16-negative.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+multi-memory/simple.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+mutable_externref_globals.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+no-mixup-stack-maps.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+no-opt-panic-dividing-by-zero.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+no-panic-on-invalid.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+no-panic.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+partial-init-memory-segment.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+partial-init-table-segment.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+pooling-drop-out-of-order.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+pooling-oob-on-reuse.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+rs2wasm-add-func.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+rust_fannkuch.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+shared-everything-threads/flags.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+simd/almost-extmul.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/canonicalize-nan.wast	excluded-nonstandard	assertions require Wasmtime-specific NaN canonicalization configuration
+simd/cvt-from-uint.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/edge-of-memory.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/interesting-float-splat.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/issue4807.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/issue6725-no-egraph-panic.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/issue_3173_select_v128.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/issue_3327_bnot_lowering.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/load_splat_out_of_bounds.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/replace-lane-preserve.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/riscv64-replicated-imm5-works.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/spillslot-size-fuzzbug.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/sse-cannot-fold-unaligned-loads.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/unaligned-load.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/v128-equal.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simd/v128-select.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simple-unreachable.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+simple_ref_is_null.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+sink-float-but-dont-trap.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+stack-args-exceptions.wast	ported-core3	exact interpreter replay
+stack-switching-and-gc.wast	outside-core3	stack switching or component execution is outside WebAssembly Core 3
+stack-switching/cont_args.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_bind1.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_bind2.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_bind3.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_bind4.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding1.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding2.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding3.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding4.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding5.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding6.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding7.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_forwarding8.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_nary.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_nested1.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_nested2.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_nested3.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_nested4.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_nested5.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_nested6.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_new.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_resume.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_resume1.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_resume2.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_resume_return.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_return.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_suspend.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_table.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/cont_twice.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/dup.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/linking_tags1.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/linking_tags2.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/resume_throw.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/resume_throw_ref.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch1.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch2.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch3.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch4.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch5.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch6.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch7.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/switch8.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/trap.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack-switching/unhandled.wast	outside-core3	stack switching is outside WebAssembly Core 3
+stack_overflow.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+table_copy.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+table_copy_on_imported_tables.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+table_grow_with_funcref.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+tail-call/loop-across-modules.wast	ported-core3	exact interpreter replay
+threads/LB.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/LB_atomic.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/MP.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/MP_atomic.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/MP_wait.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/SB.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/SB_atomic.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/atomic_wait_endianness.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/atomics-end-of-memory.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/atomics_notify.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/atomics_wait_address.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/load-store-alignment.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+threads/wait_notify.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+traps-skip-catch-all.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+wast-syntax.wast	ported-core3	exact source replay via pinned parser
+wide-arithmetic.wast	outside-core3	wide arithmetic is outside mandatory WebAssembly Core 3
+winch/br_table.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/float-comparison.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/global.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/imported_globals_fuzzbug.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/issue-10331.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/issue-10357.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/issue-10460.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/issue-10613.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/issue-10751.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/issue-12423.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/issue-424666628.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/memory_offsets.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/misc.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/oob.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/oob_extend.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/oob_table_grow.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/ref-types-basic.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/replace_lane.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/rmw32_cmpxchg_u_wrap.wast	outside-core3	threads and atomics are outside mandatory WebAssembly Core 3
+winch/select.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/simd_multivalue.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/table-init-fuzz-bug.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/table64.wast	ported-core3	replayed exactly with explicit CoreFeaturesV3 admission
+winch/table_fill.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/table_get.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/table_grow.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/table_set.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/use-innermost-frame.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus
+winch/v128_load_lane_invalid_address.wast	ported-runtime	covered by the pinned general Wasmtime runtime corpus

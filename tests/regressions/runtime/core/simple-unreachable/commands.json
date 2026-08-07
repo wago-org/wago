@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simple-unreachable/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_trap", "line": 7, "action": {"type": "invoke", "field": "f", "args": []}, "text": "unreachable", "expected": []}]}

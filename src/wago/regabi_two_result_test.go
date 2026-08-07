@@ -1,4 +1,4 @@
-//go:build ((linux && amd64) || arm64) && !tinygo
+//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
 
 package wago
 
@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // regABITwoResultModule defines a two-integer-result function `swap(a,b)->(b,a)`

@@ -27,8 +27,8 @@ jobs:
     outputs:
       code: ${{ steps.derive.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050
         id: filter
         with:
           # Avoid a separate PR-files API call; compare the checked-out merge
@@ -57,10 +57,8 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        # The warp/ submodule is C++ and not needed to build or test the Go
-        # module, so we deliberately do not fetch submodules.
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
@@ -75,17 +73,70 @@ jobs:
       - name: Lint
         run: make lint
 
+  regression-corpus:
+    name: Regression corpus provenance
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install corpus build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake jq ninja-build
+      - name: Read pinned WABT provenance
+        id: wabt
+        run: |
+          go test ./tests/regressioncorpus
+          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' tests/regressions/runtime/PROVENANCE.json)"
+          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' tests/regressions/runtime/PROVENANCE.json)"
+          printf 'repo=%s\n' "$repo" >> "$GITHUB_OUTPUT"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+      - name: Build pinned WABT from verified source
+        run: |
+          git clone --filter=blob:none --no-checkout "${{ steps.wabt.outputs.repo }}" .tmp/wabt
+          git -C .tmp/wabt fetch --depth=1 origin "${{ steps.wabt.outputs.revision }}"
+          git -C .tmp/wabt checkout --detach "${{ steps.wabt.outputs.revision }}"
+          git -C .tmp/wabt submodule update --init --recursive
+          test "$(git -C .tmp/wabt remote get-url origin)" = "${{ steps.wabt.outputs.repo }}"
+          test "$(git -C .tmp/wabt rev-parse HEAD)" = "${{ steps.wabt.outputs.revision }}"
+          test -z "$(git -C .tmp/wabt status --porcelain --untracked-files=no)"
+          test -z "$(git -C .tmp/wabt submodule status --recursive | grep -E '^[+-U]' || true)"
+          cmake -S .tmp/wabt -B .tmp/wabt/build -G Ninja -DBUILD_TESTS=OFF
+          cmake --build .tmp/wabt/build --target wast2json
+      - name: Verify pinned upstream sources and generated artifacts
+        run: |
+          test "$(git -C .tmp/wabt remote get-url origin)" = "${{ steps.wabt.outputs.repo }}"
+          test "$(git -C .tmp/wabt rev-parse HEAD)" = "${{ steps.wabt.outputs.revision }}"
+          test -z "$(git -C .tmp/wabt status --porcelain --untracked-files=no)"
+          test -z "$(git -C .tmp/wabt submodule status --recursive | grep -E '^[+-U]' || true)"
+          go run ./tests/tools/regression-corpus \
+            -repo "$PWD" \
+            -upstream "$PWD/.tmp/regression-corpus-upstream" \
+            -wast2json "$PWD/.tmp/wabt/build/wast2json" \
+            -fetch
+
   race:
     name: Race detector / Linux amd64
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      # Several amd64 runtime tests discover the pinned Core 3 checkout before
+      # deciding whether an unavailable conversion tool makes the case skippable.
+      # Fetch the corpus so the race lane reports races rather than checkout noise.
+      - name: Initialize Release 3 suite
+        run: git submodule update --init --depth=1 tests/spec-v3
       - name: Run focused runtime race suites
         run: go test -race -count=1 ./src/wago ./src/core/runtime
 
@@ -115,9 +166,9 @@ jobs:
             runner: macos-15-intel
             goos: darwin
             goarch: amd64
-            runtime: false
-            guard: false
-            corpus: false
+            runtime: true
+            guard: true
+            corpus: true
           - name: Darwin / arm64
             runner: macos-15
             goos: darwin
@@ -125,63 +176,144 @@ jobs:
             runtime: true
             guard: true
             corpus: true
+          - name: Windows / amd64
+            runner: windows-2025
+            goos: windows
+            goarch: amd64
+            runtime: true
+            guard: true
+            corpus: true
+          - name: Windows / arm64
+            runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            runtime: true
+            guard: true
+            corpus: true
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # Codegen and corpus tests use wat2wasm. Install it on every platform so
-      # missing tooling cannot turn coverage into a silent skip.
-      - name: Install wabt (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y wabt
-      - name: Install wabt (macOS)
-        if: runner.os == 'macOS'
-        run: brew install wabt
+      # Runtime codegen uses syntax unavailable in distro WABT releases. Publish
+      # the checksum-pinned tool directory on every supported Unix runtime host.
+      - name: Bootstrap pinned WABT
+        if: matrix.runtime && runner.os != 'Windows'
+        run: |
+          scripts/bootstrap-wabt.sh --verify
+          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+
+      # Only linux/amd64 builds the supplementary official Core 3 tests during
+      # ordinary package testing. Initialize and build their authoritative
+      # interpreter fallback there; other runtime cells avoid the large OCaml
+      # toolchain and verify the portable/backend surface directly.
+      - name: Initialize Release 3 suite
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: git submodule update --init --depth=1 tests/spec-v3
+
+      - name: Install Release 3 interpreter toolchain
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+
+      - name: Bootstrap pinned Release 3 interpreter
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
+          scripts/bootstrap-spec-interpreter.sh --verify
+          echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
+          echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
+
+      # WABT does not publish a Chocolatey package. Its checksum-pinned official
+      # Windows x64 build runs natively on amd64 and under Windows 11 ARM emulation.
+      - name: Install wabt (Windows)
+        if: matrix.runtime && runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/scripts/install-wabt-windows.ps1
 
       - name: Verify native runner
+        if: runner.os != 'Windows'
         run: |
           test "$(go env GOOS)" = "${{ matrix.goos }}"
           test "$(go env GOARCH)" = "${{ matrix.goarch }}"
           go version
           uname -a
 
+      - name: Verify native runner (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ($(go env GOOS) -ne '${{ matrix.goos }}') { throw 'wrong GOOS' }
+          if ($(go env GOARCH) -ne '${{ matrix.goarch }}') { throw 'wrong GOARCH' }
+          go version
+          Get-ComputerInfo | Select-Object OsName, OsArchitecture
+
       - name: Build & test
-        if: matrix.runtime
+        if: matrix.runtime && runner.os != 'Windows'
         run: make test
 
-      # Darwin/amd64 is not yet a supported native runtime target. Keep its
-      # architecture-neutral compiler and encoder surface honest without
-      # implying that the JIT ABI is implemented there.
-      - name: Portable compiler tests
-        if: ${{ !matrix.runtime }}
-        run: go test -count=1 ./internal/... ./src/core/compiler/codegen ./src/core/compiler/ir ./src/core/compiler/wasm ./src/core/encoder/amd64 ./src/core/encoder/arm64
+      - name: Build & test (Windows)
+        if: matrix.runtime && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          go build ./...
+          go build -tags wago_runtime ./cli/...
+          go test -count=1 ./...
+          go test -count=1 -tags wago_runtime ./cli/...
 
       # Guard-page (signals-based) mode is behind a build tag, so `make test`
       # never exercises it — which is how a broken SIGSEGV fault->trap handler
       # stayed CI-invisible. This runs the fault->trap path plus in-bounds
       # differential correctness under the tag.
       - name: Guard-page trap tests
-        if: matrix.guard
+        if: matrix.guard && runner.os != 'Windows'
         run: make test-guard
 
+      - name: Guard-page trap tests (Windows)
+        if: matrix.guard && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          go test -v -count=1 -tags wago_guardpage ./src/wago/
+          Push-Location bench
+          try {
+            go test -v -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+          } finally {
+            Pop-Location
+          }
+
       - name: Corpus correctness matrix
-        if: matrix.corpus
+        if: matrix.corpus && runner.os != 'Windows'
         env:
           WAGO_CORPUS_TIMEOUT: 20s
         run: make test-corpus
+
+      - name: Corpus correctness matrix (Windows)
+        if: matrix.corpus && runner.os == 'Windows'
+        shell: pwsh
+        working-directory: bench
+        env:
+          WAGO_CORPUS_TIMEOUT: 20s
+        run: go test -count=1 -run '^TestCorpus$' .
 
       - name: Fetch SIMD proposal suite
         if: matrix.runtime
         run: git submodule update --init tests/spec
 
       - name: SIMD execution suite
-        if: matrix.runtime
+        if: matrix.runtime && runner.os != 'Windows'
         run: make simd
+
+      - name: SIMD execution suite (Windows)
+        if: matrix.runtime && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git submodule update --init tests/spec
+          $env:WAGO_SPECTEST_DIR = (Resolve-Path tests/spec)
+          $env:WAGO_SPEC_VERSION = 'simd'
+          go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
   core-v2:
     name: Core v2 conformance / ${{ matrix.name }}
@@ -197,8 +329,8 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -212,6 +344,52 @@ jobs:
         run: git submodule update --init tests/spec-v2
       - name: Run exact Core v2 validation and execution
         run: make spec2
+
+  core-v3:
+    name: Core v3 conformance / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64 / explicit
+            runner: ubuntu-24.04
+            target: spec3
+          - name: Linux amd64 / signals
+            runner: ubuntu-24.04
+            target: spec3-signals
+          - name: Linux arm64 / explicit
+            runner: ubuntu-24.04-arm
+            target: spec3
+          - name: Linux arm64 / signals
+            runner: ubuntu-24.04-arm
+            target: spec3-signals
+          - name: Darwin arm64 / explicit
+            runner: macos-15
+            target: spec3
+          - name: Darwin arm64 / signals
+            runner: macos-15
+            target: spec3-signals
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install Release 3 interpreter toolchain
+        run: |
+          if [ "${{ runner.os }}" = Linux ]; then
+            sudo apt-get update
+            sudo apt-get install -y ocaml-nox ocaml-dune menhir
+          else
+            brew install ocaml dune menhir
+          fi
+      - name: Fetch pinned Core v3 corpus
+        run: git submodule update --init tests/spec-v3
+      - name: Run exact Core v3 validation and execution
+        run: make ${{ matrix.target }}
 
   tinygo:
     name: TinyGo / ${{ matrix.name }}
@@ -239,12 +417,12 @@ jobs:
             cli: false
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - uses: acifani/setup-tinygo@v2
+      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
         with:
           tinygo-version: "0.41.1"
           # Native builds do not use Binaryen, whose pinned release has no
@@ -281,7 +459,7 @@ jobs:
       - name: Smoke-run a real module
         if: matrix.cli
         run: |
-          out="$(./wago-tinygo run --invoke fib tests/testdata/fib.wasm 20)"
+          out="$(./wago-tinygo run --invoke fib tests/fixtures/wasm/fib.wasm 20)"
           echo "$out"
           test "$out" = "fib(20) = 6765"
 
@@ -292,20 +470,34 @@ jobs:
   coverage:
     name: Coverage
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # Coverage feeds the PR card and is intentionally omitted from direct main
+    # pushes, where the native matrix already provides the required test signal.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # wabt provides wast2json for the WebAssembly spec-suite card producer (and
-      # wat2wasm for the codegen tests that feed coverage).
-      - name: Install wabt (wast2json / wat2wasm)
-        run: sudo apt-get update && sudo apt-get install -y wabt
+      - name: Initialize Release 3 suite
+        run: git submodule update --init --depth=1 tests/spec-v3
+
+      # Coverage executes the same Core 3 tests as the native matrix, including
+      # source forms that require the official interpreter fallback.
+      - name: Install Release 3 interpreter toolchain
+        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+
+      - name: Bootstrap pinned Core 3 tools
+        run: |
+          scripts/bootstrap-wabt.sh --verify
+          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+          interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
+          scripts/bootstrap-spec-interpreter.sh --verify
+          echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
+          echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.
@@ -321,14 +513,14 @@ jobs:
           make card-fragments
 
       - name: Upload card fragments
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: card-fragments
           path: ci-card
           if-no-files-found: error
 
       - name: Upload coverage profile
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: coverage
           path: coverage.out
@@ -340,13 +532,13 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       # TinyGo (+ lld) builds the size-minimized run-only release profile.
-      - uses: acifani/setup-tinygo@v2
+      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3
         with:
           tinygo-version: "0.41.1"
       - name: Install lld
@@ -363,10 +555,13 @@ jobs:
           SIZE_REPORT=ci-card/size.md scripts/size-card.sh
 
       - name: Upload size fragment
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: card-size
-          path: ci-card/size.md
+          path: |
+            ci-card/size.md
+            ci-card/size-profiles.tsv
+            ci-card/size-symbols.tsv
           if-no-files-found: error
 
   card-comment:
@@ -379,14 +574,14 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Download card fragments
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: card-fragments
           path: ci-card
       - name: Download size fragment
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: card-size
           path: ci-card
@@ -404,7 +599,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, race, platform-test, core-v2, tinygo, coverage, size]
+    needs: [changes, lint, regression-corpus, race, platform-test, core-v2, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

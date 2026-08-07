@@ -13,10 +13,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
-	"github.com/wago-org/wago/src/core/compiler/machinecode"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -28,6 +28,24 @@ import (
 // regressions; validated against the spec suite + full corpus differential).
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
+
+// deadGCNewEnabled removes fixed-size GC constructor trees whose result is
+// immediately dropped, including nested struct.new/array.new_fixed values that
+// flow untouched into a dropped outer struct. Allocation has no observable
+// identity once the complete tree is dead; initializer computations that may
+// trap are still forced in original order. WAGO_AMD64_NO_DEAD_GC_NEW=1 keeps
+// every constructor helper for differential A/B testing.
+var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
+
+// exactGCRefFactsEnabled propagates exact non-null reference facts through
+// locals inside conservative straight-line structured regions. It removes only
+// casts already proved by a successful prior cast or exact constructor.
+var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
+
+// nativeGCStructAllocEnabled consumes collector-reserved handle batches through
+// a checked nursery bump path. The rooted Go helper remains the collection and
+// refill path. Keep a differential kill switch while the path is qualified.
+var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
 
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
@@ -103,6 +121,36 @@ var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 // disables it for A/B.
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
+// callNextUseEnabled skips stores of dirty pinned locals whose next bounded
+// post-call access overwrites the local before reading it.
+var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
+
+// affineLeaEnabled extends scaled-index LEA selection across one-level affine
+// base/index subtrees, folding their constants into the LEA displacement.
+// WAGO_AMD64_NO_AFFINE_LEA=1 disables it for A/B.
+var affineLeaEnabled = os.Getenv("WAGO_AMD64_NO_AFFINE_LEA") != "1"
+
+// treeOrderEnabled lets commutative, non-trapping Valent trees choose which
+// child is evaluated first from a bounded register-need estimate. It adds no
+// per-node state: maxDeferDepth bounds the recursive inspection.
+var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
+
+// associativeTreeEnabled covers small, trap-free associative trees as one
+// accumulator instead of materializing their internal binary nodes.
+var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
+
+// intervalRegionPinsEnabled reuses GP registers across integer local lifetimes
+// in bounded, call-free straight-line functions. Unlike whole-function hot-local
+// pins, the regional cache is pressure-spillable and returns a register at the
+// local's final get. WAGO_AMD64_INTERVAL_REGIONS=0 keeps the old whole-function
+// pin allocator as an A/B and correctness oracle.
+var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
+
+// bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
+// the low-level backend default and selected by the public runtime only after
+// host CPUID confirms BMI2.
+var bmi2RorxEnabled bool
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
@@ -140,13 +188,19 @@ type fn struct {
 	ft *wasm.CompType // this function's signature
 	transient
 	globalIdx          int
+	traceFuncIdx       uint32
+	tracePCBase        uint32
+	wasmPC             uint32
 	customInstructions map[uint32]CustomInstruction
 
-	nParams     int
-	nLocals     int           // params + declared locals
-	localType   []machineType // per-local machine type
-	localSlot   []int         // per-local frame slot in 8-byte units; v128 occupies two
-	nLocalSlots int           // total local frame slots in 8-byte units
+	nParams          int
+	nLocals          int           // params + declared locals
+	localType        []machineType // per-local machine type
+	localSlot        []int         // per-local frame slot in 8-byte units; v128 occupies two
+	localExactGCType []uint32      // exact non-null GC type + 1; zero means unknown
+	gcLastArrayLen   gcArrayLenFact
+	gcLastField      gcStructFieldFact
+	nLocalSlots      int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -162,6 +216,19 @@ type fn struct {
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
 	usesCalls bool
 	usesWide  bool
+	moduleEH  bool
+	// Bounded post-call next-use state. Pinned registers are numbered 0..15,
+	// so two uint16 masks fit in the bool cluster's existing alignment padding.
+	callDeadGP uint16
+	callDeadFP uint16
+
+	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
+	// an eligible local; locals[x].reg is populated only while its cached value is
+	// live. Physical registers are selected and reclaimed dynamically.
+	intervalReg   []Reg
+	intervalLast  []uint32
+	intervalScore []uint32
+	intervalOwner [16]int
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -183,6 +250,7 @@ type fn struct {
 	spillFloor       int
 	subRspAt         int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
 	addRspAt         int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	adapterReturnOff int    // offset immediately after this function's root adapter CALL
 	guardMode        bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts      bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible    bool   // emit context-cancellation polls at entries and loop headers
@@ -211,16 +279,14 @@ type fn struct {
 	singleRegResult bool
 	resultFloat     bool
 	resultF64       bool
-	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
+	regMerge        bool // reconcile single-result blocks in mergeReg/mergeFReg
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
-	// immutableLocalTable proves every non-null table-0 entry targets this module,
-	// so no home/tag fork is needed; immutableTableTyped+immutableTableType elide
-	// the type check; monomorphicTarget is the sole target (or -1) for a direct call.
-	immutableLocalTable bool
-	immutableTableType  uint32
-	immutableTableTyped bool
-	monomorphicTarget   int
+	// Each admitted table has a finite proof that every non-null entry targets this
+	// module, so no home/tag fork is needed; uniform type and monomorphic target
+	// facts remain table-specific.
+	immutableTables       []immutableTableHint
+	stagedTailDescriptors bool
 
 	// One-entry linear-memory store forwarding window. The value register is
 	// protected in f.pinned until an exact load consumes it or any non-local.get
@@ -265,8 +331,10 @@ type fn struct {
 	moduleGlobal []bool
 
 	// Control-flow state (Phase 3).
-	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
+	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
+	ehTryDepth  int         // live reachable try_table records; bounded by maxEHTryRecords
+	ehRootCount int         // compile-time assigned fixed exception roots; bounded by maxEHRootRecords
 
 	// sc holds per-function scratch whose backing is reused across the module:
 	// retSites, brFoldSites and trapSites live there so each function rewinds their
@@ -292,7 +360,7 @@ type fn struct {
 	// prologue's zeroDeclaredLocals never touches them). localBase is added to every
 	// local index while a splice runs, remapping the callee's locals onto that base;
 	// it is 0 outside a splice.
-	inlineTargets map[int]*inlineTarget
+	inlineTargets inlineTargetTable
 	inlineBase    map[int]int
 	localBase     int
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
@@ -310,7 +378,13 @@ type fn struct {
 	// host call in the module uses the synchronous control frame (callHostSync)
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
-	syncHostCalls bool
+	syncHostCalls          bool
+	gcTypeSubtypingRefTest bool // typed function tests/casts resolve exact declared type identity after dynamic loads
+	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
+	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
+	gcFrameRoots           *shared.GCFrameRootPlan
+	gcCallsiteIndex        int
+	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -319,20 +393,23 @@ type fn struct {
 }
 
 type transient struct {
-	lsPool        [][]locState
-	endsPool      [][]int
-	tmpRoots      []*elem
-	tmpTypes      []machineType
-	tmpTypes2     []machineType
-	tmpFlushTypes []machineType
-	tmpRegs       []Reg
-	tmpSlots      []int
-	tmpMoves      []regMove
-	tmpLabels     []uint32
-	tmpDeferred   []deferredArg
-	tmpBelow      []*elem
-	tmpGpCand     []gpCand
-	tmpInts       []int
+	lsPool         [][]locState
+	endsPool       [][]int
+	tmpRoots       []*elem
+	tmpTypes       []machineType
+	tmpTypes2      []machineType
+	tmpGCRoots     []bool
+	tmpGCRoots2    []bool
+	tmpFlushTypes  []machineType
+	tmpRegs        []Reg
+	tmpSlots       []int
+	tmpMoves       []regMove
+	tmpLabels      []uint32
+	tmpDeferred    []deferredArg
+	tmpBelow       []*elem
+	tmpGpCand      []gpCand
+	tmpInts        []int
+	tmpIntervalReg []Reg
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -385,20 +462,42 @@ func asmCapForBody(bodyLen int) int {
 // function's compile — the emitted code is copied into the module buffer before
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
+type gcStructAllocStubSite struct {
+	typeIndex uint32
+	site      int
+}
+
 type scratch struct {
-	stack *stack     // the valent-block operand stack
-	asm   *amd64.Asm // the x86-64 encoder byte buffer
+	stack          *stack     // the valent-block operand stack
+	asm            *amd64.Asm // the x86-64 encoder byte buffer
+	directPrepared bool
+	fnState        fn // per-function compiler state, reused across the module
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
 	// being reallocated per function; reset() only rewinds their lengths. trapSites
 	// is indexed by trap code (a small dense enum), replacing a per-function map.
-	retSites     []int
-	brFoldSites  []int
-	trapSites    [trapTableOOB + 1][]int
-	ctrl         []ctrlFrame // control-frame stack backing; reused across functions
-	pinnedLocals []int       // pinned-local index backing; reused across functions
+	retSites                []int
+	tailFrameSites          []int // AddRsp imm32 sites emitted before tail jumps
+	brFoldSites             []int
+	gcArrayLenStubSites     []int
+	gcFinalCastStubSites    []int
+	gcArrayRefGetSites      []int
+	gcStructRefGetStubSites []int
+	gcStructRefSetStubSites []int
+	gcArrayRefSetStubSites  []int
+	gcStructAllocStubSites  []gcStructAllocStubSite
+	trapSites               [trapMax + 1][]trapSite
+	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
+	pinnedLocals            []int       // pinned-local index backing; reused across functions
+	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
 	transient
+}
+
+type trapSite struct {
+	branch   int
+	function uint32
+	pc       uint32
 }
 
 func newScratch() *scratch {
@@ -408,8 +507,18 @@ func newScratch() *scratch {
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
+	sc.asm.UsesBMI2 = false
+	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
+	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
+	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
+	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
+	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
+	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
+	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
+	sc.gcArrayRefSetStubSites = sc.gcArrayRefSetStubSites[:0]
+	sc.gcStructAllocStubSites = sc.gcStructAllocStubSites[:0]
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
@@ -420,20 +529,30 @@ func (sc *scratch) reset() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch *scratch
-	arena   []byte
+	scratch  *scratch
+	arena    []byte
+	usesBMI2 bool
 }
 
 // funcResult is one independently compiled local function. worker/start/end
 // identify its owned bytes after the worker pool joins; relocs is independently
 // owned by the fn compiler state (it is not backed by scratch).
 type funcResult struct {
-	worker      int
-	start       int
-	end         int
-	internalOff int
-	relocs      []callReloc
-	err         error
+	worker         int
+	start          int
+	end            int
+	internalOff    int
+	directPrepared bool
+	relocs         []callReloc
+	err            error
+}
+
+func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
+	if bits == nil {
+		bits = make([]uint64, (n+63)/64)
+	}
+	bits[bit>>6] |= uint64(1) << uint(bit&63)
+	return bits
 }
 
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
@@ -448,12 +567,33 @@ type funcResult struct {
 // ([linMem-offTrapCellPtr], installed once per entry by the runtime) since only
 // the cold trap path reads it.
 const (
-	frameHdrBytes = 16 // spare + results ptr (keeps locals 16-aligned)
-	frResultsOff  = 8  // results buffer pointer
+	frameHdrBytes = shared.AMD64FrameHeaderBytes // spare + results ptr (keeps locals 16-aligned)
+	frResultsOff  = 8                            // results buffer pointer
 )
 
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
-func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlots + 8*k) }
+func (f *fn) ehFrameBytes() int {
+	if f.moduleEH {
+		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
+	}
+	return 0
+}
+func (f *fn) ehRecordOff(index int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + index*ehRecordSlots*8)
+}
+func (f *fn) ehRootOff(index int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+}
+func (f *fn) spillOff(k int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
+}
+
+func (f *fn) immutableTable(tableIdx uint32) (immutableTableHint, bool) {
+	if int(tableIdx) >= len(f.immutableTables) || !f.immutableTables[tableIdx].local {
+		return immutableTableHint{}, false
+	}
+	return f.immutableTables[tableIdx], true
+}
 
 // frameSize is biased to ≡ 8 (mod 16): the function is entered with RSP ≡ 8
 // (mod 16) after the trampoline's CALL and there is no frame-pointer push to
@@ -463,7 +603,7 @@ func (f *fn) frameSize() int {
 	if f.frameElided {
 		return 0 // frame never touched (all locals register-homed, no spills, no calls)
 	}
-	return align16(frameHdrBytes+8*f.nLocalSlots+8*f.maxSpill) + 8
+	return align16(frameHdrBytes+8*f.nLocalSlots+f.ehFrameBytes()+8*f.maxSpill) + 8
 }
 
 // elideRegisterOnlyFrame drops the whole frame for a register-homed call-free
@@ -507,6 +647,10 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
+	// Optimizations is the complete selection for this compilation. nil uses the
+	// backend's environment-derived process defaults.
+	Optimizations map[string]bool
+
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
 	// runtime.GOMAXPROCS(0) and the module's local-function count.
@@ -547,10 +691,28 @@ type CompileOptions struct {
 	MemoryPressureAt int
 	MemoryPressure   func()
 
-	// Codegen carries injectable runtime/heap dependencies for future WasmGC
-	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
-	// threading the option here lets that work use the same HeapABI as the IR
-	// backend instead of hard-coding allocator or collector choices.
+	// GCTypeSubtypingRefTest admits typed function ref.test/ref.cast lowering.
+	// Direct ref.func values fold statically; dynamically loaded descriptors use
+	// exact per-function type IDs with a cold full-metadata fallback. It is compile-only.
+	GCTypeSubtypingRefTest bool
+
+	// GCStructHelpers admits only the exact staged collector-backed struct helper
+	// products selected by src/wago. It is compile-only and never serialized.
+	GCStructHelpers bool
+
+	// GCArrayHelpers independently admits exact staged collector-backed array
+	// helper products selected by src/wago. It is compile-only and never serialized.
+	GCArrayHelpers bool
+
+	// GCFrameRoots is the optional exact single-frame GC root-publication plan.
+	// The backend verifies allocating helper stack shape and records final frame
+	// size. It is absent for ordinary modules and unsupported products.
+	GCFrameRoots *shared.GCModuleFrameRootPlan
+
+	// Codegen carries injectable runtime/heap dependencies for broader WasmGC
+	// lowering. The exact staged numeric-struct helper path is selected separately
+	// by GCStructHelpers; future general lowering must consume this HeapABI rather
+	// than hard-coding a collector policy into the backend.
 	Codegen codegen.Options
 
 	// Stats, when non-nil, collects per-function codegen counters into it (the
@@ -576,7 +738,6 @@ const (
 	CustomInstructionAnd    = railcore.CustomInstructionAnd
 	CustomInstructionOr     = railcore.CustomInstructionOr
 	CustomInstructionXor    = railcore.CustomInstructionXor
-	CustomInstructionNot    = railcore.CustomInstructionNot
 	CustomInstructionShl    = railcore.CustomInstructionShl
 	CustomInstructionShrU   = railcore.CustomInstructionShrU
 	CustomInstructionShrS   = railcore.CustomInstructionShrS
@@ -590,6 +751,7 @@ const (
 	CustomInstructionGtS    = railcore.CustomInstructionGtS
 	CustomInstructionGeU    = railcore.CustomInstructionGeU
 	CustomInstructionGeS    = railcore.CustomInstructionGeS
+	CustomInstructionNot    = railcore.CustomInstructionNot
 	CustomInstructionIsZero = railcore.CustomInstructionIsZero
 	CustomInstructionSelect = railcore.CustomInstructionSelect
 )
@@ -622,6 +784,11 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	restoreOptimizations, err := optimizationBindings.Apply(opts.Optimizations)
+	if err != nil {
+		return nil, fmt.Errorf("amd64: %w", err)
+	}
+	defer restoreOptimizations()
 	guardMode := opts.ElideBoundsChecks
 	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).
 	boundsFacts := boundsFactsEnabled && !opts.NoBoundsFacts
@@ -636,6 +803,17 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
+	hostAdapters, err := shared.HostAdapterSet(m)
+	if err != nil {
+		return nil, fmt.Errorf("amd64: host adapter analysis: %w", err)
+	}
+	if len(opts.CustomInstructions) != 0 {
+		// Custom lowerings may publish function identities through extension-owned
+		// state. Until that interface reports exact addressability, fail closed.
+		for i := range hostAdapters {
+			hostAdapters[i] = true
+		}
+	}
 	// Stats collection is opt-in: an explicit sink (opts.Stats) or WAGO_EXPLAIN=1.
 	// nil ms => st stays nil in the loop => zero-overhead counter no-ops.
 	var ms *ModuleStats
@@ -659,16 +837,23 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// allocating fresh per function) removes the largest compile allocations.
 	// Compile is sequential, so sharing one scratch is safe.
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
-	// call sites, keyed by global func index. nil when inlining is disabled.
+	// call sites, keyed by global func index. Empty when inlining is disabled.
 	inlineTargets := buildInlineTargets(m, allHints)
+	if opts.GCFrameRoots != nil {
+		// Exact frame-root callsite masks are derived from the validated Wasm call
+		// stream. Keep that stream one-to-one with native callsites rather than
+		// silently invalidating collection metadata by splicing a local callee.
+		inlineTargets = inlineTargetTable{}
+	}
 	requiresAVX2 := false
 	requiresAVX512 := false
+	requiresBMI2 := false
 	for _, definition := range opts.CustomInstructions {
-		if definition.AMD64 != nil {
-			if definition.AMD64.Features&machinecode.AMD64FeatureAVX2 != 0 {
+		if lowering := pluginAMD64Lowering(definition); lowering != nil {
+			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
 				requiresAVX2 = true
 			}
-			if definition.AMD64.Features&machinecode.AMD64FeatureAVX512 != 0 {
+			if lowering.Features&plugincodegen.FeatureAVX512 != 0 {
 				requiresAVX512 = true
 			}
 		}
@@ -691,6 +876,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		code := make([]byte, 0, codeCap)
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, cap(code))
+		var directPrepared []uint64
 		for i := range m.Code {
 			hints := allHints[i]
 			var st *CodegenStats
@@ -698,17 +884,21 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 				ms.Funcs[i] = st
 			}
-			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.CustomInstructions, st, inlineTargets, sc)
+			fnCode, rl, internalOff, err := compileFunc(m, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 			}
+			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
 			// 16-byte align each function (append zeros without a temp allocation).
 			if pad := (16 - len(code)%16) % 16; pad != 0 {
 				code = append(code, alignPad[:pad]...)
 			}
 			entry[i] = len(code)
 			internalEntry[i] = len(code) + internalOff
+			if sc.directPrepared {
+				directPrepared = markDirectPrepared(directPrepared, n, i)
+			}
 			relocs[i] = rl
 			code = append(code, fnCode...)
 			if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
@@ -730,15 +920,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, ms, guardMode, boundsFacts, importedFuncs, requiresAVX2, requiresAVX512)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, hostAdapters, inlineTargets, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, inlineTargets map[int]*inlineTarget, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int, requiresAVX2, requiresAVX512 bool) (*amd64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
@@ -773,15 +963,16 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.CustomInstructions, st, inlineTargets, ws.scratch)
+				fnCode, rl, internalOff, err := compileFunc(m, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
 					continue
 				}
+				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, relocs: rl}
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -798,6 +989,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	// Join in original function order so layout, alignment, entry metadata, and
 	// relocation patching are byte-for-byte identical to the serial compiler.
 	code := make([]byte, 0, codeCap)
+	var directPrepared []uint64
 	for i := range results {
 		r := &results[i]
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
@@ -805,6 +997,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		entry[i] = len(code)
 		internalEntry[i] = len(code) + r.internalOff
+		if r.directPrepared {
+			directPrepared = markDirectPrepared(directPrepared, n, i)
+		}
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
@@ -821,7 +1016,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	requiresAVX2 := false
+	requiresAVX512 := false
+	requiresBMI2 := false
+	for i := range states {
+		requiresBMI2 = requiresBMI2 || states[i].usesBMI2
+	}
+	for _, definition := range opts.CustomInstructions {
+		if lowering := pluginAMD64Lowering(definition); lowering != nil {
+			requiresAVX2 = requiresAVX2 || lowering.Features&plugincodegen.FeatureAVX2 != 0
+			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
+		}
+	}
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -869,6 +1076,13 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 	if err != nil {
 		return funcHints{}, err
 	}
+	memory64 := false
+	if mt, ok := m.MemoryType(0); ok {
+		memory64 = mt.Limits.Addr64
+	}
+	if len(m.Code[funcIdx].BodyBytes) != 0 {
+		return scanBodyBytesMemory64(m.Code[funcIdx].BodyBytes, nLocals, nGlobals, uint32(importedFuncs+funcIdx), memory64)
+	}
 	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
 }
 
@@ -883,6 +1097,8 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	allHints := make([]funcHints, n)
 	localCounts := make([]int, n)
 	totalLocals := 0
+	moduleHasTailCall := false
+	moduleEH := m.TagCount() != 0
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -902,71 +1118,125 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
 	localScores := make([]uint32, totalLocals)
-	globalScores := make([]uint32, n*nGlobals)
-	globalEligibility := make([]bool, n*nGlobals)
+	localLastGets := make([]uint32, totalLocals)
+	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
+	var globalScores []uint32
+	var globalEligibility []bool
+	if denseGlobals {
+		globalScores = make([]uint32, n*nGlobals)
+		globalEligibility = make([]bool, n*nGlobals)
+	}
+	type hintRange struct{ start, end int }
+	var sparseRanges []hintRange
+	var sparseGlobals []shared.GlobalHint
+	var sparseAccum shared.GlobalHintAccumulator
+	if !denseGlobals {
+		sparseRanges = make([]hintRange, n)
+	}
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
 	var agg []int64
 	if nGlobals > 0 && n > 0 {
 		agg = make([]int64, nGlobals)
 	}
+	memory64 := false
+	if mt, ok := m.MemoryType(0); ok {
+		memory64 = mt.Limits.Addr64
+	}
 	localAt := 0
 	for i := range m.Code {
 		nLocals := localCounts[i]
-		globalAt := i * nGlobals
-		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		var h funcHints
+		if denseGlobals {
+			globalAt := i * nGlobals
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		} else {
+			sparseAccum.Reset(nGlobals)
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
+			h.globalAccum = &sparseAccum
+		}
+		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		var err error
-		h, err = scanFuncBodyInto(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker)
+		h, err = scanFuncBodyIntoMemory64(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		localAt += nLocals
+		h.globalAccum = nil
 		allHints[i] = h
-		for g := 0; g < nGlobals; g++ {
-			agg[g] += int64(h.globalScore[g])
+		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
+		moduleEH = moduleEH || h.moduleEH
+		if denseGlobals {
+			for g := 0; g < nGlobals; g++ {
+				agg[g] += int64(h.globalScore[g])
+			}
+		} else {
+			start := len(sparseGlobals)
+			sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
+			sparseRanges[i] = hintRange{start: start, end: len(sparseGlobals)}
+			for _, gh := range sparseGlobals[start:] {
+				agg[gh.Index] += int64(gh.Score)
+			}
 		}
 	}
-	// Immutable local-table specialization for call_indirect (mirrors arm64):
-	// with no function imports, a single private (non-exported, non-imported)
-	// table, and no table-mutating op anywhere in the module, every non-null
-	// table-0 entry is necessarily a same-module internal entry — so call_indirect
-	// can skip the run-time home/tag fork, and (when the table is uniformly typed
-	// or holds a single target) elide the type check or direct-call the target.
-	immutableLocalTable := immutableLocalTableEnabled && importedFuncs == 0 &&
-		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
-	if immutableLocalTable {
+	if !denseGlobals {
+		for i, r := range sparseRanges {
+			allHints[i].sparseGlobals = sparseGlobals[r.start:r.end]
+		}
+	}
+	// Immutable local-table specialization for call_indirect and indirect tails.
+	// The proof is per table: imports are allowed elsewhere in the module, but an
+	// admitted table itself must be local, unexported, never mutated, and contain
+	// only local function descriptors. This is finite and keeps host/cross-instance
+	// descriptors out of the internal-entry path.
+	var immutableTables []immutableTableHint
+	if m.TableCount() != 0 {
+		immutableTables = make([]immutableTableHint, m.TableCount())
+	}
+	immutableCandidates := immutableLocalTableEnabled && m.ImportedTableCount() == 0
+	if immutableCandidates {
 		for i := range allHints {
 			if allHints[i].mutatesTable {
-				immutableLocalTable = false
+				immutableCandidates = false
 				break
 			}
 		}
 	}
-	if immutableLocalTable {
-		tableType, tableTyped := immutableLocalTableType(m)
-		mono := immutableLocalTableTarget(m)
-		for i := range allHints {
-			allHints[i].immutableLocalTable = true
-			allHints[i].immutableTableType = tableType
-			allHints[i].immutableTableTyped = tableTyped
-			allHints[i].monomorphicTarget = mono
+	if immutableCandidates {
+		for tableIdx := range m.Tables {
+			idx := uint32(tableIdx)
+			if moduleExportsTable(m, idx) || !immutableLocalTableEntries(m, idx) {
+				continue
+			}
+			tableType, tableTyped := immutableLocalTableType(m, idx)
+			immutableTables[tableIdx] = immutableTableHint{
+				local:             true,
+				typeKey:           tableType,
+				typed:             tableTyped,
+				monomorphicTarget: immutableLocalTableTarget(m, idx),
+			}
 		}
+	}
+	for i := range allHints {
+		allHints[i].immutableTables = immutableTables
+		allHints[i].hasTailCall = moduleHasTailCall
+		allHints[i].moduleEH = moduleEH
 	}
 	return allHints, agg, nil
 }
 
-// immutableLocalTableTarget returns the sole local function stored in table 0,
+// immutableLocalTableTarget returns the sole local function stored in tableIdx,
 // or -1 when entries may name different functions (or use expression forms the
 // narrow specialization does not prove). The immutable-table preconditions are
 // checked by computeModuleHints before this helper is used.
-func immutableLocalTableTarget(m *wasm.Module) int {
+func immutableLocalTableTarget(m *wasm.Module, tableIdx uint32) int {
 	target := -1
 	// A table initializer prefills every slot with its default element, so that
 	// target is also a possible non-null entry (active elements below override
 	// individual slots). Fold it into the monomorphic set; a non-ref.func/-ref.null
 	// initializer we cannot prove disqualifies the direct-call specialization.
-	if len(m.Tables) == 1 && m.Tables[0].Init != nil {
-		ee, err := wasm.ParseElementExpr(*m.Tables[0].Init)
+	if int(tableIdx) < len(m.Tables) && m.Tables[tableIdx].Init != nil {
+		ee, err := wasm.ParseElementExpr(*m.Tables[tableIdx].Init)
 		if err != nil {
 			return -1
 		}
@@ -983,7 +1253,10 @@ func immutableLocalTableTarget(m *wasm.Module) int {
 		if e.Mode.Kind != wasm.ElemActive {
 			continue
 		}
-		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+		if uint32(e.Mode.Table) != tableIdx {
+			continue
+		}
+		if e.Kind.Kind != wasm.ElemFuncs {
 			return -1
 		}
 		for _, idx := range e.Kind.Funcs {
@@ -1001,41 +1274,84 @@ func immutableLocalTableTarget(m *wasm.Module) int {
 	return target
 }
 
-func moduleExportsTable(m *wasm.Module) bool {
+func moduleExportsTable(m *wasm.Module, tableIdx uint32) bool {
 	for i := range m.Exports {
-		if m.Exports[i].Index.Kind == wasm.ExternTable {
+		if m.Exports[i].Index.Kind == wasm.ExternTable && uint32(m.Exports[i].Index.Index) == tableIdx {
 			return true
 		}
 	}
 	return false
 }
 
-// immutableLocalTableType returns the shared structural type id of every table-0
-// entry (and true) when the whole immutable table is uniformly typed, so the
-// call_indirect type check can be elided. Returns (0, false) otherwise.
-func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
-	if !immutableTableTypeEnabled || len(m.Tables) != 1 || m.Tables[0].Init != nil {
+// immutableLocalTableEntries proves that every statically installed non-null
+// entry in tableIdx names a local function. With no table mutation/import/export,
+// no host or cross-instance descriptor can subsequently enter the table.
+func immutableLocalTableEntries(m *wasm.Module, tableIdx uint32) bool {
+	if int(tableIdx) >= len(m.Tables) {
+		return false
+	}
+	if init := m.Tables[tableIdx].Init; init != nil {
+		ee, err := wasm.ParseElementExpr(*init)
+		if err != nil || ee.HasGlobal || (!ee.Null && int(ee.FuncIndex) < m.ImportedFuncCount()) {
+			return false
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || uint32(e.Mode.Table) != tableIdx {
+			continue
+		}
+		switch e.Kind.Kind {
+		case wasm.ElemFuncs:
+			for _, idx := range e.Kind.Funcs {
+				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+					return false
+				}
+			}
+		default:
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// immutableLocalTableType returns the shared structural type key of every entry
+// in tableIdx (and true) when the whole immutable table is uniformly typed, so
+// the indirect-call type check can be elided. Returns (0, false) otherwise.
+func immutableLocalTableType(m *wasm.Module, tableIdx uint32) (uint64, bool) {
+	if !immutableTableTypeEnabled || int(tableIdx) >= len(m.Tables) || m.Tables[tableIdx].Init != nil {
 		return 0, false
 	}
-	var want uint32
+	var want uint64
 	found := false
 	for i := range m.Elements {
 		e := &m.Elements[i]
 		if e.Mode.Kind != wasm.ElemActive {
 			continue // cannot reach the table without table.init, already excluded
 		}
-		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+		if uint32(e.Mode.Table) != tableIdx {
+			continue
+		}
+		if e.Kind.Kind != wasm.ElemFuncs {
 			return 0, false
 		}
 		for _, idx := range e.Kind.Funcs {
-			ft, ok := m.FuncSignature(uint32(idx))
+			typeIdx, ok := m.FuncTypeIndex(uint32(idx))
 			if !ok {
 				return 0, false
 			}
-			id := wasm.StructuralFuncTypeID(ft)
+			key, ok := m.StructuralTypeKeyChecked(typeIdx.Index)
+			if !ok {
+				return 0, false
+			}
 			if !found {
-				want, found = id, true
-			} else if id != want {
+				want, found = key, true
+			} else if key != want {
 				return 0, false
 			}
 		}
@@ -1126,11 +1442,26 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, custom map[uint32]CustomInstruction, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, custom, stats, true, inlineTargets, sc)
+func compileFunc(m *wasm.Module, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	if gcFrameRoots != nil && gcFrameRoots.Candidate {
+		gcFrameRoots.Exact = true
+		gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
+		gcFrameRoots.Callsites = gcFrameRoots.Callsites[:0]
+		gcFrameRoots.FrameBytes = 0
+		gcFrameRoots.AdapterReturnOffset = 0
+	}
+	moduleEH := hints.moduleEH
+	pinLocals := !moduleEH
+	if !pinLocals {
+		// The bounded EH handler restores an older native frame directly. Keep
+		// locals/globals canonical in memory until handler-state convergence is
+		// generalized to pinned registers.
+		modGlobals = nil
+	}
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, custom, stats, false, inlineTargets, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, false, inlineTargets, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -1138,7 +1469,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, custom map[uint32]CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -1164,17 +1495,40 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: m.ImportedFuncCount() + funcIdx, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, entryInitialized: hints.entryInitialized}
+	globalIdx := m.ImportedFuncCount() + funcIdx
+	entryInitialized := hints.entryInitialized
+	if gcFrameRoots != nil && gcFrameRoots.Candidate {
+		// Conservative root maps may publish a reference local before its first
+		// Wasm assignment. Keep every declared slot zero-initialized so a reused
+		// foreign stack cannot expose a stale compact handle at that safepoint.
+		entryInitialized = 0
+	}
+	f := &sc.fnState
+	localType, localSlot, localExactGCType, locals := f.localType, f.localSlot, f.localExactGCType, f.locals
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
 	}()
-	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
+	f.syncHostCalls = syncHostCalls || gcStructHelpers || gcArrayHelpers || moduleUsesSyncHostCalls(m, importBindings)
+	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
+	f.gcStructHelpers = gcStructHelpers
+	f.gcArrayHelpers = gcArrayHelpers
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
-	f.localType = make([]machineType, nLocals)
+	if cap(f.localType) < nLocals {
+		f.localType = make([]machineType, nLocals)
+	} else {
+		f.localType = f.localType[:nLocals]
+	}
+	if cap(f.localExactGCType) < nLocals {
+		f.localExactGCType = make([]uint32, nLocals)
+	} else {
+		f.localExactGCType = f.localExactGCType[:nLocals]
+		clear(f.localExactGCType)
+	}
 	i := 0
 	for _, p := range ft.Params {
 		f.localType[i] = mtOf(p)
@@ -1186,7 +1540,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 			i++
 		}
 	}
-	f.localSlot = make([]int, nLocals)
+	if cap(f.localSlot) < nLocals {
+		f.localSlot = make([]int, nLocals)
+	} else {
+		f.localSlot = f.localSlot[:nLocals]
+	}
 	for i, mt := range f.localType {
 		f.localSlot[i] = f.nLocalSlots
 		f.nLocalSlots += mt.stackSlots()
@@ -1211,8 +1569,28 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}
-	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
+	regABI := regABIEnabled && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
+	var gpPoolStorage [16]Reg
+	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall)
+	// Tiny prepared integer leaves can use a slimmer host trampoline when their
+	// generated code is constrained to caller-saved GPRs. Reserve every Go
+	// callee-saved allocatable register up front; RBX remains the explicit linMem
+	// input. The body/local bounds keep any spill tradeoff away from larger code.
+	volatilePrepared := regABI && preparedDirectIntSig(ft) && !hasCall && !touchesMemory && len(modGlobals) == 0 && !moduleEH &&
+		len(c.BodyBytes) <= 96 && nLocals <= 8
+	if volatilePrepared {
+		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {
+			gpPool = withoutReg(gpPool, r)
+			f.reserved = f.reserved.add(r)
+		}
+	}
+	if moduleEH {
+		// Staged EH carries the active handler in RBP. Keep it a module-wide
+		// invariant across local and exact cross-instance calls rather than sharing
+		// a mutable basedata slot between concurrent executions.
+		gpPool = withoutReg(gpPool, RBP)
+		f.reserved = f.reserved.add(RBP)
+	}
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 		f.reserved = f.reserved.add(f.memSizeReg)
@@ -1255,10 +1633,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// dropping every local/global VALUE pin frees the entire neutral file for
 	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
 	// always correct.
-	disableLocalPins := !pinLocals || nLocals > 64
-	if disableLocalPins {
-		// Very wide signatures are cold ABI stress shapes where pinning a tiny
-		// prefix complicates argument homing without meaningful locality benefit.
+	if !pinLocals {
 		gpPool = nil
 	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
@@ -1283,12 +1658,14 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	if extendedFPPinsEnabled {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}
-	if disableLocalPins {
-		// The register-pressure retry must disable FP/v128 pins too, not only GP
-		// pins, or an "unpinned" retry can still exhaust/corrupt the XMM bank.
+	if !pinLocals {
 		fpPinLimit = 0
 	}
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, v128LocalPinsEnabled && !hasCall)
+	intervalRegion := regABI && !hasCall && !hints.hasControlFlow && !hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	if intervalRegion {
+		gpPool = nil // regional GP assignments supersede whole-function GP pins
+	}
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, fpPinLimit, hasCall, pinLocals && v128LocalPinsEnabled && !hasCall)
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
@@ -1297,7 +1674,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 	}
 	if f.pinnedLocalMask.has(RBP) {
-		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
+		f.regMerge = false // RBP now holds a pinned local/global
 	}
 	// STACK_REG (lazy pinned-local spill) for every call-making function,
 	// including memory-touching ones: dirty-only stores before a call, lazy reload
@@ -1314,7 +1691,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
 	// !touchesMemory so it only fires where it's a win.
-	f.singleRegResult = regABIEnabled && sigFitsRegABI(ft) && !touchesMemory && len(ft.Results) == 1
+	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1 && !moduleEH
 	if f.singleRegResult {
 		rt := mtOf(ft.Results[0])
 		f.resultFloat = rt.isFloat()
@@ -1329,13 +1706,24 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 
-	if regABIEnabled && sigFitsRegABI(ft) {
-		internalOff, err := f.emitRegABI(c)
+	if regABI {
+		// A host trampoline may enter this internal ABI directly when no adapter
+		// state beyond RBX is required. Keep this deliberately leaf-only: a local
+		// callee could itself expect the module memory-size cache to be live.
+		sc.directPrepared = volatilePrepared
+		internalOff, err := f.emitRegABI(c, hostAdapter)
 		if err != nil {
 			return nil, nil, 0, err
 		}
 		f.emitV128ConstPool()
 		f.finalizeStats(len(f.a.B))
+		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+			gcFrameRoots.FrameBytes = uint32(f.frameSize())
+			gcFrameRoots.AdapterReturnOffset = uint32(f.adapterReturnOff)
+			if f.gcCallsiteIndex != len(gcFrameRoots.LiveCallLocalMasks) {
+				gcFrameRoots.Exact = false
+			}
+		}
 		return f.a.B, f.relocs, internalOff, nil
 	}
 
@@ -1346,12 +1734,19 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		return nil, nil, 0, err
 	}
 	f.epilogue()
+	f.emitNativeGCStubs()
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
-	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
-	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
+	f.patchFrameSize()
 	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)
 	f.finalizeStats(len(f.a.B))
+	if gcFrameRoots != nil && gcFrameRoots.Candidate {
+		gcFrameRoots.FrameBytes = uint32(f.frameSize())
+		gcFrameRoots.AdapterReturnOffset = uint32(f.adapterReturnOff)
+		if f.gcCallsiteIndex != len(gcFrameRoots.LiveCallLocalMasks) {
+			gcFrameRoots.Exact = false
+		}
+	}
 	return f.a.B, f.relocs, 0, nil
 }
 
@@ -1401,8 +1796,8 @@ func (f *fn) runBody(c *wasm.Func) error {
 // in RDI/RSI on top of the arg-register pins over-subscribed the file: the call's
 // arg-staging + setup ran out of free scratch and silently corrupted a pinned
 // local's value. The observable repro is sqlite's tokenizer — every SQL keyword
-// misreads as an identifier ("near \"SELECT\": syntax error") — while wazero runs
-// the same module correctly. Excluding RDI/RSI removes the hazard; R9/R10/R11 pins
+// misreads as an identifier ("near \"SELECT\": syntax error"). Excluding RDI/RSI
+// removes the hazard; R9/R10/R11 pins
 // (which the STACK_REG spill/reload does handle) stay. See TestSyncSQLiteQuery.
 //
 // R9/R10/R11 are still excluded in reg-ABI functions with >4 params (the internal
@@ -1410,8 +1805,8 @@ func (f *fn) runBody(c *wasm.Func) error {
 // costs the block-merge register (the caller drops regMerge). RAX/RCX/RDX/R8 always
 // stay free for operand evaluation and the x86 fixed-role ops (div/shift/return);
 // callHost's scratch also lives there.
-func gpPinPool(regABI bool, nParams int, callFree bool) []Reg {
-	pool := append([]Reg{}, pinnedLocalRegs...) // R12-R15
+func gpPinPool(pool []Reg, regABI bool, nParams int, callFree bool) []Reg {
+	pool = append(pool, pinnedLocalRegs...) // R12-R15
 	if !regABI || nParams <= 4 {
 		pool = append(pool, R9, R10, R11)
 	} else if callFree && entryArgPinsEnabled {
@@ -1442,21 +1837,25 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, gpPool []Reg, fpPinLimit int, pinV128 bool) {
-	f.locals = make([]localDef, f.nLocals)
+func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, sparseGlobals []shared.GlobalHint, gpPool []Reg, fpPinLimit int, hasCall, pinV128 bool) {
+	if cap(f.locals) < f.nLocals {
+		f.locals = make([]localDef, f.nLocals)
+	} else {
+		f.locals = f.locals[:f.nLocals]
+	}
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}
 	// Module-pinned globals (installModuleGlobals) already occupy globalReg
 	// entries; keep them and size for whichever view is larger.
-	if len(f.globalReg) < len(globalScores) {
-		gr := make([]Reg, len(globalScores))
+	if len(f.globalReg) < f.m.GlobalCount() {
+		gr := make([]Reg, f.m.GlobalCount())
 		for i := range gr {
 			gr[i] = regNone
 		}
 		copy(gr, f.globalReg)
 		f.globalReg = gr
-		gd := make([]bool, len(globalScores))
+		gd := make([]bool, f.m.GlobalCount())
 		copy(gd, f.globalDirty)
 		f.globalDirty = gd
 	}
@@ -1488,6 +1887,17 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 			continue
 		}
 		gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
+	}
+	for _, gh := range sparseGlobals {
+		g := int(gh.Index)
+		if gh.Score < loopMin || f.isModuleGlobal(g) || hasCall && !gh.Eligible {
+			continue
+		}
+		gt, ok := f.m.GlobalTypeByIndex(gh.Index)
+		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
+			continue
+		}
+		gp = append(gp, gpCand{global: true, idx: g, score: gh.Score})
 	}
 	f.tmpGpCand = gp
 	slices.SortStableFunc(gp, func(a, b gpCand) int {
@@ -1698,7 +2108,7 @@ func (f *fn) prologue() {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
-		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+		a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(RBX, RAX)
 	f.emitInterruptCheck(RAX) // RAX still free: params load below
@@ -1795,62 +2205,83 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // the internal entry takes args in GP/XMM registers and returns its single result
 // in RAX or XMM0.
 // Returns the internal entry's offset within the function's code.
-func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
+func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
 
 	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
 	// RCX=results; loads args into registers, calls the internal entry, stores the
 	// single register result.
-	a.MovReg64(RBX, RSI) // linMem → RBX: the module-wide invariant the internal entry inherits
-	if f.memSizeReg != regNone {
-		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
-		// memBytes cache before the internal entry runs (which relies on it).
-		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
-	}
-	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
-	a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)
+	var adapterCall int
 	gp, fp := 0, 0
-	for i := 0; i < np; i++ {
-		mt := f.localType[i]
-		if mt.isFloat() {
-			a.FLoadDisp(fpArgRegs[fp], RDI, int32(8*i), mt == mtF64)
-			fp++
-		} else {
-			a.Load64(intArgRegs[gp], RDI, int32(8*i))
-			gp++
+	if hostAdapter {
+		a.MovReg64(RBX, RSI) // linMem → RBX: the module-wide invariant the internal entry inherits
+		if f.memSizeReg != regNone {
+			// Offset-0 entry (from Go, or an indirect call): establish the module-wide
+			// memBytes cache before the internal entry runs (which relies on it).
+			a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 		}
-	}
-	adapterCall := a.CallRel32()
-	a.Pop(RCX) // results
-	if rN == 2 {
-		// Two-int register return in RAX/RDX. Store both to the results buffer
-		// BEFORE storeModuleGlobals, which uses RDX as scratch.
-		a.Store64(RCX, 0, RAX)
-		a.Store64(RCX, 8, RDX)
-	}
-	f.storeModuleGlobals(RDX) // Go exit: module-pinned registers → cells (RAX/RDX hold the result)
-	if rN == 1 {
-		rt := mtOf(f.ft.Results[0])
-		if rt.isFloat() {
-			a.FStoreDisp(RCX, 0, 0, rt == mtF64) // XMM0
-		} else {
+		f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
+		a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)
+		gp, fp = 0, 0
+		for i := 0; i < np; i++ {
+			mt := f.localType[i]
+			if mt.isFloat() {
+				a.FLoadDisp(fpArgRegs[fp], RDI, int32(8*i), mt == mtF64)
+				fp++
+			} else {
+				a.Load64(intArgRegs[gp], RDI, int32(8*i))
+				gp++
+			}
+		}
+		adapterCall = a.CallRel32()
+		f.adapterReturnOff = adapterCall + 4
+		a.Pop(RCX) // results
+		if rN == 2 {
+			// Two-int register return in RAX/RDX. Store both to the results buffer
+			// BEFORE storeModuleGlobals, which uses RDX as scratch.
 			a.Store64(RCX, 0, RAX)
+			a.Store64(RCX, 8, RDX)
 		}
+		f.storeModuleGlobals(RDX) // Go exit: module-pinned registers → cells (RAX/RDX hold the result)
+		if rN == 1 {
+			rt := mtOf(f.ft.Results[0])
+			if rt.isFloat() {
+				a.FStoreDisp(RCX, 0, 0, rt == mtF64) // XMM0
+			} else {
+				a.Store64(RCX, 0, RAX)
+			}
+		}
+		a.Ret()
 	}
-	a.Ret()
 
 	// Internal entry (frameless): RBX (linMem) is inherited from the caller —
 	// every wasm function keeps it pinned, and the adapter establishes it at the
 	// Go boundary — and the trap cell pointer lives in basedata, so the entry
 	// carries no environment setup at all (WARP's model). Args in GP/XMM regs.
-	a.Align16() // internal entries are hot call targets; align like function starts
+	if hostAdapter {
+		a.Align16() // internal entries are hot call targets; align like function starts
+	}
 	internalOff := a.Len()
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
 	f.emitStackFenceCheck(RBX, RSI)
 	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
 	gp, fp = 0, 0
+	if len(f.intervalReg) != 0 {
+		// Home all incoming integer parameters so the regional cache can claim and
+		// release any parameter lazily without preserving argument-register cycles.
+		for i := 0; i < np; i++ {
+			mt := f.localType[i]
+			if mt.isFloat() {
+				fp++
+				continue
+			}
+			a.Store64(RSP, f.localOff(i), intArgRegs[gp])
+			gp++
+		}
+		gp, fp = 0, 0
+	}
 	for i := 0; i < np; i++ {
 		mt := f.localType[i]
 		if mt.isFloat() {
@@ -1861,6 +2292,8 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 				a.FStoreDisp(RSP, f.localOff(i), src, mt == mtF64)
 			}
 			fp++
+		} else if len(f.intervalReg) != 0 {
+			// Already homed; the regional cache loads it on first use.
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			a.MovReg64(pr, intArgRegs[gp])
 		} else {
@@ -1898,14 +2331,25 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	f.emitNativeGCStubs()
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 
 	f.elideRegisterOnlyFrame() // register-homed call-free leaf → frameSize 0
-	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
-	a.PatchU32(f.addRspAt, uint32(f.frameSize()))
-	a.PatchRel32(adapterCall, internalOff)
+	f.patchFrameSize()
+	if hostAdapter {
+		a.PatchRel32(adapterCall, internalOff)
+	}
 	return internalOff, nil
+}
+
+func (f *fn) patchFrameSize() {
+	size := uint32(f.frameSize())
+	f.a.PatchU32(f.subRspAt, size)
+	f.a.PatchU32(f.addRspAt, size)
+	for _, site := range f.sc.tailFrameSites {
+		f.a.PatchU32(site, size)
+	}
 }
 
 // epilogue: copy results from their canonical slots to the results buffer, clear

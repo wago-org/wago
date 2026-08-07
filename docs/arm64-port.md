@@ -1,9 +1,16 @@
-# arm64 (AArch64) backend port — status, log, and remaining plan
+# Historical arm64 (AArch64) backend port log — 2026-07-09
 
-**Branch:** `jairus/arm64` (all work here; NOT merged to main).
-**Goal:** add arm64 as a second target for the railshot single-pass wasm backend,
-alongside x86-64. Linux/arm64 first (verified under qemu-user), then darwin/arm64
-(Apple Silicon, native).
+> **Historical snapshot.** This document records the pre-merge `jairus/arm64`
+> port effort as it stood on July 9, 2026. It is not the current support matrix
+> or work queue. Arm64 is merged on `main`; native runtime paths, CI, and release
+> assets now cover Linux, macOS, and Windows on amd64 and arm64. For current
+> feature admission, see [FEATURES.md](../FEATURES.md); for current backend
+> parity, see [amd64-arm64-backend-status.md](amd64-arm64-backend-status.md) and
+> [amd64-arm64-port-ledger.md](amd64-arm64-port-ledger.md).
+
+**Original branch and goal at capture:** `jairus/arm64` added arm64 as a second
+railshot target alongside x86-64, first under Linux qemu-user and then on native
+Darwin/arm64.
 
 **Golden rule that has held the whole time:** every arm64 file is `//go:build arm64`
 (or `//go:build linux && arm64` for exec tests). So `GOARCH=amd64` (the host + CI)
@@ -12,7 +19,7 @@ spec suite are provably unaffected. Verify with `go build ./... && go test ./...
 
 ---
 
-## TL;DR current state (2026-07-09)
+## Snapshot state on 2026-07-09
 
 - ✅ **arm64 instruction encoder** at `src/core/encoder/arm64/` — scalar/base methods
   are byte-verified against clang + llvm-objdump goldens (`asm.go`, `asm2.go`,

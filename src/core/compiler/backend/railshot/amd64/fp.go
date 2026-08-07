@@ -70,7 +70,9 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	panic("amd64: no XMM register available to spill")
+	// Match GP exhaustion: compileFunc retries without local/global value pins,
+	// which frees the extended XMM pin pool under pathological expression pressure.
+	panic(regExhausted{})
 }
 
 // spillF evicts an XMM-resident float/vector value to a fresh frame slot.
@@ -105,7 +107,7 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stReg:
 		return e.st.reg
 	case stConst:
-		if !f.usesCalls {
+		if !f.usesCalls && !f.syncHostCalls {
 			if c, ok := f.floatConstReg(e.st); ok {
 				x := f.allocFReg(maskOf(c))
 				f.a.FMov(x, c, e.st.typ == mtF64)
@@ -178,7 +180,7 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadFloatConsts(code []byte) {
-	if f.usesCalls {
+	if f.usesCalls || f.syncHostCalls {
 		return
 	}
 	r := wasm.NewReader(code)
@@ -395,8 +397,8 @@ func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 
 // scalarFMinMaxInto implements wasm min/max for one scalar lane, which x86
 // minss/maxss get wrong on signed zeros and NaN. Branch on the ordered compare;
-// equal uses bitwise zero fixups, distinct ordered operands use packed min/max
-// like wazero, and unordered propagates a quiet NaN through scalar add.
+// equal uses bitwise zero fixups, distinct ordered operands use packed min/max,
+// and unordered propagates a quiet NaN through scalar add.
 func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	f.a.Ucomis(xa, xb, f64)
 	jnan := f.a.JccPlaceholder(condP)
@@ -420,14 +422,14 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 		packedPrefix = 0x66
 	}
 	if isMax {
-		f.a.SseRR(packedPrefix, 0x5F, xa, xb, false) // maxps/pd, matching wazero
+		f.a.SseRR(packedPrefix, 0x5F, xa, xb, false) // maxps/pd
 	} else {
-		f.a.SseRR(packedPrefix, 0x5D, xa, xb, false) // minps/pd, matching wazero
+		f.a.SseRR(packedPrefix, 0x5D, xa, xb, false) // minps/pd
 	}
 	jdone2 := f.a.JmpPlaceholder()
 
 	f.a.PatchRel32(jnan, f.a.Len())
-	f.a.FAdd(xa, xb, f64) // NaN + x -> quiet NaN, matching wazero
+	f.a.FAdd(xa, xb, f64) // NaN + x -> quiet NaN.
 
 	f.a.PatchRel32(jdone, f.a.Len())
 	f.a.PatchRel32(jdone2, f.a.Len())
@@ -926,10 +928,7 @@ func (f *fn) reinterpretFloatToInt(wide bool) {
 
 // fload / fstore reuse the integer bounds-checked effective-address path.
 func (f *fn) fload(r *wasm.Reader, f64 bool) error {
-	if _, err := r.U32(); err != nil {
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -937,7 +936,24 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
+	if memoryIndex != 0 {
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		xmm := f.allocFReg(0)
+		f.a.FLoadIdx(xmm, base, ea, disp, f64)
+		f.release(base)
+		f.release(ea)
+		f.pushFReg(xmm, mtOf2(f64))
+		return nil
+	}
+	if f.memoryAddr64(0) {
+		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
+		e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
+		if eaOwned {
+			f.regUser[ea] = e
+		}
+		return nil
+	}
+	ea, eaOwned, borrow, disp := f.memAddr(uint32(off), size, true)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
 	if eaOwned {
 		f.regUser[ea] = e
@@ -946,10 +962,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 }
 
 func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
-	if _, err := r.U32(); err != nil {
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -960,12 +973,25 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingLoads() // deferred loads must read pre-store memory
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
-	f.a.FStoreIdx(RBX, ea, xmm, disp, f64)
-	f.fpinned = f.fpinned.remove(xmm)
-	if eaOwned {
+	if memoryIndex != 0 {
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		f.a.FStoreIdx(base, ea, xmm, disp, f64)
+		f.release(base)
 		f.release(ea)
+	} else if f.memoryAddr64(0) {
+		ea, eaOwned, _, disp := f.memAddr64(off, size)
+		f.a.FStoreIdx(RBX, ea, xmm, disp, f64)
+		if eaOwned {
+			f.release(ea)
+		}
+	} else {
+		ea, eaOwned, _, disp := f.memAddr(uint32(off), size, true)
+		f.a.FStoreIdx(RBX, ea, xmm, disp, f64)
+		if eaOwned {
+			f.release(ea)
+		}
 	}
+	f.fpinned = f.fpinned.remove(xmm)
 	f.releaseF(xmm)
 	return nil
 }

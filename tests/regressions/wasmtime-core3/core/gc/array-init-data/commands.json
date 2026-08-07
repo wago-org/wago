@@ -1,0 +1,434 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 11,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 12,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "array",
+          "type": "ref"
+        }
+      ],
+      "line": 39,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 48,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 57,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 66,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 75,
+      "text": "out of bounds memory access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 84,
+      "text": "out of bounds array access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "3"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 93,
+      "text": "out of bounds array access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 102,
+      "text": "out of bounds array access",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "array-init-data",
+        "type": "invoke"
+      },
+      "line": 111,
+      "text": "out of bounds array access",
+      "type": "assert_trap"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 120,
+      "type": "module_definition"
+    },
+    {
+      "line": 131,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-init-data-contents",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "187"
+        },
+        {
+          "type": "i32",
+          "value": "204"
+        }
+      ],
+      "line": 132,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 137,
+      "type": "module_definition"
+    },
+    {
+      "line": 148,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-init-data-little-endian",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3721182122"
+        }
+      ],
+      "line": 149,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 150,
+      "type": "module_definition"
+    },
+    {
+      "line": 160,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-init-data-unaligned",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "8721"
+        }
+      ],
+      "line": 161,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

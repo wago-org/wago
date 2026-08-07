@@ -1,6 +1,29 @@
 package gc
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"unsafe"
+)
+
+func TestThroughputBackingGrowthIsGeometricAfterFirstPage(t *testing.T) {
+	h := throughputHeap{pageBytes: 64 << 10, limit: 4 << 20}
+	h.mem = makeAlignedBytes(512<<10, 16)
+	if err := h.growBacking(576 << 10); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(h.mem); got != 768<<10 {
+		t.Fatalf("small backing growth = %d, want %d", got, 768<<10)
+	}
+	h.mem = makeAlignedBytes(1<<20, 16)
+	if err := h.growBacking((1 << 20) + (64 << 10)); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(h.mem); got != 1536<<10 {
+		t.Fatalf("geometric backing growth = %d, want %d", got, 1536<<10)
+	}
+}
 
 func TestProfileNormalization(t *testing.T) {
 	c := newTestCollector(t, Config{})
@@ -16,6 +39,75 @@ func TestProfileNormalization(t *testing.T) {
 	}
 	if _, err := NewCollector(Config{Profile: ProfileThroughput, Allocator: AllocatorTinyFixedBlock, Runtime: RuntimeGenerational}, testTypes(t)); err == nil {
 		t.Fatal("expected invalid throughput allocator/runtime combination rejection")
+	}
+	if _, err := NewCollector(Config{Profile: ProfileTiny, DisableCollection: true}, testTypes(t)); err == nil {
+		t.Fatal("expected collection-disabled tiny profile rejection")
+	}
+}
+
+func TestCollectionDisabledHeapIsBoundedAndStable(t *testing.T) {
+	c := newTestCollector(t, Config{
+		DisableCollection:    true,
+		ThroughputHeapBytes:  4096,
+		ThroughputPageBytes:  4096,
+		ThroughputClassLimit: 4096,
+	})
+	first, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(first, 0, I32Value(77)); err != nil {
+		t.Fatal(err)
+	}
+	allocations := 1
+	for {
+		_, err = c.NewStructDefault(0)
+		if err != nil {
+			break
+		}
+		allocations++
+	}
+	if allocations == 0 || err == nil {
+		t.Fatalf("collection-disabled allocations=%d err=%v", allocations, err)
+	}
+	if got, getErr := c.StructGet(first, 0); getErr != nil || got.I32() != 77 {
+		t.Fatalf("first object after exhaustion = %v, %v; want 77, nil", got, getErr)
+	}
+	stats := c.Stats()
+	if stats.MinorCollections != 0 || stats.FullCollections != 0 {
+		t.Fatalf("collection-disabled collector ran minor/full collections %d/%d", stats.MinorCollections, stats.FullCollections)
+	}
+}
+
+func TestThroughputClassFreeMetadataIsReused(t *testing.T) {
+	c := newTestCollector(t, Config{
+		StressNurseryBytes:   64,
+		ThroughputHeapBytes:  4096,
+		ThroughputPageBytes:  4096,
+		ThroughputClassLimit: 4096,
+	})
+	root := Root(Null())
+	cls := -1
+	for i := 0; i < 1024; i++ {
+		obj, err := c.NewStructDefaultWithRoots(0, Slots{&root})
+		if err != nil {
+			t.Fatal(err)
+		}
+		root = Root(obj)
+		if err := c.CollectMinor(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+		cls = int(c.entry(obj).class)
+		root = Root(Null())
+		if err := c.CollectFull(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(c.throughput.freeSlots[cls]); got != 1 {
+		t.Fatalf("throughput free-record metadata grew to %d entries, want 1 reusable entry", got)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -96,6 +188,242 @@ func TestThroughputClassLimitMustBeSupportedSizeClass(t *testing.T) {
 		if _, err := NewCollector(Config{ThroughputClassLimit: limit}, testTypes(t)); err == nil {
 			t.Fatalf("unsupported class limit %d accepted", limit)
 		}
+	}
+}
+
+var benchmarkThroughputLargeSpan int
+
+func newThroughputLargeSpanMissFixture(spans int) throughputHeap {
+	h := throughputHeap{
+		largeFree:   make([]throughputLargeFree, spans),
+		largestFree: 32,
+	}
+	for i := range h.largeFree {
+		h.largeFree[i] = throughputLargeFree{off: uint32(i * 128), size: 32}
+	}
+	return h
+}
+
+func newThroughputLargeSpanChurnFixture(spans int) throughputHeap {
+	memBytes := uint32(spans*128 + 128)
+	h := throughputHeap{
+		mem:         makeAlignedBytes(memBytes, 16),
+		limit:       memBytes,
+		pageBytes:   4096,
+		bump:        memBytes,
+		largeFree:   make([]throughputLargeFree, spans+1),
+		largestFree: 128,
+	}
+	for i := 0; i < spans; i++ {
+		h.largeFree[i] = throughputLargeFree{off: uint32(i * 128), size: 32}
+	}
+	h.largeFree[spans] = throughputLargeFree{off: uint32(spans * 128), size: 128}
+	return h
+}
+
+func churnThroughputLargeSpan(h *throughputHeap) error {
+	entry, err := h.alloc(64, spaceLarge)
+	if err != nil {
+		return err
+	}
+	return h.free(entry)
+}
+
+//go:noinline
+func benchmarkFindThroughputLargeSpan(h *throughputHeap, size uint32) int {
+	return h.findLarge(size)
+}
+
+func TestThroughputLargestFreeTracksMutations(t *testing.T) {
+	h := throughputHeap{
+		mem:       makeAlignedBytes(256, 16),
+		limit:     256,
+		pageBytes: 4096,
+	}
+	h.insertLargeFree(throughputLargeFree{off: 0, size: 64})
+	h.insertLargeFree(throughputLargeFree{off: 128, size: 128})
+	if h.largestFree != 128 || h.findLarge(96) != 1 {
+		t.Fatalf("initial largest span = %d at %d, want 128 at 1", h.largestFree, h.findLarge(96))
+	}
+	entry, err := h.alloc(96, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.off != 128 || h.largestFree != 128 || !h.largestFreeDirty {
+		t.Fatalf("after split: entry offset=%d largest=%d dirty=%t", entry.off, h.largestFree, h.largestFreeDirty)
+	}
+	if err := h.verify(nil); err != nil {
+		t.Fatalf("verify conservative largest span: %v", err)
+	}
+	if h.findLarge(80) != -1 || h.largestFree != 64 || h.largestFreeDirty {
+		t.Fatalf("after split: entry offset=%d largest=%d find(80)=%d", entry.off, h.largestFree, h.findLarge(80))
+	}
+	h.insertLargeFree(throughputLargeFree{off: 64, size: 64})
+	if h.largestFree != 128 || len(h.largeFree) != 2 {
+		t.Fatalf("after coalesce: largest=%d spans=%v", h.largestFree, h.largeFree)
+	}
+}
+
+func TestThroughputLargestFreeTracksCompleteRemoval(t *testing.T) {
+	h := throughputHeap{
+		mem:       makeAlignedBytes(256, 16),
+		limit:     256,
+		pageBytes: 4096,
+		bump:      256,
+	}
+	h.insertLargeFree(throughputLargeFree{off: 0, size: 64})
+	h.insertLargeFree(throughputLargeFree{off: 128, size: 32})
+	entry, err := h.alloc(64, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.off != 0 || len(h.largeFree) != 1 || h.largestFree != 64 || !h.largestFreeDirty {
+		t.Fatalf("after removal: entry=%+v spans=%v largest=%d dirty=%t", entry, h.largeFree, h.largestFree, h.largestFreeDirty)
+	}
+	if err := h.verify(nil); err != nil {
+		t.Fatalf("verify conservative bound after removal: %v", err)
+	}
+	if h.findLarge(48) != -1 || h.largestFree != 32 || h.largestFreeDirty {
+		t.Fatalf("after removal refresh: largest=%d dirty=%t spans=%v", h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+}
+
+func TestThroughputLargestFreeTracksDuplicateMaxima(t *testing.T) {
+	h := throughputHeap{
+		mem:       makeAlignedBytes(256, 16),
+		limit:     256,
+		pageBytes: 4096,
+		bump:      256,
+	}
+	h.insertLargeFree(throughputLargeFree{off: 0, size: 64})
+	h.insertLargeFree(throughputLargeFree{off: 128, size: 64})
+	first, err := h.alloc(64, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.off != 0 || h.largestFree != 64 || !h.largestFreeDirty || h.findLarge(64) != 0 {
+		t.Fatalf("after first maximum: entry=%+v largest=%d dirty=%t spans=%v", first, h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+	if err := h.verify(nil); err != nil {
+		t.Fatalf("verify duplicate maximum bound: %v", err)
+	}
+	second, err := h.alloc(64, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.off != 128 || h.largestFree != 64 || !h.largestFreeDirty || len(h.largeFree) != 0 {
+		t.Fatalf("after second maximum: entry=%+v largest=%d dirty=%t spans=%v", second, h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+	if h.findLarge(1) != -1 || h.largestFree != 0 || h.largestFreeDirty {
+		t.Fatalf("after duplicate refresh: largest=%d dirty=%t spans=%v", h.largestFree, h.largestFreeDirty, h.largeFree)
+	}
+}
+
+func TestThroughputVerifyRejectsStaleLargestFree(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	c.throughput.largestFree = 32
+	err := c.Verify(nil)
+	if err == nil || !strings.Contains(err.Error(), "largest free span is stale") {
+		t.Fatalf("Verify stale largest span error = %v", err)
+	}
+	c.throughput.largestFreeDirty = true
+	c.throughput.largestFree = ^uint32(0)
+	err = c.Verify(nil)
+	if err == nil || !strings.Contains(err.Error(), "largest free span is stale") {
+		t.Fatalf("Verify impossible dirty largest span error = %v", err)
+	}
+}
+
+func TestThroughputLargestFreeFootprint(t *testing.T) {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		t.Skip("64-bit fixed-footprint assertion")
+	}
+	if got := unsafe.Sizeof(throughputHeap{}); got != 144 {
+		t.Fatalf("throughputHeap size = %d, want 144", got)
+	}
+}
+
+func BenchmarkThroughputLargeSpanMiss(b *testing.B) {
+	for _, spans := range []int{64, 1024, 16384} {
+		b.Run(fmt.Sprintf("spans=%d", spans), func(b *testing.B) {
+			h := newThroughputLargeSpanMissFixture(spans)
+			b.Run("warm", func(b *testing.B) {
+				var found int
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					found += benchmarkFindThroughputLargeSpan(&h, 64)
+				}
+				b.StopTimer()
+				benchmarkThroughputLargeSpan = found
+				if found != -b.N || h.largestFree != 32 || h.largestFreeDirty {
+					b.Fatalf("warm miss result=%d largest=%d dirty=%t", found, h.largestFree, h.largestFreeDirty)
+				}
+			})
+			b.Run("cold", func(b *testing.B) {
+				const batchSize = 64
+				var batch [batchSize]throughputHeap
+				var found, lastCount int
+				b.ReportAllocs()
+				for done := 0; done < b.N; {
+					count := min(batchSize, b.N-done)
+					lastCount = count
+					b.StopTimer()
+					for i := 0; i < count; i++ {
+						batch[i] = h
+						batch[i].largestFree = 64
+						batch[i].largestFreeDirty = true
+					}
+					b.StartTimer()
+					for i := 0; i < count; i++ {
+						found += benchmarkFindThroughputLargeSpan(&batch[i], 64)
+					}
+					done += count
+				}
+				b.StopTimer()
+				benchmarkThroughputLargeSpan = found
+				if found != -b.N {
+					b.Fatalf("cold miss result=%d, want %d", found, -b.N)
+				}
+				for i := 0; i < lastCount; i++ {
+					if batch[i].largestFree != 32 || batch[i].largestFreeDirty {
+						b.Fatalf("cold miss batch[%d] largest=%d dirty=%t", i, batch[i].largestFree, batch[i].largestFreeDirty)
+					}
+				}
+			})
+		})
+	}
+}
+
+func BenchmarkThroughputLargeSpanChurn(b *testing.B) {
+	for _, spans := range []int{64, 1024, 16384} {
+		b.Run(fmt.Sprintf("spans=%d", spans), func(b *testing.B) {
+			h := newThroughputLargeSpanChurnFixture(spans)
+			// The first insertion grows the free-span scratch capacity. Keep
+			// that one-time fixture cost outside the measured steady-state loop.
+			if err := churnThroughputLargeSpan(&h); err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := churnThroughputLargeSpan(&h); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.StopTimer()
+			if len(h.largeFree) != spans+1 || h.largeFree[spans].size != 128 || h.largestFree != 128 || h.largestFreeDirty {
+				b.Fatalf("final churn state: spans=%d tail=%v largest=%d dirty=%t", len(h.largeFree), h.largeFree[len(h.largeFree)-1], h.largestFree, h.largestFreeDirty)
+			}
+			for i, span := range h.largeFree {
+				wantOff, wantSize := uint32(i*128), uint32(32)
+				if i == spans {
+					wantSize = 128
+				}
+				if span.off != wantOff || span.size != wantSize {
+					b.Fatalf("final churn span[%d]=%v, want off=%d size=%d", i, span, wantOff, wantSize)
+				}
+			}
+		})
 	}
 }
 

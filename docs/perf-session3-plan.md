@@ -1,4 +1,8 @@
-# Perf session 3 plan (2026-07-02 handoff, post B1/B2/B3)
+# Historical performance session 3 plan — 2026-07-02
+
+> **Status: historical handoff.** The branch, PR, and performance claims below
+> describe the July 2 session. See [OPTIMIZATIONS.md](../OPTIMIZATIONS.md) and
+> [ROADMAP.md](../ROADMAP.md) for current optimization status.
 
 Continuation of `docs/perf-plan-2026-07.md` — read that first for the measurement
 protocol (§1), gate battery (§1), and pitfalls (§8); they all still apply. This doc
@@ -155,7 +159,7 @@ excuse NEW guard failures either (diff against the known-crashing test list).
 - Short commit subjects, no bodies (repo convention).
 - Merges need an explicit user yes. The auto-mode classifier blocks self-merges,
   correctly.
-- The `warp/` submodule is intentionally dirty — never stage or reset it.
+- Keep any independently cloned WARP reference checkout outside this repository.
 - wat function index = local index + 1 (`env.abort` import).
 - Re-run any surprising bench result 2–3× before believing it, then diff
   disassembly in both directions.

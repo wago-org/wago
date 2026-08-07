@@ -17,7 +17,7 @@ TEXT ·addrLibcSigactionTrampoline(SB), NOSPLIT, $0-8
 //   mcontext64.ss.x[26]   = +224
 //   mcontext64.ss.pc      = +272
 //   mcontext64.ss.flags   = +284
-// guardRegion is {start@0, end@8, linMem@16}, 32 bytes.
+// guardRegion is {start@0, end@8, linMem@16, ownerLinMem@24}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVD	R0, R3                  // preserve signal arguments for chaining
 	MOVD	R1, R4
@@ -34,23 +34,27 @@ scan:
 	CMP	R9, R8
 	BHS	next                    // addr >= end
 
-	MOVD	16(R10), R9             // region.linMem
+	MOVD	16(R10), R9             // region.linMem (fault-address base)
 	MOVD	48(R2), R14             // ucontext.uc_mcontext
-	MOVD	224(R14), R26           // saved X26 (pinned linMem)
-	CMP	R9, R26
+	MOVD	224(R14), R26           // saved X26 (primary linMem)
+	MOVD	24(R10), R12            // region.ownerLinMem
+	CMP	R12, R26
 	BNE	next                    // not this reservation's wasm fault
 
-	// off = fault - linMem; curBytes = [linMem-8].
+	// Bounds belong to the faulting reservation; X26 remains the active primary
+	// linMem used for trap/unwind state.
 	MOVD	R8, R12
-	SUB	R26, R12                // R12 = fault - linMem
-	MOVWU	-8(R26), R13            // logical linear-memory size
+	SUB	R9, R12                 // R12 = fault - region.linMem
+	MOVD	-288(R9), R13           // authoritative region logical byte size
 	CMP	R13, R12
 	BHS	outofbounds             // curBytes <= off
 
 	// Grown-but-uncommitted page. Commit the containing 64 KiB wasm page and
 	// return through libSystem's signal trampoline so the access is retried.
-	MOVD	R8, R0
-	AND	$-65536, R0             // page-aligned address
+	// Align the reservation-relative offset because linMem is only host-page aligned.
+	MOVD	R12, R0
+	AND	$-65536, R0
+	ADD	R9, R0
 	MOVD	$65536, R1
 	MOVD	$3, R2                  // PROT_READ|PROT_WRITE
 	MOVD	$74, R16                // SYS_mprotect

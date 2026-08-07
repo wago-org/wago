@@ -63,10 +63,10 @@ WAGO_SPECTEST_DIR="$root/tests/spec" WAGO_SPEC_VERSION=1.0 \
 	go test -count=1 -run TestSpecSuiteExec -v ./src/wago/ >"$tmp/spec1.log"
 spec1=$(spec_total 1.0 "$tmp/spec1.log")
 
-go test -count=1 -run '^TestWazeroPortPinnedCoreV2Validation$' -v \
+go test -count=1 -run '^TestCoreV2Validation$' -v \
 	./src/core/compiler/wasm/ >"$tmp/spec2-validation.log"
 WAGO_SPECTEST_DIR="$root/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
-	go test -count=1 -run '^TestWazeroPortPinnedCoreV2SpecExecution$' -v \
+	go test -count=1 -run '^TestCoreV2SpecExecution$' -v \
 	./src/wago/ >"$tmp/spec2-execution.log"
 spec2_validation=$(spec_total 2.0 "$tmp/spec2-validation.log")
 spec2_execution=$(spec_total 2.0 "$tmp/spec2-execution.log")

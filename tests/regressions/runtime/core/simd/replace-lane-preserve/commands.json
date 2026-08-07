@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/replace-lane-preserve/source.wast",
+ "commands": [
+  {"type": "module", "line": 4, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 14, "action": {"type": "invoke", "field": "", "args": []}, "expected": [{"type": "i64", "value": "1"}]}]}

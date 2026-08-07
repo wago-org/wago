@@ -1,0 +1,9 @@
+{"source_filename": "testdata/wasmtime/wasm2/empty/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "action", "line": 3, "action": {"type": "invoke", "field": "empty", "args": []}, "expected": []}, 
+  {"type": "module", "line": 5, "filename": "commands.1.wasm"}, 
+  {"type": "module", "line": 18, "filename": "commands.2.wasm"}, 
+  {"type": "module", "line": 33, "filename": "commands.3.wasm"}, 
+  {"type": "module", "line": 49, "filename": "commands.4.wasm"}, 
+  {"type": "module", "line": 52, "filename": "commands.5.wasm"}]}

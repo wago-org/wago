@@ -2,14 +2,25 @@
 *.test
 *.out
 
+# Reproducibly bootstrapped development tools and local validation captures.
+.tools/
+.validation/
+
 # Built CLI binaries (make build / build-release / tinygo-build) + release assets
 /wago
+/wago-engine
 wago-tinygo
-wago-linux-amd64
-wago-linux-amd64.sha256
+wago-runtime-standard-normal
+wago-runtime-minimal-normal
+wago-runtime-standard-tiny
+wago-runtime-minimal-tiny
+/wago-*-*
 
 # Editor / OS
 .DS_Store
+
+# Local performance lab notebooks, profiles, and raw benchmark captures.
+.perf/
 
 # Locally-generated benchmark charts (published to the wago-org/docs repo)
 bench/charts/
@@ -24,10 +35,6 @@ bench/.bench-run.txt
 
 # Staleness marker written by benchpub: commit the charted numbers reflect + when
 bench/.bench-stamp
-
-# Compiled wasm3 comparison harness (built by scripts/build-wasm3-bench.sh from
-# the committed harness.c + wasm3 submodule); the source is tracked, not the binary.
-bench/wasm3/wasm3_bench
 
 # Generated corpus sources — rebuilt by corpus/build.sh; the .wasm is committed
 bench/corpus/src/many_funcs.wat

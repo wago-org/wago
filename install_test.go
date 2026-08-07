@@ -1,498 +1,454 @@
+//go:build !windows
+
 package wago
 
 import (
 	"archive/zip"
 	"bytes"
-	"context"
+	"crypto/sha256"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/wago-org/wago/internal/installbootstrap"
 )
 
-func TestInstallerRadioPreservesTerminalNewlineProcessing(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("BSD script invocation exercises the macOS terminal behavior")
-	}
-	home := t.TempDir()
-	bin := filepath.Join(home, ".wago", "bin")
-	if err := os.MkdirAll(bin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(bin, "wago"), []byte("manager"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	transcript := filepath.Join(home, "terminal.log")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, "script", "-q", transcript, "./install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_BIN_DIR="+bin,
-		"WAGO_INTERNAL_REINSTALL_CHECK_ONLY=1",
-		"NO_COLOR=1",
-		"TERM=xterm",
-	)
-	command.Stdin = strings.NewReader("\x1b")
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("installer terminal session: %v\n%s", err, output)
-	}
-	data, err := os.ReadFile(transcript)
-	if err != nil {
-		t.Fatal(err)
-	}
-	start := bytes.Index(data, []byte("How should it be reinstalled?"))
-	end := bytes.LastIndex(data, []byte("Cancelled."))
-	if start < 0 || end <= start {
-		t.Fatalf("terminal transcript missing radio frame:\n%s", data)
-	}
-	for i, value := range data[start:end] {
-		if value == '\n' && (i == 0 || data[start+i-1] != '\r') {
-			t.Fatalf("radio frame emitted LF without CR at byte %d; terminal output will staircase", i)
-		}
-	}
+type bootstrapContractCatalog struct {
+	latest   installbootstrap.Release
+	releases []installbootstrap.Release
 }
 
-func TestInstallerDefaultsToWagoBin(t *testing.T) {
-	home := t.TempDir()
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_DRY_RUN=1",
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("installer dry run: %v\n%s", err, output)
-	}
-	want := "~/.wago/bin/wago"
-	if !strings.Contains(string(output), want) {
-		t.Fatalf("installer output does not contain default executable %q:\n%s", want, output)
-	}
-	for _, unwanted := range []string{"profile", "runtime"} {
-		if strings.Contains(string(output), unwanted) {
-			t.Fatalf("manager-only installer output unexpectedly contains %q:\n%s", unwanted, output)
-		}
-	}
+func (catalog bootstrapContractCatalog) Latest() (installbootstrap.Release, error) {
+	return catalog.latest, nil
 }
 
-func TestInstallerAsksWhereToInstall(t *testing.T) {
-	home := t.TempDir()
-	tty := filepath.Join(home, "tty")
-	if err := os.WriteFile(tty, []byte("2\n~/tools/wago\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_INSTALL_TTY="+tty,
-		"WAGO_INTERNAL_INSTALL_DIR_ONLY=1",
-		"WAGO_DRY_RUN=1",
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("install directory prompt: %v\n%s", err, output)
-	}
-	text := string(output)
-	if !strings.HasPrefix(text, "Welcome to Wago! Let's get you set up.\n\nWhere should Wago be installed?\n") ||
-		!strings.Contains(text, "› ◉ ~/.wago/bin") ||
-		!strings.Contains(text, "○ Custom") ||
-		!strings.Contains(text, "› ◉ Type a directory") ||
-		!strings.Contains(text, "tab/→ complete") ||
-		!strings.Contains(text, "Installing to: ~/tools/wago") ||
-		!strings.Contains(text, "bin=~/tools/wago") {
-		t.Fatalf("installer did not ask for its location:\n%s", text)
-	}
+func (catalog bootstrapContractCatalog) Releases() ([]installbootstrap.Release, error) {
+	return append([]installbootstrap.Release(nil), catalog.releases...), nil
 }
 
-func TestInstallerCustomPathPreviewFiltersDirectories(t *testing.T) {
-	home := t.TempDir()
-	for _, name := range []string{"workspace", "worktree", "other", "workfile"} {
-		path := filepath.Join(home, name)
-		if name == "workfile" {
-			if err := os.WriteFile(path, []byte("not a directory"), 0o644); err != nil {
+func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
+	catalog := bootstrapContractCatalog{
+		latest: installbootstrap.Release{TagName: "v1.2.3", PublishedAt: "2026-08-04T00:00:00Z"},
+		releases: []installbootstrap.Release{
+			{TagName: "canary-old", PublishedAt: "2026-08-01T00:00:00Z"},
+			{TagName: "nightly-new", PublishedAt: "2026-08-04T00:00:00Z"},
+			{TagName: "canary-new", PublishedAt: "2026-08-03T00:00:00Z"},
+		},
+	}
+	for _, version := range []string{"latest", "main", "nightly", "canary-pinned"} {
+		t.Run(version, func(t *testing.T) {
+			wantTag, err := installbootstrap.Resolve(version, catalog)
+			if err != nil {
 				t.Fatal(err)
 			}
-			continue
-		}
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
+			payload := []byte("#!/bin/sh\nexit 0\n")
+			hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+			asset := "wago-installer-" + runtime.GOOS + "-" + runtime.GOARCH
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/releases/latest":
+					_, _ = fmt.Fprintf(w, "{\n  \"tag_name\": %q,\n  \"published_at\": %q\n}\n", catalog.latest.TagName, catalog.latest.PublishedAt)
+				case "/releases":
+					_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"canary-old\",\n    \"published_at\": \"2026-08-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"nightly-new\",\n    \"published_at\": \"2026-08-04T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"canary-new\",\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n")
+				case "/download/" + wantTag + "/" + asset:
+					_, _ = w.Write(payload)
+				case "/download/" + wantTag + "/" + asset + ".sha256":
+					_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			command := exec.Command("sh", "install.sh")
+			command.Env = append(os.Environ(),
+				"WAGO_VERSION="+version,
+				"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+				"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+			)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("shell bootstrap: %v\n%s", err, output)
+			}
+		})
 	}
+}
+
+func TestShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
+	payload := []byte("#!/bin/sh\nprintf 'native installer: %s\\n' \"$WAGO_VERSION\"\n")
+	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+	tag := "canary-deadbee"
+	asset := "wago-installer-" + runtime.GOOS + "-" + runtime.GOARCH
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases":
+			_, _ = fmt.Fprintf(w, `[{"tag_name":%q,"published_at":"2026-08-03T00:00:00Z"}]`, tag)
+		case "/download/" + tag + "/" + asset:
+			_, _ = w.Write(payload)
+		case "/download/" + tag + "/" + asset + ".sha256":
+			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
 	command := exec.Command("sh", "install.sh")
 	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_INTERNAL_PATH_PREVIEW_ONLY=~/wor",
-		"NO_COLOR=1",
+		"WAGO_VERSION=main",
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("custom path preview: %v\n%s", err, output)
+		t.Fatalf("run shell bootstrap: %v\n%s", err, output)
+	}
+	if got, want := string(output), "native installer: main\n"; got != want {
+		t.Fatalf("bootstrap output = %q, want %q", got, want)
+	}
+}
+
+func TestShellBootstrapStopsCleanlyWhenInstallerIsUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+	)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatal("bootstrap unexpectedly succeeded without an installer")
+	}
+	if text := string(output); !strings.Contains(text, "installer is unavailable") || !strings.Contains(text, "internet connection") {
+		t.Fatalf("unavailable output:\n%s", output)
+	}
+}
+
+func TestShellBootstrapExplainsLegacyInstallerHandoff(t *testing.T) {
+	legacy := filepath.Join(t.TempDir(), "legacy-installer")
+	if err := os.WriteFile(legacy, []byte("#!/bin/sh\nexit 2\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(), "WAGO_INSTALLER="+legacy)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatal("bootstrap unexpectedly accepted a legacy installer")
 	}
 	text := string(output)
-	for _, want := range []string{"~/workspace/", "~/worktree/"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("custom path preview missing %q:\n%s", want, text)
-		}
-	}
-	for _, unwanted := range []string{"~/other/", "~/workfile"} {
-		if strings.Contains(text, unwanted) {
-			t.Fatalf("custom path preview included %q:\n%s", unwanted, text)
-		}
+	if !strings.Contains(text, "installer release predates the native install flow") || !strings.Contains(text, "channel to update") {
+		t.Fatalf("legacy installer output:\n%s", output)
 	}
 }
 
-func TestInstallerCustomPathLeftArrowReturnsToParent(t *testing.T) {
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"WAGO_INTERNAL_PATH_PARENT_ONLY=~/.agents/",
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("custom path parent: %v\n%s", err, output)
-	}
-	if got := strings.TrimSpace(string(output)); got != "~/" {
-		t.Fatalf("custom path parent = %q, want %q", got, "~/")
-	}
-}
-
-func TestInstallerAsksBeforeReplacingExistingInstallation(t *testing.T) {
-	home := t.TempDir()
-	bin := filepath.Join(home, ".wago", "bin")
-	if err := os.MkdirAll(bin, 0o755); err != nil {
+func TestShellBootstrapStartsRefreshedShellOnlyWhenRequested(t *testing.T) {
+	tmp := t.TempDir()
+	installer := filepath.Join(tmp, "installer")
+	shell := filepath.Join(tmp, "shell")
+	if err := os.WriteFile(installer, []byte("#!/bin/sh\nprintf 'native installer\\n'\nprintf 'refresh\\n' >\"$WAGO_PATH_REFRESH_FILE\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manager := filepath.Join(bin, "wago")
-	if err := os.WriteFile(manager, []byte("existing manager"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	tty := filepath.Join(home, "tty")
-	if err := os.WriteFile(tty, []byte("esc\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_BIN_DIR="+bin,
-		"WAGO_INSTALL_TTY="+tty,
-		"WAGO_INTERNAL_REINSTALL_CHECK_ONLY=1",
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("repeat install check: %v\n%s", err, output)
-	}
-	text := string(output)
-	if !strings.Contains(text, "Wago is already installed at ~/.wago/bin/wago") ||
-		!strings.Contains(text, "How should it be reinstalled?") ||
-		!strings.Contains(text, "Full     Reset everything, including plugins and settings") ||
-		!strings.Contains(text, "Partial  Reset Wago but keep global plugins for reinstall") ||
-		!strings.Contains(text, "Minimal  Replace binaries and keep existing state") ||
-		!strings.Contains(text, "○ Full") ||
-		!strings.Contains(text, "○ Partial") ||
-		!strings.Contains(text, "› ◉ Minimal") ||
-		!strings.Contains(text, "enter/→ select · esc cancel") ||
-		!strings.Contains(text, "Cancelled.") {
-		t.Fatalf("repeat install skipped confirmation:\n%s", text)
-	}
-	body, err := os.ReadFile(manager)
-	if err != nil || string(body) != "existing manager" {
-		t.Fatalf("cancelled reinstall changed manager: %q, %v", body, err)
-	}
-}
-
-func TestInstallerLogsSelectedReinstallMode(t *testing.T) {
-	home := t.TempDir()
-	bin := filepath.Join(home, ".wago", "bin")
-	if err := os.MkdirAll(bin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(bin, "wago"), []byte("manager"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	tty := filepath.Join(home, "tty")
-	if err := os.WriteFile(tty, []byte("\n"), 0o600); err != nil {
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\nprintf 'refreshed shell\\n'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_BIN_DIR="+bin,
-		"WAGO_INSTALL_TTY="+tty,
-		"WAGO_INTERNAL_REINSTALL_CHECK_ONLY=1",
-		"NO_COLOR=1",
-	)
+	command.Env = append(os.Environ(), "WAGO_INSTALLER="+installer, "SHELL="+shell)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("select reinstall mode: %v\n%s", err, output)
+		t.Fatalf("refresh shell handoff: %v\n%s", err, output)
 	}
-	if !strings.Contains(string(output), "Reinstall mode: Minimal") {
-		t.Fatalf("installer did not log selected reinstall mode:\n%s", output)
+	if got, want := string(output), "native installer\nrefreshed shell\n"; got != want {
+		t.Fatalf("refresh shell output = %q, want %q", got, want)
+	}
+
+	if err := os.WriteFile(installer, []byte("#!/bin/sh\nprintf 'native installer\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command = exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(), "WAGO_INSTALLER="+installer, "SHELL="+shell)
+	output, err = command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("non-refresh shell handoff: %v\n%s", err, output)
+	}
+	if got, want := string(output), "native installer\n"; got != want {
+		t.Fatalf("non-refresh output = %q, want %q", got, want)
 	}
 }
 
-func TestInstallerFullReinstallRemovesPluginsAndPathSetup(t *testing.T) {
-	home := t.TempDir()
-	root := filepath.Join(home, ".wago")
-	for _, path := range []string{
-		filepath.Join(root, "bin"),
-		filepath.Join(root, "versions", "canary"),
-		filepath.Join(root, "src"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for path, body := range map[string]string{
-		filepath.Join(root, "bin", "wago"):                        "manager",
-		filepath.Join(root, "wago.json"):                          "plugins",
-		filepath.Join(root, "wago-lock.json"):                     "lock",
-		filepath.Join(root, "src", "go.mod"):                      "source",
-		filepath.Join(root, "versions", "canary", "wago-runtime"): "runtime",
-	} {
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	zshrc := filepath.Join(home, ".zshrc")
-	pathBlock := "export KEEP=1\n\n# Wago PATH: " + filepath.Join(root, "bin") +
-		"\nexport PATH='" + filepath.Join(root, "bin") + "':\"$PATH\"\n"
-	if err := os.WriteFile(zshrc, []byte(pathBlock), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY=full",
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("full reinstall cleanup: %v\n%s", err, output)
-	}
-	if !strings.Contains(string(output), "mode=full plugins=removed") {
-		t.Fatalf("full reinstall cleanup output:\n%s", output)
-	}
-	if _, err := os.Stat(root); !os.IsNotExist(err) {
-		t.Fatalf("full reinstall kept Wago root: %v", err)
-	}
-	config, err := os.ReadFile(zshrc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := string(config), "export KEEP=1\n"; got != want {
-		t.Fatalf("full reinstall PATH cleanup = %q, want %q", got, want)
-	}
-}
-
-func TestInstallerPartialReinstallPreservesGlobalPlugins(t *testing.T) {
-	home := t.TempDir()
-	root := filepath.Join(home, ".wago")
-	for _, path := range []string{
-		filepath.Join(root, "bin"),
-		filepath.Join(root, "versions", "canary"),
-		filepath.Join(root, "config"),
-		filepath.Join(root, "cache", "canary"),
-		filepath.Join(root, "src"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for path, body := range map[string]string{
-		filepath.Join(root, "bin", "wago"):                        "manager",
-		filepath.Join(root, "wago.json"):                          "plugins",
-		filepath.Join(root, "wago-lock.json"):                     "lock",
-		filepath.Join(root, "src", "go.mod"):                      "source",
-		filepath.Join(root, "config", "active-version"):           "canary",
-		filepath.Join(root, "versions", "canary", "wago-runtime"): "runtime",
-	} {
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	zshrc := filepath.Join(home, ".zshrc")
-	pathBlock := "# Wago PATH: " + filepath.Join(root, "bin") +
-		"\nexport PATH='" + filepath.Join(root, "bin") + "':\"$PATH\"\n"
-	if err := os.WriteFile(zshrc, []byte(pathBlock), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"WAGO_INTERNAL_REINSTALL_CLEANUP_ONLY=partial",
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("partial reinstall cleanup: %v\n%s", err, output)
-	}
-	if !strings.Contains(string(output), "mode=partial plugins=preserved") {
-		t.Fatalf("partial reinstall cleanup output:\n%s", output)
-	}
-	for _, path := range []string{
-		filepath.Join(root, "wago.json"),
-		filepath.Join(root, "wago-lock.json"),
-	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("partial reinstall removed %s: %v", path, err)
-		}
-	}
-	for _, path := range []string{
-		filepath.Join(root, "bin", "wago"),
-		filepath.Join(root, "versions"),
-		filepath.Join(root, "config"),
-		filepath.Join(root, "cache"),
-		filepath.Join(root, "src"),
-	} {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("partial reinstall kept %s: %v", path, err)
-		}
-	}
-	if config, err := os.ReadFile(zshrc); err != nil || len(config) != 0 {
-		t.Fatalf("partial reinstall PATH cleanup = %q, %v", config, err)
-	}
-}
-
-func TestInstallerOffersPersistentPathSetupWhenAlreadyOnCurrentPath(t *testing.T) {
-	root := t.TempDir()
-	home := filepath.Join(root, "home")
-	bin := filepath.Join(home, ".wago", "bin")
-	fakeBin := filepath.Join(root, "bin")
-	tty := filepath.Join(root, "tty")
-	for _, dir := range []string{home, bin, fakeBin} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	zsh := filepath.Join(fakeBin, "zsh")
-	if err := os.WriteFile(zsh, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(tty, []byte("\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"HOME="+home,
-		"SHELL="+zsh,
-		"PATH="+bin+":"+fakeBin+":/usr/bin:/bin",
-		"WAGO_BIN_DIR="+bin,
-		"WAGO_INSTALL_TTY="+tty,
-		"WAGO_INTERNAL_PATH_SETUP_ONLY=1",
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("persistent PATH setup: %v\n%s", err, output)
-	}
-	text := string(output)
-	if !strings.Contains(text, "Add Wago to your PATH?") ||
-		!strings.Contains(text, "› ◉ zsh") ||
-		!strings.Contains(text, "~/.zshrc  (current)") ||
-		!strings.Contains(text, "○ Not now") ||
-		!strings.Contains(text, "Adding to PATH: ~/.zshrc") ||
-		!strings.Contains(text, "Added Wago to PATH") {
-		t.Fatalf("installer trusted only the current process PATH:\n%s", text)
-	}
-}
-
-func TestInstallerOffersCurrentShellPathSetupIdempotently(t *testing.T) {
-	root := t.TempDir()
-	home := filepath.Join(root, "home")
-	bin := filepath.Join(home, "custom bin")
-	fakeBin := filepath.Join(root, "bin")
-	tty := filepath.Join(root, "tty")
-	for _, dir := range []string{home, fakeBin} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	zsh := filepath.Join(fakeBin, "zsh")
-	if err := os.WriteFile(zsh, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(tty, []byte("\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	run := func() string {
-		t.Helper()
-		command := exec.Command("sh", "install.sh")
-		command.Env = append(os.Environ(),
-			"HOME="+home,
-			"SHELL="+zsh,
-			"PATH="+fakeBin+":/usr/bin:/bin",
-			"WAGO_BIN_DIR="+bin,
-			"WAGO_INSTALL_TTY="+tty,
-			"WAGO_INTERNAL_PATH_SETUP_ONLY=1",
-			"NO_COLOR=1",
-		)
-		output, err := command.CombinedOutput()
+func TestBootstrapScriptsKeepInstallationInNativeBinary(t *testing.T) {
+	for _, path := range []string{"install.sh", "install.cmd", "install.ps1"} {
+		data, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("path setup: %v\n%s", err, output)
+			t.Fatal(err)
 		}
-		return string(output)
-	}
-
-	output := run()
-	if !strings.Contains(output, "zsh") ||
-		!strings.Contains(output, "Adding to PATH: ~/.zshrc") ||
-		!strings.Contains(output, "Added Wago to PATH") ||
-		!strings.Contains(output, "Wago manager is ready!") ||
-		!strings.Contains(output, "Open a new shell, or run:\n  source ~/.zshrc") ||
-		!strings.Contains(output, "And then, install a version with:\n  wago version install") {
-		t.Fatalf("path setup output:\n%s", output)
-	}
-	config := filepath.Join(home, ".zshrc")
-	body, err := os.ReadFile(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "export PATH='" + bin + "':\"$PATH\""
-	if !strings.Contains(string(body), want) {
-		t.Fatalf(".zshrc = %q, want %q", body, want)
-	}
-
-	output = run()
-	if !strings.Contains(output, "PATH already configured") {
-		t.Fatalf("repeat path setup output:\n%s", output)
-	}
-	body, err = os.ReadFile(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Count(string(body), "# Wago PATH:") != 1 {
-		t.Fatalf("path setup is not idempotent:\n%s", body)
+		lower := strings.ToLower(string(data))
+		for _, forbidden := range []string{"go build", "git clone", "wago version install", ".bashrc", ".zshrc", "reg.exe add"} {
+			if strings.Contains(lower, forbidden) {
+				t.Errorf("%s contains installer implementation detail %q", path, forbidden)
+			}
+		}
 	}
 }
 
-func TestInstallerFallsBackFromGitToSourceArchive(t *testing.T) {
-	root := t.TempDir()
-	fakeBin := filepath.Join(root, "bin")
-	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(fakeBin, "git"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	archive := filepath.Join(root, "wago.zip")
-	file, err := os.Create(archive)
+func TestCmdPipedLoaderClearsOnlyItsHeader(t *testing.T) {
+	data, err := os.ReadFile("install.cmd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer := zip.NewWriter(file)
-	entry, err := writer.Create("wago-main/go.mod")
+	text := strings.ToLower(string(data))
+	if !strings.Contains(text, `"%~nx0"=="wago-pipe.cmd"`) {
+		t.Fatal("CMD bootstrap does not limit cursor cleanup to the piped loader")
+	}
+	if !strings.Contains(text, `set "wago_cmd_pipe=1"`) {
+		t.Fatal("CMD bootstrap does not request terminal-aware header cleanup")
+	}
+	if bytes.Contains(data, []byte("\x1b")) || strings.Contains(text, "cls") {
+		t.Fatal("CMD bootstrap clears the terminal instead of only its header")
+	}
+}
+
+func TestWineCmdBootstrapRefreshesPathFromAnyDrive(t *testing.T) {
+	wine, err := exec.LookPath("wine")
+	if err != nil {
+		t.Skip("Wine is not installed")
+	}
+	tmp := t.TempDir()
+	source := filepath.Join(tmp, "marker.go")
+	if err := os.WriteFile(source, []byte(`package main
+import "os"
+func main() {
+	if path := os.Getenv("WAGO_PATH_REFRESH_FILE"); path != "" && os.Getenv("WAGO_FAKE_PATH_ADDED") == "1" {
+		_ = os.WriteFile(path, []byte("refresh\n"), 0600)
+	}
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	installer := filepath.Join(tmp, "installer.exe")
+	command := exec.Command("go", "build", "-o", installer, source)
+	command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=windows", "GOARCH=amd64")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build PATH refresh fixture: %v\n%s", err, output)
+	}
+	windowsPath := `Z:` + strings.ReplaceAll(installer, "/", `\`)
+	command = exec.Command(wine, "cmd", "/V:ON", "/D", "/C", "call install.cmd & echo PATH_AFTER=!PATH!")
+	command.Env = append(os.Environ(),
+		"WINEDEBUG=-all",
+		"WAGO_INSTALLER="+windowsPath,
+		"WAGO_FAKE_PATH_ADDED=1",
+		`WAGO_TEST_MACHINE_PATH=D:\Windows\System32`,
+		`WAGO_TEST_USER_PATH=D:\Users\wago\.wago\bin`,
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Wine CMD PATH refresh: %v\n%s", err, output)
+	}
+	text := strings.ReplaceAll(string(output), "\r", "")
+	if !strings.Contains(text, `PATH_AFTER=D:\Windows\System32;D:\Users\wago\.wago\bin`) {
+		t.Fatalf("Wine CMD did not retain refreshed D: PATH:\n%s", text)
+	}
+
+	command = exec.Command(wine, "cmd", "/V:ON", "/D", "/C", "call install.cmd & echo PATH_AFTER=!PATH!")
+	command.Env = append(os.Environ(),
+		"WINEDEBUG=-all",
+		"WAGO_INSTALLER="+windowsPath,
+		`WAGO_TEST_MACHINE_PATH=D:\Windows\System32`,
+		`WAGO_TEST_USER_PATH=D:\Users\wago\.wago\bin`,
+	)
+	output, err = command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Wine CMD without PATH addition: %v\n%s", err, output)
+	}
+	text = strings.ReplaceAll(string(output), "\r", "")
+	if strings.Contains(text, `PATH_AFTER=D:\Windows\System32;D:\Users\wago\.wago\bin`) {
+		t.Fatalf("Wine CMD refreshed PATH without an add request:\n%s", text)
+	}
+}
+
+func TestNativeAndWineDryRunOutputParity(t *testing.T) {
+	wine, err := exec.LookPath("wine")
+	if err != nil {
+		t.Skip("Wine is not installed")
+	}
+	tmp := t.TempDir()
+	unixInstaller := filepath.Join(tmp, "wago-installer")
+	windowsInstaller := filepath.Join(tmp, "wago-installer.exe")
+	buildInstaller(t, unixInstaller, runtime.GOOS, runtime.GOARCH)
+	buildInstaller(t, windowsInstaller, "windows", "amd64")
+
+	unix := exec.Command(unixInstaller)
+	unix.Env = append(os.Environ(),
+		"NO_COLOR=1", "WAGO_VERSION=parity", "WAGO_DRY_RUN=1",
+		"WAGO_BIN_DIR=ROOT/bin", "WAGO_SRC_DIR=ROOT/src",
+	)
+	unixOutput, err := unix.CombinedOutput()
+	if err != nil {
+		t.Fatalf("native dry run: %v\n%s", err, unixOutput)
+	}
+
+	windowsPath := `Z:` + strings.ReplaceAll(windowsInstaller, "/", `\`)
+	windows := exec.Command(wine, "cmd", "/D", "/C", "call install.cmd")
+	windows.Env = append(os.Environ(),
+		"WINEDEBUG=-all", "NO_COLOR=1", "WAGO_VERSION=parity", "WAGO_DRY_RUN=1",
+		"WAGO_BIN_DIR=ROOT/bin", "WAGO_SRC_DIR=ROOT/src", "WAGO_INSTALLER="+windowsPath,
+	)
+	windowsOutput, err := windows.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Wine dry run: %v\n%s", err, windowsOutput)
+	}
+	normalize := func(value string) string {
+		value = strings.ReplaceAll(value, "\r", "")
+		// Wine may emit host graphics-driver diagnostics before cmd starts. Compare
+		// the installer transcript itself, beginning at its stable greeting.
+		if start := strings.Index(value, "Welcome to Wago!"); start >= 0 {
+			value = value[start:]
+		}
+		value = strings.ReplaceAll(value, `\`, "/")
+		value = strings.ReplaceAll(value, "wago.exe", "wago")
+		return value
+	}
+	if got, want := normalize(string(windowsOutput)), normalize(string(unixOutput)); got != want {
+		t.Fatalf("Wine output differs from native output:\n--- Wine ---\n%s--- native ---\n%s", got, want)
+	}
+}
+
+func TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
+	wine, err := exec.LookPath("wine")
+	if err != nil {
+		t.Skip("Wine is not installed")
+	}
+	tmp := t.TempDir()
+	installerPath := filepath.Join(tmp, "wago-installer.exe")
+	buildInstaller(t, installerPath, "windows", "amd64")
+	payload, err := os.ReadFile(installerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+	tag := "canary-bootstrap"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases":
+			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": %q,\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n", tag)
+		case "/download/" + tag + "/wago-installer-windows-amd64":
+			_, _ = w.Write(payload)
+		case "/download/" + tag + "/wago-installer-windows-amd64.sha256":
+			_, _ = fmt.Fprintf(w, "%s  wago-installer-windows-amd64\n", hash)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	command := exec.Command(wine, "cmd", "/D", "/C", "call install.cmd")
+	command.Env = append(os.Environ(),
+		"WINEDEBUG=-all", "NO_COLOR=1", "WAGO_VERSION=canary", "WAGO_DRY_RUN=1",
+		"WAGO_BIN_DIR=ROOT\\bin", "WAGO_SRC_DIR=ROOT\\src",
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Wine CMD download bootstrap: %v\n%s", err, output)
+	}
+	if text := strings.ReplaceAll(string(output), "\r", ""); !strings.Contains(text, "Install location: ROOT\\bin") || !strings.Contains(text, "Dry run · no changes made.") {
+		t.Fatalf("Wine CMD download bootstrap output:\n%s", text)
+	}
+}
+
+func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
+	wine, err := exec.LookPath("wine")
+	if err != nil {
+		t.Skip("Wine is not installed")
+	}
+	tmp := t.TempDir()
+	installerPath := filepath.Join(tmp, "wago-installer.exe")
+	managerPath := filepath.Join(tmp, "wago-windows-amd64.exe")
+	buildInstaller(t, installerPath, "windows", "amd64")
+	buildTarget(t, managerPath, "windows", "amd64", "./cli/wago")
+	manager, err := os.ReadFile(managerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerHash := fmt.Sprintf("%x", sha256.Sum256(manager))
+	sourceArchive := makeSourceArchive(t)
+	tag := "canary-winetest"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/download/" + tag + "/wago-windows-amd64":
+			_, _ = w.Write(manager)
+		case "/download/" + tag + "/wago-windows-amd64.sha256":
+			_, _ = fmt.Fprintf(w, "%s  wago-windows-amd64\n", managerHash)
+		case "/source.zip":
+			_, _ = w.Write(sourceArchive)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	home := filepath.Join(tmp, "home")
+	binDir := filepath.Join(home, ".wago", "bin")
+	srcDir := filepath.Join(home, ".wago", "src")
+	windowsPath := func(path string) string { return `Z:` + strings.ReplaceAll(path, "/", `\`) }
+	command := exec.Command(wine, "cmd", "/D", "/C", "call install.cmd")
+	command.Env = append(os.Environ(),
+		"WINEDEBUG=-all", "NO_COLOR=1", "WAGO_NO_MODIFY_PATH=1",
+		"WAGO_INSTALLER="+windowsPath(installerPath),
+		"WAGO_VERSION="+tag,
+		"WAGO_BIN_DIR="+windowsPath(binDir),
+		"WAGO_SRC_DIR="+windowsPath(srcDir),
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+		"WAGO_ARCHIVE_URL="+server.URL+"/source.zip",
+		"WAGO_REPO_URL=Z:\\does-not-exist",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Wine install flow: %v\n%s", err, output)
+	}
+	text := strings.ReplaceAll(string(output), "\r", "")
+	for _, fragment := range []string{
+		"Downloaded Wago manager " + tag,
+		"Fetched Wago source",
+		"Verified installation",
+		"Sweet, Wago " + tag + " is ready",
+		"wago version install",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("Wine install output missing %q:\n%s", fragment, text)
+		}
+	}
+	for _, path := range []string{filepath.Join(binDir, "wago.exe"), filepath.Join(srcDir, "go.mod")} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("Wine install did not create %s: %v", path, err)
+		}
+	}
+}
+
+func buildInstaller(t *testing.T, target, goos, goarch string) {
+	t.Helper()
+	buildTarget(t, target, goos, goarch, "./cli/installer")
+}
+
+func buildTarget(t *testing.T, target, goos, goarch, pkg string) {
+	t.Helper()
+	command := exec.Command("go", "build", "-o", target, pkg)
+	command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+goos, "GOARCH="+goarch)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build %s target %s: %v\n%s", goos, pkg, err, output)
+	}
+}
+
+func makeSourceArchive(t *testing.T) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	writer := zip.NewWriter(&data)
+	entry, err := writer.Create("wago-source/go.mod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,72 +458,5 @@ func TestInstallerFallsBackFromGitToSourceArchive(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	curl := `#!/bin/sh
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = "-o" ]; then
-		cp "$WAGO_TEST_ARCHIVE" "$2"
-		exit $?
-	fi
-	shift
-done
-exit 1
-`
-	if err := os.WriteFile(filepath.Join(fakeBin, "curl"), []byte(curl), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	command := exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"PATH="+fakeBin+":/usr/bin:/bin",
-		"WAGO_INTERNAL_FETCH_ONLY=1",
-		"WAGO_ARCHIVE_URL=https://example.invalid/wago.zip",
-		"WAGO_TEST_ARCHIVE="+archive,
-		"NO_COLOR=1",
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("archive fallback: %v\n%s", err, output)
-	}
-	text := string(output)
-	if !strings.Contains(text, "git fetch failed; trying source archive") ||
-		!strings.Contains(text, "source=archive") {
-		t.Fatalf("archive fallback output:\n%s", text)
-	}
-}
-
-func TestInstallerVerificationCannotHang(t *testing.T) {
-	root := t.TempDir()
-	bin := filepath.Join(root, "bin")
-	if err := os.MkdirAll(bin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	wago := filepath.Join(bin, "wago")
-	if err := os.WriteFile(wago, []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	start := time.Now()
-	command := exec.CommandContext(ctx, "sh", "install.sh")
-	command.Env = append(os.Environ(),
-		"WAGO_BIN_DIR="+bin,
-		"WAGO_INTERNAL_VERIFY_ONLY=1",
-		"WAGO_VERIFY_TIMEOUT=1",
-		"NO_COLOR=1",
-	)
-	err := command.Run()
-	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatalf("installer verification hung for %s", time.Since(start).Round(time.Millisecond))
-	}
-	if err == nil {
-		t.Fatal("hanging verification unexpectedly succeeded")
-	}
-	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
-		t.Fatalf("installer verification took %s, want a bounded failure", elapsed.Round(time.Millisecond))
-	}
+	return data.Bytes()
 }

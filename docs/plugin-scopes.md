@@ -2,8 +2,9 @@
 
 Wago separates plugin **intent** from compiled plugin **artifacts**.
 
-- A manifest says which packages are dependencies, which plugin registrations
-  are enabled, and which capabilities they receive.
+- A manifest maps enabled plugin IDs to version constraints.
+- `wago-lock.json` records exact versions, reviewed capabilities, and plugin
+  configuration.
 - A generated plugin runtime is a cache for one exact Wago
   version/profile/build. It is never reused by another toolchain.
 
@@ -53,7 +54,7 @@ projects with their own manifest:
 wago add --global wago-org/wasi
 ```
 
-Global intent is shared by installed Wago versions. On macOS it is
+Global intent is shared by installed Wago versions. On macOS and Windows it is
 `~/.wago/wago.json`; Linux uses Wago's XDG data directory. `WAGO_HOME`
 relocates the complete layout.
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // memoryModule builds a module declaring (and exporting) a memory of minP..maxP

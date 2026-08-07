@@ -1,0 +1,41 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 3,
+      "type": "module"
+    },
+    {
+      "commands": [
+        {
+          "filename": "commands.1.wasm",
+          "line": 6,
+          "type": "module"
+        }
+      ],
+      "line": 5,
+      "name": "old",
+      "type": "thread"
+    },
+    {
+      "line": 23,
+      "thread": "old",
+      "type": "wait"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 25,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "trigger",
+        "type": "invoke"
+      },
+      "line": 34,
+      "type": "action"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

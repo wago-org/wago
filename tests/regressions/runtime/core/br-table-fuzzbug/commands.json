@@ -1,0 +1,3 @@
+{"source_filename": "testdata/wasmtime/wasm2/br-table-fuzzbug/source.wast",
+ "commands": [
+  {"type": "module", "line": 6, "filename": "commands.0.wasm"}]}

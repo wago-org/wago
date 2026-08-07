@@ -1,0 +1,577 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "nulls-to-nullable-tops",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 11,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 12,
+      "type": "module_definition"
+    },
+    {
+      "line": 21,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "externref",
+            "value": "99"
+          }
+        ],
+        "field": "non-nulls-to-nullable-tops",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 22,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 26,
+      "type": "module_definition"
+    },
+    {
+      "line": 35,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "nulls-to-non-nullable-tops",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 36,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 37,
+      "type": "module_definition"
+    },
+    {
+      "line": 46,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "externref",
+            "value": "1"
+          }
+        ],
+        "field": "non-nulls-to-non-nullable-tops",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 47,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 51,
+      "type": "module_definition"
+    },
+    {
+      "line": 60,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-to-nullable-i31",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 61,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 62,
+      "type": "module_definition"
+    },
+    {
+      "line": 70,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "truthy-non-null-to-nullable-i31",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 71,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.6.wasm",
+      "line": 72,
+      "type": "module_definition"
+    },
+    {
+      "line": 81,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "falsey-non-null-to-nullable-i31",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 82,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.7.wasm",
+      "line": 83,
+      "type": "module_definition"
+    },
+    {
+      "line": 92,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-to-non-nullable-i31",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 93,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.8.wasm",
+      "line": 94,
+      "type": "module_definition"
+    },
+    {
+      "line": 103,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "falsey-non-null-to-non-nullable-i31",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 104,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.9.wasm",
+      "line": 105,
+      "type": "module_definition"
+    },
+    {
+      "line": 113,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "truthy-non-null-to-non-nullable-i31",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 114,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.10.wasm",
+      "line": 115,
+      "type": "module_definition"
+    },
+    {
+      "line": 127,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-to-nullable-middle-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 128,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.11.wasm",
+      "line": 129,
+      "type": "module_definition"
+    },
+    {
+      "line": 140,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "truthy-non-null-to-nullable-middle-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 141,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.12.wasm",
+      "line": 145,
+      "type": "module_definition"
+    },
+    {
+      "line": 155,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "falsey-non-null-to-nullable-middle-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 156,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.13.wasm",
+      "line": 160,
+      "type": "module_definition"
+    },
+    {
+      "line": 188,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-to-nullable-concrete-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 189,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.14.wasm",
+      "line": 190,
+      "type": "module_definition"
+    },
+    {
+      "line": 206,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "truthy-non-null-to-nullable-concrete-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 207,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.15.wasm",
+      "line": 211,
+      "type": "module_definition"
+    },
+    {
+      "line": 225,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "falsey-non-null-to-nullable-concrete-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 226,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.16.wasm",
+      "line": 230,
+      "type": "module_definition"
+    },
+    {
+      "line": 257,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-to-non-nullable-concrete-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 258,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.17.wasm",
+      "line": 259,
+      "type": "module_definition"
+    },
+    {
+      "line": 276,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "truthy-non-null-to-non-nullable-concrete-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 277,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.18.wasm",
+      "line": 281,
+      "type": "module_definition"
+    },
+    {
+      "line": 295,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "falsey-non-null-to-non-nullable-concrete-types",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 296,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.19.wasm",
+      "line": 300,
+      "type": "module_definition"
+    },
+    {
+      "line": 311,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-to-nullable-bottom-type",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 312,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.20.wasm",
+      "line": 313,
+      "type": "module_definition"
+    },
+    {
+      "line": 322,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "externref",
+            "value": "1"
+          }
+        ],
+        "field": "non-null-to-nullable-bottom-type",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 323,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.21.wasm",
+      "line": 327,
+      "type": "module_definition"
+    },
+    {
+      "line": 338,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "null-to-non-nullable-bottom-type",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 339,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.22.wasm",
+      "line": 340,
+      "type": "module_definition"
+    },
+    {
+      "line": 349,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "externref",
+            "value": "1"
+          }
+        ],
+        "field": "non-null-to-non-nullable-bottom-type",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 350,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

@@ -39,7 +39,8 @@ func TestTableCloseVersusAttachValidation(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			attached <- table.attachImporter(ValFuncRef, nil) == nil
+			exact, _ := valueTypeDescriptorFromValType(ValFuncRef)
+			attached <- table.attachImporter(ValFuncRef, exact, nil, nil, false) == nil
 		}()
 		go func() { defer wg.Done(); <-start; _ = table.Close() }()
 		close(start)

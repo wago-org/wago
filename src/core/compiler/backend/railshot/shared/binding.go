@@ -9,4 +9,5 @@ type ImportBinding struct {
 	CrossInstance bool
 	CalleeLinMem  uint64
 	CalleeEntry   uint64
+	EHTransfer    bool // exact staged EH caller/callee transfer; amd64 only
 }

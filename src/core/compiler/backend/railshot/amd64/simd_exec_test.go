@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func v128ConstBytes(b [16]byte) []byte {
@@ -475,7 +475,7 @@ func TestSIMDV128IndirectCallMixedSignature(t *testing.T) {
 		binary.LittleEndian.PutUint64(funcDescs[runtime.FuncRefContextOffset:], context)
 		canonical := funcDescs[runtime.FuncRefDescBytes:]
 		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryCodePtrOffset:], uint64(entry)+uint64(cm.Entry[1]))
-		binary.LittleEndian.PutUint32(canonical[runtime.TableEntrySigIDOffset:], m.StructuralTypeID(1))
+		binary.LittleEndian.PutUint64(canonical[runtime.TableEntrySigKeyOffset:], m.StructuralTypeKey(1))
 		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
 		binary.LittleEndian.PutUint64(canonical[runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&canonical[0]))))
 		binary.LittleEndian.PutUint64(canonical[runtime.FuncRefContextOffset:], context)

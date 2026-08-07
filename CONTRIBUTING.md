@@ -3,16 +3,20 @@
 `wago` is a small Go-first WebAssembly JIT. Keep changes direct, tested, and
 easy to audit.
 
-Target today: **linux/amd64** with Go **1.22+**.
+First-class targets: **linux/amd64**, **linux/arm64**, **darwin/amd64**,
+**darwin/arm64**, **windows/amd64**, and **windows/arm64** with Go **1.22+**.
+All six targets have native CI, release assets, and conformance gates;
+see [FEATURES.md](FEATURES.md) for feature-level platform admission.
 
 ## Setup
 
 ```bash
 git clone https://github.com/wago-org/wago
 cd wago
-go test ./...
+make test
 go build -o wago ./cli/wago
 ./wago version
+go build -tags wago_runtime -o wago-runtime ./cli/wago
 ./scripts/install-hooks.sh
 ```
 
@@ -30,13 +34,15 @@ go test -bench .
 wago.go                          public API facade, generated (re-exports src/wago)
 src/wago                         public API implementation
 internal/genfacade               generator for wago.go
-cli/wago                         CLI
+cli/wago                         build-tagged manager/runtime entrypoint
+cli/manager                      manager implementation and command tree
+cli/runtime                      runtime implementation and command tree
+cli/internal                     shared CLI primitives
 src/core/compiler/wasm           decoder + validator
-src/core/compiler/backend/railshot  single-pass x86-64 codegen
+src/core/compiler/backend/railshot  single-pass amd64 and arm64 codegen
 src/core/runtime                 mmap, foreign stack, trap plumbing
-tests/testdata                   small wasm fixtures
-bench                            wazero comparison benchmarks
-warp                             upstream C++ reference
+tests                           shared harnesses, fixtures, corpora, and scripts
+bench                            runtime comparison benchmarks
 ```
 
 The root `wago.go` is generated: it re-exports every exported symbol of
@@ -46,6 +52,13 @@ the regenerated `wago.go`. CI fails if it is stale.
 
 Use [FEATURES.md](FEATURES.md) before adding feature work and
 [ROADMAP.md](ROADMAP.md) before reshuffling priorities.
+
+`make test` is the unified Go test surface. Wago-owned cases and applicable
+regressions adapted from upstream projects live together in their domain
+packages. The pinned Core v2 wrappers need WABT and `tests/spec-v2`; run
+`make spec2` when changing decoder, validator, linker, or execution semantics.
+See [tests/README.md](tests/README.md) for the complete test layout and fixture
+provenance.
 
 ## Development
 
@@ -96,15 +109,16 @@ For CLI-facing changes, also build and exercise the examples:
 
 ```bash
 go build -o wago ./cli/wago
-./wago run tests/testdata/fib.wasm 30
-./wago run -e hypot tests/testdata/fprog.wasm 3.0 4.0
-./wago compile -o /tmp/fib.wago tests/testdata/fib.wasm
-./wago run /tmp/fib.wago 30
-./wago validate tests/testdata/fib.wasm
+go build -tags wago_runtime -o wago-runtime ./cli/wago
+./wago-runtime run tests/fixtures/wasm/fib.wasm 30
+./wago-runtime run -e hypot tests/fixtures/wasm/fprog.wasm 3.0 4.0
+./wago-runtime build -o /tmp/fib.wago tests/fixtures/wasm/fib.wasm
+./wago-runtime run /tmp/fib.wago 30
+./wago-runtime validate tests/fixtures/wasm/fib.wasm
 ```
 
 When adding behavior, add the smallest fixture that proves it. Prefer readable
-WAT in the test or a tiny checked-in wasm fixture under `tests/testdata`.
+WAT in the test or a tiny checked-in wasm fixture under `tests/fixtures/wasm`.
 
 ### Spec conformance (wasm 1.0 / MVP)
 
@@ -115,7 +129,7 @@ pre-reference-types commit so the file set is MVP). `TestSpecExec` (in
 assertions in an isolated subprocess and scores it; it skips unless the
 submodule is checked out and `wast2json` (wabt) is on `PATH`.
 
-Note: `TestSpecExec` is currently only built on linux/amd64 (the JIT backend’s supported platform).
+Note: `TestSpecExec` runs on linux/amd64, linux/arm64, and darwin/arm64.
 
 ```bash
 git submodule update --init tests/spec        # one time

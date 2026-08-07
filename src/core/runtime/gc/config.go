@@ -8,6 +8,13 @@ const (
 	defaultThroughputClassLimit = 32 << 10
 )
 
+// ValidateConfig rejects unsupported collector-profile combinations without
+// allocating heap backing storage.
+func ValidateConfig(cfg Config) error {
+	_, err := normalizeConfig(cfg)
+	return err
+}
+
 func normalizeConfig(cfg Config) (Config, error) {
 	switch cfg.Profile {
 	case ProfileThroughput:
@@ -24,6 +31,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 		return cfg, fmt.Errorf("gc: unsupported profile %d", cfg.Profile)
 	}
 	if cfg.Profile == ProfileTiny {
+		if cfg.DisableCollection {
+			return cfg, fmt.Errorf("gc: collection-disabled mode requires the throughput profile")
+		}
 		if cfg.Allocator != AllocatorTinyFixedBlock || cfg.Runtime != RuntimeIncrementalMarkSweep {
 			return cfg, fmt.Errorf("gc: profile tiny requires fixed-block allocator and incremental mark/sweep runtime")
 		}

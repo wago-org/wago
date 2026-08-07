@@ -1,29 +1,33 @@
 package wago
 
 import (
+	"encoding/binary"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestCompiledCodecV23VersionContract(t *testing.T) {
+func TestCompiledCodecV31VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 23 {
-		t.Fatalf("compiled codec version = %d, want 23", got)
+	if got := blob[4]; got != 31 {
+		t.Fatalf("compiled codec version = %d, want 31", got)
 	}
 
-	v21 := append([]byte(nil), blob...)
-	v21[4] = 21
-	var got Compiled
-	if err := got.UnmarshalBinary(v21); err == nil || !strings.Contains(err.Error(), "version 21 unsupported") {
-		t.Fatalf("UnmarshalBinary v21 error = %v, want explicit incompatibility rejection", err)
+	for _, version := range []byte{30, 26, 25, 24, 23, 22} {
+		old := append([]byte(nil), blob...)
+		old[4] = version
+		var got Compiled
+		if err := got.UnmarshalBinary(old); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", version)) {
+			t.Fatalf("UnmarshalBinary v%d error = %v, want explicit incompatibility rejection", version, err)
+		}
 	}
 }
 
-func TestCompiledCodecV23RoundTripsStructuralReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV21RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	input := structuralReferenceCodecFixture()
 	blob, err := input.MarshalBinary()
 	if err != nil {
@@ -34,8 +38,12 @@ func TestCompiledCodecV23RoundTripsStructuralReferenceMetadata(t *testing.T) {
 		t.Fatalf("UnmarshalBinary structural reference metadata: %v", err)
 	}
 
-	if !reflect.DeepEqual(got.importFuncSigs, input.importFuncSigs) || !reflect.DeepEqual(got.Funcs, input.Funcs) {
+	if len(got.importFuncSigs) != len(input.importFuncSigs) || len(got.Funcs) != len(input.Funcs) || !reflect.DeepEqual(got.Funcs[0].Params, input.Funcs[0].Params) || !reflect.DeepEqual(got.Funcs[0].Results, input.Funcs[0].Results) {
 		t.Fatalf("reference signatures changed: imports=%#v funcs=%#v", got.importFuncSigs, got.Funcs)
+	}
+	params, results, err := got.SignatureDescriptor("refs")
+	if err != nil || len(params) != 2 || len(results) != 2 || params[0].Ref.Heap.Abstract != AbstractHeapFunc || params[1].Ref.Heap.Abstract != AbstractHeapExtern {
+		t.Fatalf("exact reference signatures = %v -> %v, %v", params, results, err)
 	}
 	if !reflect.DeepEqual(got.GlobalImports, input.GlobalImports) || !reflect.DeepEqual(got.Globals, input.Globals) || !reflect.DeepEqual(got.GlobalExports, input.GlobalExports) {
 		t.Fatalf("reference globals changed: imports=%#v globals=%#v exports=%#v", got.GlobalImports, got.Globals, got.GlobalExports)
@@ -51,7 +59,7 @@ func TestCompiledCodecV23RoundTripsStructuralReferenceMetadata(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV23ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
+func TestCompiledCodecV21ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	reused := structuralReferenceCodecFixture()
 	reused.dynamicImports = true
 	reused.tableExports = map[string]int{"stale": 99}
@@ -69,7 +77,7 @@ func TestCompiledCodecV23ClearsReusedReceiverAndOmitsLiveState(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV23RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
+func TestCompiledCodecV21RejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		mut  func(*Compiled)
@@ -106,7 +114,7 @@ func TestCompiledCodecV23RejectsLiveAndMalformedReferenceMetadata(t *testing.T) 
 	}
 }
 
-func TestCompiledCodecV23RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
+func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	fixture := structuralReferenceCodecFixture()
 	loaded := roundTripCompiled(t, fixture)
 	want := CoreFeatureMutableGlobal | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
@@ -121,20 +129,43 @@ func TestCompiledCodecV23RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 	if err != nil {
 		t.Fatalf("marshal feature fixture: %v", err)
 	}
-	// The fixture has an empty memory-import string and GC descriptor list, so
-	// the required-feature byte is the penultimate byte before the zero GC count.
-	if got := CoreFeatures(blob[len(blob)-2]); got != want || blob[len(blob)-1] != 0 {
-		t.Fatalf("feature-byte fixture layout changed: tail=%x want features %s then zero GC count", blob[len(blob)-2:], want)
-	}
-	blob[len(blob)-2] = 0
+	// The fixture has an empty GC descriptor list and no frame-root map, so the
+	// required-feature uint64 immediately precedes the zero GC count.
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], 0)
 	var decoded Compiled
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
 		t.Fatalf("missing feature bits error = %v, want fail-closed rejection", err)
 	}
 
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal unknown-feature fixture: %v", err)
+	}
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], uint64(CoreFeatureTailCall))
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
+	}
+
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal forged dynamic-ref.test fixture: %v", err)
+	}
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionDynamicFuncRefTest)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires typed function descriptor metadata") {
+		t.Fatalf("forged dynamic ref.test execution error = %v, want fail-closed rejection", err)
+	}
+
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal forged generic-GC fixture: %v", err)
+	}
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionGenericArray)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "require recorded GC heap metadata") {
+		t.Fatalf("forged generic GC execution error = %v, want fail-closed rejection", err)
+	}
 }
 
-func TestCompiledCodecV23CompileRecordsUsedFeatureFamilies(t *testing.T) {
+func TestCompiledCodecV21CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte
@@ -160,7 +191,7 @@ func TestCompiledCodecV23CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV23LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
+func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte
@@ -216,7 +247,7 @@ func TestCompiledCodecV23LoadedReferenceExecutionAndSnapshotBoundary(t *testing.
 				t.Fatalf("Load: %v", err)
 			}
 			defer loaded.Close()
-			if _, err := Capture(loaded, SnapshotOptions{}); err == nil || (!strings.Contains(err.Error(), "tables") && !strings.Contains(err.Error(), "reference global metadata")) {
+			if _, err := Capture(loaded, SnapshotOptions{}); err == nil || (!strings.Contains(err.Error(), "tables") && !strings.Contains(err.Error(), "reference global metadata") && !strings.Contains(err.Error(), "typed function references")) {
 				t.Fatalf("Capture loaded reference module = %v, want live-state rejection", err)
 			}
 			in, err := Instantiate(loaded)
@@ -234,7 +265,7 @@ func structuralReferenceCodecFixture() *Compiled {
 		Code:       []byte{0xc3},
 		Entry:      []int{0},
 		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
-		FuncTypeID: []uint32{7},
+		FuncTypeID: []uint64{7},
 		Exports:    map[string]int{"refs": 0},
 
 		GlobalImports: []GlobalImportDef{{Module: "env", Name: "external", Type: ValExternRef}},

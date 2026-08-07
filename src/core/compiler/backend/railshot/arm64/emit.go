@@ -25,7 +25,7 @@ type aluEnc struct {
 	comm bool
 }
 
-var aluTable = map[wOp]aluEnc{
+var aluTable = [...]aluEnc{
 	opAdd: {opAdd, true},
 	opSub: {opSub, false},
 	opAnd: {opAnd, true},
@@ -40,6 +40,8 @@ var aluTable = map[wOp]aluEnc{
 func (f *fn) condense(node *elem, dest Reg) Reg {
 	f.stats.addCondense()
 	switch {
+	case node.op == opMulHighU:
+		return f.condenseMulHighU(node, dest)
 	case isBinALU(node.op):
 		return f.condenseBinary(node, dest)
 	case isShift(node.op):
@@ -54,6 +56,39 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		return f.condenseDivRem(node, dest)
 	}
 	panic("arm64: unsupported deferred op")
+}
+
+// condenseMulHighU lowers the curated xjb-as multiply-high idiom to AArch64's
+// single unsigned high-half multiply instruction.
+func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
+	left, right := node.arg0, node.arg1
+	l, ownL := f.materializeRead(left)
+	f.pinned = f.pinned.add(l)
+	r, ownR := f.materializeRead(right)
+	f.pinned = f.pinned.remove(l)
+
+	result := dest
+	if result == regNone {
+		switch {
+		case ownL:
+			result = l
+		case ownR:
+			result = r
+		default:
+			result = f.allocReg(maskOf(l, r))
+		}
+	}
+	f.a.Umulh(result, l, r)
+	if ownL && result != l {
+		f.release(l)
+	}
+	if ownR && result != r {
+		f.release(r)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	node.op = opNone
+	return result
 }
 
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
@@ -175,8 +210,8 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	//   local.set $a (i32.add (local.get $b) (local.get $c))
 	//
 	// becomes ADD Wa, Wb, Wc rather than MOV Wa,Wb; ADD Wa,Wa,Wc.  This is the
-	// small, lifetime-aware part of wazero's allocator that fits Railshot's
-	// direct compiler: the source stays borrowed until this one instruction and
+	// lifetime-aware optimization that fits Railshot's direct compiler: the
+	// source stays borrowed until this one instruction and
 	// the destination's local lifetime begins immediately afterwards.  Restrict
 	// it to concrete RHS values so we never change deferred evaluation order or
 	// register-pressure behavior.
@@ -792,6 +827,18 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	if node.typ.isFloat() { // deferred ordered float compare materialized as a value
 		return f.condenseFCompareValue(node, dest)
 	}
+	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+		result := dest
+		if result == regNone {
+			result = f.allocReg(0)
+		}
+		f.stats.peep("compare-setcc")
+		f.a.Cset32(result, cc)
+		f.occupy(node, result)
+		node.st.typ = mtI32
+		node.op = opNone
+		return result
+	}
 	w := node.typ.is64()
 	left := node.arg0
 
@@ -926,6 +973,53 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.Addv8b(vPop, vPop)        // horizontal sum of the byte lanes
 		f.a.FmovToGpr(result, vPop, false)
 		f.releaseF(vPop)
+	case opSWARWiden4:
+		// Reinterpret the low four bytes as lanes and zero-extend them to four
+		// halfwords. Only the low 64 result bits are transferred back.
+		v := f.allocFReg(0)
+		f.a.FmovFromGpr(v, src, true)
+		f.a.NeonUxtlHfromB(v, v)
+		f.a.FmovToGpr(result, v, true)
+		f.releaseF(v)
+	case opSWARPack4:
+		// XTN truncates four halfword lanes to their low bytes.
+		v := f.allocFReg(0)
+		f.a.FmovFromGpr(v, src, true)
+		f.a.NeonXtnBfromH(v, v)
+		f.a.FmovToGpr(result, v, w)
+		f.releaseF(v)
+	case opSWARParse4:
+		// MADD exposes the first multiply-plus-shift sum. After the mask,
+		// pairs = p0 | p1<<32 exactly, so the second 64-bit multiply and shift
+		// are equivalent to the 32-bit p0*100+p1 MADD. This remains exact for
+		// every i64 input; no decimal-digit range assumption is made.
+		hi := f.allocReg(maskOf(src, result))
+		f.a.LsrImm(hi, src, 16, false)
+		k := f.allocReg(maskOf(src, result, hi))
+		f.a.MovImm32(k, 10)
+		final := result
+		raw := final
+		if raw == regNone || raw == src && !srcOwned {
+			if srcOwned {
+				raw = src
+			} else {
+				raw = f.allocReg(maskOf(src, hi, k))
+			}
+		}
+		f.a.Madd64(raw, src, k, hi)
+		f.andImm(raw, int64(0x0000ffff0000ffff), true)
+		f.a.LsrImm(hi, raw, 32, false)
+		f.a.MovImm32(k, 100)
+		if final == regNone {
+			final = raw
+		}
+		f.a.Madd32(final, raw, k, hi)
+		if final != raw {
+			f.release(raw)
+		}
+		result = final
+		f.release(k)
+		f.release(hi)
 	}
 	if srcOwned && result != src {
 		f.release(src)

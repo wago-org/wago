@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/wasm2/int-to-float-splat/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "module", "line": 11, "filename": "commands.1.wasm"}]}

@@ -3,11 +3,38 @@ package wasm
 import (
 	"bytes"
 	"testing"
+	"unsafe"
 )
 
 // Select shares decode opcode 0x1b with the untyped form but must encode as
 // 0x1c + a result-type vector when typed. Guards against the fast simpleKindOpcode
-// map path swallowing InstrSelect and always emitting 0x1b.
+// table path swallowing InstrSelect and always emitting 0x1b.
+func TestEncodeOpcodeTablesStayCompactAndComplete(t *testing.T) {
+	if got, want := unsafe.Sizeof(simpleKindOpcode)+unsafe.Sizeof(memKindOpcode), uintptr(numInstrKinds*2); got != want {
+		t.Fatalf("reverse opcode storage = %d bytes, want %d", got, want)
+	}
+	for op, kind := range simpleOpcode {
+		got, ok := lookupSimpleOpcode(kind)
+		wantOK := kind != InstrInvalid && kind != InstrSelect
+		if ok != wantOK || wantOK && got != byte(op) {
+			t.Errorf("simple opcode %#x kind %s lookup = (%#x, %v), want (%#x, %v)", op, kind, got, ok, op, wantOK)
+		}
+	}
+	for op, kind := range memOpcodeKind {
+		got, ok := lookupMemOpcode(kind)
+		wantOK := kind != InstrInvalid
+		if ok != wantOK || wantOK && got != byte(op) {
+			t.Errorf("memory opcode %#x kind %s lookup = (%#x, %v), want (%#x, %v)", op, kind, got, ok, op, wantOK)
+		}
+	}
+	if _, ok := lookupSimpleOpcode(numInstrKinds); ok {
+		t.Fatal("out-of-range simple instruction kind has an opcode")
+	}
+	if _, ok := lookupMemOpcode(numInstrKinds); ok {
+		t.Fatal("out-of-range memory instruction kind has an opcode")
+	}
+}
+
 func TestEncodeExprSelect(t *testing.T) {
 	// Untyped select -> 0x1b, then the expr-terminating 0x0b.
 	got, err := EncodeExpr(Expr{Instrs: []Instruction{{Kind: InstrSelect}}})

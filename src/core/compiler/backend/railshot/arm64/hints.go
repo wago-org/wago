@@ -2,7 +2,10 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Function pre-scan (OPTIMIZATIONS.md "FuncHints"): one allocation-conscious
 // walk collects call/memory shape and loop-weighted hotness scores for register
@@ -46,6 +49,7 @@ type funcHints struct {
 	usesBulkMem    bool // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
 	mutatesTable   bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
 	hasControlFlow bool // control opcode relevant to inline splice framing
+	moduleEH       bool // module-wide: reserve the active exception-handler register
 
 	// immutableLocalTable is derived after the one-pass per-function scans have
 	// been aggregated. The table must also be private (an exported table can be
@@ -53,7 +57,7 @@ type funcHints struct {
 	// same-module function and can use the internal register ABI without a
 	// run-time home-tag fork.
 	immutableLocalTable bool
-	immutableTableType  uint32
+	immutableTableType  uint64
 	immutableTableTyped bool
 	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
 
@@ -68,6 +72,10 @@ type funcHints struct {
 	// lands only on the (sparse) calls outside that loop. The innermost enclosing
 	// loop decides — if it calls, no outer loop can be call-free.
 	globalElig []bool
+	// sparseGlobals replaces the dense score/eligibility slices for modules whose
+	// functions-by-globals matrix would exceed the bounded dense fast path.
+	sparseGlobals []shared.GlobalHint
+	globalAccum   *shared.GlobalHintAccumulator
 
 	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
 	// allocations while compiling this body. It lets compileFunc avoid reserving
@@ -96,6 +104,24 @@ func addHotness(scores []uint32, idx uint32, delta int64) {
 		scores[idx] = max
 	} else {
 		scores[idx] += uint32(delta)
+	}
+}
+
+func (h *funcHints) addGlobalHotness(idx uint32, delta int64) {
+	if h.globalAccum != nil {
+		h.globalAccum.Add(idx, delta)
+		return
+	}
+	addHotness(h.globalScore, idx, delta)
+}
+
+func (h *funcHints) markGlobalEligible(idx uint32) {
+	if h.globalAccum != nil {
+		h.globalAccum.MarkEligible(idx)
+		return
+	}
+	if int(idx) < len(h.globalElig) {
+		h.globalElig[idx] = true
 	}
 }
 
@@ -162,15 +188,15 @@ func (t *globalEligibilityTracker) pop(frame int) {
 
 // scanFuncBody chooses the byte-backed scanner used for decoded modules, falling
 // back to the AST scanner for tests or callers that construct Func.Body directly.
-func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
+func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, m *wasm.Module) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig)
+	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m)
 }
 
-func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesInto(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig)
+		return scanBodyBytesInto(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
@@ -220,9 +246,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 				if int(in.Index) < nGlobals {
 					if in.Kind == wasm.InstrGlobalSet {
-						addHotness(h.globalScore, in.Index, 2*w)
+						h.addGlobalHotness(in.Index, 2*w)
 					} else {
-						addHotness(h.globalScore, in.Index, w)
+						h.addGlobalHotness(in.Index, w)
 					}
 					elig.add(curLoop, in.Index)
 				}
@@ -232,7 +258,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true // call inside: its globals are not eligible
 				} else {
 					for _, g := range elig.globalsIn(loop) {
-						h.globalElig[g] = true
+						h.markGlobalEligible(g)
 					}
 				}
 				elig.pop(loop)
@@ -304,7 +330,7 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 
 func scanBodyBytesGlobalScores(body []byte, nGlobals int, add func(g uint32, score int64)) error {
 	r := wasm.ReaderFrom(body)
-	s := globalScoreByteScanner{r: byteScanReader{Reader: &r}, nGlobals: nGlobals, add: add}
+	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add}
 	term, err := s.scanExpr(0, 0, false)
 	if err != nil {
 		return err
@@ -339,7 +365,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 			}
 			return op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return 0, err
 			}
 			switch op {
@@ -389,7 +415,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 				s.add(idx, score)
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return 0, err
 			}
 			term, err := s.scanExpr(depth+1, loopDepth, false)
@@ -400,7 +426,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 				return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 		default:
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return 0, err
 			}
 		}
@@ -408,7 +434,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 }
 
 func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
-	return wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	return wasm.ClassifyInstructionImmediateInto(&s.r.Reader, op, imm)
 }
 
 // scanBodyBytes performs the same pre-scan over raw expression bytecode without
@@ -421,13 +447,13 @@ func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (func
 func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyBytesInto(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig)
+	return scanBodyBytesInto(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil)
 }
 
-func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
+func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: &r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
@@ -450,6 +476,7 @@ type byteBodyScanner struct {
 	localDeclBytes uint32
 	branchHints    []wasm.BranchHint
 	elig           *globalEligibilityTracker
+	m              *wasm.Module
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
@@ -463,7 +490,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, 0, err
 		}
 		switch op {
-		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f, 0x1f:
 			s.h.hasControlFlow = true
 			if op == 0x03 {
 				s.h.hasLoop = true
@@ -482,7 +509,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		case 0x02, 0x03, 0x04: // block, loop, if
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
 			switch op {
@@ -509,7 +536,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					subHasCall = true
 				} else {
 					for _, g := range s.elig.globalsIn(loop) {
-						s.h.globalElig[g] = true
+						s.h.markGlobalEligible(g)
 					}
 				}
 				s.elig.pop(loop)
@@ -582,9 +609,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					addHotness(s.h.globalScore, idx, 2*pathWeight*loopWeight(loopDepth))
+					s.h.addGlobalHotness(idx, 2*pathWeight*loopWeight(loopDepth))
 				} else {
-					addHotness(s.h.globalScore, idx, pathWeight*loopWeight(loopDepth))
+					s.h.addGlobalHotness(idx, pathWeight*loopWeight(loopDepth))
 				}
 				s.elig.add(curLoop, idx)
 			}
@@ -595,6 +622,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0xfb {
+				// Collector-backed GC instructions may enter the synchronous Go
+				// helper bridge. Preserve LR and use call-safe local state for the
+				// whole family; direct-only subopcodes pay only the frame-record cost.
+				s.h.hasCall, subHasCall = true, true
+			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 				s.h.memOps++
@@ -603,8 +636,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
+			s.h.moduleEH = true
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
-			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
+			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
 			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false, pathWeight)
@@ -615,6 +649,14 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 			subHasCall = subHasCall || calls
+		case 0x08, 0x0a: // throw, throw_ref
+			s.h.moduleEH = true
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
+			if err != nil {
+				return true, 0, err
+			}
+			s.noteStackArenaOp(op, &imm)
 		default:
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -646,7 +688,55 @@ func (s *byteBodyScanner) branchHintAt(offset uint32) (bool, bool) {
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
-	err := wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	if op >= 0x28 && op <= 0x3e {
+		align, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		memoryIndex := uint32(0)
+		if align >= 64 && align < 128 {
+			memoryIndex, err = s.r.U32()
+			if err != nil {
+				return err
+			}
+			imm.HasMemIndex, imm.MemIndex = true, memoryIndex
+		}
+		memory64 := false
+		if s.m != nil {
+			if mt, ok := s.m.MemoryType(memoryIndex); ok {
+				memory64 = mt.Limits.Addr64
+			}
+		}
+		if memory64 {
+			_, err = s.r.U64()
+		} else {
+			_, err = s.r.U32()
+		}
+		imm.TouchesMemory = true
+		return err
+	}
+	if op == 0x3f || op == 0x40 {
+		index, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		imm.Index = index
+		imm.TouchesMemory = true
+		if op == 0x3f {
+			imm.Kind = wasm.InstrMemorySize
+		} else {
+			imm.Kind = wasm.InstrMemoryGrow
+		}
+		return nil
+	}
+	start := s.r.Offset()
+	err := wasm.ClassifyInstructionImmediateInto(&s.r.Reader, op, imm)
+	if err != nil {
+		// SIMD memory immediates may carry u64 offsets. Validation has already
+		// established their shape, so a width retry is safe for this hint-only walk.
+		s.r.JumpTo(start)
+		err = wasm.ClassifyInstructionImmediateIntoWithMemarg64(&s.r.Reader, op, imm, true)
+	}
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true
 	}
@@ -704,7 +794,7 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 	}
 }
 
-type byteScanReader struct{ *wasm.Reader }
+type byteScanReader struct{ wasm.Reader }
 
 func (r *byteScanReader) has() bool { return r.HasNext() }
 func (r *byteScanReader) off() int  { return r.Offset() }

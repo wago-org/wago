@@ -1,0 +1,132 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 7,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "any",
+          "type": "ref",
+          "value": "null"
+        }
+      ],
+      "line": 28,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "42"
+          }
+        ],
+        "field": "set",
+        "type": "invoke"
+      },
+      "line": 29,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "i31",
+          "type": "ref"
+        }
+      ],
+      "line": 30,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 33,
+      "type": "module"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "i31",
+          "type": "ref"
+        }
+      ],
+      "line": 54,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "42"
+          }
+        ],
+        "field": "set",
+        "type": "invoke"
+      },
+      "line": 55,
+      "type": "action"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ],
+        "field": "get",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "i31",
+          "type": "ref"
+        }
+      ],
+      "line": 56,
+      "type": "assert_return"
+    }
+  ],
+  "source": "wasm-tools 1.251.0 json-from-wast"
+}

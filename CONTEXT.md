@@ -1,0 +1,45 @@
+# Wago
+
+Wago provides a managed WebAssembly toolchain whose command, installed runtimes, projects, and plugins behave as one cohesive system.
+
+## Language
+
+**Wago Project**:
+A directory whose `wago.json` records plugin intent and other project-owned Wago configuration.
+_Avoid_: Local instance, project config
+
+**Plugin Intent**:
+The plugin constraints recorded in wago.json and the resolved versions, capabilities, and configuration recorded in wago-lock.json for a Wago Project or the shared user scope.
+_Avoid_: Plugin state, dependency list
+
+**Runtime Installation**:
+One installed Wago engine identified by release, profile, and build.
+_Avoid_: Version binary, runner
+
+**Active Runtime**:
+The Runtime Installation selected to execute runtime commands.
+_Avoid_: Current version, active binary
+
+**Runtime Handoff**:
+The invocation and metadata transferred from the Wago manager to an Active Runtime.
+_Avoid_: Dispatch environment, runner launch
+
+**Optimization Definition**:
+The stable name, description, maturity, default, and supported architectures of one configurable compiler optimization.
+_Avoid_: Knob metadata, optimization flag
+
+**Optimization Binding**:
+The architecture-specific code-generation control associated with an Optimization Definition.
+_Avoid_: Backend knob, boolean pointer
+
+**Optimization Selection**:
+The immutable set of enabled and disabled Optimization Definitions used for one runtime compilation configuration.
+_Avoid_: Global knobs, optimization state
+
+**Runtime Compilation Configuration**:
+The immutable Core feature set, function-worker policy, bounds-checking policy, and Optimization Selection used for one compilation.
+_Avoid_: Compiler settings, run flags
+
+**Reference Lifetime**:
+The period from acquiring a reference owner through logical close, invocation quiescence, and the final release of the owner's physical resources.
+_Avoid_: Token lifetime, instance cleanup

@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux || darwin || windows) && (amd64 || arm64)
 
 package runtime
 
@@ -19,13 +19,14 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 	}{
 		{"linMemWasmSize", offLinMemWasmSize, 4},
 		{"actualLinMemByteSize", offActualLinMemByteSize, 8},
+		{"actualLinMemByteSize64", offActualLinMemByteSize64, abi.ActualLinMemByteSize64Offset},
 		{"trapHandlerPtr", offTrapHandlerPtr, 16},
 		{"trapStackReentry", offTrapStackReentry, 24},
 		{"runtimePtr", offRuntimePtr, 32},
 		{"customCtx", offCustomCtx, 40},
 		{"spillRegion", offSpillRegion, 48},
 		{"jobMemoryDataPtrPtr", offJobMemoryDataPtrPtr, 56},
-		{"memoryHelperPtr", offMemoryHelperPtr, 64},
+		{"memoryDirPtr", offMemoryDirPtr, abi.MemoryDirPtrOffset},
 		{"stackFence", offStackFence, 72},
 		{"tablePtr", offTablePtr, 80},
 		{"funcRefDescPtr", offFuncRefDescPtr, abi.FuncRefDescPtrOffset},
@@ -33,6 +34,7 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"passiveElemPtr", offPassiveElemPtr, abi.PassiveElemPtrOffset},
 		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 		{"passiveDataPtr", offPassiveDataPtr, abi.PassiveDataPtrOffset},
+		{"importDispatchPtr", offImportDispatchPtr, abi.ImportDispatchPtrOffset},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
@@ -42,8 +44,11 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 	if basedataSize%16 != 0 {
 		t.Errorf("basedataSize %d is not 16-byte aligned (would misalign linMem)", basedataSize)
 	}
-	if basedataSize < offPassiveDataPtr {
-		t.Errorf("basedataSize %d too small for deepest field at -%d", basedataSize, offPassiveDataPtr)
+	if basedataSize < offTailArgs {
+		t.Errorf("basedataSize %d too small for wrapper-tail scratch ending at -%d", basedataSize, offTailArgs)
+	}
+	if got := offTailArgs - (offImportDispatchPtr + 8); got != abi.TailArgsSlots*8 {
+		t.Errorf("wrapper-tail scratch bytes = %d, want %d", got, abi.TailArgsSlots*8)
 	}
 }
 
@@ -65,17 +70,20 @@ func TestJobMemoryMetadataPointers(t *testing.T) {
 	}
 }
 
-// TestJobMemoryMemSizeCache verifies the memSize cache field is populated so a
-// real WARP prologue (memSize = [linMem-8]-8) would read the right value.
+// TestJobMemoryMemSizeCache verifies both the compatibility u32 cache and the
+// authoritative u64 cache used by native bounds checks.
 func TestJobMemoryMemSizeCache(t *testing.T) {
 	jm, err := NewJobMemory(linMemBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer jm.Close()
-	// actualLinMemByteSize lives at [linMem-8]; read it back through the region.
-	got := jm.mem[jm.linOff-offActualLinMemByteSize]
-	_ = got
+	if got := jm.getU32(offActualLinMemByteSize); got != linMemBytes {
+		t.Fatalf("legacy byte-size cache = %d, want %d", got, linMemBytes)
+	}
+	if got := jm.getU64(offActualLinMemByteSize64); got != linMemBytes {
+		t.Fatalf("u64 byte-size cache = %d, want %d", got, linMemBytes)
+	}
 	if jm.LinMemBase() == 0 {
 		t.Fatal("nil linMem base")
 	}
@@ -167,6 +175,7 @@ func TestAcquireJobMemoryGrowableReuseZeroesGrownPages(t *testing.T) {
 	// initial size to catch a reclaim that only zeroes [0,initial).
 	grownBytes := maxBytes
 	jm.putU32(offActualLinMemByteSize, uint32(grownBytes))
+	jm.putU64(offActualLinMemByteSize64, uint64(grownBytes))
 	full := jm.mem[jm.linOff : jm.linOff+grownBytes]
 	full[grownBytes-1] = 0xff
 	full[linMemBytes+8] = 0xff

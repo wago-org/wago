@@ -8,6 +8,25 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func FuzzLoadDomainSnapshot(f *testing.F) {
+	f.Add([]byte(""))
+	f.Add([]byte(domainSnapshotMagic))
+	f.Add(append([]byte(domainSnapshotMagic), domainSnapshotVersion))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		snapshot, err := LoadDomainSnapshot(data)
+		if err != nil {
+			return
+		}
+		encoded, err := snapshot.MarshalBinary()
+		if err != nil {
+			t.Fatalf("accepted domain snapshot failed to re-encode: %v", err)
+		}
+		if !IsDomainSnapshot(encoded) {
+			t.Fatal("re-encoded domain snapshot lost its wire header")
+		}
+	})
+}
+
 func FuzzCompiledCodecGeneratedValidModules(f *testing.F) {
 	for _, seed := range [][]byte{
 		nil,
@@ -127,7 +146,7 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 		importFuncSigs: make([]FuncSig, importCount),
 		Funcs:          make([]FuncSig, localFuncCount),
 		Entry:          make([]int, localFuncCount),
-		FuncTypeID:     make([]uint32, totalFuncs),
+		FuncTypeID:     make([]uint64, totalFuncs),
 		Exports:        map[string]int{},
 		GlobalExports:  map[string]int{},
 	}
@@ -135,7 +154,7 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 		c.Imports[i] = r.smallString("imp")
 	}
 	for i := range c.FuncTypeID {
-		c.FuncTypeID[i] = uint32(r.n(4))
+		c.FuncTypeID[i] = uint64(r.next()) | uint64(r.next())<<8 | uint64(r.next())<<16 | uint64(r.next())<<24 | uint64(r.next())<<32
 	}
 	if localFuncCount > 0 {
 		c.Code = make([]byte, localFuncCount+r.n(4))
@@ -259,7 +278,7 @@ func generatedValidGCTypeDescs(t testing.TB, r *compiledFuzzBytes, count int) []
 				fields = []gc.StorageKind{}
 			}
 			if r.n(2) == 1 {
-				fields = append(fields, []gc.StorageKind{gc.StorageI32, gc.StorageRefNull, gc.StorageI64}[r.n(3)])
+				fields = append(fields, []gc.StorageKind{gc.StorageI32, gc.StorageRefNull, gc.StorageI64, gc.StorageV128}[r.n(4)])
 			}
 			d, err := gc.NewStructDesc(id, fields)
 			if err != nil {
@@ -267,7 +286,7 @@ func generatedValidGCTypeDescs(t testing.TB, r *compiledFuzzBytes, count int) []
 			}
 			descs = append(descs, d)
 		case 2:
-			d, err := gc.NewArrayDesc(id, []gc.StorageKind{gc.StorageI8, gc.StorageI32, gc.StorageRefNull}[r.n(3)])
+			d, err := gc.NewArrayDesc(id, []gc.StorageKind{gc.StorageI8, gc.StorageI32, gc.StorageRefNull, gc.StorageV128}[r.n(4)])
 			if err != nil {
 				t.Fatalf("array desc: %v", err)
 			}
@@ -312,7 +331,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 				Results: []ValType{ValF64},
 			}},
 			Exports:    map[string]int{"run": 1},
-			FuncTypeID: []uint32{0, 1},
+			FuncTypeID: []uint64{10, 11},
 
 			GlobalImports: []GlobalImportDef{{Module: "env", Name: "base", Type: ValI32}},
 			Globals: []GlobalDef{

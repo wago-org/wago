@@ -1,0 +1,8 @@
+{"source_filename": "testdata/wasmtime/wasm2/stack_overflow/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_exhaustion", "line": 10, "action": {"type": "invoke", "field": "stack_overflow", "args": []}, "text": "call stack exhausted", "expected": []}, 
+  {"type": "assert_exhaustion", "line": 11, "action": {"type": "invoke", "field": "stack_overflow", "args": []}, "text": "call stack exhausted", "expected": []}, 
+  {"type": "module", "line": 13, "filename": "commands.1.wasm"}, 
+  {"type": "assert_exhaustion", "line": 25, "action": {"type": "invoke", "field": "stack_overflow", "args": []}, "text": "call stack exhausted", "expected": []}, 
+  {"type": "assert_exhaustion", "line": 26, "action": {"type": "invoke", "field": "stack_overflow", "args": []}, "text": "call stack exhausted", "expected": []}]}

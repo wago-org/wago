@@ -1,0 +1,7 @@
+{"source_filename": "testdata/wasmtime/wasm2/winch/replace_lane/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 29, "action": {"type": "invoke", "field": "f32x4_lane0", "args": []}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["1065353216", "1077936128", "1082130432", "1084227584"]}]}, 
+  {"type": "assert_return", "line": 30, "action": {"type": "invoke", "field": "f32x4_lane1", "args": []}, "expected": [{"type": "v128", "lane_type": "f32", "value": ["1073741824", "1065353216", "1082130432", "1084227584"]}]}, 
+  {"type": "assert_return", "line": 31, "action": {"type": "invoke", "field": "f64x2_lane0", "args": []}, "expected": [{"type": "v128", "lane_type": "f64", "value": ["4607182418800017408", "4613937818241073152"]}]}, 
+  {"type": "assert_return", "line": 32, "action": {"type": "invoke", "field": "f64x2_lane1", "args": []}, "expected": [{"type": "v128", "lane_type": "f64", "value": ["4611686018427387904", "4607182418800017408"]}]}]}

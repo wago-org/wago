@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSnapshotProductsRejectCodecV23ReferenceState(t *testing.T) {
+func TestSnapshotProductsRejectReferenceState(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	for _, tc := range []struct {
 		name string
@@ -29,7 +29,7 @@ func TestSnapshotProductsRejectCodecV23ReferenceState(t *testing.T) {
 
 			blob := rawSnapshotBlobForCompiled(t, c)
 			if _, err := LoadSnapshot(blob); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("LoadSnapshot(codec-v23 %s module) = %v, want %q rejection", tc.name, err, tc.want)
+				t.Fatalf("LoadSnapshot(%s module) = %v, want %q rejection", tc.name, err, tc.want)
 			}
 		})
 	}
@@ -45,11 +45,10 @@ func rawSnapshotBlobForCompiled(t *testing.T, c *Compiled) []byte {
 		t.Fatalf("MarshalBinary compiled snapshot fixture: %v", err)
 	}
 	out := append([]byte{}, snapshotMagic...)
-	out = append(out, snapshotVersion, byte(SnapshotInit))
+	out = append(out, 3, byte(SnapshotInit))
 	out = binary.AppendUvarint(out, uint64(len(compiled)))
 	out = append(out, compiled...)
-	out = binary.AppendUvarint(out, 0) // memory pages
-	out = binary.AppendUvarint(out, 0) // stored memory bytes
+	out = binary.AppendUvarint(out, 0) // memory count
 	out = binary.AppendUvarint(out, 0) // globals
 	out = binary.AppendUvarint(out, 0) // passive data lengths
 	return out
@@ -229,7 +228,37 @@ func metadataField(t *testing.T, v reflect.Value, name string) reflect.Value {
 
 func metadataIntField(t *testing.T, v reflect.Value, name string) int {
 	t.Helper()
-	return int(metadataField(t, v, name).Int())
+	field := metadataField(t, v, name)
+	switch field.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value := field.Int()
+		if int64(int(value)) != value {
+			t.Fatalf("%s.%s value %d does not fit int", v.Type(), name, value)
+		}
+		return int(value)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		value := field.Uint()
+		if uint64(int(value)) != value {
+			t.Fatalf("%s.%s value %d does not fit int", v.Type(), name, value)
+		}
+		return int(value)
+	default:
+		t.Fatalf("%s.%s has non-integer kind %s", v.Type(), name, field.Kind())
+		return 0
+	}
+}
+
+func TestMetadataIntFieldHandlesSignedAndUnsignedFields(t *testing.T) {
+	value := reflect.ValueOf(struct {
+		Signed   int64
+		Unsigned uint64
+	}{Signed: -7, Unsigned: 11})
+	if got := metadataIntField(t, value, "Signed"); got != -7 {
+		t.Fatalf("signed metadata field = %d, want -7", got)
+	}
+	if got := metadataIntField(t, value, "Unsigned"); got != 11 {
+		t.Fatalf("unsigned metadata field = %d, want 11", got)
+	}
 }
 
 func metadataBoolField(t *testing.T, v reflect.Value, name string) bool {
@@ -378,10 +407,13 @@ func TestWebAssembly2FeatureReportingCloseout(t *testing.T) {
 	if !hostSupportsSIMD() {
 		want &^= CoreFeatureSIMD
 	}
-	if got := SupportedFeatures(); got != want {
-		t.Fatalf("SupportedFeatures = %s, want admitted WebAssembly 2.0 set %s", got, want)
+	if got := SupportedFeatures(); got&want != want {
+		t.Fatalf("SupportedFeatures = %s, want at least admitted WebAssembly 2.0 set %s", got, want)
 	}
-	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) || SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
-		t.Fatal("WebAssembly 2.0 reporting unexpectedly includes the post-release tail-call proposal")
+	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) {
+		t.Fatal("WebAssembly 2.0 release scope unexpectedly includes tail calls")
+	}
+	if !SupportedFeatures().IsEnabled(CoreFeatureTailCall) || !CoreFeaturesV3.IsEnabled(CoreFeatureTailCall) {
+		t.Fatal("WebAssembly 3.0 support must independently advertise tail calls")
 	}
 }

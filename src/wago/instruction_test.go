@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/codegen"
+	amd64codegen "github.com/wago-org/wago/codegen/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 type instructionTestExt struct {
@@ -33,7 +35,7 @@ type instructionMachineExt struct {
 	name          string
 	input         []int32
 	output        []int32
-	lowering      *AMD64InstructionLowering
+	lowering      codegen.Lowering
 	portableCalls *int
 }
 
@@ -44,7 +46,7 @@ func (instructionMachineExt) Info() ExtensionInfo {
 func (e instructionMachineExt) Register(r *Registry) error {
 	r.Capability(CapCompilerCodegen)
 	return r.Compiler().Instruction(InstructionSpec{
-		Module: "wago:instr/machine", Name: e.name, Input: e.input, Output: e.output, AMD64: e.lowering,
+		Module: "wago:instr/machine", Name: e.name, Input: e.input, Output: e.output, Codegen: e.lowering,
 		Handler: func(_ InstructionContext, args []Bits) ([]Bits, error) {
 			if e.portableCalls != nil {
 				*e.portableCalls++
@@ -336,7 +338,7 @@ func TestCustomInstructionPluginMachineCode(t *testing.T) {
 	t.Run("managed", func(t *testing.T) {
 		calls := 0
 		ext := instructionMachineExt{name: "i4.identity", input: []int32{4}, output: []int32{4}, portableCalls: &calls}
-		ext.lowering = &AMD64InstructionLowering{Compatibility: AMD64CompatibilityManaged, Managed: func(ctx AMD64ManagedLoweringContext) error {
+		ext.lowering = &amd64codegen.Lowering{Compatibility: amd64codegen.CompatibilityManaged, Managed: func(ctx amd64codegen.ManagedContext) error {
 			value, err := ctx.InputI32(0)
 			if err != nil {
 				return err
@@ -360,7 +362,7 @@ func TestCustomInstructionPluginMachineCode(t *testing.T) {
 	t.Run("encoder", func(t *testing.T) {
 		calls := 0
 		ext := instructionMachineExt{name: "i4.add", input: []int32{4, 4}, output: []int32{4}, portableCalls: &calls}
-		ext.lowering = &AMD64InstructionLowering{Compatibility: AMD64CompatibilityFullAccess, Emit: func(ctx AMD64LoweringContext) error {
+		ext.lowering = &amd64codegen.Lowering{Compatibility: amd64codegen.CompatibilityFullAccess, Emit: func(ctx amd64codegen.Context) error {
 			a, err := ctx.InputI32(0)
 			if err != nil {
 				return err
@@ -390,7 +392,7 @@ func TestCustomInstructionPluginMachineCode(t *testing.T) {
 	t.Run("arbitrary-bytes", func(t *testing.T) {
 		calls := 0
 		ext := instructionMachineExt{name: "raw.constant", output: []int32{32}, portableCalls: &calls}
-		ext.lowering = &AMD64InstructionLowering{Compatibility: AMD64CompatibilityFullAccess, Emit: func(ctx AMD64LoweringContext) error {
+		ext.lowering = &amd64codegen.Lowering{Compatibility: amd64codegen.CompatibilityFullAccess, Emit: func(ctx amd64codegen.Context) error {
 			const rax = 0
 			if err := ctx.ReserveGP(rax); err != nil {
 				return err
@@ -415,7 +417,7 @@ func TestCustomInstructionPluginMachineCode(t *testing.T) {
 
 	t.Run("feature-declaration", func(t *testing.T) {
 		ext := instructionMachineExt{name: "avx2.marker", output: []int32{32}}
-		ext.lowering = &AMD64InstructionLowering{Compatibility: AMD64CompatibilityFullAccess, Features: AMD64FeatureAVX2, Emit: func(ctx AMD64LoweringContext) error {
+		ext.lowering = &amd64codegen.Lowering{Compatibility: amd64codegen.CompatibilityFullAccess, Features: amd64codegen.FeatureAVX2, Emit: func(ctx amd64codegen.Context) error {
 			r := ctx.AllocGP()
 			ctx.Encoder().MovImm32(r, 1)
 			return ctx.OutputI32(r)
@@ -429,7 +431,7 @@ func TestCustomInstructionPluginMachineCode(t *testing.T) {
 
 	t.Run("mode-validation", func(t *testing.T) {
 		ext := instructionMachineExt{name: "bad.mode", output: []int32{32}}
-		ext.lowering = &AMD64InstructionLowering{Compatibility: AMD64CompatibilityManaged, Emit: func(AMD64LoweringContext) error { return nil }}
+		ext.lowering = &amd64codegen.Lowering{Compatibility: amd64codegen.CompatibilityManaged, Emit: func(amd64codegen.Context) error { return nil }}
 		rt := NewRuntime()
 		if err := rt.Use(ext); err == nil || !strings.Contains(err.Error(), "requires Managed and forbids Emit") {
 			t.Fatalf("mode validation error=%v", err)

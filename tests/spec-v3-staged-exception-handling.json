@@ -1,0 +1,110 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "files": [
+    {
+      "name": "exceptions/tag",
+      "status": "accounted",
+      "counts": {
+        "commands": 16,
+        "modules_passed": 4,
+        "assertions_passed": 0,
+        "expected_invalid": 2,
+        "expected_unlinkable": 2,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "exceptions/throw",
+      "status": "accounted",
+      "counts": {
+        "commands": 13,
+        "modules_passed": 1,
+        "assertions_passed": 9,
+        "expected_invalid": 3,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "exceptions/throw_ref",
+      "status": "accounted",
+      "counts": {
+        "commands": 15,
+        "modules_passed": 1,
+        "assertions_passed": 12,
+        "expected_invalid": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "exceptions/try_table",
+      "status": "accounted",
+      "source_only_malformed": [
+        339,
+        344
+      ],
+      "counts": {
+        "commands": 67,
+        "modules_passed": 5,
+        "assertions_passed": 45,
+        "expected_invalid": 9,
+        "expected_malformed": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "ref_null",
+      "status": "accounted",
+      "counts": {
+        "commands": 36,
+        "modules_passed": 2,
+        "assertions_passed": 32,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    }
+  ],
+  "totals": {
+    "commands": 147,
+    "modules_passed": 13,
+    "assertions_passed": 98,
+    "expected_invalid": 16,
+    "expected_malformed": 2,
+    "expected_unlinkable": 2,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 0,
+    "blocked_commands": 0,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}

@@ -6,7 +6,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // HostModule gives a synchronous host import access to the instance that called
@@ -29,6 +31,14 @@ type ExternRefHostModule interface {
 	// ExternRefValue resolves a token from the calling instance's compatible
 	// store. Forged, stale, and incompatible-store tokens return false.
 	ExternRefValue(ExternRef) (any, bool)
+}
+
+// GCHostModule is the optional exact-collection surface implemented by HostModule
+// values from collector-backed instances. It is primarily useful for embedders
+// that provide an explicit guest-visible collection hook.
+type GCHostModule interface {
+	HostModule
+	CollectGC() error
 }
 
 // HostFunc is a host import in reflection-free slot (stack) form: it reads its
@@ -86,10 +96,17 @@ type hostCallWaiter struct {
 }
 
 type instancePluginState struct {
-	hostScope hostCallScope
-	close     atomic.Pointer[instanceCloseState]
-	gcConfig  *GCConfig
-	origin    InstantiateOrigin
+	hostScope         hostCallScope
+	close             atomic.Pointer[instanceCloseState]
+	gcConfig          *GCConfig
+	origin            InstantiateOrigin
+	gcPublic          atomic.Pointer[gcPublicState]
+	gcArrayElements   atomic.Pointer[gcArrayElementState]
+	gcRefTestTable    atomic.Pointer[gcRefTestTableState]
+	gcGlobalRoots     [3]gcGlobalRootMapping
+	gcGlobalRootCount uint8
+	tagIdentityBase   uintptr      // arena-owned bounded native u64 directory for staged EH
+	tagExports        map[int]*Tag // lazy stable identity handles for exported local tags
 }
 
 type instanceCloseState struct {
@@ -145,7 +162,8 @@ func (in *Instance) beginHostCallScope() instanceHostModule {
 
 type staticHostModule struct{ in *Instance }
 
-func (h staticHostModule) Memory() []byte { return h.in.mem() }
+func (h staticHostModule) Memory() []byte   { return h.in.mem() }
+func (h staticHostModule) CollectGC() error { return h.in.CollectGC() }
 func (h staticHostModule) NewExternRef(value any) (ExternRef, error) {
 	return h.in.NewExternRef(value)
 }
@@ -168,12 +186,38 @@ type HostFuncRef struct {
 	importers     int
 	tokenLive     bool
 	closed        bool
+	gc            *hostFuncRefGCState // nil for the common non-GC host owner
+}
+
+type hostFuncRefGCState struct {
+	collector *gc.Collector
+	domainID  uint64
+	params    []ValueTypeDescriptor
+	results   []ValueTypeDescriptor
+	types     []DefinedTypeDescriptor
 }
 
 // NewHostFuncRef creates an explicitly owned host function with one exact Wasm
 // signature. The returned handle is suitable as an Imports value for matching
 // function imports and must be closed after every importing instance.
 func (rt *Runtime) NewHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error) {
+	return rt.newHostFuncRef(fn, sig, false)
+}
+
+// NewGCHostFuncRef creates a Runtime-owned host function that may transfer
+// collector references through its declared signature. GC-reference argument
+// slots are presented to fn as temporary opaque GCRef tokens, and result slots
+// accept null, immediate i31 values, or a live GCRef token from the exact bound
+// collector domain. The first importer binds the owner to one canonical Runtime
+// collector domain; incompatible or foreign-domain importers fail closed.
+func (rt *Runtime) NewGCHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error) {
+	if !funcSigHasGCRefs(sig) {
+		return nil, fmt.Errorf("wago: GC host function signature has no collector references")
+	}
+	return rt.newHostFuncRef(fn, sig, true)
+}
+
+func (rt *Runtime) newHostFuncRef(fn HostFunc, sig FuncSig, gcCapable bool) (*HostFuncRef, error) {
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
@@ -195,9 +239,14 @@ func (rt *Runtime) NewHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error
 		fn:    fn,
 		store: rt.refStore,
 		sig: FuncSig{
-			Params:  append([]ValType(nil), sig.Params...),
-			Results: append([]ValType(nil), sig.Results...),
+			Params:       append([]ValType(nil), sig.Params...),
+			Results:      append([]ValType(nil), sig.Results...),
+			TypeIndex:    sig.TypeIndex,
+			HasTypeIndex: sig.HasTypeIndex,
 		},
+	}
+	if gcCapable {
+		owner.gc = &hostFuncRefGCState{}
 	}
 	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
 	if err != nil {
@@ -205,6 +254,10 @@ func (rt *Runtime) NewHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error
 	}
 	owner.dispatchIndex = dispatchIndex
 	return owner, nil
+}
+
+func funcSigHasGCRefs(sig FuncSig) bool {
+	return hasValType(sig.Params, ValAnyRef) || hasValType(sig.Params, ValI31Ref) || hasValType(sig.Results, ValAnyRef) || hasValType(sig.Results, ValI31Ref)
 }
 
 // Close releases this host-function ownership handle after its importers and
@@ -217,7 +270,7 @@ func (h *HostFuncRef) Close() error {
 	if store == nil {
 		return nil
 	}
-	var release []*funcrefTokenEntry
+	var release referenceTokenEntries
 	store.mu.Lock()
 	h.mu.Lock()
 	if h.closed {
@@ -230,7 +283,7 @@ func (h *HostFuncRef) Close() error {
 	// until releaseEntries drops the producer root and physical teardown detaches
 	// the importer. Every other retained-code path (for example an external table
 	// root without a token) continues to reject Close while importers remain.
-	closingLastTokenRoot := h.tokenLive && store.runtimeClosed && store.liveInstances == 0 && store.allClosedInstancesQuiescedLocked()
+	closingLastTokenRoot := h.tokenLive && store.runtimeClosed && store.liveInstances == 0
 	if h.importers != 0 && !closingLastTokenRoot {
 		count := h.importers
 		h.mu.Unlock()
@@ -249,10 +302,12 @@ func (h *HostFuncRef) Close() error {
 	if store.liveObjects > 0 {
 		store.liveObjects--
 	}
-	release = store.maybeReleaseEntriesLocked()
+	if store.runtimeClosed && store.liveInstances == 0 && store.liveObjects == 0 {
+		release = store.releaseEntriesLocked()
+	}
 	h.mu.Unlock()
 	store.mu.Unlock()
-	releaseFuncrefEntries(release)
+	releaseReferenceEntries(release)
 	return nil
 }
 
@@ -279,6 +334,10 @@ func (h *HostFuncRef) validateImport(store *referenceStore, sig FuncSig) error {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	return h.validateImportLocked(store, sig)
+}
+
+func (h *HostFuncRef) validateImportLocked(store *referenceStore, sig FuncSig) error {
 	if h.store == nil || h.fn == nil {
 		return fmt.Errorf("host funcref owner is invalid")
 	}
@@ -294,17 +353,81 @@ func (h *HostFuncRef) validateImport(store *referenceStore, sig FuncSig) error {
 	return nil
 }
 
-func (h *HostFuncRef) attachImporter(store *referenceStore, sig FuncSig) error {
-	if err := h.validateImport(store, sig); err != nil {
-		return err
-	}
+func (h *HostFuncRef) validateAttachedImporter(store *referenceStore, sig FuncSig, collector *gc.Collector, domainID uint64, c *Compiled) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
-		return fmt.Errorf("host funcref owner is closed")
+	if err := h.validateImportLocked(store, sig); err != nil {
+		return err
+	}
+	if !funcSigHasGCRefs(sig) {
+		return nil
+	}
+	if h.gc == nil || collector == nil || h.gc.collector != collector || h.gc.domainID == 0 || h.gc.domainID != domainID || c == nil {
+		return fmt.Errorf("GC host funcref belongs to a different Runtime collector domain")
+	}
+	params, results, err := exactFuncSignatureView(sig, c.Types)
+	if err != nil {
+		return fmt.Errorf("GC host funcref exact signature: %w", err)
+	}
+	if !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+		return fmt.Errorf("GC host funcref structural signature mismatch")
+	}
+	return nil
+}
+
+func (h *HostFuncRef) attachImporter(store *referenceStore, sig FuncSig, collector *gc.Collector, domainID uint64, c *Compiled) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if err := h.validateImportLocked(store, sig); err != nil {
+		return err
+	}
+	if funcSigHasGCRefs(sig) {
+		if h.gc == nil {
+			return fmt.Errorf("host funcref collector-reference signature requires Runtime.NewGCHostFuncRef")
+		}
+		if collector == nil || domainID == 0 || c == nil || c.genericGCFrameRoots() == nil || !store.ownsGCCollector(collector) {
+			return fmt.Errorf("GC host funcref requires an exact live Runtime collector domain and native root maps")
+		}
+		params, results, err := exactFuncSignatureView(sig, c.Types)
+		if err != nil {
+			return fmt.Errorf("GC host funcref exact signature: %w", err)
+		}
+		if h.gc.collector == nil {
+			h.gc.collector = collector
+			h.gc.domainID = domainID
+			h.gc.params = append([]ValueTypeDescriptor(nil), params...)
+			h.gc.results = append([]ValueTypeDescriptor(nil), results...)
+			h.gc.types = c.Types
+		} else {
+			if h.gc.collector != collector || h.gc.domainID != domainID {
+				return fmt.Errorf("GC host funcref belongs to a different Runtime collector domain")
+			}
+			if !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+				return fmt.Errorf("GC host funcref structural signature mismatch")
+			}
+		}
+	} else if h.gc != nil {
+		return fmt.Errorf("GC host funcref requires a collector-reference signature")
 	}
 	h.importers++
 	return nil
+}
+
+func exactSignatureEquivalent(aParams, aResults []ValueTypeDescriptor, aTypes []DefinedTypeDescriptor, bParams, bResults []ValueTypeDescriptor, bTypes []DefinedTypeDescriptor) bool {
+	if len(aParams) != len(bParams) || len(aResults) != len(bResults) {
+		return false
+	}
+	for i := range aParams {
+		if !valueTypeEquivalent(aParams[i], aTypes, bParams[i], bTypes) {
+			return false
+		}
+	}
+	for i := range aResults {
+		if !valueTypeEquivalent(aResults[i], aTypes, bResults[i], bTypes) {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *HostFuncRef) detachImporter() {
@@ -315,7 +438,24 @@ func (h *HostFuncRef) detachImporter() {
 	if h.importers > 0 {
 		h.importers--
 	}
+	if h.importers == 0 && h.gc != nil {
+		h.gc.collector = nil
+		h.gc.domainID = 0
+		h.gc.params = nil
+		h.gc.results = nil
+		h.gc.types = nil
+	}
 	h.mu.Unlock()
+}
+
+func (h *HostFuncRef) isGCBridge() bool {
+	if h == nil {
+		return false
+	}
+	h.mu.Lock()
+	ok := h.gc != nil && !h.closed && h.gc.collector != nil && h.gc.domainID != 0
+	h.mu.Unlock()
+	return ok
 }
 
 func (h *HostFuncRef) canonicalDescriptor(source *Instance, descriptor uint64, sig FuncSig) (*Instance, uint64, bool) {
@@ -396,6 +536,13 @@ func (h instanceHostModule) Memory() []byte {
 		return nil
 	}
 	return h.in.mem()
+}
+
+func (h instanceHostModule) CollectGC() error {
+	if !h.valid() {
+		return fmt.Errorf("wago: GC host module is outside its active callback: %w", ErrPermissionDenied)
+	}
+	return h.in.CollectGC()
 }
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
 	if !h.valid() {
@@ -478,12 +625,51 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
 type missingHostFunc struct{ importIdx uint32 }
 type invalidHostReference struct{ err error }
 
+type gcHostTempTokens struct {
+	count  uint8
+	tokens [gcPublicSlotLimit]uint64
+}
+
+func (t *gcHostTempTokens) add(token uint64) error {
+	if token == 0 {
+		return nil
+	}
+	if int(t.count) >= len(t.tokens) {
+		return fmt.Errorf("GC host argument count exceeds %d", len(t.tokens))
+	}
+	t.tokens[t.count] = token
+	t.count++
+	return nil
+}
+
+func (t *gcHostTempTokens) release(in *Instance) {
+	if t == nil || in == nil || in.refStore == nil {
+		return
+	}
+	for t.count != 0 {
+		t.count--
+		token := t.tokens[t.count]
+		t.tokens[t.count] = 0
+		if token != 0 {
+			_ = in.refStore.releaseGCRef(in, token)
+		}
+	}
+}
+
 // newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
 // maps the wasm import index to the bound HostFunc and runs it with a HostModule
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
-	return func(_ uintptr, importIdx uint32, args, results []uint64) {
+	return func(ctrl uintptr, importIdx uint32, args, results []uint64) {
+		if importIdx&gcStructDispatchBit != 0 {
+			if importIdx&hostFuncRefDispatchBit != 0 {
+				panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+			}
+			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
+			in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
+			return
+		}
 		var fn HostFunc
 		var sig FuncSig
 		if importIdx&hostFuncRefDispatchBit != 0 {
@@ -507,9 +693,16 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			fn = in.syncHosts[importIdx]
 			sig = in.c.importFuncSigs[importIdx]
 		}
-		if err := in.translateHostReferenceArgs(args, sig.Params); err != nil {
+		exactParams, exactResults, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
+		}
+		var gcTemps gcHostTempTokens
+		if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, &gcTemps); err != nil {
+			gcTemps.release(in)
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
+		defer gcTemps.release(in)
 		var mod HostModule
 		if in.rt == nil || !in.rt.scopedHostCalls() {
 			mod = staticHostModule{in: in}
@@ -519,13 +712,13 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			mod = caller
 		}
 		fn(mod, args, results)
-		if err := in.translateHostReferenceResults(results, sig.Results); err != nil {
+		if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 	}
 }
 
-func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType) error {
+func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType, exact []ValueTypeDescriptor, gcTemps *gcHostTempTokens) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -537,10 +730,25 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType)
 		}
 		switch typ {
 		case ValFuncRef:
-			if values[slot] != 0 {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("missing exact funcref type for argument %d", i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("null funcref for non-null argument %d", i)
+				}
+			} else {
 				store, err := in.funcrefStoreForEgress()
 				if err != nil {
 					return fmt.Errorf("funcref argument %d: %w", i, err)
+				}
+				actual, actualTypes, valid := store.descriptorFuncrefExactType(in, values[slot])
+				if !valid {
+					return fmt.Errorf("invalid funcref argument %d", i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					return fmt.Errorf("funcref argument %d does not match its exact structural type", i)
 				}
 				token, err := store.issue(in, values[slot])
 				if err != nil {
@@ -552,13 +760,41 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType)
 			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 				return fmt.Errorf("invalid externref token for argument %d", i)
 			}
+		case ValAnyRef, ValI31Ref:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("missing exact GC reference type for argument %d", i)
+			}
+			bits := values[slot]
+			if bits == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("null GC reference for non-null argument %d", i)
+				}
+				break
+			}
+			ref := gc.Ref(uint32(bits))
+			if uint64(ref) != bits || (!ref.IsObj() && !ref.IsI31()) || !in.gcRefMatchesValueType(ref, required) {
+				return fmt.Errorf("invalid GC reference argument %d", i)
+			}
+			if ref.IsI31() {
+				break
+			}
+			token, err := in.refStore.issueGCRef(in, ref, required)
+			if err != nil {
+				return fmt.Errorf("GC reference argument %d: %w", i, err)
+			}
+			if err := gcTemps.add(token); err != nil {
+				_ = in.refStore.releaseGCRef(in, token)
+				return err
+			}
+			values[slot] = token
 		}
 		slot++
 	}
 	return nil
 }
 
-func (in *Instance) translateHostReferenceResults(values []uint64, types []ValType) error {
+func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -570,7 +806,15 @@ func (in *Instance) translateHostReferenceResults(values []uint64, types []ValTy
 		}
 		switch typ {
 		case ValFuncRef:
-			if values[slot] != 0 {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("missing exact funcref type for result %d", i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("null funcref for non-null result %d", i)
+				}
+			} else {
 				if in.refStore == nil {
 					return fmt.Errorf("invalid funcref token for result %d", i)
 				}
@@ -578,12 +822,46 @@ func (in *Instance) translateHostReferenceResults(values []uint64, types []ValTy
 				if !ok {
 					return fmt.Errorf("invalid funcref token for result %d", i)
 				}
+				actual, actualTypes, valid := in.refStore.tokenFuncrefExactType(values[slot])
+				if !valid {
+					return fmt.Errorf("invalid funcref token for result %d", i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					return fmt.Errorf("funcref result %d does not match its exact structural type", i)
+				}
 				values[slot] = descriptor
 			}
 		case ValExternRef:
 			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 				return fmt.Errorf("invalid externref token for result %d", i)
 			}
+		case ValAnyRef, ValI31Ref:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("missing exact GC reference type for result %d", i)
+			}
+			bits := values[slot]
+			if bits == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("null GC reference for non-null result %d", i)
+				}
+				break
+			}
+			ref := gc.Ref(uint32(bits))
+			if uint64(ref) == bits && ref.IsI31() {
+				if !in.gcRefMatchesValueType(ref, required) {
+					return fmt.Errorf("i31 result %d does not match its exact structural type", i)
+				}
+				break
+			}
+			if uint64(ref) == bits && ref.IsObj() {
+				return fmt.Errorf("raw compact GC reference for result %d is not a host token", i)
+			}
+			resolved, err := in.refStore.stageGCHostResult(in, ctrl, bits, required)
+			if err != nil {
+				return fmt.Errorf("GC reference result %d: %w", i, err)
+			}
+			values[slot] = uint64(resolved)
 		}
 		slot++
 	}
@@ -612,8 +890,31 @@ func (in *Instance) callNativeSync(entry uintptr) error {
 // callNativeSyncWithTrap is the host-capable form used when a Go-level
 // re-export delegates execution while retaining the outer caller's trap cell.
 func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (err error) {
-	locked := in.beginNativeEntry()
+	var outerEngine *runtime.Engine
+	if state := in.existingPublicGCState(); state != nil {
+		state.mu.Lock()
+		reentrant := state.hostActivationCount != 0
+		state.mu.Unlock()
+		if reentrant {
+			reentryEngine, acquireErr := runtime.AcquireEngine()
+			if acquireErr != nil {
+				return fmt.Errorf("wago: acquire nested Wasm engine: %w", acquireErr)
+			}
+			outerEngine, in.eng = in.eng, reentryEngine
+			defer func() {
+				in.eng = outerEngine
+				if releaseErr := runtime.ReleaseEngine(reentryEngine); err == nil && releaseErr != nil {
+					err = releaseErr
+				}
+			}()
+		}
+	}
+	locked, err := in.beginNativeEntry()
+	if err != nil {
+		return err
+	}
 	defer locked.unlockExecution()
+	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
 			if ex, ok := r.(HostExit); ok {
@@ -630,6 +931,14 @@ func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (er
 			}
 			if instruction, ok := r.(instructionTrap); ok {
 				err = instruction.err
+				return
+			}
+			if trap, ok := r.(gcStructHelperTrap); ok {
+				err = &runtime.TrapError{Code: trap.code}
+				return
+			}
+			if helper, ok := r.(gcStructHelperError); ok {
+				err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
 				return
 			}
 			panic(r)

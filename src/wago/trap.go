@@ -9,6 +9,9 @@ import wruntime "github.com/wago-org/wago/src/core/runtime"
 //	if errors.As(err, &te) && te.Code == wago.TrapLinMemOutOfBounds { ... }
 type TrapError = wruntime.TrapError
 
+// TrapFrame identifies a logical Wasm function and bytecode offset in a trap.
+type TrapFrame = wruntime.TrapFrame
+
 // TrapCode identifies why wasm execution trapped. Its String method gives a
 // human-readable reason.
 type TrapCode = wruntime.TrapCode
@@ -30,5 +33,8 @@ const (
 	TrapInterrupted          = wruntime.TrapInterrupted
 	TrapStackFenceBreached   = wruntime.TrapStackFenceBreached
 	TrapCalledFnNotLinked    = wruntime.TrapCalledFnNotLinked
+	TrapNullReference        = wruntime.TrapNullReference
+	TrapUnhandledException   = wruntime.TrapUnhandledException
+	TrapCastFailure          = wruntime.TrapCastFailure
 	TrapTableOutOfBounds     = wruntime.TrapTableOutOfBounds
 )

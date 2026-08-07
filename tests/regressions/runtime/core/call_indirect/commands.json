@@ -1,0 +1,18 @@
+{"source_filename": "testdata/wasmtime/wasm2/call_indirect/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "register", "line": 99, "as": "test"}, 
+  {"type": "module", "line": 101, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 172, "action": {"type": "invoke", "field": "type-i32", "args": []}, "expected": [{"type": "i32", "value": "306"}]}, 
+  {"type": "assert_return", "line": 173, "action": {"type": "invoke", "field": "type-i64", "args": []}, "expected": [{"type": "i64", "value": "356"}]}, 
+  {"type": "assert_return", "line": 174, "action": {"type": "invoke", "field": "type-f32", "args": []}, "expected": [{"type": "f32", "value": "1165172736"}]}, 
+  {"type": "assert_return", "line": 175, "action": {"type": "invoke", "field": "type-f64", "args": []}, "expected": [{"type": "f64", "value": "4660882566700597248"}]}, 
+  {"type": "assert_return", "line": 177, "action": {"type": "invoke", "field": "type-index", "args": []}, "expected": [{"type": "i64", "value": "100"}]}, 
+  {"type": "assert_return", "line": 179, "action": {"type": "invoke", "field": "type-first-i32", "args": []}, "expected": [{"type": "i32", "value": "32"}]}, 
+  {"type": "assert_return", "line": 180, "action": {"type": "invoke", "field": "type-first-i64", "args": []}, "expected": [{"type": "i64", "value": "64"}]}, 
+  {"type": "assert_return", "line": 181, "action": {"type": "invoke", "field": "type-first-f32", "args": []}, "expected": [{"type": "f32", "value": "1068037571"}]}, 
+  {"type": "assert_return", "line": 182, "action": {"type": "invoke", "field": "type-first-f64", "args": []}, "expected": [{"type": "f64", "value": "4610064722561534525"}]}, 
+  {"type": "assert_return", "line": 184, "action": {"type": "invoke", "field": "type-second-i32", "args": []}, "expected": [{"type": "i32", "value": "32"}]}, 
+  {"type": "assert_return", "line": 185, "action": {"type": "invoke", "field": "type-second-i64", "args": []}, "expected": [{"type": "i64", "value": "64"}]}, 
+  {"type": "assert_return", "line": 186, "action": {"type": "invoke", "field": "type-second-f32", "args": []}, "expected": [{"type": "f32", "value": "1107296256"}]}, 
+  {"type": "assert_return", "line": 187, "action": {"type": "invoke", "field": "type-second-f64", "args": []}, "expected": [{"type": "f64", "value": "4634211053438658150"}]}]}

@@ -1,0 +1,24 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 8,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "f",
+        "type": "invoke"
+      },
+      "line": 9,
+      "text": "out of bounds table access",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

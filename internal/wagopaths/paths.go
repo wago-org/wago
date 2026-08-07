@@ -90,7 +90,7 @@ func dirsFor(version, goos string) Dirs {
 			Cache:    filepath.Join(root, "cache", version), Version: version,
 		}
 	}
-	if goos == "darwin" {
+	if goos == "darwin" || goos == "windows" {
 		root := filepath.Join(homeDir(), ".wago")
 		return Dirs{
 			Config: filepath.Join(root, "config"), Data: root,
@@ -162,7 +162,12 @@ func xdgDir(env string, fallback ...string) string {
 func homeDir() string {
 	home := os.Getenv("HOME")
 	if home == "" {
-		home = "."
+		if resolved, err := os.UserHomeDir(); err == nil {
+			home = resolved
+		}
+	}
+	if home == "" {
+		return "."
 	}
 	return home
 }

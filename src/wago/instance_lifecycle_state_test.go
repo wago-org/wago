@@ -9,7 +9,7 @@ import (
 func newReferenceStoreStateTest(t *testing.T) (*referenceStore, *Instance, *Instance) {
 	t.Helper()
 	store := newReferenceStore(false)
-	in := &Instance{}
+	in := &Instance{c: &Compiled{}}
 	if err := store.registerInstance(in); err != nil {
 		t.Fatalf("registerInstance: %v", err)
 	}
@@ -40,12 +40,12 @@ func assertReferenceStoreStateFinal(t *testing.T, store *referenceStore, owner *
 
 func TestReferenceStoreCloseAccountingOrderIndependent(t *testing.T) {
 	type transition struct {
-		name string
-		run  func(*referenceStore, *Instance)
+		name  string
+		event referenceLifetimeEvent
 	}
-	logical := transition{"logical", (*referenceStore).instanceClosed}
-	quiesced := transition{"quiesced", (*referenceStore).instanceQuiesced}
-	physical := transition{"physical", (*referenceStore).resourceOwnerReleased}
+	logical := transition{"logical", referenceLifetimeClosed}
+	quiesced := transition{"quiesced", referenceLifetimeQuiesced}
+	physical := transition{"physical", referenceLifetimeResourcesReleased}
 	orders := [][]transition{
 		{logical, quiesced, physical},
 		{logical, physical, quiesced},
@@ -69,8 +69,8 @@ func TestReferenceStoreCloseAccountingOrderIndependent(t *testing.T) {
 				}
 				seenLogical, seenQuiesced := false, false
 				for _, step := range order {
-					step.run(store, in)
-					step.run(store, in) // every notification is idempotent
+					store.advanceInstanceLifetime(in, step.event)
+					store.advanceInstanceLifetime(in, step.event) // every notification is idempotent
 					seenLogical = seenLogical || step.name == "logical"
 					seenQuiesced = seenQuiesced || step.name == "quiesced"
 					store.mu.Lock()
@@ -112,12 +112,12 @@ func TestReferenceStoreCloseAccountingConcurrentNotifications(t *testing.T) {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	for _, notify := range []func(){
-		func() { store.instanceClosed(in) },
-		func() { store.instanceQuiesced(in) },
-		func() { store.resourceOwnerReleased(in) },
-		func() { store.instanceClosed(in) },
-		func() { store.instanceQuiesced(in) },
-		func() { store.resourceOwnerReleased(in) },
+		func() { store.advanceInstanceLifetime(in, referenceLifetimeClosed) },
+		func() { store.advanceInstanceLifetime(in, referenceLifetimeQuiesced) },
+		func() { store.advanceInstanceLifetime(in, referenceLifetimeResourcesReleased) },
+		func() { store.advanceInstanceLifetime(in, referenceLifetimeClosed) },
+		func() { store.advanceInstanceLifetime(in, referenceLifetimeQuiesced) },
+		func() { store.advanceInstanceLifetime(in, referenceLifetimeResourcesReleased) },
 	} {
 		wg.Add(1)
 		go func(fn func()) {

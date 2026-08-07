@@ -13,7 +13,7 @@ else
     managers[${#managers[@]}]="$manager"
   done < <(
       find . -maxdepth 1 -type f -name 'wago-*' \
-        ! -name 'wago-runtime-*' ! -name '*.sha256' \
+        ! -name 'wago-runtime-*' ! -name 'wago-installer-*' ! -name '*.sha256' \
         -print | sed 's|^\./||' | sort
     )
 fi
@@ -27,6 +27,7 @@ for manager in "${managers[@]}"; do
   target="${manager#wago-}"
   assets=(
     "$manager"
+    "wago-installer-${target}"
     "wago-runtime-standard-normal-${target}"
     "wago-runtime-minimal-normal-${target}"
   )
@@ -63,4 +64,4 @@ for manager in "${managers[@]}"; do
   done
 done
 
-printf 'verified %d platform set(s): CLI + complete Normal runtimes and supported Tiny runtimes\n' "${#managers[@]}"
+printf 'verified %d platform set(s): installer + CLI + complete Normal runtimes and supported Tiny runtimes\n' "${#managers[@]}"

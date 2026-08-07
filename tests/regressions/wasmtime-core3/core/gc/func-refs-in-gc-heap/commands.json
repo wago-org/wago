@@ -1,0 +1,139 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 30,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "alloc-s0",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "struct",
+          "type": "ref"
+        }
+      ],
+      "line": 31,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "alloc-s1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "struct",
+          "type": "ref"
+        }
+      ],
+      "line": 32,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "alloc-s2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "heap_type": "struct",
+          "type": "ref"
+        }
+      ],
+      "line": 33,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s0",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "286331153"
+        }
+      ],
+      "line": 34,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "286331153"
+        }
+      ],
+      "line": 35,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "get-s2",
+        "type": "invoke"
+      },
+      "line": 36,
+      "text": "uninitialized element",
+      "type": "assert_trap"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-s0",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "572662306"
+        }
+      ],
+      "line": 37,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-s1",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "572662306"
+        }
+      ],
+      "line": 38,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "set-s2",
+        "type": "invoke"
+      },
+      "line": 39,
+      "text": "uninitialized element",
+      "type": "assert_trap"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

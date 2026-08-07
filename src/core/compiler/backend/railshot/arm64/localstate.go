@@ -156,6 +156,25 @@ func (f *fn) markLocalDirty(x int) {
 	}
 }
 
+func (f *fn) materializeGCFrameLocals(mask uint64) {
+	if f.gcFrameRoots == nil || !f.lazyZero {
+		return
+	}
+	for i, index := range f.gcFrameRoots.LocalIndexes {
+		if mask&(uint64(1)<<uint(i)) == 0 {
+			continue
+		}
+		x := int(index)
+		if x < 0 || x >= f.nLocals {
+			f.gcFrameRoots.Exact = false
+			continue
+		}
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, true)
+		}
+	}
+}
+
 // spillLocalsForCall stores dirty pinned locals to their slots and marks all
 // pinned locals clobbered (lsMem) — the WARP save-before-call step. No reload
 // follows; the next read recovers lazily. Callers must emit this before a call.
@@ -201,14 +220,17 @@ func (f *fn) reloadLocalsForCall() {
 // post-call reloads out of the body) and br_table (one state satisfying every
 // target). Other edges use convergeEdgeTo's lazier per-frame agreement.
 func (f *fn) reconcileLocals() {
+	if f.lazyZero {
+		for x := 0; x < f.nLocals; x++ {
+			if f.locals[x].state == lsConstZero {
+				f.materializeZeroLocal(x, true)
+			}
+		}
+	}
+	if !f.usesCalls {
+		return
+	}
 	for x := 0; x < f.nLocals; x++ {
-		if f.locals[x].state == lsConstZero {
-			f.materializeZeroLocal(x, true)
-			continue
-		}
-		if !f.usesCalls {
-			continue
-		}
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
 			continue
@@ -283,15 +305,19 @@ func (f *fn) freeEndsBuf(b []int) {
 
 func (f *fn) convergeEdgeTo(target *[]locState) {
 	// Dirty registers and lazy zeros always materialize to the slot: every
-	// target guarantees at least "slot is current".
+	// target guarantees at least "slot is current". Non-lazy functions can never
+	// contain lsConstZero and skip that complete local-array scan.
+	if f.lazyZero {
+		for x := 0; x < f.nLocals; x++ {
+			if f.locals[x].state == lsConstZero {
+				f.materializeZeroLocal(x, true)
+			}
+		}
+	}
+	if !f.usesCalls {
+		return
+	}
 	for x := 0; x < f.nLocals; x++ {
-		if f.locals[x].state == lsConstZero {
-			f.materializeZeroLocal(x, true)
-			continue
-		}
-		if !f.usesCalls {
-			continue
-		}
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
 			continue
@@ -300,9 +326,6 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 			f.storeLocalReg(x, reg, isFloat)
 			f.locals[x].state = lsStackReg
 		}
-	}
-	if !f.usesCalls {
-		return
 	}
 	if *target == nil { // first edge fixes the frame's merge state
 		t := f.newLocStateBuf()

@@ -1,0 +1,241 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 20,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "f",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        },
+        {
+          "type": "i32",
+          "value": "1"
+        },
+        {
+          "type": "i32",
+          "value": "2"
+        },
+        {
+          "type": "i32",
+          "value": "3"
+        },
+        {
+          "type": "i32",
+          "value": "4"
+        },
+        {
+          "type": "i32",
+          "value": "5"
+        },
+        {
+          "type": "i32",
+          "value": "6"
+        },
+        {
+          "type": "i32",
+          "value": "7"
+        },
+        {
+          "type": "i32",
+          "value": "8"
+        },
+        {
+          "type": "i32",
+          "value": "9"
+        },
+        {
+          "type": "i32",
+          "value": "10"
+        },
+        {
+          "type": "i32",
+          "value": "11"
+        },
+        {
+          "type": "i32",
+          "value": "12"
+        },
+        {
+          "type": "i32",
+          "value": "13"
+        },
+        {
+          "type": "i32",
+          "value": "14"
+        },
+        {
+          "type": "i32",
+          "value": "15"
+        },
+        {
+          "type": "i32",
+          "value": "16"
+        }
+      ],
+      "line": 21,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "2"
+          },
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          },
+          {
+            "type": "i32",
+            "value": "5"
+          },
+          {
+            "type": "i32",
+            "value": "6"
+          },
+          {
+            "type": "i32",
+            "value": "7"
+          },
+          {
+            "type": "i32",
+            "value": "8"
+          },
+          {
+            "type": "i32",
+            "value": "9"
+          },
+          {
+            "type": "i32",
+            "value": "10"
+          },
+          {
+            "type": "i32",
+            "value": "11"
+          },
+          {
+            "type": "i32",
+            "value": "12"
+          },
+          {
+            "type": "i32",
+            "value": "13"
+          },
+          {
+            "type": "i32",
+            "value": "14"
+          },
+          {
+            "type": "i32",
+            "value": "15"
+          },
+          {
+            "type": "i32",
+            "value": "16"
+          }
+        ],
+        "field": "f2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        },
+        {
+          "type": "i32",
+          "value": "1"
+        },
+        {
+          "type": "i32",
+          "value": "2"
+        },
+        {
+          "type": "i32",
+          "value": "3"
+        },
+        {
+          "type": "i32",
+          "value": "4"
+        },
+        {
+          "type": "i32",
+          "value": "5"
+        },
+        {
+          "type": "i32",
+          "value": "6"
+        },
+        {
+          "type": "i32",
+          "value": "7"
+        },
+        {
+          "type": "i32",
+          "value": "8"
+        },
+        {
+          "type": "i32",
+          "value": "9"
+        },
+        {
+          "type": "i32",
+          "value": "10"
+        },
+        {
+          "type": "i32",
+          "value": "11"
+        },
+        {
+          "type": "i32",
+          "value": "12"
+        },
+        {
+          "type": "i32",
+          "value": "13"
+        },
+        {
+          "type": "i32",
+          "value": "14"
+        },
+        {
+          "type": "i32",
+          "value": "15"
+        },
+        {
+          "type": "i32",
+          "value": "16"
+        }
+      ],
+      "line": 41,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

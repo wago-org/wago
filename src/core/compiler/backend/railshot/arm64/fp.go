@@ -323,8 +323,7 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 
 // scalarFMinMaxInto implements wasm min/max for one scalar lane. Branch on the
 // ordered compare; equal uses bitwise zero fixups, distinct ordered operands use
-// scalar FMIN/FMAX like wazero, and unordered propagates a quiet NaN through scalar
-// add.
+// scalar FMIN/FMAX, and unordered propagates a quiet NaN through scalar add.
 func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	f.a.Fcmp(xa, xb, f64)
 	jnan := f.a.Bcond(a64.CondVS)  // unordered (NaN): arm64 FCMP sets V on unordered
@@ -339,8 +338,8 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	jdone := f.a.Branch()
 
 	f.a.PatchBranch19(jdist, f.a.Len())
-	// Distinct ordered operands: scalar FMAX/FMIN give the larger/smaller, matching
-	// wazero (the operands are neither NaN nor equal here).
+	// Distinct ordered operands: scalar FMAX/FMIN give the larger/smaller because
+	// the operands are neither NaN nor equal here.
 	if isMax {
 		f.a.Fmax(xa, xa, xb, f64)
 	} else {
@@ -349,7 +348,7 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	jdone2 := f.a.Branch()
 
 	f.a.PatchBranch19(jnan, f.a.Len())
-	f.a.Fadd(xa, xa, xb, f64) // NaN + x -> quiet NaN, matching wazero
+	f.a.Fadd(xa, xa, xb, f64) // NaN + x -> quiet NaN.
 
 	f.a.PatchBranch26(jdone, f.a.Len())
 	f.a.PatchBranch26(jdone2, f.a.Len())
@@ -824,16 +823,26 @@ func (f *fn) reinterpretFloatToInt(wide bool) {
 
 // fload / fstore reuse the integer bounds-checked effective-address path.
 func (f *fn) fload(r *wasm.Reader, f64 bool) error {
-	if _, err := r.U32(); err != nil {
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
 	size := 4
 	if f64 {
 		size = 8
+	}
+	if memoryIndex != 0 {
+		f.materializePendingLoads()
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		x := f.allocFReg(0)
+		f.a.LdrFIdx(x, base, ea, disp, f64)
+		f.release(base)
+		f.release(ea)
+		f.pushFReg(x, mtF32)
+		if f64 {
+			f.s.back().st.typ = mtF64
+		}
+		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	aliasLocal := -1
@@ -849,10 +858,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 }
 
 func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
-	if _, err := r.U32(); err != nil {
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
 	}
@@ -862,6 +868,16 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	}
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
+	if memoryIndex != 0 {
+		f.materializePendingLoads()
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		f.a.StrFIdx(base, ea, xmm, disp, f64)
+		f.release(base)
+		f.release(ea)
+		f.fpinned = f.fpinned.remove(xmm)
+		f.releaseF(xmm)
+		return nil
+	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.pinned = f.pinned.add(ea)

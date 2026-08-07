@@ -1,0 +1,9 @@
+{"source_filename": "testdata/wasmtime/wasm2/simd/edge-of-memory/source.wast",
+ "commands": [
+  {"type": "module", "line": 3, "filename": "commands.0.wasm"}, 
+  {"type": "assert_return", "line": 335, "action": {"type": "invoke", "field": "1-byte-from-end", "args": [{"type": "i32", "value": "65535"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 336, "action": {"type": "invoke", "field": "2-byte-from-end", "args": [{"type": "i32", "value": "65534"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 337, "action": {"type": "invoke", "field": "4-byte-from-end", "args": [{"type": "i32", "value": "65532"}]}, "expected": []}, 
+  {"type": "assert_return", "line": 338, "action": {"type": "invoke", "field": "8-byte-from-end", "args": [{"type": "i32", "value": "65528"}]}, "expected": []}, 
+  {"type": "module", "line": 340, "filename": "commands.1.wasm"}, 
+  {"type": "assert_return", "line": 345, "action": {"type": "invoke", "field": "test", "args": [{"type": "i32", "value": "65528"}]}, "expected": [{"type": "v128", "lane_type": "f64", "value": ["0", "0"]}]}]}

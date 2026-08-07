@@ -1,0 +1,4 @@
+{"source_filename": "testdata/wasmtime/core/winch/oob/source.wast",
+ "commands": [
+  {"type": "module", "line": 1, "filename": "commands.0.wasm"}, 
+  {"type": "assert_trap", "line": 10, "action": {"type": "invoke", "field": "foo", "args": [{"type": "i32", "value": "0"}]}, "text": "out of bounds", "expected": []}]}
