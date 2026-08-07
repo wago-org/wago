@@ -21,7 +21,7 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 			exports:      map[string]int{"imported": 0, "local": 1},
 			exactExports: true,
 		},
-		requiredFeatures: CoreFeatureMultiMemory,
+		requiredFeatures: CoreFeatureMultiMemory | CoreFeatureThreads,
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {

@@ -36,6 +36,8 @@ func TestEncodings(t *testing.T) {
 		// moves
 		{"mov x9,x10", func(a *Asm) { a.MovReg64(X9, X10) }, 0xaa0a03e9},
 		{"mov w9,w10", func(a *Asm) { a.MovReg32(X9, X10) }, 0x2a0a03e9},
+		{"ldaxr w5,[x6]", func(a *Asm) { a.Ldaxr32(X5, X6) }, 0x885ffcc5},
+		{"stlxr w7,w5,[x6]", func(a *Asm) { a.Stlxr32(X7, X5, X6) }, 0x8807fcc5},
 		{"movz x11,#0xffff", func(a *Asm) { a.Movz64(X11, 0xffff, 0) }, 0xd29fffeb},
 		{"movz x11,#0xffff,lsl16", func(a *Asm) { a.Movz64(X11, 0xffff, 1) }, 0xd2bfffeb},
 		{"movk x11,#0x1234,lsl32", func(a *Asm) { a.Movk64(X11, 0x1234, 2) }, 0xf2c2468b},

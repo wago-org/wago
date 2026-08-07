@@ -501,8 +501,12 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		out |= CoreFeatureMultiMemory
 	}
 	for i := 0; i < c.memoryCount(); i++ {
-		if c.memoryDef(i).Addr64 {
+		memory := c.memoryDef(i)
+		if memory.Addr64 {
 			out |= CoreFeatureMemory64
+		}
+		if memory.Shared {
+			out |= CoreFeatureThreads
 		}
 	}
 	if c.hasExternrefTable() || c.tableCount() > 1 || c.NeedsFuncRefDescs {

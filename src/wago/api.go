@@ -2572,7 +2572,7 @@ func (c *Compiled) validate() error {
 	// Indexed-memory/table address forms are completely described by persisted
 	// metadata and native code. Once the current platform advertises the family,
 	// codec reload does not need the original compile-only classifier marker.
-	staged |= required & platformCoreFeatures() & (CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64)
+	staged |= required & platformCoreFeatures() & (CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64 | CoreFeatureThreads)
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		staged |= CoreFeatureExceptionHandling
 		importCount := 0
@@ -3073,7 +3073,7 @@ func (c *Compiled) validateCodecMetadata() error {
 		}
 	}
 	structural := compiledStructuralRequiredFeatures(c)
-	if unsupported := structural &^ (CoreFeaturesV3 | CoreFeatureExtendedConst); unsupported != 0 {
+	if unsupported := structural &^ coreFeaturesWago; unsupported != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
 	}
 	if err := c.validateMemoryMetadata(structural); err != nil {
@@ -3319,6 +3319,9 @@ func (c *Compiled) validateMemoryMetadata(required CoreFeatures) error {
 		}
 		if memory.Shared && !memory.HasMax {
 			return fmt.Errorf("compiled metadata invalid: shared memory %d has no maximum", i)
+		}
+		if memory.Shared && !required.IsEnabled(CoreFeatureThreads) {
+			return fmt.Errorf("compiled metadata invalid: shared memory %d requires threads feature", i)
 		}
 		if memory.ImportKey == "" {
 			seenLocal = true

@@ -166,6 +166,17 @@ func (a *Asm) AddSP64(imm uint32) { a.addSubImm(0x91000000, SP, SP, imm) }
 func (a *Asm) MovReg64(rd, rm Reg) { a.word(0xAA000000 | r(rm)<<16 | r(XZR)<<5 | r(rd)) }
 func (a *Asm) MovReg32(rd, rm Reg) { a.word(0x2A000000 | r(rm)<<16 | r(XZR)<<5 | r(rd)) }
 
+// Ldaxr32 and Stlxr32 encode the acquire-load/release-store exclusive pair used
+// for sequentially consistent 32-bit atomic read-modify-write loops. Stlxr32
+// writes zero to status on success and a nonzero retry value on failure.
+func (a *Asm) Ldaxr32(dst, addr Reg) {
+	a.word(0x885FFC00 | r(addr)<<5 | r(dst))
+}
+
+func (a *Asm) Stlxr32(status, src, addr Reg) {
+	a.word(0x8800FC00 | r(status)<<16 | r(addr)<<5 | r(src))
+}
+
 // movWide encodes MOVZ/MOVK/MOVN with a 16-bit immediate at halfword hw (0..3).
 func (a *Asm) movWide(base uint32, rd Reg, imm16 uint16, hw uint32) {
 	a.word(base | (hw&3)<<21 | uint32(imm16)<<5 | r(rd))
