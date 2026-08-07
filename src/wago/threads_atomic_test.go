@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -198,6 +199,28 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 7 {
 		t.Fatalf("shared memory value = %d, want 7", got)
+	}
+}
+
+func TestThreadsFeatureDoesNotChangeOrdinaryGeneratedCode(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+	base, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer base.Close()
+	withThreads, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer withThreads.Close()
+	if !bytes.Equal(base.Code, withThreads.Code) {
+		t.Fatalf("ordinary generated code changed when threads was enabled: %d vs %d bytes", len(base.Code), len(withThreads.Code))
 	}
 }
 

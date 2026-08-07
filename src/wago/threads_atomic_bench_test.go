@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -38,7 +39,6 @@ func BenchmarkThreadsAtomicInvoke(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer instance.Close()
-			b.ReportMetric(float64(len(compiled.Code)), "code-B")
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
@@ -46,7 +46,55 @@ func BenchmarkThreadsAtomicInvoke(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
+			b.ReportMetric(float64(len(compiled.Code)), "code-B")
 		})
+	}
+}
+
+func BenchmarkThreadsWaitNotifyRoundTrip(b *testing.B) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedAtomicWaitNotifyModule())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, _ := NewSharedMemory(1, 1)
+	defer memory.Close()
+	waiter, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer waiter.Close()
+	notifier, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer notifier.Close()
+	done := make(chan error, 1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		go func() {
+			_, err := waiter.Invoke("wait32", I32(0), I32(0), I64(-1))
+			done <- err
+		}()
+		for {
+			s := memory.state.Load()
+			s.mu.Lock()
+			ws := s.waiterStateLocked(false)
+			active := ws != nil && ws.active == 1
+			s.mu.Unlock()
+			if active {
+				break
+			}
+			runtime.Gosched()
+		}
+		if _, err := notifier.Invoke("notify", I32(0), I32(1)); err != nil {
+			b.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
