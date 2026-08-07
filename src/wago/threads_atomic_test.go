@@ -557,6 +557,24 @@ func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T)
 	}
 }
 
+func TestThreadsModuleInspectionReportsExactFeatureAndSharedMemory(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	rt := NewRuntime(WithRuntimeConfig(config))
+	defer rt.Close()
+	module, err := rt.Compile(sharedAtomicAddModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	metadata := module.Metadata()
+	if metadata.RequiredFeatures != CoreFeatureThreads {
+		t.Fatalf("required features = %s, want threads", metadata.RequiredFeatures)
+	}
+	if len(metadata.Memories) != 1 || !metadata.Memories[0].Shared || !metadata.Memories[0].HasMax || metadata.Memories[0].Min != 1 || metadata.Memories[0].Max != 1 || metadata.Memories[0].ImportModule != "env" || metadata.Memories[0].ImportName != "memory" {
+		t.Fatalf("memory metadata = %#v", metadata.Memories)
+	}
+}
+
 func TestThreadsAtomicWaitHonorsInvokeCancellationAndClose(t *testing.T) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicWaitNotifyModule())
