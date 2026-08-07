@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-func TestCompiledReleasesHeapCodeAfterExecutableMapping(t *testing.T) {
+func TestSerialCompiledSealsExecutableMappingInPlace(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), fibWasm)
 	if err != nil {
 		t.Fatal(err)
@@ -27,8 +27,8 @@ func TestCompiledReleasesHeapCodeAfterExecutableMapping(t *testing.T) {
 	if got := unsafe.Pointer(&c.Code[0]); got != mapped {
 		t.Fatalf("compiled code still uses heap backing %p (mapped %p, original %p)", got, mapped, original)
 	}
-	if mapped == original {
-		t.Fatal("test did not observe a distinct executable mapping")
+	if mapped != original {
+		t.Fatalf("first Instantiate copied serial native code: mapped %p, original %p", mapped, original)
 	}
 	if _, err := c.MarshalBinary(); err != nil {
 		t.Fatalf("marshal mapped code: %v", err)

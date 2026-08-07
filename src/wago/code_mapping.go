@@ -220,6 +220,16 @@ func (c *Compiled) ensureCodeCache() {
 	}
 }
 
+func (c *Compiled) checkOpen() error {
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if c.codeCache.closed {
+		return fmt.Errorf("compiled module is closed")
+	}
+	return nil
+}
+
 func (c *Compiled) acquireCode() (uintptr, error) {
 	c.ensureCodeCache()
 	cc := c.codeCache
