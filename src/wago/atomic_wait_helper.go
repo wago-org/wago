@@ -37,7 +37,10 @@ func (in *Instance) publishAtomicWaitContext(parent context.Context) func() {
 		cancel(errAtomicWaitInstanceClosed)
 	}
 	return func() {
-		atomicWaitInvocationContexts.CompareAndDelete(in, state)
+		// Threaded Invoke owns the instance invocation mutex until this cleanup,
+		// so no later context for the same instance can be published concurrently.
+		// Delete keeps this path compatible with TinyGo's sync.Map subset.
+		atomicWaitInvocationContexts.Delete(in)
 		cancel(context.Canceled)
 	}
 }
