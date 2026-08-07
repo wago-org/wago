@@ -558,6 +558,18 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	a.sibAddr(src, base, index, disp)
 }
 
+// LockXaddIdx32 atomically adds src to the 32-bit memory operand and replaces
+// src with the operand's previous value. The LOCK prefix supplies the Wasm
+// threads proposal's sequentially consistent ordering on x86-64.
+func (a *Asm) LockXaddIdx32(base, index, src Reg, disp int32) {
+	a.emit(0xF0)
+	if src >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(false, src >= 8, index >= 8, base >= 8))
+	}
+	a.emit(0x0F, 0xC1)
+	a.sibAddr(src, base, index, disp)
+}
+
 func (a *Asm) Cdq(w bool) {
 	if w {
 		a.emit(0x48)
