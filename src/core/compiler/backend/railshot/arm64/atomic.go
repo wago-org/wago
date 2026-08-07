@@ -5,30 +5,26 @@ package arm64
 import (
 	"fmt"
 
+	railshared "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // emitFE lowers the core threads proposal's 0xfe instruction family. Keep this
 // dispatch exhaustive and fail closed while the family is landed incrementally.
 func (f *fn) emitFE(r *wasm.Reader) error {
-	sub, err := r.U32()
+	d, err := railshared.DecodeAtomic(r)
 	if err != nil {
 		return err
 	}
-	switch sub {
-	case 0x1e: // i32.atomic.rmw.add
-		return f.atomicRMWAdd32(r)
+	switch {
+	case d.Class == railshared.AtomicRMW && d.Operation == railshared.AtomicAdd && d.Size == 4 && d.ResultSize == 4:
+		return f.atomicRMWAdd32(d.Offset)
 	default:
-		return fmt.Errorf("arm64: unsupported 0xFE opcode %d", sub)
+		return fmt.Errorf("arm64: unsupported 0xFE opcode %d", d.Sub)
 	}
 }
 
-func (f *fn) atomicRMWAdd32(r *wasm.Reader) error {
-	_, off, err := f.readMemArg(r)
-	if err != nil {
-		return err
-	}
-
+func (f *fn) atomicRMWAdd32(off uint64) error {
 	// Atomics are observable memory barriers: realize deferred reads and discard
 	// the scalar store-forwarding window before entering the exclusive loop.
 	f.materializePendingLoads()
