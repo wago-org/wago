@@ -73,6 +73,32 @@ Today one Tiny step may scan the whole object. A slot/byte-budgeted implementati
 must keep p99 and maximum step time bounded while increasing `steps/op` with the
 amount of scan work.
 
+`BenchmarkThroughputLargeSpanMiss` isolates an old-space allocation miss with
+64, 1,024, and 16,384 fragmented free spans, none large enough for the request.
+Its `warm` case guards constant-time rejection after the bound is exact; its
+`cold` case measures the one scan that refreshes a conservative dirty bound.
+The cold case prepares dirty metadata in untimed batches, so it does not charge
+the preceding allocation's summary writes to the miss. Both validate the miss
+result and final bound state after timing, and neither constructs the larger
+churn fixture.
+`BenchmarkThroughputLargeSpanChurn` repeatedly allocates from and returns the
+unique largest span at the same fragmentation levels. Run both benchmarks
+together so a faster miss cannot hide work shifted into successful allocation.
+It validates every final free-span offset and size after timing.
+The cached maximum is a conservative upper bound after its span is consumed;
+the first later miss refreshes it while scanning, and later impossible misses
+are constant-time. On 64-bit builds this metadata changes `throughputHeap` from
+136 to 144 bytes and `Collector` from 904 to 912 bytes; handle, object, native
+ABI, and serialized layouts are unchanged. On linux/amd64, a minimal executable
+that constructs the Throughput collector and allocates a 1,024-element `i32`
+array grows from 2,624,923 to 2,625,538 unstripped bytes (+615). Its stripped
+size remains 1,749,154 bytes because the retained growth fits existing file
+alignment. `go tool nm -size` attributes 256 text bytes directly to this change:
+134 for `findLarge`, 65 for the cold `findLargeDirty` helper, and 57 of growth in
+`insertLargeFree`; `alloc` remains 1,616 bytes. Do not use the manager-only
+`cli/wago` binary for this comparison because its dependency graph dead-strips
+the collector.
+
 ## Required companion layers
 
 Collector microbenchmarks cannot observe every cost. Keep the following as
