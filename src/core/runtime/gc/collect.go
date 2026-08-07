@@ -96,15 +96,6 @@ func (c *Collector) sweepAll() {
 	c.compactNurseryHandles()
 	c.compactNurseryBump()
 }
-func (c *Collector) sweepNurseryDead() {
-	for _, h := range c.nurseryHandles {
-		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && !c.mark[h] {
-			c.free(h)
-		}
-	}
-	c.compactNurseryHandles()
-	c.compactNurseryBump()
-}
 
 // finishMinorEvacuation commits the destructive half of a successful minor
 // collection. promoteMarkedNursery has moved every live nursery object before
