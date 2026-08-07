@@ -180,6 +180,7 @@ func (m *Memory) Close() error {
 		return fmt.Errorf("wago: memory has %d live importer(s); close consumers before the memory", count)
 	}
 	s.set(memoryStateClosed, true)
+	s.closeWaitersLocked()
 	jm := m.jm
 	m.jm = nil
 	s.mu.Unlock()
@@ -385,6 +386,7 @@ func (m *Memory) ownerClosed() {
 	}
 	s.mu.Lock()
 	s.set(memoryStateClosed, true)
+	s.closeWaitersLocked()
 	m.jm = nil
 	s.mu.Unlock()
 }
