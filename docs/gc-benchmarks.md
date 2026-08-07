@@ -99,6 +99,28 @@ alignment. `go tool nm -size` attributes 256 text bytes directly to this change:
 `cli/wago` binary for this comparison because its dependency graph dead-strips
 the collector.
 
+`BenchmarkTinyAllocatorCommonSpanReuse`, `BenchmarkTinyAllocatorFragmentedFit`,
+and `BenchmarkTinyAllocatorFragmentedMiss` isolate the compact Tiny span
+allocator tracked by #318. Always run the common reuse case with the fragmented
+cases: bounded misses must not hide work shifted into successful allocation or
+free/coalescing. `CommonSpanReuse` also reports `metadata-bytes`, which counts
+the boundary-tag, allocation-start, bin-head, and bin-occupancy backing storage;
+the eight intrusive link bytes inside each free span remain part of the managed
+heap rather than a separately retained metadata allocation.
+
+On linux/amd64 with the default 64 KiB heap, allocator backing metadata changes
+from 65,536 bytes (4,096 16-byte `tinyBlock` records) to 9,180 bytes, an 86.0%
+reduction. A 2,048-span impossible fragmented allocation changes from about
+2.29 us and 16 B/op to about 4.95 ns and 0 B/op. The stricter metadata and
+coalescing work makes the isolated allocate/free/full-coalesce microbenchmark
+about 39.5 ns instead of 9.8 ns; use end-to-end allocation workloads when
+deciding whether that explicit footprint/fragmentation tradeoff is acceptable.
+The minimal Tiny collector constructor executable changes from 2,473,626 to
+2,479,440 unstripped bytes (+5,814) and from 1,642,658 to 1,646,754 stripped
+bytes (+4,096, including file alignment). Directly retained Tiny initialization
+text includes 1,049 bytes for `newTinyHeap`, 533 bytes for `insertFree`, and a
+122-byte increase in `newTinyCollector`.
+
 ## Required companion layers
 
 Collector microbenchmarks cannot observe every cost. Keep the following as
