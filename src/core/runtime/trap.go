@@ -32,6 +32,7 @@ const (
 	TrapUnhandledException   TrapCode = 17
 	TrapCastFailure          TrapCode = 18
 	TrapTableOutOfBounds     TrapCode = 19
+	TrapAtomicUnaligned      TrapCode = 20
 )
 
 var trapMessages = [...]string{
@@ -55,6 +56,7 @@ var trapMessages = [...]string{
 	TrapUnhandledException:   "unhandled WebAssembly exception",
 	TrapCastFailure:          "cast failure",
 	TrapTableOutOfBounds:     "table access out of bounds",
+	TrapAtomicUnaligned:      "unaligned atomic memory access",
 }
 
 func (c TrapCode) String() string {

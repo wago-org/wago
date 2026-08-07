@@ -5,6 +5,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -27,6 +28,22 @@ func sharedAtomicAddModule() []byte {
 			0x41, 0x00, // i32.const 0: address
 			0x20, 0x00, // local.get 0: delta
 			0xfe, 0x1e, 0x02, 0x00, // i32.atomic.rmw.add align=4 offset=0
+			0x0b,
+		}))),
+	)
+}
+
+func sharedAtomicAddAtModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add-at", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x20, 0x01,
+			0xfe, 0x1e, 0x02, 0x00,
 			0x0b,
 		}))),
 	)
@@ -81,6 +98,33 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 7 {
 		t.Fatalf("shared memory value = %d, want 7", got)
+	}
+}
+
+func TestThreadsAtomicRMWRejectsUnalignedAddressBeforeWrite(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedAtomicAddAtModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, err := NewSharedMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	_, err = instance.Invoke("add-at", I32(1), I32(7))
+	var trap *TrapError
+	if !errors.As(err, &trap) || trap.Code != TrapAtomicUnaligned {
+		t.Fatalf("unaligned add error = %v, want atomic alignment trap", err)
+	}
+	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 0 {
+		t.Fatalf("memory changed on alignment trap: %d", got)
 	}
 }
 

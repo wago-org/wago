@@ -32,7 +32,8 @@ const (
 	trapUnhandledException = 17
 	trapCastFailure        = 18
 	trapTableOOB           = 19
-	trapMax                = trapTableOOB
+	trapAtomicUnaligned    = 20
+	trapMax                = trapAtomicUnaligned
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).

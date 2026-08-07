@@ -53,6 +53,10 @@ func (f *fn) atomicRMWAdd32(off uint64) error {
 	if eaOwned {
 		f.release(ea)
 	}
+	if !f.a.TstImm64(addr, 3) {
+		panic("arm64: atomic alignment mask is not encodable")
+	}
+	f.trapIf(condNE, trapAtomicUnaligned)
 
 	old := f.allocReg(maskOf(vreg, addr))
 	next := f.allocReg(maskOf(vreg, addr, old))

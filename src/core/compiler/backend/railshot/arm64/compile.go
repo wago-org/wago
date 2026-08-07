@@ -415,7 +415,7 @@ type scratch struct {
 
 	retSites      []int
 	ctrl          []ctrlFrame
-	trapSites     [trapTableOOB + 1][]trapSite
+	trapSites     [trapAtomicUnaligned + 1][]trapSite
 	branchTargets map[int]bool
 	brTableStubAt []int // duplicate-heavy jump-table target positions by control depth
 	transient
