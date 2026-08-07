@@ -82,6 +82,20 @@ func (c *Collector) Verify(roots RootSet) error {
 			return errors.New("gc: invalid table ref")
 		}
 	}
+	if err := c.verifyRememberedShadow(); err != nil {
+		return err
+	}
+	if err := c.verifyCardMetadata(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// verifyRememberedShadow independently reconstructs the old-to-nursery parent
+// set from heap contents. Remembered metadata may conservatively retain parents
+// whose young edges were overwritten, so verification requires completeness
+// rather than exact equality between collections.
+func (c *Collector) verifyRememberedShadow() error {
 	seenRemembered := make([]bool, len(c.handles))
 	for _, h := range c.remembered {
 		if h == 0 || !slotIndexOK(h, len(c.handles)) || c.handles[h].space == spaceFree || !c.handles[h].remembered {
@@ -96,9 +110,37 @@ func (c *Collector) Verify(roots RootSet) error {
 		if c.handles[h].remembered != seenRemembered[h] {
 			return fmt.Errorf("gc: handle %d remembered bit/list mismatch", h)
 		}
+		if c.cfg.Profile != ProfileThroughput {
+			continue
+		}
+		sp := c.handles[h].space
+		if sp != spaceOld && sp != spaceLarge {
+			continue
+		}
+		containsNursery := false
+		c.scanObjectRefs(h, func(child Ref) {
+			if !containsNursery && c.isNurseryRef(child) {
+				containsNursery = true
+			}
+		})
+		if containsNursery && !seenRemembered[h] {
+			return fmt.Errorf("gc: shadow verifier found unremembered old-to-nursery edge from handle %d", h)
+		}
 	}
-	if err := c.verifyCardMetadata(); err != nil {
-		return err
+	return nil
+}
+
+// verifyNurseryEvacuated is the expensive assertion for successful throughput
+// minor collections. It deliberately scans all handles only in verification
+// mode; the release cleanup path remains nursery-bounded.
+func (c *Collector) verifyNurseryEvacuated() error {
+	for h := uint32(1); int(h) < len(c.handles); h++ {
+		if c.handles[h].space == spaceNursery {
+			return fmt.Errorf("gc: handle %d remained in nursery after successful evacuation", h)
+		}
+	}
+	if c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
+		return fmt.Errorf("gc: evacuated nursery retained bump=%d handles=%d", c.nurseryBump, len(c.nurseryHandles))
 	}
 	return nil
 }
