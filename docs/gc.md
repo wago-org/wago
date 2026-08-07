@@ -2102,6 +2102,58 @@ Verification checks that live refs point to valid handles, object type IDs exist
 
 Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, roots, minor/full collection, and barrier metadata. Environment variables can be layered on later if needed; the first pass keeps the knobs explicit and testable.
 
+The GC package's randomized graph stress tests also run an independent shadow
+tracer before full collection. The oracle walks root slots, globals, tables, and
+descriptor layouts without calling the production mark or object-scan helpers,
+then checks both missing retention and unnecessary retention. Promotion-failure
+tests snapshot nursery, handle, card, mark, and old-space allocator state and
+require byte-for-byte-equivalent observable state after rollback.
+
+### Hardened GC stress build
+
+Build tag `wagodebug` enables deterministic failure injection and a reproducible
+mixed minor/full choice at `CollectEveryAlloc` safepoints. Release builds compile
+the hooks to constant no-ops and retain no injector state. The hardening suite is
+run with:
+
+```sh
+go test -tags wagodebug ./src/core/runtime/gc
+go test -race -tags wagodebug ./src/core/runtime/gc
+```
+
+The injection matrix covers promotion planning, destination allocation, commit
+preflight, handle publication, object-card growth, slot-card growth, and backing
+growth. Promotion failures at every survivor index must restore handles, object
+bytes, nursery allocation state, marks, remembered/card metadata, and the
+throughput allocator. Armed failures are scoped to one collector (or its
+throughput heap), so concurrent collectors cannot consume each other's test
+faults. Native handle-batch tests bracket both collection and
+`Close` and require reservation cancellation plus epoch advancement.
+
+Randomized Throughput and Tiny operation fuzzers feed every full collection
+through the independent shadow tracer. Descriptor fuzzing covers every storage
+kind, packed fields, alignment, invalid layouts, and bounded size arithmetic;
+operation fuzzing covers sparse/dense reference graphs, giant rejected arrays,
+globals, tables, old-to-young writes, promotion exhaustion, incremental Tiny
+phases, and pointer-free ref-looking payloads. Product tests separately retain
+the public-token, cross-instance, host re-entry, exception, snapshot, subtype,
+bulk-operation, trap-order, and collection-disabled fail-closed gates.
+
+The scheduled `Regression stress` workflow supplies the independently runnable
+CI shard. Its `gc-hardening` matrix runs three repetitions on native Linux
+amd64 and arm64 in explicit-bounds and `wago_guardpage` builds, including the
+collector suite and real native frame-root/host-transition products. This is the
+architecture execution gate; cross-compilation alone is not treated as arm64
+coverage.
+
+Focused amd64 comparison against `main` on a Ryzen 7 7800X3D found no new
+allocations: `ForcePromote` measured 113.4 ns/op at baseline and 114.5 ns/op with
+transactional failure restoration (+1.0%, 0 B/op), while the retained promotion
+plan remained 24 bytes per survivor. Nursery constructor and remembered-array
+write means stayed within 2.2% of baseline. `BenchmarkForcePromoteTransactional`
+and the `plan-B` metric on `BenchmarkMinorPromotionScratch` retain these gates
+for future comparisons.
+
 ## Current limitations
 
 - The mandatory Core 3 WasmGC corpus is complete on linux/amd64 explicit and

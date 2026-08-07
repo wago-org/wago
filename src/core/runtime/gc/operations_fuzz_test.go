@@ -93,9 +93,7 @@ func FuzzCollectorOperations(f *testing.F) {
 			case 6:
 				fuzzCollectMinor(t, c, rootSet())
 			case 7:
-				if err := c.CollectFull(rootSet()); err != nil {
-					t.Fatal(err)
-				}
+				assertFullCollectionMatchesShadow(t, c, rootSet())
 			case 8:
 				if r, ok := fuzzPick(c, refs, a); ok && len(roots) < 16 {
 					roots = append(roots, r)

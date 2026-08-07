@@ -21,6 +21,27 @@ type throughputLargeFree struct {
 	size uint32
 }
 
+// throughputAllocCheckpoint records only allocator state that one allocation
+// can mutate. Promotion planning restores checkpoints in reverse order on
+// failure, without copying allocator metadata on the successful path.
+type throughputAllocTransaction struct {
+	mem              []byte
+	bump             uint32
+	largestFree      uint32
+	largestFreeDirty bool
+}
+
+type throughputAllocCheckpoint struct {
+	class          int
+	freeHead       uint32
+	freeRecordHead uint32
+	freeSlotsLen   int
+	freeHeadSlot   throughputFreeSlot
+	largeIndex     int
+	largeSpan      throughputLargeFree
+	largeRemoved   bool
+}
+
 type throughputHeap struct {
 	mem              []byte
 	limit            uint32
@@ -125,6 +146,93 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 	return handleEntry{off: off, size: size, allocSize: allocSize, class: uint16(len(throughputClassSizes)), space: sp}, nil
 }
 
+func (h *throughputHeap) checkpointAlloc(size uint32, sp spaceKind) throughputAllocCheckpoint {
+	cp := throughputAllocCheckpoint{
+		class:      -1,
+		largeIndex: -1,
+	}
+	if size <= ^uint32(0)-15 {
+		allocSize := Align16(size)
+		if sp != spaceLarge && allocSize <= h.classLimit {
+			if cls := h.classFor(allocSize); cls >= 0 {
+				cp.class = cls
+				cp.freeHead = h.freeHeads[cls]
+				cp.freeRecordHead = h.freeRecordHeads[cls]
+				cp.freeSlotsLen = len(h.freeSlots[cls])
+				if cp.freeHead != throughputNoSlot && int(cp.freeHead) < cp.freeSlotsLen {
+					cp.freeHeadSlot = h.freeSlots[cls][cp.freeHead]
+				}
+				return cp
+			}
+		}
+	}
+	if size <= ^uint32(0)-15 {
+		allocSize := Align16(size)
+		for i, span := range h.largeFree {
+			if span.size >= allocSize {
+				cp.largeIndex = i
+				cp.largeSpan = span
+				cp.largeRemoved = span.size-allocSize < 32
+				break
+			}
+		}
+	}
+	return cp
+}
+
+func (h *throughputHeap) restoreAlloc(cp throughputAllocCheckpoint) {
+	if cp.class >= 0 {
+		cls := cp.class
+		h.freeHeads[cls] = cp.freeHead
+		h.freeRecordHeads[cls] = cp.freeRecordHead
+		h.freeSlots[cls] = h.freeSlots[cls][:cp.freeSlotsLen]
+		if cp.freeHead != throughputNoSlot {
+			h.freeSlots[cls][cp.freeHead] = cp.freeHeadSlot
+		}
+		return
+	}
+	if cp.largeIndex < 0 {
+		return
+	}
+	if !cp.largeRemoved {
+		h.largeFree[cp.largeIndex] = cp.largeSpan
+		return
+	}
+	h.largeFree = append(h.largeFree, throughputLargeFree{})
+	copy(h.largeFree[cp.largeIndex+1:], h.largeFree[cp.largeIndex:])
+	h.largeFree[cp.largeIndex] = cp.largeSpan
+}
+
+func (h *throughputHeap) beginAllocTransaction() throughputAllocTransaction {
+	return throughputAllocTransaction{
+		mem:              h.mem,
+		bump:             h.bump,
+		largestFree:      h.largestFree,
+		largestFreeDirty: h.largestFreeDirty,
+	}
+}
+
+func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) {
+	h.mem = tx.mem
+	h.bump = tx.bump
+	h.largestFree = tx.largestFree
+	h.largestFreeDirty = tx.largestFreeDirty
+}
+
+// rollbackSuccessfulAlloc reverses one successful allocation while a larger
+// allocation transaction is being unwound in LIFO order. Spans below the
+// transaction's initial bump came from a free list; bump allocations require no
+// per-allocation metadata restoration because restoreAllocTransaction resets the
+// bump and backing slice once all free-list allocations have been returned.
+func (h *throughputHeap) rollbackSuccessfulAlloc(e handleEntry, initialBump uint32) {
+	if e.off >= initialBump {
+		return
+	}
+	if err := h.free(e); err != nil {
+		panic("gc: cannot roll back successful throughput allocation: " + err.Error())
+	}
+}
+
 func (h *throughputHeap) free(e handleEntry) error {
 	if e.allocSize == 0 || e.off+e.allocSize > uint32(len(h.mem)) {
 		return errors.New("gc: invalid throughput free span")
@@ -184,6 +292,9 @@ func (h *throughputHeap) grow(size uint32) (uint32, error) {
 
 //go:noinline
 func (h *throughputHeap) growBacking(needed uint64) error {
+	if err := injectFailure(h, failBackingGrowth); err != nil {
+		return err
+	}
 	reserve := needed
 	current, pageBytes, limit := uint64(len(h.mem)), uint64(h.pageBytes), uint64(h.limit)
 	if current >= pageBytes {

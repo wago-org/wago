@@ -118,14 +118,60 @@ func (c *Collector) verifyRememberedShadow() error {
 			continue
 		}
 		containsNursery := false
-		c.scanObjectRefs(h, func(child Ref) {
+		if err := c.verifyScanObjectRefs(h, func(child Ref) {
 			if !containsNursery && c.isNurseryRef(child) {
 				containsNursery = true
 			}
-		})
+		}); err != nil {
+			return err
+		}
 		if containsNursery && !seenRemembered[h] {
 			return fmt.Errorf("gc: shadow verifier found unremembered old-to-nursery edge from handle %d", h)
 		}
+	}
+	return nil
+}
+
+// verifyScanObjectRefs intentionally does not call scanObjectRefs. Keeping the
+// slow verifier's descriptor walk separate prevents one bad offset or array
+// bound implementation from agreeing with itself.
+func (c *Collector) verifyScanObjectRefs(h uint32, visit func(Ref)) error {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+		return fmt.Errorf("gc: shadow scan invalid handle %d", h)
+	}
+	r := makeObjRef(h)
+	b := c.bytes(r)
+	if len(b) < int(HeaderSize) {
+		return fmt.Errorf("gc: shadow scan short object %d", h)
+	}
+	typeID := TypeID(binary.LittleEndian.Uint32(b[:4]))
+	d, err := c.desc(typeID)
+	if err != nil {
+		return err
+	}
+	if d.Kind == KindStruct {
+		for _, field := range d.Fields {
+			if !isCollectorRefKind(field.Kind) {
+				continue
+			}
+			off := uint64(PayloadOffset) + uint64(field.Offset)
+			if off+4 > uint64(len(b)) {
+				return fmt.Errorf("gc: shadow scan struct field outside handle %d", h)
+			}
+			visit(Ref(binary.LittleEndian.Uint32(b[off : off+4])))
+		}
+		return nil
+	}
+	if d.Kind != KindArray || !isCollectorRefKind(d.Elem) {
+		return nil
+	}
+	length := binary.LittleEndian.Uint32(b[8:12])
+	for i := uint32(0); i < length; i++ {
+		off := uint64(PayloadOffset) + uint64(i)*uint64(d.ElemSize)
+		if off+4 > uint64(len(b)) {
+			return fmt.Errorf("gc: shadow scan array element outside handle %d", h)
+		}
+		visit(Ref(binary.LittleEndian.Uint32(b[off : off+4])))
 	}
 	return nil
 }

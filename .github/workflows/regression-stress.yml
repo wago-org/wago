@@ -4,6 +4,13 @@ on:
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/regression-stress.yml'
+      - 'docs/gc.md'
+      - 'src/core/runtime/gc/**'
+      - 'src/wago/*gc*'
 
 permissions:
   contents: read
@@ -16,7 +23,43 @@ env:
   GO_VERSION: "1.22"
 
 jobs:
+  gc-hardening:
+    name: GC hardening / ${{ matrix.arch }} / ${{ matrix.bounds }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            bounds: explicit
+            tags: wagodebug
+          - arch: amd64
+            runner: ubuntu-24.04
+            bounds: guard-page
+            tags: wagodebug,wago_guardpage
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            bounds: explicit
+            tags: wagodebug
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            bounds: guard-page
+            tags: wagodebug,wago_guardpage
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Run collector oracle, injection, fuzz seeds, and stress suites
+        run: go test -count=3 -tags '${{ matrix.tags }}' ./src/core/runtime/gc
+      - name: Run native GC root and host-transition stress
+        run: go test -count=3 -tags '${{ matrix.tags }}' -run 'Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$' ./src/wago
+
   stress:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
