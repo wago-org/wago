@@ -797,15 +797,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
-	hintGlobals := nGlobals
-	// Dense per-function global scoring costs O(functions*globals) memory even
-	// when each function touches only a handful of globals. Above one million
-	// cells, disable the optional global-pinning heuristic while retaining every
-	// semantic/call/local hint; this bounds compile memory for generated modules.
-	if uint64(n)*uint64(nGlobals) > 1<<20 {
-		hintGlobals = 0
-	}
-	allHints, globalScores, err := computeModuleHints(m, hintGlobals, importedFuncs)
+	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -1115,8 +1107,20 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	}
 	localScores := make([]uint32, totalLocals)
 	localLastGets := make([]uint32, totalLocals)
-	globalScores := make([]uint32, n*nGlobals)
-	globalEligibility := make([]bool, n*nGlobals)
+	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
+	var globalScores []uint32
+	var globalEligibility []bool
+	if denseGlobals {
+		globalScores = make([]uint32, n*nGlobals)
+		globalEligibility = make([]bool, n*nGlobals)
+	}
+	type hintRange struct{ start, end int }
+	var sparseRanges []hintRange
+	var sparseGlobals []shared.GlobalHint
+	var sparseAccum shared.GlobalHintAccumulator
+	if !denseGlobals {
+		sparseRanges = make([]hintRange, n)
+	}
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
 	var agg []int64
 	if nGlobals > 0 && n > 0 {
@@ -1129,8 +1133,15 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	localAt := 0
 	for i := range m.Code {
 		nLocals := localCounts[i]
-		globalAt := i * nGlobals
-		h := funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		var h funcHints
+		if denseGlobals {
+			globalAt := i * nGlobals
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+		} else {
+			sparseAccum.Reset(nGlobals)
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
+			h.globalAccum = &sparseAccum
+		}
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		var err error
@@ -1139,11 +1150,26 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		localAt += nLocals
+		h.globalAccum = nil
 		allHints[i] = h
 		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
 		moduleEH = moduleEH || h.moduleEH
-		for g := 0; g < nGlobals; g++ {
-			agg[g] += int64(h.globalScore[g])
+		if denseGlobals {
+			for g := 0; g < nGlobals; g++ {
+				agg[g] += int64(h.globalScore[g])
+			}
+		} else {
+			start := len(sparseGlobals)
+			sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
+			sparseRanges[i] = hintRange{start: start, end: len(sparseGlobals)}
+			for _, gh := range sparseGlobals[start:] {
+				agg[gh.Index] += int64(gh.Score)
+			}
+		}
+	}
+	if !denseGlobals {
+		for i, r := range sparseRanges {
+			allHints[i].sparseGlobals = sparseGlobals[r.start:r.end]
 		}
 	}
 	// Immutable local-table specialization for call_indirect and indirect tails.
@@ -1611,7 +1637,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, pinLocals && v128LocalPinsEnabled && !hasCall)
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, fpPinLimit, hasCall, pinLocals && v128LocalPinsEnabled && !hasCall)
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
@@ -1783,21 +1809,21 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, gpPool []Reg, fpPinLimit int, pinV128 bool) {
+func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, sparseGlobals []shared.GlobalHint, gpPool []Reg, fpPinLimit int, hasCall, pinV128 bool) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}
 	// Module-pinned globals (installModuleGlobals) already occupy globalReg
 	// entries; keep them and size for whichever view is larger.
-	if len(f.globalReg) < len(globalScores) {
-		gr := make([]Reg, len(globalScores))
+	if len(f.globalReg) < f.m.GlobalCount() {
+		gr := make([]Reg, f.m.GlobalCount())
 		for i := range gr {
 			gr[i] = regNone
 		}
 		copy(gr, f.globalReg)
 		f.globalReg = gr
-		gd := make([]bool, len(globalScores))
+		gd := make([]bool, f.m.GlobalCount())
 		copy(gd, f.globalDirty)
 		f.globalDirty = gd
 	}
@@ -1829,6 +1855,17 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 			continue
 		}
 		gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
+	}
+	for _, gh := range sparseGlobals {
+		g := int(gh.Index)
+		if gh.Score < loopMin || f.isModuleGlobal(g) || hasCall && !gh.Eligible {
+			continue
+		}
+		gt, ok := f.m.GlobalTypeByIndex(gh.Index)
+		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
+			continue
+		}
+		gp = append(gp, gpCand{global: true, idx: g, score: gh.Score})
 	}
 	f.tmpGpCand = gp
 	slices.SortStableFunc(gp, func(a, b gpCand) int {

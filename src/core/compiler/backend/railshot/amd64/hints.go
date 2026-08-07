@@ -2,7 +2,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Function pre-scan (OPTIMIZATIONS.md "FuncHints"): one allocation-conscious
 // walk collects call/memory shape and loop-weighted hotness scores for register
@@ -70,6 +73,10 @@ type funcHints struct {
 	// lands only on the (sparse) calls outside that loop. The innermost enclosing
 	// loop decides — if it calls, no outer loop can be call-free.
 	globalElig []bool
+	// sparseGlobals replaces the dense score/eligibility slices for modules whose
+	// functions-by-globals matrix would exceed the bounded dense fast path.
+	sparseGlobals []shared.GlobalHint
+	globalAccum   *shared.GlobalHintAccumulator
 
 	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
 	// allocations while compiling this body. It lets compileFunc avoid reserving
@@ -99,6 +106,24 @@ func addHotness(scores []uint32, idx uint32, delta int64) {
 		scores[idx] = max
 	} else {
 		scores[idx] += uint32(delta)
+	}
+}
+
+func (h *funcHints) addGlobalHotness(idx uint32, delta int64) {
+	if h.globalAccum != nil {
+		h.globalAccum.Add(idx, delta)
+		return
+	}
+	addHotness(h.globalScore, idx, delta)
+}
+
+func (h *funcHints) markGlobalEligible(idx uint32) {
+	if h.globalAccum != nil {
+		h.globalAccum.MarkEligible(idx)
+		return
+	}
+	if int(idx) < len(h.globalElig) {
+		h.globalElig[idx] = true
 	}
 }
 
@@ -245,9 +270,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 				if int(in.Index) < nGlobals {
 					if in.Kind == wasm.InstrGlobalSet {
-						addHotness(h.globalScore, in.Index, 2*w)
+						h.addGlobalHotness(in.Index, 2*w)
 					} else {
-						addHotness(h.globalScore, in.Index, w)
+						h.addGlobalHotness(in.Index, w)
 					}
 					elig.add(curLoop, in.Index)
 				}
@@ -257,7 +282,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true // call inside: its globals are not eligible
 				} else {
 					for _, g := range elig.globalsIn(loop) {
-						h.globalElig[g] = true
+						h.markGlobalEligible(g)
 					}
 				}
 				elig.pop(loop)
@@ -540,7 +565,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					subHasCall = true
 				} else {
 					for _, g := range s.elig.globalsIn(loop) {
-						s.h.globalElig[g] = true
+						s.h.markGlobalEligible(g)
 					}
 				}
 				s.elig.pop(loop)
@@ -623,9 +648,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					addHotness(s.h.globalScore, idx, 2*loopWeight(loopDepth))
+					s.h.addGlobalHotness(idx, 2*loopWeight(loopDepth))
 				} else {
-					addHotness(s.h.globalScore, idx, loopWeight(loopDepth))
+					s.h.addGlobalHotness(idx, loopWeight(loopDepth))
 				}
 				s.elig.add(curLoop, idx)
 			}
