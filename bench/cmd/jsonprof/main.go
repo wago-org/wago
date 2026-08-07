@@ -98,7 +98,7 @@ func writePerfMap(in *wago.Instance, c *wago.Compiled) {
 		return
 	}
 	defer f.Close()
-	codeLen := len(c.Code)
+	codeLen := c.CodeSize()
 	for i, off := range entries {
 		end := codeLen
 		if i+1 < len(entries) {
