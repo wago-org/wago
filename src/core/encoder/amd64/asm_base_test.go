@@ -85,6 +85,7 @@ func TestIntegerMemoryAndControlEncodings(t *testing.T) {
 		{"lock xadd byte", func(a *Asm) { a.LockXaddIdx(R10, R11, R9, 8, 1) }, []byte{0xf0, 0x47, 0x0f, 0xc0, 0x4c, 0x1a, 0x08}},
 		{"lock xadd 64", func(a *Asm) { a.LockXaddIdx(R10, R11, R9, 8, 8) }, []byte{0xf0, 0x4f, 0x0f, 0xc1, 0x4c, 0x1a, 0x08}},
 		{"movzx r9d,r10b", func(a *Asm) { a.Movzx8(R9, R10, false) }, []byte{0x45, 0x0f, 0xb6, 0xca}},
+		{"lock cmpxchg 64", func(a *Asm) { a.LockCmpxchgIdx(R10, R11, R9, 8, 8) }, []byte{0xf0, 0x4f, 0x0f, 0xb1, 0x4c, 0x1a, 0x08}},
 		{"movsxd", func(a *Asm) { a.Movsxd(R8, R9) }, []byte{0x4d, 0x63, 0xc1}},
 		{"movsx byte rex", func(a *Asm) { a.Movsx8(RAX, RSP, false) }, []byte{0x40, 0x0f, 0xbe, 0xc4}},
 		{"movsx word", func(a *Asm) { a.Movsx16(R8, R9, true) }, []byte{0x4d, 0x0f, 0xbf, 0xc1}},

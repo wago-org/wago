@@ -622,6 +622,26 @@ func (a *Asm) XchgIdx(base, index, src Reg, disp int32, size int) {
 
 func (a *Asm) Mfence() { a.emit(0x0F, 0xAE, 0xF0) }
 
+// LockCmpxchgIdx compares the memory operand with RAX/EAX/AX/AL and, on match,
+// stores src. On failure it loads the observed memory value into the matching
+// accumulator width and clears ZF.
+func (a *Asm) LockCmpxchgIdx(base, index, src Reg, disp int32, size int) {
+	if size == 2 {
+		a.emit(0x66)
+	}
+	a.emit(0xF0)
+	w := size == 8
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
+		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
+	}
+	op := byte(0xB1)
+	if size == 1 {
+		op = 0xB0
+	}
+	a.emit(0x0F, op)
+	a.sibAddr(src, base, index, disp)
+}
+
 func (a *Asm) Cdq(w bool) {
 	if w {
 		a.emit(0x48)
