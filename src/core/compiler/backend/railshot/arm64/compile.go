@@ -705,6 +705,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
+	hostAdapters, err := shared.HostAdapterSet(m)
+	if err != nil {
+		return nil, fmt.Errorf("arm64: host adapter analysis: %w", err)
+	}
+	if len(opts.CustomInstructions) != 0 {
+		for i := range hostAdapters {
+			hostAdapters[i] = true
+		}
+	}
 	// Stats collection is opt-in: an explicit sink (opts.Stats) or WAGO_EXPLAIN=1.
 	// nil ms => st stays nil in the loop => zero-overhead counter no-ops.
 	var ms *ModuleStats
@@ -760,7 +769,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 				ms.Funcs[i] = st
 			}
-			fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, sc)
+			fnCode, rl, internalOff, err := compileFunc(m, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
@@ -786,12 +795,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, inlineTargets, calleePreservesPins, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, hostAdapters, inlineTargets, calleePreservesPins, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
 	n := len(m.Code)
 	if ms != nil {
 		for i := range m.Code {
@@ -823,7 +832,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, ws.scratch)
+				fnCode, rl, internalOff, err := compileFunc(m, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
@@ -1226,7 +1235,7 @@ var errRegExhausted = errors.New("arm64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		gcFrameRoots.Exact = true
 		gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
@@ -1234,7 +1243,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleePreservesPins, sc)
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleePreservesPins, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
@@ -1244,7 +1253,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 			gcFrameRoots.FrameBytes = 0
 			gcFrameRoots.AdapterReturnOffset = 0
 		}
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, false, inlineTargets, calleePreservesPins, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, false, inlineTargets, calleePreservesPins, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -1252,7 +1261,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interrupti
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, calleePreservesPins []bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -1488,7 +1497,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 
 	if regABI {
-		internalOff, err := f.emitRegABI(c)
+		internalOff, err := f.emitRegABI(c, hostAdapter)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -2031,65 +2040,71 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // the internal entry takes args in GP/V registers and returns its single result
 // in X0/V0, or two integer results in X0/X1.
 // Returns the internal entry's offset within the function's code.
-func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
+func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
 
 	// Host→internal adapter (offset 0): in X0=serArgs, X1=linMem, X2=trap,
 	// X3=results; loads args into registers, calls the internal entry, stores the
 	// register results.
-	a.MovReg64(linMemReg, X1) // linMem → linMemReg: the module-wide invariant the internal entry inherits
-	if f.memSizeReg != regNone {
-		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
-		// memBytes cache before the internal entry runs (which relies on it).
-		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
-	}
-	f.deriveModuleGlobals()   // offset-0 entry: cells → module-pinned registers
-	a.StpPre(LR, X3, SP, -16) // save LR (BL clobbers it) + results ptr; keeps SP 16-aligned
 	gp, fp := 0, 0
-	x0ArgOff := int32(-1) // the arg targeting X0 aliases the serArgs base: load it LAST
-	for i := 0; i < np; i++ {
-		mt := f.localType[i]
-		if mt.isFloat() {
-			a.FLoadDisp(fpArgRegs[fp], X0, int32(8*i), mt == mtF64)
-			fp++
-		} else {
-			if intArgRegs[gp] == X0 {
-				x0ArgOff = int32(8 * i)
+	var adapterCall int
+	if hostAdapter {
+		a.MovReg64(linMemReg, X1) // linMem → linMemReg: the module-wide invariant the internal entry inherits
+		if f.memSizeReg != regNone {
+			// Offset-0 entry (from Go, or an indirect call): establish the module-wide
+			// memBytes cache before the internal entry runs (which relies on it).
+			f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+		}
+		f.deriveModuleGlobals()   // offset-0 entry: cells → module-pinned registers
+		a.StpPre(LR, X3, SP, -16) // save LR (BL clobbers it) + results ptr; keeps SP 16-aligned
+		gp, fp = 0, 0
+		x0ArgOff := int32(-1) // the arg targeting X0 aliases the serArgs base: load it LAST
+		for i := 0; i < np; i++ {
+			mt := f.localType[i]
+			if mt.isFloat() {
+				a.FLoadDisp(fpArgRegs[fp], X0, int32(8*i), mt == mtF64)
+				fp++
 			} else {
-				f.ld64(intArgRegs[gp], X0, int32(8*i))
+				if intArgRegs[gp] == X0 {
+					x0ArgOff = int32(8 * i)
+				} else {
+					f.ld64(intArgRegs[gp], X0, int32(8*i))
+				}
+				gp++
 			}
-			gp++
 		}
-	}
-	if x0ArgOff >= 0 {
-		f.ld64(X0, X0, x0ArgOff)
-	}
-	adapterCall := a.Bl() // BL internal entry; patched below
-	f.adapterReturnOff = adapterCall + 4
-	if f.gcFrameRoots != nil {
-		f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
-	}
-	a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
-	f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells (X0 holds the result)
-	if rN == 1 {
-		rt := mtOf(f.ft.Results[0])
-		if rt.isFloat() {
-			a.FStoreDisp(X3, 0, 0, rt == mtF64) // V0
-		} else {
+		if x0ArgOff >= 0 {
+			f.ld64(X0, X0, x0ArgOff)
+		}
+		adapterCall = a.Bl() // BL internal entry; patched below
+		f.adapterReturnOff = adapterCall + 4
+		if f.gcFrameRoots != nil {
+			f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
+		}
+		a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
+		f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells (X0 holds the result)
+		if rN == 1 {
+			rt := mtOf(f.ft.Results[0])
+			if rt.isFloat() {
+				a.FStoreDisp(X3, 0, 0, rt == mtF64) // V0
+			} else {
+				f.st64(X3, 0, X0)
+			}
+		} else if rN == 2 {
 			f.st64(X3, 0, X0)
+			f.st64(X3, 8, X1)
 		}
-	} else if rN == 2 {
-		f.st64(X3, 0, X0)
-		f.st64(X3, 8, X1)
+		a.Ret()
 	}
-	a.Ret()
 
 	// Internal entry (frameless): linMemReg (linMem) is inherited from the caller —
 	// every wasm function keeps it pinned, and the adapter establishes it at the
 	// Go boundary — and the trap cell pointer lives in basedata, so the entry
 	// carries no environment setup at all (WARP's model). Args in GP/V regs.
-	a.Align16() // internal entries are hot call targets; align like function starts
+	if hostAdapter {
+		a.Align16() // internal entries are hot call targets; align like function starts
+	}
 	internalOff := a.Len()
 	if f.usesCalls {
 		a.StpPre(FP, LR, SP, -16) // save FP/LR frame record (BL clobbers LR)
@@ -2169,7 +2184,9 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 
 	f.elideRegisterOnlyFrame()
 	f.patchFrameAdjusts()
-	f.a.PatchBranch26(adapterCall, internalOff)
+	if hostAdapter {
+		f.a.PatchBranch26(adapterCall, internalOff)
+	}
 	return internalOff, nil
 }
 

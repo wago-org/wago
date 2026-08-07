@@ -1350,15 +1350,20 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
-	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
-		f.stats.call(callKindRegisterABI)
-		preservesPins := f.directCalleePreservesPins(localIdx)
-		if recordRoots {
-			// Exact caller maps name frame slots. Force the ordinary spill-managed
-			// call path even for a leaf that could otherwise preserve caller pins.
-			preservesPins = false
+	if regABIEnabled && sigFitsRegABI(ft) {
+		if sigIsIntOnly(ft) {
+			f.stats.call(callKindRegisterABI)
+			preservesPins := f.directCalleePreservesPins(localIdx)
+			if recordRoots {
+				// Exact caller maps name frame slots. Force the ordinary spill-managed
+				// call path even for a leaf that could otherwise preserve caller pins.
+				preservesPins = false
+			}
+			f.emitRegisterCall(localIdx, ft, resHint, preservesPins)
+		} else {
+			f.stats.call(callKindMixed)
+			f.emitMixedRegisterCall(localIdx, ft)
 		}
-		f.emitRegisterCall(localIdx, ft, resHint, preservesPins)
 		finishRoots()
 		return nil
 	}
