@@ -15,6 +15,8 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 		return err
 	}
 	switch {
+	case d.Class == railshared.AtomicNotify || d.Class == railshared.AtomicWait:
+		return f.atomicWaitHelper(d)
 	case d.Class == railshared.AtomicFence:
 		f.materializePendingLoads()
 		f.invalidateStoreForward()
@@ -33,6 +35,22 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported 0xFE opcode %d", d.Sub)
 	}
+}
+
+func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
+	helper := railshared.AtomicHelperNotify
+	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I64}
+	if d.Class == railshared.AtomicWait {
+		helper = railshared.AtomicHelperWait32
+		params = []wasm.ValType{wasm.I32, wasm.I32, wasm.I64, wasm.I64}
+		if d.Size == 8 {
+			helper = railshared.AtomicHelperWait64
+			params[1] = wasm.I64
+		}
+	}
+	f.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(d.Offset)})
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{wasm.I32}}
+	return f.callHostSync(int(railshared.AtomicWaitDispatchBit|helper), ft)
 }
 
 func (f *fn) atomicCmpxchg(d railshared.Atomic) error {

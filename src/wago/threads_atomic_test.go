@@ -142,6 +142,30 @@ func sharedAtomicOverlapModule() []byte {
 	)
 }
 
+func sharedAtomicWaitNotifyModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("notify", 0, 0),
+			wasmtest.ExportEntry("wait32", 0, 1),
+			wasmtest.ExportEntry("wait64", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xfe, 0x00, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x01, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x02, 0x03, 0x00, 0x0b}),
+		)),
+	)
+}
+
 func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicAddModule())
@@ -161,6 +185,9 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 		t.Fatalf("instantiate shared atomic module: %v", err)
 	}
 	defer instance.Close()
+	if compiled.usesAtomicWaitHelpers() || (!forceSyncHostImports && len(instance.ctrl) != 0) {
+		t.Fatalf("direct-only atomic module retained wait bridge: helper=%v ctrl=%d", compiled.usesAtomicWaitHelpers(), len(instance.ctrl))
+	}
 
 	result, err := instance.Invoke("add", I32(7))
 	if err != nil {
@@ -429,4 +456,161 @@ func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
 	if completions := binary.LittleEndian.Uint32(memory.Bytes()[4:8]); completions != 2 {
 		t.Fatalf("completions = %d, want 2", completions)
 	}
+}
+
+func TestThreadsAtomicWaitNotifyExecutesAcrossInstances(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedAtomicWaitNotifyModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if !compiled.usesAtomicWaitHelpers() {
+		t.Fatal("wait/notify module did not retain helper admission")
+	}
+	memory, _ := NewSharedMemory(1, 1)
+	defer memory.Close()
+	waiter, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer waiter.Close()
+	notifier, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer notifier.Close()
+	if probe, probeErr := waiter.Invoke("wait32", I32(0), I32(0), I64(0)); probeErr != nil || len(probe) != 1 {
+		t.Fatalf("wait bridge probe = %v, %v", probe, probeErr)
+	}
+
+	waitResult := make(chan struct {
+		value uint64
+		err   error
+	}, 1)
+	go func() {
+		out, callErr := waiter.Invoke("wait32", I32(0), I32(0), I64(-1))
+		value := uint64(0)
+		if len(out) != 0 {
+			value = out[0]
+		}
+		waitResult <- struct {
+			value uint64
+			err   error
+		}{value, callErr}
+	}()
+	waitForMemoryWaiters(t, memory, 1)
+	out, err := notifier.Invoke("notify", I32(0), I32(1))
+	if err != nil || len(out) != 1 || AsI32(out[0]) != 1 {
+		t.Fatalf("notify = %v, %v; want 1", out, err)
+	}
+	select {
+	case got := <-waitResult:
+		if got.err != nil || AsI32(got.value) != int32(memoryWaitNotified) {
+			t.Fatalf("wait = %d, %v; want notified", got.value, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("notified Wasm wait did not resume")
+	}
+
+	binary.LittleEndian.PutUint32(memory.Bytes()[:4], 7)
+	if out, err = waiter.Invoke("wait32", I32(0), I32(8), I64(-1)); err != nil || AsI32(out[0]) != int32(memoryWaitNotEqual) {
+		t.Fatalf("mismatched wait32 = %v, %v", out, err)
+	}
+	if out, err = waiter.Invoke("wait32", I32(0), I32(7), I64(0)); err != nil || AsI32(out[0]) != int32(memoryWaitTimedOut) {
+		t.Fatalf("zero-timeout wait32 = %v, %v", out, err)
+	}
+	binary.LittleEndian.PutUint64(memory.Bytes()[8:16], 0x1122334455667788)
+	if out, err = waiter.Invoke("wait64", I32(8), I64(0x1122334455667788), I64(0)); err != nil || AsI32(out[0]) != int32(memoryWaitTimedOut) {
+		t.Fatalf("zero-timeout wait64 = %v, %v", out, err)
+	}
+	assertNoMemoryWaiters(t, memory)
+}
+
+func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedAtomicWaitNotifyModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	loaded := roundTripCompiled(t, compiled)
+	if loaded != compiled {
+		defer loaded.Close()
+	}
+	if !loaded.usesAtomicWaitHelpers() || !loaded.requiredFeatures.IsEnabled(CoreFeatureThreads) {
+		t.Fatalf("round-trip helper/features = %v/%s", loaded.usesAtomicWaitHelpers(), loaded.requiredFeatures)
+	}
+	memory, _ := NewSharedMemory(1, 1)
+	defer memory.Close()
+	instance, err := Instantiate(loaded, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if len(instance.ctrl) == 0 {
+		t.Fatal("round-tripped wait module has no synchronous control frame")
+	}
+	out, err := instance.Invoke("wait32", I32(0), I32(1), I64(-1))
+	if err != nil || AsI32(out[0]) != int32(memoryWaitNotEqual) {
+		t.Fatalf("round-tripped wait = %v, %v", out, err)
+	}
+}
+
+func TestThreadsAtomicWaitHonorsInvokeCancellationAndClose(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedAtomicWaitNotifyModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+
+	t.Run("context", func(t *testing.T) {
+		memory, _ := NewSharedMemory(1, 1)
+		defer memory.Close()
+		instance, _ := Instantiate(compiled, Imports{"env.memory": memory})
+		defer instance.Close()
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			_, err := instance.InvokeContext(ctx, "wait32", I32(0), I32(0), I64(-1))
+			done <- err
+		}()
+		waitForMemoryWaiters(t, memory, 1)
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("wait cancellation = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("cancellation did not wake Wasm wait")
+		}
+		assertNoMemoryWaiters(t, memory)
+	})
+
+	t.Run("close", func(t *testing.T) {
+		memory, _ := NewSharedMemory(1, 1)
+		defer memory.Close()
+		instance, _ := Instantiate(compiled, Imports{"env.memory": memory})
+		done := make(chan error, 1)
+		go func() {
+			_, err := instance.Invoke("wait32", I32(0), I32(0), I64(-1))
+			done <- err
+		}()
+		waitForMemoryWaiters(t, memory, 1)
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-done:
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapInterrupted {
+				t.Fatalf("close wake = %v, want interrupted trap", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("instance close did not wake Wasm wait")
+		}
+		assertNoMemoryWaiters(t, memory)
+	})
 }

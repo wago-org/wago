@@ -240,6 +240,27 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount)
 }
 
+func moduleUsesAtomicWaitHelpers(m *wasm.Module) bool {
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				break
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				break
+			}
+			switch imm.Kind {
+			case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int) CoreFeatures {
 	var out CoreFeatures
 	r := wasm.NewReader(body)

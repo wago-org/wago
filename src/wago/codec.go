@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	// Codec-v30 internal CPU/execution bits share the persisted u64 requirement
-	// word but are stripped before exposing CoreFeatures. Public feature bits
-	// occupy the low range; reserving the top four bits avoids growing artifacts.
+	// Internal CPU/execution bits share the persisted u64 requirement word but
+	// are stripped before exposing CoreFeatures. Public feature bits occupy the
+	// low range; reserving the top five bits avoids growing artifacts.
+	compiledAtomicWaitExecution           uint64 = 1 << 59
 	compiledCPUFeatureBMI2                uint64 = 1 << 60
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
@@ -132,6 +133,9 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	}
 	if c.usesDynamicFuncRefTest() {
 		required |= compiledGCExecutionDynamicFuncRefTest
+	}
+	if c.usesAtomicWaitHelpers() {
+		required |= compiledAtomicWaitExecution
 	}
 	if c.requiresBMI2 {
 		required |= compiledCPUFeatureBMI2
@@ -676,7 +680,7 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	}
 	gcExecution := required & compiledGCExecutionMask
 	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledGCExecutionMask | compiledCPUFeatureBMI2))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
 	c.GCTypeDescs, err = r.gcTypeDescs()
 	if err != nil {
 		return err
@@ -695,6 +699,13 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 		c.codeCache.flags |= compiledCacheDynamicFuncRefTest
+	}
+	if required&compiledAtomicWaitExecution != 0 {
+		if !c.requiredFeatures.IsEnabled(CoreFeatureThreads) {
+			return fmt.Errorf("atomic wait execution flag requires recorded threads feature")
+		}
+		c.ensureCodeCache()
+		c.codeCache.flags |= compiledCacheAtomicWaitHelpers
 	}
 	genericGCExecution := gcExecution & (compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray)
 	if genericGCExecution != 0 {

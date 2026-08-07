@@ -1036,6 +1036,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		functionIndex++
 	}
 	customInstructions := resolveInstructionLowerings(m, instructions)
+	atomicWaitHelpers := moduleUsesAtomicWaitHelpers(m)
 	structuralProduct := stagedStructuralTypeProduct(0)
 	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
@@ -1280,7 +1281,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
 	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1843,6 +1844,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if dynamicFuncRefTest {
 		compiled.codeCache.flags |= compiledCacheDynamicFuncRefTest
 	}
+	if atomicWaitHelpers {
+		compiled.codeCache.flags |= compiledCacheAtomicWaitHelpers
+	}
 	if gcStructProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcStructProduct = gcStructProduct
@@ -2109,7 +2113,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
-	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
+	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		return true
 	}
 	for _, key := range c.Imports {
@@ -3539,7 +3543,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		passiveElemBytes += len(elem.Values) * stride
 	}
 	hostCallBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		hostCallBytes = wruntime.HostCtrlFrameBytes
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
@@ -3835,7 +3839,7 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	}
 	defer stopCancel()
 	if in.syncMode {
-		if err := in.callNativeSync(entry); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, in.trap, cancel); err != nil {
 			return nil, err
 		}
 	} else {
@@ -3950,7 +3954,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	}
 	defer stopCancel()
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrap(entry, activeTrap); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, cancel); err != nil {
 			return nil, err
 		}
 	} else {

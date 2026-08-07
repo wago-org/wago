@@ -68,6 +68,10 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 	}
 
 	s.mu.Lock()
+	if !s.has(memoryStateShared) {
+		s.mu.Unlock()
+		return 0, fmt.Errorf("wago: atomic wait requires shared memory")
+	}
 	if s.has(memoryStateClosed) || m.jm == nil {
 		s.mu.Unlock()
 		return 0, errMemoryWaitClosed
@@ -100,7 +104,7 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 		case err := <-w.result:
 			return memoryWaitNotified, err
 		case <-ctx.Done():
-			return m.cancelWait(s, w, ctx.Err())
+			return m.cancelWait(s, w, context.Cause(ctx))
 		}
 	}
 	timer := time.NewTimer(time.Duration(timeout))
@@ -111,7 +115,7 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 	case <-timer.C:
 		return m.cancelWait(s, w, nil)
 	case <-ctx.Done():
-		return m.cancelWait(s, w, ctx.Err())
+		return m.cancelWait(s, w, context.Cause(ctx))
 	}
 }
 
@@ -205,6 +209,9 @@ func (m *Memory) notify(offset uint64, count uint32) (uint32, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.has(memoryStateShared) {
+		return 0, fmt.Errorf("wago: atomic notify requires shared memory")
+	}
 	if s.has(memoryStateClosed) || m.jm == nil {
 		return 0, errMemoryWaitClosed
 	}

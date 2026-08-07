@@ -72,6 +72,7 @@ func (in *Instance) closeOnce() error {
 	// finish, but hooks and concurrent callers observe a logically closed instance.
 	// Physical finalization remains disabled until all BeforeClose hooks finish.
 	previousInvocations := in.closeInvocationEntry()
+	cancelAtomicWaitContext(in)
 	activeInvocations := previousInvocations & instanceInvocationCount
 	in.lifeMu.Lock()
 	if activeInvocations != 0 && len(in.trap) >= 4 {

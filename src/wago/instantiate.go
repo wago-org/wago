@@ -153,7 +153,7 @@ func (b *instanceBuilder) validateCompiled() error {
 func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	need := c.instantiateArenaNeed
 	baselineHostBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		baselineHostBytes = runtime.HostCtrlFrameBytes
 	} else if len(c.Imports) > 0 {
 		baselineHostBytes = runtime.HostCallLogBytes

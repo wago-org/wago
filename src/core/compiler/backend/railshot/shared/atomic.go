@@ -30,6 +30,16 @@ const (
 	AtomicXchg
 )
 
+// AtomicWaitDispatchBit selects the internal synchronous wait/notify bridge.
+// It is disjoint from public host-funcref and GC helper dispatch bits.
+const AtomicWaitDispatchBit uint32 = 1 << 29
+
+const (
+	AtomicHelperNotify uint32 = iota
+	AtomicHelperWait32
+	AtomicHelperWait64
+)
+
 // Atomic describes exactly the architecture-neutral facts needed by direct
 // Railshot lowering. Align is the encoded log2 alignment; Size and ResultSize
 // are bytes. The initial product accepts memory32 index zero only.
