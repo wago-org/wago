@@ -216,6 +216,9 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	if c.tiny.blockBytes == 0 || len(c.tiny.mem) == 0 {
 		return errors.New("gc: tiny heap is not initialized")
 	}
+	if err := c.tiny.verifyMetadataShape(); err != nil {
+		return err
+	}
 	liveBlocks := make([]bool, c.tiny.blockCount)
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		e := c.handles[h]
@@ -253,6 +256,27 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	}
 	if err := c.verifyTinyFreeList(liveBlocks); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (h *tinyHeap) verifyMetadataShape() error {
+	if h.blockCount == 0 || uint64(h.blockCount)*uint64(h.blockBytes) != uint64(len(h.mem)) {
+		return errors.New("gc: tiny heap geometry disagrees with memory")
+	}
+	if h.blockCount <= uint32(^uint16(0)) {
+		if len(h.span16) != int(h.blockCount) || h.span32 != nil {
+			return errors.New("gc: tiny compact boundary metadata has invalid shape")
+		}
+	} else if len(h.span32) != int(h.blockCount) || h.span16 != nil {
+		return errors.New("gc: tiny wide boundary metadata has invalid shape")
+	}
+	if len(h.usedStarts) != int((uint64(h.blockCount)+63)/64) {
+		return errors.New("gc: tiny allocation-start bitmap has invalid shape")
+	}
+	binCount := tinyBinForSize(h.blockCount) + 1
+	if len(h.binHeads) != int(binCount) || len(h.binWords) != int((uint64(binCount)+63)/64) {
+		return errors.New("gc: tiny free-bin metadata has invalid shape")
 	}
 	return nil
 }

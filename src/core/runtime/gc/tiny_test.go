@@ -219,6 +219,24 @@ func TestTinyVerifyRejectsCompactMetadataCorruption(t *testing.T) {
 			t.Fatal("Verify accepted an occupancy bit beyond the final bin")
 		}
 	})
+	for _, tc := range []struct {
+		name   string
+		mutate func(*tinyHeap)
+	}{
+		{name: "boundary tags", mutate: func(h *tinyHeap) { h.span16 = h.span16[:len(h.span16)-1] }},
+		{name: "allocation starts", mutate: func(h *tinyHeap) { h.usedStarts = nil }},
+		{name: "bin heads", mutate: func(h *tinyHeap) { h.binHeads = h.binHeads[:len(h.binHeads)-1] }},
+		{name: "bin words", mutate: func(h *tinyHeap) { h.binWords = nil }},
+		{name: "heap geometry", mutate: func(h *tinyHeap) { h.blockCount-- }},
+	} {
+		t.Run(tc.name+" shape", func(t *testing.T) {
+			c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+			tc.mutate(&c.tiny)
+			if err := c.Verify(nil); err == nil {
+				t.Fatal("Verify accepted malformed compact metadata shape")
+			}
+		})
+	}
 }
 
 func maxFreeGap(live []tinyTestAllocation, total uint32) uint32 {
