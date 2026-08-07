@@ -944,17 +944,34 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	joins = append(joins, f.a.JmpPlaceholder())
 
 	// Large: forward-safe copies retain ERMS/FSRM-accelerated rep movsb. True
-	// backward overlap uses a 64-byte vector loop: x86 string engines do not
+	// backward overlap uses vector loops: x86 string engines do not
 	// accelerate DF=1 and commonly fall to roughly one byte per cycle. Load the
 	// complete chunk before storing it so even a one-byte overlap retains memmove
-	// semantics. XMM0..3 are scratch after flush; pinned float/vector locals use
-	// the high register bank.
+	// semantics. Medium copies stay on the lower-startup XMM path; copies of at
+	// least 1 KiB use 128-byte YMM chunks before the XMM/scalar tail. XMM0..3 are
+	// scratch after flush; pinned float/vector locals use the high register bank.
 	f.a.PatchRel32(big, f.a.Len())
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)  // dst <= src → forward
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
 	f.a.Cmp64(RDI, RDX)
 	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
+	f.a.AluRI(cmpDigit, RCX, 1024, false)
+	mediumBack := f.a.JccPlaceholder(condB)
+	back128 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 128, false)
+	ymmDone := f.a.JccPlaceholder(condB)
+	for i, disp := range [...]int32{-128, -96, -64, -32} {
+		f.a.YMovdquLoadIdx(Reg(i), RSI, RCX, disp)
+	}
+	for i, disp := range [...]int32{-128, -96, -64, -32} {
+		f.a.YMovdquStoreIdx(RDI, RCX, Reg(i), disp)
+	}
+	f.a.AluRI(5, RCX, 128, false)
+	f.a.JmpBack(back128)
+	f.a.PatchRel32(ymmDone, f.a.Len())
+	f.a.VZeroUpper()
+	f.a.PatchRel32(mediumBack, f.a.Len())
 	back64 := f.a.Len()
 	f.a.AluRI(cmpDigit, RCX, 64, false)
 	backTail := f.a.JccPlaceholder(condB)

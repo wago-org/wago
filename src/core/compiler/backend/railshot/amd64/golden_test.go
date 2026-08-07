@@ -102,8 +102,8 @@ func TestGoldenMemoryCopyRepMovs(t *testing.T) {
 	if strings.Contains(d, "std") {
 		t.Errorf("backward memory.copy must not use slow DF=1 string copies:\n%s", d)
 	}
-	if strings.Count(d, "vmovdqu") < 8 {
-		t.Errorf("backward memory.copy missing four-load/four-store vector loop:\n%s", d)
+	if strings.Count(d, "vmovdqu") < 16 || !strings.Contains(d, "vzeroupper") {
+		t.Errorf("backward memory.copy missing XMM/YMM vector tiers:\n%s", d)
 	}
 }
 
