@@ -216,7 +216,7 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	if c.tiny.blockBytes == 0 || len(c.tiny.mem) == 0 {
 		return errors.New("gc: tiny heap is not initialized")
 	}
-	liveBlocks := make([]bool, len(c.tiny.blocks))
+	liveBlocks := make([]bool, c.tiny.blockCount)
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		e := c.handles[h]
 		if e.space == spaceFree {
@@ -229,14 +229,18 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 			return fmt.Errorf("gc: tiny handle %d out of bounds", h)
 		}
 		bi := e.off / c.tiny.blockBytes
-		if int(bi) >= len(c.tiny.blocks) || !c.tiny.blocks[bi].used {
+		if bi >= c.tiny.blockCount || !c.tiny.isUsedStart(bi) {
 			return fmt.Errorf("gc: tiny handle %d points to free span", h)
 		}
-		spanBytes := c.tiny.blocks[bi].size * c.tiny.blockBytes
+		spanBlocks := c.tiny.spanSize(bi)
+		if spanBlocks == 0 || spanBlocks > c.tiny.blockCount-bi {
+			return fmt.Errorf("gc: tiny handle %d has invalid allocation span", h)
+		}
+		spanBytes := spanBlocks * c.tiny.blockBytes
 		if e.size > spanBytes {
 			return fmt.Errorf("gc: tiny handle %d exceeds allocation span", h)
 		}
-		for i := bi; i < bi+c.tiny.blocks[bi].size; i++ {
+		for i := bi; i < bi+spanBlocks; i++ {
 			if int(i) >= len(liveBlocks) || liveBlocks[i] {
 				return fmt.Errorf("gc: tiny live span overlap at block %d", i)
 			}
@@ -253,32 +257,68 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 }
 
 func (c *Collector) verifyTinyFreeList(live []bool) error {
-	seen := make([]bool, len(c.tiny.blocks))
-	prev := tinyNoBlock
-	for b := c.tiny.freeHead; b != tinyNoBlock; b = c.tiny.blocks[b].next {
-		if int(b) >= len(c.tiny.blocks) {
-			return errors.New("gc: tiny free list out of bounds")
+	seenStarts := make([]bool, c.tiny.blockCount)
+	freeBlocks := make([]bool, c.tiny.blockCount)
+	var summary uint64
+	for word, occupied := range c.tiny.binWords {
+		if occupied != 0 {
+			summary |= uint64(1) << uint32(word)
 		}
-		if seen[b] {
-			return errors.New("gc: tiny free list cycle")
+	}
+	if summary != c.tiny.binSummary {
+		return errors.New("gc: tiny free-bin summary disagrees with occupancy")
+	}
+	for bin, head := range c.tiny.binHeads {
+		marked := c.tiny.binWords[uint32(bin)>>6]&(uint64(1)<<(uint32(bin)&63)) != 0
+		if (head != tinyNoBlock) != marked {
+			return errors.New("gc: tiny free-bin bitmap disagrees with head")
 		}
-		seen[b] = true
-		blk := c.tiny.blocks[b]
-		if blk.used || blk.size == 0 || blk.prev != prev {
-			return errors.New("gc: malformed tiny free span")
+		prev := tinyNoBlock
+		for b := head; b != tinyNoBlock; {
+			if b >= c.tiny.blockCount || seenStarts[b] {
+				return errors.New("gc: tiny free list out of bounds or cyclic")
+			}
+			seenStarts[b] = true
+			size := c.tiny.spanSize(b)
+			if size == 0 || size > c.tiny.blockCount-b || c.tiny.isUsedStart(b) || tinyBinForSize(size) != uint32(bin) {
+				return errors.New("gc: malformed tiny free span")
+			}
+			next, recordedPrev := c.tiny.freeLinks(b)
+			if recordedPrev != prev {
+				return errors.New("gc: malformed tiny free links")
+			}
+			for i := b; i < b+size; i++ {
+				if live[i] || freeBlocks[i] {
+					return errors.New("gc: tiny free span overlaps another span")
+				}
+				freeBlocks[i] = true
+			}
+			prev, b = b, next
 		}
-		if blk.next != tinyNoBlock && b+blk.size > blk.next {
-			return errors.New("gc: overlapping tiny free spans")
+	}
+	var previousFree bool
+	for b := uint32(0); b < c.tiny.blockCount; {
+		size := c.tiny.spanSize(b)
+		if size == 0 || size > c.tiny.blockCount-b || c.tiny.spanSize(b+size-1) != size {
+			return errors.New("gc: malformed tiny span boundaries")
 		}
-		if blk.next != tinyNoBlock && b+blk.size == blk.next {
+		used := c.tiny.isUsedStart(b)
+		if used == seenStarts[b] {
+			return errors.New("gc: tiny span missing from allocation or free metadata")
+		}
+		if !used && previousFree {
 			return errors.New("gc: adjacent tiny free spans not coalesced")
 		}
-		for i := b; i < b+blk.size; i++ {
-			if int(i) >= len(live) || live[i] {
-				return errors.New("gc: tiny free span overlaps live object")
+		for i := b; i < b+size; i++ {
+			if used != live[i] || (!used) != freeBlocks[i] {
+				return errors.New("gc: tiny span coverage disagrees with handles")
+			}
+			if i != b && c.tiny.isUsedStart(i) {
+				return errors.New("gc: tiny allocation-start bitmap marks a span interior")
 			}
 		}
-		prev = b
+		previousFree = !used
+		b += size
 	}
 	return nil
 }

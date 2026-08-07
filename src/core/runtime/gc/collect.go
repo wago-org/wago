@@ -186,7 +186,7 @@ func (c *Collector) free(h uint32) {
 			}
 		case spaceTiny:
 			bi := e.off / c.tiny.blockBytes
-			span := c.tiny.blocks[bi].size * c.tiny.blockBytes
+			span := c.tiny.spanSize(bi) * c.tiny.blockBytes
 			for i := range c.tiny.mem[e.off : e.off+span] {
 				c.tiny.mem[e.off+uint32(i)] = 0xdd
 			}

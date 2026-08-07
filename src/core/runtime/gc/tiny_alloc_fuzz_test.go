@@ -2,6 +2,53 @@ package gc
 
 import "testing"
 
+func FuzzTinySpanAllocator(f *testing.F) {
+	for _, seed := range [][]byte{
+		{1, 2, 3, 0x80, 4, 0x81},
+		{64, 64, 64, 64, 0x80, 0x81, 127},
+		{1, 1, 1, 1, 0x82, 2, 0x80, 3},
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, operations []byte) {
+		if len(operations) > 256 {
+			operations = operations[:256]
+		}
+		const blocks = uint32(257)
+		h := newTinyHeap(make([]byte, blocks*16), blocks, 16, false)
+		live := make([]tinyTestAllocation, 0, blocks)
+		for step, op := range operations {
+			if op&0x80 != 0 {
+				if len(live) != 0 {
+					i := int(op&0x7f) % len(live)
+					if err := h.free(live[i].off * h.blockBytes); err != nil {
+						t.Fatalf("step %d free %+v: %v", step, live[i], err)
+					}
+					live[i] = live[len(live)-1]
+					live = live[:len(live)-1]
+				}
+			} else {
+				need := uint32(op%96) + 1
+				offBytes, spanBytes, err := h.alloc(need * h.blockBytes)
+				if err != nil {
+					if maxFreeGap(live, blocks) >= need {
+						t.Fatalf("step %d rejected %d blocks with a fitting interval", step, need)
+					}
+				} else {
+					a := tinyTestAllocation{off: offBytes / h.blockBytes, blocks: spanBytes / h.blockBytes}
+					for _, other := range live {
+						if a.off < other.off+other.blocks && other.off < a.off+a.blocks {
+							t.Fatalf("step %d overlap: %+v and %+v", step, a, other)
+						}
+					}
+					live = append(live, a)
+				}
+			}
+			assertTinyHeapMetadata(t, &h)
+		}
+	})
+}
+
 func FuzzTinyAllocationBounds(f *testing.F) {
 	maxRounded := ^uint32(0) - 7
 	maxI8ArrayLength := ^uint32(0) - HeaderSize - 7
@@ -37,11 +84,11 @@ func FuzzTinyAllocationBounds(f *testing.F) {
 		}
 		defer c.Close()
 
-		before := c.tiny.blocks[0]
+		beforeSize, beforeSummary := c.tiny.spanSize(0), c.tiny.binSummary
 		off, span, err := c.tiny.alloc(rawSize)
 		if err != nil {
-			if c.tiny.freeHead != 0 || c.tiny.blocks[0] != before {
-				t.Fatalf("failed raw tiny allocation corrupted metadata: size=%d head=%d before=%+v after=%+v", rawSize, c.tiny.freeHead, before, c.tiny.blocks[0])
+			if c.tiny.findFreeSpan(8) != 0 || c.tiny.spanSize(0) != beforeSize || c.tiny.binSummary != beforeSummary {
+				t.Fatalf("failed raw tiny allocation corrupted metadata: size=%d start=%d before=%d after=%d", rawSize, c.tiny.findFreeSpan(8), beforeSize, c.tiny.spanSize(0))
 			}
 		} else {
 			if span == 0 || off+span > uint32(len(c.tiny.mem)) {
