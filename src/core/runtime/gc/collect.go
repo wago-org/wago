@@ -54,19 +54,29 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	// by the remembered set, while global/table slots are scanned as roots.
 	c.clearNurseryMarks()
 	c.markNurseryRoots(roots)
+	if c.cfg.VerifyAfterCollect {
+		if err := c.verifyRememberedShadow(); err != nil {
+			return err
+		}
+	}
 	for _, h := range c.remembered {
 		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
 			c.stats.MinorRememberedScanned++
 			c.scanObjectRefs(h, c.markNurseryRef)
 		}
 	}
-	c.drainNurseryMarkStack()
-	if err := c.promoteMarkedNursery(); err != nil {
-		return err
+	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
+		if err := c.promoteMarkedNursery(); err != nil {
+			return err
+		}
 	}
-	c.sweepNurseryDead()
-	c.pruneRemembered()
+	c.finishMinorEvacuation()
 	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	if c.cfg.VerifyAfterCollect {
+		if err := c.verifyNurseryEvacuated(); err != nil {
+			return err
+		}
+	}
 	if c.cfg.ForceMajorEveryMinor {
 		if err := c.CollectFull(roots); err != nil {
 			return err
@@ -86,14 +96,24 @@ func (c *Collector) sweepAll() {
 	c.compactNurseryHandles()
 	c.compactNurseryBump()
 }
-func (c *Collector) sweepNurseryDead() {
+
+// finishMinorEvacuation commits the destructive half of a successful minor
+// collection. promoteMarkedNursery has moved every live nursery object before
+// this is called, so every handle still pointing into the nursery is dead.
+func (c *Collector) finishMinorEvacuation() {
 	for _, h := range c.nurseryHandles {
-		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && !c.mark[h] {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		c.mark[h] = false
+		if c.handles[h].space == spaceNursery {
 			c.free(h)
 		}
 	}
-	c.compactNurseryHandles()
-	c.compactNurseryBump()
+	clear(c.nurseryHandles)
+	c.nurseryHandles = c.nurseryHandles[:0]
+	c.nurseryBump = 0
+	c.clearRememberedMetadata()
 }
 
 type plannedPromotion struct {
