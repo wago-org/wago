@@ -163,6 +163,7 @@
               "simd",
               "table64",
               "tail-call",
+              "threads",
               "typed-function-references"
             ]
           },
