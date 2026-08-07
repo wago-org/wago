@@ -262,10 +262,10 @@ func TestCallFreePinPoolUsesX8Arm64(t *testing.T) {
 		}
 		return false
 	}
-	if !has(gpPinPool(true, 6, true), X8) {
+	if !has(gpPinPool(nil, true, 6, true), X8) {
 		t.Fatal("call-free pin pool does not include X8")
 	}
-	if has(gpPinPool(true, 6, false), X8) {
+	if has(gpPinPool(nil, true, 6, false), X8) {
 		t.Fatal("call-making pin pool includes caller-clobbered X8")
 	}
 }

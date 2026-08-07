@@ -99,6 +99,12 @@ func TestGoldenMemoryCopyRepMovs(t *testing.T) {
 	if !strings.Contains(d, "movs") {
 		t.Errorf("expected `rep movs` in memory.copy lowering, got:\n%s", d)
 	}
+	if strings.Contains(d, "std") {
+		t.Errorf("backward memory.copy must not use slow DF=1 string copies:\n%s", d)
+	}
+	if strings.Count(d, "vmovdqu") < 16 || !strings.Contains(d, "vzeroupper") {
+		t.Errorf("backward memory.copy missing XMM/YMM vector tiers:\n%s", d)
+	}
 }
 
 func TestGoldenFloatLocalSink(t *testing.T) {

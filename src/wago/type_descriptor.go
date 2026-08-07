@@ -196,19 +196,29 @@ func (c wasmTypeDescriptorConverter) abiType(t wasm.ValType, types []DefinedType
 }
 
 func (c wasmTypeDescriptorConverter) abiTypes(ts []wasm.ValType, types []DefinedTypeDescriptor) ([]ValType, error) {
-	exact, err := c.valueTypes(ts, -1)
-	if err != nil {
+	out := make([]ValType, len(ts))
+	if err := c.abiTypesInto(out, ts, types); err != nil {
 		return nil, err
 	}
-	out := make([]ValType, len(exact))
-	for i := range exact {
-		abi, ok := exact[i].ABIType(types)
+	return out, nil
+}
+
+func (c wasmTypeDescriptorConverter) abiTypesInto(out []ValType, ts []wasm.ValType, types []DefinedTypeDescriptor) error {
+	if len(out) != len(ts) {
+		return fmt.Errorf("ABI type destination length %d, want %d", len(out), len(ts))
+	}
+	for i := range ts {
+		exact, err := c.valueType(ts[i], -1)
+		if err != nil {
+			return fmt.Errorf("value %d: %w", i, err)
+		}
+		abi, ok := exact.ABIType(types)
 		if !ok {
-			return nil, fmt.Errorf("value %d: structural type is outside the current public ABI", i)
+			return fmt.Errorf("value %d: structural type is outside the current public ABI", i)
 		}
 		out[i] = abi
 	}
-	return out, nil
+	return nil
 }
 
 func typeDescriptorsFromWasm(m *wasm.Module) ([]DefinedTypeDescriptor, error) {
