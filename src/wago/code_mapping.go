@@ -13,6 +13,7 @@ type compiledCodeCacheFlags uint8
 const (
 	compiledCacheDynamicFuncRefTest compiledCodeCacheFlags = 1 << iota
 	compiledCacheGuardMemory
+	compiledCacheAtomicWaitHelpers
 )
 
 type compiledCodeCache struct {
@@ -49,6 +50,10 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 
 func (c *Compiled) usesDynamicFuncRefTest() bool {
 	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheDynamicFuncRefTest != 0
+}
+
+func (c *Compiled) usesAtomicWaitHelpers() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheAtomicWaitHelpers != 0
 }
 
 func (c *Compiled) prefersGuardMemory() bool {

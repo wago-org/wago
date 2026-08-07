@@ -1150,7 +1150,7 @@ func TestValidatorCoverageProposalNegativeBranches(t *testing.T) {
 			_ = atomicCmpxchgEffect(op)
 		}
 		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}, nil), Instruction{Kind: InstrI32AtomicLoad}, ErrInvalidSharedMemory)
-		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}, nil), Instruction{Kind: InstrI32AtomicLoad}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}, nil), Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}, nil), Instruction{Kind: InstrInvalid}, ErrUnsupportedValidationOpcode)
 	})
 }
@@ -1300,13 +1300,13 @@ func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 	})
 	t.Run("atomics and simd operand order branches", func(t *testing.T) {
 		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}
-		expectStepErr(t, coverageFuncValidator(shared, nil), Instruction{Kind: InstrMemoryAtomicNotify}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrMemoryAtomicNotify}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidator(shared, nil), Instruction{Kind: InstrMemoryAtomicWait64}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64), Instruction{Kind: InstrMemoryAtomicWait32}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrI32AtomicStore}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrAtomicRmw}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32, I32), Instruction{Kind: InstrAtomicCmpxchg}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidator(shared, nil), Instruction{Kind: InstrMemoryAtomicNotify, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrMemoryAtomicNotify, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidator(shared, nil), Instruction{Kind: InstrMemoryAtomicWait64, ext: &instrExt{MemArg: MemArg{Align: 3}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64), Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrAtomicRmw, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32, I32), Instruction{Kind: InstrAtomicCmpxchg, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		mem := &Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}
 		expectStepErr(t, coverageFuncValidator(mem, nil), Instruction{Kind: InstrV128Load8Lane}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(mem, V128), Instruction{Kind: InstrV128Load8Lane}, ErrTypeMismatch)
@@ -1408,9 +1408,9 @@ func TestValidatorCoverageFinalTailBranches(t *testing.T) {
 		_ = fv.pushCtrl(ctrlBlock, nil, []ValType{I32})
 		expectStepErr(t, fv, Instruction{Kind: InstrTryTable, ext: &instrExt{Catches: []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}}}, ErrTypeMismatch)
 		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32), Instruction{Kind: InstrMemoryAtomicWait32}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32), Instruction{Kind: InstrI32AtomicStore}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I32), Instruction{Kind: InstrAtomicCmpxchg}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32), Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32), Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I32), Instruction{Kind: InstrAtomicCmpxchg, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		if err := coverageFuncValidator(shared, nil).stepAtomic(Instruction{Kind: InstrNop}); !isValidationCode(err, ErrUnsupportedValidationOpcode) {
 			t.Fatalf("expected atomic fallback error, got %v", err)
 		}
@@ -1479,9 +1479,9 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 	})
 	t.Run("proposal last pass", func(t *testing.T) {
 		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I64), Instruction{Kind: InstrMemoryAtomicWait32}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64), Instruction{Kind: InstrI32AtomicStore}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrAtomicCmpxchg}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I64), Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64), Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrAtomicCmpxchg, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		if _, err := coverageFuncValidator(shared, nil).checkSharedMemArg(MemArg{Mem: ptr(MemIdx(0))}, 0); err != nil {
 			t.Fatalf("explicit memory shared arg: %v", err)
 		}

@@ -939,6 +939,44 @@ func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
 	return bits, nil
 }
 
+func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) error {
+	if m == nil || m.ImportedMemCount() != 1 || len(m.Memories) != 0 || m.MemCount() != 1 {
+		return fmt.Errorf("threads currently require exactly one imported shared memory")
+	}
+	mt, _ := m.MemoryType(0)
+	if !mt.Shared || mt.Limits.Addr64 || mt.Limits.Max == nil {
+		return fmt.Errorf("threads currently require shared memory32 with an exact maximum")
+	}
+	if bounds != BoundsChecksExplicit {
+		return fmt.Errorf("threads currently require explicit bounds checks")
+	}
+	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.TagCount() != 0 || len(m.Data) != 0 || len(m.Elements) != 0 {
+		return fmt.Errorf("threads currently admit numeric functions and globals without host imports, tables, tags, or segments")
+	}
+	for i := range m.Imports {
+		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.Global.Mutable {
+			return fmt.Errorf("threads currently reject mutable global imports")
+		}
+	}
+	for function, fn := range m.Code {
+		r := wasm.NewReader(fn.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				return err
+			}
+			if (imm.TouchesMemory || imm.Kind == wasm.InstrMemorySize || imm.Kind == wasm.InstrMemoryGrow) && op != 0xfe {
+				return fmt.Errorf("threads function %d uses %s outside the initial atomic-only memory boundary", function, imm.Kind)
+			}
+		}
+	}
+	return nil
+}
+
 func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
 	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, features, nil)
 }
@@ -979,6 +1017,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		return nil, fmt.Errorf("validate: %w", err)
 	}
+	if requiredByModule.IsEnabled(CoreFeatureThreads) {
+		if err := validateThreadedExecutionBoundary(m, cfg.boundsChecks); err != nil {
+			return nil, fmt.Errorf("compile: %w", err)
+		}
+	}
 	var functionIndex uint32
 	for i := range m.Imports {
 		imp := &m.Imports[i]
@@ -998,6 +1041,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		functionIndex++
 	}
 	customInstructions := resolveInstructionLowerings(m, instructions)
+	atomicWaitHelpers := moduleUsesAtomicWaitHelpers(m)
 	structuralProduct := stagedStructuralTypeProduct(0)
 	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
@@ -1242,7 +1286,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
 	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1805,6 +1849,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if dynamicFuncRefTest {
 		compiled.codeCache.flags |= compiledCacheDynamicFuncRefTest
 	}
+	if atomicWaitHelpers {
+		compiled.codeCache.flags |= compiledCacheAtomicWaitHelpers
+	}
 	if gcStructProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcStructProduct = gcStructProduct
@@ -2071,7 +2118,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
-	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
+	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		return true
 	}
 	for _, key := range c.Imports {
@@ -2572,7 +2619,7 @@ func (c *Compiled) validate() error {
 	// Indexed-memory/table address forms are completely described by persisted
 	// metadata and native code. Once the current platform advertises the family,
 	// codec reload does not need the original compile-only classifier marker.
-	staged |= required & platformCoreFeatures() & (CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64)
+	staged |= required & platformCoreFeatures() & (CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64 | CoreFeatureThreads)
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		staged |= CoreFeatureExceptionHandling
 		importCount := 0
@@ -3073,7 +3120,7 @@ func (c *Compiled) validateCodecMetadata() error {
 		}
 	}
 	structural := compiledStructuralRequiredFeatures(c)
-	if unsupported := structural &^ (CoreFeaturesV3 | CoreFeatureExtendedConst); unsupported != 0 {
+	if unsupported := structural &^ coreFeaturesWago; unsupported != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
 	}
 	if err := c.validateMemoryMetadata(structural); err != nil {
@@ -3279,6 +3326,13 @@ func (c *Compiled) memoryCount() int {
 	return 0
 }
 
+func (c *Compiled) threadedMemory0() bool {
+	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureThreads) || c.memoryCount() != 1 {
+		return false
+	}
+	return c.memoryDef(0).Shared
+}
+
 func (c *Compiled) memoryImportCount() int {
 	count := 0
 	for i := 0; i < c.memoryCount(); i++ {
@@ -3319,6 +3373,9 @@ func (c *Compiled) validateMemoryMetadata(required CoreFeatures) error {
 		}
 		if memory.Shared && !memory.HasMax {
 			return fmt.Errorf("compiled metadata invalid: shared memory %d has no maximum", i)
+		}
+		if memory.Shared && !required.IsEnabled(CoreFeatureThreads) {
+			return fmt.Errorf("compiled metadata invalid: shared memory %d requires threads feature", i)
 		}
 		if memory.ImportKey == "" {
 			seenLocal = true
@@ -3491,7 +3548,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		passiveElemBytes += len(elem.Values) * stride
 	}
 	hostCallBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		hostCallBytes = wruntime.HostCtrlFrameBytes
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
@@ -3590,9 +3647,10 @@ const wagoMagic = "WAGO"
 // Version 31 moves generated memory bounds to the u64 byte-size cache and widens
 // indexed-memory directory entries, so older native code must not be loaded by a
 // runtime using the new basedata ABI (or vice versa). Older blobs are rejected.
+// Version 32 adds the persisted threads feature and atomic wait-helper product.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 31
+const wagoVersion = 32
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -3727,6 +3785,9 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		return nil, fmt.Errorf("invoke %q: %w", export, err)
 	}
 	defer in.endInvocation()
+	if threadedMu := in.lockThreadedInstanceState(); threadedMu != nil {
+		defer threadedMu.Unlock()
+	}
 	ic := in.findInvokeCache(export)
 	if ic == nil {
 		var err error
@@ -3787,7 +3848,7 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	}
 	defer stopCancel()
 	if in.syncMode {
-		if err := in.callNativeSync(entry); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, in.trap, cancel); err != nil {
 			return nil, err
 		}
 	} else {
@@ -3902,7 +3963,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	}
 	defer stopCancel()
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrap(entry, activeTrap); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, cancel); err != nil {
 			return nil, err
 		}
 	} else {

@@ -146,6 +146,7 @@ type ModuleMetadata struct {
 	ExportedTables       []string
 	ExportedMemories     []string
 	FuncImportCount      int
+	RequiredFeatures     CoreFeatures
 	RequiredCapabilities []Capability
 	Functions            []FunctionMetadata
 	Globals              []GlobalMetadata
@@ -327,6 +328,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		ExportedTables:       sortedKeys(c.tableExports),
 		ExportedMemories:     sortedKeys(c.memoryExportMap()),
 		FuncImportCount:      len(c.Imports),
+		RequiredFeatures:     compiledStructuralRequiredFeatures(c),
 		RequiredCapabilities: m.RequiredCapabilities(),
 		Functions:            functions,
 		Globals:              globals,

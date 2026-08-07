@@ -558,6 +558,90 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	a.sibAddr(src, base, index, disp)
 }
 
+// LockXaddIdx32 atomically adds src to the 32-bit memory operand and replaces
+// src with the operand's previous value. The LOCK prefix supplies the Wasm
+// threads proposal's sequentially consistent ordering on x86-64.
+func (a *Asm) LockXaddIdx32(base, index, src Reg, disp int32) {
+	a.emit(0xF0)
+	if src >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(false, src >= 8, index >= 8, base >= 8))
+	}
+	a.emit(0x0F, 0xC1)
+	a.sibAddr(src, base, index, disp)
+}
+
+func (a *Asm) LockXaddIdx(base, index, src Reg, disp int32, size int) {
+	if size == 2 {
+		a.emit(0x66)
+	}
+	a.emit(0xF0)
+	w := size == 8
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
+		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
+	}
+	op := byte(0xC1)
+	if size == 1 {
+		op = 0xC0
+	}
+	a.emit(0x0F, op)
+	a.sibAddr(src, base, index, disp)
+}
+
+func (a *Asm) Movzx8(dst, src Reg, wide bool) {
+	if wide || dst >= 8 || src >= 4 {
+		a.emit(rex(wide, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, 0xB6, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
+
+func (a *Asm) Movzx16(dst, src Reg, wide bool) {
+	if wide || dst >= 8 || src >= 8 {
+		a.emit(rex(wide, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, 0xB7, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
+
+// XchgIdx atomically exchanges src with a memory operand. Memory-form XCHG is
+// implicitly locked and is the x86-64 sequentially consistent atomic-store
+// primitive; src receives the discarded old value.
+func (a *Asm) XchgIdx(base, index, src Reg, disp int32, size int) {
+	if size == 2 {
+		a.emit(0x66)
+	}
+	w := size == 8
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
+		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
+	}
+	op := byte(0x87)
+	if size == 1 {
+		op = 0x86
+	}
+	a.emit(op)
+	a.sibAddr(src, base, index, disp)
+}
+
+func (a *Asm) Mfence() { a.emit(0x0F, 0xAE, 0xF0) }
+
+// LockCmpxchgIdx compares the memory operand with RAX/EAX/AX/AL and, on match,
+// stores src. On failure it loads the observed memory value into the matching
+// accumulator width and clears ZF.
+func (a *Asm) LockCmpxchgIdx(base, index, src Reg, disp int32, size int) {
+	if size == 2 {
+		a.emit(0x66)
+	}
+	a.emit(0xF0)
+	w := size == 8
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
+		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
+	}
+	op := byte(0xB1)
+	if size == 1 {
+		op = 0xB0
+	}
+	a.emit(0x0F, op)
+	a.sibAddr(src, base, index, disp)
+}
+
 func (a *Asm) Cdq(w bool) {
 	if w {
 		a.emit(0x48)

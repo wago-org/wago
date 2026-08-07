@@ -61,6 +61,13 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if active.hostCall == nil {
 		panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no dispatcher", ctrl)})
 	}
+	if importIdx&shared.AtomicWaitDispatchBit != 0 {
+		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
+			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
+		}
+		active.dispatchAtomicWaitHelper(importIdx&^shared.AtomicWaitDispatchBit, args, results)
+		return
+	}
 	if importIdx&gcStructDispatchBit != 0 {
 		// Internal GC helpers cannot re-enter Wasm or arbitrary host code. Keep the
 		// native execution lease while operating on the parked frame instead of

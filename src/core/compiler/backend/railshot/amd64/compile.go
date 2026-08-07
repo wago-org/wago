@@ -258,6 +258,7 @@ type fn struct {
 	entryInitialized uint64 // locals proven assigned before first entry-prefix read
 	skipFence        bool   // call-free leaf with a provably small frame: no stack-fence check
 	frameElided      bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	threadedMemory0  bool   // route shared memory zero through the private instance directory
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -1505,7 +1506,8 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, hostAdapter, guardMode, bou
 	}
 	f := &sc.fnState
 	localType, localSlot, localExactGCType, locals := f.localType, f.localSlot, f.localExactGCType, f.locals
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH}
+	mt0, _ := m.MemoryType(0)
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl

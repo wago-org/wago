@@ -54,6 +54,7 @@ type Features struct {
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	Table64                 bool // internal staged gate for bounded local 64-bit-index table execution
+	Threads                 bool // shared memory and core linear-memory atomic instructions
 	ExceptionHandling       bool // internal staged gate for bounded local scalar tag/throw/try_table execution
 	ExceptionReferences     bool // internal staged gate for fixed rooted exn values and throw_ref/reference catches
 	NullReferenceProducts   bool // internal staged gate for exact null-only any/exn reference products
@@ -70,7 +71,7 @@ type Features struct {
 // AllFeatures is the full optional set wago's backend lowers today; it is the
 // default applied by RejectUnsupported.
 func AllFeatures() Features {
-	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, ReferenceTypes: true, SIMD: true, ExtendedConst: true, ExtendedConstGlobals: true}
+	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, ReferenceTypes: true, Threads: true, SIMD: true, ExtendedConst: true, ExtendedConstGlobals: true}
 }
 
 // RejectUnsupported rejects modules that require features not explicitly wired
@@ -718,7 +719,7 @@ func (p supportPass) memories() error {
 	return nil
 }
 
-// checkMemType rejects memory shapes outside wago's non-shared model. The staged
+// checkMemType rejects memory shapes outside wago's executable memory model. The staged
 // memory64 path retains the existing 65535-page implementation reservation ceiling,
 // but an exact declared maximum may exceed that ceiling when the initial size remains
 // allocatable. Growth may then fail at the finite implementation reservation;
@@ -726,7 +727,12 @@ func (p supportPass) memories() error {
 // allocation.
 func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Shared {
-		return p.unsupported("memory", "shared", ctx)
+		if !p.feat.Threads {
+			return p.unsupported("memory", "shared (threads disabled)", ctx)
+		}
+		if mem.Limits.Addr64 {
+			return p.unsupported("memory", "shared memory64", ctx)
+		}
 	}
 	if mem.Limits.Addr64 && !p.feat.Memory64 {
 		return p.unsupported("memory", "memory64 (memory64 disabled)", ctx)
@@ -1459,10 +1465,17 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, p.unsupported("gc instruction", imm.Kind.String()+" (gc disabled)", ctx())
 	case 0xfe:
-		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
 			return false, err
 		}
-		return false, p.unsupported("instruction", fmt.Sprintf("opcode 0x%02x", op), ctx())
+		if !wasm.IsCoreAtomicInstructionKind(imm.Kind) {
+			return false, p.unsupported("instruction", imm.Kind.String(), ctx())
+		}
+		if !p.feat.Threads {
+			return false, p.unsupported("instruction", imm.Kind.String()+" (threads disabled)", ctx())
+		}
+		return false, nil
 	case 0xfc:
 		return false, p.fcInstrByte(r, ctx)
 	default:
@@ -1933,6 +1946,19 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	// their runtime/backend lowering is complete. Do not let decoder support imply
 	// executable support.
 	switch k {
+	case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64,
+		wasm.InstrAtomicFence,
+		wasm.InstrI32AtomicLoad, wasm.InstrI64AtomicLoad, wasm.InstrI32AtomicLoad8U,
+		wasm.InstrI32AtomicLoad16U, wasm.InstrI64AtomicLoad8U, wasm.InstrI64AtomicLoad16U,
+		wasm.InstrI64AtomicLoad32U,
+		wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore, wasm.InstrI32AtomicStore8,
+		wasm.InstrI32AtomicStore16, wasm.InstrI64AtomicStore8, wasm.InstrI64AtomicStore16,
+		wasm.InstrI64AtomicStore32,
+		wasm.InstrAtomicRmw, wasm.InstrAtomicCmpxchg:
+		if !p.feat.Threads {
+			return p.unsupported("instruction", k.String()+" (threads disabled)", context)
+		}
+		return nil
 	case wasm.InstrReturnCall, wasm.InstrReturnCallIndirect:
 		if !p.feat.TailCalls {
 			return p.unsupported("instruction", k.String()+" (tail-call disabled)", context)

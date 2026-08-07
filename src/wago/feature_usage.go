@@ -88,13 +88,21 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		out |= CoreFeatureMultiMemory
 	}
 	for _, im := range m.Imports {
-		if im.Type.Kind == wasm.ExternMem && im.Type.Mem.Limits.Addr64 {
-			out |= CoreFeatureMemory64
+		if im.Type.Kind == wasm.ExternMem {
+			if im.Type.Mem.Limits.Addr64 {
+				out |= CoreFeatureMemory64
+			}
+			if im.Type.Mem.Shared {
+				out |= CoreFeatureThreads
+			}
 		}
 	}
 	for _, memory := range m.Memories {
 		if memory.Limits.Addr64 {
 			out |= CoreFeatureMemory64
+		}
+		if memory.Shared {
+			out |= CoreFeatureThreads
 		}
 	}
 	for _, table := range m.Tables {
@@ -230,6 +238,27 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 	elemStateCount, dataStateCount := 0, 0
 	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount)
+}
+
+func moduleUsesAtomicWaitHelpers(m *wasm.Module) bool {
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				break
+			}
+			imm, err := wasm.ClassifyInstructionImmediate(r, op)
+			if err != nil {
+				break
+			}
+			switch imm.Kind {
+			case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int) CoreFeatures {
@@ -387,6 +416,9 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 }
 
 func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {
+	if wasm.IsCoreAtomicInstructionKind(kind) {
+		return CoreFeatureThreads
+	}
 	switch kind {
 	case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
 		return CoreFeatureSignExtensionOps
@@ -490,8 +522,12 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		out |= CoreFeatureMultiMemory
 	}
 	for i := 0; i < c.memoryCount(); i++ {
-		if c.memoryDef(i).Addr64 {
+		memory := c.memoryDef(i)
+		if memory.Addr64 {
 			out |= CoreFeatureMemory64
+		}
+		if memory.Shared {
+			out |= CoreFeatureThreads
 		}
 	}
 	if c.hasExternrefTable() || c.tableCount() > 1 || c.NeedsFuncRefDescs {

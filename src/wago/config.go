@@ -58,6 +58,8 @@ const (
 	CoreFeatureMemory64
 	// CoreFeatureTable64: 64-bit table limits and indexes.
 	CoreFeatureTable64
+	// CoreFeatureThreads: shared memory and core atomic memory instructions.
+	CoreFeatureThreads
 )
 
 // Feature groups for WebAssembly Core releases.
@@ -90,7 +92,7 @@ const (
 	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
 	// validated by WithCoreFeatures. Core 3 features are opt-in so existing users
 	// retain the Release 2-compatible default behavior.
-	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst
+	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst | CoreFeatureThreads
 
 	defaultCoreFeatures = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
@@ -157,6 +159,7 @@ var featureRegistry = []FeatureInfo{
 	{Feature: CoreFeatureMultiMemory, Name: "multi-memory", Label: "Multiple memories", Description: "multiple memories and indexed memory instructions", Experimental: true},
 	{Feature: CoreFeatureMemory64, Name: "memory64", Label: "64-bit memory", Description: "64-bit linear-memory limits and addresses", Experimental: true},
 	{Feature: CoreFeatureTable64, Name: "table64", Label: "64-bit tables", Description: "64-bit table limits and indexes", Experimental: true},
+	{Feature: CoreFeatureThreads, Name: "threads", Label: "Threads and atomics", Description: "shared memory and atomic memory instructions", Experimental: true},
 }
 
 // FeatureInfos returns every registered feature in stable display order. Its
@@ -434,6 +437,10 @@ func supportsCompleteCore3Backend(goos, goarch string) bool {
 		(goarch == "arm64" && (goos == "linux" || goos == "darwin"))
 }
 
+func supportsThreadsBackend(goos, goarch string) bool {
+	return (goarch == "amd64" || goarch == "arm64") && (goos == "linux" || goos == "darwin")
+}
+
 func platformCoreFeatures() CoreFeatures {
 	supported := coreFeaturesWago
 	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
@@ -448,6 +455,9 @@ func platformCoreFeatures() CoreFeatures {
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
 		supported &^= unsupported
+	}
+	if !supportsThreadsBackend(runtime.GOOS, runtime.GOARCH) {
+		supported &^= CoreFeatureThreads
 	}
 	return supported
 }
@@ -518,6 +528,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),
 		Memory64:                c.features.IsEnabled(CoreFeatureMemory64),
 		Table64:                 c.features.IsEnabled(CoreFeatureTable64),
+		Threads:                 c.features.IsEnabled(CoreFeatureThreads),
 		ExceptionHandling:       c.features.IsEnabled(CoreFeatureExceptionHandling),
 		ExceptionReferences:     c.features.IsEnabled(CoreFeatureExceptionHandling),
 		NullReferenceProducts:   c.features.IsEnabled(CoreFeatureGC),

@@ -644,6 +644,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.emitFC(r)
 	case 0xfd: // SIMD
 		return f.emitFD(r)
+	case 0xfe: // threads and atomics
+		return f.emitFE(r)
 
 	default:
 		return fmt.Errorf("amd64: unsupported opcode 0x%02x", op)
