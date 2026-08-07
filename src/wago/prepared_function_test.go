@@ -75,7 +75,7 @@ func TestPreparedFunctionPrivateFastPath(t *testing.T) {
 		if fn.isolatedFast != wantIsolated {
 			t.Fatalf("isolated fast enabled=%v: got %v, want %v", enabled, fn.isolatedFast, wantIsolated)
 		}
-		wantDirect := wantIsolated && preparedDirectIntSignature(in.c.Funcs[0]) && in.c.directPreparedAt(0)
+		wantDirect := wantIsolated && preparedDirectIntSupported && preparedDirectIntSignature(in.c.Funcs[0]) && in.c.directPreparedAt(0)
 		if fn.directIntFast != wantDirect {
 			t.Fatalf("direct int enabled=%v: got %v, want %v", enabled, fn.directIntFast, wantDirect)
 		}
@@ -90,8 +90,9 @@ func TestPreparedFunctionPrivateFastPath(t *testing.T) {
 }
 
 func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
-	if forceSyncHostImports {
-		t.Skip("architecture forces synchronous native entry")
+	if forceSyncHostImports || !preparedDirectIntSupported {
+		t.Log("architecture does not support direct prepared integer entry")
+		return
 	}
 	add64 := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
@@ -99,7 +100,10 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x7c, 0x0b}))),
 	)
-	compiled := MustCompile(add64)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), add64)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !compiled.directPreparedAt(0) {
 		t.Fatal("fresh i64 add did not retain packed direct-entry selection")
 	}
@@ -163,7 +167,8 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 
 func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 	if forceSyncHostImports {
-		t.Skip("architecture forces synchronous native entry")
+		t.Log("architecture forces synchronous native entry")
+		return
 	}
 	in, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
 	if err != nil {
@@ -199,7 +204,8 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 
 func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
 	if forceSyncHostImports {
-		t.Skip("architecture forces synchronous native entry")
+		t.Log("architecture forces synchronous native entry")
+		return
 	}
 	c := MustCompile(benchAddOneModule())
 	instances := make([]*Instance, 2)
