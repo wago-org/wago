@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func nonNullTypes(t *testing.T) []TypeDesc {
 	t.Helper()
@@ -350,6 +353,64 @@ func TestVerifyRejectsInvalidCardMetadata(t *testing.T) {
 	c.slotCards = []slotCard{{kind: SlotTable, index: 0}}
 	if err := c.Verify(nil); err == nil {
 		t.Fatal("Verify accepted out-of-range table slot card")
+	}
+}
+
+func TestRememberedShadowVerifierRejectsMissingOldToNurseryEdge(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(parent); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatalf("valid remembered edge failed verification: %v", err)
+	}
+
+	h := handleOf(parent)
+	c.handles[h].remembered = false
+	clear(c.remembered)
+	c.remembered = c.remembered[:0]
+	if err := c.Verify(nil); err == nil || !strings.Contains(err.Error(), "shadow verifier found unremembered") {
+		t.Fatalf("Verify error = %v, want missing remembered-edge error", err)
+	}
+}
+
+func TestCollectMinorRunsRememberedShadowBeforeEvacuation(t *testing.T) {
+	c := newTestCollector(t, Config{VerifyAfterCollect: true})
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(parent); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	h := handleOf(parent)
+	c.handles[h].remembered = false
+	clear(c.remembered)
+	c.remembered = c.remembered[:0]
+	root := Root(parent)
+	if err := c.CollectMinor(Slots{&root}); err == nil || !strings.Contains(err.Error(), "shadow verifier found unremembered") {
+		t.Fatalf("CollectMinor error = %v, want pre-evacuation shadow error", err)
+	}
+	if c.entry(child).space != spaceNursery {
+		t.Fatalf("failed verification changed child space to %v, want nursery", c.entry(child).space)
 	}
 }
 

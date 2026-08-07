@@ -54,6 +54,11 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	// by the remembered set, while global/table slots are scanned as roots.
 	c.clearNurseryMarks()
 	c.markNurseryRoots(roots)
+	if c.cfg.VerifyAfterCollect {
+		if err := c.verifyRememberedShadow(); err != nil {
+			return err
+		}
+	}
 	for _, h := range c.remembered {
 		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
 			c.stats.MinorRememberedScanned++
@@ -66,6 +71,11 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	c.finishMinorEvacuation()
 	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	if c.cfg.VerifyAfterCollect {
+		if err := c.verifyNurseryEvacuated(); err != nil {
+			return err
+		}
+	}
 	if c.cfg.ForceMajorEveryMinor {
 		if err := c.CollectFull(roots); err != nil {
 			return err
