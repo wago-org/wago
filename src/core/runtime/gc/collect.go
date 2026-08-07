@@ -67,6 +67,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
 		if err := c.promoteMarkedNursery(); err != nil {
+			c.clearNurseryMarks()
 			return err
 		}
 	}
@@ -123,21 +124,43 @@ type plannedPromotion struct {
 
 func (c *Collector) promoteMarkedNursery() error {
 	plans := c.promotionScratch[:0]
+	tx := c.throughput.beginAllocTransaction()
 	finish := func() {
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
+	rollback := func(current *handleEntry) {
+		if current != nil {
+			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
+		}
+		for i := len(plans) - 1; i >= 0; i-- {
+			c.throughput.rollbackSuccessfulAlloc(plans[i].entry, tx.bump)
+		}
+		c.throughput.restoreAllocTransaction(tx)
+		finish()
+	}
 	for _, h := range c.nurseryHandles {
 		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
+			if err := injectFailure(c, failPromotionPlan); err != nil {
+				rollback(nil)
+				return err
+			}
 			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 			if err != nil {
-				for i := len(plans) - 1; i >= 0; i-- {
-					_ = c.throughput.free(plans[i].entry)
-				}
-				finish()
+				rollback(nil)
+				return err
+			}
+			if err := injectFailure(c, failPromotionDestination); err != nil {
+				rollback(&e)
 				return err
 			}
 			plans = append(plans, plannedPromotion{handle: h, entry: e})
+		}
+	}
+	for range plans {
+		if err := injectFailure(c, failPromotionCommit); err != nil {
+			rollback(nil)
+			return err
 		}
 	}
 	for _, p := range plans {
@@ -153,8 +176,10 @@ func (c *Collector) promoteHandle(h uint32) error {
 	if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
 		return nil
 	}
+	tx := c.throughput.beginAllocTransaction()
 	oldEntry, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 	if err != nil {
+		c.throughput.restoreAllocTransaction(tx)
 		return err
 	}
 	c.promoteHandleTo(h, oldEntry)

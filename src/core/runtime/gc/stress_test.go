@@ -125,6 +125,10 @@ func stressBuildGraph(t *testing.T, c *Collector, seed int64, n int) ([]stressOb
 func stressAssertReachability(t *testing.T, c *Collector, objs []stressObj, roots []Root) {
 	t.Helper()
 	want := stressReachable(objs, roots)
+	shadow, err := shadowTraceLive(c, stressRootSlots(roots))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := c.CollectFull(stressRootSlots(roots)); err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +136,9 @@ func stressAssertReachability(t *testing.T, c *Collector, objs []stressObj, root
 		live := c.entry(o.ref).space != spaceFree
 		if live != want[i] {
 			t.Fatalf("object %d live=%v want %v ref=%v", i, live, want[i], o.ref)
+		}
+		if live != shadow[handleOf(o.ref)] {
+			t.Fatalf("object %d live=%v shadow=%v ref=%v", i, live, shadow[handleOf(o.ref)], o.ref)
 		}
 	}
 	if err := c.Verify(stressRootSlots(roots)); err != nil {
