@@ -700,9 +700,7 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 					t.Fatal(err)
 				}
 			case 9:
-				if err := c.CollectFull(slots()); err != nil {
-					t.Fatal(err)
-				}
+				assertFullCollectionMatchesShadow(t, c, slots())
 			case 10:
 				if r, ok := fuzzPick(c, refs, a); ok {
 					_ = c.SetGlobalSlot(globalSlot, r)
