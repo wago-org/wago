@@ -479,7 +479,9 @@ func TestGCMultiFunctionNativeFrameRoots(t *testing.T) {
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.safepoints) != 2 || len(plan.callsites) != 1 || len(plan.adapterReturnOffsets) < 2 || plan.callsites[0].frameBytes == 0 || plan.safepoints[1].frameBytes == 0 {
+	// Only the exported caller is host-addressable. The direct-only callee has
+	// safepoint/callsite metadata but intentionally no adapter return offset.
+	if plan == nil || len(plan.safepoints) != 2 || len(plan.callsites) != 1 || len(plan.adapterReturnOffsets) != 1 || plan.callsites[0].frameBytes == 0 || plan.safepoints[1].frameBytes == 0 {
 		t.Fatalf("multi-function native root map = %+v", plan)
 	}
 	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
