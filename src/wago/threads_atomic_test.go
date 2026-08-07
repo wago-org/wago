@@ -101,6 +101,27 @@ func sharedAtomicCmpxchgModule(sub, align byte, typ wasm.ValType) []byte {
 	)
 }
 
+func sharedAtomicLoadStoreWidthModule(loadSub, storeSub, align byte, typ wasm.ValType) []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{typ}, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{typ}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("store", 0, 0),
+			wasmtest.ExportEntry("load", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x00, 0x20, 0x00, 0xfe, storeSub, align, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x00, 0xfe, loadSub, align, 0x00, 0x0b}),
+		)),
+	)
+}
+
 func sharedAtomicOverlapModule() []byte {
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
 	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
@@ -182,6 +203,56 @@ func TestThreadsAtomicLoadStoreAndFenceExecute(t *testing.T) {
 	}
 	if _, err := instance.Invoke("fence"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestThreadsAtomicLoadStoreWidthAndExtensionMatrix(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	for _, tc := range []struct {
+		name                     string
+		loadSub, storeSub, align byte
+		typ                      wasm.ValType
+		mask                     uint64
+	}{
+		{"i32", 0x10, 0x17, 2, wasm.I32, 0xffffffff},
+		{"i64", 0x11, 0x18, 3, wasm.I64, ^uint64(0)},
+		{"i32_8", 0x12, 0x19, 0, wasm.I32, 0xff},
+		{"i32_16", 0x13, 0x1a, 1, wasm.I32, 0xffff},
+		{"i64_8", 0x14, 0x1b, 0, wasm.I64, 0xff},
+		{"i64_16", 0x15, 0x1c, 1, wasm.I64, 0xffff},
+		{"i64_32", 0x16, 0x1d, 2, wasm.I64, 0xffffffff},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(config, sharedAtomicLoadStoreWidthModule(tc.loadSub, tc.storeSub, tc.align, tc.typ))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			memory, err := NewSharedMemory(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer memory.Close()
+			const initial = uint64(0xaabbccddeeff0011)
+			const value = uint64(0x1122334455667788)
+			binary.LittleEndian.PutUint64(memory.Bytes()[:8], initial)
+			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("store", value); err != nil {
+				t.Fatal(err)
+			}
+			wantMemory := initial&^tc.mask | value&tc.mask
+			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]); got != wantMemory {
+				t.Fatalf("memory = %#x, want %#x", got, wantMemory)
+			}
+			result, err := instance.Invoke("load")
+			if err != nil || result[0] != value&tc.mask {
+				t.Fatalf("load = %v, %v; want %#x", result, err, value&tc.mask)
+			}
+		})
 	}
 }
 
