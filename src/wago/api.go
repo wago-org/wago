@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	goruntime "runtime"
 	"sort"
 	"strings"
@@ -23,6 +24,39 @@ type GCConfig = gc.Config
 type GCProfile = gc.Profile
 type GCAllocatorKind = gc.AllocatorKind
 type GCRuntimeKind = gc.RuntimeKind
+
+// ArtifactLimits bounds allocation while streaming a compiled artifact.
+// Values must be non-negative; zero rejects a non-empty corresponding section.
+type ArtifactLimits struct {
+	MaxCodeBytes     int64
+	MaxMetadataBytes int64
+}
+
+// ArtifactSectionSizes attributes bytes in a sectioned compiled artifact.
+type ArtifactSectionSizes struct {
+	Framing         int64
+	Code            int64
+	Entries         int64
+	Imports         int64
+	Types           int64
+	Functions       int64
+	ExportsAndNames int64
+	Globals         int64
+	Tables          int64
+	Elements        int64
+	Data            int64
+	Memories        int64
+	Tags            int64
+	Features        int64
+	GC              int64
+	Metadata        int64
+	Total           int64
+}
+
+// DefaultArtifactLimits returns the limits used by Compiled.ReadFrom.
+func DefaultArtifactLimits() ArtifactLimits {
+	return ArtifactLimits{MaxCodeBytes: 1 << 30, MaxMetadataBytes: 256 << 20}
+}
 
 const (
 	GCAllocatorPagedSizeClass     = gc.AllocatorPagedSizeClass
@@ -1307,7 +1341,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
+	c := &Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
 	typeConverter := newWasmTypeDescriptorConverter(m)
 	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
@@ -2773,8 +2807,8 @@ func (c *Compiled) validate() error {
 		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
 	}
 	for i, off := range c.Entry {
-		if off < 0 || off >= len(c.Code) {
-			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.Code))
+		if off < 0 || off >= len(c.code) {
+			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.code))
 		}
 	}
 	totalFuncs := c.NumImports + len(c.Funcs)
@@ -3663,10 +3697,13 @@ const wagoMagic = "WAGO"
 // Version 31 moves generated memory bounds to the u64 byte-size cache and widens
 // indexed-memory directory entries, so older native code must not be loaded by a
 // runtime using the new basedata ABI (or vice versa). Older blobs are rejected.
-// Version 32 adds the persisted threads feature and atomic wait-helper product.
+// Version 32 added the persisted threads feature and atomic wait-helper product.
+// Version 33 replaces the positional outer stream with strict length-delimited
+// code and metadata sections. Older blobs are rejected rather than carrying an
+// unreleased compatibility decoder.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 32
+const wagoVersion = 33
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -3681,25 +3718,152 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	c.ensureCodeCache()
 	c.codeCache.mu.Lock()
 	defer c.codeCache.mu.Unlock()
-	if c.codeCache.closed {
-		return nil, errors.New("wago: compiled module is closed")
-	}
-	if c.boundsMode == BoundsChecksSignalsBased {
-		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
-	}
-	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
-		return nil, errors.New("wago: compiled module has functions but no native entries")
-	}
-	if c.NumImports > 0 && !c.dynamicImports {
-		return nil, errors.New("wago: imported-function code lacks dynamic dispatch metadata")
-	}
-	if err := c.validateCodecMetadata(); err != nil {
+	if err := c.validateSerializableLocked(); err != nil {
 		return nil, err
 	}
 	return marshalCompiled(c)
 }
 
-// UnmarshalBinary loads a ".wago" blob produced by MarshalBinary.
+// WriteTo streams a sectioned ".wago" artifact to w. Native code is written
+// directly from its readable image; only the smaller metadata section is
+// buffered. The returned count includes bytes accepted before an error.
+func (c *Compiled) WriteTo(w io.Writer) (int64, error) {
+	if c == nil {
+		return 0, errors.New("wago: compiled module is nil")
+	}
+	if w == nil {
+		return 0, errors.New("wago: compiled artifact writer is nil")
+	}
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if err := c.validateSerializableLocked(); err != nil {
+		return 0, err
+	}
+	return writeCompiled(w, c)
+}
+
+// CodeSize reports the exact native-code byte length. It returns zero after
+// the compiled module is closed.
+func (c *Compiled) CodeSize() int {
+	if c == nil {
+		return 0
+	}
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if c.codeCache.closed {
+		return 0
+	}
+	return len(c.code)
+}
+
+// WriteCodeTo streams the native-code bytes for diagnostics and artifact
+// tooling without exposing mutable storage. It does not change the image's W^X
+// state.
+func (c *Compiled) WriteCodeTo(w io.Writer) (int64, error) {
+	if c == nil {
+		return 0, errors.New("wago: compiled module is nil")
+	}
+	if w == nil {
+		return 0, errors.New("wago: native code writer is nil")
+	}
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if c.codeCache.closed {
+		return 0, errors.New("wago: compiled module is closed")
+	}
+	n, err := w.Write(c.code)
+	if err != nil {
+		return int64(n), err
+	}
+	if n != len(c.code) {
+		return int64(n), io.ErrShortWrite
+	}
+	return int64(n), nil
+}
+
+// ArtifactSectionSizes reports exact encoded byte attribution without
+// materializing the complete artifact.
+func (c *Compiled) ArtifactSectionSizes() (ArtifactSectionSizes, error) {
+	if c == nil {
+		return ArtifactSectionSizes{}, errors.New("wago: compiled module is nil")
+	}
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if err := c.validateSerializableLocked(); err != nil {
+		return ArtifactSectionSizes{}, err
+	}
+	metadata, result, err := marshalCompiledMetadataMeasured(c)
+	if err != nil {
+		return ArtifactSectionSizes{}, err
+	}
+	framing := int64(6 + 2 + compiledUvarintLen(uint64(len(c.code))) + compiledUvarintLen(uint64(len(metadata))))
+	result.Framing = framing
+	result.Code = int64(len(c.code))
+	result.Metadata = int64(len(metadata))
+	result.Total = result.Framing + result.Code + result.Metadata
+	return result, nil
+}
+
+func (c *Compiled) validateSerializableLocked() error {
+	if c.codeCache.closed {
+		return errors.New("wago: compiled module is closed")
+	}
+	if c.boundsMode == BoundsChecksSignalsBased {
+		return errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
+	}
+	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
+		return errors.New("wago: compiled module has functions but no native entries")
+	}
+	if c.NumImports > 0 && !c.dynamicImports {
+		return errors.New("wago: imported-function code lacks dynamic dispatch metadata")
+	}
+	return c.validateCodecMetadata()
+}
+
+// ReadFrom streams one sectioned ".wago" artifact using bounded default
+// allocations. Native code is read directly into its RW image and sealed in
+// place on first instantiation.
+func (c *Compiled) ReadFrom(r io.Reader) (int64, error) {
+	return c.ReadFromWithLimits(r, DefaultArtifactLimits())
+}
+
+// ReadFromWithLimits is ReadFrom with explicit code and metadata byte limits.
+// It may replace receiver state before instantiation; replacement is rejected
+// while instances of the receiver are live.
+func (c *Compiled) ReadFromWithLimits(r io.Reader, limits ArtifactLimits) (int64, error) {
+	if c == nil {
+		return 0, errors.New("wago: compiled module is nil")
+	}
+	decoded, image, n, err := readCompiledFrom(r, limits)
+	if err != nil {
+		return n, err
+	}
+	defer image.Close()
+	if err := finishDecodedCompiled(&decoded); err != nil {
+		return n, err
+	}
+	mapping, base, err := image.Take()
+	if err != nil {
+		return n, fmt.Errorf("load compiled code image: %w", err)
+	}
+	decoded.ensureCodeCache()
+	decoded.codeCache.mem = mapping
+	decoded.codeCache.base = base
+	decoded.codeCache.flags |= compiledCacheWritableCode
+	if err := c.replaceDecoded(decoded); err != nil {
+		_ = decoded.Close()
+		return n, err
+	}
+	return n, nil
+}
+
+// UnmarshalBinary loads a ".wago" blob produced by MarshalBinary. It may
+// replace receiver state before instantiation; replacement is rejected while
+// instances of the receiver are live.
 func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if !IsCompiled(data) {
 		return fmt.Errorf("not a wago module")
@@ -3711,6 +3875,13 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if err := unmarshalCompiled(&decoded, data[5:]); err != nil {
 		return err
 	}
+	if err := finishDecodedCompiled(&decoded); err != nil {
+		return err
+	}
+	return c.replaceDecoded(decoded)
+}
+
+func finishDecodedCompiled(decoded *Compiled) error {
 	if len(decoded.tableExports) == 0 {
 		decoded.tableExports = nil
 	}
@@ -3722,7 +3893,7 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 		decoded.memoryDir.exports = nil
 	}
 	decoded.memoryDir.exactExports = true
-	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^decoded.requiredFeatures != 0 {
+	if inferred := compiledStructuralRequiredFeatures(decoded); inferred&^decoded.requiredFeatures != 0 {
 		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
 	}
 	if err := decoded.validate(); err != nil {
@@ -3734,8 +3905,6 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if decoded.requiresBMI2 && !hostSupportsBMI2() {
 		return fmt.Errorf("wago: compiled module requires BMI2 CPU features unavailable on this host")
 	}
-	*c = decoded
-	installCompiledFinalizer(c)
 	return nil
 }
 

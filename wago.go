@@ -12,6 +12,8 @@ import impl "github.com/wago-org/wago/src/wago"
 
 type (
 	AbstractHeapType          = impl.AbstractHeapType
+	ArtifactLimits            = impl.ArtifactLimits
+	ArtifactSectionSizes      = impl.ArtifactSectionSizes
 	Bits                      = impl.Bits
 	BoundsCheckMode           = impl.BoundsCheckMode
 	CallerResolver            = impl.CallerResolver
@@ -309,6 +311,8 @@ func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	return impl.CompileWithConfig(cfg, wasmBytes)
 }
+
+func DefaultArtifactLimits() ArtifactLimits { return impl.DefaultArtifactLimits() }
 
 func DirsFor(version string) Dirs { return impl.DirsFor(version) }
 

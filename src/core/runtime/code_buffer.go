@@ -55,6 +55,20 @@ func (b *CodeBuffer) AppendZeros(n int) error {
 	return nil
 }
 
+// AppendSpace extends the image and returns the new writable range. The caller
+// must initialize every byte before the image is read or sealed.
+func (b *CodeBuffer) AppendSpace(n int) ([]byte, error) {
+	if n < 0 {
+		return nil, fmt.Errorf("jit: negative code space %d", n)
+	}
+	if err := b.grow(n); err != nil {
+		return nil, err
+	}
+	start := b.n
+	b.n += n
+	return b.mem[start:b.n:b.n], nil
+}
+
 // Bytes returns the exact logical image. It is writable until Seal succeeds
 // and read-only afterward. Callers must not retain it after Close.
 func (b *CodeBuffer) Bytes() []byte {

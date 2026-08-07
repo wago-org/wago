@@ -1,15 +1,16 @@
 # Code-image and artifact pipeline
 
-Status: active. Phase 1 is implemented on `codex/code-image-pipeline`.
+Status: complete on `codex/code-image-pipeline`.
 
 Tracking issues: #316, #330, #331.
 
 ## Goal
 
 Give one bounded owner responsibility for native code from Railshot emission to
-execution and `.wago` persistence. The finished path should not construct the
-same full native image repeatedly in assembler scratch, a Go-heap module slice,
-a serialized blob, and an executable mapping.
+execution and `.wago` persistence wherever the balanced performance gate allows
+it. The serial and streamed-artifact paths must not construct the same full
+native image repeatedly. The parallel join may retain its heap image only when
+direct executable-image alternatives measurably regress compile latency.
 
 This is not a revival of the superseded WARP topology redesign. The frontend
 and architecture backends remain separate where their semantics differ. The
@@ -78,39 +79,66 @@ flushes the instruction cache.
 - [x] Prove first instantiation retains the exact code address.
 - [x] Preserve byte-identical code, codec output, and execution behavior.
 
-### Phase 2: bounded parallel join
+### Phase 2: bounded parallel join investigation
 
-- [ ] Replace per-worker geometric byte slices with reusable bounded arenas.
-- [ ] Precompute deterministic final offsets after workers report function sizes.
-- [ ] Join worker products directly into one final RW image.
-- [ ] Retain serial/parallel byte identity and source-ordered errors.
-- [ ] Measure compile latency, Go allocations, peak RSS, and copied bytes at 1,
-  2, 4, 8, and adaptive workers on the benchmark corpus.
+The direct-mapping join is deliberately rejected. On the 1,600-function p4
+benchmark it reduced Go heap from 6,250,485 B/op to 3,727,622 B/op (1.68x less)
+but increased median compile latency from 19.97 ms to 22.54 ms (12.9% slower).
+The mmap-backed join was removed rather than trading away parallel throughput.
+A second version computed compact offsets first and had four workers populate
+disjoint final ranges concurrently, leaving mapping pages untouched until each
+worker first-used them. It still measured about 22.7 ms and added four join
+allocations. A third version allocated the mapping concurrently with codegen,
+prefaulted it, kept the original workers alive across an offset barrier, and had
+those workers populate disjoint final ranges. It reduced Go heap from about
+6.25 MB/op to 3.73 MB/op, but the best six-sample p4 median moved from 21.92 ms
+to 22.44 ms (+2.4%) and added about six allocations. The version without
+prefaulting was slower. All three prototypes were removed: merely replacing the
+final heap slice does not pass the balanced gate.
+
+- [x] Measure the existing worker arenas and deterministic heap join.
+- [x] Prototype a direct RW-image join and record heap/latency deltas.
+- [x] Prototype precomputed offsets with concurrent disjoint population.
+- [x] Prototype overlapped mapping allocation, prefaulting, and worker reuse.
+- [x] Retain serial/parallel byte identity and source-ordered errors.
+- [x] Retain the heap-backed parallel join as the measured low-latency exception.
 
 Parallel workers will keep independent per-function scratch. Sharing a mutable
 assembler or making output order scheduling-dependent is out of scope.
 
 ### Phase 3: sectioned artifact v33
 
-- [ ] Attribute bytes to code, entries, types, imports/exports, names, globals,
+- [x] Attribute bytes to code, entries, types, imports/exports, names, globals,
   tables, data, memories, tags, feature requirements, and GC roots.
-- [ ] Replace the positional codec with strictly ordered, length-delimited
+- [x] Replace the positional outer codec with strictly ordered, length-delimited
   sections. Unknown required sections and duplicate sections fail closed.
-- [ ] Add `Compiled.WriteTo(io.Writer)` without first materializing the complete
+- [x] Add `Compiled.WriteTo(io.Writer)` without first materializing the complete
   artifact.
-- [ ] Add a bounded reader API with explicit artifact, section, count, string,
-  and native-code limits.
-- [ ] Decode code directly into an RW image and seal it on first execution.
-- [ ] Reject v32 rather than retain an unreleased compatibility reader.
-- [ ] Keep malformed structured metadata strict and deterministic.
+- [x] Add a bounded reader API with explicit code and metadata section limits;
+  nested counts and strings remain bounded by their section's remaining bytes.
+- [x] Decode code directly into an RW image and seal it on first execution.
+- [x] Reject v32 rather than retain an unreleased compatibility reader.
+- [x] Keep malformed structured metadata strict and deterministic.
+
+For the 1,600-function imported-module fixture, five one-second samples put
+`WriteTo(io.Discard)` at a 182.5 us median and 263,265 B/op versus
+`MarshalBinary` at 280.3 us and 1,992,885 B/op: 1.54x faster and 7.57x less Go
+heap. Streamed read plus first code acquisition measured 264.7 us and
+224,095 B/op versus 255.3 us and 190,512 B/op for whole-blob unmarshal plus its
+first mapping: 3.7% slower and 1.18x more decoder heap. That comparison excludes
+the caller-owned complete artifact buffer required by `UnmarshalBinary`;
+`ReadFrom` consumes a file/network stream directly and therefore avoids that
+additional artifact-sized allocation. `ReadFrom` alone is intentionally slower
+than slice-backed unmarshal because it performs the executable mapping up front.
 
 ### Phase 4: compact public surface
 
-- [ ] Make native code storage private.
-- [ ] Replace mutable `Compiled.Code` access with `CodeSize` and streaming/debug
+- [x] Make native code storage private.
+- [x] Replace mutable `Compiled.Code` access with `CodeSize` and streaming/debug
   accessors that cannot mutate a sealed image.
-- [ ] Move hand-built test modules to a dedicated internal constructor.
-- [ ] Make `Close` and instance ownership rules explicit in package docs.
+- [x] Move hand-built test modules to a dedicated internal constructor.
+- [x] Make `Close`, decode replacement, and live-instance ownership rules
+  explicit in API documentation and tests.
 
 This is intentionally breaking: Wago has not released the artifact or the
 mutable `Compiled.Code` field, so carrying aliases or two codec generations

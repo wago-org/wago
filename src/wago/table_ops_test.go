@@ -518,7 +518,7 @@ func TestCompiledValidationRejectsInvalidTableInitializerFunction(t *testing.T) 
 		{name: "large uint32", idx: ^uint32(0)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: tc.idx, FuncTypeID: []uint64{0}}
+			c := newHandBuiltCompiled([]byte{0}, Compiled{Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: tc.idx, FuncTypeID: []uint64{0}})
 			want := fmt.Sprintf("table initializer function index %d out of range", tc.idx)
 			if err := c.validate(); err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("validate invalid table initializer = %v, want %q", err, want)

@@ -39,7 +39,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation has invalid saved RSP %#x", savedRSP)})
 	}
 	findCallsite := func(pc uintptr) int {
-		if pc < in.base || pc-in.base >= uintptr(len(in.c.Code)) {
+		if pc < in.base || pc-in.base >= uintptr(len(in.c.code)) {
 			return -1
 		}
 		rel := uint32(pc - in.base)
@@ -106,7 +106,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 	state.hostActivationCount++
 	state.hostRootPlan = plan
 	state.hostCodeBase = in.base
-	state.hostCodeBytes = uintptr(len(in.c.Code))
+	state.hostCodeBytes = uintptr(len(in.c.code))
 	return gcHostActivationToken{state: state, index: index}
 }
 

@@ -14,8 +14,8 @@ func TestSyncHostPolicyUsesBindingIndependentCode(t *testing.T) {
 	if err := c.validateImportBindings(imports, nil); err != nil {
 		t.Fatalf("validate synchronous binding: %v", err)
 	}
-	if !c.dynamicImports || len(c.Code) == 0 {
-		t.Fatalf("dynamic=%v code=%d", c.dynamicImports, len(c.Code))
+	if !c.dynamicImports || len(c.code) == 0 {
+		t.Fatalf("dynamic=%v code=%d", c.dynamicImports, len(c.code))
 	}
 }
 
@@ -60,8 +60,8 @@ func TestImportedModuleCodeIsBindingIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	if !c.dynamicImports || len(c.Code) == 0 || len(c.Entry) == 0 {
-		t.Fatalf("imported module dynamic=%v code=%d entries=%d", c.dynamicImports, len(c.Code), len(c.Entry))
+	if !c.dynamicImports || len(c.code) == 0 || len(c.Entry) == 0 {
+		t.Fatalf("imported module dynamic=%v code=%d entries=%d", c.dynamicImports, len(c.code), len(c.Entry))
 	}
 	stubs := Imports{}
 	for _, name := range c.Imports {

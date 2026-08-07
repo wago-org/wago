@@ -9,8 +9,7 @@ import (
 )
 
 func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
-	c := &Compiled{
-		Code:          []byte{0xc3},
+	c := newHandBuiltCompiled([]byte{0xc3}, Compiled{
 		Exports:       map[string]int{},
 		GlobalExports: map[string]int{},
 		HasMemory:     true,
@@ -22,13 +21,13 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 			exactExports: true,
 		},
 		requiredFeatures: CoreFeatureMultiMemory | CoreFeatureThreads,
-	}
+	})
 	blob, err := c.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != 32 {
-		t.Fatalf("codec version = %d, want 32", blob[4])
+	if blob[4] != 33 {
+		t.Fatalf("codec version = %d, want 33", blob[4])
 	}
 	var got Compiled
 	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
@@ -68,15 +67,14 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 }
 
 func TestIndexedMemoryDirectoryValidationAndPolicyAccounting(t *testing.T) {
-	base := Compiled{
-		Code:             []byte{0xc3},
+	base := *newHandBuiltCompiled([]byte{0xc3}, Compiled{
 		Exports:          map[string]int{},
 		GlobalExports:    map[string]int{},
 		HasMemory:        true,
 		MemMinPages:      1,
 		MemMaxPages:      2,
 		requiredFeatures: CoreFeatureMultiMemory,
-	}
+	})
 
 	t.Run("imports precede locals", func(t *testing.T) {
 		c := base

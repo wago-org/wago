@@ -21,11 +21,21 @@ func TestCodeBufferGrowSealClose(t *testing.T) {
 	if err := b.AppendZeros(16); err != nil {
 		t.Fatal(err)
 	}
+	space, err := b.AppendSpace(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range space {
+		space[i] = 0x5a
+	}
 	if err := b.Append(want[3000:]); err != nil {
 		t.Fatal(err)
 	}
-	if got := b.Bytes(); !bytes.Equal(got[:3000], want[:3000]) || !bytes.Equal(got[3016:], want[3000:]) || !bytes.Equal(got[3000:3016], make([]byte, 16)) {
+	if got := b.Bytes(); !bytes.Equal(got[:3000], want[:3000]) || !bytes.Equal(got[3048:], want[3000:]) || !bytes.Equal(got[3000:3016], make([]byte, 16)) || !bytes.Equal(got[3016:3048], bytes.Repeat([]byte{0x5a}, 32)) {
 		t.Fatal("grown code image did not preserve appended bytes and zero padding")
+	}
+	if _, err := b.AppendSpace(-1); err == nil {
+		t.Fatal("AppendSpace accepted a negative length")
 	}
 	base := b.Base()
 	if base == 0 {

@@ -416,10 +416,10 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			} else {
 				wantCode, wantCodec = wantCodeBytes[i], wantCodecBytes[i]
 			}
-			if len(c.Code) != wantCode || len(blob) != wantCodec {
-				t.Fatalf("product sizes code/codec = %d/%d, want %d/%d", len(c.Code), len(blob), wantCode, wantCodec)
+			if len(c.code) != wantCode || len(blob) != wantCodec {
+				t.Fatalf("product sizes code/codec = %d/%d, want %d/%d", len(c.code), len(blob), wantCode, wantCodec)
 			}
-			t.Logf("product size: wasm=%d code=%d codec=%d types=%d gcdescs=%d", len(data), len(c.Code), len(blob), len(c.Types), len(c.GCTypeDescs))
+			t.Logf("product size: wasm=%d code=%d codec=%d types=%d gcdescs=%d", len(data), len(c.code), len(blob), len(c.Types), len(c.GCTypeDescs))
 			var loaded Compiled
 			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 				t.Fatalf("private codec-v27 reload: %v", err)
@@ -473,7 +473,7 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{103, 179, 434, 86, 0, 301} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{103, 179, 434, 86, 0, 301} {
 		t.Fatalf("link product wasm/code/codec sizes = %v, want [103 179 434 86 0 301]", got)
 	}
 
@@ -667,7 +667,7 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{70, 31, 268, 51, 0, 237} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{70, 31, 268, 51, 0, 237} {
 		t.Fatalf("struct link wasm/code/codec sizes = %v, want [70 31 268 51 0 237]", got)
 	}
 
@@ -860,7 +860,7 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{104, 31, 437, 85, 0, 406} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{104, 31, 437, 85, 0, 406} {
 		t.Fatalf("struct projection link wasm/code/codec sizes = %v, want [104 31 437 85 0 406]", got)
 	}
 
@@ -1055,8 +1055,8 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(item.c.Code) != item.code || len(blob) != item.codec {
-			t.Fatalf("M9 code/codec = %d/%d, want %d/%d", len(item.c.Code), len(blob), item.code, item.codec)
+		if len(item.c.code) != item.code || len(blob) != item.codec {
+			t.Fatalf("M9 code/codec = %d/%d, want %d/%d", len(item.c.code), len(blob), item.code, item.codec)
 		}
 		var loaded Compiled
 		if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
@@ -1155,8 +1155,8 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 			sizes [3]int
 		}{{pc, tc.providerSizes}, {cc, tc.consumerSizes}} {
 			blob, err := marshalCompiled(item.c)
-			if err != nil || len(item.c.Code) != item.sizes[1] || len(blob) != item.sizes[2] {
-				t.Fatalf("%s code/codec = %d/%d, %v", tc.key, len(item.c.Code), len(blob), err)
+			if err != nil || len(item.c.code) != item.sizes[1] || len(blob) != item.sizes[2] {
+				t.Fatalf("%s code/codec = %d/%d, %v", tc.key, len(item.c.code), len(blob), err)
 			}
 		}
 		provider, err := instantiateCore(pc, InstantiateOptions{})
@@ -1221,7 +1221,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{100, 156, 435, 92, 0, 316} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{100, 156, 435, 92, 0, 316} {
 		t.Fatalf("wasm/code/codec sizes = %v", got)
 	}
 	state := func(in *Instance) (int, bool) {
@@ -1354,7 +1354,7 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{114, 31, 516, 102, 0, 503} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{114, 31, 516, 102, 0, 503} {
 		t.Fatalf("extended projection link wasm/code/codec sizes = %v, want [114 31 516 102 0 503]", got)
 	}
 
@@ -1546,7 +1546,7 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{82, 31, 358, 63, 0, 327} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{82, 31, 358, 63, 0, 327} {
 		t.Fatalf("independent struct link wasm/code/codec sizes = %v, want [82 31 358 63 0 327]", got)
 	}
 
@@ -1739,7 +1739,7 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.Code), len(providerBlob), len(consumerData), len(consumerCompiled.Code), len(consumerBlob)}; got != [6]int{82, 31, 358, 51, 0, 237} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{82, 31, 358, 51, 0, 237} {
 		t.Fatalf("struct mismatch wasm/code/codec sizes = %v, want [82 31 358 51 0 237]", got)
 	}
 	if got, want := (len(providerCompiled.FuncTypeID)+1)*coreruntime.FuncRefDescBytes, 2*coreruntime.FuncRefDescBytes; got != want {
@@ -1798,7 +1798,7 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 	if refs, closed := resourceState(provider); refs != 0 || closed {
 		t.Fatalf("mismatched consumer retained provider refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
 	}
-	if consumerCompiled.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingStructMismatchLinkConsumer || len(consumerCompiled.Code) != 0 {
+	if consumerCompiled.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingStructMismatchLinkConsumer || len(consumerCompiled.code) != 0 {
 		t.Fatal("failed consumer link published or mutated the unlinked compiled product")
 	}
 	if blob, err := marshalCompiled(consumerCompiled); err != nil || len(blob) != len(consumerBlob) {
@@ -1900,7 +1900,7 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("marshal unlinked %s: %v", pin.Filename, err)
 		}
-		if got := [3]int{pin.Size, len(consumerCompiled[i].Code), len(consumerBlobs[i])}; got != [3]int{38, 0, 145} {
+		if got := [3]int{pin.Size, len(consumerCompiled[i].code), len(consumerBlobs[i])}; got != [3]int{38, 0, 145} {
 			t.Fatalf("%s wasm/code/codec sizes = %v, want [38 0 145]", pin.Filename, got)
 		}
 	}
@@ -1911,7 +1911,7 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal provider: %v", err)
 	}
-	if got := [3]int{len(providerData), len(providerCompiled.Code), len(providerBlob)}; got != [3]int{70, 63, 227} {
+	if got := [3]int{len(providerData), len(providerCompiled.code), len(providerBlob)}; got != [3]int{70, 63, 227} {
 		t.Fatalf("provider wasm/code/codec sizes = %v, want [70 63 227]", got)
 	}
 

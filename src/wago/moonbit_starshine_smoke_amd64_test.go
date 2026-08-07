@@ -49,8 +49,8 @@ func TestMoonBitStarshineWasmGCSmokeCompile(t *testing.T) {
 	if err := compiled.validateImportBindings(starshineSmokeImports(compiled), nil); err != nil {
 		t.Fatalf("validate MoonBit Starshine wasm-gc imports: %v", err)
 	}
-	if len(compiled.Code) == 0 || len(compiled.Entry) < 10_000 {
-		t.Fatalf("compiled Starshine footprint = code %d entries %d", len(compiled.Code), len(compiled.Entry))
+	if len(compiled.code) == 0 || len(compiled.Entry) < 10_000 {
+		t.Fatalf("compiled Starshine footprint = code %d entries %d", len(compiled.code), len(compiled.Entry))
 	}
 }
 
