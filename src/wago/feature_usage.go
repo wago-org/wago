@@ -88,13 +88,21 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		out |= CoreFeatureMultiMemory
 	}
 	for _, im := range m.Imports {
-		if im.Type.Kind == wasm.ExternMem && im.Type.Mem.Limits.Addr64 {
-			out |= CoreFeatureMemory64
+		if im.Type.Kind == wasm.ExternMem {
+			if im.Type.Mem.Limits.Addr64 {
+				out |= CoreFeatureMemory64
+			}
+			if im.Type.Mem.Shared {
+				out |= CoreFeatureThreads
+			}
 		}
 	}
 	for _, memory := range m.Memories {
 		if memory.Limits.Addr64 {
 			out |= CoreFeatureMemory64
+		}
+		if memory.Shared {
+			out |= CoreFeatureThreads
 		}
 	}
 	for _, table := range m.Tables {
@@ -387,6 +395,9 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 }
 
 func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {
+	if wasm.IsCoreAtomicInstructionKind(kind) {
+		return CoreFeatureThreads
+	}
 	switch kind {
 	case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
 		return CoreFeatureSignExtensionOps
