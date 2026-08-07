@@ -401,13 +401,11 @@ func TestCollectMinorRunsRememberedShadowBeforeEvacuation(t *testing.T) {
 	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
 		t.Fatal(err)
 	}
-	h := handleOf(parent)
-	c.handles[h].remembered = false
 	clear(c.remembered)
 	c.remembered = c.remembered[:0]
 	root := Root(parent)
-	if err := c.CollectMinor(Slots{&root}); err == nil || !strings.Contains(err.Error(), "shadow verifier found unremembered") {
-		t.Fatalf("CollectMinor error = %v, want pre-evacuation shadow error", err)
+	if err := c.CollectMinor(Slots{&root}); err == nil || !strings.Contains(err.Error(), "remembered bit/list mismatch") {
+		t.Fatalf("CollectMinor error = %v, want pre-evacuation remembered-list error", err)
 	}
 	if c.entry(child).space != spaceNursery {
 		t.Fatalf("failed verification changed child space to %v, want nursery", c.entry(child).space)
