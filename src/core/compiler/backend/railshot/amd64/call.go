@@ -1631,6 +1631,7 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
 // or an indirect register call. Explicit operands avoid a closure per wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
+	callTarget := f.preserveIndirectCallTarget(indirect, p)
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
@@ -1711,7 +1712,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
 		returnOffset = uint32(site + 4)
 	} else {
-		f.a.CallReg(indirect)
+		f.a.CallReg(callTarget)
+		if callTarget != indirect {
+			f.pinned = f.pinned.remove(callTarget)
+			f.release(callTarget)
+		}
 		returnOffset = uint32(len(f.a.B))
 	}
 
@@ -1760,6 +1765,25 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		}
 	}
 	return returnOffset
+}
+
+// preserveIndirectCallTarget keeps an indirect native-call target live through
+// argument staging. Stack canonicalization clears the compiler's pinned mask,
+// so even a target outside the fixed argument registers must be re-pinned here.
+// A target inside an argument register is first moved to a safe register.
+func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) Reg {
+	if indirect == regNone {
+		return indirect
+	}
+	argRegs := maskOf(intArgRegs[:paramCount]...)
+	if !argRegs.has(indirect) {
+		f.pinned = f.pinned.add(indirect)
+		return indirect
+	}
+	target := f.allocReg(argRegs)
+	f.a.MovReg64(target, indirect)
+	f.pinned = f.pinned.add(target)
+	return target
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.

@@ -164,7 +164,11 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// register need the right child so it is condensed first and only its result
 	// stays live while the cheaper child is emitted. This is the local
 	// Sethi-Ullman choice, applied directly to Valent's existing tree.
-	if node.op.commutative() && left.kind == ekDeferred &&
+	// Regional local registers are assigned from bytecode-order lifetimes. Keep
+	// their expression evaluation in bytecode order: commuting a deferred tree
+	// can extend a local read across an interval eviction and observe a reused
+	// register. The ordinary allocator has no such position-based ownership.
+	if len(f.intervalReg) == 0 && node.op.commutative() && left.kind == ekDeferred &&
 		treeRegisterNeed(left) > treeRegisterNeed(right) &&
 		treeReorderSafe(left) && treeReorderSafe(right) {
 		f.stats.peep("tree-order-candidate")

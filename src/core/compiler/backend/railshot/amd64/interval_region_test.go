@@ -37,6 +37,9 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	if on.Peephole["interval-region-reactivate"] == 0 {
 		t.Fatalf("dynamic regional cache did not reuse a register: %v", on.Peephole)
 	}
+	if on.Peephole["tree-order"] != 0 {
+		t.Fatalf("tree ordering must stay disabled while regional registers are active: %v", on.Peephole)
+	}
 
 	intervalRegionPinsEnabled = false
 	if got := runAmd64(t, m); got != 210 {
