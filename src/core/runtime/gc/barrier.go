@@ -265,6 +265,19 @@ func (c *Collector) pruneRemembered() {
 	clear(c.remembered[len(out):])
 	c.remembered = out
 }
+
+// clearRememberedMetadata is valid after complete nursery evacuation: without
+// nursery objects, no old-to-nursery edge can remain. It clears the dense-list
+// metadata without rescanning the payload of every remembered parent.
+func (c *Collector) clearRememberedMetadata() {
+	for _, h := range c.remembered {
+		if h != 0 && int(h) < len(c.handles) {
+			c.handles[h].remembered = false
+		}
+	}
+	clear(c.remembered)
+	c.remembered = c.remembered[:0]
+}
 func (c *Collector) isNurseryRef(r Ref) bool {
 	if !r.IsObj() || !c.validObjectRef(r) {
 		return false

@@ -79,6 +79,77 @@ func TestMinorCollectionScansNurseryNotOldLiveGraph(t *testing.T) {
 	}
 }
 
+func TestSuccessfulMinorCollectionResetsEvacuatedNurseryMetadata(t *testing.T) {
+	c := newTestCollector(t, Config{PoisonFreed: true, VerifyAfterCollect: true})
+	parent, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(parent); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadHandle := handleOf(dead)
+	if err := c.ArraySet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	if c.RememberedCount() != 1 || c.CardCount() != 1 {
+		t.Fatalf("pre-collection remembered/cards = %d/%d, want 1/1", c.RememberedCount(), c.CardCount())
+	}
+
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
+		t.Fatalf("evacuated nursery bump/handles = %d/%d, want 0/0", c.nurseryBump, len(c.nurseryHandles))
+	}
+	if c.RememberedCount() != 0 || c.CardCount() != 0 || c.handles[handleOf(parent)].remembered {
+		t.Fatalf("post-collection remembered/cards/bit = %d/%d/%v, want 0/0/false", c.RememberedCount(), c.CardCount(), c.handles[handleOf(parent)].remembered)
+	}
+	if got := c.handles[handleOf(child)].space; got != spaceOld {
+		t.Fatalf("survivor space = %v, want old", got)
+	}
+	if got := c.handles[deadHandle].space; got != spaceFree {
+		t.Fatalf("dead nursery space = %v, want free", got)
+	}
+	for h, e := range c.handles {
+		if e.space == spaceNursery {
+			t.Fatalf("handle %d remains in nursery", h)
+		}
+	}
+}
+
+func TestSuccessfulMinorCollectionWithNoSurvivorsRecyclesNursery(t *testing.T) {
+	c := newTestCollector(t, Config{PoisonFreed: true, VerifyAfterCollect: true})
+	const count = 128
+	handles := make([]uint32, 0, count)
+	for i := 0; i < count; i++ {
+		r, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handles = append(handles, handleOf(r))
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.nurseryBump != 0 || len(c.nurseryHandles) != 0 || len(c.promotionScratch) != 0 {
+		t.Fatalf("post-collection bump/handles/plans = %d/%d/%d, want 0/0/0", c.nurseryBump, len(c.nurseryHandles), len(c.promotionScratch))
+	}
+	for _, h := range handles {
+		if c.handles[h].space != spaceFree || c.mark[h] {
+			t.Fatalf("dead handle %d state = space %v mark %v, want free/false", h, c.handles[h].space, c.mark[h])
+		}
+	}
+}
+
 func minorBenchmarkTypes(b testing.TB) []TypeDesc {
 	b.Helper()
 	pf, err := NewStructDesc(0, []StorageKind{StorageI32, StorageI64})
@@ -135,5 +206,58 @@ func BenchmarkMinorCollectionOldGraphScaling(b *testing.B) {
 			b.ReportMetric(float64(after.MinorObjectsScanned-before.MinorObjectsScanned)/float64(b.N), "nursery-scans/op")
 			b.ReportMetric(float64(after.MinorRememberedScanned-before.MinorRememberedScanned)/float64(b.N), "remembered-scans/op")
 		})
+	}
+}
+
+func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
+	const nurseryObjects = 64
+	for _, oldCount := range []int{0, 10_000} {
+		for _, survivors := range []int{0, 1, 6} {
+			name := fmt.Sprintf("old=%d/survivors=%d-of-%d", oldCount, survivors, nurseryObjects)
+			b.Run(name, func(b *testing.B) {
+				c, err := NewCollector(Config{
+					NurseryBytes:        1 << 20,
+					ThroughputHeapBytes: 256 << 20,
+				}, minorBenchmarkTypes(b))
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer c.Close()
+				for i := 0; i < oldCount; i++ {
+					old, err := c.NewStructDefault(0)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if err := c.ForcePromote(old); err != nil {
+						b.Fatal(err)
+					}
+				}
+				rootValues := make([]Root, survivors)
+				roots := make(Slots, survivors)
+				for i := range roots {
+					roots[i] = &rootValues[i]
+				}
+
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					for j := 0; j < nurseryObjects; j++ {
+						r, err := c.NewStructDefault(0)
+						if err != nil {
+							b.Fatal(err)
+						}
+						if j < survivors {
+							rootValues[j] = Root(r)
+						}
+					}
+					if err := c.CollectMinor(roots); err != nil {
+						b.Fatal(err)
+					}
+					for j := range rootValues {
+						rootValues[j] = Root(Null())
+					}
+				}
+			})
+		}
 	}
 }

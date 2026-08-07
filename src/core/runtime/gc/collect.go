@@ -64,8 +64,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.promoteMarkedNursery(); err != nil {
 		return err
 	}
-	c.sweepNurseryDead()
-	c.pruneRemembered()
+	c.finishMinorEvacuation()
 	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
 	if c.cfg.ForceMajorEveryMinor {
 		if err := c.CollectFull(roots); err != nil {
@@ -94,6 +93,25 @@ func (c *Collector) sweepNurseryDead() {
 	}
 	c.compactNurseryHandles()
 	c.compactNurseryBump()
+}
+
+// finishMinorEvacuation commits the destructive half of a successful minor
+// collection. promoteMarkedNursery has moved every live nursery object before
+// this is called, so every handle still pointing into the nursery is dead.
+func (c *Collector) finishMinorEvacuation() {
+	for _, h := range c.nurseryHandles {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		c.mark[h] = false
+		if c.handles[h].space == spaceNursery {
+			c.free(h)
+		}
+	}
+	clear(c.nurseryHandles)
+	c.nurseryHandles = c.nurseryHandles[:0]
+	c.nurseryBump = 0
+	c.clearRememberedMetadata()
 }
 
 type plannedPromotion struct {
