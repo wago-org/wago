@@ -2146,6 +2146,14 @@ collector suite and real native frame-root/host-transition products. This is the
 architecture execution gate; cross-compilation alone is not treated as arm64
 coverage.
 
+Focused amd64 comparison against `main` on a Ryzen 7 7800X3D found no new
+allocations: `ForcePromote` measured 113.4 ns/op at baseline and 114.5 ns/op with
+transactional failure restoration (+1.0%, 0 B/op), while the retained promotion
+plan remained 24 bytes per survivor. Nursery constructor and remembered-array
+write means stayed within 2.2% of baseline. `BenchmarkForcePromoteTransactional`
+and the `plan-B` metric on `BenchmarkMinorPromotionScratch` retain these gates
+for future comparisons.
+
 ## Current limitations
 
 - The mandatory Core 3 WasmGC corpus is complete on linux/amd64 explicit and
