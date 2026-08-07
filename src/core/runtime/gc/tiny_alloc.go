@@ -1,8 +1,10 @@
 package gc
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/bits"
 )
 
 const (
@@ -10,20 +12,34 @@ const (
 	defaultTinyBlockBytes = 16
 	defaultTinyStepBudget = 1
 	tinyNoBlock           = ^uint32(0)
+	tinyExactBins         = 64
+	tinySecondLevelBits   = 3
+	tinySecondLevelBins   = 1 << tinySecondLevelBits
+	tinyFreeLinkBytes     = 8
 )
 
-type tinyBlock struct {
-	next uint32
-	prev uint32
-	size uint32
-	used bool
-}
+var errTinyHeapExhausted = errors.New("gc: tiny heap exhausted")
 
 type tinyHeap struct {
-	mem        []byte
-	blocks     []tinyBlock
-	blockBytes uint32
-	freeHead   uint32
+	mem []byte
+
+	// span16/span32 contain a span's block count at its first and last
+	// blocks; interior entries are zero. Default heaps use 16-bit tags.
+	span16 []uint16
+	span32 []uint32
+	// usedStarts distinguishes allocated span starts from free span starts.
+	usedStarts []uint64
+
+	// Free spans are grouped into exact small bins and logarithmic large
+	// bins. Their first eight payload bytes hold next/previous block indexes.
+	// binWords and binSummary find the next occupied size class without
+	// walking unrelated free spans.
+	binHeads    []uint32
+	binWords    []uint64
+	binSummary  uint64
+	blockCount  uint32
+	blockBytes  uint32
+	poisonFreed bool
 }
 
 func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
@@ -55,8 +71,7 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 		return nil, err
 	}
 	blocks := config.TinyHeapBytes / config.TinyBlockBytes
-	c.tiny = tinyHeap{mem: makeAlignedBytes(config.TinyHeapBytes, uintptr(objectAlign)), blocks: make([]tinyBlock, blocks), blockBytes: config.TinyBlockBytes, freeHead: 0}
-	c.tiny.blocks[0] = tinyBlock{next: tinyNoBlock, prev: tinyNoBlock, size: blocks}
+	c.tiny = newTinyHeap(makeAlignedBytes(config.TinyHeapBytes, uintptr(objectAlign)), blocks, config.TinyBlockBytes, config.PoisonFreed)
 	c.tinyGC.state = tinyIdle
 	c.tinyGC.sweep = 1
 	c.tinyGC.color = []tinyColor{tinyWhite}
@@ -109,8 +124,13 @@ func validateTinyConfig(config Config) error {
 
 func (h *tinyHeap) Close() {
 	h.mem = nil
-	h.blocks = nil
-	h.freeHead = tinyNoBlock
+	h.span16 = nil
+	h.span32 = nil
+	h.usedStarts = nil
+	h.binHeads = nil
+	h.binWords = nil
+	h.binSummary = 0
+	h.blockCount = 0
 }
 
 func (h *tinyHeap) bytes(off, size uint32) []byte { return h.mem[off : off+size] }
@@ -124,30 +144,25 @@ func (h *tinyHeap) alloc(size uint32) (uint32, uint32, error) {
 		return 0, 0, errors.New("gc: tiny allocation size overflow")
 	}
 	need := uint32(need64)
-	for b := h.freeHead; b != tinyNoBlock; b = h.blocks[b].next {
-		span := h.blocks[b].size
-		if span < need {
-			continue
-		}
-		if span == need {
-			h.unlinkFree(b)
-			h.blocks[b].used = true
-			return b * h.blockBytes, span * h.blockBytes, nil
-		}
-		rem := b + need
-		h.blocks[rem] = tinyBlock{next: h.blocks[b].next, prev: h.blocks[b].prev, size: span - need}
-		if h.blocks[rem].next != tinyNoBlock {
-			h.blocks[h.blocks[rem].next].prev = rem
-		}
-		if h.blocks[rem].prev != tinyNoBlock {
-			h.blocks[h.blocks[rem].prev].next = rem
-		} else {
-			h.freeHead = rem
-		}
-		h.blocks[b] = tinyBlock{next: tinyNoBlock, prev: tinyNoBlock, size: need, used: true}
-		return b * h.blockBytes, need * h.blockBytes, nil
+	if need > h.blockCount {
+		return 0, 0, errTinyHeapExhausted
 	}
-	return 0, 0, errors.New("gc: tiny heap exhausted")
+	b := h.findFreeSpan(need)
+	if b == tinyNoBlock {
+		return 0, 0, errTinyHeapExhausted
+	}
+	span := h.spanSize(b)
+	h.removeFree(b, span)
+	if span == need {
+		h.setUsedStart(b, true)
+	} else {
+		h.clearSpan(b, span)
+		h.setSpan(b, need, true)
+		rem := b + need
+		h.setSpan(rem, span-need, false)
+		h.insertFree(rem, span-need)
+	}
+	return b * h.blockBytes, need * h.blockBytes, nil
 }
 
 func (h *tinyHeap) free(off uint32) error {
@@ -155,63 +170,208 @@ func (h *tinyHeap) free(off uint32) error {
 		return errors.New("gc: invalid tiny free offset")
 	}
 	b := off / h.blockBytes
-	if int(b) >= len(h.blocks) || !h.blocks[b].used || h.blocks[b].size == 0 {
+	if b >= h.blockCount || !h.isUsedStart(b) || h.spanSize(b) == 0 {
 		return errors.New("gc: invalid tiny free span")
 	}
-	h.blocks[b].used = false
-	h.insertFreeSorted(b)
-	h.coalesce(b)
+	span := h.spanSize(b)
+	h.setUsedStart(b, false)
+	if b > 0 {
+		prevSize := h.spanSize(b - 1)
+		if prevSize > 0 && prevSize <= b {
+			prev := b - prevSize
+			if !h.isUsedStart(prev) && h.spanSize(prev) == prevSize && prev+prevSize == b {
+				h.removeFree(prev, prevSize)
+				h.clearSpan(prev, prevSize)
+				h.clearSpan(b, span)
+				b, span = prev, prevSize+span
+				h.setSpan(b, span, false)
+			}
+		}
+	}
+	if next := b + span; next < h.blockCount {
+		nextSize := h.spanSize(next)
+		if nextSize > 0 && nextSize <= h.blockCount-next && !h.isUsedStart(next) {
+			h.removeFree(next, nextSize)
+			h.clearSpan(b, span)
+			h.clearSpan(next, nextSize)
+			span += nextSize
+			h.setSpan(b, span, false)
+		}
+	}
+	if h.poisonFreed {
+		freed := h.mem[b*h.blockBytes : (b+span)*h.blockBytes]
+		for i := range freed {
+			freed[i] = 0xdd
+		}
+	}
+	h.insertFree(b, span)
 	return nil
 }
 
-func (h *tinyHeap) unlinkFree(b uint32) {
-	n, p := h.blocks[b].next, h.blocks[b].prev
-	if p != tinyNoBlock {
-		h.blocks[p].next = n
+func newTinyHeap(mem []byte, blocks, blockBytes uint32, poisonFreed bool) tinyHeap {
+	h := tinyHeap{mem: mem, blockCount: blocks, blockBytes: blockBytes, poisonFreed: poisonFreed}
+	if blocks <= uint32(^uint16(0)) {
+		h.span16 = make([]uint16, blocks)
 	} else {
-		h.freeHead = n
+		h.span32 = make([]uint32, blocks)
 	}
-	if n != tinyNoBlock {
-		h.blocks[n].prev = p
+	h.usedStarts = make([]uint64, (uint64(blocks)+63)/64)
+	binCount := tinyBinForSize(blocks) + 1
+	h.binHeads = make([]uint32, binCount)
+	for i := range h.binHeads {
+		h.binHeads[i] = tinyNoBlock
 	}
-	h.blocks[b].next, h.blocks[b].prev = tinyNoBlock, tinyNoBlock
+	h.binWords = make([]uint64, (uint64(binCount)+63)/64)
+	h.setSpan(0, blocks, false)
+	h.insertFree(0, blocks)
+	return h
 }
 
-func (h *tinyHeap) insertFreeSorted(b uint32) {
-	h.blocks[b].next, h.blocks[b].prev = tinyNoBlock, tinyNoBlock
-	if h.freeHead == tinyNoBlock || b < h.freeHead {
-		h.blocks[b].next = h.freeHead
-		if h.freeHead != tinyNoBlock {
-			h.blocks[h.freeHead].prev = b
-		}
-		h.freeHead = b
+func (h *tinyHeap) spanSize(b uint32) uint32 {
+	if b >= h.blockCount {
+		return 0
+	}
+	if h.span16 != nil {
+		return uint32(h.span16[b])
+	}
+	return h.span32[b]
+}
+
+func (h *tinyHeap) putSpanSize(b, size uint32) {
+	if h.span16 != nil {
+		h.span16[b] = uint16(size)
+	} else {
+		h.span32[b] = size
+	}
+}
+
+func (h *tinyHeap) setSpan(b, size uint32, used bool) {
+	h.putSpanSize(b, size)
+	h.putSpanSize(b+size-1, size)
+	h.setUsedStart(b, used)
+}
+
+func (h *tinyHeap) clearSpan(b, size uint32) {
+	h.putSpanSize(b, 0)
+	if size > 1 {
+		h.putSpanSize(b+size-1, 0)
+	}
+	h.setUsedStart(b, false)
+}
+
+func (h *tinyHeap) isUsedStart(b uint32) bool {
+	return h.usedStarts[b>>6]&(uint64(1)<<(b&63)) != 0
+}
+
+func (h *tinyHeap) setUsedStart(b uint32, used bool) {
+	word, bit := b>>6, uint64(1)<<(b&63)
+	if used {
+		h.usedStarts[word] |= bit
+	} else {
+		h.usedStarts[word] &^= bit
+	}
+}
+
+func tinyBinForSize(size uint32) uint32 {
+	if size <= tinyExactBins {
+		return size - 1
+	}
+	fl := uint32(bits.Len32(size) - 1)
+	base := uint32(1) << fl
+	width := base >> tinySecondLevelBits
+	sl := (size - base) / width
+	return tinyExactBins + (fl-6)*tinySecondLevelBins + sl
+}
+
+func (h *tinyHeap) freeLinks(b uint32) (next, prev uint32) {
+	off := b * h.blockBytes
+	return binary.LittleEndian.Uint32(h.mem[off:]), binary.LittleEndian.Uint32(h.mem[off+4:])
+}
+
+func (h *tinyHeap) setFreeLinks(b, next, prev uint32) {
+	off := b * h.blockBytes
+	binary.LittleEndian.PutUint32(h.mem[off:], next)
+	binary.LittleEndian.PutUint32(h.mem[off+4:], prev)
+}
+
+func (h *tinyHeap) insertFree(b, size uint32) {
+	bin := tinyBinForSize(size)
+	head := h.binHeads[bin]
+	h.setFreeLinks(b, head, tinyNoBlock)
+	if head != tinyNoBlock {
+		next, _ := h.freeLinks(head)
+		h.setFreeLinks(head, next, b)
+	}
+	h.binHeads[bin] = b
+	h.markBin(bin, true)
+}
+
+func (h *tinyHeap) removeFree(b, size uint32) {
+	bin := tinyBinForSize(size)
+	next, prev := h.freeLinks(b)
+	if prev == tinyNoBlock {
+		h.binHeads[bin] = next
+	} else {
+		_, pp := h.freeLinks(prev)
+		h.setFreeLinks(prev, next, pp)
+	}
+	if next != tinyNoBlock {
+		nn, _ := h.freeLinks(next)
+		h.setFreeLinks(next, nn, prev)
+	}
+	if h.binHeads[bin] == tinyNoBlock {
+		h.markBin(bin, false)
+	}
+}
+
+func (h *tinyHeap) markBin(bin uint32, nonempty bool) {
+	word, bit := bin>>6, uint64(1)<<(bin&63)
+	if nonempty {
+		h.binWords[word] |= bit
+		h.binSummary |= uint64(1) << word
 		return
 	}
-	cur := h.freeHead
-	for h.blocks[cur].next != tinyNoBlock && h.blocks[cur].next < b {
-		cur = h.blocks[cur].next
+	h.binWords[word] &^= bit
+	if h.binWords[word] == 0 {
+		h.binSummary &^= uint64(1) << word
 	}
-	h.blocks[b].next = h.blocks[cur].next
-	h.blocks[b].prev = cur
-	if h.blocks[b].next != tinyNoBlock {
-		h.blocks[h.blocks[b].next].prev = b
-	}
-	h.blocks[cur].next = b
 }
 
-func (h *tinyHeap) coalesce(b uint32) uint32 {
-	if p := h.blocks[b].prev; p != tinyNoBlock && p+h.blocks[p].size == b {
-		h.blocks[p].size += h.blocks[b].size
-		h.unlinkFree(b)
-		h.blocks[b] = tinyBlock{}
-		b = p
+func (h *tinyHeap) findFreeSpan(need uint32) uint32 {
+	bin := tinyBinForSize(need)
+	// Large bins cover a narrow size range, so only the request's own bin
+	// can contain undersized spans. Every later occupied bin is a fit.
+	for b := h.binHeads[bin]; b != tinyNoBlock; {
+		next, _ := h.freeLinks(b)
+		if h.spanSize(b) >= need {
+			return b
+		}
+		b = next
 	}
-	if n := h.blocks[b].next; n != tinyNoBlock && b+h.blocks[b].size == n {
-		h.blocks[b].size += h.blocks[n].size
-		h.unlinkFree(n)
-		h.blocks[n] = tinyBlock{}
+	return h.firstSpanAfterBin(bin)
+}
+
+func (h *tinyHeap) firstSpanAfterBin(bin uint32) uint32 {
+	word := bin >> 6
+	shift := (bin & 63) + 1
+	var candidates uint64
+	if shift < 64 {
+		candidates = h.binWords[word] & (^uint64(0) << shift)
 	}
-	return b
+	if candidates != 0 {
+		return h.binHeads[word*64+uint32(bits.TrailingZeros64(candidates))]
+	}
+	remaining := h.binSummary & (^uint64(0) << (word + 1))
+	if remaining == 0 {
+		return tinyNoBlock
+	}
+	word = uint32(bits.TrailingZeros64(remaining))
+	return h.binHeads[word*64+uint32(bits.TrailingZeros64(h.binWords[word]))]
+}
+
+func (h *tinyHeap) metadataBytes() uintptr {
+	return uintptr(len(h.span16))*2 + uintptr(len(h.span32))*4 +
+		uintptr(len(h.usedStarts))*8 + uintptr(len(h.binHeads))*4 + uintptr(len(h.binWords))*8 + 8
 }
 
 func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {

@@ -1,6 +1,11 @@
 package gc
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+)
+
+type tinyTestAllocation struct{ off, blocks uint32 }
 
 func newTinyTestCollector(t *testing.T, cfg Config) *Collector {
 	t.Helper()
@@ -21,8 +26,312 @@ func newTinyTestCollector(t *testing.T, cfg Config) *Collector {
 
 func TestTinyHeapInitializesOneFreeSpan(t *testing.T) {
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
-	if c.tiny.freeHead != 0 || c.tiny.blocks[0].size != 8 || c.tiny.blocks[0].used {
-		t.Fatalf("bad initial span: head=%d span=%+v", c.tiny.freeHead, c.tiny.blocks[0])
+	if c.tiny.findFreeSpan(8) != 0 || c.tiny.spanSize(0) != 8 || c.tiny.isUsedStart(0) {
+		t.Fatalf("bad initial span: start=%d size=%d used=%v", c.tiny.findFreeSpan(8), c.tiny.spanSize(0), c.tiny.isUsedStart(0))
+	}
+}
+
+func TestTinyAllocatorMetadataIsCompact(t *testing.T) {
+	c := newTinyTestCollector(t, Config{TinyHeapBytes: defaultTinyHeapBytes, TinyBlockBytes: defaultTinyBlockBytes})
+	metadataBytes := c.tiny.metadataBytes()
+	if max := uintptr(defaultTinyHeapBytes / 4); metadataBytes > max {
+		t.Fatalf("tiny allocator metadata = %d bytes, want at most %d for a %d-byte heap", metadataBytes, max, defaultTinyHeapBytes)
+	}
+}
+
+func TestTinyAllocatorBinClassBoundaries(t *testing.T) {
+	for _, blocks := range []uint32{1, 2, 63, 64, 65, 71, 72, 127, 128, 129, 255, 256, 4096} {
+		h := newTinyHeap(make([]byte, blocks*8), blocks, 8, false)
+		off, span, err := h.alloc(blocks * 8)
+		if err != nil {
+			t.Fatalf("allocate %d blocks: %v", blocks, err)
+		}
+		if off != 0 || span != blocks*8 {
+			t.Fatalf("allocate %d blocks = off %d span %d", blocks, off, span)
+		}
+		if err := h.free(off); err != nil {
+			t.Fatalf("free %d blocks: %v", blocks, err)
+		}
+		assertTinyHeapMetadata(t, &h)
+	}
+}
+
+func TestTinyAllocatorUsesWideBoundariesAboveUint16(t *testing.T) {
+	const blocks = uint32(1 << 16)
+	h := newTinyHeap(make([]byte, blocks*8), blocks, 8, false)
+	if h.span16 != nil || len(h.span32) != int(blocks) {
+		t.Fatalf("wide heap metadata = span16 %d span32 %d", len(h.span16), len(h.span32))
+	}
+	off, span, err := h.alloc((blocks - 1) * 8)
+	if err != nil || off != 0 || span != (blocks-1)*8 {
+		t.Fatalf("wide allocation = off %d span %d err %v", off, span, err)
+	}
+	if err := h.free(off); err != nil {
+		t.Fatal(err)
+	}
+	assertTinyHeapMetadata(t, &h)
+}
+
+func TestTinyAllocatorRandomizedAgainstIntervals(t *testing.T) {
+	const blocks = uint32(257)
+	h := newTinyHeap(make([]byte, blocks*16), blocks, 16, false)
+	live := make([]tinyTestAllocation, 0, blocks)
+	rng := rand.New(rand.NewSource(0x318))
+	for step := 0; step < 50_000; step++ {
+		if len(live) != 0 && rng.Intn(3) == 0 {
+			i := rng.Intn(len(live))
+			if err := h.free(live[i].off * h.blockBytes); err != nil {
+				t.Fatalf("step %d free %+v: %v", step, live[i], err)
+			}
+			live[i] = live[len(live)-1]
+			live = live[:len(live)-1]
+		} else {
+			need := uint32(rng.Intn(96) + 1)
+			offBytes, spanBytes, err := h.alloc(need * h.blockBytes)
+			if err != nil {
+				if maxFreeGap(live, blocks) >= need {
+					t.Fatalf("step %d rejected %d blocks with a fitting interval", step, need)
+				}
+			} else {
+				a := tinyTestAllocation{off: offBytes / h.blockBytes, blocks: spanBytes / h.blockBytes}
+				if a.blocks != need || a.off+a.blocks > blocks {
+					t.Fatalf("step %d invalid allocation: %+v need=%d", step, a, need)
+				}
+				for _, other := range live {
+					if a.off < other.off+other.blocks && other.off < a.off+a.blocks {
+						t.Fatalf("step %d overlap: %+v and %+v", step, a, other)
+					}
+				}
+				live = append(live, a)
+			}
+		}
+		if step%127 == 0 {
+			assertTinyHeapMetadata(t, &h)
+		}
+	}
+}
+
+func TestTinyAllocatorSkipsUndersizedSpanInSameLargeBin(t *testing.T) {
+	const blocks = uint32(256)
+	h := newTinyHeap(make([]byte, blocks*8), blocks, 8, false)
+	a, _, err := h.alloc(65 * 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	separator, _, err := h.alloc(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _, err := h.alloc(71 * 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(b); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(a); err != nil { // Put the undersized span at the bin head.
+		t.Fatal(err)
+	}
+	if tinyBinForSize(65) != tinyBinForSize(71) {
+		t.Fatal("test sizes no longer share a large bin")
+	}
+	off, span, err := h.alloc(70 * 8)
+	if err != nil {
+		t.Fatalf("allocator did not find fitting span behind undersized bin head: %v", err)
+	}
+	if off != b || span != 70*8 {
+		t.Fatalf("allocation = off %d span %d, want off %d span %d", off, span, b, 70*8)
+	}
+	if err := h.free(off); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(separator); err != nil {
+		t.Fatal(err)
+	}
+	assertTinyHeapMetadata(t, &h)
+}
+
+func TestTinyAllocatorInvalidFreesDoNotMutateMetadata(t *testing.T) {
+	h := newTinyHeap(make([]byte, 128), 8, 16, false)
+	off, _, err := h.alloc(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []uint32{off + 1, off + 16, 128, ^uint32(0)} {
+		if err := h.free(invalid); err == nil {
+			t.Fatalf("free(%d) succeeded", invalid)
+		}
+		assertTinyHeapMetadata(t, &h)
+	}
+	if err := h.free(off); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(off); err == nil {
+		t.Fatal("double free succeeded")
+	}
+	assertTinyHeapMetadata(t, &h)
+}
+
+func TestTinyAllocatorPoisonSurvivesRepeatedCoalescing(t *testing.T) {
+	h := newTinyHeap(make([]byte, 8*16), 8, 16, true)
+	offsets := make([]uint32, 4)
+	for i := range offsets {
+		off, _, err := h.alloc(32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		offsets[i] = off
+		for j := off; j < off+32; j++ {
+			h.mem[j] = 0xaa
+		}
+	}
+	for _, i := range []int{1, 3, 2, 0} {
+		if err := h.free(offsets[i]); err != nil {
+			t.Fatal(err)
+		}
+		assertTinyHeapMetadata(t, &h)
+	}
+	for i, got := range h.mem[tinyFreeLinkBytes:] {
+		if got != 0xdd {
+			t.Fatalf("coalesced free byte %d = %#x, want poison", i+tinyFreeLinkBytes, got)
+		}
+	}
+}
+
+func TestTinyVerifyRejectsCompactMetadataCorruption(t *testing.T) {
+	t.Run("bin summary", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+		c.tiny.binSummary = 0
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted a missing free-bin summary bit")
+		}
+	})
+	t.Run("free link cycle", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+		c.tiny.setFreeLinks(0, 0, tinyNoBlock)
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted a cyclic free bin")
+		}
+	})
+	t.Run("span endpoint", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+		c.tiny.putSpanSize(7, 7)
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted mismatched span boundaries")
+		}
+	})
+	t.Run("interior allocation start", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+		r, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := c.entry(r).off / c.tiny.blockBytes
+		if c.tiny.spanSize(start) < 2 {
+			t.Fatal("test object does not span two blocks")
+		}
+		c.tiny.setUsedStart(start+1, true)
+		root := Root(r)
+		if err := c.Verify(Slots{&root}); err == nil {
+			t.Fatal("Verify accepted an allocation-start bit inside a live span")
+		}
+	})
+	t.Run("invalid trailing bin bit", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+		last := len(c.tiny.binWords) - 1
+		c.tiny.binWords[last] |= uint64(1) << 63
+		c.tiny.binSummary |= uint64(1) << uint32(last)
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted an occupancy bit beyond the final bin")
+		}
+	})
+	for _, tc := range []struct {
+		name   string
+		mutate func(*tinyHeap)
+	}{
+		{name: "boundary tags", mutate: func(h *tinyHeap) { h.span16 = h.span16[:len(h.span16)-1] }},
+		{name: "allocation starts", mutate: func(h *tinyHeap) { h.usedStarts = nil }},
+		{name: "bin heads", mutate: func(h *tinyHeap) { h.binHeads = h.binHeads[:len(h.binHeads)-1] }},
+		{name: "bin words", mutate: func(h *tinyHeap) { h.binWords = nil }},
+		{name: "heap geometry", mutate: func(h *tinyHeap) { h.blockCount-- }},
+	} {
+		t.Run(tc.name+" shape", func(t *testing.T) {
+			c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+			tc.mutate(&c.tiny)
+			if err := c.Verify(nil); err == nil {
+				t.Fatal("Verify accepted malformed compact metadata shape")
+			}
+		})
+	}
+}
+
+func maxFreeGap(live []tinyTestAllocation, total uint32) uint32 {
+	var max uint32
+	for start := uint32(0); start < total; {
+		end := total
+		for _, a := range live {
+			if a.off >= start && a.off < end {
+				end = a.off
+			}
+		}
+		if end-start > max {
+			max = end - start
+		}
+		if end == total {
+			break
+		}
+		start = end
+		for _, a := range live {
+			if a.off == end {
+				start = a.off + a.blocks
+				break
+			}
+		}
+	}
+	return max
+}
+
+func assertTinyHeapMetadata(t *testing.T, h *tinyHeap) {
+	t.Helper()
+	seen := make([]bool, h.blockCount)
+	var summary uint64
+	for bin, head := range h.binHeads {
+		marked := h.binWords[uint32(bin)>>6]&(uint64(1)<<(uint32(bin)&63)) != 0
+		if marked != (head != tinyNoBlock) {
+			t.Fatalf("bin %d occupancy=%v head=%d", bin, marked, head)
+		}
+		if marked {
+			summary |= uint64(1) << (uint32(bin) >> 6)
+		}
+		prev := tinyNoBlock
+		for b := head; b != tinyNoBlock; {
+			if b >= h.blockCount || seen[b] {
+				t.Fatalf("bin %d contains invalid/cyclic start %d", bin, b)
+			}
+			seen[b] = true
+			size := h.spanSize(b)
+			if size == 0 || tinyBinForSize(size) != uint32(bin) || h.isUsedStart(b) {
+				t.Fatalf("bin %d contains malformed span %d size %d", bin, b, size)
+			}
+			next, gotPrev := h.freeLinks(b)
+			if gotPrev != prev {
+				t.Fatalf("span %d prev=%d want %d", b, gotPrev, prev)
+			}
+			prev, b = b, next
+		}
+	}
+	if h.binSummary != summary {
+		t.Fatalf("bin summary=%#x want %#x", h.binSummary, summary)
+	}
+	for b := uint32(0); b < h.blockCount; {
+		size := h.spanSize(b)
+		if size == 0 || size > h.blockCount-b || h.spanSize(b+size-1) != size {
+			t.Fatalf("invalid boundary at block %d size %d", b, size)
+		}
+		if h.isUsedStart(b) == seen[b] {
+			t.Fatalf("span %d is neither exactly allocated nor free", b)
+		}
+		b += size
 	}
 }
 
@@ -47,10 +356,12 @@ func TestTinyAllocateFreeReuseCoalesceAndFailure(t *testing.T) {
 	if err := c.Verify(nil); err != nil {
 		t.Fatal(err)
 	}
-	if c.tiny.freeHead != 0 || c.tiny.blocks[0].size != 6 {
-		t.Fatalf("free spans not coalesced: head=%d span=%+v", c.tiny.freeHead, c.tiny.blocks[0])
+	if c.tiny.findFreeSpan(6) != 0 || c.tiny.spanSize(0) != 6 {
+		t.Fatalf("free spans not coalesced: start=%d size=%d", c.tiny.findFreeSpan(6), c.tiny.spanSize(0))
 	}
-	for i := range c.tiny.mem[:32] {
+	// The first eight bytes of a free span hold its intrusive bin links. All
+	// remaining bytes retain the configured free-memory poison.
+	for i := tinyFreeLinkBytes; i < 32; i++ {
 		if c.tiny.mem[i] != 0xdd {
 			t.Fatalf("freed byte %d not poisoned", i)
 		}
@@ -91,12 +402,12 @@ func TestTinyFragmentationFailureThenCoalesceSucceeds(t *testing.T) {
 
 func TestTinyHugeRoundedAllocationDoesNotConsumeZeroBlocks(t *testing.T) {
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
-	before := c.tiny.blocks[0]
+	beforeSize, beforeSummary := c.tiny.spanSize(0), c.tiny.binSummary
 	if off, span, err := c.tiny.alloc(^uint32(0) - 7); err == nil {
 		t.Fatalf("huge rounded allocation succeeded: off=%d span=%d", off, span)
 	}
-	if c.tiny.freeHead != 0 || c.tiny.blocks[0] != before {
-		t.Fatalf("failed huge allocation corrupted free span: head=%d before=%+v after=%+v", c.tiny.freeHead, before, c.tiny.blocks[0])
+	if c.tiny.findFreeSpan(8) != 0 || c.tiny.spanSize(0) != beforeSize || c.tiny.binSummary != beforeSummary {
+		t.Fatalf("failed huge allocation corrupted free span: start=%d before=%d after=%d", c.tiny.findFreeSpan(8), beforeSize, c.tiny.spanSize(0))
 	}
 }
 
@@ -110,8 +421,8 @@ func TestTinyHugeArrayLengthRejectedWithoutMetadataCorruption(t *testing.T) {
 	if _, err := c.NewArrayDefault(4, length); err == nil {
 		t.Fatal("huge tiny array allocation succeeded")
 	}
-	if len(c.handles) != 1 || c.tiny.freeHead != 0 || c.tiny.blocks[0].used || c.tiny.blocks[0].size != 8 {
-		t.Fatalf("failed huge array allocation corrupted metadata: handles=%d head=%d span=%+v", len(c.handles), c.tiny.freeHead, c.tiny.blocks[0])
+	if len(c.handles) != 1 || c.tiny.findFreeSpan(8) != 0 || c.tiny.isUsedStart(0) || c.tiny.spanSize(0) != 8 {
+		t.Fatalf("failed huge array allocation corrupted metadata: handles=%d start=%d size=%d", len(c.handles), c.tiny.findFreeSpan(8), c.tiny.spanSize(0))
 	}
 	if err := c.Verify(nil); err != nil {
 		t.Fatal(err)
