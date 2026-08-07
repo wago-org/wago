@@ -32,7 +32,7 @@ func TestMarshalRoundTripsReturningImportDispatch(t *testing.T) {
 }
 
 func TestCompiledWriteToMatchesMarshalBinary(t *testing.T) {
-	c, err := Compile(nil, benchImportedModule(16, 8))
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchImportedModule(16, 8))
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestCompiledWriteToMatchesMarshalBinary(t *testing.T) {
 }
 
 func TestCompiledReadFromLoadsCodeImageDirectly(t *testing.T) {
-	c, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestCompiledReadFromLoadsCodeImageDirectly(t *testing.T) {
 }
 
 func TestCompiledReadFromEnforcesSectionLimits(t *testing.T) {
-	c, err := Compile(nil, benchAddOneModule())
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
