@@ -22,7 +22,8 @@ func TestPluginBuildFileHelpers(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "main.go"))
 	if err != nil ||
-		!strings.Contains(string(b), "runtime.Main(version)") ||
+		!strings.Contains(string(b), "runtime.MainWithArtifactCacheIdentity(version, buildIdentity)") ||
+		!strings.Contains(string(b), "const buildIdentity = \"") ||
 		!strings.Contains(string(b), "example.com/a/register") ||
 		strings.Index(string(b), "example.com/a/register") > strings.Index(string(b), "example.com/z/register") {
 		t.Fatalf("generated main = %s, %v", b, err)

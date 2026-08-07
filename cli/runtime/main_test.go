@@ -51,6 +51,16 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 }
 
+func TestCommandEnvironmentCarriesArtifactCacheIdentity(t *testing.T) {
+	previous := artifactCacheIdentity
+	artifactCacheIdentity = "plugin-build-fingerprint"
+	t.Cleanup(func() { artifactCacheIdentity = previous })
+	cache := (commandEnvironment{}).ArtifactCache()
+	if got := string(cache.Identity); got != artifactCacheIdentity {
+		t.Fatalf("artifact cache identity = %q, want %q", got, artifactCacheIdentity)
+	}
+}
+
 func TestRuntimeCommandSurfaceCoversEveryLeaf(t *testing.T) {
 	var leaves []string
 	var walk func(*command.Cmd, []string)
