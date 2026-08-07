@@ -48,10 +48,10 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 	imports := m.ImportedGlobalCount()
 	out := make([]gcArrayGlobalInit, 0, 2)
 	for i, g := range m.Globals {
-		if g.Type.Type.Kind != wasm.ValRef || g.Type.Type.Ref.Heap.Kind != wasm.HeapTypeIndex {
+		if g.Type.Type.Kind() != wasm.ValRef || g.Type.Type.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 			continue
 		}
-		sub, ok := stagedGCStructSubtype(m, g.Type.Type.Ref.Heap.Type.Index)
+		sub, ok := stagedGCStructSubtype(m, g.Type.Type.Ref().Heap().Type().Index)
 		if !ok || sub.Comp.Kind != wasm.CompArray {
 			continue
 		}
@@ -140,18 +140,18 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 			if err != nil {
 				return gcArrayGlobalInit{}, err
 			}
-			if g.Type.Type.Ref.Heap.Type.Index != typeID || g.Type.Type.Ref.Nullable {
+			if g.Type.Type.Ref().Heap().Type().Index != typeID || g.Type.Type.Ref().Nullable() {
 				return gcArrayGlobalInit{}, fmt.Errorf("result type does not match non-null array type %d", typeID)
 			}
 			sub, ok := stagedGCStructSubtype(m, typeID)
 			if !ok || sub.Comp.Kind != wasm.CompArray {
 				return gcArrayGlobalInit{}, fmt.Errorf("type %d is not an array", typeID)
 			}
-			want := sub.Comp.Array.Storage.Val
-			if sub.Comp.Array.Storage.Packed {
+			want := sub.Comp.Array.Storage().Val()
+			if sub.Comp.Array.Storage().Packed() {
 				want = wasm.I32
 			}
-			if want.Kind == wasm.ValRef && product != stagedGCArrayProductInitElem {
+			if want.Kind() == wasm.ValRef && product != stagedGCArrayProductInitElem {
 				return gcArrayGlobalInit{}, fmt.Errorf("reference array initializer remains unsupported")
 			}
 			init := gcArrayGlobalInit{GlobalIndex: globalIndex, TypeID: typeID}
@@ -161,7 +161,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 					return gcArrayGlobalInit{}, fmt.Errorf("array.new operands do not match %s, i32", want)
 				}
 				init.Mode = gcArrayGlobalInitUniform
-				if want.Kind == wasm.ValRef {
+				if want.Kind() == wasm.ValRef {
 					init.Mode = gcArrayGlobalInitFuncUniform
 				}
 				init.Length = uint32(values[1].bits)

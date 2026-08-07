@@ -187,7 +187,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			continue
 		}
 		for _, expr := range e.Kind.Exprs {
-			if kind == 2 && e.Kind.Ref.Heap.Kind == wasm.HeapAbs && e.Kind.Ref.Heap.Abs == wasm.HeapI31 {
+			if kind == 2 && e.Kind.Ref.Heap().Kind() == wasm.HeapAbs && e.Kind.Ref.Heap().Abs() == wasm.HeapI31 {
 				// Exact i31 element expressions are immediate or immutable-global
 				// values, not independent object roots.
 				continue
@@ -422,44 +422,45 @@ func arm64GCFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 }
 
 func arm64FunctionFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind != wasm.ValRef {
+	if t.Kind() != wasm.ValRef {
 		return false
 	}
-	switch t.Ref.Heap.Kind {
+	heap := t.Ref().Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return t.Ref.Heap.Abs == wasm.HeapFunc || t.Ref.Heap.Abs == wasm.HeapNoFunc
+		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc
 	case wasm.HeapTypeIndex:
-		ft, ok := m.ResolvedTypeFunc(t.Ref.Heap.Type.Index)
+		ft, ok := m.ResolvedTypeFunc(heap.Type().Index)
 		return ok && ft != nil
 	case wasm.HeapDefType:
-		def := t.Ref.Heap.Def
-		return def != nil && def.Index < uint32(len(def.Rec.SubTypes)) && def.Rec.SubTypes[def.Index].Comp.Kind == wasm.CompFunc
+		kind, valid := heap.DefCompKind()
+		return valid && kind == wasm.CompFunc
 	default:
 		return false
 	}
 }
 
 func arm64CollectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind != wasm.ValRef {
+	if t.Kind() != wasm.ValRef {
 		return false
 	}
-	switch t.Ref.Heap.Kind {
+	heap := t.Ref().Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		switch t.Ref.Heap.Abs {
+		switch heap.Abs() {
 		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 			return true
 		default:
 			return false
 		}
 	case wasm.HeapDefType:
-		def := t.Ref.Heap.Def
-		if def == nil || def.Index >= uint32(len(def.Rec.SubTypes)) {
+		kind, valid := heap.DefCompKind()
+		if !valid {
 			return true
 		}
-		kind := def.Rec.SubTypes[def.Index].Comp.Kind
 		return kind == wasm.CompStruct || kind == wasm.CompArray
 	case wasm.HeapTypeIndex:
-		index := t.Ref.Heap.Type.Index
+		index := heap.Type().Index
 		for _, group := range m.Types {
 			if index < uint32(len(group.SubTypes)) {
 				kind := group.SubTypes[index].Comp.Kind

@@ -39,10 +39,10 @@ func stagedGCStructGlobalInitializers(m *wasm.Module) ([]gcStructGlobalInit, err
 	out := make([]gcStructGlobalInit, 0, len(m.Globals))
 	for i := range m.Globals {
 		g := m.Globals[i]
-		if g.Type.Type.Kind != wasm.ValRef || g.Type.Type.Ref.Heap.Kind != wasm.HeapTypeIndex {
+		if g.Type.Type.Kind() != wasm.ValRef || g.Type.Type.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 			continue
 		}
-		sub, ok := stagedGCStructSubtype(m, g.Type.Type.Ref.Heap.Type.Index)
+		sub, ok := stagedGCStructSubtype(m, g.Type.Type.Ref().Heap().Type().Index)
 		if !ok || sub.Comp.Kind != wasm.CompStruct {
 			continue
 		}
@@ -114,7 +114,7 @@ func decodeStagedGCStructGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.G
 			if err != nil {
 				return gcStructGlobalInit{}, err
 			}
-			if g.Type.Type.Ref.Heap.Type.Index != typeID || g.Type.Type.Ref.Nullable {
+			if g.Type.Type.Ref().Heap().Type().Index != typeID || g.Type.Type.Ref().Nullable() {
 				return gcStructGlobalInit{}, fmt.Errorf("result type does not match non-null struct type %d", typeID)
 			}
 			st, ok := stagedGCStructSubtype(m, typeID)
@@ -134,11 +134,11 @@ func decodeStagedGCStructGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.G
 					return gcStructGlobalInit{}, fmt.Errorf("struct.new has %d operands, want %d", len(values), len(st.Comp.Fields))
 				}
 				for i, field := range st.Comp.Fields {
-					want := field.Storage.Val
-					if field.Storage.Packed {
+					want := field.Storage().Val()
+					if field.Storage().Packed() {
 						want = wasm.I32
 					}
-					if want.Kind == wasm.ValRef || !wasm.EqualValType(values[i].typ, want) {
+					if want.Kind() == wasm.ValRef || !wasm.EqualValType(values[i].typ, want) {
 						return gcStructGlobalInit{}, fmt.Errorf("field %d operand type %s, want numeric %s", i, values[i].typ, want)
 					}
 					init.Bits[i] = values[i].bits

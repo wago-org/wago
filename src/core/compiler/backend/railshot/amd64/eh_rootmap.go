@@ -10,18 +10,18 @@ import (
 )
 
 func exceptionPayloadRootKind(m *wasm.Module, typ wasm.ValType) (nativeabi.RootKind, bool) {
-	if typ.Kind != wasm.ValRef {
+	if typ.Kind() != wasm.ValRef {
 		return 0, false
 	}
-	heap := typ.Ref.Heap
-	switch heap.Kind {
+	heap := typ.Ref().Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		if heap.Abs == wasm.HeapFunc || heap.Abs == wasm.HeapNoFunc {
+		if heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc {
 			return nativeabi.RootFuncRef, true
 		}
 		return nativeabi.RootGCRef, true
 	case wasm.HeapTypeIndex:
-		if ft, ok := m.ResolvedTypeFunc(heap.Type.Index); ok && ft != nil {
+		if ft, ok := m.ResolvedTypeFunc(heap.Type().Index); ok && ft != nil {
 			return nativeabi.RootFuncRef, true
 		}
 		return nativeabi.RootGCRef, true

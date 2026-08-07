@@ -2407,7 +2407,7 @@ func mtOf(t wasm.ValType) machineType {
 		return mtF64
 	case wasm.EqualValType(t, wasm.V128):
 		return mtV128
-	case t.Kind == wasm.ValRef:
+	case t.Kind() == wasm.ValRef:
 		return mtI64
 	}
 	return mtNone

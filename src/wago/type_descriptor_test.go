@@ -28,8 +28,8 @@ func TestTypeDescriptorsPreserveRecursiveReferenceStructure(t *testing.T) {
 			{
 				Final: true,
 				Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{
-					{Storage: wasm.StorageType{Val: recRef(0)}, Mut: wasm.Var},
-					{Storage: wasm.StorageType{Packed: true, Pack: wasm.PackI16}},
+					wasm.NewFieldType(wasm.StorageVal(recRef(0)), wasm.Var),
+					wasm.NewFieldType(wasm.StoragePacked(wasm.PackI16), wasm.Const),
 				}},
 			},
 		}},

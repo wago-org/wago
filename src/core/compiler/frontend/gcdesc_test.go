@@ -8,10 +8,10 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func val(v wasm.ValType) wasm.StorageType     { return wasm.StorageType{Val: v} }
-func packed(p wasm.PackType) wasm.StorageType { return wasm.StorageType{Packed: true, Pack: p} }
+func val(v wasm.ValType) wasm.StorageType     { return wasm.StorageVal(v) }
+func packed(p wasm.PackType) wasm.StorageType { return wasm.StoragePacked(p) }
 func ref(nullable bool, h wasm.AbsHeapType) wasm.StorageType {
-	return wasm.StorageType{Val: wasm.RefVal(wasm.Ref(nullable, wasm.AbsHeap(h), false))}
+	return wasm.StorageVal(wasm.RefVal(wasm.Ref(nullable, wasm.AbsHeap(h), false)))
 }
 func concrete(nullable bool, idx uint32) wasm.StorageType {
 	return concreteType(nullable, wasm.TypeIdx{Index: idx})
@@ -20,9 +20,9 @@ func concreteRec(nullable bool, idx uint32) wasm.StorageType {
 	return concreteType(nullable, wasm.TypeIdx{Index: idx, Rec: true})
 }
 func concreteType(nullable bool, idx wasm.TypeIdx) wasm.StorageType {
-	return wasm.StorageType{Val: wasm.RefVal(wasm.Ref(nullable, wasm.IndexedHeap(idx), false))}
+	return wasm.StorageVal(wasm.RefVal(wasm.Ref(nullable, wasm.IndexedHeap(idx), false)))
 }
-func field(s wasm.StorageType) wasm.FieldType { return wasm.FieldType{Storage: s} }
+func field(s wasm.StorageType) wasm.FieldType { return wasm.NewFieldType(s, wasm.Const) }
 func st(fields ...wasm.FieldType) wasm.SubType {
 	return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: fields}}
 }
@@ -329,8 +329,8 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	if idx := group[2].Supers[0]; !idx.Rec || idx.Index != 1 {
 		t.Fatalf("child super index = %#v, want rec 1", idx)
 	}
-	fieldHeap := group[2].Comp.Fields[1].Storage.Val.Ref.Heap
-	if fieldHeap.Kind != wasm.HeapTypeIndex || !fieldHeap.Type.Rec || fieldHeap.Type.Index != 1 {
+	fieldHeap := group[2].Comp.Fields[1].Storage().Val().Ref().Heap()
+	if fieldHeap.Kind() != wasm.HeapTypeIndex || !fieldHeap.Type().Rec || fieldHeap.Type().Index != 1 {
 		t.Fatalf("child field heap = %#v, want rec type 1", fieldHeap)
 	}
 	if err := wasm.ValidateModule(m); err != nil {

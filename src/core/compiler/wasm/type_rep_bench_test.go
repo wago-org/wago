@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"unsafe"
+
+	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 func typeContainsGoPointer(t reflect.Type) bool {
@@ -24,21 +26,35 @@ func typeContainsGoPointer(t reflect.Type) bool {
 }
 
 func TestCompilerTypeRepresentationLayout(t *testing.T) {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		t.Skip("layout contract records Wago's supported 64-bit compiler targets")
+	}
 	for _, tc := range []struct {
 		name  string
 		value any
-		size  uintptr
+		got   uintptr
+		want  uintptr
 	}{
-		{"TypeIdx", TypeIdx{}, unsafe.Sizeof(TypeIdx{})},
-		{"HeapType", HeapType{}, unsafe.Sizeof(HeapType{})},
-		{"RefType", RefType{}, unsafe.Sizeof(RefType{})},
-		{"ValType", ValType{}, unsafe.Sizeof(ValType{})},
-		{"StorageType", StorageType{}, unsafe.Sizeof(StorageType{})},
-		{"FieldType", FieldType{}, unsafe.Sizeof(FieldType{})},
-		{"CompType", CompType{}, unsafe.Sizeof(CompType{})},
-		{"SubType", SubType{}, unsafe.Sizeof(SubType{})},
+		{"TypeIdx", TypeIdx{}, unsafe.Sizeof(TypeIdx{}), 8},
+		{"HeapType", HeapType{}, unsafe.Sizeof(HeapType{}), 16},
+		{"RefType", RefType{}, unsafe.Sizeof(RefType{}), 16},
+		{"ValType", ValType{}, unsafe.Sizeof(ValType{}), 16},
+		{"StorageType", StorageType{}, unsafe.Sizeof(StorageType{}), 16},
+		{"FieldType", FieldType{}, unsafe.Sizeof(FieldType{}), 16},
+		{"CompType", CompType{}, unsafe.Sizeof(CompType{}), 96},
+		{"SubType", SubType{}, unsafe.Sizeof(SubType{}), 152},
+		{"gc.FieldDesc", corergc.FieldDesc{}, unsafe.Sizeof(corergc.FieldDesc{}), 8},
+		{"gc.TypeDesc", corergc.TypeDesc{}, unsafe.Sizeof(corergc.TypeDesc{}), 64},
 	} {
-		t.Logf("%s: size=%d pointer-scanned=%v", tc.name, tc.size, typeContainsGoPointer(reflect.TypeOf(tc.value)))
+		if tc.got != tc.want {
+			t.Errorf("%s size = %d, want %d", tc.name, tc.got, tc.want)
+		}
+		t.Logf("%s: size=%d pointer-scanned=%v", tc.name, tc.got, typeContainsGoPointer(reflect.TypeOf(tc.value)))
+	}
+	for _, value := range []any{HeapType{}, RefType{}, ValType{}, StorageType{}, FieldType{}} {
+		if typ := reflect.TypeOf(value); typeContainsGoPointer(typ) {
+			t.Errorf("%s unexpectedly contains a Go pointer", typ)
+		}
 	}
 }
 
@@ -58,21 +74,21 @@ func syntheticGCFields(n int) []FieldType {
 		}
 		switch i % 8 {
 		case 0:
-			fields[i] = FieldType{Storage: StorageType{Val: I32}, Mut: mut}
+			fields[i] = NewFieldType(StorageVal(I32), mut)
 		case 1:
-			fields[i] = FieldType{Storage: StorageType{Val: I64}, Mut: mut}
+			fields[i] = NewFieldType(StorageVal(I64), mut)
 		case 2:
-			fields[i] = FieldType{Storage: StorageType{Val: V128}, Mut: mut}
+			fields[i] = NewFieldType(StorageVal(V128), mut)
 		case 3:
-			fields[i] = FieldType{Storage: StorageType{Packed: true, Pack: PackI8}, Mut: mut}
+			fields[i] = NewFieldType(StoragePacked(PackI8), mut)
 		case 4:
-			fields[i] = FieldType{Storage: StorageType{Packed: true, Pack: PackI16}, Mut: mut}
+			fields[i] = NewFieldType(StoragePacked(PackI16), mut)
 		case 5:
-			fields[i] = FieldType{Storage: StorageType{Val: RefVal(Ref(true, AbsHeap(HeapAny), false))}, Mut: mut}
+			fields[i] = NewFieldType(StorageVal(RefVal(Ref(true, AbsHeap(HeapAny), false))), mut)
 		case 6:
-			fields[i] = FieldType{Storage: StorageType{Val: RefVal(Ref(false, IndexedHeap(TypeIdx{Index: uint32(i), Rec: true}), true))}, Mut: mut}
+			fields[i] = NewFieldType(StorageVal(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: uint32(i), Rec: true}), true))), mut)
 		case 7:
-			fields[i] = FieldType{Storage: StorageType{Val: FuncRef}, Mut: mut}
+			fields[i] = NewFieldType(StorageVal(FuncRef), mut)
 		}
 	}
 	return fields
@@ -195,7 +211,7 @@ func BenchmarkGCTypeStructuralKey(b *testing.B) {
 	params := make([]ValType, 64)
 	results := make([]ValType, 16)
 	for i := range params {
-		params[i] = syntheticGCFields(1)[0].Storage.Val
+		params[i] = syntheticGCFields(1)[0].Storage().Val()
 	}
 	for i := range results {
 		results[i] = RefVal(Ref(i&1 == 0, AbsHeap(HeapFunc), i&1 != 0))

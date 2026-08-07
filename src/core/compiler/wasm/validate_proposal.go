@@ -360,7 +360,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, in.Kind.String()+" expects a reference operand")
 		}
 		target, ok := v.descriptorTargetRefType(in.Cast.TargetNullable, in.HeapType(), false)
@@ -368,9 +368,9 @@ func (v *funcValidator) stepGC(in Instruction) error {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
 		if !x.unknown {
-			compatible := v.refTestCompatible(x.t.Ref, target.Ref)
+			compatible := v.refTestCompatible(x.t.Ref(), target.Ref())
 			if in.Kind == InstrRefTestDesc {
-				compatible = v.descriptorCompatible(x.t.Ref, target.Ref)
+				compatible = v.descriptorCompatible(x.t.Ref(), target.Ref())
 			}
 			if !compatible {
 				return v.verr(ErrTypeMismatch, "target does not match operand type")
@@ -388,7 +388,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 			if err != nil {
 				return err
 			}
-			if !desc.unknown && desc.t.Kind != ValRef {
+			if !desc.unknown && desc.t.Kind() != ValRef {
 				return v.verr(ErrTypeMismatch, "descriptor operand")
 			}
 		}
@@ -396,10 +396,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.cast expects a reference operand")
 		}
-		if !x.unknown && in.Kind == InstrRefCastDescEq && !v.descriptorCompatible(x.t.Ref, target.Ref) {
+		if !x.unknown && in.Kind == InstrRefCastDescEq && !v.descriptorCompatible(x.t.Ref(), target.Ref()) {
 			return v.verr(ErrTypeMismatch, "target does not match operand type")
 		}
 		v.push(target)
@@ -418,10 +418,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "expected a reference operand")
 		}
-		if !x.unknown && !v.refSubtype(x.t.Ref, Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
+		if !x.unknown && !v.refSubtype(x.t.Ref(), Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
 			return v.verr(ErrTypeMismatch, "ref.get_desc target")
 		}
 		v.push(RefVal(Ref(false, IndexedHeap(*st.Metadata.Descriptor), true)))
@@ -439,7 +439,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err := v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false))); err != nil {
 			return err
 		}
-		v.push(storageValType(fields[in.Index2].Storage, in.Kind != InstrStructGet))
+		v.push(storageValType(fields[in.Index2].Storage(), in.Kind != InstrStructGet))
 		return nil
 	case InstrStructSet:
 		fields, _, ok := v.structFields(TypeIdx{Index: in.Index})
@@ -450,10 +450,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
 		f := fields[in.Index2]
-		if f.Mut != Var {
+		if f.Mut() != Var {
 			return v.verr(ErrTypeMismatch, "immutable field")
 		}
-		if err := v.popExpect(storageValType(f.Storage, false)); err != nil {
+		if err := v.popExpect(storageValType(f.Storage(), false)); err != nil {
 			return err
 		}
 		return v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)))
@@ -470,17 +470,17 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err := v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false))); err != nil {
 			return err
 		}
-		v.push(storageValType(f.Storage, in.Kind != InstrArrayGet))
+		v.push(storageValType(f.Storage(), in.Kind != InstrArrayGet))
 		return nil
 	case InstrArraySet:
 		f, _, ok := v.arrayField(TypeIdx{Index: in.Index})
 		if !ok {
 			return v.verr(ErrUnknownType, "array.set")
 		}
-		if f.Mut != Var {
+		if f.Mut() != Var {
 			return v.verr(ErrTypeMismatch, "immutable array")
 		}
-		if err := v.popExpect(storageValType(f.Storage, false)); err != nil {
+		if err := v.popExpect(storageValType(f.Storage(), false)); err != nil {
 			return err
 		}
 		if err := v.popExpect(I32); err != nil {
@@ -492,7 +492,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && (x.t.Kind != ValRef || !v.heapSubtype(x.t.Ref.Heap, AbsHeap(HeapArray))) {
+		if !x.unknown && (x.t.Kind() != ValRef || !v.heapSubtype(x.t.Ref().Heap(), AbsHeap(HeapArray))) {
 			return v.verr(ErrTypeMismatch, "array.len")
 		}
 		v.push(I32)
@@ -502,13 +502,13 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "array.fill")
 		}
-		if f.Mut != Var {
+		if f.Mut() != Var {
 			return v.verr(ErrTypeMismatch, "immutable array")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
-		if err := v.popExpect(storageValType(f.Storage, false)); err != nil {
+		if err := v.popExpect(storageValType(f.Storage(), false)); err != nil {
 			return err
 		}
 		if err := v.popExpect(I32); err != nil {
@@ -521,14 +521,14 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !okDst || !okSrc {
 			return v.verr(ErrUnknownType, "array.copy")
 		}
-		if dst.Mut != Var {
+		if dst.Mut() != Var {
 			return v.verr(ErrTypeMismatch, "immutable array")
 		}
 		storageMatches := false
-		if dst.Storage.Packed || src.Storage.Packed {
-			storageMatches = dst.Storage.Packed && src.Storage.Packed && dst.Storage.Pack == src.Storage.Pack
+		if dst.Storage().Packed() || src.Storage().Packed() {
+			storageMatches = dst.Storage().Packed() && src.Storage().Packed() && dst.Storage().Pack() == src.Storage().Pack()
 		} else {
-			storageMatches = v.subtype(src.Storage.Val, dst.Storage.Val)
+			storageMatches = v.subtype(src.Storage().Val(), dst.Storage().Val())
 		}
 		if !storageMatches {
 			return v.verr(ErrTypeMismatch, "array types do not match")
@@ -551,10 +551,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "array.init_data")
 		}
-		if field.Mut != Var {
+		if field.Mut() != Var {
 			return v.verr(ErrTypeMismatch, "immutable array")
 		}
-		if !field.Storage.Packed && field.Storage.Val.Kind == ValRef {
+		if !field.Storage().Packed() && field.Storage().Val().Kind() == ValRef {
 			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
 		}
 		if int(in.Index2) >= len(v.m.Data) {
@@ -571,17 +571,17 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "array.init_elem")
 		}
-		if field.Mut != Var {
+		if field.Mut() != Var {
 			return v.verr(ErrTypeMismatch, "immutable array")
 		}
-		if field.Storage.Packed || field.Storage.Val.Kind != ValRef {
+		if field.Storage().Packed() || field.Storage().Val().Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "array.init_elem destination is not a reference array")
 		}
 		elemRef, err := v.elemRefType(in.Index2)
 		if err != nil {
 			return err
 		}
-		if !v.refSubtype(elemRef, field.Storage.Val.Ref) {
+		if !v.refSubtype(elemRef, field.Storage().Val().Ref()) {
 			return v.verr(ErrTypeMismatch, "array.init_elem element type")
 		}
 		for range 3 {
@@ -604,13 +604,13 @@ func (v *funcValidator) stepStructNew(in Instruction) error {
 	}
 	if in.Kind == InstrStructNewDefault || in.Kind == InstrStructNewDefaultDesc {
 		for _, f := range fields {
-			if !f.Storage.Packed && !valTypeDefaultable(storageValType(f.Storage, false)) {
+			if !f.Storage().Packed() && !valTypeDefaultable(storageValType(f.Storage(), false)) {
 				return v.verr(ErrTypeMismatch, "field not defaultable")
 			}
 		}
 	} else {
 		for i := len(fields) - 1; i >= 0; i-- {
-			if err := v.popExpect(storageValType(fields[i].Storage, false)); err != nil {
+			if err := v.popExpect(storageValType(fields[i].Storage(), false)); err != nil {
 				return err
 			}
 		}
@@ -633,7 +633,7 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 	if !ok {
 		return v.verr(ErrUnknownType, "array.new")
 	}
-	elem := storageValType(f.Storage, false)
+	elem := storageValType(f.Storage(), false)
 	switch in.Kind {
 	case InstrArrayNew:
 		if err := v.popExpect(I32); err != nil {
@@ -643,7 +643,7 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			return err
 		}
 	case InstrArrayNewDefault:
-		if !f.Storage.Packed && !valTypeDefaultable(elem) {
+		if !f.Storage().Packed() && !valTypeDefaultable(elem) {
 			return v.verr(ErrTypeMismatch, "element not defaultable")
 		}
 		if err := v.popExpect(I32); err != nil {
@@ -669,7 +669,7 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			}
 		}
 	case InstrArrayNewData:
-		if !f.Storage.Packed && f.Storage.Val.Kind == ValRef {
+		if !f.Storage().Packed() && f.Storage().Val().Kind() == ValRef {
 			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
 		}
 		if int(in.Index2) >= len(v.m.Data) {
@@ -682,14 +682,14 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			return err
 		}
 	case InstrArrayNewElem:
-		if f.Storage.Packed || f.Storage.Val.Kind != ValRef {
+		if f.Storage().Packed() || f.Storage().Val().Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "array.new_elem destination is not a reference array")
 		}
 		elemRef, err := v.elemRefType(in.Index2)
 		if err != nil {
 			return err
 		}
-		if !v.refSubtype(elemRef, f.Storage.Val.Ref) {
+		if !v.refSubtype(elemRef, f.Storage().Val().Ref()) {
 			return v.verr(ErrTypeMismatch, "array.new_elem element type")
 		}
 		if err := v.popExpect(I32); err != nil {
@@ -712,7 +712,7 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 		return v.verr(ErrTypeMismatch, "label type too short")
 	}
 	labelRef := lt[len(lt)-1]
-	if labelRef.Kind != ValRef {
+	if labelRef.Kind() != ValRef {
 		return v.verr(ErrTypeMismatch, "label must end with a reftype")
 	}
 	rt1 := Ref(in.Cast.SourceNullable, in.HeapType(), false)
@@ -724,7 +724,7 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if err != nil {
 		return err
 	}
-	if !x.unknown && (x.t.Kind != ValRef || !v.refSubtype(x.t.Ref, rt1)) {
+	if !x.unknown && (x.t.Kind() != ValRef || !v.refSubtype(x.t.Ref(), rt1)) {
 		return v.verr(ErrTypeMismatch, "br_on_cast operand")
 	}
 	// A nullable target consumes null on the successful cast edge. The failed
@@ -732,8 +732,8 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	// When the target is non-null, null remains a possible failed value and the
 	// source nullability is preserved.
 	failed := rt1
-	if rt2.Nullable {
-		failed.Nullable = false
+	if rt2.Nullable() {
+		failed = failed.WithNullable(false)
 	}
 	branchTypes := append([]ValType(nil), lt...)
 	if in.Kind == InstrBrOnCastFail {

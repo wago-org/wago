@@ -49,11 +49,11 @@ func stagedGCArrayElementInitializer(m *wasm.Module) (*gcArrayElementInit, error
 	if e.Mode.Kind != wasm.ElemPassive || e.Kind.Kind != wasm.ElemTypedExprs || len(e.Kind.Exprs) != maxGCArrayElementValues {
 		return nil, fmt.Errorf("reference array product requires one passive typed segment with two expressions")
 	}
-	if e.Kind.Ref.Nullable || e.Kind.Ref.Exact || e.Kind.Ref.Heap.Kind != wasm.HeapTypeIndex || e.Kind.Ref.Heap.Type.Index != 0 {
+	if e.Kind.Ref.Nullable() || e.Kind.Ref.Exact() || e.Kind.Ref.Heap().Kind() != wasm.HeapTypeIndex || e.Kind.Ref.Heap().Type().Index != 0 {
 		return nil, fmt.Errorf("reference array product segment type must be non-null type 0")
 	}
 	sub, ok := stagedGCStructSubtype(m, 0)
-	if !ok || sub.Comp.Kind != wasm.CompArray || !sub.Comp.Array.Storage.Packed || sub.Comp.Array.Storage.Pack != wasm.PackI8 || sub.Comp.Array.Mut != wasm.Const {
+	if !ok || sub.Comp.Kind != wasm.CompArray || !sub.Comp.Array.Storage().Packed() || sub.Comp.Array.Storage().Pack() != wasm.PackI8 || sub.Comp.Array.Mut() != wasm.Const {
 		return nil, fmt.Errorf("reference array product type 0 must be immutable i8 array")
 	}
 	init := &gcArrayElementInit{SegmentIndex: 0, TypeID: 0, Count: maxGCArrayElementValues}

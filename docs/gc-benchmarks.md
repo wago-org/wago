@@ -1,5 +1,33 @@
 # WasmGC measurement matrix
 
+## Compiler type-metadata matrix
+
+Compiler-side WasmGC metadata is measured separately from collector behavior.
+`src/core/compiler/wasm/type_rep_bench_test.go` covers construction, semantic
+equality, decode, validation, and cold/warm structural identity at 10, 100,
+1,000, and 10,000 types and at 1, 4, 16, and 64 fields per type where the
+operation permits. Fixtures include numeric, vector, packed, mutable, abstract,
+indexed, recursive, exact, nullable, and shorthand reference forms. Fixture
+construction is outside timed decode, validation, equality, and identity loops.
+
+Record a baseline before changing the representation, then repeat the exact
+command and compare the raw files:
+
+```sh
+go test ./src/core/compiler/wasm -run '^$' \
+  -bench 'BenchmarkGCType' -benchmem -benchtime=100ms -count=10
+
+cd bench
+go test -run '^$' \
+  -bench 'Benchmark(Decode|Validate|Compile)$' -benchmem -count=10
+```
+
+`TestCompilerTypeRepresentationLayout` is the deterministic layout contract.
+It records both size and Go-pointer containment for compiler leaf metadata and
+the separately owned runtime collector descriptors. Keep the two result sets
+separate: denser compiler values do not by themselves prove a collector heap or
+pause-time improvement.
+
 This document defines the measurement contract for collector changes tracked by
 issue #300. The matrix is intentionally broader than the current implementation:
 it covers the Throughput and Tiny collectors that exist today and the collector

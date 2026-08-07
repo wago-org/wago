@@ -461,14 +461,16 @@ func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeI
 			if ok {
 				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one reference tag payload")
 			}
-			if m.TagCount() != 1 || len(ft.Params) != 1 || typ.Kind != wasm.ValRef || typ.Ref.Nullable || typ.Ref.Exact || typ.Ref.Heap.Kind != wasm.HeapTypeIndex {
+			rt := typ.Ref()
+			heap := rt.Heap()
+			if m.TagCount() != 1 || len(ft.Params) != 1 || typ.Kind() != wasm.ValRef || rt.Nullable() || rt.Exact() || heap.Kind() != wasm.HeapTypeIndex {
 				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one local non-null indexed-function tag payload")
 			}
-			payloadFunc, found := m.ResolvedTypeFunc(typ.Ref.Heap.Type.Index)
+			payloadFunc, found := m.ResolvedTypeFunc(heap.Type().Index)
 			if !found || payloadFunc == nil || len(payloadFunc.Params) != 0 || len(payloadFunc.Results) != 0 {
 				return 0, 0, false, fmt.Errorf("bounded exception handling indexed-function payload must have type () -> ()")
 			}
-			typeIndex, ok = typ.Ref.Heap.Type.Index, true
+			typeIndex, ok = heap.Type().Index, true
 		}
 	}
 	if !ok {
@@ -521,13 +523,15 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 				}
 				if len(ft.Results) == 1 {
 					result := ft.Results[0]
-					if result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Exact || result.Ref.Heap.Kind != wasm.HeapTypeIndex || result.Ref.Heap.Type.Index != payloadType {
+					rt := result.Ref()
+					heap := rt.Heap()
+					if result.Kind() != wasm.ValRef || !rt.Nullable() || rt.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Index != payloadType {
 						return fmt.Errorf("bounded exception handling reference-payload export %q has an unsupported result", ex.Name)
 					}
 				}
 			}
 			for _, typ := range append(append([]wasm.ValType(nil), ft.Params...), ft.Results...) {
-				if typ.Kind == wasm.ValRef && typ.Ref.Heap.Kind == wasm.HeapAbs && (typ.Ref.Heap.Abs == wasm.HeapExn || typ.Ref.Heap.Abs == wasm.HeapNoExn) {
+				if typ.Kind() == wasm.ValRef && typ.Ref().Heap().Kind() == wasm.HeapAbs && (typ.Ref().Heap().Abs() == wasm.HeapExn || typ.Ref().Heap().Abs() == wasm.HeapNoExn) {
 					return fmt.Errorf("bounded exception handling rejects exported exception-reference ABI in %q", ex.Name)
 				}
 			}
@@ -819,7 +823,7 @@ func moduleUsesTypedTableReferences(m *wasm.Module) bool {
 		}
 	}
 	check := func(ref wasm.RefType) bool {
-		return ref.Heap.Kind == wasm.HeapTypeIndex || !ref.Nullable || ref.Exact
+		return ref.Heap().Kind() == wasm.HeapTypeIndex || !ref.Nullable() || ref.Exact()
 	}
 	for _, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternTable && check(im.Type.Table.Ref) {

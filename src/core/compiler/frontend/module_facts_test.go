@@ -47,7 +47,7 @@ func TestAnalyzeModuleFactsMatchesByteAndInstructionForms(t *testing.T) {
 }
 
 func TestRejectUnsupportedWithFeaturesAndFactsUsesCallerAnalysis(t *testing.T) {
-	m := &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}}}
+	m := &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}}}
 	facts, err := AnalyzeModuleFacts(m)
 	if err != nil {
 		t.Fatal(err)

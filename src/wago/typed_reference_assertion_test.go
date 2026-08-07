@@ -545,7 +545,7 @@ func proposalSpectestTypes() map[string]proposalExternType {
 		"spectest.global_f32":    global(corewasm.F32),
 		"spectest.global_f64":    global(corewasm.F64),
 		"spectest.memory":        {kind: proposalExternMemory, memory: corewasm.MemType{Limits: corewasm.Limits{Min: 1, Max: &memoryMax}}},
-		"spectest.table":         {kind: proposalExternTable, table: corewasm.TableType{Ref: corewasm.FuncRef.Ref, Limits: corewasm.Limits{Min: 10, Max: &tableMax}}},
+		"spectest.table":         {kind: proposalExternTable, table: corewasm.TableType{Ref: corewasm.FuncRef.Ref(), Limits: corewasm.Limits{Min: 10, Max: &tableMax}}},
 	}
 }
 
@@ -860,32 +860,32 @@ func proposalValTypesEquivalent(a corewasm.ValType, am *corewasm.Module, b corew
 }
 
 func proposalValTypeSubtype(a corewasm.ValType, am *corewasm.Module, b corewasm.ValType, bm *corewasm.Module, depth int) bool {
-	if depth > 32 || a.Kind != b.Kind {
+	if depth > 32 || a.Kind() != b.Kind() {
 		return false
 	}
-	if a.Kind != corewasm.ValRef {
-		return a.Num == b.Num
+	if a.Kind() != corewasm.ValRef {
+		return a.Num() == b.Num()
 	}
-	if a.Ref.Nullable && !b.Ref.Nullable || b.Ref.Exact && !a.Ref.Exact {
+	if a.Ref().Nullable() && !b.Ref().Nullable() || b.Ref().Exact() && !a.Ref().Exact() {
 		return false
 	}
-	return proposalHeapTypeSubtype(a.Ref.Heap, am, b.Ref.Heap, bm, depth+1)
+	return proposalHeapTypeSubtype(a.Ref().Heap(), am, b.Ref().Heap(), bm, depth+1)
 }
 
 func proposalHeapTypeSubtype(a corewasm.HeapType, am *corewasm.Module, b corewasm.HeapType, bm *corewasm.Module, depth int) bool {
 	if depth > 32 {
 		return false
 	}
-	if a.Kind == corewasm.HeapAbs && b.Kind == corewasm.HeapAbs {
-		return proposalAbsHeapSubtype(a.Abs, b.Abs)
+	if a.Kind() == corewasm.HeapAbs && b.Kind() == corewasm.HeapAbs {
+		return proposalAbsHeapSubtype(a.Abs(), b.Abs())
 	}
-	if a.Kind == corewasm.HeapTypeIndex {
-		afn, aok := proposalIndexedFuncType(am, a.Type)
-		if b.Kind == corewasm.HeapAbs {
-			return aok && proposalAbsHeapSubtype(corewasm.HeapFunc, b.Abs)
+	if a.Kind() == corewasm.HeapTypeIndex {
+		afn, aok := proposalIndexedFuncType(am, a.Type())
+		if b.Kind() == corewasm.HeapAbs {
+			return aok && proposalAbsHeapSubtype(corewasm.HeapFunc, b.Abs())
 		}
-		if b.Kind == corewasm.HeapTypeIndex {
-			bfn, bok := proposalIndexedFuncType(bm, b.Type)
+		if b.Kind() == corewasm.HeapTypeIndex {
+			bfn, bok := proposalIndexedFuncType(bm, b.Type())
 			return aok && bok && proposalFuncTypesEquivalent(afn, am, bfn, bm, depth+1)
 		}
 	}

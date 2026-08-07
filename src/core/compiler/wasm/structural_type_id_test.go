@@ -96,9 +96,9 @@ func TestStructuralTypeKeyIncludesWholeRecursiveGroup(t *testing.T) {
 		t.Fatalf("non-singleton recursive group collapsed to singleton key %#x", got)
 	}
 
-	selfField := FieldType{Storage: StorageType{Val: RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false))}}
+	selfField := NewFieldType(StorageVal(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false))), Const)
 	selfGroup := RecType{SubTypes: []SubType{emptyFunc, {Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{selfField}}}}}
-	externalField := FieldType{Storage: StorageType{Val: indexedRef(0, false)}}
+	externalField := NewFieldType(StorageVal(indexedRef(0, false)), Const)
 	externalGroup := RecType{SubTypes: []SubType{emptyFunc, {Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{externalField}}}}}
 	linked := &Module{Types: []RecType{selfGroup, externalGroup}}
 	if got, bad := linked.StructuralTypeKey(0), linked.StructuralTypeKey(2); got == bad {
