@@ -24,8 +24,8 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 		return f.atomicLoad(d)
 	case d.Class == railshared.AtomicStore:
 		return f.atomicStore(d)
-	case d.Class == railshared.AtomicRMW && d.Operation == railshared.AtomicAdd && d.Size == 4 && d.ResultSize == 4:
-		return f.atomicRMWAdd32(d.Offset)
+	case d.Class == railshared.AtomicRMW && (d.Operation == railshared.AtomicAdd || d.Operation == railshared.AtomicXchg):
+		return f.atomicRMWNative(d)
 	default:
 		return fmt.Errorf("amd64: unsupported 0xFE opcode %d", d.Sub)
 	}
@@ -73,16 +73,29 @@ func (f *fn) atomicStore(d railshared.Atomic) error {
 	return nil
 }
 
-func (f *fn) atomicRMWAdd32(off uint64) error {
+func (f *fn) atomicRMWNative(d railshared.Atomic) error {
 	f.materializePendingLoads()
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
-	base, ea, disp := f.atomicMem(off, 4)
-	f.a.LockXaddIdx32(base, ea, value, disp)
+	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	if d.Operation == railshared.AtomicAdd {
+		f.a.LockXaddIdx(base, ea, value, disp, int(d.Size))
+	} else {
+		f.a.XchgIdx(base, ea, value, disp, int(d.Size))
+	}
 	f.release(base)
 	f.release(ea)
 	f.pinned = f.pinned.remove(value)
-	f.pushReg(value, mtI32)
+	if d.Size == 1 {
+		f.a.Movzx8(value, value, d.ResultSize == 8)
+	} else if d.Size == 2 {
+		f.a.Movzx16(value, value, d.ResultSize == 8)
+	}
+	if d.ResultSize == 8 {
+		f.pushReg(value, mtI64)
+	} else {
+		f.pushReg(value, mtI32)
+	}
 	return nil
 }

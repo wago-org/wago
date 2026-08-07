@@ -570,6 +570,37 @@ func (a *Asm) LockXaddIdx32(base, index, src Reg, disp int32) {
 	a.sibAddr(src, base, index, disp)
 }
 
+func (a *Asm) LockXaddIdx(base, index, src Reg, disp int32, size int) {
+	if size == 2 {
+		a.emit(0x66)
+	}
+	a.emit(0xF0)
+	w := size == 8
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
+		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
+	}
+	op := byte(0xC1)
+	if size == 1 {
+		op = 0xC0
+	}
+	a.emit(0x0F, op)
+	a.sibAddr(src, base, index, disp)
+}
+
+func (a *Asm) Movzx8(dst, src Reg, wide bool) {
+	if wide || dst >= 8 || src >= 4 {
+		a.emit(rex(wide, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, 0xB6, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
+
+func (a *Asm) Movzx16(dst, src Reg, wide bool) {
+	if wide || dst >= 8 || src >= 8 {
+		a.emit(rex(wide, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, 0xB7, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
+
 // XchgIdx atomically exchanges src with a memory operand. Memory-form XCHG is
 // implicitly locked and is the x86-64 sequentially consistent atomic-store
 // primitive; src receives the discarded old value.
