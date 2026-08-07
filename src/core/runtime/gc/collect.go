@@ -67,6 +67,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
 		if err := c.promoteMarkedNursery(); err != nil {
+			c.clearNurseryMarks()
 			return err
 		}
 	}
@@ -119,25 +120,30 @@ func (c *Collector) finishMinorEvacuation() {
 type plannedPromotion struct {
 	handle uint32
 	entry  handleEntry
+	undo   throughputAllocCheckpoint
 }
 
 func (c *Collector) promoteMarkedNursery() error {
 	plans := c.promotionScratch[:0]
+	tx := c.throughput.beginAllocTransaction()
 	finish := func() {
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
 	for _, h := range c.nurseryHandles {
 		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
+			undo := c.throughput.checkpointAlloc(c.handles[h].size, spaceOld)
 			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 			if err != nil {
+				c.throughput.restoreAlloc(undo)
 				for i := len(plans) - 1; i >= 0; i-- {
-					_ = c.throughput.free(plans[i].entry)
+					c.throughput.restoreAlloc(plans[i].undo)
 				}
+				c.throughput.restoreAllocTransaction(tx)
 				finish()
 				return err
 			}
-			plans = append(plans, plannedPromotion{handle: h, entry: e})
+			plans = append(plans, plannedPromotion{handle: h, entry: e, undo: undo})
 		}
 	}
 	for _, p := range plans {

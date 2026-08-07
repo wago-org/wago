@@ -21,6 +21,27 @@ type throughputLargeFree struct {
 	size uint32
 }
 
+// throughputAllocCheckpoint records only allocator state that one allocation
+// can mutate. Promotion planning restores checkpoints in reverse order on
+// failure, without copying allocator metadata on the successful path.
+type throughputAllocTransaction struct {
+	mem              []byte
+	bump             uint32
+	largestFree      uint32
+	largestFreeDirty bool
+}
+
+type throughputAllocCheckpoint struct {
+	class          int
+	freeHead       uint32
+	freeRecordHead uint32
+	freeSlotsLen   int
+	freeHeadSlot   throughputFreeSlot
+	largeIndex     int
+	largeSpan      throughputLargeFree
+	largeRemoved   bool
+}
+
 type throughputHeap struct {
 	mem              []byte
 	limit            uint32
@@ -123,6 +144,79 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 		return handleEntry{}, err
 	}
 	return handleEntry{off: off, size: size, allocSize: allocSize, class: uint16(len(throughputClassSizes)), space: sp}, nil
+}
+
+func (h *throughputHeap) checkpointAlloc(size uint32, sp spaceKind) throughputAllocCheckpoint {
+	cp := throughputAllocCheckpoint{
+		class:      -1,
+		largeIndex: -1,
+	}
+	if size <= ^uint32(0)-15 {
+		allocSize := Align16(size)
+		if sp != spaceLarge && allocSize <= h.classLimit {
+			if cls := h.classFor(allocSize); cls >= 0 {
+				cp.class = cls
+				cp.freeHead = h.freeHeads[cls]
+				cp.freeRecordHead = h.freeRecordHeads[cls]
+				cp.freeSlotsLen = len(h.freeSlots[cls])
+				if cp.freeHead != throughputNoSlot && int(cp.freeHead) < cp.freeSlotsLen {
+					cp.freeHeadSlot = h.freeSlots[cls][cp.freeHead]
+				}
+				return cp
+			}
+		}
+	}
+	if size <= ^uint32(0)-15 {
+		allocSize := Align16(size)
+		for i, span := range h.largeFree {
+			if span.size >= allocSize {
+				cp.largeIndex = i
+				cp.largeSpan = span
+				cp.largeRemoved = span.size-allocSize < 32
+				break
+			}
+		}
+	}
+	return cp
+}
+
+func (h *throughputHeap) restoreAlloc(cp throughputAllocCheckpoint) {
+	if cp.class >= 0 {
+		cls := cp.class
+		h.freeHeads[cls] = cp.freeHead
+		h.freeRecordHeads[cls] = cp.freeRecordHead
+		h.freeSlots[cls] = h.freeSlots[cls][:cp.freeSlotsLen]
+		if cp.freeHead != throughputNoSlot {
+			h.freeSlots[cls][cp.freeHead] = cp.freeHeadSlot
+		}
+		return
+	}
+	if cp.largeIndex < 0 {
+		return
+	}
+	if !cp.largeRemoved {
+		h.largeFree[cp.largeIndex] = cp.largeSpan
+		return
+	}
+	h.largeFree = append(h.largeFree, throughputLargeFree{})
+	copy(h.largeFree[cp.largeIndex+1:], h.largeFree[cp.largeIndex:])
+	h.largeFree[cp.largeIndex] = cp.largeSpan
+}
+
+func (h *throughputHeap) beginAllocTransaction() throughputAllocTransaction {
+	return throughputAllocTransaction{
+		mem:              h.mem,
+		bump:             h.bump,
+		largestFree:      h.largestFree,
+		largestFreeDirty: h.largestFreeDirty,
+	}
+}
+
+func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) {
+	h.mem = tx.mem
+	h.bump = tx.bump
+	h.largestFree = tx.largestFree
+	h.largestFreeDirty = tx.largestFreeDirty
 }
 
 func (h *throughputHeap) free(e handleEntry) error {
