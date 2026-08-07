@@ -219,6 +219,20 @@ func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) 
 	h.largestFreeDirty = tx.largestFreeDirty
 }
 
+// rollbackSuccessfulAlloc reverses one successful allocation while a larger
+// allocation transaction is being unwound in LIFO order. Spans below the
+// transaction's initial bump came from a free list; bump allocations require no
+// per-allocation metadata restoration because restoreAllocTransaction resets the
+// bump and backing slice once all free-list allocations have been returned.
+func (h *throughputHeap) rollbackSuccessfulAlloc(e handleEntry, initialBump uint32) {
+	if e.off >= initialBump {
+		return
+	}
+	if err := h.free(e); err != nil {
+		panic("gc: cannot roll back successful throughput allocation: " + err.Error())
+	}
+}
+
 func (h *throughputHeap) free(e handleEntry) error {
 	if e.allocSize == 0 || e.off+e.allocSize > uint32(len(h.mem)) {
 		return errors.New("gc: invalid throughput free span")

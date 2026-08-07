@@ -121,6 +121,57 @@ func TestThroughputAllocationCheckpointRestoresAllPaths(t *testing.T) {
 	}
 }
 
+func TestThroughputAllocationTransactionRollsBackMixedSequence(t *testing.T) {
+	var h throughputHeap
+	if err := h.Init(Config{ThroughputHeapBytes: 64 << 10, ThroughputPageBytes: 4096, ThroughputClassLimit: 128}); err != nil {
+		t.Fatal(err)
+	}
+	classFree, err := h.alloc(32, spaceOld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.alloc(64, spaceOld); err != nil {
+		t.Fatal(err)
+	}
+	largeFree, err := h.alloc(160, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(classFree); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(largeFree); err != nil {
+		t.Fatal(err)
+	}
+	before := cloneThroughputHeap(h)
+	tx := h.beginAllocTransaction()
+	requests := []struct {
+		size  uint32
+		space spaceKind
+	}{
+		{32, spaceOld},    // reusable class slot
+		{64, spaceOld},    // bump allocation
+		{64, spaceLarge},  // split the reusable large span
+		{96, spaceLarge},  // consume its remainder
+		{256, spaceLarge}, // bump allocation
+	}
+	allocated := make([]handleEntry, 0, len(requests))
+	for _, request := range requests {
+		e, err := h.alloc(request.size, request.space)
+		if err != nil {
+			t.Fatal(err)
+		}
+		allocated = append(allocated, e)
+	}
+	for i := len(allocated) - 1; i >= 0; i-- {
+		h.rollbackSuccessfulAlloc(allocated[i], tx.bump)
+	}
+	h.restoreAllocTransaction(tx)
+	if !reflect.DeepEqual(h, before) {
+		t.Fatal("mixed allocation sequence did not restore exact allocator state")
+	}
+}
+
 func assertPromotionStateEqual(t *testing.T, c *Collector, want promotionStateSnapshot) {
 	t.Helper()
 	got := snapshotPromotionState(c)

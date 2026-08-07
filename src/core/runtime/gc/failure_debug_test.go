@@ -34,6 +34,58 @@ func TestInjectedPromotionFailuresAreTransactional(t *testing.T) {
 	}
 }
 
+func TestInjectedPromotionRollbackRestoresReusedFreeSpan(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		new  func(*testing.T, *Collector) Ref
+	}{
+		{
+			name: "size class",
+			cfg:  Config{},
+			new: func(t *testing.T, c *Collector) Ref {
+				r, err := c.NewStructDefault(0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return r
+			},
+		},
+		{
+			name: "large span",
+			cfg:  Config{ThroughputClassLimit: 32},
+			new: func(t *testing.T, c *Collector) Ref {
+				r, err := c.NewArrayDefault(3, 8)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return r
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c := newTestCollector(t, test.cfg)
+			freeSpan := test.new(t, c)
+			if err := c.ForcePromote(freeSpan); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.CollectFull(EmptyRoots{}); err != nil {
+				t.Fatal(err)
+			}
+			roots := []Root{Root(test.new(t, c)), Root(test.new(t, c))}
+			before := snapshotPromotionState(c)
+			cleanup := armFailure(c, failPromotionPlan, 1)
+			err := c.CollectMinor(stressRootSlots(roots))
+			cleanup()
+			if !errors.Is(err, errInjectedFailure) {
+				t.Fatalf("error = %v", err)
+			}
+			assertPromotionStateEqual(t, c, before)
+		})
+	}
+}
+
 func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 	t.Run("nursery publication", func(t *testing.T) {
 		c := newTestCollector(t, Config{})

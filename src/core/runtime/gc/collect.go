@@ -120,7 +120,6 @@ func (c *Collector) finishMinorEvacuation() {
 type plannedPromotion struct {
 	handle uint32
 	entry  handleEntry
-	undo   throughputAllocCheckpoint
 }
 
 func (c *Collector) promoteMarkedNursery() error {
@@ -130,12 +129,12 @@ func (c *Collector) promoteMarkedNursery() error {
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
-	rollback := func(current *throughputAllocCheckpoint) {
+	rollback := func(current *handleEntry) {
 		if current != nil {
-			c.throughput.restoreAlloc(*current)
+			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
 		for i := len(plans) - 1; i >= 0; i-- {
-			c.throughput.restoreAlloc(plans[i].undo)
+			c.throughput.rollbackSuccessfulAlloc(plans[i].entry, tx.bump)
 		}
 		c.throughput.restoreAllocTransaction(tx)
 		finish()
@@ -146,17 +145,16 @@ func (c *Collector) promoteMarkedNursery() error {
 				rollback(nil)
 				return err
 			}
-			undo := c.throughput.checkpointAlloc(c.handles[h].size, spaceOld)
 			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 			if err != nil {
-				rollback(&undo)
+				rollback(nil)
 				return err
 			}
 			if err := injectFailure(c, failPromotionDestination); err != nil {
-				rollback(&undo)
+				rollback(&e)
 				return err
 			}
-			plans = append(plans, plannedPromotion{handle: h, entry: e, undo: undo})
+			plans = append(plans, plannedPromotion{handle: h, entry: e})
 		}
 	}
 	for range plans {
@@ -179,10 +177,8 @@ func (c *Collector) promoteHandle(h uint32) error {
 		return nil
 	}
 	tx := c.throughput.beginAllocTransaction()
-	undo := c.throughput.checkpointAlloc(c.handles[h].size, spaceOld)
 	oldEntry, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 	if err != nil {
-		c.throughput.restoreAlloc(undo)
 		c.throughput.restoreAllocTransaction(tx)
 		return err
 	}

@@ -115,7 +115,7 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 		t.Fatalf("promotion scratch after rollback len/cap=%d/%d", len(c.promotionScratch), cap(c.promotionScratch))
 	}
 	for i, plan := range c.promotionScratch[:cap(c.promotionScratch)] {
-		if plan.handle != 0 || plan.entry != (handleEntry{}) || plan.undo != (throughputAllocCheckpoint{}) {
+		if plan != (plannedPromotion{}) {
 			t.Fatalf("promotion scratch %d retained stale plan %+v", i, plan)
 		}
 	}
