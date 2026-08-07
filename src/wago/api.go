@@ -3642,9 +3642,10 @@ const wagoMagic = "WAGO"
 // Version 31 moves generated memory bounds to the u64 byte-size cache and widens
 // indexed-memory directory entries, so older native code must not be loaded by a
 // runtime using the new basedata ABI (or vice versa). Older blobs are rejected.
+// Version 32 adds the persisted threads feature and atomic wait-helper product.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 31
+const wagoVersion = 32
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
