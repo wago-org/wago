@@ -1,5 +1,25 @@
 package wasm
 
+// IsCoreAtomicInstructionKind reports whether kind belongs to the core threads
+// proposal's linear-memory atomic instruction family. GC struct atomics share
+// the binary prefix but deliberately remain behind their own feature boundary.
+func IsCoreAtomicInstructionKind(kind InstrKind) bool {
+	switch kind {
+	case InstrMemoryAtomicNotify, InstrMemoryAtomicWait32, InstrMemoryAtomicWait64,
+		InstrAtomicFence,
+		InstrI32AtomicLoad, InstrI64AtomicLoad, InstrI32AtomicLoad8U,
+		InstrI32AtomicLoad16U, InstrI64AtomicLoad8U, InstrI64AtomicLoad16U,
+		InstrI64AtomicLoad32U,
+		InstrI32AtomicStore, InstrI64AtomicStore, InstrI32AtomicStore8,
+		InstrI32AtomicStore16, InstrI64AtomicStore8, InstrI64AtomicStore16,
+		InstrI64AtomicStore32,
+		InstrAtomicRmw, InstrAtomicCmpxchg:
+		return true
+	default:
+		return false
+	}
+}
+
 func (v *funcValidator) proposalStep(in *Instruction) (bool, error) {
 	switch in.Kind {
 	case InstrThrow:

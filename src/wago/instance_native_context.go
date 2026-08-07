@@ -20,20 +20,29 @@ var (
 	nativeExecutionEpoch uint64 // guarded by nativeExecutionMu; advances on every public native entry
 )
 
-type executionLease struct{}
+type executionLease struct{ local *sync.Mutex }
 
 // beginNativeEntry acquires the serialized execution lease and rebinds this
 // instance's pointer context before native code can observe basedata. Memory
 // size/growth fields remain backing-owned; invocation control is refreshed by
 // the engine entry/resume paths.
-func (in *Instance) beginNativeEntry() (*executionLease, error) {
+func (in *Instance) beginNativeEntry() (executionLease, error) {
+	if in.c.threadedMemory0() {
+		mu := &in.memoryDir.nativeMu
+		mu.Lock()
+		if err := in.bindNativeContext(); err != nil {
+			mu.Unlock()
+			return executionLease{}, err
+		}
+		return executionLease{local: mu}, nil
+	}
 	nativeExecutionMu.Lock()
 	nativeExecutionEpoch++
 	if err := in.bindNativeContext(); err != nil {
 		nativeExecutionMu.Unlock()
-		return nil, err
+		return executionLease{}, err
 	}
-	return &executionLease{}, nil
+	return executionLease{}, nil
 }
 
 func (in *Instance) bindNativeContext() error {
@@ -64,7 +73,9 @@ func (in *Instance) refreshMemoryDirectory() error {
 			return fmt.Errorf("indexed memory %d owner is closed", i)
 		}
 		entry := dir.native[i*abi.MemoryDirEntryBytes:]
-		jm.SetGuardOwner(in.jm.LinMemBase())
+		if !in.c.threadedMemory0() {
+			jm.SetGuardOwner(in.jm.LinMemBase())
+		}
 		pages := jm.CurrentPages()
 		binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(jm.LinMemBase()))
 		binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(pages)<<16)
@@ -74,7 +85,29 @@ func (in *Instance) refreshMemoryDirectory() error {
 	return nil
 }
 
-func (*executionLease) unlockExecution() { nativeExecutionMu.Unlock() }
+func (l executionLease) unlockExecution() {
+	if l.local != nil {
+		l.local.Unlock()
+		return
+	}
+	nativeExecutionMu.Unlock()
+}
+
+func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
+	if in == nil || in.c == nil || !in.c.threadedMemory0() {
+		return nil
+	}
+	in.memoryDir.invokeMu.Lock()
+	return &in.memoryDir.invokeMu
+}
+
+func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
+	if in != nil && in.c != nil && in.c.threadedMemory0() {
+		in.memoryDir.nativeMu.Lock()
+		return in.memoryDir.nativeMu.Unlock
+	}
+	return lockNativeExecutionForHostAccess()
+}
 
 // lockNativeExecutionForHostAccess serializes direct host access to native-visible
 // global cells with guest execution without rebinding any instance context. Host

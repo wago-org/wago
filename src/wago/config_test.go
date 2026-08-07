@@ -290,6 +290,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
 		{CoreFeatureMemory64, "memory64", completeCore3Backend},
 		{CoreFeatureTable64, "table64", completeCore3Backend},
+		{CoreFeatureThreads, "threads", supportsThreadsBackend(runtime.GOOS, runtime.GOARCH)},
 	} {
 		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
 			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)

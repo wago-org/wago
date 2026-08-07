@@ -33,6 +33,7 @@ const (
 	trapUnhandledException = 17
 	trapCastFailure        = 18
 	trapTableOOB           = 19
+	trapAtomicUnaligned    = 20
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).
@@ -142,7 +143,7 @@ func (f *fn) trapSite(branch int) trapSite {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
-	for code := uint32(1); code <= trapTableOOB; code++ { // deterministic order
+	for code := uint32(1); code <= trapAtomicUnaligned; code++ { // deterministic order
 		sites := f.scratchState().trapSites[code]
 		if len(sites) == 0 {
 			continue

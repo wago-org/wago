@@ -774,7 +774,12 @@ func (g *Global) beginOwnerAccess() (func(), bool) {
 			return nil, false
 		}
 	}
-	unlockNative := lockNativeExecutionForHostAccess()
+	var unlockNative func()
+	if owner != nil {
+		unlockNative = owner.lockInstanceNativeStateForHostAccess()
+	} else {
+		unlockNative = lockNativeExecutionForHostAccess()
+	}
 	return func() {
 		unlockNative()
 		if owner != nil {
@@ -1542,7 +1547,7 @@ func (in *Instance) Global(name string) (uint64, error) {
 		return 0, fmt.Errorf("global %q: %w", name, err)
 	}
 	defer in.endInvocation()
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -1564,7 +1569,7 @@ func (in *Instance) GlobalV128(name string) (V128, error) {
 		return V128{}, fmt.Errorf("global %q: %w", name, err)
 	}
 	defer in.endInvocation()
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -1585,7 +1590,7 @@ func (in *Instance) SetGlobal(name string, bits uint64) error {
 		return fmt.Errorf("global %q: %w", name, err)
 	}
 	defer in.endInvocation()
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -1611,7 +1616,7 @@ func (in *Instance) SetGlobalV128(name string, v V128) error {
 		return fmt.Errorf("global %q: %w", name, err)
 	}
 	defer in.endInvocation()
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {

@@ -666,6 +666,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 					s.h.hasCall, subHasCall = true, true
 				}
+				switch imm.Kind {
+				case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
+					s.h.hasCall, subHasCall = true, true
+				}
 			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true

@@ -472,6 +472,11 @@ func TestMemorySupportValidation(t *testing.T) {
 	if err := valid.memories(); err != nil {
 		t.Fatalf("valid memory: %v", err)
 	}
+	max := uint64(1)
+	shared := supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Shared: true, Limits: wasm.Limits{Min: 1, Max: &max}}}}, feat: Features{Threads: true}}
+	if err := shared.memories(); err != nil {
+		t.Fatalf("threads-enabled shared memory: %v", err)
+	}
 	for _, tc := range []struct {
 		name string
 		pass supportPass

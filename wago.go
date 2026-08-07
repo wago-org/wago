@@ -191,6 +191,7 @@ const (
 	CoreFeatureSignExtensionOps                = impl.CoreFeatureSignExtensionOps
 	CoreFeatureTable64                         = impl.CoreFeatureTable64
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
+	CoreFeatureThreads                         = impl.CoreFeatureThreads
 	CoreFeatureTypedFunctionReferences         = impl.CoreFeatureTypedFunctionReferences
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
@@ -237,6 +238,7 @@ const (
 	SnapshotInit                               = impl.SnapshotInit
 	SnapshotWarm                               = impl.SnapshotWarm
 	Stable                                     = impl.Stable
+	TrapAtomicUnaligned                        = impl.TrapAtomicUnaligned
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
 	TrapCastFailure                            = impl.TrapCastFailure

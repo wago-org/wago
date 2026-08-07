@@ -1,6 +1,8 @@
 package wago
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	goruntime "runtime"
 	"sync"
@@ -662,6 +664,13 @@ func (t *gcHostTempTokens) release(in *Instance) {
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
 	return func(ctrl uintptr, importIdx uint32, args, results []uint64) {
+		if importIdx&shared.AtomicWaitDispatchBit != 0 {
+			if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
+				panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
+			}
+			in.dispatchAtomicWaitHelper(importIdx&^shared.AtomicWaitDispatchBit, args, results)
+			return
+		}
 		if importIdx&gcStructDispatchBit != 0 {
 			if importIdx&hostFuncRefDispatchBit != 0 {
 				panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
@@ -890,6 +899,10 @@ func (in *Instance) callNativeSync(entry uintptr) error {
 // callNativeSyncWithTrap is the host-capable form used when a Go-level
 // re-export delegates execution while retaining the outer caller's trap cell.
 func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (err error) {
+	return in.callNativeSyncWithTrapContext(entry, activeTrap, nil)
+}
+
+func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []byte, waitParent context.Context) (err error) {
 	var outerEngine *runtime.Engine
 	if state := in.existingPublicGCState(); state != nil {
 		state.mu.Lock()
@@ -914,6 +927,8 @@ func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (er
 		return err
 	}
 	defer locked.unlockExecution()
+	stopWaitContext := in.publishAtomicWaitContext(waitParent)
+	defer stopWaitContext()
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
@@ -939,6 +954,14 @@ func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (er
 			}
 			if helper, ok := r.(gcStructHelperError); ok {
 				err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
+				return
+			}
+			if helper, ok := r.(atomicWaitHelperError); ok {
+				if errors.Is(helper.err, errAtomicWaitInstanceClosed) {
+					err = &runtime.TrapError{Code: runtime.TrapInterrupted}
+				} else {
+					err = helper.err
+				}
 				return
 			}
 			panic(r)

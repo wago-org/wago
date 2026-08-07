@@ -272,9 +272,13 @@ current optimization priorities. The Core 3.0 implementation ledger is
 ## Bigger bets
 
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
-- [ ] Threads & atomics — tabled until the remaining WasmGC cross-module ownership
-  and whole-domain snapshot correctness work is complete; actor/mailbox reference
-  transport remains plugin/product work rather than part of the Core 3 closeout.
+- [x] [Threads & atomics](docs/threads-atomics-plan.md) — bounded experimental
+  product on Linux/macOS amd64/arm64 with explicit bounds, one exact-max imported
+  shared memory32, true distinct-instance native overlap, the full classic atomic
+  matrix, and bounded wait/notify. Broader shared-everything threads, growth,
+  memory64/multi-memory, signal bounds, mutable global imports, GC/EH, and
+  snapshots remain deliberately outside this product. Same-instance entry is
+  accepted but serialized around the instance's reusable invocation state.
 - [x] Tail calls (`return_call` / `return_call_indirect` / `return_call_ref`) —
   complete for the Core 3 linux/amd64 explicit-bounds product, including local,
   host, cross-instance, indirect, typed-reference, trap, and validation paths.

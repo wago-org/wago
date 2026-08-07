@@ -115,7 +115,7 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		return Value{}, fmt.Errorf("global %q: %w", name, err)
 	}
 	defer in.endInvocation()
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -177,7 +177,7 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		return fmt.Errorf("set global %q: %w", name, err)
 	}
 	defer in.endInvocation()
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {

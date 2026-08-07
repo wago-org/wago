@@ -37,4 +37,5 @@ const (
 	TrapUnhandledException   = wruntime.TrapUnhandledException
 	TrapCastFailure          = wruntime.TrapCastFailure
 	TrapTableOutOfBounds     = wruntime.TrapTableOutOfBounds
+	TrapAtomicUnaligned      = wruntime.TrapAtomicUnaligned
 )

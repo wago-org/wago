@@ -918,11 +918,11 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 // their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
-	internalGC := uint32(importIdx)&gcStructDispatchBit != 0
+	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
 	p, rN := len(ft.Params), len(ft.Results)
 	var rootOffsets []uint32
 	recordRoots := false
-	if uint32(importIdx)&gcStructDispatchBit == 0 {
+	if uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) == 0 {
 		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
 	}
 	paramSlots := funcTypeSlots(ft.Params)

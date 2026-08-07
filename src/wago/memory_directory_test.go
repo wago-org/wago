@@ -21,14 +21,14 @@ func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
 			exports:      map[string]int{"imported": 0, "local": 1},
 			exactExports: true,
 		},
-		requiredFeatures: CoreFeatureMultiMemory,
+		requiredFeatures: CoreFeatureMultiMemory | CoreFeatureThreads,
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != 31 {
-		t.Fatalf("codec version = %d, want 31", blob[4])
+	if blob[4] != 32 {
+		t.Fatalf("codec version = %d, want 32", blob[4])
 	}
 	var got Compiled
 	if err := unmarshalCompiled(&got, blob[5:]); err != nil {

@@ -10,6 +10,34 @@ func ft(params, results []ValType) RecType {
 }
 
 func modWithFunc(params, results []ValType, body ...Instruction) *Module {
+	for i := range body {
+		if body[i].ext != nil {
+			continue
+		}
+		var (
+			align uint8
+			ok    bool
+		)
+		switch body[i].Kind {
+		case InstrMemoryAtomicNotify, InstrMemoryAtomicWait32:
+			align, ok = 2, true
+		case InstrMemoryAtomicWait64:
+			align, ok = 3, true
+		case InstrAtomicRmw:
+			align, ok = atomicRmwEffect(body[i].AtomicOp).align, true
+		case InstrAtomicCmpxchg:
+			align, ok = atomicCmpxchgEffect(body[i].AtomicOp).align, true
+		default:
+			if effect, found := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, body[i].Kind); found {
+				align, ok = effect.align, true
+			} else if effect, found := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, body[i].Kind); found {
+				align, ok = effect.align, true
+			}
+		}
+		if ok {
+			body[i].ext = &instrExt{MemArg: MemArg{Align: uint32(align)}}
+		}
+	}
 	return &Module{Types: []RecType{ft(params, results)}, FuncTypes: []TypeIdx{{Index: 0}}, Code: []Func{{Body: Expr{Instrs: body}}}}
 }
 

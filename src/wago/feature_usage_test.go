@@ -40,6 +40,25 @@ func TestRequiredFeaturesBodyScannerIgnoresSIMDByteInImmediate(t *testing.T) {
 	}
 }
 
+func TestRequiredFeaturesFindsThreadsDeclarationsAndInstructions(t *testing.T) {
+	max := uint64(1)
+	shared := wasm.MemType{Shared: true, Limits: wasm.Limits{Min: 1, Max: &max}}
+	for _, tc := range []struct {
+		name string
+		m    *wasm.Module
+	}{
+		{name: "imported shared memory", m: &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternMem, Mem: shared}}}}},
+		{name: "local shared memory", m: &wasm.Module{Memories: []wasm.MemType{shared}}},
+		{name: "atomic instruction", m: &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0xfe, 0x1e, 0x02, 0x00, 0x0b}}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := moduleRequiredFeatures(tc.m); !got.IsEnabled(CoreFeatureThreads) {
+				t.Fatalf("moduleRequiredFeatures = %s, want threads", got)
+			}
+		})
+	}
+}
+
 func TestRequiredFeaturesBodyScannerFastImmediatePaths(t *testing.T) {
 	for _, tc := range []struct {
 		name string
