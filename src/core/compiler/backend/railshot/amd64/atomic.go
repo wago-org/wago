@@ -28,9 +28,57 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 		return f.atomicRMWNative(d)
 	case d.Class == railshared.AtomicRMW:
 		return f.atomicRMWCAS(d)
+	case d.Class == railshared.AtomicCmpxchg:
+		return f.atomicCmpxchg(d)
 	default:
 		return fmt.Errorf("amd64: unsupported 0xFE opcode %d", d.Sub)
 	}
+}
+
+func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
+	f.materializePendingLoads()
+	f.invalidateStoreForward()
+	replacement := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(replacement)
+	expected := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(expected)
+	relocateRAX := func(reg Reg) Reg {
+		if reg != RAX {
+			return reg
+		}
+		safe := f.allocReg(maskOf(RAX))
+		f.a.MovReg64(safe, RAX)
+		f.pinned = f.pinned.remove(RAX).add(safe)
+		f.release(RAX)
+		return safe
+	}
+	replacement = relocateRAX(replacement)
+	expected = relocateRAX(expected)
+	f.spillIfUsed(RAX)
+	f.pinned = f.pinned.add(RAX)
+	if d.ResultSize == 8 {
+		f.a.MovReg64(RAX, expected)
+	} else {
+		f.a.MovRegReg32(RAX, expected)
+	}
+	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	f.a.LockCmpxchgIdx(base, ea, replacement, disp, int(d.Size))
+	if d.Size == 1 {
+		f.a.Movzx8(RAX, RAX, d.ResultSize == 8)
+	} else if d.Size == 2 {
+		f.a.Movzx16(RAX, RAX, d.ResultSize == 8)
+	}
+	f.release(base)
+	f.release(ea)
+	f.pinned = f.pinned.remove(expected).remove(replacement).remove(RAX)
+	f.release(expected)
+	f.release(replacement)
+	if d.ResultSize == 8 {
+		f.pushReg(RAX, mtI64)
+	} else {
+		f.pushReg(RAX, mtI32)
+	}
+	return nil
 }
 
 func (f *fn) atomicRMWCAS(d railshared.Atomic) error {

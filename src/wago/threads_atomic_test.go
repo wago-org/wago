@@ -87,6 +87,20 @@ func sharedAtomicRMWModule(sub, align byte, typ wasm.ValType) []byte {
 	)
 }
 
+func sharedAtomicCmpxchgModule(sub, align byte, typ wasm.ValType) []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ, typ}, []wasm.ValType{typ}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("cmpxchg", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x41, 0x00, 0x20, 0x00, 0x20, 0x01, 0xfe, sub, align, 0x00, 0x0b,
+		}))),
+	)
+}
+
 func sharedAtomicOverlapModule() []byte {
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
 	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
@@ -214,6 +228,55 @@ func TestThreadsAtomicRMWOperationAndWidthMatrix(t *testing.T) {
 			}
 			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.memMask; got != tc.want {
 				t.Fatalf("memory = %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestThreadsAtomicCmpxchgSuccessFailureAndWidths(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	for _, tc := range []struct {
+		name       string
+		sub, align byte
+		typ        wasm.ValType
+		old, mask  uint64
+	}{
+		{"i32", 0x48, 2, wasm.I32, 0xdeadbeef, 0xffffffff},
+		{"i64", 0x49, 3, wasm.I64, 0xfeedfacedeadbeef, ^uint64(0)},
+		{"i32_8", 0x4a, 0, wasm.I32, 0xef, 0xff},
+		{"i64_16", 0x4d, 1, wasm.I64, 0xbeef, 0xffff},
+		{"i64_32", 0x4e, 2, wasm.I64, 0xdeadbeef, 0xffffffff},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(config, sharedAtomicCmpxchgModule(tc.sub, tc.align, tc.typ))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			memory, err := NewSharedMemory(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer memory.Close()
+			binary.LittleEndian.PutUint64(memory.Bytes()[:8], tc.old)
+			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			result, err := instance.Invoke("cmpxchg", tc.old+1, 0x12345678)
+			if err != nil || result[0] != tc.old&tc.mask {
+				t.Fatalf("failed cmpxchg old = %v, %v", result, err)
+			}
+			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.mask; got != tc.old&tc.mask {
+				t.Fatalf("failed cmpxchg changed memory to %#x", got)
+			}
+			result, err = instance.Invoke("cmpxchg", tc.old, 0x12345678)
+			if err != nil || result[0] != tc.old&tc.mask {
+				t.Fatalf("successful cmpxchg old = %v, %v", result, err)
+			}
+			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.mask; got != 0x12345678&tc.mask {
+				t.Fatalf("successful cmpxchg memory = %#x", got)
 			}
 		})
 	}

@@ -45,6 +45,7 @@ func TestEncodings(t *testing.T) {
 		{"ldaxrb w5,[x6]", func(a *Asm) { a.Ldaxr(X5, X6, 1) }, 0x085ffcc5},
 		{"ldaxr x5,[x6]", func(a *Asm) { a.Ldaxr(X5, X6, 8) }, 0xc85ffcc5},
 		{"stlxrh w7,w5,[x6]", func(a *Asm) { a.Stlxr(X7, X5, X6, 2) }, 0x4807fcc5},
+		{"clrex", func(a *Asm) { a.Clrex() }, 0xd5033f5f},
 		{"movz x11,#0xffff", func(a *Asm) { a.Movz64(X11, 0xffff, 0) }, 0xd29fffeb},
 		{"movz x11,#0xffff,lsl16", func(a *Asm) { a.Movz64(X11, 0xffff, 1) }, 0xd2bfffeb},
 		{"movk x11,#0x1234,lsl32", func(a *Asm) { a.Movk64(X11, 0x1234, 2) }, 0xf2c2468b},

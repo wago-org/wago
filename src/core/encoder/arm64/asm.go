@@ -248,6 +248,7 @@ func (a *Asm) Stlr(src, addr Reg, size int) {
 }
 
 func (a *Asm) DmbIsh() { a.word(0xD5033BBF) }
+func (a *Asm) Clrex()  { a.word(0xD5033F5F) }
 
 // movWide encodes MOVZ/MOVK/MOVN with a 16-bit immediate at halfword hw (0..3).
 func (a *Asm) movWide(base uint32, rd Reg, imm16 uint16, hw uint32) {

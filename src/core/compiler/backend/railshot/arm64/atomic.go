@@ -28,9 +28,66 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 		return f.atomicStore(d)
 	case d.Class == railshared.AtomicRMW:
 		return f.atomicRMW(d)
+	case d.Class == railshared.AtomicCmpxchg:
+		return f.atomicCmpxchg(d)
 	default:
 		return fmt.Errorf("arm64: unsupported 0xFE opcode %d", d.Sub)
 	}
+}
+
+func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
+	f.materializePendingLoads()
+	f.invalidateStoreForward()
+	replacement := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(replacement)
+	expected := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(expected)
+
+	compare := expected
+	if d.Size < d.ResultSize {
+		compare = f.allocReg(maskOf(expected, replacement))
+		mask := uint64(0xff)
+		if d.Size == 2 {
+			mask = 0xffff
+		} else if d.Size == 4 {
+			mask = 0xffffffff
+		}
+		if d.ResultSize == 8 {
+			f.a.AndImm64(compare, expected, mask)
+		} else {
+			f.a.AndImm32(compare, expected, uint32(mask))
+		}
+		f.pinned = f.pinned.add(compare)
+	}
+	addr := f.atomicAddr(d.Offset, int(d.Size))
+	old := f.allocReg(maskOf(addr, replacement, expected, compare))
+	status := f.allocReg(maskOf(addr, replacement, expected, compare, old))
+	loop := f.a.Len()
+	f.a.Ldaxr(old, addr, int(d.Size))
+	f.cmpRR(old, compare, d.ResultSize == 8)
+	notEqual := f.a.Bcond(condNE)
+	f.a.Stlxr(status, replacement, addr, int(d.Size))
+	f.a.PatchBranch19(f.a.Cbnz64(status), loop)
+	done := f.a.Branch()
+	f.a.PatchBranch19(notEqual, f.a.Len())
+	f.a.Clrex()
+	f.a.PatchBranch26(done, f.a.Len())
+
+	f.release(status)
+	f.release(addr)
+	if compare != expected {
+		f.pinned = f.pinned.remove(compare)
+		f.release(compare)
+	}
+	f.pinned = f.pinned.remove(expected).remove(replacement)
+	f.release(expected)
+	f.release(replacement)
+	if d.ResultSize == 8 {
+		f.pushReg(old, mtI64)
+	} else {
+		f.pushReg(old, mtI32)
+	}
+	return nil
 }
 
 func (f *fn) atomicAddr(off uint64, size int) Reg {
