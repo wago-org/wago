@@ -1,11 +1,26 @@
 package build
 
 import (
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestBuildLockTreatsInaccessibleExistingDirectoryAsContention(t *testing.T) {
+	lockDir := filepath.Join(t.TempDir(), "plugins.lock")
+	if err := os.Mkdir(lockDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !buildLockContended(lockDir, os.ErrPermission) {
+		t.Fatal("existing inaccessible lock was not treated as contention")
+	}
+	if buildLockContended(filepath.Join(t.TempDir(), "missing.lock"), os.ErrPermission) {
+		t.Fatal("missing inaccessible lock was treated as contention")
+	}
+}
 
 func TestBuildLockSerializesModuleAccess(t *testing.T) {
 	dir := t.TempDir() + "/plugins"

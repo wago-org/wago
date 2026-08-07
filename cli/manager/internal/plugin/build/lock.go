@@ -27,7 +27,7 @@ func withBuildLock(dir string, fn func() error) error {
 		if err == nil {
 			break
 		}
-		if !os.IsExist(err) {
+		if !buildLockContended(lockDir, err) {
 			return fmt.Errorf("lock plugin build: %w", err)
 		}
 		if time.Now().After(deadline) {
@@ -37,4 +37,15 @@ func withBuildLock(dir string, fn func() error) error {
 	}
 	defer os.Remove(lockDir)
 	return fn()
+}
+
+func buildLockContended(lockDir string, mkdirErr error) bool {
+	if os.IsExist(mkdirErr) {
+		return true
+	}
+	// Windows may report ERROR_ACCESS_DENIED while another process owns the
+	// existing lock directory. A successful stat still proves contention;
+	// other permission failures remain hard errors.
+	_, err := os.Stat(lockDir)
+	return err == nil
 }
