@@ -111,6 +111,67 @@ func TestTinyAllocatorRandomizedAgainstIntervals(t *testing.T) {
 	}
 }
 
+func TestTinyAllocatorSkipsUndersizedSpanInSameLargeBin(t *testing.T) {
+	const blocks = uint32(256)
+	h := newTinyHeap(make([]byte, blocks*8), blocks, 8, false)
+	a, _, err := h.alloc(65 * 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	separator, _, err := h.alloc(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _, err := h.alloc(71 * 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(b); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(a); err != nil { // Put the undersized span at the bin head.
+		t.Fatal(err)
+	}
+	if tinyBinForSize(65) != tinyBinForSize(71) {
+		t.Fatal("test sizes no longer share a large bin")
+	}
+	off, span, err := h.alloc(70 * 8)
+	if err != nil {
+		t.Fatalf("allocator did not find fitting span behind undersized bin head: %v", err)
+	}
+	if off != b || span != 70*8 {
+		t.Fatalf("allocation = off %d span %d, want off %d span %d", off, span, b, 70*8)
+	}
+	if err := h.free(off); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(separator); err != nil {
+		t.Fatal(err)
+	}
+	assertTinyHeapMetadata(t, &h)
+}
+
+func TestTinyAllocatorInvalidFreesDoNotMutateMetadata(t *testing.T) {
+	h := newTinyHeap(make([]byte, 128), 8, 16, false)
+	off, _, err := h.alloc(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []uint32{off + 1, off + 16, 128, ^uint32(0)} {
+		if err := h.free(invalid); err == nil {
+			t.Fatalf("free(%d) succeeded", invalid)
+		}
+		assertTinyHeapMetadata(t, &h)
+	}
+	if err := h.free(off); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(off); err == nil {
+		t.Fatal("double free succeeded")
+	}
+	assertTinyHeapMetadata(t, &h)
+}
+
 func TestTinyVerifyRejectsCompactMetadataCorruption(t *testing.T) {
 	t.Run("bin summary", func(t *testing.T) {
 		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
@@ -147,6 +208,15 @@ func TestTinyVerifyRejectsCompactMetadataCorruption(t *testing.T) {
 		root := Root(r)
 		if err := c.Verify(Slots{&root}); err == nil {
 			t.Fatal("Verify accepted an allocation-start bit inside a live span")
+		}
+	})
+	t.Run("invalid trailing bin bit", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+		last := len(c.tiny.binWords) - 1
+		c.tiny.binWords[last] |= uint64(1) << 63
+		c.tiny.binSummary |= uint64(1) << uint32(last)
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted an occupancy bit beyond the final bin")
 		}
 	})
 }

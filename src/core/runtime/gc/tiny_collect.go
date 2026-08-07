@@ -225,7 +225,8 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 		if e.space != spaceTiny {
 			return fmt.Errorf("gc: non-tiny handle %d in tiny collector", h)
 		}
-		if e.off%c.tiny.blockBytes != 0 || e.off+e.size > uint32(len(c.tiny.mem)) {
+		memBytes := uint32(len(c.tiny.mem))
+		if e.off%c.tiny.blockBytes != 0 || e.off > memBytes || e.size > memBytes-e.off {
 			return fmt.Errorf("gc: tiny handle %d out of bounds", h)
 		}
 		bi := e.off / c.tiny.blockBytes
@@ -267,6 +268,12 @@ func (c *Collector) verifyTinyFreeList(live []bool) error {
 	}
 	if summary != c.tiny.binSummary {
 		return errors.New("gc: tiny free-bin summary disagrees with occupancy")
+	}
+	if lastBits := uint32(len(c.tiny.binHeads)) & 63; lastBits != 0 {
+		valid := (uint64(1) << lastBits) - 1
+		if c.tiny.binWords[len(c.tiny.binWords)-1]&^valid != 0 {
+			return errors.New("gc: tiny free-bin bitmap marks an invalid bin")
+		}
 	}
 	for bin, head := range c.tiny.binHeads {
 		marked := c.tiny.binWords[uint32(bin)>>6]&(uint64(1)<<(uint32(bin)&63)) != 0
