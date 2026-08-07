@@ -177,6 +177,44 @@ func (a *Asm) Stlxr32(status, src, addr Reg) {
 	a.word(0x8800FC00 | r(status)<<16 | r(addr)<<5 | r(src))
 }
 
+// Ldar and Stlr encode acquire loads and release stores for naturally aligned
+// byte, halfword, word, and doubleword atomic accesses.
+func (a *Asm) Ldar(dst, addr Reg, size int) {
+	var base uint32
+	switch size {
+	case 1:
+		base = 0x08DFFC00
+	case 2:
+		base = 0x48DFFC00
+	case 4:
+		base = 0x88DFFC00
+	case 8:
+		base = 0xC8DFFC00
+	default:
+		panic("arm64: unsupported LDAR size")
+	}
+	a.word(base | r(addr)<<5 | r(dst))
+}
+
+func (a *Asm) Stlr(src, addr Reg, size int) {
+	var base uint32
+	switch size {
+	case 1:
+		base = 0x089FFC00
+	case 2:
+		base = 0x489FFC00
+	case 4:
+		base = 0x889FFC00
+	case 8:
+		base = 0xC89FFC00
+	default:
+		panic("arm64: unsupported STLR size")
+	}
+	a.word(base | r(addr)<<5 | r(src))
+}
+
+func (a *Asm) DmbIsh() { a.word(0xD5033BBF) }
+
 // movWide encodes MOVZ/MOVK/MOVN with a 16-bit immediate at halfword hw (0..3).
 func (a *Asm) movWide(base uint32, rd Reg, imm16 uint16, hw uint32) {
 	a.word(base | (hw&3)<<21 | uint32(imm16)<<5 | r(rd))

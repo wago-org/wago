@@ -107,8 +107,8 @@ func TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite(t *testing.T) {
 }
 
 func TestTrapMessagesStayCompactAndComplete(t *testing.T) {
-	if got := unsafe.Sizeof(trapMessages); got != 320 {
-		t.Fatalf("trap message storage = %d bytes, want 320", got)
+	if got := unsafe.Sizeof(trapMessages); got != 336 {
+		t.Fatalf("trap message storage = %d bytes, want 336", got)
 	}
 	for code, message := range trapMessages {
 		if message == "" {

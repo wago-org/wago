@@ -49,6 +49,30 @@ func sharedAtomicAddAtModule() []byte {
 	)
 }
 
+func sharedAtomicLoadStoreFenceModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("store", 0, 0),
+			wasmtest.ExportEntry("load", 0, 1),
+			wasmtest.ExportEntry("fence", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x00, 0x20, 0x00, 0xfe, 0x17, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x00, 0xfe, 0x10, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xfe, 0x03, 0x00, 0x0b}),
+		)),
+	)
+}
+
 func sharedAtomicOverlapModule() []byte {
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
 	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
@@ -98,6 +122,38 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 7 {
 		t.Fatalf("shared memory value = %d, want 7", got)
+	}
+}
+
+func TestThreadsAtomicLoadStoreAndFenceExecute(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedAtomicLoadStoreFenceModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, err := NewSharedMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("store", I32(-559038737)); err != nil { // 0xdeadbeef
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 0xdeadbeef {
+		t.Fatalf("host memory = %#x", got)
+	}
+	result, err := instance.Invoke("load")
+	if err != nil || AsI32(result[0]) != int32(-559038737) {
+		t.Fatalf("atomic load = %v, %v", result, err)
+	}
+	if _, err := instance.Invoke("fence"); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -15,6 +15,15 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 		return err
 	}
 	switch {
+	case d.Class == railshared.AtomicFence:
+		f.materializePendingLoads()
+		f.invalidateStoreForward()
+		f.a.Mfence()
+		return nil
+	case d.Class == railshared.AtomicLoad:
+		return f.atomicLoad(d)
+	case d.Class == railshared.AtomicStore:
+		return f.atomicStore(d)
 	case d.Class == railshared.AtomicRMW && d.Operation == railshared.AtomicAdd && d.Size == 4 && d.ResultSize == 4:
 		return f.atomicRMWAdd32(d.Offset)
 	default:
@@ -22,17 +31,54 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 	}
 }
 
+func (f *fn) atomicMem(off uint64, size int) (base, ea Reg, disp int32) {
+	base, ea, disp = f.indexedMemAddr(0, off, size)
+	if size > 1 {
+		addr := f.allocReg(maskOf(base).add(ea))
+		f.a.LeaScaled(addr, base, ea, 0, disp)
+		f.a.TestImm(addr, uint32(size-1), false)
+		f.trapIf(condNE, trapAtomicUnaligned)
+		f.release(addr)
+	}
+	return
+}
+
+func (f *fn) atomicLoad(d railshared.Atomic) error {
+	f.materializePendingLoads()
+	f.invalidateStoreForward()
+	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	out := f.allocReg(maskOf(base).add(ea))
+	f.a.LoadIdx(out, base, ea, disp, int(d.Size), false, d.ResultSize == 8)
+	f.release(base)
+	f.release(ea)
+	if d.ResultSize == 8 {
+		f.pushReg(out, mtI64)
+	} else {
+		f.pushReg(out, mtI32)
+	}
+	return nil
+}
+
+func (f *fn) atomicStore(d railshared.Atomic) error {
+	f.materializePendingLoads()
+	f.invalidateStoreForward()
+	value := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(value)
+	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	f.a.XchgIdx(base, ea, value, disp, int(d.Size))
+	f.release(base)
+	f.release(ea)
+	f.pinned = f.pinned.remove(value)
+	f.release(value)
+	return nil
+}
+
 func (f *fn) atomicRMWAdd32(off uint64) error {
 	f.materializePendingLoads()
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
-	base, ea, disp := f.indexedMemAddr(0, off, 4)
-	addr := f.allocReg(maskOf(base).add(ea).add(value))
-	f.a.LeaScaled(addr, base, ea, 0, disp)
-	f.a.TestImm(addr, 3, false)
-	f.trapIf(condNE, trapAtomicUnaligned)
-	f.release(addr)
+	base, ea, disp := f.atomicMem(off, 4)
 	f.a.LockXaddIdx32(base, ea, value, disp)
 	f.release(base)
 	f.release(ea)

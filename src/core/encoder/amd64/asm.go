@@ -570,6 +570,27 @@ func (a *Asm) LockXaddIdx32(base, index, src Reg, disp int32) {
 	a.sibAddr(src, base, index, disp)
 }
 
+// XchgIdx atomically exchanges src with a memory operand. Memory-form XCHG is
+// implicitly locked and is the x86-64 sequentially consistent atomic-store
+// primitive; src receives the discarded old value.
+func (a *Asm) XchgIdx(base, index, src Reg, disp int32, size int) {
+	if size == 2 {
+		a.emit(0x66)
+	}
+	w := size == 8
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
+		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
+	}
+	op := byte(0x87)
+	if size == 1 {
+		op = 0x86
+	}
+	a.emit(op)
+	a.sibAddr(src, base, index, disp)
+}
+
+func (a *Asm) Mfence() { a.emit(0x0F, 0xAE, 0xF0) }
+
 func (a *Asm) Cdq(w bool) {
 	if w {
 		a.emit(0x48)
