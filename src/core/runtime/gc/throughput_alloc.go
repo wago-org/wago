@@ -31,6 +31,7 @@ type throughputHeap struct {
 	freeRecordHeads []uint32 // reusable metadata records popped from freeHeads
 	freeSlots       [][]throughputFreeSlot
 	largeFree       []throughputLargeFree
+	largestFree     uint32
 }
 
 func (h *throughputHeap) Init(cfg Config) error {
@@ -54,6 +55,8 @@ func (h *throughputHeap) Init(cfg Config) error {
 	h.freeHeads = make([]uint32, len(throughputClassSizes))
 	h.freeRecordHeads = make([]uint32, len(throughputClassSizes))
 	h.freeSlots = make([][]throughputFreeSlot, len(throughputClassSizes))
+	h.largeFree = nil
+	h.largestFree = 0
 	for i := range h.freeHeads {
 		h.freeHeads[i] = throughputNoSlot
 		h.freeRecordHeads[i] = throughputNoSlot
@@ -67,6 +70,7 @@ func (h *throughputHeap) Close() {
 	h.freeRecordHeads = nil
 	h.freeSlots = nil
 	h.largeFree = nil
+	h.largestFree = 0
 	h.bump = 0
 }
 
@@ -105,6 +109,9 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 		} else {
 			allocSize = span.size
 			h.largeFree = append(h.largeFree[:idx], h.largeFree[idx+1:]...)
+		}
+		if span.size == h.largestFree {
+			h.recomputeLargestFree()
 		}
 		return handleEntry{off: off, size: size, allocSize: allocSize, class: uint16(len(throughputClassSizes)), space: sp}, nil
 	}
@@ -217,6 +224,9 @@ func align64(v, a uint64) uint64 {
 }
 
 func (h *throughputHeap) findLarge(size uint32) int {
+	if size > h.largestFree {
+		return -1
+	}
 	for i, s := range h.largeFree {
 		if s.size >= size {
 			return i
@@ -241,6 +251,18 @@ func (h *throughputHeap) insertLargeFree(s throughputLargeFree) {
 	if pos+1 < len(h.largeFree) && h.largeFree[pos].off+h.largeFree[pos].size == h.largeFree[pos+1].off {
 		h.largeFree[pos].size += h.largeFree[pos+1].size
 		h.largeFree = append(h.largeFree[:pos+1], h.largeFree[pos+2:]...)
+	}
+	if h.largeFree[pos].size > h.largestFree {
+		h.largestFree = h.largeFree[pos].size
+	}
+}
+
+func (h *throughputHeap) recomputeLargestFree() {
+	h.largestFree = 0
+	for _, span := range h.largeFree {
+		if span.size > h.largestFree {
+			h.largestFree = span.size
+		}
 	}
 }
 
@@ -300,6 +322,15 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 			return errors.New("gc: throughput large free spans not sorted and coalesced")
 		}
 		free = append(free, s)
+	}
+	largestFree := uint32(0)
+	for _, span := range h.largeFree {
+		if span.size > largestFree {
+			largestFree = span.size
+		}
+	}
+	if h.largestFree != largestFree {
+		return errors.New("gc: throughput largest free span is stale")
 	}
 	seenFree := make(map[uint32]bool)
 	for i, f := range free {

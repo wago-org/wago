@@ -73,6 +73,11 @@ Today one Tiny step may scan the whole object. A slot/byte-budgeted implementati
 must keep p99 and maximum step time bounded while increasing `steps/op` with the
 amount of scan work.
 
+`BenchmarkThroughputLargeSpanMiss` isolates an old-space allocation miss with
+64, 1,024, and 16,384 fragmented free spans, none large enough for the request.
+It guards the constant-time largest-span rejection path separately from
+successful first-fit search, splitting, and coalescing work.
+
 ## Required companion layers
 
 Collector microbenchmarks cannot observe every cost. Keep the following as

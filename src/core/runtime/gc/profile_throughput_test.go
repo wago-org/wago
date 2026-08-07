@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestThroughputBackingGrowthIsGeometricAfterFirstPage(t *testing.T) {
 	h := throughputHeap{pageBytes: 64 << 10, limit: 4 << 20}
@@ -183,6 +186,58 @@ func TestThroughputClassLimitMustBeSupportedSizeClass(t *testing.T) {
 		if _, err := NewCollector(Config{ThroughputClassLimit: limit}, testTypes(t)); err == nil {
 			t.Fatalf("unsupported class limit %d accepted", limit)
 		}
+	}
+}
+
+var benchmarkThroughputLargeSpan int
+
+//go:noinline
+func benchmarkFindThroughputLargeSpan(h *throughputHeap, size uint32) int {
+	return h.findLarge(size)
+}
+
+func TestThroughputLargestFreeTracksMutations(t *testing.T) {
+	h := throughputHeap{
+		mem:       makeAlignedBytes(256, 16),
+		limit:     256,
+		pageBytes: 4096,
+	}
+	h.insertLargeFree(throughputLargeFree{off: 0, size: 64})
+	h.insertLargeFree(throughputLargeFree{off: 128, size: 128})
+	if h.largestFree != 128 || h.findLarge(96) != 1 {
+		t.Fatalf("initial largest span = %d at %d, want 128 at 1", h.largestFree, h.findLarge(96))
+	}
+	entry, err := h.alloc(96, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.off != 128 || h.largestFree != 64 || h.findLarge(80) != -1 {
+		t.Fatalf("after split: entry offset=%d largest=%d find(80)=%d", entry.off, h.largestFree, h.findLarge(80))
+	}
+	h.insertLargeFree(throughputLargeFree{off: 64, size: 64})
+	if h.largestFree != 128 || len(h.largeFree) != 2 {
+		t.Fatalf("after coalesce: largest=%d spans=%v", h.largestFree, h.largeFree)
+	}
+}
+
+func BenchmarkThroughputLargeSpanMiss(b *testing.B) {
+	for _, spans := range []int{64, 1024, 16384} {
+		b.Run(fmt.Sprintf("spans=%d", spans), func(b *testing.B) {
+			h := throughputHeap{
+				largeFree:   make([]throughputLargeFree, spans),
+				largestFree: 32,
+			}
+			for i := range h.largeFree {
+				h.largeFree[i] = throughputLargeFree{off: uint32(i * 128), size: 32}
+			}
+			var found int
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				found += benchmarkFindThroughputLargeSpan(&h, 64)
+			}
+			benchmarkThroughputLargeSpan = found
+		})
 	}
 }
 
