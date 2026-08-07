@@ -93,6 +93,22 @@ func (l executionLease) unlockExecution() {
 	nativeExecutionMu.Unlock()
 }
 
+func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
+	if in == nil || in.c == nil || !in.c.threadedMemory0() {
+		return nil
+	}
+	in.memoryDir.invokeMu.Lock()
+	return &in.memoryDir.invokeMu
+}
+
+func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
+	if in != nil && in.c != nil && in.c.threadedMemory0() {
+		in.memoryDir.nativeMu.Lock()
+		return in.memoryDir.nativeMu.Unlock
+	}
+	return lockNativeExecutionForHostAccess()
+}
+
 // lockNativeExecutionForHostAccess serializes direct host access to native-visible
 // global cells with guest execution without rebinding any instance context. Host
 // callbacks may call this safely because synchronous dispatch releases the native

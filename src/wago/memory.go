@@ -28,6 +28,7 @@ type memoryState struct {
 
 const (
 	memoryStateShared uint8 = 1 << iota
+	memoryStateWasmShared
 	memoryStateAddr64
 	memoryStateAddrKnown
 	memoryStateLimitsKnown
@@ -36,8 +37,8 @@ const (
 
 	memoryStateDeclaredMaxMask = uint64(1<<49 - 1)
 	memoryStateImporterShift   = 49
-	memoryStateImporterMask    = uint64(1<<9 - 1)
-	memoryStateFlagsShift      = 58
+	memoryStateImporterMask    = uint64(1<<8 - 1)
+	memoryStateFlagsShift      = 57
 )
 
 func (s *memoryState) has(flag uint8) bool {
@@ -127,6 +128,7 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 	state.setDeclaredMaximum(uint64(declaredMax))
 	state.set(memoryStateAddrKnown|memoryStateLimitsKnown|memoryStateDeclaredHasMax, true)
 	state.set(memoryStateShared, shared)
+	state.set(memoryStateWasmShared, shared)
 	m.state.Store(state)
 	return m, nil
 }
@@ -300,18 +302,25 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 		s.owner = owner
 	}
 	s.set(memoryStateShared, true)
+	if def.Shared {
+		s.set(memoryStateWasmShared, true)
+	}
 	return nil
 }
 
-func (m *Memory) validateLimits(min, max uint64, hasMax, addr64 bool) error {
+func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) error {
 	s := m.state.Load()
 	if s == nil {
 		return fmt.Errorf("memory has not been exported for import")
 	}
 	s.mu.Lock()
 	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
+	providerShared := s.has(memoryStateWasmShared)
 	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), s.declaredMaximum()
 	s.mu.Unlock()
+	if shared && !providerShared {
+		return fmt.Errorf("import requires shared memory, but provider is not shared")
+	}
 	if addrKnown && providerAddr64 != addr64 {
 		providerBits, importBits := 32, 32
 		if providerAddr64 {

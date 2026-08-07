@@ -64,8 +64,10 @@ The initial threaded product admits only:
 
 - explicit bounds checks;
 - shared memory32 with an exact declared maximum;
-- distinct concurrently executing instances;
-- numeric globals, parameters, results, and functions; and
+- distinct concurrently executing instances, with same-instance calls
+  serialized around reusable invocation state;
+- numeric globals, parameters, results, and functions, excluding mutable
+  global imports; and
 - classic scalar atomic memory instructions.
 
 Initially reject:
@@ -73,7 +75,7 @@ Initially reject:
 - shared-everything threads and GC object atomics;
 - exception handling and WasmGC;
 - host imports and cross-instance function calls;
-- simultaneous calls into the same instance;
+- mutable global imports;
 - memory64 and multi-memory;
 - signal-backed guard execution;
 - snapshots and domain snapshots;
@@ -360,12 +362,13 @@ instance, err := wago.Instantiate(compiled, wago.Imports{"env.memory": memory})
 ```
 
 The admitted module boundary is one imported shared memory32 with an exact
-maximum, numeric functions and globals, no function imports, no tables, tags,
-or segments, and memory operations limited to the classic atomic family.
+maximum, numeric functions and globals but no mutable global imports, no
+function imports, no tables, tags, or segments, and memory operations limited
+to the classic atomic family.
 Memory growth, memory64, multi-memory, signal bounds, WasmGC, exceptions,
-snapshots, same-instance concurrent entry, and shared-everything GC remain
-rejected before native code generation. The feature is advertised only on
-Linux and macOS amd64/arm64.
+snapshots, and shared-everything GC remain rejected before native code
+generation. Same-instance concurrent entry is accepted but serialized. The
+feature is advertised only on Linux and macOS amd64/arm64.
 
 Distinct eligible instances have private basedata and execution leases, so they
 can execute native Wasm concurrently against the same backing. Ordinary modules
@@ -441,3 +444,13 @@ at zero allocations. Compiling the wait/notify fixture took 15.2–17.8 µs and
 Static Go object sizes were 680 B for `Compiled`, 832 B for `Instance`, 16 B for
 `Memory`, 24 B for `memoryState`, 16 B for the active waiter sidecar, and 40 B
 per active waiter.
+
+The review fix that serializes the reusable same-instance `Invoke` scratch adds
+one 8 B mutex to the threaded-only memory-directory sidecar. A six-sample,
+300 ms A/B on an Apple M4 Max measured atomic load at 90.09 -> 93.49 ns/op
+(1.038x), store at 88.03 -> 90.76 ns/op (1.031x), `rmw.add` at 90.57 ->
+93.85 ns/op (1.036x), compare-exchange at 91.33 -> 94.15 ns/op (1.031x),
+wait mismatch at 259.52 -> 263.52 ns/op (1.015x), and empty notify at 266.25 ->
+267.87 ns/op (1.006x). The isolated threaded-entry result was 91.02 ->
+95.86 ns/op (1.053x). All direct cases retained zero allocations; ordinary
+entry did not acquire the new mutex.

@@ -353,7 +353,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
 		}
 		if def, ok := c.memoryImportAt(0); ok {
-			if err := m.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64); err != nil {
+			if err := m.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64, def.Shared); err != nil {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("imported memory %q limits: %w", c.memoryImport, err)
 			}
@@ -445,7 +445,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("missing imported memory %q", def.ImportKey)
 			}
-			if err := memory.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64); err != nil {
+			if err := memory.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64, def.Shared); err != nil {
 				closeMem()
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("imported memory %q limits: %w", def.ImportKey, err)

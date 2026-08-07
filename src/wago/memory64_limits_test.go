@@ -28,11 +28,11 @@ func TestMemoryStatePreservesExactMemory64Maximum(t *testing.T) {
 			if runtimeMax := uint64(base.jm.MaxPages()); runtimeMax != 1 {
 				t.Fatalf("runtime reservation = %d pages, want bounded 1 independently of declaration", runtimeMax)
 			}
-			if err := base.validateLimits(1, declared, true, true); err != nil {
+			if err := base.validateLimits(1, declared, true, true, false); err != nil {
 				t.Fatalf("compatible import rejected: %v", err)
 			}
 			if declared > 10 {
-				if err := base.validateLimits(1, 10, true, true); err == nil || !strings.Contains(err.Error(), "exceeds required 10") {
+				if err := base.validateLimits(1, 10, true, true, false); err == nil || !strings.Contains(err.Error(), "exceeds required 10") {
 					t.Fatalf("narrow incompatible import error = %v", err)
 				}
 			}

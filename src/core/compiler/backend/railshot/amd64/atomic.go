@@ -85,6 +85,8 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 		f.a.Movzx8(RAX, RAX, d.ResultSize == 8)
 	} else if d.Size == 2 {
 		f.a.Movzx16(RAX, RAX, d.ResultSize == 8)
+	} else if d.Size == 4 && d.ResultSize == 8 {
+		f.a.MovRegReg32(RAX, RAX)
 	}
 	f.release(base)
 	f.release(ea)

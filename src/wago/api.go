@@ -953,6 +953,11 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) e
 	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.TagCount() != 0 || len(m.Data) != 0 || len(m.Elements) != 0 {
 		return fmt.Errorf("threads currently admit numeric functions and globals without host imports, tables, tags, or segments")
 	}
+	for i := range m.Imports {
+		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.Global.Mutable {
+			return fmt.Errorf("threads currently reject mutable global imports")
+		}
+	}
 	for function, fn := range m.Code {
 		r := wasm.NewReader(fn.BodyBytes)
 		for r.HasNext() {
@@ -3780,6 +3785,9 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		return nil, fmt.Errorf("invoke %q: %w", export, err)
 	}
 	defer in.endInvocation()
+	if threadedMu := in.lockThreadedInstanceState(); threadedMu != nil {
+		defer threadedMu.Unlock()
+	}
 	ic := in.findInvokeCache(export)
 	if ic == nil {
 		var err error

@@ -276,8 +276,9 @@ current optimization priorities. The Core 3.0 implementation ledger is
   product on Linux/macOS amd64/arm64 with explicit bounds, one exact-max imported
   shared memory32, true distinct-instance native overlap, the full classic atomic
   matrix, and bounded wait/notify. Broader shared-everything threads, growth,
-  memory64/multi-memory, signal bounds, GC/EH, snapshots, and same-instance
-  concurrent entry remain deliberately outside this product.
+  memory64/multi-memory, signal bounds, mutable global imports, GC/EH, and
+  snapshots remain deliberately outside this product. Same-instance entry is
+  accepted but serialized around the instance's reusable invocation state.
 - [x] Tail calls (`return_call` / `return_call_indirect` / `return_call_ref`) —
   complete for the Core 3 linux/amd64 explicit-bounds product, including local,
   host, cross-instance, indirect, typed-reference, trap, and validation paths.

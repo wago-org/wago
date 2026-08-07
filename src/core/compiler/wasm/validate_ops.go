@@ -772,6 +772,9 @@ func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, e
 		// Atomic memory instructions are valid only for shared memories.
 		return ValType{}, v.verr(ErrInvalidSharedMemory, "atomic memory instruction")
 	}
+	if ma.Align != natural {
+		return ValType{}, v.verr(ErrInvalidAlignment, "atomic memory instruction requires natural alignment")
+	}
 	return addr, nil
 }
 

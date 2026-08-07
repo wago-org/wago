@@ -7,9 +7,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	goruntime "runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -30,6 +34,23 @@ func sharedAtomicAddModule() []byte {
 			0x20, 0x00, // local.get 0: delta
 			0xfe, 0x1e, 0x02, 0x00, // i32.atomic.rmw.add align=4 offset=0
 			0x0b,
+		}))),
+	)
+}
+
+func sharedAtomicMutableGlobalImportModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(
+			memoryImport,
+			wasmtest.GlobalImportEntry("env", "global", wasm.I32, true),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("load", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x41, 0x00, 0xfe, 0x10, 0x02, 0x00, 0x0b,
 		}))),
 	)
 }
@@ -168,6 +189,41 @@ func sharedAtomicOverlapModule() []byte {
 	)
 }
 
+func sharedThreadedArgumentModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("accept", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+}
+
+func sharedThreadedGlobalHoldModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x07, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("hold", 0, 0),
+			wasmtest.ExportEntry("global", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x41, 0x00, 0x41, 0x01, 0xfe, 0x17, 0x02, 0x00, // signal = 1
+			0x03, 0x40, // loop
+			0x41, 0x04, 0xfe, 0x10, 0x02, 0x00, 0x45, 0x0d, 0x00, // while release == 0
+			0x0b,
+			0x23, 0x00, // global.get 0
+			0x0b,
+		}))),
+	)
+}
+
 func sharedAtomicWaitNotifyModule() []byte {
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
 	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
@@ -224,6 +280,139 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 7 {
 		t.Fatalf("shared memory value = %d, want 7", got)
+	}
+}
+
+func TestThreadsSameInstanceConcurrentInvokeSerializesScratch(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedThreadedArgumentModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, _ := NewSharedMemory(1, 1)
+	defer memory.Close()
+	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+
+	const workers, calls = 8, 200
+	start := make(chan struct{})
+	errs := make(chan error, workers)
+	for worker := range workers {
+		go func() {
+			<-start
+			for call := range calls {
+				want := uint64(worker+1)<<32 | uint64(call)
+				out, err := instance.Invoke("accept", want)
+				if err != nil || len(out) != 0 {
+					errs <- fmt.Errorf("accept(%#x) = %v, %v", want, out, err)
+					return
+				}
+			}
+			errs <- nil
+		}()
+	}
+	close(start)
+	for range workers {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestThreadsHostGlobalAccessSerializesWithInvoke(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedThreadedGlobalHoldModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, _ := NewSharedMemory(1, 1)
+	defer memory.Close()
+	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+
+	result := make(chan struct {
+		value uint64
+		err   error
+	}, 1)
+	go func() {
+		out, err := instance.Invoke("hold")
+		var value uint64
+		if len(out) != 0 {
+			value = out[0]
+		}
+		result <- struct {
+			value uint64
+			err   error
+		}{value, err}
+	}()
+	signal := (*uint32)(unsafe.Pointer(&memory.Bytes()[0]))
+	release := (*uint32)(unsafe.Pointer(&memory.Bytes()[4]))
+	deadline := time.Now().Add(time.Second)
+	for atomic.LoadUint32(signal) == 0 && time.Now().Before(deadline) {
+		goruntime.Gosched()
+	}
+	if atomic.LoadUint32(signal) == 0 {
+		t.Fatal("guest did not enter hold function")
+	}
+	setDone := make(chan error, 1)
+	go func() { setDone <- instance.SetGlobal("global", I32(99)) }()
+	select {
+	case err := <-setDone:
+		t.Fatalf("SetGlobal completed during threaded invocation: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	atomic.StoreUint32(release, 1)
+	got := <-result
+	if got.err != nil || got.value != 7 {
+		t.Fatalf("hold = %d, %v; want original global 7", got.value, got.err)
+	}
+	if err := <-setDone; err != nil {
+		t.Fatal(err)
+	}
+	if value, err := instance.Global("global"); err != nil || value != I32(99) {
+		t.Fatalf("global after serialized set = %d, %v", value, err)
+	}
+}
+
+func TestThreadsRejectsOrdinaryMemoryForSharedImport(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, sharedAtomicAddModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, err := NewMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	if instance, err := Instantiate(compiled, Imports{"env.memory": memory}); err == nil {
+		instance.Close()
+		t.Fatal("shared memory import accepted an ordinary host memory")
+	}
+}
+
+func TestThreadsRejectsUnderalignedAtomicMemoryArgument(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	if compiled, err := Compile(config, sharedAtomicRMWModule(0x1e, 1, wasm.I32)); err == nil {
+		compiled.Close()
+		t.Fatal("i32.atomic.rmw.add accepted align=2 instead of its natural align=4")
+	}
+}
+
+func TestThreadsRejectsMutableGlobalImports(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	if compiled, err := Compile(config, sharedAtomicMutableGlobalImportModule()); err == nil {
+		compiled.Close()
+		t.Fatal("threaded module accepted a mutable global import")
 	}
 }
 
@@ -391,7 +580,7 @@ func TestThreadsAtomicCmpxchgSuccessFailureAndWidths(t *testing.T) {
 		{"i64", 0x49, 3, wasm.I64, 0xfeedfacedeadbeef, ^uint64(0)},
 		{"i32_8", 0x4a, 0, wasm.I32, 0xef, 0xff},
 		{"i64_16", 0x4d, 1, wasm.I64, 0xbeef, 0xffff},
-		{"i64_32", 0x4e, 2, wasm.I64, 0xdeadbeef, 0xffffffff},
+		{"i64_32", 0x4e, 2, wasm.I64, 0x1111111111111111, 0xffffffff},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled, err := Compile(config, sharedAtomicCmpxchgModule(tc.sub, tc.align, tc.typ))
