@@ -65,9 +65,10 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 			c.scanObjectRefs(h, c.markNurseryRef)
 		}
 	}
-	c.drainNurseryMarkStack()
-	if err := c.promoteMarkedNursery(); err != nil {
-		return err
+	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
+		if err := c.promoteMarkedNursery(); err != nil {
+			return err
+		}
 	}
 	c.finishMinorEvacuation()
 	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs

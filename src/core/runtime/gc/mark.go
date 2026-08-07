@@ -78,14 +78,17 @@ func (c *Collector) markNurseryRoots(roots RootSet) {
 	}
 }
 
-func (c *Collector) drainNurseryMarkStack() {
+func (c *Collector) drainNurseryMarkStack() uint64 {
+	var scanned uint64
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
 		c.markStack = c.markStack[:n]
 		c.stats.MinorObjectsScanned++
+		scanned++
 		c.scanObjectRefs(h, c.markNurseryRef)
 	}
+	return scanned
 }
 
 func (c *Collector) markNurseryRef(r Ref) {
