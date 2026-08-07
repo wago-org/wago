@@ -148,6 +148,22 @@ func TestSuccessfulMinorCollectionWithNoSurvivorsRecyclesNursery(t *testing.T) {
 			t.Fatalf("dead handle %d state = space %v mark %v, want free/false", h, c.handles[h].space, c.mark[h])
 		}
 	}
+	beforeHandleCount := len(c.handles)
+	reused, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.handles) != beforeHandleCount {
+		t.Fatalf("reusing evacuated nursery handle grew table from %d to %d", beforeHandleCount, len(c.handles))
+	}
+	reusedHandle := handleOf(reused)
+	found := false
+	for _, h := range handles {
+		found = found || h == reusedHandle
+	}
+	if !found {
+		t.Fatalf("allocation used new handle %d instead of an evacuated handle", reusedHandle)
+	}
 }
 
 func minorBenchmarkTypes(b testing.TB) []TypeDesc {
@@ -217,12 +233,14 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 			b.Run(name, func(b *testing.B) {
 				c, err := NewCollector(Config{
 					NurseryBytes:        1 << 20,
-					ThroughputHeapBytes: 256 << 20,
+					ThroughputHeapBytes: 16 << 20,
 				}, minorBenchmarkTypes(b))
 				if err != nil {
 					b.Fatal(err)
 				}
 				defer c.Close()
+				oldRootValues := make([]Root, oldCount)
+				oldRoots := make(Slots, oldCount)
 				for i := 0; i < oldCount; i++ {
 					old, err := c.NewStructDefault(0)
 					if err != nil {
@@ -231,6 +249,8 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 					if err := c.ForcePromote(old); err != nil {
 						b.Fatal(err)
 					}
+					oldRootValues[i] = Root(old)
+					oldRoots[i] = &oldRootValues[i]
 				}
 				rootValues := make([]Root, survivors)
 				roots := make(Slots, survivors)
@@ -241,6 +261,13 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
+					if i != 0 && i%1024 == 0 {
+						b.StopTimer()
+						if err := c.CollectFull(oldRoots); err != nil {
+							b.Fatal(err)
+						}
+						b.StartTimer()
+					}
 					for j := 0; j < nurseryObjects; j++ {
 						r, err := c.NewStructDefault(0)
 						if err != nil {
@@ -259,5 +286,58 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+func BenchmarkMinorCollectionRememberedParentScaling(b *testing.B) {
+	for _, length := range []uint32{1, 1024, 16_384} {
+		b.Run(fmt.Sprintf("elements=%d", length), func(b *testing.B) {
+			c, err := NewCollector(Config{
+				NurseryBytes:        1 << 20,
+				ThroughputHeapBytes: 16 << 20,
+			}, minorBenchmarkTypes(b))
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer c.Close()
+			parent, err := c.NewArrayDefault(3, length)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := c.ForcePromote(parent); err != nil {
+				b.Fatal(err)
+			}
+			parentRoot := Root(parent)
+			fullRoots := Slots{&parentRoot}
+			before := c.Stats()
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if i != 0 && i%1024 == 0 {
+					b.StopTimer()
+					if err := c.CollectFull(fullRoots); err != nil {
+						b.Fatal(err)
+					}
+					b.StartTimer()
+				}
+				child, err := c.NewStructDefault(0)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := c.ArraySet(parent, 0, RefValue(child)); err != nil {
+					b.Fatal(err)
+				}
+				if err := c.CollectMinor(nil); err != nil {
+					b.Fatal(err)
+				}
+				if err := c.ArraySet(parent, 0, RefValue(Null())); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.StopTimer()
+			after := c.Stats()
+			b.ReportMetric(float64(after.MinorRememberedScanned-before.MinorRememberedScanned)/float64(b.N), "remembered-scans/op")
+		})
 	}
 }

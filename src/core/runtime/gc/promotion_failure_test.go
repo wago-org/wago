@@ -2,6 +2,8 @@ package gc
 
 import (
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -69,15 +71,45 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 		}
 		roots = append(roots, Root(r))
 	}
+	parent, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(parent); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(parent, 0, RefValue(Ref(roots[0]))); err != nil {
+		t.Fatal(err)
+	}
+	global := c.NewGlobalSlot(Null())
+	if err := c.SetGlobalSlot(global, Ref(roots[1])); err != nil {
+		t.Fatal(err)
+	}
 	slots := stressRootSlots(roots)
 	bumpBefore := c.nurseryBump
+	handlesBefore := slices.Clone(c.handles)
+	nurseryHandlesBefore := slices.Clone(c.nurseryHandles)
+	rememberedBefore := slices.Clone(c.remembered)
+	objectCardsBefore := slices.Clone(c.objectCards)
+	slotCardsBefore := slices.Clone(c.slotCards)
+	slotCardSlotBefore := maps.Clone(c.slotCardSlot)
 
-	err := c.CollectMinor(slots)
+	err = c.CollectMinor(slots)
 	if err == nil || !strings.Contains(err.Error(), "throughput heap exhausted") {
 		t.Fatalf("CollectMinor error = %v, want throughput exhaustion", err)
 	}
 	if c.nurseryBump != bumpBefore {
 		t.Fatalf("nursery bump changed after failed promotion: got %d want %d", c.nurseryBump, bumpBefore)
+	}
+	if !slices.Equal(c.handles, handlesBefore) {
+		t.Fatal("handle metadata changed after failed promotion")
+	}
+	if !slices.Equal(c.nurseryHandles, nurseryHandlesBefore) {
+		t.Fatal("nursery handle set changed after failed promotion")
+	}
+	if !slices.Equal(c.remembered, rememberedBefore) || !slices.Equal(c.objectCards, objectCardsBefore) ||
+		!slices.Equal(c.slotCards, slotCardsBefore) || !maps.Equal(c.slotCardSlot, slotCardSlotBefore) {
+		t.Fatal("remembered or card metadata changed after failed promotion")
 	}
 	if len(c.promotionScratch) != 0 || cap(c.promotionScratch) == 0 {
 		t.Fatalf("promotion scratch after rollback len/cap=%d/%d", len(c.promotionScratch), cap(c.promotionScratch))
@@ -103,6 +135,12 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 		if err := c.StructSet(Ref(root), 0, RefValue(Null())); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := c.ArraySet(parent, 0, RefValue(Null())); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetGlobalSlot(global, Null()); err != nil {
+		t.Fatal(err)
 	}
 	for i := 1; i < len(roots); i++ {
 		roots[i] = Root(Null())
