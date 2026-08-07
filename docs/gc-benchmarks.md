@@ -86,8 +86,12 @@ The cached maximum is a conservative upper bound after its span is consumed;
 the first later miss refreshes it while scanning, and later impossible misses
 are constant-time. On 64-bit builds this metadata changes `throughputHeap` from
 136 to 144 bytes and `Collector` from 904 to 912 bytes; handle, object, native
-ABI, and serialized layouts are unchanged. A stripped standard-Go `cli/wago`
-build remains 8,663,305 bytes on linux/amd64 before and after this change.
+ABI, and serialized layouts are unchanged. On linux/amd64, `go tool nm -size`
+over a GC package test binary that retains the allocator reports 256 additional
+text bytes: 134 for `findLarge`, 65 for the cold `findLargeDirty` helper, and 57
+of growth in `insertLargeFree`; `alloc` remains 1,616 bytes. Do not use the
+manager-only `cli/wago` binary for this comparison because its dependency graph
+dead-strips the collector.
 
 ## Required companion layers
 
