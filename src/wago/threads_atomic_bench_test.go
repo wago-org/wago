@@ -41,7 +41,7 @@ func BenchmarkThreadsAtomicInvoke(b *testing.B) {
 			defer instance.Close()
 			b.ReportAllocs()
 			b.ResetTimer()
-			for b.Loop() {
+			for i := 0; i < b.N; i++ {
 				if _, err := instance.Invoke(tc.export, tc.args...); err != nil {
 					b.Fatal(err)
 				}
@@ -73,7 +73,7 @@ func BenchmarkThreadsWaitNotifyRoundTrip(b *testing.B) {
 	done := make(chan error, 1)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		go func() {
 			_, err := waiter.Invoke("wait32", I32(0), I32(0), I64(-1))
 			done <- err
@@ -115,7 +115,7 @@ func BenchmarkThreadsNativeEntry(b *testing.B) {
 		defer instance.Close()
 		b.ReportAllocs()
 		b.ResetTimer()
-		for b.Loop() {
+		for i := 0; i < b.N; i++ {
 			if _, err := instance.Invoke("run"); err != nil {
 				b.Fatal(err)
 			}
@@ -137,7 +137,7 @@ func BenchmarkThreadsNativeEntry(b *testing.B) {
 		defer instance.Close()
 		b.ReportAllocs()
 		b.ResetTimer()
-		for b.Loop() {
+		for i := 0; i < b.N; i++ {
 			if _, err := instance.Invoke("load"); err != nil {
 				b.Fatal(err)
 			}
@@ -150,7 +150,7 @@ func BenchmarkThreadsCompileAtomic(b *testing.B) {
 	module := sharedAtomicWaitNotifyModule()
 	b.ReportAllocs()
 	b.ReportMetric(float64(len(module)), "wasm-B")
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		compiled, err := Compile(config, module)
 		if err != nil {
 			b.Fatal(err)
