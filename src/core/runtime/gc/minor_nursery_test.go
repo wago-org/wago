@@ -166,6 +166,23 @@ func TestSuccessfulMinorCollectionWithNoSurvivorsRecyclesNursery(t *testing.T) {
 	}
 }
 
+func TestMinorCollectionNoRootsNoSurvivorsDoesNotAllocate(t *testing.T) {
+	c := newTestCollector(t, Config{NurseryBytes: 1 << 20})
+	allocs := testing.AllocsPerRun(100, func() {
+		for i := 0; i < 64; i++ {
+			if _, err := c.NewStructDefault(0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("no-root/no-survivor minor cycle allocations = %v, want 0", allocs)
+	}
+}
+
 func minorBenchmarkTypes(b testing.TB) []TypeDesc {
 	b.Helper()
 	pf, err := NewStructDesc(0, []StorageKind{StorageI32, StorageI64})
@@ -203,6 +220,9 @@ func BenchmarkMinorCollectionOldGraphScaling(b *testing.B) {
 				if err := c.ForcePromote(old); err != nil {
 					b.Fatal(err)
 				}
+			}
+			if err := c.CollectMinor(nil); err != nil {
+				b.Fatal(err)
 			}
 			before := c.Stats()
 			b.ReportAllocs()
@@ -252,10 +272,17 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 					oldRootValues[i] = Root(old)
 					oldRoots[i] = &oldRootValues[i]
 				}
+				if err := c.CollectMinor(nil); err != nil {
+					b.Fatal(err)
+				}
 				rootValues := make([]Root, survivors)
 				roots := make(Slots, survivors)
 				for i := range roots {
 					roots[i] = &rootValues[i]
+				}
+				var collectionRoots RootSet
+				if survivors != 0 {
+					collectionRoots = roots
 				}
 
 				b.ReportAllocs()
@@ -277,7 +304,7 @@ func BenchmarkMinorCollectionCleanupScaling(b *testing.B) {
 						}
 					}
 					b.StartTimer()
-					if err := c.CollectMinor(roots); err != nil {
+					if err := c.CollectMinor(collectionRoots); err != nil {
 						b.Fatal(err)
 					}
 					b.StopTimer()
@@ -306,6 +333,9 @@ func BenchmarkMinorCollectionRememberedParentScaling(b *testing.B) {
 				b.Fatal(err)
 			}
 			if err := c.ForcePromote(parent); err != nil {
+				b.Fatal(err)
+			}
+			if err := c.CollectMinor(nil); err != nil {
 				b.Fatal(err)
 			}
 			parentRoot := Root(parent)
