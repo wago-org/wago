@@ -3,6 +3,7 @@ package gc
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 )
 
 var errThroughputHeapExhausted = errors.New("gc: throughput heap exhausted")
@@ -254,12 +255,43 @@ func (h *throughputHeap) free(e handleEntry) error {
 }
 
 func (h *throughputHeap) classFor(size uint32) int {
-	for i, sz := range throughputClassSizes {
-		if size <= sz && sz <= h.classLimit {
-			return i
+	if size <= 128 {
+		class := 0
+		switch {
+		case size <= throughputClassSizes[0]:
+		case size <= 64:
+			class = int((size-1)>>4) - 1
+		case size <= 96:
+			class = 3
+		default:
+			class = 4
 		}
+		if throughputClassSizes[class] <= h.classLimit {
+			return class
+		}
+		return -1
 	}
-	return -1
+	if size > throughputClassSizes[len(throughputClassSizes)-1] {
+		return -1
+	}
+
+	var class int
+	switch {
+	case size <= 4096:
+		// Classes through 4 KiB alternate powers of two and 1.5x.
+		exponent := bits.Len32(size - 1)
+		upper := uint32(1) << exponent
+		class = 2 * (exponent - 5)
+		if size <= upper-(upper>>2) {
+			class--
+		}
+	default:
+		class = bits.Len32(size-1) + 2
+	}
+	if throughputClassSizes[class] > h.classLimit {
+		return -1
+	}
+	return class
 }
 
 func supportedThroughputClassLimit(limit uint32) bool {

@@ -191,6 +191,77 @@ func TestThroughputClassLimitMustBeSupportedSizeClass(t *testing.T) {
 	}
 }
 
+func linearThroughputClassFor(size, limit uint32) int {
+	for i, classSize := range throughputClassSizes {
+		if size <= classSize && classSize <= limit {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestThroughputClassForMatchesLinearReference(t *testing.T) {
+	limits := make([]uint32, 1, len(throughputClassSizes)+1)
+	for _, limit := range throughputClassSizes {
+		limits = append(limits, limit)
+	}
+	maxSize := throughputClassSizes[len(throughputClassSizes)-1] + 1
+	for _, limit := range limits {
+		h := throughputHeap{classLimit: limit}
+		for size := uint32(0); size <= maxSize; size++ {
+			want := linearThroughputClassFor(size, limit)
+			if got := h.classFor(size); got != want {
+				t.Fatalf("classFor(size=%d, limit=%d) = %d, want %d", size, limit, got, want)
+			}
+		}
+	}
+
+	boundarySizes := []uint32{0, 1, 15, 16, 17}
+	for _, classSize := range throughputClassSizes {
+		boundarySizes = append(boundarySizes, classSize-1, classSize, classSize+1)
+	}
+	for limit := uint32(0); limit <= throughputClassSizes[len(throughputClassSizes)-1]+1; limit++ {
+		h := throughputHeap{classLimit: limit}
+		for _, size := range boundarySizes {
+			want := linearThroughputClassFor(size, limit)
+			if got := h.classFor(size); got != want {
+				t.Fatalf("classFor(size=%d, malformed limit=%d) = %d, want %d", size, limit, got, want)
+			}
+		}
+	}
+}
+
+var benchmarkThroughputClass int
+
+//go:noinline
+func benchmarkThroughputClassFor(h *throughputHeap, size uint32) int {
+	return h.classFor(size)
+}
+
+func BenchmarkThroughputClassFor(b *testing.B) {
+	for _, tc := range []struct {
+		name  string
+		size  uint32
+		limit uint32
+	}{
+		{name: "small", size: 32, limit: 4096},
+		{name: "common", size: 96, limit: 4096},
+		{name: "middle", size: 768, limit: 4096},
+		{name: "default-limit", size: 4096, limit: 4096},
+		{name: "maximum-limit", size: 32768, limit: 32768},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			h := throughputHeap{classLimit: tc.limit}
+			got := 0
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				got += benchmarkThroughputClassFor(&h, tc.size)
+			}
+			benchmarkThroughputClass = got
+		})
+	}
+}
+
 var benchmarkThroughputLargeSpan int
 
 func newThroughputLargeSpanMissFixture(spans int) throughputHeap {
