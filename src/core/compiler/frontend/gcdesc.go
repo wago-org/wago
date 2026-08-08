@@ -34,14 +34,18 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 		case wasm.CompFunc:
 			d = gc.TypeDesc{ID: id, Kind: gc.KindFunc, Final: st.Final}
 		case wasm.CompStruct:
-			fields := make([]gc.StorageKind, len(st.Comp.Fields))
+			builder := gc.NewStructDescBuilder(id, len(st.Comp.Fields))
 			for j, f := range st.Comp.Fields {
-				fields[j], err = lowerGCStorage(f.Storage(), resolver)
+				var field gc.StorageKind
+				field, err = lowerGCStorage(f.Storage(), resolver)
 				if err != nil {
 					return nil, fmt.Errorf("frontend: type %d field %d: %w", i, j, err)
 				}
+				if err = builder.Add(field); err != nil {
+					return nil, fmt.Errorf("frontend: type %d field %d: %w", i, j, err)
+				}
 			}
-			d, err = gc.NewStructDesc(id, fields)
+			d, err = builder.Finish()
 			if err != nil {
 				return nil, fmt.Errorf("frontend: type %d struct: %w", i, err)
 			}
