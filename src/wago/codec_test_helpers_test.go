@@ -2,6 +2,13 @@ package wago
 
 import "testing"
 
+// newHandBuiltCompiled keeps tests that exercise malformed or synthetic
+// metadata from depending on Compiled's private native-code field.
+func newHandBuiltCompiled(code []byte, metadata Compiled) *Compiled {
+	metadata.code = code
+	return &metadata
+}
+
 func writeCompiledCodecPrefixAfterFuncs(t testing.TB, w *compiledWriter) {
 	t.Helper()
 	w.bytes(nil)

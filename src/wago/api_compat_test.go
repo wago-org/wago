@@ -241,8 +241,8 @@ func TestReturningHostImportUsesCompiledDispatch(t *testing.T) {
 	if err := c.validateImportBindings(imports, nil); err != nil {
 		t.Fatalf("validate returning host bindings: %v", err)
 	}
-	if !c.dynamicImports || len(c.Code) == 0 {
-		t.Fatalf("compiled import dispatch dynamic=%v code=%d", c.dynamicImports, len(c.Code))
+	if !c.dynamicImports || len(c.code) == 0 {
+		t.Fatalf("compiled import dispatch dynamic=%v code=%d", c.dynamicImports, len(c.code))
 	}
 	in, err := Instantiate(c, imports)
 	if err != nil {

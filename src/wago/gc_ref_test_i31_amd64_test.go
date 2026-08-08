@@ -32,7 +32,7 @@ func TestStagedGCI31RefTestExecution(t *testing.T) {
 	if c.stagedGCI31Product() != stagedGCI31ProductRefTest || c.stagedFeatures()&CoreFeatureGC == 0 {
 		t.Fatalf("ref.test product/features = %v/%v", c.stagedGCI31Product(), c.stagedFeatures())
 	}
-	t.Logf("i31 ref.test product: wasm=%d code=%d", len(data), len(c.Code))
+	t.Logf("i31 ref.test product: wasm=%d code=%d", len(data), len(c.code))
 	for _, tc := range []struct {
 		name string
 		cfg  GCConfig

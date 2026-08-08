@@ -217,7 +217,7 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 					continue
 				}
 				if blob, marshalErr := marshalCompiled(c); marshalErr == nil {
-					t.Logf("gc/ref_test %s product: wasm=%d code=%d codec=%d", pin.Class, len(latest), len(c.Code), len(blob))
+					t.Logf("gc/ref_test %s product: wasm=%d code=%d codec=%d", pin.Class, len(latest), len(c.code), len(blob))
 				} else {
 					counts.Failures++
 					t.Errorf("gc/ref_test.wast:%d %s codec measurement: %v", cmd.Line, pin.Class, marshalErr)

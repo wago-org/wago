@@ -18,6 +18,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -763,9 +764,18 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratch()
-		code := make([]byte, 0, codeCap)
+		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
+		if err != nil {
+			return nil, fmt.Errorf("arm64: allocate code image: %w", err)
+		}
+		keepCodeBuffer := false
+		defer func() {
+			if !keepCodeBuffer {
+				_ = codeBuffer.Close()
+			}
+		}()
 		pressureDone := false
-		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, cap(code))
+		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
 			hints := allHints[i]
 			var st *CodegenStats
@@ -778,25 +788,32 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if err != nil {
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 			}
-			if pad := (16 - len(code)%16) % 16; pad != 0 {
-				code = append(code, alignPad[:pad]...)
+			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
+				if err := codeBuffer.AppendZeros(pad); err != nil {
+					return nil, fmt.Errorf("arm64: grow code image: %w", err)
+				}
 			}
+			code := codeBuffer.Bytes()
 			entry[i] = len(code)
 			internalEntry[i] = len(code) + internalOff
 			relocs[i] = rl
-			code = append(code, fnCode...)
-			if !pressureDone && opts.MemoryPressure != nil && len(code) >= pressureAt {
+			if err := codeBuffer.Append(fnCode); err != nil {
+				return nil, fmt.Errorf("arm64: grow code image: %w", err)
+			}
+			if !pressureDone && opts.MemoryPressure != nil && len(codeBuffer.Bytes()) >= pressureAt {
 				pressureDone = true
 				opts.MemoryPressure()
 			}
 		}
+		code := codeBuffer.Bytes()
 		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 			return nil, err
 		}
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+		keepCodeBuffer = true
+		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, hostAdapters, inlineTargets, calleePreservesPins, ms, guardMode, boundsFacts, importedFuncs)

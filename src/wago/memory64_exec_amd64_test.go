@@ -330,7 +330,7 @@ func TestStagedMemory64LocalExecutionAndProductRoundTrip(t *testing.T) {
 		t.Fatalf("public memory64 codec load: %v", err)
 	}
 	defer public.Close()
-	t.Logf("staged memory64 product: wasm=%d code=%d codec=%d reservation=%d bytes", len(module), len(compiled.Code), len(blob), 3*65536)
+	t.Logf("staged memory64 product: wasm=%d code=%d codec=%d reservation=%d bytes", len(module), len(compiled.code), len(blob), 3*65536)
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 		t.Fatalf("decode staged memory64 metadata: %v", err)
@@ -698,7 +698,7 @@ func TestStagedMemory64IntegerScalarFamily(t *testing.T) {
 		t.Fatalf("compile memory64 integer scalar family: %v", err)
 	}
 	defer compiled.Close()
-	t.Logf("memory64 integer scalar family: wasm=%d code=%d operations=%d", len(module), len(compiled.Code), len(memory64IntegerScalarOps))
+	t.Logf("memory64 integer scalar family: wasm=%d code=%d operations=%d", len(module), len(compiled.code), len(memory64IntegerScalarOps))
 	in, err := instantiateCore(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate memory64 integer scalar family: %v", err)
@@ -822,7 +822,7 @@ func TestStagedMemory64FloatScalarFamily(t *testing.T) {
 	if _, err := in.Invoke("offset.load", 1); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 		t.Fatalf("float offset overflow error = %v", err)
 	}
-	t.Logf("memory64 float scalar family: wasm=%d code=%d operations=4", len(memory64FloatScalarModule()), len(compiled.Code))
+	t.Logf("memory64 float scalar family: wasm=%d code=%d operations=4", len(memory64FloatScalarModule()), len(compiled.code))
 }
 
 func TestStagedMemory64SIMDMemoryFamily(t *testing.T) {
@@ -1320,7 +1320,7 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(base.Code, staged.Code) {
+	if !bytes.Equal(base.code, staged.code) {
 		t.Fatal("enabling staged memory64 changed memory32 integer code bytes")
 	}
 
@@ -1341,7 +1341,7 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stagedFloat.Close()
-	if !bytes.Equal(baseFloat.Code, stagedFloat.Code) {
+	if !bytes.Equal(baseFloat.code, stagedFloat.code) {
 		t.Fatal("enabling staged memory64 changed memory32 float code bytes")
 	}
 
@@ -1362,7 +1362,7 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stagedSIMD.Close()
-	if !bytes.Equal(baseSIMD.Code, stagedSIMD.Code) {
+	if !bytes.Equal(baseSIMD.code, stagedSIMD.code) {
 		t.Fatal("enabling staged memory64 changed memory32 SIMD code bytes")
 	}
 
@@ -1382,7 +1382,7 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stagedBulk.Close()
-	if !bytes.Equal(baseBulk.Code, stagedBulk.Code) {
+	if !bytes.Equal(baseBulk.code, stagedBulk.code) {
 		t.Fatal("enabling staged memory64 changed memory32 bulk code bytes")
 	}
 
@@ -1397,7 +1397,7 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stagedInit.Close()
-	if !bytes.Equal(baseInit.Code, stagedInit.Code) {
+	if !bytes.Equal(baseInit.code, stagedInit.code) {
 		t.Fatal("enabling staged memory64 changed memory32 memory.init/data.drop code bytes")
 	}
 }

@@ -210,8 +210,7 @@ func TestStagedTypedStorageExactImports(t *testing.T) {
 func TestTypedStorageMetadataRejectsIdentityCollapse(t *testing.T) {
 	indexed0 := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
 	indexed1 := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 1}}}
-	c := &Compiled{
-		Code:                []byte{0xc3},
+	c := newHandBuiltCompiled([]byte{0xc3}, Compiled{
 		Entry:               []int{0},
 		InternalEntry:       []int{0},
 		Funcs:               []FuncSig{{TypeIndex: 0, HasTypeIndex: true}},
@@ -229,7 +228,7 @@ func TestTypedStorageMetadataRejectsIdentityCollapse(t *testing.T) {
 		TableValueTypeIndex: 0,
 		Elems:               []ElemInit{{TableIndex: 0, RefType: ValFuncRef, HasValueType: true, ValueTypeIndex: 1, Mode: ElemModeActive, Values: []RefInit{{FuncIndex: 0}}}},
 		NeedsFuncRefDescs:   true,
-	}
+	})
 	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "structural type does not match table") {
 		t.Fatalf("collapsed active element metadata error = %v", err)
 	}

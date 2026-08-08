@@ -55,28 +55,36 @@ func mmapRW(n int) ([]byte, error) {
 // consume physical memory until touched.
 func mmapRWReserve(n int) ([]byte, error) { return mmapRW(n) }
 
-func mmapExec(code []byte) ([]byte, error) {
-	mem, err := mmapRW(len(code))
-	if err != nil {
-		return nil, err
-	}
-	copy(mem, code)
+func mmapCodeRW(n int) ([]byte, error) { return mmapRW(n) }
+
+func protectCodeRX(mem []byte) error {
 	var oldProtect uintptr
 	ok, _, callErr := procVirtualProtect.Call(
 		uintptr(unsafe.Pointer(&mem[0])), uintptr(len(mem)), pageExecuteRead,
 		uintptr(unsafe.Pointer(&oldProtect)),
 	)
 	if ok == 0 {
-		_ = munmap(mem)
-		return nil, fmt.Errorf("VirtualProtect(RX): %w", callErr)
+		return fmt.Errorf("VirtualProtect(RX): %w", callErr)
 	}
 	process, _, _ := procGetCurrentProcess.Call()
 	ok, _, callErr = procFlushInstructionCache.Call(
 		process, uintptr(unsafe.Pointer(&mem[0])), uintptr(len(mem)),
 	)
 	if ok == 0 {
+		return fmt.Errorf("FlushInstructionCache: %w", callErr)
+	}
+	return nil
+}
+
+func mmapExec(code []byte) ([]byte, error) {
+	mem, err := mmapRW(len(code))
+	if err != nil {
+		return nil, err
+	}
+	copy(mem, code)
+	if err := protectCodeRX(mem); err != nil {
 		_ = munmap(mem)
-		return nil, fmt.Errorf("FlushInstructionCache: %w", callErr)
+		return nil, err
 	}
 	return mem, nil
 }

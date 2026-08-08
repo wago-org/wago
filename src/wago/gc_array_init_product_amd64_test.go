@@ -126,7 +126,7 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 					t.Fatal("g7 returned normally with a seven-byte i64 source")
 				}
 			}
-			t.Logf("%s product: wasm=%d code=%d codec=%d", tc.filename, len(data), len(c.Code), len(blob))
+			t.Logf("%s product: wasm=%d code=%d codec=%d", tc.filename, len(data), len(c.code), len(blob))
 		})
 	}
 	t.Logf("array-init layouts: Compiled=%d Instance=%d codeCache=%d memoryDir=%d arrayGlobal=%d plugin=%d collector=%d", unsafe.Sizeof(Compiled{}), unsafe.Sizeof(Instance{}), unsafe.Sizeof(compiledCodeCache{}), unsafe.Sizeof(compiledMemoryDirectory{}), unsafe.Sizeof(gcArrayGlobalInit{}), unsafe.Sizeof(instancePluginState{}), unsafe.Sizeof(corergc.Collector{}))
@@ -246,7 +246,7 @@ func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
 			}
 		})
 	}
-	t.Logf("array-init elem product: wasm=%d code=%d codec=%d", len(data), len(c.Code), len(blob))
+	t.Logf("array-init elem product: wasm=%d code=%d codec=%d", len(data), len(c.code), len(blob))
 }
 
 func TestGenericGCArrayInitElemExecutesWithoutFixtureHash(t *testing.T) {

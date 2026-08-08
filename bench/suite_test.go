@@ -308,7 +308,7 @@ func BenchmarkCompileFullWorkers(b *testing.B) {
 						}
 					}
 					if cm != nil {
-						b.ReportMetric(float64(len(cm.Code)), "code-B")
+						b.ReportMetric(float64(cm.CodeSize()), "code-B")
 					}
 				})
 			}

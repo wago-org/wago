@@ -14,6 +14,7 @@ const (
 	compiledCacheDynamicFuncRefTest compiledCodeCacheFlags = 1 << iota
 	compiledCacheGuardMemory
 	compiledCacheAtomicWaitHelpers
+	compiledCacheWritableCode
 )
 
 type compiledCodeCache struct {
@@ -219,6 +220,16 @@ func (c *Compiled) ensureCodeCache() {
 	}
 }
 
+func (c *Compiled) checkOpen() error {
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if c.codeCache.closed {
+		return fmt.Errorf("compiled module is closed")
+	}
+	return nil
+}
+
 func (c *Compiled) acquireCode() (uintptr, error) {
 	c.ensureCodeCache()
 	cc := c.codeCache
@@ -228,8 +239,8 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 		return 0, fmt.Errorf("compiled module is closed")
 	}
 	if cc.mem == nil {
-		codeLen := len(c.Code)
-		mem, base, err := coreruntime.MapCode(c.Code)
+		codeLen := len(c.code)
+		mem, base, err := coreruntime.MapCode(c.code)
 		if err != nil {
 			return 0, err
 		}
@@ -238,7 +249,13 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 		// onto the RX mapping. MapCode's mmap slice is page-rounded; exposing that
 		// padding would change codec bytes and binding-independent declarations.
 		// The original Go-heap backing can now be reclaimed.
-		c.Code = mem[:codeLen:codeLen]
+		c.code = mem[:codeLen:codeLen]
+	}
+	if cc.flags&compiledCacheWritableCode != 0 {
+		if err := coreruntime.SealCode(cc.mem); err != nil {
+			return 0, err
+		}
+		cc.flags &^= compiledCacheWritableCode
 	}
 	cc.refs++
 	return cc.base, nil
@@ -258,8 +275,36 @@ func (c *Compiled) releaseCode() {
 		_ = coreruntime.Unmap(cc.mem)
 		cc.mem = nil
 		cc.base = 0
-		c.Code = nil
+		c.code = nil
 	}
+}
+
+// replaceDecoded installs decoded state without orphaning an executable image.
+// Reuse is allowed before instantiation, but a receiver with live instances
+// remains their code owner and cannot be replaced.
+func (c *Compiled) replaceDecoded(decoded Compiled) error {
+	if cc := c.codeCache; cc != nil {
+		cc.mu.Lock()
+		if cc.refs != 0 {
+			cc.mu.Unlock()
+			return fmt.Errorf("wago: cannot replace compiled module with %d live instance(s)", cc.refs)
+		}
+		mem := cc.mem
+		cc.mem = nil
+		cc.base = 0
+		cc.closed = true
+		c.code = nil
+		cc.mu.Unlock()
+		goruntime.SetFinalizer(c, nil)
+		if mem != nil {
+			if err := coreruntime.Unmap(mem); err != nil {
+				return fmt.Errorf("release replaced compiled code: %w", err)
+			}
+		}
+	}
+	*c = decoded
+	installCompiledFinalizer(c)
+	return nil
 }
 
 // Close releases the executable code mapping cached for this compiled module.
@@ -287,6 +332,6 @@ func (c *Compiled) Close() error {
 	mem := cc.mem
 	cc.mem = nil
 	cc.base = 0
-	c.Code = nil
+	c.code = nil
 	return coreruntime.Unmap(mem)
 }

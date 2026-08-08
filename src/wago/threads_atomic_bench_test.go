@@ -46,7 +46,7 @@ func BenchmarkThreadsAtomicInvoke(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(len(compiled.Code)), "code-B")
+			b.ReportMetric(float64(len(compiled.code)), "code-B")
 		})
 	}
 }

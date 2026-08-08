@@ -94,8 +94,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 }
 
 func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
-	input := &Compiled{
-		Code:           []byte{0},
+	input := newHandBuiltCompiled([]byte{0}, Compiled{
 		Entry:          []int{0},
 		NumImports:     1,
 		dynamicImports: true,
@@ -104,7 +103,7 @@ func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 		Funcs:          []FuncSig{{}},
 		FuncTypeID:     []uint64{0, 0},
 		Exports:        map[string]int{"": 1},
-	}
+	})
 
 	got := roundTripCompiled(t, input)
 	if len(got.Imports) != 1 || got.Imports[0] != "" {

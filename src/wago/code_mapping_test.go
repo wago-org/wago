@@ -8,27 +8,27 @@ import (
 	"unsafe"
 )
 
-func TestCompiledReleasesHeapCodeAfterExecutableMapping(t *testing.T) {
+func TestSerialCompiledSealsExecutableMappingInPlace(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), fibWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	original := unsafe.Pointer(&c.Code[0])
+	original := unsafe.Pointer(&c.code[0])
 	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if len(c.codeCache.mem) == 0 || len(c.Code) == 0 {
+	if len(c.codeCache.mem) == 0 || len(c.code) == 0 {
 		t.Fatal("executable mapping or readable code view is empty")
 	}
 	mapped := unsafe.Pointer(&c.codeCache.mem[0])
-	if got := unsafe.Pointer(&c.Code[0]); got != mapped {
+	if got := unsafe.Pointer(&c.code[0]); got != mapped {
 		t.Fatalf("compiled code still uses heap backing %p (mapped %p, original %p)", got, mapped, original)
 	}
-	if mapped == original {
-		t.Fatal("test did not observe a distinct executable mapping")
+	if mapped != original {
+		t.Fatalf("first Instantiate copied serial native code: mapped %p, original %p", mapped, original)
 	}
 	if _, err := c.MarshalBinary(); err != nil {
 		t.Fatalf("marshal mapped code: %v", err)
@@ -66,6 +66,9 @@ func TestCompiledCloseKeepsExistingInstanceAlive(t *testing.T) {
 	}
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close with live instance: %v", err)
+	}
+	if got := c.CodeSize(); got != 0 {
+		t.Fatalf("CodeSize after Close with live instance = %d, want 0", got)
 	}
 	if _, err := Instantiate(c, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("Instantiate after Close error = %v, want closed", err)
