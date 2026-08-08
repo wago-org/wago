@@ -526,12 +526,16 @@ is visible. Tiny copy retains overlap-safe scalar stores, while Tiny fill and co
 payload first and scan the final range once through the incremental write barrier to preserve tri-color correctness.
 Numeric fill/copy/init operations mutate the already-validated little-endian payload directly.
 Same-array copy preserves memmove semantics and allocates no temporary buffer. Throughput remembered membership
-uses a handle-owned bit plus one cold-path dense-list compaction, and cards are non-collecting scaffolding coalesced to one dirty interval per
-old/large array. Nursery writes create no cards; bulk barriers inspect only the overwritten range and leave exact
-removal to collection-time pruning. Collector-owned promotion-plan scratch is cleared and reused after success or rollback;
-together these metadata changes make the current fixed `gc.Collector` 672 bytes and `handleEntry` 20 bytes. Collector tests
-separately prove nullable/non-null storage compatibility, rejected-copy atomicity, bounded metadata growth, Throughput
-remembered/card publication, promotion rollback, and Tiny remark preservation.
+uses a handle-owned bit plus a dense dirty-object vector. Authoritative 128-byte payload cards retain linked, coalesced
+byte ranges per old/large object, while globals/tables use stable-index bitmaps plus one compact dirty-slot vector.
+Nursery destinations create no object cards. Bulk barriers publish the complete destination first, then dirty the exact
+byte range without rescanning values. Minor collection scans only exact transient roots, dirty persistent slots, and
+those card ranges before tracing nursery survivors. A metadata-growth injection takes an explicit whole-object or
+full-persistent-root fallback rather than dropping reachability. Collector-owned promotion-plan scratch is cleared and
+reused after success or rollback. The Native collector view is ABI v4 because `objectCard` adds a one-based range link;
+`handleEntry` remains 20 bytes, `Config` 64 bytes, and the current linux/amd64 `gc.Collector` is 1,064 bytes. Collector
+tests separately prove nullable/non-null storage compatibility, rejected-copy atomicity, sparse/dense card behavior,
+root bitmap consistency, failure fallback, promotion rollback, and Tiny remark preservation.
 
 The exact copy product also contains a mutable GC array global. Its overlap functions allocate one array,
 run only the non-collecting copy helper while that local is live, and perform `global.set` as the final native

@@ -575,12 +575,12 @@ func TestBulkWriteBarrierIsPostWriteContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A pre-write call cannot observe the soon-to-be-written nursery ref and is
-	// therefore not a valid barrier sequence. Do not run collection here: this is
-	// a contract test for publication order, not a blessing of unsafe behavior.
+	// The range barrier records metadata without rescanning destination values.
+	// Callers still use it post-write, but an early call therefore conservatively
+	// dirties the object rather than inspecting its current null contents.
 	c.BulkWriteBarrier(arr, 0, 1)
-	if c.RememberedCount() != 0 {
-		t.Fatalf("pre-write bulk barrier remembered unwritten nursery ref: %d", c.RememberedCount())
+	if c.RememberedCount() != 1 {
+		t.Fatalf("bulk barrier did not dirty destination object: %d", c.RememberedCount())
 	}
 
 	d, err := c.desc(3)
@@ -605,38 +605,33 @@ func TestBulkWriteBarrierIsPostWriteContract(t *testing.T) {
 	}
 }
 
-func TestCardMetadataRetainsFullIndexes(t *testing.T) {
+func TestCardMetadataRetainsDisjointFixedCards(t *testing.T) {
 	c := newTestCollector(t, Config{})
-	arr, err := c.NewArrayDefault(3, 1)
+	arr, err := c.NewArrayDefault(3, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	const elementIndex = uint32(0x1_0001)
-	c.CardMarkArray(arr, elementIndex)
+	c.CardMarkArray(arr, 100)
 	if len(c.objectCards) != 0 {
 		t.Fatalf("nursery array recorded generational cards: %d", len(c.objectCards))
 	}
 	if err := c.ForcePromote(arr); err != nil {
 		t.Fatal(err)
 	}
-	c.CardMarkArray(arr, elementIndex)
-	if len(c.objectCards) != 1 {
-		t.Fatalf("object cards=%d, want 1", len(c.objectCards))
+	c.CardMarkArray(arr, 100)
+	if len(c.objectCards) != 1 || c.objectCards[0].index != 384 || c.objectCards[0].end != 511 {
+		t.Fatalf("first fixed card = %+v", c.objectCards)
 	}
-	if got := c.objectCards[0].index; got != elementIndex {
-		t.Fatalf("object card index=%#x, want %#x", got, elementIndex)
+	c.CardMarkArray(arr, 900)
+	if len(c.objectCards) != 2 {
+		t.Fatalf("distant dirty cards coalesced: %+v", c.objectCards)
 	}
-
-	c.BulkWriteBarrier(arr, ^uint32(0)-1, 4)
-	if len(c.objectCards) != 1 {
-		t.Fatalf("object card ranges=%d, want 1", len(c.objectCards))
+	if c.objectCards[1].index != 3584 || c.objectCards[1].end != 3711 {
+		t.Fatalf("second fixed card = %+v", c.objectCards[1])
 	}
-	if got := c.objectCards[0].index; got != elementIndex {
-		t.Fatalf("coalesced start index=%#x, want %#x", got, elementIndex)
-	}
-	if got := c.objectCards[0].end; got != ^uint32(0) {
-		t.Fatalf("coalesced end index=%#x, want saturated %#x", got, ^uint32(0))
+	c.CardMarkArray(arr, 100)
+	if len(c.objectCards) != 2 {
+		t.Fatalf("duplicate card retained: %+v", c.objectCards)
 	}
 }
 

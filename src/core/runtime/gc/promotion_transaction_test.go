@@ -2,7 +2,6 @@ package gc
 
 import (
 	"errors"
-	"maps"
 	"slices"
 	"strconv"
 	"testing"
@@ -17,7 +16,9 @@ type promotionStateSnapshot struct {
 	remembered     []uint32
 	objectCards    []objectCard
 	slotCards      []slotCard
-	slotCardSlot   map[uint64]uint32
+	globalCardBits []uint64
+	tableCardBits  []uint64
+	rootFallback   bool
 	throughput     throughputHeap
 }
 
@@ -34,7 +35,9 @@ func snapshotPromotionState(c *Collector) promotionStateSnapshot {
 		remembered:     slices.Clone(c.remembered),
 		objectCards:    slices.Clone(c.objectCards),
 		slotCards:      slices.Clone(c.slotCards),
-		slotCardSlot:   maps.Clone(c.slotCardSlot),
+		globalCardBits: slices.Clone(c.globalCardBits),
+		tableCardBits:  slices.Clone(c.tableCardBits),
+		rootFallback:   c.rootCardFallback,
 		throughput:     h,
 	}
 }
@@ -206,7 +209,8 @@ func assertPromotionStateEqual(t *testing.T, c *Collector, want promotionStateSn
 		t.Fatalf("failed promotion mutated marks: got %v want %v", got.mark, want.mark)
 	}
 	if !slices.Equal(got.remembered, want.remembered) || !slices.Equal(got.objectCards, want.objectCards) ||
-		!slices.Equal(got.slotCards, want.slotCards) || !maps.Equal(got.slotCardSlot, want.slotCardSlot) {
+		!slices.Equal(got.slotCards, want.slotCards) ||
+		!slices.Equal(got.globalCardBits, want.globalCardBits) || !slices.Equal(got.tableCardBits, want.tableCardBits) || got.rootFallback != want.rootFallback {
 		t.Fatal("failed promotion mutated remembered or card metadata")
 	}
 	if !throughputHeapsEquivalent(got.throughput, want.throughput) {

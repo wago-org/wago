@@ -64,6 +64,16 @@ enclosing tracing/marking phase. Phase values are therefore additive rather than
 double-counting object scans. Verification and shadow tracing are suspended from
 cycle timing and work counters.
 
+For Throughput minor cycles, `DirtyObjectCards` counts fixed cards covered by
+linked dirty byte ranges rather than dirty objects; `DirtyRootCards` counts
+stable global/table slot bits. `ScannedSlots` is the exact number of reference
+slots visited through card ranges. `UsefulObjectCards` counts cards that actually
+contained a nursery edge, and `WholeObjectScansAvoided` counts dirty objects for
+which clean payload cards were skipped. Metadata-growth fallbacks are explicit:
+a missing object range performs one whole-object scan, while root-card growth
+failure enumerates every persistent slot. These fallback scans remain visible in
+whole-object/root counters rather than silently losing reachability.
+
 The Throughput full collector queues dead old spans and reconstructs indexed free
 space lazily. Consequently `FreeSpaceReconstructionNS` and
 `FragmentationRecoveryNS` may legitimately be zero for the full pause; the
@@ -89,13 +99,15 @@ test integrations can use `gc.ClassifiedRoots` or `gc.RootGroups` to report:
 - foreign instances; and
 - snapshot temporaries.
 
-Collector-owned global and table slots are classified automatically. Runtime
-frame walkers use an allocation-free classified direct-root interface for native
-frames, Runtime-domain globals, and tables. Public-token, host-boundary, foreign-
-instance, and constant-expression/snapshot temporary slots retain their exact
-class, including across telemetry reset. Counts are visits, not deduplicated
-object identities; Tiny's initial mark and remark each enumerate roots and
-therefore each contribute a visit.
+Collector-owned global and table slots are classified automatically. Throughput
+minor collection reports only dirty collector slots; full and Tiny collection
+report every persistent slot. Runtime frame walkers use an allocation-free
+classified direct-root interface for transient native frames, Runtime-domain
+globals, and tables that are not owned by the collector slot directory. Public-
+token, host-boundary, foreign-instance, and constant-expression/snapshot
+temporary slots retain their exact class, including across telemetry reset.
+Counts are visits, not deduplicated object identities; Tiny's initial mark and
+remark each enumerate roots and therefore each contribute a visit.
 
 ## Dynamic paths
 
@@ -197,8 +209,11 @@ and card scanning when run with `wago_gcstats`.
 
 - `BenchmarkGCCollectionMatrix`: Throughput minor/full and Tiny full across 0%,
   1%, 10%, 50%, and 90% survival and four pointer-density layouts.
-- `BenchmarkGCSparseRememberedArray`: two distant writes versus every-slot writes
-  in large old reference arrays at the same two-object allocation rate.
+- `BenchmarkGCSparseRememberedArray`: 128/256/512-byte cards, two distant writes
+  versus every-slot writes in large old reference arrays at the same two-object
+  allocation rate.
+- `BenchmarkGCDirtyPersistentRoots`: one dirty collector global with 1, 64, or
+  4,096 total slots; minor telemetry must report one visit in every case.
 - `BenchmarkGCRootClassMatrix`: all six required ownership classes at 1, 64, and
   4,096 roots.
 - `BenchmarkGCTinyStepMatrix`: bounded-step baseline for large reference arrays.

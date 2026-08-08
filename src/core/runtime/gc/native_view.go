@@ -6,7 +6,7 @@ import "unsafe"
 // generated code. Native code must compare this value before following any
 // pointer. The view is refreshed in place whenever a growable backing slice can
 // relocate; callers must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 3
+const NativeABIVersion uint32 = 4
 
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
@@ -23,10 +23,11 @@ const (
 	NativeSpaceLarge             byte = byte(spaceLarge)
 	NativeSpaceTiny              byte = byte(spaceTiny)
 	NativeSpaceCount                  = 5
-	NativeObjectCardStride            = 12
+	NativeObjectCardStride            = 16
 	NativeObjectCardHandleOffset      = 0
 	NativeObjectCardStartOffset       = 4
 	NativeObjectCardEndOffset         = 8
+	NativeObjectCardNextOffset        = 12
 )
 
 // NativeSpaceView names one collector heap backing. Space zero deliberately
@@ -147,7 +148,7 @@ func (c *Collector) refreshNativeView() {
 }
 
 // refreshNativeCards republishes the relocatable object-card backing after
-// append/remove/clear operations. In-place interval widening needs no refresh.
+// append/remove/clear operations. In-place range coalescing needs no refresh.
 func (c *Collector) refreshNativeCards() {
 	if c == nil || c.nativeView == nil {
 		return

@@ -6,6 +6,7 @@ const (
 	defaultThroughputHeapBytes  = 16 << 20
 	defaultThroughputPageBytes  = 64 << 10
 	defaultThroughputClassLimit = 32 << 10
+	defaultThroughputCardBytes  = 128
 )
 
 // ValidateConfig rejects unsupported collector-profile combinations without

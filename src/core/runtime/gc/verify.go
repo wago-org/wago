@@ -128,6 +128,21 @@ func (c *Collector) verifyRememberedShadow() error {
 		if containsNursery && !seenRemembered[h] {
 			return fmt.Errorf("gc: shadow verifier found unremembered old-to-nursery edge from handle %d", h)
 		}
+		if containsNursery {
+			if err := c.verifyNurseryEdgesCarded(h); err != nil {
+				return err
+			}
+		}
+	}
+	for i, r := range c.globalSlots {
+		if c.isNurseryRef(r) && !c.rootCardFallback && !cardBitIsSet(c.globalCardBits, uint32(i)) {
+			return fmt.Errorf("gc: shadow verifier found uncarded nursery global %d", i)
+		}
+	}
+	for i, r := range c.tableSlots {
+		if c.isNurseryRef(r) && !c.rootCardFallback && !cardBitIsSet(c.tableCardBits, uint32(i)) {
+			return fmt.Errorf("gc: shadow verifier found uncarded nursery table %d", i)
+		}
 	}
 	return nil
 }
@@ -176,6 +191,57 @@ func (c *Collector) verifyScanObjectRefs(h uint32, visit func(Ref)) error {
 	return nil
 }
 
+func (c *Collector) objectCardCovers(h, payloadOffset uint32) bool {
+	if h == 0 || int(h) >= len(c.handles) {
+		return false
+	}
+	for slot, steps := c.handles[h].cardSlot, 0; slot != 0 && steps <= len(c.objectCards); steps++ {
+		if !slotIndexOK(slot-1, len(c.objectCards)) {
+			return false
+		}
+		card := c.objectCards[slot-1]
+		if card.handle == h && payloadOffset >= card.index && payloadOffset <= card.end {
+			return true
+		}
+		slot = card.next
+	}
+	return false
+}
+
+func (c *Collector) verifyNurseryEdgesCarded(h uint32) error {
+	r := makeObjRef(h)
+	b := c.bytes(r)
+	d, err := c.refDesc(r)
+	if err != nil {
+		return err
+	}
+	check := func(off uint32) error {
+		child := Ref(binary.LittleEndian.Uint32(b[PayloadOffset+off:]))
+		if c.isNurseryRef(child) && c.handles[h].cardSlot != 0 && !c.objectCardCovers(h, off) {
+			return fmt.Errorf("gc: shadow verifier found uncarded old-to-nursery edge from handle %d at payload byte %d", h, off)
+		}
+		return nil
+	}
+	if d.Kind == KindStruct {
+		for _, field := range d.Fields {
+			if isCollectorRefKind(field.Kind) {
+				if err := check(field.Offset); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if d.ArrayElementsAreRefs() {
+		for i := uint32(0); i < c.header(r).Aux; i++ {
+			if err := check(i * d.ElemSize); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // verifyNurseryEvacuated is the expensive assertion for successful throughput
 // minor collections. It deliberately scans all handles only in verification
 // mode; the release cleanup path remains nursery-bounded.
@@ -191,58 +257,73 @@ func (c *Collector) verifyNurseryEvacuated() error {
 	return nil
 }
 
-// verifyCardMetadata checks only metadata ownership/bounds. Card entries are a
-// scaffold for future card scanning, so they may outlive the exact young edge
-// that created them; Verify rejects stale object handles and unsupported or
-// out-of-range slot cards before later collectors can depend on them.
+// verifyCardMetadata proves that every card range is reachable from exactly one
+// live old/large handle and that the dense persistent-root vectors agree with
+// their stable-index bitmaps.
 func (c *Collector) verifyCardMetadata() error {
-	for i, card := range c.objectCards {
-		if card.handle == 0 || !slotIndexOK(card.handle, len(c.handles)) || c.handles[card.handle].space == spaceFree {
-			return fmt.Errorf("gc: invalid object card handle %d", card.handle)
-		}
-		if card.end < card.index {
-			return fmt.Errorf("gc: invalid object card range %d..%d", card.index, card.end)
-		}
-		if c.handles[card.handle].cardSlot != uint32(i+1) {
-			return fmt.Errorf("gc: object card handle %d slot=%d, want %d", card.handle, c.handles[card.handle].cardSlot, i+1)
-		}
-	}
+	seenObjectCards := make([]bool, len(c.objectCards))
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		slot := c.handles[h].cardSlot
-		if slot == 0 {
+		for steps := 0; slot != 0; steps++ {
+			if steps > len(c.objectCards) || !slotIndexOK(slot-1, len(c.objectCards)) {
+				return fmt.Errorf("gc: handle %d has cyclic or stale object card slot %d", h, slot)
+			}
+			pos := slot - 1
+			if seenObjectCards[pos] {
+				return fmt.Errorf("gc: object card slot %d is multiply linked", slot)
+			}
+			seenObjectCards[pos] = true
+			card := c.objectCards[pos]
+			if card.handle != h || (c.handles[h].space != spaceOld && c.handles[h].space != spaceLarge) {
+				return fmt.Errorf("gc: object card slot %d owner=%d, want live old/large handle %d", slot, card.handle, h)
+			}
+			payloadBytes := c.handles[h].size - PayloadOffset
+			if card.end < card.index || card.index >= payloadBytes || card.end >= payloadBytes || card.index%c.cardBytes != 0 {
+				return fmt.Errorf("gc: invalid object card range %d..%d for handle %d payload %d", card.index, card.end, h, payloadBytes)
+			}
+			if card.end != payloadBytes-1 && (card.end+1)%c.cardBytes != 0 {
+				return fmt.Errorf("gc: unaligned object card end %d for handle %d", card.end, h)
+			}
+			slot = card.next
+		}
+	}
+	for i, card := range c.objectCards {
+		if card.handle == 0 {
+			if card.next != 0 {
+				return fmt.Errorf("gc: tombstoned object card %d retains link %d", i, card.next)
+			}
 			continue
 		}
-		if !slotIndexOK(slot-1, len(c.objectCards)) || c.objectCards[slot-1].handle != h {
-			return fmt.Errorf("gc: handle %d has stale object card slot %d", h, slot)
+		if !seenObjectCards[i] {
+			return fmt.Errorf("gc: unreachable object card slot %d for handle %d", i+1, card.handle)
 		}
 	}
-	if len(c.slotCardSlot) != len(c.slotCards) {
-		return fmt.Errorf("gc: slot card index size %d, want %d", len(c.slotCardSlot), len(c.slotCards))
-	}
-	for i, card := range c.slotCards {
+	seenGlobals := make([]bool, len(c.globalSlots))
+	seenTables := make([]bool, len(c.tableSlots))
+	for _, card := range c.slotCards {
+		var seen []bool
+		var bits []uint64
 		switch card.kind {
 		case SlotGlobal:
-			if !slotIndexOK(card.index, len(c.globalSlots)) {
-				return fmt.Errorf("gc: invalid global slot card %d", card.index)
-			}
+			seen, bits = seenGlobals, c.globalCardBits
 		case SlotTable:
-			if !slotIndexOK(card.index, len(c.tableSlots)) {
-				return fmt.Errorf("gc: invalid table slot card %d", card.index)
-			}
+			seen, bits = seenTables, c.tableCardBits
 		default:
 			return fmt.Errorf("gc: invalid slot card kind %d", card.kind)
 		}
-		if slot := c.slotCardSlot[slotCardKey(card.kind, card.index)]; slot != uint32(i+1) {
-			return fmt.Errorf("gc: slot card %d:%d slot=%d, want %d", card.kind, card.index, slot, i+1)
+		if !slotIndexOK(card.index, len(seen)) || seen[card.index] || !cardBitIsSet(bits, card.index) {
+			return fmt.Errorf("gc: invalid or duplicate slot card %d:%d", card.kind, card.index)
+		}
+		seen[card.index] = true
+	}
+	for i := range seenGlobals {
+		if cardBitIsSet(c.globalCardBits, uint32(i)) != seenGlobals[i] {
+			return fmt.Errorf("gc: global card bit/list mismatch at %d", i)
 		}
 	}
-	for key, slot := range c.slotCardSlot {
-		if slot == 0 || !slotIndexOK(slot-1, len(c.slotCards)) {
-			return fmt.Errorf("gc: stale slot card index %#x=%d", key, slot)
-		}
-		card := c.slotCards[slot-1]
-		if slotCardKey(card.kind, card.index) != key {
-			return fmt.Errorf("gc: slot card index %#x points to %d:%d", key, card.kind, card.index)
+	for i := range seenTables {
+		if cardBitIsSet(c.tableCardBits, uint32(i)) != seenTables[i] {
+			return fmt.Errorf("gc: table card bit/list mismatch at %d", i)
 		}
 	}
 	return nil

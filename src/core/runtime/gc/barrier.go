@@ -8,8 +8,9 @@ type SlotKind uint8
 
 type objectCard struct {
 	handle uint32
-	index  uint32 // inclusive dirty-range start
-	end    uint32 // inclusive dirty-range end
+	index  uint32 // inclusive payload-byte card-range start
+	end    uint32 // inclusive payload-byte card-range end
+	next   uint32 // one-based next card range for the same object
 }
 
 type slotCard struct {
@@ -23,23 +24,58 @@ const (
 	SlotFrame
 )
 
-// WriteBarrierObject records old-to-young object edges for generational
-// collection and is the future hook for incremental tri-color marking.
+// WriteBarrierObject records an old-to-young edge when the caller cannot
+// identify the mutated field. It conservatively dirties the complete payload;
+// typed struct/array stores use writeBarrierObjectRange with the exact bytes.
 func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
-	if !parent.IsObj() || !child.IsObj() {
-		return
-	}
-	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+	if !parent.IsObj() || !child.IsObj() || !c.validObjectRef(parent) || !c.validObjectRef(child) {
 		return
 	}
 	if c.cfg.Profile == ProfileTiny {
 		c.tinyWriteBarrierObject(parent, child)
 		return
 	}
-	pe, ce := c.entry(parent), c.entry(child)
-	if (pe.space == spaceOld || pe.space == spaceLarge) && ce.space == spaceNursery {
-		c.remember(handleOf(parent))
+	h := handleOf(parent)
+	e := &c.handles[h]
+	if (e.space != spaceOld && e.space != spaceLarge) || c.entry(child).space != spaceNursery {
+		return
 	}
+	c.remember(h)
+	c.markWholeObjectCard(h)
+}
+
+// writeBarrierObjectRange is the post-write Throughput barrier for a known
+// payload-byte interval. Collection is synchronous, so publishing the store
+// before its card cannot race a collector.
+func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end uint32) {
+	// Typed callers have already resolved the parent and validated the stored
+	// child. Check parent generation before decoding the child so ordinary
+	// nursery initialization exits with no duplicate handle-table work.
+	if c.cfg.Profile == ProfileTiny {
+		if child.IsObj() {
+			c.tinyWriteBarrierObject(parent, child)
+		}
+		return
+	}
+	h := handleOf(parent)
+	e := &c.handles[h]
+	if e.space != spaceOld && e.space != spaceLarge {
+		return
+	}
+	if !child.IsObj() || c.entry(child).space != spaceNursery {
+		return
+	}
+	c.remember(h)
+	if slot := e.cardSlot; slot != 0 && slotIndexOK(slot-1, len(c.objectCards)) {
+		card := c.objectCards[slot-1]
+		if card.handle == h && start >= card.index && end <= card.end {
+			if c.telemetryEnabled() {
+				c.cfg.Telemetry.pendingDuplicateDirties++
+			}
+			return
+		}
+	}
+	c.addObjectCardRange(h, start, end)
 }
 
 // WriteBarrierRoot publishes a child stored in an exact externally walked root
@@ -99,11 +135,21 @@ func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
 	if c.cfg.Profile == ProfileTiny || !array.IsObj() || !c.validObjectRef(array) {
 		return
 	}
-	e := c.entry(array)
+	h := handleOf(array)
+	e := &c.handles[h]
 	if e.space != spaceOld && e.space != spaceLarge {
 		return
 	}
-	c.addObjectCard(handleOf(array), elementIndex)
+	d, err := c.refDesc(array)
+	if err != nil || d.Kind != KindArray || !d.ArrayElementsAreRefs() || elementIndex >= c.header(array).Aux {
+		return
+	}
+	off := uint64(elementIndex) * uint64(d.ElemSize)
+	if off > uint64(^uint32(0)) {
+		return
+	}
+	c.remember(h)
+	c.addObjectCardRange(h, uint32(off), uint32(off)+d.ElemSize-1)
 }
 
 // BulkWriteBarrier records dirty array range metadata after a bulk ref-array
@@ -140,39 +186,103 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 	if sp != spaceOld && sp != spaceLarge {
 		return
 	}
-	end := uint64(start) + uint64(length) - 1
-	if end > uint64(^uint32(0)) {
-		end = uint64(^uint32(0))
+	d, err := c.refDesc(dst)
+	if err != nil || d.Kind != KindArray || !d.ArrayElementsAreRefs() || uint64(start)+uint64(length) > uint64(c.header(dst).Aux) {
+		return
 	}
-	c.addObjectCardRange(h, start, uint32(end))
-	// Remember conservatively when the newly written range contains a nursery
-	// edge. Do not scan unrelated elements or remove an existing remembered bit
-	// on this hot path; collection-time pruning establishes the exact cold state.
-	if c.arrayRangeContainsNurseryRef(dst, start, length) {
-		c.remember(h)
+	first := uint64(start) * uint64(d.ElemSize)
+	last := (uint64(start)+uint64(length))*uint64(d.ElemSize) - 1
+	if last > uint64(^uint32(0)) {
+		return
 	}
+	// Bulk operations already traversed the source values. Dirty the destination
+	// without a second mutator-side pass; collection decides whether each card is
+	// useful while scanning it.
+	c.remember(h)
+	c.addObjectCardRange(h, uint32(first), uint32(last))
 }
 
-func (c *Collector) addObjectCard(h, index uint32) { c.addObjectCardRange(h, index, index) }
+func (c *Collector) addObjectCard(h, payloadByte uint32) {
+	c.addObjectCardRange(h, payloadByte, payloadByte)
+}
 
 func (c *Collector) addObjectCardRange(h, start, end uint32) {
-	if h == 0 || int(h) >= len(c.handles) || end < start {
+	if h == 0 || int(h) >= len(c.handles) || end < start || c.cardBytes == 0 {
 		return
 	}
 	e := &c.handles[h]
 	if e.space != spaceOld && e.space != spaceLarge {
 		return
 	}
-	if e.cardSlot != 0 {
-		if c.telemetryEnabled() {
-			c.cfg.Telemetry.pendingDuplicateDirties++
+	payloadBytes := uint32(0)
+	if e.size > PayloadOffset {
+		payloadBytes = e.size - PayloadOffset
+	}
+	if payloadBytes == 0 || start >= payloadBytes {
+		return
+	}
+	if end >= payloadBytes {
+		end = payloadBytes - 1
+	}
+	mask := c.cardBytes - 1
+	start &^= mask
+	end |= mask
+	if end >= payloadBytes {
+		end = payloadBytes - 1
+	}
+
+	// Ranges for one object form a short linked list. Dense writes expand one
+	// range; sparse writes retain disjoint cards instead of widening across the
+	// untouched middle of a large array.
+	for slot := e.cardSlot; slot != 0; {
+		if !slotIndexOK(slot-1, len(c.objectCards)) {
+			return
 		}
-		card := &c.objectCards[e.cardSlot-1]
+		pos := slot - 1
+		card := &c.objectCards[pos]
+		next := card.next
+		if card.handle != h {
+			return
+		}
+		adjacent := uint64(end)+1 >= uint64(card.index) && uint64(card.end)+1 >= uint64(start)
+		if !adjacent {
+			slot = next
+			continue
+		}
+		duplicate := start >= card.index && end <= card.end
 		if start < card.index {
 			card.index = start
 		}
 		if end > card.end {
 			card.end = end
+		}
+		if duplicate && c.telemetryEnabled() {
+			c.cfg.Telemetry.pendingDuplicateDirties++
+		}
+		// Absorb any later ranges now bridged by this update. Tombstoned backing
+		// entries are reclaimed when all card metadata is cleared after collection.
+		link := &card.next
+		for candidate := *link; candidate != 0; {
+			candidatePos := candidate - 1
+			if !slotIndexOK(candidatePos, len(c.objectCards)) {
+				return
+			}
+			other := &c.objectCards[candidatePos]
+			candidateNext := other.next
+			if other.handle == h && uint64(card.end)+1 >= uint64(other.index) && uint64(other.end)+1 >= uint64(card.index) {
+				if other.index < card.index {
+					card.index = other.index
+				}
+				if other.end > card.end {
+					card.end = other.end
+				}
+				*other = objectCard{}
+				*link = candidateNext
+				candidate = candidateNext
+				continue
+			}
+			link = &other.next
+			candidate = candidateNext
 		}
 		return
 	}
@@ -182,13 +292,9 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 	if c.telemetryEnabled() && len(c.objectCards) == cap(c.objectCards) {
 		c.cfg.Telemetry.paths.CardGrowths++
 	}
-	c.objectCards = append(c.objectCards, objectCard{handle: h, index: start, end: end})
+	c.objectCards = append(c.objectCards, objectCard{handle: h, index: start, end: end, next: e.cardSlot})
 	e.cardSlot = uint32(len(c.objectCards))
 	c.refreshNativeCards()
-}
-
-func slotCardKey(kind SlotKind, index uint32) uint64 {
-	return uint64(kind)<<32 | uint64(index)
 }
 
 func (c *Collector) slotCardIndexOK(kind SlotKind, index uint32) bool {
@@ -202,50 +308,57 @@ func (c *Collector) slotCardIndexOK(kind SlotKind, index uint32) bool {
 	}
 }
 
+func (c *Collector) slotCardBits(kind SlotKind) *[]uint64 {
+	switch kind {
+	case SlotGlobal:
+		return &c.globalCardBits
+	case SlotTable:
+		return &c.tableCardBits
+	default:
+		return nil
+	}
+}
+
+func cardBitIsSet(bits []uint64, index uint32) bool {
+	word := index >> 6
+	return slotIndexOK(word, len(bits)) && bits[word]&(uint64(1)<<(index&63)) != 0
+}
+
+func (c *Collector) ensureSlotCardBit(kind SlotKind, index uint32) bool {
+	bits := c.slotCardBits(kind)
+	if bits == nil {
+		return false
+	}
+	words := int(index>>6) + 1
+	if len(*bits) < words {
+		*bits = append(*bits, make([]uint64, words-len(*bits))...)
+	}
+	return true
+}
+
 func (c *Collector) addSlotCard(kind SlotKind, index uint32) {
-	if !c.slotCardIndexOK(kind, index) {
+	if !c.slotCardIndexOK(kind, index) || !c.ensureSlotCardBit(kind, index) {
 		return
 	}
-	key := slotCardKey(kind, index)
-	if c.slotCardSlot != nil && c.slotCardSlot[key] != 0 {
+	bits := c.slotCardBits(kind)
+	word, bit := index>>6, uint64(1)<<(index&63)
+	if (*bits)[word]&bit != 0 {
 		if c.telemetryEnabled() {
 			c.cfg.Telemetry.pendingDuplicateDirties++
 		}
 		return
 	}
 	if injectFailure(c, failSlotCardGrowth) != nil {
+		// A correctness-preserving cold fallback scans every persistent slot at
+		// the next minor collection when bounded metadata growth is unavailable.
+		c.rootCardFallback = true
 		return
-	}
-	if c.slotCardSlot == nil {
-		c.slotCardSlot = make(map[uint64]uint32)
 	}
 	if c.telemetryEnabled() && len(c.slotCards) == cap(c.slotCards) {
 		c.cfg.Telemetry.paths.CardGrowths++
 	}
 	c.slotCards = append(c.slotCards, slotCard{kind: kind, index: index})
-	c.slotCardSlot[key] = uint32(len(c.slotCards))
-}
-func (c *Collector) pruneSlotCard(kind SlotKind, index uint32) {
-	key := slotCardKey(kind, index)
-	slot := c.slotCardSlot[key]
-	if slot == 0 {
-		return
-	}
-	pos := int(slot - 1)
-	last := len(c.slotCards) - 1
-	moved := c.slotCards[last]
-	c.slotCards[pos] = moved
-	c.slotCards = c.slotCards[:last]
-	delete(c.slotCardSlot, key)
-	if pos != last {
-		c.slotCardSlot[slotCardKey(moved.kind, moved.index)] = uint32(pos + 1)
-	}
-}
-func (c *Collector) pruneSlotCardUnlessNursery(kind SlotKind, index uint32, r Ref) {
-	if r.IsObj() && c.validObjectRef(r) && c.entry(r).space == spaceNursery {
-		return
-	}
-	c.pruneSlotCard(kind, index)
+	(*bits)[word] |= bit
 }
 func (c *Collector) remember(h uint32) {
 	if h == 0 || int(h) >= len(c.handles) {
@@ -278,6 +391,7 @@ func (c *Collector) pruneRemembered() {
 			out = append(out, h)
 		} else if h != 0 && int(h) < len(c.handles) {
 			c.handles[h].remembered = false
+			c.removeCardsForHandle(h)
 		}
 	}
 	clear(c.remembered[len(out):])
@@ -307,33 +421,58 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 		return
 	}
 	e := &c.handles[h]
-	if e.cardSlot == 0 {
-		return
+	for slot, steps := e.cardSlot, 0; slot != 0 && steps <= len(c.objectCards); steps++ {
+		if !slotIndexOK(slot-1, len(c.objectCards)) {
+			break
+		}
+		pos := slot - 1
+		next := c.objectCards[pos].next
+		c.objectCards[pos] = objectCard{}
+		slot = next
 	}
-	pos := int(e.cardSlot - 1)
-	last := len(c.objectCards) - 1
-	moved := c.objectCards[last]
-	c.objectCards[pos] = moved
-	c.objectCards = c.objectCards[:last]
 	e.cardSlot = 0
-	if pos != last && moved.handle != 0 && int(moved.handle) < len(c.handles) {
-		c.handles[moved.handle].cardSlot = uint32(pos + 1)
+	trimmed := false
+	for len(c.objectCards) > 0 && c.objectCards[len(c.objectCards)-1].handle == 0 {
+		last := len(c.objectCards) - 1
+		c.objectCards = c.objectCards[:last]
+		trimmed = true
 	}
-	c.refreshNativeCards()
+	if trimmed {
+		c.refreshNativeCards()
+	}
 }
 func (c *Collector) clearCardMetadata() {
 	if c.telemetryEnabled() && c.cfg.Telemetry.active.active {
-		c.cfg.Telemetry.active.cards.ClearedCards += uint64(len(c.objectCards) + len(c.slotCards))
+		c.cfg.Telemetry.active.cards.ClearedCards += c.dirtyObjectCardCount() + uint64(len(c.slotCards))
 	}
 	for _, card := range c.objectCards {
 		if card.handle != 0 && int(card.handle) < len(c.handles) {
 			c.handles[card.handle].cardSlot = 0
 		}
 	}
+	for _, card := range c.slotCards {
+		bits := c.slotCardBits(card.kind)
+		if bits != nil && cardBitIsSet(*bits, card.index) {
+			(*bits)[card.index>>6] &^= uint64(1) << (card.index & 63)
+		}
+	}
+	clear(c.objectCards)
+	clear(c.slotCards)
 	c.objectCards = c.objectCards[:0]
 	c.slotCards = c.slotCards[:0]
-	clear(c.slotCardSlot)
+	c.rootCardFallback = false
 	c.refreshNativeCards()
+}
+
+func (c *Collector) dirtyObjectCardCount() uint64 {
+	var count uint64
+	for _, card := range c.objectCards {
+		if card.handle == 0 || card.end < card.index || c.cardBytes == 0 {
+			continue
+		}
+		count += uint64(card.end/c.cardBytes-card.index/c.cardBytes) + 1
+	}
+	return count
 }
 
 func (c *Collector) RememberedCount() int { return len(c.remembered) }
@@ -357,29 +496,20 @@ func (c *Collector) ForcePromote(r Ref) error {
 	}
 	if c.handleContainsNurseryRef(h) {
 		c.remember(h)
+		c.markWholeObjectCard(h)
 	}
 	return nil
 }
 
-func (c *Collector) arrayRangeContainsNurseryRef(array Ref, start, length uint32) bool {
-	d, err := c.refDesc(array)
-	if err != nil || !d.ArrayElementsAreRefs() || length == 0 {
-		return false
+func (c *Collector) markWholeObjectCard(h uint32) {
+	if h == 0 || int(h) >= len(c.handles) {
+		return
 	}
-	arrayLen := c.header(array).Aux
-	if uint64(start)+uint64(length) > uint64(arrayLen) {
-		return false
+	size := c.handles[h].size
+	if size <= PayloadOffset {
+		return
 	}
-	b := c.bytes(array)
-	off := uint64(PayloadOffset) + uint64(start)*uint64(d.ElemSize)
-	for i := uint32(0); i < length; i++ {
-		r := Ref(uint32(b[off]) | uint32(b[off+1])<<8 | uint32(b[off+2])<<16 | uint32(b[off+3])<<24)
-		if c.isNurseryRef(r) {
-			return true
-		}
-		off += uint64(d.ElemSize)
-	}
-	return false
+	c.addObjectCardRange(h, 0, size-PayloadOffset-1)
 }
 
 func (c *Collector) handleContainsNurseryRef(h uint32) bool {

@@ -1565,8 +1565,9 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	parentNursery := a.JccPlaceholder(condE)
 
 	// Old/large arrays may proceed only when the helper has already allocated a
-	// valid card slot. Native code can then widen that stable interval without
-	// growing or relocating collector metadata.
+	// valid fixed-card range covering this payload byte. A store in another card
+	// falls back so Go can append or coalesce linked metadata without relocating it
+	// under native code.
 	a.Load32(RAX, R9, gc.NativeHandleCardSlotOffset)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
@@ -1584,15 +1585,11 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.Cmp32(RAX, RDX)
 	addFallback(a.JccPlaceholder(condNE))
 	a.Load32(RAX, R10, gc.NativeObjectCardStartOffset)
-	a.Cmp32(RCX, RAX)
-	startCovered := a.JccPlaceholder(condAE)
-	a.Store32(R10, gc.NativeObjectCardStartOffset, RCX)
-	a.PatchRel32(startCovered, a.Len())
+	a.Cmp32(RSI, RAX)
+	addFallback(a.JccPlaceholder(condB))
 	a.Load32(RAX, R10, gc.NativeObjectCardEndOffset)
-	a.Cmp32(RCX, RAX)
-	endCovered := a.JccPlaceholder(condBE)
-	a.Store32(R10, gc.NativeObjectCardEndOffset, RCX)
-	a.PatchRel32(endCovered, a.Len())
+	a.Cmp32(RSI, RAX)
+	addFallback(a.JccPlaceholder(condA))
 
 	store := a.Len()
 	a.PatchRel32(parentNurseryYoungChild, store)

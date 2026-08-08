@@ -486,7 +486,7 @@ func (s sliceRootSlot) SetRef(r Ref) { s.slice[s.idx] = r }
 
 func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
 
-func (c *Collector) newRootSlot(slots *[]Ref, initial Ref) (uint32, error) {
+func (c *Collector) newRootSlot(kind SlotKind, slots *[]Ref, initial Ref) (uint32, error) {
 	if err := c.errIfClosed(); err != nil {
 		return 0, err
 	}
@@ -494,7 +494,10 @@ func (c *Collector) newRootSlot(slots *[]Ref, initial Ref) (uint32, error) {
 		return 0, err
 	}
 	*slots = append(*slots, initial)
-	return uint32(len(*slots) - 1), nil
+	index := uint32(len(*slots) - 1)
+	c.ensureSlotCardBit(kind, index)
+	c.WriteBarrierSlot(kind, index, initial)
+	return index, nil
 }
 
 // NewGlobalSlot creates a nullable global root slot for trusted/test setup. It
@@ -512,7 +515,7 @@ func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 // NewCheckedGlobalSlot creates a nullable global root slot after validating the
 // initial ref. Rejected refs do not append a slot.
 func (c *Collector) NewCheckedGlobalSlot(initial Ref) (uint32, error) {
-	return c.newRootSlot(&c.globalSlots, initial)
+	return c.newRootSlot(SlotGlobal, &c.globalSlots, initial)
 }
 
 // NewCheckedClassifiedGlobalSlot creates a collector-owned persistent slot and
@@ -522,7 +525,7 @@ func (c *Collector) NewCheckedClassifiedGlobalSlot(initial Ref, class RootClass)
 	if class >= rootClassCount {
 		return 0, errors.New("gc: invalid root telemetry class")
 	}
-	i, err := c.newRootSlot(&c.globalSlots, initial)
+	i, err := c.newRootSlot(SlotGlobal, &c.globalSlots, initial)
 	if err == nil && c.telemetryEnabled() {
 		c.cfg.Telemetry.setGlobalRootClass(i, class)
 	}
@@ -539,9 +542,8 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
 	}
-	c.WriteBarrierSlot(SlotGlobal, i, r)
-	c.pruneSlotCardUnlessNursery(SlotGlobal, i, r)
 	c.globalSlots[i] = r
+	c.WriteBarrierSlot(SlotGlobal, i, r)
 	return nil
 }
 
@@ -580,7 +582,7 @@ func (c *Collector) NewTableSlot(initial Ref) uint32 {
 // NewCheckedTableSlot creates a nullable table root slot after validating the
 // initial ref. Rejected refs do not append a slot.
 func (c *Collector) NewCheckedTableSlot(initial Ref) (uint32, error) {
-	return c.newRootSlot(&c.tableSlots, initial)
+	return c.newRootSlot(SlotTable, &c.tableSlots, initial)
 }
 func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if err := c.errIfClosed(); err != nil {
@@ -592,9 +594,8 @@ func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
 	}
-	c.WriteBarrierSlot(SlotTable, i, r)
-	c.pruneSlotCardUnlessNursery(SlotTable, i, r)
 	c.tableSlots[i] = r
+	c.WriteBarrierSlot(SlotTable, i, r)
 	return nil
 }
 

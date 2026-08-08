@@ -26,12 +26,11 @@ func TestNativeObjectCardViewTracksAndMutatesStableCard(t *testing.T) {
 	}
 	ptr := *(*unsafe.Pointer)(unsafe.Pointer(&view.ObjectCards))
 	words := unsafe.Slice((*uint32)(ptr), NativeObjectCardStride/4)
-	if words[NativeObjectCardHandleOffset/4] != handleOf(array) || words[NativeObjectCardStartOffset/4] != 0 || words[NativeObjectCardEndOffset/4] != 0 {
+	if words[NativeObjectCardHandleOffset/4] != handleOf(array) || words[NativeObjectCardStartOffset/4] != 0 || words[NativeObjectCardEndOffset/4] != 15 {
 		t.Fatalf("native card words = %v", words)
 	}
-	words[NativeObjectCardEndOffset/4] = 1
-	if card := c.objectCards[0]; card.handle != handleOf(array) || card.index != 0 || card.end != 1 {
-		t.Fatalf("native-widened card = %+v", card)
+	if card := c.objectCards[0]; card.handle != handleOf(array) || card.index != 0 || card.end != 15 {
+		t.Fatalf("native-published card = %+v", card)
 	}
 	root := Root(array)
 	if err := c.Verify(Slots{&root}); err != nil {

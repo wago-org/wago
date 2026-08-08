@@ -30,7 +30,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	c.markRoots(roots)
 	c.sweepAll()
 	c.pruneRemembered()
-	c.clearCardMetadata()
+	c.finishFullCardMetadata()
 	if c.cfg.VerifyAfterCollect {
 		return c.Verify(roots)
 	}
@@ -72,7 +72,7 @@ func (c *Collector) collectFullTelemetry(roots RootSet) (err error) {
 	c.sweepAllTelemetry()
 	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
 	c.pruneRemembered()
-	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	c.finishFullCardMetadata()
 	if c.cfg.VerifyAfterCollect {
 		c.cfg.Telemetry.suspend()
 		err = c.Verify(roots)
@@ -114,7 +114,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	for _, h := range c.remembered {
 		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
 			c.stats.MinorRememberedScanned++
-			c.scanObjectRefs(h, c.markNurseryRef)
+			c.scanRememberedCards(h)
 		}
 	}
 	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
@@ -172,9 +172,9 @@ func (c *Collector) collectMinorTelemetry(roots RootSet) (err error) {
 		success = true
 		return nil
 	}
-	// Minor collection traces nursery reachability only. Old/large roots are not
-	// recursively scanned; every direct old/large-to-nursery edge is represented
-	// by the remembered set, while global/table slots are scanned as roots.
+	// Minor collection traces nursery reachability only. Exact transient roots,
+	// dirty persistent slots, and dirty old/large payload cards are the complete
+	// inputs; clean persistent slots and clean old-object cards are not scanned.
 	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
 	c.clearNurseryMarks()
 	c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
@@ -194,10 +194,7 @@ func (c *Collector) collectMinorTelemetry(roots RootSet) (err error) {
 	for _, h := range c.remembered {
 		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
 			c.stats.MinorRememberedScanned++
-			if c.telemetryEnabled() && c.handles[h].cardSlot != 0 {
-				c.cfg.Telemetry.active.cards.UsefulObjectCards++
-			}
-			c.scanObjectRefs(h, c.markNurseryRef)
+			c.scanRememberedCards(h)
 		}
 	}
 	if c.telemetryEnabled() {
@@ -214,7 +211,7 @@ func (c *Collector) collectMinorTelemetry(roots RootSet) (err error) {
 	c.cfg.Telemetry.setPhase(telemetryPhaseSweep)
 	c.finishMinorEvacuationTelemetry()
 	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
-	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	c.clearCardMetadata()
 	if c.cfg.VerifyAfterCollect {
 		c.cfg.Telemetry.suspend()
 		err = c.verifyNurseryEvacuated()
@@ -239,6 +236,15 @@ func (c *Collector) collectMinorTelemetry(roots RootSet) (err error) {
 	}
 	return nil
 }
+func (c *Collector) finishFullCardMetadata() {
+	// Full Throughput collection does not evacuate live nursery objects. Retain
+	// cards while any nursery allocation survives so the next minor collection
+	// still has complete old-edge and persistent-root inputs.
+	if len(c.nurseryHandles) == 0 {
+		c.clearCardMetadata()
+	}
+}
+
 func (c *Collector) sweepAll() {
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].space != spaceFree && !c.mark[h] {

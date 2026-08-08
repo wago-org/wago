@@ -381,10 +381,9 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 	}
 }
 
-// BenchmarkGCSparseRememberedArray is the future card-table discriminator: an
-// old reference array receives either two distant young writes or dense writes.
-// Today's collector scans the whole remembered array; card-driven collection
-// should make the sparse case proportional to dirty regions instead.
+// BenchmarkGCSparseRememberedArray compares two distant young writes with a
+// fully dirty old reference array at each candidate fixed-card size. Sparse
+// collection work must remain proportional to the two dirty cards.
 func BenchmarkGCSparseRememberedArray(b *testing.B) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -395,116 +394,192 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 		b.Fatal(err)
 	}
 	for _, length := range []uint32{4 << 10, 256 << 10} {
-		for _, density := range []string{"sparse", "dense"} {
-			b.Run(fmt.Sprintf("elements=%d/%s", length, density), func(b *testing.B) {
-				cfg := Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20}
-				if collectorTelemetryEnabled {
-					cfg.Telemetry = new(Telemetry)
-				}
-				c, err := NewCollector(cfg, []TypeDesc{leaf, refs})
-				if err != nil {
-					b.Fatal(err)
-				}
-				b.Cleanup(c.Close)
-				array, err := c.NewArrayDefault(1, length)
-				if err != nil {
-					b.Fatal(err)
-				}
-				if err := c.ForcePromote(array); err != nil {
-					b.Fatal(err)
-				}
-				arrayRoot := Root(array)
-				roots := Slots{&arrayRoot}
-				var children [2]Ref
-				var pauses pauseHistogram
-				var checksum uint64
-				b.ReportAllocs()
-				b.ReportMetric(float64(length), "array-elements")
-				b.ReportMetric(2, "young-allocations/op")
-				if density == "sparse" {
-					b.ReportMetric(2, "dirty-writes/op")
-				} else {
-					b.ReportMetric(float64(length), "dirty-writes/op")
-				}
-				if collectorTelemetryEnabled {
-					c.ResetTelemetry()
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					b.StopTimer()
-					for j := range children {
-						children[j], err = c.NewStructDefault(0)
-						if err != nil {
-							b.Fatal(err)
-						}
+		for _, cardBytes := range []uint32{128, 256, 512} {
+			for _, density := range []string{"sparse", "dense"} {
+				b.Run(fmt.Sprintf("elements=%d/card-bytes=%d/%s", length, cardBytes, density), func(b *testing.B) {
+					cfg := Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20}
+					if collectorTelemetryEnabled {
+						cfg.Telemetry = new(Telemetry)
 					}
-					if density == "sparse" {
-						if err := c.ArraySet(array, 0, RefValue(children[0])); err != nil {
-							b.Fatal(err)
-						}
-						if err := c.ArraySet(array, length-1, RefValue(children[1])); err != nil {
-							b.Fatal(err)
-						}
-					} else {
-						for j := uint32(0); j < length; j++ {
-							if err := c.ArraySet(array, j, RefValue(children[j&1])); err != nil {
-								b.Fatal(err)
-							}
-						}
-					}
-					before := c.Stats()
-					b.StartTimer()
-					start := time.Now()
-					err = c.CollectMinor(roots)
-					elapsed := time.Since(start)
-					b.StopTimer()
-					pauses.record(elapsed)
+					c, err := NewCollector(cfg, []TypeDesc{leaf, refs})
 					if err != nil {
 						b.Fatal(err)
 					}
-					after := c.Stats()
-					checksum += after.MinorRememberedScanned - before.MinorRememberedScanned
-					for j, index := range []uint32{0, length - 1} {
-						v, err := c.ArrayGet(array, index)
-						if err != nil || v.Ref != children[j] {
-							b.Fatalf("array[%d] = %v, %v; want %v", index, v.Ref, err, children[j])
-						}
+					b.Cleanup(c.Close)
+					c.cardBytes = cardBytes
+					array, err := c.NewArrayDefault(1, length)
+					if err != nil {
+						b.Fatal(err)
 					}
+					if err := c.ForcePromote(array); err != nil {
+						b.Fatal(err)
+					}
+					arrayRoot := Root(array)
+					roots := Slots{&arrayRoot}
+					var children [2]Ref
+					var pauses pauseHistogram
+					var checksum uint64
+					b.ReportAllocs()
+					b.ReportMetric(float64(length), "array-elements")
+					b.ReportMetric(float64(cardBytes), "card-bytes")
+					b.ReportMetric(2, "young-allocations/op")
 					if density == "sparse" {
-						if err := c.ArraySet(array, 0, RefValue(Null())); err != nil {
-							b.Fatal(err)
-						}
-						if err := c.ArraySet(array, length-1, RefValue(Null())); err != nil {
-							b.Fatal(err)
-						}
+						b.ReportMetric(2, "dirty-writes/op")
 					} else {
-						for j := uint32(0); j < length; j++ {
-							if err := c.ArraySet(array, j, RefValue(Null())); err != nil {
+						b.ReportMetric(float64(length), "dirty-writes/op")
+					}
+					if collectorTelemetryEnabled {
+						c.ResetTelemetry()
+					}
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						b.StopTimer()
+						for j := range children {
+							children[j], err = c.NewStructDefault(0)
+							if err != nil {
 								b.Fatal(err)
 							}
 						}
+						if density == "sparse" {
+							if err := c.ArraySet(array, 0, RefValue(children[0])); err != nil {
+								b.Fatal(err)
+							}
+							if err := c.ArraySet(array, length-1, RefValue(children[1])); err != nil {
+								b.Fatal(err)
+							}
+						} else {
+							for j := uint32(0); j < length; j++ {
+								if err := c.ArraySet(array, j, RefValue(children[j&1])); err != nil {
+									b.Fatal(err)
+								}
+							}
+						}
+						before := c.Stats()
+						b.StartTimer()
+						start := time.Now()
+						err = c.CollectMinor(roots)
+						elapsed := time.Since(start)
+						b.StopTimer()
+						pauses.record(elapsed)
+						if err != nil {
+							b.Fatal(err)
+						}
+						after := c.Stats()
+						checksum += after.MinorRememberedScanned - before.MinorRememberedScanned
+						for j, index := range []uint32{0, length - 1} {
+							v, err := c.ArrayGet(array, index)
+							if err != nil || v.Ref != children[j] {
+								b.Fatalf("array[%d] = %v, %v; want %v", index, v.Ref, err, children[j])
+							}
+						}
+						if density == "sparse" {
+							if err := c.ArraySet(array, 0, RefValue(Null())); err != nil {
+								b.Fatal(err)
+							}
+							if err := c.ArraySet(array, length-1, RefValue(Null())); err != nil {
+								b.Fatal(err)
+							}
+						} else {
+							for j := uint32(0); j < length; j++ {
+								if err := c.ArraySet(array, j, RefValue(Null())); err != nil {
+									b.Fatal(err)
+								}
+							}
+						}
+						if err := c.CollectFull(roots); err != nil {
+							b.Fatal(err)
+						}
+						b.StartTimer()
 					}
-					if err := c.CollectFull(roots); err != nil {
-						b.Fatal(err)
+					b.StopTimer()
+					if checksum == 0 {
+						b.Fatal("remembered-set semantic checksum is zero")
 					}
-					b.StartTimer()
-				}
-				b.StopTimer()
-				if checksum == 0 {
-					b.Fatal("remembered-set semantic checksum is zero")
-				}
-				if collectorTelemetryEnabled {
-					snapshot, ok := c.TelemetrySnapshot()
-					if !ok {
-						b.Fatal("collector telemetry disabled")
+					if collectorTelemetryEnabled {
+						snapshot, ok := c.TelemetrySnapshot()
+						if !ok {
+							b.Fatal("collector telemetry disabled")
+						}
+						b.ReportMetric(float64(snapshot.Minor.Cards.ScannedSlots)/float64(b.N), "card-slots-scanned/op")
+						b.ReportMetric(float64(snapshot.Minor.Cards.WholeObjectScans)/float64(b.N), "whole-object-scans/op")
+						b.ReportMetric(float64(snapshot.Minor.Cards.DuplicateDirties)/float64(b.N), "duplicate-dirties/op")
 					}
-					b.ReportMetric(float64(snapshot.Minor.Cards.ScannedSlots)/float64(b.N), "card-slots-scanned/op")
-					b.ReportMetric(float64(snapshot.Minor.Cards.WholeObjectScans)/float64(b.N), "whole-object-scans/op")
-					b.ReportMetric(float64(snapshot.Minor.Cards.DuplicateDirties)/float64(b.N), "duplicate-dirties/op")
-				}
-				pauses.report(b, "minor-pause")
-			})
+					pauses.report(b, "minor-pause")
+				})
+			}
 		}
+	}
+}
+
+// BenchmarkGCDirtyPersistentRoots proves Throughput minor root work depends on
+// dirty slots rather than the complete collector-owned global directory.
+func BenchmarkGCDirtyPersistentRoots(b *testing.B) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, slots := range []int{1, 64, 4096} {
+		b.Run(fmt.Sprintf("global-slots=%d", slots), func(b *testing.B) {
+			cfg := Config{NurseryBytes: 1 << 20}
+			if collectorTelemetryEnabled {
+				cfg.Telemetry = new(Telemetry)
+			}
+			c, err := NewCollector(cfg, []TypeDesc{leaf})
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(c.Close)
+			for i := 0; i < slots; i++ {
+				c.NewGlobalSlot(Null())
+			}
+			dirty := uint32(slots - 1)
+			var pauses pauseHistogram
+			if collectorTelemetryEnabled {
+				c.ResetTelemetry()
+			}
+			b.ReportAllocs()
+			b.ReportMetric(1, "dirty-root-slots/op")
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				child, err := c.NewStructDefault(0)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := c.SetGlobalSlot(dirty, child); err != nil {
+					b.Fatal(err)
+				}
+				b.StartTimer()
+				start := time.Now()
+				err = c.CollectMinor(nil)
+				elapsed := time.Since(start)
+				b.StopTimer()
+				pauses.record(elapsed)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if c.entry(child).space != spaceOld {
+					b.Fatal("dirty global did not preserve nursery child")
+				}
+				if err := c.SetGlobalSlot(dirty, Null()); err != nil {
+					b.Fatal(err)
+				}
+				if err := c.CollectFull(nil); err != nil {
+					b.Fatal(err)
+				}
+				b.StartTimer()
+			}
+			b.StopTimer()
+			if collectorTelemetryEnabled {
+				snapshot, ok := c.TelemetrySnapshot()
+				if !ok {
+					b.Fatal("collector telemetry disabled")
+				}
+				b.ReportMetric(float64(snapshot.Minor.Cards.DirtyRootCards)/float64(b.N), "dirty-root-cards/op")
+				b.ReportMetric(float64(snapshot.Minor.Roots.Globals)/float64(b.N), "global-root-visits/op")
+			}
+			pauses.report(b, "minor-pause")
+		})
 	}
 }
 

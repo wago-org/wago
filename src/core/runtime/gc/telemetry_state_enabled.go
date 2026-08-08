@@ -433,6 +433,25 @@ func (t *Telemetry) noteObjectScan(start time.Time, size, slots uint32) {
 	}
 }
 
+func (t *Telemetry) noteCardScan(start time.Time, payloadBytes, slots, dirtyCards, usefulCards uint64, whole bool) {
+	if t == nil || !t.active.active || !t.active.suspendStart.IsZero() {
+		return
+	}
+	t.active.trace.ObjectsVisited++
+	t.active.trace.PayloadBytesVisited += payloadBytes
+	t.active.trace.ReferenceSlotsVisited += slots
+	t.active.cards.ScannedSlots += slots
+	t.active.cards.UsefulObjectCards += usefulCards
+	if whole {
+		t.active.cards.WholeObjectScans++
+	} else if dirtyCards != 0 {
+		t.active.cards.WholeObjectScansAvoided++
+	}
+	if !start.IsZero() && t.active.phase < telemetryPhaseCount {
+		t.active.nestedScanNS[t.active.phase] += uint64(time.Since(start))
+	}
+}
+
 func (t *Telemetry) noteNurseryOccupancy(objects, bytes uint64) {
 	if t == nil || !t.active.active || !t.active.suspendStart.IsZero() {
 		return

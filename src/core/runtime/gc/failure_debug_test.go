@@ -229,8 +229,8 @@ func TestInjectedCardGrowthLeavesMetadataUnchanged(t *testing.T) {
 	cleanup = armFailure(c, failSlotCardGrowth, 0)
 	c.addSlotCard(SlotGlobal, global)
 	cleanup()
-	if !reflect.DeepEqual(c.slotCards, beforeSlotCards) || len(c.slotCardSlot) != 0 {
-		t.Fatal("slot card failure partially mutated metadata")
+	if !reflect.DeepEqual(c.slotCards, beforeSlotCards) || cardBitIsSet(c.globalCardBits, global) || !c.rootCardFallback {
+		t.Fatal("slot card failure did not preserve metadata and arm the full-root fallback")
 	}
 }
 

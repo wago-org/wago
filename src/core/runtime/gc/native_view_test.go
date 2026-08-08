@@ -26,8 +26,8 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 		t.Fatalf("handle remembered field = %d", got)
 	}
 	var card objectCard
-	if unsafe.Sizeof(card) != NativeObjectCardStride || unsafe.Offsetof(card.handle) != NativeObjectCardHandleOffset || unsafe.Offsetof(card.index) != NativeObjectCardStartOffset || unsafe.Offsetof(card.end) != NativeObjectCardEndOffset {
-		t.Fatalf("object card layout changed: size=%d handle=%d start=%d end=%d", unsafe.Sizeof(card), unsafe.Offsetof(card.handle), unsafe.Offsetof(card.index), unsafe.Offsetof(card.end))
+	if unsafe.Sizeof(card) != NativeObjectCardStride || unsafe.Offsetof(card.handle) != NativeObjectCardHandleOffset || unsafe.Offsetof(card.index) != NativeObjectCardStartOffset || unsafe.Offsetof(card.end) != NativeObjectCardEndOffset || unsafe.Offsetof(card.next) != NativeObjectCardNextOffset {
+		t.Fatalf("object card layout changed: size=%d handle=%d start=%d end=%d next=%d", unsafe.Sizeof(card), unsafe.Offsetof(card.handle), unsafe.Offsetof(card.index), unsafe.Offsetof(card.end), unsafe.Offsetof(card.next))
 	}
 	var space NativeSpaceView
 	if unsafe.Sizeof(space) != NativeViewSpaceStride || unsafe.Offsetof(space.Base) != NativeSpaceBaseOffset || unsafe.Offsetof(space.Bytes) != NativeSpaceBytesOffset {

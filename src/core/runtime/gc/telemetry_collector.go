@@ -43,7 +43,7 @@ func (c *Collector) beginCollectionTelemetry(kind telemetryCycleKind) {
 	}
 	c.cfg.Telemetry.noteNurseryOccupancy(nurseryObjects, nurseryBytes)
 	active := &c.cfg.Telemetry.active
-	active.cards.DirtyObjectCards = uint64(len(c.objectCards))
+	active.cards.DirtyObjectCards = c.dirtyObjectCardCount()
 	active.cards.DirtyRootCards = uint64(len(c.slotCards))
 	active.cards.UsefulRootCards = usefulRootCards
 	active.cards.DuplicateDirties = c.cfg.Telemetry.pendingDuplicateDirties
@@ -223,6 +223,7 @@ func (c *Collector) retainedMetadataBytes() uint64 {
 		uintptr(cap(c.remembered))*unsafe.Sizeof(uint32(0)) +
 		uintptr(cap(c.objectCards))*unsafe.Sizeof(objectCard{}) +
 		uintptr(cap(c.slotCards))*unsafe.Sizeof(slotCard{}) +
+		uintptr(cap(c.globalCardBits)+cap(c.tableCardBits))*unsafe.Sizeof(uint64(0)) +
 		uintptr(cap(c.globalSlots))*unsafe.Sizeof(Ref(0)) +
 		uintptr(cap(c.tableSlots))*unsafe.Sizeof(Ref(0))
 	if c.cfg.Profile == ProfileTiny {

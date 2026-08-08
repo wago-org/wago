@@ -99,8 +99,8 @@ type NurseryTelemetry struct {
 	AgeBytes         [8]uint64 `json:"age_bytes"`
 }
 
-// CardTelemetry makes the current whole-object remembered scan explicit. It is
-// intentionally suitable as the baseline for card-driven minor collection.
+// CardTelemetry reports fixed-card and dirty-root work for Throughput minor
+// collection, including explicit whole-object fallback scans.
 type CardTelemetry struct {
 	DirtyObjectCards        uint64 `json:"dirty_object_cards"`
 	DirtyRootCards          uint64 `json:"dirty_root_cards"`

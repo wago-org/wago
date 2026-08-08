@@ -122,15 +122,58 @@ func (c *Collector) markNurseryRoots(roots RootSet) {
 		} else if roots != nil && !rangeRootRefs(roots, func(r Ref) bool { c.markNurseryRef(r); return true }) {
 			roots.RangeRoots(func(s RootSlot) bool { c.markNurseryRef(s.GetRef()); return true })
 		}
-		for _, r := range c.globalSlots {
-			c.markNurseryRef(r)
-		}
-		for _, r := range c.tableSlots {
-			c.markNurseryRef(r)
-		}
+		c.markDirtyPersistentRoots(false)
 		return
 	}
-	c.enumerateRoots(roots, rootMarkNursery)
+	c.markTelemetryRootSet(roots, RootNativeFrame, rootMarkNursery)
+	c.markDirtyPersistentRoots(true)
+}
+
+// markDirtyPersistentRoots uses stable slot-card indexes as the authoritative
+// Throughput minor-GC root input. Full and Tiny collections still enumerate all
+// persistent roots.
+func (c *Collector) markDirtyPersistentRoots(measured bool) {
+	if c.rootCardFallback {
+		c.markPersistentRoots(rootMarkNursery, measured)
+		return
+	}
+	previousPhase := telemetryPhaseNone
+	if measured {
+		previousPhase = c.cfg.Telemetry.active.phase
+		c.cfg.Telemetry.setPhase(telemetryPhasePersistentRoots)
+		defer c.cfg.Telemetry.setPhase(previousPhase)
+	}
+	for _, card := range c.slotCards {
+		var r Ref
+		class := RootTable
+		switch card.kind {
+		case SlotGlobal:
+			if !slotIndexOK(card.index, len(c.globalSlots)) {
+				continue
+			}
+			r = c.globalSlots[card.index]
+			if measured {
+				class = c.cfg.Telemetry.globalRootClass(card.index)
+			} else {
+				class = RootGlobal
+			}
+		case SlotTable:
+			if !slotIndexOK(card.index, len(c.tableSlots)) {
+				continue
+			}
+			r = c.tableSlots[card.index]
+		default:
+			continue
+		}
+		if !measured {
+			c.markNurseryRef(r)
+			continue
+		}
+		start := time.Now()
+		c.cfg.Telemetry.noteRoot(class)
+		c.markNurseryRef(r)
+		c.cfg.Telemetry.addRootTime(class, uint64(time.Since(start)))
+	}
 }
 
 func (c *Collector) markUnclassifiedRoots(roots RootSet, mode uint8) {

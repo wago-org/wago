@@ -479,6 +479,12 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   insertion, exact coalescing, top-bump reclamation, exact fragmentation
   summaries, lazy post-full-GC indexing, size-grouped promotion destinations,
   randomized interval-oracle/fuzz coverage, and warmed allocation-free churn.
+- [x] Make Throughput minor collection card-driven: measured 128-byte payload
+  cards retain linked disjoint ranges, persistent globals/tables use stable-index
+  bitmaps instead of a Go map, bulk barriers avoid a mutator rescan, generated
+  same-card stores stay native, and metadata-growth failures take explicit safe
+  whole-object/full-root fallbacks. The 256K two-write fixture falls from 262,144
+  to 64 scanned slots while dense work remains within 3% of baseline.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
 

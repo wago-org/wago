@@ -123,10 +123,10 @@ func TestThroughputCollectorTelemetry(t *testing.T) {
 	if snapshot.Minor.Cards.DirtyObjectCards != 1 || snapshot.Minor.Cards.DirtyRootCards != 3 || snapshot.Minor.Cards.UsefulObjectCards != 1 || snapshot.Minor.Cards.UsefulRootCards != 3 {
 		t.Fatalf("card counters = %+v", snapshot.Minor.Cards)
 	}
-	if snapshot.Minor.Cards.DuplicateDirties == 0 || snapshot.Minor.Cards.WholeObjectScans != 1 || snapshot.Minor.Cards.ScannedSlots != 64 || snapshot.Minor.Cards.ClearedCards != 4 {
+	if snapshot.Minor.Cards.DuplicateDirties == 0 || snapshot.Minor.Cards.WholeObjectScans != 0 || snapshot.Minor.Cards.WholeObjectScansAvoided != 1 || snapshot.Minor.Cards.ScannedSlots != 32 || snapshot.Minor.Cards.ClearedCards != 4 {
 		t.Fatalf("card scan counters = %+v", snapshot.Minor.Cards)
 	}
-	if snapshot.Minor.Trace.ObjectsVisited != 2 || snapshot.Minor.Trace.ReferenceSlotsVisited != 64 {
+	if snapshot.Minor.Trace.ObjectsVisited != 2 || snapshot.Minor.Trace.ReferenceSlotsVisited != 32 {
 		t.Fatalf("trace counters = %+v", snapshot.Minor.Trace)
 	}
 	if snapshot.Minor.Pause.Count != 1 || snapshot.Minor.Pause.MaxNS == 0 || snapshot.Minor.TotalNS == 0 {

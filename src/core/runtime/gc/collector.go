@@ -122,8 +122,11 @@ type Collector struct {
 	promotionScratch   []plannedPromotion
 	remembered         []uint32
 	objectCards        []objectCard
+	cardBytes          uint32
 	slotCards          []slotCard
-	slotCardSlot       map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
+	globalCardBits     []uint64
+	tableCardBits      []uint64
+	rootCardFallback   bool
 	globalSlots        []Ref
 	tableSlots         []Ref
 	stats              Stats
@@ -168,7 +171,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 		// reserving that alignment once avoids relocating a live nursery later.
 		objectAlign = 16
 	}
-	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, nursery: makeAlignedBytes(config.NurseryBytes, uintptr(objectAlign)), handles: []handleEntry{{}}}
+	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, nursery: makeAlignedBytes(config.NurseryBytes, uintptr(objectAlign)), handles: []handleEntry{{}}, cardBytes: defaultThroughputCardBytes}
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.attach(config.Profile, 0)
 	}
@@ -200,7 +203,8 @@ func (c *Collector) Close() {
 	c.remembered = nil
 	c.objectCards = nil
 	c.slotCards = nil
-	c.slotCardSlot = nil
+	c.globalCardBits = nil
+	c.tableCardBits = nil
 	c.globalSlots = nil
 	c.tableSlots = nil
 	c.refreshNativeView()

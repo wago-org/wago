@@ -110,13 +110,17 @@ only iterating null slots.
 This matrix is the primary discriminator for tracing density, promotion cost,
 zero-survivor cleanup, and future age-based tenuring.
 
-`BenchmarkGCSparseRememberedArray` crosses 4K and 256K-element old arrays with
-two distant writes or writes to every slot. Both modes allocate exactly two
-nursery objects per operation, so the comparison changes dirty density without
-changing dynamic allocation rate or survivor count. It is deliberately hostile
-to the current whole-object remembered scan. Future card implementations should
-make the two-write case proportional to dirty regions without hiding dense-scan
-costs.
+`BenchmarkGCSparseRememberedArray` crosses 4K and 256K-element old arrays,
+128/256/512-byte cards, and either two distant writes or writes to every slot.
+Both densities allocate exactly two nursery objects per operation, so the
+comparison changes dirty coverage without changing dynamic allocation rate or
+survivor count. Deterministic `card-slots-scanned/op` proves sparse work is
+bounded by dirty cards while the dense case still reports every reference slot.
+
+`BenchmarkGCDirtyPersistentRoots` holds one nursery global dirty while scaling
+the collector-owned global directory through 1, 64, and 4,096 slots. With
+`wago_gcstats`, every case must report exactly one dirty card and one global-root
+visit per minor cycle.
 
 `BenchmarkGCRootClassMatrix` crosses Throughput and Tiny with 1, 64, and 4,096
 native-frame, global, table, public-token, foreign-instance, and snapshot-
@@ -181,10 +185,49 @@ Ten pinned 20-operation giant-array samples produced:
 | Two distant writes | 2 | 262,144 | 627,322 | 622,591 | 753,663 | 776,499 | 796,076 |
 | Every slot written | 2 | 262,144 | 834,228 | 819,199 | 917,503 | 950,271 | 1,033,180 |
 
-The sparse case still scans the complete object and therefore fails the future
-#303 card target by construction. It establishes the decision-grade baseline:
-card-driven collection should reduce sparse scanned slots by orders of magnitude
-without improving dense scans by hiding work or changing allocation rate.
+### Issue #303 card-driven minor collection
+
+Issue #303 replaces the baseline whole-object input with exact transient roots,
+dirty persistent slots, and linked fixed-card ranges. Ten pinned 20-operation
+samples on the same August 8, 2026 Ryzen 7 8845HS host, with the measured
+128-byte default, produced:
+
+| 256K-element old array | young allocations/op | scanned slots/op | median ns/op | p50 ns | p90 ns | p95 ns | p99 ns |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Two distant writes | 2 | 64 | 2,475 | 2,431 | 2,559 | 2,661 | 2,806 |
+| Every slot written | 2 | 262,144 | 858,957 | 873,216 | 873,216 | 873,216 | 873,216 |
+
+The sparse fixture visits 4,096 times fewer slots and its median pause is about
+253 times lower than the #300 baseline. The dense fixture continues to visit all
+262,144 slots and is 2.96% slower than baseline, inside the pre-declared 3%
+dense-work budget rather than hiding the scan. Five pinned 10-operation samples
+selected the default card size:
+
+| Card bytes | sparse scanned slots/op | sparse median ns/op | dense scanned slots/op | dense median ns/op |
+|---:|---:|---:|---:|---:|
+| 128 | 64 | 2,696 | 262,144 | 867,680 |
+| 256 | 128 | 2,813 | 262,144 | 869,981 |
+| 512 | 256 | 3,015 | 262,144 | 872,647 |
+
+The implementation stores one 16-byte linked range per disjoint dirty region,
+not one metadata entry per card, so selecting 128 bytes does not multiply dense
+range metadata. Adjacent writes coalesce; repeated writes to an already covered
+card only increment the bounded duplicate-dirty counter.
+
+Interleaved release barrier controls remain allocation-free. Nursery-parent
+struct stores change from 25.57 to 25.14 ns/op; old-parent/old-child stores from
+27.61 to 27.81 ns/op; newly exact old-struct/young-child same-card stores from
+28.18 to 29.10 ns/op; existing old-array same-card stores from 36.82 to
+35.51 ns/op; and persistent-root repeated dirties from 9.94 to 7.03 ns/op.
+Generated code for the two-store old-array fixture changes from 1,864 to 1,856
+bytes while barrier attribution remains 404 bytes.
+
+On linux/amd64, `Config` remains 64 bytes, `handleEntry` remains 20 bytes,
+`objectCard` grows from 12 to 16 bytes, and `Collector` grows from 1,008 to 1,064
+bytes. A minimal executable that performs an old-array store and minor
+collection changes from 2,536,460 to 2,561,068 unstripped bytes (+24,608) and
+from 1,659,064 to 1,675,448 stripped bytes (+16,384, including file alignment).
+After warmup, the direct card scan and repeated barrier paths remain zero-allocation.
 
 At 4,096 roots, Throughput median full-pause p99 ranged from about 51 us for
 public-token/snapshot roots and 57 us for foreign-instance roots to 410 us for
@@ -298,8 +341,8 @@ separate layers instead of folding unrelated setup into collector pause timing.
 Future issue work must extend the matrix as follows:
 
 - #302: no-survivor and low-survivor cleanup with high handle counts;
-- #303/#315: 128/256/512-byte cards, sparse/dense writes, root cards, and all
-  reference bulk operations;
+- #315: extend the completed 128/256/512-byte card matrix to any new reference
+  bulk operations or region-local card representations;
 - #304: 64, 65, 128, 256, and 1,024 exact roots plus metadata bytes/safepoint;
 - #308: reserved/committed bytes, backing growth, bytes copied, and page faults;
 - #309: metadata bytes/object, handle-resolution instructions, and cache misses;
