@@ -851,11 +851,10 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		plan.Exact = false
 		return id
 	}
-	liveLocals := plan.LiveLocalMasks[siteIndex]
-	f.materializeGCFrameLocals(liveLocals)
+	f.materializeGCFrameLocalsAt(siteIndex, false)
 	offsets := make([]uint32, 0, len(plan.LocalOffsets))
 	for i, off := range plan.LocalOffsets {
-		if liveLocals&(uint64(1)<<uint(i)) != 0 {
+		if plan.LocalLiveAt(siteIndex, i) {
 			offsets = append(offsets, off)
 		}
 	}
@@ -872,8 +871,9 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
+	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > 64 {
+	if len(offsets) > shared.GCFrameRootLimit {
 		plan.Exact = false
 	}
 	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})

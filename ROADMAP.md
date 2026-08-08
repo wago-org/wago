@@ -102,10 +102,11 @@ current optimization priorities. The Core 3.0 implementation ledger is
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
   primary product. Release 1/2 defaults remain unchanged; Core 3 is opt-in.
-- [x] Add exact linux/amd64 WasmGC roots across local direct/indirect/reference
-  calls, recursion, bounded host re-entry, mutable/shared GC globals, local/shared
-  collector-reference tables, EH payload records, and same-Runtime cross-instance
-  calls. Codec v30 persists and validates the native root metadata.
+- [x] Add exact linux/amd64 and Linux/Darwin arm64 WasmGC roots across local
+  direct/indirect/reference calls, recursion, bounded host re-entry,
+  mutable/shared GC globals, local/shared collector-reference tables, EH payload
+  records, local starts, and same-Runtime cross-instance calls. One-/two-word and
+  bounded flat masks cover up to 1,024 roots; codec v33 validates the native maps.
 - [x] Add snapshot v4 stable-ID heap graphs for objects reachable from owned local
   GC globals, preserving cycles and sharing without serializing compact handles.
 - [x] Add snapshot v5 roots for one owned local collector-reference table, then
@@ -485,6 +486,12 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   same-card stores stay native, and metadata-growth failures take explicit safe
   whole-object/full-root fallbacks. The 256K two-write fixture falls from 262,144
   to 64 scanned slots while dense work remains within 3% of baseline.
+- [x] Generalize exact native-root admission: retain the one-word <=64-root path,
+  add two-word <=128-root masks and a bounded flat arena through 1,024 roots,
+  admit exact local starts, omit independently proven non-collecting functions,
+  share repeated immutable offset maps, and expose fail-closed diagnostics. The
+  one-root 16K-instruction compile benchmark improves 3.2% while temporary bytes
+  fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero allocation.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
 

@@ -2003,6 +2003,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		return nil, err
 	}
 	rootMap := &compiledGCFrameRoots{adapterReturnOffsets: make([]uint32, adapterCount)}
+	var offsetInterner gcFrameOffsetInterner
 	for i := range rootMap.adapterReturnOffsets {
 		rootMap.adapterReturnOffsets[i], err = r.u32()
 		if err != nil {
@@ -2040,6 +2041,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 				return nil, err
 			}
 		}
+		rootMap.safepoints[i].offsets = offsetInterner.intern(rootMap.safepoints[i].offsets, false)
 	}
 	callCount, err := r.countElements("GC frame callsites", 13)
 	if err != nil {
@@ -2073,6 +2075,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 				return nil, err
 			}
 		}
+		rootMap.callsites[i].offsets = offsetInterner.intern(rootMap.callsites[i].offsets, false)
 	}
 	return rootMap, nil
 }

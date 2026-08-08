@@ -41,29 +41,36 @@ disabled while a native invocation is active: objects remain stable, no
 incomplete frame-root set is scanned, and one invocation that exceeds
 `ThroughputHeapBytes` returns `gc: collection-disabled heap exhausted`.
 
-A bounded linux/amd64 slice now collects within an invocation. It admits local
-call graphs, numeric host imports, module-local GC globals, direct tail calls,
-and at most 64 collector-reference roots at a site; start functions and
-GC-reference parameters/results remain closed. Local-only `call_ref` and
-`return_call_ref` are admitted when descriptor ingress is impossible. EH
-functions use conservative local masks and fixed rooted payload records.
-Private local-function tables admit direct and tail `call_indirect`; one private
-collector-reference table admits mutable entries scanned from its off-heap descriptor. Compile admission builds an exact structured-CFG
-local-liveness mask for every reachable allocation and direct call. The amd64 backend adds live hidden operand spills, assigns a compact
-safepoint ID in the GC dispatch word, records direct-call return PCs, and
-publishes final frame size. The synchronous control frame supplies parked RSP;
-Go validates the selected site and exposes actual off-heap qwords as mutable
-collector roots. Compact handles currently remain stable while object locations
-move, but collector updates still write through to the parked frames.
+The bounded linux/amd64 and Linux/Darwin arm64 products collect within admitted
+native invocations. They cover local and same-domain call graphs, host re-entry,
+module-local and shared GC globals/tables, direct and discarded-frame tail calls,
+exact GC-reference parameters/results, local start functions, EH payload records,
+and up to 1,024 collector-reference roots in one frame. Imported starts and
+unknown host/cross-runtime ownership remain fail-closed. Local-only or proven
+same-domain `call_ref`/`return_call_ref` and direct/tail `call_indirect` retain
+their existing ownership restrictions.
+
+Compile admission builds exact structured-CFG local liveness for every reachable
+allocation and native call. Functions through 64 tracked roots retain one-word
+masks; 65-128 roots use two words; wider functions use one bounded flat word
+arena rather than per-node heap bitsets. A non-collecting function may omit a
+frame plan independently, so an unrelated wide leaf no longer disables an
+otherwise exact module. The backends add hidden operand spills and fixed EH
+roots, assign dense safepoint IDs, record call return PCs, and publish final frame
+sizes. Parked synchronous control records expose actual off-heap qwords as
+mutable collector roots, including caller-frame rewrites after moving collection.
 
 The native walker follows validated return-PC maps through bounded direct local
 call graphs and recursion. Throughput collect-every-allocation/forced-major verification and
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec v32 persists and revalidates
-safepoint, liveness, spill, callsite, frame-size, and adapter-return metadata; it
-never persists collector handles or live frames. Five 500 ms samples of
+call-sites, and adapter returns fail closed. Codec v33 persists and revalidates
+safepoint, spill, callsite, frame-size, local-start, and adapter-return metadata;
+repeated offset vectors share immutable storage after compilation and reload.
+It never persists collector handles, liveness work arenas, or live frames.
+`Compiled.GCNativeRootAdmission` reports exactness, map counts, maximum roots,
+metadata bytes, and an actionable fail-closed reason. Five 500 ms samples of
 `BenchmarkGCSingleNativeFrameRoots` measured 432.5-443.5 ns/op, 0 B/op, and
 0 allocs/op on the Ryzen 7 8845HS host for boundary collection plus two parked
 allocating-helper transitions.
@@ -167,7 +174,7 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec v32 persists generic helper admission, vector layout, and bounded native
+Codec v33 persists generic helper admission, vector layout, and bounded native
 root maps; compact handles remain process-local. Snapshot format v4 separately
 serializes every object reachable from owned local GC globals using one-based
 stable IDs, exact type IDs, array lengths, and typed field/element payloads.
@@ -402,7 +409,7 @@ Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Logical obj
 
 ## Compiled metadata and instantiation
 
-Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v32 retains the appended `StorageV128` kind, the 16-byte layout contract, and validated native safepoint/callsite root maps; older codec versions are rejected.
+Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v33 retains the appended `StorageV128` kind, the 16-byte layout contract, and validated native safepoint/callsite root maps; older codec versions are rejected.
 
 Each `Instance` normally owns its own `gc.Collector` when its executable product can create or retain heap objects. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
 
@@ -412,7 +419,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec v32 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec v33 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,

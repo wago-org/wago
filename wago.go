@@ -58,6 +58,7 @@ type (
 	GCManagedHeapTelemetry     = impl.GCManagedHeapTelemetry
 	GCMemoryDomains            = impl.GCMemoryDomains
 	GCNativeCodeTelemetry      = impl.GCNativeCodeTelemetry
+	GCNativeRootAdmission      = impl.GCNativeRootAdmission
 	GCProfile                  = impl.GCProfile
 	GCRef                      = impl.GCRef
 	GCRuntimeKind              = impl.GCRuntimeKind

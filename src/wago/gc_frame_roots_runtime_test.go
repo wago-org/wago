@@ -2,6 +2,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"runtime"
 	"testing"
 	"unsafe"
@@ -217,6 +218,65 @@ func TestCompiledGCFrameRootsSafepointByID(t *testing.T) {
 		if got == nil || got.id != tc.id || got.frameBytes != tc.want {
 			t.Fatalf("safepointByID(%d) = %+v, want id=%d frameBytes=%d", tc.id, got, tc.id, tc.want)
 		}
+	}
+}
+
+type gcCountingRootRefSink struct {
+	count int
+	sum   uint64
+}
+
+func (s *gcCountingRootRefSink) VisitRootRef(ref gc.Ref) bool {
+	s.count++
+	s.sum += uint64(ref)
+	return true
+}
+
+func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
+	const rootsN = shared.GCFrameRootLimit
+	frame := make([]byte, shared.AMD64FrameHeaderBytes+rootsN*8)
+	offsets := make([]uint32, rootsN)
+	for i := range offsets {
+		offsets[i] = uint32(shared.AMD64FrameHeaderBytes + i*8)
+		binary.LittleEndian.PutUint64(frame[offsets[i]:], uint64(gc.I31New(int32(i))))
+	}
+	roots := gcNativeFrameRoots{base: uintptr(unsafe.Pointer(&frame[0])), offsets: offsets, frameBytes: uint32(len(frame))}
+	sink := new(gcCountingRootRefSink)
+	if got := testing.AllocsPerRun(100, func() {
+		sink.count, sink.sum = 0, 0
+		roots.RangeRootRefs(sink)
+	}); got != 0 {
+		t.Fatalf("wide root enumeration allocations=%v, want 0", got)
+	}
+	if sink.count != rootsN || sink.sum == 0 {
+		t.Fatalf("wide root enumeration count/sum=%d/%d", sink.count, sink.sum)
+	}
+	runtime.KeepAlive(frame)
+}
+
+func BenchmarkGCNativeFrameRootEnumerationWidths(b *testing.B) {
+	for _, rootsN := range []int{64, 65, 128, 256, 1024} {
+		b.Run(fmt.Sprintf("roots=%d", rootsN), func(b *testing.B) {
+			frame := make([]byte, shared.AMD64FrameHeaderBytes+rootsN*8)
+			offsets := make([]uint32, rootsN)
+			for i := range offsets {
+				offsets[i] = uint32(shared.AMD64FrameHeaderBytes + i*8)
+				binary.LittleEndian.PutUint64(frame[offsets[i]:], uint64(gc.I31New(int32(i))))
+			}
+			roots := gcNativeFrameRoots{base: uintptr(unsafe.Pointer(&frame[0])), offsets: offsets, frameBytes: uint32(len(frame))}
+			sink := new(gcCountingRootRefSink)
+			b.ReportAllocs()
+			b.ReportMetric(float64(rootsN), "roots/op")
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				sink.count, sink.sum = 0, 0
+				roots.RangeRootRefs(sink)
+			}
+			if sink.count != rootsN || sink.sum == 0 {
+				b.Fatalf("root enumeration count/sum=%d/%d", sink.count, sink.sum)
+			}
+			runtime.KeepAlive(frame)
+		})
 	}
 }
 

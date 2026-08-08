@@ -1,9 +1,12 @@
 package wago
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 func gcFrameLivenessBenchmarkBody(n int) []byte {
@@ -82,7 +85,7 @@ func TestGCFrameLocalLivenessIsArchitectureIndependent(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var callMasks []uint64
-			got, err := gcFrameLocalLiveness(tc.body, tc.indexes, &callMasks)
+			got, err := gcFrameLocalLiveness(tc.body, tc.indexes, &callMasks, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -101,27 +104,107 @@ func TestGCFrameLocalLivenessIsArchitectureIndependent(t *testing.T) {
 	}
 }
 
+func appendGCTestU32(dst []byte, value uint32) []byte {
+	for value >= 0x80 {
+		dst = append(dst, byte(value)|0x80)
+		value >>= 7
+	}
+	return append(dst, byte(value))
+}
+
+func gcFrameWideLivenessBody(rootCount int) []byte {
+	body := []byte{0xfb, 0x01, 0x00, 0x1a, 0x10, 0x00} // allocation; drop; call 0
+	for i := 0; i < rootCount; i++ {
+		body = append(body, 0x20)
+		body = appendGCTestU32(body, uint32(i))
+		body = append(body, 0x1a)
+	}
+	return append(body, 0x0b)
+}
+
+func TestGCFrameLocalLivenessWideMasks(t *testing.T) {
+	for _, roots := range []int{64, 65, 128, 256, 1024} {
+		t.Run(fmt.Sprintf("roots=%d", roots), func(t *testing.T) {
+			indexes := make([]uint32, roots)
+			for i := range indexes {
+				indexes[i] = uint32(i)
+			}
+			var calls []uint64
+			var extra gcFrameLivenessExtra
+			allocations, err := gcFrameLocalLiveness(gcFrameWideLivenessBody(roots), indexes, &calls, &extra)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(allocations) != 1 || len(calls) != 1 {
+				t.Fatalf("mask counts=%d/%d, want 1/1", len(allocations), len(calls))
+			}
+			extraWords := (roots+63)/64 - 1
+			if len(extra.words) != extraWords*2 {
+				t.Fatalf("extra words=%d, want %d", len(extra.words), extraWords*2)
+			}
+			plan := shared.GCFrameRootPlan{
+				LocalOffsets:       make([]uint32, roots),
+				LiveLocalMasks:     allocations,
+				LiveCallLocalMasks: calls,
+				LiveMaskExtraWords: extra.words,
+			}
+			if !plan.ValidLiveMasks() {
+				t.Fatal("wide mask arena rejected")
+			}
+			for i := 0; i < roots; i++ {
+				if !plan.LocalLiveAt(0, i) || !plan.CallLocalLiveAt(0, i) {
+					t.Fatalf("root %d is not live", i)
+				}
+			}
+		})
+	}
+}
+
 func TestGCFrameLocalLivenessRejectsUnrepresentableBrTable(t *testing.T) {
 	body := []byte{0x0e, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0b}
-	_, err := gcFrameLocalLiveness(body, nil, nil)
+	_, err := gcFrameLocalLiveness(body, nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "br_table target count exceeds implementation limit") {
 		t.Fatalf("error = %v, want target-count implementation-limit rejection", err)
 	}
 }
 
 func TestGCFrameLocalLivenessAllocationBudget(t *testing.T) {
-	if got := unsafe.Sizeof(gcLiveNode{}); got > 40 {
-		t.Fatalf("gcLiveNode size = %d, want at most 40 bytes", got)
+	if got := unsafe.Sizeof(gcLiveNode{}); got != 32 {
+		t.Fatalf("gcLiveNode size = %d, want 32 bytes", got)
+	}
+	if got := unsafe.Sizeof(gcFrameLivenessExtra{}); got != 24 {
+		t.Fatalf("gcFrameLivenessExtra size = %d, want 24 bytes", got)
 	}
 	body := gcFrameLivenessBenchmarkBody(1024)
 	allocs := testing.AllocsPerRun(5, func() {
 		var callMasks []uint64
-		if _, err := gcFrameLocalLiveness(body, []uint32{0}, &callMasks); err != nil {
+		if _, err := gcFrameLocalLiveness(body, []uint32{0}, &callMasks, nil); err != nil {
 			t.Fatal(err)
 		}
 	})
 	if allocs > 100 {
 		t.Fatalf("GC frame liveness allocations = %.0f, want at most 100", allocs)
+	}
+}
+
+func BenchmarkGCFrameLocalLivenessRootCounts(b *testing.B) {
+	for _, roots := range []int{64, 65, 128, 256, 1024} {
+		b.Run(fmt.Sprintf("roots=%d", roots), func(b *testing.B) {
+			body := gcFrameWideLivenessBody(roots)
+			indexes := make([]uint32, roots)
+			for i := range indexes {
+				indexes[i] = uint32(i)
+			}
+			b.ReportAllocs()
+			b.ReportMetric(float64((roots+63)/64), "words/site")
+			for i := 0; i < b.N; i++ {
+				var calls []uint64
+				var extra gcFrameLivenessExtra
+				if _, err := gcFrameLocalLiveness(body, indexes, &calls, &extra); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
@@ -131,7 +214,7 @@ func BenchmarkGCFrameLocalLiveness(b *testing.B) {
 	b.SetBytes(int64(len(body)))
 	for i := 0; i < b.N; i++ {
 		var callMasks []uint64
-		masks, err := gcFrameLocalLiveness(body, []uint32{0}, &callMasks)
+		masks, err := gcFrameLocalLiveness(body, []uint32{0}, &callMasks, nil)
 		if err != nil {
 			b.Fatal(err)
 		}

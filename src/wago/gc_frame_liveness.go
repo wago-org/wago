@@ -3,6 +3,7 @@ package wago
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -21,7 +22,7 @@ const (
 const noGCLiveIndex = ^uint32(0)
 
 type gcLiveNode struct {
-	use, def   uint64
+	use, def   uint32 // tracked-root indexes, or noGCLiveIndex
 	index      uint32 // control frame, branch frame, or br_table target-arena start
 	indexN     uint32 // br_table target count
 	succ       [2]uint32
@@ -47,19 +48,23 @@ type gcLiveFrame struct {
 	endNode  int
 }
 
+type gcFrameLivenessExtra struct {
+	words []uint64 // allocation-site words followed by native-call words
+}
+
 // gcFrameLocalLiveness computes architecture-independent exact backwards local
-// liveness over the validated structured Wasm CFG. It returns allocation-site
-// masks and writes native-call masks to callMasks, sharing one decode and
-// dataflow pass. Only the at-most-64 collector-reference locals in indexes
-// participate, so each state is one uint64 and loops converge without per-node
-// heap bitsets.
-func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64) ([]uint64, error) {
-	if len(indexes) > 64 {
-		return nil, fmt.Errorf("GC local liveness tracks %d roots, limit 64", len(indexes))
+// liveness over the validated structured Wasm CFG. The low word for each site is
+// returned directly. For functions wider than 64 collector locals, remaining
+// words are appended to one flat site-major arena in extra.
+// Small functions retain the one-word dataflow path; larger functions use one
+// bounded nodes-by-words arena rather than per-node heap bitsets.
+func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64, extra *gcFrameLivenessExtra) ([]uint64, error) {
+	if len(indexes) > shared.GCFrameRootLimit {
+		return nil, fmt.Errorf("GC local liveness tracks %d roots, limit %d", len(indexes), shared.GCFrameRootLimit)
 	}
-	bits := make(map[uint32]uint, len(indexes))
+	bits := make(map[uint32]uint32, len(indexes))
 	for i, index := range indexes {
-		bits[index] = uint(i)
+		bits[index] = uint32(i)
 	}
 
 	r := wasm.NewReader(body)
@@ -73,7 +78,7 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64) ([
 		if err != nil {
 			return nil, err
 		}
-		node := gcLiveNode{flow: gcLiveNext, index: noGCLiveIndex}
+		node := gcLiveNode{flow: gcLiveNext, use: noGCLiveIndex, def: noGCLiveIndex, index: noGCLiveIndex}
 		var imm wasm.InstructionImmediate
 		if op == 0x0e { // br_table keeps every target, unlike the cheap classifier.
 			n, err := r.U32()
@@ -106,11 +111,11 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64) ([
 		switch imm.Kind {
 		case wasm.InstrLocalGet:
 			if bit, ok := bits[imm.Index]; ok {
-				node.use = uint64(1) << bit
+				node.use = bit
 			}
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
 			if bit, ok := bits[imm.Index]; ok {
-				node.def = uint64(1) << bit
+				node.def = bit
 			}
 		}
 		node.nativeCall = imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef
@@ -269,7 +274,11 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64) ([
 			}
 		}
 	}
-	liveIn := make([]uint64, len(nodes))
+	wordCount := (len(indexes) + 63) / 64
+	if wordCount == 0 {
+		wordCount = 1
+	}
+	liveIn := make([]uint64, len(nodes)*wordCount)
 	changed := true
 	for changed {
 		changed = false
@@ -277,39 +286,168 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64) ([
 			if !nodes[i].reachable {
 				continue
 			}
-			var out uint64
-			for j := uint8(0); j < nodes[i].succN; j++ {
-				out |= liveIn[int(nodes[i].succ[j])]
-			}
-			if nodes[i].indexN != 0 {
-				start := int(nodes[i].index)
-				for _, succ := range branchTargets[start : start+int(nodes[i].indexN)] {
-					out |= liveIn[int(succ)]
+			base := i * wordCount
+			for word := 0; word < wordCount; word++ {
+				var in uint64
+				for j := uint8(0); j < nodes[i].succN; j++ {
+					in |= liveIn[int(nodes[i].succ[j])*wordCount+word]
 				}
-			}
-			in := nodes[i].use | (out &^ nodes[i].def)
-			if in != liveIn[i] {
-				liveIn[i], changed = in, true
+				if nodes[i].indexN != 0 {
+					start := int(nodes[i].index)
+					for _, succ := range branchTargets[start : start+int(nodes[i].indexN)] {
+						in |= liveIn[int(succ)*wordCount+word]
+					}
+				}
+				if nodes[i].def != noGCLiveIndex && int(nodes[i].def/64) == word {
+					in &^= uint64(1) << uint(nodes[i].def%64)
+				}
+				if nodes[i].use != noGCLiveIndex && int(nodes[i].use/64) == word {
+					in |= uint64(1) << uint(nodes[i].use%64)
+				}
+				if in != liveIn[base+word] {
+					liveIn[base+word], changed = in, true
+				}
 			}
 		}
 	}
 	liveMasks := make([]uint64, 0, allocationN)
 	calls := make([]uint64, 0, nativeCallN)
+	extraPerSite := wordCount - 1
+	var extraWords []uint64
+	if extraPerSite != 0 {
+		extraWords = make([]uint64, (allocationN+nativeCallN)*extraPerSite)
+	}
+	allocationIndex, callIndex := 0, 0
 	for i := range nodes {
 		if !nodes[i].reachable {
 			continue
 		}
+		words := liveIn[i*wordCount : (i+1)*wordCount]
 		if nodes[i].allocation {
-			liveMasks = append(liveMasks, liveIn[i])
+			liveMasks = append(liveMasks, words[0])
+			copy(extraWords[allocationIndex*extraPerSite:], words[1:])
+			allocationIndex++
 		}
 		if nodes[i].nativeCall {
-			calls = append(calls, liveIn[i])
+			calls = append(calls, words[0])
+			copy(extraWords[(allocationN+callIndex)*extraPerSite:], words[1:])
+			callIndex++
 		}
 	}
 	if callMasks != nil {
 		*callMasks = calls
 	}
+	if extra != nil {
+		extra.words = extraWords
+	}
 	return liveMasks, nil
+}
+
+func gcFrameBodyMayCollect(body []byte) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return true
+		}
+		switch imm.Kind {
+		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+			return true
+		}
+		if op == 0xfb {
+			switch imm.Subopcode {
+			case 0, 1, 6, 7, 8, 9, 10:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func gcFrameAllLiveMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra) (allocations, calls []uint64, err error) {
+	if localRoots < 0 || localRoots > shared.GCFrameRootLimit {
+		return nil, nil, fmt.Errorf("GC conservative liveness tracks %d roots, limit %d", localRoots, shared.GCFrameRootLimit)
+	}
+	wordCount := (localRoots + 63) / 64
+	if wordCount == 0 {
+		wordCount = 1
+	}
+	words := make([]uint64, wordCount)
+	for i := range words {
+		words[i] = ^uint64(0)
+	}
+	if remain := uint(localRoots % 64); remain != 0 {
+		words[len(words)-1] = uint64(1)<<remain - 1
+	} else if localRoots == 0 {
+		words[0] = 0
+	}
+	countSites := func() (allocationN, callN int, err error) {
+		r := wasm.NewReader(body)
+		for r.HasNext() {
+			op, readErr := r.Byte()
+			if readErr != nil {
+				return 0, 0, readErr
+			}
+			imm, readErr := wasm.ClassifyInstructionImmediate(r, op)
+			if readErr != nil {
+				return 0, 0, readErr
+			}
+			if op == 0xfb {
+				switch imm.Subopcode {
+				case 0, 1, 6, 7, 8, 9, 10:
+					allocationN++
+				}
+			}
+			if imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef {
+				callN++
+			}
+		}
+		return allocationN, callN, nil
+	}
+	allocationN, callN, err := countSites()
+	if err != nil {
+		return nil, nil, err
+	}
+	extraPerSite := wordCount - 1
+	var extraWords []uint64
+	if extraPerSite != 0 {
+		extraWords = make([]uint64, (allocationN+callN)*extraPerSite)
+	}
+	allocationIndex, callIndex := 0, 0
+	appendMask := func(low *[]uint64, site int) {
+		*low = append(*low, words[0])
+		copy(extraWords[site*extraPerSite:], words[1:])
+	}
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, readErr := r.Byte()
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		imm, readErr := wasm.ClassifyInstructionImmediate(r, op)
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		if op == 0xfb {
+			switch imm.Subopcode {
+			case 0, 1, 6, 7, 8, 9, 10:
+				appendMask(&allocations, allocationIndex)
+				allocationIndex++
+			}
+		}
+		if imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef {
+			appendMask(&calls, allocationN+callIndex)
+			callIndex++
+		}
+	}
+	if extra != nil {
+		extra.words = extraWords
+	}
+	return allocations, calls, nil
 }
 
 func gcLiveBranchFrame(stack []int, depth uint32) (int, bool) {

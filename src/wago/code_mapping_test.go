@@ -8,6 +8,21 @@ import (
 	"unsafe"
 )
 
+func TestGCFrameOffsetInternerSharesImmutableMaps(t *testing.T) {
+	var interner gcFrameOffsetInterner
+	source := []uint32{16, 24, 520}
+	first := interner.intern(source, true)
+	source[0] = 99
+	second := interner.intern([]uint32{16, 24, 520}, true)
+	if first[0] != 16 || second[0] != 16 || unsafe.SliceData(first) != unsafe.SliceData(second) {
+		t.Fatalf("interned offsets first=%v second=%v pointers=%p/%p", first, second, unsafe.SliceData(first), unsafe.SliceData(second))
+	}
+	different := interner.intern([]uint32{16, 32, 520}, true)
+	if unsafe.SliceData(first) == unsafe.SliceData(different) {
+		t.Fatal("different root maps unexpectedly share storage")
+	}
+}
+
 func TestSerialCompiledSealsExecutableMappingInPlace(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), fibWasm)
 	if err != nil {

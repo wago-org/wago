@@ -939,10 +939,36 @@ Runtime struct/array access accepts the object's declared subtype of the static
 instruction type; same-module type-index reachability avoids cross-module
 structural-equivalence maps on the hot path.
 
-General generated modules still publish no complete native frame chain. Their
-collector is therefore forced into bounded collection-disabled Throughput mode:
-allocation never scans an incomplete frame, object handles remain stable, and
-exhaustion is an explicit error. No raw Go heap or object-payload pointer crosses
-back into native code. This ABI does not authorize live generic GC values across
-host/cross-instance calls, snapshots, codec reload, signal-backed execution, or
-non-amd64 GC lowering.
+## Wide exact native-root maps
+
+The exact linux/amd64 and Linux/Darwin arm64 frame-map ABI supports at most 1,024
+collector roots in one native frame. This is a metadata bound, not a public
+parameter/result-slot bound. Functions with at most 64 tracked collector locals
+retain one `uint64` liveness word per site. Functions with 65-128 roots use one
+low word plus one extra word. Wider functions store all remaining words in one
+flat, site-major arena; no instruction or CFG node owns a Go slice or heap bitset.
+The arenas are compile-only and are flattened into sorted frame offsets before
+code publication.
+
+Dense allocation safepoint IDs and return-PC callsite lookup are unchanged.
+Generated code tests each site's mask while materializing lazy-zero locals, then
+unions exact hidden operand spills and fixed EH payload offsets. Runtime and codec
+metadata permit at most 1,024 sorted, aligned offsets per frame. Repeated identical
+offset vectors share immutable backing storage after compilation and codec load;
+the serialized v33 form remains an independently validated offset sequence and
+never contains live frames, liveness arenas, collector handles, or process-local
+owners.
+
+A local `() -> ()` start function may use this exact frame protocol. Imported
+starts remain closed because their host ownership graph is unknown. Admission is
+per function where provably safe: a function that cannot allocate or call may
+omit a frame plan without disabling exact collecting functions in the same
+module. Any collecting function with an unsupported call ABI, ownership shape,
+frame layout, malformed liveness graph, more than 1,024 roots, or incomplete
+backend map keeps the module fail-closed in bounded collection-disabled
+Throughput mode. `Compiled.GCNativeRootAdmission` exposes the decision and its
+specific reason without exposing executable pointers or live runtime state.
+
+No raw Go heap or object-payload pointer crosses back into native code. Unknown
+host and cross-runtime collector graphs remain rejected even when their root
+count fits the metadata representation.

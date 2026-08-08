@@ -338,12 +338,53 @@ separate layers instead of folding unrelated setup into collector pause timing.
 | JIT/compiler | One hot static site versus thousands of sparse sites; native-fast/medium/helper paths; barriers; spills; stubs; trap code; root-map bytes |
 | Product | Compile/load/instantiate time, Go compiler/runtime heaps, managed heap, executable mappings, linked binary, snapshots, RSS |
 
+### Exact native-root width matrix
+
+Issue #304 is covered by `BenchmarkGCFrameLocalLivenessRootCounts` and
+`BenchmarkGCNativeFrameRootMetadataWidths` at 64, 65, 128, 256, and 1,024
+tracked roots. Run:
+
+```sh
+go test ./src/wago -run '^$' \
+  -bench '^(BenchmarkGCFrameLocalLiveness$|BenchmarkGCFrameLocalLivenessRootCounts$|BenchmarkGCNativeFrameRootMetadataWidths$|BenchmarkGCNativeFrameRootEnumerationWidths$|BenchmarkCompiledGCFrameRootsSafepointByIDDense$)' \
+  -benchmem -count=5
+```
+
+On August 8, 2026, the Ryzen 7 8845HS median results were:
+
+| Roots | Mask words/site | Liveness ns/op | B/op | allocs/op | Root-map bytes/site | ID lookup ns/op | Enumeration ns/op |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 1 | 6,929 | 12,088 | 8 | 264 | 1.39 | 143.1 |
+| 65 | 2 | 7,841 | 13,512 | 9 | 268 | 1.39 | 147.1 |
+| 128 | 2 | 15,587 | 27,336 | 9 | 520 | 1.39 | 326.5 |
+| 256 | 4 | 37,130 | 64,360 | 9 | 1,032 | 1.39 | 573.3 |
+| 1,024 | 16 | 294,723 | 445,269 | 11 | 4,104 | 1.40 | 2,271 |
+
+The existing 16K-instruction one-root construction benchmark moved from a
+1,355,953 ns/op median and 4,399,246 B/op at `fb102621` to 1,312,611 ns/op
+and 3,580,039 B/op: -3.20% time, -18.6% temporary bytes, and the same five
+allocations. Dense 4,096-site ID lookup remains direct-indexed at a 1.66 ns/op
+median with zero allocations. Root-map lookup is independent of root width;
+root enumeration remains linear in the exact live offset count.
+
+The compact CFG node falls from 40 to 32 bytes. `GCFrameRootPlan` grows from 184
+to 208 bytes per candidate function for the shared extra-word arena, and the
+compile-only module plan grows from 24 to 40 bytes for its diagnostic. Runtime
+fixed layouts do not grow: `Compiled` remains 784 bytes on this branch,
+`compiledCodeCache` remains 64 bytes, and `validateMemo` remains 40 bytes. The
+production `cli/wago` binary changed from 12,159,008 to 12,154,808 bytes
+unstripped and from 8,290,596 to 8,286,500 bytes stripped: reductions of 4,200
+and 4,096 bytes respectively. The 64-root generated fixture remains exactly 730
+native bytes with SHA-256
+`34a31f2aced3b860a0b07b56644406f5a5dd11f6c39bf16dcecc3f20cf939c97`
+on both `fb102621` and this change; wider-map support is code-neutral for the
+existing one-word case.
+
 Future issue work must extend the matrix as follows:
 
 - #302: no-survivor and low-survivor cleanup with high handle counts;
 - #315: extend the completed 128/256/512-byte card matrix to any new reference
   bulk operations or region-local card representations;
-- #304: 64, 65, 128, 256, and 1,024 exact roots plus metadata bytes/safepoint;
 - #308: reserved/committed bytes, backing growth, bytes copied, and page faults;
 - #309: metadata bytes/object, handle-resolution instructions, and cache misses;
 - #310: object lifetimes of zero through five minors, adaptive thresholds,

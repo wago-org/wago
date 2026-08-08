@@ -1589,11 +1589,10 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		plan.Exact = false
 		return nil, false
 	}
-	liveLocals := plan.LiveCallLocalMasks[siteIndex]
-	f.materializeGCFrameLocals(liveLocals)
+	f.materializeGCFrameLocalsAt(siteIndex, true)
 	offsets := make([]uint32, 0, len(plan.LocalOffsets))
 	for i, off := range plan.LocalOffsets {
-		if liveLocals&(uint64(1)<<uint(i)) != 0 {
+		if plan.CallLocalLiveAt(siteIndex, i) {
 			offsets = append(offsets, off)
 		}
 	}
@@ -1612,7 +1611,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	}
 	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > 64 {
+	if len(offsets) > shared.GCFrameRootLimit {
 		plan.Exact = false
 	}
 	return offsets, true

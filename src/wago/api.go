@@ -1890,8 +1890,17 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if guardPageBuilt && cfg.boundsChecks == BoundsChecksSignalsBased {
 		compiled.codeCache.flags |= compiledCacheGuardMemory
 	}
-	if validGCModuleFrameRootPlan(gcFrameRoots) {
+	validGCFrameRoots := validGCModuleFrameRootPlan(gcFrameRoots)
+	if genericGCExecution && !validGCFrameRoots {
+		diagnostic := "native backend did not produce complete exact root maps"
+		if gcFrameRoots != nil && gcFrameRoots.Diagnostic != "" {
+			diagnostic = gcFrameRoots.Diagnostic
+		}
+		compiled.setGCRootAdmissionFailure(diagnostic)
+	}
+	if validGCFrameRoots {
 		rootMap := &compiledGCFrameRoots{}
+		var offsetInterner gcFrameOffsetInterner
 		for function, plan := range gcFrameRoots.Functions {
 			if plan == nil {
 				continue
@@ -1901,10 +1910,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 				rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, functionBase+plan.AdapterReturnOffset)
 			}
 			for i := range plan.Safepoints {
-				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: append([]uint32(nil), plan.Safepoints[i].Offsets...)})
+				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: offsetInterner.intern(plan.Safepoints[i].Offsets, true)})
 			}
 			for i := range plan.Callsites {
-				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, stackAdjust: plan.Callsites[i].StackAdjust, offsets: append([]uint32(nil), plan.Callsites[i].Offsets...)})
+				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, stackAdjust: plan.Callsites[i].StackAdjust, offsets: offsetInterner.intern(plan.Callsites[i].Offsets, true)})
 			}
 		}
 		compiled.validateMemo.gcFrameRoots = rootMap
