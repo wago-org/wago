@@ -303,12 +303,12 @@ func (v *moduleValidator) validateModule() error {
 	for i, d := range v.m.Data {
 		if d.Mode.Kind == DataActive {
 			activeData++
-			mt, ok := v.memoryType(uint32(d.Mode.Mem))
+			flags, ok := v.memoryProperties(uint32(d.Mode.Mem))
 			if !ok {
 				return v.err(ErrUnknownMemory, "data")
 			}
 			want := I32
-			if mt.Limits.Addr64 {
+			if flags&externTypeAddr64 != 0 {
 				want = I64
 			}
 			if v.direct != nil {
@@ -607,25 +607,42 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 	return ft, ft != nil
 }
 
-// globalType returns a pointer to the resolved global's type. Returning a pointer
-// (into the module's stable Imports/Globals slices) rather than a value avoids a
-// per-access struct copy (runtime.duffcopy) on the validation hot path.
-func (v *moduleValidator) globalType(idx uint32) (*GlobalType, bool) {
+// globalType returns the resolved global type by value. Imported types are
+// packed, so returning a pointer would force their reconstructed value to
+// escape on every global.get/global.set validation.
+func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
 	n := uint32(0)
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
 			if n == idx {
-				global := im.Type.GlobalType()
-				return &global, true
+				return im.Type.GlobalType(), true
 			}
 			n++
 		}
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
-		return nil, false
+		return GlobalType{}, false
 	}
-	return &v.m.Globals[local].Type, true
+	return v.m.Globals[local].Type, true
+}
+
+func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable bool, ok bool) {
+	n := uint32(0)
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
+			if n == idx {
+				return im.Type.value, im.Type.flags&externTypeMutable != 0, true
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.Globals) {
+		return ValType{}, false, false
+	}
+	gt := v.m.Globals[local].Type
+	return gt.Type, gt.Mutable, true
 }
 func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	n := uint32(0)
@@ -644,25 +661,49 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	return v.m.Tables[local].Type, true
 }
 
-// memoryType returns a pointer to the resolved memory's type. Pointer return (into
-// the module's stable Imports/Memories slices) avoids a per-memory-op struct copy
-// on the validation hot path — checkMemArg calls this for every load/store.
-func (v *moduleValidator) memoryType(idx uint32) (*MemType, bool) {
+// memoryType returns the resolved memory type by value. Imported types are
+// packed, so returning a pointer would make reconstruction escape on every
+// load/store validated by checkMemArg.
+func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
 	n := uint32(0)
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
 			if n == idx {
-				memory := im.Type.MemType()
-				return &memory, true
+				return im.Type.MemType(), true
 			}
 			n++
 		}
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
-		return nil, false
+		return MemType{}, false
 	}
-	return &v.m.Memories[local], true
+	return v.m.Memories[local], true
+}
+
+func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
+	n := uint32(0)
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
+			if n == idx {
+				return im.Type.flags, true
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.Memories) {
+		return 0, false
+	}
+	mt := v.m.Memories[local]
+	var flags uint8
+	if mt.Limits.Addr64 {
+		flags |= externTypeAddr64
+	}
+	if mt.Shared {
+		flags |= externTypeShared
+	}
+	return flags, true
 }
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
