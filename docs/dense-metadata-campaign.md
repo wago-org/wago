@@ -2,7 +2,7 @@
 
 Date: 2026-08-07
 
-Baseline commit: `ab386d881a6212a2f20d62a3b1beb6fda41b7765`
+Baseline commit: `0ec96116b762673f09bccabafa4a366f63c709e0`
 
 Environment: Go 1.26.5, linux/amd64, Linux 7.0.0-28-generic, AMD Ryzen 7
 7800X3D. Focused benchmarks used `GOMAXPROCS=1 taskset -c 2`, 10 samples,
@@ -19,9 +19,10 @@ Environment: Go 1.26.5, linux/amd64, Linux 7.0.0-28-generic, AMD Ryzen 7
 | Optional scalar packing | RETAINED | Pointer-free limits and `TypeMetadata`; annotated decode time -20.6%, allocs/op -64.6% geomean. |
 | Byte-range metadata | REJECTED | Function decode already has constant allocation count; a 16 B/function range saving requires pervasive module-buffer lifetime plumbing. |
 
-Retained production commits are `7040eeef` (external types), `cf00bd86`
-(GC descriptor lowering), and `97c976c3` (optional type metadata). Benchmark
-infrastructure is in `d23b896b` and the final observability commit.
+Retained production commits are `8549b96d` (external types), `61c060c7`
+(GC descriptor lowering), `d3c97e8f` (optional type metadata), and `374948e4`
+(packed import validation). Benchmark infrastructure is in `64cb9e32` and the
+final observability commit.
 
 ## 2. Layout changes
 
