@@ -47,3 +47,23 @@ deferred: leaf packing removes the dominant per-element cost without changing
 slice ownership or public compiler lifetimes. Revisit an arena only if profiles
 show backing-array allocation or retained slice metadata as a material remaining
 cost.
+
+## Dense-metadata measurement
+
+`TestCompilerTypeRepresentationLayout` records the exact 64-bit size and Go
+pointer containment of compiler metadata, import/extern descriptors, byte-backed
+function metadata, and collector descriptors. `TestPublicTypeDescriptorLayout`
+does the same for the exported structural descriptors retained by `Compiled`.
+
+Import representation experiments use a fixed synthetic matrix of 10, 100,
+1,000, and 10,000 function, global, table, memory, tag, and mixed imports. Run
+the decode, validation, and five-kind iteration layers together so a smaller
+descriptor cannot hide work moved into accessors:
+
+```sh
+GOMAXPROCS=1 taskset -c 2 go test ./src/core/compiler/wasm -run '^$' \
+  -bench '^BenchmarkImportMetadata' -benchmem -benchtime=100ms -count=10
+```
+
+Use the same CPU and command for both sides of a comparison. Table and memory
+fixtures declare maxima so pointer-to-scalar limit allocation remains visible.
