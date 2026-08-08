@@ -107,8 +107,6 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 	})
 	t.Run("backing growth", func(t *testing.T) {
 		c := newTestCollector(t, Config{LargeObjectBytes: 16})
-		c.throughput.largestFree = 256
-		c.throughput.largestFreeDirty = true
 		before := snapshotPromotionState(c)
 		defer armFailure(&c.throughput, failBackingGrowth, 0)()
 		if _, err := c.NewStructDefault(0); !errors.Is(err, errInjectedFailure) {
@@ -118,8 +116,6 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 	})
 	t.Run("collection-disabled backing growth", func(t *testing.T) {
 		c := newTestCollector(t, Config{DisableCollection: true})
-		c.throughput.largestFree = 256
-		c.throughput.largestFreeDirty = true
 		before := snapshotPromotionState(c)
 		defer armFailure(&c.throughput, failBackingGrowth, 0)()
 		if _, err := c.NewStructDefault(0); !errors.Is(err, errInjectedFailure) {
@@ -133,8 +129,6 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c.throughput.largestFree = 256
-		c.throughput.largestFreeDirty = true
 		before := snapshotPromotionState(c)
 		defer armFailure(&c.throughput, failBackingGrowth, 0)()
 		if err := c.ForcePromote(object); !errors.Is(err, errInjectedFailure) {

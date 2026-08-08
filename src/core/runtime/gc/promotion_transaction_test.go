@@ -3,7 +3,6 @@ package gc
 import (
 	"errors"
 	"maps"
-	"reflect"
 	"slices"
 	"strconv"
 	"testing"
@@ -42,17 +41,18 @@ func snapshotPromotionState(c *Collector) promotionStateSnapshot {
 
 func cloneThroughputHeap(h throughputHeap) throughputHeap {
 	h.mem = slices.Clone(h.mem)
-	h.freeHeads = slices.Clone(h.freeHeads)
-	h.freeRecordHeads = slices.Clone(h.freeRecordHeads)
-	h.largeFree = slices.Clone(h.largeFree)
-	h.freeSlots = slices.Clone(h.freeSlots)
-	for i := range h.freeSlots {
-		h.freeSlots[i] = slices.Clone(h.freeSlots[i])
-	}
+	h.spanNodes = slices.Clone(h.spanNodes)
+	h.pendingFree = slices.Clone(h.pendingFree)
 	return h
 }
 
-func TestThroughputAllocationCheckpointRestoresAllPaths(t *testing.T) {
+func throughputHeapsEquivalent(a, b throughputHeap) bool {
+	return a.limit == b.limit && a.pageBytes == b.pageBytes && a.classLimit == b.classLimit && a.bump == b.bump &&
+		a.freeBytes == b.freeBytes && a.pendingBytes == b.pendingBytes && a.spanCount == b.spanCount && len(a.spanNodes) == len(b.spanNodes) &&
+		slices.Equal(a.mem, b.mem) && slices.Equal(a.freeSpans(), b.freeSpans()) && slices.Equal(a.pendingFree, b.pendingFree)
+}
+
+func TestThroughputAllocationRollbackRestoresAllPaths(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(*testing.T, *throughputHeap) uint32
@@ -66,11 +66,17 @@ func TestThroughputAllocationCheckpointRestoresAllPaths(t *testing.T) {
 			space: spaceOld,
 		},
 		{
-			name: "size_class_free_list",
+			name: "size_class_free_span",
 			setup: func(t *testing.T, h *throughputHeap) uint32 {
 				e, err := h.alloc(32, spaceOld)
-				if err != nil || h.free(e) != nil {
-					t.Fatalf("prepare class free list: %v", err)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := h.alloc(32, spaceOld); err != nil {
+					t.Fatal(err)
+				}
+				if err := h.free(e); err != nil {
+					t.Fatalf("prepare class free span: %v", err)
 				}
 				return 32
 			},
@@ -80,7 +86,13 @@ func TestThroughputAllocationCheckpointRestoresAllPaths(t *testing.T) {
 			name: "large_span_split",
 			setup: func(t *testing.T, h *throughputHeap) uint32 {
 				e, err := h.alloc(160, spaceLarge)
-				if err != nil || h.free(e) != nil {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := h.alloc(32, spaceLarge); err != nil {
+					t.Fatal(err)
+				}
+				if err := h.free(e); err != nil {
 					t.Fatalf("prepare large free span: %v", err)
 				}
 				return 64
@@ -91,7 +103,13 @@ func TestThroughputAllocationCheckpointRestoresAllPaths(t *testing.T) {
 			name: "large_span_remove",
 			setup: func(t *testing.T, h *throughputHeap) uint32 {
 				e, err := h.alloc(64, spaceLarge)
-				if err != nil || h.free(e) != nil {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := h.alloc(32, spaceLarge); err != nil {
+					t.Fatal(err)
+				}
+				if err := h.free(e); err != nil {
 					t.Fatalf("prepare large free span: %v", err)
 				}
 				return 64
@@ -108,14 +126,14 @@ func TestThroughputAllocationCheckpointRestoresAllPaths(t *testing.T) {
 			size := test.setup(t, &h)
 			before := cloneThroughputHeap(h)
 			transaction := h.beginAllocTransaction()
-			checkpoint := h.checkpointAlloc(size, test.space)
-			if _, err := h.alloc(size, test.space); err != nil {
+			e, err := h.alloc(size, test.space)
+			if err != nil {
 				t.Fatal(err)
 			}
-			h.restoreAlloc(checkpoint)
+			h.rollbackSuccessfulAlloc(e, transaction.bump)
 			h.restoreAllocTransaction(transaction)
-			if !reflect.DeepEqual(h, before) {
-				t.Fatalf("allocator differs after restoring %s checkpoint", test.name)
+			if !throughputHeapsEquivalent(h, before) {
+				t.Fatalf("allocator differs after restoring %s allocation", test.name)
 			}
 		})
 	}
@@ -167,8 +185,8 @@ func TestThroughputAllocationTransactionRollsBackMixedSequence(t *testing.T) {
 		h.rollbackSuccessfulAlloc(allocated[i], tx.bump)
 	}
 	h.restoreAllocTransaction(tx)
-	if !reflect.DeepEqual(h, before) {
-		t.Fatal("mixed allocation sequence did not restore exact allocator state")
+	if !throughputHeapsEquivalent(h, before) {
+		t.Fatal("mixed allocation sequence did not restore equivalent allocator state")
 	}
 }
 
@@ -191,8 +209,8 @@ func assertPromotionStateEqual(t *testing.T, c *Collector, want promotionStateSn
 		!slices.Equal(got.slotCards, want.slotCards) || !maps.Equal(got.slotCardSlot, want.slotCardSlot) {
 		t.Fatal("failed promotion mutated remembered or card metadata")
 	}
-	if !reflect.DeepEqual(got.throughput, want.throughput) {
-		t.Fatal("failed promotion mutated throughput allocator metadata or backing")
+	if !throughputHeapsEquivalent(got.throughput, want.throughput) {
+		t.Fatal("failed promotion mutated throughput allocator intervals, metadata capacity, or backing")
 	}
 }
 

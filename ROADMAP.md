@@ -469,6 +469,11 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   composition allocation-free with reusable scratch, switch early Throughput
   growth to geometric capacity, and release the duplicate Go-heap JIT code copy
   after RX mapping.
+- [x] Remove linear Throughput old-space allocation: constant-time class mapping
+  feeds one arena-backed augmented AVL free-span index with logarithmic fit,
+  insertion, exact coalescing, top-bump reclamation, exact fragmentation
+  summaries, lazy post-full-GC indexing, size-grouped promotion destinations,
+  randomized interval-oracle/fuzz coverage, and warmed allocation-free churn.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
 

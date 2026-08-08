@@ -101,31 +101,57 @@ Today one Tiny step may scan the whole object. A slot/byte-budgeted implementati
 must keep p99 and maximum step time bounded while increasing `steps/op` with the
 amount of scan work.
 
-`BenchmarkThroughputLargeSpanMiss` isolates an old-space allocation miss with
-64, 1,024, and 16,384 fragmented free spans, none large enough for the request.
-Its `warm` case guards constant-time rejection after the bound is exact; its
-`cold` case measures the one scan that refreshes a conservative dirty bound.
-The cold case prepares dirty metadata in untimed batches, so it does not charge
-the preceding allocation's summary writes to the miss. Both validate the miss
-result and final bound state after timing, and neither constructs the larger
-churn fixture.
-`BenchmarkThroughputLargeSpanChurn` repeatedly allocates from and returns the
-unique largest span at the same fragmentation levels. Run both benchmarks
-together so a faster miss cannot hide work shifted into successful allocation.
-It validates every final free-span offset and size after timing.
-The cached maximum is a conservative upper bound after its span is consumed;
-the first later miss refreshes it while scanning, and later impossible misses
-are constant-time. On 64-bit builds this metadata changes `throughputHeap` from
-136 to 144 bytes and `Collector` from 904 to 912 bytes; handle, object, native
-ABI, and serialized layouts are unchanged. On linux/amd64, a minimal executable
-that constructs the Throughput collector and allocates a 1,024-element `i32`
-array grows from 2,624,923 to 2,625,538 unstripped bytes (+615). Its stripped
-size remains 1,749,154 bytes because the retained growth fits existing file
-alignment. `go tool nm -size` attributes 256 text bytes directly to this change:
-134 for `findLarge`, 65 for the cold `findLargeDirty` helper, and 57 of growth in
-`insertLargeFree`; `alloc` remains 1,616 bytes. Do not use the manager-only
-`cli/wago` binary for this comparison because its dependency graph dead-strips
-the collector.
+`BenchmarkThroughputFreshBump`, `BenchmarkThroughputCommonSpanReuse`,
+`BenchmarkThroughputLargeSpanMiss`, `BenchmarkThroughputLargeSpanChurn`, and
+`BenchmarkThroughputRandomFragmentation` cover issue #312's allocator tradeoff.
+Every freed old/large span now enters one reusable arena-backed AVL address
+index, regardless of its original size class. Subtree maximums provide a
+leftmost first-fit query, exact `largest-free`, free-byte, and span-count
+summaries without rescanning. Adjacent class and large spans coalesce, top spans
+rewind the bump, and a later class allocation can consume a span produced by a
+large object or vice versa. Full collection queues dead old-space spans in a
+bounded reusable pending arena; allocation incrementally indexes pending spans
+only until it finds a fit, moving balancing/coalescing work out of the full-GC
+pause without changing poisoning or heap limits. Promotion planning stable-sorts
+multiple survivors by destination size class before reserving old-space spans.
+
+`BenchmarkThroughputLargeSpanMiss` constructs 64, 1,024, and 16,384 fragmented
+spans that are all too small. The augmented root rejects every impossible fit in
+one search step. `BenchmarkThroughputLargeSpanChurn` repeatedly consumes and
+returns the unique fitting span at the same fragmentation levels; always run it
+with the miss benchmark so constant-time rejection cannot hide insertion or
+coalescing work. `BenchmarkThroughputRandomFragmentation` warms a mixed-size
+heap before timing and reports free spans, largest free bytes, and reusable node
+metadata bytes.
+
+On the Ryzen 7 8845HS host with Go 1.24.4 on linux/amd64, five 100 ms samples
+changed the 16,384-span cold impossible miss from roughly 9.85-16.27 us to
+1.68-1.96 ns with exactly one search step and zero allocations. The 16,384-span
+largest-span churn changed from 12.56-14.31 us to 0.49-0.51 us; the 1,024-span
+case changed from 0.84-1.04 us to 0.35-0.38 us. The intentionally exposed
+64-span crossover changes from about 70-77 ns to 210-225 ns, and one-span common
+reuse changes from about 19 ns to 29 ns. Fresh bump allocation remains about
+7.7-8.1 ns and allocation-free. Use the randomized/end-to-end workloads rather
+than the small fragmented crossover alone when deciding the tradeoff.
+
+On 64-bit builds `throughputSpanNode` is 28 bytes, `throughputHeap` changes from
+144 to 120 bytes, and `Collector` changes from 1,024 to 1,000 bytes on the
+current main layout. A 16,384-span fixture retains 458,780 node-arena bytes; the
+arena is reused after warmup and the timed churn remains 0 B/op and 0 allocs/op.
+Handle, object, native ABI, and serialized layouts are unchanged. A minimal
+linux/amd64 executable that constructs the Throughput collector and allocates a
+1,024-element `i32` array changes from 2,492,486 to 2,518,202 unstripped bytes
+(+25,716) and from 1,630,392 to 1,646,776 stripped bytes (+16,384). Do not use the
+manager-only `cli/wago` binary for this comparison because its dependency graph
+dead-strips the collector.
+
+The current collector still marks by stable handle and therefore has no
+independently sweepable page ownership from which to build correct lazy
+page-mark, card, or object-start tables. This change deliberately does not add
+unused per-page side metadata: deferred span indexing captures the measurable
+pause win now, while page-local mark/card/object-start state remains part of a
+future region/Immix generation design rather than speculative Throughput-heap
+overhead.
 
 `BenchmarkTinyAllocatorCommonSpanReuse`, `BenchmarkTinyAllocatorFragmentedFit`,
 and `BenchmarkTinyAllocatorFragmentedMiss` isolate the compact Tiny span
@@ -173,8 +199,8 @@ Future issue work must extend the matrix as follows:
   survivor occupancy, copied/promoted bytes, and full-GC frequency;
 - #311: numeric/reference arrays at lengths 0, 1, 4, 32, 256, and 4,096 plus
   handle/chunk refill and cancellation paths;
-- #312/#313: randomized fragmentation, large spans, occupancy histograms,
-  mark bandwidth, recyclable regions, and selective evacuation;
+- #313: occupancy histograms, mark bandwidth, recyclable regions, and selective
+  evacuation build on #312's randomized fragmentation and indexed large spans;
 - #318/#319: Tiny metadata, size-bin search, giant objects, root churn, mutation
   during every phase, allocation debt, cycle latency, and minimum mutator
   utilization; and

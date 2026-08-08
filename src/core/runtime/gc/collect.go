@@ -1,8 +1,10 @@
 package gc
 
 import (
+	"cmp"
 	"encoding/binary"
 	"errors"
+	"slices"
 )
 
 func (c *Collector) CollectFull(roots RootSet) error {
@@ -91,7 +93,11 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 func (c *Collector) sweepAll() {
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].space != spaceFree && !c.mark[h] {
-			c.free(h)
+			if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+				c.deferThroughputFree(h)
+			} else {
+				c.free(h)
+			}
 		}
 	}
 	c.compactNurseryHandles()
@@ -124,7 +130,32 @@ type plannedPromotion struct {
 
 func (c *Collector) promoteMarkedNursery() error {
 	plans := c.promotionScratch[:0]
+	for _, h := range c.nurseryHandles {
+		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
+			if err := injectFailure(c, failPromotionPlan); err != nil {
+				clear(plans)
+				c.promotionScratch = plans[:0]
+				return err
+			}
+			plans = append(plans, plannedPromotion{handle: h})
+		}
+	}
+	// Group destinations by allocation size. Equal-size survivors retain handle
+	// order, while old-space reuse and bump destinations stay clustered by size
+	// class/page instead of following arbitrary nursery graph order.
+	if len(plans) > 1 {
+		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
+			return cmp.Compare(c.throughput.promotionAllocSize(c.handles[a.handle].size), c.throughput.promotionAllocSize(c.handles[b.handle].size))
+		})
+	}
+
+	if err := c.throughput.sweepAllPending(); err != nil {
+		clear(plans)
+		c.promotionScratch = plans[:0]
+		return err
+	}
 	tx := c.throughput.beginAllocTransaction()
+	allocated := 0
 	finish := func() {
 		clear(plans)
 		c.promotionScratch = plans[:0]
@@ -133,29 +164,24 @@ func (c *Collector) promoteMarkedNursery() error {
 		if current != nil {
 			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
-		for i := len(plans) - 1; i >= 0; i-- {
+		for i := allocated - 1; i >= 0; i-- {
 			c.throughput.rollbackSuccessfulAlloc(plans[i].entry, tx.bump)
 		}
 		c.throughput.restoreAllocTransaction(tx)
 		finish()
 	}
-	for _, h := range c.nurseryHandles {
-		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery && c.mark[h] {
-			if err := injectFailure(c, failPromotionPlan); err != nil {
-				rollback(nil)
-				return err
-			}
-			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
-			if err != nil {
-				rollback(nil)
-				return err
-			}
-			if err := injectFailure(c, failPromotionDestination); err != nil {
-				rollback(&e)
-				return err
-			}
-			plans = append(plans, plannedPromotion{handle: h, entry: e})
+	for i := range plans {
+		e, err := c.throughput.alloc(c.handles[plans[i].handle].size, spaceOld)
+		if err != nil {
+			rollback(nil)
+			return err
 		}
+		if err := injectFailure(c, failPromotionDestination); err != nil {
+			rollback(&e)
+			return err
+		}
+		plans[i].entry = e
+		allocated++
 	}
 	for range plans {
 		if err := injectFailure(c, failPromotionCommit); err != nil {
@@ -169,12 +195,16 @@ func (c *Collector) promoteMarkedNursery() error {
 	finish()
 	return nil
 }
+
 func (c *Collector) promoteHandle(h uint32) error {
 	if int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
 		return errors.New("gc: invalid handle")
 	}
 	if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
 		return nil
+	}
+	if err := c.throughput.sweepAllPending(); err != nil {
+		return err
 	}
 	tx := c.throughput.beginAllocTransaction()
 	oldEntry, err := c.throughput.alloc(c.handles[h].size, spaceOld)
@@ -185,6 +215,7 @@ func (c *Collector) promoteHandle(h uint32) error {
 	c.promoteHandleTo(h, oldEntry)
 	return nil
 }
+
 func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
 	e := &c.handles[h]
 	src := c.nursery[e.off : e.off+e.size]
@@ -199,7 +230,11 @@ func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
 	}
 	*e = oldEntry
 }
-func (c *Collector) free(h uint32) {
+func (c *Collector) free(h uint32) { c.releaseHandle(h, false) }
+
+func (c *Collector) deferThroughputFree(h uint32) { c.releaseHandle(h, true) }
+
+func (c *Collector) releaseHandle(h uint32, lazyThroughput bool) {
 	c.removeRemembered(h)
 	c.removeCardsForHandle(h)
 	e := &c.handles[h]
@@ -229,7 +264,11 @@ func (c *Collector) free(h uint32) {
 		_ = c.tiny.free(e.off)
 		c.tinySetColor(h, tinyWhite)
 	} else if e.space == spaceOld || e.space == spaceLarge {
-		_ = c.throughput.free(*e)
+		if lazyThroughput {
+			_ = c.throughput.deferFree(*e)
+		} else {
+			_ = c.throughput.free(*e)
+		}
 	}
 	*e = handleEntry{}
 	c.freeHandles = append(c.freeHandles, h)

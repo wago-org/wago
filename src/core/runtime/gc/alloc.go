@@ -15,22 +15,22 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	if c.cfg.DisableCollection {
 		var tx throughputAllocTransaction
-		var undo throughputAllocCheckpoint
 		if failureInjectionEnabled {
+			if err := c.throughput.sweepAllPending(); err != nil {
+				return Null(), err
+			}
 			tx = c.throughput.beginAllocTransaction()
-			undo = c.throughput.checkpointAlloc(size, spaceLarge)
 		}
 		e, err := c.throughput.alloc(size, spaceLarge)
 		if err != nil {
 			if isInjectedFailure(err) {
-				c.throughput.restoreAlloc(undo)
 				c.throughput.restoreAllocTransaction(tx)
 				return Null(), err
 			}
 			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
 		}
 		if err := injectFailure(c, failHandlePublication); err != nil {
-			c.throughput.restoreAlloc(undo)
+			c.throughput.rollbackSuccessfulAlloc(e, tx.bump)
 			c.throughput.restoreAllocTransaction(tx)
 			return Null(), err
 		}
@@ -66,17 +66,17 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	var e handleEntry
 	var oldNurseryBump uint32
 	var allocationTx throughputAllocTransaction
-	var allocationUndo throughputAllocCheckpoint
 	if c.shouldAllocateLarge(size) {
 		var err error
 		if failureInjectionEnabled {
+			if err := c.throughput.sweepAllPending(); err != nil {
+				return Null(), err
+			}
 			allocationTx = c.throughput.beginAllocTransaction()
-			allocationUndo = c.throughput.checkpointAlloc(size, spaceLarge)
 		}
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
 			if isInjectedFailure(err) {
-				c.throughput.restoreAlloc(allocationUndo)
 				c.throughput.restoreAllocTransaction(allocationTx)
 				return Null(), err
 			}
@@ -90,8 +90,10 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 				return Null(), err
 			}
 			if failureInjectionEnabled {
+				if err := c.throughput.sweepAllPending(); err != nil {
+					return Null(), err
+				}
 				allocationTx = c.throughput.beginAllocTransaction()
-				allocationUndo = c.throughput.checkpointAlloc(size, spaceLarge)
 			}
 			e, err = c.throughput.alloc(size, spaceLarge)
 			if err != nil {
@@ -135,7 +137,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		if sp == spaceNursery {
 			c.nurseryBump = oldNurseryBump
 		} else {
-			c.throughput.restoreAlloc(allocationUndo)
+			c.throughput.rollbackSuccessfulAlloc(e, allocationTx.bump)
 			c.throughput.restoreAllocTransaction(allocationTx)
 		}
 		return Null(), err
