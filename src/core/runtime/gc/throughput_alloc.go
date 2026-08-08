@@ -3,6 +3,7 @@ package gc
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 )
 
 var errThroughputHeapExhausted = errors.New("gc: throughput heap exhausted")
@@ -253,11 +254,42 @@ func (h *throughputHeap) free(e handleEntry) error {
 	return nil
 }
 
+// Keep the mapper out of line: duplicating it in allocator callers grows hot
+// code and regresses promotion despite faster isolated lookups.
+//
+//go:noinline
 func (h *throughputHeap) classFor(size uint32) int {
-	for i, sz := range throughputClassSizes {
-		if size <= sz && sz <= h.classLimit {
-			return i
+	if size <= 128 {
+		class := 0
+		switch {
+		case size <= 32:
+		case size <= 64:
+			class = int((size-1)>>4) - 1
+		case size <= 96:
+			class = 3
+		default:
+			class = 4
 		}
+		if throughputClassSizes[class] <= h.classLimit {
+			return class
+		}
+		return -1
+	}
+	if size > 32768 {
+		return -1
+	}
+
+	exponent := bits.Len32(size - 1)
+	class := exponent + 2
+	if size <= 4096 {
+		// Classes through 4 KiB alternate powers of two and 1.5x.
+		class = 2 * (exponent - 5)
+		if size <= uint32(3)<<(exponent-2) {
+			class--
+		}
+	}
+	if throughputClassSizes[class] <= h.classLimit {
+		return class
 	}
 	return -1
 }
