@@ -97,10 +97,10 @@ func TestReferenceAndTableMetadataScanners(t *testing.T) {
 	externRef := wasm.AbsRef(wasm.HeapExtern)
 	max := uint64(9)
 	m := &wasm.Module{
-		Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: externRef}}}},
+		Imports: []wasm.Import{{Type: wasm.NewTableExternType(wasm.TableType{Ref: externRef})}},
 		Exports: []wasm.Export{{Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 2}}},
 		Tables: []wasm.Table{
-			{Type: wasm.TableType{Ref: funcRef, Limits: wasm.Limits{Min: 3, Max: &max}}},
+			{Type: wasm.TableType{Ref: funcRef, Limits: wasm.Limits{Min: 3, Max: max, HasMax: true}}},
 			{Type: wasm.TableType{Ref: externRef, Limits: wasm.Limits{Min: 2}}},
 		},
 	}
@@ -153,8 +153,8 @@ func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 		{"type", &wasm.Module{Types: []wasm.RecType{funcType}}},
 		{"struct field", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)}}}}}}}},
 		{"array element", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)}}}}}}},
-		{"function import", &wasm.Module{Types: []wasm.RecType{funcType}, Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}}}},
-		{"global import", &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.V128}}}}}},
+		{"function import", &wasm.Module{Types: []wasm.RecType{funcType}, Imports: []wasm.Import{{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}}}},
+		{"global import", &wasm.Module{Imports: []wasm.Import{{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.V128})}}}},
 		{"global type", &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.V128}}}}},
 		{"global initializer", &wasm.Module{Globals: []wasm.Global{{Init: wasm.Expr{BodyBytes: fd}}}}},
 		{"table initializer", &wasm.Module{Tables: []wasm.Table{{Init: &wasm.Expr{BodyBytes: fd}}}}},
@@ -473,7 +473,7 @@ func TestMemorySupportValidation(t *testing.T) {
 		t.Fatalf("valid memory: %v", err)
 	}
 	max := uint64(1)
-	shared := supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Shared: true, Limits: wasm.Limits{Min: 1, Max: &max}}}}, feat: Features{Threads: true}}
+	shared := supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Shared: true, Limits: wasm.Limits{Min: 1, Max: max, HasMax: true}}}}, feat: Features{Threads: true}}
 	if err := shared.memories(); err != nil {
 		t.Fatalf("threads-enabled shared memory: %v", err)
 	}

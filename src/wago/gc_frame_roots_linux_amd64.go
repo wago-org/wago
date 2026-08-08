@@ -32,12 +32,12 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 				return nil
 			}
 		case wasm.ExternGlobal:
-			global := m.Imports[i].Type.Global
+			global := m.Imports[i].Type.GlobalType()
 			if !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
 				return nil
 			}
 		case wasm.ExternTable:
-			tableType := wasm.RefVal(m.Imports[i].Type.Table.Ref)
+			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
 			if !collectorFrameRefType(m, tableType) && !frameFunctionRefType(m, tableType) {
 				return nil
 			}

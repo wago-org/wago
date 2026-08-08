@@ -2542,9 +2542,9 @@ func TestStagedThreeLocalTableInit64ShapeIsExact(t *testing.T) {
 	module := wasm.Module{
 		Imports: []wasm.Import{{Module: "a", Name: "f", Type: wasm.ExternType{Kind: wasm.ExternFunc}}},
 		Tables: []wasm.Table{
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max}}},
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max}}},
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max, Addr64: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: max, HasMax: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: max, HasMax: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: max, HasMax: true, Addr64: true}}},
 		},
 		Elements: []wasm.Elem{
 			{Mode: wasm.ElemMode{Kind: wasm.ElemActive, Table: 2}},

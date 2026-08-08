@@ -239,6 +239,18 @@ taskset -c 2 go test ./src/core/runtime/gc \
 Use native hardware for architecture claims. QEMU results are correctness data,
 not ARM64 performance data.
 
+## Descriptor lowering allocation
+
+`BenchmarkGCTypeLowering` isolates construction of runtime descriptors from
+decoded Wasm GC types. Compiler lowering fills `FieldDesc` storage directly via
+`gc.StructDescBuilder`; it does not first allocate a temporary
+`[]gc.StorageKind`. This matters only when Go would heap-allocate the temporary:
+on a Ryzen 7 7800X3D with Go 1.26.5, the 10-type/64-field case changed from
+13 to 10 allocs/op (-23.1%) and from 8,224 to 8,032 B/op (-2.3%), with time
+changing from 3.603 to 3.551 us/op (-1.4%). Across the four benchmark shapes,
+time was neutral (-0.02% geomean); smaller field arrays already remained on the
+Go stack.
+
 ## Research basis
 
 The matrix follows primary and official sources rather than one aggregate

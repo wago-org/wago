@@ -89,7 +89,7 @@ func TestBuildRejectsUnsupportedCallSignature(t *testing.T) {
 			recFuncType(wasm.FuncType{Params: []wasm.ValType{wasm.FuncRef}}),
 			recFuncType(wasm.FuncType{}),
 		},
-		Imports:   []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}},
+		Imports:   []wasm.Import{{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}},
 		FuncTypes: []wasm.TypeIdx{{Index: 1}},
 		Code:      []wasm.Func{{BodyBytes: bytes(0x10, 0x00, 0x0b)}},
 	}

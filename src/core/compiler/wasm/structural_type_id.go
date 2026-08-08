@@ -234,12 +234,13 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 					return nil, false
 				}
 			}
-			for _, metadata := range []*TypeIdx{st.Metadata.Describes, st.Metadata.Descriptor} {
-				if metadata == nil {
+			for _, metadata := range []OptionalTypeIdx{st.Metadata.Describes, st.Metadata.Descriptor} {
+				idx, present := metadata.Get()
+				if !present {
 					if !appendByte(&encoded, 0) {
 						return nil, false
 					}
-				} else if !appendByte(&encoded, 1) || !writeRef(&encoded, *metadata, group) {
+				} else if !appendByte(&encoded, 1) || !writeRef(&encoded, idx, group) {
 					return nil, false
 				}
 			}
@@ -491,18 +492,18 @@ func (m *Module) writeStructuralIndexedFuncTypeExpanded(typeIdx uint32, mix func
 				return false
 			}
 		}
-		if st.Metadata.Describes != nil {
+		if describes, present := st.Metadata.Describes.Get(); present {
 			mix(1)
-			idx, ok := flatIndex(*st.Metadata.Describes, recGroup)
+			idx, ok := flatIndex(describes, recGroup)
 			if !ok || !writeType(idx) {
 				return false
 			}
 		} else {
 			mix(0)
 		}
-		if st.Metadata.Descriptor != nil {
+		if descriptor, present := st.Metadata.Descriptor.Get(); present {
 			mix(1)
-			idx, ok := flatIndex(*st.Metadata.Descriptor, recGroup)
+			idx, ok := flatIndex(descriptor, recGroup)
 			if !ok || !writeType(idx) {
 				return false
 			}

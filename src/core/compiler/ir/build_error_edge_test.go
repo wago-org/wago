@@ -98,9 +98,9 @@ func TestBuildModuleFunctionIndexMetadataWithImports(t *testing.T) {
 	m := &wasm.Module{
 		Types: []wasm.RecType{recFuncType(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}), recFuncType(wasm.FuncType{})},
 		Imports: []wasm.Import{
-			{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I32}}},
-			{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}},
-			{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 1}}},
+			{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32})},
+			{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})},
+			{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 1})},
 		},
 		FuncTypes: []wasm.TypeIdx{{Index: 0}, {Index: 1}},
 		Code: []wasm.Func{

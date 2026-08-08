@@ -44,9 +44,9 @@ func TestSyncSQLiteQuery(t *testing.T) {
 		if im.Type.Kind != wasm.ExternMem {
 			continue
 		}
-		minPages = uint32(im.Type.Mem.Limits.Min)
-		if im.Type.Mem.Limits.Max != nil {
-			maxPages = uint32(*im.Type.Mem.Limits.Max)
+		minPages = uint32(im.Type.MemType().Limits.Min)
+		if im.Type.MemType().Limits.HasMax {
+			maxPages = uint32(im.Type.MemType().Limits.Max)
 		}
 	}
 	mem, err := NewMemory(minPages, maxPages)

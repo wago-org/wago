@@ -292,7 +292,7 @@ func TestExtendedConstFeatureGateRejectsBeforeCompilation(t *testing.T) {
 
 func TestExtendedConstASTEncodingAndStrictEvaluation(t *testing.T) {
 	m := &wasm.Module{
-		Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64}}}},
+		Imports: []wasm.Import{{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I64})}},
 	}
 	expr := wasm.Expr{Instrs: []wasm.Instruction{
 		{Kind: wasm.InstrGlobalGet, Index: 0},

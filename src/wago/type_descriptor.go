@@ -642,15 +642,15 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 		}
 		d.Supers = append(d.Supers, x)
 	}
-	if st.Metadata.Describes != nil {
-		x, err := c.typeIndex(*st.Metadata.Describes, sourceGroup)
+	if describes, present := st.Metadata.Describes.Get(); present {
+		x, err := c.typeIndex(describes, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("describes: %w", err)
 		}
 		d.HasDescribes, d.Describes = true, x
 	}
-	if st.Metadata.Descriptor != nil {
-		x, err := c.typeIndex(*st.Metadata.Descriptor, sourceGroup)
+	if descriptor, present := st.Metadata.Descriptor.Get(); present {
+		x, err := c.typeIndex(descriptor, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("descriptor: %w", err)
 		}

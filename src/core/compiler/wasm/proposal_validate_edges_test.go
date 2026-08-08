@@ -19,8 +19,8 @@ func descriptorModule(body ...Instruction) *Module {
 	return &Module{
 		Types: []RecType{
 			{SubTypes: []SubType{
-				{Final: true, Metadata: TypeMetadata{Descriptor: ptr(TypeIdx{Index: 1, Rec: true})}, Comp: CompType{Kind: CompStruct}},
-				{Final: true, Metadata: TypeMetadata{Describes: ptr(TypeIdx{Index: 0, Rec: true})}, Comp: CompType{Kind: CompStruct}},
+				{Final: true, Metadata: TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 1, Rec: true})}, Comp: CompType{Kind: CompStruct}},
+				{Final: true, Metadata: TypeMetadata{Describes: SomeTypeIdx(TypeIdx{Index: 0, Rec: true})}, Comp: CompType{Kind: CompStruct}},
 			}},
 			ft(nil, nil),
 		},
@@ -82,7 +82,7 @@ func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 }
 
 func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
-	shared := []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}
+	shared := []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}
 	t.Run("memory.atomic.notify stack effect and count type", func(t *testing.T) {
 		m := modWithFunc(nil, []ValType{I32}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryAtomicNotify})
 		m.Memories = shared

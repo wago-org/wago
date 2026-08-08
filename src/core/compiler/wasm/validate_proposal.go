@@ -157,7 +157,7 @@ func (v *moduleValidator) tagFuncType(idx uint32) (*CompType, bool) {
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternTag {
 			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.Tag.Type)
+				ft := v.funcTypeFromTypeIdx(im.Type.TagType().Type)
 				return ft, ft != nil
 			}
 			n++
@@ -411,7 +411,8 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "ref.get_desc")
 		}
-		if st.Metadata.Descriptor == nil {
+		descriptor, present := st.Metadata.Descriptor.Get()
+		if !present {
 			return v.verr(ErrTypeMismatch, "type without descriptor")
 		}
 		x, err := v.pop()
@@ -424,7 +425,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !x.unknown && !v.refSubtype(x.t.Ref(), Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
 			return v.verr(ErrTypeMismatch, "ref.get_desc target")
 		}
-		v.push(RefVal(Ref(false, IndexedHeap(*st.Metadata.Descriptor), true)))
+		v.push(RefVal(Ref(false, IndexedHeap(descriptor), true)))
 		return nil
 	case InstrStructNew, InstrStructNewDefault, InstrStructNewDesc, InstrStructNewDefaultDesc:
 		return v.stepStructNew(in)
@@ -599,7 +600,7 @@ func (v *funcValidator) stepStructNew(in Instruction) error {
 	if !ok {
 		return v.verr(ErrUnknownType, "struct.new")
 	}
-	if (in.Kind == InstrStructNew || in.Kind == InstrStructNewDefault) && st.Metadata.Descriptor != nil {
+	if (in.Kind == InstrStructNew || in.Kind == InstrStructNewDefault) && st.Metadata.Descriptor.Present() {
 		return v.verr(ErrTypeMismatch, "use struct.new_desc for descriptor-bearing struct")
 	}
 	if in.Kind == InstrStructNewDefault || in.Kind == InstrStructNewDefaultDesc {
@@ -616,10 +617,11 @@ func (v *funcValidator) stepStructNew(in Instruction) error {
 		}
 	}
 	if in.Kind == InstrStructNewDesc || in.Kind == InstrStructNewDefaultDesc {
-		if st.Metadata.Descriptor == nil {
+		descriptor, present := st.Metadata.Descriptor.Get()
+		if !present {
 			return v.verr(ErrTypeMismatch, "type without descriptor")
 		}
-		want := RefVal(Ref(false, IndexedHeap(*st.Metadata.Descriptor), true))
+		want := RefVal(Ref(false, IndexedHeap(descriptor), true))
 		if err := v.popExpect(want); err != nil {
 			return err
 		}

@@ -288,7 +288,7 @@ func moduleMemargOffset64(m *Module) bool {
 			continue
 		}
 		count++
-		addr64 = m.Imports[i].Type.Mem.Limits.Addr64
+		addr64 = m.Imports[i].Type.MemType().Limits.Addr64
 		if count > 1 {
 			return false
 		}

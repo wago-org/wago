@@ -211,7 +211,7 @@ func stagedTableBodyAllowed(body wasm.Expr, allowed func(wasm.InstrKind) bool) (
 func stagedTwoLocalExternrefReadWriteShape(m *wasm.Module) bool {
 	return m.ImportedTableCount() == 0 && len(m.Tables) == 2 &&
 		m.Tables[0].Type.Limits.Addr64 && m.Tables[1].Type.Limits.Addr64 &&
-		m.Tables[0].Type.Limits.Max == nil && m.Tables[1].Type.Limits.Max == nil &&
+		!m.Tables[0].Type.Limits.HasMax && !m.Tables[1].Type.Limits.HasMax &&
 		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef) &&
 		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.FuncRef)
 }
@@ -219,7 +219,7 @@ func stagedTwoLocalExternrefReadWriteShape(m *wasm.Module) bool {
 func stagedTwoLocalExternrefFillShape(m *wasm.Module) bool {
 	return m.ImportedTableCount() == 0 && len(m.Tables) == 2 &&
 		!m.Tables[0].Type.Limits.Addr64 && m.Tables[1].Type.Limits.Addr64 &&
-		m.Tables[0].Type.Limits.Max == nil && m.Tables[1].Type.Limits.Max == nil &&
+		!m.Tables[0].Type.Limits.HasMax && !m.Tables[1].Type.Limits.HasMax &&
 		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef) &&
 		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.ExternRef)
 }
@@ -241,7 +241,7 @@ func stagedExactTableOperationShape(m *wasm.Module, label string, allowed func(w
 
 func stagedSoleExternrefGrowShape(m *wasm.Module) bool {
 	return m.ImportedTableCount() == 0 && len(m.Tables) == 1 &&
-		m.Tables[0].Type.Limits.Addr64 && m.Tables[0].Type.Limits.Max == nil &&
+		m.Tables[0].Type.Limits.Addr64 && !m.Tables[0].Type.Limits.HasMax &&
 		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef)
 }
 
@@ -251,7 +251,7 @@ func stagedTwoLocalNoMaxTable64DeclarationShape(m *wasm.Module) bool {
 	}
 	for i := range m.Tables {
 		t := &m.Tables[i]
-		if t.Init != nil || !t.Type.Limits.Addr64 || t.Type.Limits.Min != 0 || t.Type.Limits.Max != nil ||
+		if t.Init != nil || !t.Type.Limits.Addr64 || t.Type.Limits.Min != 0 || t.Type.Limits.HasMax ||
 			!wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
 			return false
 		}
@@ -277,8 +277,8 @@ func stagedImportedLocalNoMaxTable64DeclarationShape(m *wasm.Module) bool {
 	if imported == nil || imported.Module != "spectest" || imported.Name != "table64" {
 		return false
 	}
-	for _, tt := range []wasm.TableType{imported.Type.Table, m.Tables[0].Type} {
-		if !tt.Limits.Addr64 || tt.Limits.Min != 0 || tt.Limits.Max != nil ||
+	for _, tt := range []wasm.TableType{imported.Type.TableType(), m.Tables[0].Type} {
+		if !tt.Limits.Addr64 || tt.Limits.Min != 0 || tt.Limits.HasMax ||
 			!wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
 			return false
 		}
@@ -291,8 +291,8 @@ func stagedInertOversizedTable64Shape(m *wasm.Module) bool {
 		return false
 	}
 	t := &m.Tables[0]
-	if t.Init != nil || !t.Type.Limits.Addr64 || t.Type.Limits.Max == nil ||
-		t.Type.Limits.Min > frontend.StagedTable64Max() || *t.Type.Limits.Max <= frontend.StagedTable64Max() ||
+	if t.Init != nil || !t.Type.Limits.Addr64 || !t.Type.Limits.HasMax ||
+		t.Type.Limits.Min > frontend.StagedTable64Max() || t.Type.Limits.Max <= frontend.StagedTable64Max() ||
 		!wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
 		return false
 	}
@@ -403,7 +403,7 @@ func stagedThreeLocalTableInit64Shape(m *wasm.Module) error {
 		if t.Init != nil {
 			return fmt.Errorf("table %d initializer expression is outside the exact three-local table.init64 slice", i)
 		}
-		if t.Type.Limits.Max == nil {
+		if !t.Type.Limits.HasMax {
 			return fmt.Errorf("table %d requires an explicit maximum in the exact three-local table.init64 slice", i)
 		}
 		wantAddr64 := i == 2
@@ -445,7 +445,7 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	exactExternrefFill := stagedTwoLocalExternrefFillShape(m)
 	if !exactExternrefReadWrite && !exactExternrefFill {
 		for i := range m.Tables {
-			if m.Tables[i].Type.Limits.Max == nil {
+			if !m.Tables[i].Type.Limits.HasMax {
 				return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table slice", i)
 			}
 		}
@@ -470,7 +470,7 @@ func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
 			continue
 		}
 		if index == 0 {
-			ft, ok := m.ResolvedTypeFunc(im.Type.Tag.Type.Index)
+			ft, ok := m.ResolvedTypeFunc(im.Type.TagType().Type.Index)
 			return ft, ok
 		}
 		index--
@@ -860,7 +860,7 @@ func moduleUsesTypedTableReferences(m *wasm.Module) bool {
 		return ref.Heap().Kind() == wasm.HeapTypeIndex || !ref.Nullable() || ref.Exact()
 	}
 	for _, im := range m.Imports {
-		if im.Type.Kind == wasm.ExternTable && check(im.Type.Table.Ref) {
+		if im.Type.Kind == wasm.ExternTable && check(im.Type.TableType().Ref) {
 			return true
 		}
 	}
@@ -982,7 +982,7 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) e
 		return fmt.Errorf("threads currently require exactly one imported shared memory")
 	}
 	mt, _ := m.MemoryType(0)
-	if !mt.Shared || mt.Limits.Addr64 || mt.Limits.Max == nil {
+	if !mt.Shared || mt.Limits.Addr64 || !mt.Limits.HasMax {
 		return fmt.Errorf("threads currently require shared memory32 with an exact maximum")
 	}
 	if bounds != BoundsChecksExplicit {
@@ -992,7 +992,7 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) e
 		return fmt.Errorf("threads currently admit numeric functions and globals without host imports, tables, tags, or segments")
 	}
 	for i := range m.Imports {
-		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.Global.Mutable {
+		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.GlobalType().Mutable {
 			return fmt.Errorf("threads currently reject mutable global imports")
 		}
 	}
@@ -1256,7 +1256,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) && !(externrefLocal && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)) {
 				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d outside an exact local externref slice", tableIndex)
 			}
-			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max() && !inertOversized) {
+			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.HasMax && tt.Limits.Max > frontend.StagedTable64Max() && !inertOversized) {
 				return nil, fmt.Errorf("compile: staged table64 table %d requires an executable runtime bound no greater than %d entries", tableIndex, frontend.StagedTable64Max())
 			}
 		}
@@ -1417,42 +1417,42 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
 		case wasm.ExternGlobal:
-			exact, err := typeConverter.valueType(im.Type.Global.Type, -1)
+			exact, err := typeConverter.valueType(im.Type.GlobalType().Type, -1)
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q type: %w", im.Module, im.Name, err)
 			}
 			typeIndex := internValueType(&c.ValueTypes, exact)
-			abiType, err := typeConverter.abiType(im.Type.Global.Type, c.Types)
+			abiType, err := typeConverter.abiType(im.Type.GlobalType().Type, c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
-			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: abiType, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: im.Type.Global.Mutable}
+			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: abiType, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: im.Type.GlobalType().Mutable}
 			c.GlobalImports = append(c.GlobalImports, imp)
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: imp.Mutable})
 		case wasm.ExternMem:
-			def := memoryDefFromWasm(im.Type.Mem)
+			def := memoryDefFromWasm(im.Type.MemType())
 			def.ImportKey = im.Module + "." + im.Name
 			c.memoryDir.defs = append(c.memoryDir.defs, def)
 			if c.memoryImport == "" {
 				c.memoryImport = def.ImportKey
 			}
 		case wasm.ExternTable:
-			exact, err := typeConverter.valueType(wasm.RefVal(im.Type.Table.Ref), -1)
+			exact, err := typeConverter.valueType(wasm.RefVal(im.Type.TableType().Ref), -1)
 			if err != nil {
 				return nil, fmt.Errorf("table import %q.%q type: %w", im.Module, im.Name, err)
 			}
-			abiType, err := typeConverter.abiType(wasm.RefVal(im.Type.Table.Ref), c.Types)
+			abiType, err := typeConverter.abiType(wasm.RefVal(im.Type.TableType().Ref), c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
-			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.Table.Limits.Addr64}
-			min := im.Type.Table.Limits.Min
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.TableType().Limits.Addr64}
+			min := im.Type.TableType().Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
 			}
 			def.Min = min
-			if im.Type.Table.Limits.Max != nil {
-				max := *im.Type.Table.Limits.Max
+			if im.Type.TableType().Limits.HasMax {
+				max := im.Type.TableType().Limits.Max
 				if max > uint64(maxInt()) {
 					return nil, fmt.Errorf("table import %q.%q maximum %d overflows int", im.Module, im.Name, max)
 				}
@@ -1470,7 +1470,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 			tableImportIndex++
 		case wasm.ExternTag:
-			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.Tag.Type.Index})
+			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.TagType().Type.Index})
 		}
 	}
 	if features.ExceptionHandling {
@@ -1576,10 +1576,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.TableHasValueType = true
 		c.TableAddr64 = tt.Limits.Addr64
 		if c.tableImport == "" {
-			c.TableHasMax = tt.Limits.Max != nil
+			c.TableHasMax = tt.Limits.HasMax
 			c.TableMax = uint64(tableShapes[0].Capacity)
-			if tt.Limits.Max != nil {
-				c.TableMax = *tt.Limits.Max
+			if tt.Limits.HasMax {
+				c.TableMax = tt.Limits.Max
 			}
 		}
 	}
@@ -1599,10 +1599,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 				return nil, fmt.Errorf("table %d ABI type: %w", i, err)
 			}
 			persistedMax := uint64(tableShapes[i].Capacity)
-			if tt.Limits.Max != nil {
-				persistedMax = *tt.Limits.Max
+			if tt.Limits.HasMax {
+				persistedMax = tt.Limits.Max
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil, Addr64: tt.Limits.Addr64}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.HasMax, Addr64: tt.Limits.Addr64}
 		}
 		for i, def := range additionalTableImports {
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
@@ -1704,7 +1704,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	funcTypeIDAt := 0
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
-			typeIndex := m.Imports[i].Type.Type.Index
+			typeIndex := m.Imports[i].Type.FuncType().Index
 			key, ok := m.StructuralTypeKeyChecked(typeIndex)
 			if !ok {
 				return nil, fmt.Errorf("import function type %d exceeds bounded native identity", typeIndex)
@@ -1998,7 +1998,7 @@ func effectiveCompileBoundsMode(requested BoundsCheckMode, m *wasm.Module) Bound
 func moduleInitialMemoryPages(m *wasm.Module) (uint64, bool) {
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternMem {
-			return m.Imports[i].Type.Mem.Limits.Min, true
+			return m.Imports[i].Type.MemType().Limits.Min, true
 		}
 	}
 	if len(m.Memories) != 0 {
@@ -2492,8 +2492,8 @@ func (c *Compiled) TableImports() []string {
 
 func memoryDefFromWasm(mt wasm.MemType) memoryDef {
 	def := memoryDef{Min: mt.Limits.Min, Addr64: mt.Limits.Addr64, Shared: mt.Shared}
-	if mt.Limits.Max != nil {
-		def.Max = *mt.Limits.Max
+	if mt.Limits.HasMax {
+		def.Max = mt.Limits.Max
 		def.HasMax = true
 	}
 	return def
