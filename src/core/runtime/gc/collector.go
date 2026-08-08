@@ -33,16 +33,33 @@ const (
 )
 
 type Config struct {
+	// Telemetry opts this collector into bounded cycle timing and deterministic
+	// work counters when built with wago_gcstats. Nil keeps diagnostic builds on
+	// the no-telemetry path. Ordinary builds discard the pointer. One recorder
+	// must not be attached to multiple collectors concurrently.
+	Telemetry *Telemetry
+
+	NurseryBytes        uint32
+	OldBlockBytes       uint32
+	LargeObjectBytes    uint32
+	StressNurseryBytes  uint32
+	TinyHeapBytes       uint32
+	TinyBlockBytes      uint32
+	TinyStepBudget      uint32
+	ThroughputHeapBytes uint32
+	ThroughputPageBytes uint32
+	// ThroughputClassLimit is zero for the default or exactly one of the
+	// built-in throughput size classes. Values between classes are rejected rather
+	// than rounded. Objects above the limit use large-span allocation.
+	ThroughputClassLimit uint32
+
 	// Profile selects the heap profile. The zero value preserves the default
 	// throughput collector behavior.
-	Profile              Profile
-	Allocator            AllocatorKind
-	Runtime              RuntimeKind
-	NurseryBytes         uint32
-	OldBlockBytes        uint32
-	LargeObjectBytes     uint32
+	Profile   Profile
+	Allocator AllocatorKind
+	Runtime   RuntimeKind
+
 	CollectEveryAlloc    bool
-	StressNurseryBytes   uint32
 	ForceMajorEveryMinor bool
 	VerifyAfterCollect   bool
 	PoisonFreed          bool
@@ -52,17 +69,8 @@ type Config struct {
 	// returns an allocation error on exhaustion. It is used by general WasmGC
 	// code until native frame roots can be published at every safepoint.
 	DisableCollection     bool
-	TinyHeapBytes         uint32
-	TinyBlockBytes        uint32
-	TinyStepBudget        uint32
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
-	ThroughputHeapBytes   uint32
-	ThroughputPageBytes   uint32
-	// ThroughputClassLimit is zero for the default or exactly one of the
-	// built-in throughput size classes. Values between classes are rejected rather
-	// than rounded. Objects above the limit use large-span allocation.
-	ThroughputClassLimit uint32
 }
 
 type Stats struct {
@@ -94,33 +102,34 @@ type handleEntry struct {
 }
 
 type Collector struct {
-	cfg               Config
-	nativeView        *NativeCollectorView
-	nativeStructAlloc nativeStructAllocState
-	nativeAllocEpoch  uint32
-	types             []TypeDesc
-	typeIndex         []int
-	objectAlign       uint32
-	nursery           []byte
-	nurseryBump       uint32
-	tiny              tinyHeap
-	tinyGC            tinyGC
-	throughput        throughputHeap
-	handles           []handleEntry // index 0 is never used; Ref stores index<<1.
-	freeHandles       []uint32
-	nurseryHandles    []uint32 // dense live nursery set; minor collection never scans all old handles
-	mark              []bool
-	markStack         []uint32
-	promotionScratch  []plannedPromotion
-	remembered        []uint32
-	objectCards       []objectCard
-	slotCards         []slotCard
-	slotCardSlot      map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
-	globalSlots       []Ref
-	tableSlots        []Ref
-	stats             Stats
-	rootMarkMode      uint8
-	closed            bool
+	cfg                Config
+	nativeView         *NativeCollectorView
+	nativeStructAlloc  nativeStructAllocState
+	nativeAllocEpoch   uint32
+	types              []TypeDesc
+	typeIndex          []int
+	objectAlign        uint32
+	nursery            []byte
+	nurseryBump        uint32
+	tiny               tinyHeap
+	tinyGC             tinyGC
+	throughput         throughputHeap
+	handles            []handleEntry // index 0 is never used; Ref stores index<<1.
+	freeHandles        []uint32
+	nurseryHandles     []uint32 // dense live nursery set; minor collection never scans all old handles
+	mark               []bool
+	markStack          []uint32
+	promotionScratch   []plannedPromotion
+	remembered         []uint32
+	objectCards        []objectCard
+	slotCards          []slotCard
+	slotCardSlot       map[uint64]uint32 // one-based indexes in slotCards, allocated lazily
+	globalSlots        []Ref
+	tableSlots         []Ref
+	stats              Stats
+	rootMarkMode       uint8
+	telemetryRootClass RootClass
+	closed             bool
 }
 
 const defaultNursery = 64 << 10
@@ -133,6 +142,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	config, err = normalizeConfig(config)
 	if err != nil {
 		return nil, err
+	}
+	if !collectorTelemetryEnabled {
+		config.Telemetry = nil
 	}
 	if config.Profile == ProfileTiny {
 		return newTinyCollector(config, types)
@@ -157,6 +169,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 		objectAlign = 16
 	}
 	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, nursery: makeAlignedBytes(config.NurseryBytes, uintptr(objectAlign)), handles: []handleEntry{{}}}
+	if c.telemetryEnabled() {
+		c.cfg.Telemetry.attach(config.Profile, 0)
+	}
 	if err := c.initTypeIndex(); err != nil {
 		return nil, err
 	}
@@ -224,6 +239,10 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 		return err
 	}
 	return nil
+}
+
+func (c *Collector) telemetryEnabled() bool {
+	return collectorTelemetryEnabled && c != nil && c.cfg.Telemetry != nil
 }
 
 func (c *Collector) errIfClosed() error {

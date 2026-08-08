@@ -114,7 +114,9 @@ func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
 		return nil, errors.New("wago: domain snapshot member list is incomplete")
 	}
 
-	out := &DomainSnapshot{members: make([]domainSnapshotMember, len(instances)), gc: domain.config}
+	snapshotConfig := domain.config
+	snapshotConfig.Telemetry = nil // diagnostics are process-local, not snapshot state
+	out := &DomainSnapshot{members: make([]domainSnapshotMember, len(instances)), gc: snapshotConfig}
 	for i, in := range instances {
 		if in.invocationState.Load()&instanceInvocationCount != 0 {
 			return nil, fmt.Errorf("wago: domain snapshot member %d has an active invocation", i)

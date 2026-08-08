@@ -579,6 +579,12 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 }
 
 func (f *fn) emitNativeGCStubs() {
+	before := f.a.Len()
+	defer func() {
+		n := f.a.Len() - before
+		f.stats.addGCSharedStubBytes(n)
+		f.stats.addGCHandleResolutionBytes(n)
+	}()
 	if len(f.sc.gcStructAllocStubSites) != 0 {
 		stubs := make(map[uint32]int)
 		for _, site := range f.sc.gcStructAllocStubSites {

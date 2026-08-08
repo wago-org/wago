@@ -164,6 +164,9 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		return
 	}
 	if e.cardSlot != 0 {
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.pendingDuplicateDirties++
+		}
 		card := &c.objectCards[e.cardSlot-1]
 		if start < card.index {
 			card.index = start
@@ -175,6 +178,9 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 	}
 	if injectFailure(c, failObjectCardGrowth) != nil {
 		return
+	}
+	if c.telemetryEnabled() && len(c.objectCards) == cap(c.objectCards) {
+		c.cfg.Telemetry.paths.CardGrowths++
 	}
 	c.objectCards = append(c.objectCards, objectCard{handle: h, index: start, end: end})
 	e.cardSlot = uint32(len(c.objectCards))
@@ -202,6 +208,9 @@ func (c *Collector) addSlotCard(kind SlotKind, index uint32) {
 	}
 	key := slotCardKey(kind, index)
 	if c.slotCardSlot != nil && c.slotCardSlot[key] != 0 {
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.pendingDuplicateDirties++
+		}
 		return
 	}
 	if injectFailure(c, failSlotCardGrowth) != nil {
@@ -209,6 +218,9 @@ func (c *Collector) addSlotCard(kind SlotKind, index uint32) {
 	}
 	if c.slotCardSlot == nil {
 		c.slotCardSlot = make(map[uint64]uint32)
+	}
+	if c.telemetryEnabled() && len(c.slotCards) == cap(c.slotCards) {
+		c.cfg.Telemetry.paths.CardGrowths++
 	}
 	c.slotCards = append(c.slotCards, slotCard{kind: kind, index: index})
 	c.slotCardSlot[key] = uint32(len(c.slotCards))
@@ -310,6 +322,9 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 	c.refreshNativeCards()
 }
 func (c *Collector) clearCardMetadata() {
+	if c.telemetryEnabled() && c.cfg.Telemetry.active.active {
+		c.cfg.Telemetry.active.cards.ClearedCards += uint64(len(c.objectCards) + len(c.slotCards))
+	}
 	for _, card := range c.objectCards {
 		if card.handle != 0 && int(card.handle) < len(c.handles) {
 			c.handles[card.handle].cardSlot = 0

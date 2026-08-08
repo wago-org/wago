@@ -8,6 +8,9 @@ import (
 )
 
 func (c *Collector) CollectFull(roots RootSet) error {
+	if c.telemetryEnabled() {
+		return c.collectFullTelemetry(roots)
+	}
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
@@ -27,13 +30,65 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	c.markRoots(roots)
 	c.sweepAll()
 	c.pruneRemembered()
-	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	c.clearCardMetadata()
 	if c.cfg.VerifyAfterCollect {
 		return c.Verify(roots)
 	}
 	return nil
 }
+
+func (c *Collector) collectFullTelemetry(roots RootSet) (err error) {
+	if err = c.errIfClosed(); err != nil {
+		return err
+	}
+	c.discardNativeStructHandles()
+	defer c.refreshNativeView()
+	c.stats.FullCollections++
+	c.beginCollectionTelemetry(telemetryFull)
+	success := false
+	defer func() { c.endCollectionTelemetry(success) }()
+	if c.cfg.Profile == ProfileTiny {
+		if err = c.tinyCollectFull(roots); err != nil {
+			return err
+		}
+		if c.cfg.VerifyAfterCollect {
+			c.cfg.Telemetry.suspend()
+			err = c.Verify(roots)
+			c.cfg.Telemetry.resume()
+			if err != nil {
+				return err
+			}
+		}
+		success = true
+		return nil
+	}
+	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
+	c.clearMarks()
+	c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
+	c.enumerateRoots(roots, rootMarkFull)
+	c.cfg.Telemetry.setPhase(telemetryPhaseMarking)
+	c.drainMarkStack()
+	c.cfg.Telemetry.setPhase(telemetryPhaseSweep)
+	c.sweepAllTelemetry()
+	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
+	c.pruneRemembered()
+	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	if c.cfg.VerifyAfterCollect {
+		c.cfg.Telemetry.suspend()
+		err = c.Verify(roots)
+		c.cfg.Telemetry.resume()
+		if err != nil {
+			return err
+		}
+	}
+	success = true
+	return nil
+}
+
 func (c *Collector) CollectMinor(roots RootSet) error {
+	if c.telemetryEnabled() {
+		return c.collectMinorTelemetry(roots)
+	}
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
@@ -41,8 +96,6 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	defer c.refreshNativeView()
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
-		// Tiny is non-generational; minor collection is defined as a complete
-		// incremental mark/sweep cycle for API compatibility.
 		if err := c.tinyCollectFull(roots); err != nil {
 			return err
 		}
@@ -51,9 +104,6 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 		return nil
 	}
-	// Minor collection traces nursery reachability only. Old/large roots are not
-	// recursively scanned; every direct old/large-to-nursery edge is represented
-	// by the remembered set, while global/table slots are scanned as roots.
 	c.clearNurseryMarks()
 	c.markNurseryRoots(roots)
 	if c.cfg.VerifyAfterCollect {
@@ -74,7 +124,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 	}
 	c.finishMinorEvacuation()
-	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	c.clearCardMetadata()
 	if c.cfg.VerifyAfterCollect {
 		if err := c.verifyNurseryEvacuated(); err != nil {
 			return err
@@ -90,9 +140,123 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	return nil
 }
+
+func (c *Collector) collectMinorTelemetry(roots RootSet) (err error) {
+	if err = c.errIfClosed(); err != nil {
+		return err
+	}
+	c.discardNativeStructHandles()
+	defer c.refreshNativeView()
+	c.stats.MinorCollections++
+	c.beginCollectionTelemetry(telemetryMinor)
+	success, ended := false, false
+	defer func() {
+		if !ended {
+			c.endCollectionTelemetry(success)
+		}
+	}()
+	if c.cfg.Profile == ProfileTiny {
+		// Tiny is non-generational; minor collection is defined as a complete
+		// incremental mark/sweep cycle for API compatibility.
+		if err = c.tinyCollectFull(roots); err != nil {
+			return err
+		}
+		if c.cfg.VerifyAfterCollect {
+			c.cfg.Telemetry.suspend()
+			err = c.Verify(roots)
+			c.cfg.Telemetry.resume()
+			if err != nil {
+				return err
+			}
+		}
+		success = true
+		return nil
+	}
+	// Minor collection traces nursery reachability only. Old/large roots are not
+	// recursively scanned; every direct old/large-to-nursery edge is represented
+	// by the remembered set, while global/table slots are scanned as roots.
+	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
+	c.clearNurseryMarks()
+	c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
+	c.markNurseryRoots(roots)
+	if c.cfg.VerifyAfterCollect {
+		c.cfg.Telemetry.suspend()
+		err = c.verifyRememberedShadow()
+		c.cfg.Telemetry.resume()
+		if err != nil {
+			return err
+		}
+	}
+	c.cfg.Telemetry.setPhase(telemetryPhaseRememberedRoots)
+	if c.telemetryEnabled() {
+		c.cfg.Telemetry.active.rememberedScan = true
+	}
+	for _, h := range c.remembered {
+		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
+			c.stats.MinorRememberedScanned++
+			if c.telemetryEnabled() && c.handles[h].cardSlot != 0 {
+				c.cfg.Telemetry.active.cards.UsefulObjectCards++
+			}
+			c.scanObjectRefs(h, c.markNurseryRef)
+		}
+	}
+	if c.telemetryEnabled() {
+		c.cfg.Telemetry.active.rememberedScan = false
+	}
+	c.cfg.Telemetry.setPhase(telemetryPhaseTracing)
+	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
+		c.cfg.Telemetry.setPhase(telemetryPhasePromotionCopy)
+		if err = c.promoteMarkedNursery(); err != nil {
+			c.clearNurseryMarks()
+			return err
+		}
+	}
+	c.cfg.Telemetry.setPhase(telemetryPhaseSweep)
+	c.finishMinorEvacuationTelemetry()
+	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
+	c.clearCardMetadata() // cards are verification scaffolding, not collection inputs
+	if c.cfg.VerifyAfterCollect {
+		c.cfg.Telemetry.suspend()
+		err = c.verifyNurseryEvacuated()
+		c.cfg.Telemetry.resume()
+		if err != nil {
+			return err
+		}
+		c.cfg.Telemetry.suspend()
+		err = c.Verify(roots)
+		c.cfg.Telemetry.resume()
+		if err != nil {
+			return err
+		}
+	}
+	success = true
+	c.endCollectionTelemetry(true)
+	ended = true
+	if c.cfg.ForceMajorEveryMinor {
+		if err = c.CollectFull(roots); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (c *Collector) sweepAll() {
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].space != spaceFree && !c.mark[h] {
+			if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+				c.deferThroughputFree(h)
+			} else {
+				c.free(h)
+			}
+		}
+	}
+	c.compactNurseryHandles()
+	c.compactNurseryBump()
+}
+
+func (c *Collector) sweepAllTelemetry() {
+	for h := uint32(1); int(h) < len(c.handles); h++ {
+		if c.handles[h].space != spaceFree && !c.mark[h] {
+			c.cfg.Telemetry.noteSweep(c.handles[h].size)
 			if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
 				c.deferThroughputFree(h)
 			} else {
@@ -114,6 +278,23 @@ func (c *Collector) finishMinorEvacuation() {
 		}
 		c.mark[h] = false
 		if c.handles[h].space == spaceNursery {
+			c.free(h)
+		}
+	}
+	clear(c.nurseryHandles)
+	c.nurseryHandles = c.nurseryHandles[:0]
+	c.nurseryBump = 0
+	c.clearRememberedMetadata()
+}
+
+func (c *Collector) finishMinorEvacuationTelemetry() {
+	for _, h := range c.nurseryHandles {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		c.mark[h] = false
+		if c.handles[h].space == spaceNursery {
+			c.cfg.Telemetry.noteSweep(c.handles[h].size)
 			c.free(h)
 		}
 	}
@@ -148,6 +329,11 @@ func (c *Collector) promoteMarkedNursery() error {
 			return cmp.Compare(c.throughput.promotionAllocSize(c.handles[a.handle].size), c.throughput.promotionAllocSize(c.handles[b.handle].size))
 		})
 	}
+	if c.telemetryEnabled() {
+		for _, plan := range plans {
+			c.cfg.Telemetry.noteSurvivor(c.handles[plan.handle].size)
+		}
+	}
 
 	if err := c.throughput.sweepAllPending(); err != nil {
 		clear(plans)
@@ -171,7 +357,7 @@ func (c *Collector) promoteMarkedNursery() error {
 		finish()
 	}
 	for i := range plans {
-		e, err := c.throughput.alloc(c.handles[plans[i].handle].size, spaceOld)
+		e, err := c.allocThroughput(c.handles[plans[i].handle].size, spaceOld)
 		if err != nil {
 			rollback(nil)
 			return err
@@ -190,7 +376,11 @@ func (c *Collector) promoteMarkedNursery() error {
 		}
 	}
 	for _, p := range plans {
+		size := c.handles[p.handle].size
 		c.promoteHandleTo(p.handle, p.entry)
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.notePromotion(size)
+		}
 	}
 	finish()
 	return nil
@@ -207,7 +397,7 @@ func (c *Collector) promoteHandle(h uint32) error {
 		return err
 	}
 	tx := c.throughput.beginAllocTransaction()
-	oldEntry, err := c.throughput.alloc(c.handles[h].size, spaceOld)
+	oldEntry, err := c.allocThroughput(c.handles[h].size, spaceOld)
 	if err != nil {
 		c.throughput.restoreAllocTransaction(tx)
 		return err

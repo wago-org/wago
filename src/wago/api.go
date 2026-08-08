@@ -24,6 +24,31 @@ type GCConfig = gc.Config
 type GCProfile = gc.Profile
 type GCAllocatorKind = gc.AllocatorKind
 type GCRuntimeKind = gc.RuntimeKind
+type GCTelemetry = gc.Telemetry
+type GCTelemetrySnapshot = gc.TelemetrySnapshot
+type GCBenchmarkTelemetryReport = gc.BenchmarkTelemetryReport
+type GCBenchmarkConfiguration = gc.BenchmarkConfiguration
+type GCMemoryDomains = gc.MemoryDomains
+type GCManagedHeapTelemetry = gc.ManagedHeapTelemetry
+type GCNativeCodeTelemetry = gc.NativeCodeTelemetry
+
+const GCTelemetrySchemaVersion = gc.TelemetrySchemaVersion
+
+// GCTelemetryAvailable reports whether this binary includes collector-cycle
+// instrumentation and JSON reporting through the wago_gcstats build tag.
+func GCTelemetryAvailable() bool { return gc.TelemetryAvailable() }
+
+// NewGCBenchmarkTelemetryReport initializes a stable JSONL report with host
+// identity fields.
+func NewGCBenchmarkTelemetryReport(name string) GCBenchmarkTelemetryReport {
+	return gc.NewBenchmarkTelemetryReport(name)
+}
+
+// CaptureGCMemoryDomains samples host memory while preserving benchmark-owned
+// compiler, executable-code, and managed-heap attribution.
+func CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes uint64, heap GCManagedHeapTelemetry) GCMemoryDomains {
+	return gc.CaptureMemoryDomains(compilerHeapBytes, executableJITBytes, heap)
+}
 
 // ArtifactLimits bounds allocation while streaming a compiled artifact.
 // Values must be non-negative; zero rejects a non-empty corresponding section.
@@ -1324,7 +1349,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
 	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions})
+	var gcCodeStats railshotModuleStats
+	var gcCodeStatsSink *railshotModuleStats
+	if cfg.gcCodeTelemetry {
+		gcCodeStatsSink = &gcCodeStats
+	}
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Stats: gcCodeStatsSink})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1345,7 +1375,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512}
+	c := &Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry}
+	if cfg.gcCodeTelemetry {
+		c.gcCodeTelemetry = railshotGCNativeCodeTelemetry(&gcCodeStats)
+		c.gcCodeTelemetry.TotalBytes = uint64(len(code))
+	}
 	typeConverter := newWasmTypeDescriptorConverter(m)
 	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
@@ -3760,6 +3794,22 @@ func (c *Compiled) CodeSize() int {
 		return 0
 	}
 	return len(c.code)
+}
+
+// GCNativeCodeTelemetry returns opt-in per-family WasmGC code attribution for a
+// freshly compiled module. The bool is false unless RuntimeConfig enabled
+// WithGCCodeTelemetry; codec-loaded modules intentionally do not synthesize it.
+func (c *Compiled) GCNativeCodeTelemetry() (GCNativeCodeTelemetry, bool) {
+	if c == nil || !c.hasGCCodeTelemetry {
+		return GCNativeCodeTelemetry{}, false
+	}
+	c.ensureCodeCache()
+	c.codeCache.mu.Lock()
+	defer c.codeCache.mu.Unlock()
+	if c.codeCache.closed {
+		return GCNativeCodeTelemetry{}, false
+	}
+	return c.gcCodeTelemetry, true
 }
 
 // WriteCodeTo streams the native-code bytes for diagnostics and artifact

@@ -86,6 +86,61 @@ func (h *pauseHistogram) report(b *testing.B, prefix string) {
 	b.ReportMetric(float64(h.maxNS), prefix+"-max-ns")
 }
 
+type gcMatrixTelemetryTotals struct {
+	cycles  uint64
+	totalNS uint64
+	phases  PhaseTelemetry
+	roots   RootTelemetry
+	trace   TraceTelemetry
+	nursery NurseryTelemetry
+	cards   CardTelemetry
+}
+
+func (t *gcMatrixTelemetryTotals) add(c CollectionTelemetry) {
+	t.cycles += c.Cycles
+	t.totalNS += c.TotalNS
+	addPhaseTelemetry(&t.phases, c.Phases)
+	addRootTelemetry(&t.roots, c.Roots)
+	addTraceTelemetry(&t.trace, c.Trace)
+	addNurseryTelemetry(&t.nursery, c.Nursery)
+	addCardTelemetry(&t.cards, c.Cards)
+}
+
+func rootClassTelemetry(roots RootTelemetry, class RootClass) (count, ns uint64) {
+	switch class {
+	case RootGlobal:
+		return roots.Globals, roots.GlobalNS
+	case RootTable:
+		return roots.Tables, roots.TableNS
+	case RootPublicToken:
+		return roots.PublicTokens, roots.PublicTokenNS
+	case RootForeignInstance:
+		return roots.ForeignInstances, roots.ForeignInstanceNS
+	case RootSnapshotTemporary:
+		return roots.SnapshotTemporaries, roots.SnapshotTemporaryNS
+	default:
+		return roots.NativeFrames, roots.NativeFrameNS
+	}
+}
+
+func (t *gcMatrixTelemetryTotals) report(b *testing.B) {
+	if t.cycles == 0 {
+		return
+	}
+	perOp := 1 / float64(b.N)
+	b.ReportMetric(float64(t.totalNS)*perOp, "collector-total-ns/op")
+	b.ReportMetric(float64(t.phases.RootEnumerationNS+t.phases.PersistentRootsNS+t.phases.NativeFrameRootsNS)*perOp, "root-ns/op")
+	b.ReportMetric(float64(t.phases.ReferenceScanningNS)*perOp, "reference-scan-ns/op")
+	b.ReportMetric(float64(t.phases.PromotionCopyNS)*perOp, "promotion-ns/op")
+	b.ReportMetric(float64(t.phases.SweepNS)*perOp, "sweep-ns/op")
+	b.ReportMetric(float64(t.trace.ObjectsVisited)*perOp, "objects-visited/op")
+	b.ReportMetric(float64(t.trace.PayloadBytesVisited)*perOp, "payload-bytes-visited/op")
+	b.ReportMetric(float64(t.trace.ReferenceSlotsVisited)*perOp, "reference-slots-visited/op")
+	b.ReportMetric(float64(t.nursery.PromotedBytes)*perOp, "promoted-bytes/op")
+	b.ReportMetric(float64(t.cards.ScannedSlots)*perOp, "card-slots-scanned/op")
+	b.ReportMetric(float64(t.cards.WholeObjectScans)*perOp, "whole-object-scans/op")
+}
+
 func TestGCPauseHistogram(t *testing.T) {
 	var h pauseHistogram
 	for _, ns := range []time.Duration{0, 1, 2, 3, 4, 8, 16, 32, 64, 128} {
@@ -229,7 +284,11 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 			for _, survival := range []int{0, 1, 10, 50, 90} {
 				name := fmt.Sprintf("%s/%s/survival=%d", profile.name, layout.name, survival)
 				b.Run(name, func(b *testing.B) {
-					c, err := NewCollector(gcMatrixConfig(profile.profile), types)
+					cfg := gcMatrixConfig(profile.profile)
+					if collectorTelemetryEnabled {
+						cfg.Telemetry = new(Telemetry)
+					}
+					c, err := NewCollector(cfg, types)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -240,6 +299,7 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 						roots[i] = &rootValues[i]
 					}
 					var pauses pauseHistogram
+					var telemetryTotals gcMatrixTelemetryTotals
 					var checksum uint64
 					b.ReportAllocs()
 					b.ReportMetric(100, "objects/op")
@@ -247,6 +307,9 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						b.StopTimer()
+						if collectorTelemetryEnabled {
+							c.ResetTelemetry()
+						}
 						for j := 0; j < 100; j++ {
 							r, err := layout.alloc(c)
 							if err != nil {
@@ -271,6 +334,17 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 						pauses.record(elapsed)
 						if err != nil {
 							b.Fatal(err)
+						}
+						if collectorTelemetryEnabled {
+							telemetrySnapshot, ok := c.TelemetrySnapshot()
+							if !ok {
+								b.Fatal("collector telemetry disabled")
+							}
+							if profile.collection == "minor" {
+								telemetryTotals.add(telemetrySnapshot.Minor)
+							} else {
+								telemetryTotals.add(telemetrySnapshot.Full)
+							}
 						}
 						if got := c.Stats().LiveObjects; got != uint32(survival) {
 							b.Fatalf("live objects = %d, want %d", got, survival)
@@ -300,6 +374,7 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 						b.Fatal("semantic checksum is zero")
 					}
 					pauses.report(b, "pause")
+					telemetryTotals.report(b)
 				})
 			}
 		}
@@ -320,9 +395,13 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 		b.Fatal(err)
 	}
 	for _, length := range []uint32{4 << 10, 256 << 10} {
-		for _, writes := range []int{2, 1024} {
-			b.Run(fmt.Sprintf("elements=%d/writes=%d", length, writes), func(b *testing.B) {
-				c, err := NewCollector(Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20}, []TypeDesc{leaf, refs})
+		for _, density := range []string{"sparse", "dense"} {
+			b.Run(fmt.Sprintf("elements=%d/%s", length, density), func(b *testing.B) {
+				cfg := Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20}
+				if collectorTelemetryEnabled {
+					cfg.Telemetry = new(Telemetry)
+				}
+				c, err := NewCollector(cfg, []TypeDesc{leaf, refs})
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -336,12 +415,20 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 				}
 				arrayRoot := Root(array)
 				roots := Slots{&arrayRoot}
-				children := make([]Ref, writes)
+				var children [2]Ref
 				var pauses pauseHistogram
 				var checksum uint64
 				b.ReportAllocs()
 				b.ReportMetric(float64(length), "array-elements")
-				b.ReportMetric(float64(writes), "dirty-writes/op")
+				b.ReportMetric(2, "young-allocations/op")
+				if density == "sparse" {
+					b.ReportMetric(2, "dirty-writes/op")
+				} else {
+					b.ReportMetric(float64(length), "dirty-writes/op")
+				}
+				if collectorTelemetryEnabled {
+					c.ResetTelemetry()
+				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					b.StopTimer()
@@ -350,9 +437,19 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 						if err != nil {
 							b.Fatal(err)
 						}
-						index := uint32(uint64(j) * uint64(length-1) / uint64(max(1, writes-1)))
-						if err := c.ArraySet(array, index, RefValue(children[j])); err != nil {
+					}
+					if density == "sparse" {
+						if err := c.ArraySet(array, 0, RefValue(children[0])); err != nil {
 							b.Fatal(err)
+						}
+						if err := c.ArraySet(array, length-1, RefValue(children[1])); err != nil {
+							b.Fatal(err)
+						}
+					} else {
+						for j := uint32(0); j < length; j++ {
+							if err := c.ArraySet(array, j, RefValue(children[j&1])); err != nil {
+								b.Fatal(err)
+							}
 						}
 					}
 					before := c.Stats()
@@ -367,14 +464,24 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 					}
 					after := c.Stats()
 					checksum += after.MinorRememberedScanned - before.MinorRememberedScanned
-					for j := range children {
-						index := uint32(uint64(j) * uint64(length-1) / uint64(max(1, writes-1)))
+					for j, index := range []uint32{0, length - 1} {
 						v, err := c.ArrayGet(array, index)
 						if err != nil || v.Ref != children[j] {
 							b.Fatalf("array[%d] = %v, %v; want %v", index, v.Ref, err, children[j])
 						}
-						if err := c.ArraySet(array, index, RefValue(Null())); err != nil {
+					}
+					if density == "sparse" {
+						if err := c.ArraySet(array, 0, RefValue(Null())); err != nil {
 							b.Fatal(err)
+						}
+						if err := c.ArraySet(array, length-1, RefValue(Null())); err != nil {
+							b.Fatal(err)
+						}
+					} else {
+						for j := uint32(0); j < length; j++ {
+							if err := c.ArraySet(array, j, RefValue(Null())); err != nil {
+								b.Fatal(err)
+							}
 						}
 					}
 					if err := c.CollectFull(roots); err != nil {
@@ -386,15 +493,24 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 				if checksum == 0 {
 					b.Fatal("remembered-set semantic checksum is zero")
 				}
+				if collectorTelemetryEnabled {
+					snapshot, ok := c.TelemetrySnapshot()
+					if !ok {
+						b.Fatal("collector telemetry disabled")
+					}
+					b.ReportMetric(float64(snapshot.Minor.Cards.ScannedSlots)/float64(b.N), "card-slots-scanned/op")
+					b.ReportMetric(float64(snapshot.Minor.Cards.WholeObjectScans)/float64(b.N), "whole-object-scans/op")
+					b.ReportMetric(float64(snapshot.Minor.Cards.DuplicateDirties)/float64(b.N), "duplicate-dirties/op")
+				}
 				pauses.report(b, "minor-pause")
 			})
 		}
 	}
 }
 
-// BenchmarkGCRootClassMatrix isolates root enumeration owned directly by the
-// collector. Native frames, public tokens, foreign instances, and snapshot
-// temporaries are integration-layer roots and belong in product fixtures.
+// BenchmarkGCRootClassMatrix scales every required ownership class while
+// holding the live object graph constant. Product fixtures separately verify
+// native/runtime adapters preserve these classifications.
 func BenchmarkGCRootClassMatrix(b *testing.B) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -407,11 +523,27 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 		{name: "throughput", profile: ProfileThroughput},
 		{name: "tiny", profile: ProfileTiny},
 	}
+	rootClasses := []struct {
+		name  string
+		class RootClass
+		owned bool
+	}{
+		{name: "native-frame", class: RootNativeFrame},
+		{name: "global", class: RootGlobal, owned: true},
+		{name: "table", class: RootTable, owned: true},
+		{name: "public-token", class: RootPublicToken},
+		{name: "foreign-instance", class: RootForeignInstance},
+		{name: "snapshot-temporary", class: RootSnapshotTemporary},
+	}
 	for _, profile := range profiles {
-		for _, rootClass := range []string{"direct", "global", "table"} {
+		for _, rootClass := range rootClasses {
 			for _, rootCount := range []int{1, 64, 4096} {
-				b.Run(fmt.Sprintf("%s/%s/count=%d", profile.name, rootClass, rootCount), func(b *testing.B) {
-					c, err := NewCollector(gcMatrixConfig(profile.profile), []TypeDesc{leaf})
+				b.Run(fmt.Sprintf("%s/%s/count=%d", profile.name, rootClass.name, rootCount), func(b *testing.B) {
+					cfg := gcMatrixConfig(profile.profile)
+					if collectorTelemetryEnabled {
+						cfg.Telemetry = new(Telemetry)
+					}
+					c, err := NewCollector(cfg, []TypeDesc{leaf})
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -421,28 +553,30 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 						b.Fatal(err)
 					}
 					var roots RootSet
-					switch rootClass {
-					case "direct":
+					if rootClass.owned {
+						for i := 0; i < rootCount; i++ {
+							if rootClass.class == RootGlobal {
+								c.NewGlobalSlot(object)
+							} else {
+								c.NewTableSlot(object)
+							}
+						}
+					} else {
 						values := make([]Root, rootCount)
 						slots := make(Slots, rootCount)
 						for i := range values {
 							values[i] = Root(object)
 							slots[i] = &values[i]
 						}
-						roots = slots
-					case "global":
-						for i := 0; i < rootCount; i++ {
-							c.NewGlobalSlot(object)
-						}
-					case "table":
-						for i := 0; i < rootCount; i++ {
-							c.NewTableSlot(object)
-						}
+						roots = ClassifiedRoots{Class: rootClass.class, Roots: slots}
 					}
 					var pauses pauseHistogram
 					var checksum uint64
 					b.ReportAllocs()
 					b.ReportMetric(float64(rootCount), "roots/op")
+					if collectorTelemetryEnabled {
+						c.ResetTelemetry()
+					}
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						start := time.Now()
@@ -458,6 +592,15 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 					b.StopTimer()
 					if checksum != uint64(b.N) {
 						b.Fatalf("live checksum = %d, want %d", checksum, b.N)
+					}
+					if collectorTelemetryEnabled {
+						snapshot, ok := c.TelemetrySnapshot()
+						if !ok {
+							b.Fatal("collector telemetry disabled")
+						}
+						count, ns := rootClassTelemetry(snapshot.Full.Roots, rootClass.class)
+						b.ReportMetric(float64(count)/float64(b.N), "classified-roots/op")
+						b.ReportMetric(float64(ns)/float64(b.N), "classified-root-ns/op")
 					}
 					pauses.report(b, "full-pause")
 				})

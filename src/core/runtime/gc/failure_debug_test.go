@@ -34,6 +34,30 @@ func TestInjectedPromotionFailuresAreTransactional(t *testing.T) {
 	}
 }
 
+func TestInjectedPromotionFailureIsReportedByTelemetry(t *testing.T) {
+	if !collectorTelemetryEnabled {
+		t.Skip("collector telemetry requires wago_gcstats")
+	}
+	telemetry := new(Telemetry)
+	c := newTestCollector(t, Config{Telemetry: telemetry, NurseryBytes: 4096, ThroughputHeapBytes: 8192, ThroughputPageBytes: 4096})
+	defer c.Close()
+	object, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(object)
+	cleanup := armFailure(c, failPromotionPlan, 0)
+	err = c.CollectMinor(Slots{&root})
+	cleanup()
+	if !errors.Is(err, errInjectedFailure) {
+		t.Fatalf("error = %v", err)
+	}
+	snapshot, ok := c.TelemetrySnapshot()
+	if !ok || snapshot.Minor.Cycles != 1 || snapshot.Minor.FailedCycles != 1 || snapshot.Minor.Pause.Count != 1 {
+		t.Fatalf("failed-cycle telemetry = %+v, enabled=%v", snapshot.Minor, ok)
+	}
+}
+
 func TestInjectedPromotionRollbackRestoresReusedFreeSpan(t *testing.T) {
 	tests := []struct {
 		name string

@@ -641,6 +641,18 @@ func gcFrameRootLimitModule(count uint32) []byte {
 	)
 }
 
+type gcClassifiedRootCounter struct {
+	classes map[gc.RootClass]int
+}
+
+func (s *gcClassifiedRootCounter) VisitClassifiedRootRef(class gc.RootClass, _ gc.Ref) bool {
+	if s.classes == nil {
+		s.classes = make(map[gc.RootClass]int)
+	}
+	s.classes[class]++
+	return true
+}
+
 func TestGCNativeFrameRootAdapterWritesParkedSlot(t *testing.T) {
 	frame := make([]byte, 16)
 	binary.LittleEndian.PutUint64(frame[8:], 7)
@@ -657,6 +669,18 @@ func TestGCNativeFrameRootAdapterWritesParkedSlot(t *testing.T) {
 	goruntime.KeepAlive(frame)
 	if seen != 1 || binary.LittleEndian.Uint64(frame[8:]) != 11 {
 		t.Fatalf("root adapter seen=%d frame=%#x, want one rewritten qword", seen, frame[8:])
+	}
+}
+
+func TestGCNativeFrameRootAdapterClassifiesFrames(t *testing.T) {
+	frame := make([]byte, 16)
+	binary.LittleEndian.PutUint64(frame[8:], 7)
+	roots := gcNativeFrameRoots{base: uintptr(unsafe.Pointer(&frame[0])), offsets: []uint32{8}}
+	counter := new(gcClassifiedRootCounter)
+	roots.RangeClassifiedRootRefs(counter)
+	goruntime.KeepAlive(frame)
+	if counter.classes[gc.RootNativeFrame] != 1 || len(counter.classes) != 1 {
+		t.Fatalf("classified native roots = %v", counter.classes)
 	}
 }
 

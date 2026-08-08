@@ -469,6 +469,11 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   composition allocation-free with reusable scratch, switch early Throughput
   growth to geometric capacity, and release the duplicate Go-heap JIT code copy
   after RX mapping.
+- [x] Add decision-grade opt-in GC telemetry behind `wago_gcstats`: bounded pause
+  histograms, additive phase timing, exact trace/root/card/promotion/path counters,
+  managed-memory domains, JSONL A/B reports, code-neutral JIT byte attribution,
+  and hot-versus-sparse static-site benchmarks. Ordinary builds retain the
+  uninstrumented collector path and only one 4-KiB stripped-file alignment step.
 - [x] Remove linear Throughput old-space allocation: constant-time class mapping
   feeds one arena-backed augmented AVL free-span index with logarithmic fit,
   insertion, exact coalescing, top-bump reclamation, exact fragmentation

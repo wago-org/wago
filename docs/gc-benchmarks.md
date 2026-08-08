@@ -29,7 +29,9 @@ separate: denser compiler values do not by themselves prove a collector heap or
 pause-time improvement.
 
 This document defines the measurement contract for collector changes tracked by
-issue #300. The matrix is intentionally broader than the current implementation:
+issue #300. The opt-in recorder, public API, JSONL schema, phase semantics, and
+footprint measurements are documented in
+[`docs/gc-telemetry.md`](gc-telemetry.md). The matrix is intentionally broader than the current implementation:
 it covers the Throughput and Tiny collectors that exist today and the collector
 directions explicitly recorded in issues #302–#321.
 
@@ -67,6 +69,30 @@ semantic checksums) may be compared exactly. Time, CPU counters, page faults,
 RSS, and cache/TLB behavior are host-specific and require repeated interleaved
 A/B runs on an otherwise idle machine.
 
+## Telemetry acceptance thresholds
+
+Issue #300 uses these gates for the measurement layer itself:
+
+- an ordinary build must add zero collector allocations and no timing, map, or
+  interface-dispatch work to allocation, barrier, mark, scan, minor/full, or Tiny
+  hot paths;
+- the median of an interleaved disabled-build collector control must remain
+  within 3% of the uninstrumented parent, with no B/op or allocs/op delta;
+- the generated text size of each touched release hot-path function must not
+  increase; a stripped minimal collector executable may grow by at most 8 KiB
+  including file alignment, `Config` by at most 8 bytes, and `Collector` by at
+  most 8 bytes;
+- after warmup, an attached recorder must add zero Go allocations per collection
+  and retain bounded state independent of cycle count; and
+- hardware-counter runs must show no statistically significant disabled-build
+  instruction or cache-miss increase over ten or more interleaved samples. Use a
+  3% instruction threshold; treat cache misses as inconclusive unless confidence
+  intervals separate because low-count cache events are noisy.
+
+The release binary meets the deterministic gates below. The August 8, 2026 host
+had no `perf` executable, so the hardware-counter command remains a required CI
+or reviewer-host check rather than a fabricated local result.
+
 ## Collector-level matrix
 
 `BenchmarkGCCollectionMatrix` crosses:
@@ -85,21 +111,103 @@ This matrix is the primary discriminator for tracing density, promotion cost,
 zero-survivor cleanup, and future age-based tenuring.
 
 `BenchmarkGCSparseRememberedArray` crosses 4K and 256K-element old arrays with
-two distant young writes or 1,024 distributed writes. It is deliberately hostile
+two distant writes or writes to every slot. Both modes allocate exactly two
+nursery objects per operation, so the comparison changes dirty density without
+changing dynamic allocation rate or survivor count. It is deliberately hostile
 to the current whole-object remembered scan. Future card implementations should
 make the two-write case proportional to dirty regions without hiding dense-scan
 costs.
 
 `BenchmarkGCRootClassMatrix` crosses Throughput and Tiny with 1, 64, and 4,096
-direct, global, or table roots. It isolates root enumeration that the collector
-owns. Frame, token, foreign-instance, exception, and snapshot-temporary roots
-remain runtime-integration fixtures because collapsing them into generic slots
-would hide their actual traversal and synchronization costs.
+native-frame, global, table, public-token, foreign-instance, and snapshot-
+temporary roots. Runtime frame walkers preserve those classes through an
+allocation-free classified direct-root interface; public and cross-instance
+collector slots retain their exact class across telemetry resets.
 
 `BenchmarkGCTinyStepMatrix` scans reference arrays with 16, 4K, and 64K slots.
 Today one Tiny step may scan the whole object. A slot/byte-budgeted implementation
 must keep p99 and maximum step time bounded while increasing `steps/op` with the
 amount of scan work.
+
+Run the collection matrix with `-tags wago_gcstats` to add cumulative collector
+phase, root, trace, promotion, and card metrics to ordinary Go benchmark output.
+`BenchmarkCollectorTelemetryOverhead` keeps the empty disabled/enabled control
+visible. `BenchmarkGCStaticSiteCompilation` compares one and 4,096 static GC
+allocation sites at the backend layer; `BenchmarkGCStaticSiteExecution` executes
+4,096 allocations through one hot site or one allocation through each of 4,096
+sparse sites at the product layer. Every case retains semantic checks.
+
+On the August 8, 2026 Ryzen 7 8845HS host, ten pinned one-iteration compilation
+samples put the one-site fixture at a 0.063 ms median (0.043-0.190 ms), about
+41,208 B/op and 80 allocs/op, producing 146 native bytes with 106 bytes attributed
+to allocation. The 4,096-site fixture had a 19.77 ms median (19.17-19.87 ms),
+4,956,936 B/op and 28,778 allocs/op, producing 589,826 native bytes with 434,176
+allocation-attributed bytes. Ten pinned 10-operation execution samples put 4,096
+allocations through one hot site at a 0.979 ms median and one allocation through
+each sparse site at 1.091 ms; both had 4,096 Go allocation paths, zero minor
+cycles, 533,396 B/op, and 8 allocs/op. The execution difference is below a
+pre-declared optimization threshold and is baseline evidence, not a reason to
+special-case static sites.
+
+### Issue #300 baseline report
+
+The following pinned linux/amd64 results use Go 1.24.4, Linux 6.12, one Ryzen 7
+8845HS core, `wago_gcstats`, ten process samples, and 500 collection cycles per
+sample. Values are medians across the ten bounded-histogram summaries; maximum is
+the median of each sample's exact maximum. Fixture allocation and semantic
+validation are outside the pause timer.
+
+| Collector case (100 objects) | ns/op | p50 ns | p90 ns | p95 ns | p99 ns | max ns |
+|---|---:|---:|---:|---:|---:|---:|
+| Throughput minor, pointer-free, 0% survival | 2,613 | 2,431 | 2,687 | 3,327 | 4,863 | 26,139 |
+| Throughput minor, pointer-free, 90% survival | 18,362 | 18,431 | 19,455 | 22,527 | 26,623 | 51,617 |
+| Throughput minor, dense array, 0% survival | 2,647 | 2,559 | 2,815 | 3,071 | 4,351 | 8,096 |
+| Throughput minor, dense array, 90% survival | 22,718 | 22,527 | 24,575 | 27,647 | 32,767 | 46,367 |
+| Throughput full, dense array, 90% survival | 15,375 | 14,847 | 16,383 | 18,431 | 22,527 | 40,396 |
+| Tiny full, dense array, 90% survival | 17,949 | 17,407 | 18,431 | 22,527 | 24,575 | 51,227 |
+
+Deterministic telemetry matched each fixture exactly. The 90%-survival dense
+minor visited 90 objects and 1,440 reference slots and promoted 7,200 bytes per
+operation. The corresponding Throughput and Tiny full cases visited the same 90
+objects and 1,440 slots with zero promotion. Phase medians for the dense minor
+were about 7.88 us reference scanning and 7.96 us promotion/copy; the Throughput
+dense full spent about 8.23 us reference scanning and 0.46 us sweeping. These
+counters, not small host-time differences, are the primary A/B invariant.
+
+Ten pinned 20-operation giant-array samples produced:
+
+| 256K-element old array | young allocations/op | scanned slots/op | median ns/op | p50 ns | p90 ns | p95 ns | p99 ns |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Two distant writes | 2 | 262,144 | 627,322 | 622,591 | 753,663 | 776,499 | 796,076 |
+| Every slot written | 2 | 262,144 | 834,228 | 819,199 | 917,503 | 950,271 | 1,033,180 |
+
+The sparse case still scans the complete object and therefore fails the future
+#303 card target by construction. It establishes the decision-grade baseline:
+card-driven collection should reduce sparse scanned slots by orders of magnitude
+without improving dense scans by hiding work or changing allocation rate.
+
+At 4,096 roots, Throughput median full-pause p99 ranged from about 51 us for
+public-token/snapshot roots and 57 us for foreign-instance roots to 410 us for
+collector globals and 377 us for collector tables. Native-frame p99 was about
+70 us. Exact classified counts were 4,096 per Throughput cycle; Tiny reports
+8,192 visits because it enumerates roots during both initial mark and remark.
+
+Tiny's 65,536-reference-array step fixture still completes in six steps, but one
+step scans the complete object. Across ten pinned 100-cycle samples, median step
+p50 was 383 ns, p90/p95 360 us, p99 377 us, and exact maximum 422 us. This is the
+baseline that #319's slot/byte-budgeted scanner must flatten while increasing
+`steps/op`.
+
+For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
+the zero-survivor Throughput minor control measured an 811.95 ns parent median
+and an 814.30 ns current median (+0.29%), with identical 40 B/op and 2 allocs/op
+from fixture construction. The collector's direct `AllocsPerRun` control remains
+0. Release builds emit the same text byte sizes as the parent for `alloc`,
+`CollectFull`, `CollectMinor`, `markRoots`, `markNurseryRoots`, `scanObjectRefs`,
+`addObjectCardRange`, and `tinyAlloc`; no telemetry call, clock read, map, or
+interface dispatch remains in those functions. Hardware instruction/cache
+counters were not collected because `perf` was unavailable on this host; use the
+command below before making a hardware-counter claim.
 
 `BenchmarkThroughputFreshBump`, `BenchmarkThroughputCommonSpanReuse`,
 `BenchmarkThroughputLargeSpanMiss`, `BenchmarkThroughputLargeSpanChurn`, and
@@ -214,6 +322,7 @@ compile without executing benchmarks:
 
 ```sh
 go test ./src/core/runtime/gc -run '^$'
+go test -tags wago_gcstats ./src/core/runtime/gc -run '^$'
 ```
 
 Ordinary `TestGC*WorkloadSmoke` tests execute one correctness cycle through
@@ -234,7 +343,7 @@ process to one physical CPU, record the CPU/kernel/Go revision, and run multiple
 interleaved samples:
 
 ```sh
-taskset -c 2 go test ./src/core/runtime/gc \
+taskset -c 2 go test -tags wago_gcstats ./src/core/runtime/gc \
   -run '^$' -bench '^BenchmarkGC' -benchmem -count=10 -timeout=30m \
   | tee gc-matrix.txt
 ```
@@ -242,7 +351,7 @@ taskset -c 2 go test ./src/core/runtime/gc \
 Go's JSON event stream can be retained alongside ordinary benchmark text:
 
 ```sh
-taskset -c 2 go test ./src/core/runtime/gc \
+taskset -c 2 go test -tags wago_gcstats ./src/core/runtime/gc \
   -run '^$' -bench '^BenchmarkGC' -benchmem -count=10 -timeout=30m -json \
   > gc-matrix.json
 ```

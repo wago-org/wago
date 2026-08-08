@@ -1082,6 +1082,9 @@ type Compiled struct {
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 
+	gcCodeTelemetry    gc.NativeCodeTelemetry
+	hasGCCodeTelemetry bool
+
 	// Cached during validateArenaFootprint.
 	maxParamSlots        int
 	maxResultSlots       int

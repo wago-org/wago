@@ -1,5 +1,7 @@
 package gc
 
+import "errors"
+
 // RootSlot is the mutable root slot abstraction used by the collector to update
 // references after moving nursery collection. Generated stack maps will expose
 // frame slots through an allocation-free equivalent later.
@@ -17,6 +19,89 @@ type RootSet interface{ RangeRoots(func(RootSlot) bool) }
 type RootRefSink interface{ VisitRootRef(Ref) bool }
 
 type DirectRootRefSet interface{ RangeRootRefs(RootRefSink) }
+
+// ClassifiedRootRefSink receives immutable roots with their exact telemetry
+// ownership. It is used only by opt-in telemetry integrations; ordinary
+// collection continues through DirectRootRefSet.
+type ClassifiedRootRefSink interface {
+	VisitClassifiedRootRef(RootClass, Ref) bool
+}
+
+// DirectClassifiedRootRefSet lets a runtime attribute roots without allocating
+// a RootGroups slice or boxing mutable RootSlot values.
+type DirectClassifiedRootRefSet interface {
+	RangeClassifiedRootRefs(ClassifiedRootRefSink)
+}
+
+// ClassifiedRoots assigns one telemetry ownership class to an exact root set.
+// Collection semantics are unchanged when telemetry is disabled.
+type ClassifiedRoots struct {
+	Class RootClass
+	Roots RootSet
+}
+
+func (s ClassifiedRoots) RangeRoots(fn func(RootSlot) bool) {
+	if s.Roots != nil {
+		s.Roots.RangeRoots(fn)
+	}
+}
+
+func (s ClassifiedRoots) RangeRootRefs(sink RootRefSink) {
+	if s.Roots == nil {
+		return
+	}
+	if direct, ok := s.Roots.(DirectRootRefSet); ok {
+		direct.RangeRootRefs(sink)
+		return
+	}
+	s.Roots.RangeRoots(func(slot RootSlot) bool { return sink.VisitRootRef(slot.GetRef()) })
+}
+
+// RootGroup allows one collection to report independently owned root classes.
+type RootGroup struct {
+	Class RootClass
+	Roots RootSet
+}
+
+// RootGroups is an exact composite RootSet used by telemetry-aware runtime
+// integrations for frames, public tokens, foreign instances, and snapshot roots.
+type RootGroups []RootGroup
+
+func (groups RootGroups) RangeRoots(fn func(RootSlot) bool) {
+	for _, group := range groups {
+		if group.Roots == nil {
+			continue
+		}
+		keepGoing := true
+		group.Roots.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+		if !keepGoing {
+			return
+		}
+	}
+}
+
+func (groups RootGroups) RangeRootRefs(sink RootRefSink) {
+	for _, group := range groups {
+		if group.Roots == nil {
+			continue
+		}
+		if direct, ok := group.Roots.(DirectRootRefSet); ok {
+			direct.RangeRootRefs(sink)
+			continue
+		}
+		keepGoing := true
+		group.Roots.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = sink.VisitRootRef(slot.GetRef())
+			return keepGoing
+		})
+		if !keepGoing {
+			return
+		}
+	}
+}
 
 // EmptyRoots is an explicit non-nil root set for may-collect operations that
 // have proven no live refs. Its zero-sized value avoids allocating a slice
@@ -429,6 +514,21 @@ func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 func (c *Collector) NewCheckedGlobalSlot(initial Ref) (uint32, error) {
 	return c.newRootSlot(&c.globalSlots, initial)
 }
+
+// NewCheckedClassifiedGlobalSlot creates a collector-owned persistent slot and
+// assigns its telemetry ownership. Classification is inert without
+// wago_gcstats or an attached recorder.
+func (c *Collector) NewCheckedClassifiedGlobalSlot(initial Ref, class RootClass) (uint32, error) {
+	if class >= rootClassCount {
+		return 0, errors.New("gc: invalid root telemetry class")
+	}
+	i, err := c.newRootSlot(&c.globalSlots, initial)
+	if err == nil && c.telemetryEnabled() {
+		c.cfg.Telemetry.setGlobalRootClass(i, class)
+	}
+	return i, err
+}
+
 func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if err := c.errIfClosed(); err != nil {
 		return err

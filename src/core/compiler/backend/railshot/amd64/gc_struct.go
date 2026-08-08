@@ -34,10 +34,12 @@ const (
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
+	before := f.a.Len()
 	sub, err := r.U32()
 	if err != nil {
 		return err
 	}
+	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
 		return f.emitGCArray(sub, r)
 	}
@@ -674,6 +676,18 @@ func (f *fn) emitGCI31(sub uint32) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	before := f.a.Len()
+	defer func() {
+		n := f.a.Len() - before
+		f.stats.addGCHelperCallBytes(n)
+		if gcHelperMayAllocate(helper) {
+			f.stats.addGCAllocationBytes(n)
+		}
+		switch helper {
+		case gcStructSet, gcStructTableSet, gcArraySet, gcArrayFill, gcArrayCopy, gcArrayInitData, gcArrayInitElem:
+			f.stats.addGCBarrierBytes(n)
+		}
+	}()
 	safepoint := uint32(0)
 	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && gcHelperMayAllocate(helper) {
 		safepoint = f.recordGCFrameSafepoint(len(params))
@@ -732,6 +746,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		plan.Exact = false
 	}
 	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
+	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id
 }
 
