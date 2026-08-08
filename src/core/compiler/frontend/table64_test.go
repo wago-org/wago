@@ -12,7 +12,7 @@ func TestStagedTable64ASTAdmitsGetSetGrowSizeFillCopyAndCallIndirect(t *testing.
 	base := wasm.Module{
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
 		FuncTypes: []wasm.TypeIdx{{Index: 0}},
-		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true}}}},
+		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: max, HasMax: true, Addr64: true}}}},
 	}
 	features := AllFeatures()
 	features.Table64 = true
@@ -25,7 +25,7 @@ func TestStagedTable64ASTAdmitsGetSetGrowSizeFillCopyAndCallIndirect(t *testing.
 	}
 	imported := base
 	imported.Tables = nil
-	imported.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.ExternType{Kind: wasm.ExternTable, Table: base.Tables[0].Type}}}
+	imported.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.NewTableExternType(base.Tables[0].Type)}}
 	imported.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableCopy}}}}}
 	if err := RejectUnsupportedWithFeatures(&imported, features); err != nil {
 		t.Fatalf("imported table64.copy AST: %v", err)
@@ -36,8 +36,8 @@ func TestStagedTable64ASTAdmitsTwoLocalMixedReadWrite(t *testing.T) {
 	max := uint64(4)
 	base := wasm.Module{
 		Tables: []wasm.Table{
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true}}},
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: max, HasMax: true, Addr64: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: max, HasMax: true}}},
 		},
 	}
 	features := AllFeatures()
@@ -63,7 +63,7 @@ func TestStagedTable64ASTAdmitsTwoLocalMixedReadWrite(t *testing.T) {
 func TestStagedTable64ASTAdmitsPassiveInitAndDrop(t *testing.T) {
 	max := uint64(4)
 	m := wasm.Module{
-		Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true}}}},
+		Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: max, HasMax: true, Addr64: true}}}},
 		Elements: []wasm.Elem{
 			{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs}},
 			{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs}},
@@ -78,7 +78,7 @@ func TestStagedTable64ASTAdmitsPassiveInitAndDrop(t *testing.T) {
 	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
 		t.Fatalf("table64 passive init/drop AST: %v", err)
 	}
-	m.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.ExternType{Kind: wasm.ExternTable, Table: m.Tables[0].Type}}}
+	m.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.NewTableExternType(m.Tables[0].Type)}}
 	m.Tables = nil
 	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "imported table64") {
 		t.Fatalf("imported table64.init gate = %v", err)
@@ -91,7 +91,7 @@ func TestStagedTable64ASTAdmitsInitializerAndI64ActiveElement(t *testing.T) {
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
 		FuncTypes: []wasm.TypeIdx{{Index: 0}},
 		Tables: []wasm.Table{{
-			Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true}},
+			Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: max, HasMax: true, Addr64: true}},
 			Init: &wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrRefFunc, Index: 0}}},
 		}},
 		Elements: []wasm.Elem{{
@@ -124,7 +124,7 @@ func TestStagedTable64RequiresFiniteRuntimeBound(t *testing.T) {
 	}
 	m.Exports = nil
 	max := stagedTable64Max + 1
-	m.Tables[0].Type.Limits.Max = &max
+	m.Tables[0].Type.Limits.Max, m.Tables[0].Type.Limits.HasMax = max, true
 	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
 		t.Fatalf("inert oversized table64 declaration: %v", err)
 	}
@@ -166,19 +166,23 @@ func TestStagedTable64ImportBounds(t *testing.T) {
 	features.Table64 = true
 	max := uint64(4)
 	m := wasm.Module{Imports: []wasm.Import{{
-		Module: "env", Name: "table", Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{
-			Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true},
-		}},
+		Module: "env", Name: "table", Type: wasm.NewTableExternType(wasm.TableType{
+			Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: max, HasMax: true, Addr64: true},
+		}),
 	}}}
 	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
 		t.Fatalf("bounded table64 import: %v", err)
 	}
-	m.Imports[0].Type.Table.Limits.Max = nil
+	table := m.Imports[0].Type.TableType()
+	table.Limits.HasMax = false
+	m.Imports[0].Type = wasm.NewTableExternType(table)
 	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
 		t.Fatalf("no-max table64 import: %v", err)
 	}
 	tooLarge := stagedTable64Max + 1
-	m.Imports[0].Type.Table.Limits.Max = &tooLarge
+	table = m.Imports[0].Type.TableType()
+	table.Limits.Max, table.Limits.HasMax = tooLarge, true
+	m.Imports[0].Type = wasm.NewTableExternType(table)
 	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "exceeds staged ceiling") {
 		t.Fatalf("oversized table64 import error = %v", err)
 	}

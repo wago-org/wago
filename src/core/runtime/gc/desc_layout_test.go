@@ -115,3 +115,23 @@ func TestDescriptorsAndLayout(t *testing.T) {
 		t.Fatalf("header layout changed: %d %d", HeaderSize, PayloadOffset)
 	}
 }
+
+func TestStructDescBuilderRequiresExactFieldCount(t *testing.T) {
+	b := NewStructDescBuilder(7, 1)
+	if _, err := b.Finish(); err == nil || !strings.Contains(err.Error(), "got 0 struct fields, want 1") {
+		t.Fatalf("unfinished builder error = %v", err)
+	}
+	if err := b.Add(StorageI32); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Add(StorageI64); err == nil || !strings.Contains(err.Error(), "too many struct fields") {
+		t.Fatalf("overfilled builder error = %v", err)
+	}
+	d, err := b.Finish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.ID != 7 || d.Size != 4 || len(d.Fields) != 1 || d.Fields[0] != (FieldDesc{Kind: StorageI32, Offset: 0}) {
+		t.Fatalf("built descriptor = %+v", d)
+	}
+}

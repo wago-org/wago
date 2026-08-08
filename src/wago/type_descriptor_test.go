@@ -19,7 +19,7 @@ func TestTypeDescriptorsPreserveRecursiveReferenceStructure(t *testing.T) {
 		{SubTypes: []wasm.SubType{
 			{
 				Supers:   []wasm.TypeIdx{{Index: 0}},
-				Metadata: wasm.TypeMetadata{Describes: &describes, Descriptor: &descriptor},
+				Metadata: wasm.TypeMetadata{Describes: wasm.SomeTypeIdx(describes), Descriptor: wasm.SomeTypeIdx(descriptor)},
 				Comp: wasm.CompType{Kind: wasm.CompFunc,
 					Params:  []wasm.ValType{recRef(0), absRef},
 					Results: []wasm.ValType{recRef(1)},

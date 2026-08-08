@@ -605,15 +605,17 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 				}
 			}
 		}
-		eqOptionalType := func(x, y *TypeIdx) bool {
-			if x == nil || y == nil {
-				return x == nil && y == nil
+		eqOptionalType := func(x, y OptionalTypeIdx) bool {
+			xv, xpresent := x.Get()
+			yv, ypresent := y.Get()
+			if !xpresent || !ypresent {
+				return xpresent == ypresent
 			}
-			if x.Rec != y.Rec {
+			if xv.Rec != yv.Rec {
 				return false
 			}
-			xi, xok := v.flatTypeIdxInRecGroup(*x, xGroup)
-			yi, yok := v.flatTypeIdxInRecGroup(*y, yGroup)
+			xi, xok := v.flatTypeIdxInRecGroup(xv, xGroup)
+			yi, yok := v.flatTypeIdxInRecGroup(yv, yGroup)
 			return xok && yok && eqType(xi, yi)
 		}
 		if ok {

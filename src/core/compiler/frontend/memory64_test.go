@@ -8,7 +8,7 @@ import (
 
 func TestStagedMemory64ASTAdmitsOversizedDeclaredMaximum(t *testing.T) {
 	max := uint64(1) << 48
-	m := wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1, Max: &max, Addr64: true}}}}
+	m := wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1, Max: max, HasMax: true, Addr64: true}}}}
 	feat := AllFeatures()
 	feat.Memory64 = true
 	if err := RejectUnsupportedWithFeatures(&m, feat); err != nil {
@@ -26,7 +26,7 @@ func TestStagedMemory64ASTAdmitsScalarSIMDAndBoundedBulk(t *testing.T) {
 	base := wasm.Module{
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
 		FuncTypes: []wasm.TypeIdx{{Index: 0}},
-		Memories:  []wasm.MemType{{Limits: wasm.Limits{Min: 1, Max: &max, Addr64: true}}},
+		Memories:  []wasm.MemType{{Limits: wasm.Limits{Min: 1, Max: max, HasMax: true, Addr64: true}}},
 	}
 	feat := AllFeatures()
 	feat.Memory64 = true

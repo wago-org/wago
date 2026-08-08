@@ -42,7 +42,20 @@ func TestCompilerTypeRepresentationLayout(t *testing.T) {
 		{"StorageType", StorageType{}, unsafe.Sizeof(StorageType{}), 16},
 		{"FieldType", FieldType{}, unsafe.Sizeof(FieldType{}), 16},
 		{"CompType", CompType{}, unsafe.Sizeof(CompType{}), 96},
+		{"TypeMetadata", TypeMetadata{}, unsafe.Sizeof(TypeMetadata{}), 16},
 		{"SubType", SubType{}, unsafe.Sizeof(SubType{}), 152},
+		{"Limits", Limits{}, unsafe.Sizeof(Limits{}), 24},
+		{"TableType", TableType{}, unsafe.Sizeof(TableType{}), 40},
+		{"MemType", MemType{}, unsafe.Sizeof(MemType{}), 32},
+		{"GlobalType", GlobalType{}, unsafe.Sizeof(GlobalType{}), 24},
+		{"ExternType", ExternType{}, unsafe.Sizeof(ExternType{}), 40},
+		{"Import", Import{}, unsafe.Sizeof(Import{}), 72},
+		{"Expr", Expr{}, unsafe.Sizeof(Expr{}), 48},
+		{"Func", Func{}, unsafe.Sizeof(Func{}), 104},
+		{"ElemMode", ElemMode{}, unsafe.Sizeof(ElemMode{}), 56},
+		{"ElemKind", ElemKind{}, unsafe.Sizeof(ElemKind{}), 72},
+		{"Elem", Elem{}, unsafe.Sizeof(Elem{}), 128},
+		{"DataMode", DataMode{}, unsafe.Sizeof(DataMode{}), 56},
 		{"gc.FieldDesc", corergc.FieldDesc{}, unsafe.Sizeof(corergc.FieldDesc{}), 8},
 		{"gc.TypeDesc", corergc.TypeDesc{}, unsafe.Sizeof(corergc.TypeDesc{}), 64},
 	} {
@@ -51,7 +64,7 @@ func TestCompilerTypeRepresentationLayout(t *testing.T) {
 		}
 		t.Logf("%s: size=%d pointer-scanned=%v", tc.name, tc.got, typeContainsGoPointer(reflect.TypeOf(tc.value)))
 	}
-	for _, value := range []any{HeapType{}, RefType{}, ValType{}, StorageType{}, FieldType{}} {
+	for _, value := range []any{TypeIdx{}, HeapType{}, RefType{}, ValType{}, StorageType{}, FieldType{}, OptionalTypeIdx{}, TypeMetadata{}, Limits{}, TableType{}, MemType{}, GlobalType{}, ExternType{}} {
 		if typ := reflect.TypeOf(value); typeContainsGoPointer(typ) {
 			t.Errorf("%s unexpectedly contains a Go pointer", typ)
 		}
@@ -241,4 +254,68 @@ func BenchmarkGCTypeStructuralKey(b *testing.B) {
 			typeRepKeySink = key
 		}
 	})
+}
+
+func syntheticTypeMetadataModuleBytes(types int) []byte {
+	payload := appendTypeRepU32(nil, uint32(types))
+	for i := 0; i < types; i++ {
+		// descriptor 0 followed by an empty struct type.
+		payload = append(payload, 0x4d, 0x00, 0x5f, 0x00)
+	}
+	module := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, secType}
+	module = appendTypeRepU32(module, uint32(len(payload)))
+	return append(module, payload...)
+}
+
+func BenchmarkTypeMetadataDecode(b *testing.B) {
+	for _, types := range []int{10, 100, 1000, 10000} {
+		data := syntheticTypeMetadataModuleBytes(types)
+		b.Run(fmt.Sprintf("types=%d", types), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				m, err := DecodeModule(data)
+				if err != nil || len(m.Types) != types {
+					b.Fatalf("decode: types=%d err=%v", len(m.Types), err)
+				}
+				typeRepModuleSink = m
+			}
+		})
+	}
+}
+
+func appendTypeRepSection(module []byte, id byte, payload []byte) []byte {
+	module = append(module, id)
+	module = appendTypeRepU32(module, uint32(len(payload)))
+	return append(module, payload...)
+}
+
+func syntheticFunctionMetadataModuleBytes(functions int) []byte {
+	module := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}
+	module = appendTypeRepSection(module, secType, []byte{0x01, 0x60, 0x00, 0x00})
+	functionPayload := appendTypeRepU32(nil, uint32(functions))
+	for i := 0; i < functions; i++ {
+		functionPayload = append(functionPayload, 0x00)
+	}
+	module = appendTypeRepSection(module, secFunction, functionPayload)
+	codePayload := appendTypeRepU32(nil, uint32(functions))
+	for i := 0; i < functions; i++ {
+		codePayload = append(codePayload, 0x02, 0x00, 0x0b)
+	}
+	return appendTypeRepSection(module, secCode, codePayload)
+}
+
+func BenchmarkFunctionMetadataDecode(b *testing.B) {
+	for _, functions := range []int{10, 100, 1000, 10000} {
+		data := syntheticFunctionMetadataModuleBytes(functions)
+		b.Run(fmt.Sprintf("functions=%d", functions), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				m, err := DecodeModule(data)
+				if err != nil || len(m.Code) != functions {
+					b.Fatalf("decode: functions=%d err=%v", len(m.Code), err)
+				}
+				typeRepModuleSink = m
+			}
+		})
+	}
 }

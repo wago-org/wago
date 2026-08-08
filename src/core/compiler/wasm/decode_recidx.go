@@ -23,13 +23,11 @@ func markRecursiveSubTypeIndexes(st *SubType, base, limit uint32) {
 	for i := range st.Supers {
 		st.Supers[i] = markRecursiveTypeIdx(st.Supers[i], base, limit)
 	}
-	if st.Metadata.Describes != nil {
-		idx := markRecursiveTypeIdx(*st.Metadata.Describes, base, limit)
-		st.Metadata.Describes = &idx
+	if idx, ok := st.Metadata.Describes.Get(); ok {
+		st.Metadata.Describes = SomeTypeIdx(markRecursiveTypeIdx(idx, base, limit))
 	}
-	if st.Metadata.Descriptor != nil {
-		idx := markRecursiveTypeIdx(*st.Metadata.Descriptor, base, limit)
-		st.Metadata.Descriptor = &idx
+	if idx, ok := st.Metadata.Descriptor.Get(); ok {
+		st.Metadata.Descriptor = SomeTypeIdx(markRecursiveTypeIdx(idx, base, limit))
 	}
 	markRecursiveCompTypeIndexes(&st.Comp, base, limit)
 }

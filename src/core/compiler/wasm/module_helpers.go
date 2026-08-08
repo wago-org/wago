@@ -55,7 +55,7 @@ func (m *Module) TableType(idx uint32) (TableType, bool) {
 			continue
 		}
 		if n == idx {
-			return m.Imports[i].Type.Table, true
+			return m.Imports[i].Type.TableType(), true
 		}
 		n++
 	}
@@ -88,7 +88,7 @@ func (m *Module) MemoryType(idx uint32) (MemType, bool) {
 			continue
 		}
 		if n == idx {
-			return m.Imports[i].Type.Mem, true
+			return m.Imports[i].Type.MemType(), true
 		}
 		n++
 	}
@@ -155,7 +155,7 @@ func (m *Module) FuncTypeIndex(idx uint32) (TypeIdx, bool) {
 			continue
 		}
 		if i == idx {
-			return m.Imports[j].Type.Type, true
+			return m.Imports[j].Type.FuncType(), true
 		}
 		i++
 	}
@@ -384,7 +384,7 @@ func (m *Module) GlobalTypeByIndex(idx uint32) (GlobalType, bool) {
 			continue
 		}
 		if i == idx {
-			return m.Imports[j].Type.Global, true
+			return m.Imports[j].Type.GlobalType(), true
 		}
 		i++
 	}

@@ -74,7 +74,7 @@ func TestCompactImportsSameKindMemoryGroup(t *testing.T) {
 	if len(m.Imports) != 2 || m.Imports[0].Name != "a" || m.Imports[1].Name != "b" {
 		t.Fatalf("same-kind imports = %#v", m.Imports)
 	}
-	if got := m.Imports[1].Type.Mem.Limits; got.Min != 2 || got.Max == nil || *got.Max != 3 {
+	if got := m.Imports[1].Type.MemType().Limits; got.Min != 2 || !got.HasMax || got.Max != 3 {
 		t.Fatalf("second compact memory limits = %#v, want 2..3", got)
 	}
 	features := ValidationFeatures{CompactImports: true, MultiMemory: true}

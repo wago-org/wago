@@ -254,8 +254,8 @@ func SupportedTableRuntimeShapesFromFacts(m *wasm.Module, facts *ModuleFacts) ([
 		}
 		max := min
 		observableCapacity := facts.TableGrowUsed[tableIndex] || facts.TableExported[tableIndex]
-		if m.Tables[i].Type.Limits.Max != nil {
-			max = *m.Tables[i].Type.Limits.Max
+		if m.Tables[i].Type.Limits.HasMax {
+			max = m.Tables[i].Type.Limits.Max
 			// Preserve ordinary declared-capacity allocation. Only inert tables whose
 			// spare capacity cannot be observed and cannot fit in the bounded arena are
 			// represented at their minimum, admitting valid huge declarations without
@@ -471,8 +471,8 @@ func inertOversizedLocalTable64(m *wasm.Module, localIndex int) bool {
 		return false
 	}
 	t := &m.Tables[0]
-	return t.Init == nil && t.Type.Limits.Addr64 && t.Type.Limits.Max != nil &&
-		t.Type.Limits.Min <= stagedTable64Max && *t.Type.Limits.Max > stagedTable64Max &&
+	return t.Init == nil && t.Type.Limits.Addr64 && t.Type.Limits.HasMax &&
+		t.Type.Limits.Min <= stagedTable64Max && t.Type.Limits.Max > stagedTable64Max &&
 		isFuncRef(t.Type.Ref) && !moduleExportsTable(m, 0)
 }
 
@@ -534,7 +534,7 @@ func (p supportPass) types() error {
 			ctx := fmt.Sprintf("type %d", typeIndex)
 			flat++
 			hasSubtypeMetadata := st.HasPrefix || len(st.Supers) != 0
-			hasDescriptorMetadata := st.Metadata.Describes != nil || st.Metadata.Descriptor != nil
+			hasDescriptorMetadata := st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present()
 			if hasDescriptorMetadata || (hasSubtypeMetadata && !p.feat.GCTypeSubtypingProducts && !(p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct)) {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
@@ -601,7 +601,7 @@ func (p supportPass) imports() error {
 		ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			ft := p.funcType(im.Type.Type)
+			ft := p.funcType(im.Type.FuncType())
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
@@ -621,32 +621,33 @@ func (p supportPass) imports() error {
 		case wasm.ExternGlobal:
 			// Imported reference globals are admitted structurally here; instantiation
 			// requires an exact typed, mutable, compatible-store Global owner.
-			if err := p.globalType(im.Type.Global.Type, ctx); err != nil {
+			if err := p.globalType(im.Type.GlobalType().Type, ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTable:
 			// Imported tables carry their exact reference type into the shared
 			// runtime handle. Externref imports additionally require reference types
 			// and a compatible store-bound owner at instantiation.
-			if !isFuncRef(im.Type.Table.Ref) && !isExternRef(im.Type.Table.Ref) && !p.supportedTypedFuncRef(im.Type.Table.Ref) && !p.supportedGCReference(im.Type.Table.Ref) {
-				return p.valType(wasm.RefVal(im.Type.Table.Ref), ctx+" table type")
+			table := im.Type.TableType()
+			if !isFuncRef(table.Ref) && !isExternRef(table.Ref) && !p.supportedTypedFuncRef(table.Ref) && !p.supportedGCReference(table.Ref) {
+				return p.valType(wasm.RefVal(table.Ref), ctx+" table type")
 			}
-			if isExternRef(im.Type.Table.Ref) && !p.feat.ReferenceTypes {
+			if isExternRef(table.Ref) && !p.feat.ReferenceTypes {
 				return p.unsupported("import", "externref table (reference-types disabled)", ctx)
 			}
-			if im.Type.Table.Limits.Addr64 {
+			if table.Limits.Addr64 {
 				if !p.feat.Table64 {
 					return p.unsupported("import", "64-bit table (table64 disabled)", ctx)
 				}
-				if im.Type.Table.Limits.Min > stagedTable64Max {
-					return p.unsupported("import", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", im.Type.Table.Limits.Min, stagedTable64Max), ctx)
+				if table.Limits.Min > stagedTable64Max {
+					return p.unsupported("import", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", table.Limits.Min, stagedTable64Max), ctx)
 				}
-				if im.Type.Table.Limits.Max != nil && *im.Type.Table.Limits.Max > stagedTable64Max {
-					return p.unsupported("import", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", *im.Type.Table.Limits.Max, stagedTable64Max), ctx)
+				if table.Limits.HasMax && table.Limits.Max > stagedTable64Max {
+					return p.unsupported("import", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", table.Limits.Max, stagedTable64Max), ctx)
 				}
 			}
 		case wasm.ExternMem:
-			if err := p.checkMemType(im.Type.Mem, ctx); err != nil {
+			if err := p.checkMemType(im.Type.MemType(), ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTag:
@@ -682,8 +683,8 @@ func (p supportPass) tables() error {
 			if t.Type.Limits.Min > stagedTable64Max {
 				return p.unsupported("table", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", t.Type.Limits.Min, stagedTable64Max), ctx)
 			}
-			if t.Type.Limits.Max != nil && *t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
-				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged executable ceiling %d", *t.Type.Limits.Max, stagedTable64Max), ctx)
+			if t.Type.Limits.HasMax && t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
+				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged executable ceiling %d", t.Type.Limits.Max, stagedTable64Max), ctx)
 			}
 		}
 		if t.Init != nil {
@@ -2368,11 +2369,11 @@ func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			if ft := p.funcType(im.Type.Type); ft != nil && (compValTypesRequireSIMD(ft.Params) || compValTypesRequireSIMD(ft.Results)) {
+			if ft := p.funcType(im.Type.FuncType()); ft != nil && (compValTypesRequireSIMD(ft.Params) || compValTypesRequireSIMD(ft.Results)) {
 				return true
 			}
 		case wasm.ExternGlobal:
-			if valTypeRequiresSIMD(im.Type.Global.Type) {
+			if valTypeRequiresSIMD(im.Type.GlobalType().Type) {
 				return true
 			}
 		}

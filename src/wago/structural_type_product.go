@@ -94,7 +94,7 @@ func stagedStructuralTypeMetadataShape(m *wasm.Module) error {
 	for gi := range m.Types {
 		for si := range m.Types[gi].SubTypes {
 			st := &m.Types[gi].SubTypes[si]
-			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return fmt.Errorf("collector-free structural products reject subtype and descriptor metadata")
 			}
 			switch st.Comp.Kind {
@@ -168,7 +168,7 @@ func stagedStructuralCallIndirectShape(m *wasm.Module) (stagedStructuralTypeProd
 		return 0, false
 	}
 	t := &m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 1 || t.Limits.Max == nil || *t.Limits.Max != 1 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 1 || !t.Limits.HasMax || t.Limits.Max != 1 || m.Tables[0].Init != nil {
 		return 0, false
 	}
 	e := &m.Elements[0]

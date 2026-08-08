@@ -281,24 +281,24 @@ func (v *funcValidator) step(in *Instruction) error {
 		v.initializeLocal(in.Index, t)
 		v.push(t)
 	case InstrGlobalGet:
-		gt, ok := v.globalType(in.Index)
+		typ, mutable, ok := v.globalProperties(in.Index)
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if v.constOnly && (gt.Mutable || int(in.Index) >= v.constGlobalLimit ||
+		if v.constOnly && (mutable || int(in.Index) >= v.constGlobalLimit ||
 			(int(in.Index) >= v.m.ImportedGlobalCount() && !v.features.ExtendedConstGlobals)) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
-		v.push(gt.Type)
+		v.push(typ)
 	case InstrGlobalSet:
-		gt, ok := v.globalType(in.Index)
+		typ, mutable, ok := v.globalProperties(in.Index)
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if !gt.Mutable {
+		if !mutable {
 			return v.verr(ErrImmutableGlobal, "")
 		}
-		return v.popExpect(gt.Type)
+		return v.popExpect(typ)
 	case InstrTableGet:
 		addr, tt, err := v.tableAddrType(in.Index)
 		if err != nil {
@@ -742,14 +742,14 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 	if ma.Mem != nil {
 		idx = uint32(*ma.Mem)
 	}
-	mt, ok := v.memoryType(idx)
+	flags, ok := v.memoryProperties(idx)
 	if !ok {
 		return ValType{}, v.verr(ErrUnknownMemory, "")
 	}
 	if ma.Align > natural {
 		return ValType{}, v.verr(ErrInvalidAlignment, "")
 	}
-	if mt.Limits.Addr64 {
+	if flags&externTypeAddr64 != 0 {
 		return I64, nil
 	}
 	if ma.Offset > uint64(^uint32(0)) {
@@ -767,8 +767,8 @@ func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, e
 	if ma.Mem != nil {
 		idx = uint32(*ma.Mem)
 	}
-	mt, _ := v.memoryType(idx) // existence was checked by checkMemArg above.
-	if mt == nil || !mt.Shared {
+	flags, _ := v.memoryProperties(idx) // existence was checked by checkMemArg above.
+	if flags&externTypeShared == 0 {
 		// Atomic memory instructions are valid only for shared memories.
 		return ValType{}, v.verr(ErrInvalidSharedMemory, "atomic memory instruction")
 	}

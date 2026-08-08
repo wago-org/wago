@@ -60,36 +60,72 @@ func NewStructDesc(id TypeID, fields []StorageKind) (TypeDesc, error) {
 }
 
 func newStructDescLayout(id TypeID, fields []StorageKind, initialOffset uint32) (TypeDesc, error) {
-	d := TypeDesc{ID: id, Kind: KindStruct, Align: 1, Final: true}
-	d.Fields = make([]FieldDesc, len(fields))
-	off := initialOffset
-	for i, k := range fields {
-		a, sz, err := storageLayout(k)
-		if err != nil {
+	b := newStructDescBuilder(id, len(fields), initialOffset)
+	for _, k := range fields {
+		if err := b.Add(k); err != nil {
 			return TypeDesc{}, err
-		}
-		off, err = alignChecked(off, a)
-		if err != nil {
-			return TypeDesc{}, err
-		}
-		d.Fields[i] = FieldDesc{Kind: k, Offset: off}
-		off, err = addChecked(off, sz)
-		if err != nil {
-			return TypeDesc{}, err
-		}
-		if a > d.Align {
-			d.Align = a
-		}
-		if isCollectorRefKind(k) {
-			d.HasRefs = true
 		}
 	}
+	return b.Finish()
+}
+
+// StructDescBuilder lays out a known number of fields directly into a runtime
+// descriptor. It lets compiler lowering avoid an intermediate []StorageKind.
+type StructDescBuilder struct {
+	desc  TypeDesc
+	off   uint32
+	index int
+}
+
+func NewStructDescBuilder(id TypeID, fieldCount int) StructDescBuilder {
+	return newStructDescBuilder(id, fieldCount, 0)
+}
+
+func newStructDescBuilder(id TypeID, fieldCount int, initialOffset uint32) StructDescBuilder {
+	return StructDescBuilder{
+		desc: TypeDesc{ID: id, Kind: KindStruct, Align: 1, Final: true, Fields: make([]FieldDesc, fieldCount)},
+		off:  initialOffset,
+	}
+}
+
+func (b *StructDescBuilder) Add(k StorageKind) error {
+	if b.index >= len(b.desc.Fields) {
+		return fmt.Errorf("gc: too many struct fields")
+	}
+	a, sz, err := storageLayout(k)
+	if err != nil {
+		return err
+	}
+	off, err := alignChecked(b.off, a)
+	if err != nil {
+		return err
+	}
+	b.desc.Fields[b.index] = FieldDesc{Kind: k, Offset: off}
+	off, err = addChecked(off, sz)
+	if err != nil {
+		return err
+	}
+	if a > b.desc.Align {
+		b.desc.Align = a
+	}
+	if isCollectorRefKind(k) {
+		b.desc.HasRefs = true
+	}
+	b.off = off
+	b.index++
+	return nil
+}
+
+func (b *StructDescBuilder) Finish() (TypeDesc, error) {
+	if b.index != len(b.desc.Fields) {
+		return TypeDesc{}, fmt.Errorf("gc: got %d struct fields, want %d", b.index, len(b.desc.Fields))
+	}
 	var err error
-	d.Size, err = alignChecked(off, d.Align)
+	b.desc.Size, err = alignChecked(b.off, b.desc.Align)
 	if err != nil {
 		return TypeDesc{}, err
 	}
-	return d, nil
+	return b.desc, nil
 }
 
 func NewArrayDesc(id TypeID, elem StorageKind) (TypeDesc, error) {

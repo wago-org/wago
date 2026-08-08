@@ -1005,7 +1005,7 @@ func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
 			continue
 		}
 		if index == 0 {
-			return im.Type.Tag, true
+			return im.Type.TagType(), true
 		}
 		index--
 	}

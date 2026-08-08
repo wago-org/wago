@@ -425,7 +425,7 @@ func TestValidatorCoverageStackEffectCategories(t *testing.T) {
 }
 
 func TestValidatorCoverageAtomicsAndSIMDForms(t *testing.T) {
-	shared := []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}
+	shared := []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}
 	t.Run("atomic load store rmw cmpxchg effects", func(t *testing.T) {
 		m := modWithFunc(nil, nil,
 			Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI64AtomicLoad32U}, Instruction{Kind: InstrDrop},
@@ -484,7 +484,7 @@ func TestValidatorCoverageModuleIndexesAndImports(t *testing.T) {
 	t.Run("imported tag func type", func(t *testing.T) {
 		m := &Module{
 			Types:   []RecType{ft([]ValType{I32}, nil), ft(nil, nil)},
-			Imports: []Import{{Type: ExternType{Kind: ExternTag, Tag: TagType{Type: TypeIdx{Index: 0}}}}},
+			Imports: []Import{{Type: NewTagExternType(TagType{Type: TypeIdx{Index: 0}})}},
 		}
 		mv := &moduleValidator{m: m}
 		if ft, ok := mv.tagFuncType(0); !ok || len(ft.Params) != 1 {
@@ -497,9 +497,9 @@ func TestValidatorCoverageModuleIndexesAndImports(t *testing.T) {
 	t.Run("imported table memory and global indexes", func(t *testing.T) {
 		m := &Module{
 			Imports: []Import{
-				{Type: ExternType{Kind: ExternTable, Table: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}}},
-				{Type: ExternType{Kind: ExternMem, Mem: MemType{Limits: Limits{Min: 1}}}},
-				{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I64}}},
+				{Type: NewTableExternType(TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}})},
+				{Type: NewMemExternType(MemType{Limits: Limits{Min: 1}})},
+				{Type: NewGlobalExternType(GlobalType{Type: I64})},
 			},
 		}
 		mv := &moduleValidator{m: m}
@@ -518,8 +518,8 @@ func TestValidatorCoverageModuleIndexesAndImports(t *testing.T) {
 func TestValidatorCoverageModuleLevelBranches(t *testing.T) {
 	t.Run("top-level validation failures", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Supers: []TypeIdx{{Index: 9}}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Describes: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Descriptor: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Describes: SomeTypeIdx(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompTypeKind(99)}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct, Fields: []FieldType{NewFieldType(StoragePacked(PackType(0xff)), Const)}}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{newValType(ValTypeKind(99), 0)})}}, ErrUnknownType)
@@ -531,11 +531,11 @@ func TestValidatorCoverageModuleLevelBranches(t *testing.T) {
 		m := &Module{
 			Types: []RecType{ft(nil, nil)},
 			Imports: []Import{
-				{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}},
-				{Type: ExternType{Kind: ExternTable, Table: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}}},
-				{Type: ExternType{Kind: ExternMem, Mem: MemType{Limits: Limits{Min: 1, Max: &max}, Shared: true}}},
-				{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I32}}},
-				{Type: ExternType{Kind: ExternTag, Tag: TagType{Type: TypeIdx{Index: 0}}}},
+				{Type: NewFuncExternType(TypeIdx{Index: 0})},
+				{Type: NewTableExternType(TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}})},
+				{Type: NewMemExternType(MemType{Limits: Limits{Min: 1, Max: max, HasMax: true}, Shared: true})},
+				{Type: NewGlobalExternType(GlobalType{Type: I32})},
+				{Type: NewTagExternType(TagType{Type: TypeIdx{Index: 0}})},
 			},
 		}
 		if err := ValidateModule(m); err != nil {
@@ -820,8 +820,8 @@ func TestValidatorCoverageModuleLevelNegativeBranches(t *testing.T) {
 	})
 	t.Run("import func and tag use non-function type", func(t *testing.T) {
 		types := []RecType{structType(nil, TypeMetadata{})}
-		expectValidateErr(t, &Module{Types: types, Imports: []Import{{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Types: types, Imports: []Import{{Type: ExternType{Kind: ExternTag, Tag: TagType{Type: TypeIdx{Index: 0}}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: types, Imports: []Import{{Type: NewFuncExternType(TypeIdx{Index: 0})}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: types, Imports: []Import{{Type: NewTagExternType(TagType{Type: TypeIdx{Index: 0}})}}}, ErrUnknownType)
 	})
 	t.Run("function parameter has invalid value type", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{ft([]ValType{newValType(ValTypeKind(99), 0)}, nil)}}, ErrUnknownType)
@@ -849,9 +849,9 @@ func TestValidatorCoverageInternalHelperBranches(t *testing.T) {
 			ft(nil, nil),
 		},
 		Imports: []Import{
-			{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I32}}},
-			{Type: ExternType{Kind: ExternTable, Table: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}}},
-			{Type: ExternType{Kind: ExternMem, Mem: MemType{Limits: Limits{Min: 1}}}},
+			{Type: NewGlobalExternType(GlobalType{Type: I32})},
+			{Type: NewTableExternType(TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}})},
+			{Type: NewMemExternType(MemType{Limits: Limits{Min: 1}})},
 		},
 		Globals:  []Global{{Type: GlobalType{Type: I64}}},
 		Tables:   []Table{{Type: TableType{Ref: AbsRef(HeapExtern), Limits: Limits{Min: 1}}}},
@@ -958,7 +958,7 @@ func TestValidatorCoverageCoreNegativeStepBranches(t *testing.T) {
 	t.Run("calls locals globals refs and tables negative paths", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, []ValType{I32}, Instruction{Kind: InstrReturn}), ErrTypeMismatch)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrCall, Index: 1}), ErrUnknownFunc)
-		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{I64}), ft(nil, []ValType{I32})}, Imports: []Import{{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}}}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrReturnCall, Index: 0}}}}}}, ErrTypeMismatch)
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{I64}), ft(nil, []ValType{I32})}, Imports: []Import{{Type: NewFuncExternType(TypeIdx{Index: 0})}}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrReturnCall, Index: 0}}}}}}, ErrTypeMismatch)
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrCallIndirect, Index: 9}), ErrUnknownType)
 		ci := &Module{Types: []RecType{ft(nil, nil), ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Tables: []Table{{Type: TableType{Ref: AbsRef(HeapExtern), Limits: Limits{Min: 1}}}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrI32Const}, {Kind: InstrCallIndirect, Index: 0}}}}}}
 		expectValidateErr(t, ci, ErrTypeMismatch)
@@ -1062,7 +1062,7 @@ func TestValidatorCoverageMoreCoreStepBranches(t *testing.T) {
 		}
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrCall, Index: 1}, Instruction{Kind: InstrDrop})
 		m.Types = []RecType{ft(nil, nil), ft([]ValType{I32}, []ValType{I32})}
-		m.Imports = []Import{{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 1}}}}
+		m.Imports = []Import{{Type: NewFuncExternType(TypeIdx{Index: 1})}}
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("call success: %v", err)
 		}
@@ -1150,8 +1150,8 @@ func TestValidatorCoverageProposalNegativeBranches(t *testing.T) {
 			_ = atomicCmpxchgEffect(op)
 		}
 		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}, nil), Instruction{Kind: InstrI32AtomicLoad}, ErrInvalidSharedMemory)
-		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}, nil), Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}, nil), Instruction{Kind: InstrInvalid}, ErrUnsupportedValidationOpcode)
+		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}, nil), Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
+		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}, nil), Instruction{Kind: InstrInvalid}, ErrUnsupportedValidationOpcode)
 	})
 }
 
@@ -1167,7 +1167,7 @@ func TestValidatorCoverageGCAndSIMDNegativeBranches(t *testing.T) {
 			{Kind: InstrRefGetDesc, Index: 0},
 			{Kind: InstrArrayLen},
 		} {
-			m := &Module{Types: []RecType{structType(nil, TypeMetadata{Descriptor: ptr(TypeIdx{Index: 1})}), structType(nil, TypeMetadata{})}}
+			m := &Module{Types: []RecType{structType(nil, TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 1})}), structType(nil, TypeMetadata{})}}
 			expectStepErr(t, coverageFuncValidator(m, nil), in, ErrTypeMismatch)
 		}
 	})
@@ -1223,8 +1223,8 @@ func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 				structType([]FieldType{field(I32, Var), field(I64, Const)}, TypeMetadata{}),
 				arrayType(field(I32, Var)),
 				arrayType(field(I64, Const)),
-				structType(nil, TypeMetadata{Descriptor: ptr(TypeIdx{Index: 4})}),
-				structType(nil, TypeMetadata{Describes: ptr(TypeIdx{Index: 3})}),
+				structType(nil, TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 4})}),
+				structType(nil, TypeMetadata{Describes: SomeTypeIdx(TypeIdx{Index: 3})}),
 			},
 			DataCount: ptr(uint32(1)),
 			Data:      []Data{{Mode: DataMode{Kind: DataPassive}}},
@@ -1299,7 +1299,7 @@ func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 		expectStepErr(t, fv, Instruction{Kind: InstrBrOnCast, Index: 0, ext: &instrExt{HeapType: AbsHeap(HeapEq), HeapType2: AbsHeap(HeapAny)}}, ErrTypeMismatch)
 	})
 	t.Run("atomics and simd operand order branches", func(t *testing.T) {
-		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}
+		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}
 		expectStepErr(t, coverageFuncValidator(shared, nil), Instruction{Kind: InstrMemoryAtomicNotify, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrMemoryAtomicNotify, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidator(shared, nil), Instruction{Kind: InstrMemoryAtomicWait64, ext: &instrExt{MemArg: MemArg{Align: 3}}}, ErrTypeMismatch)
@@ -1407,7 +1407,7 @@ func TestValidatorCoverageFinalTailBranches(t *testing.T) {
 		fv := coverageFuncValidator(m, nil)
 		_ = fv.pushCtrl(ctrlBlock, nil, []ValType{I32})
 		expectStepErr(t, fv, Instruction{Kind: InstrTryTable, ext: &instrExt{Catches: []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}}}, ErrTypeMismatch)
-		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}
+		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32), Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32), Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I32), Instruction{Kind: InstrAtomicCmpxchg, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
@@ -1478,7 +1478,7 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 		expectStepErr(t, coverageFuncValidatorWithStack(&Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}, I64), Instruction{Kind: InstrMemoryGrow}, ErrTypeMismatch)
 	})
 	t.Run("proposal last pass", func(t *testing.T) {
-		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: ptr(uint64(1))}}}}
+		shared := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I64), Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64), Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrAtomicCmpxchg, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)

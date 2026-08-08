@@ -11,8 +11,8 @@ func TestSupportedTableRuntimeShapesTracksGrowPerTable(t *testing.T) {
 	small := uint64(4)
 	m := wasm.Module{
 		Tables: []wasm.Table{
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: &huge}}},
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: &small}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: huge, HasMax: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: small, HasMax: true}}},
 		},
 		Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow, Index: 1}}}}},
 	}
