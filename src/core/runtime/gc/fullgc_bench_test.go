@@ -24,6 +24,51 @@ func newFullGCBenchmarkCollector(b *testing.B, disableMoving bool) *Collector {
 	return c
 }
 
+// BenchmarkThroughputFullLivePointerFree isolates repeated high-survival full
+// collections without allocation/setup noise. It guards the cheap pointer-free
+// case where a small fixed metadata cost can otherwise look like a large
+// percentage regression in the allocation-per-cycle matrix.
+func BenchmarkThroughputFullLivePointerFree(b *testing.B) {
+	fields := []StorageKind{
+		StorageI64, StorageI64, StorageI64, StorageI64,
+		StorageI64, StorageI64, StorageI64, StorageI64,
+	}
+	d, err := NewStructDesc(0, fields)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, objects := range []int{90, 900, 9000} {
+		b.Run(fmt.Sprintf("objects=%d", objects), func(b *testing.B) {
+			c, err := NewCollector(Config{NurseryBytes: 16 << 20, ThroughputHeapBytes: 64 << 20}, []TypeDesc{d})
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(c.Close)
+			values := make([]Root, objects)
+			roots := make(Slots, objects)
+			for i := range roots {
+				r, err := c.NewStructDefault(0)
+				if err != nil {
+					b.Fatal(err)
+				}
+				values[i] = Root(r)
+				roots[i] = &values[i]
+			}
+			if err := c.CollectFull(roots); err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ReportMetric(float64(objects), "live-objects/op")
+			b.ResetTimer()
+			for range b.N {
+				if err := c.CollectFull(roots); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 // BenchmarkThroughputFullOldHeapPause isolates the major-collection pause for
 // old objects. Allocation, promotion, validation, and cleanup remain outside
 // the timer so lazy free-span indexing cannot disguise pause movement as setup.

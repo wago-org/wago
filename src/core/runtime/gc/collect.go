@@ -383,7 +383,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		}
 		plans = append(plans, plan)
 	}
-	if len(plans) > 1 {
+	if len(plans) > 1 && !c.promotionPlansSorted(plans) {
 		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
 			ak, bk := promotionPlanKind(a.entry), promotionPlanKind(b.entry)
 			if ak != bk {
@@ -412,15 +412,42 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		c.throughput.restoreAllocTransaction(tx)
 		finish()
 	}
-	for i := range plans {
+	for i := 0; i < len(plans); {
 		if plans[i].entry.space != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				rollback(nil)
 				return 0, 0, err
 			}
+			i++
 			continue
 		}
-		e, allocErr := c.allocThroughput(c.handles[plans[i].handle].size, spaceOld)
+		size := c.handles[plans[i].handle].size
+		j := i + 1
+		for j < len(plans) && plans[j].entry.space == spaceFree && c.handles[plans[j].handle].size == size {
+			j++
+		}
+		if run, ok, runErr := c.throughput.tryAllocRun(size, j-i, spaceOld); runErr != nil {
+			rollback(nil)
+			return 0, 0, runErr
+		} else if ok {
+			for k := i; k < j; k++ {
+				allocSize, class := run.allocSize, run.class
+				if k == j-1 && run.lastAllocSize != run.allocSize {
+					allocSize = run.lastAllocSize
+					class = uint16(len(throughputClassSizes))
+				}
+				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, allocSize: allocSize, class: class, space: spaceOld}
+			}
+			for k := i; k < j; k++ {
+				if err = injectFailure(c, failPromotionDestination); err != nil {
+					rollback(nil)
+					return 0, 0, err
+				}
+			}
+			i = j
+			continue
+		}
+		e, allocErr := c.allocThroughput(size, spaceOld)
 		if allocErr != nil {
 			rollback(nil)
 			return 0, 0, allocErr
@@ -430,6 +457,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 			return 0, 0, err
 		}
 		plans[i].entry = e
+		i++
 	}
 	for range plans {
 		if err = injectFailure(c, failPromotionCommit); err != nil {
@@ -441,7 +469,6 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		src := c.handles[p.handle]
 		size := src.size
 		age := src.age() + 1
-		pointerFree := c.header(makeObjRef(p.handle)).Flags&FlagPointerFree != 0
 		switch p.entry.space {
 		case spaceNursery:
 			dst := c.nursery[p.entry.off : p.entry.off+p.entry.size]
@@ -462,6 +489,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 			}
 		}
 		if c.telemetryEnabled() {
+			pointerFree := c.header(makeObjRef(p.handle)).Flags&FlagPointerFree != 0
 			c.cfg.Telemetry.noteSurvivor(size, age, pointerFree, p.entry.space == spaceNursery)
 			if !p.entry.young() {
 				c.cfg.Telemetry.notePromotion(size, p.entry.space == spaceOld)
@@ -491,6 +519,9 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
+	plansSorted := true
+	previousKind := -1
+	var previousSize uint32
 	for _, h := range c.nurseryHandles {
 		if !c.isYoungHandle(h) || !c.mark[h] {
 			continue
@@ -504,9 +535,14 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			plan.entry = c.handles[h]
 			plan.entry.clearYoungAge()
 		}
+		kind, size := promotionPlanKind(plan.entry), c.handles[h].size
+		if previousKind >= 0 && (kind < previousKind || (kind == 1 && previousKind == 1 && size < previousSize)) {
+			plansSorted = false
+		}
+		previousKind, previousSize = kind, size
 		plans = append(plans, plan)
 	}
-	if len(plans) > 1 {
+	if len(plans) > 1 && !plansSorted {
 		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
 			ak, bk := promotionPlanKind(a.entry), promotionPlanKind(b.entry)
 			if ak != bk {
@@ -535,15 +571,42 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 		c.throughput.restoreAllocTransaction(tx)
 		finish()
 	}
-	for i := range plans {
+	for i := 0; i < len(plans); {
 		if plans[i].entry.space != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				rollback(nil)
 				return 0, 0, err
 			}
+			i++
 			continue
 		}
-		e, allocErr := c.allocThroughput(c.handles[plans[i].handle].size, spaceOld)
+		size := c.handles[plans[i].handle].size
+		j := i + 1
+		for j < len(plans) && plans[j].entry.space == spaceFree && c.handles[plans[j].handle].size == size {
+			j++
+		}
+		if run, ok, runErr := c.throughput.tryAllocRun(size, j-i, spaceOld); runErr != nil {
+			rollback(nil)
+			return 0, 0, runErr
+		} else if ok {
+			for k := i; k < j; k++ {
+				allocSize, class := run.allocSize, run.class
+				if k == j-1 && run.lastAllocSize != run.allocSize {
+					allocSize = run.lastAllocSize
+					class = uint16(len(throughputClassSizes))
+				}
+				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, allocSize: allocSize, class: class, space: spaceOld}
+			}
+			for k := i; k < j; k++ {
+				if err = injectFailure(c, failPromotionDestination); err != nil {
+					rollback(nil)
+					return 0, 0, err
+				}
+			}
+			i = j
+			continue
+		}
+		e, allocErr := c.allocThroughput(size, spaceOld)
 		if allocErr != nil {
 			rollback(nil)
 			return 0, 0, allocErr
@@ -553,6 +616,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			return 0, 0, err
 		}
 		plans[i].entry = e
+		i++
 	}
 	for range plans {
 		if err = injectFailure(c, failPromotionCommit); err != nil {
@@ -562,7 +626,6 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	}
 	for _, p := range plans {
 		size := c.handles[p.handle].size
-		pointerFree := c.header(makeObjRef(p.handle)).Flags&FlagPointerFree != 0
 		if p.entry.space == spaceLarge {
 			c.tenureLargeInPlace(p.handle)
 			promotedBytes += uint64(size)
@@ -572,6 +635,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			promotedBytes += uint64(size)
 		}
 		if c.telemetryEnabled() {
+			pointerFree := c.header(makeObjRef(p.handle)).Flags&FlagPointerFree != 0
 			c.cfg.Telemetry.noteSurvivor(size, 1, pointerFree, false)
 			c.cfg.Telemetry.notePromotion(size, p.entry.space == spaceOld)
 		}
@@ -582,6 +646,20 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	c.stats.PromotedBytes += promotedBytes
 	finish()
 	return copiedBytes, promotedBytes, nil
+}
+
+func (c *Collector) promotionPlansSorted(plans []plannedPromotion) bool {
+	previousKind := promotionPlanKind(plans[0].entry)
+	previousSize := c.handles[plans[0].handle].size
+	for _, plan := range plans[1:] {
+		kind := promotionPlanKind(plan.entry)
+		size := c.handles[plan.handle].size
+		if kind < previousKind || (kind == 1 && previousKind == 1 && size < previousSize) {
+			return false
+		}
+		previousKind, previousSize = kind, size
+	}
+	return true
 }
 
 func promotionPlanKind(e handleEntry) int {

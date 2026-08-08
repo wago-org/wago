@@ -2,6 +2,7 @@ package gc
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"unsafe"
 )
@@ -454,6 +455,89 @@ func TestThroughputFullCollectionDefersSpanIndexingUntilAllocation(t *testing.T)
 	}
 	if e.off != 0 || len(c.throughput.pendingFree) != 0 || c.throughput.pendingBytes != 0 {
 		t.Fatalf("allocation after deferred sweep entry=%+v pending=%d bytes=%d", e, len(c.throughput.pendingFree), c.throughput.pendingBytes)
+	}
+}
+
+func TestThroughputAllocRunPreservesFirstFitAndTail(t *testing.T) {
+	newHeap := func(t *testing.T) throughputHeap {
+		t.Helper()
+		var h throughputHeap
+		if err := h.Init(Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, ThroughputClassLimit: 4096}); err != nil {
+			t.Fatal(err)
+		}
+		h.mem = makeAlignedBytes(4096, 16)
+		h.bump = 256
+		return h
+	}
+	t.Run("first-fit-too-small", func(t *testing.T) {
+		h := newHeap(t)
+		if err := h.insertFreeSpan(throughputFreeSpan{off: 0, size: 32}); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.insertFreeSpan(throughputFreeSpan{off: 64, size: 128}); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok, err := h.tryAllocRun(32, 3, spaceOld); err != nil || ok {
+			t.Fatalf("run bypassed smaller first fit: ok=%t err=%v", ok, err)
+		}
+	})
+	t.Run("consume-short-tail", func(t *testing.T) {
+		h := newHeap(t)
+		if err := h.insertFreeSpan(throughputFreeSpan{off: 0, size: 112}); err != nil {
+			t.Fatal(err)
+		}
+		run, ok, err := h.tryAllocRun(32, 3, spaceOld)
+		if err != nil || !ok {
+			t.Fatalf("run allocation ok=%t err=%v", ok, err)
+		}
+		if run.off != 0 || run.allocSize != 32 || run.lastAllocSize != 48 || h.spanCount != 0 || h.freeBytes != 0 {
+			t.Fatalf("run=%+v spans=%d free=%d", run, h.spanCount, h.freeBytes)
+		}
+	})
+	t.Run("warmed-bump", func(t *testing.T) {
+		h := newHeap(t)
+		h.bump = 0
+		run, ok, err := h.tryAllocRun(32, 3, spaceOld)
+		if err != nil || !ok || run.off != 0 || h.bump != 96 {
+			t.Fatalf("warmed bump run=%+v ok=%t err=%v bump=%d", run, ok, err, h.bump)
+		}
+	})
+}
+
+func TestThroughputPendingContiguousRunsCoalesceInEitherOrder(t *testing.T) {
+	for _, descending := range []bool{false, true} {
+		name := "ascending"
+		if descending {
+			name = "descending"
+		}
+		t.Run(name, func(t *testing.T) {
+			var h throughputHeap
+			if err := h.Init(Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, ThroughputClassLimit: 4096}); err != nil {
+				t.Fatal(err)
+			}
+			entries := make([]handleEntry, 3)
+			for i := range entries {
+				var err error
+				entries[i], err = h.alloc(64, spaceOld)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if descending {
+				slices.Reverse(entries)
+			}
+			for _, e := range entries {
+				if err := h.deferFree(e); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := h.sweepAllPending(); err != nil {
+				t.Fatal(err)
+			}
+			if h.bump != 0 || len(h.pendingFree) != 0 || h.pendingBytes != 0 || h.spanCount != 0 || h.freeBytes != 0 {
+				t.Fatalf("coalesced pending state bump=%d pending=%d/%d spans=%d free=%d", h.bump, len(h.pendingFree), h.pendingBytes, h.spanCount, h.freeBytes)
+			}
+		})
 	}
 }
 

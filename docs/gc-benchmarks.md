@@ -438,10 +438,10 @@ with `GOMAXPROCS=1`, and run in alternating order on the Ryzen 7 8845HS host.
 The collection matrix used 20 samples per binary and 3,000 fixed iterations per
 case; medians below do not mix allocation/setup time into the pause timer.
 
-Across all 20 Throughput full-collection layout/survival cases, the candidate's
-geometric-mean pause changes by -4.41%. Tiny full collection is effectively
-neutral at +0.52%. Go allocation counts and bytes/op remain identical in every
-paired case. Representative Throughput medians are:
+Across repeated 20-case runs, the candidate's Throughput full-collection
+geometric mean ranges from -1.26% to -4.41%; Tiny ranges from -0.83% to +0.52%.
+Go allocation counts and bytes/op remain identical in every paired case.
+Representative medians from the least noisy fixed-iteration run are:
 
 | Layout | Survival | `main` | candidate | Change |
 | --- | ---: | ---: | ---: | ---: |
@@ -454,11 +454,15 @@ paired case. Representative Throughput medians are:
 | sparse struct refs | 1% | 1,075 ns | 991 ns | -7.80% |
 | sparse struct refs | 90% | 3,739 ns | 3,704 ns | -0.95% |
 
-The 90%-survival pointer-free case is the one statistically significant
-Throughput regression above the 3% review gate. It is 112 ns in absolute terms
-and remains an explicit follow-up rather than being hidden by the favorable
-geometric mean. Tiny's geometric mean and all but one individual Tiny cases are
-inside the 3% gate; the dense-array/0%-survival median is +4.51%.
+The allocation-per-cycle matrix initially measured the 90%-survival
+pointer-free case at +5.04%, but repeated matrix runs were unstable. The
+permanent `BenchmarkThroughputFullLivePointerFree` removes allocation and
+cleanup cache noise and repeatedly collects the same live heap. At 90, 900, and
+9,000 live objects, candidate medians improve by 10.73%, 8.54%, and 11.32%
+respectively. That stable scaling result supersedes the isolated matrix outlier.
+Tiny remains neutral in aggregate; individual low-microsecond cases should
+still be interpreted with their interleaved confidence interval rather than one
+percentage.
 
 The permanent `BenchmarkThroughputFullOldHeap*` family separately exposes old
 space and deferred free-span debt. With 15 alternating samples and 20 fixed
@@ -466,21 +470,30 @@ iterations, collect-only pauses improve substantially:
 
 | Old objects | Survival | `main` | candidate | Change |
 | ---: | ---: | ---: | ---: | ---: |
-| 1,000 | 0% | 19,397 ns | 10,414 ns | -46.31% |
-| 1,000 | 50% | 20,271 ns | 14,654 ns | -27.71% |
-| 10,000 | 0% | 187,405 ns | 99,552 ns | -46.88% |
-| 10,000 | 50% | 202,349 ns | 145,294 ns | -28.20% |
+| 1,000 | 0% | 19,904 ns | 11,871 ns | -40.36% |
+| 1,000 | 50% | 23,780 ns | 16,915 ns | -28.87% |
+| 10,000 | 0% | 201,980 ns | 110,467 ns | -45.31% |
+| 10,000 | 50% | 229,024 ns | 170,303 ns | -25.64% |
 
-That pause reduction is not free. Charging the next complete ForcePromote refill
-to the same operation changes 1,000 objects from 102,357 to 110,840 ns (+8.29%)
-and 10,000 objects from 1,015,304 to 1,144,124 ns (+12.69%). The semantically
-identical full-collection plus Eden allocation plus immediate batch-promotion
-cycle changes by approximately +32% at both 1,000 and 10,000 objects. Commit
-bisecting attributes roughly 34-37% of that ideal contiguous-workload cost to
-the transactional/indexed allocator introduced by #312; the #310 immediate
-promotion fast path recovers 1-3% relative to the pre-survivor integrated branch.
-This is the expected counterweight to #312's orders-of-magnitude fragmented
-miss/churn wins and must remain visible in review.
+A second optimization pass removes the previously measured refill regressions.
+Monotonic pending-free runs coalesce before entering the AVL index, already
+ordered promotion plans skip stable sorting, and equal-sized warmed promotion
+runs reserve one first-fit-preserving contiguous destination. The run allocator
+falls back when the first fit is too small or backing must grow, preserving
+fragmented behavior, geometric growth, and failure injection.
+
+| Amortized operation | Objects | `main` | candidate | Change |
+| --- | ---: | ---: | ---: | ---: |
+| full + ForcePromote refill | 1,000 | 105,726 ns | 96,259 ns | -8.95% |
+| full + ForcePromote refill | 10,000 | 1,073,041 ns | 959,771 ns | -10.56% |
+| full + Eden + immediate minor promotion | 1,000 | 106,107 ns | 103,045 ns | -2.89% |
+| full + Eden + immediate minor promotion | 10,000 | 1,136,193 ns | 1,086,762 ns | -4.35% |
+
+The isolated `BenchmarkForcePromoteTransactional` likewise changes from 93.30
+to 91.65 ns (-1.77%). Fresh bump allocation remains neutral (-0.13%), randomized
+fragmentation stays within -1.50% to +2.17%, and 1,024/16,384-span churn changes
+by -0.92%/-0.67%. The optimization therefore makes the formerly bad contiguous
+refill cases net positive without giving back #312's fragmented-heap wins.
 
 The adversarial run initially found a +36.22% Throughput full-collection
 geometric-mean regression and +6.55% Tiny regression. Three release-path issues

@@ -41,6 +41,13 @@ type throughputAllocTransaction struct {
 	bump uint32
 }
 
+type throughputAllocRun struct {
+	off           uint32
+	allocSize     uint32
+	lastAllocSize uint32
+	class         uint16
+}
+
 type throughputHeap struct {
 	mem        []byte
 	limit      uint32
@@ -193,6 +200,43 @@ func (h *throughputHeap) sweepOnePending() error {
 }
 
 func (h *throughputHeap) sweepAllPending() error {
+	// Full collection appends frees in handle order, which is commonly also
+	// ascending allocation order. Collapse those runs before touching the AVL
+	// index so a dead contiguous old heap becomes one insertion rather than one
+	// insertion and coalescing operation per object. Arbitrary handle reuse can
+	// break address order; leave that case to the ordinary exact path.
+	if len(h.pendingFree) > 1 {
+		ascending, descending := true, true
+		for i := 1; i < len(h.pendingFree); i++ {
+			previous, current := h.pendingFree[i-1], h.pendingFree[i]
+			if current.off < previous.off+previous.size {
+				ascending = false
+			}
+			if current.off+current.size > previous.off {
+				descending = false
+			}
+			if !ascending && !descending {
+				break
+			}
+		}
+		if ascending || descending {
+			spans := h.pendingFree
+			out := spans[:1]
+			for _, span := range spans[1:] {
+				last := &out[len(out)-1]
+				if ascending && last.off+last.size == span.off {
+					last.size += span.size
+				} else if descending && span.off+span.size == last.off {
+					last.off = span.off
+					last.size += span.size
+				} else {
+					out = append(out, span)
+				}
+			}
+			clear(spans[len(out):])
+			h.pendingFree = out
+		}
+	}
 	for len(h.pendingFree) != 0 {
 		if err := h.sweepOnePending(); err != nil {
 			return err
@@ -765,4 +809,59 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 
 func spansOverlap(aOff, aSize, bOff, bSize uint32) bool {
 	return aOff < bOff+bSize && bOff < aOff+aSize
+}
+
+// tryAllocRun reserves one contiguous run only when doing so preserves the
+// first-fit choice of repeated individual allocations. It never grows backing:
+// cold growth keeps the existing geometric reservation sequence and failure
+// injection points, while warmed promotion batches can remove one AVL span or
+// advance the bump once for the complete equal-sized run.
+func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (throughputAllocRun, bool, error) {
+	if count < 2 || size > ^uint32(0)-15 {
+		return throughputAllocRun{}, false, nil
+	}
+	allocSize := Align16(size)
+	class := uint16(len(throughputClassSizes))
+	if sp != spaceLarge && allocSize <= h.classLimit {
+		cls := h.classFor(allocSize)
+		if cls < 0 {
+			return throughputAllocRun{}, false, fmt.Errorf("gc: no throughput size class for %d", allocSize)
+		}
+		allocSize = throughputClassSizes[cls]
+		class = uint16(cls)
+	}
+	total := uint64(allocSize) * uint64(count)
+	if total > uint64(^uint32(0)) {
+		return throughputAllocRun{}, false, nil
+	}
+	idx := h.findSpan(allocSize)
+	if idx != throughputNoSlot {
+		span := throughputFreeSpan{off: h.spanNodes[idx].off, size: h.spanNodes[idx].size}
+		if uint64(span.size) < total {
+			return throughputAllocRun{}, false, nil
+		}
+		reusable, ok := h.removeFreeSpan(span.off)
+		if !ok {
+			return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
+		}
+		consumed := uint32(total)
+		lastAllocSize := allocSize
+		if span.size-consumed >= 32 {
+			h.insertFreeSpanNode(throughputFreeSpan{off: span.off + consumed, size: span.size - consumed}, reusable)
+		} else {
+			lastAllocSize += span.size - consumed
+			h.releaseSpanNode(reusable)
+		}
+		return throughputAllocRun{off: span.off, allocSize: allocSize, lastAllocSize: lastAllocSize, class: class}, true, nil
+	}
+	if len(h.pendingFree) != 0 {
+		return throughputAllocRun{}, false, nil
+	}
+	off := Align16(h.bump)
+	end := uint64(off) + total
+	if end > uint64(h.limit) || end > uint64(len(h.mem)) {
+		return throughputAllocRun{}, false, nil
+	}
+	h.bump = uint32(end)
+	return throughputAllocRun{off: off, allocSize: allocSize, lastAllocSize: allocSize, class: class}, true, nil
 }
