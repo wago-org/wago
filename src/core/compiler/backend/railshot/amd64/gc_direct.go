@@ -1013,10 +1013,11 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 // has been validated. It writes the result directly to the synchronous control frame and
 // returns nonzero in RAX on success; zero selects the ordinary rooted helper.
 func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
-	fields, objectSize, objectAlign, pointerFree, ok := nativeGCStructAllocLayout(f.m, typeIndex)
+	plan, ok := f.nativeGCStructAllocLayout(typeIndex)
 	if !ok {
 		panic("amd64: invalid native struct allocation layout")
 	}
+	fields, objectSize, objectAlign, pointerFree := plan.fields, plan.objectSize, plan.objectAlign, plan.pointerFree
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1115,13 +1116,13 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 	addFallback(a.JccPlaceholder(condE))
 
 	for _, field := range fields {
-		if !field.ref {
+		if !field.CollectorRef {
 			continue
 		}
-		a.Load32(RAX, RDI, hcArgs+int32(field.slot*8))
+		a.Load32(RAX, RDI, hcArgs+int32(field.Slot*8))
 		a.TestSelf(RAX, false)
 		nullOK := -1
-		if field.nullable {
+		if field.Nullable {
 			nullOK = a.JccPlaceholder(condE)
 		} else {
 			addFallback(a.JccPlaceholder(condE))
@@ -1165,9 +1166,9 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 	}
 	a.StoreImm32Mem(R11, 12, flags)
 	for _, field := range fields {
-		disp := int32(gc.PayloadOffset + field.offset)
-		src := hcArgs + int32(field.slot*8)
-		switch field.size {
+		disp := int32(gc.PayloadOffset + field.Offset)
+		src := hcArgs + int32(field.Slot*8)
+		switch field.Size {
 		case 4:
 			a.Load32(RAX, RDI, src)
 			a.Store32(R11, disp, RAX)
@@ -1989,7 +1990,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 }
 
 func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) bool {
-	off, scalar, final, ok := directGCStructLayout(f.m, typeIndex, fieldIndex)
+	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
 	if !ok || !final {
 		return false
 	}
@@ -2018,7 +2019,7 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 }
 
 func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
-	off, scalar, final, ok := directGCStructLayout(f.m, typeIndex, fieldIndex)
+	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
 	if !ok || !final {
 		return false
 	}
@@ -2045,7 +2046,7 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 }
 
 func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
-	scalar, final, ok := directGCArrayLayout(f.m, typeIndex)
+	scalar, final, ok := f.directGCArrayLayout(typeIndex)
 	if !ok || !final {
 		return false
 	}
@@ -2098,7 +2099,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
 }
 
 func (f *fn) emitDirectGCArraySet(typeIndex uint32) bool {
-	scalar, final, ok := directGCArrayLayout(f.m, typeIndex)
+	scalar, final, ok := f.directGCArrayLayout(typeIndex)
 	if !ok || !final {
 		return false
 	}

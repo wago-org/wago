@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/internal/functionworkers"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -1312,10 +1313,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 		}
 	}
-	gcDescs, err := frontend.BuildGCTypeDescs(m)
+	gcMetadata, err := frontend.BuildGCTypeMetadata(m)
 	if err != nil {
 		return nil, fmt.Errorf("gc descriptors: %w", err)
 	}
+	gcDescs := gcMetadata.Descs
 	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
 		return nil, fmt.Errorf("gc array descriptors: %w", err)
 	}
@@ -1351,7 +1353,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if cfg.gcCodeTelemetry {
 		gcCodeStatsSink = &gcCodeStats
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Stats: gcCodeStatsSink})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStatsSink})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
