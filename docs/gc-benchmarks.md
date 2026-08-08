@@ -430,6 +430,68 @@ stripped. The existing 64-root generated fixture remains exactly 730 bytes with
 the same SHA-256, so survivor policy and ABI-v5 Eden bounds add no native bytes
 to that allocation fixture.
 
+## Integrated major-GC comparison against main
+
+An adversarial branch review on August 8, 2026 compared `main` at `1e03d71f`
+with the integrated GC branch. Test binaries were built once, pinned to CPU 4
+with `GOMAXPROCS=1`, and run in alternating order on the Ryzen 7 8845HS host.
+The collection matrix used 20 samples per binary and 3,000 fixed iterations per
+case; medians below do not mix allocation/setup time into the pause timer.
+
+Across all 20 Throughput full-collection layout/survival cases, the candidate's
+geometric-mean pause changes by -4.41%. Tiny full collection is effectively
+neutral at +0.52%. Go allocation counts and bytes/op remain identical in every
+paired case. Representative Throughput medians are:
+
+| Layout | Survival | `main` | candidate | Change |
+| --- | ---: | ---: | ---: | ---: |
+| dense array refs | 0% | 1,311 ns | 1,146 ns | -12.62% |
+| dense array refs | 10% | 2,055 ns | 1,914 ns | -6.86% |
+| dense array refs | 90% | 7,349 ns | 7,258 ns | -1.24% |
+| pointer-free | 0% | 920 ns | 878 ns | -4.62% |
+| pointer-free | 50% | 1,660 ns | 1,698 ns | +2.29% |
+| pointer-free | 90% | 2,231 ns | 2,343 ns | +5.04% |
+| sparse struct refs | 1% | 1,075 ns | 991 ns | -7.80% |
+| sparse struct refs | 90% | 3,739 ns | 3,704 ns | -0.95% |
+
+The 90%-survival pointer-free case is the one statistically significant
+Throughput regression above the 3% review gate. It is 112 ns in absolute terms
+and remains an explicit follow-up rather than being hidden by the favorable
+geometric mean. Tiny's geometric mean and all but one individual Tiny cases are
+inside the 3% gate; the dense-array/0%-survival median is +4.51%.
+
+The permanent `BenchmarkThroughputFullOldHeap*` family separately exposes old
+space and deferred free-span debt. With 15 alternating samples and 20 fixed
+iterations, collect-only pauses improve substantially:
+
+| Old objects | Survival | `main` | candidate | Change |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 0% | 19,397 ns | 10,414 ns | -46.31% |
+| 1,000 | 50% | 20,271 ns | 14,654 ns | -27.71% |
+| 10,000 | 0% | 187,405 ns | 99,552 ns | -46.88% |
+| 10,000 | 50% | 202,349 ns | 145,294 ns | -28.20% |
+
+That pause reduction is not free. Charging the next complete ForcePromote refill
+to the same operation changes 1,000 objects from 102,357 to 110,840 ns (+8.29%)
+and 10,000 objects from 1,015,304 to 1,144,124 ns (+12.69%). The semantically
+identical full-collection plus Eden allocation plus immediate batch-promotion
+cycle changes by approximately +32% at both 1,000 and 10,000 objects. Commit
+bisecting attributes roughly 34-37% of that ideal contiguous-workload cost to
+the transactional/indexed allocator introduced by #312; the #310 immediate
+promotion fast path recovers 1-3% relative to the pre-survivor integrated branch.
+This is the expected counterweight to #312's orders-of-magnitude fragmented
+miss/churn wins and must remain visible in review.
+
+The adversarial run initially found a +36.22% Throughput full-collection
+geometric-mean regression and +6.55% Tiny regression. Three release-path issues
+caused it: card removal did work for handles with no card, full collection made
+a second complete handle pass to recompute young bumps, and disabled Tiny
+telemetry retained a runtime-owned defer path. The reviewed implementation now
+returns immediately for cardless handles, compacts young membership and bump
+state together, and compile-gates Tiny step timing. The matrix above is after
+those corrections. They do not change the measured `cli/wago` file sizes:
+12,154,816 bytes unstripped and 8,286,500 bytes stripped.
+
 Future issue work must extend the matrix as follows:
 
 - #302: no-survivor and low-survivor cleanup with high handle counts;

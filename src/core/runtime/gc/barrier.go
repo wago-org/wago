@@ -422,6 +422,9 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 		return
 	}
 	e := &c.handles[h]
+	if e.cardSlot == 0 {
+		return
+	}
 	for slot, steps := e.cardSlot, 0; slot != 0 && steps <= len(c.objectCards); steps++ {
 		if !slotIndexOK(slot-1, len(c.objectCards)) {
 			break

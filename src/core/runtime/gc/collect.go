@@ -280,7 +280,6 @@ func (c *Collector) sweepAll() {
 		}
 	}
 	c.compactNurseryHandles()
-	c.compactNurseryBump()
 }
 
 func (c *Collector) sweepAllTelemetry() {
@@ -295,7 +294,6 @@ func (c *Collector) sweepAllTelemetry() {
 		}
 	}
 	c.compactNurseryHandles()
-	c.compactNurseryBump()
 }
 
 // finishMinorEvacuation reclaims dead young handles and retains only live
@@ -345,6 +343,9 @@ type plannedPromotion struct {
 // survivor bytes are written only after destination and commit failure points
 // have all passed, so rollback leaves the complete observable heap unchanged.
 func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, err error) {
+	if c.survivorBytes == 0 && c.tenuringThreshold == 1 {
+		return c.promoteMarkedNurseryImmediate()
+	}
 	plans := c.promotionScratch[:0]
 	toSpace := c.survivorFrom ^ 1
 	toBase := c.survivorBase(toSpace)
@@ -484,6 +485,105 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 	return copiedBytes, promotedBytes, nil
 }
 
+func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes uint64, err error) {
+	plans := c.promotionScratch[:0]
+	finish := func() {
+		clear(plans)
+		c.promotionScratch = plans[:0]
+	}
+	for _, h := range c.nurseryHandles {
+		if !c.isYoungHandle(h) || !c.mark[h] {
+			continue
+		}
+		if err = injectFailure(c, failPromotionPlan); err != nil {
+			finish()
+			return 0, 0, err
+		}
+		plan := plannedPromotion{handle: h}
+		if c.handles[h].space == spaceLarge {
+			plan.entry = c.handles[h]
+			plan.entry.clearYoungAge()
+		}
+		plans = append(plans, plan)
+	}
+	if len(plans) > 1 {
+		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
+			ak, bk := promotionPlanKind(a.entry), promotionPlanKind(b.entry)
+			if ak != bk {
+				return cmp.Compare(ak, bk)
+			}
+			if ak == 1 {
+				return cmp.Compare(c.throughput.promotionAllocSize(c.handles[a.handle].size), c.throughput.promotionAllocSize(c.handles[b.handle].size))
+			}
+			return 0
+		})
+	}
+	if err = c.throughput.sweepAllPending(); err != nil {
+		finish()
+		return 0, 0, err
+	}
+	tx := c.throughput.beginAllocTransaction()
+	rollback := func(current *handleEntry) {
+		if current != nil {
+			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
+		}
+		for i := len(plans) - 1; i >= 0; i-- {
+			if plans[i].entry.space == spaceOld {
+				c.throughput.rollbackSuccessfulAlloc(plans[i].entry, tx.bump)
+			}
+		}
+		c.throughput.restoreAllocTransaction(tx)
+		finish()
+	}
+	for i := range plans {
+		if plans[i].entry.space != spaceFree {
+			if err = injectFailure(c, failPromotionDestination); err != nil {
+				rollback(nil)
+				return 0, 0, err
+			}
+			continue
+		}
+		e, allocErr := c.allocThroughput(c.handles[plans[i].handle].size, spaceOld)
+		if allocErr != nil {
+			rollback(nil)
+			return 0, 0, allocErr
+		}
+		if err = injectFailure(c, failPromotionDestination); err != nil {
+			rollback(&e)
+			return 0, 0, err
+		}
+		plans[i].entry = e
+	}
+	for range plans {
+		if err = injectFailure(c, failPromotionCommit); err != nil {
+			rollback(nil)
+			return 0, 0, err
+		}
+	}
+	for _, p := range plans {
+		size := c.handles[p.handle].size
+		pointerFree := c.header(makeObjRef(p.handle)).Flags&FlagPointerFree != 0
+		if p.entry.space == spaceLarge {
+			c.tenureLargeInPlace(p.handle)
+			promotedBytes += uint64(size)
+		} else {
+			c.promoteHandleTo(p.handle, p.entry)
+			copiedBytes += uint64(size)
+			promotedBytes += uint64(size)
+		}
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.noteSurvivor(size, 1, pointerFree, false)
+			c.cfg.Telemetry.notePromotion(size, p.entry.space == spaceOld)
+		}
+	}
+	c.survivorFrom ^= 1
+	c.survivorBump = 0
+	c.stats.YoungBytesCopied += copiedBytes
+	c.stats.PromotedBytes += promotedBytes
+	finish()
+	return copiedBytes, promotedBytes, nil
+}
+
 func promotionPlanKind(e handleEntry) int {
 	switch e.space {
 	case spaceNursery:
@@ -588,30 +688,54 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput bool) {
 }
 func (c *Collector) compactNurseryHandles() {
 	out := c.nurseryHandles[:0]
+	var edenMax uint32
+	if c.survivorBump == 0 {
+		// Eden is bump allocated and nurseryHandles preserves allocation order.
+		// Compact membership once, then find the last live Eden allocation from
+		// the tail instead of recomputing a maximum across every survivor.
+		for _, h := range c.nurseryHandles {
+			if h == 0 || int(h) >= len(c.handles) {
+				continue
+			}
+			sp := c.handles[h].space
+			if sp == spaceNursery || (sp == spaceLarge && c.handles[h].young()) {
+				out = append(out, h)
+			}
+		}
+		for i := len(out) - 1; i >= 0; i-- {
+			e := c.handles[out[i]]
+			if e.space == spaceNursery && e.off < c.edenBytes() {
+				edenMax = e.off + e.size
+				break
+			}
+		}
+		clear(c.nurseryHandles[len(out):])
+		c.nurseryHandles = out
+		c.nurseryBump = edenMax
+		return
+	}
+	var survivorMax uint32
+	base := c.survivorBase(c.survivorFrom)
 	for _, h := range c.nurseryHandles {
-		if c.isYoungHandle(h) {
-			out = append(out, h)
+		if !c.isYoungHandle(h) {
+			continue
+		}
+		out = append(out, h)
+		e := c.handles[h]
+		if e.space != spaceNursery {
+			continue
+		}
+		end := e.off + e.size
+		if e.off < c.edenBytes() {
+			if end > edenMax {
+				edenMax = end
+			}
+		} else if e.off >= base && end <= base+c.survivorBytes && end-base > survivorMax {
+			survivorMax = end - base
 		}
 	}
 	clear(c.nurseryHandles[len(out):])
 	c.nurseryHandles = out
-}
-
-func (c *Collector) compactNurseryBump() {
-	var edenMax, survivorMax uint32
-	base := c.survivorBase(c.survivorFrom)
-	for _, e := range c.handles {
-		if !e.young() || e.space != spaceNursery {
-			continue
-		}
-		if e.off < c.edenBytes() {
-			if e.off+e.size > edenMax {
-				edenMax = e.off + e.size
-			}
-		} else if e.off >= base && e.off+e.size <= base+c.survivorBytes && e.off+e.size-base > survivorMax {
-			survivorMax = e.off + e.size - base
-		}
-	}
 	c.nurseryBump = edenMax
 	c.survivorBump = survivorMax
 }

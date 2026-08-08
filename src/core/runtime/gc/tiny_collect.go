@@ -41,19 +41,21 @@ func (c *Collector) Step(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
-	if c.tinyGC.state == tinyIdle && c.telemetryEnabled() && !c.cfg.Telemetry.active.active {
-		c.beginCollectionTelemetry(telemetryFull)
-		c.tinyGC.telemetryOwned = true
-	}
-	if c.tinyGC.telemetryOwned {
-		// Incremental telemetry sums the bounded collector steps rather than
-		// charging arbitrary mutator time between separate Step calls.
-		c.cfg.Telemetry.resume()
-		defer func() {
-			if c.tinyGC.telemetryOwned {
-				c.cfg.Telemetry.suspend()
-			}
-		}()
+	if collectorTelemetryEnabled {
+		if c.tinyGC.state == tinyIdle && c.telemetryEnabled() && !c.cfg.Telemetry.active.active {
+			c.beginCollectionTelemetry(telemetryFull)
+			c.tinyGC.telemetryOwned = true
+		}
+		if c.tinyGC.telemetryOwned {
+			// Incremental telemetry sums the bounded collector steps rather than
+			// charging arbitrary mutator time between separate Step calls.
+			c.cfg.Telemetry.resume()
+			defer func() {
+				if c.tinyGC.telemetryOwned {
+					c.cfg.Telemetry.suspend()
+				}
+			}()
+		}
 	}
 	if c.tinyGC.state == tinyIdle {
 		if c.telemetryEnabled() {

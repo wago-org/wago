@@ -201,6 +201,41 @@ func TestThroughputAdaptiveTenuringRespondsToPressureAndPauseTarget(t *testing.T
 	}
 }
 
+func TestThroughputFullCollectionCompactsYoungBumps(t *testing.T) {
+	c := newTestCollector(t, Config{NurseryBytes: 1024, SurvivorBytes: 512, VerifyAfterCollect: true})
+	live, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveEnd := c.entry(live).off + c.entry(live).size
+	if _, err := c.NewStructDefault(0); err != nil {
+		t.Fatal(err)
+	}
+	root := Root(live)
+	if err := c.CollectFull(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	if c.nurseryBump != liveEnd || c.survivorBump != 0 || len(c.nurseryHandles) != 1 {
+		t.Fatalf("Eden compaction bump=%d survivor=%d handles=%d, want %d/0/1", c.nurseryBump, c.survivorBump, len(c.nurseryHandles), liveEnd)
+	}
+	if err := c.CollectMinor(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	survivorEnd := c.entry(live).off + c.entry(live).size - c.survivorBase(c.survivorFrom)
+	if c.nurseryBump != 0 || c.survivorBump != survivorEnd {
+		t.Fatalf("minor survivor bumps=%d/%d, want 0/%d", c.nurseryBump, c.survivorBump, survivorEnd)
+	}
+	if _, err := c.NewStructDefault(0); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectFull(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	if c.nurseryBump != 0 || c.survivorBump != survivorEnd || len(c.nurseryHandles) != 1 {
+		t.Fatalf("survivor compaction bumps=%d/%d handles=%d, want 0/%d/1", c.nurseryBump, c.survivorBump, len(c.nurseryHandles), survivorEnd)
+	}
+}
+
 func TestThroughputFullCollectionHandlesActiveSurvivor(t *testing.T) {
 	c := newTestCollector(t, Config{NurseryBytes: 1024, SurvivorBytes: 512, VerifyAfterCollect: true})
 	ref, err := c.NewStructDefault(0)
