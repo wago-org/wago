@@ -50,7 +50,7 @@ func TestWithDeferBoundsChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(on.Code) >= len(dis.Code) {
-		t.Errorf("elision-on code (%d B) not smaller than facts-off (%d B)", len(on.Code), len(dis.Code))
+	if len(on.code) >= len(dis.code) {
+		t.Errorf("elision-on code (%d B) not smaller than facts-off (%d B)", len(on.code), len(dis.code))
 	}
 }

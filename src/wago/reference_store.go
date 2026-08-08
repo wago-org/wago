@@ -320,7 +320,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			}
 			owner = foreign
 			plan := foreign.c.genericGCFrameRoots()
-			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.Code))
+			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
 			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 		}
 		rel := uint32(retPC - codeBase)
@@ -505,7 +505,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
 			continue
 		}
-		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.Code)) {
+		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
 			return candidate
 		}
 	}

@@ -21,7 +21,7 @@ func TestStagedGCI31CoreExecutionAndPublicCategory(t *testing.T) {
 	if c.stagedGCI31Product() != stagedGCI31ProductCore || c.stagedFeatures()&CoreFeatureGC == 0 {
 		t.Fatalf("i31 product/features = %v/%v", c.stagedGCI31Product(), c.stagedFeatures())
 	}
-	t.Logf("i31 core product: wasm=%d code=%d", len(data), len(c.Code))
+	t.Logf("i31 core product: wasm=%d code=%d", len(data), len(c.code))
 	for _, tc := range []struct {
 		name string
 		cfg  GCConfig

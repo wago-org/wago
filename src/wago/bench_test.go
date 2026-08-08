@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	goruntime "runtime"
 	"testing"
 
@@ -323,6 +324,7 @@ func BenchmarkCompileImportedWorkers(b *testing.B) {
 	}{{"p1", 1}, {"p2", 2}, {"p4", 4}, {"p8", 8}, {"auto", 0}} {
 		b.Run(mode.name, func(b *testing.B) {
 			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(mode.workers)
+			codeBytes := 0
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				c, err := Compile(cfg, mod)
@@ -330,10 +332,12 @@ func BenchmarkCompileImportedWorkers(b *testing.B) {
 					b.Fatal(err)
 				}
 				benchCompiledSink = c
+				codeBytes = len(c.code)
 				if err := c.Close(); err != nil {
 					b.Fatal(err)
 				}
 			}
+			b.ReportMetric(float64(codeBytes), "code-B")
 		})
 	}
 }
@@ -365,7 +369,7 @@ func BenchmarkInvokeBranchHintLoop(b *testing.B) {
 	}
 	withoutHint := benchMustCompile(b, benchBranchHintExecModule(false))
 	withHint := benchMustCompile(b, benchBranchHintExecModule(true))
-	if len(withoutHint.Code) == 0 || bytes.Equal(withoutHint.Code, withHint.Code) {
+	if len(withoutHint.code) == 0 || bytes.Equal(withoutHint.code, withHint.code) {
 		b.Fatal("unlikely br_if hint did not select deferred cold-edge layout")
 	}
 	for _, tc := range []struct {
@@ -2138,6 +2142,109 @@ func BenchmarkMarshalCompiledSmallScalar(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchBytesSink = blob
+	}
+}
+
+func BenchmarkWriteCompiledImportedModule(b *testing.B) {
+	c := benchMustCompile(b, benchImportedModule(1600, 128))
+	b.ReportMetric(float64(len(c.code)), "code-B")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := c.WriteTo(io.Discard); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMarshalCompiledImportedModule(b *testing.B) {
+	c := benchMustCompile(b, benchImportedModule(1600, 128))
+	b.ReportMetric(float64(len(c.code)), "code-B")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		blob, err := c.MarshalBinary()
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchBytesSink = blob
+	}
+}
+
+func BenchmarkReadCompiledImportedModule(b *testing.B) {
+	c := benchMustCompile(b, benchImportedModule(1600, 128))
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		b.Fatal(err)
+	}
+	c.Close()
+	reader := bytes.NewReader(blob)
+	b.ReportMetric(float64(len(blob)), "artifact-B")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		reader.Reset(blob)
+		var loaded Compiled
+		if _, err := loaded.ReadFrom(reader); err != nil {
+			b.Fatal(err)
+		}
+		if err := loaded.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkUnmarshalCompiledImportedModule(b *testing.B) {
+	c := benchMustCompile(b, benchImportedModule(1600, 128))
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		b.Fatal(err)
+	}
+	c.Close()
+	b.ReportMetric(float64(len(blob)), "artifact-B")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var loaded Compiled
+		if err := loaded.UnmarshalBinary(blob); err != nil {
+			b.Fatal(err)
+		}
+		if err := loaded.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFirstUseCompiledImportedModule(b *testing.B) {
+	c := benchMustCompile(b, benchImportedModule(1600, 128))
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		b.Fatal(err)
+	}
+	c.Close()
+	for _, mode := range []string{"read", "unmarshal"} {
+		b.Run(mode, func(b *testing.B) {
+			reader := bytes.NewReader(blob)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				var loaded Compiled
+				if mode == "read" {
+					reader.Reset(blob)
+					if _, err := loaded.ReadFrom(reader); err != nil {
+						b.Fatal(err)
+					}
+				} else if err := loaded.UnmarshalBinary(blob); err != nil {
+					b.Fatal(err)
+				}
+				if _, err := loaded.acquireCode(); err != nil {
+					b.Fatal(err)
+				}
+				loaded.releaseCode()
+				if err := loaded.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

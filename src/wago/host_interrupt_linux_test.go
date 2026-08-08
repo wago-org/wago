@@ -46,7 +46,7 @@ func TestPublicCompileOmitsCooperativeInterruptPolls(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer public.Close()
-	if !bytes.Equal(public.Code, withoutPolls.Code) {
+	if !bytes.Equal(public.code, withoutPolls.Code) {
 		t.Fatal("public Linux compilation retained cooperative interrupt instrumentation")
 	}
 	if !wruntime.HostInterruptSupported() {

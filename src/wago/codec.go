@@ -3,14 +3,20 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 const (
+	compiledSectionCode     = 1
+	compiledSectionMetadata = 2
+	compiledSectionCount    = 2
+
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
 	// low range; reserving the top five bits avoids growing artifacts.
@@ -21,6 +27,11 @@ const (
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
 	compiledGCExecutionMask                      = compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 )
+
+func compiledUvarintLen(v uint64) int {
+	var buf [binary.MaxVarintLen64]byte
+	return binary.PutUvarint(buf[:], v)
+}
 
 func compiledMetadataUsesSIMD(c *Compiled) bool {
 	if c == nil {
@@ -76,54 +87,239 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	if c == nil {
 		return nil, fmt.Errorf("compiled module is nil")
 	}
-	w := compiledWriter{buf: make([]byte, 0, len(c.Code)+256)}
+	metadata, err := marshalCompiledMetadata(c)
+	if err != nil {
+		return nil, err
+	}
+	w := compiledWriter{buf: make([]byte, 0, len(c.code)+len(metadata)+32)}
 	w.buf = append(w.buf, wagoMagic...)
 	w.u8(wagoVersion)
-	w.bytes(c.Code)
+	w.u8(compiledSectionCount)
+	w.section(compiledSectionCode, c.code)
+	w.section(compiledSectionMetadata, metadata)
+	return w.buf, nil
+}
+
+func writeCompiled(w io.Writer, c *Compiled) (int64, error) {
+	if c == nil {
+		return 0, fmt.Errorf("compiled module is nil")
+	}
+	metadata, err := marshalCompiledMetadata(c)
+	if err != nil {
+		return 0, err
+	}
+	written := int64(0)
+	write := func(p []byte) error {
+		n, err := w.Write(p)
+		written += int64(n)
+		if err != nil {
+			return err
+		}
+		if n != len(p) {
+			return io.ErrShortWrite
+		}
+		return nil
+	}
+	if err := write([]byte{wagoMagic[0], wagoMagic[1], wagoMagic[2], wagoMagic[3], wagoVersion, compiledSectionCount}); err != nil {
+		return written, err
+	}
+	var header [1 + binary.MaxVarintLen64]byte
+	writeSection := func(id byte, payload []byte) error {
+		header[0] = id
+		n := binary.PutUvarint(header[1:], uint64(len(payload)))
+		if err := write(header[:1+n]); err != nil {
+			return err
+		}
+		return write(payload)
+	}
+	if err := writeSection(compiledSectionCode, c.code); err != nil {
+		return written, err
+	}
+	if err := writeSection(compiledSectionMetadata, metadata); err != nil {
+		return written, err
+	}
+	return written, nil
+}
+
+type artifactCountingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (r *artifactCountingReader) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	r.n += int64(n)
+	return n, err
+}
+
+func readArtifactUvar(r *artifactCountingReader) (uint64, error) {
+	var encoded [binary.MaxVarintLen64]byte
+	for i := range encoded {
+		if _, err := io.ReadFull(r, encoded[i:i+1]); err != nil {
+			return 0, err
+		}
+		if encoded[i]&0x80 == 0 {
+			value, n := binary.Uvarint(encoded[:i+1])
+			if n != i+1 {
+				return 0, fmt.Errorf("invalid section length")
+			}
+			var canonical [binary.MaxVarintLen64]byte
+			if binary.PutUvarint(canonical[:], value) != n {
+				return 0, fmt.Errorf("non-canonical section length")
+			}
+			return value, nil
+		}
+	}
+	return 0, fmt.Errorf("section length overflows u64")
+}
+
+func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded Compiled, image *coreruntime.CodeBuffer, read int64, err error) {
+	if source == nil {
+		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact reader is nil")
+	}
+	if limits.MaxCodeBytes < 0 || limits.MaxMetadataBytes < 0 {
+		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact limits must be non-negative")
+	}
+	r := &artifactCountingReader{r: source}
+	defer func() { read = r.n }()
+	var header [6]byte
+	if _, err = io.ReadFull(r, header[:]); err != nil {
+		return decoded, nil, 0, fmt.Errorf("compiled artifact header: %w", err)
+	}
+	if string(header[:4]) != wagoMagic {
+		return decoded, nil, 0, fmt.Errorf("not a wago module")
+	}
+	if header[4] != wagoVersion {
+		return decoded, nil, 0, fmt.Errorf("wago module version %d unsupported (want %d)", header[4], wagoVersion)
+	}
+	if header[5] != compiledSectionCount {
+		return decoded, nil, 0, fmt.Errorf("compiled section count %d unsupported (want %d)", header[5], compiledSectionCount)
+	}
+	readSectionHeader := func(want byte, label string, limit int64) (int, error) {
+		var id [1]byte
+		if _, err := io.ReadFull(r, id[:]); err != nil {
+			return 0, fmt.Errorf("%s section id: %w", label, err)
+		}
+		if id[0] != want {
+			return 0, fmt.Errorf("compiled section %d out of order (want %s section %d)", id[0], label, want)
+		}
+		size, err := readArtifactUvar(r)
+		if err != nil {
+			return 0, fmt.Errorf("%s section length: %w", label, err)
+		}
+		if size > uint64(limit) {
+			return 0, fmt.Errorf("%s section length %d exceeds limit %d", label, size, limit)
+		}
+		if size > uint64(maxInt()) {
+			return 0, fmt.Errorf("%s section length %d overflows int", label, size)
+		}
+		return int(size), nil
+	}
+	codeLen, err := readSectionHeader(compiledSectionCode, "code", limits.MaxCodeBytes)
+	if err != nil {
+		return decoded, nil, 0, err
+	}
+	image, err = coreruntime.NewCodeBuffer(codeLen)
+	if err != nil {
+		return decoded, nil, 0, fmt.Errorf("allocate compiled code section: %w", err)
+	}
+	code, err := image.AppendSpace(codeLen)
+	if err != nil {
+		_ = image.Close()
+		return decoded, nil, 0, fmt.Errorf("size compiled code section: %w", err)
+	}
+	if _, err := io.ReadFull(r, code); err != nil {
+		_ = image.Close()
+		return decoded, nil, 0, fmt.Errorf("truncated code section: %w", err)
+	}
+	metadataLen, err := readSectionHeader(compiledSectionMetadata, "metadata", limits.MaxMetadataBytes)
+	if err != nil {
+		_ = image.Close()
+		return decoded, nil, 0, err
+	}
+	metadata := make([]byte, metadataLen)
+	if _, err := io.ReadFull(r, metadata); err != nil {
+		_ = image.Close()
+		return decoded, nil, 0, fmt.Errorf("truncated metadata section: %w", err)
+	}
+	decoded.code = code
+	if err := unmarshalCompiledMetadata(&decoded, metadata); err != nil {
+		_ = image.Close()
+		return decoded, nil, 0, err
+	}
+	return decoded, image, 0, nil
+}
+
+func marshalCompiledMetadata(c *Compiled) ([]byte, error) {
+	metadata, _, err := marshalCompiledMetadataMeasured(c)
+	return metadata, err
+}
+
+func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes, error) {
+	w := compiledWriter{buf: make([]byte, 0, 256)}
+	var sizes ArtifactSectionSizes
+	start := 0
+	mark := func(dst *int64) {
+		*dst = int64(len(w.buf) - start)
+		start = len(w.buf)
+	}
 	w.intSlice(c.Entry)
 	w.internalEntrySlice(c.InternalEntry)
+	mark(&sizes.Entries)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
+	mark(&sizes.Imports)
 	if err := w.typeDescriptors(c.Types); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	w.valueTypes(c.ValueTypes)
+	mark(&sizes.Types)
 	if err := w.funcSigs(c.importFuncSigs, c.Types); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	if err := w.funcSigs(c.Funcs, c.Types); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
+	mark(&sizes.Functions)
 	w.stringIntMap(c.Exports)
 	w.nameSec(c.Names)
+	mark(&sizes.ExportsAndNames)
 	if err := w.globalImports(c.GlobalImports, c); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	if err := w.globals(c.Globals, c); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	w.stringIntMap(c.GlobalExports)
+	mark(&sizes.Globals)
 	if err := w.tables(c); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	w.stringIntMap(c.tableExports)
 	w.u64Slice(c.FuncTypeID)
 	w.bool(c.NeedsFuncRefDescs)
+	mark(&sizes.Tables)
 	if err := w.elems(c.Elems, c); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	if err := w.elems(c.passiveElems, c); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
+	mark(&sizes.Elements)
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
+	mark(&sizes.Data)
 	w.memories(c)
 	w.stringIntMap(c.memoryExportMap())
+	mark(&sizes.Memories)
 	w.bool(c.dynamicImports)
+	sizes.Features = int64(len(w.buf) - start)
+	start = len(w.buf)
 	w.tags(c)
+	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
 	if c.stagedGCStructProduct() == stagedGCStructGeneric {
 		required |= compiledGCExecutionGenericStruct
@@ -141,14 +337,17 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 		required |= compiledCPUFeatureBMI2
 	}
 	w.u64(required)
+	sizes.Features += int64(len(w.buf) - start)
+	start = len(w.buf)
 	w.gcTypeDescs(c.GCTypeDescs)
 	if err := validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()); err != nil {
-		return nil, err
+		return nil, sizes, err
 	}
 	if rootMap := c.genericGCFrameRoots(); rootMap != nil {
 		w.gcFrameRoots(rootMap)
 	}
-	return w.buf, nil
+	mark(&sizes.GC)
+	return w.buf, sizes, nil
 }
 
 type compiledWriter struct {
@@ -181,6 +380,11 @@ func (w *compiledWriter) u64(v uint64) {
 func (w *compiledWriter) bytes(b []byte) {
 	w.uvar(uint64(len(b)))
 	w.buf = append(w.buf, b...)
+}
+func (w *compiledWriter) section(id byte, payload []byte) {
+	w.u8(id)
+	w.uvar(uint64(len(payload)))
+	w.buf = append(w.buf, payload...)
 }
 func (w *compiledWriter) str(s string) {
 	w.uvar(uint64(len(s)))
@@ -562,11 +766,31 @@ func (w *compiledWriter) gcTypeDescs(v []gc.TypeDesc) {
 
 func unmarshalCompiled(c *Compiled, data []byte) error {
 	r := compiledReader{data: data}
-	var err error
-	c.Code, err = r.bytes()
+	count, err := r.u8()
+	if err != nil {
+		return fmt.Errorf("compiled section count: %w", err)
+	}
+	if count != compiledSectionCount {
+		return fmt.Errorf("compiled section count %d unsupported (want %d)", count, compiledSectionCount)
+	}
+	code, err := r.requiredSection(compiledSectionCode, "code")
 	if err != nil {
 		return err
 	}
+	metadata, err := r.requiredSection(compiledSectionMetadata, "metadata")
+	if err != nil {
+		return err
+	}
+	if len(r.data) != 0 {
+		return fmt.Errorf("trailing %d byte(s) after compiled sections", len(r.data))
+	}
+	c.code = code
+	return unmarshalCompiledMetadata(c, metadata)
+}
+
+func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
+	r := compiledReader{data: data}
+	var err error
 	c.Entry, err = r.intSlice()
 	if err != nil {
 		return err
@@ -746,6 +970,32 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 
 type compiledReader struct{ data []byte }
 
+func (r *compiledReader) requiredSection(want byte, label string) ([]byte, error) {
+	id, err := r.u8()
+	if err != nil {
+		return nil, fmt.Errorf("%s section id: %w", label, err)
+	}
+	if id != want {
+		return nil, fmt.Errorf("compiled section %d out of order (want %s section %d)", id, label, want)
+	}
+	size, err := r.canonicalUvar()
+	if err != nil {
+		return nil, fmt.Errorf("%s section length: %w", label, err)
+	}
+	if size > uint64(maxInt()) {
+		return nil, fmt.Errorf("%s section length overflows int", label)
+	}
+	payload, err := r.take(int(size))
+	if err != nil {
+		return nil, fmt.Errorf("truncated %s section: %w", label, err)
+	}
+	return payload, nil
+}
+
+func (r *compiledReader) canonicalUvar() (uint64, error) {
+	return r.uvar()
+}
+
 const (
 	minStringBytes       = 1
 	minVarintBytes       = 1
@@ -802,6 +1052,10 @@ func (r *compiledReader) uvar() (uint64, error) {
 	if n <= 0 {
 		return 0, fmt.Errorf("invalid uvarint")
 	}
+	var canonical [binary.MaxVarintLen64]byte
+	if binary.PutUvarint(canonical[:], v) != n {
+		return 0, fmt.Errorf("non-canonical uvarint")
+	}
 	r.data = r.data[n:]
 	return v, nil
 }
@@ -809,6 +1063,10 @@ func (r *compiledReader) ivar() (int, error) {
 	v, n := binary.Varint(r.data)
 	if n <= 0 {
 		return 0, fmt.Errorf("invalid varint")
+	}
+	var canonical [binary.MaxVarintLen64]byte
+	if binary.PutVarint(canonical[:], v) != n {
+		return 0, fmt.Errorf("non-canonical varint")
 	}
 	r.data = r.data[n:]
 	if int64(int(v)) != v {

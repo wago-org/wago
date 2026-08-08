@@ -216,7 +216,7 @@ func TestStagedGCRefTestTableProductClosure(t *testing.T) {
 	}
 	_ = widened.Close()
 
-	t.Logf("object ref.test product: wasm=%d code=%d codec=%d state=%d plugin=%d", len(data), len(c.Code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(instancePluginState{}))
+	t.Logf("object ref.test product: wasm=%d code=%d codec=%d state=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(instancePluginState{}))
 }
 
 func BenchmarkStagedGCRefTestTable(b *testing.B) {

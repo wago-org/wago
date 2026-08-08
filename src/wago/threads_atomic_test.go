@@ -433,8 +433,8 @@ func TestThreadsFeatureDoesNotChangeOrdinaryGeneratedCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer withThreads.Close()
-	if !bytes.Equal(base.Code, withThreads.Code) {
-		t.Fatalf("ordinary generated code changed when threads was enabled: %d vs %d bytes", len(base.Code), len(withThreads.Code))
+	if !bytes.Equal(base.code, withThreads.code) {
+		t.Fatalf("ordinary generated code changed when threads was enabled: %d vs %d bytes", len(base.code), len(withThreads.code))
 	}
 }
 

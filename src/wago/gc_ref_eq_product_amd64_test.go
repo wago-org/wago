@@ -152,7 +152,7 @@ func TestStagedGCRefEqProductBoundaryLifecycle(t *testing.T) {
 		t.Fatalf("codec-loaded gc/ref_eq instantiate = %v", err)
 	}
 
-	t.Logf("gc/ref_eq product: wasm=%d code=%d codec=%d tableState=%d plugin=%d", len(data), len(c.Code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(instancePluginState{}))
+	t.Logf("gc/ref_eq product: wasm=%d code=%d codec=%d tableState=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(instancePluginState{}))
 }
 
 func BenchmarkStagedGCRefEqStableIdentity(b *testing.B) {

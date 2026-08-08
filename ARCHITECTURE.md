@@ -13,7 +13,17 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 32 -->
+<!-- artifact:codec-version 33 -->
+
+Compiled artifact v33 is a strict ordered section stream: a fixed header and
+section count followed by length-delimited native-code and metadata sections.
+Unknown, duplicate, reordered, truncated, over-limit, and non-canonical section
+encodings fail closed. `Compiled.WriteTo` streams code without constructing a
+second full image; `Compiled.ReadFromWithLimits` reads code directly into an RW
+mapping, bounds code and metadata independently, validates all metadata, and
+seals that same mapping RX on first use. Version 32 and older artifacts are
+intentionally rejected; Wago was unreleased, so there is no compatibility
+decoder or dual-format ambiguity.
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
@@ -58,7 +68,7 @@ callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec v32
+collection and the root walker remain zero-allocation after warm-up. Codec v33
 persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
@@ -92,7 +102,7 @@ cross-Runtime compact-handle sharing remains impossible. `CaptureDomain` separat
 collector domain and persists every member, internal function/global/table edge,
 memory32/memory64 and tag aliases, typed live passive roots, and one stable-ID heap
 graph in `WGDN` v3 with strict v1/v2 loading; restore publishes the complete member
-slice only after transactional graph reconstruction. Codec v32 persists helper admission and
+slice only after transactional graph reconstruction. Codec v33 persists helper admission and
 the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
@@ -280,17 +290,19 @@ references before any optimizer or IR backend consumes a function.
 
 ## 6. The compiled artifact & serialization
 
-`Compiled` holds the emitted code plus everything `Instantiate` needs without
-re-decoding:
+`Compiled` privately owns the emitted code plus everything `Instantiate` needs
+without re-decoding. `CodeSize` reports its length and `WriteCodeTo` provides a
+read-only diagnostic stream; callers never receive a mutable alias:
 
-- `Code`, wrapper/internal `Entry` offsets, and `Funcs` signatures
+- native code, wrapper/internal `Entry` offsets, and `Funcs` signatures
 - `Imports` / `NumImports`, import signatures, dynamic-dispatch shape, and `Exports`
 - `GlobalImports`, `Globals`, `GlobalExports` (numeric global metadata)
 - `TableSize`, `FuncTypeID`, `Elems` (active element segments)
 - `Data` (active data segments)
 
-`Compiled` serializes to a compact versioned **`.wago` blob**
-(`MarshalBinary`/`UnmarshalBinary`, magic `WAGO` + version byte). `Load` accepts
+`Compiled` serializes to a compact versioned **`.wago` blob** through either the
+slice APIs (`MarshalBinary`/`UnmarshalBinary`) or bounded streaming APIs
+(`WriteTo`/`ReadFromWithLimits`). `Load` accepts
 either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
 load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
 malformed metadata before any memory is mapped. The codec persists the
@@ -358,10 +370,14 @@ pointer.
 
 ### Mapping code (W^X)
 
-`MapCode` mmaps the compiled bytes `PROT_READ|PROT_WRITE`, copies the code in,
-then `mprotect`s to `PROT_READ|PROT_EXEC` — write-xor-execute. A refcounted cache
-shares one executable mapping across instances of a `Compiled`; the mapping is
-unmapped after the compiled owner is closed and the last instance releases it.
+Serial compilation and streamed artifact loading write directly into an owned
+`PROT_READ|PROT_WRITE` mapping, then first instantiation changes that same
+mapping to `PROT_READ|PROT_EXEC`—write-xor-execute—without copying. The
+latency-gated parallel compiler retains its faster heap join and maps it on first
+use. A refcounted cache shares one executable mapping across instances of a
+`Compiled`; `Close` rejects future instances, while existing instances retain
+the mapping until the last one closes. Decode replacement is rejected while any
+instance is live, so it cannot orphan that ownership chain.
 
 ### Execution: the foreign stack & trampoline
 

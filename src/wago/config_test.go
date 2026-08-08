@@ -483,8 +483,8 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 		if err != nil {
 			t.Fatalf("workers=%d compile: %v", workers, err)
 		}
-		if !c.dynamicImports || len(c.Code) == 0 {
-			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.Code))
+		if !c.dynamicImports || len(c.code) == 0 {
+			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.code))
 		}
 		if err := c.validateImportBindings(imports, nil); err != nil {
 			_ = c.Close()
@@ -496,7 +496,7 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	defer serial.Close()
 	parallel := compile(8)
 	defer parallel.Close()
-	if !bytes.Equal(parallel.Code, serial.Code) || !bytes.Equal(intSliceBytes(parallel.Entry), intSliceBytes(serial.Entry)) || !bytes.Equal(intSliceBytes(parallel.InternalEntry), intSliceBytes(serial.InternalEntry)) {
+	if !bytes.Equal(parallel.code, serial.code) || !bytes.Equal(intSliceBytes(parallel.Entry), intSliceBytes(serial.Entry)) || !bytes.Equal(intSliceBytes(parallel.InternalEntry), intSliceBytes(serial.InternalEntry)) {
 		t.Fatal("parallel codegen differs from serial output")
 	}
 	serialBlob, err := serial.MarshalBinary()

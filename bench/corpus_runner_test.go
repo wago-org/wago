@@ -384,8 +384,13 @@ func corpusWagoChild(t *testing.T, m corpusModule, stage, bounds, export string)
 		if err != nil || idx < 0 || idx+1 >= len(c.Entry) {
 			t.Fatalf("bad WAGO_CORPUS_DEBUG_CODE_FUNC %q", raw)
 		}
-		fmt.Printf("WAGO_CORPUS_CODE_FUNC=%d hex=%x\n", idx, c.Code[c.Entry[idx]:c.Entry[idx+1]])
-		fmt.Printf("WAGO_CORPUS_CODE_BRANCHES=%s\n", arm64BranchTargets(c.Code, c.Entry[idx], c.Entry[idx+1]))
+		var code bytes.Buffer
+		if _, err := c.WriteCodeTo(&code); err != nil {
+			t.Fatalf("write compiled code: %v", err)
+		}
+		image := code.Bytes()
+		fmt.Printf("WAGO_CORPUS_CODE_FUNC=%d hex=%x\n", idx, image[c.Entry[idx]:c.Entry[idx+1]])
+		fmt.Printf("WAGO_CORPUS_CODE_BRANCHES=%s\n", arm64BranchTargets(image, c.Entry[idx], c.Entry[idx+1]))
 	}
 	if stage == "Instantiate" {
 		return "ok"
