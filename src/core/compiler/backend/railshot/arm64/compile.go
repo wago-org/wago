@@ -777,6 +777,22 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
+			// Align and reserve before lowering so the assembler can emit straight
+			// into the module-owned image. If an unusually large function outgrows
+			// the mapping tail, CommitTail rejects the detached slice and Append
+			// preserves the old capacity-underestimate fallback.
+			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
+				if err := codeBuffer.AppendZeros(pad); err != nil {
+					return nil, fmt.Errorf("arm64: grow code image: %w", err)
+				}
+			}
+			code := codeBuffer.Bytes()
+			entry[i] = len(code)
+			tail, err := codeBuffer.AppendTail(asmCapForBody(len(m.Code[i].BodyBytes)))
+			if err != nil {
+				return nil, fmt.Errorf("arm64: grow code image: %w", err)
+			}
+			sc.asm.B = tail
 			hints := allHints[i]
 			var st *CodegenStats
 			if ms != nil {
@@ -788,17 +804,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if err != nil {
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 			}
-			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
-				if err := codeBuffer.AppendZeros(pad); err != nil {
-					return nil, fmt.Errorf("arm64: grow code image: %w", err)
-				}
-			}
-			code := codeBuffer.Bytes()
-			entry[i] = len(code)
 			internalEntry[i] = len(code) + internalOff
 			relocs[i] = rl
-			if err := codeBuffer.Append(fnCode); err != nil {
-				return nil, fmt.Errorf("arm64: grow code image: %w", err)
+			if !codeBuffer.CommitTail(fnCode) {
+				if err := codeBuffer.Append(fnCode); err != nil {
+					return nil, fmt.Errorf("arm64: grow code image: %w", err)
+				}
 			}
 			if !pressureDone && opts.MemoryPressure != nil && len(codeBuffer.Bytes()) >= pressureAt {
 				pressureDone = true
