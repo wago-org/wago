@@ -10,6 +10,9 @@ import (
 type promotionStateSnapshot struct {
 	nursery        []byte
 	nurseryBump    uint32
+	survivorBump   uint32
+	survivorFrom   uint8
+	threshold      uint8
 	handles        []handleEntry
 	nurseryHandles []uint32
 	mark           []bool
@@ -29,6 +32,9 @@ func snapshotPromotionState(c *Collector) promotionStateSnapshot {
 	return promotionStateSnapshot{
 		nursery:        slices.Clone(c.nursery),
 		nurseryBump:    c.nurseryBump,
+		survivorBump:   c.survivorBump,
+		survivorFrom:   c.survivorFrom,
+		threshold:      c.tenuringThreshold,
 		handles:        slices.Clone(c.handles),
 		nurseryHandles: slices.Clone(c.nurseryHandles),
 		mark:           mark,
@@ -199,7 +205,7 @@ func assertPromotionStateEqual(t *testing.T, c *Collector, want promotionStateSn
 	if !slices.Equal(got.nursery, want.nursery) {
 		t.Fatal("failed promotion mutated nursery bytes")
 	}
-	if got.nurseryBump != want.nurseryBump || !slices.Equal(got.nurseryHandles, want.nurseryHandles) {
+	if got.nurseryBump != want.nurseryBump || got.survivorBump != want.survivorBump || got.survivorFrom != want.survivorFrom || got.threshold != want.threshold || !slices.Equal(got.nurseryHandles, want.nurseryHandles) {
 		t.Fatal("failed promotion mutated nursery allocation metadata")
 	}
 	if !slices.Equal(got.handles, want.handles) {

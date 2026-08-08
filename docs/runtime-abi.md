@@ -52,15 +52,17 @@ collector-owned view, and an immutable local-type to canonical-domain `u32` map.
 The Go object retains that map through a typed trailing slice; native code sees
 only the fixed prefix.
 
-The shared collector view is 160 bytes. ABI v3 preserves the complete 128-byte v2
-prefix: version/20-byte handle stride, current handle pointer/count, five directly
-indexed 16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
-and object-card pointer/count. It appends four stable pointers: a 144-byte native
-struct-allocation state, its independent collection epoch, the real nursery bump,
-and the semantic allocation counter. Space zero is invalid; nursery, old, large,
-and Tiny match the stable one-byte `handleEntry.space` identity at byte 18. The
-stable remembered bit at byte 19 remains native-readable and is never mutated by
-generated code.
+The shared collector view is 160 bytes. ABI v5 preserves the v4
+version/20-byte handle stride, current handle pointer/count, five directly indexed
+16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
+object-card pointer/count, and four stable pointers for native struct-allocation
+state, collection epoch, the real Eden bump, and the semantic allocation counter.
+The former padding word at byte 124 now publishes `NurseryAllocBytes`: generated
+allocation checks use that Eden limit, while the nursery space descriptor covers
+Eden plus both survivor semispaces so moved handles remain directly resolvable.
+Space zero is invalid; nursery, old, large, and Tiny match the stable one-byte
+`handleEntry.space` identity at byte 18. The remembered bit at byte 19 remains
+native-readable and is never mutated by generated code.
 
 The allocation state contains `{epoch u32, cursor u32, count u32, pad}` followed by
 32 compact handle indexes. A rooted helper reserves only unpublished handle
@@ -532,8 +534,13 @@ Nursery destinations create no object cards. Bulk barriers publish the complete 
 byte range without rescanning values. Minor collection scans only exact transient roots, dirty persistent slots, and
 those card ranges before tracing nursery survivors. A metadata-growth injection takes an explicit whole-object or
 full-persistent-root fallback rather than dropping reachability. Collector-owned promotion-plan scratch is cleared and
-reused after success or rollback. The Native collector view is ABI v4 because `objectCard` adds a one-based range link;
-`handleEntry` remains 20 bytes, `Config` 64 bytes, and the current linux/amd64 `gc.Collector` is 1,064 bytes. Collector
+reused after success or rollback. Throughput Eden now evacuates first survivors into one of two bounded semispaces;
+two age bits occupy unused high `handleEntry.class` bits, and large young objects age in place. A fixed threshold starts
+at two survivals and adapts between one and three from survivor occupancy, old-space pressure, recent full collections,
+and an optional pause target. Useful object/root cards remain authoritative across survivor movement and clear when no
+young edge remains. The Native collector view is ABI v5 because native allocation must distinguish the Eden limit from
+the complete young backing; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
+`gc.Collector` is 1,104 bytes. Collector
 tests separately prove nullable/non-null storage compatibility, rejected-copy atomicity, sparse/dense card behavior,
 root bitmap consistency, failure fallback, promotion rollback, and Tiny remark preservation.
 

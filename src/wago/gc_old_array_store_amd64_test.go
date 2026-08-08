@@ -36,17 +36,24 @@ func gcNativeOldArrayReferenceStoreFixture(length, secondIndex uint32) []byte {
 	}
 	setBothBody = append(setBothBody, wasmtest.SLEB32(int32(secondIndex))...)
 	setBothBody = append(setBothBody, 0x23, 0x02, 0xfb, 0x0e, 0x01, 0x0b)
+	clearChildrenBody := []byte{0x00,
+		0xd0, 0x00, 0x24, 0x01,
+		0xd0, 0x00, 0x24, 0x02,
+		0x0b,
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(structType, arrayType, voidType)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(2))),
 		wasmtest.Section(6, wasmtest.Vec(arrayGlobal, childGlobal, childGlobal)),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("init", byte(wasm.ExternFunc), 0),
 			wasmtest.ExportEntry("set_both", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("clear_children", byte(wasm.ExternFunc), 2),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			append(wasmtest.ULEB(uint32(len(initBody))), initBody...),
 			append(wasmtest.ULEB(uint32(len(setBothBody))), setBothBody...),
+			append(wasmtest.ULEB(uint32(len(clearChildrenBody))), clearChildrenBody...),
 		)),
 	)
 }

@@ -492,6 +492,14 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   share repeated immutable offset maps, and expose fail-closed diagnostics. The
   one-root 16K-instruction compile benchmark improves 3.2% while temporary bytes
   fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero allocation.
+- [x] Add bounded Throughput survivor aging: Eden feeds two bump-copy semispaces,
+  handle-owned age bits retain the 20-byte native entry, medium-lived objects
+  tenure after measured survival, and large young objects age in place. Exact
+  cards persist only while young edges remain, movement is transactionally
+  preflighted, and occupancy/old-pressure/full-GC plus optional pause targets
+  adapt the threshold from one through three minors. The one-minor workload
+  eliminates 32 promoted bytes/object and improves its median about 19%; the
+  zero-survival path remains allocation-free and within 1% of immediate promotion.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
 

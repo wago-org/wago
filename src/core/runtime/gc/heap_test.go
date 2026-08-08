@@ -2,7 +2,7 @@ package gc
 
 import "testing"
 
-func testTypes(t *testing.T) []TypeDesc {
+func testTypes(t testing.TB) []TypeDesc {
 	t.Helper()
 	pf, err := NewStructDesc(0, []StorageKind{StorageI32, StorageI64})
 	if err != nil {
@@ -28,6 +28,11 @@ func newTestCollector(t *testing.T, cfg Config) *Collector {
 }
 func newTestCollectorWithTypes(t *testing.T, cfg Config, types []TypeDesc) *Collector {
 	t.Helper()
+	// Legacy collector tests assert complete first-survival evacuation. Survivor
+	// policy tests opt in explicitly with SurvivorBytes.
+	if cfg.SurvivorBytes == 0 && cfg.MinorPauseTargetMicros == 0 {
+		cfg.DisableMovingNursery = true
+	}
 	c, err := NewCollector(cfg, types)
 	if err != nil {
 		t.Fatal(err)

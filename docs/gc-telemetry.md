@@ -51,7 +51,8 @@ includes:
 - root counts and root-enumeration time by ownership class;
 - visited objects, payload bytes, and reference slots;
 - swept objects and payload bytes;
-- nursery occupancy, first-survival, copying, promotion, and age histograms; and
+- Eden/survivor occupancy, copying, promotion, age histograms, and separate
+  pointer-free age populations; and
 - dirty/useful/duplicate cards, scanned slots, whole-object scans, scans avoided,
   and cleared cards.
 
@@ -246,9 +247,9 @@ Measured August 8, 2026 on linux/amd64 with Go 1.24.4:
 - `Collector`: 1,000 to 1,008 bytes;
 - ordinary-build inert `Telemetry`: 184 bytes when a caller explicitly allocates
   one, but `NewCollector` drops the pointer;
-- `wago_gcstats` `Telemetry`: 18,112 bytes plus an optional one-byte-per-
+- `wago_gcstats` `Telemetry`: 18,496 bytes plus an optional one-byte-per-
   classified-persistent-slot vector, fixed after slot construction;
-- `TelemetrySnapshot`: 1,384 bytes, copied only on explicit snapshot;
+- `TelemetrySnapshot`: 1,640 bytes, copied only on explicit snapshot;
 - twenty pinned interleaved 10,000-operation zero-survivor minor controls had an
   811.95 ns parent median and 814.30 ns current median (+0.29%), with identical
   fixture allocation metrics; direct collection remains 0 B/op and 0 allocs/op;

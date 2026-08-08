@@ -380,6 +380,56 @@ native bytes with SHA-256
 on both `fb102621` and this change; wider-map support is code-neutral for the
 existing one-word case.
 
+### Survivor aging and adaptive tenuring
+
+Run the retained lifetime and policy A/B matrix with:
+
+```sh
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^(BenchmarkThroughputObjectLifetimes|BenchmarkThroughputMixedLifetimeGraph|BenchmarkThroughputMixedLifetimeFullGCPressure|BenchmarkThroughputZeroSurvivalPolicy)$' \
+  -benchmem -count=5
+```
+
+The retained design uses two bounded copy semispaces rather than region-local
+survivor sets. At the default 64-KiB Eden, each semispace is 32 KiB: 64 KiB of
+additional fixed backing, no per-object allocation, no region bitmap/run
+metadata, and no handle growth because age occupies existing high class bits.
+Region-local survivor sets would avoid reserving the inactive copy space but
+would duplicate the region/start/free-run machinery planned for #313; they were
+rejected for this stage rather than introducing a second transient allocator.
+
+Ryzen 7 8845HS medians on August 8, 2026:
+
+| Young lifetime | ns/op | young copied B/op | promoted B/op | full GCs/op |
+|---:|---:|---:|---:|---:|
+| 0 minors | 181.8 | 0 | 0 | 0 |
+| 1 minor | 416.0 | 32 | 0 | 0 |
+| 2 minors | 677.8 | 64 | 32 | 0 |
+| 3 minors | 741.7 | 64 | 32 | 0 |
+| 5 minors | 1,066 | 64 | 32 | 0 |
+
+The controlled one-minor mixed-lifetime A/B moves from a 363.2 ns/op median
+with immediate promotion to 294.1 ns/op with survivor aging (-19.0%). Promoted
+bytes fall from 32 to zero per operation; both policies copy 32 bytes and report
+four fixture allocations per operation. Ten-run zero-survival medians are 77.24
+ns/op for immediate promotion and 77.93 ns/op for survivor aging (+0.89%), both
+at 0 B/op and 0 allocs/op. Thus the transient bump/cleanup path remains within
+the 1% noise gate while medium-lived objects avoid old space entirely. Under a
+4-KiB old-space pressure fixture, immediate promotion performs one full GC per
+128 operations (`0.007812 full-GCs/op`) at a 328.4 ns/op median; survivor aging
+performs zero full GCs, zero promotion, and a 292.1 ns/op median.
+
+The matrix also reports the current adaptive threshold and cumulative
+`YoungBytesCopied`/`PromotedBytes` through `Stats`. `wago_gcstats` adds age
+histograms plus separate pointer-free age populations. Tests cover occupancy and
+old-pressure threshold increases, pause/occupancy decreases, survivor-capacity
+fallback, in-place large-object aging, card persistence, full collection,
+poisoning, and exact failure rollback. Relative to `db149b36`, `cli/wago` changes
+from 12,154,808 to 12,154,816 bytes unstripped (+8) and remains 8,286,500 bytes
+stripped. The existing 64-root generated fixture remains exactly 730 bytes with
+the same SHA-256, so survivor policy and ABI-v5 Eden bounds add no native bytes
+to that allocation fixture.
+
 Future issue work must extend the matrix as follows:
 
 - #302: no-survivor and low-survivor cleanup with high handle counts;
@@ -387,8 +437,6 @@ Future issue work must extend the matrix as follows:
   bulk operations or region-local card representations;
 - #308: reserved/committed bytes, backing growth, bytes copied, and page faults;
 - #309: metadata bytes/object, handle-resolution instructions, and cache misses;
-- #310: object lifetimes of zero through five minors, adaptive thresholds,
-  survivor occupancy, copied/promoted bytes, and full-GC frequency;
 - #311: numeric/reference arrays at lengths 0, 1, 4, 32, 256, and 4,096 plus
   handle/chunk refill and cancellation paths;
 - #313: occupancy histograms, mark bandwidth, recyclable regions, and selective

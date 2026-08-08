@@ -733,7 +733,7 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 		a.AluRI(0, RCX, int32(objectAlign-1), false)
 		a.AluRI(4, RCX, -int32(objectAlign), false)
 	}
-	a.Load32(RAX, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBytesOffset))
+	a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
 	a.Cmp32(RCX, RAX)
 	addFallback(a.JccPlaceholder(condA))
 	a.Sub32(RAX, RCX)
@@ -1384,7 +1384,11 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	// Old/large parents may bypass the Go barrier when the child is not young,
 	// or when the parent is already conservatively remembered.
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
-	childNotYoung := a.JccPlaceholder(condNE)
+	childIsNursery := a.JccPlaceholder(condE)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceLarge), false)
+	addFallback(a.JccPlaceholder(condE)) // large children may still be young-in-place
+	childNotYoung := a.JmpPlaceholder()
+	a.PatchRel32(childIsNursery, a.Len())
 	a.Load32(RAX, R9, 16)
 	a.ShiftImm(5, RAX, 16, false)
 	a.AluRI(4, RAX, 0xff, false)
@@ -1541,7 +1545,11 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
-	childNotYoung := a.JccPlaceholder(condNE)
+	childIsNursery := a.JccPlaceholder(condE)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceLarge), false)
+	addFallback(a.JccPlaceholder(condE)) // large children may still be young-in-place
+	childNotYoung := a.JmpPlaceholder()
+	a.PatchRel32(childIsNursery, a.Len())
 	// A nursery child behind an old/large parent requires established remembered
 	// membership before the native path may update an existing card.
 	a.Load32(RAX, R9, 16)

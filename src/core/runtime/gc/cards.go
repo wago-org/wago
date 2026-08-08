@@ -13,7 +13,7 @@ func (c *Collector) scanRememberedCards(h uint32) {
 		return
 	}
 	e := &c.handles[h]
-	if e.space != spaceOld && e.space != spaceLarge {
+	if e.young() || (e.space != spaceOld && e.space != spaceLarge) {
 		return
 	}
 	if e.cardSlot == 0 {

@@ -105,6 +105,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		sp = spaceLarge
 		off = e.off
+		if !c.cfg.DisableMovingNursery {
+			e.setYoungAge(0)
+		}
 	} else {
 		objectAlign := d.Align
 		if objectAlign < 8 {
@@ -112,7 +115,8 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		nurseryOffset := func() (uint32, bool) {
 			off := align(c.nurseryBump, objectAlign)
-			return off, off <= uint32(len(c.nursery)) && size <= uint32(len(c.nursery))-off
+			limit := c.edenBytes()
+			return off, off <= limit && size <= limit-off
 		}
 		var fits bool
 		off, fits = nurseryOffset()
@@ -149,7 +153,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		return Null(), err
 	}
 	h := c.newHandle(e)
-	if sp == spaceNursery {
+	if sp == spaceNursery || (sp == spaceLarge && e.young()) {
 		c.nurseryHandles = append(c.nurseryHandles, h)
 	}
 	r := makeObjRef(h)
@@ -192,7 +196,7 @@ func (c *Collector) shouldAllocateLarge(size uint32) bool {
 	// a hard safety boundary: an object that cannot fit in an empty nursery must
 	// be allocated in non-moving large space even when tests choose a higher
 	// threshold to stress tiny nurseries.
-	return size >= c.cfg.LargeObjectBytes || size > uint32(len(c.nursery))
+	return size >= c.cfg.LargeObjectBytes || size > c.edenBytes()
 }
 
 func (c *Collector) newHandle(e handleEntry) uint32 {

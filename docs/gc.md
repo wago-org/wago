@@ -1583,28 +1583,42 @@ The throughput/default target architecture is GenImmix-shaped:
 - typed object descriptors;
 - remembered sets and card marking.
 
-The current throughput implementation keeps the nursery simple and routes old
-and large allocations through a reusable paged size-class allocator. Objects at
-or above `LargeObjectBytes`, or any object larger than an empty nursery, are
-allocated in non-moving large space so stress configurations cannot overrun or
-permanently reject nursery-impossible allocations. Small and medium promoted
-objects are rounded into supported size classes and returned to per-class free
-lists on full collection. `ThroughputClassLimit` must be zero for the default or
-exactly one of those size classes (`32` through `32768` bytes today);
-unsupported below-minimum, above-maximum, or between-class values such as `4097`
-are rejected at collector construction rather than rounded. Larger objects use a
-coalescing free-span list.
+The Throughput young generation is Eden followed by two bounded survivor
+semispaces in one aligned backing. `NurseryBytes` remains the hard Eden allocation
+limit; `SurvivorBytes` selects each semispace and defaults to half of Eden.
+Generated allocation uses the separately published Eden limit, while ordinary
+handle resolution sees the complete backing. `DisableMovingNursery` remains the
+A/B and compatibility control for immediate first-survival promotion.
 
-Throughput minor collection maintains a dense nursery-handle set and traces only nursery roots, remembered old/large
-objects, and transitive nursery children. It does not mark or scan the complete old live graph. Global/table slots are
-checked directly; old/large object roots depend on the invariant that every direct old/large-to-nursery edge is in the
-remembered set. Promotion and nursery sweep iterate the dense nursery set rather than the complete handle table.
-`Stats.MinorObjectsScanned` and `Stats.MinorRememberedScanned` expose cumulative cold-path scan counts for complexity
-tests. Fresh large struct initialization performs all validated field stores first, then records one remembered entry
-when the finished payload contains a nursery child; reference arrays use the corresponding post-bulk reconciliation.
-The additional nursery slice and scan counters bring the fixed `Collector` to 712 bytes on linux/amd64 with Go 1.24.4.
+Minor collection traces only exact transient roots, dirty persistent-root slots,
+dirty old/large cards, and the resulting live young graph. First survivors copy
+contiguously into the inactive semispace, preserving compact handle identity while
+changing only the handle offset. The next successful minor swaps semispaces.
+Two age bits use previously unused high `handleEntry.class` bits, retaining the
+20-byte handle layout. Large young objects use the same age state but remain in
+large backing; they become old in place rather than copying their payload.
 
-Minor promotion plans use collector-owned reusable scratch in ascending handle order. Every success or rollback clears the used entries and resets the slice length, so no stale allocation record survives a collection. Allocation failure frees planned old-space entries in reverse order before publishing any move. A repeated allocate/promote/full-collect benchmark on linux/amd64 drops from 188.8–200.8 ns/op, 96–100 B/op, and 3 allocs/op to 178.8–189.1 ns/op, 72–81 B/op, and 2 allocs/op; the removed allocation is the per-minor promotion plan.
+The initial tenuring threshold is two survivals and remains bounded from one
+through three. Survivor occupancy, old-space pressure, recent full collections,
+and promoted-versus-copied bytes update it deterministically. A nonzero
+`MinorPauseTargetMicros` additionally opts policy adaptation into one minor-cycle
+clock sample; zero performs no release-build clock read. Pointer-free and
+reference-bearing age populations remain separately visible through
+`wago_gcstats` telemetry.
+
+Movement planning covers survivor copies, old-space destinations, and in-place
+large aging before any handle is published. Destination and commit failure points
+run before inactive survivor bytes are written; old-space allocations roll back
+in reverse order. Native handle batches are invalidated before tracing. Useful
+cards and dirty roots remain authoritative across survivor movement, while
+card-range pruning examines only recorded ranges rather than complete old
+objects. Metadata clears directly once no young object remains.
+
+Objects promoted into old space are rounded into supported size classes.
+`ThroughputClassLimit` must be zero for the default or exactly one built-in class
+(`32` through `32768` bytes); unsupported values reject rather than round. The
+fixed 64-bit layouts are 20 bytes for `handleEntry`, 72 bytes for `Config`, and
+1,104 bytes for `Collector` in the ordinary build.
 
 Allocation-triggered minor collection treats old-space promotion exhaustion as a
 cold reclamation signal. Because promotion planning has published no move, the
@@ -2060,7 +2074,7 @@ Throughput cards are authoritative minor-GC inputs. The default is a measured 12
 
 Persistent global/table slots use stable-index bitmaps plus one compact dirty-slot vector, replacing the lazy Go map. Minor collection visits only vector members; full and Tiny collection continue to enumerate every persistent slot. Bits are cleared by walking the dirty vector rather than zeroing a root-sized table. A metadata-growth injection arms a cold full-root fallback, while missing object-card metadata falls back through remembered membership to one complete object scan. Verification independently reconstructs every old-to-nursery field/element and nursery persistent root, proving that its exact byte/slot is carded or that the explicit fallback is active.
 
-Successful minor evacuation clears all remembered/card metadata because no nursery object remains. A full Throughput collection does not move surviving nursery objects, so it retains their useful object/root cards for the following minor collection and removes metadata only for dead or exactly pruned old parents. Object freeing unlinks all owned ranges before handle reuse. The Native collector ABI is version 4: `objectCard` grows from 12 to 16 bytes for its link, while `handleEntry` remains 20 bytes and `Config` remains 64 bytes. Replacing the fixed map field with two bitmap slices and adding card state grows `Collector` from 1,008 to 1,064 bytes on linux/amd64.
+Successful minor evacuation clears all remembered/card metadata only when no young object remains. While survivors remain, collection retains ranges and persistent slots that still contain young edges and prunes obsolete membership by scanning recorded cards rather than complete old objects. A full Throughput collection does not move surviving young objects and preserves their useful metadata. Object freeing unlinks all owned ranges before handle reuse. The Native collector ABI is version 5: `objectCard` remains 16 bytes, `handleEntry` remains 20 bytes, the Eden allocation limit occupies the former byte-124 view padding, `Config` is 72 bytes, and the ordinary linux/amd64 `Collector` is 1,104 bytes.
 
 On the August 8, 2026 Ryzen 7 8845HS host, interleaved release benchmarks remain allocation-free. Nursery-parent struct stores change from 25.57 to 25.14 ns/op, old-parent/old-child stores from 27.61 to 27.81 ns/op, and newly exact old-struct/young-child same-card stores from 28.18 to 29.10 ns/op. Existing old-array same-card stores improve from 36.82 to 35.51 ns/op, and repeated dirty persistent-root stores improve from 9.94 to 7.03 ns/op. Generated old-array fixture code shrinks from 1,864 to 1,856 bytes; barrier-attributed bytes remain 404. All cases remain 0 B/op and 0 allocs/op.
 
@@ -2203,14 +2217,14 @@ for future comparisons.
   table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
   growth state, cross-table cycles/sharing, deterministic repeated capture, malformed
   graph rejection, exact root/field subtype checks, and near-capacity restore rollback.
-  Whole-domain shared snapshots use exhaustive ordered `WGDN` v3 domain capture and
-  transactional restore with strict v1/v2 compatibility. Dropped and reconstructible
+  Whole-domain shared snapshots use exhaustive ordered `WGDN` v4 domain capture and
+  transactional restore with strict v1/v2/v3 compatibility; v4 persists survivor
+  capacity and optional pause-target policy. Dropped and reconstructible
   live passive state restores, including immutable-global GC/i31 payload identity;
   external, independently owned, or cyclic ownership shapes reject.
-- Minor collection promotes marked nursery survivors through handles rather than
-  implementing a final copying nursery/root-update path. The Throughput allocator
-  reuses freed memory but does not yet implement full Immix line/block marking or
-  compaction.
+- Minor collection copies first survivors through stable handles and promotes at
+  a bounded adaptive age. The Throughput old generation reuses freed spans but
+  does not yet implement full Immix line/block marking or selective evacuation.
 - The Throughput heap uses growable Go byte slices, so generated code must not
   cache raw payload pointers. Direct checked JIT object access will require a
   measured stable access contract with helper slow paths retained.

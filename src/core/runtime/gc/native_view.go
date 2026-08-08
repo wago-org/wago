@@ -6,7 +6,7 @@ import "unsafe"
 // generated code. Native code must compare this value before following any
 // pointer. The view is refreshed in place whenever a growable backing slice can
 // relocate; callers must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 4
+const NativeABIVersion uint32 = 5
 
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
@@ -55,7 +55,7 @@ type NativeCollectorView struct {
 	RefreshGeneration uint64
 	ObjectCards       uintptr
 	ObjectCardCount   uint32
-	_                 uint32
+	NurseryAllocBytes uint32
 	StructAllocState  uintptr
 	StructAllocEpoch  uintptr
 	NurseryBump       uintptr
@@ -74,6 +74,7 @@ const (
 	NativeViewRefreshGenerationOffset = 104
 	NativeViewObjectCardsOffset       = 112
 	NativeViewObjectCardCountOffset   = 120
+	NativeViewNurseryAllocBytesOffset = 124
 	NativeViewStructAllocStateOffset  = 128
 	NativeViewStructAllocEpochOffset  = 136
 	NativeViewNurseryBumpOffset       = 144
@@ -134,11 +135,13 @@ func (c *Collector) refreshNativeView() {
 	v.ObjectCards = sliceData(c.objectCards)
 	v.ObjectCardCount = uint32(len(c.objectCards))
 	if c.closed {
+		v.NurseryAllocBytes = 0
 		v.StructAllocState = 0
 		v.StructAllocEpoch = 0
 		v.NurseryBump = 0
 		v.AllocationCount = 0
 	} else {
+		v.NurseryAllocBytes = c.edenBytes()
 		v.StructAllocState = uintptr(unsafe.Pointer(&c.nativeStructAlloc))
 		v.StructAllocEpoch = uintptr(unsafe.Pointer(&c.nativeAllocEpoch))
 		v.NurseryBump = uintptr(unsafe.Pointer(&c.nurseryBump))

@@ -114,16 +114,16 @@ func TestThroughputCollectorTelemetry(t *testing.T) {
 	if snapshot.Minor.Roots.NativeFrames != 1 || snapshot.Minor.Roots.PublicTokens != 1 || snapshot.Minor.Roots.Globals != 1 || snapshot.Minor.Roots.Tables != 1 || snapshot.Minor.Roots.ForeignInstances != 1 || snapshot.Minor.Roots.SnapshotTemporaries != 1 {
 		t.Fatalf("root classes = %+v", snapshot.Minor.Roots)
 	}
-	if snapshot.Minor.Nursery.AllocatedObjects != 1 || snapshot.Minor.Nursery.SurvivedObjects != 1 || snapshot.Minor.Nursery.PromotedObjects != 1 {
+	if snapshot.Minor.Nursery.AllocatedObjects != 1 || snapshot.Minor.Nursery.SurvivedObjects != 1 || snapshot.Minor.Nursery.PromotedObjects != 0 || snapshot.Minor.Nursery.CopiedBytes == 0 {
 		t.Fatalf("nursery counters = %+v", snapshot.Minor.Nursery)
 	}
-	if snapshot.Minor.Nursery.AgeObjects[1] != 1 || snapshot.Minor.Nursery.AgeBytes[1] == 0 {
+	if snapshot.Minor.Nursery.AgeObjects[1] != 1 || snapshot.Minor.Nursery.AgeBytes[1] == 0 || snapshot.Minor.Nursery.PointerFreeAgeObjects[1] != 1 {
 		t.Fatalf("age histogram = objects %v bytes %v", snapshot.Minor.Nursery.AgeObjects, snapshot.Minor.Nursery.AgeBytes)
 	}
 	if snapshot.Minor.Cards.DirtyObjectCards != 1 || snapshot.Minor.Cards.DirtyRootCards != 3 || snapshot.Minor.Cards.UsefulObjectCards != 1 || snapshot.Minor.Cards.UsefulRootCards != 3 {
 		t.Fatalf("card counters = %+v", snapshot.Minor.Cards)
 	}
-	if snapshot.Minor.Cards.DuplicateDirties == 0 || snapshot.Minor.Cards.WholeObjectScans != 0 || snapshot.Minor.Cards.WholeObjectScansAvoided != 1 || snapshot.Minor.Cards.ScannedSlots != 32 || snapshot.Minor.Cards.ClearedCards != 4 {
+	if snapshot.Minor.Cards.DuplicateDirties == 0 || snapshot.Minor.Cards.WholeObjectScans != 0 || snapshot.Minor.Cards.WholeObjectScansAvoided != 1 || snapshot.Minor.Cards.ScannedSlots != 32 || snapshot.Minor.Cards.ClearedCards != 0 {
 		t.Fatalf("card scan counters = %+v", snapshot.Minor.Cards)
 	}
 	if snapshot.Minor.Trace.ObjectsVisited != 2 || snapshot.Minor.Trace.ReferenceSlotsVisited != 32 {

@@ -62,8 +62,8 @@ func (*Telemetry) scanStart() time.Time                                         
 func (*Telemetry) noteObjectScan(time.Time, uint32, uint32)                     {}
 func (*Telemetry) noteCardScan(time.Time, uint64, uint64, uint64, uint64, bool) {}
 func (*Telemetry) noteNurseryOccupancy(uint64, uint64)                          {}
-func (*Telemetry) noteSurvivor(uint32)                                          {}
-func (*Telemetry) notePromotion(uint32)                                         {}
+func (*Telemetry) noteSurvivor(uint32, uint8, bool, bool)                       {}
+func (*Telemetry) notePromotion(uint32, bool)                                   {}
 func (*Telemetry) noteSweep(uint32)                                             {}
 func (*Telemetry) reset(Profile, uint64)                                        {}
 

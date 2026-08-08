@@ -83,20 +83,21 @@ type TraceTelemetry struct {
 	PayloadBytesSwept     uint64 `json:"payload_bytes_swept"`
 }
 
-// NurseryTelemetry reports nursery allocation and first-survival behavior. The
-// current collector promotes every first survivor, so age bucket one equals the
-// promoted population and later buckets remain zero until adaptive tenuring is
-// implemented.
+// NurseryTelemetry reports Eden allocation, survivor copying, promotion, and
+// bounded age populations. Pointer-free counters are separate so reference
+// scanning and copy policy can be evaluated independently.
 type NurseryTelemetry struct {
-	AllocatedObjects uint64    `json:"allocated_objects"`
-	AllocatedBytes   uint64    `json:"allocated_bytes"`
-	SurvivedObjects  uint64    `json:"survived_objects"`
-	SurvivedBytes    uint64    `json:"survived_bytes"`
-	PromotedObjects  uint64    `json:"promoted_objects"`
-	PromotedBytes    uint64    `json:"promoted_bytes"`
-	CopiedBytes      uint64    `json:"copied_bytes"`
-	AgeObjects       [8]uint64 `json:"age_objects"`
-	AgeBytes         [8]uint64 `json:"age_bytes"`
+	AllocatedObjects      uint64    `json:"allocated_objects"`
+	AllocatedBytes        uint64    `json:"allocated_bytes"`
+	SurvivedObjects       uint64    `json:"survived_objects"`
+	SurvivedBytes         uint64    `json:"survived_bytes"`
+	PromotedObjects       uint64    `json:"promoted_objects"`
+	PromotedBytes         uint64    `json:"promoted_bytes"`
+	CopiedBytes           uint64    `json:"copied_bytes"`
+	AgeObjects            [8]uint64 `json:"age_objects"`
+	AgeBytes              [8]uint64 `json:"age_bytes"`
+	PointerFreeAgeObjects [8]uint64 `json:"pointer_free_age_objects"`
+	PointerFreeAgeBytes   [8]uint64 `json:"pointer_free_age_bytes"`
 }
 
 // CardTelemetry reports fixed-card and dirty-root work for Throughput minor

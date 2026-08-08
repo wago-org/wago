@@ -13,7 +13,7 @@ func (c *Collector) beginCollectionTelemetry(kind telemetryCycleKind) {
 	}
 	var nurseryObjects, nurseryBytes uint64
 	for _, h := range c.nurseryHandles {
-		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceNursery {
+		if c.isYoungHandle(h) {
 			nurseryObjects++
 			nurseryBytes += uint64(c.handles[h].size)
 		}
@@ -160,11 +160,17 @@ func (c *Collector) managedHeapTelemetry() ManagedHeapTelemetry {
 			b += size
 		}
 	} else {
-		allocatedBytes += uint64(c.nurseryBump)
+		allocatedBytes += uint64(c.nurseryBump) + uint64(c.survivorBump)
 		committed = uint64(len(c.nursery)) + uint64(len(c.throughput.mem))
 		reserved = uint64(len(c.nursery)) + uint64(c.throughput.limit)
-		if c.nurseryBump < uint32(len(c.nursery)) {
-			bytes := uint64(uint32(len(c.nursery)) - c.nurseryBump)
+		for _, bytes := range []uint64{
+			uint64(c.edenBytes() - c.nurseryBump),
+			uint64(c.survivorBytes - c.survivorBump),
+			uint64(c.survivorBytes), // inactive to-space
+		} {
+			if bytes == 0 {
+				continue
+			}
 			spans++
 			if bytes > largest {
 				largest = bytes

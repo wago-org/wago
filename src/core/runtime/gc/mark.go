@@ -313,7 +313,7 @@ func (c *Collector) markNurseryRef(r Ref) {
 		return
 	}
 	h := handleOf(r)
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space != spaceNursery || c.mark[h] {
+	if h == 0 || int(h) >= len(c.handles) || !c.handles[h].young() || c.mark[h] {
 		return
 	}
 	c.mark[h] = true

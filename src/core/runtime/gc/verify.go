@@ -114,7 +114,7 @@ func (c *Collector) verifyRememberedShadow() error {
 			continue
 		}
 		sp := c.handles[h].space
-		if sp != spaceOld && sp != spaceLarge {
+		if c.handles[h].young() || (sp != spaceOld && sp != spaceLarge) {
 			continue
 		}
 		containsNursery := false
@@ -243,16 +243,30 @@ func (c *Collector) verifyNurseryEdgesCarded(h uint32) error {
 }
 
 // verifyNurseryEvacuated is the expensive assertion for successful throughput
-// minor collections. It deliberately scans all handles only in verification
-// mode; the release cleanup path remains nursery-bounded.
+// minor collections. Eden must be empty; every retained small young object must
+// reside in the active survivor semispace and every listed handle must be young.
 func (c *Collector) verifyNurseryEvacuated() error {
+	listed := make([]bool, len(c.handles))
+	for _, h := range c.nurseryHandles {
+		if h == 0 || int(h) >= len(c.handles) || listed[h] || !c.handles[h].young() {
+			return fmt.Errorf("gc: invalid retained young handle %d", h)
+		}
+		listed[h] = true
+	}
 	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space == spaceNursery {
-			return fmt.Errorf("gc: handle %d remained in nursery after successful evacuation", h)
+		e := c.handles[h]
+		if !e.young() {
+			continue
+		}
+		if !listed[h] {
+			return fmt.Errorf("gc: young handle %d missing from dense set", h)
+		}
+		if e.space == spaceNursery && !c.inActiveSurvivor(e) {
+			return fmt.Errorf("gc: handle %d remained outside active survivor space", h)
 		}
 	}
-	if c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
-		return fmt.Errorf("gc: evacuated nursery retained bump=%d handles=%d", c.nurseryBump, len(c.nurseryHandles))
+	if c.nurseryBump != 0 {
+		return fmt.Errorf("gc: evacuated Eden retained bump=%d", c.nurseryBump)
 	}
 	return nil
 }

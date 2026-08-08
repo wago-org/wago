@@ -15,7 +15,7 @@ func TestCardDrivenMinorScansDisjointArrayCards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewCollector(Config{NurseryBytes: 2 << 20, ThroughputHeapBytes: 8 << 20, VerifyAfterCollect: true}, []TypeDesc{leaf, refs})
+	c, err := NewCollector(Config{NurseryBytes: 2 << 20, ThroughputHeapBytes: 8 << 20, VerifyAfterCollect: true, DisableMovingNursery: true}, []TypeDesc{leaf, refs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestCardDrivenScanIsAllocationFreeAfterWarmup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewCollector(Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 8 << 20}, []TypeDesc{leaf, refs})
+	c, err := NewCollector(Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 8 << 20, DisableMovingNursery: true}, []TypeDesc{leaf, refs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +155,12 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(objectCard{}); got != 16 {
 		t.Fatalf("objectCard size=%d, want 16", got)
 	}
-	if got := unsafe.Sizeof(Config{}); got != 64 {
-		t.Fatalf("Config size=%d, want 64", got)
+	if got := unsafe.Sizeof(Config{}); got != 72 {
+		t.Fatalf("Config size=%d, want 72", got)
 	}
-	if got := unsafe.Sizeof(Collector{}); got != 1064 {
-		t.Fatalf("Collector size=%d, want 1064", got)
+	wantCollector := uintptr(1104)
+	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
+		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}
 }
 

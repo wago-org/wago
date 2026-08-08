@@ -7,6 +7,7 @@ const (
 	defaultThroughputPageBytes  = 64 << 10
 	defaultThroughputClassLimit = 32 << 10
 	defaultThroughputCardBytes  = 128
+	defaultTenuringThreshold    = 2
 )
 
 // ValidateConfig rejects unsupported collector-profile combinations without
@@ -32,6 +33,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 		return cfg, fmt.Errorf("gc: unsupported profile %d", cfg.Profile)
 	}
 	if cfg.Profile == ProfileTiny {
+		if cfg.SurvivorBytes != 0 || cfg.MinorPauseTargetMicros != 0 {
+			return cfg, fmt.Errorf("gc: survivor policy requires the throughput profile")
+		}
 		if cfg.DisableCollection {
 			return cfg, fmt.Errorf("gc: collection-disabled mode requires the throughput profile")
 		}
@@ -39,6 +43,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 			return cfg, fmt.Errorf("gc: profile tiny requires fixed-block allocator and incremental mark/sweep runtime")
 		}
 		return cfg, nil
+	}
+	if cfg.DisableMovingNursery && (cfg.SurvivorBytes != 0 || cfg.MinorPauseTargetMicros != 0) {
+		return cfg, fmt.Errorf("gc: disabled moving nursery cannot configure survivor policy")
 	}
 	if cfg.Allocator != AllocatorPagedSizeClass || cfg.Runtime != RuntimeGenerational {
 		return cfg, fmt.Errorf("gc: profile throughput requires paged size-class allocator and generational runtime")
@@ -51,6 +58,23 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 	if cfg.ThroughputClassLimit == 0 {
 		cfg.ThroughputClassLimit = defaultThroughputClassLimit
+	}
+	if cfg.StressNurseryBytes != 0 {
+		cfg.NurseryBytes = cfg.StressNurseryBytes
+	}
+	if cfg.NurseryBytes == 0 {
+		cfg.NurseryBytes = defaultNursery
+	}
+	if !cfg.DisableMovingNursery && cfg.SurvivorBytes == 0 {
+		cfg.SurvivorBytes = align(cfg.NurseryBytes/2, 16)
+	}
+	if cfg.SurvivorBytes > ^uint32(0)-15 {
+		return cfg, fmt.Errorf("gc: survivor space exceeds addressable backing")
+	}
+	cfg.SurvivorBytes = align(cfg.SurvivorBytes, 16)
+	survivorBase := align(cfg.NurseryBytes, 16)
+	if survivorBase < cfg.NurseryBytes || cfg.SurvivorBytes > (^uint32(0)-survivorBase)/2 {
+		return cfg, fmt.Errorf("gc: nursery and survivor spaces exceed addressable backing")
 	}
 	return cfg, nil
 }

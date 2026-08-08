@@ -223,15 +223,15 @@ missing official opcode families:
 3. preserve the completed heterogeneous shared-table attachment, mutation, growth,
    rollback, codec, close-order, moving-collection, and foreign-Runtime rejection proofs;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
-   multi-table proofs plus `WGDN` v3 whole-domain capture (strict v1/v2 load
-   compatibility): exhaustive ordered members, internal function/global/table/
+   multi-table proofs plus `WGDN` v4 whole-domain capture (strict v1/v2/v3 load
+   compatibility and persisted survivor policy): exhaustive ordered members, internal function/global/table/
    memory32/memory64/exception-tag aliases, immutable tag directories, one shared
    stable-ID graph, exact GC config, reconstructible live passive funcref/i31/null and
    immutable-global GC payloads, strict malformed-input validation, and atomic
    all-member publication;
 5. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
    conformance mandatory in CI; and
-6. preserve native collector ABI v3, AMD64 checked final-scalar/object-card access,
+6. preserve native collector ABI v5, AMD64 checked final-scalar/object-card access,
    and transactional batched final-struct allocation, while extending direct paths
    only where metadata lifetime, collection epochs, roots, and barriers remain exact.
 
@@ -264,8 +264,8 @@ path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-i
 watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context is now
 112 bytes: the original 72-byte pointer prefix, 32 bytes of domain/tail metadata,
 and an eight-byte native GC-view pointer used during shared-memory context switches.
-Native collector ABI v3 retains the same basedata slot and preserves the complete
-128-byte v2 prefix. The shared collector view grows to 160 bytes by appending pointers
+Native collector ABI v5 retains the same basedata slot and 160-byte view. Its byte-124
+word separates the Eden allocation limit from the complete young backing while preserving pointers
 to a fixed 32-handle allocation batch, collection epoch, nursery bump, and semantic
 allocation counter; basedata remains 288 bytes and descriptor layouts do not grow.
 
@@ -276,8 +276,8 @@ structural types into the target, and reconstructs it transactionally under boun
 but target identity is new. Non-null opaque references reject; direct foreign Runtime
 calls and tails remain fail-closed.
 
-`WGDN` v3 adds typed passive-element root vectors and same-domain memory64 aliases while
-strictly loading v1/v2. Live passive element state is admitted for available funcrefs,
+`WGDN` v4 retains typed passive-element root vectors and same-domain memory64 aliases,
+adds survivor-policy configuration, and strictly loads v1/v2/v3. Live passive element state is admitted for available funcrefs,
 immediate i31 values, null references, and exact GC/i31 values sourced from immutable
 internal GC globals. Stable object IDs preserve sharing between a global and its passive
 payload, and restore rewrites the off-heap segment entries only after graph reconstruction.

@@ -330,6 +330,8 @@ func addNurseryTelemetry(dst *NurseryTelemetry, src NurseryTelemetry) {
 	for i := range dst.AgeObjects {
 		dst.AgeObjects[i] += src.AgeObjects[i]
 		dst.AgeBytes[i] += src.AgeBytes[i]
+		dst.PointerFreeAgeObjects[i] += src.PointerFreeAgeObjects[i]
+		dst.PointerFreeAgeBytes[i] += src.PointerFreeAgeBytes[i]
 	}
 }
 
@@ -460,23 +462,36 @@ func (t *Telemetry) noteNurseryOccupancy(objects, bytes uint64) {
 	t.active.nursery.AllocatedBytes += bytes
 }
 
-func (t *Telemetry) noteSurvivor(size uint32) {
+func (t *Telemetry) noteSurvivor(size uint32, age uint8, pointerFree, copied bool) {
 	if t == nil || !t.active.active || !t.active.suspendStart.IsZero() {
 		return
 	}
+	bucket := int(age)
+	if bucket >= len(t.active.nursery.AgeObjects) {
+		bucket = len(t.active.nursery.AgeObjects) - 1
+	}
 	t.active.nursery.SurvivedObjects++
 	t.active.nursery.SurvivedBytes += uint64(size)
-	t.active.nursery.AgeObjects[1]++
-	t.active.nursery.AgeBytes[1] += uint64(size)
+	t.active.nursery.AgeObjects[bucket]++
+	t.active.nursery.AgeBytes[bucket] += uint64(size)
+	if pointerFree {
+		t.active.nursery.PointerFreeAgeObjects[bucket]++
+		t.active.nursery.PointerFreeAgeBytes[bucket] += uint64(size)
+	}
+	if copied {
+		t.active.nursery.CopiedBytes += uint64(size)
+	}
 }
 
-func (t *Telemetry) notePromotion(size uint32) {
+func (t *Telemetry) notePromotion(size uint32, copied bool) {
 	if t == nil || !t.active.active || !t.active.suspendStart.IsZero() {
 		return
 	}
 	t.active.nursery.PromotedObjects++
 	t.active.nursery.PromotedBytes += uint64(size)
-	t.active.nursery.CopiedBytes += uint64(size)
+	if copied {
+		t.active.nursery.CopiedBytes += uint64(size)
+	}
 }
 
 func (t *Telemetry) noteSweep(size uint32) {
