@@ -282,3 +282,40 @@ func BenchmarkTypeMetadataDecode(b *testing.B) {
 		})
 	}
 }
+
+func appendTypeRepSection(module []byte, id byte, payload []byte) []byte {
+	module = append(module, id)
+	module = appendTypeRepU32(module, uint32(len(payload)))
+	return append(module, payload...)
+}
+
+func syntheticFunctionMetadataModuleBytes(functions int) []byte {
+	module := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}
+	module = appendTypeRepSection(module, secType, []byte{0x01, 0x60, 0x00, 0x00})
+	functionPayload := appendTypeRepU32(nil, uint32(functions))
+	for i := 0; i < functions; i++ {
+		functionPayload = append(functionPayload, 0x00)
+	}
+	module = appendTypeRepSection(module, secFunction, functionPayload)
+	codePayload := appendTypeRepU32(nil, uint32(functions))
+	for i := 0; i < functions; i++ {
+		codePayload = append(codePayload, 0x02, 0x00, 0x0b)
+	}
+	return appendTypeRepSection(module, secCode, codePayload)
+}
+
+func BenchmarkFunctionMetadataDecode(b *testing.B) {
+	for _, functions := range []int{10, 100, 1000, 10000} {
+		data := syntheticFunctionMetadataModuleBytes(functions)
+		b.Run(fmt.Sprintf("functions=%d", functions), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				m, err := DecodeModule(data)
+				if err != nil || len(m.Code) != functions {
+					b.Fatalf("decode: functions=%d err=%v", len(m.Code), err)
+				}
+				typeRepModuleSink = m
+			}
+		})
+	}
+}
