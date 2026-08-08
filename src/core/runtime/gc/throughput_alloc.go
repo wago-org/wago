@@ -254,11 +254,15 @@ func (h *throughputHeap) free(e handleEntry) error {
 	return nil
 }
 
+// Keep the mapper out of line: duplicating it in allocator callers grows hot
+// code and regresses promotion despite faster isolated lookups.
+//
+//go:noinline
 func (h *throughputHeap) classFor(size uint32) int {
 	if size <= 128 {
 		class := 0
 		switch {
-		case size <= throughputClassSizes[0]:
+		case size <= 32:
 		case size <= 64:
 			class = int((size-1)>>4) - 1
 		case size <= 96:
@@ -271,27 +275,23 @@ func (h *throughputHeap) classFor(size uint32) int {
 		}
 		return -1
 	}
-	if size > throughputClassSizes[len(throughputClassSizes)-1] {
+	if size > 32768 {
 		return -1
 	}
 
-	var class int
-	switch {
-	case size <= 4096:
+	exponent := bits.Len32(size - 1)
+	class := exponent + 2
+	if size <= 4096 {
 		// Classes through 4 KiB alternate powers of two and 1.5x.
-		exponent := bits.Len32(size - 1)
-		upper := uint32(1) << exponent
 		class = 2 * (exponent - 5)
-		if size <= upper-(upper>>2) {
+		if size <= uint32(3)<<(exponent-2) {
 			class--
 		}
-	default:
-		class = bits.Len32(size-1) + 2
 	}
-	if throughputClassSizes[class] > h.classLimit {
-		return -1
+	if throughputClassSizes[class] <= h.classLimit {
+		return class
 	}
-	return class
+	return -1
 }
 
 func supportedThroughputClassLimit(limit uint32) bool {

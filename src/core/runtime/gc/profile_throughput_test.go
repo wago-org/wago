@@ -216,7 +216,7 @@ func TestThroughputClassForMatchesLinearReference(t *testing.T) {
 		}
 	}
 
-	boundarySizes := []uint32{0, 1, 15, 16, 17}
+	boundarySizes := []uint32{0, 1, 15, 16, 17, ^uint32(0) - 15, ^uint32(0)}
 	for _, classSize := range throughputClassSizes {
 		boundarySizes = append(boundarySizes, classSize-1, classSize, classSize+1)
 	}
@@ -260,6 +260,19 @@ func BenchmarkThroughputClassFor(b *testing.B) {
 			benchmarkThroughputClass = got
 		})
 	}
+	b.Run("mixed", func(b *testing.B) {
+		h := throughputHeap{classLimit: 32768}
+		index, got := 0, 0
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			got += benchmarkThroughputClassFor(&h, throughputClassSizes[index])
+			index++
+			if index == len(throughputClassSizes) {
+				index = 0
+			}
+		}
+		benchmarkThroughputClass = got + index
+	})
 }
 
 var benchmarkThroughputLargeSpan int
