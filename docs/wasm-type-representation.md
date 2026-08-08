@@ -95,3 +95,12 @@ for memories, and 32.1% for mixed imports. Function and tag validation changed
 by +4.2% and +2.9%, respectively; their absolute changes were 5.1 and 3.7 us
 per 10,000 imports. The complete focused matrix had a 9.5% time geomean
 improvement and 19.1% B/op geomean reduction.
+
+`TypeMetadata` uses two 64-bit `OptionalTypeIdx` values. Each stores the full
+`uint32` index plus recursion and presence bits; zero is not treated as absent.
+The enclosing structure remains 16 bytes but is pointer-free. In a type-section
+fixture with one descriptor annotation per type, this removes both the decode
+temporary's escape and the recursive-index rewrite allocation: at 10,000 types,
+time changed from 1.256 ms to 996.3 us (-20.7%), bytes from 1.914 MiB to
+1.761 MiB (-8.0%), and allocations from 30,004 to 10,004 (-66.7%). Across all
+four sizes, time improved 20.6%, B/op 7.4%, and allocs/op 64.6% by geomean.

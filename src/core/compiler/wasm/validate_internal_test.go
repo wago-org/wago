@@ -518,8 +518,8 @@ func TestValidatorCoverageModuleIndexesAndImports(t *testing.T) {
 func TestValidatorCoverageModuleLevelBranches(t *testing.T) {
 	t.Run("top-level validation failures", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Supers: []TypeIdx{{Index: 9}}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Describes: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
-		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Descriptor: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Describes: SomeTypeIdx(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompTypeKind(99)}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct, Fields: []FieldType{NewFieldType(StoragePacked(PackType(0xff)), Const)}}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{newValType(ValTypeKind(99), 0)})}}, ErrUnknownType)
@@ -1167,7 +1167,7 @@ func TestValidatorCoverageGCAndSIMDNegativeBranches(t *testing.T) {
 			{Kind: InstrRefGetDesc, Index: 0},
 			{Kind: InstrArrayLen},
 		} {
-			m := &Module{Types: []RecType{structType(nil, TypeMetadata{Descriptor: ptr(TypeIdx{Index: 1})}), structType(nil, TypeMetadata{})}}
+			m := &Module{Types: []RecType{structType(nil, TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 1})}), structType(nil, TypeMetadata{})}}
 			expectStepErr(t, coverageFuncValidator(m, nil), in, ErrTypeMismatch)
 		}
 	})
@@ -1223,8 +1223,8 @@ func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 				structType([]FieldType{field(I32, Var), field(I64, Const)}, TypeMetadata{}),
 				arrayType(field(I32, Var)),
 				arrayType(field(I64, Const)),
-				structType(nil, TypeMetadata{Descriptor: ptr(TypeIdx{Index: 4})}),
-				structType(nil, TypeMetadata{Describes: ptr(TypeIdx{Index: 3})}),
+				structType(nil, TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 4})}),
+				structType(nil, TypeMetadata{Describes: SomeTypeIdx(TypeIdx{Index: 3})}),
 			},
 			DataCount: ptr(uint32(1)),
 			Data:      []Data{{Mode: DataMode{Kind: DataPassive}}},

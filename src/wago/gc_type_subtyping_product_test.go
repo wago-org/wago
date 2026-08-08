@@ -907,7 +907,7 @@ func TestStagedGCTypeSubtypingStructLinkingClusterInventory(t *testing.T) {
 		for gi := range m.Types {
 			for si := range m.Types[gi].SubTypes {
 				st := m.Types[gi].SubTypes[si]
-				if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+				if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 					t.Fatalf("%s type group/member %d/%d carries descriptor metadata", pin.Filename, gi, si)
 				}
 			}
@@ -997,7 +997,7 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterInventory(t *testing
 			}
 			for memberIndex := range group.SubTypes {
 				st := group.SubTypes[memberIndex]
-				if st.Final || !st.HasPrefix || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+				if st.Final || !st.HasPrefix || st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 					t.Fatalf("%s group/member %d/%d = %+v, want open metadata-free subtype", pin.Filename, groupIndex, memberIndex, st)
 				}
 			}
@@ -1128,11 +1128,11 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterInventory(t *testing.T
 				t.Fatalf("%s group %d members = %d, want 2", pin.Filename, groupIndex, len(group.SubTypes))
 			}
 			f := group.SubTypes[0]
-			if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+			if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 				t.Fatalf("%s group %d function = %+v, want open metadata-free () -> ()", pin.Filename, groupIndex, f)
 			}
 			s := group.SubTypes[1]
-			if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || s.Comp.Kind != wasm.CompStruct {
+			if !s.Final || s.HasPrefix || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || s.Comp.Kind != wasm.CompStruct {
 				t.Fatalf("%s group %d struct = %+v, want final metadata-free struct", pin.Filename, groupIndex, s)
 			}
 			if groupIndex == wantGroups-1 {
@@ -1245,11 +1245,11 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterInventory(t *testin
 				t.Fatalf("%s group %d members = %d, want 2", pin.Filename, groupIndex, len(group.SubTypes))
 			}
 			f := group.SubTypes[0]
-			if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+			if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 				t.Fatalf("%s group %d function = %+v, want open metadata-free () -> ()", pin.Filename, groupIndex, f)
 			}
 			s := group.SubTypes[1]
-			if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
+			if !s.Final || s.HasPrefix || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
 				t.Fatalf("%s group %d struct = %+v, want final metadata-free struct without supers", pin.Filename, groupIndex, s)
 			}
 			if groupIndex < 2 {
@@ -1348,11 +1348,11 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterInventory(t *testi
 				t.Fatalf("%s group %d members = %d, want 2", pin.Filename, groupIndex, len(group.SubTypes))
 			}
 			f := group.SubTypes[0]
-			if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+			if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 				t.Fatalf("%s group %d function = %+v, want open metadata-free () -> ()", pin.Filename, groupIndex, f)
 			}
 			s := group.SubTypes[1]
-			if s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || s.Comp.Kind != wasm.CompStruct {
+			if s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || s.Comp.Kind != wasm.CompStruct {
 				t.Fatalf("%s group %d struct = %+v, want metadata-free struct", pin.Filename, groupIndex, s)
 			}
 		}

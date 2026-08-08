@@ -117,6 +117,17 @@ func TestPackedExternTypeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOptionalTypeIdxRoundTrip(t *testing.T) {
+	if got, present := (OptionalTypeIdx{}).Get(); present || got != (TypeIdx{}) {
+		t.Fatalf("zero optional = %#v/%v", got, present)
+	}
+	want := TypeIdx{Index: math.MaxUint32, Rec: true}
+	got, present := SomeTypeIdx(want).Get()
+	if !present || got != want {
+		t.Fatalf("optional round trip = %#v/%v, want %#v/true", got, present, want)
+	}
+}
+
 func TestPackedReferenceBareFlagIsNotSemanticIdentity(t *testing.T) {
 	bare := FuncRef
 	expanded := RefVal(Ref(true, AbsHeap(HeapFunc), false))

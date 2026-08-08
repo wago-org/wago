@@ -302,15 +302,15 @@ func decodeTypeMetadata(r *reader) (TypeMetadata, error) {
 			return tm, err
 		}
 		if b == 0x4c {
-			if tm.Describes != nil || tm.Descriptor != nil {
+			if tm.Describes.Present() || tm.Descriptor.Present() {
 				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 			}
-			tm.Describes = &idx
+			tm.Describes = SomeTypeIdx(idx)
 		} else {
-			if tm.Descriptor != nil {
+			if tm.Descriptor.Present() {
 				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 			}
-			tm.Descriptor = &idx
+			tm.Descriptor = SomeTypeIdx(idx)
 		}
 	}
 }

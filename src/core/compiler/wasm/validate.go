@@ -193,10 +193,10 @@ func (v *moduleValidator) validateModule() error {
 					return v.err(ErrUnknownType, "supertype")
 				}
 			}
-			if st.Metadata.Describes != nil && !v.validTypeIdxInRecGroup(*st.Metadata.Describes, gi) {
+			if describes, present := st.Metadata.Describes.Get(); present && !v.validTypeIdxInRecGroup(describes, gi) {
 				return v.err(ErrUnknownType, "describes")
 			}
-			if st.Metadata.Descriptor != nil && !v.validTypeIdxInRecGroup(*st.Metadata.Descriptor, gi) {
+			if descriptor, present := st.Metadata.Descriptor.Get(); present && !v.validTypeIdxInRecGroup(descriptor, gi) {
 				return v.err(ErrUnknownType, "descriptor")
 			}
 			if err := v.validateCompTypeInRecGroup(st.Comp, gi); err != nil {

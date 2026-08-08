@@ -94,7 +94,7 @@ func stagedStructuralTypeMetadataShape(m *wasm.Module) error {
 	for gi := range m.Types {
 		for si := range m.Types[gi].SubTypes {
 			st := &m.Types[gi].SubTypes[si]
-			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return fmt.Errorf("collector-free structural products reject subtype and descriptor metadata")
 			}
 			switch st.Comp.Kind {

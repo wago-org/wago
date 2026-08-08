@@ -368,9 +368,32 @@ type CompType struct {
 	Results []ValType
 }
 
+// OptionalTypeIdx stores a full TypeIdx and explicit presence without a Go
+// pointer. Bits 0..31 hold Index, bit 32 holds Rec, and bit 33 holds presence.
+type OptionalTypeIdx struct{ bits uint64 }
+
+const (
+	optionalTypeIdxRec     = uint64(1) << 32
+	optionalTypeIdxPresent = uint64(1) << 33
+)
+
+func SomeTypeIdx(idx TypeIdx) OptionalTypeIdx {
+	b := optionalTypeIdxPresent | uint64(idx.Index)
+	if idx.Rec {
+		b |= optionalTypeIdxRec
+	}
+	return OptionalTypeIdx{bits: b}
+}
+
+func (o OptionalTypeIdx) Get() (TypeIdx, bool) {
+	return TypeIdx{Index: uint32(o.bits), Rec: o.bits&optionalTypeIdxRec != 0}, o.bits&optionalTypeIdxPresent != 0
+}
+
+func (o OptionalTypeIdx) Present() bool { return o.bits&optionalTypeIdxPresent != 0 }
+
 type TypeMetadata struct {
-	Describes  *TypeIdx
-	Descriptor *TypeIdx
+	Describes  OptionalTypeIdx
+	Descriptor OptionalTypeIdx
 }
 
 type SubType struct {

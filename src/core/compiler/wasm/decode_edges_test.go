@@ -222,10 +222,10 @@ func TestDecodeTypeForms(t *testing.T) {
 		if len(m.Types) != 1 || len(m.Types[0].SubTypes) != 2 {
 			t.Fatalf("rectype=%#v", m.Types)
 		}
-		if !m.Types[0].SubTypes[0].Final || m.Types[0].SubTypes[0].Metadata.Descriptor == nil {
+		if !m.Types[0].SubTypes[0].Final || !m.Types[0].SubTypes[0].Metadata.Descriptor.Present() {
 			t.Fatalf("final descriptor subtype not decoded: %#v", m.Types[0].SubTypes[0])
 		}
-		if m.Types[0].SubTypes[1].Final || len(m.Types[0].SubTypes[1].Supers) != 1 || m.Types[0].SubTypes[1].Metadata.Describes == nil {
+		if m.Types[0].SubTypes[1].Final || len(m.Types[0].SubTypes[1].Supers) != 1 || !m.Types[0].SubTypes[1].Metadata.Describes.Present() {
 			t.Fatalf("open describes subtype not decoded: %#v", m.Types[0].SubTypes[1])
 		}
 	})

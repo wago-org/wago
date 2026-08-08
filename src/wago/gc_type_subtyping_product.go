@@ -254,7 +254,7 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 	for gi := range m.Types {
 		for si := range m.Types[gi].SubTypes {
 			st := &m.Types[gi].SubTypes[si]
-			if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return 0, fmt.Errorf("type-subtyping products reject descriptor metadata")
 			}
 			hasSubtypeMetadata = hasSubtypeMetadata || st.HasPrefix || len(st.Supers) != 0
@@ -299,7 +299,7 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 			return 0, fmt.Errorf("link product type group %d must contain one member", i)
 		}
 		st := &m.Types[i].SubTypes[0]
-		if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil || st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 1 {
+		if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() || st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 1 {
 			return 0, fmt.Errorf("link product type %d must be an open zero-parameter single-reference-result function subtype", i)
 		}
 		if i == 0 {
@@ -518,7 +518,7 @@ func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 			return 0, fmt.Errorf("finality link type group %d must contain one member", i)
 		}
 		st := &m.Types[i].SubTypes[0]
-		if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil || len(st.Supers) != 0 || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 0 {
+		if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() || len(st.Supers) != 0 || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 0 {
 			return 0, fmt.Errorf("finality link type %d must be a metadata-free () -> () function without supers", i)
 		}
 		if i == 0 && (st.Final || !st.HasPrefix) {
@@ -572,7 +572,7 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 	for gi := range m.Types {
 		for si := range m.Types[gi].SubTypes {
 			st := &m.Types[gi].SubTypes[si]
-			if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return 0, fmt.Errorf("struct link type group/member %d/%d carries descriptor metadata", gi, si)
 			}
 		}
@@ -637,7 +637,7 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 		}
 		for memberIndex := range group.SubTypes {
 			st := &group.SubTypes[memberIndex]
-			if st.Final || !st.HasPrefix || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.Final || !st.HasPrefix || st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return 0, fmt.Errorf("struct projection link group/member %d/%d must be an open metadata-free subtype", groupIndex, memberIndex)
 			}
 		}
@@ -727,11 +727,11 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 			return 0, fmt.Errorf("struct mismatch link group %d must contain two members", groupIndex)
 		}
 		f := &group.SubTypes[0]
-		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+		if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 			return 0, fmt.Errorf("struct mismatch link group %d function must be an open metadata-free () -> () subtype", groupIndex)
 		}
 		s := &group.SubTypes[1]
-		if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
+		if !s.Final || s.HasPrefix || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
 			return 0, fmt.Errorf("struct mismatch link group %d companion must be a final metadata-free struct without supers", groupIndex)
 		}
 		if groupIndex == wantGroups-1 {
@@ -791,11 +791,11 @@ func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTy
 			return 0, fmt.Errorf("independent struct link group %d must contain two members", groupIndex)
 		}
 		f := &group.SubTypes[0]
-		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+		if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 			return 0, fmt.Errorf("independent struct link group %d function must be an open metadata-free () -> () subtype", groupIndex)
 		}
 		s := &group.SubTypes[1]
-		if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
+		if !s.Final || s.HasPrefix || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
 			return 0, fmt.Errorf("independent struct link group %d companion must be a final metadata-free struct without supers", groupIndex)
 		}
 		if groupIndex < 2 {
@@ -851,11 +851,11 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 			return 0, fmt.Errorf("extended projection link group %d must contain two members", groupIndex)
 		}
 		f := &group.SubTypes[0]
-		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+		if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 			return 0, fmt.Errorf("extended projection link group %d function must be an open metadata-free () -> () subtype", groupIndex)
 		}
 		s := &group.SubTypes[1]
-		if s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || s.Comp.Kind != wasm.CompStruct {
+		if s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || s.Comp.Kind != wasm.CompStruct {
 			return 0, fmt.Errorf("extended projection link group %d companion must be a metadata-free struct", groupIndex)
 		}
 	}

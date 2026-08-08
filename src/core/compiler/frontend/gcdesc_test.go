@@ -320,7 +320,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 		t.Fatalf("DecodeModule: %v", err)
 	}
 	group := m.Types[1].SubTypes
-	if idx := *group[0].Metadata.Descriptor; !idx.Rec || idx.Index != 2 {
+	if idx, ok := group[0].Metadata.Descriptor.Get(); !ok || !idx.Rec || idx.Index != 2 {
 		t.Fatalf("descriptor index = %#v, want rec 2", idx)
 	}
 	if idx := group[1].Supers[0]; !idx.Rec || idx.Index != 0 {

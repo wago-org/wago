@@ -534,7 +534,7 @@ func (p supportPass) types() error {
 			ctx := fmt.Sprintf("type %d", typeIndex)
 			flat++
 			hasSubtypeMetadata := st.HasPrefix || len(st.Supers) != 0
-			hasDescriptorMetadata := st.Metadata.Describes != nil || st.Metadata.Descriptor != nil
+			hasDescriptorMetadata := st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present()
 			if hasDescriptorMetadata || (hasSubtypeMetadata && !p.feat.GCTypeSubtypingProducts && !(p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct)) {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}

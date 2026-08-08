@@ -471,7 +471,7 @@ func stagedGCStructTypeGraph(m *wasm.Module) string {
 			default:
 				member = fmt.Sprintf("composite(%d)", sub.Comp.Kind)
 			}
-			if len(sub.Supers) != 0 || sub.HasPrefix || sub.Metadata.Describes != nil || sub.Metadata.Descriptor != nil {
+			if len(sub.Supers) != 0 || sub.HasPrefix || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 				member = fmt.Sprintf("sub(final=%t,supers=%v,%s)", sub.Final, sub.Supers, member)
 			}
 			members = append(members, member)

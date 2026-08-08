@@ -64,7 +64,7 @@ func TestCompilerTypeRepresentationLayout(t *testing.T) {
 		}
 		t.Logf("%s: size=%d pointer-scanned=%v", tc.name, tc.got, typeContainsGoPointer(reflect.TypeOf(tc.value)))
 	}
-	for _, value := range []any{TypeIdx{}, HeapType{}, RefType{}, ValType{}, StorageType{}, FieldType{}, Limits{}, TableType{}, MemType{}, GlobalType{}, ExternType{}} {
+	for _, value := range []any{TypeIdx{}, HeapType{}, RefType{}, ValType{}, StorageType{}, FieldType{}, OptionalTypeIdx{}, TypeMetadata{}, Limits{}, TableType{}, MemType{}, GlobalType{}, ExternType{}} {
 		if typ := reflect.TypeOf(value); typeContainsGoPointer(typ) {
 			t.Errorf("%s unexpectedly contains a Go pointer", typ)
 		}
@@ -254,4 +254,31 @@ func BenchmarkGCTypeStructuralKey(b *testing.B) {
 			typeRepKeySink = key
 		}
 	})
+}
+
+func syntheticTypeMetadataModuleBytes(types int) []byte {
+	payload := appendTypeRepU32(nil, uint32(types))
+	for i := 0; i < types; i++ {
+		// descriptor 0 followed by an empty struct type.
+		payload = append(payload, 0x4d, 0x00, 0x5f, 0x00)
+	}
+	module := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, secType}
+	module = appendTypeRepU32(module, uint32(len(payload)))
+	return append(module, payload...)
+}
+
+func BenchmarkTypeMetadataDecode(b *testing.B) {
+	for _, types := range []int{10, 100, 1000, 10000} {
+		data := syntheticTypeMetadataModuleBytes(types)
+		b.Run(fmt.Sprintf("types=%d", types), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				m, err := DecodeModule(data)
+				if err != nil || len(m.Types) != types {
+					b.Fatalf("decode: types=%d err=%v", len(m.Types), err)
+				}
+				typeRepModuleSink = m
+			}
+		})
+	}
 }
