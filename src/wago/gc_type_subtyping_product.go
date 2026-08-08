@@ -348,7 +348,7 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 		}
 		for i := range wantNames {
 			imp := m.Imports[i]
-			if imp.Module != "M" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+			if imp.Module != "M" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantTypes[i] {
 				return false
 			}
 		}
@@ -400,7 +400,7 @@ func stagedGCTypeSubtypingExtendedRecursiveLinkShape(m *wasm.Module) (stagedGCTy
 	}
 	for i := range wantNames {
 		imp := m.Imports[i]
-		if imp.Module != "M9" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+		if imp.Module != "M9" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantTypes[i] {
 			return 0, fmt.Errorf("extended recursive link import %d is outside the exact product", i)
 		}
 	}
@@ -438,13 +438,13 @@ func stagedGCTypeSubtypingMismatchLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 		return 0, fmt.Errorf("mismatch link consumer requires one import")
 	}
 	imp := m.Imports[0]
-	if imp.Name != "f" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec {
+	if imp.Name != "f" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec {
 		return 0, fmt.Errorf("mismatch link consumer import is outside the exact product")
 	}
-	if imp.Module == "M10" && len(m.Types) == 1 && imp.Type.Type.Index == 0 {
+	if imp.Module == "M10" && len(m.Types) == 1 && imp.Type.FuncType().Index == 0 {
 		return stagedGCTypeSubtypingCrossGroupMismatchLinkConsumer, nil
 	}
-	if imp.Module == "M11" && len(m.Types) == 2 && imp.Type.Type.Index == 2 {
+	if imp.Module == "M11" && len(m.Types) == 2 && imp.Type.FuncType().Index == 2 {
 		return stagedGCTypeSubtypingTransitiveMismatchLinkConsumer, nil
 	}
 	return 0, fmt.Errorf("mismatch link consumer namespace/type is outside the exact product")
@@ -502,7 +502,7 @@ func stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m *wasm.Module) (stagedGCT
 	wantTypes := []uint32{0, 2, 1, 3}
 	for i := range wantNames {
 		imp := m.Imports[i]
-		if imp.Module != "M8" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+		if imp.Module != "M8" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantTypes[i] {
 			return 0, fmt.Errorf("duplicate recursive link consumer import %d is outside the exact M8 product", i)
 		}
 	}
@@ -556,10 +556,10 @@ func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 		return 0, fmt.Errorf("finality link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M2" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec {
+	if imp.Module != "M2" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec {
 		return 0, fmt.Errorf("finality link consumer import is outside the exact M2 function product")
 	}
-	if imp.Name == "f1" && imp.Type.Type.Index == 1 || imp.Name == "f2" && imp.Type.Type.Index == 0 {
+	if imp.Name == "f1" && imp.Type.FuncType().Index == 1 || imp.Name == "f2" && imp.Type.FuncType().Index == 0 {
 		return stagedGCTypeSubtypingFinalityLinkConsumer, nil
 	}
 	return 0, fmt.Errorf("finality link consumer import direction is outside the exact inverse pair")
@@ -620,7 +620,7 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 		return 0, fmt.Errorf("struct link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M3" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+	if imp.Module != "M3" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 2 {
 		return 0, fmt.Errorf("struct link consumer import is outside the exact M3.g product")
 	}
 	return stagedGCTypeSubtypingStructLinkConsumer, nil
@@ -706,7 +706,7 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 		return 0, fmt.Errorf("struct projection link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M4" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 4 {
+	if imp.Module != "M4" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 4 {
 		return 0, fmt.Errorf("struct projection link consumer import is outside the exact M4.g product")
 	}
 	return stagedGCTypeSubtypingStructProjectionLinkConsumer, nil
@@ -775,7 +775,7 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 		return 0, fmt.Errorf("struct mismatch link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M5" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+	if imp.Module != "M5" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 2 {
 		return 0, fmt.Errorf("struct mismatch link consumer import is outside the exact M5.g product")
 	}
 	return stagedGCTypeSubtypingStructMismatchLinkConsumer, nil
@@ -835,7 +835,7 @@ func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTy
 		return 0, fmt.Errorf("independent struct link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M6" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 0 {
+	if imp.Module != "M6" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 0 {
 		return 0, fmt.Errorf("independent struct link consumer import is outside the exact M6.g product")
 	}
 	return stagedGCTypeSubtypingIndependentStructLinkConsumer, nil
@@ -917,7 +917,7 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 	}
 	for i, wantType := range []uint32{0, 4} {
 		imp := m.Imports[i]
-		if imp.Module != "M7" || imp.Name != "h" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantType {
+		if imp.Module != "M7" || imp.Name != "h" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantType {
 			return 0, fmt.Errorf("extended projection link consumer import %d is outside the exact M7.h type-%d product", i, wantType)
 		}
 	}
@@ -1007,7 +1007,7 @@ func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubt
 		}
 	}
 	t := m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 3 || t.Limits.Max == nil || *t.Limits.Max != 3 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 3 || !t.Limits.HasMax || t.Limits.Max != 3 || m.Tables[0].Init != nil {
 		return 0, fmt.Errorf("runtime call/cast table must be exact table 3 3 funcref")
 	}
 	e := &m.Elements[0]
@@ -1073,7 +1073,7 @@ func stagedGCTypeSubtypingRuntimeFinalityCallCastShape(m *wasm.Module) (stagedGC
 		}
 	}
 	t := m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 2 || t.Limits.Max == nil || *t.Limits.Max != 2 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 2 || !t.Limits.HasMax || t.Limits.Max != 2 || m.Tables[0].Init != nil {
 		return 0, fmt.Errorf("runtime finality call/cast table must be exact table 2 2 funcref")
 	}
 	e := &m.Elements[0]
@@ -1143,7 +1143,7 @@ func stagedGCTypeSubtypingRuntimeTypedTableCallShape(m *wasm.Module) (stagedGCTy
 	}
 	t := m.Tables[0].Type
 	wantTableType := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wantTableType) || t.Limits.Addr64 || t.Limits.Min != 2 || t.Limits.Max == nil || *t.Limits.Max != 2 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wantTableType) || t.Limits.Addr64 || t.Limits.Min != 2 || !t.Limits.HasMax || t.Limits.Max != 2 || m.Tables[0].Init != nil {
 		return 0, fmt.Errorf("runtime typed table must be exact table 2 2 (ref null type 1)")
 	}
 	for _, source := range []uint32{1, 2} {

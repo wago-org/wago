@@ -84,7 +84,7 @@ func TestExtendedConstValidationByteBackedAndAST(t *testing.T) {
 	}
 
 	ast := &Module{
-		Imports: []Import{{Module: "env", Name: "seed", Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I32}}}},
+		Imports: []Import{{Module: "env", Name: "seed", Type: NewGlobalExternType(GlobalType{Type: I32})}},
 		Globals: []Global{
 			{Type: GlobalType{Type: I64}, Init: Expr{Instrs: []Instruction{{Kind: InstrI64Const, I64: 20}, {Kind: InstrI64Const, I64: 2}, {Kind: InstrI64Mul}, {Kind: InstrI64Const, I64: 5}, {Kind: InstrI64Add}}}},
 			{Type: GlobalType{Type: I32}, Init: Expr{Instrs: []Instruction{{Kind: InstrGlobalGet, Index: 0}, {Kind: InstrI32Const, I32: 1}, {Kind: InstrI32Add}}}},

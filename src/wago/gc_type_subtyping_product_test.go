@@ -460,7 +460,7 @@ func TestStagedGCTypeSubtypingRuntimeCallCastInventory(t *testing.T) {
 		}
 	}
 	table := m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Min != 3 || table.Limits.Max == nil || *table.Limits.Max != 3 || table.Limits.Addr64 {
+	if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Min != 3 || !table.Limits.HasMax || table.Limits.Max != 3 || table.Limits.Addr64 {
 		t.Fatalf("table = %+v, want exact table 3 3 funcref", table)
 	}
 	elem := m.Elements[0]
@@ -524,7 +524,7 @@ func TestStagedGCTypeSubtypingRuntimeFinalityCallCastInventory(t *testing.T) {
 		}
 	}
 	table := m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Min != 2 || table.Limits.Max == nil || *table.Limits.Max != 2 || table.Limits.Addr64 {
+	if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Min != 2 || !table.Limits.HasMax || table.Limits.Max != 2 || table.Limits.Addr64 {
 		t.Fatalf("table = %+v, want exact table 2 2 funcref", table)
 	}
 	elem := m.Elements[0]
@@ -609,7 +609,7 @@ func TestStagedGCTypeSubtypingRuntimeTypedTableInventory(t *testing.T) {
 	}
 	table := m.Tables[0].Type
 	wantTableType := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
-	if !wasm.EqualValType(wasm.RefVal(table.Ref), wantTableType) || table.Limits.Addr64 || table.Limits.Min != 2 || table.Limits.Max == nil || *table.Limits.Max != 2 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(table.Ref), wantTableType) || table.Limits.Addr64 || table.Limits.Min != 2 || !table.Limits.HasMax || table.Limits.Max != 2 || m.Tables[0].Init != nil {
 		t.Fatalf("typed table = %+v, want exact table 2 2 (ref null type 1)", table)
 	}
 	for _, source := range []uint32{1, 2} {
@@ -740,7 +740,7 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterInventory(t *testing.T) {
 	}
 	for i, want := range wantImports {
 		imp := consumer.Imports[i]
-		if imp.Module != "M" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != want.typeIndex {
+		if imp.Module != "M" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != want.typeIndex {
 			t.Fatalf("consumer import %d = %+v, want M.%s type %d", i, imp, want.name, want.typeIndex)
 		}
 	}
@@ -755,7 +755,7 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterInventory(t *testing.T) {
 			t.Fatalf("%s state imports/code/exports = %d/%d/%d, want 1/0/0", pins[i+2].Filename, len(m.Imports), len(m.Code), len(m.Exports))
 		}
 		imp := m.Imports[0]
-		if imp.Module != "M" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != want.typeIndex {
+		if imp.Module != "M" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != want.typeIndex {
 			t.Fatalf("%s import = %+v, want M.%s type %d", pins[i+2].Filename, imp, want.name, want.typeIndex)
 		}
 	}
@@ -840,7 +840,7 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterInventory(t *testing.T) {
 			t.Fatalf("%s state imports/functions/code/exports = %d/%d/%d/%d, want 1/0/0/0", pins[i+1].Filename, len(consumer.Imports), len(consumer.FuncTypes), len(consumer.Code), len(consumer.Exports))
 		}
 		imp := consumer.Imports[0]
-		if imp.Module != "M2" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != want.typeIndex {
+		if imp.Module != "M2" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != want.typeIndex {
 			t.Fatalf("%s import = %+v, want M2.%s type %d", pins[i+1].Filename, imp, want.name, want.typeIndex)
 		}
 	}
@@ -935,7 +935,7 @@ func TestStagedGCTypeSubtypingStructLinkingClusterInventory(t *testing.T) {
 		t.Fatalf("consumer imports/functions/code/exports = %d/%d/%d/%d, want 1/0/0/0", len(consumer.Imports), len(consumer.FuncTypes), len(consumer.Code), len(consumer.Exports))
 	}
 	imp := consumer.Imports[0]
-	if imp.Module != "M3" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+	if imp.Module != "M3" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 2 {
 		t.Fatalf("consumer import = %+v, want M3.g flat type 2", imp)
 	}
 	providerTypes, err := typeDescriptorsFromWasm(provider)
@@ -1064,7 +1064,7 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterInventory(t *testing
 		t.Fatalf("consumer imports/functions/code/exports = %d/%d/%d/%d, want 1/0/0/0", len(consumer.Imports), len(consumer.FuncTypes), len(consumer.Code), len(consumer.Exports))
 	}
 	imp := consumer.Imports[0]
-	if imp.Module != "M4" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 4 {
+	if imp.Module != "M4" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 4 {
 		t.Fatalf("consumer import = %+v, want M4.g flat type 4", imp)
 	}
 	providerTypes, err := typeDescriptorsFromWasm(provider)
@@ -1185,7 +1185,7 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterInventory(t *testing.T
 		t.Fatalf("consumer imports/functions/code/exports = %d/%d/%d/%d, want 1/0/0/0", len(consumer.Imports), len(consumer.FuncTypes), len(consumer.Code), len(consumer.Exports))
 	}
 	imp := consumer.Imports[0]
-	if imp.Module != "M5" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+	if imp.Module != "M5" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 2 {
 		t.Fatalf("consumer import = %+v, want M5.g flat type 2", imp)
 	}
 	providerTypes, err := typeDescriptorsFromWasm(provider)
@@ -1288,7 +1288,7 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterInventory(t *testin
 		t.Fatalf("consumer imports/functions/code/exports = %d/%d/%d/%d, want 1/0/0/0", len(consumer.Imports), len(consumer.FuncTypes), len(consumer.Code), len(consumer.Exports))
 	}
 	imp := consumer.Imports[0]
-	if imp.Module != "M6" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 0 {
+	if imp.Module != "M6" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 0 {
 		t.Fatalf("consumer import = %+v, want M6.g flat type 0", imp)
 	}
 	providerTypes, err := typeDescriptorsFromWasm(provider)
@@ -1412,7 +1412,7 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterInventory(t *testi
 	}
 	for i, wantType := range []uint32{0, 4} {
 		imp := consumer.Imports[i]
-		if imp.Module != "M7" || imp.Name != "h" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantType {
+		if imp.Module != "M7" || imp.Name != "h" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantType {
 			t.Fatalf("consumer import %d = %+v, want M7.h flat type %d", i, imp, wantType)
 		}
 	}
@@ -1505,7 +1505,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterInventory(t *testi
 	}
 	for i, want := range wantImports {
 		imp := consumer.Imports[i]
-		if imp.Module != "M8" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != want.typeIndex {
+		if imp.Module != "M8" || imp.Name != want.name || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != want.typeIndex {
 			t.Fatalf("consumer import %d = %+v, want M8.%s type %d", i, imp, want.name, want.typeIndex)
 		}
 	}
@@ -1641,7 +1641,7 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 		t.Fatal(err)
 	}
 	max := uint64(4)
-	runtimeCallCast.Tables[0].Type.Limits.Max = &max
+	runtimeCallCast.Tables[0].Type.Limits.Max, runtimeCallCast.Tables[0].Type.Limits.HasMax = max, true
 	if product, err := stagedGCTypeSubtypingProductShape(runtimeCallCast); err == nil && product == stagedGCTypeSubtypingRuntimeCallCast {
 		t.Fatal("runtime call/cast product with widened table maximum unexpectedly retained exact admission")
 	}
@@ -1735,7 +1735,7 @@ func TestStagedGCTypeSubtypingProductRejectsWidening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	extendedConsumer.Imports[1].Type.Type.Index = 0
+	extendedConsumer.Imports[1].Type = wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})
 	if product, err := stagedGCTypeSubtypingProductShape(extendedConsumer); err == nil && product == stagedGCTypeSubtypingExtendedProjectionLinkConsumer {
 		t.Fatal("extended projection consumer with duplicate wide import unexpectedly retained exact admission")
 	}

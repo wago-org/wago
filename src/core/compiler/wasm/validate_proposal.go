@@ -157,7 +157,7 @@ func (v *moduleValidator) tagFuncType(idx uint32) (*CompType, bool) {
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternTag {
 			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.Tag.Type)
+				ft := v.funcTypeFromTypeIdx(im.Type.TagType().Type)
 				return ft, ft != nil
 			}
 			n++

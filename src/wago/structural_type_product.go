@@ -168,7 +168,7 @@ func stagedStructuralCallIndirectShape(m *wasm.Module) (stagedStructuralTypeProd
 		return 0, false
 	}
 	t := &m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 1 || t.Limits.Max == nil || *t.Limits.Max != 1 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 1 || !t.Limits.HasMax || t.Limits.Max != 1 || m.Tables[0].Init != nil {
 		return 0, false
 	}
 	e := &m.Elements[0]

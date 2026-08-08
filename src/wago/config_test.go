@@ -199,7 +199,7 @@ func TestEffectiveCompileBoundsModeZeroMemoryARM64Fallback(t *testing.T) {
 	if got := effectiveCompileBoundsMode(BoundsChecksSignalsBased, zeroLocal); got != want {
 		t.Fatalf("zero-minimum local memory mode = %v, want %v", got, want)
 	}
-	zeroImport := &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternMem, Mem: wasm.MemType{Limits: wasm.Limits{Min: 0}}}}}}
+	zeroImport := &wasm.Module{Imports: []wasm.Import{{Type: wasm.NewMemExternType(wasm.MemType{Limits: wasm.Limits{Min: 0}})}}}
 	if got := effectiveCompileBoundsMode(BoundsChecksSignalsBased, zeroImport); got != want {
 		t.Fatalf("zero-minimum imported memory mode = %v, want %v", got, want)
 	}

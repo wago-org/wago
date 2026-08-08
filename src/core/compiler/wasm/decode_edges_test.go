@@ -239,7 +239,7 @@ func TestDecodeTypeForms(t *testing.T) {
 	t.Run("memory64 and shared memory encodings", func(t *testing.T) {
 		r := newReader([]byte{0x07, 0x02, 0x04})
 		mt, err := decodeMemType(r)
-		if err != nil || !mt.Shared || !mt.Limits.Addr64 || mt.Limits.Min != 2 || mt.Limits.Max == nil || *mt.Limits.Max != 4 {
+		if err != nil || !mt.Shared || !mt.Limits.Addr64 || mt.Limits.Min != 2 || !mt.Limits.HasMax || mt.Limits.Max != 4 {
 			t.Fatalf("memtype=%#v err=%v", mt, err)
 		}
 	})

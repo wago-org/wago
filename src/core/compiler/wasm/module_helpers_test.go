@@ -18,7 +18,7 @@ func TestTypeMetadataHelpersUseCanonicalFields(t *testing.T) {
 		t.Fatalf("MemoryAddrType = %s, want i64", got)
 	}
 	m := &Module{
-		Imports:  []Import{{Type: ExternType{Kind: ExternMem, Mem: MemType{Limits: Limits{Min: 1}}}}},
+		Imports:  []Import{{Type: NewMemExternType(MemType{Limits: Limits{Min: 1}})}},
 		Memories: []MemType{{Limits: Limits{Min: 2, Addr64: true}}},
 	}
 	if mt, ok := m.MemoryType(0); !ok || mt.Limits.Min != 1 || mt.Limits.Addr64 {
@@ -83,9 +83,9 @@ func TestModuleMetadataHelpers(t *testing.T) {
 	m := &Module{
 		Types: []RecType{{SubTypes: []SubType{{Comp: func0}, {Comp: CompType{Kind: CompStruct}}}}, {SubTypes: []SubType{{Comp: func1}}}},
 		Imports: []Import{
-			{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}},
-			{Type: ExternType{Kind: ExternTable, Table: TableType{Ref: FuncRef.Ref()}}},
-			{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I64}}},
+			{Type: NewFuncExternType(TypeIdx{Index: 0})},
+			{Type: NewTableExternType(TableType{Ref: FuncRef.Ref()})},
+			{Type: NewGlobalExternType(GlobalType{Type: I64})},
 		},
 		FuncTypes: []TypeIdx{{Index: 2}},
 		Tables:    []Table{{Type: TableType{Ref: ExternRef.Ref(), Limits: Limits{Addr64: true}}}},
@@ -341,7 +341,7 @@ func TestDecodeLimitsEncodings(t *testing.T) {
 		{[]byte{5, 3, 9}, 3, 9, true, true},
 	} {
 		got, err := decodeLimits(newReader(tc.data))
-		if err != nil || got.Min != tc.min || got.Addr64 != tc.addr64 || (got.Max != nil) != tc.hasMax || tc.hasMax && *got.Max != tc.max {
+		if err != nil || got.Min != tc.min || got.Addr64 != tc.addr64 || (got.HasMax) != tc.hasMax || tc.hasMax && got.Max != tc.max {
 			t.Fatalf("decodeLimits(%x) = %#v, %v", tc.data, got, err)
 		}
 	}
@@ -366,7 +366,7 @@ func TestDecodeMemoryTypeEncodings(t *testing.T) {
 		{[]byte{7, 3, 9}, 3, 9, true, true, true},
 	} {
 		got, err := decodeMemType(newReader(tc.data))
-		if err != nil || got.Limits.Min != tc.min || got.Shared != tc.shared || got.Limits.Addr64 != tc.addr64 || (got.Limits.Max != nil) != tc.hasMax || tc.hasMax && *got.Limits.Max != tc.max {
+		if err != nil || got.Limits.Min != tc.min || got.Shared != tc.shared || got.Limits.Addr64 != tc.addr64 || (got.Limits.HasMax) != tc.hasMax || tc.hasMax && got.Limits.Max != tc.max {
 			t.Fatalf("decodeMemType(%x) = %#v, %v", tc.data, got, err)
 		}
 	}

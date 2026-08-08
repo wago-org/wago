@@ -7,7 +7,7 @@ import (
 
 func TestValidateModuleRejectsMultipleMemories(t *testing.T) {
 	memoryImport := func() Import {
-		return Import{Type: ExternType{Kind: ExternMem, Mem: MemType{Limits: Limits{Min: 1}}}}
+		return Import{Type: NewMemExternType(MemType{Limits: Limits{Min: 1}})}
 	}
 
 	for _, tc := range []struct {
@@ -107,10 +107,9 @@ func TestValidateModuleAcceptsSingleMemoryShapes(t *testing.T) {
 	}{
 		{
 			name: "one imported",
-			m: &Module{Imports: []Import{{Type: ExternType{
-				Kind: ExternMem,
-				Mem:  MemType{Limits: Limits{Min: 1}},
-			}}}},
+			m: &Module{Imports: []Import{{Type: NewMemExternType(
+
+				MemType{Limits: Limits{Min: 1}})}}},
 		},
 		{
 			name: "one local",

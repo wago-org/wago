@@ -89,6 +89,34 @@ func TestPackedFieldRepresentationRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPackedExternTypeRoundTrip(t *testing.T) {
+	max := ^uint64(0)
+	typeIndex := TypeIdx{Index: ^uint32(0), Rec: true}
+	table := TableType{
+		Ref:    Ref(false, IndexedHeap(typeIndex), true),
+		Limits: Limits{Min: max - 1, Max: max, HasMax: true, Addr64: true},
+	}
+	memory := MemType{Limits: Limits{Min: max - 1, Max: max, HasMax: true, Addr64: true}, Shared: true}
+	global := GlobalType{Type: RefVal(Ref(false, IndexedHeap(typeIndex), true)), Mutable: true}
+
+	if got := NewFuncExternType(typeIndex).FuncType(); got != typeIndex {
+		t.Fatalf("function = %#v, want %#v", got, typeIndex)
+	}
+	if got := NewTableExternType(table).TableType(); got != table {
+		t.Fatalf("table = %#v, want %#v", got, table)
+	}
+	if got := NewMemExternType(memory).MemType(); got != memory {
+		t.Fatalf("memory = %#v, want %#v", got, memory)
+	}
+	if got := NewGlobalExternType(global).GlobalType(); got != global {
+		t.Fatalf("global = %#v, want %#v", got, global)
+	}
+	tag := TagType{Type: typeIndex}
+	if got := NewTagExternType(tag).TagType(); got != tag {
+		t.Fatalf("tag = %#v, want %#v", got, tag)
+	}
+}
+
 func TestPackedReferenceBareFlagIsNotSemanticIdentity(t *testing.T) {
 	bare := FuncRef
 	expanded := RefVal(Ref(true, AbsHeap(HeapFunc), false))

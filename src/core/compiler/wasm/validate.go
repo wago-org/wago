@@ -411,17 +411,38 @@ func (v *moduleValidator) isDeclaredFunc(idx uint32) bool {
 func (v *moduleValidator) validateExternType(et ExternType) error {
 	switch et.Kind {
 	case ExternFunc:
-		if v.funcTypeFromTypeIdx(et.Type) == nil {
+		if v.funcTypeFromTypeIdx(et.FuncType()) == nil {
 			return v.err(ErrUnknownType, "import func")
 		}
 	case ExternTable:
-		return v.validateTableType(et.Table)
+		if err := v.validateRefType(et.value.Ref()); err != nil {
+			return err
+		}
+		if et.flags&externTypeAddr64 == 0 && (et.min > maxTable32Limit || et.flags&externTypeHasMax != 0 && et.max > maxTable32Limit) {
+			return v.err(ErrInvalidLimitRange, "table32 limit out of range")
+		}
+		if et.flags&externTypeHasMax != 0 && et.max < et.min {
+			return v.err(ErrInvalidLimitRange, "table max < min")
+		}
 	case ExternMem:
-		return v.validateMemType(et.Mem)
+		hasMax := et.flags&externTypeHasMax != 0
+		if et.flags&externTypeShared != 0 && !hasMax {
+			return v.err(ErrInvalidSharedMemory, "")
+		}
+		if et.flags&externTypeAddr64 != 0 {
+			if et.min > maxMemory64Pages || hasMax && et.max > maxMemory64Pages {
+				return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
+			}
+		} else if et.min > maxMemory32Pages || hasMax && et.max > maxMemory32Pages {
+			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
+		}
+		if hasMax && et.max < et.min {
+			return v.err(ErrInvalidLimitRange, "memory max < min")
+		}
 	case ExternGlobal:
-		return v.validateGlobalType(et.Global)
+		return v.validateValType(et.value)
 	case ExternTag:
-		return v.validateTagType(et.Tag, "import tag")
+		return v.validateTagType(et.TagType(), "import tag")
 	}
 	return nil
 }
@@ -443,11 +464,11 @@ func (v *moduleValidator) validateTableType(tt TableType) error {
 	if !tt.Limits.Addr64 {
 		// Table32 limits are u32 in the binary format; keep oversized values out
 		// even though the shared Limits representation stores proposal limits as u64.
-		if tt.Limits.Min > maxTable32Limit || (tt.Limits.Max != nil && *tt.Limits.Max > maxTable32Limit) {
+		if tt.Limits.Min > maxTable32Limit || (tt.Limits.HasMax && tt.Limits.Max > maxTable32Limit) {
 			return v.err(ErrInvalidLimitRange, "table32 limit out of range")
 		}
 	}
-	if tt.Limits.Max != nil && *tt.Limits.Max < tt.Limits.Min {
+	if tt.Limits.HasMax && tt.Limits.Max < tt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "table max < min")
 	}
 	return nil
@@ -546,23 +567,23 @@ func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) 
 	}
 }
 func (v *moduleValidator) validateMemType(mt MemType) error {
-	if mt.Shared && mt.Limits.Max == nil {
+	if mt.Shared && !mt.Limits.HasMax {
 		return v.err(ErrInvalidSharedMemory, "")
 	}
 	if mt.Limits.Addr64 {
 		// Core 3 memory64 limits are bounded to 2^48 pages even though their
 		// binary representation and the common Limits storage are uint64.
-		if mt.Limits.Min > maxMemory64Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory64Pages) {
+		if mt.Limits.Min > maxMemory64Pages || (mt.Limits.HasMax && mt.Limits.Max > maxMemory64Pages) {
 			return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
 		}
 	} else {
 		// Memory32 limits are page counts bounded to the 4 GiB address space.
 		// Reject values that only fit because the common Limits storage is uint64.
-		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory32Pages) {
+		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.HasMax && mt.Limits.Max > maxMemory32Pages) {
 			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
 		}
 	}
-	if mt.Limits.Max != nil && *mt.Limits.Max < mt.Limits.Min {
+	if mt.Limits.HasMax && mt.Limits.Max < mt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "memory max < min")
 	}
 	return nil
@@ -572,7 +593,7 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternFunc {
 			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.Type)
+				ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
 				return ft, ft != nil
 			}
 			n++
@@ -594,7 +615,8 @@ func (v *moduleValidator) globalType(idx uint32) (*GlobalType, bool) {
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
 			if n == idx {
-				return &im.Type.Global, true
+				global := im.Type.GlobalType()
+				return &global, true
 			}
 			n++
 		}
@@ -610,7 +632,7 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternTable {
 			if n == idx {
-				return im.Type.Table, true
+				return im.Type.TableType(), true
 			}
 			n++
 		}
@@ -630,7 +652,8 @@ func (v *moduleValidator) memoryType(idx uint32) (*MemType, bool) {
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
 			if n == idx {
-				return &im.Type.Mem, true
+				memory := im.Type.MemType()
+				return &memory, true
 			}
 			n++
 		}

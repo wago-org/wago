@@ -270,14 +270,14 @@ func codeWithLocals(locals []wasm.LocalEntry, instr []byte) []byte {
 }
 
 func appendLimits(out []byte, l wasm.Limits) []byte {
-	if l.Max != nil {
+	if l.HasMax {
 		flag := byte(0x01)
 		if l.Addr64 {
 			flag = 0x05
 		}
 		out = append(out, flag)
 		out = append(out, wasmtest.ULEB(uint32(l.Min))...)
-		return append(out, wasmtest.ULEB(uint32(*l.Max))...)
+		return append(out, wasmtest.ULEB(uint32(l.Max))...)
 	}
 	flag := byte(0x00)
 	if l.Addr64 {

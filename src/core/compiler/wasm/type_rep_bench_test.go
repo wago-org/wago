@@ -48,8 +48,8 @@ func TestCompilerTypeRepresentationLayout(t *testing.T) {
 		{"TableType", TableType{}, unsafe.Sizeof(TableType{}), 40},
 		{"MemType", MemType{}, unsafe.Sizeof(MemType{}), 32},
 		{"GlobalType", GlobalType{}, unsafe.Sizeof(GlobalType{}), 24},
-		{"ExternType", ExternType{}, unsafe.Sizeof(ExternType{}), 120},
-		{"Import", Import{}, unsafe.Sizeof(Import{}), 152},
+		{"ExternType", ExternType{}, unsafe.Sizeof(ExternType{}), 40},
+		{"Import", Import{}, unsafe.Sizeof(Import{}), 72},
 		{"Expr", Expr{}, unsafe.Sizeof(Expr{}), 48},
 		{"Func", Func{}, unsafe.Sizeof(Func{}), 104},
 		{"ElemMode", ElemMode{}, unsafe.Sizeof(ElemMode{}), 56},
@@ -64,7 +64,7 @@ func TestCompilerTypeRepresentationLayout(t *testing.T) {
 		}
 		t.Logf("%s: size=%d pointer-scanned=%v", tc.name, tc.got, typeContainsGoPointer(reflect.TypeOf(tc.value)))
 	}
-	for _, value := range []any{HeapType{}, RefType{}, ValType{}, StorageType{}, FieldType{}} {
+	for _, value := range []any{TypeIdx{}, HeapType{}, RefType{}, ValType{}, StorageType{}, FieldType{}, Limits{}, TableType{}, MemType{}, GlobalType{}, ExternType{}} {
 		if typ := reflect.TypeOf(value); typeContainsGoPointer(typ) {
 			t.Errorf("%s unexpectedly contains a Go pointer", typ)
 		}

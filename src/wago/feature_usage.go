@@ -57,15 +57,15 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
 		case wasm.ExternGlobal:
-			out |= requiredFeaturesForValType(im.Type.Global.Type)
-			if im.Type.Global.Mutable {
+			out |= requiredFeaturesForValType(im.Type.GlobalType().Type)
+			if im.Type.GlobalType().Mutable {
 				out |= CoreFeatureMutableGlobal
 			}
 		case wasm.ExternTable:
-			if wasm.EqualValType(wasm.RefVal(im.Type.Table.Ref), wasm.ExternRef) {
+			if wasm.EqualValType(wasm.RefVal(im.Type.TableType().Ref), wasm.ExternRef) {
 				out |= CoreFeatureReferenceTypes
 			}
-			if im.Type.Table.Limits.Addr64 {
+			if im.Type.TableType().Limits.Addr64 {
 				out |= CoreFeatureTable64
 			}
 		}
@@ -89,10 +89,10 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	}
 	for _, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternMem {
-			if im.Type.Mem.Limits.Addr64 {
+			if im.Type.MemType().Limits.Addr64 {
 				out |= CoreFeatureMemory64
 			}
-			if im.Type.Mem.Shared {
+			if im.Type.MemType().Shared {
 				out |= CoreFeatureThreads
 			}
 		}

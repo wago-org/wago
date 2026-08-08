@@ -393,7 +393,8 @@ type DefType struct {
 
 type Limits struct {
 	Min    uint64
-	Max    *uint64
+	Max    uint64
+	HasMax bool
 	Addr64 bool
 }
 
@@ -421,14 +422,103 @@ const (
 	ExternTag
 )
 
+// ExternType stores the payload for exactly one external kind. value holds a
+// global value or table reference type, index holds a function/tag type index,
+// and min/max hold table/memory limits. flags represents optional maxima and
+// scalar booleans without retaining Go pointers.
 type ExternType struct {
-	Kind   ExternKind
-	Type   TypeIdx
-	Table  TableType
-	Mem    MemType
-	Global GlobalType
-	Tag    TagType
+	Kind  ExternKind
+	flags uint8
+	index uint32
+	value ValType
+	min   uint64
+	max   uint64
 }
+
+const (
+	externTypeRecursive = uint8(1 << iota)
+	externTypeHasMax
+	externTypeAddr64
+	externTypeShared
+	externTypeMutable
+)
+
+func NewFuncExternType(t TypeIdx) ExternType {
+	e := ExternType{Kind: ExternFunc, index: t.Index}
+	if t.Rec {
+		e.flags |= externTypeRecursive
+	}
+	return e
+}
+
+func NewTableExternType(t TableType) ExternType {
+	e := ExternType{Kind: ExternTable, value: RefVal(t.Ref), min: t.Limits.Min, max: t.Limits.Max}
+	e.setLimitFlags(t.Limits)
+	return e
+}
+
+func NewMemExternType(t MemType) ExternType {
+	e := ExternType{Kind: ExternMem, min: t.Limits.Min, max: t.Limits.Max}
+	e.setLimitFlags(t.Limits)
+	if t.Shared {
+		e.flags |= externTypeShared
+	}
+	return e
+}
+
+func NewGlobalExternType(t GlobalType) ExternType {
+	e := ExternType{Kind: ExternGlobal, value: t.Type}
+	if t.Mutable {
+		e.flags |= externTypeMutable
+	}
+	return e
+}
+
+func NewTagExternType(t TagType) ExternType {
+	e := ExternType{Kind: ExternTag, index: t.Type.Index}
+	if t.Type.Rec {
+		e.flags |= externTypeRecursive
+	}
+	return e
+}
+
+func (e *ExternType) setLimitFlags(l Limits) {
+	if l.HasMax {
+		e.flags |= externTypeHasMax
+	}
+	if l.Addr64 {
+		e.flags |= externTypeAddr64
+	}
+}
+
+func (e ExternType) limits() Limits {
+	return Limits{
+		Min: e.min, Max: e.max,
+		HasMax: e.flags&externTypeHasMax != 0,
+		Addr64: e.flags&externTypeAddr64 != 0,
+	}
+}
+
+func (e ExternType) FuncType() TypeIdx {
+	return TypeIdx{Index: e.index, Rec: e.flags&externTypeRecursive != 0}
+}
+
+func (e ExternType) TableType() TableType {
+	return TableType{Ref: e.value.Ref(), Limits: e.limits()}
+}
+
+func (e ExternType) MemType() MemType {
+	return MemType{Limits: e.limits(), Shared: e.flags&externTypeShared != 0}
+}
+
+func (e ExternType) GlobalType() GlobalType {
+	return GlobalType{Type: e.value, Mutable: e.flags&externTypeMutable != 0}
+}
+
+func (e ExternType) TagType() TagType {
+	return TagType{Type: TypeIdx{Index: e.index, Rec: e.flags&externTypeRecursive != 0}}
+}
+
 type ExternIdx struct {
 	Kind  ExternKind
 	Index uint32

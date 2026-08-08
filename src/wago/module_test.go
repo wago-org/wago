@@ -214,17 +214,16 @@ func TestConstExpressionByteFormsAndInitializers(t *testing.T) {
 }
 
 func TestConstExpressionModuleGlobalAndInstructionForms(t *testing.T) {
-	m := &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{
-		Kind:   wasm.ExternGlobal,
-		Global: wasm.GlobalType{Type: wasm.I64},
-	}}}}
+	m := &wasm.Module{Imports: []wasm.Import{{Type: wasm.NewGlobalExternType(
+
+		wasm.GlobalType{Type: wasm.I64})}}}
 	res, err := evalConstExprBytesWithModule([]byte{0x23, 0x00, 0x0b}, wasm.I64, m)
 	if err != nil || res.GlobalIndex != 0 {
 		t.Fatalf("imported global expression = %#v, %v", res, err)
 	}
 	for _, bad := range []*wasm.Module{
 		nil,
-		{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64, Mutable: true}}}}},
+		{Imports: []wasm.Import{{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I64, Mutable: true})}}},
 		{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I64, Mutable: true}}}},
 	} {
 		if _, err := evalConstExprBytesWithModule([]byte{0x23, 0x00, 0x0b}, wasm.I64, bad); err == nil {
