@@ -235,8 +235,12 @@ func FuzzThroughputAllocatorAgainstIntervalModel(f *testing.F) {
 	f.Add([]byte{1, 32, 0, 2, 96, 0, 0, 3, 0x00, 0x10, 0})
 	f.Add([]byte{0x81, 0xff, 0x1f, 1, 1, 0, 0, 0})
 	f.Fuzz(func(t *testing.T, operations []byte) {
-		if len(operations) > 4096 {
-			operations = operations[:4096]
+		// The interval oracle verifies the complete heap after every operation and
+		// is intentionally superlinear on adversarial fragmentation. Favor fuzzing
+		// breadth here; the deterministic randomized test above retains 20,000-step
+		// depth coverage.
+		if len(operations) > 256 {
+			operations = operations[:256]
 		}
 		runThroughputModelOperations(t, operations)
 	})

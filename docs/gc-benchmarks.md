@@ -69,6 +69,12 @@ semantic checksums) may be compared exactly. Time, CPU counters, page faults,
 RSS, and cache/TLB behavior are host-specific and require repeated interleaved
 A/B runs on an otherwise idle machine.
 
+`FuzzThroughputAllocatorAgainstIntervalModel` caps each mutated byte stream at
+256 bytes because its independent interval oracle verifies the complete heap
+after every operation and is deliberately superlinear under adversarial
+fragmentation. This favors fuzzing breadth and bounded worker latency; the
+32-seed deterministic model test retains 20,000-byte sequence depth.
+
 ## Telemetry acceptance thresholds
 
 Issue #300 uses these gates for the measurement layer itself:
