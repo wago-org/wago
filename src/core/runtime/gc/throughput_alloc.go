@@ -130,13 +130,19 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 	}
 	if idx != throughputNoSlot {
 		span := throughputFreeSpan{off: h.spanNodes[idx].off, size: h.spanNodes[idx].size}
-		reusable, ok := h.removeFreeSpan(span.off)
-		if !ok {
-			return handleEntry{}, errors.New("gc: throughput free-span index changed during allocation")
-		}
 		if span.size-allocSize >= 32 {
-			h.insertFreeSpanNode(throughputFreeSpan{off: span.off + allocSize, size: span.size - allocSize}, reusable)
+			// Consuming a prefix leaves the replacement span between the same
+			// predecessor and successor. Update its key and max-size path in place
+			// instead of removing/reinserting and rebalancing the AVL tree.
+			if !h.replaceFreeSpan(span.off, throughputFreeSpan{off: span.off + allocSize, size: span.size - allocSize}) {
+				return handleEntry{}, errors.New("gc: throughput free-span index changed during allocation")
+			}
+			h.freeBytes -= uint64(allocSize)
 		} else {
+			reusable, ok := h.removeFreeSpan(span.off)
+			if !ok {
+				return handleEntry{}, errors.New("gc: throughput free-span index changed during allocation")
+			}
 			allocSize = span.size
 			class = uint16(len(throughputClassSizes))
 			h.releaseSpanNode(reusable)
@@ -462,6 +468,32 @@ func (h *throughputHeap) insertFreeSpan(span throughputFreeSpan) error {
 		return errors.New("gc: overlapping throughput free span")
 	}
 
+	predAdjacent := pred != throughputNoSlot && h.spanNodes[pred].off+h.spanNodes[pred].size == span.off
+	succAdjacent := succ != throughputNoSlot && span.off+span.size == h.spanNodes[succ].off
+	if predAdjacent != succAdjacent {
+		merged := span
+		oldOff := uint32(0)
+		if predAdjacent {
+			p := h.spanNodes[pred]
+			oldOff = p.off
+			merged.off = p.off
+			merged.size += p.size
+		} else {
+			s := h.spanNodes[succ]
+			oldOff = s.off
+			merged.size += s.size
+		}
+		if merged.off+merged.size != h.bump {
+			// A one-neighbor merge also remains between the same surrounding
+			// spans. Mutate the existing node and preserve its tree position.
+			if !h.replaceFreeSpan(oldOff, merged) {
+				return errors.New("gc: throughput free-span index changed during coalescing")
+			}
+			h.freeBytes += uint64(span.size)
+			return nil
+		}
+	}
+
 	reuse, extra := throughputNoSlot, throughputNoSlot
 	if pred != throughputNoSlot {
 		p := h.spanNodes[pred]
@@ -532,6 +564,36 @@ func (h *throughputHeap) removeFreeSpan(off uint32) (uint32, bool) {
 	h.freeBytes -= uint64(size)
 	h.spanCount--
 	return removed, true
+}
+
+// replaceFreeSpan changes one indexed span without changing its in-order
+// neighbors. Prefix consumption and one-neighbor coalescing satisfy that
+// condition, so only maxSize summaries on the search path need refreshing.
+func (h *throughputHeap) replaceFreeSpan(oldOff uint32, span throughputFreeSpan) bool {
+	var ok bool
+	h.spanRoot, ok = h.replaceFreeSpanAVL(h.spanRoot, oldOff, span)
+	return ok
+}
+
+func (h *throughputHeap) replaceFreeSpanAVL(root, oldOff uint32, span throughputFreeSpan) (uint32, bool) {
+	if root == throughputNoSlot {
+		return root, false
+	}
+	n := &h.spanNodes[root]
+	var ok bool
+	switch {
+	case oldOff < n.off:
+		n.left, ok = h.replaceFreeSpanAVL(n.left, oldOff, span)
+	case oldOff > n.off:
+		n.right, ok = h.replaceFreeSpanAVL(n.right, oldOff, span)
+	default:
+		n.off, n.size = span.off, span.size
+		ok = true
+	}
+	if ok {
+		h.updateNode(root)
+	}
+	return root, ok
 }
 
 func (h *throughputHeap) acquireSpanNode() (uint32, error) {
@@ -840,15 +902,18 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 		if uint64(span.size) < total {
 			return throughputAllocRun{}, false, nil
 		}
-		reusable, ok := h.removeFreeSpan(span.off)
-		if !ok {
-			return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
-		}
 		consumed := uint32(total)
 		lastAllocSize := allocSize
 		if span.size-consumed >= 32 {
-			h.insertFreeSpanNode(throughputFreeSpan{off: span.off + consumed, size: span.size - consumed}, reusable)
+			if !h.replaceFreeSpan(span.off, throughputFreeSpan{off: span.off + consumed, size: span.size - consumed}) {
+				return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
+			}
+			h.freeBytes -= uint64(consumed)
 		} else {
+			reusable, ok := h.removeFreeSpan(span.off)
+			if !ok {
+				return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
+			}
 			lastAllocSize += span.size - consumed
 			h.releaseSpanNode(reusable)
 		}

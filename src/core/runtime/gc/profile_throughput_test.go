@@ -309,6 +309,24 @@ func churnThroughputLargeSpan(h *throughputHeap) error {
 	return h.free(entry)
 }
 
+func TestThroughputPrefixChurnRestoresExactIndexState(t *testing.T) {
+	h := newThroughputLargeSpanFixture(64, true)
+	root, freeHead := h.spanRoot, h.freeNodeHead
+	nodes := slices.Clone(h.spanNodes)
+	spans := h.freeSpans()
+	freeBytes, spanCount := h.freeBytes, h.spanCount
+	if err := churnThroughputLargeSpan(&h); err != nil {
+		t.Fatal(err)
+	}
+	if h.spanRoot != root || h.freeNodeHead != freeHead || h.freeBytes != freeBytes || h.spanCount != spanCount ||
+		!slices.Equal(h.spanNodes, nodes) || !slices.Equal(h.freeSpans(), spans) {
+		t.Fatal("prefix allocation and one-neighbor coalescing did not restore exact indexed state")
+	}
+	if err := h.verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 //go:noinline
 func benchmarkFindThroughputLargeSpan(h *throughputHeap, size uint32) (uint32, uint32) {
 	return h.findSpanCounted(size)

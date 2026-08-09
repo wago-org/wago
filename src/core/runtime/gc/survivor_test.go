@@ -52,6 +52,42 @@ func TestThroughputSurvivorAgesBeforePromotion(t *testing.T) {
 	}
 }
 
+func TestPureSurvivorMinorLeavesDeferredOldFreesUnindexed(t *testing.T) {
+	c := newTestCollector(t, Config{
+		NurseryBytes: 1024, SurvivorBytes: 512,
+		ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096,
+	})
+	old, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
+	pendingCount, pendingBytes := len(c.throughput.pendingFree), c.throughput.pendingBytes
+	if pendingCount == 0 || pendingBytes == 0 {
+		t.Fatal("full collection did not leave deferred old-space work")
+	}
+
+	young, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(young)
+	if err := c.CollectMinor(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.throughput.pendingFree) != pendingCount || c.throughput.pendingBytes != pendingBytes {
+		t.Fatalf("pure survivor minor indexed deferred old frees: count=%d/%d bytes=%d/%d", len(c.throughput.pendingFree), pendingCount, c.throughput.pendingBytes, pendingBytes)
+	}
+	if e := c.entry(Ref(root)); !e.young() || e.age() != 1 || !c.inActiveSurvivor(*e) {
+		t.Fatalf("survivor entry = %+v, want active age-one survivor", *e)
+	}
+}
+
 func TestThroughputSurvivorCapacityFallsBackToPromotion(t *testing.T) {
 	c := newTestCollector(t, Config{NurseryBytes: 1024, SurvivorBytes: 32, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, VerifyAfterCollect: true})
 	roots := make([]Root, 3)

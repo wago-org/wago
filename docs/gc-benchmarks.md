@@ -577,6 +577,60 @@ no stripped change versus pre-#311 `ee257b06`; versus branch-base `main` at
 A `wago_gcstats` build is eight additional unstripped bytes and has the same
 stripped size.
 
+## PR #371 regression follow-up
+
+A post-PR adversarial pass on August 9, 2026 addressed the two repeatable bad
+measurements rather than accepting them as policy costs. Pure survivor and
+large-young minor cycles now skip old-space pending-free synchronization,
+promotion sorting, and allocator transaction setup when no destination can
+enter old space. Homogeneous-age cycles also skip impossible old-to-young
+reconciliation scans, and internal survivor alignment lookup no longer repeats
+public reference validation. Throughput free-span prefix consumption and
+one-neighbor coalescing update the existing AVL node and its `maxSize` path in
+place instead of removing, reinserting, and rebalancing the same span.
+
+The follow-up used separate current-PR and candidate test binaries, alternating
+order, `GOMAXPROCS=1`, CPU affinity, fixed iteration counts, and 15 samples per
+side. The host still had unrelated CPU-heavy jobs, so individual matrix-cell
+confidence intervals remain wide; geometric means and allocator churn effects
+are the useful discriminators.
+
+Relative to PR head `ba37eb0f`, the 20-cell Throughput minor matrix improves
+2.27% geometrically overall, 5.20% across nonzero-survival cells, and 10.38%
+for the 50% and 90% survival cells. A same-run `main`-to-candidate comparison
+measures **+0.09%** geometrically for Throughput minor collection, replacing the
+previous +9.16% aggregate. The corresponding Throughput-full matrix is -6.39%.
+The Tiny point estimate was -7.92%, but these changes do not alter Tiny's
+collector algorithm, so that result is treated as host/code-layout noise rather
+than a claimed improvement.
+
+The indexed allocator changes are independently large and stable:
+
+| benchmark | current PR | follow-up | follow-up delta | `main` -> follow-up |
+| --- | ---: | ---: | ---: | ---: |
+| 64-span churn | 398.8 ns | 178.1 ns | **-55.34%** | **+70.44%** |
+| 1,024-span churn | 651.6 ns | 269.8 ns | **-58.59%** | **-76.93%** |
+| 16,384-span churn | 896.7 ns | 372.8 ns | **-58.43%** | **-98.20%** |
+
+The 64-span case is therefore substantially repaired but remains a reported
+70% regression versus `main` in this run, down from the previous 316% result.
+Fresh bump allocation (+2.39%), one-span reuse (+3.08%), and impossible misses
+were within the paired noise intervals. A path-caching experiment reduced churn
+a further 10-18% but regressed fresh bump allocation by about 62% because its
+fixed search-path scratch enlarged the common stack frame; it was rejected.
+
+The latest main-to-candidate major lifecycle samples remain favorable: isolated
+old-heap pauses range from -6.14% to -37.14%; full GC plus `ForcePromote` refill
+is -1.55% at 1,000 objects and -10.78% at 10,000; full GC plus immediate-minor
+refill is -3.14% and -8.58%. A separate 25-pair, 500-iteration live-heap run
+measures -11.72%, -12.59%, and -16.38% at 90, 900, and 9,000 objects; all three
+bootstrap intervals still include zero, so the point estimates are retained as
+noise-qualified rather than presented as guaranteed wins.
+
+The follow-up does not change `Config`, `Collector`, `handleEntry`, native-view,
+or allocation-ticket footprints. Reproducible CLI sizes remain 12,129,774 bytes
+unstripped and 8,266,020 bytes with linker stripping.
+
 Future issue work must extend the matrix as follows:
 
 - #302: no-survivor and low-survivor cleanup with high handle counts;

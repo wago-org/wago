@@ -347,6 +347,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		return c.promoteMarkedNurseryImmediate()
 	}
 	plans := c.promotionScratch[:0]
+	needsOldAllocation := false
 	toSpace := c.survivorFrom ^ 1
 	toBase := c.survivorBase(toSpace)
 	toBump := uint32(0)
@@ -382,8 +383,9 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 			}
 		}
 		plans = append(plans, plan)
+		needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
 	}
-	if len(plans) > 1 && !c.promotionPlansSorted(plans) {
+	if needsOldAllocation && len(plans) > 1 && !c.promotionPlansSorted(plans) {
 		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
 			ak, bk := promotionPlanKind(a.entry), promotionPlanKind(b.entry)
 			if ak != bk {
@@ -394,6 +396,24 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 			}
 			return 0
 		})
+	}
+	if !needsOldAllocation {
+		// A pure survivor/large-young cycle cannot mutate old-space allocation
+		// state. Preserve every debug failure point, but keep AVL synchronization
+		// and allocation rollback machinery out of this common minor path.
+		for range plans {
+			if err = injectFailure(c, failPromotionDestination); err != nil {
+				finish()
+				return 0, 0, err
+			}
+		}
+		for range plans {
+			if err = injectFailure(c, failPromotionCommit); err != nil {
+				finish()
+				return 0, 0, err
+			}
+		}
+		return c.commitPromotionPlans(plans, toSpace, toBump)
 	}
 	if err = c.throughput.sweepAllPending(); err != nil {
 		finish()
@@ -465,6 +485,11 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 			return 0, 0, err
 		}
 	}
+	return c.commitPromotionPlans(plans, toSpace, toBump)
+}
+
+func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8, toBump uint32) (copiedBytes, promotedBytes uint64, err error) {
+	hasYoung, hasTenured := false, false
 	for _, p := range plans {
 		src := c.handles[p.handle]
 		size := src.size
@@ -488,6 +513,11 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 				promotedBytes += uint64(size)
 			}
 		}
+		if c.handles[p.handle].young() {
+			hasYoung = true
+		} else {
+			hasTenured = true
+		}
 		if c.telemetryEnabled() {
 			pointerFree := c.header(makeObjRef(p.handle)).Flags&FlagPointerFree != 0
 			c.cfg.Telemetry.noteSurvivor(size, age, pointerFree, p.entry.space == spaceNursery)
@@ -498,18 +528,22 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 	}
 	// A parent can be older than a child. Once all handle locations and ages are
 	// published, establish cards for newly tenured parents that still point into
-	// either survivor space or a young large object.
-	for _, p := range plans {
-		if !c.handles[p.handle].young() && c.handleContainsNurseryRef(p.handle) {
-			c.remember(p.handle)
-			c.markWholeObjectCard(p.handle)
+	// either survivor space or a young large object. Homogeneous-age cycles have
+	// no possible old-to-young edge and skip descriptor/payload inspection.
+	if hasYoung && hasTenured {
+		for _, p := range plans {
+			if !c.handles[p.handle].young() && c.handleContainsNurseryRef(p.handle) {
+				c.remember(p.handle)
+				c.markWholeObjectCard(p.handle)
+			}
 		}
 	}
 	c.survivorFrom = toSpace
 	c.survivorBump = toBump
 	c.stats.YoungBytesCopied += copiedBytes
 	c.stats.PromotedBytes += promotedBytes
-	finish()
+	clear(plans)
+	c.promotionScratch = plans[:0]
 	return copiedBytes, promotedBytes, nil
 }
 
@@ -674,11 +708,16 @@ func promotionPlanKind(e handleEntry) int {
 }
 
 func srcAlignment(c *Collector, h uint32) uint32 {
-	d, err := c.refDesc(makeObjRef(h))
-	if err != nil || d.Align < 8 {
-		return 8
+	// Promotion planning already validated h as a marked young handle. Read the
+	// immutable canonical descriptor directly instead of repeating the public
+	// ref/closed/handle checks for every survivor.
+	typeID := TypeID(binary.LittleEndian.Uint32(c.bytes(makeObjRef(h))))
+	if int(typeID) < len(c.typeIndex) {
+		if index := c.typeIndex[typeID]; index >= 0 && c.types[index].Align > 8 {
+			return c.types[index].Align
+		}
 	}
-	return d.Align
+	return 8
 }
 
 func (c *Collector) promoteHandle(h uint32) error {
