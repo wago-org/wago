@@ -52,6 +52,7 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 		{"struct alloc epoch", unsafe.Offsetof(view.StructAllocEpoch), NativeViewStructAllocEpochOffset},
 		{"nursery bump", unsafe.Offsetof(view.NurseryBump), NativeViewNurseryBumpOffset},
 		{"allocation count", unsafe.Offsetof(view.AllocationCount), NativeViewAllocationCountOffset},
+		{"nursery object max bytes", unsafe.Offsetof(view.NurseryObjectMaxBytes), NativeViewNurseryObjectMaxBytesOffset},
 	}
 	for _, check := range checks {
 		if check.got != check.want {
@@ -81,7 +82,7 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 	}
 	defer c.Close()
 	v := c.NativeView()
-	if v == nil || v.Version != NativeABIVersion || v.HandleCount != 1 || v.Handles == 0 || v.Spaces[NativeSpaceNursery].Base == 0 || v.NurseryAllocBytes != c.edenBytes() || v.StructAllocState == 0 || v.StructAllocEpoch == 0 || v.NurseryBump == 0 || v.AllocationCount == 0 {
+	if v == nil || v.Version != NativeABIVersion || v.HandleCount != 1 || v.Handles == 0 || v.Spaces[NativeSpaceNursery].Base == 0 || v.NurseryAllocBytes != c.edenBytes() || v.StructAllocState == 0 || v.StructAllocEpoch == 0 || v.NurseryBump == 0 || v.AllocationCount == 0 || v.NurseryObjectMaxBytes != c.cfg.LargeObjectBytes {
 		t.Fatalf("initial native view = %+v", v)
 	}
 	generation := v.RefreshGeneration
@@ -97,7 +98,7 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 			t.Fatalf("closed native view space %d retains backing: %+v", i, space)
 		}
 	}
-	if v.Handles != 0 || v.HandleCount != 0 || v.ObjectCards != 0 || v.ObjectCardCount != 0 || v.NurseryAllocBytes != 0 || v.StructAllocState != 0 || v.StructAllocEpoch != 0 || v.NurseryBump != 0 || v.AllocationCount != 0 {
+	if v.Handles != 0 || v.HandleCount != 0 || v.ObjectCards != 0 || v.ObjectCardCount != 0 || v.NurseryAllocBytes != 0 || v.StructAllocState != 0 || v.StructAllocEpoch != 0 || v.NurseryBump != 0 || v.AllocationCount != 0 || v.NurseryObjectMaxBytes != 0 {
 		t.Fatalf("closed native view retains handles/cards/allocation state: %+v", v)
 	}
 }

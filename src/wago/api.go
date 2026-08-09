@@ -3746,11 +3746,12 @@ const wagoMagic = "WAGO"
 // runtime using the new basedata ABI (or vice versa). Older blobs are rejected.
 // Version 32 added the persisted threads feature and atomic wait-helper product.
 // Version 33 replaces the positional outer stream with strict length-delimited
-// code and metadata sections. Older blobs are rejected rather than carrying an
-// unreleased compatibility decoder.
+// code and metadata sections. Version 34 binds generated constructors to native
+// collector ABI v6 and the static-array helper IDs; older native code is rejected
+// rather than silently mixing allocation ticket layouts.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 33
+const wagoVersion = 34
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

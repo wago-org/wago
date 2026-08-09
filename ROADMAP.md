@@ -106,7 +106,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
   records, local starts, and same-Runtime cross-instance calls. One-/two-word and
-  bounded flat masks cover up to 1,024 roots; codec v33 validates the native maps.
+  bounded flat masks cover up to 1,024 roots; codec v34 validates the native maps.
 - [x] Add snapshot v4 stable-ID heap graphs for objects reachable from owned local
   GC globals, preserving cycles and sharing without serializing compact handles.
 - [x] Add snapshot v5 roots for one owned local collector-reference table, then
@@ -500,6 +500,15 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   adapt the threshold from one through three minors. The one-minor workload
   eliminates 32 promoted bytes/object and improves its median about 19%; the
   zero-survival path remains allocation-free and within 1% of immediate promotion.
+- [x] Extend transactional AMD64 nursery allocation through #311: the retained
+  32-handle batch now exposes contiguous runs and one bounded 4-KiB chunk;
+  statically sized final numeric/vector/packed and nullable abstract-reference
+  arrays up to 256 object bytes use checked native default, uniform, and fixed
+  constructors. Dynamic, large, data/element-segment, and unsupported reference
+  shapes remain exact rooted helpers after measurements rejected broader native
+  admission. ABI v6 cancels unused handles/chunks on every Go allocation, trap,
+  collection, epoch change, and close, while exact GC globals reconcile after
+  successful helper-free invocation sequences.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
 

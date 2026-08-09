@@ -971,7 +971,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
 	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
 	nativeStructType := f.nativeStructAllocType
+	nativeArray := f.nativeArrayAlloc
 	f.nativeStructAllocType = 0
+	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
 	var rootOffsets []uint32
 	recordRoots := false
@@ -1048,13 +1050,19 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// published. Then store every dirty pinned local and mark it for lazy reload.
 	f.materializeGCFrameRootLocalsForCall(importIdx)
 	f.spillLocalsForCall()
-	nativeStructDone := -1
+	nativeAllocDone := -1
 	if nativeStructType != 0 {
 		typeIndex := nativeStructType - 1
 		site := f.a.CallRel32()
 		f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, site: site})
 		f.stats.call("gcnative")
-		nativeStructDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
+		nativeAllocDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
+	} else if nativeArray.mode != gcArrayNativeNone {
+		site := f.a.CallRel32()
+		nativeArray.site = site
+		f.sc.gcArrayAllocStubSites = append(f.sc.gcArrayAllocStubSites, nativeArray)
+		f.stats.call("gcnativearray")
+		nativeAllocDone = f.a.JccPlaceholder(condNE)
 	}
 	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
@@ -1067,8 +1075,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	if recordRoots {
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(len(f.a.B)), Offsets: rootOffsets})
 	}
-	if nativeStructDone >= 0 {
-		f.a.PatchRel32(nativeStructDone, f.a.Len())
+	if nativeAllocDone >= 0 {
+		f.a.PatchRel32(nativeAllocDone, f.a.Len())
 	}
 	f.reloadLocalsForCall() // old model: restore caller-saved R9..R11 local pins
 

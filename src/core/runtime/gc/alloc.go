@@ -7,6 +7,9 @@ import (
 )
 
 func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
+	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.ChunkEnd != 0 {
+		c.discardNativeStructHandles()
+	}
 	if c.cfg.Profile == ProfileTiny {
 		return c.tinyAlloc(d, size, aux, roots)
 	}

@@ -11,9 +11,15 @@ func TestNativeStructAllocStateLayout(t *testing.T) {
 		unsafe.Offsetof(s.Epoch) != NativeStructAllocEpochOffset ||
 		unsafe.Offsetof(s.Cursor) != NativeStructAllocCursorOffset ||
 		unsafe.Offsetof(s.Count) != NativeStructAllocCountOffset ||
+		unsafe.Offsetof(s.HandleBase) != NativeStructAllocHandleBaseOffset ||
+		unsafe.Offsetof(s.ChunkStart) != NativeStructAllocChunkStartOffset ||
+		unsafe.Offsetof(s.ChunkCursor) != NativeStructAllocChunkCursorOffset ||
+		unsafe.Offsetof(s.ChunkEnd) != NativeStructAllocChunkEndOffset ||
+		unsafe.Offsetof(s.ChunkBump) != NativeStructAllocChunkBumpOffset ||
 		unsafe.Offsetof(s.Handles) != NativeStructAllocHandlesOffset {
-		t.Fatalf("native struct allocation state layout changed: size=%d epoch=%d cursor=%d count=%d handles=%d",
-			unsafe.Sizeof(s), unsafe.Offsetof(s.Epoch), unsafe.Offsetof(s.Cursor), unsafe.Offsetof(s.Count), unsafe.Offsetof(s.Handles))
+		t.Fatalf("native allocation state layout changed: size=%d epoch=%d cursor=%d count=%d base=%d chunk=%d/%d/%d bump=%d handles=%d",
+			unsafe.Sizeof(s), unsafe.Offsetof(s.Epoch), unsafe.Offsetof(s.Cursor), unsafe.Offsetof(s.Count), unsafe.Offsetof(s.HandleBase),
+			unsafe.Offsetof(s.ChunkStart), unsafe.Offsetof(s.ChunkCursor), unsafe.Offsetof(s.ChunkEnd), unsafe.Offsetof(s.ChunkBump), unsafe.Offsetof(s.Handles))
 	}
 }
 
@@ -31,8 +37,8 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 		t.Fatal("native handle batch was not prepared")
 	}
 	s := &c.nativeStructAlloc
-	if s.Cursor != 0 || s.Count != nativeStructHandleBatch || len(c.nurseryHandles) != nativeStructHandleBatch || c.nurseryBump != 0 || c.stats.Allocations != 0 {
-		t.Fatalf("reserved state = cursor %d count %d nursery handles %d bump %d allocations %d", s.Cursor, s.Count, len(c.nurseryHandles), c.nurseryBump, c.stats.Allocations)
+	if s.Cursor != 0 || s.Count != nativeStructHandleBatch || s.HandleBase == 0 || s.ChunkStart != 0 || s.ChunkCursor != 0 || s.ChunkEnd != NativeAllocationChunkBytes || len(c.nurseryHandles) != nativeStructHandleBatch || c.nurseryBump != NativeAllocationChunkBytes || c.stats.Allocations != 0 {
+		t.Fatalf("reserved state = cursor %d count %d base %d chunk %d/%d/%d nursery handles %d bump %d allocations %d", s.Cursor, s.Count, s.HandleBase, s.ChunkStart, s.ChunkCursor, s.ChunkEnd, len(c.nurseryHandles), c.nurseryBump, c.stats.Allocations)
 	}
 	seen := make(map[uint32]bool, nativeStructHandleBatch)
 	for _, h := range s.Handles {
@@ -55,7 +61,7 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 	h := s.Handles[0]
 	c.handles[h] = handleEntry{size: sz, allocSize: sz, space: spaceNursery}
 	c.writeHeader(makeObjRef(h), ObjHeader{TypeID: uint32(desc.ID), Size: sz, Flags: FlagPointerFree})
-	c.nurseryBump = sz
+	s.ChunkCursor = sz
 	s.Cursor = 1
 	c.stats.Allocations++
 	epoch := c.nativeAllocEpoch
@@ -70,6 +76,79 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 	}
 	if !c.PrepareNativeStructHandles() || len(c.handles) != startHandles {
 		t.Fatalf("reused batch grew handle table: %d -> %d", startHandles, len(c.handles))
+	}
+}
+
+func TestNativeAllocationUnusedAlignedChunkRestoresExactBump(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	h := c.newHandle(handleEntry{off: 0, size: 24, allocSize: 24, space: spaceNursery})
+	c.nurseryHandles = append(c.nurseryHandles, h)
+	c.nurseryBump = 24
+	if !c.PrepareNativeAllocation(24) {
+		t.Fatal("native allocation batch was not prepared")
+	}
+	c.CancelNativeAllocationBatch()
+	if c.nurseryBump != 24 {
+		t.Fatalf("canceled aligned chunk bump = %d, want 24", c.nurseryBump)
+	}
+}
+
+func TestNativeAllocationRejectsOversizedChunk(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if c.PrepareNativeAllocation(NativeAllocationChunkBytes + 1) {
+		t.Fatal("oversized native allocation unexpectedly reserved a chunk")
+	}
+	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.ChunkEnd != 0 || c.nurseryBump != 0 {
+		t.Fatal("oversized native allocation mutated collector state")
+	}
+}
+
+func TestNativeAllocationChunkCanceledBeforeGoAllocation(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.PrepareNativeAllocation(24) {
+		t.Fatal("native allocation batch was not prepared")
+	}
+	s := &c.nativeStructAlloc
+	first := s.HandleBase
+	c.handles[first] = handleEntry{off: 0, size: 24, allocSize: 24, space: spaceNursery}
+	c.writeHeader(makeObjRef(first), ObjHeader{TypeID: uint32(desc.ID), Size: 24, Flags: FlagPointerFree})
+	s.Cursor = 1
+	s.ChunkCursor = 24
+	c.stats.Allocations++
+
+	second, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.handles[handleOf(second)].off; got != 24 {
+		t.Fatalf("Go slow path left a reserved chunk gap: offset=%d, want 24", got)
+	}
+	if s.Count != 0 || s.ChunkEnd != 0 {
+		t.Fatalf("Go slow path retained native state: %+v", *s)
 	}
 }
 

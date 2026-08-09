@@ -8,16 +8,16 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecV33VersionContract(t *testing.T) {
+func TestCompiledCodecV34VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 33 {
-		t.Fatalf("compiled codec version = %d, want 33", got)
+	if got := blob[4]; got != 34 {
+		t.Fatalf("compiled codec version = %d, want 34", got)
 	}
 
-	for _, version := range []byte{32, 31, 30, 26, 25, 24, 23, 22} {
+	for _, version := range []byte{33, 32, 31, 30, 26, 25, 24, 23, 22} {
 		old := append([]byte(nil), blob...)
 		old[4] = version
 		var got Compiled

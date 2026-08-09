@@ -65,7 +65,7 @@ call graphs and recursion. Throughput collect-every-allocation/forced-major veri
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec v33 persists and revalidates
+call-sites, and adapter returns fail closed. Codec v34 persists and revalidates
 safepoint, spill, callsite, frame-size, local-start, and adapter-return metadata;
 repeated offset vectors share immutable storage after compilation and reload.
 It never persists collector handles, liveness work arenas, or live frames.
@@ -174,7 +174,7 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec v33 persists generic helper admission, vector layout, and bounded native
+Codec v34 persists generic helper admission, vector layout, and bounded native
 root maps; compact handles remain process-local. Snapshot format v4 separately
 serializes every object reachable from owned local GC globals using one-based
 stable IDs, exact type IDs, array lengths, and typed field/element payloads.
@@ -409,7 +409,7 @@ Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Logical obj
 
 ## Compiled metadata and instantiation
 
-Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v33 retains the appended `StorageV128` kind, the 16-byte layout contract, and validated native safepoint/callsite root maps; older codec versions are rejected.
+Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v34 retains the appended `StorageV128` kind, the 16-byte layout contract, and validated native safepoint/callsite root maps; older codec versions are rejected.
 
 Each `Instance` normally owns its own `gc.Collector` when its executable product can create or retain heap objects. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
 
@@ -419,7 +419,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec v33 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec v34 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,
@@ -1618,7 +1618,8 @@ Objects promoted into old space are rounded into supported size classes.
 `ThroughputClassLimit` must be zero for the default or exactly one built-in class
 (`32` through `32768` bytes); unsupported values reject rather than round. The
 fixed 64-bit layouts are 20 bytes for `handleEntry`, 72 bytes for `Config`, and
-1,104 bytes for `Collector` in the ordinary build.
+1,120 bytes for `Collector` in the ordinary build. The 16-byte increase is the
+ABI-v6 native allocation state for contiguous handle runs and nursery chunks.
 
 Allocation-triggered minor collection treats old-space promotion exhaustion as a
 cold reclamation signal. Because promotion planning has published no move, the
@@ -2074,7 +2075,7 @@ Throughput cards are authoritative minor-GC inputs. The default is a measured 12
 
 Persistent global/table slots use stable-index bitmaps plus one compact dirty-slot vector, replacing the lazy Go map. Minor collection visits only vector members; full and Tiny collection continue to enumerate every persistent slot. Bits are cleared by walking the dirty vector rather than zeroing a root-sized table. A metadata-growth injection arms a cold full-root fallback, while missing object-card metadata falls back through remembered membership to one complete object scan. Verification independently reconstructs every old-to-nursery field/element and nursery persistent root, proving that its exact byte/slot is carded or that the explicit fallback is active.
 
-Successful minor evacuation clears all remembered/card metadata only when no young object remains. While survivors remain, collection retains ranges and persistent slots that still contain young edges and prunes obsolete membership by scanning recorded cards rather than complete old objects. A full Throughput collection does not move surviving young objects and preserves their useful metadata. Object freeing unlinks all owned ranges before handle reuse. The Native collector ABI is version 5: `objectCard` remains 16 bytes, `handleEntry` remains 20 bytes, the Eden allocation limit occupies the former byte-124 view padding, `Config` is 72 bytes, and the ordinary linux/amd64 `Collector` is 1,104 bytes.
+Successful minor evacuation clears all remembered/card metadata only when no young object remains. While survivors remain, collection retains ranges and persistent slots that still contain young edges and prunes obsolete membership by scanning recorded cards rather than complete old objects. A full Throughput collection does not move surviving young objects and preserves their useful metadata. Object freeing unlinks all owned ranges before handle reuse. The Native collector ABI is version 6: `objectCard` remains 16 bytes, `handleEntry` remains 20 bytes, the 168-byte view retains the Eden limit and adds the nursery-object maximum, `Config` is 72 bytes, and the ordinary linux/amd64 `Collector` is 1,120 bytes.
 
 On the August 8, 2026 Ryzen 7 8845HS host, interleaved release benchmarks remain allocation-free. Nursery-parent struct stores change from 25.57 to 25.14 ns/op, old-parent/old-child stores from 27.61 to 27.81 ns/op, and newly exact old-struct/young-child same-card stores from 28.18 to 29.10 ns/op. Existing old-array same-card stores improve from 36.82 to 35.51 ns/op, and repeated dirty persistent-root stores improve from 9.94 to 7.03 ns/op. Generated old-array fixture code shrinks from 1,864 to 1,856 bytes; barrier-attributed bytes remain 404. All cases remain 0 B/op and 0 allocs/op.
 
@@ -2087,6 +2088,27 @@ Array copy accepts exact storage kinds plus the three non-null-to-nullable widen
 On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), removing redundant production validation reduces 4,096-element compact-ref copy from 37.1–38.2 µs to 213–218 ns, nullable widening from 37.5–38.2 µs to 200–201 ns, and same-array overlap from 36.6–40.4 µs to 157–159 ns. The 256-element forms fall from roughly 2.3–2.5 µs to 45–52 ns. All remain 0 B/op and 0 allocs/op.
 
 Array constructors preflight every value and root before allocation, then initialize the compact payload in bulk. Uniform constructors use one doubling fill; fixed constructors use unchecked width-specialized stores after complete validation. Collector-reference arrays perform one post-construction barrier reconciliation rather than one barrier/card operation per element. Tiny scans the final range once to maintain its incremental mark invariant; Throughput records at most one card interval and one remembered membership. Internal value-root sets are traversed directly during mark and verification, avoiding one escaping `RootSlot` interface value per fixed-array element.
+
+On AMD64, ABI v6 extends the retained 32-handle native struct batch into one
+generic struct/array allocation ticket. A helper reserves a contiguous handle run
+when available and one bounded 4-KiB Eden chunk; generated code advances the
+private chunk cursor rather than the collector bump for every object. Statically
+sized final arrays up to 256 object bytes admit native `array.new`,
+`array.new_fixed`, and defaultable `array.new_default` for numeric, packed,
+vector, and nullable abstract `any`/`eq` reference elements. All reference
+initializers are checked before any payload or handle publication. The final
+write publishes the handle space byte, then advances semantic allocation count.
+
+The 256-byte admission ceiling is measured policy, not a semantic limit.
+Dynamic lengths and larger candidates initially regressed because a 4-KiB chunk
+exhausted before the fixed handle batch, forcing repeated exact cancellation of
+unused identities. Those shapes, large-object classifications,
+non-final/defined-heap references, `array.new_data`, and `array.new_elem` stay on
+the rooted helper path. Every Go allocation cancels the ticket first; collection,
+traps, malformed metadata, epoch changes, and `Close` recycle unused handles and
+rewind only an exclusively owned top chunk. Post-invocation GC-global
+reconciliation now covers every exact mapped product because successful native
+batches may cross several constructors without a helper synchronization point.
 
 On the same machine, 4,096-element uniform i32 construction improves from 25.6–25.7 µs to 96 ns and uniform compact-ref construction from 27.4–27.5 µs to 263 ns. Fixed compact-ref construction improves from 96.5–97.4 µs, 43,851–43,858 B/op, and 1,371 allocs/op to 25.4–25.9 µs, 172 B/op, and 6 allocs/op. The remaining allocations are collection/constructor control metadata, not per-element growth.
 

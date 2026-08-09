@@ -243,14 +243,14 @@ func TestNativeBatchCancellationAcrossCollectionAndClose(t *testing.T) {
 	if err := c.CollectFull(EmptyRoots{}); err != nil {
 		t.Fatal(err)
 	}
-	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || len(c.nurseryHandles) != 0 {
+	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.ChunkEnd != 0 || len(c.nurseryHandles) != 0 {
 		t.Fatal("collection did not atomically cancel native handle batch")
 	}
 	if !c.PrepareNativeStructHandles() {
 		t.Fatal("prepare replacement native handles")
 	}
 	c.Close()
-	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 || c.nativeStructAlloc.Epoch != c.nativeAllocEpoch {
+	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 || c.nativeStructAlloc.ChunkEnd != 0 || c.nativeStructAlloc.Epoch != c.nativeAllocEpoch {
 		t.Fatal("Close left native handle reservations or a stale epoch")
 	}
 }
@@ -272,7 +272,7 @@ func TestNativeBatchCancellationSurvivesInjectedCollectionFailure(t *testing.T) 
 	if !errors.Is(err, errInjectedFailure) {
 		t.Fatalf("collection error = %v", err)
 	}
-	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 {
+	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 || c.nativeStructAlloc.ChunkEnd != 0 {
 		t.Fatal("failed collection retained native reservations or stale epoch")
 	}
 	occurrences := 0

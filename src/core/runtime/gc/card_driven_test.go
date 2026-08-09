@@ -158,7 +158,7 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(Config{}); got != 72 {
 		t.Fatalf("Config size=%d, want 72", got)
 	}
-	wantCollector := uintptr(1104)
+	wantCollector := uintptr(1120)
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

@@ -799,7 +799,8 @@ func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
 	case gcStructAllocDefault, gcStructAllocOne,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
-		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
+		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
+		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative:
 		return true
 	default:
 		return false

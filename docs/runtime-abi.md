@@ -44,36 +44,46 @@ ordering and covers same-memory, different-memory, and cyclic call graphs.
 Linear-memory size/growth caches remain backing-owned, while trap and stack
 fields remain invocation-owned.
 
-## Native collector metadata ABI v3
+## Native collector metadata ABI v6
 
 Collector-backed instances install a pointer at `abi.GCNativeViewPtrOffset = 280`.
-It addresses a 32-byte native prefix containing ABI version 3, a pointer to one
+It addresses a 32-byte native prefix containing ABI version 6, a pointer to one
 collector-owned view, and an immutable local-type to canonical-domain `u32` map.
 The Go object retains that map through a typed trailing slice; native code sees
 only the fixed prefix.
 
-The shared collector view is 160 bytes. ABI v5 preserves the v4
+The shared collector view is 168 bytes. ABI v6 preserves the v5
 version/20-byte handle stride, current handle pointer/count, five directly indexed
 16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
-object-card pointer/count, and four stable pointers for native struct-allocation
-state, collection epoch, the real Eden bump, and the semantic allocation counter.
-The former padding word at byte 124 now publishes `NurseryAllocBytes`: generated
-allocation checks use that Eden limit, while the nursery space descriptor covers
-Eden plus both survivor semispaces so moved handles remain directly resolvable.
-Space zero is invalid; nursery, old, large, and Tiny match the stable one-byte
-`handleEntry.space` identity at byte 18. The remembered bit at byte 19 remains
-native-readable and is never mutated by generated code.
+object-card pointer/count, Eden limit, and stable allocation pointers. The new
+byte-160 word publishes the configured nursery-object maximum; byte 124 remains
+`NurseryAllocBytes`, while the nursery descriptor covers Eden plus both survivor
+semispaces so moved handles remain directly resolvable. Space zero is invalid;
+nursery, old, large, and Tiny match the stable one-byte `handleEntry.space`
+identity at byte 18. The remembered bit at byte 19 remains native-readable and
+is never mutated by generated code.
 
-The allocation state contains `{epoch u32, cursor u32, count u32, pad}` followed by
-32 compact handle indexes. A rooted helper reserves only unpublished handle
-identities; reservation consumes no nursery bytes and does not increment semantic
-allocation/live-object statistics. Checked AMD64 constructors validate the ABI,
-epoch, handle state, canonical final type, nursery extent, and every compact
-reference initializer before advancing the real bump, initializing the object, and
-publishing the handle. Collection and Close cancel and recycle every unconsumed
-identity before tracing or releasing backing. Tiny, collection-disabled,
-collect-every-allocation, unsupported layout, exhausted nursery, and malformed
-metadata paths retain the exact helper.
+The 160-byte allocation state now contains `{epoch, cursor, count, handleBase,
+chunkStart, chunkCursor, chunkEnd, chunkBump}` as `u32` words and the retained 32
+compact handle indexes. A nonzero `handleBase` identifies a contiguous run and
+lets generated code derive a handle without loading the index array. A rooted
+helper advances the collector bump once to reserve a bounded 4-KiB nursery chunk;
+native constructors advance only `chunkCursor`. Reservation publishes neither an
+object nor a semantic allocation. Before any Go allocation, trap, collection,
+epoch change, or `Close`, unused identities are recycled and an unused top chunk
+is rewound exactly.
+
+Checked AMD64 constructors validate ABI/epoch state, the canonical final type,
+handle identity, chunk extent, widened array-size arithmetic, and every compact
+reference initializer before completing bytes and publishing the handle. Native
+array admission is deliberately bounded to statically sized objects of at most
+256 bytes: numeric/vector/packed `array.new`, `array.new_fixed`, and defaultable
+`array.new_default`, plus nullable abstract `any`/`eq` reference arrays. Dynamic
+lengths, large objects, non-final or defined-heap reference arrays,
+`array.new_data`, `array.new_elem`, Tiny, collection-disabled,
+collect-every-allocation, exhaustion, and malformed metadata retain the exact
+rooted helper. Measurements rejected larger native reservations because repeated
+chunk cancellation outweighed the removed helper transition.
 
 The Collector republishes handle and heap pointers/counts and increments the
 refresh generation after every helper allocation and collection, including
@@ -538,20 +548,21 @@ reused after success or rollback. Throughput Eden now evacuates first survivors 
 two age bits occupy unused high `handleEntry.class` bits, and large young objects age in place. A fixed threshold starts
 at two survivals and adapts between one and three from survivor occupancy, old-space pressure, recent full collections,
 and an optional pause target. Useful object/root cards remain authoritative across survivor movement and clear when no
-young edge remains. The Native collector view is ABI v5 because native allocation must distinguish the Eden limit from
-the complete young backing; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
-`gc.Collector` is 1,104 bytes. Collector
+young edge remains. The Native collector view is ABI v6 for shared struct/array handle runs, nursery chunks, and the explicit
+nursery-object maximum; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
+`gc.Collector` is 1,120 bytes. Collector
 tests separately prove nullable/non-null storage compatibility, rejected-copy atomicity, sparse/dense card behavior,
 root bitmap consistency, failure fallback, promotion rollback, and Tiny remark preservation.
 
-The exact copy product also contains a mutable GC array global. Its overlap functions allocate one array,
-run only the non-collecting copy helper while that local is live, and perform `global.set` as the final native
-operation. After successful return, `Instance.invoke` and `invokeLocalContext` call a reconciliation routine
-that is gated to `stagedGCArrayProductBulkCopy`: it reads at most two compact global cells, validates that the
-high word is zero, and updates the corresponding checked collector slots under the existing GC mutex. No
-later may-collect helper runs before this synchronization. A trap before the final `global.set` leaves both
-cell and slot unchanged. This post-return rule must not be generalized to a mutable GC global whose new value
-can cross another allocation, host/cross-instance call, tail transfer, or snapshot boundary.
+After every successful native invocation with exact GC-global mappings,
+`Instance.invoke` and `invokeLocalContext` reconcile the compact global cells with
+their checked collector slots under the existing GC mutex. This is no longer
+limited to the bulk-copy product: a native allocation batch can satisfy several
+constructors without a Go helper boundary, so helper-triggered synchronization
+alone is not authoritative. The routine remains a zero-work early return for
+instances without mapped GC globals, validates compact high words, and runs
+before any subsequent invocation or explicit boundary collection. A trap leaves
+both cell and slot at their last successfully published values.
 
 No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
 `compiledMemoryDirectory=136`, `gcArrayGlobalInit=48`, lazy `instancePluginState=144`, and
