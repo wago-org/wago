@@ -140,6 +140,7 @@ type Collector struct {
 	remembered          []uint32
 	objectCards         []objectCard
 	cardBytes           uint32
+	freeObjectCardSlot  uint32 // one-based tombstone free-list head; links use objectCard.next
 	slotCards           []slotCard
 	globalCardBits      []uint64
 	tableCardBits       []uint64
@@ -221,6 +222,7 @@ func (c *Collector) Close() {
 	c.promotionScratch = nil
 	c.remembered = nil
 	c.objectCards = nil
+	c.freeObjectCardSlot = 0
 	c.slotCards = nil
 	c.globalCardBits = nil
 	c.tableCardBits = nil

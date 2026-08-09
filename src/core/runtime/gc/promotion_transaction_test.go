@@ -18,6 +18,7 @@ type promotionStateSnapshot struct {
 	mark           []bool
 	remembered     []uint32
 	objectCards    []objectCard
+	freeCardSlot   uint32
 	slotCards      []slotCard
 	globalCardBits []uint64
 	tableCardBits  []uint64
@@ -40,6 +41,7 @@ func snapshotPromotionState(c *Collector) promotionStateSnapshot {
 		mark:           mark,
 		remembered:     slices.Clone(c.remembered),
 		objectCards:    slices.Clone(c.objectCards),
+		freeCardSlot:   c.freeObjectCardSlot,
 		slotCards:      slices.Clone(c.slotCards),
 		globalCardBits: slices.Clone(c.globalCardBits),
 		tableCardBits:  slices.Clone(c.tableCardBits),
@@ -214,7 +216,7 @@ func assertPromotionStateEqual(t *testing.T, c *Collector, want promotionStateSn
 	if !slices.Equal(got.mark, want.mark) {
 		t.Fatalf("failed promotion mutated marks: got %v want %v", got.mark, want.mark)
 	}
-	if !slices.Equal(got.remembered, want.remembered) || !slices.Equal(got.objectCards, want.objectCards) ||
+	if !slices.Equal(got.remembered, want.remembered) || !slices.Equal(got.objectCards, want.objectCards) || got.freeCardSlot != want.freeCardSlot ||
 		!slices.Equal(got.slotCards, want.slotCards) ||
 		!slices.Equal(got.globalCardBits, want.globalCardBits) || !slices.Equal(got.tableCardBits, want.tableCardBits) || got.rootFallback != want.rootFallback {
 		t.Fatal("failed promotion mutated remembered or card metadata")

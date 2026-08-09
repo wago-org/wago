@@ -8,6 +8,38 @@ import (
 	"testing"
 )
 
+func TestObjectCardReuseDoesNotConsumeGrowthFailure(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	arrays := make([]Ref, 4)
+	for i := range arrays {
+		var err error
+		arrays[i], err = c.NewArrayDefault(3, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(arrays[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.CardMarkArray(arrays[0], 0)
+	c.CardMarkArray(arrays[1], 0)
+	c.removeCardsForHandle(handleOf(arrays[0]))
+	if c.freeObjectCardSlot == 0 {
+		t.Fatal("card removal did not publish a reusable slot")
+	}
+
+	cleanup := armFailure(c, failObjectCardGrowth, 0)
+	c.CardMarkArray(arrays[2], 0)
+	if c.entry(arrays[2]).cardSlot == 0 || c.freeObjectCardSlot != 0 {
+		t.Fatalf("reusable slot incorrectly used growth failure: slot=%d free=%d", c.entry(arrays[2]).cardSlot, c.freeObjectCardSlot)
+	}
+	c.CardMarkArray(arrays[3], 0)
+	cleanup()
+	if c.entry(arrays[3]).cardSlot != 0 || !c.entry(arrays[3]).remembered {
+		t.Fatalf("growth failure did not retain whole-object fallback: slot=%d remembered=%v", c.entry(arrays[3]).cardSlot, c.entry(arrays[3]).remembered)
+	}
+}
+
 func TestInjectedPromotionFailuresAreTransactional(t *testing.T) {
 	points := []failurePoint{failPromotionPlan, failPromotionDestination, failPromotionCommit}
 	for _, point := range points {

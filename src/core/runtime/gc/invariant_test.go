@@ -410,6 +410,35 @@ func TestCollectMinorRunsRememberedShadowBeforeEvacuation(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsMalformedObjectCardFreeList(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	tests := []struct {
+		name  string
+		cards []objectCard
+		head  uint32
+	}{
+		{name: "stale head", cards: []objectCard{{}}, head: 2},
+		{name: "cycle", cards: []objectCard{{next: 1}}, head: 1},
+		{name: "unlinked tombstone", cards: []objectCard{{}}, head: 0},
+		{name: "free slot retains payload", cards: []objectCard{{index: 1}}, head: 1},
+		{name: "free slot retains handle", cards: []objectCard{{handle: 1}}, head: 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c.objectCards = append(c.objectCards[:0], tc.cards...)
+			c.freeObjectCardSlot = tc.head
+			if err := c.Verify(nil); err == nil {
+				t.Fatalf("Verify accepted cards=%+v free=%d", tc.cards, tc.head)
+			}
+		})
+	}
+	c.objectCards = c.objectCards[:0]
+	c.freeObjectCardSlot = 0
+	if err := c.Verify(nil); err != nil {
+		t.Fatalf("restored card metadata: %v", err)
+	}
+}
+
 func TestVerifyTinyRetainsRememberedMetadataChecks(t *testing.T) {
 	c := newTinyTestCollector(t, Config{})
 	r, err := c.NewStructDefault(0)

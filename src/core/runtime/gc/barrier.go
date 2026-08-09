@@ -277,7 +277,7 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 				if other.end > card.end {
 					card.end = other.end
 				}
-				*other = objectCard{}
+				c.releaseObjectCardSlot(candidatePos)
 				*link = candidateNext
 				candidate = candidateNext
 				continue
@@ -287,15 +287,37 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		}
 		return
 	}
+	card := objectCard{handle: h, index: start, end: end, next: e.cardSlot}
+	if slot := c.freeObjectCardSlot; slot != 0 {
+		if !slotIndexOK(slot-1, len(c.objectCards)) {
+			return
+		}
+		free := &c.objectCards[slot-1]
+		if free.handle != 0 || free.index != 0 || free.end != 0 || (free.next != 0 && !slotIndexOK(free.next-1, len(c.objectCards))) {
+			return
+		}
+		c.freeObjectCardSlot = free.next
+		*free = card
+		e.cardSlot = slot
+		return
+	}
 	if injectFailure(c, failObjectCardGrowth) != nil {
 		return
 	}
 	if c.telemetryEnabled() && len(c.objectCards) == cap(c.objectCards) {
 		c.cfg.Telemetry.paths.CardGrowths++
 	}
-	c.objectCards = append(c.objectCards, objectCard{handle: h, index: start, end: end, next: e.cardSlot})
+	c.objectCards = append(c.objectCards, card)
 	e.cardSlot = uint32(len(c.objectCards))
 	c.refreshNativeCards()
+}
+
+func (c *Collector) releaseObjectCardSlot(pos uint32) {
+	if !slotIndexOK(pos, len(c.objectCards)) || c.objectCards[pos].handle == 0 {
+		return
+	}
+	c.objectCards[pos] = objectCard{next: c.freeObjectCardSlot}
+	c.freeObjectCardSlot = pos + 1
 }
 
 func (c *Collector) slotCardIndexOK(kind SlotKind, index uint32) bool {
@@ -431,19 +453,10 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 		}
 		pos := slot - 1
 		next := c.objectCards[pos].next
-		c.objectCards[pos] = objectCard{}
+		c.releaseObjectCardSlot(pos)
 		slot = next
 	}
 	e.cardSlot = 0
-	trimmed := false
-	for len(c.objectCards) > 0 && c.objectCards[len(c.objectCards)-1].handle == 0 {
-		last := len(c.objectCards) - 1
-		c.objectCards = c.objectCards[:last]
-		trimmed = true
-	}
-	if trimmed {
-		c.refreshNativeCards()
-	}
 }
 func (c *Collector) clearCardMetadata() {
 	if c.telemetryEnabled() && c.cfg.Telemetry.active.active {
@@ -463,6 +476,7 @@ func (c *Collector) clearCardMetadata() {
 	clear(c.objectCards)
 	clear(c.slotCards)
 	c.objectCards = c.objectCards[:0]
+	c.freeObjectCardSlot = 0
 	c.slotCards = c.slotCards[:0]
 	c.rootCardFallback = false
 	c.refreshNativeCards()
@@ -480,7 +494,15 @@ func (c *Collector) dirtyObjectCardCount() uint64 {
 }
 
 func (c *Collector) RememberedCount() int { return len(c.remembered) }
-func (c *Collector) CardCount() int       { return len(c.objectCards) + len(c.slotCards) }
+func (c *Collector) CardCount() int {
+	count := len(c.slotCards)
+	for i := range c.objectCards {
+		if c.objectCards[i].handle != 0 {
+			count++
+		}
+	}
+	return count
+}
 func (c *Collector) ForcePromote(r Ref) error {
 	if err := c.errIfClosed(); err != nil {
 		return err

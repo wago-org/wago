@@ -276,6 +276,22 @@ func (c *Collector) verifyNurseryEvacuated() error {
 // their stable-index bitmaps.
 func (c *Collector) verifyCardMetadata() error {
 	seenObjectCards := make([]bool, len(c.objectCards))
+	freeObjectCards := make([]bool, len(c.objectCards))
+	for slot, steps := c.freeObjectCardSlot, 0; slot != 0; steps++ {
+		if steps >= len(c.objectCards) || !slotIndexOK(slot-1, len(c.objectCards)) {
+			return fmt.Errorf("gc: cyclic or stale free object card slot %d", slot)
+		}
+		pos := slot - 1
+		if freeObjectCards[pos] {
+			return fmt.Errorf("gc: free object card slot %d is multiply linked", slot)
+		}
+		card := c.objectCards[pos]
+		if card.handle != 0 || card.index != 0 || card.end != 0 {
+			return fmt.Errorf("gc: free object card slot %d retains live metadata", slot)
+		}
+		freeObjectCards[pos] = true
+		slot = card.next
+	}
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		slot := c.handles[h].cardSlot
 		for steps := 0; slot != 0; steps++ {
@@ -283,6 +299,9 @@ func (c *Collector) verifyCardMetadata() error {
 				return fmt.Errorf("gc: handle %d has cyclic or stale object card slot %d", h, slot)
 			}
 			pos := slot - 1
+			if freeObjectCards[pos] {
+				return fmt.Errorf("gc: object card slot %d is both live and free", slot)
+			}
 			if seenObjectCards[pos] {
 				return fmt.Errorf("gc: object card slot %d is multiply linked", slot)
 			}
@@ -303,8 +322,8 @@ func (c *Collector) verifyCardMetadata() error {
 	}
 	for i, card := range c.objectCards {
 		if card.handle == 0 {
-			if card.next != 0 {
-				return fmt.Errorf("gc: tombstoned object card %d retains link %d", i, card.next)
+			if !freeObjectCards[i] {
+				return fmt.Errorf("gc: tombstoned object card %d is not reusable", i)
 			}
 			continue
 		}

@@ -674,8 +674,8 @@ func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
 	}
 	c.CardMarkArray(arr, 0)
 	c.removeCardsForHandle(handleOf(arr))
-	if len(c.objectCards) != 0 {
-		t.Fatalf("object card for freed handle remained: %v", c.objectCards)
+	if len(c.objectCards) != 1 || c.CardCount() != 1 || c.freeObjectCardSlot != 1 {
+		t.Fatalf("object card slot was not recycled: cards=%v free=%d live=%d", c.objectCards, c.freeObjectCardSlot, c.CardCount())
 	}
 	if len(c.slotCards) != 1 {
 		t.Fatalf("object-card removal changed slot cards; remaining=%d", len(c.slotCards))

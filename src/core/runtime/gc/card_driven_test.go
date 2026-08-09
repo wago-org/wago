@@ -66,6 +66,71 @@ func TestCardDrivenMinorScansDisjointArrayCards(t *testing.T) {
 	}
 }
 
+func TestConservativeObjectBarrierCoversWholeOldParent(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentDesc, err := NewStructDesc(1, []StorageKind{StorageRefNull, StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{NurseryBytes: 4096, ThroughputHeapBytes: 64 << 10, VerifyAfterCollect: true}, []TypeDesc{leaf, parentDesc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nurseryParent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(parent); err != nil {
+		t.Fatal(err)
+	}
+
+	c.WriteBarrierObject(Null(), child)
+	c.WriteBarrierObject(parent, Null())
+	c.WriteBarrierObject(nurseryParent, child)
+	if c.CardCount() != 0 || c.RememberedCount() != 0 {
+		t.Fatalf("invalid or young-parent barriers recorded metadata: cards=%d remembered=%d", c.CardCount(), c.RememberedCount())
+	}
+	c.WriteBarrierObject(parent, child)
+	if c.CardCount() != 1 || c.RememberedCount() != 1 {
+		t.Fatalf("whole-object barrier metadata: cards=%d remembered=%d", c.CardCount(), c.RememberedCount())
+	}
+	card := c.objectCards[c.entry(parent).cardSlot-1]
+	if card.index != 0 || card.end != c.entry(parent).size-PayloadOffset-1 {
+		t.Fatalf("whole-object card = %+v, payload bytes=%d", card, c.entry(parent).size-PayloadOffset)
+	}
+	if err := c.StructSet(parent, 1, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if !c.validObjectRef(child) {
+		t.Fatal("whole-object barrier did not preserve nursery child")
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(child).young() {
+		t.Fatal("second minor did not tenure preserved child")
+	}
+	c.WriteBarrierObject(parent, child)
+	if c.CardCount() != 0 {
+		t.Fatalf("old-to-old barrier recorded cards: %d", c.CardCount())
+	}
+}
+
 func TestMinorUsesDirtyPersistentSlotsAndInitialCards(t *testing.T) {
 	c := newTestCollector(t, Config{StressNurseryBytes: 1 << 20, VerifyAfterCollect: true})
 	for i := 0; i < 4096; i++ {
@@ -145,6 +210,130 @@ func TestCardDrivenScanIsAllocationFreeAfterWarmup(t *testing.T) {
 	scan()
 	if got := testing.AllocsPerRun(100, scan); got != 0 {
 		t.Fatalf("warmed card-driven scan allocations = %v, want 0", got)
+	}
+}
+
+func TestObjectCardSlotsAreReusedAcrossSurvivorCycles(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := NewArrayDesc(1, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 4 << 20, VerifyAfterCollect: true}, []TypeDesc{leaf, refs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	parents := make([]Ref, 2)
+	for i := range parents {
+		parents[i], err = c.NewArrayDefault(1, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(parents[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(parents[0], 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if !c.entry(child).young() || c.CardCount() != 1 {
+		t.Fatalf("initial survivor/card state: young=%v cards=%d", c.entry(child).young(), c.CardCount())
+	}
+
+	currentParent := 0
+	for cycle := 0; cycle < 64; cycle++ {
+		nextParent := 1 - currentParent
+		nextChild, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ArraySet(parents[nextParent], 0, RefValue(nextChild)); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ArraySet(parents[currentParent], 0, RefValue(Null())); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatalf("cycle %d: %v", cycle, err)
+		}
+		if c.entry(child).space != spaceFree {
+			t.Fatalf("cycle %d: replaced child space=%v, want free", cycle, c.entry(child).space)
+		}
+		if !c.entry(nextChild).young() {
+			t.Fatalf("cycle %d: current child is not young", cycle)
+		}
+		if got := len(c.objectCards); got > 2 {
+			t.Fatalf("cycle %d: card arena grew to %d slots with one live card", cycle, got)
+		}
+		if got := c.CardCount(); got != 1 {
+			t.Fatalf("cycle %d: live cards=%d, want 1", cycle, got)
+		}
+		if err := c.Verify(nil); err != nil {
+			t.Fatalf("cycle %d verify: %v", cycle, err)
+		}
+		child, currentParent = nextChild, nextParent
+	}
+
+	if err := c.ArraySet(parents[currentParent], 0, RefValue(Null())); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.objectCards) != 0 || c.freeObjectCardSlot != 0 || c.CardCount() != 0 {
+		t.Fatalf("drained card arena: slots=%d free=%d live=%d", len(c.objectCards), c.freeObjectCardSlot, c.CardCount())
+	}
+}
+
+func TestObjectCardCoalescingRecyclesAbsorbedSlot(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := NewArrayDesc(1, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{leaf, refs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	array, err := c.NewArrayDefault(1, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(array); err != nil {
+		t.Fatal(err)
+	}
+
+	c.addObjectCard(handleOf(array), 0)
+	c.CardMarkArray(array, 64)
+	if len(c.objectCards) != 2 {
+		t.Fatalf("initial disjoint ranges = %+v", c.objectCards)
+	}
+	c.CardMarkArray(array, 32)
+	if len(c.objectCards) != 2 || c.CardCount() != 1 || c.freeObjectCardSlot == 0 {
+		t.Fatalf("bridged ranges: slots=%d live=%d free=%d cards=%+v", len(c.objectCards), c.CardCount(), c.freeObjectCardSlot, c.objectCards)
+	}
+	c.CardMarkArray(array, 192)
+	if len(c.objectCards) != 2 || c.CardCount() != 2 || c.freeObjectCardSlot != 0 {
+		t.Fatalf("reused absorbed slot: slots=%d live=%d free=%d cards=%+v", len(c.objectCards), c.CardCount(), c.freeObjectCardSlot, c.objectCards)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
 	}
 }
 

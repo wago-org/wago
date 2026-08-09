@@ -90,6 +90,7 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	nurseryHandlesBefore := slices.Clone(c.nurseryHandles)
 	rememberedBefore := slices.Clone(c.remembered)
 	objectCardsBefore := slices.Clone(c.objectCards)
+	freeCardSlotBefore := c.freeObjectCardSlot
 	slotCardsBefore := slices.Clone(c.slotCards)
 	globalCardBitsBefore := slices.Clone(c.globalCardBits)
 	tableCardBitsBefore := slices.Clone(c.tableCardBits)
@@ -108,7 +109,7 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	if !slices.Equal(c.nurseryHandles, nurseryHandlesBefore) {
 		t.Fatal("nursery handle set changed after failed promotion")
 	}
-	if !slices.Equal(c.remembered, rememberedBefore) || !slices.Equal(c.objectCards, objectCardsBefore) ||
+	if !slices.Equal(c.remembered, rememberedBefore) || !slices.Equal(c.objectCards, objectCardsBefore) || c.freeObjectCardSlot != freeCardSlotBefore ||
 		!slices.Equal(c.slotCards, slotCardsBefore) ||
 		!slices.Equal(c.globalCardBits, globalCardBitsBefore) || !slices.Equal(c.tableCardBits, tableCardBitsBefore) || c.rootCardFallback != rootCardFallbackBefore {
 		t.Fatal("remembered or card metadata changed after failed promotion")
