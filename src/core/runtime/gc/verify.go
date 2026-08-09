@@ -135,12 +135,12 @@ func (c *Collector) verifyRememberedShadow() error {
 		}
 	}
 	for i, r := range c.globalSlots {
-		if c.isNurseryRef(r) && !c.rootCardFallback && !cardBitIsSet(c.globalCardBits, uint32(i)) {
+		if c.isNurseryRef(r) && !c.cardFallback && !cardBitIsSet(c.globalCardBits, uint32(i)) {
 			return fmt.Errorf("gc: shadow verifier found uncarded nursery global %d", i)
 		}
 	}
 	for i, r := range c.tableSlots {
-		if c.isNurseryRef(r) && !c.rootCardFallback && !cardBitIsSet(c.tableCardBits, uint32(i)) {
+		if c.isNurseryRef(r) && !c.cardFallback && !cardBitIsSet(c.tableCardBits, uint32(i)) {
 			return fmt.Errorf("gc: shadow verifier found uncarded nursery table %d", i)
 		}
 	}
@@ -217,7 +217,8 @@ func (c *Collector) verifyNurseryEdgesCarded(h uint32) error {
 	}
 	check := func(off uint32) error {
 		child := Ref(binary.LittleEndian.Uint32(b[PayloadOffset+off:]))
-		if c.isNurseryRef(child) && c.handles[h].cardSlot != 0 && !c.objectCardCovers(h, off) {
+		slot := c.handles[h].cardSlot
+		if c.isNurseryRef(child) && !c.cardFallback && slot != 0 && !c.objectCardCovers(h, off) {
 			return fmt.Errorf("gc: shadow verifier found uncarded old-to-nursery edge from handle %d at payload byte %d", h, off)
 		}
 		return nil

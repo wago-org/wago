@@ -16,9 +16,10 @@ func (c *Collector) scanRememberedCards(h uint32) {
 	if e.young() || (e.space != spaceOld && e.space != spaceLarge) {
 		return
 	}
-	if e.cardSlot == 0 {
+	if c.cardFallback || e.cardSlot == 0 {
 		// Metadata growth failure is fail-safe: remembered membership remains
-		// authoritative and falls back to one complete object scan.
+		// authoritative and falls back to complete object scans until evacuation
+		// clears the young generation.
 		c.scanObjectRefs(h, c.markNurseryRef)
 		return
 	}

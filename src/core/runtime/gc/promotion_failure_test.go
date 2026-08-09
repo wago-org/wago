@@ -94,7 +94,7 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	slotCardsBefore := slices.Clone(c.slotCards)
 	globalCardBitsBefore := slices.Clone(c.globalCardBits)
 	tableCardBitsBefore := slices.Clone(c.tableCardBits)
-	rootCardFallbackBefore := c.rootCardFallback
+	cardFallbackBefore := c.cardFallback
 
 	err = c.CollectMinor(slots)
 	if err == nil || !strings.Contains(err.Error(), "throughput heap exhausted") {
@@ -111,7 +111,7 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	}
 	if !slices.Equal(c.remembered, rememberedBefore) || !slices.Equal(c.objectCards, objectCardsBefore) || c.freeObjectCardSlot != freeCardSlotBefore ||
 		!slices.Equal(c.slotCards, slotCardsBefore) ||
-		!slices.Equal(c.globalCardBits, globalCardBitsBefore) || !slices.Equal(c.tableCardBits, tableCardBitsBefore) || c.rootCardFallback != rootCardFallbackBefore {
+		!slices.Equal(c.globalCardBits, globalCardBitsBefore) || !slices.Equal(c.tableCardBits, tableCardBitsBefore) || c.cardFallback != cardFallbackBefore {
 		t.Fatal("remembered or card metadata changed after failed promotion")
 	}
 	if len(c.promotionScratch) != 0 || cap(c.promotionScratch) == 0 {

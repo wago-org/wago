@@ -133,7 +133,7 @@ func (c *Collector) markNurseryRoots(roots RootSet) {
 // Throughput minor-GC root input. Full and Tiny collections still enumerate all
 // persistent roots.
 func (c *Collector) markDirtyPersistentRoots(measured bool) {
-	if c.rootCardFallback {
+	if c.cardFallback {
 		c.markPersistentRoots(rootMarkNursery, measured)
 		return
 	}

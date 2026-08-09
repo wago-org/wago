@@ -234,16 +234,17 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 
 	// Ranges for one object form a short linked list. Dense writes expand one
 	// range; sparse writes retain disjoint cards instead of widening across the
-	// untouched middle of a large array.
+	// untouched middle of a large array. Move a matched range's interval to the
+	// head slot so repeated writes return through both Go and native head checks.
 	for slot := e.cardSlot; slot != 0; {
 		if !slotIndexOK(slot-1, len(c.objectCards)) {
-			return
+			goto fallback
 		}
 		pos := slot - 1
 		card := &c.objectCards[pos]
 		next := card.next
 		if card.handle != h {
-			return
+			goto fallback
 		}
 		adjacent := uint64(end)+1 >= uint64(card.index) && uint64(card.end)+1 >= uint64(start)
 		if !adjacent {
@@ -262,11 +263,11 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		}
 		// Absorb any later ranges now bridged by this update. Tombstoned backing
 		// entries are reclaimed when all card metadata is cleared after collection.
-		link := &card.next
-		for candidate := *link; candidate != 0; {
+		candidateLink := &card.next
+		for candidate := *candidateLink; candidate != 0; {
 			candidatePos := candidate - 1
 			if !slotIndexOK(candidatePos, len(c.objectCards)) {
-				return
+				goto fallback
 			}
 			other := &c.objectCards[candidatePos]
 			candidateNext := other.next
@@ -278,38 +279,62 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 					card.end = other.end
 				}
 				c.releaseObjectCardSlot(candidatePos)
-				*link = candidateNext
+				*candidateLink = candidateNext
 				candidate = candidateNext
 				continue
 			}
-			link = &other.next
+			candidateLink = &other.next
 			candidate = candidateNext
 		}
+		if slot != e.cardSlot {
+			head := &c.objectCards[e.cardSlot-1]
+			head.index, card.index = card.index, head.index
+			head.end, card.end = card.end, head.end
+		}
 		return
 	}
-	card := objectCard{handle: h, index: start, end: end, next: e.cardSlot}
-	if slot := c.freeObjectCardSlot; slot != 0 {
-		if !slotIndexOK(slot-1, len(c.objectCards)) {
+	{
+		card := objectCard{handle: h, index: start, end: end, next: e.cardSlot}
+		if slot := c.freeObjectCardSlot; slot != 0 {
+			if !slotIndexOK(slot-1, len(c.objectCards)) {
+				goto fallback
+			}
+			free := &c.objectCards[slot-1]
+			if free.handle != 0 || free.index != 0 || free.end != 0 || (free.next != 0 && !slotIndexOK(free.next-1, len(c.objectCards))) {
+				goto fallback
+			}
+			c.freeObjectCardSlot = free.next
+			*free = card
+			e.cardSlot = slot
 			return
 		}
-		free := &c.objectCards[slot-1]
-		if free.handle != 0 || free.index != 0 || free.end != 0 || (free.next != 0 && !slotIndexOK(free.next-1, len(c.objectCards))) {
+		if injectFailure(c, failObjectCardGrowth) != nil {
+			goto fallback
+		}
+		if c.telemetryEnabled() && len(c.objectCards) == cap(c.objectCards) {
+			c.cfg.Telemetry.paths.CardGrowths++
+		}
+		c.objectCards = append(c.objectCards, card)
+		e.cardSlot = uint32(len(c.objectCards))
+		c.refreshNativeCards()
+		return
+	}
+
+fallback:
+	// If another exact range exists, make it conservative. Otherwise keep a
+	// collector-wide cold fallback active so later successful card additions
+	// cannot hide the already-published edge.
+	if slot := e.cardSlot; slot != 0 && slotIndexOK(slot-1, len(c.objectCards)) {
+		card := &c.objectCards[slot-1]
+		if card.handle == h {
+			card.index = 0
+			card.end = payloadBytes - 1
 			return
 		}
-		c.freeObjectCardSlot = free.next
-		*free = card
-		e.cardSlot = slot
-		return
 	}
-	if injectFailure(c, failObjectCardGrowth) != nil {
-		return
+	if e.remembered {
+		c.cardFallback = true
 	}
-	if c.telemetryEnabled() && len(c.objectCards) == cap(c.objectCards) {
-		c.cfg.Telemetry.paths.CardGrowths++
-	}
-	c.objectCards = append(c.objectCards, card)
-	e.cardSlot = uint32(len(c.objectCards))
-	c.refreshNativeCards()
 }
 
 func (c *Collector) releaseObjectCardSlot(pos uint32) {
@@ -374,7 +399,7 @@ func (c *Collector) addSlotCard(kind SlotKind, index uint32) {
 	if injectFailure(c, failSlotCardGrowth) != nil {
 		// A correctness-preserving cold fallback scans every persistent slot at
 		// the next minor collection when bounded metadata growth is unavailable.
-		c.rootCardFallback = true
+		c.cardFallback = true
 		return
 	}
 	if c.telemetryEnabled() && len(c.slotCards) == cap(c.slotCards) {
@@ -478,7 +503,7 @@ func (c *Collector) clearCardMetadata() {
 	c.objectCards = c.objectCards[:0]
 	c.freeObjectCardSlot = 0
 	c.slotCards = c.slotCards[:0]
-	c.rootCardFallback = false
+	c.cardFallback = false
 	c.refreshNativeCards()
 }
 

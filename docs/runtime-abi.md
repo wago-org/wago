@@ -546,9 +546,12 @@ Same-array copy preserves memmove semantics and allocates no temporary buffer. T
 uses a handle-owned bit plus a dense dirty-object vector. Authoritative 128-byte payload cards retain linked, coalesced
 byte ranges per old/large object, while globals/tables use stable-index bitmaps plus one compact dirty-slot vector.
 Nursery destinations create no object cards. Bulk barriers publish the complete destination first, then dirty the exact
-byte range without rescanning values. Minor collection scans only exact transient roots, dirty persistent slots, and
-those card ranges before tracing nursery survivors. A metadata-growth injection takes an explicit whole-object or
-full-persistent-root fallback rather than dropping reachability. Collector-owned promotion-plan scratch is cleared and
+byte range without rescanning values. A helper hit on a non-head object range swaps only the interval into the stable
+head slot, so generated code can reuse its constant-time checked card path without relocating native backing or changing
+links. Minor collection scans only exact transient roots, dirty persistent slots, and those card ranges before tracing
+nursery survivors. A metadata-growth injection arms one shared whole-object/full-persistent-root fallback until the young
+generation drains, so a later successful card addition cannot hide an edge published during an earlier failure.
+Collector-owned promotion-plan scratch is cleared and
 reused after success or rollback. Throughput Eden now evacuates first survivors into one of two bounded semispaces;
 two age bits occupy unused high `handleEntry.class` bits, and large young objects age in place. A fixed threshold starts
 at two survivals and adapts between one and three from survivor occupancy, old-space pressure, recent full collections,

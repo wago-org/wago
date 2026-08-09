@@ -483,9 +483,12 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
 - [x] Make Throughput minor collection card-driven: measured 128-byte payload
   cards retain linked disjoint ranges, persistent globals/tables use stable-index
   bitmaps instead of a Go map, bulk barriers avoid a mutator rescan, generated
-  same-card stores stay native, and metadata-growth failures take explicit safe
-  whole-object/full-root fallbacks. The 256K two-write fixture falls from 262,144
-  to 64 scanned slots while dense work remains within 3% of baseline.
+  same-card stores stay native, and metadata-growth failures take one shared safe
+  whole-object/full-root fallback until evacuation. Removed/coalesced card slots
+  are reused at the peak high-water mark, and helper hits swap non-head intervals
+  into the stable native head slot; repeated non-head writes improve 16.9% in the
+  interleaved control. The 256K two-write fixture falls from 262,144 to 64 scanned
+  slots while dense work remains within 3% of baseline.
 - [x] Generalize exact native-root admission: retain the one-word <=64-root path,
   add two-word <=128-root masks and a bounded flat arena through 1,024 roots,
   admit exact local starts, omit independently proven non-collecting functions,

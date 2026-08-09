@@ -212,7 +212,11 @@ selected the default card size:
 The implementation stores one 16-byte linked range per disjoint dirty region,
 not one metadata entry per card, so selecting 128 bytes does not multiply dense
 range metadata. Adjacent writes coalesce; repeated writes to an already covered
-card only increment the bounded duplicate-dirty counter.
+card only increment the bounded duplicate-dirty counter. Removed and coalesced
+ranges reuse intrusive tombstone slots before arena growth. A helper hit on a
+non-head range swaps its interval with the stable head interval while leaving
+links and backing addresses unchanged, allowing the next same-card generated
+store to remain native.
 
 Interleaved release barrier controls remain allocation-free. Nursery-parent
 struct stores change from 25.57 to 25.14 ns/op; old-parent/old-child stores from
@@ -220,7 +224,13 @@ struct stores change from 25.57 to 25.14 ns/op; old-parent/old-child stores from
 28.18 to 29.10 ns/op; existing old-array same-card stores from 36.82 to
 35.51 ns/op; and persistent-root repeated dirties from 9.94 to 7.03 ns/op.
 Generated code for the two-store old-array fixture changes from 1,864 to 1,856
-bytes while barrier attribution remains 404 bytes.
+bytes while barrier attribution remains 404 bytes. In a Sunday, August 9, 2026
+follow-up, fourteen alternating 750 ms samples of
+`BenchmarkGCArrayReferenceStoreBarrierNonHeadCard` changed from a 77.99 ns/op
+median to 64.83 ns/op (**-16.88%**, bootstrap 95% interval **-20.75% to
+-12.86%**), with 0 B/op and 0 allocs/op. The companion AMD64 integration test
+proves that the first repeated non-head store takes one mutation helper and the
+next store uses the moved native head card without another helper transition.
 
 On linux/amd64, `Config` remains 64 bytes, `handleEntry` remains 20 bytes,
 `objectCard` grows from 12 to 16 bytes, and `Collector` grows from 1,008 to 1,064

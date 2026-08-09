@@ -144,6 +144,18 @@ func TestGCExecutedHelperStatsTrackDistantArrayCardFallbacks(t *testing.T) {
 	if stats := instance.GCHelperStats(); stats.MutationCalls != 2 || stats.AllocationCalls != 0 {
 		t.Fatalf("distant old-array stores stats = %+v, want one fallback per fixed card", stats)
 	}
+	if _, err := instance.Invoke("set_first"); err != nil {
+		t.Fatal(err)
+	}
+	if stats := instance.GCHelperStats(); stats.MutationCalls != 3 || stats.AllocationCalls != 0 {
+		t.Fatalf("first repeated non-head store stats = %+v, want one move-to-front fallback", stats)
+	}
+	if _, err := instance.Invoke("set_first"); err != nil {
+		t.Fatal(err)
+	}
+	if stats := instance.GCHelperStats(); stats.MutationCalls != 3 || stats.AllocationCalls != 0 {
+		t.Fatalf("warmed moved card store stats = %+v, want native head-card reuse", stats)
+	}
 }
 
 func TestGCExecutedHelperStatsTrackOldArrayCardFallback(t *testing.T) {

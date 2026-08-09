@@ -22,7 +22,7 @@ type promotionStateSnapshot struct {
 	slotCards      []slotCard
 	globalCardBits []uint64
 	tableCardBits  []uint64
-	rootFallback   bool
+	cardFallback   bool
 	throughput     throughputHeap
 }
 
@@ -45,7 +45,7 @@ func snapshotPromotionState(c *Collector) promotionStateSnapshot {
 		slotCards:      slices.Clone(c.slotCards),
 		globalCardBits: slices.Clone(c.globalCardBits),
 		tableCardBits:  slices.Clone(c.tableCardBits),
-		rootFallback:   c.rootCardFallback,
+		cardFallback:   c.cardFallback,
 		throughput:     h,
 	}
 }
@@ -218,7 +218,7 @@ func assertPromotionStateEqual(t *testing.T, c *Collector, want promotionStateSn
 	}
 	if !slices.Equal(got.remembered, want.remembered) || !slices.Equal(got.objectCards, want.objectCards) || got.freeCardSlot != want.freeCardSlot ||
 		!slices.Equal(got.slotCards, want.slotCards) ||
-		!slices.Equal(got.globalCardBits, want.globalCardBits) || !slices.Equal(got.tableCardBits, want.tableCardBits) || got.rootFallback != want.rootFallback {
+		!slices.Equal(got.globalCardBits, want.globalCardBits) || !slices.Equal(got.tableCardBits, want.tableCardBits) || got.cardFallback != want.cardFallback {
 		t.Fatal("failed promotion mutated remembered or card metadata")
 	}
 	if !throughputHeapsEquivalent(got.throughput, want.throughput) {

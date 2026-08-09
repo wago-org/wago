@@ -297,6 +297,104 @@ func TestObjectCardSlotsAreReusedAcrossSurvivorCycles(t *testing.T) {
 	}
 }
 
+func TestMalformedFreeCardHeadFallsBackAcrossLaterWrites(t *testing.T) {
+	c := newTestCollector(t, Config{VerifyAfterCollect: true})
+	array, err := c.NewArrayDefault(3, 65)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(array); err != nil {
+		t.Fatal(err)
+	}
+	first, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.freeObjectCardSlot = uint32(len(c.objectCards) + 1)
+	if err := c.ArraySet(array, 0, RefValue(first)); err != nil {
+		t.Fatal(err)
+	}
+	c.freeObjectCardSlot = 0
+	if !c.cardFallback || c.handles[handleOf(array)].cardSlot != 0 {
+		t.Fatalf("malformed free head fallback = %v/%d", c.cardFallback, c.handles[handleOf(array)].cardSlot)
+	}
+	if err := c.ArraySet(array, 64, RefValue(second)); err != nil {
+		t.Fatal(err)
+	}
+	if c.handles[handleOf(array)].cardSlot == 0 || !c.cardFallback {
+		t.Fatalf("later exact card lost fallback = %d/%v", c.handles[handleOf(array)].cardSlot, c.cardFallback)
+	}
+	root := Root(array)
+	if err := c.CollectMinor(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(first).space != spaceOld || c.entry(second).space != spaceOld {
+		t.Fatalf("fallback child spaces = %v/%v, want old/old", c.entry(first).space, c.entry(second).space)
+	}
+}
+
+func TestMalformedFreeCardHeadWidensExistingRange(t *testing.T) {
+	c := newTestCollector(t, Config{VerifyAfterCollect: true})
+	array, err := c.NewArrayDefault(3, 65)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(array); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(array, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	c.freeObjectCardSlot = uint32(len(c.objectCards) + 1)
+	c.CardMarkArray(array, 64)
+	c.freeObjectCardSlot = 0
+	card := c.objectCards[c.handles[handleOf(array)].cardSlot-1]
+	if card.index != 0 || card.end != c.handles[handleOf(array)].size-PayloadOffset-1 || c.cardFallback {
+		t.Fatalf("existing-card fallback = %+v/global:%v", card, c.cardFallback)
+	}
+	root := Root(array)
+	if err := c.CollectMinor(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestObjectCardRepeatedWriteMovesRangeToHead(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	array, err := c.NewArrayDefault(3, 65)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(array); err != nil {
+		t.Fatal(err)
+	}
+	c.CardMarkArray(array, 0)
+	firstSlot := c.handles[handleOf(array)].cardSlot
+	c.CardMarkArray(array, 64)
+	secondSlot := c.handles[handleOf(array)].cardSlot
+	if firstSlot == 0 || secondSlot == 0 || firstSlot == secondSlot {
+		t.Fatalf("initial card slots = %d/%d", firstSlot, secondSlot)
+	}
+	c.CardMarkArray(array, 0)
+	if got := c.handles[handleOf(array)].cardSlot; got != secondSlot {
+		t.Fatalf("repeated non-head card changed stable head slot = %d, want %d", got, secondSlot)
+	}
+	head, tail := c.objectCards[secondSlot-1], c.objectCards[firstSlot-1]
+	if head.index != 0 || head.next != firstSlot || tail.index != 256 || tail.next != 0 || c.CardCount() != 2 {
+		t.Fatalf("move-to-front intervals/links/cards = %+v/%d", c.objectCards, c.CardCount())
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestObjectCardCoalescingRecyclesAbsorbedSlot(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {

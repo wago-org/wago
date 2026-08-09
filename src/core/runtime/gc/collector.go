@@ -144,7 +144,7 @@ type Collector struct {
 	slotCards           []slotCard
 	globalCardBits      []uint64
 	tableCardBits       []uint64
-	rootCardFallback    bool
+	cardFallback        bool // shared full remembered-object/persistent-root scan
 	globalSlots         []Ref
 	tableSlots          []Ref
 	stats               Stats

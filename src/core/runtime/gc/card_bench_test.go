@@ -110,6 +110,47 @@ func BenchmarkGCArrayReferenceStoreBarrier(b *testing.B) {
 	}
 }
 
+func BenchmarkGCArrayReferenceStoreBarrierNonHeadCard(b *testing.B) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	refs, err := NewArrayDesc(1, StorageRefNull)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := NewCollector(Config{NurseryBytes: 1 << 20}, []TypeDesc{leaf, refs})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	array, err := c.NewArrayDefault(1, 65)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := c.ForcePromote(array); err != nil {
+		b.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	value := RefValue(child)
+	if err := c.ArraySet(array, 0, value); err != nil {
+		b.Fatal(err)
+	}
+	if err := c.ArraySet(array, 64, value); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := c.ArraySet(array, 0, value); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkGCPersistentRootBarrier(b *testing.B) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {

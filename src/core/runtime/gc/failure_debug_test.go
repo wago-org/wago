@@ -35,8 +35,8 @@ func TestObjectCardReuseDoesNotConsumeGrowthFailure(t *testing.T) {
 	}
 	c.CardMarkArray(arrays[3], 0)
 	cleanup()
-	if c.entry(arrays[3]).cardSlot != 0 || !c.entry(arrays[3]).remembered {
-		t.Fatalf("growth failure did not retain whole-object fallback: slot=%d remembered=%v", c.entry(arrays[3]).cardSlot, c.entry(arrays[3]).remembered)
+	if c.entry(arrays[3]).cardSlot != 0 || !c.entry(arrays[3]).remembered || !c.cardFallback {
+		t.Fatalf("growth failure did not retain whole-object fallback: slot=%d remembered=%v fallback=%v", c.entry(arrays[3]).cardSlot, c.entry(arrays[3]).remembered, c.cardFallback)
 	}
 }
 
@@ -261,7 +261,7 @@ func TestInjectedCardGrowthLeavesMetadataUnchanged(t *testing.T) {
 	cleanup = armFailure(c, failSlotCardGrowth, 0)
 	c.addSlotCard(SlotGlobal, global)
 	cleanup()
-	if !reflect.DeepEqual(c.slotCards, beforeSlotCards) || cardBitIsSet(c.globalCardBits, global) || !c.rootCardFallback {
+	if !reflect.DeepEqual(c.slotCards, beforeSlotCards) || cardBitIsSet(c.globalCardBits, global) || !c.cardFallback {
 		t.Fatal("slot card failure did not preserve metadata and arm the full-root fallback")
 	}
 }
