@@ -246,6 +246,10 @@ func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
 	if got := testing.AllocsPerRun(100, func() {
 		sink.count, sink.sum = 0, 0
 		roots.RangeRootRefs(sink)
+		// roots intentionally stores the off-heap ABI base as uintptr. Retain the
+		// typed backing reference across every allocation probe so Go 1.22 race
+		// checkptr cannot observe a reclaimed span during an internal GC.
+		runtime.KeepAlive(frame)
 	}); got != 0 {
 		t.Fatalf("wide root enumeration allocations=%v, want 0", got)
 	}
