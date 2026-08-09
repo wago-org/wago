@@ -170,6 +170,54 @@ func runThroughputModelOperations(t testing.TB, operations []byte) {
 	}
 }
 
+func TestThroughputFindSpanCountedMatchesFirstFit(t *testing.T) {
+	var h throughputHeap
+	if err := h.Init(Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, ThroughputClassLimit: 128}); err != nil {
+		t.Fatal(err)
+	}
+	if idx, steps := h.findSpanCounted(16); idx != throughputNoSlot || steps != 1 {
+		t.Fatalf("empty counted search = %d/%d", idx, steps)
+	}
+	first, err := h.alloc(32, spaceOld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.alloc(32, spaceOld); err != nil {
+		t.Fatal(err)
+	}
+	second, err := h.alloc(64, spaceOld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.alloc(32, spaceOld); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.free(second); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, steps := h.findSpanCounted(16)
+	if idx == throughputNoSlot {
+		t.Fatal("small counted search missed")
+	}
+	if h.spanNodes[idx].off != first.off || steps == 0 || steps > h.spanCount {
+		t.Fatalf("small counted search = idx %d off %d steps %d spans %d", idx, h.spanNodes[idx].off, steps, h.spanCount)
+	}
+	idx, steps = h.findSpanCounted(48)
+	if idx == throughputNoSlot {
+		t.Fatal("large counted search missed")
+	}
+	if h.spanNodes[idx].off != second.off || steps == 0 || steps > h.spanCount {
+		t.Fatalf("large counted search = idx %d off %d steps %d spans %d", idx, h.spanNodes[idx].off, steps, h.spanCount)
+	}
+	if idx, steps = h.findSpanCounted(128); idx != throughputNoSlot || steps != 1 {
+		t.Fatalf("impossible counted search = %d/%d", idx, steps)
+	}
+}
+
 func TestThroughputAllocatorRandomizedIntervalModel(t *testing.T) {
 	for seed := int64(1); seed <= 32; seed++ {
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {

@@ -102,3 +102,22 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 		t.Fatalf("closed native view retains handles/cards/allocation state: %+v", v)
 	}
 }
+
+func TestNativeInstanceViewPublishesImmutableTypeMap(t *testing.T) {
+	if got := NewNativeInstanceView(nil, []TypeID{1}); got != nil {
+		t.Fatalf("nil collector instance view = %+v", got)
+	}
+	c := newTestCollector(t, Config{})
+	localTypes := []TypeID{2, 1, 0}
+	view := NewNativeInstanceView(c, localTypes)
+	if view == nil || view.Version != NativeABIVersion || view.Collector == 0 || view.LocalTypes == 0 || view.LocalTypeCount != uint32(len(localTypes)) {
+		t.Fatalf("native instance view = %+v", view)
+	}
+	if len(view.keepTypes) != len(localTypes) || &view.keepTypes[0] != &localTypes[0] {
+		t.Fatal("native instance view did not retain caller-owned type map")
+	}
+	empty := NewNativeInstanceView(c, nil)
+	if empty == nil || empty.LocalTypes != 0 || empty.LocalTypeCount != 0 || empty.Collector != view.Collector {
+		t.Fatalf("empty native instance view = %+v", empty)
+	}
+}

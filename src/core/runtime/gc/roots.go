@@ -18,7 +18,9 @@ type RootSet interface{ RangeRoots(func(RootSlot) bool) }
 // use RootSet.RangeRoots so they can update the underlying slots.
 type RootRefSink interface{ VisitRootRef(Ref) bool }
 
-type DirectRootRefSet interface{ RangeRootRefs(RootRefSink) }
+// DirectRootRefSet returns false when the sink stops enumeration. Composite
+// root sets propagate that result without allocating adapter state.
+type DirectRootRefSet interface{ RangeRootRefs(RootRefSink) bool }
 
 // ClassifiedRootRefSink receives immutable roots with their exact telemetry
 // ownership. It is used only by opt-in telemetry integrations; ordinary
@@ -46,15 +48,19 @@ func (s ClassifiedRoots) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
-func (s ClassifiedRoots) RangeRootRefs(sink RootRefSink) {
+func (s ClassifiedRoots) RangeRootRefs(sink RootRefSink) bool {
 	if s.Roots == nil {
-		return
+		return true
 	}
 	if direct, ok := s.Roots.(DirectRootRefSet); ok {
-		direct.RangeRootRefs(sink)
-		return
+		return direct.RangeRootRefs(sink)
 	}
-	s.Roots.RangeRoots(func(slot RootSlot) bool { return sink.VisitRootRef(slot.GetRef()) })
+	keepGoing := true
+	s.Roots.RangeRoots(func(slot RootSlot) bool {
+		keepGoing = sink.VisitRootRef(slot.GetRef())
+		return keepGoing
+	})
+	return keepGoing
 }
 
 // RootGroup allows one collection to report independently owned root classes.
@@ -83,13 +89,15 @@ func (groups RootGroups) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
-func (groups RootGroups) RangeRootRefs(sink RootRefSink) {
+func (groups RootGroups) RangeRootRefs(sink RootRefSink) bool {
 	for _, group := range groups {
 		if group.Roots == nil {
 			continue
 		}
 		if direct, ok := group.Roots.(DirectRootRefSet); ok {
-			direct.RangeRootRefs(sink)
+			if !direct.RangeRootRefs(sink) {
+				return false
+			}
 			continue
 		}
 		keepGoing := true
@@ -98,9 +106,10 @@ func (groups RootGroups) RangeRootRefs(sink RootRefSink) {
 			return keepGoing
 		})
 		if !keepGoing {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 // EmptyRoots is an explicit non-nil root set for may-collect operations that
@@ -159,24 +168,39 @@ type ArrayInitializerRootScratch struct {
 	active  bool
 }
 
-func (s *ArrayInitializerRootScratch) RangeRootRefs(sink RootRefSink) {
+func (s *ArrayInitializerRootScratch) RangeRootRefs(sink RootRefSink) bool {
 	if s.first != nil {
 		if direct, ok := s.first.(DirectRootRefSet); ok {
-			direct.RangeRootRefs(sink)
-		} else if !rangeRootRefs(s.first, func(r Ref) bool { return sink.VisitRootRef(r) }) {
-			s.first.RangeRoots(func(slot RootSlot) bool { return sink.VisitRootRef(slot.GetRef()) })
+			if !direct.RangeRootRefs(sink) {
+				return false
+			}
+		} else {
+			keepGoing := true
+			if !rangeRootRefs(s.first, func(r Ref) bool {
+				keepGoing = sink.VisitRootRef(r)
+				return keepGoing
+			}) {
+				s.first.RangeRoots(func(slot RootSlot) bool {
+					keepGoing = sink.VisitRootRef(slot.GetRef())
+					return keepGoing
+				})
+			}
+			if !keepGoing {
+				return false
+			}
 		}
 	}
 	switch s.mode {
 	case 1:
-		sink.VisitRootRef(s.uniform)
+		return sink.VisitRootRef(s.uniform)
 	case 2:
 		for i := range s.values {
 			if !sink.VisitRootRef(s.values[i].Ref) {
-				return
+				return false
 			}
 		}
 	}
+	return true
 }
 
 func (s *ArrayInitializerRootScratch) RangeRoots(fn func(RootSlot) bool) {

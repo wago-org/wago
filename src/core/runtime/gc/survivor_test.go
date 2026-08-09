@@ -17,6 +17,37 @@ func TestSurvivorConfigRejectsContradictoryProfiles(t *testing.T) {
 	}
 }
 
+func TestYoungPlacementHelpersTrackEdenAndActiveSurvivor(t *testing.T) {
+	obj, err := NewStructDesc(0, []StorageKind{StorageI64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{NurseryBytes: 4096, SurvivorBytes: 1024, ThroughputHeapBytes: 64 << 10}, []TypeDesc{obj})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	object, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := c.entry(object)
+	if !c.inEden(*e) || c.inActiveSurvivor(*e) || c.currentYoungBytes() != uint64(e.size) {
+		t.Fatalf("eden placement: eden=%v survivor=%v youngBytes=%d size=%d", c.inEden(*e), c.inActiveSurvivor(*e), c.currentYoungBytes(), e.size)
+	}
+	root := Root(object)
+	if err := c.CollectMinor(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	e = c.entry(object)
+	if c.inEden(*e) || !c.inActiveSurvivor(*e) || c.currentYoungBytes() != uint64(e.size) {
+		t.Fatalf("survivor placement: eden=%v survivor=%v youngBytes=%d size=%d", c.inEden(*e), c.inActiveSurvivor(*e), c.currentYoungBytes(), e.size)
+	}
+	if c.inEden(handleEntry{space: spaceOld}) || c.inActiveSurvivor(handleEntry{space: spaceOld}) {
+		t.Fatal("old entry classified as young placement")
+	}
+}
+
 func TestThroughputSurvivorAgesBeforePromotion(t *testing.T) {
 	c := newTestCollector(t, Config{NurseryBytes: 1024, SurvivorBytes: 512, VerifyAfterCollect: true, PoisonFreed: true})
 	ref, err := c.NewStructDefault(0)

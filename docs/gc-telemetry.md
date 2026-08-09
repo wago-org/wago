@@ -15,6 +15,11 @@ go test -tags wago_gcstats ./src/core/runtime/gc
 go test -tags wago_gcstats ./src/wago
 ```
 
+The repository coverage report also runs the collector package with this tag and
+merges that profile with the ordinary, guard-page, and specification profiles.
+This keeps diagnostic-only telemetry paths visible without adding timing or
+counter machinery to release builds.
+
 Then attach one recorder to one collector:
 
 ```go

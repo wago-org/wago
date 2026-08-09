@@ -222,14 +222,15 @@ func TestCompiledGCFrameRootsSafepointByID(t *testing.T) {
 }
 
 type gcCountingRootRefSink struct {
-	count int
-	sum   uint64
+	count     int
+	sum       uint64
+	stopAfter int
 }
 
 func (s *gcCountingRootRefSink) VisitRootRef(ref gc.Ref) bool {
 	s.count++
 	s.sum += uint64(ref)
-	return true
+	return s.stopAfter == 0 || s.count < s.stopAfter
 }
 
 func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
@@ -250,6 +251,10 @@ func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
 	}
 	if sink.count != rootsN || sink.sum == 0 {
 		t.Fatalf("wide root enumeration count/sum=%d/%d", sink.count, sink.sum)
+	}
+	sink.count, sink.sum, sink.stopAfter = 0, 0, 3
+	if roots.RangeRootRefs(sink) || sink.count != sink.stopAfter {
+		t.Fatalf("stopped root enumeration continued: count=%d result=true", sink.count)
 	}
 	runtime.KeepAlive(frame)
 }

@@ -133,8 +133,8 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)
 }
 
-func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) {
-	r.walk(nil, sink)
+func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) bool {
+	return r.walk(nil, sink)
 }
 
 // RangeClassifiedRootRefs preserves exact runtime ownership for opt-in
@@ -193,9 +193,9 @@ func (s classifiedRootSink) VisitRootRef(r gc.Ref) bool {
 	return s.sink.VisitClassifiedRootRef(s.class, r)
 }
 
-func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) {
+func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	if !r.rangeChain(fn, sink) {
-		return
+		return false
 	}
 	state := r.suspended
 	if state != nil && state.hostRootPlan != nil {
@@ -221,7 +221,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				callsites:            state.hostRootPlan.callsites,
 			}
 			if !chain.rangeChain(fn, sink) {
-				return
+				return false
 			}
 		}
 	}
@@ -229,12 +229,13 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
 		domainRoots = true
 		if !r.owner.refStore.rangeGCDomainPersistentRoots(r.owner.gc, fn, sink) {
-			return
+			return false
 		}
 	}
 	if !domainRoots && r.owner != nil {
-		_ = r.owner.rangeLocalGCTableRoots(fn, sink)
+		return r.owner.rangeLocalGCTableRoots(fn, sink)
 	}
+	return true
 }
 
 type gcNativeTableRoots struct {
@@ -246,8 +247,8 @@ func (r *gcNativeTableRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)
 }
 
-func (r *gcNativeTableRoots) RangeRootRefs(sink gc.RootRefSink) {
-	r.walk(nil, sink)
+func (r *gcNativeTableRoots) RangeRootRefs(sink gc.RootRefSink) bool {
+	return r.walk(nil, sink)
 }
 
 func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
