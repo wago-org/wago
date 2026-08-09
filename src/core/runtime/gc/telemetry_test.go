@@ -22,12 +22,13 @@ func (r *telemetryClassifiedDirectRoots) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
-func (r *telemetryClassifiedDirectRoots) RangeClassifiedRootRefs(sink ClassifiedRootRefSink) {
+func (r *telemetryClassifiedDirectRoots) RangeClassifiedRootRefs(sink ClassifiedRootRefSink) bool {
 	for i := range r.refs {
 		if !sink.VisitClassifiedRootRef(r.classes[i], Ref(r.refs[i])) {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 func telemetryTestTypes(t *testing.T) []TypeDesc {

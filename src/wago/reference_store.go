@@ -140,12 +140,12 @@ func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) bool {
 // RangeClassifiedRootRefs preserves exact runtime ownership for opt-in
 // collector telemetry without allocating composite RootSet values on helper
 // paths.
-func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) {
+func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
 	if r == nil || sink == nil {
-		return
+		return true
 	}
 	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
-		return
+		return false
 	}
 	state := r.suspended
 	if state != nil && state.hostRootPlan != nil {
@@ -171,17 +171,17 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				callsites:            state.hostRootPlan.callsites,
 			}
 			if !chain.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
-				return
+				return false
 			}
 		}
 	}
 	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
-		r.owner.refStore.rangeGCDomainPersistentRootsClassified(r.owner.gc, sink)
-		return
+		return r.owner.refStore.rangeGCDomainPersistentRootsClassified(r.owner.gc, sink)
 	}
 	if r.owner != nil {
-		_ = r.owner.rangeLocalGCTableRoots(nil, classifiedRootSink{sink: sink, class: gc.RootTable})
+		return r.owner.rangeLocalGCTableRoots(nil, classifiedRootSink{sink: sink, class: gc.RootTable})
 	}
+	return true
 }
 
 type classifiedRootSink struct {

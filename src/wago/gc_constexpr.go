@@ -63,16 +63,20 @@ func (s gcConstStackRootSet) RangeRoots(fn func(gc.RootSlot) bool) {
 	}
 }
 
-func (s gcConstStackRootSet) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) {
+func (s gcConstStackRootSet) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
 	if sink == nil {
-		return
+		return true
 	}
 	classified := classifiedRootSink{sink: sink, class: gc.RootSnapshotTemporary}
 	if s.extra != nil {
 		if direct, ok := s.extra.(gc.DirectClassifiedRootRefSet); ok {
-			direct.RangeClassifiedRootRefs(sink)
+			if !direct.RangeClassifiedRootRefs(sink) {
+				return false
+			}
 		} else if direct, ok := s.extra.(gc.DirectRootRefSet); ok {
-			direct.RangeRootRefs(classified)
+			if !direct.RangeRootRefs(classified) {
+				return false
+			}
 		} else {
 			keepGoing := true
 			s.extra.RangeRoots(func(slot gc.RootSlot) bool {
@@ -80,18 +84,19 @@ func (s gcConstStackRootSet) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				return keepGoing
 			})
 			if !keepGoing {
-				return
+				return false
 			}
 		}
 	}
 	if s.stack == nil {
-		return
+		return true
 	}
 	for i := range *s.stack {
 		if (*s.stack)[i].kind == gcConstCollectorRef && !sink.VisitClassifiedRootRef(gc.RootSnapshotTemporary, (*s.stack)[i].ref) {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 // compactRefRootSlot roots an off-heap compact reference in place while an

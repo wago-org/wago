@@ -211,15 +211,16 @@ func (r *gcArrayElementRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	}
 }
 
-func (r *gcArrayElementRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) {
+func (r *gcArrayElementRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
 	if r == nil || sink == nil {
-		return
+		return true
 	}
 	for i := uint8(0); i < r.Count; i++ {
 		if !sink.VisitClassifiedRootRef(gc.RootSnapshotTemporary, gc.Ref(r.Values[i])) {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 func (r *gcArrayElementRoots) ref(i uint8) gc.Ref { return gc.Ref(r.Values[i]) }

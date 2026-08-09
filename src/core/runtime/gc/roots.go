@@ -30,9 +30,10 @@ type ClassifiedRootRefSink interface {
 }
 
 // DirectClassifiedRootRefSet lets a runtime attribute roots without allocating
-// a RootGroups slice or boxing mutable RootSlot values.
+// a RootGroups slice or boxing mutable RootSlot values. It returns false when the
+// sink stops enumeration.
 type DirectClassifiedRootRefSet interface {
-	RangeClassifiedRootRefs(ClassifiedRootRefSink)
+	RangeClassifiedRootRefs(ClassifiedRootRefSink) bool
 }
 
 // ClassifiedRoots assigns one telemetry ownership class to an exact root set.
