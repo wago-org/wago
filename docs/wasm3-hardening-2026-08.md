@@ -55,9 +55,11 @@ length of the RX mapping. The original Go-heap code backing can then be collecte
 removing the previous second live copy while preserving codec/snapshot reads.
 
 Issue #311 extends AMD64 native allocation through bounded array constructors.
-Collector ABI v6 retains the 32-handle baseline, identifies contiguous handle
-runs, and reserves one 4-KiB Eden chunk whose private cursor advances without a
-shared-bump update per object. Statically sized final default, uniform, and fixed
+Collector ABI v6 retains the 32-handle baseline and identifies contiguous handle
+runs. Arrays reserve one 4-KiB Eden chunk whose private cursor advances without a
+shared-bump update per object; structs retain their direct bump sequence. Generic
+public calls refill only after nine slow constructors, while products whose batch
+survives public calls refill immediately. Statically sized final default, uniform, and fixed
 arrays through 256 object bytes admit numeric, packed, vector, and nullable
 abstract collector-reference elements. Reference operands are all validated
 before payload or handle publication. Dynamic lengths, larger objects,
@@ -67,9 +69,11 @@ collection-disabled execution remain rooted helpers.
 The 256-byte ceiling came from an adversarial expansion test: approximately
 1-KiB objects regressed 69-70%, while 16-KiB objects regressed 60-100%, because
 the chunk repeatedly exhausted before the fixed handle batch and exact rollback
-had to recycle many unused identities. The retained 33-array matrix improves
-small numeric/reference shapes by 49-74%, executes one helper for 33 semantic
-allocations, and leaves rejected larger shapes on byte-identical helper code.
+had to recycle many unused identities. The retained 33-array generic matrix improves
+small numeric/reference shapes by 42-49%, executes nine helpers for 33 semantic
+allocations, and leaves rejected larger shapes on byte-identical helper code. A
+batch-depth discriminator keeps one, two, four, and eight constructors within
+measurement noise instead of reserving a batch that the next boundary cancels.
 ABI-v6 cancellation covers every Go allocation, trap, collection, epoch change,
 and close. The `.wago` artifact version is 34 so ABI-v5 generated constructors
 cannot be mixed with the new allocation-ticket layout or helper IDs.

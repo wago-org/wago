@@ -326,7 +326,7 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 // allocation can now satisfy several constructors without a Go helper boundary,
 // so helper-triggered synchronization alone is no longer authoritative.
 func (in *Instance) reconcileGCGlobalRoots() error {
-	if in == nil || in.gc == nil || in.c == nil {
+	if in == nil || in.gc == nil || in.c == nil || !in.c.hasGCRefGlobals() {
 		return nil
 	}
 	state := in.pluginState.Load()

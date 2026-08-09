@@ -268,8 +268,11 @@ Native collector ABI v6 retains the same basedata slot and extends the collector
 from 160 to 168 bytes. Byte 124 separates the Eden allocation limit from complete
 young backing; byte 160 publishes the configured nursery-object maximum. The
 160-byte shared allocation ticket retains 32 handles and adds a contiguous handle
-base plus a bounded nursery chunk cursor. Statically sized final arrays up to 256
-object bytes may use the same transactional AMD64 path as final structs; dynamic,
+base plus optional bounded nursery chunk fields. Arrays advance the private chunk
+cursor; structs retain their direct collector-bump sequence. Generic public calls
+refill only after nine slow constructors, while products without mandatory boundary
+collection refill immediately. Statically sized final arrays up to 256 object bytes
+may use the same transactional AMD64 ticket as final structs; dynamic,
 large, segment-backed, and unsupported reference shapes remain rooted helpers.
 Basedata remains 288 bytes and descriptor layouts do not grow.
 

@@ -27,8 +27,8 @@ func TestGCNativeReferenceArrayAllocUsesExactNativeInitializers(t *testing.T) {
 		}
 	}
 	stats := in.GCHelperStats()
-	if stats.ArrayAllocationCalls != 2*iterations {
-		t.Fatalf("reference array helper calls = %d, want %d slow refills for %d total array allocations", stats.ArrayAllocationCalls, 2*iterations, 4*iterations)
+	if stats.ArrayAllocationCalls != 4*iterations {
+		t.Fatalf("reference array helper calls = %d, want %d for unamortized two-array invocations", stats.ArrayAllocationCalls, 4*iterations)
 	}
 }
 
@@ -99,8 +99,8 @@ func TestGCNativeArrayAllocAvoidsMostGoHelpers(t *testing.T) {
 	}
 	const allocations = iterations * 33
 	stats := in.GCHelperStats()
-	if stats.ArrayAllocationCalls != iterations {
-		t.Fatalf("array allocation helper calls = %d for %d allocations", stats.ArrayAllocationCalls, allocations)
+	if stats.ArrayAllocationCalls != 9*iterations {
+		t.Fatalf("array allocation helper calls = %d, want %d for %d allocations", stats.ArrayAllocationCalls, 9*iterations, allocations)
 	}
 	if got := in.gc.Stats().Allocations; got != uint64(allocations) {
 		t.Fatalf("semantic allocations = %d, want %d", got, allocations)

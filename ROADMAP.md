@@ -501,14 +501,15 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   eliminates 32 promoted bytes/object and improves its median about 19%; the
   zero-survival path remains allocation-free and within 1% of immediate promotion.
 - [x] Extend transactional AMD64 nursery allocation through #311: the retained
-  32-handle batch now exposes contiguous runs and one bounded 4-KiB chunk;
+  32-handle batch now exposes contiguous runs and optional bounded 4-KiB array chunks;
   statically sized final numeric/vector/packed and nullable abstract-reference
   arrays up to 256 object bytes use checked native default, uniform, and fixed
   constructors. Dynamic, large, data/element-segment, and unsupported reference
   shapes remain exact rooted helpers after measurements rejected broader native
-  admission. ABI v6 cancels unused handles/chunks on every Go allocation, trap,
-  collection, epoch change, and close, while exact GC globals reconcile after
-  successful helper-free invocation sequences.
+  admission. ABI v6 keeps the established direct struct bump, delays generic
+  array refill until nine slow constructors, cancels unused handles/chunks on every
+  Go allocation, trap, collection, epoch change, and close, and reconciles exact GC
+  globals after successful helper-free invocation sequences.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
 

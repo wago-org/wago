@@ -172,6 +172,31 @@ func BenchmarkGCNativeArrayFresh(b *testing.B) {
 	}
 }
 
+func BenchmarkGCNativeArrayBatchDepth(b *testing.B) {
+	for _, count := range []int{1, 2, 4, 8, 16, 33} {
+		b.Run(fmt.Sprintf("constructors=%d", count), func(b *testing.B) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeArrayDefaultBenchmarkModuleN([]byte{0x5e, 0x7f, 0x01}, 4, count))
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer compiled.Close()
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				got, err := in.Invoke("run")
+				if err != nil || len(got) != 1 || got[0] != 0 {
+					b.Fatalf("run = %v, %v", got, err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkGCNativeArrayAllocationMatrix(b *testing.B) {
 	fixtures := []struct {
 		name      string

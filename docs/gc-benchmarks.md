@@ -507,62 +507,75 @@ those corrections. They do not change the measured `cli/wago` file sizes:
 
 ## Native array allocation and nursery chunks (#311)
 
-On August 9, 2026, the AMD64 `BenchmarkGCNativeArrayAllocationMatrix` compared
-ABI-v6 native allocation with `WAGO_AMD64_NO_GC_NATIVE_ALLOC=1`. One test binary
-was built once, pinned to CPU 4 with `GOMAXPROCS=1`, and run in alternating order
-for ten samples at 2,000 fixed iterations. Each operation performs 33 arrays of
-one static shape, so a retained 32-handle batch produces one rooted refill and 32
-native allocations. Both paths remain 0 B/op and 0 allocs/op.
+On August 9, 2026, AMD64 native-array A/B runs used one test binary with
+`WAGO_AMD64_NO_GC_NATIVE_ALLOC=1`, `GOMAXPROCS=1`, CPU affinity, alternating
+order, 15 samples, and fixed iteration counts. The host was also running unrelated
+CPU-heavy work, so absolute times and narrow differences are not release claims;
+the retained policy is based on large repeated deltas and reports the noisy rows
+rather than dropping them.
+
+Generic public calls perform a mandatory collection at their next boundary. A
+batch-depth matrix showed that reserving 32 handles and 4 KiB after only two or
+four constructors regressed those short calls. Generic execution now remains
+helper-only through eight slow constructors and refills after the ninth; products
+without mandatory boundary collection refill immediately because their batch
+survives later invocations. A 33-constructor generic operation therefore executes
+nine rooted helpers followed by 24 native allocations. All rows remain 0 B/op and
+0 allocs/op, and telemetry still records all 33 semantic allocations.
 
 | Element | Length | helper-only | native/chunk | Change |
 | --- | ---: | ---: | ---: | ---: |
-| i32 | 0 | 4,151 ns | 1,185 ns | -71.45% |
-| i32 | 1 | 3,868 ns | 1,126 ns | -70.90% |
-| i32 | 4 | 3,831 ns | 1,082 ns | -71.77% |
-| i32 | 32 | 4,036 ns | 1,886 ns | -53.27% |
-| i32 | 256 | 4,316 ns | 4,202 ns | -2.64% |
-| i32 | 4,096 | 17,481 ns | 14,706 ns | -15.88% |
-| nullable anyref | 0 | 3,880 ns | 1,031 ns | -73.44% |
-| nullable anyref | 1 | 4,051 ns | 1,041 ns | -74.31% |
-| nullable anyref | 4 | 3,695 ns | 1,075 ns | -70.92% |
-| nullable anyref | 32 | 4,190 ns | 1,790 ns | -57.28% |
-| nullable anyref | 256 | 4,521 ns | 4,228 ns | -6.49% |
-| nullable anyref | 4,096 | 20,095 ns | 18,087 ns | -10.00% |
+| i32 | 0 | 4,157 ns | 2,283 ns | -45.08% |
+| i32 | 1 | 3,958 ns | 2,219 ns | -43.94% |
+| i32 | 4 | 3,874 ns | 2,236 ns | -42.28% |
+| i32 | 32 | 3,995 ns | 2,298 ns | -42.48% |
+| i32 | 256 | 4,402 ns | 4,475 ns | +1.66% |
+| i32 | 4,096 | 23,111 ns | 22,518 ns | -2.57% |
+| nullable anyref | 0 | 3,754 ns | 2,060 ns | -45.13% |
+| nullable anyref | 1 | 3,939 ns | 2,017 ns | -48.79% |
+| nullable anyref | 4 | 3,867 ns | 2,052 ns | -46.94% |
+| nullable anyref | 32 | 3,973 ns | 2,250 ns | -43.37% |
+| nullable anyref | 256 | 4,418 ns | 4,415 ns | -0.07% |
+| nullable anyref | 4,096 | 23,043 ns | 22,844 ns | -0.86% |
 
-Only statically sized objects through 256 bytes receive native code. The 256- and
-4,096-element rows therefore measure the unchanged rooted-helper policy and its
-code-layout noise rather than native payload initialization. Earlier experiments
-admitting approximately 1-KiB and 16-KiB objects regressed 69-70% and 60-100%:
-the 4-KiB chunk exhausted before the handle batch, repeatedly canceling unused
-identities. Dynamic lengths have the same exact helper-only admission and add no
-conditional native branch. `array.new_data` and `array.new_elem` also remain
-helpers because segment validation/copy dominates and a native constructor did
-not remove that transition safely.
+The measured generic batch-depth discriminator was:
 
-The existing fixed numeric fixture improves 30.52% for construct-plus-length and
-46.13% for construct/set/get. Under `wago_gcstats`, the 33-array fixture executes
-one allocation helper, preserving all 33 semantic allocation increments. Small
-final reference uniform/fixed tests validate every initializer before publication
-and prove exact roots across collection, trap, malformed-metadata, and chunk
-cancellation paths.
+| Constructors per invocation | Change |
+| ---: | ---: |
+| 1 | +15.46% (95% interval includes zero) |
+| 2 | -0.71% |
+| 4 | -7.20% |
+| 8 | +2.55% |
+| 16 | -7.02% (95% interval includes zero) |
+| 33 | -42.93% |
 
-Fresh-runtime behavior is reported separately because the first constructor is
-still the rooted refill boundary. A seven-sample, 2,000-iteration single-array
-run measured a 3.20 us disabled median versus 3.78 us enabled (+18.1%); timed
-first-invocation setup changed from 105 B / 6 allocations to 1,050 B / 10
-allocations while reserving the first 32 identities and chunk. Batch reservation
-grows each collector-owned slice once rather than repeatedly. This bounded refill
-cost does not recur after warm-up and buys the 49-74% sustained small-array wins
-above; one-allocation workloads still execute one exact rooted helper rather than
-being presented as a native fast-path win.
+A separate 20-sample fresh-runtime run measured 5,949 ns helper-only versus
+5,196 ns admitted (-12.65%, interval includes zero), with 90 B/op and 6 allocs/op
+on both sides. The staged fixed numeric product, whose batch persists across
+public calls, improves about 31-33% for construct-plus-length and 50-53% for
+construct/set/get. The existing native struct sequence remains byte-identical at
+4,303 generated bytes except for sixteen ABI-version immediates; structs retain
+the direct global nursery bump and do not pay array chunk-cursor checks.
+
+Only statically sized objects through 256 object bytes receive native code. The
+256- and 4,096-element rows are unchanged helper-only shapes and expose only
+measurement/code-layout noise. Earlier approximately 1-KiB and 16-KiB admission
+regressed 69-70% and 60-100% because a chunk exhausted before its handle batch.
+Dynamic lengths, `array.new_data`, `array.new_elem`, non-final arrays, and defined
+heap-reference arrays remain exact helpers.
 
 For 33 static length-4 sites, native admission adds 941 generated bytes: one
 578-byte shared stub plus bounded call-site setup. A rejected 256-element module
-emits byte-identical helper code. Reproducible `-trimpath -buildvcs=false` CLI
-builds remain 8,266,020 bytes stripped; unstripped size changes from 12,129,958
-to 12,129,774 bytes (-184). The ordinary collector grows from 1,104 to 1,120
-bytes, the native view from 160 to 168 bytes, and the shared allocation ticket
-from 144 to 160 bytes.
+emits byte-identical helper code. Small final reference tests validate every
+initializer before publication and cover exact roots, collection, traps,
+malformed metadata, and chunk cancellation. The ordinary collector remains
+1,120 bytes, the native view 168 bytes, and the shared allocation ticket 160
+bytes. Reproducible `-trimpath -buildvcs=false` CLI builds measure 12,129,774
+bytes unstripped and 8,266,020 bytes stripped. That is -184 unstripped bytes and
+no stripped change versus pre-#311 `ee257b06`; versus branch-base `main` at
+`1e03d71f`, the integrated branch is +352 unstripped bytes and unchanged stripped.
+A `wago_gcstats` build is eight additional unstripped bytes and has the same
+stripped size.
 
 Future issue work must extend the matrix as follows:
 

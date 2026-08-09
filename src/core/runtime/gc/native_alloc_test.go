@@ -37,7 +37,7 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 		t.Fatal("native handle batch was not prepared")
 	}
 	s := &c.nativeStructAlloc
-	if s.Cursor != 0 || s.Count != nativeStructHandleBatch || s.HandleBase == 0 || s.ChunkStart != 0 || s.ChunkCursor != 0 || s.ChunkEnd != NativeAllocationChunkBytes || len(c.nurseryHandles) != nativeStructHandleBatch || c.nurseryBump != NativeAllocationChunkBytes || c.stats.Allocations != 0 {
+	if s.Cursor != 0 || s.Count != nativeStructHandleBatch || s.HandleBase == 0 || s.ChunkStart != 0 || s.ChunkCursor != 0 || s.ChunkEnd != 0 || len(c.nurseryHandles) != nativeStructHandleBatch || c.nurseryBump != 0 || c.stats.Allocations != 0 {
 		t.Fatalf("reserved state = cursor %d count %d base %d chunk %d/%d/%d nursery handles %d bump %d allocations %d", s.Cursor, s.Count, s.HandleBase, s.ChunkStart, s.ChunkCursor, s.ChunkEnd, len(c.nurseryHandles), c.nurseryBump, c.stats.Allocations)
 	}
 	seen := make(map[uint32]bool, nativeStructHandleBatch)
@@ -98,6 +98,43 @@ func TestNativeAllocationUnusedAlignedChunkRestoresExactBump(t *testing.T) {
 	c.CancelNativeAllocationBatch()
 	if c.nurseryBump != 24 {
 		t.Fatalf("canceled aligned chunk bump = %d, want 24", c.nurseryBump)
+	}
+}
+
+func TestNativeArrayAllocationPrimesBeforeReserving(t *testing.T) {
+	desc, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for i := uint8(1); i < nativeArrayGenericRefillThreshold; i++ {
+		if c.PrepareNativeArrayAllocation(24) {
+			t.Fatalf("array allocation %d unexpectedly reserved a native batch", i)
+		}
+		if c.arraySlow != i || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.ChunkEnd != 0 || c.nurseryBump != 0 {
+			t.Fatalf("array allocation %d did not remain reservation-free", i)
+		}
+		c.CancelNativeAllocationBatch()
+		if c.arraySlow != i {
+			t.Fatalf("helper cancellation cleared slow count %d", i)
+		}
+	}
+	if !c.PrepareNativeArrayAllocation(24) {
+		t.Fatalf("array allocation %d did not reserve a native batch", nativeArrayGenericRefillThreshold)
+	}
+	if c.nativeStructAlloc.Count != nativeStructHandleBatch || c.nativeStructAlloc.ChunkEnd == 0 {
+		t.Fatal("second array allocation left no usable native batch")
+	}
+	c.discardNativeStructHandles()
+	if c.arraySlow != 0 {
+		t.Fatal("collecting-boundary cancellation retained the array slow count")
+	}
+	if !c.PrepareNativeArrayAllocationImmediate(24) {
+		t.Fatal("persistent-boundary product did not reserve immediately")
 	}
 }
 

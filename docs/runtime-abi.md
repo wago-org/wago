@@ -67,9 +67,11 @@ The 160-byte allocation state now contains `{epoch, cursor, count, handleBase,
 chunkStart, chunkCursor, chunkEnd, chunkBump}` as `u32` words and the retained 32
 compact handle indexes. A nonzero `handleBase` identifies a contiguous run and
 lets generated code derive a handle without loading the index array. A rooted
-helper advances the collector bump once to reserve a bounded 4-KiB nursery chunk;
-native constructors advance only `chunkCursor`. Reservation publishes neither an
-object nor a semantic allocation. Before any Go allocation, trap, collection,
+array helper advances the collector bump once to reserve a bounded 4-KiB nursery
+chunk; native arrays advance only `chunkCursor`. Native structs retain the direct
+collector-bump sequence and use the same handle ticket with zero chunk fields.
+Reservation publishes neither an object nor a semantic allocation. Before any Go
+allocation, trap, collection,
 epoch change, or `Close`, unused identities are recycled and an unused top chunk
 is rewound exactly.
 
@@ -83,7 +85,10 @@ lengths, large objects, non-final or defined-heap reference arrays,
 `array.new_data`, `array.new_elem`, Tiny, collection-disabled,
 collect-every-allocation, exhaustion, and malformed metadata retain the exact
 rooted helper. Measurements rejected larger native reservations because repeated
-chunk cancellation outweighed the removed helper transition.
+chunk cancellation outweighed the removed helper transition. Generic public calls
+also delay refill until the ninth slow constructor; shorter calls remain helper-only
+because their next mandatory boundary would cancel an unamortized batch. Products
+without mandatory boundary collection refill immediately.
 
 The Collector republishes handle and heap pointers/counts and increments the
 refresh generation after every helper allocation and collection, including
@@ -559,7 +564,8 @@ After every successful native invocation with exact GC-global mappings,
 their checked collector slots under the existing GC mutex. This is no longer
 limited to the bulk-copy product: a native allocation batch can satisfy several
 constructors without a Go helper boundary, so helper-triggered synchronization
-alone is not authoritative. The routine remains a zero-work early return for
+alone is not authoritative. Modules without collector-reference globals return
+before loading mutable reconciliation state. The routine remains a zero-work early return for
 instances without mapped GC globals, validates compact high words, and runs
 before any subsequent invocation or explicit boundary collection. A trap leaves
 both cell and slot at their last successfully published values.

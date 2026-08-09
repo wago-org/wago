@@ -2091,9 +2091,10 @@ Array constructors preflight every value and root before allocation, then initia
 
 On AMD64, ABI v6 extends the retained 32-handle native struct batch into one
 generic struct/array allocation ticket. A helper reserves a contiguous handle run
-when available and one bounded 4-KiB Eden chunk; generated code advances the
-private chunk cursor rather than the collector bump for every object. Statically
-sized final arrays up to 256 object bytes admit native `array.new`,
+when available. Arrays additionally reserve one bounded 4-KiB Eden chunk and
+advance its private cursor; structs retain the measured direct collector-bump path
+so chunk support adds no checks to established struct code. Statically sized final
+arrays up to 256 object bytes admit native `array.new`,
 `array.new_fixed`, and defaultable `array.new_default` for numeric, packed,
 vector, and nullable abstract `any`/`eq` reference elements. All reference
 initializers are checked before any payload or handle publication. The final
@@ -2106,9 +2107,13 @@ unused identities. Those shapes, large-object classifications,
 non-final/defined-heap references, `array.new_data`, and `array.new_elem` stay on
 the rooted helper path. Every Go allocation cancels the ticket first; collection,
 traps, malformed metadata, epoch changes, and `Close` recycle unused handles and
-rewind only an exclusively owned top chunk. Post-invocation GC-global
-reconciliation now covers every exact mapped product because successful native
-batches may cross several constructors without a helper synchronization point.
+rewind only an exclusively owned top chunk. Generic public calls keep their first
+eight constructors helper-only and refill after the ninth because the next public
+boundary collects and cancels the batch; products without that mandatory boundary
+refill immediately. Post-invocation GC-global reconciliation covers exact mapped
+products because successful native batches may cross several constructors without
+a helper synchronization point, while modules without collector-reference globals
+return before touching reconciliation state.
 
 On the same machine, 4,096-element uniform i32 construction improves from 25.6–25.7 µs to 96 ns and uniform compact-ref construction from 27.4–27.5 µs to 263 ns. Fixed compact-ref construction improves from 96.5–97.4 µs, 43,851–43,858 B/op, and 1,371 allocs/op to 25.4–25.9 µs, 172 B/op, and 6 allocs/op. The remaining allocations are collection/constructor control metadata, not per-element growth.
 

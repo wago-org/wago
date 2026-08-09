@@ -44,7 +44,7 @@ func (in *Instance) prepareNativeStructHandles(typeID uint32) {
 	}
 	size, err := gc.StructSize(d)
 	if err == nil {
-		in.gc.PrepareNativeAllocation(size)
+		in.gc.PrepareNativeStructAllocation(size)
 	}
 }
 
@@ -64,7 +64,12 @@ func (in *Instance) prepareNativeArrayAllocation(typeID, length uint32) {
 		}
 	}
 	size, err := gc.ArraySize(d, length)
-	if err == nil {
-		in.gc.PrepareNativeArrayAllocation(size)
+	if err != nil {
+		return
 	}
+	if in.c.genericGCBoundaryCollectionSafe() {
+		in.gc.PrepareNativeArrayAllocation(size)
+		return
+	}
+	in.gc.PrepareNativeArrayAllocationImmediate(size)
 }

@@ -117,6 +117,7 @@ type Collector struct {
 	nativeView          *NativeCollectorView
 	nativeStructAlloc   nativeStructAllocState
 	nativeAllocEpoch    uint32
+	arraySlow           uint8
 	types               []TypeDesc
 	typeIndex           []int
 	objectAlign         uint32

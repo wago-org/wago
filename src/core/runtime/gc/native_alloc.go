@@ -6,10 +6,11 @@ import "slices"
 // reserves a bounded nursery chunk so generated code can publish several objects
 // without mutating the collector-wide nursery bump for every object.
 const (
-	nativeStructHandleBatch                = 32
-	NativeAllocationChunkBytes      uint32 = 4096
-	NativeStructAllocHandleCapacity        = nativeStructHandleBatch
-	NativeArrayAllocMaxBytes        uint32 = 256
+	nativeStructHandleBatch                  = 32
+	NativeAllocationChunkBytes        uint32 = 4096
+	NativeStructAllocHandleCapacity          = nativeStructHandleBatch
+	NativeArrayAllocMaxBytes          uint32 = 256
+	nativeArrayGenericRefillThreshold uint8  = 9
 )
 
 // nativeStructAllocState retains its historical name because its address is part
@@ -40,42 +41,13 @@ const (
 	NativeStructAllocStateSize         = 32 + nativeStructHandleBatch*4
 )
 
-// PrepareNativeAllocation publishes a fresh bounded batch of free handle
-// identities and reserves a nursery chunk for native constructors. Existing
-// usable reservations are retained. Reserving identities and bytes does not
-// publish an object or increment semantic allocation counters.
-func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
-	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.CollectEveryAlloc {
-		return false
-	}
+func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
+	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && !c.cfg.CollectEveryAlloc &&
+		minObjectBytes < c.cfg.LargeObjectBytes && minObjectBytes <= NativeAllocationChunkBytes && minObjectBytes <= ^uint32(0)-15
+}
+
+func (c *Collector) reserveNativeHandles() {
 	s := &c.nativeStructAlloc
-	if minObjectBytes >= c.cfg.LargeObjectBytes || minObjectBytes > NativeAllocationChunkBytes || minObjectBytes > ^uint32(0)-15 {
-		return false
-	}
-	need := Align16(minObjectBytes)
-	if need == 0 {
-		need = 16
-	}
-	if s.Cursor < s.Count && s.ChunkCursor <= s.ChunkEnd && need <= s.ChunkEnd-s.ChunkCursor {
-		return true
-	}
-	c.discardNativeStructHandles()
-
-	oldBump := c.nurseryBump
-	start := Align16(oldBump)
-	limit := c.edenBytes()
-	if start > limit || need > limit-start {
-		return false
-	}
-	chunkBytes := NativeAllocationChunkBytes
-	if chunkBytes < need {
-		chunkBytes = need
-	}
-	if chunkBytes > limit-start {
-		chunkBytes = limit - start
-	}
-	end := start + chunkBytes
-
 	clear(s.Handles[:])
 	s.Cursor = 0
 	s.Count = 0
@@ -106,17 +78,64 @@ func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
 	if contiguous {
 		s.HandleBase = base
 	}
-	s.ChunkStart = start
-	s.ChunkCursor = start
-	s.ChunkEnd = end
-	s.ChunkBump = oldBump
-	c.nurseryBump = end
 	s.Epoch = c.nativeAllocEpoch
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.paths.HandleRefills++
 		c.cfg.Telemetry.paths.ConditionalMediumPaths++
 	}
 	c.refreshNativeHandles()
+}
+
+// PrepareNativeStructAllocation retains the original direct nursery-bump struct
+// path. Array chunks therefore add no cursor checks or reserved-byte gaps to the
+// established native struct hot path.
+func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
+	if !c.nativeAllocationAllowed(minObjectBytes) {
+		return false
+	}
+	s := &c.nativeStructAlloc
+	if s.Cursor < s.Count && s.ChunkEnd == 0 {
+		return true
+	}
+	c.discardNativeStructHandles()
+	c.reserveNativeHandles()
+	return true
+}
+
+// PrepareNativeAllocation publishes a fresh bounded handle batch and reserves a
+// nursery chunk for native arrays. Existing usable array reservations are kept.
+func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
+	if !c.nativeAllocationAllowed(minObjectBytes) {
+		return false
+	}
+	s := &c.nativeStructAlloc
+	need := Align16(minObjectBytes)
+	if need == 0 {
+		need = 16
+	}
+	if s.Cursor < s.Count && s.ChunkCursor <= s.ChunkEnd && need <= s.ChunkEnd-s.ChunkCursor {
+		return true
+	}
+	c.discardNativeStructHandles()
+
+	oldBump := c.nurseryBump
+	start := Align16(oldBump)
+	limit := c.edenBytes()
+	if start > limit || need > limit-start {
+		return false
+	}
+	chunkBytes := NativeAllocationChunkBytes
+	if chunkBytes > limit-start {
+		chunkBytes = limit - start
+	}
+	end := start + chunkBytes
+
+	c.reserveNativeHandles()
+	s.ChunkStart = start
+	s.ChunkCursor = start
+	s.ChunkEnd = end
+	s.ChunkBump = oldBump
+	c.nurseryBump = end
 	return true
 }
 
@@ -127,17 +146,41 @@ func (c *Collector) PrepareNativeArrayAllocation(objectBytes uint32) bool {
 	if objectBytes > NativeArrayAllocMaxBytes {
 		return false
 	}
+	// Generic public calls collect at the next boundary. Measurements put the
+	// refill break-even above eight constructors, so short calls stay helper-only
+	// and a ninth slow allocation reserves for the remaining sequence.
+	if c.arraySlow < nativeArrayGenericRefillThreshold-1 {
+		c.arraySlow++
+		return false
+	}
+	return c.PrepareNativeAllocation(objectBytes)
+}
+
+// PrepareNativeArrayAllocationImmediate is for products without a mandatory
+// collection before every public invocation. Their batch survives the boundary,
+// so the first rooted constructor can profitably refill for later invocations.
+func (c *Collector) PrepareNativeArrayAllocationImmediate(objectBytes uint32) bool {
+	if objectBytes > NativeArrayAllocMaxBytes {
+		return false
+	}
 	return c.PrepareNativeAllocation(objectBytes)
 }
 
 // PrepareNativeStructHandles is retained for low-level callers and tests. New
 // runtime integration should pass the known minimum object size to
 // PrepareNativeAllocation.
-func (c *Collector) PrepareNativeStructHandles() bool { return c.PrepareNativeAllocation(16) }
+func (c *Collector) PrepareNativeStructHandles() bool { return c.PrepareNativeStructAllocation(16) }
 
 // CancelNativeAllocationBatch invalidates unpublished native identities and
 // returns an unused top chunk before a Go allocation slow path.
-func (c *Collector) CancelNativeAllocationBatch() { c.discardNativeStructHandles() }
+func (c *Collector) CancelNativeAllocationBatch() {
+	if c == nil {
+		return
+	}
+	slowCount := c.arraySlow
+	c.discardNativeStructHandles()
+	c.arraySlow = slowCount
+}
 
 // discardNativeStructHandles transactionally returns every unconsumed identity
 // before a collecting boundary, Go allocation slow path, or shutdown. Consumed
@@ -189,6 +232,7 @@ func (c *Collector) discardNativeStructHandles() {
 	s.ChunkCursor = 0
 	s.ChunkEnd = 0
 	s.ChunkBump = 0
+	c.arraySlow = 0
 	c.nativeAllocEpoch++
 	if c.nativeAllocEpoch == 0 {
 		c.nativeAllocEpoch = 1
