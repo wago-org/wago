@@ -2175,7 +2175,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
-	if force || forceSyncHostImports || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
+	if force || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		return true
 	}
 	for _, key := range c.Imports {
@@ -4051,17 +4051,30 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	if in.importsFuncrefStorage() || in.table != nil {
 		defer in.reconcileFuncrefRoots()
 	}
-	stopCancel := noOpCancellationWatch
 	if cancel != nil {
-		stopCancel = in.startCancellationWatch(cancel, in.trap)
+		stopCancel := in.startCancellationWatch(cancel, in.trap)
+		defer stopCancel()
 	}
-	defer stopCancel()
 	if in.syncMode {
 		if err := in.callNativeSyncWithTrapContext(entry, in.trap, cancel); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := in.callNativeAsync(entry, false); err != nil {
+		privateScalar := invokePrivateEntryEnabled && cancel == nil && !in.nativeControlShared &&
+			ic.entryMode != preparedEntryGeneral
+		entryMode := preparedEntryGeneral
+		if privateScalar {
+			entryMode = ic.entryMode
+		}
+		var err error
+		if entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
+			err = in.callPreparedIsolated(entry, in.trap)
+		} else if entryMode != preparedEntryGeneral {
+			err = in.callPreparedPrivate(entry, in.trap)
+		} else {
+			err = in.callNativeAsync(entry, false)
+		}
+		if err != nil {
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
@@ -4428,6 +4441,11 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 			rw = append(rw, isWideValType(r))
 		}
 	}
+	entryMode := preparedEntryGeneral
+	if !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) &&
+		paramSlots <= 4 && resultSlots <= 1 {
+		entryMode = in.preparedEntryMode()
+	}
 	*slot = invokeCache{
 		export:            export,
 		valid:             true,
@@ -4437,6 +4455,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		hasFuncRefParams:  hasReferenceValType(sig.Params),
 		hasFuncRefResults: hasReferenceValType(sig.Results),
 		resultWide:        rw,
+		entryMode:         entryMode,
 	}
 	return slot, nil
 }

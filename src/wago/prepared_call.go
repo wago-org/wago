@@ -27,6 +27,11 @@ var preparedPrivateEntryEnabled = os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0
 // restores the serialized private entry for A/B.
 var preparedIsolatedEntryEnabled = os.Getenv("WAGO_PREPARED_ISOLATED_ENTRY") != "0"
 
+// invokePrivateEntryEnabled lets the bounded scalar Instance.Invoke path reuse
+// the same already-bound private entry as PreparedFunction. Export resolution
+// remains in Invoke; WAGO_INVOKE_PRIVATE_ENTRY=0 restores the general entry.
+var invokePrivateEntryEnabled = os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
+
 // preparedDirectIntEnabled selects register-ABI entry for adapter-free integer
 // scalar leaves. WAGO_PREPARED_DIRECT_INT=0 restores the wrapper adapter.
 var preparedDirectIntEnabled = os.Getenv("WAGO_PREPARED_DIRECT_INT") != "0"
