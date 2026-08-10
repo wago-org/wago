@@ -1,6 +1,6 @@
 # Code-image and artifact pipeline
 
-Status: complete on `codex/code-image-pipeline`.
+Status: phases 1-4 complete on `main`; direct serial emission follow-up complete.
 
 Tracking issues: #316, #330, #331.
 
@@ -45,6 +45,60 @@ during compilation. Steady-state execution, artifact bytes, and machine-code
 bytes are intentionally unchanged. The ordinary instantiate benchmark is also
 unchanged because it amortizes the one-time transition across all iterations.
 
+The original phase 1 image was off heap, but each function was still encoded
+into reusable heap scratch and copied once into that image. The direct-emission
+follow-up makes the writable image tail the serial assembler's output buffer and
+commits it transactionally. If a function exceeds the reserved tail, the
+assembler moves to heap and the compiler safely falls back to `Append`; a
+capacity estimate can still affect performance, never correctness.
+
+On the same Apple M4 Max, five 500 ms samples of the public serial compile path
+measured:
+
+| Module | Full compile before | Direct emission | Delta | Go heap before | Direct emission | Delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| many_funcs | 314.4 us | 306.2 us | 1.027x faster | 217,203 B/op | 216,644 B/op | 1.003x less |
+| json-as | 1.468 ms | 1.387 ms | 1.058x faster | 400,023 B/op | 355,959 B/op | 1.124x less |
+| sqlite3 | 90.79 ms | 88.43 ms | 1.027x faster | 7,092,716 B/op | 6,615,945 B/op | 1.072x less |
+| ruby | 1.069 s | 1.029 s | 1.039x faster | 40,137,960 B/op | 37,394,792 B/op | 1.073x less |
+| esbuild | 709.3 ms | 688.9 ms | 1.030x faster | 46,570,752 B/op | 42,765,200 B/op | 1.089x less |
+
+The ruby and esbuild latency changes reached significance in these five-sample
+runs (`p=0.032` and `p=0.016`); the smaller corpora did not. Five fresh esbuild
+processes reduced median peak RSS from 138,706,944 to 136,527,872 bytes, 1.016x
+less. The completed-function `CodeBuffer.Append` copy disappeared from the CPU
+profile; first-touch page cost moved into encoder stores, explaining why the
+latency gain is much smaller than the removed copy's former 33.4% CPU-profile
+share. Native code size stayed byte-for-byte unchanged. Twelve interleaved
+execution samples were also unchanged: fib_iter was 66.72 vs 66.40 ns/op
+(`p=0.590`) and json-as serialization was 19.04 vs 19.01 us/op (`p=0.671`),
+both at zero B/op and zero allocations/op.
+
+The review gate was repeated after rebasing the complete branch onto
+`5a5327bf`. Median allocation counts moved from 403 to 400 allocs/op on
+many_funcs, 1,350 to 1,339 on json-as, 37,369 to 37,355 on sqlite3, 252,216 to
+252,198 on ruby, and 81,198 to 81,182 on esbuild. A first-load-only json-as
+benchmark recompiled before each timed first instantiation and alternated ten
+200-iteration samples: the median was 29.86 us on main and 27.64 us on the
+branch (7.45% lower), with both sides at 199 allocs/op and approximately 6,033
+B/op. Sample variance was high, so this is evidence against a regression, not a
+claimed first-load speedup. The compile-produced mappings were also exactly the
+same page-rounded sizes (32,768 bytes for many_funcs and 81,920 for json-as).
+
+Artifact and native-code bytes were byte-identical; the raw sizes below apply
+to both main and the branch. Direct emission removes the completed-function
+copy (zero such copy on the branch); the code-image size is the conservative
+upper bound on bytes formerly copied because it also includes alignment and
+module-level code.
+
+| Module | Native code bytes | `.wago` bytes |
+| --- | ---: | ---: |
+| many_funcs | 28,984 | 34,636 |
+| json-as | 77,388 | 86,000 |
+| sqlite3 | 4,029,344 | 4,207,097 |
+| ruby | 44,146,196 | 49,584,314 |
+| esbuild | 31,506,684 | 35,097,196 |
+
 ## Ownership model
 
 The neutral `core/codeimage.Image` interface transfers an image between the
@@ -78,6 +132,8 @@ flushes the instruction cache.
 - [x] Transfer ownership without growing decoded-module footprint.
 - [x] Prove first instantiation retains the exact code address.
 - [x] Preserve byte-identical code, codec output, and execution behavior.
+- [x] Emit each serial function directly into the writable image tail.
+- [x] Retain a checked heap-copy fallback for a tail-capacity underestimate.
 
 ### Phase 2: bounded parallel join investigation
 

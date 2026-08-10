@@ -1104,7 +1104,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		functionIndex++
 	}
 	customInstructions := resolveInstructionLowerings(m, instructions)
-	atomicWaitHelpers := moduleUsesAtomicWaitHelpers(m)
+	atomicWaitHelpers := requirements.atomicWaitHelpers
 	structuralProduct := stagedStructuralTypeProduct(0)
 	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
@@ -1187,7 +1187,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// recognizers select optimizations, not semantic admission boundaries.
 		gcStructProduct = stagedGCStructGeneric
 	}
-	if goruntime.GOARCH == "arm64" && !gcStructProduct.requiresHelpers() && moduleUsesArm64GCRefTestHelper(m) {
+	if goruntime.GOARCH == "arm64" && !gcStructProduct.requiresHelpers() && requirements.arm64GCRefTestHelper {
 		// ARM64 lowers collector-reference ref.test through the generic checked
 		// helper. Provision the collector and helper dispatch even when a narrower
 		// metadata-only product recognized the module.
@@ -1319,10 +1319,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
 		return nil, fmt.Errorf("gc array descriptors: %w", err)
 	}
-	moduleFacts, err := frontend.AnalyzeModuleFacts(m)
-	if err != nil {
-		return nil, fmt.Errorf("compile module facts: %w", err)
-	}
+	moduleFacts := requirements.moduleFacts
 	if err := frontend.RejectUnsupportedWithFeaturesAndFacts(m, features, moduleFacts); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1345,7 +1342,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
 	gcFrameRoots := newGCFrameRootPlan(m, genericGCExecution)
-	indexedFunctionRefTest, indexedFunctionRefCast := moduleUsesIndexedFunctionRefTestOrCast(m)
+	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
 	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
@@ -1979,45 +1976,6 @@ func isUnsupportedProposalError(err error) bool {
 	} {
 		if strings.Contains(message, marker) {
 			return true
-		}
-	}
-	return false
-}
-
-func moduleUsesArm64GCRefTestHelper(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	for i := range m.Code {
-		r := wasm.NewReader(m.Code[i].BodyBytes)
-		for r.HasNext() {
-			op, err := r.Byte()
-			if err != nil {
-				return false
-			}
-			if op == 0xfb {
-				peek := *r
-				sub, subErr := peek.U32()
-				if subErr != nil {
-					return false
-				}
-				if sub == 20 || sub == 21 {
-					heap, heapErr := peek.S33()
-					if heapErr != nil {
-						return false
-					}
-					if heap >= 0 {
-						if _, isFunc := m.TypeFunc(uint32(heap)); !isFunc {
-							return true
-						}
-					} else if heap != -16 && heap != -17 && heap != -13 && heap != -14 {
-						return true
-					}
-				}
-			}
-			if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
-				return false
-			}
 		}
 	}
 	return false
