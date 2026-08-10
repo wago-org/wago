@@ -218,6 +218,44 @@ func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
 	return nil
 }
 
+// ReserveDeadArrayAllocation performs the allocation side effect of a dropped
+// dynamic constructor without populating its unreachable payload. Unlike
+// CheckArrayAllocation, this preserves exhaustion, collection, handle-table,
+// allocation-counter, and future-capacity behavior under an already occupied
+// bounded heap. The zero payload keeps verification and accidental diagnostics
+// safe until the unreachable object is collected.
+func (c *Collector) ReserveDeadArrayAllocation(typeID TypeID, length uint32, roots RootSet) error {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return err
+	}
+	size, err := ArraySize(d, length)
+	if err != nil {
+		return err
+	}
+	r, err := c.alloc(d, size, length, roots)
+	if err != nil {
+		return err
+	}
+	c.zeroObjectPayload(r)
+	return nil
+}
+
+// ReserveDeadDefaultArrayAllocation additionally preserves the defaultability
+// check required by array.new_default before reserving its dropped allocation.
+func (c *Collector) ReserveDeadDefaultArrayAllocation(typeID TypeID, length uint32, roots RootSet) error {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return err
+	}
+	if length != 0 {
+		if err := checkDefaultable(d); err != nil {
+			return err
+		}
+	}
+	return c.ReserveDeadArrayAllocation(typeID, length, roots)
+}
+
 // NewArrayFixedWithRoots allocates an array initialized from one value per
 // element. Reference operands are rooted across allocation and reread before
 // stores, matching the atomic operand lifetime required by array.new_fixed.

@@ -66,11 +66,11 @@ func TestGCBarrierSelection(t *testing.T) {
 	if got := SelectGCStoreBarrier(parent, child); got != GCBarrierSlowBarrier {
 		t.Fatalf("unknown-generation fresh parent selected %v, want slow barrier", got)
 	}
-	if got := SelectGCStoreBarrier(parent.WithGeneration(GCGenerationYoung), child); got != GCBarrierYoungParent {
-		t.Fatalf("young unpublished parent selected %v", got)
+	if got := SelectGCStoreBarrier(parent.WithGeneration(GCGenerationYoung), child); got != GCBarrierSlowBarrier {
+		t.Fatalf("unvalidated young-parent generation selected %v, want slow barrier", got)
 	}
-	if got := SelectGCStoreBarrier(parent, child.WithGeneration(GCGenerationOld)); got != GCBarrierKnownOldChild {
-		t.Fatalf("known-old child selected %v", got)
+	if got := SelectGCStoreBarrier(parent, child.WithGeneration(GCGenerationOld)); got != GCBarrierSlowBarrier {
+		t.Fatalf("unvalidated old-child generation selected %v, want slow barrier", got)
 	}
 	nullChild := NewGCRefFact(GCKnownNull, GCHeapStruct)
 	if got := SelectGCStoreBarrier(parent, nullChild); got != GCBarrierNoBarrier {
@@ -82,5 +82,13 @@ func TestGCBarrierSelection(t *testing.T) {
 	}
 	if got := SelectGCBulkBarrier(parent.WithPointerFree(true), false); got != GCBarrierNoBarrier {
 		t.Fatalf("pointer-free bulk selected %v", got)
+	}
+	if got := SelectGCBulkBarrier(parent.WithGeneration(GCGenerationYoung), true); got != GCBarrierSlowBarrier {
+		t.Fatalf("unvalidated young bulk destination selected %v, want slow barrier", got)
+	}
+	for _, state := range []GCBarrierState{GCBarrierYoungParent, GCBarrierKnownOldChild, GCBarrierExistingCard, GCBarrierCardMark, GCBarrierSlowBarrier} {
+		if !state.NeedsBarrier() {
+			t.Fatalf("reserved barrier state %v failed open", state)
+		}
 	}
 }

@@ -34,7 +34,6 @@ const (
 	gcArrayCheckDefault        uint32 = 36
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
-	gcArrayCheckElem           uint32 = 39
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -56,13 +55,15 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			valueType = wasm.I32
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
-		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
-			if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, nil); err != nil {
-				return err
+		if valueType.Kind() != wasm.ValRef {
+			if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+				if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, nil); err != nil {
+					return err
+				}
+				f.finishCheckedDeadGCConstructor(r, deadUse)
+				return nil
 			}
-			f.finishCheckedDeadGCConstructor(r, deadUse)
-			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -96,16 +97,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return fmt.Errorf("amd64: array.new_elem type %d is not a reference array", typeIndex)
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
-		deadUse := f.checkedDeadGCConstructorUse(r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIndex)})
-		if deadUse != checkedDeadGCNone {
-			if err := f.callGCStructHelper(gcArrayCheckElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil); err != nil {
-				return err
-			}
-			f.finishCheckedDeadGCConstructor(r, deadUse)
-			return nil
-		}
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if err := f.callGCStructHelper(gcArrayAllocElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err

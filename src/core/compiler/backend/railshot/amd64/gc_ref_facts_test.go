@@ -10,7 +10,7 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func exactGCRefFactModule(t *testing.T, controlBoundary bool) *wasm.Module {
+func exactGCRefFactModule(t testing.TB, controlBoundary bool) *wasm.Module {
 	t.Helper()
 	body := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
@@ -133,6 +133,23 @@ func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 		t.Fatalf("loop subset invalidation = %+v", f.localGCRefFacts)
 	}
 	f.freeGCRefFactBuf(joined)
+}
+
+func TestDisabledGCReferenceFactsDoNotAllocateSnapshots(t *testing.T) {
+	saved := exactGCRefFactsEnabled
+	exactGCRefFactsEnabled = false
+	defer func() { exactGCRefFactsEnabled = saved }()
+	f := fn{localGCRefFacts: make([]shared.GCRefFact, 1024)}
+	if got := f.snapshotGCRefFacts(); got != nil {
+		t.Fatalf("disabled snapshot = %v, want nil", got)
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		if got := f.snapshotGCRefFacts(); got != nil {
+			panic("disabled fact snapshot")
+		}
+	}); allocs != 0 {
+		t.Fatalf("disabled fact snapshot allocations = %v, want 0", allocs)
+	}
 }
 
 func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {

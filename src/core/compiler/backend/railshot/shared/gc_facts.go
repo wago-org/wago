@@ -43,9 +43,9 @@ const (
 )
 
 // GCBarrierState is selected after structured facts have reached the store.
-// The first three states require no emitted barrier; the remaining states are
-// discriminated by the native runtime fast/medium path, with SlowBarrier as the
-// conservative compile-time fallback.
+// Only NoBarrier currently authorizes omission. Generation-named states remain
+// explicit telemetry/design values but fail closed until their independent
+// relocation, marking, and remembered-set proofs are implemented.
 type GCBarrierState uint8
 
 const (
@@ -57,27 +57,22 @@ const (
 	GCBarrierSlowBarrier
 )
 
-func (s GCBarrierState) NeedsBarrier() bool { return s >= GCBarrierExistingCard }
+func (s GCBarrierState) NeedsBarrier() bool { return s != GCBarrierNoBarrier }
 
 func SelectGCStoreBarrier(parent, child GCRefFact) GCBarrierState {
 	if child.Nullability() == GCKnownNull || child.HeapClass() == GCHeapI31 || parent.PointerFree() {
 		return GCBarrierNoBarrier
 	}
-	if parent.Freshness() == GCFreshUnpublished && parent.Identity() != 0 && parent.Generation() == GCGenerationYoung {
-		return GCBarrierYoungParent
-	}
-	if child.Generation() == GCGenerationOld {
-		return GCBarrierKnownOldChild
-	}
+	// Generation facts remain representable for future validated producers, but
+	// they cannot currently select a no-barrier path. Young-parent and old-child
+	// proofs must eventually distinguish relocation validity, concurrent marking,
+	// and remembered-set requirements instead of collapsing them into one enum.
 	return GCBarrierSlowBarrier
 }
 
 func SelectGCBulkBarrier(destination GCRefFact, storesReferences bool) GCBarrierState {
 	if !storesReferences || destination.PointerFree() {
 		return GCBarrierNoBarrier
-	}
-	if destination.Freshness() == GCFreshUnpublished && destination.Identity() != 0 && destination.Generation() == GCGenerationYoung {
-		return GCBarrierYoungParent
 	}
 	return GCBarrierSlowBarrier
 }

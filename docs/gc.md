@@ -142,8 +142,11 @@ AMD64's structured fact engine stores no object address. A bounded
 a bounded identity, freshness/publication, generation, pointer-free layout, and an
 optional constant array length. The same compact fact moves through Valent stack
 storage and locals. Control frames snapshot and intersect local and stack facts at
-structured joins; loops reuse the existing modified-local scan so unmodified locals
-survive without another body walk. Exact type and nullability remain independent:
+structured joins; loops reuse one shared-classifier prewalk of the existing body bytes
+so `try_table`, vector immediates, memory64 offsets, and malformed scans cannot create
+partial invariance claims. Loop parameters are rebuilt from declared ValTypes rather
+than first-entry identities, and only unmodified local facts survive. Exact type and
+nullability remain independent:
 a nullable exact value can prove a nullable cast, but a non-null cast is elided only
 when the fact also proves non-null. Distinct identities lose alias-sensitive state,
 and any multi-edge freshness merge is treated as published. Calls and allocating
@@ -174,20 +177,29 @@ against the semantic fact and asks the handle resolver for the complete constant
 extent, removing the scale and duplicate dynamic extent sequence without trusting
 malformed metadata. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only repeated-load
 reuse, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` disables the constant-index sequence, and
-`WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole.
+`WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole and avoids
+allocating its local/control fact tables. `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1` is
+accepted as a compatibility alias for review and older A/B commands.
 
 Dead allocation remains bounded and postfix. Direct struct/fixed-array drops can
-remove complete nested `struct.new`/`array.new_fixed` trees. Dynamic/default/data/
-element array drops instead call nonallocating validation helpers that preserve the
-original type, physical-size/capacity, passive-segment range, and initializer-ref
-checks before omitting allocation. Oversized Throughput and Tiny objects therefore
-still trap, while successful dead constructors publish no handle or safepoint.
+remove complete nested `struct.new`/`array.new_fixed` trees. Pointer-free uniform,
+default-initialized, and pointer-free data-array drops call allocation-reservation
+helpers after complete type,
+physical-size, and passive-segment-range preflight. The helper preserves current
+bounded-heap exhaustion, collection, handle/allocation state, and a real frame-root
+safepoint, but omits population of the unreachable zeroed payload. Reference-valued
+uniform and element-segment constructors retain the full path because suppressing
+edges/cards could change later minor-collection retention and capacity. This is
+intentionally less aggressive than the earlier size-only preflight, which was not
+equivalent when prior live allocations occupied the bounded heap.
 
 Reference stores select an explicit late state: `NoBarrier`, `YoungParent`,
 `KnownOldChild`, `ExistingCard`, `CardMark`, or `SlowBarrier`. Null and i31 children
-need no object barrier. `YoungParent` requires both unpublished freshness and a proven
-young generation; freshness alone never bypasses Tiny's incremental barrier.
-Unknown states continue through the checked native struct/array stubs, which decide
+need no object barrier. Generation fields and the two generation-named states remain
+reserved but cannot currently select a compile-time no-barrier path: relocation
+validity, concurrent-marking obligations, and remembered-set obligations must be
+proved independently first. Object-reference stores continue through the checked
+native struct/array stubs, which decide
 nursery, existing-card, card-mark, and slow-helper cases from current collector
 metadata. This keeps card growth, foreign/stale refs, malformed metadata, unknown
 subtypes, and every required Tiny shade on the shared cold path.

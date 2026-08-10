@@ -56,8 +56,8 @@ func TestStagedGCArrayPackedDataOfficialProduct(t *testing.T) {
 			beforeCheck := in.gc.Stats()
 			in.dispatchGCArrayHelper(gcArrayCheckData, []uint64{1, 3, 0, 0}, nil)
 			afterCheck := in.gc.Stats()
-			if afterCheck.Allocations != beforeCheck.Allocations || afterCheck.LiveObjects != beforeCheck.LiveObjects {
-				t.Fatalf("data preflight allocated: before=%+v after=%+v", beforeCheck, afterCheck)
+			if afterCheck.Allocations != beforeCheck.Allocations+1 || afterCheck.LiveObjects != beforeCheck.LiveObjects+1 {
+				t.Fatalf("dead data constructor did not preserve allocation state: before=%+v after=%+v", beforeCheck, afterCheck)
 			}
 			func() {
 				defer func() {

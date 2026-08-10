@@ -175,6 +175,9 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	}
 	fr.baseGCRoots = gcRootFlags(roots[:fr.height])
 	fr.paramGCRoots = gcRootFlags(roots[fr.height : fr.height+fr.paramN])
+	if !exactGCRefFactsEnabled {
+		return
+	}
 	fr.baseGCFacts = make([]shared.GCRefFact, fr.height)
 	for i, root := range roots[:fr.height] {
 		fact := gcRefFact(root)
@@ -184,12 +187,37 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 		fr.baseGCFacts[i] = fact
 	}
 	fr.paramGCFacts = make([]shared.GCRefFact, fr.paramN)
+	if fr.kind == cfLoop {
+		// opBlock replaces these slots with facts reconstructed from the declared
+		// loop parameter ValTypes. Never copy first-entry dynamic facts here.
+		return
+	}
 	for i, root := range roots[fr.height : fr.height+fr.paramN] {
 		fact := gcRefFact(root)
 		if fact.Freshness() == shared.GCFreshUnpublished {
 			fact = fact.WithFreshness(shared.GCPublished)
 		}
 		fr.paramGCFacts[i] = fact
+	}
+}
+
+func (f *fn) installLoopParameterGCRefFacts(paramN int, facts []shared.GCRefFact) {
+	if !exactGCRefFactsEnabled || paramN == 0 {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	if paramN > len(roots) {
+		return
+	}
+	for i, root := range roots[len(roots)-paramN:] {
+		if root.kind == ekValue && root.st.gcRoot {
+			fact := shared.GCRefFact{}
+			if i < len(facts) {
+				fact = facts[i]
+			}
+			putGCRefFact(&root.st, fact)
+			root.st.gcRoot = true
+		}
 	}
 }
 
@@ -207,6 +235,9 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	resultRoots := roots[len(roots)-n:]
 	for i, root := range resultRoots {
 		fr.resultGCRoots[i] = fr.resultGCRoots[i] || (root.kind == ekValue && root.st.gcRoot)
+	}
+	if !exactGCRefFactsEnabled {
+		return
 	}
 	if len(fr.resultGCFacts) < n {
 		fr.resultGCFacts = make([]shared.GCRefFact, n)
@@ -231,6 +262,9 @@ func frameGCRootFlags(base, suffix []bool) []bool {
 }
 
 func (f *fn) frameGCFacts(base, suffix []shared.GCRefFact) []shared.GCRefFact {
+	if !exactGCRefFactsEnabled {
+		return nil
+	}
 	facts := f.tmpGCFacts2[:0]
 	facts = append(facts, base...)
 	facts = append(facts, suffix...)
@@ -473,21 +507,21 @@ func valByteMT(b byte) machineType {
 	return mtNone
 }
 
-// blockType decodes a block's parameter and result types, plus the first
-// result's machine type (res0; mtNone when resultN == 0).
-func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, res0 machineType, err error) {
+// blockType decodes a block's parameter and result types, the static semantic
+// facts declared for its parameters, and the first result's machine type.
+func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, paramFacts []shared.GCRefFact, res0 machineType, err error) {
 	b, ok := r.Peek()
 	if !ok {
-		return nil, nil, mtNone, fmt.Errorf("eof in blocktype")
+		return nil, nil, nil, mtNone, fmt.Errorf("eof in blocktype")
 	}
 	if b == 0x40 { // empty
 		_, _ = r.Byte()
-		return nil, nil, mtNone, nil
+		return nil, nil, nil, mtNone, nil
 	}
 	if isValByte(b) {
 		_, _ = r.Byte()
 		mt := valByteMT(b)
-		return nil, []machineType{mt}, mt, nil
+		return nil, []machineType{mt}, nil, mt, nil
 	}
 	if b == 0x63 || b == 0x64 { // ref null <heaptype> / ref <heaptype>
 		_, _ = r.Byte()
@@ -495,23 +529,32 @@ func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, res0 mach
 			_, _ = r.Byte()
 		}
 		if _, e := r.S33(); e != nil {
-			return nil, nil, mtNone, e
+			return nil, nil, nil, mtNone, e
 		}
-		return nil, []machineType{mtI64}, mtI64, nil
+		return nil, []machineType{mtI64}, nil, mtI64, nil
 	}
 	x, e := r.I64()
 	if e != nil {
-		return nil, nil, mtNone, e
+		return nil, nil, nil, mtNone, e
+	}
+	if x < 0 {
+		return nil, nil, nil, mtNone, fmt.Errorf("bad blocktype index %d", x)
 	}
 	ft, ok := f.m.TypeFunc(uint32(x))
-	if x < 0 || !ok {
-		return nil, nil, mtNone, fmt.Errorf("bad blocktype index %d", x)
+	if !ok {
+		return nil, nil, nil, mtNone, fmt.Errorf("bad blocktype index %d", x)
 	}
 	r0 := mtNone
 	if len(ft.Results) > 0 {
 		r0 = mtOf(ft.Results[0])
 	}
-	return typesOfVals(ft.Params), typesOfVals(ft.Results), r0, nil
+	if exactGCRefFactsEnabled && len(ft.Params) != 0 {
+		paramFacts = make([]shared.GCRefFact, len(ft.Params))
+		for i, typ := range ft.Params {
+			paramFacts[i] = f.declaredGCRefFact(typ)
+		}
+	}
+	return typesOfVals(ft.Params), typesOfVals(ft.Results), paramFacts, r0, nil
 }
 
 // placeSingleResult produces the single result value (top of the operand stack)
@@ -599,63 +642,8 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 
 // --- control opcodes ---
 
-// scanLoopBody scans a loop body ahead from the reader's current position (the
-// body start, just past the blocktype) to the matching `end`, recording the
-// locals it sets and whether it grows memory, then restores the reader. Reuses
-// skipImmediates for operand skipping; br_table (not covered there) is handled
-// inline. Post-validation, so a decode error just ends the scan.
-func scanLoopBody(r *wasm.Reader) (setLocals map[uint32]bool, hasGrow bool) {
-	start := r.Offset()
-	setLocals = map[uint32]bool{}
-	depth := 0
-scan:
-	for {
-		op, err := r.Byte()
-		if err != nil {
-			break
-		}
-		switch op {
-		case 0x02, 0x03, 0x04: // block / loop / if: skip blocktype, enter one level
-			if _, err := r.S33(); err != nil {
-				break scan
-			}
-			depth++
-		case 0x0b: // end
-			if depth == 0 {
-				break scan
-			}
-			depth--
-		case 0x21, 0x22: // local.set / local.tee
-			idx, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			setLocals[idx] = true
-		case 0x40: // memory.grow
-			if _, err := r.U32(); err != nil {
-				break scan
-			}
-			hasGrow = true
-		case 0x0e: // br_table: vec(labelidx) + default labelidx
-			n, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			if err := r.SkipU32N(n + 1); err != nil {
-				break scan
-			}
-		default:
-			if err := skipImmediates(r, op); err != nil {
-				break scan
-			}
-		}
-	}
-	r.JumpTo(start)
-	return
-}
-
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
-	paramTypes, resultTypes, res0, err := f.blockType(r)
+	paramTypes, resultTypes, staticParamFacts, res0, err := f.blockType(r)
 	if err != nil {
 		return err
 	}
@@ -686,18 +674,27 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// check to elide) and not while already inside a versioned body. The hoist
 		// scan also supplies the loop-local/grow facts needed by the normal path, so
 		// eligible loops do not pay for two immediate walks.
+		memory64 := f.memoryAddr64(0)
+		valid := false
 		if loopPrecheckEnabled && f.memSizeReg != regNone && !f.inVersionedLoop {
-			cands, elidable, hasGrow, setLocals := scanLoopHoistable(r)
+			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistable(r, memory64)
+			valid = scanOK
 			fr.loopSetLocals, fr.loopHasGrow = setLocals, hasGrow
-			if len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
-				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
+			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
+				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands, setLocals) {
 					return nil
 				}
 			}
 		} else {
-			fr.loopSetLocals, fr.loopHasGrow = scanLoopBody(r) // P6.2 foundation (reader restored)
+			fr.loopSetLocals, fr.loopHasGrow, valid = scanLoopBody(r, memory64) // reader restored
 		}
-		f.invalidateLoopModifiedGCRefFacts(fr.loopSetLocals)
+		if valid {
+			f.invalidateLoopModifiedGCRefFacts(fr.loopSetLocals)
+		} else {
+			// A failed prewalk cannot prove any local invariant. This should be
+			// unreachable after validation, but never trust partial scan state.
+			f.clearLocalExactGCTypes()
+		}
 		fr.branchGCFacts = f.snapshotGCRefFacts()
 	}
 	if f.unreachable {
@@ -737,8 +734,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			// reload into every iteration instead.
 			f.reconcileLocals()
 			f.convergeEdgeTo(&fr.branchState) // records the all-lsStackReg target
+			f.flush()
+			// Canonical slots separate the runtime value from fact storage. Install
+			// only declared parameter facts after the flush so a first-entry
+			// ref.null constant cannot have its zero payload overwritten by metadata.
+			copy(fr.paramGCFacts, staticParamFacts)
+			f.installLoopParameterGCRefFacts(pN, staticParamFacts)
+		} else {
+			f.flush()
 		}
-		f.flush()
 		if kind == cfLoop {
 			f.a.AlignLoop() // padding runs on entry, not per iteration
 			fr.loopStart = f.a.Len()
@@ -796,7 +800,7 @@ func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
 }
 
 func (f *fn) opTryTable(r *wasm.Reader) error {
-	paramTypes, resultTypes, res0, err := f.blockType(r)
+	paramTypes, resultTypes, _, res0, err := f.blockType(r)
 	if err != nil {
 		return err
 	}
@@ -1180,16 +1184,18 @@ func (f *fn) opEnd() error {
 				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
 			}
 			fr.resultGCRoots[i] = fr.resultGCRoots[i] || fr.paramGCRoots[i]
-			if len(fr.resultGCFacts) < fr.resultN {
-				fr.resultGCFacts = append(fr.resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(fr.resultGCFacts))...)
-			}
-			if fr.resultGCFactsSet {
-				fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], fr.paramGCFacts[i])
-			} else {
-				fr.resultGCFacts[i] = fr.paramGCFacts[i]
+			if exactGCRefFactsEnabled {
+				if len(fr.resultGCFacts) < fr.resultN {
+					fr.resultGCFacts = append(fr.resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(fr.resultGCFacts))...)
+				}
+				if fr.resultGCFactsSet {
+					fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], fr.paramGCFacts[i])
+				} else {
+					fr.resultGCFacts[i] = fr.paramGCFacts[i]
+				}
 			}
 		}
-		if fr.resultN != 0 {
+		if exactGCRefFactsEnabled && fr.resultN != 0 {
 			fr.resultGCFactsSet = true
 		}
 		// The cond-false edge arrives in the header-snapshot state; if then-side

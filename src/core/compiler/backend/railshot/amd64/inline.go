@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -399,14 +400,15 @@ type inlineTarget struct {
 	valid          bool
 	globalIdx      int // global function index (what a `call` immediate names)
 	localDeclBytes uint32
-	body           []byte        // the callee's expression bytecode (ends in the terminating `end`)
-	params         int           // param count (callee locals 0..params-1)
-	nLocals        int           // params + declared locals
-	localTypes     []machineType // length nLocals: the callee's local machine types
-	resultTypes    []machineType // the callee's result machine types
-	res0           machineType   // first result type (mtNone if none) — for the single-result merge
-	touchesMem     bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
-	hasCtrl        bool          // the body has control flow → splice through a synthetic boundary frame
+	body           []byte             // the callee's expression bytecode (ends in the terminating `end`)
+	params         int                // param count (callee locals 0..params-1)
+	nLocals        int                // params + declared locals
+	localTypes     []machineType      // length nLocals: the callee's local machine types
+	localZeroFacts []shared.GCRefFact // facts after zeroing each reusable inline local
+	resultTypes    []machineType      // the callee's result machine types
+	res0           machineType        // first result type (mtNone if none) — for the single-result merge
+	touchesMem     bool               // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	hasCtrl        bool               // the body has control flow → splice through a synthetic boundary frame
 }
 
 type inlineTargetTable struct {
@@ -449,6 +451,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 	importedFuncs := m.ImportedFuncCount()
 	var targets inlineTargetTable
 	var typeArena []machineType
+	var zeroFactArena []shared.GCRefFact
 	for i := range m.Code {
 		body := m.Code[i].BodyBytes
 		if len(body) == 0 {
@@ -491,22 +494,37 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 				}
 			}
 			typeArena = make([]machineType, 0, typeCount)
+			if exactGCRefFactsEnabled {
+				zeroFactArena = make([]shared.GCRefFact, 0, typeCount)
+			}
 		}
 		localStart := len(typeArena)
+		factStart := len(zeroFactArena)
 		for _, p := range ft.Params {
 			typeArena = append(typeArena, mtOf(p))
+			if exactGCRefFactsEnabled {
+				zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, p))
+			}
 		}
 		for _, run := range m.Code[i].Locals.Runs {
 			for k := 0; k < int(run.Count); k++ {
 				typeArena = append(typeArena, mtOf(run.Type))
+				if exactGCRefFactsEnabled {
+					zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, run.Type))
+				}
 			}
 		}
 		localEnd := len(typeArena)
+		factEnd := len(zeroFactArena)
 		for _, result := range ft.Results {
 			typeArena = append(typeArena, mtOf(result))
 		}
 		resultEnd := len(typeArena)
 		lt := typeArena[localStart:localEnd:localEnd]
+		var zf []shared.GCRefFact
+		if exactGCRefFactsEnabled {
+			zf = zeroFactArena[factStart:factEnd:factEnd]
+		}
 		rt := typeArena[localEnd:resultEnd:resultEnd]
 		res0 := mtNone
 		if len(rt) > 0 {
@@ -520,6 +538,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 			params:         facts.params,
 			nLocals:        len(lt),
 			localTypes:     lt,
+			localZeroFacts: zf,
 			resultTypes:    rt,
 			res0:           res0,
 			touchesMem:     facts.touchesMem,
@@ -545,11 +564,18 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 	f.inlineBase = make(map[int]int, len(callees))
 	for _, t := range callees {
 		base := len(f.localType)
-		for _, lt := range t.localTypes {
+		for i, lt := range t.localTypes {
 			f.localType = append(f.localType, lt)
 			f.localSlot = append(f.localSlot, f.nLocalSlots)
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
+			if exactGCRefFactsEnabled {
+				fact := shared.GCRefFact{}
+				if i < len(t.localZeroFacts) {
+					fact = t.localZeroFacts[i]
+				}
+				f.localGCRefFacts = append(f.localGCRefFacts, fact)
+			}
 		}
 		f.inlineBase[t.globalIdx] = base
 	}
@@ -691,10 +717,19 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 		z := f.allocReg(0)
 		f.a.XorSelf32(z)
 		for i := t.params; i < t.nLocals; i++ {
+			local := base + i
 			for s := 0; s < t.localTypes[i].stackSlots(); s++ {
-				f.a.Store64(RSP, f.localOff(base+i)+int32(8*s), z)
+				f.a.Store64(RSP, f.localOff(local)+int32(8*s), z)
 			}
-			f.locals[base+i].state = lsMem
+			f.locals[local].state = lsMem
+			f.invalidateGCLoadFactsForLocal(local)
+			if exactGCRefFactsEnabled && local < len(f.localGCRefFacts) {
+				fact := shared.GCRefFact{}
+				if i < len(t.localZeroFacts) {
+					fact = t.localZeroFacts[i]
+				}
+				f.localGCRefFacts[local] = fact
+			}
 		}
 		f.release(z)
 	}

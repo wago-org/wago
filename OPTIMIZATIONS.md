@@ -162,15 +162,20 @@ and expanded the frame **24,808→82,152 bytes**, so broad scalar replacement is
 rejected as the next step. Recursive dead-constructor elimination is now shipped
 on AMD64: a bounded postfix stack-depth proof follows values through nested
 `struct.new`/`array.new_fixed` containers, while direct constructor/drop pairs are
-removed at the constructor. Dynamic `array.new`, `array.new_default`,
-`array.new_data`, and `array.new_elem` use nonallocating helpers 36-39 to preserve
-size, capacity, segment-range, and initializer-reference traps before their dead
-allocation disappears. Non-trapping valent trees disappear completely; any deferred
-trap forces original bottom-to-top evaluation. Dense GC safepoint IDs are retired
-without becoming publishable native call sites. The differential control remains
-`WAGO_AMD64_NO_DEAD_GC_NEW=1`. Permanent fixtures reduce constructor-family code
-from **142→64 bytes** for dynamic default, **178→82** for uniform, and **214→100**
-for data/element preflight; a nested default wrapper falls **312→64 bytes**. On Dew it fires exactly
+removed at the constructor. Pointer-free dynamic `array.new`, default-initialized `array.new_default`, and
+pointer-free `array.new_data` use allocation-reservation helpers 36-38. They preserve current bounded-heap exhaustion,
+collection, handle publication, allocation counters, size/capacity, and segment-range
+traps while omitting payload population for the unreachable result. Reference-valued
+uniform and element-segment constructors retain the full constructor path because
+omitting their edges/cards could change later minor-collection retention and capacity. Non-trapping valent
+trees disappear completely; any deferred trap forces original bottom-to-top
+evaluation. These helpers retain real GC safepoints. The differential control remains
+`WAGO_AMD64_NO_DEAD_GC_NEW=1`. After the request-changes correction, permanent
+fixtures reduce constructor-family code from **142→128 bytes** for dynamic default,
+**178→164** for numeric uniform, and **214→200** for data reservation; reference
+element construction remains **214→214**. A nested default wrapper falls
+**312→128 bytes**. Earlier 64/82/100-byte figures used a
+size-only preflight that was not equivalent on an occupied bounded heap. On Dew it fires exactly
 **2,048** times, cuts `hostsync` **8,188→6,140**, generated code
 **7,479,004→7,104,256 bytes**, fresh median about **0.94→0.62-0.67 ms**, and host
 allocation **924,536→524,512 B/op**. The stripped plugin-complete TinyGo binary is
@@ -314,12 +319,13 @@ identity inapplicable.
 **Late WasmGC barrier selection and guarded bulk no-barrier fill (2026-08-10,
 #315).** Structured facts now select an explicit state only after the destination
 and child reach the store: `NoBarrier`, `YoungParent`, `KnownOldChild`,
-`ExistingCard`, `CardMark`, or `SlowBarrier`. Compile-time null/i31 and proven
-old-child stores can omit barrier work; unknown generation/profile remains on the
-existing native discriminator, which preserves Throughput nursery/existing-card/card-
-mark paths and Tiny's complete incremental helper. A fresh identity alone is not
-sufficient to elide a barrier: `YoungParent` requires a separately proven young
-generation so Tiny sweep-born black objects cannot bypass shading. Reference
+`ExistingCard`, `CardMark`, or `SlowBarrier`. Compile-time null/i31 stores can omit
+barrier work; object-reference stores remain on the existing native discriminator,
+which preserves Throughput nursery/existing-card/card-mark paths and Tiny's complete
+incremental helper. Generation remains representable in the fact format, but it does
+not currently activate `YoungParent` or `KnownOldChild`: relocation validity,
+concurrent marking, and remembered-set requirements must be proved independently
+before those compile-time states are enabled. Reference
 `array.fill` with a proven null/i31 value uses helper 35, whose runtime
 `ArrayFillNoBarrier` repeats full range/type/value preflight and rejects any object
 reference before mutation. Other reference fill/copy/init operations retain exact

@@ -15,10 +15,11 @@ const (
 	checkedDeadGCNested
 )
 
-// checkedDeadGCConstructorUse recognizes dynamic constructors whose allocation
-// can disappear only after a nonallocating helper preserves size/segment/value
-// traps. Immediate drops consume no future operand; the nested shape uses the
-// same bounded postfix proof as recursive fixed constructors.
+// checkedDeadGCConstructorUse recognizes dynamic constructors whose unreachable
+// payload population can disappear only after a reservation helper preserves the
+// real allocation plus size/segment/value traps. Immediate drops consume no future
+// operand; the nested shape uses the same bounded postfix proof as recursive fixed
+// constructors.
 func (f *fn) checkedDeadGCConstructorUse(r *wasm.Reader) checkedDeadGCUse {
 	if !deadGCNewEnabled {
 		return checkedDeadGCNone
@@ -43,7 +44,8 @@ func (f *fn) finishCheckedDeadGCConstructor(r *wasm.Reader, use checkedDeadGCUse
 	} else {
 		panic("amd64: invalid checked dead GC constructor use")
 	}
-	f.retireGCFrameSafepoint()
+	// The checked helper now performs the dropped allocation itself and therefore
+	// records the constructor's real safepoint in callGCStructHelper.
 	f.stats.peep("gc-dead-new")
 	f.stats.peep("gc-dead-new-checked")
 }

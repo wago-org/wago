@@ -210,15 +210,18 @@ current optimization priorities. The Core 3.0 implementation ledger is
   survive unrelated mutable effects, constructor-known constant indexes use a compact
   get/set sequence, and validated subtype forests use packed constant-time intervals
   after a shallow parent fast path. Bounded dead-constructor proofs now cover nested
-  struct/fixed-array trees plus checked dynamic/default/data/element arrays without
-  dropping deterministic traps. Broad scalar replacement remains rejected by measured
+  struct/fixed-array trees; pointer-free uniform/data and default-initialized drops preserve the real
+  bounded-heap allocation side effect while omitting unreachable payload population.
+  Reference-valued uniform/element constructors retain their full edge/card path.
+  Broad scalar replacement remains rejected by measured
   frame growth rather than introducing SSA or a second IR.
 - [x] **Explicit late GC barrier states (#315):** reference stores select
   `NoBarrier`, `YoungParent`, `KnownOldChild`, `ExistingCard`, `CardMark`, or
   `SlowBarrier` after structured facts. Null/i31 scalar stores and guarded null/i31
-  `array.fill` omit barrier work; unknown profile/generation, metadata growth,
-  foreign/malformed refs, and Tiny incremental shading retain checked native/helper
-  paths. Throughput `array.init_elem` validates the complete source once, publishes
+  `array.fill` omit barrier work; generation-only `YoungParent`/`KnownOldChild`
+  selection remains disabled until relocation, marking, and remembered-set proofs are
+  separated. Unknown profile/generation, metadata growth, foreign/malformed refs, and
+  Tiny incremental shading retain checked native/helper paths. Throughput `array.init_elem` validates the complete source once, publishes
   one post-write destination range, and avoids duplicate release-path ownership checks;
   Tiny bulk publication is chunked, and diagnostic telemetry counts every checked
   barrier state separately. Copy/fill/init retain exact overlap and trap atomicity, with

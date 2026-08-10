@@ -169,6 +169,117 @@ func (f *fn) gcRefFactMatchesHeap(fact shared.GCRefFact, heap int64, nullable bo
 	return false, false
 }
 
+func gcHeapClassForValType(m *wasm.Module, typ wasm.ValType) shared.GCHeapClass {
+	if typ.Kind() != wasm.ValRef {
+		return shared.GCHeapUnknown
+	}
+	heap := typ.Ref().Heap()
+	if heap.Kind() == wasm.HeapAbs {
+		switch heap.Abs() {
+		case wasm.HeapAny:
+			return shared.GCHeapAny
+		case wasm.HeapEq:
+			return shared.GCHeapEq
+		case wasm.HeapI31:
+			return shared.GCHeapI31
+		case wasm.HeapStruct:
+			return shared.GCHeapStruct
+		case wasm.HeapArray:
+			return shared.GCHeapArray
+		case wasm.HeapFunc, wasm.HeapNoFunc:
+			return shared.GCHeapFunc
+		case wasm.HeapExtern, wasm.HeapNoExtern:
+			return shared.GCHeapExtern
+		}
+		return shared.GCHeapUnknown
+	}
+	var index uint32
+	switch heap.Kind() {
+	case wasm.HeapTypeIndex:
+		idx := heap.Type()
+		if idx.Rec {
+			return shared.GCHeapUnknown
+		}
+		index = idx.Index
+	case wasm.HeapDefType:
+		group, member, _, ok := heap.Def()
+		if !ok || m == nil || int(group) >= len(m.Types) || member >= uint32(len(m.Types[group].SubTypes)) {
+			return shared.GCHeapUnknown
+		}
+		for i := uint32(0); i < group; i++ {
+			index += uint32(len(m.Types[i].SubTypes))
+		}
+		index += member
+	default:
+		return shared.GCHeapUnknown
+	}
+	if m != nil {
+		want := index
+		for i := range m.Types {
+			if want >= uint32(len(m.Types[i].SubTypes)) {
+				want -= uint32(len(m.Types[i].SubTypes))
+				continue
+			}
+			switch m.Types[i].SubTypes[want].Comp.Kind {
+			case wasm.CompStruct:
+				return shared.GCHeapStruct
+			case wasm.CompArray:
+				return shared.GCHeapArray
+			case wasm.CompFunc:
+				return shared.GCHeapFunc
+			}
+			break
+		}
+	}
+	return shared.GCHeapUnknown
+}
+
+func zeroGCRefFactForValType(m *wasm.Module, typ wasm.ValType) shared.GCRefFact {
+	if typ.Kind() != wasm.ValRef {
+		return shared.GCRefFact{}
+	}
+	return shared.NewGCRefFact(shared.GCKnownNull, gcHeapClassForValType(m, typ))
+}
+
+func (f *fn) declaredGCRefFact(typ wasm.ValType) shared.GCRefFact {
+	if !exactGCRefFactsEnabled || typ.Kind() != wasm.ValRef {
+		return shared.GCRefFact{}
+	}
+	nullability := shared.GCNullUnknown
+	if !typ.Ref().Nullable() {
+		nullability = shared.GCKnownNonNull
+	}
+	fact := shared.NewGCRefFact(nullability, gcHeapClassForValType(f.m, typ))
+	heap := typ.Ref().Heap()
+	var index uint32
+	switch heap.Kind() {
+	case wasm.HeapTypeIndex:
+		idx := heap.Type()
+		if idx.Rec {
+			return fact
+		}
+		index = idx.Index
+	case wasm.HeapDefType:
+		group, member, _, ok := heap.Def()
+		if !ok || f.m == nil || int(group) >= len(f.m.Types) || member >= uint32(len(f.m.Types[group].SubTypes)) {
+			return fact
+		}
+		for i := uint32(0); i < group; i++ {
+			index += uint32(len(f.m.Types[i].SubTypes))
+		}
+		index += member
+	default:
+		return fact
+	}
+	if target, ok := f.stagedGCType(index); ok && target.Final {
+		fact = fact.WithExactType(index, f.gcHeapClassForType(index))
+		if int(index) < len(f.gcTypeLayouts) {
+			fact = fact.WithPointerFree(f.gcTypeLayouts[index].PointerFree)
+		}
+	}
+	return fact
+}
+
 func (f *fn) gcHeapClassForType(typeIndex uint32) shared.GCHeapClass {
 	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.Type != nil {
 		return shared.GCHeapStruct

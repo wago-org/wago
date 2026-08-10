@@ -35,7 +35,6 @@ const (
 	gcArrayCheckDefault        uint32 = 36
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
-	gcArrayCheckElem           uint32 = 39
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -210,7 +209,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if len(args) != 2 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array check-default helper arity = %d, want 2", len(args))})
 		}
-		if err := in.gc.CheckArrayAllocation(in.requireGCDomainType(uint32(args[1])), uint32(args[0])); err != nil {
+		if err := in.gc.ReserveDeadDefaultArrayAllocation(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots); err != nil {
 			panicArrayError(err)
 		}
 	case gcArrayCheckUniform:
@@ -218,12 +217,15 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panic(gcStructHelperError{err: fmt.Errorf("gc array check-uniform helper arity = %d, want at least 3", len(args))})
 		}
 		typeID := uint32(args[len(args)-1])
+		if gcArrayElementStorage(arrayElemKind(typeID)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array dead-uniform reservation requires pointer-free elements")})
+		}
 		valueSlots := arrayValueSlots(typeID)
 		if len(args) != valueSlots+2 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array check-uniform helper arity = %d, want %d", len(args), valueSlots+2)})
 		}
 		_ = arrayStoredValue(typeID, args[:valueSlots])
-		if err := in.gc.CheckArrayAllocation(in.requireGCDomainType(typeID), uint32(args[valueSlots])); err != nil {
+		if err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), uint32(args[valueSlots]), frameRoots); err != nil {
 			panicArrayError(err)
 		}
 	case gcArrayCheckData:
@@ -265,50 +267,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if end > uint64(len(in.c.PassiveData[dataIndex].Bytes)) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(in.c.PassiveData[dataIndex].Bytes))})
 		}
-		if err := in.gc.CheckArrayAllocation(in.requireGCDomainType(typeID), length); err != nil {
-			panicArrayError(err)
-		}
-	case gcArrayCheckElem:
-		if len(args) != 4 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array check-elem helper arity = %d, want 4", len(args))})
-		}
-		source, length := uint32(args[0]), uint32(args[1])
-		typeID, elemIndex := uint32(args[2]), uint32(args[3])
-		product := in.c.stagedGCArrayProduct()
-		if product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric {
-			if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array element type %d is unavailable", typeID)})
-			}
-			entries, segmentLen, entryBytes := arrayElemSegment(elemIndex)
-			if uint64(source)+uint64(length) > uint64(segmentLen) {
-				panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
-			}
-			for i := uint32(0); i < length; i++ {
-				_ = arrayElemValue(typeID, entries, entryBytes, source+i)
-			}
-		} else {
-			state := in.existingGCArrayElementState()
-			if state == nil || elemIndex != 0 || len(state.Descriptor) < 12 {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array element segment %d is unavailable", elemIndex)})
-			}
-			segmentLen := binary.LittleEndian.Uint32(state.Descriptor[8:])
-			end := uint64(source) + uint64(length)
-			if end > uint64(segmentLen) || end > uint64(state.Count) {
-				panic(gcStructHelperTrap{code: coreruntime.TrapIndirectOutOfBounds})
-			}
-			if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray ||
-				(in.c.GCTypeDescs[typeID].Elem != gc.StorageRef && in.c.GCTypeDescs[typeID].Elem != gc.StorageRefNull) {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array.new_elem type %d is not an admitted reference array", typeID)})
-			}
-			for i := uint32(0); i < length; i++ {
-				rooted, err := in.gc.CheckedTableSlot(state.Slots[uint8(source+i)])
-				if err != nil || rooted.IsNull() {
-					panic(gcStructHelperError{err: fmt.Errorf("gc array element root %d is unavailable: %v", source+i, err)})
-				}
-				_ = arrayRefValue(typeID, uint64(rooted))
-			}
-		}
-		if err := in.gc.CheckArrayAllocation(in.requireGCDomainType(typeID), length); err != nil {
+		if err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), length, frameRoots); err != nil {
 			panicArrayError(err)
 		}
 	case gcArrayAllocFixedV128Spill:

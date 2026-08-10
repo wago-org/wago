@@ -41,7 +41,8 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 // exactGCRefFactsEnabled propagates exact non-null reference facts through
 // locals inside conservative straight-line structured regions. It removes only
 // casts already proved by a successful prior cast or exact constructor.
-var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
+var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
+	os.Getenv("WAGO_AMD64_NO_EXACT_GC_REF_FACTS") != "1"
 
 // gcLoadForwardingEnabled keeps the bounded result-local array.len and immutable
 // struct.get cache independently A/B-testable from the semantic fact engine.
@@ -1700,11 +1701,17 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
-	if cap(f.localGCRefFacts) < nLocals {
-		f.localGCRefFacts = make([]shared.GCRefFact, nLocals)
+	if exactGCRefFactsEnabled {
+		if cap(f.localGCRefFacts) < nLocals {
+			f.localGCRefFacts = make([]shared.GCRefFact, nLocals)
+		} else {
+			f.localGCRefFacts = f.localGCRefFacts[:nLocals]
+			clear(f.localGCRefFacts)
+		}
 	} else {
-		f.localGCRefFacts = f.localGCRefFacts[:nLocals]
-		clear(f.localGCRefFacts)
+		// The facts-off oracle must remove the optimizer's local table and all
+		// control snapshots, not merely suppress consumers of retained storage.
+		f.localGCRefFacts = nil
 	}
 	i := 0
 	for _, p := range ft.Params {

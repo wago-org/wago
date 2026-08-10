@@ -82,15 +82,19 @@ through:
 ```sh
 WAGO_GC_OPT_WORKLOAD_WASM=/path/to/workload.wasm \
 WAGO_GC_OPT_WORKLOAD_EXPORT=_start \
+WAGO_GC_OPT_WORKLOAD_EXPECT=none \
 go test ./src/wago -run '^$' -bench '^BenchmarkGCOptimizationWorkload$' \
   -benchmem -benchtime=100x -count=7 -cpu=1
 ```
 
-Run interleaved processes with `WAGO_AMD64_NO_GC_REF_FACTS=1`,
+Run interleaved processes with `WAGO_AMD64_NO_GC_REF_FACTS=1` (or its
+compatibility alias `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1`),
 `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`,
 `WAGO_AMD64_NO_DEAD_GC_NEW=1`, or `WAGO_GC_SUBTYPE_INTERVALS=0` as relevant.
 The benchmark requires a zero-argument export, uses deterministic no-op imports,
-checks a result checksum, and reports linked, barrier, and helper bytes separately.
+requires an exact comma-separated result vector (`none` for no results) on every
+iteration, maintains a checksum only as a secondary anti-elision guard, and reports
+linked, barrier, and helper bytes separately.
 
 Initial candidate microbenchmarks on August 10, 2026 used linux/amd64, Ryzen 7
 8845HS, Go 1.24.4, GOMAXPROCS=16, no affinity pinning, 200 ms benchtime. Five
@@ -114,10 +118,17 @@ hardware before claiming a broad speedup.
 The August 10 tertiary review added constant-index known-length array get/set,
 checked dead dynamic arrays, and a complete barrier-parent benchmark. The paired
 constant-index set/get fixture emits 1,029 bytes versus 1,084 with
-`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`. Checked dead constructor-family bytes are
-64/142 for default, 82/178 for uniform, and 100/214 for data or element arrays
-(enabled/disabled); oversized Throughput and Tiny cases still trap before publishing
-an allocation. Three `GOMAXPROCS=1`, 200 ms deferred-reference-batch samples measured
+`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`. Request-changes qualification then replaced the
+size-only dead-array preflight with allocation reservation so occupied bounded heaps
+retain allocation/exhaustion parity. Updated constructor-family bytes are 128/142 for
+default, 164/178 for numeric uniform, and 200/214 for data arrays
+(enabled/disabled); reference element construction remains 214/214, and a nested
+default wrapper is 128/312. The earlier 64/82/100-byte
+figures are superseded. Successful dropped pointer-free uniform/data and default-initialized constructors now
+retain allocation, handle, collection, and safepoint state while omitting unreachable
+payload population;
+reference-valued uniform/element constructors retain their complete edge/card path,
+and oversized cases still trap before allocation. Three `GOMAXPROCS=1`, 200 ms deferred-reference-batch samples measured
 prevalidated/revalidated medians of 438.2/452.7 ns at 16 elements, 6,560/6,740 ns at
 256, and 104,405/108,576 ns at 4,096, all allocation-free. The matching barrier-state
 matrix medians were 25.50 ns nursery, 34.03 remembered old, 41.16 unremembered old

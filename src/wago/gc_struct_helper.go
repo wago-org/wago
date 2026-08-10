@@ -55,7 +55,8 @@ func gcHelperMayAllocate(helper uint32) bool {
 	case gcStructAllocDefault, gcStructAllocOne,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
-		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative:
+		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,
+		gcArrayCheckDefault, gcArrayCheckUniform, gcArrayCheckData:
 		return true
 	default:
 		return false

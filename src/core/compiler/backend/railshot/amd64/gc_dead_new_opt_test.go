@@ -146,7 +146,6 @@ func TestCheckedDeadGCArrayConstructorsPreservePreflight(t *testing.T) {
 		{name: "uniform", uniform: true, wantOnCalls: 1, wantOffCalls: 1, wantDead: 1},
 		{name: "nested-default", nested: true, wantOnCalls: 1, wantOffCalls: 2, wantDead: 2},
 		{name: "data", segment: 1, wantOnCalls: 1, wantOffCalls: 1, wantDead: 1},
-		{name: "elem", segment: 2, wantOnCalls: 1, wantOffCalls: 1, wantDead: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compile := func(enabled bool) *CodegenStats {
@@ -180,6 +179,63 @@ func TestCheckedDeadGCArrayConstructorsPreservePreflight(t *testing.T) {
 				t.Fatalf("constructor-family bytes enabled/disabled = %d/%d, want a nonzero reduction", on.GCCodeBytes.Allocation, off.GCCodeBytes.Allocation)
 			}
 			t.Logf("checked dead %s constructor-family bytes: enabled=%d disabled=%d", tc.name, on.GCCodeBytes.Allocation, off.GCCodeBytes.Allocation)
+		})
+	}
+}
+
+func checkedDeadGCReferenceUniformModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	body := []byte{
+		0x00,
+		0xd0, 0x00, // ref.null 0 initializer
+		0x41, 0x01, // length 1
+		0xfb, 0x06, 0x01, // array.new 1
+		0x1a,
+		0x41, 0x00,
+		0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			[]byte{0x5e, 0x63, 0x00, 0x01}, // (array (mut (ref null 0)))
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors(t *testing.T) {
+	saved := deadGCNewEnabled
+	deadGCNewEnabled = true
+	defer func() { deadGCNewEnabled = saved }()
+	for _, tc := range []struct {
+		name string
+		m    *wasm.Module
+	}{
+		{name: "uniform", m: checkedDeadGCReferenceUniformModule(t)},
+		{name: "element", m: checkedDeadGCSegmentArrayModule(t, true)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stats ModuleStats
+			if _, err := CompileModuleWith(tc.m, CompileOptions{
+				GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			got := stats.Funcs[0]
+			if got.Peephole["gc-dead-new"] != 0 || got.Peephole["gc-dead-new-checked"] != 0 {
+				t.Fatalf("reference constructor entered dead-allocation lowering: dead=%d checked=%d calls=%v",
+					got.Peephole["gc-dead-new"], got.Peephole["gc-dead-new-checked"], got.Calls)
+			}
 		})
 	}
 }

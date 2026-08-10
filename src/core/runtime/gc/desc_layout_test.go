@@ -33,6 +33,54 @@ func TestCheckArrayAllocationPreservesDeterministicCapacityAndOverflowTraps(t *t
 	}
 }
 
+func TestReserveDeadArrayAllocationUsesCurrentBoundedHeapState(t *testing.T) {
+	d, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		config Config
+		first  uint32
+		next   uint32
+	}{
+		{name: "throughput", config: Config{DisableCollection: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, first: 600, next: 600},
+		{name: "tiny", config: Config{Profile: ProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16}, first: 24, next: 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			makeCollector := func() (*Collector, RefSliceRoots) {
+				c, err := NewCollector(tc.config, []TypeDesc{d})
+				if err != nil {
+					t.Fatal(err)
+				}
+				first, err := c.NewArrayDefault(0, tc.first)
+				if err != nil {
+					c.Close()
+					t.Fatalf("occupy heap: %v", err)
+				}
+				return c, RefSliceRoots{first}
+			}
+			actual, actualRoots := makeCollector()
+			defer actual.Close()
+			reserved, reserveRoots := makeCollector()
+			defer reserved.Close()
+
+			if err := reserved.CheckArrayAllocation(0, tc.next); err != nil {
+				t.Fatalf("size-only check unexpectedly failed: %v", err)
+			}
+			_, actualErr := actual.NewArrayDefaultWithRoots(0, tc.next, actualRoots)
+			reserveErr := reserved.ReserveDeadDefaultArrayAllocation(0, tc.next, reserveRoots)
+			if (actualErr == nil) != (reserveErr == nil) {
+				t.Fatalf("allocation/reservation outcome mismatch: actual=%v reserve=%v", actualErr, reserveErr)
+			}
+			actualStats, reserveStats := actual.Stats(), reserved.Stats()
+			if actualStats.Allocations != reserveStats.Allocations || actualStats.LiveObjects != reserveStats.LiveObjects {
+				t.Fatalf("allocation/reservation stats mismatch: actual=%+v reserve=%+v", actualStats, reserveStats)
+			}
+		})
+	}
+}
+
 func TestDescriptorsAndLayout(t *testing.T) {
 	pf, err := NewStructDesc(1, []StorageKind{StorageI32, StorageI64, StorageI8})
 	if err != nil {
