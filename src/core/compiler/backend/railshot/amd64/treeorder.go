@@ -2,18 +2,23 @@
 
 package amd64
 
-// treeRegisterNeed returns a Sethi-Ullman-style register requirement for the
-// bounded deferred tree rooted at e. Values need one register. Equal-sized
-// children need one extra register because one result must remain live while
-// the other is emitted. Valent already caps tree height, so this walk is O(1)
-// with respect to function size and needs no stored annotation.
+// treeRegisterNeed returns the incrementally stored Sethi-Ullman label for a
+// deferred tree. Synthetic nodes in focused tests may omit the label, in which
+// case the same bounded calculation is performed on demand.
 func treeRegisterNeed(e *elem) int16 {
 	if e == nil || e.kind != ekDeferred {
 		return 1
 	}
+	if e.regNeed != 0 {
+		return e.regNeed
+	}
 	left := treeRegisterNeed(e.arg0)
 	right := treeRegisterNeed(e.arg1)
-	if e.arg1 == nil {
+	return combineRegisterNeed(left, right, e.arg1 != nil)
+}
+
+func combineRegisterNeed(left, right int16, binary bool) int16 {
+	if !binary {
 		return left
 	}
 	if left == right {
@@ -23,6 +28,14 @@ func treeRegisterNeed(e *elem) int16 {
 		return left
 	}
 	return right
+}
+
+// labelDeferredNode records the bounded labels that are properties of a node's
+// tree shape. Keep this as the single construction seam for future selector
+// labels (effects, target forms, and competing costs).
+func labelDeferredNode(e *elem) {
+	e.deferDepth = 1 + max16(deferDepthOf(e.arg0), deferDepthOf(e.arg1))
+	e.regNeed = combineRegisterNeed(treeRegisterNeed(e.arg0), treeRegisterNeed(e.arg1), e.arg1 != nil)
 }
 
 // treeReorderSafe excludes any leaf or operation whose evaluation can trap.
