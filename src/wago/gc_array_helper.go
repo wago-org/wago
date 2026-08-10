@@ -31,6 +31,7 @@ const (
 	gcArrayAllocDefaultNative  uint32 = 32
 	gcArrayAllocUniformNative  uint32 = 33
 	gcArrayAllocFixedNative    uint32 = 34
+	gcArrayFillNoBarrier       uint32 = 35
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -289,7 +290,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 			panic(gcStructHelperError{err: err})
 		}
-	case gcArrayFill:
+	case gcArrayFill, gcArrayFillNoBarrier:
 		if len(args) < 5 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want at least 5", len(args))})
 		}
@@ -301,7 +302,13 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		ref, start := gc.Ref(uint32(args[0])), uint32(args[1])
 		checkArray(ref, typeID)
 		value := arrayStoredValue(typeID, args[2:2+valueSlots])
-		if err := in.gc.ArrayFill(ref, start, value, uint32(args[2+valueSlots])); err != nil {
+		var err error
+		if helper == gcArrayFillNoBarrier {
+			err = in.gc.ArrayFillNoBarrier(ref, start, value, uint32(args[2+valueSlots]))
+		} else {
+			err = in.gc.ArrayFill(ref, start, value, uint32(args[2+valueSlots]))
+		}
+		if err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 			}

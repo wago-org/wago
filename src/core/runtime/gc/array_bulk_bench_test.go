@@ -72,6 +72,18 @@ func BenchmarkArrayBulk(b *testing.B) {
 				}
 			}
 		})
+		b.Run("reference-fill-no-barrier-"+benchmarkLength(n), func(b *testing.B) {
+			c := newBulkBenchmarkCollector(b)
+			dst, _ := c.NewArrayDefault(3, n)
+			b.ReportAllocs()
+			b.SetBytes(int64(n * 4))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := c.ArrayFillNoBarrier(dst, 0, Value{Kind: StorageRefNull}, n); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 		b.Run("reference-copy-"+benchmarkLength(n), func(b *testing.B) {
 			c := newBulkBenchmarkCollector(b)
 			child, _ := c.NewStructDefault(0)

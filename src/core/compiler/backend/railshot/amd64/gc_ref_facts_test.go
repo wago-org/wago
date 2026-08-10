@@ -5,6 +5,7 @@ package amd64
 import (
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -52,11 +53,33 @@ func TestFinalGCParameterFactsResolveRecursiveGroupIndex(t *testing.T) {
 			{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{recParam}}},
 		}},
 	}}
-	f := fn{m: m, localExactGCType: make([]uint32, 1)}
+	f := fn{m: m, localGCRefFacts: make([]shared.GCRefFact, 1)}
 	f.seedFinalGCParameterTypes([]wasm.ValType{recParam}, 1, 2)
-	if got := f.localExactGCType[0]; got != 2 {
-		t.Fatalf("recursive final parameter fact = %d, want flattened type 1 encoded as 2", got)
+	if got, ok := f.localGCRefFacts[0].ExactType(); !ok || got != 1 {
+		t.Fatalf("recursive final parameter fact = %d,%v, want flattened type 1", got, ok)
 	}
+}
+
+func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
+	left := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
+		WithFreshness(shared.GCFreshUnpublished).
+		WithKnownArrayLength(7)
+	f := fn{localGCRefFacts: []shared.GCRefFact{left, left}}
+	joined := f.snapshotGCRefFacts()
+	f.localGCRefFacts[0] = shared.ExactGCRefFact(4, 12, shared.GCHeapArray).WithKnownArrayLength(9)
+	f.mergeGCRefFactsInto(&joined)
+	if _, exact := joined[0].ExactType(); exact || joined[0].Identity() != 0 || joined[0].HeapClass() != shared.GCHeapArray {
+		t.Fatalf("contradictory join retained exact identity: %+v", joined[0])
+	}
+	if _, known := joined[0].KnownArrayLength(); known {
+		t.Fatalf("contradictory join retained array length: %+v", joined[0])
+	}
+	f.installGCRefFacts([]shared.GCRefFact{left, left})
+	f.invalidateLoopModifiedGCRefFacts(map[uint32]bool{0: true})
+	if !f.localGCRefFacts[0].IsZero() || f.localGCRefFacts[1].IsZero() {
+		t.Fatalf("loop subset invalidation = %+v", f.localGCRefFacts)
+	}
+	f.freeGCRefFactBuf(joined)
 }
 
 func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {
@@ -91,11 +114,11 @@ func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {
 
 	exactGCRefFactsEnabled = true
 	boundary := compile(exactGCRefFactModule(t, true))
-	if got := boundary.Peephole["gc-ref-cast-elide"]; got != 0 {
-		t.Fatalf("fact crossed control boundary: gc-ref-cast-elide = %d", got)
+	if got := boundary.Peephole["gc-ref-cast-elide"]; got != 1 {
+		t.Fatalf("fact did not survive identical empty-block paths: gc-ref-cast-elide = %d", got)
 	}
-	if got := boundary.Calls["gcnative"]; got != 1 {
-		t.Fatalf("control-boundary native cast calls = %d, want 1", got)
+	if got := boundary.Calls["gcnative"]; got != 0 {
+		t.Fatalf("structured-merge native cast calls = %d, want 0", got)
 	}
 }
 
@@ -121,6 +144,40 @@ func gcReferenceFactStats(t *testing.T, composite, body []byte) *CodegenStats {
 		t.Fatalf("compile GC fact module: %v", err)
 	}
 	return stats.Funcs[0]
+}
+
+func TestGCNullAndTypeTestsFoldFromStructuredFacts(t *testing.T) {
+	saved := exactGCRefFactsEnabled
+	defer func() { exactGCRefFactsEnabled = saved }()
+	exactGCRefFactsEnabled = true
+
+	nullTest := gcReferenceFactStats(t, []byte{0x5f, 0x00}, []byte{
+		0x00,       // no locals
+		0xd0, 0x6e, // ref.null any
+		0xd1, // ref.is_null
+		0x0b,
+	})
+	if got := nullTest.Peephole["gc-null-check-elide"]; got != 1 {
+		t.Fatalf("gc-null-check-elide = %d, want 1 (all: %v)", got, nullTest.Peephole)
+	}
+
+	refTest := gcReferenceFactStats(t, []byte{0x5f, 0x00}, []byte{
+		0x00,       // no locals
+		0xd0, 0x6e, // ref.null any
+		0xfb, 0x14, 0x6b, // ref.test (ref struct)
+		0x0b,
+	})
+	if got := refTest.Peephole["gc-ref-test-fold"]; got != 1 {
+		t.Fatalf("gc-ref-test-fold = %d, want 1 (all: %v)", got, refTest.Peephole)
+	}
+
+	exactGCRefFactsEnabled = false
+	disabled := gcReferenceFactStats(t, []byte{0x5f, 0x00}, []byte{
+		0x00, 0xd0, 0x6e, 0xd1, 0x0b,
+	})
+	if got := disabled.Peephole["gc-null-check-elide"]; got != 0 {
+		t.Fatalf("disabled gc-null-check-elide = %d", got)
+	}
 }
 
 func gcResolveReuseStats(t *testing.T, composite, funcType, body []byte) *CodegenStats {
@@ -359,8 +416,8 @@ func TestGCReferenceFactLoadOpportunityCounters(t *testing.T) {
 		0x41, 0x00, 0x0b,
 	}
 	array := gcReferenceFactStats(t, []byte{0x5e, 0x7f, 0x01}, arrayBody)
-	if got := array.Peephole["gc-array-len-repeat"]; got != 1 {
-		t.Fatalf("gc-array-len-repeat = %d, want 1 (all: %v)", got, array.Peephole)
+	if got := array.Peephole["gc-array-len-elide"]; got != 2 {
+		t.Fatalf("gc-array-len-elide = %d, want 2 (all: %v)", got, array.Peephole)
 	}
 	if got := array.Peephole["gc-known-array-len"]; got != 2 {
 		t.Fatalf("gc-known-array-len = %d, want 2", got)
@@ -390,7 +447,24 @@ func TestGCReferenceFactLoadOpportunityCounters(t *testing.T) {
 		0x41, 0x00, 0x0b,
 	}
 	setGet := gcReferenceFactStats(t, []byte{0x5f, 0x01, 0x6e, 0x01}, setGetBody)
-	if got := setGet.Peephole["gc-struct-set-get"]; got != 1 {
-		t.Fatalf("gc-struct-set-get = %d, want 1 (all: %v)", got, setGet.Peephole)
+	if got := setGet.Peephole["gc-struct-set-get-forward"]; got != 1 {
+		t.Fatalf("gc-struct-set-get-forward = %d, want 1 (all: %v)", got, setGet.Peephole)
+	}
+	if got := setGet.Peephole["gc-barrier-none"]; got != 1 {
+		t.Fatalf("gc-barrier-none = %d, want 1 (all: %v)", got, setGet.Peephole)
+	}
+	if got := setGet.Peephole["gc-barrier-elide"]; got != 1 {
+		t.Fatalf("gc-barrier-elide = %d, want 1 (all: %v)", got, setGet.Peephole)
+	}
+
+	fillBody := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x04, 0xfb, 0x07, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x00, 0xd0, 0x6e, 0x41, 0x04, 0xfb, 0x10, 0x00,
+		0x41, 0x00, 0x0b,
+	}
+	fill := gcReferenceFactStats(t, []byte{0x5e, 0x6e, 0x01}, fillBody)
+	if got := fill.Peephole["gc-bulk-barrier-elide"]; got != 1 {
+		t.Fatalf("gc-bulk-barrier-elide = %d, want 1 (all: %v)", got, fill.Peephole)
 	}
 }

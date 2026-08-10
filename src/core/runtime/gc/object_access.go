@@ -728,6 +728,17 @@ func (c *Collector) ArraySetTyped(ref Ref, required TypeID, exact bool, index ui
 // one post-write range barrier. Tiny retains the scalar barrier while marking or
 // sweeping because its incremental tri-color invariant is per published edge.
 func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32) error {
+	return c.arrayFill(ref, start, value, length, true)
+}
+
+// ArrayFillNoBarrier performs the same complete preflight and atomic mutation
+// as ArrayFill, but accepts only stores that cannot create a collector edge.
+// It is the runtime guardrail for late compiler NoBarrier selection.
+func (c *Collector) ArrayFillNoBarrier(ref Ref, start uint32, value Value, length uint32) error {
+	return c.arrayFill(ref, start, value, length, false)
+}
+
+func (c *Collector) arrayFill(ref Ref, start uint32, value Value, length uint32, barrier bool) error {
 	d, err := c.refDesc(ref)
 	if err != nil {
 		return err
@@ -742,13 +753,16 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	if err := c.validateArrayStore(d, value); err != nil {
 		return err
 	}
+	if !barrier && isCollectorRefKind(d.Elem) && value.Ref.IsObj() {
+		return errors.New("gc: barrier-free array.fill cannot store an object reference")
+	}
 	if length == 0 {
 		return nil
 	}
 	if err := c.fillArrayPayload(ref, d, start, value, length); err != nil {
 		return err
 	}
-	if isCollectorRefKind(d.Elem) {
+	if barrier && isCollectorRefKind(d.Elem) {
 		c.PostBulkWriteBarrier(ref, start, length)
 	}
 	return nil

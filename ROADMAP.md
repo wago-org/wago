@@ -200,6 +200,20 @@ current optimization priorities. The Core 3.0 implementation ledger is
   non-final, bulk, and barrier-requiring operations remain helper-bound. Current
   end-to-end set/get measurements are 228–230 ns for structs and 265–266 ns for
   arrays, with 0 B/op and 0 allocs/op.
+- [x] **Bounded structured WasmGC facts (#314 core):** AMD64 carries compact
+  nullability/heap/exact-type/identity/freshness/generation/pointer-free/array-length
+  facts through Valent stack values and locals, intersects them at structured joins,
+  retains loop-invariant locals from the existing loop scan, folds proven tests/casts
+  and constructor lengths, and keeps raw resolved addresses in a separately
+  safepoint-invalidated one-entry certificate. Bounded broader scalar replacement
+  remains measurement-gated rather than introducing SSA or a second optimizer IR.
+- [x] **Explicit late GC barrier states (#315 core):** reference stores select
+  `NoBarrier`, `YoungParent`, `KnownOldChild`, `ExistingCard`, `CardMark`, or
+  `SlowBarrier` after structured facts. Null/i31 scalar stores and guarded null/i31
+  `array.fill` omit barrier work; unknown profile/generation, metadata growth,
+  foreign/malformed refs, and Tiny incremental shading retain checked native/helper
+  paths. Reference copy/init keeps exact post-write range barriers and overlap/trap
+  atomicity.
 - [x] **Bounded foreign-Runtime GC graph transfer:** `target.CloneGCRefFrom(source,
   ref)` selects explicit transactional graph cloning rather than sharing compact
   handles. It preserves cycles and internal sharing under 1,024-object, 65,536-value,

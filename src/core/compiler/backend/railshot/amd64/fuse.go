@@ -261,6 +261,7 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
+	f.mergeGCRefFactsInto(&fr.branchGCFacts)
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)

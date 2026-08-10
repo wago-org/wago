@@ -588,6 +588,34 @@ func TestArrayFillTinyRemarkBarrier(t *testing.T) {
 	}
 }
 
+func TestArrayFillNoBarrierGuardsReferenceEdges(t *testing.T) {
+	c := newTestCollectorWithTypes(t, Config{StressNurseryBytes: 1 << 20}, bulkTestTypes(t))
+	dst, err := c.NewArrayDefault(3, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(dst); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayFillNoBarrier(dst, 0, Value{Kind: StorageRefNull}, 4); err != nil {
+		t.Fatal(err)
+	}
+	if c.RememberedCount() != 0 || c.CardCount() != 0 {
+		t.Fatalf("null no-barrier fill created remembered metadata: %d/%d", c.RememberedCount(), c.CardCount())
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayFillNoBarrier(dst, 1, RefValue(child), 1); err == nil {
+		t.Fatal("object no-barrier fill succeeded")
+	}
+	got, err := c.ArrayGet(dst, 1)
+	if err != nil || !got.Ref.IsNull() {
+		t.Fatalf("rejected no-barrier fill mutated destination: %+v, %v", got, err)
+	}
+}
+
 type rootSlot Ref
 
 func (r rootSlot) GetRef() Ref  { return Ref(r) }

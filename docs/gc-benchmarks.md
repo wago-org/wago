@@ -28,6 +28,57 @@ the separately owned runtime collector descriptors. Keep the two result sets
 separate: denser compiler values do not by themselves prove a collector heap or
 pause-time improvement.
 
+## Structured facts and late-barrier qualification
+
+Issues #314 and #315 add bounded compiler facts and a guarded no-barrier bulk
+path. Qualify them separately from collector throughput so compile-time wins do not
+hide runtime or code-size regressions.
+
+Correctness and allocation checks:
+
+```sh
+go test ./src/core/compiler/backend/railshot/shared
+go test ./src/core/compiler/backend/railshot/amd64
+go test ./src/core/runtime/gc
+go test -tags wagodebug ./src/core/runtime/gc
+go test -tags wago_gcstats ./src/core/runtime/gc
+go test -race ./src/core/runtime/gc
+```
+
+The authoritative official Core 3 qualification additionally requires a Release 3
+interpreter through `WAGO_SPEC_INTERPRETER`; an older WABT that rejects `rec`, packed
+storage, or current reference syntax is an environment block, not a passing result.
+Record the exact unavailable tool/version rather than silently dropping those gates.
+
+Permanent microbenchmarks:
+
+```sh
+go test ./src/core/compiler/backend/railshot/shared -run '^$' \
+  -bench '^BenchmarkMergeGCRefFacts$' -benchmem -count=10
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkArrayBulk/(reference-fill|reference-fill-no-barrier)-(16|256|4096)$' \
+  -benchmem -count=10
+```
+
+For a retained compiler/JIT result, also run the real Dew/Starshine workload A/B with
+`WAGO_AMD64_NO_GC_REF_FACTS=1`, record `gc-ref-test-fold`,
+`gc-ref-cast-elide`, `gc-array-len-elide`, `gc-struct-set-get-forward`, every
+`gc-barrier-*` state, `hostsync`/`gcnative` transitions, generated GC barrier/helper
+bytes, linked bytes, compile B/op and allocations, fresh and sustained execution,
+and collector card/scanned-slot telemetry. Barrier matrices must include nursery,
+remembered old, unremembered old, large, and Tiny parents with null, i31, old, and
+young object children. No barrier result is acceptable without forced collection and
+shadow-edge verification after each write family.
+
+Initial candidate microbenchmarks on August 10, 2026 used linux/amd64, Ryzen 7
+8845HS, Go 1.24.4, GOMAXPROCS=16, no affinity pinning, 200 ms benchtime. Five
+fact-merge samples had a 4.642 ns/op median, 0 B/op, and 0 allocs/op. Three
+null-reference fill samples measured median ordinary/no-barrier pairs of
+37.43/33.80 ns at 16 elements, 53.96/51.39 ns at 256, and 158.2/155.9 ns at
+4,096, all allocation-free. Treat these as preliminary microbenchmark evidence;
+they do not replace pinned interleaved real-workload, linked-byte, or collector
+matrix qualification.
+
 This document defines the measurement contract for collector changes tracked by
 issue #300. The opt-in recorder, public API, JSONL schema, phase semantics, and
 footprint measurements are documented in

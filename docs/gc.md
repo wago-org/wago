@@ -135,6 +135,41 @@ mutable-fact invalidation, and all unknown opcodes clear it before lowering. Con
 `WAGO_AMD64_NO_GC_SHARED_STUBS=1` and `WAGO_AMD64_NO_GC_RESOLVE_REUSE=1` restore
 inline/no-reuse differential paths.
 
+### Structured semantic facts and late barriers
+
+AMD64's structured fact engine stores no object address. A bounded
+`shared.GCRefFact` records nullability, abstract heap class or exact flattened type,
+a bounded identity, freshness/publication, generation, pointer-free layout, and an
+optional constant array length. The same compact fact moves through Valent stack
+storage and locals. Control frames snapshot and intersect local and stack facts at
+structured joins; loops reuse the existing modified-local scan so unmodified locals
+survive without another body walk. Distinct identities lose alias-sensitive state,
+and any multi-edge freshness merge is treated as published. Calls and allocating
+helpers may clear generation facts but do not invalidate compact identity.
+
+This semantic state is intentionally separate from the one-entry resolved-object
+certificate. The latter owns a native register containing a raw payload address and
+is invalidated at safepoints, helper/host/Wasm calls, allocations, control/EH/tail
+edges, loop edges, local replacement, and unknown effects. Collection may relocate an
+object without changing its compact handle, so retaining the semantic fact while
+dropping the address is required rather than optional.
+
+Reference stores select an explicit late state: `NoBarrier`, `YoungParent`,
+`KnownOldChild`, `ExistingCard`, `CardMark`, or `SlowBarrier`. Null and i31 children
+need no object barrier. `YoungParent` requires both unpublished freshness and a proven
+young generation; freshness alone never bypasses Tiny's incremental barrier.
+Unknown states continue through the checked native struct/array stubs, which decide
+nursery, existing-card, card-mark, and slow-helper cases from current collector
+metadata. This keeps card growth, foreign/stale refs, malformed metadata, unknown
+subtypes, and every required Tiny shade on the shared cold path.
+
+Reference `array.fill` with a statically proven null/i31 child uses the guarded
+`Collector.ArrayFillNoBarrier` helper. It performs the same complete range, type, and
+value preflight as ordinary fill and rejects an object child before the first write.
+All other reference fill/copy/init operations retain exact post-write destination
+range barriers, overlap-safe copy, trap atomicity, and Tiny per-edge shading. Numeric
+arrays and non-collector function-identity payloads remain barrier-free.
+
 Shared AMD64 stubs additionally cover final casts, final cast-plus-array-length,
 final reference-array reads, and final cast-plus-reference-struct reads. Final
 mutable `eqref`/`anyref` arrays perform a checked direct store in Throughput nursery
