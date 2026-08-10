@@ -260,19 +260,23 @@ space, object-extent, canonical-type, bounds, ownership, barrier, lifecycle, tra
 root, EH, tail, snapshot, and host-reentry semantics remain dynamic. `wagodebug`
 retains a coarse Go-to-native immutable-view assertion.
 
-A module-owned 229-byte noncollecting compact-handle resolver leaf is selected only
-at two or more candidate direct scalar/length sites; one-site modules keep the
-351-byte inline crossover instead of growing to 453 bytes. Eight sites shrink
-1,669→821 bytes and 128 sites shrink 24,349→7,301 bytes. A one-entry derived-address
-certificate keeps the compact local as the root and survives only mechanically
-safepoint-free straight-line leaves; calls, helper/host transitions, allocations,
-control/EH/tail edges, local writes, and unknown opcodes invalidate it. Eight repeated
-accesses compile as one resolution plus seven reuses and shrink 821→565 bytes. Ten
-CPU-0-pinned 500 ms runtime samples measured medians of 310.0 ns/op default,
-328.1 ns/op with reuse disabled, and 324.0 ns/op fully inline, all 0 B/op and
-0 allocs/op. A same-command stripped plugin-complete TinyGo build grew
-2,096,928→2,102,160 bytes (+5,232, +0.250%); `compiledCodeCache` remains 64 bytes
-and collector/instance/native-view layouts do not grow. Differential controls are
+A module-owned 229-byte noncollecting compact-handle resolver leaf is selected at
+two or more candidate direct scalar sites. One-site modules keep the 351-byte inline
+crossover instead of growing to 453 bytes. With reuse enabled, a single-function
+module is first lowered inline and selects the island only when at least two actual
+resolutions remain; this avoids charging the fixed island after address-certificate
+reuse collapses a repeated run. With reuse disabled, eight sites shrink 1,669→821
+bytes and 128 sites shrink 24,349→7,301 bytes. A one-entry derived-address certificate
+keeps the compact local as the root and survives only mechanically safepoint-free
+straight-line leaves; calls, helper/host transitions, allocations, control/EH/tail
+edges, local writes, and unknown opcodes invalidate it. Eight repeated accesses
+compile as one resolution plus seven reuses and shrink 821→452 bytes; eight distinct
+objects in one function still select sharing and shrink 1,806→949 bytes. Ten CPU-0-
+pinned 500 ms runtime samples measured medians of 317.0 ns/op default, 341.85 ns/op
+with reuse disabled, and 340.6 ns/op fully inline, all 0 B/op and 0 allocs/op. A
+same-command stripped plugin-complete TinyGo build grew 2,096,928→2,106,840 bytes
+(+9,912, +0.473%); `compiledCodeCache` remains 64 bytes and collector/instance/native-
+view layouts do not grow. Differential controls are
 `WAGO_AMD64_NO_GC_SHARED_STUBS=1` and
 `WAGO_AMD64_NO_GC_RESOLVE_REUSE=1`; permanent attribution is
 `BenchmarkGCResolverCodeSize` plus `BenchmarkGCNativeResolverReuse`.

@@ -370,22 +370,26 @@ GOMAXPROCS=1 WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 WAGO_AMD64_NO_GC_SHARED_STUBS=1 \
 On August 10, 2026, Ryzen 7 8845HS / Go 1.24.4 linux/amd64 code-size
 qualification measured a 229-byte shared resolver body. One candidate site remains
 inline at 351 native bytes because an unconditional island would produce 453 bytes.
-At eight sites the shared form is 821 versus 1,669 bytes (-50.8%); at 128 sites it is
-7,301 versus 24,349 bytes (-70.0%). Within the eight-site straight-line reuse fixture,
-one resolution plus seven certified reuses produces 565 bytes versus 821 bytes with
-eight resolutions (-31.2%). Module telemetry records shared body bytes/call sites,
-and per-function telemetry records emitted versus reused resolutions.
+With reuse disabled, eight sites use the shared form at 821 versus 1,669 bytes
+(-50.8%); 128 sites use 7,301 versus 24,349 bytes (-70.0%). With reuse enabled, a
+single-function module is first lowered inline and selects the island only if at
+least two emitted resolutions remain. The eight-site straight-line fixture therefore
+compiles as one resolution plus seven certified reuses at 452 bytes versus 821 bytes
+with eight shared resolutions (-44.9%). An eight-distinct-object, one-function audit
+still selects the island and measures 949 versus 1,806 inline bytes (-47.5%). Module
+telemetry records shared body bytes/call sites, and per-function telemetry records
+emitted versus reused resolutions.
 
-Ten CPU-0-pinned 500 ms execution samples measured medians of 310.0 ns/op for the
-default shared+reuse path, 328.1 ns/op with reuse disabled, and 324.0 ns/op with both
-reuse and shared resolution disabled; all cases were 0 B/op and 0 allocs/op. Thus the
-retained combined path was 5.5% faster than shared-without-reuse and 4.3% faster than
-fully inline resolution on this repeated-access fixture. Two isolated ~0.8 us host
-outliers did not affect medians. A same-command stripped `wago_runtime` TinyGo build was
-2,096,928 bytes at the baseline SHA and 2,102,160 bytes for the candidate (+5,232,
-+0.250%); the fixed 64-byte compiled-code cache and runtime collector/instance/view
-layouts do not grow. This fixture proves the intended dense straight-line case; it
-does not claim every static shared-stub site is dynamically hot.
+A post-audit set of ten CPU-0-pinned 500 ms execution samples measured medians of
+317.0 ns/op for the default inline+reuse path, 341.85 ns/op with reuse disabled, and
+340.6 ns/op with both reuse and shared resolution disabled; all cases were 0 B/op and
+0 allocs/op. Thus the retained path was 7.3% faster than shared-without-reuse and 6.9%
+faster than fully inline resolution on this repeated-access fixture. A same-command
+stripped `wago_runtime` TinyGo build was 2,096,928 bytes at the baseline SHA and
+2,106,840 bytes after the tertiary audit (+9,912, +0.473%); the fixed 64-byte
+compiled-code cache and runtime collector/instance/view layouts do not grow. This
+fixture proves the intended dense straight-line case; it does not claim every static
+shared-stub site is dynamically hot.
 
 ### Issue #300 baseline report
 

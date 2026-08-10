@@ -120,12 +120,15 @@ generated code reloads mutable handle/backing pointers and counts, then checks c
 handle tag/range/liveness, space and backing extents, object extent, exact canonical
 type, array bounds, ownership/barrier state, and trap order before touching payload.
 
-At modules with two or more candidate direct scalar/length sites, AMD64 emits one
-229-byte module-owned noncollecting compact-handle resolver leaf and patches local
+At modules with two or more candidate direct scalar sites, AMD64 may emit one
+229-byte module-owned noncollecting compact-handle resolver leaf and patch local
 `CALL rel32` sites to it. One-site modules keep inline resolution because the measured
-crossover is unfavorable. The leaf cannot allocate, collect, enter Go, publish roots,
-or become a safepoint; local trap stubs retain exact source attribution. A separate
-one-entry derived-address certificate may reuse a successful resolution only across
+crossover is unfavorable. When reuse is enabled for a single-function module, the
+compiler first lowers inline and emits the island only if at least two actual handle
+resolutions remain; repeated accesses collapsed to one resolution do not pay the fixed
+island, while distinct objects still share it. The leaf cannot allocate, collect,
+enter Go, publish roots, or become a safepoint; local trap stubs retain exact source
+attribution. A separate one-entry derived-address certificate may reuse a successful resolution only across
 an unchanged compact local and a mechanically safepoint-free straight-line region.
 Calls, helper/host transitions, allocations, control/EH/tail edges, local writes,
 mutable-fact invalidation, and all unknown opcodes clear it before lowering. Controls:

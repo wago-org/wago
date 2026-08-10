@@ -117,9 +117,12 @@ immutable facts while reloading and validating mutable handle ranges/liveness, h
 space and backing extents, object extents and canonical types, array bounds,
 remembered membership, any existing object-card interval, and the transactional
 native-allocation epoch. A module-owned 229-byte noncollecting resolver leaf replaces
-repeated inline resolver bodies at modules with at least two candidate sites; one-site
-modules retain inline code. Bounded straight-line reuse may retain one derived object
-address only while its unchanged compact local remains the root and no call,
+repeated inline resolver bodies at modules with at least two candidate scalar sites;
+one-site modules retain inline code. A single-function module with reuse enabled is
+lowered inline first and adds the island only when at least two actual resolutions
+remain, so one-object repeated runs avoid the fixed leaf while distinct objects retain
+sharing. Bounded straight-line reuse may retain one derived object address only while
+its unchanged compact local remains the root and no call,
 allocation, collection, host transition, control/EH edge, local mutation, or other
 invalidating opcode can intervene. Final abstract
 reference stores may bypass helpers only when no metadata growth is required;
