@@ -934,8 +934,6 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		return err
 	}
 	defer locked.unlockExecution()
-	markNativeActive(in)
-	defer unmarkNativeActive(in)
 	stopWaitContext := in.publishAtomicWaitContext(waitParent)
 	defer stopWaitContext()
 	defer func() { err = in.decorateTrap(err) }()

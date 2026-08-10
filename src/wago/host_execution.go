@@ -125,6 +125,11 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 			active.jm.SetCustomCtx(ctrl)
 		}
 	}()
+	// Only arbitrary host code can synchronously re-enter this instance. Marking
+	// the whole native activation made an unrelated concurrent Invoke look like
+	// host re-entry and swap the live engine and scratch buffers underneath it.
+	markNativeActive(active)
+	defer unmarkNativeActive(active)
 	active.hostCall(ctrl, importIdx, args, results)
 }
 
