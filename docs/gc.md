@@ -143,7 +143,9 @@ a bounded identity, freshness/publication, generation, pointer-free layout, and 
 optional constant array length. The same compact fact moves through Valent stack
 storage and locals. Control frames snapshot and intersect local and stack facts at
 structured joins; loops reuse the existing modified-local scan so unmodified locals
-survive without another body walk. Distinct identities lose alias-sensitive state,
+survive without another body walk. Exact type and nullability remain independent:
+a nullable exact value can prove a nullable cast, but a non-null cast is elided only
+when the fact also proves non-null. Distinct identities lose alias-sensitive state,
 and any multi-edge freshness merge is treated as published. Calls and allocating
 helpers may clear generation facts but do not invalidate compact identity.
 

@@ -116,8 +116,6 @@ func putGCRefFact(st *storage, fact shared.GCRefFact) {
 	}
 }
 
-func exactGCType(e *elem) (uint32, bool) { return gcRefFact(e).ExactType() }
-
 func markGCRefFact(e *elem, fact shared.GCRefFact) {
 	if e == nil || e.kind != ekValue {
 		return

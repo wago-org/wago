@@ -362,7 +362,11 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if heap >= 0 {
 		if target, ok := f.stagedGCType(uint32(heap)); ok && target.Final {
 			finalTarget = true
-			if known, exact := exactGCType(f.s.back()); exact && known == uint32(heap) {
+			if known, exact := castFact.ExactType(); exact && known == uint32(heap) &&
+				(sub == 23 || castFact.Nullability() == shared.GCKnownNonNull) {
+				// An exact nullable value proves a nullable cast, but a non-null
+				// cast still has to reject the possible null before it can be
+				// elided.
 				knownExactTarget = true
 			}
 			if sub == 22 { // a successful non-null cast refines the source local

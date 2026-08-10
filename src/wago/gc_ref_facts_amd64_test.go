@@ -174,6 +174,50 @@ func TestGCCheckedDeadDynamicArrayPreservesSizeTrapWithoutAllocation(t *testing.
 	}
 }
 
+func TestGCNullableFinalParameterRetainsNonNullCast(t *testing.T) {
+	callee := []byte{
+		0x00,       // no locals
+		0x20, 0x00, // local.get 0
+		0xfb, 0x16, 0x00, // ref.cast (ref 0)
+		0xd1, // ref.is_null
+		0x0b,
+	}
+	caller := []byte{
+		0x00,       // no locals
+		0xd0, 0x00, // ref.null 0
+		0x10, 0x00, // call nullable-parameter callee
+		0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			[]byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x7f}, // (ref null 0) -> i32
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err == nil {
+		t.Fatalf("run = %v, want cast failure from nullable parameter", got)
+	} else if trap, ok := err.(*TrapError); !ok || trap.Code != TrapCastFailure {
+		t.Fatalf("run trap = %v, want %v", err, TrapCastFailure)
+	}
+}
+
 func TestGCExactReferenceFactClearsOnLocalSet(t *testing.T) {
 	body := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local

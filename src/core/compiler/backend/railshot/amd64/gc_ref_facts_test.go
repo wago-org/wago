@@ -60,6 +60,59 @@ func TestFinalGCParameterFactsResolveRecursiveGroupIndex(t *testing.T) {
 	}
 }
 
+func TestNullableFinalGCParameterRetainsNonNullCast(t *testing.T) {
+	compile := func(nullableCast bool) *CodegenStats {
+		t.Helper()
+		cast := byte(0x16) // ref.cast (ref 0)
+		if nullableCast {
+			cast = 0x17 // ref.cast (ref null 0)
+		}
+		body := []byte{
+			0x00,       // no locals
+			0x20, 0x00, // local.get 0
+			0xfb, cast, 0x00, // ref.cast 0
+			0xd1, // ref.is_null
+			0x0b,
+		}
+		data := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(
+				[]byte{0x5f, 0x00},
+				[]byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x7f}, // (ref null 0) -> i32
+			)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		)
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatalf("decode nullable final parameter module: %v", err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("validate nullable final parameter module: %v", err)
+		}
+		var stats ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
+			t.Fatalf("compile nullable final parameter module: %v", err)
+		}
+		return stats.Funcs[0]
+	}
+
+	nonNull := compile(false)
+	if got := nonNull.Peephole["gc-ref-cast-elide"]; got != 0 {
+		t.Fatalf("nullable parameter elided non-null cast %d times", got)
+	}
+	if got := nonNull.Calls["gcnative"]; got != 1 {
+		t.Fatalf("nullable parameter non-null cast calls = %d, want 1", got)
+	}
+
+	nullable := compile(true)
+	if got := nullable.Peephole["gc-ref-cast-elide"]; got != 1 {
+		t.Fatalf("nullable parameter nullable cast elisions = %d, want 1", got)
+	}
+	if got := nullable.Calls["gcnative"]; got != 0 {
+		t.Fatalf("nullable parameter nullable cast calls = %d, want 0", got)
+	}
+}
+
 func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 	left := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
 		WithFreshness(shared.GCFreshUnpublished).
