@@ -22,7 +22,7 @@ func (f *fn) trySWARPack4(root *elem) bool {
 		return false
 	}
 	root.op, root.arg0, root.arg1 = opSWARPack4, source, nil
-	root.deferDepth = 1 + deferDepthOf(source)
+	labelDeferredNode(root)
 	f.stats.peep("swar-pack4")
 	return true
 }
@@ -159,7 +159,7 @@ func (f *fn) tryMulHighU(r *wasm.Reader, a1 int) (bool, error) {
 		f.replaceStorage(root.arg1, storage{kind: stLocalRef, typ: mtI64, idx: b})
 	}
 	root.op = opMulHighU
-	root.deferDepth = 1 + max(deferDepthOf(root.arg0), deferDepthOf(root.arg1))
+	labelDeferredNode(root)
 	f.stats.peep("mul-high-u64")
 	return true, nil
 }
@@ -210,7 +210,7 @@ func (f *fn) trySWARWiden4(r *wasm.Reader, x int) (bool, error) {
 	f.erase(root.arg1)
 	root.op = opSWARWiden4
 	root.arg1 = nil
-	root.deferDepth = 1 + deferDepthOf(root.arg0)
+	labelDeferredNode(root)
 	f.stats.peep("swar-widen4")
 	return true, nil
 }

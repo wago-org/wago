@@ -13,12 +13,17 @@ func TestTreeRegisterNeed(t *testing.T) {
 		return &elem{kind: ekValue, st: storage{kind: kind, typ: mtI32}}
 	}
 	node := func(left, right *elem) *elem {
-		return &elem{kind: ekDeferred, op: opAdd, typ: mtI32, arg0: left, arg1: right}
+		e := &elem{kind: ekDeferred, op: opAdd, typ: mtI32, arg0: left, arg1: right}
+		labelDeferredNode(e)
+		return e
 	}
 
 	balanced := node(node(leaf(stConst), leaf(stConst)), node(leaf(stConst), leaf(stConst)))
 	if got := treeRegisterNeed(balanced); got != 3 {
 		t.Fatalf("balanced register need = %d, want 3", got)
+	}
+	if balanced.regNeed != 3 {
+		t.Fatalf("balanced stored register need = %d, want 3", balanced.regNeed)
 	}
 	unbalanced := node(balanced, leaf(stConst))
 	if got := treeRegisterNeed(unbalanced); got != 3 {

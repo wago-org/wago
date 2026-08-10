@@ -17,7 +17,25 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ---
 
-## What's in place (updated 2026-08-01)
+## What's in place (updated 2026-08-10)
+
+**High-pressure associative Valent covers (2026-08-10).** AMD64 deferred nodes
+now retain their Sethi--Ullman register-need label at construction. The
+associative `add`/`and`/`or`/`xor` cover uses the existing height-six Valent
+bound as fuel instead of an unrelated eight-leaf array, so every representable
+tree (up to 64 leaves) can be considered without allocation. Requested
+destination registers are admitted only for need-four-or-greater trees; a
+single old-destination input becomes the accumulator seed, while repeated reads
+fall back to the ordinary alias-safe path. Across the current corpus this adds
+517 explicit-mode destination covers, removes **4,169 native bytes**, **117
+spills**, and three reloads. Guard mode removes 864 bytes, 12 spills, and one
+reload. Hits come from QuickJS/script, SQLite, and Ruby; all runnable corpus
+modules remain byte-identical. A broader need-three policy was rejected after
+it regressed the six affected execution rows by 0.35% geomean. Normal
+SQLite/Ruby codegen and full compile remain statistically flat over 20
+base/new samples; forced-worker Ruby codegen exposes the accepted compile-time
+trade at +2.25% to +3.42%, with slightly fewer allocation bytes and counts.
+The full AMD64 backend, vet, and explicit/guard/wazero corpus gates pass.
 
 **Memory64 and global-element snapshot watchpoints (2026-08-01).** Owned memory64
 snapshot instantiation, including a grown two-page image, measures **3.72–3.76 µs/op**,
