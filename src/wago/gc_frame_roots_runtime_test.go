@@ -235,7 +235,8 @@ func (s *gcCountingRootRefSink) VisitRootRef(ref gc.Ref) bool {
 
 func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
 	const rootsN = shared.GCFrameRootLimit
-	frame := make([]byte, shared.AMD64FrameHeaderBytes+rootsN*8)
+	frame, releaseFrame := newGCNativeTestFrame(t, shared.AMD64FrameHeaderBytes+rootsN*8)
+	defer releaseFrame()
 	offsets := make([]uint32, rootsN)
 	for i := range offsets {
 		offsets[i] = uint32(shared.AMD64FrameHeaderBytes + i*8)
@@ -246,9 +247,9 @@ func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
 	if got := testing.AllocsPerRun(100, func() {
 		sink.count, sink.sum = 0, 0
 		roots.RangeRootRefs(sink)
-		// roots intentionally stores the off-heap ABI base as uintptr. Retain the
-		// typed backing reference across every allocation probe so Go 1.22 race
-		// checkptr cannot observe a reclaimed span during an internal GC.
+		// Keep the mapping descriptor live across each probe. Unix tests use the
+		// same off-heap ownership class as production native frames, avoiding a
+		// Go 1.22 stack relocation behind roots' intentional uintptr ABI base.
 		runtime.KeepAlive(frame)
 	}); got != 0 {
 		t.Fatalf("wide root enumeration allocations=%v, want 0", got)
