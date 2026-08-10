@@ -205,6 +205,7 @@
               "stack-reg",
               "store-forward",
               "store-load-fwd",
+              "store8-flags",
               "tee-sink",
               "three-op-sink",
               "tree-order",
