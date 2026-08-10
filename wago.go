@@ -70,6 +70,7 @@ type (
 	HostFuncRef               = impl.HostFuncRef
 	HostImportAccess          = impl.HostImportAccess
 	HostModule                = impl.HostModule
+	HostTrap                  = impl.HostTrap
 	I31Ref                    = impl.I31Ref
 	ImportFuncBuilder         = impl.ImportFuncBuilder
 	ImportKind                = impl.ImportKind
@@ -459,3 +460,5 @@ func WithPluginGrants(caps ...PluginCapability) UseOption { return impl.WithPlug
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
 func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
+
+func WithSynchronousHostCalls() InstantiateOption { return impl.WithSynchronousHostCalls() }
