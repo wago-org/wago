@@ -1,9 +1,10 @@
 # Component Model runtime
 
-Wago's `src/component` package decodes and instantiates WebAssembly Components.
-It supports the Preview 2 binary model, canonical ABI lift/lower, typed values,
-resources, nested composition, and typed host imports. The package also contains
-experimental Preview 3 task, future, and stream machinery.
+The official [`wago-org/component-model`](https://github.com/wago-org/component-model)
+plugin decodes and instantiates WebAssembly Components on Wago. It supports the
+Preview 2 binary model, canonical ABI lift/lower, typed values, resources, nested
+composition, and typed host imports. The plugin also contains experimental Preview 3
+task, future, and stream machinery without making those features ambient in core Wago.
 
 Component execution is an opt-in plugin, not an ambient `Runtime` feature:
 
@@ -62,7 +63,7 @@ whose host functions may be reached only indirectly through a table.
 
 ## Validation
 
-The component packages include decoder, canonical ABI, resource, composition,
-async, oracle, and malformed-input tests. A real Rust `wasm32-wasip2`
-`wasi:cli/command` fixture is exercised both in this repository and by the WASI
-host module.
+The external plugin repository includes decoder, canonical ABI, resource,
+composition, async, oracle, and malformed-input tests. A real Rust
+`wasm32-wasip2` `wasi:cli/command` fixture is exercised by the
+[`wago-org/wasi`](https://github.com/wago-org/wasi) host module.
