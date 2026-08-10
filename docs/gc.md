@@ -66,7 +66,7 @@ call graphs and recursion. Throughput collect-every-allocation/forced-major veri
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec v34 persists and revalidates
+call-sites, and adapter returns fail closed. Codec v35 persists and revalidates
 safepoint, spill, callsite, frame-size, local-start, and adapter-return metadata;
 repeated offset vectors share immutable storage after compilation and reload.
 It never persists collector handles, liveness work arenas, or live frames.
@@ -101,16 +101,36 @@ product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples o
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
 
 AMD64 final scalar struct/array get/set operations now bypass the parked helper
-through native collector ABI v3. Its 160-byte collector-owned stable view preserves
-the complete 128-byte v2 handle/space/generation/object-card prefix and appends
-allocation-state, epoch, nursery-bump, and semantic-counter pointers. Collection
-and relocating/large-space allocation republish the complete view; ordinary helper
-nursery allocation updates only handle metadata and generation, while card
-append/remove/clear republishes card metadata. One
-instance-owned view publishes the immutable local-to-canonical type
-map at basedata offset 280. Generated code reloads every pointer per access and
-checks ABI version, handle tag/range, space range, object extent, exact canonical
-type, and array index before touching payload bytes.
+through native collector ABI v6. Its 168-byte collector-owned stable view preserves
+the complete handle/space/generation/object-card prefix and appends allocation-state,
+epoch, nursery-bump, and semantic-counter pointers. Collection and relocating/large-
+space allocation republish the complete view; ordinary helper nursery allocation
+updates only handle metadata and generation, while card append/remove/clear republishes
+card metadata. One instance-owned view publishes the immutable local-to-canonical type
+map at basedata offset 280.
+
+The Go/native structure layout is validated when a collector is created. Codec v35
+records the required native-GC ABI for generic struct/array execution and rejects a
+missing or mismatched requirement while loading. Instantiation then validates the
+immutable instance version, collector identity, local-type map pointer/count,
+collector version, and handle stride before basedata publication. Production AMD64
+operations do not reload those immutable guards per access; `-tags wagodebug` retains
+a coarse Go-to-native entry assertion. Dynamic semantic checks are unchanged:
+generated code reloads mutable handle/backing pointers and counts, then checks compact
+handle tag/range/liveness, space and backing extents, object extent, exact canonical
+type, array bounds, ownership/barrier state, and trap order before touching payload.
+
+At modules with two or more candidate direct scalar/length sites, AMD64 emits one
+229-byte module-owned noncollecting compact-handle resolver leaf and patches local
+`CALL rel32` sites to it. One-site modules keep inline resolution because the measured
+crossover is unfavorable. The leaf cannot allocate, collect, enter Go, publish roots,
+or become a safepoint; local trap stubs retain exact source attribution. A separate
+one-entry derived-address certificate may reuse a successful resolution only across
+an unchanged compact local and a mechanically safepoint-free straight-line region.
+Calls, helper/host transitions, allocations, control/EH/tail edges, local writes,
+mutable-fact invalidation, and all unknown opcodes clear it before lowering. Controls:
+`WAGO_AMD64_NO_GC_SHARED_STUBS=1` and `WAGO_AMD64_NO_GC_RESOLVE_REUSE=1` restore
+inline/no-reuse differential paths.
 
 Shared AMD64 stubs additionally cover final casts, final cast-plus-array-length,
 final reference-array reads, and final cast-plus-reference-struct reads. Final
@@ -175,9 +195,9 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec v34 persists generic helper admission, vector layout, and bounded native
-root maps; compact handles remain process-local. Snapshot format v4 separately
-serializes every object reachable from owned local GC globals using one-based
+Codec v35 persists generic helper admission, the required native-GC ABI version,
+vector layout, and bounded native root maps; compact handles remain process-local.
+Snapshot format v4 separately serializes every object reachable from owned local GC globals using one-based
 stable IDs, exact type IDs, array lengths, and typed field/element payloads.
 Snapshot v5 adds the live length and entries of one owned local collector-reference
 table. Snapshot v6 extends that record to multiple heterogeneous local tables with
@@ -420,7 +440,7 @@ immutable decoded subtype declarations and is discarded after code generation; i
 not retained by `Compiled` or serialized. `Compiled.GCTypeDescs` stores the runtime
 descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type
 section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including
-function sentinels used only to preserve indexes. Codec v34 retains the appended
+function sentinels used only to preserve indexes. Codec v35 retains the appended
 `StorageV128` kind, the 16-byte layout contract, and validated native
 safepoint/callsite root maps; older codec versions are rejected.
 
@@ -432,7 +452,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec v34 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec v35 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,

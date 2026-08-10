@@ -250,6 +250,33 @@ bytes, neutral-to-slightly slower execution) were measured and reverted. Static
 site count alone is not a dynamic-hotness signal; executed transition/stub
 instrumentation precedes further load-forwarding work.
 
+**Trusted native-GC ABI boundaries and bounded resolver reuse (2026-08-10, #307).**
+Collector ABI v6 is now validated against Go structure sizes/offsets at collector
+construction, recorded explicitly in codec v35 generic-GC artifacts, rejected on
+artifact mismatch, and validated with the immutable instance type-map/collector view
+before basedata publication. AMD64 no longer reloads instance/collector versions,
+local-map counts, or handle stride in every native GC access; mutable handle/backing,
+space, object-extent, canonical-type, bounds, ownership, barrier, lifecycle, trap,
+root, EH, tail, snapshot, and host-reentry semantics remain dynamic. `wagodebug`
+retains a coarse Go-to-native immutable-view assertion.
+
+A module-owned 229-byte noncollecting compact-handle resolver leaf is selected only
+at two or more candidate direct scalar/length sites; one-site modules keep the
+351-byte inline crossover instead of growing to 453 bytes. Eight sites shrink
+1,669→821 bytes and 128 sites shrink 24,349→7,301 bytes. A one-entry derived-address
+certificate keeps the compact local as the root and survives only mechanically
+safepoint-free straight-line leaves; calls, helper/host transitions, allocations,
+control/EH/tail edges, local writes, and unknown opcodes invalidate it. Eight repeated
+accesses compile as one resolution plus seven reuses and shrink 821→565 bytes. Ten
+CPU-0-pinned 500 ms runtime samples measured medians of 310.0 ns/op default,
+328.1 ns/op with reuse disabled, and 324.0 ns/op fully inline, all 0 B/op and
+0 allocs/op. A same-command stripped plugin-complete TinyGo build grew
+2,096,928→2,102,160 bytes (+5,232, +0.250%); `compiledCodeCache` remains 64 bytes
+and collector/instance/native-view layouts do not grow. Differential controls are
+`WAGO_AMD64_NO_GC_SHARED_STUBS=1` and
+`WAGO_AMD64_NO_GC_RESOLVE_REUSE=1`; permanent attribution is
+`BenchmarkGCResolverCodeSize` plus `BenchmarkGCNativeResolverReuse`.
+
 **Release unwind-table removal (2026-08-01).** TinyGo `-no-debug` Linux
 releases do not use DWARF `.eh_frame` data for panic text or Wago's native
 trap/signal path. In the historical monolithic CLI, removing that allocated

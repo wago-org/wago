@@ -347,6 +347,46 @@ cycles, 533,396 B/op, and 8 allocs/op. The execution difference is below a
 pre-declared optimization threshold and is baseline evidence, not a reason to
 special-case static sites.
 
+### Issue #307 native-GC ABI/resolver attribution
+
+`BenchmarkGCResolverCodeSize` is the permanent compiler/JIT attribution fixture for
+immutable-ABI hoisting, the module-owned noncollecting resolver, low-site crossover,
+and bounded resolved-address reuse. Run it together with the process-level execution
+fixture:
+
+```sh
+go test ./src/core/compiler/backend/railshot/amd64 -run '^$' \
+  -bench '^BenchmarkGCResolverCodeSize$' -benchmem -count=10
+
+GOMAXPROCS=1 taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^BenchmarkGCNativeResolverReuse$' -benchmem -benchtime=500ms -count=10
+GOMAXPROCS=1 WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 taskset -c 0 go test ./src/wago \
+  -run '^$' -bench '^BenchmarkGCNativeResolverReuse$' -benchmem -benchtime=500ms -count=10
+GOMAXPROCS=1 WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 WAGO_AMD64_NO_GC_SHARED_STUBS=1 \
+  taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^BenchmarkGCNativeResolverReuse$' -benchmem -benchtime=500ms -count=10
+```
+
+On August 10, 2026, Ryzen 7 8845HS / Go 1.24.4 linux/amd64 code-size
+qualification measured a 229-byte shared resolver body. One candidate site remains
+inline at 351 native bytes because an unconditional island would produce 453 bytes.
+At eight sites the shared form is 821 versus 1,669 bytes (-50.8%); at 128 sites it is
+7,301 versus 24,349 bytes (-70.0%). Within the eight-site straight-line reuse fixture,
+one resolution plus seven certified reuses produces 565 bytes versus 821 bytes with
+eight resolutions (-31.2%). Module telemetry records shared body bytes/call sites,
+and per-function telemetry records emitted versus reused resolutions.
+
+Ten CPU-0-pinned 500 ms execution samples measured medians of 310.0 ns/op for the
+default shared+reuse path, 328.1 ns/op with reuse disabled, and 324.0 ns/op with both
+reuse and shared resolution disabled; all cases were 0 B/op and 0 allocs/op. Thus the
+retained combined path was 5.5% faster than shared-without-reuse and 4.3% faster than
+fully inline resolution on this repeated-access fixture. Two isolated ~0.8 us host
+outliers did not affect medians. A same-command stripped `wago_runtime` TinyGo build was
+2,096,928 bytes at the baseline SHA and 2,102,160 bytes for the candidate (+5,232,
++0.250%); the fixed 64-byte compiled-code cache and runtime collector/instance/view
+layouts do not grow. This fixture proves the intended dense straight-line case; it
+does not claim every static shared-stub site is dynamically hot.
+
 ### Issue #300 baseline report
 
 The following pinned linux/amd64 results use Go 1.24.4, Linux 6.12, one Ryzen 7
