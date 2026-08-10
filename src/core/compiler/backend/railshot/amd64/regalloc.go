@@ -110,6 +110,8 @@ func (f *fn) spillIfUsed(r Reg) {
 
 // spill evicts the register-resident value elem e to a fresh frame slot.
 func (f *fn) spill(e *elem) {
+	before := f.a.Len()
+	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
 	if e.st.kind == stMemRef {
 		// e is a deferred load: e.st.reg holds the effective ADDRESS, not the
 		// loaded value. Emit the load now and spill the value. Storing the address
@@ -203,7 +205,9 @@ func (f *fn) materialize(e *elem) Reg {
 	case stSlot:
 		f.stats.addReload()
 		r := f.allocReg(0)
+		before := f.a.Len()
 		f.a.Load64(r, RSP, f.spillOff(e.st.slot))
+		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupy(e, r)
 		return r
 	case stLocalRef:

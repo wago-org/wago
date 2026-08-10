@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 const (
@@ -25,6 +26,9 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayAllocDefaultNative  uint32 = 32
+	gcArrayAllocUniformNative  uint32 = 33
+	gcArrayAllocFixedNative    uint32 = 34
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -47,7 +51,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if err := f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+		helper := uint32(gcArrayAllocUniform)
+		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native {
+			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeUniform}
+				helper = gcArrayAllocUniformNative
+			}
+		}
+		if err := f.callGCStructHelper(helper, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.markTopExactGCType(typeIndex)
@@ -137,7 +148,16 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if err := f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result}); err != nil {
+		helper := uint32(gcArrayAllocFixed)
+		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native {
+			bytes := uint64(gc.PayloadOffset) + uint64(count)*uint64(layout.elemSize)
+			bytes = (bytes + 7) &^ 7
+			if bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: count, mode: gcArrayNativeFixed}
+				helper = gcArrayAllocFixedNative
+			}
+		}
+		if err := f.callGCStructHelper(helper, params, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.markTopExactGCType(typeIndex)
@@ -152,7 +172,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if err := f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+		helper := uint32(gcArrayAllocDefault)
+		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault}
+				helper = gcArrayAllocDefaultNative
+			}
+		}
+		if err := f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.markTopExactGCType(typeIndex)
@@ -334,6 +361,23 @@ func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.
 	}
 	f.pushReg(result, mtI64)
 	return nil
+}
+
+func nativeGCStaticArraySize(f *fn, layout nativeGCArrayAllocLayout) (length uint32, objectBytes uint64, ok bool) {
+	if f == nil || f.s == nil {
+		return 0, 0, false
+	}
+	value := f.s.back()
+	if value != nil {
+		value = value.prev // trailing type-index constant was pushed before admission
+	}
+	if value == nil || value.kind != ekValue || value.st.kind != stConst || value.st.typ != mtI32 {
+		return 0, 0, false
+	}
+	length = uint32(value.st.cval)
+	objectBytes = uint64(gc.PayloadOffset) + uint64(length)*uint64(layout.elemSize)
+	objectBytes = (objectBytes + 7) &^ 7
+	return length, objectBytes, objectBytes <= uint64(^uint32(0))
 }
 
 func stagedArrayType(m *wasm.Module, typeIndex uint32) (wasm.FieldType, bool) {

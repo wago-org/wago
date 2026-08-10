@@ -56,7 +56,7 @@ func recordSynchronousGCHelper(in *Instance, helper uint32, args []uint64) {
 			}
 		} else {
 			counter.arrayAllocCalls.Add(1)
-			if helper == gcArrayAllocDefault {
+			if helper == gcArrayAllocDefault || helper == gcArrayAllocDefaultNative {
 				counter.arrayDefaultAllocCalls.Add(1)
 			} else {
 				counter.arrayOtherAllocCalls.Add(1)

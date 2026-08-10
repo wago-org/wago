@@ -78,6 +78,7 @@ func (c *Collector) NewStructWordsPrevalidatedWithRootScratch(typeID TypeID, wor
 		h := handleOf(r)
 		if (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) && c.handleContainsNurseryRef(h) {
 			c.remember(h)
+			c.markWholeObjectCard(h)
 		}
 	}
 	return r, nil
@@ -137,6 +138,7 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 		h := handleOf(r)
 		if (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) && c.handleContainsNurseryRef(h) {
 			c.remember(h)
+			c.markWholeObjectCard(h)
 		}
 	}
 	return r, nil
@@ -564,8 +566,13 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(f.Kind)); err != nil {
 			return err
 		}
-		c.WriteBarrierObject(ref, value.Ref)
-		return c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
+		if err := c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value); err != nil {
+			return err
+		}
+		if sp := c.entry(ref).space; c.cfg.Profile == ProfileTiny || sp == spaceOld || sp == spaceLarge {
+			c.writeBarrierObjectRange(ref, value.Ref, f.Offset, f.Offset+3)
+		}
+		return nil
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
 }
@@ -597,7 +604,13 @@ func (c *Collector) StructSetTyped(ref Ref, required TypeID, exact bool, field u
 		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(f.Kind)); err != nil {
 			return actual, true, err
 		}
-		c.WriteBarrierObject(ref, value.Ref)
+		if err := c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value); err != nil {
+			return actual, true, err
+		}
+		if sp := c.entry(ref).space; c.cfg.Profile == ProfileTiny || sp == spaceOld || sp == spaceLarge {
+			c.writeBarrierObjectRange(ref, value.Ref, f.Offset, f.Offset+3)
+		}
+		return actual, true, nil
 	}
 	return actual, true, c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
 }
@@ -905,9 +918,14 @@ func (c *Collector) validateArrayStore(d TypeDesc, value Value) error {
 
 func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Value) error {
 	if isCollectorRefKind(d.Elem) {
-		c.WriteBarrierObject(ref, value.Ref)
-		c.CardMarkArray(ref, index)
-		return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
+		if err := c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value); err != nil {
+			return err
+		}
+		off := index * d.ElemSize
+		if sp := c.entry(ref).space; c.cfg.Profile == ProfileTiny || sp == spaceOld || sp == spaceLarge {
+			c.writeBarrierObjectRange(ref, value.Ref, off, off+d.ElemSize-1)
+		}
+		return nil
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }

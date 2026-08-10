@@ -3,6 +3,7 @@ package wago
 import (
 	"fmt"
 	goruntime "runtime"
+	"strings"
 	"sync"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -15,6 +16,9 @@ const (
 	compiledCacheGuardMemory
 	compiledCacheAtomicWaitHelpers
 	compiledCacheWritableCode
+
+	compiledCacheGCRootFailureShift = 4
+	compiledCacheGCRootFailureMask  = compiledCodeCacheFlags(0xf0)
 )
 
 type compiledCodeCache struct {
@@ -47,6 +51,68 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 		_ = c.Close()
 	})
 	return c
+}
+
+func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
+	if c == nil || c.codeCache == nil || diagnostic == "" {
+		return
+	}
+	code := compiledCodeCacheFlags(15)
+	switch {
+	case strings.Contains(diagnostic, "no local function bodies"):
+		code = 1
+	case strings.Contains(diagnostic, "imported start"):
+		code = 2
+	case strings.Contains(diagnostic, "table or element ownership"), strings.Contains(diagnostic, "global import"), strings.Contains(diagnostic, "table import"):
+		code = 3
+	case strings.Contains(diagnostic, "function import"), strings.Contains(diagnostic, "caller ABI"):
+		code = 4
+	case strings.Contains(diagnostic, "exception root"):
+		code = 5
+	case strings.Contains(diagnostic, "unsupported native call or frame"):
+		code = 6
+	case strings.Contains(diagnostic, "exceeds 1024 collector roots"):
+		code = 7
+	case strings.Contains(diagnostic, "local liveness"):
+		code = 8
+	case strings.Contains(diagnostic, "safepoint ID"):
+		code = 9
+	case strings.Contains(diagnostic, "unavailable on this build target"):
+		code = 10
+	}
+	c.codeCache.flags = c.codeCache.flags&^compiledCacheGCRootFailureMask | code<<compiledCacheGCRootFailureShift
+}
+
+func (c *Compiled) gcRootAdmissionFailure() string {
+	if c == nil || c.codeCache == nil {
+		return "native root admission metadata is unavailable"
+	}
+	switch (c.codeCache.flags & compiledCacheGCRootFailureMask) >> compiledCacheGCRootFailureShift {
+	case 1:
+		return "generic GC module has no local function bodies"
+	case 2:
+		return "imported start function has an unknown host ownership graph"
+	case 3:
+		return "global, table, or element ownership is outside the exact native-root model"
+	case 4:
+		return "a function import or caller exceeds the exact native call ABI"
+	case 5:
+		return "exception payload roots could not be represented exactly"
+	case 6:
+		return "a collecting function contains an unsupported native call or frame shape"
+	case 7:
+		return "a collecting function exceeds 1024 collector roots or the frame-offset bound"
+	case 8:
+		return "exact structured-CFG local liveness could not be constructed"
+	case 9:
+		return "the module exceeds the dense native GC safepoint ID bound"
+	case 10:
+		return "exact native GC root maps are unavailable on this build target"
+	case 15:
+		return "native backend did not produce complete exact root maps"
+	default:
+		return "artifact contains no exact native root maps"
+	}
 }
 
 func (c *Compiled) usesDynamicFuncRefTest() bool {
@@ -113,7 +179,7 @@ func (c *Compiled) usesGenericGCExecution() bool {
 	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
 }
 
-// compiledGCFrameRoots is the immutable codec-v31 admission sidecar for bounded
+// compiledGCFrameRoots is the immutable codec-v33 admission sidecar for bounded
 // per-site roots, local call graphs, and suspended host activations. Generic modules without
 // it remain collection-disabled during native execution.
 type compiledGCFrameSafepoint struct {
@@ -133,6 +199,58 @@ type compiledGCFrameRoots struct {
 	adapterReturnOffsets []uint32
 	safepoints           []compiledGCFrameSafepoint
 	callsites            []compiledGCFrameCallsite
+}
+
+type gcFrameOffsetInterner struct {
+	firstHash uint64
+	first     []uint32
+	others    map[uint64][]uint32
+}
+
+func gcFrameOffsetsHash(offsets []uint32) uint64 {
+	h := uint64(1469598103934665603) ^ uint64(len(offsets))
+	for _, off := range offsets {
+		h ^= uint64(off)
+		h *= 1099511628211
+	}
+	return h
+}
+
+// intern retains one immutable offset vector for repeated stack maps. Hash
+// collisions only forgo sharing; equality is always checked before reuse.
+func (i *gcFrameOffsetInterner) intern(offsets []uint32, clone bool) []uint32 {
+	if len(offsets) == 0 {
+		return nil
+	}
+	h := gcFrameOffsetsHash(offsets)
+	equal := func(previous []uint32) bool {
+		if len(previous) != len(offsets) {
+			return false
+		}
+		for j := range offsets {
+			if offsets[j] != previous[j] {
+				return false
+			}
+		}
+		return true
+	}
+	if h == i.firstHash && equal(i.first) {
+		return i.first
+	}
+	if previous := i.others[h]; equal(previous) {
+		return previous
+	}
+	if clone {
+		offsets = append([]uint32(nil), offsets...)
+	}
+	if len(i.first) == 0 {
+		i.firstHash, i.first = h, offsets
+	} else if i.others == nil {
+		i.others = map[uint64][]uint32{h: offsets}
+	} else if _, exists := i.others[h]; !exists {
+		i.others[h] = offsets
+	}
+	return offsets
 }
 
 // safepointByID keeps the allocation-helper hot path O(1) for compiler-produced

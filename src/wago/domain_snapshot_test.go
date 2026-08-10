@@ -21,9 +21,9 @@ func domainSnapshotConfig() *RuntimeConfig {
 	return NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
 }
 
-func TestDomainSnapshotV3Footprint(t *testing.T) {
-	if got := unsafe.Sizeof(DomainSnapshot{}); got != 112 {
-		t.Fatalf("DomainSnapshot size = %d, want 112", got)
+func TestDomainSnapshotV4Footprint(t *testing.T) {
+	if got := unsafe.Sizeof(DomainSnapshot{}); got != 120 {
+		t.Fatalf("DomainSnapshot size = %d, want 120", got)
 	}
 	if got := unsafe.Sizeof(domainSnapshotMember{}); got != 104 {
 		t.Fatalf("domainSnapshotMember size = %d, want 104", got)
@@ -593,8 +593,8 @@ func TestDomainSnapshotRestoresLiveAndDroppedPassiveElements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if blob[len(domainSnapshotMagic)] != 3 {
-		t.Fatalf("domain snapshot version = %d, want 3", blob[len(domainSnapshotMagic)])
+	if blob[len(domainSnapshotMagic)] != domainSnapshotVersion {
+		t.Fatalf("domain snapshot version = %d, want %d", blob[len(domainSnapshotMagic)], domainSnapshotVersion)
 	}
 	if err := in.Close(); err != nil {
 		t.Fatal(err)
@@ -1036,7 +1036,7 @@ func TestDomainSnapshotRestoresSharedGCGraphAndAliases(t *testing.T) {
 		t.Fatalf("trailing domain snapshot error = %v", err)
 	}
 	badConfig := append([]byte(nil), blob...)
-	badConfig[len(domainSnapshotMagic)+1+3+10*4] = 2
+	badConfig[len(domainSnapshotMagic)+1+3+12*4] = 2
 	if _, err := LoadDomainSnapshot(badConfig); err == nil || !strings.Contains(err.Error(), "boolean") {
 		t.Fatalf("invalid domain GC config error = %v", err)
 	}

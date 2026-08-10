@@ -42,5 +42,34 @@ func (in *Instance) prepareNativeStructHandles(typeID uint32) {
 			return
 		}
 	}
-	in.gc.PrepareNativeStructHandles()
+	size, err := gc.StructSize(d)
+	if err == nil {
+		in.gc.PrepareNativeStructAllocation(size)
+	}
+}
+
+func (in *Instance) prepareNativeArrayAllocation(typeID, length uint32) {
+	if !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) {
+		return
+	}
+	t := in.c.Types[typeID]
+	d := in.c.GCTypeDescs[typeID]
+	if !t.Final || t.Kind != CompositeTypeArray || d.Kind != gc.KindArray {
+		return
+	}
+	if t.Array.Storage.Value.Kind == ValueTypeReference {
+		heap := t.Array.Storage.Value.Ref.Heap
+		if heap.Defined || (heap.Abstract != AbstractHeapAny && heap.Abstract != AbstractHeapEq) || (d.Elem != gc.StorageRef && d.Elem != gc.StorageRefNull) {
+			return
+		}
+	}
+	size, err := gc.ArraySize(d, length)
+	if err != nil {
+		return
+	}
+	if in.c.genericGCBoundaryCollectionSafe() {
+		in.gc.PrepareNativeArrayAllocation(size)
+		return
+	}
+	in.gc.PrepareNativeArrayAllocationImmediate(size)
 }

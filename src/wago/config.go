@@ -224,6 +224,7 @@ type RuntimeConfig struct {
 	boundsChecks    BoundsCheckMode
 	noDeferBounds   bool // disable skipping of provably-redundant bounds checks (default: enabled)
 	functionWorkers int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
+	gcCodeTelemetry bool // collect code-neutral per-family WasmGC native byte attribution
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -297,6 +298,15 @@ func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *Runtime
 	if !enabled && feature.IsEnabled(CoreFeatureExtendedConst) {
 		n.features &^= CoreFeatureExtendedConstExpressions
 	}
+	return &n
+}
+
+// WithGCCodeTelemetry enables code-neutral WasmGC native-byte attribution on
+// freshly compiled modules. It does not change emitted code and is not persisted
+// in .wago artifacts.
+func (c *RuntimeConfig) WithGCCodeTelemetry(enabled bool) *RuntimeConfig {
+	n := *c
+	n.gcCodeTelemetry = enabled
 	return &n
 }
 

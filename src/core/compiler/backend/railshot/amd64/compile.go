@@ -43,9 +43,9 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 // casts already proved by a successful prior cast or exact constructor.
 var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
 
-// nativeGCStructAllocEnabled consumes collector-reserved handle batches through
-// a checked nursery bump path. The rooted Go helper remains the collection and
-// refill path. Keep a differential kill switch while the path is qualified.
+// nativeGCStructAllocEnabled consumes collector-reserved handle runs and nursery
+// chunks for admitted struct and array constructors. Rooted Go helpers remain the
+// collection/refill path. Keep one differential kill switch for qualification.
 var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
 
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
@@ -387,6 +387,7 @@ type fn struct {
 	gcFrameRoots           *shared.GCFrameRootPlan
 	gcCallsiteIndex        int
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
+	nativeArrayAlloc       gcArrayAllocStubSite
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -469,6 +470,22 @@ type gcStructAllocStubSite struct {
 	site      int
 }
 
+type gcArrayAllocMode uint8
+
+const (
+	gcArrayNativeNone gcArrayAllocMode = iota
+	gcArrayNativeDefault
+	gcArrayNativeUniform
+	gcArrayNativeFixed
+)
+
+type gcArrayAllocStubSite struct {
+	typeIndex uint32
+	count     uint32
+	site      int
+	mode      gcArrayAllocMode
+}
+
 type scratch struct {
 	stack          *stack     // the valent-block operand stack
 	asm            *amd64.Asm // the x86-64 encoder byte buffer
@@ -489,6 +506,7 @@ type scratch struct {
 	gcStructRefSetStubSites []int
 	gcArrayRefSetStubSites  []int
 	gcStructAllocStubSites  []gcStructAllocStubSite
+	gcArrayAllocStubSites   []gcArrayAllocStubSite
 	trapSites               [trapMax + 1][]trapSite
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals            []int       // pinned-local index backing; reused across functions
@@ -521,6 +539,7 @@ func (sc *scratch) reset() {
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
 	sc.gcArrayRefSetStubSites = sc.gcArrayRefSetStubSites[:0]
 	sc.gcStructAllocStubSites = sc.gcStructAllocStubSites[:0]
+	sc.gcArrayAllocStubSites = sc.gcArrayAllocStubSites[:0]
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
@@ -1778,6 +1797,7 @@ func (f *fn) finalizeStats(codeLen int) {
 		return
 	}
 	s.CodeBytes = codeLen
+	s.GCCodeBytes.Total = codeLen
 	s.FrameBytes = f.frameSize()
 	s.MaxSpillSlots = f.maxSpill
 }

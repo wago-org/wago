@@ -109,9 +109,10 @@ type CodegenStats struct {
 	Name    string // name-section / export name, or "" if anonymous
 
 	// Size.
-	CodeBytes     int // emitted machine-code length
-	FrameBytes    int // stack frame size (sub rsp, N)
-	MaxSpillSlots int // high-water operand spill slots
+	CodeBytes     int                      // emitted machine-code length
+	FrameBytes    int                      // stack frame size (sub rsp, N)
+	MaxSpillSlots int                      // high-water operand spill slots
+	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 
 	// Register allocator / condense engine traffic.
 	Flushes              int // full operand-stack flushes (control boundaries + calls)
@@ -229,6 +230,61 @@ func (s *CodegenStats) addPinnedGlobalValue() {
 		s.PinnedGlobalsValue++
 	}
 }
+func (s *CodegenStats) addGCAllocationBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.Allocation += n
+	}
+}
+func (s *CodegenStats) addGCHandleResolutionBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.HandleResolution += n
+	}
+}
+func (s *CodegenStats) addGCTypeCastBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.TypeCast += n
+	}
+}
+func (s *CodegenStats) addGCNullCheckBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.NullCheck += n
+	}
+}
+func (s *CodegenStats) addGCBoundsCheckBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.BoundsCheck += n
+	}
+}
+func (s *CodegenStats) addGCBarrierBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.Barrier += n
+	}
+}
+func (s *CodegenStats) addGCHelperCallBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.HelperCall += n
+	}
+}
+func (s *CodegenStats) addGCSharedStubBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.SharedStub += n
+	}
+}
+func (s *CodegenStats) addGCSpillReloadBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.SpillReload += n
+	}
+}
+func (s *CodegenStats) addGCTrapStubBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.TrapStub += n
+	}
+}
+func (s *CodegenStats) addGCRootMapBytes(n int) {
+	if s != nil && n > 0 {
+		s.GCCodeBytes.RootMap += n
+	}
+}
 
 // call records one call lowering of the given kind.
 func (s *CodegenStats) call(kind string) {
@@ -308,6 +364,11 @@ func (s *CodegenStats) report() string {
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
+	gcBytes := s.GCCodeBytes
+	if gcBytes.Allocation|gcBytes.HandleResolution|gcBytes.TypeCast|gcBytes.NullCheck|gcBytes.BoundsCheck|gcBytes.Barrier|gcBytes.SpillReload|gcBytes.HelperCall|gcBytes.SharedStub|gcBytes.TrapStub|gcBytes.RootMap != 0 {
+		fmt.Fprintf(&b, "    gcbytes: total=%d alloc=%d resolve=%d cast=%d null=%d bounds=%d barrier=%d spill=%d helper=%d shared=%d trap=%d rootmap=%d\n",
+			gcBytes.Total, gcBytes.Allocation, gcBytes.HandleResolution, gcBytes.TypeCast, gcBytes.NullCheck, gcBytes.BoundsCheck, gcBytes.Barrier, gcBytes.SpillReload, gcBytes.HelperCall, gcBytes.SharedStub, gcBytes.TrapStub, gcBytes.RootMap)
+	}
 	if len(s.Calls) > 0 {
 		fmt.Fprintf(&b, "    calls: %s\n", fmtCountMap(s.Calls))
 	}

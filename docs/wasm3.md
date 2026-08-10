@@ -1,6 +1,6 @@
 # WebAssembly 3.0 implementation status
 
-Last updated: 2026-08-02.
+Last updated: 2026-08-10.
 
 This document is the implementation ledger for the WebAssembly Core 3.0 effort.
 The primary product target is `linux/amd64`. A row is not complete merely because
@@ -71,7 +71,7 @@ order.
 
 `make spec3-signals` runs the same strict zero-gap harness with
 `-tags wago_guardpage` and `WAGO_BOUNDS=signals`. Every Core 3 family now executes
-under this linux/amd64 product: **2,226 modules and 58,238 assertions pass with
+under this linux/amd64 product: **2,226 modules and 58,038 assertions pass with
 zero failures, skips, or gap categories**.
 
 The final memory families use a deliberate hybrid. Memory 0 memory32 accesses may
@@ -90,13 +90,14 @@ faulting 4 KiB host page after `memory.grow`; aligning the absolute fault addres
 to 64 KiB could move before a merely host-page-aligned mmap reservation, make
 `mprotect` fail, and refault forever.
 
-The current schema-2 inventory at `tests/spec-v3-baseline.json` processes all 258
-files and reports:
+The current schema-2 inventory at `tests/spec-v3-baseline.json` is the
+authoritative source for repeated repository totals. CI qualifies the same pinned
+suite and platform products. The baseline processes all 258 files and reports:
 
 - 230 files converted directly by WABT and 28 through the official interpreter;
 - zero parser/tool failures and no excluded files;
 - **2,226 modules passed, 0 failed, and 0 skipped**;
-- **58,238 assertions passed, 0 failed, and 0 skipped**;
+- **58,038 assertions passed, 0 failed, and 0 skipped**;
 - every gap counter is zero: compile rejection, instantiation rejection,
   unavailable module, absent export, reference argument/result, and reference
   global;
@@ -185,7 +186,10 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 `WithCoreFeatures(CoreFeaturesV3)`, and the versioned spec harness does so when
 `WAGO_SPEC_VERSION=3.0`. Unsupported build/platform requests return
 `UnsupportedFeatureError` with the exact requested bits, admitted bits, and
-`GOOS/GOARCH` platform.
+`GOOS/GOARCH` platform. In particular, `memory64` and typed function references
+including `call_ref` are implemented on the admitted Core 3 products above, not
+implicitly on every Wago target; `SupportedFeatures()` is the executable
+authority for the current build and host.
 
 ## Mandatory area status
 
@@ -223,16 +227,16 @@ missing official opcode families:
 3. preserve the completed heterogeneous shared-table attachment, mutation, growth,
    rollback, codec, close-order, moving-collection, and foreign-Runtime rejection proofs;
 4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
-   multi-table proofs plus `WGDN` v3 whole-domain capture (strict v1/v2 load
-   compatibility): exhaustive ordered members, internal function/global/table/
+   multi-table proofs plus `WGDN` v4 whole-domain capture (strict v1/v2/v3 load
+   compatibility and persisted survivor policy): exhaustive ordered members, internal function/global/table/
    memory32/memory64/exception-tag aliases, immutable tag directories, one shared
    stable-ID graph, exact GC config, reconstructible live passive funcref/i31/null and
    immutable-global GC payloads, strict malformed-input validation, and atomic
    all-member publication;
 5. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
    conformance mandatory in CI; and
-6. preserve native collector ABI v3, AMD64 checked final-scalar/object-card access,
-   and transactional batched final-struct allocation, while extending direct paths
+6. preserve native collector ABI v6, AMD64 checked final-scalar/object-card access,
+   and transactional batched final struct/array allocation, while extending direct paths
    only where metadata lifetime, collection epochs, roots, and barriers remain exact.
 
 The current descriptor-tail completion resolves runtime targets from their immutable
@@ -264,10 +268,17 @@ path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-i
 watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context is now
 112 bytes: the original 72-byte pointer prefix, 32 bytes of domain/tail metadata,
 and an eight-byte native GC-view pointer used during shared-memory context switches.
-Native collector ABI v3 retains the same basedata slot and preserves the complete
-128-byte v2 prefix. The shared collector view grows to 160 bytes by appending pointers
-to a fixed 32-handle allocation batch, collection epoch, nursery bump, and semantic
-allocation counter; basedata remains 288 bytes and descriptor layouts do not grow.
+Native collector ABI v6 retains the same basedata slot and extends the collector view
+from 160 to 168 bytes. Byte 124 separates the Eden allocation limit from complete
+young backing; byte 160 publishes the configured nursery-object maximum. The
+160-byte shared allocation ticket retains 32 handles and adds a contiguous handle
+base plus optional bounded nursery chunk fields. Arrays advance the private chunk
+cursor; structs retain their direct collector-bump sequence. Generic public calls
+refill only after nine slow constructors, while products without mandatory boundary
+collection refill immediately. Statically sized final arrays up to 256 object bytes
+may use the same transactional AMD64 ticket as final structs; dynamic,
+large, segment-backed, and unsupported reference shapes remain rooted helpers.
+Basedata remains 288 bytes and descriptor layouts do not grow.
 
 Cross-Runtime object ownership uses explicit cloning rather than compact-handle sharing.
 `target.CloneGCRefFrom(source, ref)` captures one retained source graph, maps recursive
@@ -276,8 +287,8 @@ structural types into the target, and reconstructs it transactionally under boun
 but target identity is new. Non-null opaque references reject; direct foreign Runtime
 calls and tails remain fail-closed.
 
-`WGDN` v3 adds typed passive-element root vectors and same-domain memory64 aliases while
-strictly loading v1/v2. Live passive element state is admitted for available funcrefs,
+`WGDN` v4 retains typed passive-element root vectors and same-domain memory64 aliases,
+adds survivor-policy configuration, and strictly loads v1/v2/v3. Live passive element state is admitted for available funcrefs,
 immediate i31 values, null references, and exact GC/i31 values sourced from immutable
 internal GC globals. Stable object IDs preserve sharing between a global and its passive
 payload, and restore rewrites the off-heap segment entries only after graph reconstruction.
@@ -5052,7 +5063,7 @@ Continue in this thread with small atomic commits. Recommended iteration 72:
 
 WebAssembly Core 3.0 is complete for the pinned official linux/amd64
 explicit-bounds product. `make spec3` exits successfully with 2,226 passing
-modules and 58,238 passing assertions, zero failed or skipped modules/assertions,
+modules and 58,038 passing assertions, zero failed or skipped modules/assertions,
 and zero gap counters. `tests/spec-v3-baseline.json` records the same zero-gap
 result. Release 1 and Release 2 compatibility defaults remain unchanged, and the
 runtime remains pure Go/no-cgo.

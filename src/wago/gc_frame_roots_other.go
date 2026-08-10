@@ -7,4 +7,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlan(*wasm.Module, bool) *shared.GCModuleFrameRootPlan { return nil }
+func newGCFrameRootPlan(_ *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
+	if !genericGC {
+		return nil
+	}
+	return &shared.GCModuleFrameRootPlan{Diagnostic: "exact native GC root maps are unavailable on this build target"}
+}

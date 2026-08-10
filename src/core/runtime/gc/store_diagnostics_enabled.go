@@ -21,8 +21,8 @@ func (c *Collector) DiagnosticObjectStore(parent, child Ref) (parentSpace, child
 	return diagnosticSpace(entry.space), diagnosticRefSpace(c, child), entry.remembered
 }
 
-// DiagnosticArrayCard reports whether parent has a valid object-card entry and
-// whether its current inclusive dirty interval already covers index.
+// DiagnosticArrayCard reports whether parent has valid fixed-card metadata and
+// whether one linked payload-byte range covers index.
 func (c *Collector) DiagnosticArrayCard(parent Ref, index uint32) (present, covers bool) {
 	if c == nil || !parent.IsObj() || !c.validObjectRef(parent) {
 		return false, false
@@ -32,11 +32,29 @@ func (c *Collector) DiagnosticArrayCard(parent Ref, index uint32) (present, cove
 	if slot == 0 || !slotIndexOK(slot-1, len(c.objectCards)) {
 		return false, false
 	}
-	card := c.objectCards[slot-1]
-	if card.handle != handle || card.end < card.index {
+	d, err := c.refDesc(parent)
+	if err != nil || d.Kind != KindArray || d.ElemSize == 0 {
 		return false, false
 	}
-	return true, index >= card.index && index <= card.end
+	off := uint64(index) * uint64(d.ElemSize)
+	if off > uint64(^uint32(0)) {
+		return true, false
+	}
+	for steps := 0; slot != 0 && steps <= len(c.objectCards); steps++ {
+		if !slotIndexOK(slot-1, len(c.objectCards)) {
+			return false, false
+		}
+		pos := slot - 1
+		card := c.objectCards[pos]
+		if card.handle != handle || card.end < card.index {
+			return false, false
+		}
+		if uint32(off) >= card.index && uint32(off) <= card.end {
+			return true, true
+		}
+		slot = card.next
+	}
+	return true, false
 }
 
 func diagnosticRefSpace(c *Collector, ref Ref) uint8 {

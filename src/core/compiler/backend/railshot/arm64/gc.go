@@ -48,10 +48,12 @@ const (
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
+	before := f.a.Len()
 	sub, err := r.U32()
 	if err != nil {
 		return err
 	}
+	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
 		return f.emitGCArray(sub, r)
 	}
@@ -805,6 +807,18 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	before := f.a.Len()
+	defer func() {
+		n := f.a.Len() - before
+		f.stats.addGCHelperCallBytes(n)
+		if arm64GCHelperMayAllocate(helper) {
+			f.stats.addGCAllocationBytes(n)
+		}
+		switch helper {
+		case gcStructSet, gcStructTableSet, gcArraySet, gcArrayFill, gcArrayCopy, gcArrayInitData, gcArrayInitElem:
+			f.stats.addGCBarrierBytes(n)
+		}
+	}()
 	safepoint := uint32(0)
 	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && arm64GCHelperMayAllocate(helper) {
 		safepoint = f.recordGCFrameSafepoint(len(params))
@@ -837,11 +851,10 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		plan.Exact = false
 		return id
 	}
-	liveLocals := plan.LiveLocalMasks[siteIndex]
-	f.materializeGCFrameLocals(liveLocals)
+	f.materializeGCFrameLocalsAt(siteIndex, false)
 	offsets := make([]uint32, 0, len(plan.LocalOffsets))
 	for i, off := range plan.LocalOffsets {
-		if liveLocals&(uint64(1)<<uint(i)) != 0 {
+		if plan.LocalLiveAt(siteIndex, i) {
 			offsets = append(offsets, off)
 		}
 	}
@@ -858,11 +871,13 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
+	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > 64 {
+	if len(offsets) > shared.GCFrameRootLimit {
 		plan.Exact = false
 	}
 	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
+	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id
 }
 

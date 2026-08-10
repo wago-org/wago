@@ -12,18 +12,19 @@ func (r *directTestRoots) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
-func (r *directTestRoots) RangeRootRefs(sink RootRefSink) {
+func (r *directTestRoots) RangeRootRefs(sink RootRefSink) bool {
 	for i := range *r {
 		if !sink.VisitRootRef((*r)[i]) {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 type panickingDirectRoots struct{}
 
 func (panickingDirectRoots) RangeRoots(func(RootSlot) bool) {}
-func (panickingDirectRoots) RangeRootRefs(RootRefSink)      { panic("root walk") }
+func (panickingDirectRoots) RangeRootRefs(RootRefSink) bool { panic("root walk") }
 
 func TestDirectRootMarkingIsAllocationFreeAndResetsAfterPanic(t *testing.T) {
 	c, err := NewCollector(Config{Profile: ProfileThroughput, NurseryBytes: 4096, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, nil)
