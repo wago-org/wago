@@ -8,23 +8,28 @@ import (
 )
 
 type gcArrayLenFact struct {
-	valid     bool
-	local     int
-	identity  uint32
-	typeIndex uint32
+	valid       bool
+	local       int
+	resultLocal int
+	pending     *elem
+	identity    uint32
+	typeIndex   uint32
 }
 
 type gcStructFieldFact struct {
-	valid      bool
-	fromStore  bool
-	hasConst   bool
-	local      int
-	identity   uint32
-	typeIndex  uint32
-	fieldIndex uint32
-	constType  machineType
-	constBits  int64
-	constFact  shared.GCRefFact
+	valid       bool
+	fromStore   bool
+	immutable   bool
+	hasConst    bool
+	local       int
+	resultLocal int
+	pending     *elem
+	identity    uint32
+	typeIndex   uint32
+	fieldIndex  uint32
+	constType   machineType
+	constBits   int64
+	constFact   shared.GCRefFact
 }
 
 type gcResolvedObject struct {
@@ -381,7 +386,7 @@ func (f *fn) publishGCIdentity(identity uint32) {
 			}
 		}
 	}
-	if f.gcLastField.identity == identity {
+	if f.gcLastField.identity == identity && !f.gcLastField.immutable {
 		f.gcLastField.valid = false
 	}
 }
@@ -430,7 +435,9 @@ func (f *fn) publishAllFreshGCRefs() {
 			}
 		}
 	}
-	f.gcLastField.valid = false
+	if !f.gcLastField.immutable {
+		f.gcLastField.valid = false
+	}
 }
 
 func (f *fn) invalidateGCGenerationFacts() {
@@ -451,10 +458,10 @@ func (f *fn) invalidateGCGenerationFacts() {
 }
 
 func (f *fn) invalidateGCLoadFactsForLocal(local int) {
-	if f.gcLastArrayLen.valid && f.gcLastArrayLen.local == local {
+	if f.gcLastArrayLen.valid && (f.gcLastArrayLen.local == local || f.gcLastArrayLen.resultLocal == local) {
 		f.gcLastArrayLen.valid = false
 	}
-	if f.gcLastField.valid && f.gcLastField.local == local {
+	if f.gcLastField.valid && (f.gcLastField.local == local || f.gcLastField.resultLocal == local) {
 		f.gcLastField.valid = false
 	}
 	if f.gcResolved.valid && f.gcResolved.local == local {
@@ -462,8 +469,45 @@ func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 	}
 }
 
+func (f *fn) prepareGCLoadResultCapture(op byte) {
+	if !gcLoadForwardingEnabled {
+		f.gcLastArrayLen.pending = nil
+		f.gcLastField.pending = nil
+		return
+	}
+	if op == 0x21 || op == 0x22 { // local.set / local.tee may name the just-produced value.
+		return
+	}
+	f.gcLastArrayLen.pending = nil
+	f.gcLastField.pending = nil
+}
+
+func (f *fn) captureGCLoadResultLocal(value *elem, local int) {
+	if !gcLoadForwardingEnabled {
+		f.invalidateGCLoadFactsForLocal(local)
+		return
+	}
+	array := f.gcLastArrayLen
+	captureArray := array.valid && array.pending == value && array.local != local
+	field := f.gcLastField
+	captureField := field.valid && field.pending == value && field.local != local
+	f.invalidateGCLoadFactsForLocal(local)
+	if captureArray {
+		array.resultLocal, array.pending = local, nil
+		f.gcLastArrayLen = array
+		f.stats.peep("gc-load-cache-capture")
+	}
+	if captureField {
+		field.resultLocal, field.pending = local, nil
+		f.gcLastField = field
+		f.stats.peep("gc-load-cache-capture")
+	}
+}
+
 func (f *fn) invalidateGCMutableLoadFacts() {
-	f.gcLastField.valid = false
+	if !f.gcLastField.immutable {
+		f.gcLastField.valid = false
+	}
 	f.invalidateGCResolvedObject()
 }
 
@@ -533,6 +577,25 @@ func markGCLocalProvenance(e *elem, local int) {
 	}
 }
 
+func (f *fn) tryForwardGCArrayLen(typeIndex uint32) bool {
+	if !gcLoadForwardingEnabled {
+		return false
+	}
+	last := &f.gcLastArrayLen
+	if !last.valid || last.resultLocal < 0 || last.typeIndex != typeIndex {
+		return false
+	}
+	local, fact, ok := f.topGCLocalFact()
+	if !ok || local != last.local || (last.identity != 0 && fact.Identity() != last.identity) {
+		return false
+	}
+	f.dropValue()
+	f.pushGCCachedLocal(last.resultLocal)
+	f.stats.peep("gc-array-len-repeat")
+	f.stats.peep("gc-array-len-repeat-elide")
+	return true
+}
+
 func (f *fn) observeGCArrayLen(typeIndex uint32) {
 	local, fact, ok := f.topGCLocalFact()
 	knownType, exact := fact.ExactType()
@@ -540,30 +603,71 @@ func (f *fn) observeGCArrayLen(typeIndex uint32) {
 		f.gcLastArrayLen.valid = false
 		return
 	}
-	identity := fact.Identity()
-	if last := &f.gcLastArrayLen; last.valid && last.local == local && last.identity == identity && last.typeIndex == typeIndex {
+	if last := &f.gcLastArrayLen; last.valid && last.local == local && last.identity == fact.Identity() && last.typeIndex == typeIndex {
 		f.stats.peep("gc-array-len-repeat")
 	}
-	f.gcLastArrayLen = gcArrayLenFact{valid: true, local: local, identity: identity, typeIndex: typeIndex}
+	f.gcLastArrayLen = gcArrayLenFact{valid: true, local: local, resultLocal: -1, identity: fact.Identity(), typeIndex: typeIndex}
 }
 
-func (f *fn) observeGCStructGet(typeIndex, fieldIndex uint32) {
+func (f *fn) recordGCArrayLenResult() {
+	if gcLoadForwardingEnabled && f.gcLastArrayLen.valid {
+		f.gcLastArrayLen.pending = f.s.back()
+	}
+}
+
+func (f *fn) tryForwardGCImmutableStructGet(typeIndex, fieldIndex uint32) bool {
+	if !gcLoadForwardingEnabled {
+		return false
+	}
+	last := &f.gcLastField
+	if !last.valid || !last.immutable || last.resultLocal < 0 || last.typeIndex != typeIndex || last.fieldIndex != fieldIndex {
+		return false
+	}
+	local, fact, ok := f.topGCLocalFact()
+	if !ok || local != last.local || (last.identity != 0 && fact.Identity() != last.identity) {
+		return false
+	}
+	f.dropValue()
+	f.pushGCCachedLocal(last.resultLocal)
+	f.stats.peep("gc-struct-get-repeat")
+	f.stats.peep("gc-struct-get-repeat-elide")
+	return true
+}
+
+func (f *fn) observeGCStructGet(typeIndex, fieldIndex uint32, immutable bool) {
 	local, fact, ok := f.topGCLocalFact()
 	knownType, exact := fact.ExactType()
 	if !ok || !exact || knownType != typeIndex {
 		f.gcLastField.valid = false
 		return
 	}
-	identity := fact.Identity()
-	last := &f.gcLastField
-	if last.valid && last.local == local && last.identity == identity && last.typeIndex == typeIndex && last.fieldIndex == fieldIndex {
+	if last := &f.gcLastField; last.valid && last.local == local && last.identity == fact.Identity() && last.typeIndex == typeIndex && last.fieldIndex == fieldIndex {
 		if last.fromStore {
 			f.stats.peep("gc-struct-set-get")
 		} else {
 			f.stats.peep("gc-struct-get-repeat")
 		}
 	}
-	f.gcLastField = gcStructFieldFact{valid: true, local: local, identity: identity, typeIndex: typeIndex, fieldIndex: fieldIndex}
+	f.gcLastField = gcStructFieldFact{valid: true, immutable: immutable, local: local, resultLocal: -1, identity: fact.Identity(), typeIndex: typeIndex, fieldIndex: fieldIndex}
+}
+
+func (f *fn) recordGCStructGetResult() {
+	if gcLoadForwardingEnabled && f.gcLastField.valid {
+		f.gcLastField.pending = f.s.back()
+	}
+}
+
+func (f *fn) pushGCCachedLocal(local int) *elem {
+	var value *elem
+	if pr, _, ok := f.pinReg(local); ok {
+		f.recoverLocal(local)
+		value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[local], reg: pr, idx: local})
+	} else {
+		value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[local], idx: local})
+	}
+	value.st.gcRoot = f.gcFrameLocal(local)
+	f.markLocalGetExactGCType(value, local)
+	return value
 }
 
 func (f *fn) tryForwardGCStructSetGet(typeIndex, fieldIndex uint32) bool {
@@ -580,11 +684,12 @@ func (f *fn) tryForwardGCStructSetGet(typeIndex, fieldIndex uint32) bool {
 	if !last.constFact.IsZero() {
 		markGCRefFact(result, last.constFact)
 	}
+	last.pending = result
 	f.stats.peep("gc-struct-set-get-forward")
 	return true
 }
 
-func (f *fn) recordGCConstructorConstant(typeIndex, fieldIndex uint32, value, result *elem) {
+func (f *fn) recordGCConstructorConstant(typeIndex, fieldIndex uint32, immutable bool, value, result *elem) {
 	if value == nil || result == nil || value.kind != ekValue || value.st.kind != stConst {
 		return
 	}
@@ -593,7 +698,7 @@ func (f *fn) recordGCConstructorConstant(typeIndex, fieldIndex uint32, value, re
 		return
 	}
 	f.gcLastField = gcStructFieldFact{
-		valid: true, fromStore: true, hasConst: true, local: -1, identity: identity,
+		valid: true, fromStore: true, immutable: immutable, hasConst: true, local: -1, resultLocal: -1, identity: identity,
 		typeIndex: typeIndex, fieldIndex: fieldIndex, constType: value.st.typ,
 		constBits: value.st.cval, constFact: gcRefFact(value),
 	}
@@ -611,6 +716,9 @@ func (f *fn) recordGCStructSetConstant(value *elem) {
 }
 
 func (f *fn) observeGCStructSet(object *elem, typeIndex, fieldIndex uint32) {
+	if f.gcLastField.valid && f.gcLastField.immutable {
+		return
+	}
 	f.gcLastField.valid = false
 	local, ok := gcLocalProvenance(object)
 	if !ok || local < 0 || local >= len(f.localGCRefFacts) {
@@ -621,7 +729,7 @@ func (f *fn) observeGCStructSet(object *elem, typeIndex, fieldIndex uint32) {
 	if !exact || knownType != typeIndex || fact.Freshness() != shared.GCFreshUnpublished || fact.Identity() == 0 {
 		return
 	}
-	f.gcLastField = gcStructFieldFact{valid: true, fromStore: true, local: local, identity: fact.Identity(), typeIndex: typeIndex, fieldIndex: fieldIndex}
+	f.gcLastField = gcStructFieldFact{valid: true, fromStore: true, local: local, resultLocal: -1, identity: fact.Identity(), typeIndex: typeIndex, fieldIndex: fieldIndex}
 }
 
 func (f *fn) topGCLocalFact() (local int, fact shared.GCRefFact, ok bool) {

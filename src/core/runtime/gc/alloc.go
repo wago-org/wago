@@ -216,10 +216,10 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 }
 
 func (c *Collector) desc(id TypeID) (TypeDesc, error) {
-	if int(id) >= len(c.typeIndex) || c.typeIndex[id] < 0 {
+	if int(id) >= len(c.types) {
 		return TypeDesc{}, fmt.Errorf("gc: unknown type id %d", id)
 	}
-	return c.types[c.typeIndex[id]], nil
+	return c.types[id], nil
 }
 func (c *Collector) refDesc(r Ref) (TypeDesc, error) {
 	if err := c.errIfClosed(); err != nil {

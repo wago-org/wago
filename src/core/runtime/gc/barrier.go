@@ -4,6 +4,38 @@ import "errors"
 
 var errRange = errors.New("gc: index out of range")
 
+type runtimeBarrierState uint8
+
+const (
+	runtimeBarrierNoBarrier runtimeBarrierState = iota
+	runtimeBarrierYoungParent
+	runtimeBarrierKnownOldChild
+	runtimeBarrierExistingCard
+	runtimeBarrierCardMark
+	runtimeBarrierSlowBarrier
+)
+
+func (c *Collector) noteBarrierState(state runtimeBarrierState) {
+	if !c.telemetryEnabled() {
+		return
+	}
+	b := &c.cfg.Telemetry.barriers
+	switch state {
+	case runtimeBarrierNoBarrier:
+		b.NoBarrier++
+	case runtimeBarrierYoungParent:
+		b.YoungParent++
+	case runtimeBarrierKnownOldChild:
+		b.KnownOldChild++
+	case runtimeBarrierExistingCard:
+		b.ExistingCard++
+	case runtimeBarrierCardMark:
+		b.CardMark++
+	case runtimeBarrierSlowBarrier:
+		b.SlowBarrier++
+	}
+}
+
 type SlotKind uint8
 
 type objectCard struct {
@@ -32,13 +64,26 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 		return
 	}
 	if c.cfg.Profile == ProfileTiny {
+		c.noteBarrierState(runtimeBarrierSlowBarrier)
 		c.tinyWriteBarrierObject(parent, child)
 		return
 	}
 	h := handleOf(parent)
 	e := &c.handles[h]
-	if (e.space != spaceOld && e.space != spaceLarge) || e.young() || !c.entry(child).young() {
+	if (e.space != spaceOld && e.space != spaceLarge) || e.young() {
+		c.noteBarrierState(runtimeBarrierYoungParent)
 		return
+	}
+	if !c.entry(child).young() {
+		c.noteBarrierState(runtimeBarrierKnownOldChild)
+		return
+	}
+	payloadEnd := uint32(0)
+	if e.size > PayloadOffset {
+		payloadEnd = e.size - PayloadOffset - 1
+	}
+	if c.telemetryEnabled() {
+		c.noteBarrierState(c.classifyObjectCardRange(h, 0, payloadEnd))
 	}
 	c.remember(h)
 	c.markWholeObjectCard(h)
@@ -53,17 +98,29 @@ func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end ui
 	// nursery initialization exits with no duplicate handle-table work.
 	if c.cfg.Profile == ProfileTiny {
 		if child.IsObj() {
+			c.noteBarrierState(runtimeBarrierSlowBarrier)
 			c.tinyWriteBarrierObject(parent, child)
+		} else {
+			c.noteBarrierState(runtimeBarrierNoBarrier)
 		}
 		return
 	}
 	h := handleOf(parent)
 	e := &c.handles[h]
 	if (e.space != spaceOld && e.space != spaceLarge) || e.young() {
+		c.noteBarrierState(runtimeBarrierYoungParent)
 		return
 	}
-	if !child.IsObj() || !c.entry(child).young() {
+	if !child.IsObj() {
+		c.noteBarrierState(runtimeBarrierNoBarrier)
 		return
+	}
+	if !c.entry(child).young() {
+		c.noteBarrierState(runtimeBarrierKnownOldChild)
+		return
+	}
+	if c.telemetryEnabled() {
+		c.noteBarrierState(c.classifyObjectCardRange(h, start, end))
 	}
 	c.remember(h)
 	if slot := e.cardSlot; slot != 0 && slotIndexOK(slot-1, len(c.objectCards)) {
@@ -172,12 +229,31 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 		if err != nil || d.Kind != KindArray || !isCollectorRefKind(d.Elem) {
 			return
 		}
-		for i := uint32(0); i < length; i++ {
-			value, err := c.loadValue(dst, uint64(PayloadOffset)+uint64(start+i)*uint64(d.ElemSize), d.Elem)
-			if err != nil {
-				return
+		c.noteBarrierState(runtimeBarrierSlowBarrier)
+		const tinyBulkBarrierChunk = uint32(64)
+		for base := uint32(0); base < length; {
+			n := length - base
+			if n > tinyBulkBarrierChunk {
+				n = tinyBulkBarrierChunk
 			}
-			c.tinyWriteBarrierObject(dst, value.Ref)
+			for i := uint32(0); i < n; i++ {
+				value, err := c.loadValue(dst, uint64(PayloadOffset)+uint64(start+base+i)*uint64(d.ElemSize), d.Elem)
+				if err != nil {
+					return
+				}
+				c.tinyWriteBarrierObject(dst, value.Ref)
+			}
+			if c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark {
+				if c.tinyGC.telemetryOwned {
+					c.cfg.Telemetry.resume()
+					c.cfg.Telemetry.setPhase(telemetryPhaseMarking)
+				}
+				c.tinyDrainGrayBudget(tinyBulkBarrierChunk)
+				if c.tinyGC.telemetryOwned {
+					c.cfg.Telemetry.suspend()
+				}
+			}
+			base += n
 		}
 		return
 	}
@@ -185,6 +261,7 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 	e := &c.handles[h]
 	sp := e.space
 	if e.young() || (sp != spaceOld && sp != spaceLarge) {
+		c.noteBarrierState(runtimeBarrierYoungParent)
 		return
 	}
 	d, err := c.refDesc(dst)
@@ -199,12 +276,55 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 	// Bulk operations already traversed the source values. Dirty the destination
 	// without a second mutator-side pass; collection decides whether each card is
 	// useful while scanning it.
+	if c.telemetryEnabled() {
+		c.noteBarrierState(c.classifyObjectCardRange(h, uint32(first), uint32(last)))
+	}
 	c.remember(h)
 	c.addObjectCardRange(h, uint32(first), uint32(last))
 }
 
 func (c *Collector) addObjectCard(h, payloadByte uint32) {
 	c.addObjectCardRange(h, payloadByte, payloadByte)
+}
+
+func (c *Collector) classifyObjectCardRange(h, start, end uint32) runtimeBarrierState {
+	if h == 0 || int(h) >= len(c.handles) || end < start || c.cardBytes == 0 {
+		return runtimeBarrierSlowBarrier
+	}
+	e := &c.handles[h]
+	payloadBytes := uint32(0)
+	if e.size > PayloadOffset {
+		payloadBytes = e.size - PayloadOffset
+	}
+	if payloadBytes == 0 || start >= payloadBytes {
+		return runtimeBarrierSlowBarrier
+	}
+	if end >= payloadBytes {
+		end = payloadBytes - 1
+	}
+	mask := c.cardBytes - 1
+	start &^= mask
+	end |= mask
+	if end >= payloadBytes {
+		end = payloadBytes - 1
+	}
+	for slot := e.cardSlot; slot != 0; {
+		if !slotIndexOK(slot-1, len(c.objectCards)) {
+			return runtimeBarrierSlowBarrier
+		}
+		card := c.objectCards[slot-1]
+		if card.handle != h {
+			return runtimeBarrierSlowBarrier
+		}
+		if start >= card.index && end <= card.end {
+			return runtimeBarrierExistingCard
+		}
+		if uint64(end)+1 >= uint64(card.index) && uint64(card.end)+1 >= uint64(start) {
+			return runtimeBarrierCardMark
+		}
+		slot = card.next
+	}
+	return runtimeBarrierSlowBarrier
 }
 
 func (c *Collector) addObjectCardRange(h, start, end uint32) {

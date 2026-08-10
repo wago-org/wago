@@ -344,6 +344,60 @@ func TestCollectorTelemetryJSONAndMemoryDomains(t *testing.T) {
 	}
 }
 
+func TestBarrierTelemetryCountsRuntimeStates(t *testing.T) {
+	telemetry := new(Telemetry)
+	c := newTestCollectorWithTypes(t, Config{Telemetry: telemetry, StressNurseryBytes: 1 << 20}, bulkTestTypes(t))
+	parent, err := c.NewArrayDefault(3, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(parent); err != nil {
+		t.Fatal(err)
+	}
+	oldChild, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(oldChild); err != nil {
+		t.Fatal(err)
+	}
+	youngChild, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	youngParent, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.ResetTelemetry() {
+		t.Fatal("telemetry reset failed")
+	}
+	if err := c.ArraySet(parent, 2, RefValue(oldChild)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArrayFillNoBarrier(parent, 3, Value{Kind: StorageRefNull}, 1); err != nil {
+		t.Fatal(err)
+	}
+	c.writeBarrierObjectRange(youngParent, youngChild, 0, 3)
+	if err := c.ArraySet(parent, 0, RefValue(youngChild)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(parent, 1, RefValue(youngChild)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(parent, 32, RefValue(youngChild)); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, ok := c.TelemetrySnapshot()
+	if !ok {
+		t.Fatal("telemetry unavailable")
+	}
+	want := BarrierTelemetry{NoBarrier: 1, YoungParent: 1, KnownOldChild: 1, ExistingCard: 1, CardMark: 1, SlowBarrier: 1}
+	if snapshot.Barriers != want {
+		t.Fatalf("barrier telemetry = %+v, want %+v", snapshot.Barriers, want)
+	}
+}
+
 func TestCollectorTelemetryDisabledAndEnabledRemainAllocationFree(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "disabled", true: "enabled"}[enabled], func(t *testing.T) {

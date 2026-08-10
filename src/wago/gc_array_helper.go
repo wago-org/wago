@@ -252,14 +252,24 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		for i := uint32(0); i < length; i++ {
 			_ = arrayElemValue(typeID, entries, entryBytes, srcStart+i)
 		}
+		deferredBarrier := in.gc.Profile() != gc.ProfileTiny
 		for i := uint32(0); i < length; i++ {
 			value := arrayElemValue(typeID, entries, entryBytes, srcStart+i)
-			if err := in.gc.ArraySet(ref, dstStart+i, value); err != nil {
+			var err error
+			if deferredBarrier {
+				err = in.gc.ArraySetDeferredBarrier(ref, dstStart+i, value)
+			} else {
+				err = in.gc.ArraySet(ref, dstStart+i, value)
+			}
+			if err != nil {
 				if strings.Contains(err.Error(), "range") {
 					panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 				}
 				panic(gcStructHelperError{err: err})
 			}
+		}
+		if deferredBarrier {
+			in.gc.PostBulkWriteBarrier(ref, dstStart, length)
 		}
 	case gcArrayInitData:
 		if len(args) != 6 {

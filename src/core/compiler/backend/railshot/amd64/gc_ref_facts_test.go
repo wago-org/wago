@@ -407,6 +407,75 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 	}
 }
 
+func TestGCImmutableLoadCacheSurvivesUnrelatedMutableEffects(t *testing.T) {
+	f := fn{
+		gcLastField: gcStructFieldFact{valid: true, immutable: true, local: 0, resultLocal: 1, identity: 7},
+		gcResolved:  gcResolvedObject{valid: true, reg: R12},
+		pinned:      maskOf(R12),
+	}
+	f.invalidateGCMutableLoadFacts()
+	if !f.gcLastField.valid {
+		t.Fatal("immutable field cache was cleared by unrelated mutable effect")
+	}
+	if f.gcResolved.valid || f.pinned.has(R12) {
+		t.Fatal("raw resolved address survived mutable effect")
+	}
+	f.invalidateGCLoadFactsForLocal(1)
+	if f.gcLastField.valid {
+		t.Fatal("immutable field cache survived cached-result local replacement")
+	}
+
+	f.gcLastField = gcStructFieldFact{valid: true, local: 0, resultLocal: 1}
+	f.invalidateGCMutableLoadFacts()
+	if f.gcLastField.valid {
+		t.Fatal("mutable field cache survived unknown mutable effect")
+	}
+}
+
+func TestGCReferenceFactEliminatesRepeatedLoadsViaBoundedResultLocal(t *testing.T) {
+	savedFacts, savedLoads := exactGCRefFactsEnabled, gcLoadForwardingEnabled
+	defer func() { exactGCRefFactsEnabled, gcLoadForwardingEnabled = savedFacts, savedLoads }()
+	exactGCRefFactsEnabled, gcLoadForwardingEnabled = true, true
+	refTo0I32 := []byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f}
+	arrayBody := []byte{
+		0x01, 0x01, 0x7f, // one i32 result-cache local; parameter is local 0
+		0x20, 0x00, 0xfb, 0x0f, 0x21, 0x01,
+		0x20, 0x00, 0xfb, 0x0f,
+		0x0b,
+	}
+	array := gcResolveReuseStats(t, []byte{0x5e, 0x7f, 0x01}, refTo0I32, arrayBody)
+	if got := array.Peephole["gc-array-len-repeat-elide"]; got != 1 {
+		t.Fatalf("gc-array-len-repeat-elide = %d, want 1 (all: %v)", got, array.Peephole)
+	}
+	if array.GCHandleResolutions != 1 {
+		t.Fatalf("repeated array.len resolutions = %d, want 1", array.GCHandleResolutions)
+	}
+
+	structBody := []byte{
+		0x01, 0x01, 0x7f,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	strukt := gcResolveReuseStats(t, []byte{0x5f, 0x01, 0x7f, 0x00}, refTo0I32, structBody)
+	if got := strukt.Peephole["gc-struct-get-repeat-elide"]; got != 1 {
+		t.Fatalf("gc-struct-get-repeat-elide = %d, want 1 (all: %v)", got, strukt.Peephole)
+	}
+	if strukt.GCHandleResolutions != 1 {
+		t.Fatalf("repeated immutable struct.get resolutions = %d, want 1", strukt.GCHandleResolutions)
+	}
+
+	gcLoadForwardingEnabled = false
+	disabled := gcResolveReuseStats(t, []byte{0x5e, 0x7f, 0x01}, refTo0I32, arrayBody)
+	if got := disabled.Peephole["gc-array-len-repeat-elide"]; got != 0 {
+		t.Fatalf("disabled gc-array-len-repeat-elide = %d", got)
+	}
+	if array.CodeBytes >= disabled.CodeBytes {
+		t.Fatalf("array.len forwarding code = %d bytes, disabled = %d; want smaller", array.CodeBytes, disabled.CodeBytes)
+	}
+	t.Logf("bounded array.len forwarding code bytes: enabled=%d disabled=%d", array.CodeBytes, disabled.CodeBytes)
+}
+
 func TestGCReferenceFactLoadOpportunityCounters(t *testing.T) {
 	arrayBody := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local

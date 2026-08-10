@@ -12,6 +12,7 @@ import (
 type Telemetry struct {
 	active                  telemetryCycle
 	paths                   PathTelemetry
+	barriers                BarrierTelemetry
 	pendingDuplicateDirties uint64
 	allocationBaseline      uint64
 }

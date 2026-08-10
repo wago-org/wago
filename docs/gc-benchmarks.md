@@ -58,6 +58,8 @@ go test ./src/core/compiler/backend/railshot/shared -run '^$' \
 go test ./src/core/runtime/gc -run '^$' \
   -bench '^BenchmarkArrayBulk/(reference-fill|reference-fill-no-barrier)-(16|256|4096)$' \
   -benchmem -count=10
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkGCSubtypeInterval$' -benchmem -count=10
 ```
 
 For a retained compiler/JIT result, also run the real Dew/Starshine workload A/B with
@@ -70,14 +72,39 @@ remembered old, unremembered old, large, and Tiny parents with null, i31, old, a
 young object children. No barrier result is acceptable without forced collection and
 shadow-edge verification after each write family.
 
+A standalone generated workload can be retained outside the repository and measured
+through:
+
+```sh
+WAGO_GC_OPT_WORKLOAD_WASM=/path/to/workload.wasm \
+WAGO_GC_OPT_WORKLOAD_EXPORT=_start \
+go test ./src/wago -run '^$' -bench '^BenchmarkGCOptimizationWorkload$' \
+  -benchmem -benchtime=100x -count=7 -cpu=1
+```
+
+Run interleaved processes with `WAGO_AMD64_NO_GC_REF_FACTS=1`,
+`WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`, or `WAGO_GC_SUBTYPE_INTERVALS=0` as relevant.
+The benchmark requires a zero-argument export, uses deterministic no-op imports,
+checks a result checksum, and reports linked, barrier, and helper bytes separately.
+
 Initial candidate microbenchmarks on August 10, 2026 used linux/amd64, Ryzen 7
 8845HS, Go 1.24.4, GOMAXPROCS=16, no affinity pinning, 200 ms benchtime. Five
 fact-merge samples had a 4.642 ns/op median, 0 B/op, and 0 allocs/op. Three
 null-reference fill samples measured median ordinary/no-barrier pairs of
 37.43/33.80 ns at 16 elements, 53.96/51.39 ns at 256, and 158.2/155.9 ns at
-4,096, all allocation-free. Treat these as preliminary microbenchmark evidence;
-they do not replace pinned interleaved real-workload, linked-byte, or collector
-matrix qualification.
+4,096, all allocation-free.
+
+The completion pass added actual bounded result-local load reuse and packed subtype
+intervals. A repeated `array.len` code-size fixture emits 353 bytes with forwarding
+versus 539 with `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`. Three 200 ms subtype samples
+are neutral at depth 1 (9.70/9.75 ns/op interval/parent median), improve depth 16
+68.69→19.00 ns/op, and depth 256 1,113→18.12 ns/op, all allocation-free. A seven-
+round `GOMAXPROCS=1`, 100-iteration MoonBit WasmGC JSON A/B measured facts at
+188.752 µs/op median versus 191.401 µs/op disabled, both 208,779 B/op and 264
+allocs/op. Code telemetry measured 294,341/294,181 linked bytes, 4,168/4,642 barrier
+bytes, and 72,500/74,202 helper bytes for facts enabled/disabled. Timing is a modest,
+host-noisy result; retain the deterministic code/work deltas and repeat on reviewer
+hardware before claiming a broad speedup.
 
 This document defines the measurement contract for collector changes tracked by
 issue #300. The opt-in recorder, public API, JSONL schema, phase semantics, and

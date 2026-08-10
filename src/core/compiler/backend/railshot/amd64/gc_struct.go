@@ -107,7 +107,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		f.markTopConstructorGCRefFact(typeIndex, nil)
 		if recordSingleInitializer {
-			f.recordGCConstructorConstant(typeIndex, 0, &singleInitializer, f.s.back())
+			f.recordGCConstructorConstant(typeIndex, 0, st.Comp.Fields[0].Mut() != wasm.Var, &singleInitializer, f.s.back())
 		}
 		return nil
 	case 1: // struct.new_default typeidx
@@ -145,10 +145,6 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if _, knownType, exact := f.topExactGCLocal(); exact && knownType == typeIndex {
 			f.stats.peep("gc-known-struct-get")
 		}
-		if f.tryForwardGCStructSetGet(typeIndex, fieldIndex) {
-			return nil
-		}
-		f.observeGCStructGet(typeIndex, fieldIndex)
 		helper := uint32(gcStructGet)
 		resultType := field.Storage().Val()
 		if sub == 3 || sub == 4 {
@@ -164,13 +160,26 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
+		immutable := field.Mut() != wasm.Var
+		if immutable && f.tryForwardGCImmutableStructGet(typeIndex, fieldIndex) {
+			return nil
+		}
+		if f.tryForwardGCStructSetGet(typeIndex, fieldIndex) {
+			return nil
+		}
+		f.observeGCStructGet(typeIndex, fieldIndex, immutable)
 		if f.emitDirectGCStructGet(typeIndex, fieldIndex, helper) {
+			f.recordGCStructGetResult()
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
+		if err := f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
+			return err
+		}
+		f.recordGCStructGetResult()
+		return nil
 	case 5: // struct.set typeidx fieldidx
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -486,11 +495,15 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 		_ = r.JumpTo(start)
 		return false, nil
 	}
-	f.observeGCStructGet(typeIndex, fieldIndex)
+	f.observeGCStructGet(typeIndex, fieldIndex, field.Mut() != wasm.Var)
 	if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && layout.CollectorRef {
 		if final && layout.Size == 4 {
 			f.stats.peep("final-cast-struct-get-fuse")
-			return true, f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable)
+			if err := f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable); err != nil {
+				return true, err
+			}
+			f.recordGCStructGetResult()
+			return true, nil
 		}
 	}
 	resultType := field.Storage().Val()
@@ -507,7 +520,11 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(sub - 2)})
 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
 	f.stats.peep("final-cast-struct-get-fuse")
-	return true, f.callGCStructHelper(gcStructFinalCastGet, []wasm.ValType{anyref, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
+	if err := f.callGCStructHelper(gcStructFinalCastGet, []wasm.ValType{anyref, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
+		return true, err
+	}
+	f.recordGCStructGetResult()
+	return true, nil
 }
 
 func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
@@ -534,7 +551,11 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 	}
 	f.observeGCArrayLen(typeIndex)
 	f.stats.peep("final-cast-array-len-fuse")
-	return true, f.emitNativeFinalCastArrayLen(typeIndex, nullable)
+	if err := f.emitNativeFinalCastArrayLen(typeIndex, nullable); err != nil {
+		return true, err
+	}
+	f.recordGCArrayLenResult()
+	return true, nil
 }
 
 func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) error {

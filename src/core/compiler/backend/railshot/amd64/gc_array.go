@@ -294,14 +294,26 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			f.stats.peep("gc-array-len-elide")
 			return nil
 		}
+		observed := false
 		if _, typeIndex, exact := f.topExactGCLocal(); exact {
+			if f.tryForwardGCArrayLen(typeIndex) {
+				return nil
+			}
 			f.observeGCArrayLen(typeIndex)
+			observed = true
 			if f.emitDirectGCArrayLen(typeIndex) {
+				f.recordGCArrayLenResult()
 				return nil
 			}
 		}
 		object := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapArray), false))
-		return f.callGCStructHelper(gcArrayLen, []wasm.ValType{object}, []wasm.ValType{wasm.I32})
+		if err := f.callGCStructHelper(gcArrayLen, []wasm.ValType{object}, []wasm.ValType{wasm.I32}); err != nil {
+			return err
+		}
+		if observed {
+			f.recordGCArrayLenResult()
+		}
+		return nil
 	case 16: // array.fill typeidx
 		typeIndex, err := r.U32()
 		if err != nil {

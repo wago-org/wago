@@ -588,6 +588,60 @@ func TestArrayFillTinyRemarkBarrier(t *testing.T) {
 	}
 }
 
+func TestArraySetDeferredBarrierPublishesOneExactRange(t *testing.T) {
+	c := newTestCollectorWithTypes(t, Config{StressNurseryBytes: 1 << 20, VerifyAfterCollect: true}, bulkTestTypes(t))
+	dst, err := c.NewArrayDefault(3, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(dst); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := uint32(8); i < 16; i++ {
+		if err := c.ArraySetDeferredBarrier(dst, i, RefValue(child)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.RememberedCount() != 0 || c.CardCount() != 0 {
+		t.Fatalf("deferred stores published early metadata: %d/%d", c.RememberedCount(), c.CardCount())
+	}
+	c.PostBulkWriteBarrier(dst, 8, 8)
+	if c.RememberedCount() != 1 || c.CardCount() != 1 {
+		t.Fatalf("post barrier metadata = %d/%d, want 1/1", c.RememberedCount(), c.CardCount())
+	}
+	root := Root(dst)
+	if err := c.CollectMinor(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	for i := uint32(8); i < 16; i++ {
+		got, err := c.ArrayGet(dst, i)
+		if err != nil || !got.Ref.IsObj() {
+			t.Fatalf("array[%d] after minor = %v, %v", i, got.Ref, err)
+		}
+	}
+
+	tiny := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 8}, bulkTestTypes(t))
+	tinyDst, err := tiny.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tinyChild, err := tiny.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tiny.ArraySetDeferredBarrier(tinyDst, 0, RefValue(tinyChild)); err == nil {
+		t.Fatal("Tiny accepted deferred reference barrier")
+	}
+	got, err := tiny.ArrayGet(tinyDst, 0)
+	if err != nil || !got.Ref.IsNull() {
+		t.Fatalf("rejected Tiny deferred store mutated destination: %v, %v", got.Ref, err)
+	}
+}
+
 func TestArrayFillNoBarrierGuardsReferenceEdges(t *testing.T) {
 	c := newTestCollectorWithTypes(t, Config{StressNurseryBytes: 1 << 20}, bulkTestTypes(t))
 	dst, err := c.NewArrayDefault(3, 4)

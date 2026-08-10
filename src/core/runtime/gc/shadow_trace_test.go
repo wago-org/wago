@@ -88,10 +88,10 @@ func shadowTraceLive(c *Collector, roots RootSet) ([]bool, error) {
 			return nil, fmt.Errorf("shadow trace: handle %d has invalid object bounds", h)
 		}
 		typeID := binary.LittleEndian.Uint32(b[0:4])
-		if int(typeID) >= len(c.typeIndex) || c.typeIndex[typeID] < 0 {
+		if int(typeID) >= len(c.types) {
 			return nil, fmt.Errorf("shadow trace: handle %d has unknown type %d", h, typeID)
 		}
-		d := c.types[c.typeIndex[typeID]]
+		d := c.types[typeID]
 		if d.Kind == KindStruct {
 			for _, f := range d.Fields {
 				if !isCollectorRefKind(f.Kind) {

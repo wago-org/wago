@@ -131,6 +131,32 @@ type CollectionTelemetry struct {
 // PathTelemetry counts dynamic allocation, collector, and metadata paths. Native
 // fast allocations are derived from the collector's authoritative allocation
 // counter minus successful Go allocation paths.
+// BarrierTelemetry counts runtime barrier decisions reached through checked Go
+// paths. Native no-helper decisions remain available from compiler/JIT counters;
+// keeping the two domains separate avoids adding release-build writes to native
+// hot paths.
+type BarrierTelemetry struct {
+	NoBarrier     uint64 `json:"no_barrier"`
+	YoungParent   uint64 `json:"young_parent"`
+	KnownOldChild uint64 `json:"known_old_child"`
+	ExistingCard  uint64 `json:"existing_card"`
+	CardMark      uint64 `json:"card_mark"`
+	SlowBarrier   uint64 `json:"slow_barrier"`
+}
+
+// Add merges independently measured barrier-state counters into b.
+func (b *BarrierTelemetry) Add(other BarrierTelemetry) {
+	if b == nil {
+		return
+	}
+	b.NoBarrier += other.NoBarrier
+	b.YoungParent += other.YoungParent
+	b.KnownOldChild += other.KnownOldChild
+	b.ExistingCard += other.ExistingCard
+	b.CardMark += other.CardMark
+	b.SlowBarrier += other.SlowBarrier
+}
+
 type PathTelemetry struct {
 	NativeFastAllocations  uint64 `json:"native_fast_allocations"`
 	GoAllocationPaths      uint64 `json:"go_allocation_paths"`
@@ -170,6 +196,7 @@ type TelemetrySnapshot struct {
 	Minor         CollectionTelemetry  `json:"minor"`
 	Full          CollectionTelemetry  `json:"full"`
 	Paths         PathTelemetry        `json:"paths"`
+	Barriers      BarrierTelemetry     `json:"barriers"`
 	Heap          ManagedHeapTelemetry `json:"managed_heap"`
 }
 

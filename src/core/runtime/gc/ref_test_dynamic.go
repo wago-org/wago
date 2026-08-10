@@ -87,18 +87,7 @@ func (c *Collector) TypeSubtype(actual, required TypeID) (bool, error) {
 	if dynamic.Kind != want.Kind {
 		return false, nil
 	}
-	for {
-		if dynamic.ID == required {
-			return true, nil
-		}
-		if !dynamic.HasSuper {
-			return false, nil
-		}
-		dynamic, err = c.desc(dynamic.Super)
-		if err != nil {
-			return false, err
-		}
-	}
+	return c.typeSubtypeIDs(actual, required)
 }
 
 // RefTestCanonical applies the same dynamic test while comparing defined types
@@ -173,22 +162,19 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 		if dynamic.Kind != defined.Kind {
 			return false, nil
 		}
-		want := defined.ID
-		if canonical != nil {
-			want = canonical.types[want]
+		if canonical == nil {
+			return c.typeSubtypeIDs(dynamic.ID, defined.ID)
 		}
+		want := canonical.types[defined.ID]
 		for {
-			actual := dynamic.ID
-			if canonical != nil {
-				actual = canonical.types[actual]
-			}
+			actual := canonical.types[dynamic.ID]
 			if actual == want {
 				return true, nil
 			}
 			if !dynamic.HasSuper {
 				return false, nil
 			}
-			dynamic = c.types[c.typeIndex[dynamic.Super]]
+			dynamic = c.types[dynamic.Super]
 		}
 	default:
 		panic("unreachable")

@@ -154,6 +154,22 @@ edges, loop edges, local replacement, and unknown effects. Collection may reloca
 object without changing its compact handle, so retaining the semantic fact while
 dropping the address is required rather than optional.
 
+Dynamic subtype checks use the collector's validated descriptor forest. Each
+canonical type owns one packed DFS `[pre,post]` interval; a four-parent shallow walk
+keeps ordinary one-level hierarchies neutral, while deeper tests use constant-time
+interval containment. Canonical representative remapping retains parent traversal.
+The interval replaces the former `typeIndex` table byte-for-byte, keeping permanent
+per-type memory and the 1,120-byte collector layout unchanged.
+
+A repeated dynamic `array.len` or immutable `struct.get` can reuse the value only
+when the first result is captured by the immediately following local assignment and
+both source and result locals remain unchanged. This bounded result-local scheme adds
+no hidden frame slot or reserved register. Immutable field caches survive unrelated
+mutable stores and calls; mutable caches retain stricter alias/publication/unknown-
+effect invalidation. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only this value
+reuse, while `WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a
+whole.
+
 Reference stores select an explicit late state: `NoBarrier`, `YoungParent`,
 `KnownOldChild`, `ExistingCard`, `CardMark`, or `SlowBarrier`. Null and i31 children
 need no object barrier. `YoungParent` requires both unpublished freshness and a proven
@@ -167,8 +183,19 @@ Reference `array.fill` with a statically proven null/i31 child uses the guarded
 `Collector.ArrayFillNoBarrier` helper. It performs the same complete range, type, and
 value preflight as ordinary fill and rejects an object child before the first write.
 All other reference fill/copy/init operations retain exact post-write destination
-range barriers, overlap-safe copy, trap atomicity, and Tiny per-edge shading. Numeric
-arrays and non-collector function-identity payloads remain barrier-free.
+range barriers, overlap-safe copy, and trap atomicity. Throughput `array.init_elem`
+preflights the complete retained segment, performs checked stores with a deferred
+barrier, and publishes one exact destination range after all writes. Tiny keeps
+immediate per-edge shading; bulk ranges are handled in 64-element chunks with at most
+64 gray-object drains between chunks so queued incremental publication work stays
+bounded at one-object scan granularity. Numeric arrays and non-collector function-
+identity payloads remain barrier-free.
+
+Diagnostic `wago_gcstats` snapshots include separate dynamic checked-path counts for
+`NoBarrier`, `YoungParent`, `KnownOldChild`, `ExistingCard`, `CardMark`, and
+`SlowBarrier`. Native fast decisions remain represented by static JIT counters and
+helper-transition deltas rather than adding diagnostic memory writes to release hot
+paths.
 
 Shared AMD64 stubs additionally cover final casts, final cast-plus-array-length,
 final reference-array reads, and final cast-plus-reference-struct reads. Final

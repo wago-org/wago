@@ -512,10 +512,10 @@ func (c *Collector) StructGetFinalRef(ref Ref, required TypeID, field uint32) (v
 	if err := c.errIfClosed(); err != nil {
 		return Null(), false, err
 	}
-	if int(required) >= len(c.typeIndex) || c.typeIndex[required] < 0 {
+	if int(required) >= len(c.types) {
 		return Null(), false, fmt.Errorf("gc: unknown type id %d", required)
 	}
-	requiredDesc := &c.types[c.typeIndex[required]]
+	requiredDesc := &c.types[required]
 	if !requiredDesc.Final || requiredDesc.Kind != KindStruct {
 		return Null(), false, errors.New("gc: final reference access requires final struct type")
 	}
@@ -630,18 +630,7 @@ func (c *Collector) typeDescSubtype(dynamic TypeDesc, required TypeID, exact boo
 	if dynamic.Kind != want.Kind {
 		return false, nil
 	}
-	for {
-		if dynamic.ID == required {
-			return true, nil
-		}
-		if !dynamic.HasSuper {
-			return false, nil
-		}
-		dynamic, err = c.desc(dynamic.Super)
-		if err != nil {
-			return false, err
-		}
-	}
+	return c.typeSubtypeIDs(dynamic.ID, required)
 }
 
 func (c *Collector) ArrayGet(ref Ref, index uint32) (Value, error) {
@@ -697,6 +686,28 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 		return err
 	}
 	return c.storeArrayValue(ref, d, index, value)
+}
+
+// ArraySetDeferredBarrier stores one preflighted bulk element without publishing
+// a Throughput barrier. The caller must invoke PostBulkWriteBarrier for the exact
+// completed destination range before returning to Wasm. Tiny rejects this API
+// because its incremental invariant requires each newly published edge to shade
+// immediately.
+func (c *Collector) ArraySetDeferredBarrier(ref Ref, index uint32, value Value) error {
+	if c.cfg.Profile == ProfileTiny {
+		return errors.New("gc: deferred array barrier is unavailable for Tiny")
+	}
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return err
+	}
+	if d.Kind != KindArray || index >= c.header(ref).Aux {
+		return errRange
+	}
+	if err := c.validateArrayStore(d, value); err != nil {
+		return err
+	}
+	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }
 
 // ArraySetTyped is ArrayGetTyped's mutation counterpart and retains reference
@@ -755,6 +766,9 @@ func (c *Collector) arrayFill(ref Ref, start uint32, value Value, length uint32,
 	}
 	if !barrier && isCollectorRefKind(d.Elem) && value.Ref.IsObj() {
 		return errors.New("gc: barrier-free array.fill cannot store an object reference")
+	}
+	if !barrier && isCollectorRefKind(d.Elem) {
+		c.noteBarrierState(runtimeBarrierNoBarrier)
 	}
 	if length == 0 {
 		return nil
