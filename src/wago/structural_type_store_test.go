@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -8,6 +9,84 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestCompiledStructuralCallIdentityCacheLifecycle(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(scalarFunctionModule(wasm.I64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := module.Compiled()
+	want, err := compiledStructuralCallIdentity(compiled, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.validateMemo.structuralCallIdentities != nil {
+		t.Fatal("structural identity cache built before instantiation")
+	}
+
+	in, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.validateMemo.structuralCallIdentities != structuralCallIdentitySeenSentinel {
+		t.Fatal("structural identity cache built for one-shot instantiation")
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	in, err = rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := compiled.cachedStructuralCallIdentity(0)
+	if !ok || !bytes.Equal(got, want) {
+		t.Fatalf("cached identity = %x, %v; want %x", got, ok, want)
+	}
+	cache := compiled.validateMemo.structuralCallIdentities
+	retained := structuralCallIdentityCacheHeaderBytes + cap(cache.spans)*structuralCallIdentitySpanBytes + cap(cache.identities)
+	if retained > maxStructuralCallIdentityCacheBytes {
+		t.Fatalf("identity cache retains %d bytes; budget %d", retained, maxStructuralCallIdentityCacheBytes)
+	}
+	if err := compiled.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if compiled.validateMemo.structuralCallIdentities == nil {
+		t.Fatal("Close released identity cache while an instance was live")
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if compiled.validateMemo.structuralCallIdentities != nil {
+		t.Fatal("identity cache retained after compiled module and final instance closed")
+	}
+}
+
+func TestCompiledStructuralCallIdentityCacheBudget(t *testing.T) {
+	typeCount := (maxStructuralCallIdentityCacheBytes-structuralCallIdentityCacheHeaderBytes)/structuralCallIdentitySpanBytes + 1
+	compiled := &Compiled{
+		Funcs:        []FuncSig{{HasTypeIndex: true}},
+		Types:        make([]DefinedTypeDescriptor, typeCount),
+		FuncTypeID:   []uint64{1},
+		validateMemo: &validateMemo{},
+		codeCache:    &compiledCodeCache{},
+	}
+	compiled.Types[0].Kind = CompositeTypeFunction
+	if err := compiled.prepareStructuralCallIdentities(); err != nil {
+		t.Fatal(err)
+	}
+	if err := compiled.prepareStructuralCallIdentities(); err != nil {
+		t.Fatal(err)
+	}
+	cache := compiled.validateMemo.structuralCallIdentities
+	if cache == nil {
+		t.Fatal("oversized module did not record disabled identity cache")
+	}
+	if len(cache.spans) != 0 || len(cache.identities) != 0 {
+		t.Fatalf("oversized module retained spans=%d identities=%d", len(cache.spans), len(cache.identities))
+	}
+}
 
 func compiledStoreType(key uint64, param ValueTypeKind) *Compiled {
 	abi := ValI32

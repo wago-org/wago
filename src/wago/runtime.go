@@ -369,8 +369,8 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		return nil, err
 	}
 	var cfg instantiateConfig
-	for _, opt := range opts {
-		opt(&cfg)
+	if len(opts) != 0 {
+		cfg = applyInstantiateOptions(opts)
 	}
 	if err := applyPolicy(mod, cfg.policy); err != nil {
 		return nil, err
@@ -382,9 +382,12 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		return nil, fmt.Errorf("wago: Instantiate on a closed runtime")
 	}
 	// Merge extension imports first, then per-call imports on top.
-	merged := make(Imports, len(rt.imports)+len(cfg.imports))
-	for k, v := range rt.imports {
-		merged[k] = v
+	var merged Imports
+	if n := len(rt.imports) + len(cfg.imports); n != 0 {
+		merged = make(Imports, n)
+		for k, v := range rt.imports {
+			merged[k] = v
+		}
 	}
 	policy := rt.overridePolicy
 	rt.mu.Unlock()
@@ -410,6 +413,14 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	}
 
 	return rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, origin)
+}
+
+func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
+	var cfg instantiateConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
 }
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits

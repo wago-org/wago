@@ -2,6 +2,99 @@ package wago
 
 import "fmt"
 
+type structuralCallIdentityCache struct {
+	identities []byte
+	spans      []structuralCallIdentitySpan
+}
+
+type structuralCallIdentitySpan struct {
+	start uint32
+	end   uint32
+}
+
+var structuralCallIdentitySeenSentinel = &structuralCallIdentityCache{}
+
+const (
+	maxStructuralCallIdentityCacheBytes    = 64 << 10
+	structuralCallIdentityCacheHeaderBytes = 48
+	structuralCallIdentitySpanBytes        = 8
+	uncachedStructuralCallIdentityEnd      = ^uint32(0)
+)
+
+func (c *Compiled) prepareStructuralCallIdentities() error {
+	if c.validateMemo == nil || len(c.FuncTypeID) == 0 || len(c.Types) == 0 {
+		return nil
+	}
+	c.ensureCodeCache()
+	cc := c.codeCache
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	memo := c.validateMemo
+	if memo.structuralCallIdentities != nil && memo.structuralCallIdentities != structuralCallIdentitySeenSentinel {
+		return nil
+	}
+	if memo.structuralCallIdentities == nil {
+		memo.structuralCallIdentities = structuralCallIdentitySeenSentinel
+		return nil
+	}
+	spanBytes := uint64(len(c.Types)) * structuralCallIdentitySpanBytes
+	if spanBytes > maxStructuralCallIdentityCacheBytes-structuralCallIdentityCacheHeaderBytes {
+		// A non-nil empty cache records that this module exceeded the bounded
+		// retention budget. Registrations keep reconstructing identities exactly.
+		memo.structuralCallIdentities = &structuralCallIdentityCache{}
+		return nil
+	}
+	identityBudget := maxStructuralCallIdentityCacheBytes - structuralCallIdentityCacheHeaderBytes - int(spanBytes)
+	cache := &structuralCallIdentityCache{spans: make([]structuralCallIdentitySpan, len(c.Types))}
+	for i := range c.FuncTypeID {
+		sig, ok := compiledFunctionSignature(c, i)
+		if !ok || !sig.HasTypeIndex || int(sig.TypeIndex) >= len(c.Types) {
+			continue
+		}
+		if cache.spans[sig.TypeIndex].end != 0 {
+			continue
+		}
+		canonical, err := compiledStructuralCallIdentity(c, i)
+		if err != nil {
+			return fmt.Errorf("function %d exact type: %w", i, err)
+		}
+		if len(canonical) > identityBudget-len(cache.identities) {
+			cache.spans[sig.TypeIndex].end = uncachedStructuralCallIdentityEnd
+			continue
+		}
+		start := len(cache.identities)
+		cache.identities = append(cache.identities, canonical...)
+		if cap(cache.identities) > identityBudget {
+			bounded := make([]byte, len(cache.identities))
+			copy(bounded, cache.identities)
+			cache.identities = bounded
+		}
+		end := len(cache.identities)
+		cache.spans[sig.TypeIndex] = structuralCallIdentitySpan{start: uint32(start), end: uint32(end)}
+	}
+	memo.structuralCallIdentities = cache
+	return nil
+}
+
+func (c *Compiled) cachedStructuralCallIdentity(functionIndex int) ([]byte, bool) {
+	if c.validateMemo == nil || c.validateMemo.structuralCallIdentities == nil || c.validateMemo.structuralCallIdentities == structuralCallIdentitySeenSentinel {
+		return nil, false
+	}
+	cache := c.validateMemo.structuralCallIdentities
+	sig, ok := compiledFunctionSignature(c, functionIndex)
+	if !ok || !sig.HasTypeIndex || int(sig.TypeIndex) >= len(cache.spans) {
+		return nil, false
+	}
+	span := cache.spans[sig.TypeIndex]
+	if span.end == 0 || span.end == uncachedStructuralCallIdentityEnd {
+		return nil, false
+	}
+	if span.start > span.end || int(span.end) > len(cache.identities) {
+		return nil, false
+	}
+	return cache.identities[span.start:span.end], true
+}
+
 // compiledStructuralCallIdentity reconstructs the exact canonical byte program
 // underlying native structural-key generation from persisted compiled metadata.
 // The store compares these bytes after a fast-key match; no hash width is treated
