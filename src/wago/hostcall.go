@@ -7,6 +7,7 @@ import (
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -20,6 +21,25 @@ type HostModule interface {
 	// (empty if the module declares no memory). Writes are visible to wasm; the
 	// slice is valid only for the duration of the host call.
 	Memory() []byte
+}
+
+// InvokeFromHost invokes an export while caller is an active synchronous host
+// callback. If the callback re-enters its own parked Instance, Wago supplies an
+// isolated native stack and call buffers for the nested activation.
+func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
+	var active *Instance
+	switch h := caller.(type) {
+	case instanceHostModule:
+		if h.valid() {
+			active = h.in
+		}
+	case staticHostModule:
+		active = h.in
+	}
+	if active == nil {
+		return nil, fmt.Errorf("wago: re-entry requires the active host caller: %w", ErrPermissionDenied)
+	}
+	return in.InvokeContext(ctx, export, args...)
 }
 
 // ExternRefHostModule is the optional reference-store surface implemented by the
@@ -883,6 +903,12 @@ func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64,
 // reset on the engine's next entry.
 type HostExit struct{ Code int32 }
 
+// HostTrap aborts the current Wasm invocation with a host-provided error.
+// Host functions should panic with HostTrap instead of panicking with an
+// arbitrary value when they cannot represent failure in their Wasm signature.
+// Wago recovers HostTrap at the native boundary and returns Err to the caller.
+type HostTrap struct{ Err error }
+
 // ExitError is returned by Invoke when a host function requested termination via
 // panic(HostExit{...}). A zero code is a normal exit.
 type ExitError struct{ Code int32 }
@@ -903,35 +929,34 @@ func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (er
 }
 
 func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []byte, waitParent context.Context) (err error) {
-	var outerEngine *runtime.Engine
-	if state := in.existingPublicGCState(); state != nil {
-		state.mu.Lock()
-		reentrant := state.hostActivationCount != 0
-		state.mu.Unlock()
-		if reentrant {
-			reentryEngine, acquireErr := runtime.AcquireEngine()
-			if acquireErr != nil {
-				return fmt.Errorf("wago: acquire nested Wasm engine: %w", acquireErr)
-			}
-			outerEngine, in.eng = in.eng, reentryEngine
-			defer func() {
-				in.eng = outerEngine
-				if releaseErr := runtime.ReleaseEngine(reentryEngine); err == nil && releaseErr != nil {
-					err = releaseErr
-				}
-			}()
-		}
-	}
 	locked, err := in.beginNativeEntry()
 	if err != nil {
 		return err
 	}
 	defer locked.unlockExecution()
+	markNativeActive(in)
+	defer unmarkNativeActive(in)
 	stopWaitContext := in.publishAtomicWaitContext(waitParent)
 	defer stopWaitContext()
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
+			switch trap := r.(type) {
+			case HostTrap:
+				if trap.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = trap.Err
+				}
+				return
+			case *HostTrap:
+				if trap == nil || trap.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = trap.Err
+				}
+				return
+			}
 			if ex, ok := r.(HostExit); ok {
 				err = &ExitError{Code: ex.Code}
 				return
@@ -967,7 +992,13 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 			panic(r)
 		}
 	}()
+	if err := in.jm.BindTrapCell(activeTrap); err != nil {
+		return err
+	}
 	in.jm.SetStackFence(in.eng.StackLimit())
+	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
+		in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
+	}
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}

@@ -274,7 +274,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			for k := 0; k < nres; k++ {
 				resBuf[k] = 0
 			}
-			host(ctrlPtr, imp, argBuf[:n], resBuf)
+			host(ctrlPtr, imp, argBuf[:n], resBuf[:nres])
 			for k := 0; k < nres; k++ {
 				binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], resBuf[k])
 			}

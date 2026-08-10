@@ -3781,6 +3781,13 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 }
 
 func (in *Instance) invoke(export string, args []uint64, cancel context.Context) ([]uint64, error) {
+	if isNativeActive(in) {
+		restore, err := in.prepareHostReentryState()
+		if err != nil {
+			return nil, err
+		}
+		defer restore()
+	}
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke %q: %w", export, err)
 	}
@@ -4145,6 +4152,20 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			switch value := recovered.(type) {
+			case HostTrap:
+				if value.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = value.Err
+				}
+				results = nil
+			case *HostTrap:
+				if value == nil || value.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = value.Err
+				}
+				results = nil
 			case HostExit:
 				err = &ExitError{Code: value.Code}
 				results = nil

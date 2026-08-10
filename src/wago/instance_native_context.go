@@ -18,7 +18,33 @@ import (
 var (
 	nativeExecutionMu    sync.Mutex
 	nativeExecutionEpoch uint64 // guarded by nativeExecutionMu; advances on every public native entry
+	nativeActiveMu       sync.Mutex
+	nativeActive         = map[*Instance]uint32{}
 )
+
+func markNativeActive(in *Instance) {
+	nativeActiveMu.Lock()
+	nativeActive[in]++
+	nativeActiveMu.Unlock()
+
+}
+
+func unmarkNativeActive(in *Instance) {
+	nativeActiveMu.Lock()
+	if nativeActive[in] <= 1 {
+		delete(nativeActive, in)
+	} else {
+		nativeActive[in]--
+	}
+	nativeActiveMu.Unlock()
+}
+
+func isNativeActive(in *Instance) bool {
+	nativeActiveMu.Lock()
+	active := nativeActive[in] != 0
+	nativeActiveMu.Unlock()
+	return active
+}
 
 type executionLease struct{ local *sync.Mutex }
 
