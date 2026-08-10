@@ -247,6 +247,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	case 15: // array.len
 		if _, typeIndex, exact := f.topExactGCLocal(); exact {
 			f.observeGCArrayLen(typeIndex)
+			if f.emitDirectGCArrayLen(typeIndex) {
+				return nil
+			}
 		}
 		object := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapArray), false))
 		return f.callGCStructHelper(gcArrayLen, []wasm.ValType{object}, []wasm.ValType{wasm.I32})

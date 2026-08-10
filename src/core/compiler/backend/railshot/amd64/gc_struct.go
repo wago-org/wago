@@ -39,6 +39,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.prepareGCResolvedFB(sub)
 	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
 		return f.emitGCArray(sub, r)

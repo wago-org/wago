@@ -113,11 +113,49 @@ func TestNativeInstanceViewPublishesImmutableTypeMap(t *testing.T) {
 	if view == nil || view.Version != NativeABIVersion || view.Collector == 0 || view.LocalTypes == 0 || view.LocalTypeCount != uint32(len(localTypes)) {
 		t.Fatalf("native instance view = %+v", view)
 	}
+	if err := ValidateNativeInstanceView(view, c, uint32(len(localTypes))); err != nil {
+		t.Fatalf("native instance view validation: %v", err)
+	}
 	if len(view.keepTypes) != len(localTypes) || &view.keepTypes[0] != &localTypes[0] {
 		t.Fatal("native instance view did not retain caller-owned type map")
 	}
 	empty := NewNativeInstanceView(c, nil)
 	if empty == nil || empty.LocalTypes != 0 || empty.LocalTypeCount != 0 || empty.Collector != view.Collector {
 		t.Fatalf("empty native instance view = %+v", empty)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*NativeInstanceView)
+	}{
+		{"version", func(v *NativeInstanceView) { v.Version++ }},
+		{"collector", func(v *NativeInstanceView) { v.Collector = 0 }},
+		{"type pointer", func(v *NativeInstanceView) { v.LocalTypes = 0 }},
+		{"type count", func(v *NativeInstanceView) { v.LocalTypeCount-- }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := *view
+			tc.mutate(&bad)
+			if err := ValidateNativeInstanceView(&bad, c, uint32(len(localTypes))); err == nil {
+				t.Fatal("malformed native instance view validated")
+			}
+		})
+	}
+
+	collectorView := c.NativeView()
+	version, stride := collectorView.Version, collectorView.HandleStride
+	collectorView.Version++
+	if err := ValidateNativeInstanceView(view, c, uint32(len(localTypes))); err == nil {
+		t.Fatal("collector ABI version mismatch validated")
+	}
+	collectorView.Version = version
+	collectorView.HandleStride++
+	if err := ValidateNativeInstanceView(view, c, uint32(len(localTypes))); err == nil {
+		t.Fatal("collector handle stride mismatch validated")
+	}
+	collectorView.HandleStride = stride
+	c.Close()
+	if err := ValidateNativeInstanceView(view, c, uint32(len(localTypes))); err == nil {
+		t.Fatal("closed collector native view validated")
 	}
 }

@@ -1352,9 +1352,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			gcNativeTypes[local] = domain
 		}
-		gcNativeView = gc.NewNativeInstanceView(b.collector, gcNativeTypes)
-		if gcNativeView == nil {
-			return nil, fmt.Errorf("instantiate: native GC metadata view is unavailable")
+		gcNativeView, err = gc.BuildNativeInstanceView(b.collector, gcNativeTypes)
+		if err != nil {
+			return nil, fmt.Errorf("instantiate: native GC metadata view: %w", err)
 		}
 		jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
 	}

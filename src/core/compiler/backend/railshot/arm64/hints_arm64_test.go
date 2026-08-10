@@ -30,6 +30,33 @@ func TestTableMutationHints(t *testing.T) {
 	}
 }
 
+func TestGCHelperHintScannersMarkNativeCalls(t *testing.T) {
+	body := []byte{0x41, 0x00, 0xfb, 0x07, 0x00, 0x1a, 0x0b} // array.new_default 0; drop
+	byteHints, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	astHints := scanBody(wasm.Expr{Instrs: []wasm.Instruction{
+		{Kind: wasm.InstrI32Const},
+		{Kind: wasm.InstrArrayNewDefault, Index: 0},
+		{Kind: wasm.InstrDrop},
+	}}, 0, 0, 0)
+	if !byteHints.hasCall || !astHints.hasCall {
+		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.hasCall, astHints.hasCall)
+	}
+}
+
+func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
+	ast := wasm.Expr{Instrs: []wasm.Instruction{
+		{Kind: wasm.InstrTryTable},
+		{Kind: wasm.InstrArrayNewDefault, Index: 0},
+	}}
+	h := scanBody(ast, 0, 0, 0)
+	if !h.moduleEH || !h.hasControlFlow || !h.hasCall {
+		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.moduleEH, h.hasControlFlow, h.hasCall)
+	}
+}
+
 func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	h, err := scanBodyBytes([]byte{0x03, 0x40, 0x0b, 0x0b}, 0, 0, 0)
 	if err != nil {

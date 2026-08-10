@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecV34VersionContract(t *testing.T) {
+func TestCompiledCodecV35VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 34 {
-		t.Fatalf("compiled codec version = %d, want 34", got)
+	if got := blob[4]; got != wagoVersion || wagoVersion != 35 {
+		t.Fatalf("compiled codec version = %d, want native-GC ABI contract version 35", got)
 	}
 
 	for _, version := range []byte{33, 32, 31, 30, 26, 25, 24, 23, 22} {
@@ -160,8 +160,8 @@ func TestCompiledCodecV21RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) 
 		t.Fatalf("marshal forged generic-GC fixture: %v", err)
 	}
 	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionGenericArray)
-	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "require recorded GC heap metadata") {
-		t.Fatalf("forged generic GC execution error = %v, want fail-closed rejection", err)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "generic GC native ABI version") {
+		t.Fatalf("forged generic GC execution error = %v, want fail-closed ABI rejection", err)
 	}
 }
 

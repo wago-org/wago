@@ -12,7 +12,7 @@ func TestComputeModuleHintsRetainsSparseGlobalsPastDenseCutoff(t *testing.T) {
 	const count = 1025
 	body := []byte{0x03, 0x40, 0x23, 0x7b, 0x1a, 0x0b, 0x0b} // loop { global.get 123; drop }
 	m := sparseGlobalHintModule(count, body)
-	hints, aggregate, err := computeModuleHints(m, m.GlobalCount(), 0)
+	hints, aggregate, err := computeModuleHints(m, m.GlobalCount(), 0, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

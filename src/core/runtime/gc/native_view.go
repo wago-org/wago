@@ -1,11 +1,16 @@
 package gc
 
-import "unsafe"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // NativeABIVersion identifies the checked collector metadata layout consumed by
-// generated code. Native code must compare this value before following any
-// pointer. The view is refreshed in place whenever a growable backing slice can
-// relocate; callers must still serialize access with collector mutation.
+// generated code. Artifact loading and instantiation must validate it before
+// publishing the basedata pointer; generated operations then trust that immutable
+// contract while reloading every mutable backing pointer/count they consume. The
+// view is refreshed in place whenever growable backing can relocate, and callers
+// must still serialize access with collector mutation.
 const NativeABIVersion uint32 = 6
 
 // Native handle-entry layout. These constants are part of NativeABIVersion and
@@ -115,6 +120,111 @@ func sliceData[T any](s []T) uintptr {
 	return uintptr(unsafe.Pointer(&s[0]))
 }
 
+// ValidateNativeABI verifies the Go layouts behind the native collector ABI.
+// It belongs at collector/artifact construction boundaries, never in generated
+// hot paths. Any mismatch is fail-closed before native code can follow a field.
+func ValidateNativeABI() error {
+	var entry handleEntry
+	if unsafe.Sizeof(entry) != NativeHandleStride ||
+		unsafe.Offsetof(entry.off) != NativeHandleOffsetOffset ||
+		unsafe.Offsetof(entry.size) != NativeHandleSizeOffset ||
+		unsafe.Offsetof(entry.cardSlot) != NativeHandleCardSlotOffset ||
+		unsafe.Offsetof(entry.space) != NativeHandleSpaceOffset ||
+		unsafe.Offsetof(entry.remembered) != NativeHandleRememberedOffset {
+		return fmt.Errorf("gc: native handle ABI layout mismatch")
+	}
+	var card objectCard
+	if unsafe.Sizeof(card) != NativeObjectCardStride ||
+		unsafe.Offsetof(card.handle) != NativeObjectCardHandleOffset ||
+		unsafe.Offsetof(card.index) != NativeObjectCardStartOffset ||
+		unsafe.Offsetof(card.end) != NativeObjectCardEndOffset ||
+		unsafe.Offsetof(card.next) != NativeObjectCardNextOffset {
+		return fmt.Errorf("gc: native object-card ABI layout mismatch")
+	}
+	var alloc nativeStructAllocState
+	if unsafe.Sizeof(alloc) != NativeStructAllocStateSize ||
+		unsafe.Offsetof(alloc.Epoch) != NativeStructAllocEpochOffset ||
+		unsafe.Offsetof(alloc.Cursor) != NativeStructAllocCursorOffset ||
+		unsafe.Offsetof(alloc.Count) != NativeStructAllocCountOffset ||
+		unsafe.Offsetof(alloc.HandleBase) != NativeStructAllocHandleBaseOffset ||
+		unsafe.Offsetof(alloc.ChunkStart) != NativeStructAllocChunkStartOffset ||
+		unsafe.Offsetof(alloc.ChunkCursor) != NativeStructAllocChunkCursorOffset ||
+		unsafe.Offsetof(alloc.ChunkEnd) != NativeStructAllocChunkEndOffset ||
+		unsafe.Offsetof(alloc.ChunkBump) != NativeStructAllocChunkBumpOffset ||
+		unsafe.Offsetof(alloc.Handles) != NativeStructAllocHandlesOffset {
+		return fmt.Errorf("gc: native allocation-state ABI layout mismatch")
+	}
+	var space NativeSpaceView
+	if unsafe.Sizeof(space) != NativeViewSpaceStride ||
+		unsafe.Offsetof(space.Base) != NativeSpaceBaseOffset ||
+		unsafe.Offsetof(space.Bytes) != NativeSpaceBytesOffset {
+		return fmt.Errorf("gc: native space ABI layout mismatch")
+	}
+	var view NativeCollectorView
+	if unsafe.Sizeof(view) != NativeCollectorViewSize ||
+		unsafe.Offsetof(view.Version) != NativeViewVersionOffset ||
+		unsafe.Offsetof(view.HandleStride) != NativeViewHandleStrideOffset ||
+		unsafe.Offsetof(view.Handles) != NativeViewHandlesOffset ||
+		unsafe.Offsetof(view.HandleCount) != NativeViewHandleCountOffset ||
+		unsafe.Offsetof(view.Spaces) != NativeViewSpacesOffset ||
+		unsafe.Offsetof(view.RefreshGeneration) != NativeViewRefreshGenerationOffset ||
+		unsafe.Offsetof(view.ObjectCards) != NativeViewObjectCardsOffset ||
+		unsafe.Offsetof(view.ObjectCardCount) != NativeViewObjectCardCountOffset ||
+		unsafe.Offsetof(view.NurseryAllocBytes) != NativeViewNurseryAllocBytesOffset ||
+		unsafe.Offsetof(view.StructAllocState) != NativeViewStructAllocStateOffset ||
+		unsafe.Offsetof(view.StructAllocEpoch) != NativeViewStructAllocEpochOffset ||
+		unsafe.Offsetof(view.NurseryBump) != NativeViewNurseryBumpOffset ||
+		unsafe.Offsetof(view.AllocationCount) != NativeViewAllocationCountOffset ||
+		unsafe.Offsetof(view.NurseryObjectMaxBytes) != NativeViewNurseryObjectMaxBytesOffset {
+		return fmt.Errorf("gc: native collector ABI layout mismatch")
+	}
+	var instance NativeInstanceView
+	if unsafe.Offsetof(instance.keepTypes) != NativeInstanceViewABISize ||
+		unsafe.Offsetof(instance.Version) != NativeInstanceViewVersionOffset ||
+		unsafe.Offsetof(instance.Collector) != NativeInstanceViewCollectorOffset ||
+		unsafe.Offsetof(instance.LocalTypes) != NativeInstanceViewLocalTypesOffset ||
+		unsafe.Offsetof(instance.LocalTypeCount) != NativeInstanceViewLocalTypeCountOffset {
+		return fmt.Errorf("gc: native instance ABI layout mismatch")
+	}
+	return nil
+}
+
+// ValidateNativeInstanceView proves the immutable per-instance/native collector
+// contract before native execution. Mutable handle, heap, card, and nursery
+// pointers are intentionally not cached or validated here; generated code must
+// continue reloading and semantically validating them at each access.
+func ValidateNativeInstanceView(view *NativeInstanceView, collector *Collector, localTypeCount uint32) error {
+	if err := ValidateNativeABI(); err != nil {
+		return err
+	}
+	if view == nil {
+		return fmt.Errorf("gc: native instance view is missing")
+	}
+	if collector == nil || collector.closed || collector.nativeView == nil {
+		return fmt.Errorf("gc: native collector view is unavailable")
+	}
+	if view.Version != NativeABIVersion {
+		return fmt.Errorf("gc: native instance ABI version %d unsupported (want %d)", view.Version, NativeABIVersion)
+	}
+	if view.LocalTypeCount != localTypeCount || uint32(len(view.keepTypes)) != localTypeCount {
+		return fmt.Errorf("gc: native local type map count %d does not match module count %d", view.LocalTypeCount, localTypeCount)
+	}
+	if view.LocalTypes != sliceData(view.keepTypes) {
+		return fmt.Errorf("gc: native local type map pointer does not match immutable backing")
+	}
+	collectorPointer := uintptr(unsafe.Pointer(collector.nativeView))
+	if view.Collector != collectorPointer {
+		return fmt.Errorf("gc: native collector view pointer does not match instance collector")
+	}
+	if collector.nativeView.Version != NativeABIVersion {
+		return fmt.Errorf("gc: native collector ABI version %d unsupported (want %d)", collector.nativeView.Version, NativeABIVersion)
+	}
+	if collector.nativeView.HandleStride != NativeHandleStride {
+		return fmt.Errorf("gc: native handle stride %d unsupported (want %d)", collector.nativeView.HandleStride, NativeHandleStride)
+	}
+	return nil
+}
+
 func (c *Collector) initNativeView() {
 	if c.nativeView == nil {
 		c.nativeView = &NativeCollectorView{}
@@ -194,14 +304,29 @@ func (c *Collector) NativeView() *NativeCollectorView {
 // NewNativeInstanceView constructs an instance-owned immutable type-map view.
 // localTypes must remain alive and unchanged for the view's lifetime.
 func NewNativeInstanceView(c *Collector, localTypes []TypeID) *NativeInstanceView {
-	if c == nil || c.nativeView == nil {
+	view, err := BuildNativeInstanceView(c, localTypes)
+	if err != nil {
 		return nil
 	}
-	return &NativeInstanceView{
+	return view
+}
+
+// BuildNativeInstanceView constructs and validates the immutable instance view.
+// Callers that install the pointer into basedata should use this error-returning
+// form so malformed internal state is rejected before native execution.
+func BuildNativeInstanceView(c *Collector, localTypes []TypeID) (*NativeInstanceView, error) {
+	if c == nil || c.nativeView == nil {
+		return nil, fmt.Errorf("gc: native collector view is unavailable")
+	}
+	view := &NativeInstanceView{
 		Version:        NativeABIVersion,
 		Collector:      uintptr(unsafe.Pointer(c.nativeView)),
 		LocalTypes:     sliceData(localTypes),
 		LocalTypeCount: uint32(len(localTypes)),
 		keepTypes:      localTypes,
 	}
+	if err := ValidateNativeInstanceView(view, c, uint32(len(localTypes))); err != nil {
+		return nil, err
+	}
+	return view, nil
 }

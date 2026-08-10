@@ -72,8 +72,13 @@ func TestGCNativeStructAllocMalformedMetadataFallsBack(t *testing.T) {
 	view.StructAllocState = state
 	stride := view.HandleStride
 	view.HandleStride++
-	if got, err := fn.Invoke(lo+2, hi+2); err != nil || !reflect.DeepEqual(got, []uint64{lo + 2, hi + 2}) {
-		t.Fatalf("bad handle-stride fallback = %#x, %v", got, err)
+	got, invokeErr := fn.Invoke(lo+2, hi+2)
+	if nativeGCEntryValidationEnabled {
+		if invokeErr == nil {
+			t.Fatalf("wagodebug accepted mutated immutable handle stride: %#x", got)
+		}
+	} else if invokeErr != nil || !reflect.DeepEqual(got, []uint64{lo + 2, hi + 2}) {
+		t.Fatalf("trusted immutable handle stride hot path = %#x, %v", got, invokeErr)
 	}
 	view.HandleStride = stride
 }

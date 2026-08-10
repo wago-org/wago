@@ -159,6 +159,9 @@ const defaultLarge = 32 << 10
 var errCollectorClosed = errors.New("gc: collector closed")
 
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
+	if err := ValidateNativeABI(); err != nil {
+		return nil, err
+	}
 	var err error
 	config, err = normalizeConfig(config)
 	if err != nil {
