@@ -25,16 +25,21 @@ associative `add`/`and`/`or`/`xor` cover uses the existing height-six Valent
 bound as fuel instead of an unrelated eight-leaf array, so every representable
 tree (up to 64 leaves) can be considered without allocation. Requested
 destination registers are admitted only for need-four-or-greater trees; a
-single old-destination input becomes the accumulator seed, while repeated reads
-fall back to the ordinary alias-safe path. Across the current corpus this adds
-517 explicit-mode destination covers, removes **4,169 native bytes**, **117
-spills**, and three reloads. Guard mode removes 864 bytes, 12 spills, and one
-reload. Hits come from QuickJS/script, SQLite, and Ruby; all runnable corpus
-modules remain byte-identical. A broader need-three policy was rejected after
-it regressed the six affected execution rows by 0.35% geomean. Normal
-SQLite/Ruby codegen and full compile remain statistically flat over 20
-base/new samples; forced-worker Ruby codegen exposes the accepted compile-time
-trade at +2.25% to +3.42%, with slightly fewer allocation bytes and counts.
+single old-destination input becomes the accumulator seed. Repeated borrowed
+local/global reads preserve the old destination once in a pinned scratch
+register and retarget the remaining bounded subtrees to that copy; aliases with
+owned-register state retain the ordinary allocator path. The combined current-
+corpus result is 620 explicit-mode destination covers, **4,529 fewer native
+bytes**, **166 fewer spills**, and six fewer reloads. Guard mode selects 552
+destination covers, removes 652 bytes, 14 spills, and two reloads. Hits come
+from QuickJS/script, SQLite, and Ruby; all runnable corpus modules retain the
+same codegen statistics. A broader need-three policy was rejected after it
+regressed the six affected execution rows by 0.35% geomean. Integer
+multiplication was also rejected after producing zero new covers across all 64
+corpus modules. Twelve interleaved pinned samples put SQLite/Ruby backend and
+full compile at a statistically flat 0.9994x geomean for the repeated-alias
+extension; forced-worker Ruby codegen is likewise flat at 1.0012x, with
+allocation volume unchanged.
 The full AMD64 backend, vet, and explicit/guard/wazero corpus gates pass.
 
 **Memory64 and global-element snapshot watchpoints (2026-08-01).** Owned memory64

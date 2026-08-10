@@ -108,11 +108,11 @@ func TestAssociativeTreeCoverDestination(t *testing.T) {
 			hit:    true,
 		},
 		{
-			name:   "repeated-destination-input-falls-back",
+			name:   "repeated-destination-input",
 			locals: []byte{0, 1, 2, 3, 0, 4, 5, 6},
 			args:   []int32{1, 2, 3, 4, 5, 6, 7, 0, 0},
 			want:   29,
-			hit:    false,
+			hit:    true,
 		},
 	}
 
@@ -151,6 +151,58 @@ func TestAssociativeTreeCoverDestination(t *testing.T) {
 	}
 }
 
+func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
+	// Two flattened add leaves read the destination inside shift subtrees. Keep
+	// one old-value copy alive while the accumulator overwrites local 0.
+	body := []byte{0x00}
+	appendLeaf := func(i int) {
+		switch i {
+		case 0:
+			body = append(body, 0x20, 0x00, 0x41, 0x01, 0x74) // local0 << 1
+		case 4:
+			body = append(body, 0x20, 0x00, 0x41, 0x02, 0x74) // local0 << 2
+		default:
+			body = append(body, 0x20, byte(i))
+		}
+	}
+	var appendSum func(lo, hi int)
+	appendSum = func(lo, hi int) {
+		if hi-lo == 1 {
+			appendLeaf(lo)
+			return
+		}
+		mid := lo + (hi-lo)/2
+		appendSum(lo, mid)
+		appendSum(mid, hi)
+		body = append(body, 0x6a)
+	}
+	appendSum(0, 8)
+	body = append(body, 0x21, 0x00, 0x20, 0x00, 0x0b)
+	params := make([]wasm.ValType, 8)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	m := mod1(t, params, []wasm.ValType{wasm.I32}, body)
+	saved := associativeTreeEnabled
+	defer func() { associativeTreeEnabled = saved }()
+	associativeTreeEnabled = true
+	stats := compileWithStats(t, m, false).Funcs[0]
+	if got := runAmd64(t, m, 3, 1, 2, 3, 4, 5, 6, 0); got != 35 {
+		t.Fatalf("result = %d, want 35", got)
+	}
+	if hits := stats.Peephole["assoc-tree-dest-repeat"]; hits != 1 {
+		t.Fatalf("assoc-tree-dest-repeat = %d, want 1 (all: %v)", hits, stats.Peephole)
+	}
+	associativeTreeEnabled = false
+	off := compileWithStats(t, m, false).Funcs[0]
+	if got := runAmd64(t, m, 3, 1, 2, 3, 4, 5, 6, 0); got != 35 {
+		t.Fatalf("disabled result = %d, want 35", got)
+	}
+	if hits := off.Peephole["assoc-tree-dest-repeat"]; hits != 0 {
+		t.Fatalf("disabled assoc-tree-dest-repeat = %d, want 0", hits)
+	}
+}
+
 func TestTreeAccumulatorSafety(t *testing.T) {
 	leaf := func(kind storageKind) *elem {
 		return &elem{kind: ekValue, st: storage{kind: kind, typ: mtI32}}
@@ -164,5 +216,20 @@ func TestTreeAccumulatorSafety(t *testing.T) {
 		arg0: leaf(stReg), arg1: leaf(stReg)}
 	if treeAccumulatorSafe(variableShift) {
 		t.Fatal("variable shift can evict an RCX accumulator")
+	}
+}
+
+func TestTreeRegReplaceable(t *testing.T) {
+	borrowed := &elem{kind: ekValue, st: storage{kind: stLocalReg, reg: RAX}}
+	owned := &elem{kind: ekValue, st: storage{kind: stReg, reg: RAX}}
+	other := &elem{kind: ekValue, st: storage{kind: stReg, reg: RCX}}
+	if !treeRegReplaceable(borrowed, RAX) {
+		t.Fatal("borrowed local register should be replaceable")
+	}
+	if treeRegReplaceable(owned, RAX) {
+		t.Fatal("owned register must preserve allocator ownership")
+	}
+	if !treeRegReplaceable(other, RAX) {
+		t.Fatal("unrelated owned register should not block replacement")
 	}
 }

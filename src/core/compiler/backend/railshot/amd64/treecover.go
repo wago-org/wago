@@ -26,20 +26,33 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	if !ok || n < 3 {
 		return regNone
 	}
+	repeatedAlias := false
 	if requestedDest {
 		// A requested destination may still hold an input value. Select the one
-		// flattened leaf that reads it as the accumulator seed, so that input is
-		// consumed before dest is overwritten. Two separate leaves reading dest
-		// need the old value twice and remain on the ordinary alias-safe path.
-		if alias, count := associativeDestLeaf(node, node.op, node.typ, dest); count > 1 {
+		// flattened leaf that reads it as the accumulator seed. If several leaves
+		// read dest only through borrowed local/global registers, preserve its old
+		// value once and retarget the remaining reads to that pinned copy. Owned
+		// register aliases stay on the ordinary path: changing those would also
+		// require transferring allocator ownership.
+		alias, count, replaceable := associativeDestLeaves(node, node.op, node.typ, dest)
+		if count > 1 && !replaceable {
 			return regNone
-		} else if count == 1 {
+		}
+		if count != 0 {
 			first = alias
 		}
+		repeatedAlias = count > 1
 	}
 	f.stats.peep("assoc-tree-candidate")
 	if !associativeTreeEnabled {
 		return regNone
+	}
+	aliasCopy := regNone
+	if repeatedAlias {
+		aliasCopy = f.allocReg(maskOf(dest))
+		f.a.MovReg64(aliasCopy, dest)
+		f.pinned = f.pinned.add(aliasCopy)
+		replaceAssociativeAliasLeaves(node, node.op, node.typ, first, dest, aliasCopy)
 	}
 
 	// Start with the most expensive leaf; every remaining leaf is then consumed
@@ -58,6 +71,10 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	f.pinned = f.pinned.add(dest)
 	f.applyAssociativeLeaves(node, node.op, node.typ, first, dest)
 	f.pinned = f.pinned.remove(dest)
+	if aliasCopy != regNone {
+		f.pinned = f.pinned.remove(aliasCopy)
+		f.stats.peep("assoc-tree-dest-repeat")
+	}
 	f.stats.peep("assoc-tree")
 	if requestedDest {
 		f.stats.peep("assoc-tree-dest")
@@ -68,22 +85,69 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	return dest
 }
 
-// associativeDestLeaf counts flattened leaves whose subtree reads dest. A
-// single such leaf can safely seed an in-place accumulator; more than one must
-// preserve the old destination through the ordinary alias-handling path.
-func associativeDestLeaf(e *elem, op wOp, typ machineType, dest Reg) (leaf *elem, count int) {
+// associativeDestLeaves counts flattened leaves whose subtree reads dest and
+// reports whether all matching reads are borrowed pinned locals/globals. One
+// aliasing leaf can safely seed an in-place accumulator. Several replaceable
+// reads can share one saved copy without changing allocator ownership.
+func associativeDestLeaves(e *elem, op wOp, typ machineType, dest Reg) (leaf *elem, count int, replaceable bool) {
 	if e.kind == ekDeferred && e.op == op && e.typ == typ {
-		left, ln := associativeDestLeaf(e.arg0, op, typ, dest)
-		right, rn := associativeDestLeaf(e.arg1, op, typ, dest)
+		left, ln, ld := associativeDestLeaves(e.arg0, op, typ, dest)
+		right, rn, rd := associativeDestLeaves(e.arg1, op, typ, dest)
 		if ln != 0 {
-			return left, ln + rn
+			return left, ln + rn, ld && rd
 		}
-		return right, rn
+		return right, rn, rd
 	}
 	if treeUsesReg(e, dest) {
-		return e, 1
+		return e, 1, treeRegReplaceable(e, dest)
 	}
-	return nil, 0
+	return nil, 0, true
+}
+
+func treeRegReplaceable(e *elem, reg Reg) bool {
+	if e == nil {
+		return true
+	}
+	if e.kind == ekValue {
+		switch e.st.kind {
+		case stReg:
+			return e.st.reg != reg
+		case stLocalReg, stGlobReg:
+			return true
+		default:
+			return true
+		}
+	}
+	return e.kind == ekDeferred &&
+		treeRegReplaceable(e.arg0, reg) && treeRegReplaceable(e.arg1, reg)
+}
+
+func replaceAssociativeAliasLeaves(e *elem, op wOp, typ machineType, first *elem, from, to Reg) {
+	if e.kind == ekDeferred && e.op == op && e.typ == typ {
+		replaceAssociativeAliasLeaves(e.arg0, op, typ, first, from, to)
+		replaceAssociativeAliasLeaves(e.arg1, op, typ, first, from, to)
+		return
+	}
+	if e == first {
+		return
+	}
+	replaceBorrowedTreeReg(e, from, to)
+}
+
+func replaceBorrowedTreeReg(e *elem, from, to Reg) {
+	if e == nil {
+		return
+	}
+	if e.kind == ekValue {
+		if (e.st.kind == stLocalReg || e.st.kind == stGlobReg) && e.st.reg == from {
+			e.st.reg = to
+		}
+		return
+	}
+	if e.kind == ekDeferred {
+		replaceBorrowedTreeReg(e.arg0, from, to)
+		replaceBorrowedTreeReg(e.arg1, from, to)
+	}
 }
 
 func treeUsesReg(e *elem, reg Reg) bool {

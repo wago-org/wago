@@ -50,18 +50,22 @@ multi-state selector:
 - A sixteen-leaf balanced regression proves that one whole-tree cover is chosen;
   the old implementation could not cover that root.
 - Destination-hinted trees are now covered when their stored register need is at
-  least four. If exactly one flattened leaf reads the old destination, that leaf
-  becomes the seed; repeated destination reads retain the ordinary alias-safe
-  lowering. This makes requested destination and register pressure actual cover
-  costs rather than a blanket rejection.
+  least four. One flattened leaf reading the old destination becomes the seed.
+  When several bounded leaves read it only through borrowed pinned locals or
+  globals, one scratch register preserves the old value and the remaining
+  subtrees read that copy. Owned-register aliases retain the ordinary allocator
+  path. This makes destination aliasing and register pressure actual cover costs
+  rather than blanket rejections.
 
-The final current-corpus result is **517 destination covers** in explicit mode:
-native code falls by **4,169 bytes**, spills by **117** (5,461 to 5,344), and
-reloads by three. Guard mode selects 471 destination covers, removes **864
-bytes**, 12 spills (3,973 to 3,961), and one reload. The changed modules are
-independent large producers: QuickJS/script, SQLite, and Ruby. Every runnable
-corpus module remains byte-identical, so this is a generated-code/register-
-pressure result rather than a claimed execution-time win.
+The final current-corpus result is **620 destination covers** in explicit mode:
+native code falls by **4,529 bytes**, spills by **166**, and reloads by six.
+Guard mode selects 552 destination covers, removes **652 bytes**, 14 spills, and
+two reloads. The repeated-alias extension alone selects 305 explicit and 250
+guard covers; broader covers subsume some formerly nested cover counts. The
+changed modules are independent large producers: QuickJS/script, SQLite, and
+Ruby. Every runnable corpus module retains identical per-function codegen
+statistics, so this is a generated-code/register-pressure result rather than a
+claimed execution-time win.
 
 The need-four threshold is measured policy, not folklore. An initial need-three
 version selected 1,470 explicit-mode sites and removed more code, but it changed
@@ -70,11 +74,13 @@ order measurements regressed the six causally affected execution rows by 0.35%
 geomean. That version was rejected. Need four retains 117 of its 129 removed
 spills while eliminating every runnable-corpus code change.
 
-On the affected large compilers, 20 base/new samples on a pinned Ryzen 7 7800X3D
-leave ordinary SQLite/Ruby codegen and full compilation statistically flat.
-Forced-worker Ruby codegen is the most sensitive compile-time trade at +2.25% to
-+3.42%; allocation bytes and counts decrease slightly. The complete AMD64
-backend suite, AMD64 vet, and the guard-enabled corpus differential against
+For the repeated-alias extension, twelve interleaved 500 ms samples on a pinned
+Ryzen 7 7800X3D leave ordinary SQLite/Ruby codegen and full compilation flat
+(0.9994x geomean, no significant individual row). Ten forced-worker Ruby
+samples are also flat at 1.0012x geomean; allocation bytes and counts are
+unchanged. Integer multiplication was tested as a fifth associative operation
+and rejected after producing zero new covers across all 64 corpus modules. The
+complete AMD64 backend and the guard-enabled corpus differential against
 explicit bounds and wazero pass.
 
 ## Corpus inventory
