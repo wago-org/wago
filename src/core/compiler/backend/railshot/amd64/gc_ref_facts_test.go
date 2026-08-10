@@ -43,6 +43,22 @@ func exactGCRefFactModule(t *testing.T, controlBoundary bool) *wasm.Module {
 	return m
 }
 
+func TestFinalGCParameterFactsResolveRecursiveGroupIndex(t *testing.T) {
+	recParam := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0, Rec: true}), false))
+	m := &wasm.Module{Types: []wasm.RecType{
+		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}},
+		{SubTypes: []wasm.SubType{
+			{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct}},
+			{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{recParam}}},
+		}},
+	}}
+	f := fn{m: m, localExactGCType: make([]uint32, 1)}
+	f.seedFinalGCParameterTypes([]wasm.ValType{recParam}, 1, 2)
+	if got := f.localExactGCType[0]; got != 2 {
+		t.Fatalf("recursive final parameter fact = %d, want flattened type 1 encoded as 2", got)
+	}
+}
+
 func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {
 	compile := func(m *wasm.Module) *CodegenStats {
 		var stats ModuleStats
@@ -205,9 +221,35 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 		}
 		return m
 	}
-	compile := func(m *wasm.Module, shared bool) (int, ModuleStats) {
+	distinctModule := func(sites int) *wasm.Module {
+		body := []byte{0x00}
+		funcType := []byte{0x60, byte(sites)}
+		for i := 0; i < sites; i++ {
+			funcType = append(funcType, 0x64, 0x00)
+			body = append(body, 0x20, byte(i), 0xfb, 0x02, 0x00, 0x00)
+		}
+		funcType = append(funcType, 0x01, 0x7f)
+		for i := 1; i < sites; i++ {
+			body = append(body, 0x6a)
+		}
+		body = append(body, 0x0b)
+		data := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x01, 0x7f, 0x00}, funcType)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		)
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	compile := func(m *wasm.Module, shared, reuse bool) (int, ModuleStats) {
 		savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
-		gcSharedStubsEnabled, gcResolveReuseEnabled = shared, false
+		gcSharedStubsEnabled, gcResolveReuseEnabled = shared, reuse
 		defer func() { gcSharedStubsEnabled, gcResolveReuseEnabled = savedShared, savedReuse }()
 		var stats ModuleStats
 		cm, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: &stats})
@@ -218,15 +260,46 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 		return len(cm.Code), stats
 	}
 
-	oneOnBytes, oneOn := compile(module(1), true)
-	oneOffBytes, _ := compile(module(1), false)
+	oneOnBytes, oneOn := compile(module(1), true, false)
+	oneOffBytes, _ := compile(module(1), false, false)
 	if oneOn.GCSharedStubs != 0 || oneOn.GCSharedStubCallSites != 0 || oneOnBytes != oneOffBytes {
 		t.Fatalf("one-site crossover emitted shared resolver: bytes=%d/%d stats=%+v", oneOnBytes, oneOffBytes, oneOn)
 	}
 
+	// One direct scalar access plus one final reference-field access has two GC
+	// opcodes but only one module-resolver callsite. The conservative hint scan
+	// must not cross the measured two-real-site threshold.
+	mixedBody := []byte{
+		0x00,
+		0x20, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	mixedData := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x5f, 0x01, 0x6e, 0x00},
+			[]byte{0x60, 0x02, 0x64, 0x00, 0x64, 0x01, 0x01, 0x7f},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(mixedBody))), mixedBody...))),
+	)
+	mixed, err := wasm.DecodeModule(mixedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(mixed); err != nil {
+		t.Fatal(err)
+	}
+	mixedOnBytes, mixedOn := compile(mixed, true, false)
+	mixedOffBytes, _ := compile(mixed, false, false)
+	if mixedOn.GCSharedStubs != 0 || mixedOn.GCSharedStubCallSites != 0 || mixedOnBytes != mixedOffBytes {
+		t.Fatalf("one-real-site mixed module emitted shared resolver: bytes=%d/%d stats=%+v", mixedOnBytes, mixedOffBytes, mixedOn)
+	}
+
 	const sites = 8
-	onBytes, on := compile(module(sites), true)
-	offBytes, off := compile(module(sites), false)
+	onBytes, on := compile(module(sites), true, false)
+	offBytes, off := compile(module(sites), false, false)
 	if on.GCSharedStubs != 1 || on.GCSharedStubCallSites != sites || on.GCSharedStubBytes == 0 {
 		t.Fatalf("shared resolver stats = bodies %d calls %d bytes %d", on.GCSharedStubs, on.GCSharedStubCallSites, on.GCSharedStubBytes)
 	}
@@ -235,6 +308,45 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 	}
 	if onBytes >= offBytes {
 		t.Fatalf("shared resolver code = %d bytes, inline = %d; want shared smaller", onBytes, offBytes)
+	}
+
+	reuseSharedBytes, reuseShared := compile(module(sites), true, true)
+	reuseInlineBytes, _ := compile(module(sites), false, true)
+	if reuseShared.GCSharedStubs != 0 || reuseShared.GCSharedStubCallSites != 0 || reuseSharedBytes != reuseInlineBytes {
+		t.Fatalf("one-function reuse emitted code-growing shared island: bytes=%d/%d stats=%+v", reuseSharedBytes, reuseInlineBytes, reuseShared)
+	}
+
+	distinctSharedBytes, distinctShared := compile(distinctModule(sites), true, true)
+	distinctInlineBytes, _ := compile(distinctModule(sites), false, true)
+	if distinctShared.GCSharedStubs != 1 || distinctShared.GCSharedStubCallSites != sites || distinctSharedBytes >= distinctInlineBytes {
+		t.Fatalf("distinct one-function sites did not select shared island: bytes=%d/%d stats=%+v", distinctSharedBytes, distinctInlineBytes, distinctShared)
+	}
+
+	// ModuleStats is a reusable sink; a later sparse compile must not retain the
+	// prior module's island attribution.
+	savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
+	gcSharedStubsEnabled, gcResolveReuseEnabled = true, false
+	defer func() { gcSharedStubsEnabled, gcResolveReuseEnabled = savedShared, savedReuse }()
+	var reused ModuleStats
+	dense, err := CompileModuleWith(module(sites), CompileOptions{GCStructHelpers: true, Stats: &reused})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dense.CodeImage != nil {
+		_ = dense.CodeImage.Close()
+	}
+	if reused.GCSharedStubs != 1 {
+		t.Fatalf("dense reusable stats = %+v", reused)
+	}
+	sparse, err := CompileModuleWith(module(1), CompileOptions{GCStructHelpers: true, Stats: &reused})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sparse.CodeImage != nil {
+		_ = sparse.CodeImage.Close()
+	}
+	if reused.GCSharedStubBytes != 0 || reused.GCSharedStubs != 0 || reused.GCSharedStubCallSites != 0 {
+		t.Fatalf("reused sparse stats retained shared island = %+v", reused)
 	}
 }
 

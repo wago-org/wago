@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -210,10 +211,71 @@ func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h fun
 }
 
 func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
+	return scanFuncBodyIntoMemory64WithModule(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, nil, nil)
+}
+
+func scanFuncBodyIntoMemory64WithModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoMemory64(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64)
+		return scanBodyBytesIntoMemory64WithModule(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts)
 	}
-	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
+	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts), nil
+}
+
+func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
+		wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructAtomicGet, wasm.InstrStructAtomicGetS, wasm.InstrStructAtomicGetU, wasm.InstrStructSet,
+		wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem,
+		wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen,
+		wasm.InstrArrayFill, wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem,
+		wasm.InstrRefGetDesc, wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrRefTestDesc, wasm.InstrRefCastDescEq, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
+		wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny, wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU,
+		wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
+		return true
+	default:
+		return false
+	}
+}
+
+func directGCResolverInstruction(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, kind wasm.InstrKind, typeIndex, fieldIndex uint32) bool {
+	if m == nil {
+		switch kind {
+		case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet,
+			wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
+			return true
+		default:
+			return false
+		}
+	}
+	switch kind {
+	case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
+		if int(typeIndex) < len(gcTypeLayouts) {
+			layout := gcTypeLayouts[typeIndex]
+			if layout.Type != nil && layout.Type.Comp.Kind == wasm.CompStruct && int(fieldIndex) < len(layout.FieldLayout) {
+				_, ok := directGCScalarStorage(layout.Type.Comp.Fields[fieldIndex].Storage())
+				return ok && layout.Type.Final
+			}
+		}
+		_, _, final, ok := directGCStructLayout(m, typeIndex, fieldIndex)
+		return ok && final
+	case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet:
+		if int(typeIndex) < len(gcTypeLayouts) {
+			layout := gcTypeLayouts[typeIndex]
+			if layout.Type != nil && layout.Type.Comp.Kind == wasm.CompArray {
+				_, ok := directGCScalarStorage(layout.Type.Comp.Array.Storage())
+				return ok && layout.Type.Final
+			}
+		}
+		_, final, ok := directGCArrayLayout(m, typeIndex)
+		return ok && final
+	case wasm.InstrArrayLen:
+		// array.len has no type immediate. Exact-local dataflow may still select the
+		// direct path, but counting it here can turn one real site plus one abstract
+		// helper site into a code-growing shared island. Keep the crossover strict.
+		return false
+	default:
+		return false
+	}
 }
 
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
@@ -221,10 +283,10 @@ func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint3
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, nil, nil)
 }
 
-func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) funcHints {
+func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout) funcHints {
 	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
@@ -238,9 +300,12 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
 				h.moduleEH = true
 			}
+			if gcOrAtomicInstructionMayCall(in.Kind) {
+				h.hasCall, sub = true, true
+			}
 			// Inline-candidacy control-flow signals (matches scanInlineFactsAST).
 			switch in.Kind {
-			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
+			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf, wasm.InstrTryTable,
 				wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
@@ -288,7 +353,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					}
 				}
 				elig.pop(loop)
-			case wasm.InstrBlock:
+			case wasm.InstrBlock, wasm.InstrTryTable:
 				if walk(in.Body().Instrs, depth, curLoop) {
 					sub = true
 				}
@@ -301,6 +366,14 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				}
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				h.usesBulkMem, h.touchesMemory = true, true
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
+				if directGCResolverInstruction(m, gcTypeLayouts, in.Kind, in.Index, in.Index2) {
+					h.gcResolverSites++
+				}
+			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
+				if directGCResolverInstruction(m, gcTypeLayouts, in.Kind, in.Index, in.Index2) {
+					h.gcResolverSites++
+				}
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
 				h.mutatesTable = true
@@ -475,9 +548,13 @@ func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint3
 }
 
 func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
+	return scanBodyBytesIntoMemory64WithModule(body, nLocals, nGlobals, selfIdx, h, elig, memory64, nil, nil)
+}
+
+func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -499,9 +576,11 @@ type byteBodyScanner struct {
 	selfIdx  uint32
 	elig     *globalEligibilityTracker
 
-	entryPrefix bool
-	entrySeen   uint64
-	memory64    bool
+	entryPrefix   bool
+	entrySeen     uint64
+	memory64      bool
+	m             *wasm.Module
+	gcTypeLayouts []codegen.GCTypeLayout
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -663,19 +742,16 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if gcOrAtomicInstructionMayCall(imm.Kind) {
+				s.h.hasCall, subHasCall = true, true
+			}
 			if op == 0xfb {
-				switch imm.Kind {
-				case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
-					s.h.hasCall, subHasCall = true, true
-				}
 				switch imm.Kind {
 				case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet,
 					wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
-					s.h.gcResolverSites++
-				}
-				switch imm.Kind {
-				case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
-					s.h.hasCall, subHasCall = true, true
+					if directGCResolverInstruction(s.m, s.gcTypeLayouts, imm.Kind, imm.Index, imm.Index2) {
+						s.h.gcResolverSites++
+					}
 				}
 			}
 			if imm.TouchesMemory {

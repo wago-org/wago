@@ -53,7 +53,7 @@ func (f *fn) markTopExactGCType(typeIndex uint32) {
 	}
 }
 
-func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType) {
+func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType, recBase, recLength uint32) {
 	if !exactGCRefFactsEnabled {
 		return
 	}
@@ -65,7 +65,14 @@ func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType) {
 		var index uint32
 		switch heap.Kind() {
 		case wasm.HeapTypeIndex:
-			index = heap.Type().Index
+			typeIndex := heap.Type()
+			index = typeIndex.Index
+			if typeIndex.Rec {
+				if typeIndex.Index >= recLength || recBase > ^uint32(0)-typeIndex.Index {
+					continue
+				}
+				index = recBase + typeIndex.Index
+			}
 		case wasm.HeapDefType:
 			group, member, _, valid := heap.Def()
 			if !valid || int(group) >= len(f.m.Types) || member >= uint32(len(f.m.Types[group].SubTypes)) {

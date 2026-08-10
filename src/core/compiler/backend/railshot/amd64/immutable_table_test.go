@@ -70,7 +70,7 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	// An exported table can be mutated by another importing instance, so the
 	// specialization must not fire.
 	m.Exports = append(m.Exports, wasm.Export{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}})
-	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount(), nil)
 	if err != nil {
 		t.Fatalf("exported-table hints: %v", err)
 	}

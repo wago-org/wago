@@ -209,6 +209,22 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig)
 }
 
+func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
+		wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructAtomicGet, wasm.InstrStructAtomicGetS, wasm.InstrStructAtomicGetU, wasm.InstrStructSet,
+		wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem,
+		wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen,
+		wasm.InstrArrayFill, wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem,
+		wasm.InstrRefGetDesc, wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrRefTestDesc, wasm.InstrRefCastDescEq, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
+		wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny, wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU,
+		wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
+		return true
+	default:
+		return false
+	}
+}
+
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) funcHints {
 	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
@@ -219,13 +235,20 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if gcOrAtomicInstructionMayCall(in.Kind) {
+				sub, h.hasCall = true, true
+			}
 			switch in.Kind {
-			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
+			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf, wasm.InstrTryTable,
 				wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
 					h.hasLoop = true
 				}
+			}
+			switch in.Kind {
+			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
+				h.moduleEH = true
 			}
 			switch in.Kind {
 			case wasm.InstrCall, wasm.InstrReturnCall, wasm.InstrCallRef, wasm.InstrReturnCallRef:
@@ -262,7 +285,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					}
 				}
 				elig.pop(loop)
-			case wasm.InstrBlock:
+			case wasm.InstrBlock, wasm.InstrTryTable:
 				if walk(in.Body().Instrs, depth, curLoop) {
 					sub = true
 				}

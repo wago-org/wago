@@ -481,6 +481,7 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 	} else {
 		obj, done = f.emitCheckedGCObject(object, localType, requiredBytes)
 	}
+	f.gcHandleResolutions++
 	f.stats.addGCHandleResolution()
 	if !gcResolveReuseEnabled || !hasLocal {
 		return obj, done
