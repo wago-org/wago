@@ -410,7 +410,19 @@ Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Logical obj
 
 ## Compiled metadata and instantiation
 
-Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v34 retains the appended `StorageV128` kind, the 16-byte layout contract, and validated native safepoint/callsite root maps; older codec versions are rejected.
+Frontend lowering produces immutable descriptor metadata during compile. The same
+flattened type-section traversal also builds a compiler-only table containing each
+type's recursive-group bounds, struct field offsets/sizes/initializer slots,
+array-element layout, alignment, object size, and collector-reference classification.
+Railshot indexes that table directly while compiling GC instructions instead of
+walking recursive groups and preceding fields at every use. The table points at the
+immutable decoded subtype declarations and is discarded after code generation; it is
+not retained by `Compiled` or serialized. `Compiled.GCTypeDescs` stores the runtime
+descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type
+section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including
+function sentinels used only to preserve indexes. Codec v34 retains the appended
+`StorageV128` kind, the 16-byte layout contract, and validated native
+safepoint/callsite root maps; older codec versions are rejected.
 
 Each `Instance` normally owns its own `gc.Collector` when its executable product can create or retain heap objects. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
 
