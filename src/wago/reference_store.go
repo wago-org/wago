@@ -727,6 +727,11 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 }
 
 func (s *referenceStore) registerInstance(in *Instance) error {
+	if in != nil && in.c != nil {
+		if err := in.c.prepareStructuralCallIdentities(); err != nil {
+			return fmt.Errorf("wago: prepare structural call identities: %w", err)
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.runtimeClosed && !s.private {
@@ -752,9 +757,13 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	candidate := make(map[uint64]structuralTypeRegistration)
 	keys := make([]uint64, 0, len(in.c.FuncTypeID))
 	for i, key := range in.c.FuncTypeID {
-		canonical, err := compiledStructuralCallIdentity(in.c, i)
-		if err != nil {
-			return fmt.Errorf("wago: function %d exact type: %w", i, err)
+		canonical, cached := in.c.cachedStructuralCallIdentity(i)
+		if !cached {
+			var err error
+			canonical, err = compiledStructuralCallIdentity(in.c, i)
+			if err != nil {
+				return fmt.Errorf("wago: function %d exact type: %w", i, err)
+			}
 		}
 		exact := structuralTypeRegistration{canonical: canonical}
 		if prior, ok := candidate[key]; ok {
