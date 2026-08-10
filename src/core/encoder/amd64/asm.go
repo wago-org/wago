@@ -704,14 +704,20 @@ func (a *Asm) Cmovcc(cc Cond, dst, src Reg, w bool) {
 }
 
 func (a *Asm) SetccReg(c Cond, dst Reg) {
-	if dst >= 4 {
-		a.emit(rex(false, false, false, dst >= 8))
-	}
-	a.emit(0x0F, 0x90|byte(c), 0xC0|byte(dst&7))
+	a.SetccReg8(c, dst)
 	if dst >= 4 {
 		a.emit(rex(false, dst >= 8, false, dst >= 8))
 	}
 	a.emit(0x0F, 0xB6, 0xC0|((byte(dst)&7)<<3)|byte(dst&7))
+}
+
+// SetccReg8 writes only dst's low byte. Callers may use it when the next sink
+// observes exactly that byte; the rest of dst remains unspecified.
+func (a *Asm) SetccReg8(c Cond, dst Reg) {
+	if dst >= 4 {
+		a.emit(rex(false, false, false, dst >= 8))
+	}
+	a.emit(0x0F, 0x90|byte(c), 0xC0|byte(dst&7))
 }
 
 // nopSeqs[n] is the canonical n-byte NOP (Intel SDM recommended multi-byte

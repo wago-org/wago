@@ -9,6 +9,7 @@ import "github.com/wago-org/wago/src/core/compiler/optimization"
 var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
+	optimization.Bind("store8-flags", &store8FlagsEnabled),
 	optimization.Bind("reg-merge", &regMergeEnabled),
 	optimization.Bind("tee-sink", &teeLocalSinkEnabled),
 	optimization.Bind("unary-sink", &unaryLocalSinkEnabled),

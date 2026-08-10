@@ -150,10 +150,10 @@ the useful semantic list.
 
 ### Public optimizer catalog on current main
 
-The 42 registered definitions are:
+The 43 registered definitions are:
 
 ```text
-bounds-facts, st-flags, reg-merge, tee-sink, unary-sink,
+bounds-facts, st-flags, store8-flags, reg-merge, tee-sink, unary-sink,
 three-op-sink, olddest-rhs-sink, branch-fold, store-load-fwd, uxtw-add,
 entry-arg-pins, x8-pin, deep-fp-pins, ext-fp-pins, call-next-use,
 affine-lea, tree-order, assoc-tree, bmi2-rorx, leaf-scratch-pins,
@@ -167,7 +167,7 @@ stack-reg
 
 ### Complete current peephole/explain event vocabulary
 
-These 94 names are the union emitted by current AMD64 and ARM64 source. Candidate
+These 95 names are the union emitted by current AMD64 and ARM64 source. Candidate
 and bookkeeping events are included deliberately so the audit trail is complete:
 
 ```text
@@ -193,7 +193,7 @@ select-flags, select-local-sink, simd-and-anytrue, simd-anytrue-vptest,
 simd-local-forward, simd-mem-fold, simd-not-and, simd-rotr-imm,
 simd-shift-imm, simd-shuffle-native, simd-shuffle-rotr,
 simd-shuffle-same, simd-shuffle-zip, simd-tee-store-elide,
-small-frame-adjust, store-imm, store-load-fwd, strength-reduce,
+small-frame-adjust, store-imm, store-load-fwd, store8-flags, strength-reduce,
 swar-mask-test, swar-pack4, swar-parse4, swar-widen4, tree-order,
 tree-order-candidate, uxtw-add, v128-local-sink, xor-byte-mask
 ```
