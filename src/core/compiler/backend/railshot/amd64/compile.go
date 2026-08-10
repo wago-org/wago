@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"slices"
@@ -47,6 +48,17 @@ var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
 // chunks for admitted struct and array constructors. Rooted Go helpers remain the
 // collection/refill path. Keep one differential kill switch for qualification.
 var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
+
+// gcSharedStubsEnabled moves the common noncollecting compact-handle resolver
+// into one module-owned leaf stub. The local call edge retains exact trap/source
+// attribution. WAGO_AMD64_NO_GC_SHARED_STUBS=1 restores fully inline resolution
+// for differential qualification and low-site-count crossover measurement.
+var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
+
+// gcResolveReuseEnabled retains one resolved object address only across a
+// compiler-proven straight-line, safepoint-free region. The compact local remains
+// the root and stable identity. WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 disables reuse.
+var gcResolveReuseEnabled = os.Getenv("WAGO_AMD64_NO_GC_RESOLVE_REUSE") != "1"
 
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
@@ -202,6 +214,8 @@ type fn struct {
 	localExactGCType []uint32      // exact non-null GC type + 1; zero means unknown
 	gcLastArrayLen   gcArrayLenFact
 	gcLastField      gcStructFieldFact
+	gcResolved       gcResolvedObject
+	gcSharedResolver bool
 	nLocalSlots      int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
@@ -824,6 +838,14 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
+	resolverSites := 0
+	for i := range allHints {
+		resolverSites += allHints[i].gcResolverSites
+	}
+	useSharedGCResolver := gcSharedStubsEnabled && resolverSites >= 2
+	for i := range allHints {
+		allHints[i].gcSharedResolver = useSharedGCResolver
+	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	hostAdapters, err := shared.HostAdapterSet(m)
 	if err != nil {
@@ -952,17 +974,29 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				opts.MemoryPressure()
 			}
 		}
-		// Patch call sites now that every function's entry offsets are known.
-		code := codeBuffer.Bytes()
-		for i := 0; i < n; i++ {
-			for _, rl := range relocs[i] {
-				site := entry[i] + rl.at
-				target := entry[rl.target]
-				if rl.internal {
-					target = internalEntry[rl.target]
+		// Append one module-owned cold leaf island after every function, then patch
+		// ordinary calls and shared-stub calls in one deterministic pass.
+		stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
+		stubBase := -1
+		if len(stubCode) != 0 {
+			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
+				if err := codeBuffer.AppendZeros(pad); err != nil {
+					return nil, fmt.Errorf("amd64: grow GC stub island: %w", err)
 				}
-				binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
 			}
+			stubBase = len(codeBuffer.Bytes())
+			if err := codeBuffer.Append(stubCode); err != nil {
+				return nil, fmt.Errorf("amd64: append GC stub island: %w", err)
+			}
+			if ms != nil {
+				ms.GCSharedStubBytes = len(stubCode)
+				ms.GCSharedStubs = 1
+				ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
+			}
+		}
+		code := codeBuffer.Bytes()
+		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
+			return nil, err
 		}
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
@@ -1051,15 +1085,22 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
-	for i := 0; i < n; i++ {
-		for _, rl := range relocs[i] {
-			site := entry[i] + rl.at
-			target := entry[rl.target]
-			if rl.internal {
-				target = internalEntry[rl.target]
-			}
-			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
+	stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
+	stubBase := -1
+	if len(stubCode) != 0 {
+		if pad := (16 - len(code)%16) % 16; pad != 0 {
+			code = append(code, alignPad[:pad]...)
 		}
+		stubBase = len(code)
+		code = append(code, stubCode...)
+		if ms != nil {
+			ms.GCSharedStubBytes = len(stubCode)
+			ms.GCSharedStubs = 1
+			ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
+		}
+	}
+	if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
+		return nil, err
 	}
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
@@ -1077,6 +1118,47 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 	}
 	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+}
+
+func countGCSharedStubRelocs(relocs [][]callReloc) int {
+	count := 0
+	for i := range relocs {
+		for _, reloc := range relocs[i] {
+			if reloc.gcStub != gcSharedStubNone {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc, stubBase int, stubOffsets [gcSharedStubMax]int) error {
+	for i := range relocs {
+		for _, rl := range relocs[i] {
+			site := entry[i] + rl.at
+			target := 0
+			if rl.gcStub != gcSharedStubNone {
+				if stubBase < 0 || rl.gcStub >= gcSharedStubMax || stubOffsets[rl.gcStub] < 0 {
+					return fmt.Errorf("amd64: missing shared GC stub %d for function %d", rl.gcStub, i)
+				}
+				target = stubBase + stubOffsets[rl.gcStub]
+			} else {
+				if rl.target < 0 || rl.target >= len(entry) {
+					return fmt.Errorf("amd64: invalid call relocation target %d for function %d", rl.target, i)
+				}
+				target = entry[rl.target]
+				if rl.internal {
+					target = internalEntry[rl.target]
+				}
+			}
+			delta := target - (site + 4)
+			if int64(delta) < math.MinInt32 || int64(delta) > math.MaxInt32 {
+				return fmt.Errorf("amd64: relocation from %#x to %#x exceeds rel32 range", site, target)
+			}
+			binary.LittleEndian.PutUint32(code[site:], uint32(int32(delta)))
+		}
+	}
+	return nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -1554,7 +1636,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f := &sc.fnState
 	localType, localSlot, localExactGCType, locals := f.localType, f.localSlot, f.localExactGCType, f.locals
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, gcSharedResolver: hints.gcSharedResolver}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1589,6 +1671,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i++
 		}
 	}
+	f.seedFinalGCParameterTypes(ft.Params)
 	if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]int, nLocals)
 	} else {

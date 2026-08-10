@@ -10,6 +10,29 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func TestCompiledGenericGCArtifactRejectsNativeABIMismatch(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), v128StructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if got := compiled.nativeGCABIRequirement(); got != gc.NativeABIVersion {
+		t.Fatalf("compiled native GC ABI = %d, want %d", got, gc.NativeABIVersion)
+	}
+	for _, version := range []uint32{0, gc.NativeABIVersion + 1} {
+		compiled.codeCache.setNativeGCABIVersion(version)
+		blob, err := marshalCompiled(compiled)
+		compiled.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var loaded Compiled
+		if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "native ABI version") {
+			t.Fatalf("native GC ABI version %d load = %v", version, err)
+		}
+	}
+}
+
 func TestNativeGCViewVersionAndAllocationRefresh(t *testing.T) {
 	compiled, err := compileStagedGCArray(stagedGCArrayNumericLocalBytes(t))
 	if err != nil {
@@ -30,11 +53,15 @@ func TestNativeGCViewVersionAndAllocationRefresh(t *testing.T) {
 	}
 
 	in.gcNativeView.Version = gc.NativeABIVersion + 1
-	if _, err := in.Invoke("get", 1, 0); err == nil || !strings.Contains(err.Error(), "cast failure") {
-		t.Fatalf("instance-view version mismatch = %v", err)
+	if err := gc.ValidateNativeInstanceView(in.gcNativeView, in.gc, uint32(len(in.c.Types))); err == nil || !strings.Contains(err.Error(), "instance ABI version") {
+		t.Fatalf("instance-view preflight mismatch = %v", err)
 	}
 	in.gcNativeView.Version = gc.NativeABIVersion
 	collectorView.Version = gc.NativeABIVersion + 1
+	if err := gc.ValidateNativeInstanceView(in.gcNativeView, in.gc, uint32(len(in.c.Types))); err == nil || !strings.Contains(err.Error(), "collector ABI version") {
+		t.Fatalf("collector-view preflight mismatch = %v", err)
+	}
+	collectorView.Version = gc.NativeABIVersion
 	if got, err := in.Invoke("get", 1, 0); err != nil || len(got) != 1 || got[0] != 0 {
 		t.Fatalf("allocation-refreshed collector view = %v, %v", got, err)
 	}

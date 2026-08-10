@@ -31,13 +31,15 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals       int
-	hasCall       bool // any direct or indirect call
-	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
-	callsSelf     bool // a direct call to the function's own index
-	touchesMemory bool // any linear-memory op
-	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
-	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	nLocals          int
+	hasCall          bool // any direct or indirect call
+	hasTailCall      bool // any return_call/return_call_indirect/return_call_ref
+	callsSelf        bool // a direct call to the function's own index
+	touchesMemory    bool // any linear-memory op
+	usesBulkMem      bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
+	mutatesTable     bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	gcResolverSites  int  // conservative direct scalar/length resolver site count
+	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
 
 	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
 	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set
@@ -665,6 +667,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				switch imm.Kind {
 				case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 					s.h.hasCall, subHasCall = true, true
+				}
+				switch imm.Kind {
+				case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet,
+					wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
+					s.h.gcResolverSites++
 				}
 				switch imm.Kind {
 				case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:

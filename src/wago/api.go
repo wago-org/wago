@@ -1374,6 +1374,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
+	nativeGCABIVersion := uint32(0)
+	if genericGCExecution || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
+		nativeGCABIVersion = gc.NativeABIVersion
+	}
 	c := &Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry}
 	if cfg.gcCodeTelemetry {
 		c.gcCodeTelemetry = railshotGCNativeCodeTelemetry(&gcCodeStats)
@@ -1876,6 +1880,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.Data = append(c.Data, init)
 	}
 	compiled := installCompiledFinalizer(c)
+	compiled.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
 	if cm.CodeImage != nil {
 		mapping, base, err := cm.CodeImage.Take()
 		if err != nil {
@@ -1936,7 +1941,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if structuralProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
-		compiled.codeCache.collectorFreeStructuralMetadata = true
+		compiled.codeCache.gcMetadataFlags |= compiledGCMetadataCollectorFreeStructural
 	}
 	if gcTypeSubtypingProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
@@ -1955,7 +1960,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if gcArrayProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcArrayProduct = gcArrayProduct
-		compiled.codeCache.collectorFreeGCArrayMetadata = gcArrayProduct.metadataOnly()
+		if gcArrayProduct.metadataOnly() {
+			compiled.codeCache.gcMetadataFlags |= compiledGCMetadataCollectorFreeArray
+		}
 	}
 	if gcI31Product != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
@@ -3089,6 +3096,17 @@ func (c *Compiled) validate() error {
 	if err := gc.ValidateTypeDescs(c.GCTypeDescs); err != nil {
 		return fmt.Errorf("compiled metadata invalid: GCTypeDescs: %w", err)
 	}
+	needsNativeGCABI := c.usesGenericGCExecution() || c.usesGCStructHelpers() || c.usesGCArrayHelpers()
+	if needsNativeGCABI {
+		if c.nativeGCABIRequirement() != gc.NativeABIVersion {
+			return fmt.Errorf("compiled metadata invalid: native GC ABI version %d unsupported (want %d)", c.nativeGCABIRequirement(), gc.NativeABIVersion)
+		}
+		if err := gc.ValidateNativeABI(); err != nil {
+			return fmt.Errorf("compiled metadata invalid: native GC ABI: %w", err)
+		}
+	} else if c.nativeGCABIRequirement() != 0 {
+		return fmt.Errorf("compiled metadata invalid: native GC ABI version %d recorded without native GC execution", c.nativeGCABIRequirement())
+	}
 	if err := c.validateArenaFootprint(); err != nil {
 		return err
 	}
@@ -3708,10 +3726,12 @@ const wagoMagic = "WAGO"
 // Version 33 replaces the positional outer stream with strict length-delimited
 // code and metadata sections. Version 34 binds generated constructors to native
 // collector ABI v6 and the static-array helper IDs; older native code is rejected
-// rather than silently mixing allocation ticket layouts.
+// rather than silently mixing allocation ticket layouts. Version 35 records the
+// required native-GC ABI for generic struct/array execution and rejects missing or
+// mismatched contracts before native code can run.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 34
+const wagoVersion = 35
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -3997,6 +4017,9 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	if threadedMu := in.lockThreadedInstanceState(); threadedMu != nil {
 		defer threadedMu.Unlock()
 	}
+	if err := validateNativeGCEntry(in); err != nil {
+		return nil, fmt.Errorf("invoke %q: %w", export, err)
+	}
 	ic := in.findInvokeCache(export)
 	if ic == nil {
 		var err error
@@ -4120,6 +4143,9 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 // exactly as for a native dynamic import call. attachedResult permits first-time
 // funcref tokenization to transfer the attachment's finalization lifetime.
 func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte, attachedResult bool) ([]uint64, error) {
+	if err := validateNativeGCEntry(in); err != nil {
+		return nil, fmt.Errorf("invoke function %d: %w", li, err)
+	}
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}

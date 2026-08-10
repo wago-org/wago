@@ -31,6 +31,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			return err
 		}
 		f.prepareStoreForward(op)
+		f.prepareGCResolvedObject(op)
 		switch op {
 		case 0x00: // unreachable
 			f.clearLocalExactGCTypes()
@@ -109,13 +110,16 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.invalidateGCMutableLoadFacts()
 		return f.callIndirect(r)
 	case 0x12: // return_call
+		f.invalidateGCResolvedObject()
 		return f.returnCall(r)
 	case 0x13: // return_call_indirect
+		f.invalidateGCResolvedObject()
 		return f.returnCallIndirect(r)
 	case 0x14: // call_ref
 		f.invalidateGCMutableLoadFacts()
 		return f.callRef(r)
 	case 0x15: // return_call_ref
+		f.invalidateGCResolvedObject()
 		return f.returnCallRef(r)
 
 	case 0x1a: // drop

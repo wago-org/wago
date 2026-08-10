@@ -13,15 +13,15 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 34 -->
+<!-- artifact:codec-version 35 -->
 
-Compiled artifact v33 is a strict ordered section stream: a fixed header and
+Compiled artifact v35 is a strict ordered section stream: a fixed header and
 section count followed by length-delimited native-code and metadata sections.
 Unknown, duplicate, reordered, truncated, over-limit, and non-canonical section
 encodings fail closed. `Compiled.WriteTo` streams code without constructing a
 second full image; `Compiled.ReadFromWithLimits` reads code directly into an RW
 mapping, bounds code and metadata independently, validates all metadata, and
-seals that same mapping RX on first use. Version 32 and older artifacts are
+seals that same mapping RX on first use. Version 34 and older artifacts are
 intentionally rejected; Wago was unreleased, so there is no compatibility
 decoder or dual-format ambiguity.
 
@@ -68,7 +68,7 @@ callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec v34
+collection and the root walker remain zero-allocation after warm-up. Codec v35
 persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
@@ -102,17 +102,26 @@ cross-Runtime compact-handle sharing remains impossible. `CaptureDomain` separat
 collector domain and persists every member, internal function/global/table edge,
 memory32/memory64 and tag aliases, typed live passive roots, and one stable-ID heap
 graph in `WGDN` v3 with strict v1/v2 loading; restore publishes the complete member
-slice only after transactional graph reconstruction. Codec v34 persists helper admission and
-the 16-byte `v128` storage contract, but never compact handles.
+slice only after transactional graph reconstruction. Codec v35 persists helper admission,
+the required native-GC ABI version, and the 16-byte `v128` storage contract, but never compact handles.
 Snapshot v4 persists reachable local-global object graphs with stable IDs and
 two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
 collector-reference table, while snapshot v6 adds multiple heterogeneous local
 tables with indexed lengths, barriers, sharing, and exact structural root
 validation. AMD64 final scalar struct/array accesses and initialized final-struct
-allocation use collector native ABI v3: a stable allocation/collection/card-refreshed
-view at basedata offset 280 validates handle, space, object extent, canonical type,
-array bounds, remembered membership, any existing object-card interval, and the
-transactional native-allocation epoch before direct heap access. Final abstract
+allocation use collector native ABI v6. Artifact loading validates the Go/native
+layout and v35 records the required ABI; instantiation validates the immutable
+instance view, local canonical-type map, collector identity, collector version, and
+handle stride before publishing basedata offset 280. Native accesses then trust those
+immutable facts while reloading and validating mutable handle ranges/liveness, heap
+space and backing extents, object extents and canonical types, array bounds,
+remembered membership, any existing object-card interval, and the transactional
+native-allocation epoch. A module-owned 229-byte noncollecting resolver leaf replaces
+repeated inline resolver bodies at modules with at least two candidate sites; one-site
+modules retain inline code. Bounded straight-line reuse may retain one derived object
+address only while its unchanged compact local remains the root and no call,
+allocation, collection, host transition, control/EH edge, local mutation, or other
+invalidating opcode can intervene. Final abstract
 reference stores may bypass helpers only when no metadata growth is required;
 vector, non-final, bulk, cardless/unremembered, and Tiny barrier paths remain
 helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
@@ -352,13 +361,18 @@ copy the target pointer context into its home basedata and restore the exact cal
 context on normal return.
 
 Every native-visible address must be stable for the duration in which native code
-can consume it. Most runtime state is off-heap. Native GC ABI v3 is the narrow
+can consume it. Most runtime state is off-heap. Native GC ABI v6 is the narrow
 exception: standard Go and the release TinyGo conservative collector are non-moving;
 typed Collector/Instance fields retain the view, heap/handle/card backing, fixed
-32-handle allocation state, epoch, nursery bump, and semantic counter. Generated
-code reloads relocatable slice pointers after helper allocation, collection, or
-card-backing refresh rather than caching them across safepoints. Native allocation
-reserves identities only; collection cancels unused reservations before tracing.
+32-handle allocation state, epoch, nursery bump, and semantic counter. Production
+code validates immutable view shape at artifact/collector/instantiation boundaries;
+`wagodebug` additionally revalidates it at each Go-to-native entry. Generated code
+reloads relocatable slice pointers after helper allocation, collection, or
+card-backing refresh rather than caching them across safepoints. The only raw-address
+reuse is a compiler-owned one-entry certificate within a mechanically safepoint-free
+straight-line region; every may-collect, host-reentry, control/EH, tail, local-write,
+or unknown edge invalidates it before lowering. Native allocation reserves identities
+only; collection cancels unused reservations before tracing.
 
 ### Off-heap allocation
 

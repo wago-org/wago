@@ -339,6 +339,9 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.u64(required)
 	sizes.Features += int64(len(w.buf) - start)
 	start = len(w.buf)
+	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 {
+		w.u32(c.nativeGCABIRequirement())
+	}
 	w.gcTypeDescs(c.GCTypeDescs)
 	if err := validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()); err != nil {
 		return nil, sizes, err
@@ -905,6 +908,17 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	gcExecution := required & compiledGCExecutionMask
 	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
 	c.requiredFeatures = CoreFeatures(required &^ (compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
+	if gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 {
+		nativeGCABIVersion, readErr := r.u32()
+		if readErr != nil {
+			return fmt.Errorf("generic GC native ABI version: %w", readErr)
+		}
+		if nativeGCABIVersion != gc.NativeABIVersion {
+			return fmt.Errorf("generic GC native ABI version %d unsupported (want %d)", nativeGCABIVersion, gc.NativeABIVersion)
+		}
+		c.ensureCodeCache()
+		c.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
+	}
 	c.GCTypeDescs, err = r.gcTypeDescs()
 	if err != nil {
 		return err

@@ -10,6 +10,7 @@ import (
 )
 
 type compiledCodeCacheFlags uint8
+type compiledGCMetadataFlags uint8
 
 const (
 	compiledCacheDynamicFuncRefTest compiledCodeCacheFlags = 1 << iota
@@ -21,20 +22,26 @@ const (
 	compiledCacheGCRootFailureMask  = compiledCodeCacheFlags(0xf0)
 )
 
+const (
+	compiledGCMetadataCollectorFreeStructural compiledGCMetadataFlags = 1 << iota
+	compiledGCMetadataCollectorFreeArray
+	compiledGCMetadataNativeABIShift = 2
+	compiledGCMetadataNativeABIMask  = compiledGCMetadataFlags(0xfc)
+)
+
 type compiledCodeCache struct {
-	mu                              sync.Mutex
-	mem                             []byte
-	base                            uintptr
-	refs                            int
-	closed                          bool
-	collectorFreeStructuralMetadata bool                         // exact staged products use struct descriptors only for function identity
-	collectorFreeGCArrayMetadata    bool                         // exact staged array declaration/binding products allocate no collector
-	gcTypeSubtypingProduct          stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
-	gcStructProduct                 stagedGCStructProduct        // exact products stay compile-only; codec v30 may restore generic helper admission
-	gcArrayProduct                  stagedGCArrayProduct         // exact products stay compile-only; codec v30 may restore generic helper admission
-	gcI31Product                    stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
-	flags                           compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
-	stagedFeatures                  CoreFeatures                 // exact admission is compile-only; codec v30 restores generic GC requirements
+	mu                     sync.Mutex
+	mem                    []byte
+	base                   uintptr
+	refs                   int
+	closed                 bool
+	gcMetadataFlags        compiledGCMetadataFlags      // collector-free markers plus native-GC ABI version
+	gcTypeSubtypingProduct stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
+	gcStructProduct        stagedGCStructProduct        // exact products stay compile-only; codec v30 may restore generic helper admission
+	gcArrayProduct         stagedGCArrayProduct         // exact products stay compile-only; codec v30 may restore generic helper admission
+	gcI31Product           stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
+	flags                  compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
+	stagedFeatures         CoreFeatures                 // exact admission is compile-only; codec v30 restores generic GC requirements
 }
 
 func installCompiledFinalizer(c *Compiled) *Compiled {
@@ -135,7 +142,7 @@ func (c *Compiled) stagedFeatures() CoreFeatures {
 }
 
 func (c *Compiled) collectorFreeStructuralMetadata() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.collectorFreeStructuralMetadata
+	return c != nil && c.codeCache != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeStructural != 0
 }
 
 func (c *Compiled) stagedGCTypeSubtypingProduct() stagedGCTypeSubtypingProduct {
@@ -154,7 +161,7 @@ func (c *Compiled) usesGCArrayHelpers() bool {
 }
 
 func (c *Compiled) collectorFreeGCArrayMetadata() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.collectorFreeGCArrayMetadata
+	return c != nil && c.codeCache != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeArray != 0
 }
 
 func (c *Compiled) stagedGCStructProduct() stagedGCStructProduct {
@@ -177,6 +184,21 @@ func (c *Compiled) usesGenericGCExecution() bool {
 	}
 	arrayProduct := c.stagedGCArrayProduct()
 	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
+}
+
+func (c *Compiled) nativeGCABIRequirement() uint32 {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return uint32(c.codeCache.gcMetadataFlags&compiledGCMetadataNativeABIMask) >> compiledGCMetadataNativeABIShift
+}
+
+func (c *compiledCodeCache) setNativeGCABIVersion(version uint32) {
+	if c == nil || version > uint32(compiledGCMetadataNativeABIMask>>compiledGCMetadataNativeABIShift) {
+		panic("wago: native GC ABI version exceeds compact metadata field")
+	}
+	c.gcMetadataFlags = c.gcMetadataFlags&^compiledGCMetadataNativeABIMask |
+		compiledGCMetadataFlags(version<<compiledGCMetadataNativeABIShift)
 }
 
 // compiledGCFrameRoots is the immutable codec-v33 admission sidecar for bounded

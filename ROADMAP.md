@@ -106,7 +106,8 @@ current optimization priorities. The Core 3.0 implementation ledger is
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
   records, local starts, and same-Runtime cross-instance calls. One-/two-word and
-  bounded flat masks cover up to 1,024 roots; codec v34 validates the native maps.
+  bounded flat masks cover up to 1,024 roots; codec v35 validates the native maps
+  and the required native-GC ABI version.
 - [x] Add snapshot v4 stable-ID heap graphs for objects reachable from owned local
   GC globals, preserving cycles and sharing without serializing compact handles.
 - [x] Add snapshot v5 roots for one owned local collector-reference table, then

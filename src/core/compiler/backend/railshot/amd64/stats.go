@@ -123,11 +123,13 @@ type CodegenStats struct {
 	MemRefsForcedByStore int // deferred loads forced out by a store (P2.1 target)
 
 	// Bounds / traps.
-	BoundsChecks          int // inline memory-OOB checks emitted (P6 elides these)
-	BoundsChecksElidable  int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
-	BoundsChecksInLoop    int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
-	BoundsChecksHoistable int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
-	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
+	BoundsChecks            int // inline memory-OOB checks emitted (P6 elides these)
+	BoundsChecksElidable    int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
+	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
+	BoundsChecksHoistable   int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
+	TrapStubs               int // shared cold trap stubs emitted (one per trap code used)
+	GCHandleResolutions     int // dynamic compact-handle resolutions emitted
+	GCHandleResolutionReuse int // resolutions elided by bounded raw-address reuse
 
 	// Calls, by lowering kind: regabi / mixed / wrapper / host / indirect /
 	// crossinstance / importdispatch.
@@ -230,6 +232,16 @@ func (s *CodegenStats) addPinnedGlobalValue() {
 		s.PinnedGlobalsValue++
 	}
 }
+func (s *CodegenStats) addGCHandleResolution() {
+	if s != nil {
+		s.GCHandleResolutions++
+	}
+}
+func (s *CodegenStats) addGCHandleResolutionReuse() {
+	if s != nil {
+		s.GCHandleResolutionReuse++
+	}
+}
 func (s *CodegenStats) addGCAllocationBytes(n int) {
 	if s != nil && n > 0 {
 		s.GCCodeBytes.Allocation += n
@@ -314,9 +326,12 @@ type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 // ModuleStats aggregates one module's per-function stats plus the module-wide
 // decisions. The zero value is ready to collect into.
 type ModuleStats struct {
-	Funcs            []*CodegenStats
-	ModuleGlobalPins []ModuleGlobalPinInfo
-	Inline           *InlineReport // inline-candidate detection (nil if not analyzed)
+	Funcs                 []*CodegenStats
+	ModuleGlobalPins      []ModuleGlobalPinInfo
+	Inline                *InlineReport // inline-candidate detection (nil if not analyzed)
+	GCSharedStubBytes     int
+	GCSharedStubs         int
+	GCSharedStubCallSites int
 }
 
 // String renders the explain dump: a module summary line, the module-pinned
@@ -327,6 +342,9 @@ func (ms *ModuleStats) String() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
+	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
+		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
+	}
 	if len(ms.ModuleGlobalPins) == 0 {
 		fmt.Fprintf(&b, "module-pinned globals: none (K=0)\n")
 	} else {
@@ -364,6 +382,9 @@ func (s *CodegenStats) report() string {
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
+	if s.GCHandleResolutions != 0 || s.GCHandleResolutionReuse != 0 {
+		fmt.Fprintf(&b, "    gcresolve: emitted=%d reused=%d\n", s.GCHandleResolutions, s.GCHandleResolutionReuse)
+	}
 	gcBytes := s.GCCodeBytes
 	if gcBytes.Allocation|gcBytes.HandleResolution|gcBytes.TypeCast|gcBytes.NullCheck|gcBytes.BoundsCheck|gcBytes.Barrier|gcBytes.SpillReload|gcBytes.HelperCall|gcBytes.SharedStub|gcBytes.TrapStub|gcBytes.RootMap != 0 {
 		fmt.Fprintf(&b, "    gcbytes: total=%d alloc=%d resolve=%d cast=%d null=%d bounds=%d barrier=%d spill=%d helper=%d shared=%d trap=%d rootmap=%d\n",
