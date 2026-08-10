@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"slices"
@@ -47,6 +48,17 @@ var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
 // chunks for admitted struct and array constructors. Rooted Go helpers remain the
 // collection/refill path. Keep one differential kill switch for qualification.
 var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
+
+// gcSharedStubsEnabled moves the common noncollecting compact-handle resolver
+// into one module-owned leaf stub. The local call edge retains exact trap/source
+// attribution. WAGO_AMD64_NO_GC_SHARED_STUBS=1 restores fully inline resolution
+// for differential qualification and low-site-count crossover measurement.
+var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
+
+// gcResolveReuseEnabled retains one resolved object address only across a
+// compiler-proven straight-line, safepoint-free region. The compact local remains
+// the root and stable identity. WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 disables reuse.
+var gcResolveReuseEnabled = os.Getenv("WAGO_AMD64_NO_GC_RESOLVE_REUSE") != "1"
 
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
@@ -195,14 +207,17 @@ type fn struct {
 	wasmPC             uint32
 	customInstructions map[uint32]CustomInstruction
 
-	nParams          int
-	nLocals          int           // params + declared locals
-	localType        []machineType // per-local machine type
-	localSlot        []int         // per-local frame slot in 8-byte units; v128 occupies two
-	localExactGCType []uint32      // exact non-null GC type + 1; zero means unknown
-	gcLastArrayLen   gcArrayLenFact
-	gcLastField      gcStructFieldFact
-	nLocalSlots      int // total local frame slots in 8-byte units
+	nParams             int
+	nLocals             int           // params + declared locals
+	localType           []machineType // per-local machine type
+	localSlot           []int         // per-local frame slot in 8-byte units; v128 occupies two
+	localExactGCType    []uint32      // exact non-null GC type + 1; zero means unknown
+	gcLastArrayLen      gcArrayLenFact
+	gcLastField         gcStructFieldFact
+	gcResolved          gcResolvedObject
+	gcSharedResolver    bool
+	gcHandleResolutions int
+	nLocalSlots         int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -820,9 +835,23 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
-	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
+	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
+	}
+	resolverSites := 0
+	for i := range allHints {
+		resolverSites += allHints[i].gcResolverSites
+	}
+	// A one-entry address certificate can collapse a single function's repeated
+	// candidate sites to one real resolution. Compile that narrow shape inline
+	// first and select the module island only when lowering proves at least two
+	// resolutions remain. Multi-function modules retain the measured static
+	// crossover because caches cannot cross function boundaries.
+	deferSingleFuncGCResolverDecision := gcSharedStubsEnabled && gcResolveReuseEnabled && n == 1 && resolverSites >= 2
+	useSharedGCResolver := gcSharedStubsEnabled && resolverSites >= 2 && !deferSingleFuncGCResolverDecision
+	for i := range allHints {
+		allHints[i].gcSharedResolver = useSharedGCResolver
 	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	hostAdapters, err := shared.HostAdapterSet(m)
@@ -845,8 +874,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		ms = &ModuleStats{}
 	}
 	if ms != nil {
-		ms.Funcs = make([]*CodegenStats, n)
-		ms.ModuleGlobalPins = moduleGlobalPinInfos(modGlobals)
+		// A stats sink is reusable across compiles. Reset the complete module-level
+		// attribution, including optional analyses that may be unavailable for the
+		// next module, before installing this compile's deterministic destinations.
+		*ms = ModuleStats{
+			Funcs:            make([]*CodegenStats, n),
+			ModuleGlobalPins: moduleGlobalPinInfos(modGlobals),
+		}
 		// Inline-candidate detection (report only; no codegen change yet). Failure
 		// to analyze is non-fatal — it never blocks a compile.
 		if rep, ierr := AnalyzeInlineCandidates(m); ierr == nil {
@@ -932,6 +966,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				ms.Funcs[i] = st
 			}
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
+			if err == nil && deferSingleFuncGCResolverDecision && sc.fnState.gcHandleResolutions >= 2 {
+				hints.gcSharedResolver = true
+				resetFuncStats(st)
+				fnCode, rl, internalOff, err = compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
+			}
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
@@ -952,17 +991,29 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				opts.MemoryPressure()
 			}
 		}
-		// Patch call sites now that every function's entry offsets are known.
-		code := codeBuffer.Bytes()
-		for i := 0; i < n; i++ {
-			for _, rl := range relocs[i] {
-				site := entry[i] + rl.at
-				target := entry[rl.target]
-				if rl.internal {
-					target = internalEntry[rl.target]
+		// Append one module-owned cold leaf island after every function, then patch
+		// ordinary calls and shared-stub calls in one deterministic pass.
+		stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
+		stubBase := -1
+		if len(stubCode) != 0 {
+			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
+				if err := codeBuffer.AppendZeros(pad); err != nil {
+					return nil, fmt.Errorf("amd64: grow GC stub island: %w", err)
 				}
-				binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
 			}
+			stubBase = len(codeBuffer.Bytes())
+			if err := codeBuffer.Append(stubCode); err != nil {
+				return nil, fmt.Errorf("amd64: append GC stub island: %w", err)
+			}
+			if ms != nil {
+				ms.GCSharedStubBytes = len(stubCode)
+				ms.GCSharedStubs = 1
+				ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
+			}
+		}
+		code := codeBuffer.Bytes()
+		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
+			return nil, err
 		}
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
@@ -1051,15 +1102,22 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
-	for i := 0; i < n; i++ {
-		for _, rl := range relocs[i] {
-			site := entry[i] + rl.at
-			target := entry[rl.target]
-			if rl.internal {
-				target = internalEntry[rl.target]
-			}
-			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
+	stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
+	stubBase := -1
+	if len(stubCode) != 0 {
+		if pad := (16 - len(code)%16) % 16; pad != 0 {
+			code = append(code, alignPad[:pad]...)
 		}
+		stubBase = len(code)
+		code = append(code, stubCode...)
+		if ms != nil {
+			ms.GCSharedStubBytes = len(stubCode)
+			ms.GCSharedStubs = 1
+			ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
+		}
+	}
+	if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
+		return nil, err
 	}
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
@@ -1077,6 +1135,63 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 	}
 	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+}
+
+func countGCSharedStubRelocs(relocs [][]callReloc) int {
+	count := 0
+	for i := range relocs {
+		for _, reloc := range relocs[i] {
+			if reloc.gcStub != gcSharedStubNone {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc, stubBase int, stubOffsets [gcSharedStubMax]int) error {
+	if len(entry) < len(relocs) {
+		return fmt.Errorf("amd64: relocation entry table has %d functions, want at least %d", len(entry), len(relocs))
+	}
+	for i := range relocs {
+		base := entry[i]
+		if base < 0 || base > len(code) {
+			return fmt.Errorf("amd64: invalid function %d entry %#x for %d-byte code image", i, base, len(code))
+		}
+		for _, rl := range relocs[i] {
+			if rl.at < 0 || base > len(code)-4 || rl.at > len(code)-base-4 {
+				return fmt.Errorf("amd64: invalid relocation site %#x in function %d for %d-byte code image", rl.at, i, len(code))
+			}
+			site := base + rl.at
+			target := 0
+			if rl.gcStub != gcSharedStubNone {
+				if stubBase < 0 || stubBase > len(code) || rl.gcStub >= gcSharedStubMax || stubOffsets[rl.gcStub] < 0 || stubOffsets[rl.gcStub] > len(code)-stubBase {
+					return fmt.Errorf("amd64: missing shared GC stub %d for function %d", rl.gcStub, i)
+				}
+				target = stubBase + stubOffsets[rl.gcStub]
+			} else {
+				if rl.target < 0 || rl.target >= len(entry) {
+					return fmt.Errorf("amd64: invalid call relocation target %d for function %d", rl.target, i)
+				}
+				target = entry[rl.target]
+				if rl.internal {
+					if rl.target >= len(internalEntry) {
+						return fmt.Errorf("amd64: missing internal entry for call relocation target %d in function %d", rl.target, i)
+					}
+					target = internalEntry[rl.target]
+				}
+				if target < 0 || target > len(code) {
+					return fmt.Errorf("amd64: invalid call relocation target entry %#x for function %d", target, i)
+				}
+			}
+			delta := int64(target) - int64(site+4)
+			if delta < math.MinInt32 || delta > math.MaxInt32 {
+				return fmt.Errorf("amd64: relocation from %#x to %#x exceeds rel32 range", site, target)
+			}
+			binary.LittleEndian.PutUint32(code[site:], uint32(int32(delta)))
+		}
+	}
+	return nil
 }
 
 func firstFuncError(results []funcResult) (int, error) {
@@ -1140,7 +1255,7 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 // those across functions — so summing here removes a second full-body
 // immediate-decoding pass per function (the standalone global-scores scan). The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
-func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
+func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) ([]funcHints, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	localCounts := make([]int, n)
@@ -1205,7 +1320,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		var err error
-		h, err = scanFuncBodyIntoMemory64(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64)
+		h, err = scanFuncBodyIntoMemory64WithModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts, gcStructHelpers)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
@@ -1554,7 +1669,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f := &sc.fnState
 	localType, localSlot, localExactGCType, locals := f.localType, f.localSlot, f.localExactGCType, f.locals
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localExactGCType: localExactGCType, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, gcSharedResolver: hints.gcSharedResolver}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1589,6 +1704,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i++
 		}
 	}
+	recBase, recLength, _ := nativeGCRecGroup(m, m.FuncTypes[funcIdx].Index)
+	f.seedFinalGCParameterTypes(ft.Params, recBase, recLength)
 	if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]int, nLocals)
 	} else {

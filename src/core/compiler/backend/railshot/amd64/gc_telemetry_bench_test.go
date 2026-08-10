@@ -74,6 +74,83 @@ func BenchmarkGCStaticSiteCompilation(b *testing.B) {
 	}
 }
 
+func gcResolverDensityModule(tb testing.TB, sites int) *wasm.Module {
+	tb.Helper()
+	body := []byte{0x00}
+	for range sites {
+		body = append(body, 0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x1a)
+	}
+	body = append(body, 0x41, 0x00, 0x0b)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		tb.Fatal(err)
+	}
+	return m
+}
+
+// BenchmarkGCResolverCodeSize permanently records the low/dense-site crossover
+// for the module-owned compact-handle resolver and the bounded reuse certificate.
+func BenchmarkGCResolverCodeSize(b *testing.B) {
+	for _, sites := range []int{1, 8, 128} {
+		m := gcResolverDensityModule(b, sites)
+		for _, shared := range []bool{false, true} {
+			b.Run(fmt.Sprintf("sites=%d/shared=%v", sites, shared), func(b *testing.B) {
+				savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
+				gcSharedStubsEnabled, gcResolveReuseEnabled = shared, false
+				defer func() { gcSharedStubsEnabled, gcResolveReuseEnabled = savedShared, savedReuse }()
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					var stats ModuleStats
+					compiled, err := CompileModuleWith(m, CompileOptions{Workers: 1, GCStructHelpers: true, Stats: &stats})
+					if err != nil {
+						b.Fatal(err)
+					}
+					b.ReportMetric(float64(len(compiled.Code)), "native-bytes/op")
+					b.ReportMetric(float64(stats.GCSharedStubBytes), "shared-stub-bytes/op")
+					b.ReportMetric(float64(stats.GCSharedStubCallSites), "shared-calls/op")
+					if compiled.CodeImage != nil {
+						_ = compiled.CodeImage.Close()
+					}
+				}
+			})
+		}
+	}
+	m := gcResolverDensityModule(b, 8)
+	for _, reuse := range []bool{false, true} {
+		b.Run(fmt.Sprintf("reuse=%v", reuse), func(b *testing.B) {
+			savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
+			gcSharedStubsEnabled, gcResolveReuseEnabled = true, reuse
+			defer func() { gcSharedStubsEnabled, gcResolveReuseEnabled = savedShared, savedReuse }()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				var stats ModuleStats
+				compiled, err := CompileModuleWith(m, CompileOptions{Workers: 1, GCStructHelpers: true, Stats: &stats})
+				if err != nil {
+					b.Fatal(err)
+				}
+				function := stats.Funcs[0]
+				b.ReportMetric(float64(len(compiled.Code)), "native-bytes/op")
+				b.ReportMetric(float64(function.GCHandleResolutions), "resolutions/op")
+				b.ReportMetric(float64(function.GCHandleResolutionReuse), "reuses/op")
+				if compiled.CodeImage != nil {
+					_ = compiled.CodeImage.Close()
+				}
+			}
+		})
+	}
+}
+
 func TestGCStaticSiteTelemetrySmoke(t *testing.T) {
 	for _, sites := range []int{1, 128} {
 		m := gcStaticSiteModule(t, sites)

@@ -5,6 +5,7 @@ package wago
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -22,6 +23,36 @@ func arm64GCStructModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
+}
+
+func TestARM64GCNativeABIArtifactAndInstantiationPreflight(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCStructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if got := compiled.nativeGCABIRequirement(); got != gc.NativeABIVersion {
+		t.Fatalf("native GC ABI = %d, want %d", got, gc.NativeABIVersion)
+	}
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gc.ValidateNativeInstanceView(in.gcNativeView, in.gc, uint32(len(in.c.Types))); err != nil {
+		t.Fatalf("instantiated native GC view: %v", err)
+	}
+	_ = in.Close()
+
+	compiled.codeCache.setNativeGCABIVersion(gc.NativeABIVersion + 1)
+	blob, err := marshalCompiled(compiled)
+	compiled.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "native ABI version") {
+		t.Fatalf("mismatched native GC artifact = %v", err)
+	}
 }
 
 func arm64GCReferenceConstructorModule() []byte {

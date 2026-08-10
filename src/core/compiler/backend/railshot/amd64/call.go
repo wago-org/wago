@@ -38,6 +38,7 @@ type callReloc struct {
 	at       int  // byte offset of the rel32 field within this function's code
 	target   int  // target local-function index (into m.Code)
 	internal bool // target the callee's register-ABI internal entry (else offset 0)
+	gcStub   gcSharedStubKind
 }
 
 // intArgRegs is the integer argument/result register order for the internal
@@ -880,6 +881,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 // synchronous re-entry path instead (callHostSync). The caller (emitCall) routes
 // by result arity, so ft here always has zero results.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
+	f.invalidateGCResolvedObject()
 	f.stats.call(callKindHost)
 	p := len(ft.Params)
 	f.flush()
@@ -968,6 +970,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 // globals are also synced around the call: the host may read or write the
 // instance's globals through their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+	f.invalidateGCResolvedObject()
 	f.stats.call(callKindHostSync)
 	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
 	nativeStructType := f.nativeStructAllocType

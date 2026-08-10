@@ -26,6 +26,7 @@ func railshotGCNativeCodeTelemetry(stats *railshotModuleStats) GCNativeCodeTelem
 	if stats == nil {
 		return out
 	}
+	out.SharedStubBytes = uint64(stats.GCSharedStubBytes)
 	for _, function := range stats.Funcs {
 		if function == nil {
 			continue

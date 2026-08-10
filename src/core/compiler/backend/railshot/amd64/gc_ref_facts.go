@@ -2,6 +2,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
 type gcArrayLenFact struct {
 	valid     bool
 	local     int
@@ -14,6 +16,14 @@ type gcStructFieldFact struct {
 	local      int
 	typeIndex  uint32
 	fieldIndex uint32
+}
+
+type gcResolvedObject struct {
+	valid         bool
+	local         int
+	typeIndex     uint32
+	requiredBytes uint32
+	reg           Reg
 }
 
 // Exact non-null GC reference facts are deliberately compact and local. A
@@ -40,6 +50,44 @@ func markExactGCType(e *elem, typeIndex uint32) {
 func (f *fn) markTopExactGCType(typeIndex uint32) {
 	if exactGCRefFactsEnabled {
 		markExactGCType(f.s.back(), typeIndex)
+	}
+}
+
+func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType, recBase, recLength uint32) {
+	if !exactGCRefFactsEnabled {
+		return
+	}
+	for local, typ := range params {
+		if local >= len(f.localExactGCType) || typ.Kind() != wasm.ValRef || typ.Ref().Nullable() {
+			continue
+		}
+		heap := typ.Ref().Heap()
+		var index uint32
+		switch heap.Kind() {
+		case wasm.HeapTypeIndex:
+			typeIndex := heap.Type()
+			index = typeIndex.Index
+			if typeIndex.Rec {
+				if typeIndex.Index >= recLength || recBase > ^uint32(0)-typeIndex.Index {
+					continue
+				}
+				index = recBase + typeIndex.Index
+			}
+		case wasm.HeapDefType:
+			group, member, _, valid := heap.Def()
+			if !valid || int(group) >= len(f.m.Types) || member >= uint32(len(f.m.Types[group].SubTypes)) {
+				continue
+			}
+			for i := uint32(0); i < group; i++ {
+				index += uint32(len(f.m.Types[i].SubTypes))
+			}
+			index += member
+		default:
+			continue
+		}
+		if target, ok := f.stagedGCType(index); ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
+			f.localExactGCType[local] = index + 1
+		}
 	}
 }
 
@@ -71,6 +119,7 @@ func (f *fn) clearLocalExactGCTypes() {
 	}
 	f.gcLastArrayLen.valid = false
 	f.gcLastField.valid = false
+	f.invalidateGCResolvedObject()
 }
 
 func (f *fn) invalidateGCLoadFactsForLocal(local int) {
@@ -80,10 +129,68 @@ func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 	if f.gcLastField.valid && f.gcLastField.local == local {
 		f.gcLastField.valid = false
 	}
+	if f.gcResolved.valid && f.gcResolved.local == local {
+		f.invalidateGCResolvedObject()
+	}
 }
 
 func (f *fn) invalidateGCMutableLoadFacts() {
 	f.gcLastField.valid = false
+	f.invalidateGCResolvedObject()
+}
+
+// prepareGCResolvedObject is the central straight-line invalidation gate. Only
+// leaves needed to carry an unchanged local into another GC operation and the
+// GC prefix itself retain the transient address. Every other opcode drops it
+// before lowering, conservatively covering arithmetic fixed-register uses,
+// memory/runtime operations, control transfers, exceptions, and unknown work.
+func (f *fn) prepareGCResolvedObject(op byte) {
+	if !f.gcResolved.valid {
+		return
+	}
+	switch op {
+	case 0x1a, // drop is register-neutral
+		0x20,                   // local.get
+		0x41, 0x42, 0x43, 0x44, // scalar constants used by array indexes
+		0xfb: // decoded subopcode performs the second-stage allowlist
+		return
+	default:
+		f.invalidateGCResolvedObject()
+	}
+}
+
+func (f *fn) prepareGCResolvedFB(sub uint32) {
+	if !f.gcResolved.valid {
+		return
+	}
+	switch sub {
+	case 2, 3, 4, 5, // struct.get/get_s/get_u/set
+		11, 12, 13, 14, 15: // array.get/get_s/get_u/set/len
+		return
+	default:
+		f.invalidateGCResolvedObject()
+	}
+}
+
+func (f *fn) invalidateGCResolvedObject() {
+	if !f.gcResolved.valid {
+		return
+	}
+	f.pinned = f.pinned.remove(f.gcResolved.reg)
+	f.gcResolved = gcResolvedObject{}
+}
+
+func (f *fn) gcResolvedRegister() Reg {
+	block := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+	// Restrict the transient cache to registers untouched by tiny leaf stubs and
+	// x86 fixed-role scalar operations. Do not spill a Wasm value merely to cache
+	// a derived address: register pressure rejects the optimization instead.
+	for _, reg := range [...]Reg{RBP, R12, R13, R14} {
+		if f.regUser[reg] == nil && !block.has(reg) {
+			return reg
+		}
+	}
+	return regNone
 }
 
 func gcLocalProvenance(e *elem) (int, bool) {

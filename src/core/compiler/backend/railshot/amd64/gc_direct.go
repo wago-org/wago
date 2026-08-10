@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -14,6 +15,14 @@ import (
 // directGCScalar describes a pointer-free scalar storage location that can be
 // accessed without entering the parked Go helper. Reference and v128 storage
 // deliberately remain helper-bound until their barrier/vector paths are proven.
+type gcSharedStubKind uint8
+
+const (
+	gcSharedStubNone gcSharedStubKind = iota
+	gcSharedStubResolveObject
+	gcSharedStubMax
+)
+
 type directGCScalar struct {
 	size int
 	typ  machineType
@@ -337,6 +346,180 @@ func directGCArrayLayout(m *wasm.Module, typeIndex uint32) (directGCScalar, bool
 	return scalar, st.Final, ok
 }
 
+// buildModuleGCSharedStubs emits one compact module-owned island for every
+// referenced noncollecting GC leaf family. Offsets are relative to the returned
+// byte slice; callers add the island's module base before patching CALL rel32.
+func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]int) {
+	var used [gcSharedStubMax]bool
+	for i := range relocs {
+		for _, reloc := range relocs[i] {
+			if reloc.gcStub > gcSharedStubNone && reloc.gcStub < gcSharedStubMax {
+				used[reloc.gcStub] = true
+			}
+		}
+	}
+	var offsets [gcSharedStubMax]int
+	for i := range offsets {
+		offsets[i] = -1
+	}
+	if !used[gcSharedStubResolveObject] {
+		return nil, offsets
+	}
+	a := &x64.Asm{}
+	offsets[gcSharedStubResolveObject] = a.Len()
+	emitModuleGCResolveObjectStub(a)
+	return a.B, offsets
+}
+
+// emitModuleGCResolveObjectStub implements the AMD64 noncollecting GC leaf ABI:
+//
+//	EAX compact object ref, EDX static module-local type, ECX required bytes
+//	RAX resolved object header on success, EDX zero on success or trap code
+//	clobbers RAX,RCX,RDX,RDI,R8 and flags; preserves R9-R11 explicitly
+//	no Go transition, allocation, collection, root publication, or safepoint
+//
+// The compact reference remains in the caller's canonical local/stack root. A
+// returned raw address is valid only until the caller's next invalidating edge.
+func emitModuleGCResolveObjectStub(a *x64.Asm) {
+	a.Push(R9)
+	a.Push(R10)
+	a.Push(R11)
+	a.MovRegReg32(RDI, RCX) // required object extent
+
+	a.TestSelf(RAX, false)
+	nullFailure := a.JccPlaceholder(condE)
+	a.MovRegReg32(R10, RAX)
+	a.AluRI(4, R10, 1, false)
+	a.TestSelf(R10, false)
+	castFailures := []int{a.JccPlaceholder(condNE)}
+
+	// Immutable view/type-map shape was proved at artifact load + instantiation.
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
+	a.ImulRI(RDX, 4, true)
+	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+
+	// Dynamic semantic validation remains exact: handle range/liveness, space,
+	// backing extent, object extent, and canonical runtime type.
+	a.ShiftImm(5, RAX, 1, false)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
+	castFailures = append(castFailures, a.JccPlaceholder(condAE))
+	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
+	a.ImulRI(RAX, gc.NativeHandleStride, true)
+	a.Add64(R9, RAX)
+
+	a.Load32(R10, R9, 16)
+	a.ShiftImm(5, R10, 16, false)
+	a.AluRI(4, R10, 0xff, false)
+	a.TestSelf(R10, false)
+	castFailures = append(castFailures, a.JccPlaceholder(condE))
+	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
+	castFailures = append(castFailures, a.JccPlaceholder(condA))
+	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
+	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
+	a.Add64(R8, R10)
+	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
+	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
+	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
+	a.Cmp32(RAX, R8)
+	castFailures = append(castFailures, a.JccPlaceholder(condA))
+	a.Sub32(R8, RAX)
+	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
+	a.Cmp32(RCX, R8)
+	castFailures = append(castFailures, a.JccPlaceholder(condA))
+	a.Cmp32(RCX, RDI)
+	castFailures = append(castFailures, a.JccPlaceholder(condB))
+
+	a.Add64(R11, RAX)
+	a.Load32(RCX, R11, 0)
+	a.Cmp32(RCX, RDX)
+	castFailures = append(castFailures, a.JccPlaceholder(condNE))
+	a.Load32(RCX, R11, 4)
+	a.Cmp32(RCX, RDI)
+	castFailures = append(castFailures, a.JccPlaceholder(condB))
+	a.MovReg64(RAX, R11)
+	a.XorSelf32(RDX)
+	done := a.JmpPlaceholder()
+
+	nullAt := a.Len()
+	a.MovImm32(RDX, int32(trapNullReference))
+	a.XorSelf32(RAX)
+	nullDone := a.JmpPlaceholder()
+
+	castAt := a.Len()
+	a.MovImm32(RDX, int32(trapCastFailure))
+	a.XorSelf32(RAX)
+	for _, branch := range castFailures {
+		a.PatchRel32(branch, castAt)
+	}
+	a.PatchRel32(nullFailure, nullAt)
+	finish := a.Len()
+	a.PatchRel32(done, finish)
+	a.PatchRel32(nullDone, finish)
+	a.Pop(R11)
+	a.Pop(R10)
+	a.Pop(R9)
+	a.Ret()
+}
+
+func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, local int, hasLocal bool) (obj Reg, done func()) {
+	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
+		f.gcResolved.local == local && f.gcResolved.typeIndex == localType &&
+		requiredBytes <= f.gcResolved.requiredBytes {
+		// Consume the repeated compact local.get while retaining the compact local
+		// itself as the exact root. No raw address is reconstructed.
+		ref := f.materialize(object)
+		f.release(ref)
+		f.stats.addGCHandleResolutionReuse()
+		f.stats.peep("gc-resolve-reuse")
+		return f.gcResolved.reg, func() {}
+	}
+	f.invalidateGCResolvedObject()
+	if f.gcSharedResolver {
+		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes)
+	} else {
+		obj, done = f.emitCheckedGCObject(object, localType, requiredBytes)
+	}
+	f.gcHandleResolutions++
+	f.stats.addGCHandleResolution()
+	if !gcResolveReuseEnabled || !hasLocal {
+		return obj, done
+	}
+	cacheReg := f.gcResolvedRegister()
+	if cacheReg == regNone {
+		return obj, done
+	}
+	f.a.MovReg64(cacheReg, obj)
+	done()
+	f.pinned = f.pinned.add(cacheReg)
+	f.gcResolved = gcResolvedObject{valid: true, local: local, typeIndex: localType, requiredBytes: requiredBytes, reg: cacheReg}
+	return cacheReg, func() {}
+}
+
+func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes uint32) (obj Reg, done func()) {
+	ref := f.materialize(object)
+	if ref != RAX {
+		f.a.MovReg64(RAX, ref)
+	}
+	f.release(ref)
+	f.a.MovImm32(RDX, int32(localType))
+	f.a.MovImm32(RCX, int32(requiredBytes))
+	site := f.a.CallRel32()
+	f.relocs = append(f.relocs, callReloc{at: site, gcStub: gcSharedStubResolveObject})
+	f.stats.call("gcnative-leaf")
+	f.stats.peep("gc-shared-resolve-call")
+
+	f.a.TestSelf(RDX, false)
+	success := f.a.JccPlaceholder(condE)
+	f.a.AluRI(cmpDigit, RDX, int32(trapNullReference), false)
+	f.trapIf(condE, trapNullReference)
+	f.trapAlways(trapCastFailure)
+	f.a.PatchRel32(success, f.a.Len())
+	f.pinned = f.pinned.add(RAX)
+	return RAX, func() { f.pinned = f.pinned.remove(RAX) }
+}
+
 // emitCheckedGCObject resolves one compact object handle through the stable
 // versioned collector view and proves exact canonical type plus object bounds.
 // The caller must have raised spillFloor so consumed operand slots cannot be
@@ -358,15 +541,10 @@ func (f *fn) emitCheckedGCObject(object *elem, localType, requiredBytes uint32) 
 	f.a.TestSelf(tmp, false)
 	f.trapIf(condNE, trapCastFailure)
 
+	// Instantiation has already proved the immutable instance/collector ABI and
+	// exact module-local type-map shape. Reload only the immutable map pointer and
+	// the mutable collector view; semantic handle/object checks remain below.
 	f.a.Load64(view, RBX, -int32(abi.GCNativeViewPtrOffset))
-	f.a.TestSelf(view, true)
-	f.trapIf(condE, trapCastFailure)
-	f.a.Load32(tmp, view, gc.NativeInstanceViewVersionOffset)
-	f.a.AluRI(cmpDigit, tmp, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	f.a.Load32(tmp, view, gc.NativeInstanceViewLocalTypeCountOffset)
-	f.a.AluRI(cmpDigit, tmp, int32(localType), false)
-	f.trapIf(condBE, trapCastFailure)
 	f.a.Load64(tmp, view, gc.NativeInstanceViewLocalTypesOffset)
 	if uint64(localType)*4 > math.MaxInt32 {
 		panic("amd64: native GC local type table displacement overflow")
@@ -379,14 +557,6 @@ func (f *fn) emitCheckedGCObject(object *elem, localType, requiredBytes uint32) 
 	f.a.StoreRsp32(f.spillOff(domainSlot), tmp)
 
 	f.a.Load64(view, view, gc.NativeInstanceViewCollectorOffset)
-	f.a.TestSelf(view, true)
-	f.trapIf(condE, trapCastFailure)
-	f.a.Load32(tmp, view, gc.NativeViewVersionOffset)
-	f.a.AluRI(cmpDigit, tmp, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	f.a.Load32(tmp, view, gc.NativeViewHandleStrideOffset)
-	f.a.AluRI(cmpDigit, tmp, gc.NativeHandleStride, false)
-	f.trapIf(condNE, trapCastFailure)
 
 	f.a.ShiftImm(5, ref, 1, false) // compact handle index
 	// cmp ref,[view+HandleCount]; h >= count is invalid.
@@ -737,23 +907,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback := func(branch int) { fallback = append(fallback, branch) }
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	addFallback(a.JccPlaceholder(condE))
-	a.Load32(RAX, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, RAX, int32(gc.NativeABIVersion), false)
-	addFallback(a.JccPlaceholder(condNE))
-	a.Load32(RAX, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.AluRI(cmpDigit, RAX, int32(site.typeIndex), false)
-	addFallback(a.JccPlaceholder(condBE))
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	addFallback(a.JccPlaceholder(condE))
-	a.Load32(RAX, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, RAX, int32(gc.NativeABIVersion), false)
-	addFallback(a.JccPlaceholder(condNE))
-	a.Load32(RAX, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, RAX, gc.NativeHandleStride, false)
-	addFallback(a.JccPlaceholder(condNE))
 
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.TestSelf(R10, true)
@@ -1041,25 +1195,9 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 	addFallback := func(site int) { fallback = append(fallback, site) }
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	addFallback(a.JccPlaceholder(condE))
-	a.Load32(RAX, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, RAX, int32(gc.NativeABIVersion), false)
-	addFallback(a.JccPlaceholder(condNE))
-	a.Load32(RAX, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.AluRI(cmpDigit, RAX, int32(typeIndex), false)
-	addFallback(a.JccPlaceholder(condBE))
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.Load32(RDX, R10, int32(typeIndex*4))
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	addFallback(a.JccPlaceholder(condE))
-	a.Load32(RAX, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, RAX, int32(gc.NativeABIVersion), false)
-	addFallback(a.JccPlaceholder(condNE))
-	a.Load32(RAX, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, RAX, gc.NativeHandleStride, false)
-	addFallback(a.JccPlaceholder(condNE))
 
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.TestSelf(R10, true)
@@ -1258,30 +1396,14 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 	a.TestSelf(R10, false)
 	f.trapIf(condNE, trapCastFailure)
 
-	// Resolve the module-local type to immutable Runtime-domain identity.
+	// Instantiation proved the immutable view ABI and local type-map shape.
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.Cmp32(RDX, R10)
-	f.trapIf(condAE, trapCastFailure)
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
-	// Resolve and validate the compact handle against collector ABI v1.
+	// Resolve and semantically validate the compact handle through current backing.
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, R10, gc.NativeHandleStride, false)
-	f.trapIf(condNE, trapCastFailure)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	f.trapIf(condAE, trapCastFailure)
@@ -1361,27 +1483,11 @@ func (f *fn) emitNativeFinalCastStub() {
 	f.trapIf(condNE, trapCastFailure)
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.Cmp32(RDX, R10)
-	f.trapIf(condAE, trapCastFailure)
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, R10, gc.NativeHandleStride, false)
-	f.trapIf(condNE, trapCastFailure)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	f.trapIf(condAE, trapCastFailure)
@@ -1455,27 +1561,11 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 	f.trapIf(condNE, trapCastFailure)
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.Cmp32(RDX, R10)
-	f.trapIf(condAE, trapCastFailure)
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, R10, gc.NativeHandleStride, false)
-	f.trapIf(condNE, trapCastFailure)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	f.trapIf(condAE, trapCastFailure)
@@ -1567,27 +1657,11 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	f.trapIf(condNE, trapCastFailure)
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.Cmp32(RDX, R10)
-	f.trapIf(condAE, trapCastFailure)
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, R10, gc.NativeHandleStride, false)
-	f.trapIf(condNE, trapCastFailure)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	f.trapIf(condAE, trapCastFailure)
@@ -1671,27 +1745,11 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	addFallback(a.JccPlaceholder(condNE))
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.Cmp32(RDX, R10)
-	f.trapIf(condAE, trapCastFailure)
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, R10, gc.NativeHandleStride, false)
-	f.trapIf(condNE, trapCastFailure)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	addFallback(a.JccPlaceholder(condAE))
@@ -1828,27 +1886,11 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	addFallback(a.JccPlaceholder(condNE))
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeInstanceViewLocalTypeCountOffset)
-	a.Cmp32(RDX, R10)
-	f.trapIf(condAE, trapCastFailure)
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.TestSelf(R8, true)
-	f.trapIf(condE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewVersionOffset)
-	a.AluRI(cmpDigit, R10, int32(gc.NativeABIVersion), false)
-	f.trapIf(condNE, trapCastFailure)
-	a.Load32(R10, R8, gc.NativeViewHandleStrideOffset)
-	a.AluRI(cmpDigit, R10, gc.NativeHandleStride, false)
-	f.trapIf(condNE, trapCastFailure)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	addFallback(a.JccPlaceholder(condAE))
@@ -1994,12 +2036,13 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 	if !ok || !final {
 		return false
 	}
+	local, hasLocal := gcLocalProvenance(f.s.back())
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitCheckedGCObject(object, typeIndex, required)
+	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
@@ -2023,13 +2066,15 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 	if !ok || !final {
 		return false
 	}
+	valueRoot := f.s.back()
+	local, hasLocal := gcLocalProvenance(baseOfValentBlock(valueRoot).prev)
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	value := f.popValue()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitCheckedGCObject(object, typeIndex, required)
+	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.materializeF(value)
@@ -2045,17 +2090,43 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 	return true
 }
 
+func (f *fn) emitDirectGCArrayLen(typeIndex uint32) bool {
+	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompArray); ok {
+		if !layout.DirectLen {
+			return false
+		}
+	} else if target, ok := f.stagedArraySubtype(typeIndex); !ok || !target.Final {
+		// Legacy low-level tests may omit compiler-only #365 layouts. Production
+		// compilation always takes the precomputed metadata branch above.
+		return false
+	}
+	local, hasLocal := gcLocalProvenance(f.s.back())
+	f.flush()
+	oldFloor := f.spillFloor
+	f.spillFloor = f.curSpillSlot()
+	object := f.popValue()
+	obj, done := f.emitDirectGCObject(object, typeIndex, gc.HeaderSize, local, hasLocal)
+	result := f.allocReg(maskOf(obj))
+	f.a.Load32(result, obj, 8)
+	done()
+	f.spillFloor = oldFloor
+	f.pushReg(result, mtI32)
+	return true
+}
+
 func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
 	scalar, final, ok := f.directGCArrayLayout(typeIndex)
 	if !ok || !final {
 		return false
 	}
+	indexRoot := f.s.back()
+	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	indexValue := f.popValue()
 	object := f.popValue()
-	obj, done := f.emitCheckedGCObject(object, typeIndex, gc.PayloadOffset)
+	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
@@ -2103,13 +2174,16 @@ func (f *fn) emitDirectGCArraySet(typeIndex uint32) bool {
 	if !ok || !final {
 		return false
 	}
+	valueRoot := f.s.back()
+	indexRoot := baseOfValentBlock(valueRoot).prev
+	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	value := f.popValue()
 	indexValue := f.popValue()
 	object := f.popValue()
-	obj, done := f.emitCheckedGCObject(object, typeIndex, gc.PayloadOffset)
+	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
