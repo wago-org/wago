@@ -22,7 +22,7 @@ const (
 func validPluginCapability(cap PluginCapability) bool {
 	switch cap {
 	case PluginHostImports, PluginHostEnvironment, PluginCompileHooks, PluginInstanceHooks,
-		PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances:
+		PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances, PluginCoreRuntime:
 		return true
 	default:
 		return false
@@ -174,6 +174,11 @@ const (
 	PluginInvokeHooks      PluginCapability = "instance.invoke"
 	PluginRuntimeHooks     PluginCapability = "runtime.lifecycle"
 	PluginManagedInstances PluginCapability = "instance.manage"
+	// PluginCoreRuntime grants direct access to the runtime's core compile and
+	// instantiate surface. It is intended for trusted execution-model plugins
+	// such as the Component Model, which must compose and own multiple core
+	// modules. Prefer narrower capabilities for ordinary host plugins.
+	PluginCoreRuntime PluginCapability = "runtime.core"
 )
 
 // PluginConfig is one manifest-selected plugin plus its explicit authority and

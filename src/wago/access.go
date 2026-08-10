@@ -1,6 +1,9 @@
 package wago
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 func (r *Registry) authorize(cap PluginCapability) error {
 	if r == nil {
@@ -106,4 +109,51 @@ func (a *InvokeHookAccess) Before(fns ...func(*InvokeContext) error) {
 }
 func (a *InvokeHookAccess) After(fns ...func(*InvokeContext, []Value, error)) {
 	a.hooks.AfterInvoke(fns...)
+}
+
+// CoreRuntimeAccess is a revocable handle to the runtime's core execution
+// surface. Only trusted execution-model plugins should request it; ordinary
+// host-import and lifecycle plugins should use their narrower accessors.
+type CoreRuntimeAccess struct {
+	mu sync.RWMutex
+	rt *Runtime
+}
+
+// CoreRuntime requests direct core-runtime authority. The handle is inactive
+// until plugin registration commits and is revoked before Runtime.Close returns.
+func (r *Registry) CoreRuntime() (*CoreRuntimeAccess, error) {
+	if err := r.authorize(PluginCoreRuntime); err != nil {
+		return nil, err
+	}
+	a := &CoreRuntimeAccess{}
+	r.activate = append(r.activate, a.activate)
+	r.hooks.internalClose = append(r.hooks.internalClose, a.close)
+	return a, nil
+}
+
+func (a *CoreRuntimeAccess) activate(rt *Runtime) {
+	a.mu.Lock()
+	a.rt = rt
+	a.mu.Unlock()
+}
+
+func (a *CoreRuntimeAccess) close() error {
+	a.mu.Lock()
+	a.rt = nil
+	a.mu.Unlock()
+	return nil
+}
+
+// Runtime returns the authorized runtime while the plugin is active.
+func (a *CoreRuntimeAccess) Runtime() (*Runtime, error) {
+	if a == nil {
+		return nil, fmt.Errorf("wago: nil core runtime access: %w", ErrPermissionDenied)
+	}
+	a.mu.RLock()
+	rt := a.rt
+	a.mu.RUnlock()
+	if rt == nil {
+		return nil, fmt.Errorf("wago: core runtime access is inactive: %w", ErrPermissionDenied)
+	}
+	return rt, nil
 }
