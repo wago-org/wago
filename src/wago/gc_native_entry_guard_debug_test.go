@@ -20,6 +20,13 @@ func TestDebugNativeGCEntryGuardRejectsMutatedImmutableView(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
+	// JobMemory basedata may still describe the last tenant until beginNativeEntry
+	// rebinds this instance's captured context. The guard belongs after that bind,
+	// not at the outer Invoke layer.
+	in.jm.SetGCNativeViewPtr(0)
+	if _, err := in.Invoke("default"); err != nil {
+		t.Fatalf("debug entry guard rejected rebindable stale basedata: %v", err)
+	}
 	in.gcNativeView.Version = gc.NativeABIVersion + 1
 	if _, err := in.Invoke("default"); err == nil || !strings.Contains(err.Error(), "native GC entry") {
 		t.Fatalf("debug entry guard error = %v", err)

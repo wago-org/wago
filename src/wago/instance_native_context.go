@@ -30,7 +30,7 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 	if in.c.threadedMemory0() {
 		mu := &in.memoryDir.nativeMu
 		mu.Lock()
-		if err := in.bindNativeContext(); err != nil {
+		if err := in.bindAndValidateNativeContext(); err != nil {
 			mu.Unlock()
 			return executionLease{}, err
 		}
@@ -38,11 +38,18 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 	}
 	nativeExecutionMu.Lock()
 	nativeExecutionEpoch++
-	if err := in.bindNativeContext(); err != nil {
+	if err := in.bindAndValidateNativeContext(); err != nil {
 		nativeExecutionMu.Unlock()
 		return executionLease{}, err
 	}
 	return executionLease{}, nil
+}
+
+func (in *Instance) bindAndValidateNativeContext() error {
+	if err := in.bindNativeContext(); err != nil {
+		return err
+	}
+	return validateNativeGCEntry(in)
 }
 
 func (in *Instance) bindNativeContext() error {
@@ -169,6 +176,9 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 	nativeExecutionMu.Lock()
 	nativeExecutionEpoch++
 	defer nativeExecutionMu.Unlock()
+	if err := validateNativeGCEntry(in); err != nil {
+		return err
+	}
 	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 		return err
 	}

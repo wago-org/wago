@@ -9,6 +9,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+const nativeGCEntryValidationEnabled = true
+
 // validateNativeGCEntry retains a coarse hardened assertion at the untrusted
 // Go-to-native boundary without charging every production GC access. It checks
 // only immutable ABI/view facts; mutable collector backing remains dynamically

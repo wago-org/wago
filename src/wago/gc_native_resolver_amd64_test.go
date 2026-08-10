@@ -32,8 +32,28 @@ func gcNativeResolverReuseModule() []byte {
 	)
 }
 
+func gcNativeResolverSharedModule() []byte {
+	body := []byte{
+		0x00,
+		0xfb, 0x01, 0x00, // struct.new_default 0
+		0xfb, 0x02, 0x00, 0x00, // struct.get 0 0
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(body))), body...),
+			append(wasmtest.ULEB(uint32(len(body))), body...),
+		)),
+	)
+}
+
 func TestGCNativeResolverTelemetryAttributesModuleStub(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithGCCodeTelemetry(true), gcNativeResolverReuseModule())
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithGCCodeTelemetry(true), gcNativeResolverSharedModule())
 	if err != nil {
 		t.Fatal(err)
 	}

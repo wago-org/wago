@@ -2,4 +2,6 @@
 
 package wago
 
+const nativeGCEntryValidationEnabled = false
+
 func validateNativeGCEntry(*Instance) error { return nil }

@@ -4017,9 +4017,6 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 	if threadedMu := in.lockThreadedInstanceState(); threadedMu != nil {
 		defer threadedMu.Unlock()
 	}
-	if err := validateNativeGCEntry(in); err != nil {
-		return nil, fmt.Errorf("invoke %q: %w", export, err)
-	}
 	ic := in.findInvokeCache(export)
 	if ic == nil {
 		var err error
@@ -4143,9 +4140,6 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 // exactly as for a native dynamic import call. attachedResult permits first-time
 // funcref tokenization to transfer the attachment's finalization lifetime.
 func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte, attachedResult bool) ([]uint64, error) {
-	if err := validateNativeGCEntry(in); err != nil {
-		return nil, fmt.Errorf("invoke function %d: %w", li, err)
-	}
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
