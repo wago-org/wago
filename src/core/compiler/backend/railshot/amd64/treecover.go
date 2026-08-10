@@ -231,8 +231,12 @@ func (f *fn) applyAssociativeLeaves(e *elem, op wOp, typ machineType, first *ele
 		return
 	}
 	if e.isDeferred() {
+		// Nested lowering may temporarily pin and then unpin one of this cover's
+		// protected registers. regMask is not reference-counted, so restore the
+		// complete outer set before another leaf can allocate over it.
+		protected := f.pinned
 		f.condense(e, regNone)
-		f.pinned = f.pinned.add(dest)
+		f.pinned = f.pinned.union(protected)
 	}
 	f.applyALU(aluTable[op], dest, e, typ.is64())
 }

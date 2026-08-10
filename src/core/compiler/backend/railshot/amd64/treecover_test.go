@@ -203,6 +203,53 @@ func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
 	}
 }
 
+func TestAssociativeTreeCoverRestoresRepeatedDestinationPin(t *testing.T) {
+	// The first local 0 read seeds the destination accumulator. The compare's
+	// rewritten local 0 read temporarily pins and unpins the saved alias copy;
+	// preserve that outer pin across the compare and the following clz allocation
+	// so the final rewritten local 0 read still observes the original value.
+	leaves := [][]byte{
+		{0x20, 0x00},                   // local.get 0 (accumulator seed)
+		{0x20, 0x00, 0x41, 0x07, 0x46}, // local.get 0 == 7
+		{0x20, 0x01, 0x67},             // i32.clz(local.get 1), allocates a GPR
+		{0x20, 0x02},
+		{0x20, 0x03},
+		{0x20, 0x04},
+		{0x20, 0x00}, // later rewritten destination read
+		{0x20, 0x05},
+	}
+	body := []byte{0x00}
+	var appendSum func(lo, hi int)
+	appendSum = func(lo, hi int) {
+		if hi-lo == 1 {
+			body = append(body, leaves[lo]...)
+			return
+		}
+		mid := lo + (hi-lo)/2
+		appendSum(lo, mid)
+		appendSum(mid, hi)
+		body = append(body, 0x6a)
+	}
+	appendSum(0, len(leaves))
+	body = append(body, 0x21, 0x00, 0x20, 0x00, 0x0b)
+	params := make([]wasm.ValType, 6)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	m := mod1(t, params, []wasm.ValType{wasm.I32}, body)
+
+	saved := associativeTreeEnabled
+	defer func() { associativeTreeEnabled = saved }()
+	associativeTreeEnabled = true
+	stats := compileWithStats(t, m, false).Funcs[0]
+	if got := runAmd64(t, m, 7, 8, 2, 3, 4, 5); got != 57 {
+		t.Fatalf("result = %d, want 57", got)
+	}
+	if hits := stats.Peephole["assoc-tree-dest-repeat"]; hits != 1 {
+		t.Fatalf("assoc-tree-dest-repeat = %d, want 1 (all: %v)", hits, stats.Peephole)
+	}
+}
+
 func TestTreeAccumulatorSafety(t *testing.T) {
 	leaf := func(kind storageKind) *elem {
 		return &elem{kind: ekValue, st: storage{kind: kind, typ: mtI32}}
