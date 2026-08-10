@@ -906,6 +906,18 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
 // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
 func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+	// Owned scalar tee results may use x's frame slot as their spill home. The
+	// register still contains the old value, so invalidating the alias is enough;
+	// if pressure later spills it, spill() will materialize a distinct slot.
+	// Scan the complete physical stack even when skipFrom permits lazy local refs
+	// inside an in-place update to remain deferred.
+	for e := f.s.head.next; e != f.s.head; e = e.next {
+		if e.kind == ekValue && e.st.kind == stReg && e.st.idx == x+1 &&
+			(e.st.typ == mtI32 || e.st.typ == mtI64) {
+			e.st.idx = 0
+		}
+	}
+
 	// skipFrom (non-nil) marks the base of the value-being-set's valent block for
 	// an in-place self-update (`local.set $x (binop (local.get $x) …)`): refs to x
 	// inside that block are consumed directly into x's register by condenseInto, so
@@ -1126,7 +1138,16 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if !tee {
 		f.erase(e)
 		f.release(r)
-	} else if hasGCExactType {
-		markGCRefFact(e, gcFact)
+	} else {
+		// stReg.idx is otherwise unused. Remember that the canonical local slot
+		// contains this exact value so a later allocator spill can reuse it.
+		// GC references use idx for semantic fact payloads, so keep them out of
+		// this integer-only alias encoding.
+		if !e.st.gcRoot && (e.st.typ == mtI32 || e.st.typ == mtI64) {
+			e.st.idx = x + 1
+		}
+		if hasGCExactType {
+			markGCRefFact(e, gcFact)
+		}
 	}
 }

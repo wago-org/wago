@@ -149,6 +149,23 @@ func (f *fn) spill(e *elem) {
 		// e is now a plain register value; fall through to spill it.
 	}
 
+	// An unpinned scalar local.tee has already written this exact value to the
+	// local's canonical frame slot. Reuse that home instead of writing an
+	// identical copy to a temporary spill slot. idx is otherwise unused for an
+	// owned stReg and stores local+1; local.set clears the annotation before it
+	// changes the canonical slot.
+	if teeSpillElideEnabled && e.st.kind == stReg && !e.st.gcRoot && e.st.idx > 0 &&
+		(e.st.typ == mtI32 || e.st.typ == mtI64) {
+		r := e.st.reg
+		local := e.st.idx - 1
+		f.regUser[r] = nil
+		f.replaceStorage(e, storage{kind: stLocalRef, typ: e.st.typ, idx: local})
+		if f.stats != nil {
+			f.stats.peep("tee-spill-elide")
+		}
+		return
+	}
+
 	f.stats.addSpill()
 	r := e.st.reg
 	slot := f.allocSpillSlot()

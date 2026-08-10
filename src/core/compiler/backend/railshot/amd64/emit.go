@@ -221,6 +221,31 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		return r
 	}
 
+	// A commutative self-update does not need to preserve the old destination in
+	// a spill slot. Make it the accumulator and evaluate the other operand first:
+	//
+	//     dest = left op dest  ->  dest = dest op left
+	//
+	// The register is already occupied, so ordinary allocation cannot reuse it.
+	// Exclude x86's fixed-role registers: a div/rem/shift inside the other operand
+	// may claim one of those directly even while it is occupied.
+	commuteSelfUpdate := node.op.commutative() && dest != regNone && dest != RAX && dest != RDX && dest != RCX &&
+		right.kind == ekValue &&
+		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
+		right.st.reg == dest
+	if commuteSelfUpdate {
+		f.commuteSelfUpdates++
+		if f.stats != nil {
+			f.stats.peep("commute-self-update-candidate")
+		}
+	}
+	if commuteSelfUpdateEnabled && commuteSelfUpdate && f.commuteSelfUpdates > 1 {
+		left, right = right, left
+		if f.stats != nil {
+			f.stats.peep("commute-self-update")
+		}
+	}
+
 	// Materialize the RHS into a safe, foldable operand BEFORE the LHS overwrites
 	// dest: condense a deferred RHS to a fresh register, and copy a register RHS
 	// out if it aliases dest.

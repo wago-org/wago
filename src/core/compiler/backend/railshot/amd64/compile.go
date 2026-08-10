@@ -249,6 +249,10 @@ type fn struct {
 	// so two uint16 masks fit in the bool cluster's existing alignment padding.
 	callDeadGP uint16
 	callDeadFP uint16
+	// Number of commutative self-update spill opportunities seen in this function.
+	// The first keeps the conservative form; repeated pressure selects the denser
+	// register form without perturbing one-off sites in otherwise cold functions.
+	commuteSelfUpdates uint16
 
 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
 	// an eligible local; locals[x].reg is populated only while its cached value is
