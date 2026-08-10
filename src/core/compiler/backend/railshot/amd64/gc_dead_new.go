@@ -106,7 +106,7 @@ func (f *fn) gcConstructorFeedsDroppedStruct(r *wasm.Reader) bool {
 			if err != nil {
 				return false
 			}
-			st, ok := stagedStructType(f.m, typeIndex)
+			st, ok := f.stagedStructType(typeIndex)
 			if !ok || len(st.Comp.Fields) <= above {
 				// The outer constructor does not consume the candidate.
 				return false

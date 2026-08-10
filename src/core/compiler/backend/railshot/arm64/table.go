@@ -75,7 +75,7 @@ func (f *fn) tableIsExternref(tableIdx uint32) bool {
 		return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
 	}
 	if tt.Ref.Heap().Kind() == wasm.HeapTypeIndex {
-		sub, ok := stagedStructType(f.m, tt.Ref.Heap().Type().Index)
+		sub, ok := f.stagedStructType(tt.Ref.Heap().Type().Index)
 		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
 	}
 	if tt.Ref.Heap().Kind() != wasm.HeapAbs {
@@ -100,7 +100,7 @@ func (f *fn) tableIsGCObjectRef(tableIdx uint32) bool {
 		return false
 	}
 	if tt.Ref.Heap().Kind() == wasm.HeapTypeIndex {
-		sub, ok := stagedStructType(f.m, tt.Ref.Heap().Type().Index)
+		sub, ok := f.stagedStructType(tt.Ref.Heap().Type().Index)
 		return ok && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray)
 	}
 	if tt.Ref.Heap().Kind() != wasm.HeapAbs {
