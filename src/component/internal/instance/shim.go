@@ -1,0 +1,273 @@
+package instance
+
+import (
+	"bytes"
+	"fmt"
+
+	api "github.com/wago-org/wago/src/component/internal/engine"
+	"github.com/wago-org/wago/src/component/internal/leb128"
+)
+
+// This file hand-encodes minimal core WebAssembly binaries for "passthrough
+// shim" modules: a module whose only job is to import a func/table/memory/
+// global from an already-instantiated real module (by its wazy-registered
+// name) and immediately re-export it, verbatim, under a (possibly different)
+// name.
+//
+// # Why this exists
+//
+// The general Component Model instantiation graph (see instantiateGraph
+// in host_import.go) regroups already-defined core items under new names via
+// "inline-export" core instances (core:instance kind 0x01) -- e.g. a real
+// guest module's own "memory" export gets re-grouped, alone, into a synthetic
+// instance that a *different* core module then imports as "env"."memory".
+//
+// wazy's public API has no way to build a *host* module (r.NewHostModuleBuilder)
+// that exports a memory, table or global: HostModuleBuilder only supports
+// Go-backed funcs (see builder.go), and api.Module has no Table() accessor at
+// all (see the "TODO: Table" note on api.Module). But per the Component
+// Model's "shared-everything" semantics, a re-grouped memory, table or global
+// MUST be the exact same underlying object as its source -- e.g. module1's
+// adapter code reads/writes offsets that module0's _start already computed,
+// through module1's own load/store instructions against an *imported* memory,
+// so a copy would silently desync the two modules' views of memory. The same
+// goes for a shared-everything dynamic library's mutable `__stack_pointer`
+// global, which every linked core module must see (and update) as one object.
+//
+// A real (non-host) core module that imports an item and exports it right
+// back, unmodified, achieves this for free: wazy's own module-linking
+// resolves such an import by sharing the underlying MemoryInstance/
+// TableInstance/GlobalInstance object (see internal/wasm/store.go's
+// resolveImports), exactly
+// like any two real wasm modules linked together. So rather than extend
+// wazy's public surface (a much larger change), this package hand-encodes the
+// (tiny, purely mechanical -- no instructions, no code section at all, since
+// every item is imported rather than locally defined) wasm bytes for exactly
+// that shape and feeds them through the existing public Runtime.InstantiateWithConfig.
+//
+// Func items could alternatively be forwarded via a Go host-module trampoline
+// (calling the source's ExportedFunction), which is behaviorally equivalent
+// for funcs (a func has no mutable identity the way memory/table do). This
+// package always uses the shim encoding for uniformity, so a single
+// mixed-sort inline-export group (e.g. real_hello's core instance 15, which
+// groups both lowered-import funcs and a shared function table) becomes one
+// module rather than being artificially split.
+
+// shimSort is the core:sort of one passthrough item, matching the
+// core-wasm-binary importdesc/exportdesc discriminator (funcs 0x00, tables
+// 0x01, memories 0x02, globals 0x03).
+type shimSort byte
+
+const (
+	shimSortFunc   shimSort = 0x00
+	shimSortTable  shimSort = 0x01
+	shimSortMemory shimSort = 0x02
+	shimSortGlobal shimSort = 0x03
+)
+
+// shimItem is one passthrough entry: import (fromModule, fromName) and
+// re-export it as exportName. Params/Results are only meaningful (and
+// required) when Sort == shimSortFunc; tables are always declared funcref
+// with no bounds (min 0, no max -- always satisfiable against any real
+// table, see buildPassthroughShim), and memories are always declared with no
+// bounds either, for the same reason.
+//
+// GlobalType/GlobalMutable are meaningful (and required) when Sort ==
+// shimSortGlobal. Unlike a table or memory, a global import is NOT satisfied
+// by a permissive declaration: store.go's resolveImports requires the declared
+// value type and mutability to match the source global EXACTLY, so both are
+// read off the live source global by the caller (see resolveInlineExportItem)
+// and reproduced verbatim here.
+type shimItem struct {
+	Sort          shimSort
+	FromModule    string
+	FromName      string
+	ExportName    string
+	Params        []api.ValueType // Sort == shimSortFunc only
+	Results       []api.ValueType // Sort == shimSortFunc only
+	GlobalType    api.ValueType   // Sort == shimSortGlobal only
+	GlobalMutable bool            // Sort == shimSortGlobal only
+}
+
+// buildPassthroughShim encodes a minimal core wasm binary that imports every
+// item in items (by its FromModule/FromName) and re-exports it, unmodified,
+// under ExportName. It has no function bodies at all -- every func is
+// imported, never locally defined -- so no code section is emitted.
+//
+// Table items are declared with element type funcref and memory items with
+// no explicit bounds; a wasm import validates successfully as long as the
+// *declared* bounds are less than or equal to the real exporter's (an
+// always-true statement for min=0/no-max), so this is safe regardless of the
+// real item's actual size -- see the resolveImports bounds checks in
+// internal/wasm/store.go, which this deliberately relies on without needing
+// to duplicate their logic here.
+//
+// # Empty names
+//
+// ExportName and FromName may be "". A core wasm export/import field name is a
+// `name` -- an arbitrary UTF-8 byte sequence, with no non-empty requirement,
+// unique only within its module -- so "" is an ordinary name, not a missing
+// one. The core spec suite asserts this directly (names.wast: "Test that we can
+// use the empty string as a symbol", `(func (export "") ...)`), and wazy's core
+// engine passes it: Module.Exports and resolveImports are plain map lookups
+// with comma-ok, so "" never aliases "absent".
+//
+// This is not hypothetical. wit-component really emits it, in two shapes this
+// package must instantiate:
+//
+//   - the "start shim": to run a reactor's `_initialize` after the whole graph
+//     is wired, it emits a core module `(import "" "" (func)) (start 0)` fed by
+//     an inline-export core instance `(export "" (func $_initialize))` -- so
+//     both the import field name and this shim's ExportName are "". Every
+//     componentize-go component has one (see the wit-component 0.253 output in
+//     issue #25); wasmtime runs them.
+//   - the official component-model conformance suite's fused.wast (vendored as
+//     testdata/wast/fused/fused.{0,3}.wasm), whose nested components alias a
+//     core export literally named "" and re-group it under "".
+//
+// Only FromModule is required to be non-empty, and that is an internal
+// invariant rather than a wasm rule: the graph always names a shim's source by
+// a synthesized resolver key (coreInstanceKey / canonGroupKey / a private host
+// module name), never by a name the component chose, so "" there means the
+// caller built the item wrong. wazy's own decoder rejects an empty import
+// MODULE name (internal/wasm/module.go's validateImports, a deliberate wazero
+// carry-over -- graph.go rewrites component-supplied empty module names to
+// graphEmptyImportKey before decode for exactly that reason), so catching it
+// here yields a diagnostic that names the shim item instead of a decode error.
+func buildPassthroughShim(items []shimItem) ([]byte, error) {
+	if len(items) == 0 {
+		return nil, fmt.Errorf("component/instance: buildPassthroughShim: no items")
+	}
+
+	var typeSec, importSec, exportSec bytes.Buffer
+	var typeCount, importCount, exportCount uint32
+	var funcIdx, tableIdx, memIdx, globalIdx uint32
+
+	for i, it := range items {
+		if it.FromModule == "" {
+			return nil, fmt.Errorf("component/instance: buildPassthroughShim: item[%d] has an empty source module name", i)
+		}
+
+		switch it.Sort {
+		case shimSortFunc:
+			typeIdx := typeCount
+			writeFuncType(&typeSec, it.Params, it.Results)
+			typeCount++
+
+			writeName(&importSec, it.FromModule)
+			writeName(&importSec, it.FromName)
+			importSec.WriteByte(0x00) // importdesc: func
+			importSec.Write(leb128.EncodeUint32(typeIdx))
+			importCount++
+
+			writeName(&exportSec, it.ExportName)
+			exportSec.WriteByte(0x00) // exportdesc: func
+			exportSec.Write(leb128.EncodeUint32(funcIdx))
+			exportCount++
+			funcIdx++
+
+		case shimSortTable:
+			writeName(&importSec, it.FromModule)
+			writeName(&importSec, it.FromName)
+			importSec.WriteByte(0x01) // importdesc: table
+			importSec.WriteByte(0x70) // elemtype: funcref
+			writeLimits(&importSec, 0)
+			importCount++
+
+			writeName(&exportSec, it.ExportName)
+			exportSec.WriteByte(0x01) // exportdesc: table
+			exportSec.Write(leb128.EncodeUint32(tableIdx))
+			exportCount++
+			tableIdx++
+
+		case shimSortMemory:
+			writeName(&importSec, it.FromModule)
+			writeName(&importSec, it.FromName)
+			importSec.WriteByte(0x02) // importdesc: memory
+			writeLimits(&importSec, 0)
+			importCount++
+
+			writeName(&exportSec, it.ExportName)
+			exportSec.WriteByte(0x02) // exportdesc: memory
+			exportSec.Write(leb128.EncodeUint32(memIdx))
+			exportCount++
+			memIdx++
+
+		case shimSortGlobal:
+			if it.GlobalType == 0 {
+				return nil, fmt.Errorf("component/instance: buildPassthroughShim: item[%d] (global %q) has no value type", i, it.FromName)
+			}
+			writeName(&importSec, it.FromModule)
+			writeName(&importSec, it.FromName)
+			importSec.WriteByte(0x03)          // importdesc: global
+			importSec.WriteByte(it.GlobalType) // globaltype: valtype
+			if it.GlobalMutable {
+				importSec.WriteByte(0x01) // mut: var
+			} else {
+				importSec.WriteByte(0x00) // mut: const
+			}
+			importCount++
+
+			writeName(&exportSec, it.ExportName)
+			exportSec.WriteByte(0x03) // exportdesc: global
+			exportSec.Write(leb128.EncodeUint32(globalIdx))
+			exportCount++
+			globalIdx++
+
+		default:
+			return nil, fmt.Errorf("component/instance: buildPassthroughShim: item[%d] has unsupported sort %#x", i, it.Sort)
+		}
+	}
+
+	var out bytes.Buffer
+	out.Write([]byte{0x00, 0x61, 0x73, 0x6d}) // magic
+	out.Write([]byte{0x01, 0x00, 0x00, 0x00}) // version 1
+
+	if typeCount > 0 {
+		writeSection(&out, 1, prefixCount(typeCount, typeSec.Bytes()))
+	}
+	writeSection(&out, 2, prefixCount(importCount, importSec.Bytes()))
+	writeSection(&out, 7, prefixCount(exportCount, exportSec.Bytes()))
+
+	return out.Bytes(), nil
+}
+
+// writeFuncType appends a functype (0x60 vec(valtype) vec(valtype)) to buf.
+func writeFuncType(buf *bytes.Buffer, params, results []api.ValueType) {
+	buf.WriteByte(0x60)
+	buf.Write(leb128.EncodeUint32(uint32(len(params))))
+	buf.Write(params)
+	buf.Write(leb128.EncodeUint32(uint32(len(results))))
+	buf.Write(results)
+}
+
+// writeLimits appends a no-max limits (0x00 min) to buf -- the only shape
+// buildPassthroughShim ever needs (see its doc: a declared bound of min=0/no
+// max always validates against any real table or memory, regardless of its
+// actual size).
+func writeLimits(buf *bytes.Buffer, min uint32) {
+	buf.WriteByte(0x00)
+	buf.Write(leb128.EncodeUint32(min))
+}
+
+// writeName appends a wasm name (vec(byte): LEB128 length + raw utf8) to buf.
+func writeName(buf *bytes.Buffer, name string) {
+	buf.Write(leb128.EncodeUint32(uint32(len(name))))
+	buf.WriteString(name)
+}
+
+// prefixCount prepends a LEB128-encoded element count to a section's already-
+// encoded body, as every core wasm vec-shaped section requires.
+func prefixCount(count uint32, body []byte) []byte {
+	var out bytes.Buffer
+	out.Write(leb128.EncodeUint32(count))
+	out.Write(body)
+	return out.Bytes()
+}
+
+// writeSection appends a full section (id + LEB128 size + body) to out.
+func writeSection(out *bytes.Buffer, id byte, body []byte) {
+	out.WriteByte(id)
+	out.Write(leb128.EncodeUint32(uint32(len(body))))
+	out.Write(body)
+}

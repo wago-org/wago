@@ -1,0 +1,6 @@
+This component-model decoder and Canonical ABI implementation is derived from
+the corresponding packages in github.com/samyfodil/wazy at commit
+cd2607360a17a63bd83a6c99e33c4545f467b57e.
+
+Copyright 2026 the Wazy authors.
+Licensed under the Apache License, Version 2.0. See the repository root LICENSE.
