@@ -61,6 +61,49 @@ func TestCodeBufferGrowSealClose(t *testing.T) {
 	}
 }
 
+func TestCodeBufferAppendTail(t *testing.T) {
+	b, err := NewCodeBuffer(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	if err := b.Append([]byte{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	tail, err := b.AppendTail(5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tail) != 0 || cap(tail) < 5000 {
+		t.Fatalf("AppendTail = len %d cap %d, want len 0 cap >= 5000", len(tail), cap(tail))
+	}
+	code := append(tail, 4, 5, 6, 7)
+	if !b.CommitTail(code) {
+		t.Fatal("CommitTail rejected code emitted into the reserved tail")
+	}
+	if got, want := b.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7}; !bytes.Equal(got, want) {
+		t.Fatalf("Bytes = %v, want %v", got, want)
+	}
+
+	before := append([]byte(nil), b.Bytes()...)
+	if b.CommitTail([]byte{8, 9}) {
+		t.Fatal("CommitTail accepted a detached allocation")
+	}
+	if got := b.Bytes(); !bytes.Equal(got, before) {
+		t.Fatalf("rejected CommitTail changed Bytes: %v", got)
+	}
+	if err := b.Append([]byte{8, 9}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := b.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9}; !bytes.Equal(got, want) {
+		t.Fatalf("Append fallback after rejected CommitTail = %v, want %v", got, want)
+	}
+	if _, err := b.AppendTail(-1); err == nil {
+		t.Fatal("AppendTail accepted a negative capacity")
+	}
+}
+
 func BenchmarkCodeImageTransition(b *testing.B) {
 	code := bytes.Repeat([]byte{0x90}, 1<<20)
 	b.Run("copy-and-seal", func(b *testing.B) {

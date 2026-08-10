@@ -69,6 +69,40 @@ func (b *CodeBuffer) AppendSpace(n int) ([]byte, error) {
 	return b.mem[start:b.n:b.n], nil
 }
 
+// AppendTail returns a zero-length writable slice at the logical end of the
+// image with at least minCapacity bytes available. The caller may append into
+// the slice, then pass the result to CommitTail. Calling another mutating
+// CodeBuffer method invalidates the returned slice.
+//
+// This lets a serial compiler emit directly into the final code image instead
+// of first building a heap-backed function and copying it with Append.
+func (b *CodeBuffer) AppendTail(minCapacity int) ([]byte, error) {
+	if minCapacity < 0 {
+		return nil, fmt.Errorf("jit: negative code tail capacity %d", minCapacity)
+	}
+	if err := b.grow(minCapacity); err != nil {
+		return nil, err
+	}
+	return b.mem[b.n:b.n:len(b.mem)], nil
+}
+
+// CommitTail advances the logical image over code emitted into the slice from
+// AppendTail. It returns false without changing the image if code was moved to
+// another allocation while growing; callers can then fall back to Append.
+func (b *CodeBuffer) CommitTail(code []byte) bool {
+	if b == nil || b.closed || b.sealed || len(code) > len(b.mem)-b.n {
+		return false
+	}
+	if len(code) == 0 {
+		return true
+	}
+	if b.n == len(b.mem) || unsafe.SliceData(code) != unsafe.SliceData(b.mem[b.n:]) {
+		return false
+	}
+	b.n += len(code)
+	return true
+}
+
 // Bytes returns the exact logical image. It is writable until Seal succeeds
 // and read-only afterward. Callers must not retain it after Close.
 func (b *CodeBuffer) Bytes() []byte {
