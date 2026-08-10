@@ -2,7 +2,10 @@
 
 package gc
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestInjectedObjectCardGrowthFallsBackToWholeObjectScan(t *testing.T) {
 	c := newTestCollector(t, Config{VerifyAfterCollect: true})
@@ -111,44 +114,48 @@ func TestObjectCardFallbackPersistsWhileSurvivorEdgeRemains(t *testing.T) {
 }
 
 func TestInjectedDisjointObjectCardGrowthWidensExistingCard(t *testing.T) {
-	c := newTestCollector(t, Config{VerifyAfterCollect: true})
-	array, err := c.NewArrayDefault(3, 65)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.ForcePromote(array); err != nil {
-		t.Fatal(err)
-	}
-	first, err := c.NewStructDefault(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := c.NewStructDefault(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.ArraySet(array, 0, RefValue(first)); err != nil {
-		t.Fatal(err)
-	}
-	if slot := c.handles[handleOf(array)].cardSlot; slot == 0 {
-		t.Fatal("first store did not establish an exact card")
-	}
-	cleanup := armFailure(c, failObjectCardGrowth, 0)
-	if err := c.ArraySet(array, 64, RefValue(second)); err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-	cleanup()
-	card := c.objectCards[c.handles[handleOf(array)].cardSlot-1]
-	if card.index != 0 || card.end != c.handles[handleOf(array)].size-PayloadOffset-1 {
-		t.Fatalf("growth fallback card = %+v, want whole payload", card)
-	}
-	root := Root(array)
-	if err := c.CollectMinor(Slots{&root}); err != nil {
-		t.Fatal(err)
-	}
-	if c.entry(first).space != spaceOld || c.entry(second).space != spaceOld {
-		t.Fatalf("fallback-scanned child spaces=%v/%v, want old/old", c.entry(first).space, c.entry(second).space)
+	for _, verify := range []bool{false, true} {
+		t.Run(fmt.Sprintf("verify=%v", verify), func(t *testing.T) {
+			c := newTestCollector(t, Config{VerifyAfterCollect: verify})
+			array, err := c.NewArrayDefault(3, 65)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ForcePromote(array); err != nil {
+				t.Fatal(err)
+			}
+			first, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ArraySet(array, 0, RefValue(first)); err != nil {
+				t.Fatal(err)
+			}
+			if slot := c.handles[handleOf(array)].cardSlot; slot == 0 {
+				t.Fatal("first store did not establish an exact card")
+			}
+			cleanup := armFailure(c, failObjectCardGrowth, 0)
+			if err := c.ArraySet(array, 64, RefValue(second)); err != nil {
+				cleanup()
+				t.Fatal(err)
+			}
+			cleanup()
+			card := c.objectCards[c.handles[handleOf(array)].cardSlot-1]
+			if card.index != 0 || card.end != c.handles[handleOf(array)].size-PayloadOffset-1 {
+				t.Fatalf("growth fallback card = %+v, want whole payload", card)
+			}
+			root := Root(array)
+			if err := c.CollectMinor(Slots{&root}); err != nil {
+				t.Fatal(err)
+			}
+			if c.entry(first).space != spaceOld || c.entry(second).space != spaceOld {
+				t.Fatalf("fallback-scanned child spaces=%v/%v, want old/old", c.entry(first).space, c.entry(second).space)
+			}
+		})
 	}
 }
 

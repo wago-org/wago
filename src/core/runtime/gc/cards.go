@@ -5,9 +5,12 @@ import (
 	"time"
 )
 
-// scanRememberedCards traces only the dirty payload cards for one old/large
-// object. The handle's cardSlot is the head of a short linked list of disjoint,
-// coalesced byte ranges; clean cards and clean old objects are never visited.
+// scanRememberedCards traces the exact dirty payload cards for one old/large
+// object only when the complete linked chain is valid. Missing, degraded, stale,
+// cyclic, or otherwise malformed metadata is never authoritative: the object is
+// scanned completely and the collector-wide fallback remains set while young
+// objects survive. Duplicate scanning after a valid prefix is safe; omitting a
+// reference outside that prefix is not.
 func (c *Collector) scanRememberedCards(h uint32) {
 	if h == 0 || int(h) >= len(c.handles) {
 		return
@@ -27,24 +30,37 @@ func (c *Collector) scanRememberedCards(h uint32) {
 	if c.telemetryEnabled() {
 		startTime = c.cfg.Telemetry.scanStart()
 	}
+	payloadSize := uint32(0)
+	if e.size > PayloadOffset {
+		payloadSize = e.size - PayloadOffset
+	}
+	valid := payloadSize != 0 && c.cardBytes != 0
 	var payloadBytes, slots, dirtyCards, usefulCards uint64
-	for slot, steps := e.cardSlot, 0; slot != 0 && steps <= len(c.objectCards); steps++ {
-		if !slotIndexOK(slot-1, len(c.objectCards)) {
+	for slot, steps := e.cardSlot, 0; valid && slot != 0; steps++ {
+		if steps >= len(c.objectCards) || !slotIndexOK(slot-1, len(c.objectCards)) {
+			valid = false
 			break
 		}
 		card := c.objectCards[slot-1]
-		slot = card.next
-		if card.handle != h || card.end < card.index {
-			continue
+		if card.handle != h || card.end < card.index || card.index >= payloadSize || card.end >= payloadSize ||
+			card.index%c.cardBytes != 0 || (card.end != payloadSize-1 && (card.end+1)%c.cardBytes != 0) {
+			valid = false
+			break
 		}
 		n, useful := c.scanObjectPayloadRange(h, card.index, card.end)
 		slots += uint64(n)
 		payloadBytes += uint64(card.end-card.index) + 1
 		dirtyCards += uint64(card.end/c.cardBytes-card.index/c.cardBytes) + 1
 		usefulCards += uint64(useful)
+		slot = card.next
+	}
+	if !valid {
+		c.cardFallback = true
+		c.scanObjectRefs(h, c.markNurseryRef)
+		return
 	}
 	if c.telemetryEnabled() {
-		whole := payloadBytes >= uint64(e.size-PayloadOffset)
+		whole := payloadBytes >= uint64(payloadSize)
 		c.cfg.Telemetry.noteCardScan(startTime, payloadBytes, slots, dirtyCards, usefulCards, whole)
 	}
 }

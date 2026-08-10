@@ -765,20 +765,36 @@ func (c *Collector) free(h uint32) { c.releaseHandle(h, false) }
 func (c *Collector) deferThroughputFree(h uint32) { c.releaseHandle(h, true) }
 
 func (c *Collector) releaseHandle(h uint32, lazyThroughput bool) {
+	e := &c.handles[h]
+	// A live handle is the allocator ownership proof. Reject internal metadata
+	// corruption before clearing the handle or its remembered/card state; losing
+	// either would make the allocation unreachable and unrecoverable. These errors
+	// cannot be caused by guest input after allocation has succeeded, so fail-stop
+	// is safer than continuing with a corrupted allocator.
+	switch e.space {
+	case spaceTiny:
+		if err := c.tiny.free(e.off); err != nil {
+			panic("gc: internal tiny free invariant: " + err.Error())
+		}
+		c.tinySetColor(h, tinyWhite)
+	case spaceOld, spaceLarge:
+		var err error
+		if lazyThroughput {
+			err = c.throughput.deferFree(*e)
+		} else {
+			err = c.throughput.free(*e)
+		}
+		if err != nil {
+			panic("gc: internal throughput free invariant: " + err.Error())
+		}
+	}
 	c.removeRemembered(h)
 	c.removeCardsForHandle(h)
-	e := &c.handles[h]
 	if c.cfg.PoisonFreed {
 		switch e.space {
 		case spaceNursery:
 			for i := range c.nursery[e.off : e.off+e.size] {
 				c.nursery[e.off+uint32(i)] = 0xdd
-			}
-		case spaceTiny:
-			bi := e.off / c.tiny.blockBytes
-			span := c.tiny.spanSize(bi) * c.tiny.blockBytes
-			for i := range c.tiny.mem[e.off : e.off+span] {
-				c.tiny.mem[e.off+uint32(i)] = 0xdd
 			}
 		case spaceOld, spaceLarge:
 			end := e.off + e.allocSize
@@ -788,16 +804,6 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput bool) {
 			for i := range c.throughput.mem[e.off:end] {
 				c.throughput.mem[e.off+uint32(i)] = 0xdd
 			}
-		}
-	}
-	if e.space == spaceTiny {
-		_ = c.tiny.free(e.off)
-		c.tinySetColor(h, tinyWhite)
-	} else if e.space == spaceOld || e.space == spaceLarge {
-		if lazyThroughput {
-			_ = c.throughput.deferFree(*e)
-		} else {
-			_ = c.throughput.free(*e)
 		}
 	}
 	*e = handleEntry{}
