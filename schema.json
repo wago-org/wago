@@ -179,6 +179,7 @@
               "bounds-facts",
               "branch-fold",
               "call-next-use",
+              "compact-i32-frame",
               "deep-fp-pins",
               "entry-arg-pins",
               "ext-fp-pins",

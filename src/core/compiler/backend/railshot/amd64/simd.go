@@ -2198,7 +2198,7 @@ func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg
 		ea, eaOwned, _, disp = f.memAddr64(off, size)
 		return RBX, ea, disp, false, eaOwned
 	}
-	ea, eaOwned, _, disp = f.memAddr(uint32(off), size, true)
+	ea, eaOwned, _, disp = f.memAddr(uint32(off), size, true, 0)
 	return RBX, ea, disp, false, eaOwned
 }
 

@@ -242,7 +242,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 				avoid = avoid.union(maskOf(dest))
 			}
 			if safe := f.allocRegOrNone(avoid); safe != regNone {
-				f.a.MovReg64(safe, rr)
+				f.moveInt(safe, rr, node.typ)
 				f.release(rr)
 				rr = safe
 				f.pinned = f.pinned.add(rr)
@@ -692,7 +692,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	cnt := f.materialize(right)
 	if cnt != RCX {
 		f.spillIfUsed(RCX)
-		f.a.MovReg64(RCX, cnt)
+		f.moveInt(RCX, cnt, node.typ)
 		f.release(cnt)
 	}
 	f.pinned = f.pinned.add(RCX)
@@ -702,7 +702,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	f.pinned = f.pinned.remove(val)
 	result := val
 	if dest != regNone && dest != val {
-		f.a.MovReg64(dest, val)
+		f.moveInt(dest, val, node.typ)
 		f.release(val)
 		result = dest
 	}
@@ -973,7 +973,7 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	result := src
 	if dest != regNone && dest != src {
 		result = dest
-		f.a.MovReg64(dest, src)
+		f.moveInt(dest, src, node.typ)
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
@@ -1007,7 +1007,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	switch e.st.kind {
 	case stReg:
 		if e.st.reg != dest {
-			f.a.MovReg64(dest, e.st.reg)
+			f.moveInt(dest, e.st.reg, e.st.typ)
 			f.release(e.st.reg)
 		}
 	case stConst:
@@ -1015,10 +1015,10 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stSlot:
 		f.a.Load64(dest, RSP, f.spillOff(e.st.slot))
 	case stLocalRef:
-		f.a.Load64(dest, RSP, f.localOff(e.st.idx))
+		f.loadFrameInt(dest, f.localOff(e.st.idx), e.st.typ)
 	case stLocalReg, stGlobReg:
 		if e.st.reg != dest {
-			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local/global; never release it
+			f.moveInt(dest, e.st.reg, e.st.typ) // copy from the pinned local/global; never release it
 		}
 	case stMemRef:
 		f.loadMemRef(dest, e.st) // emit the deferred load into dest

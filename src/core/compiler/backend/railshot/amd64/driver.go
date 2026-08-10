@@ -1121,7 +1121,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.condense(e, regNone)
 	}
 	r := f.materialize(e)
-	f.a.Store64(RSP, f.localOff(x), r)
+	f.storeFrameInt(f.localOff(x), r, f.localType[x])
 	f.locals[x].state = lsMem
 	if !tee {
 		f.erase(e)

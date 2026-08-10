@@ -222,20 +222,20 @@ func (f *fn) materialize(e *elem) Reg {
 			panic("amd64: v128 local requires XMM materialization")
 		}
 		r := f.allocReg(0)
-		f.a.Load64(r, RSP, f.localOff(e.st.idx))
+		f.loadFrameInt(r, f.localOff(e.st.idx), e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stLocalReg:
 		// Borrowed pinned-local register: copy its value into an owned register so
 		// the caller may clobber it without corrupting the local.
 		r := f.allocReg(0)
-		f.a.MovReg64(r, e.st.reg)
+		f.moveInt(r, e.st.reg, e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stGlobReg:
 		// Borrowed value-pinned global register: copy out, mirroring stLocalReg.
 		r := f.allocReg(0)
-		f.a.MovReg64(r, e.st.reg)
+		f.moveInt(r, e.st.reg, e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stMemRef:

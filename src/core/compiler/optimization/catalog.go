@@ -188,6 +188,7 @@ var catalog = []Definition{
 	both("inline-callfree", "Call-free inline hints", "prioritize call-free functions for inlining"),
 	both("store-forward", "Store forwarding", "forward straight-line stores into loads"),
 	amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
+	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
 	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),

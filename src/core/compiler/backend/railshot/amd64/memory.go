@@ -207,18 +207,12 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
-func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	e := f.popValue()
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
-	bcKind, bcIdx := uint8(0), uint32(0)
-	switch e.st.kind {
-	case stLocalReg, stLocalRef:
-		bcKind, bcIdx = 1, uint32(e.st.idx)
-	case stGlobReg:
-		bcKind, bcIdx = 2, uint32(e.st.idx)
-	}
+	bcKind, bcIdx := boundsSource(e.st)
 	disp = 0
 	borrow = -1
 	leaDisp := int32(size)
@@ -264,6 +258,15 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 		f.stats.addBoundsElidable()
 		return ea, eaOwned, borrow, disp
 	}
+	// A bounded lookahead can prove that this is the first potentially trapping
+	// operation before later direct loads from the same stable base. Check their
+	// largest extent now: moving the trap across local-only, non-trapping integer
+	// work and other plain loads is unobservable, and the larger certificate
+	// removes all intervening checks. Stores, calls, control, and non-memory traps
+	// are hard barriers in straightLineLoadExtent, preserving Wasm trap ordering.
+	if rangeExtent > leaDisp {
+		leaDisp = rangeExtent
+	}
 	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
 	if bcKind != 0 && f.inLoop() {
 		f.stats.addBoundsInLoop()
@@ -292,6 +295,94 @@ type boundsCert struct {
 	kind   uint8
 	idx    uint32
 	extent int32
+}
+
+func boundsSource(s storage) (kind uint8, idx uint32) {
+	switch s.kind {
+	case stLocalReg, stLocalRef:
+		return 1, uint32(s.idx)
+	case stGlobReg:
+		return 2, uint32(s.idx)
+	default:
+		return 0, 0
+	}
+}
+
+const maxStraightLineRangeOps = 4096
+
+// straightLineLoadExtent finds later direct scalar loads from the same stable
+// source that may safely share the current access's bounds check. The scan is
+// deliberately narrow: only local state and non-trapping integer operations
+// may separate the loads. Anything effectful, control-flowing, potentially
+// trapping, or difficult to classify ends the range. That makes it safe to use
+// the largest discovered extent at the current load without changing observable
+// trap order.
+func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, extent int32) int32 {
+	scan := *r
+	prevKind, prevIdx := uint8(0), uint32(0)
+	for n := 0; n < maxStraightLineRangeOps && scan.HasNext(); n++ {
+		op, err := scan.Byte()
+		if err != nil {
+			break
+		}
+		nextKind, nextIdx := uint8(0), uint32(0)
+		switch {
+		case op == 0x20: // local.get
+			x, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			nextKind, nextIdx = 1, x
+		case op == 0x23: // global.get
+			x, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			nextKind, nextIdx = 2, x
+		case op == 0x21 || op == 0x22: // local.set / local.tee
+			x, err := scan.U32()
+			if err != nil || (kind == 1 && x == idx) {
+				return extent
+			}
+		case op >= 0x28 && op <= 0x35: // scalar loads
+			size := memAccessSize(op)
+			align, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			memoryIndex := uint32(0)
+			if align >= 64 && align < 128 {
+				memoryIndex, err = scan.U32()
+				if err != nil {
+					return extent
+				}
+			}
+			off, err := scan.U32() // this helper is only used for memory32
+			if err != nil || memoryIndex != 0 {
+				return extent
+			}
+			if prevKind == kind && prevIdx == idx {
+				if candidate := int64(off) + int64(size); candidate > 0x7fffffff {
+					return extent
+				} else if int32(candidate) > extent {
+					extent = int32(candidate)
+				}
+			}
+		case op == 0x01 || op == 0x1a || op == 0x1b, // nop, drop, select
+			op == 0x41 || op == 0x42,               // integer constants
+			op >= 0x45 && op <= 0x6c,               // integer tests/arithmetic before div/rem
+			op >= 0x71 && op <= 0x7e,               // i32 bit ops + i64 clz/ctz/popcnt/add/sub/mul
+			op >= 0x83 && op <= 0x8a,               // i64 bit ops
+			op == 0xa7 || op == 0xac || op == 0xad: // non-trapping integer conversions
+			if err := skipImmediates(&scan, op); err != nil {
+				return extent
+			}
+		default:
+			return extent
+		}
+		prevKind, prevIdx = nextKind, nextIdx
+	}
+	return extent
 }
 
 // memAddr64 is the bounded memory64 counterpart to memAddr. The staged memory64
@@ -544,11 +635,23 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		return nil
 	}
 	f.invalidateStoreForward()
+	rangeExtent := int32(0)
+	// Do not move a later extent proof earlier for shared memory: another agent
+	// may grow it between the two loads, so an early check could spuriously trap.
+	if boundsRangeEnabled && f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
+		if top := f.s.back(); top != nil && top.kind == ekValue {
+			kind, idx := boundsSource(top.st)
+			currentExtent := int32(off32) + int32(size)
+			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
+				rangeExtent = f.straightLineLoadExtent(r, kind, idx, currentExtent)
+			}
+		}
+	}
 	// The address may read a pinned local's register in place (WARP
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
 	// release the register.
-	ea, eaOwned, borrow, disp := f.memAddr(off32, size, true)
+	ea, eaOwned, borrow, disp := f.memAddr(off32, size, true, rangeExtent)
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
 	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow))
@@ -603,7 +706,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
-		ea, eaOwned, _, disp := f.memAddr(off32, size, true)
+		ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
 		if size == 8 {
 			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 4)
 			f.a.StoreImmIdx(RBX, ea, disp+4, int32(v>>32), 4)
@@ -646,7 +749,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	ea, eaOwned, _, disp := f.memAddr(off32, size, true)
+	ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
 	f.a.StoreIdx(RBX, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {
