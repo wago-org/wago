@@ -597,7 +597,7 @@ func (f *fn) pushFCompare(op wOp, f64 bool) {
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	node.arg0, node.arg1 = left, right
-	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
+	labelDeferredNode(node)
 	f.s.push(node)
 }
 

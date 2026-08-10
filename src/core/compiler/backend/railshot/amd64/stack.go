@@ -156,6 +156,12 @@ type elem struct {
 	// pathological left-spine cannot pin one register per level and exhaust the
 	// file — see maxDeferDepth in pushBinOp. Valid only when kind == ekDeferred.
 	deferDepth int16
+
+	// regNeed is the Sethi-Ullman register requirement of this deferred subtree.
+	// It is labeled once when the node is built so sink-time selection can compare
+	// alternatives without repeatedly walking the same tree. Zero is reserved for
+	// synthetic test nodes and falls back to an on-demand calculation.
+	regNeed int16
 }
 
 // deferDepthOf is the subtree height contributed by an operand: its deferDepth
@@ -351,7 +357,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			node := f.s.alloc()
 			node.kind, node.op, node.typ = ekDeferred, opSWARPack4, mtI64
 			node.arg0 = source
-			node.deferDepth = 1 + deferDepthOf(source)
+			labelDeferredNode(node)
 			f.s.push(node)
 			f.stats.peep("swar-pack4")
 			return
@@ -370,7 +376,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	node.arg0, node.arg1 = left, right
-	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
+	labelDeferredNode(node)
 	f.s.push(node)
 }
 
@@ -539,6 +545,6 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	node.arg0 = operand
-	node.deferDepth = 1 + deferDepthOf(operand)
+	labelDeferredNode(node)
 	f.s.push(node)
 }
