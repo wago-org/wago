@@ -3,6 +3,7 @@ package component_test
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/component"
@@ -19,8 +20,12 @@ func TestInstantiateAdder(t *testing.T) {
 	ctx := context.Background()
 	r := wago.NewRuntime()
 	defer r.Close()
+	components, err := component.Enable(r)
+	if err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
 
-	inst, err := component.Instantiate(ctx, r, adderWasm)
+	inst, err := components.Instantiate(ctx, adderWasm)
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -39,11 +44,15 @@ func TestCompileCache(t *testing.T) {
 	ctx := context.Background()
 	r := wago.NewRuntime()
 	defer r.Close()
+	components, err := component.Enable(r)
+	if err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
 	cache := component.NewCompileCache()
 	defer cache.Close(ctx)
 
 	for i := 0; i < 2; i++ {
-		inst, err := component.Instantiate(ctx, r, adderWasm, component.WithCompileCache(cache))
+		inst, err := components.Instantiate(ctx, adderWasm, component.WithCompileCache(cache))
 		if err != nil {
 			t.Fatalf("Instantiate #%d: %v", i, err)
 		}
@@ -57,5 +66,32 @@ func TestCompileCache(t *testing.T) {
 		if err := inst.Close(ctx); err != nil {
 			t.Fatalf("Close #%d: %v", i, err)
 		}
+	}
+}
+
+func TestPluginFailsClosedWithoutCapabilityOrInstallation(t *testing.T) {
+	ctx := context.Background()
+	r := wago.NewRuntime()
+	defer r.Close()
+
+	if _, err := component.Instantiate(ctx, r, adderWasm); err == nil {
+		t.Fatal("Instantiate without the component plugin succeeded")
+	}
+	if err := r.Use(component.NewExtension(), wago.WithPluginGrants()); !errors.Is(err, wago.ErrPermissionDenied) {
+		t.Fatalf("Use without runtime.core grant = %v, want permission denied", err)
+	}
+}
+
+func TestPluginRuntimeAccessIsRevokedOnClose(t *testing.T) {
+	r := wago.NewRuntime()
+	components, err := component.Enable(r)
+	if err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := components.Instantiate(context.Background(), adderWasm); !errors.Is(err, wago.ErrPermissionDenied) {
+		t.Fatalf("Instantiate after Close = %v, want permission denied", err)
 	}
 }

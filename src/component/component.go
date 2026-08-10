@@ -1,21 +1,25 @@
 // Package component runs WebAssembly Component Model components -- and the WASI
-// 0.2 (wasip2) world built on it -- on a wazy Runtime.
+// 0.2 (wasip2) world built on it -- through Wago's component plugin.
 //
-// Where the core wazy package instantiates core modules, this package
+// Where the core Wago package instantiates core modules, this package
 // instantiates *components*: genuine wasm32-wasip2 binaries produced by rustc,
 // wasm-tools, and friends. It decodes the component, wires its multi-module
 // graph (nested instances, canonical lift/lower of the Canonical ABI, resource
-// lifetimes), and -- with WithWASI -- provides the WASI 0.2 host interfaces
-// (wasi:cli, clocks, filesystem, io, random, sockets, http).
+// lifetimes). A host module such as wago-org/wasi provides the WASI 0.2
+// interfaces (wasi:cli, clocks, filesystem, io, random, sockets, http).
 //
 // Typical use: build a Runtime, instantiate a component with the WASI surface
 // wired to your stdio/filesystem/args, call an export, then Close.
 //
-//	r := wazy.NewRuntime(ctx)
-//	defer r.Close(ctx)
+//	r := wago.NewRuntime()
+//	defer r.Close()
+//	components, err := component.Enable(r)
+//	if err != nil {
+//		return err
+//	}
 //
-//	inst, err := component.Instantiate(ctx, r, componentWasm,
-//		component.WithWASI(component.WASIConfig{Stdout: os.Stdout})...)
+//	inst, err := components.Instantiate(ctx, componentWasm,
+//		wasip2.With(wasip2.Config{Stdout: os.Stdout})...)
 //	if err != nil {
 //		return err
 //	}
@@ -28,14 +32,13 @@
 // lists/records, and uint32 handles for resources), matching the Canonical
 // ABI's lifting of the component's WIT types.
 //
-// This API is young and, like the rest of wazy, makes no stability promise yet.
+// This API is young and, like the rest of Wago, makes no stability promise yet.
 package component
 
 import (
 	"context"
 
 	"github.com/wago-org/wago/src/component/internal/abi"
-	"github.com/wago-org/wago/src/component/internal/engine"
 	"github.com/wago-org/wago/src/component/internal/instance"
 	"github.com/wago-org/wago/src/wago"
 )
@@ -58,12 +61,16 @@ type Option = instance.Option
 // done. See WithCompileCache and NewCompileCache.
 type CompileCache = instance.CompileCache
 
-// Instantiate decodes componentBytes as a WebAssembly Component Model component
-// and instantiates it on r, returning a live Instance. Pass WithWASI to give it
-// the WASI 0.2 host surface, and WithCompileCache to reuse compilation work
-// across repeated instantiations. Close the returned Instance when done.
+// Instantiate resolves the Component Model plugin installed on r and delegates
+// to its runtime-scoped service. Call Enable once before using this compatibility
+// entry point. New code can retain the *Runtime returned by Enable and call its
+// Instantiate method directly.
 func Instantiate(ctx context.Context, r *wago.Runtime, componentBytes []byte, opts ...Option) (*Instance, error) {
-	return instance.Instantiate(ctx, engine.Wrap(r), componentBytes, opts...)
+	components, err := FromRuntime(r)
+	if err != nil {
+		return nil, err
+	}
+	return components.Instantiate(ctx, componentBytes, opts...)
 }
 
 // WithCompileCache reuses cache across this and future Instantiate calls of the

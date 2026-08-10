@@ -64,8 +64,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 **Component Model**
 - [x] Decode and instantiate Preview 2 components with canonical ABI lift/lower,
   typed host linking, resources, composition, and safe adapter-mediated host
-  re-entry. The component runtime is exposed from `src/component`; WASI host
-  capabilities remain in the separate `wago-org/wasi` module.
+  re-entry. The component runtime is exposed as the capability-gated
+  `wago.component-model` plugin from `src/component`; WASI host capabilities
+  remain in the separate `wago-org/wasi` module.
 
 **Tooling**
 - [x] `wago` CLI: `run` / `validate` / `version`, typed args, and explicit `--core 3` opt-in while preserving the Release 2 default
