@@ -445,8 +445,8 @@ func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExt
 
 func RegisteredPluginNames() []string { return impl.RegisteredPluginNames() }
 
-func RequireService(reg *Registry, name string) (*ServiceRef, error) {
-	return impl.RequireService(reg, name)
+func RequireService(reg *Registry, name string, typeWitness ...any) (*ServiceRef, error) {
+	return impl.RequireService(reg, name, typeWitness...)
 }
 
 func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }

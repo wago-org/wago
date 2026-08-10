@@ -47,7 +47,7 @@ func (e *programmaticServiceExtension) Register(reg *Registry) error {
 	if e.provide != nil {
 		return ProvideService(reg, "test.programmatic/v1", e.provide)
 	}
-	ref, err := RequireService(reg, "test.programmatic/v1")
+	ref, err := RequireService(reg, "test.programmatic/v1", (*int)(nil))
 	if err == nil && e.ref != nil {
 		*e.ref = ref
 	}
@@ -83,6 +83,27 @@ func TestProgrammaticUseResolvesServicesTransactionally(t *testing.T) {
 	}
 	if _, err := ref.Get(); err == nil {
 		t.Fatal("service reference remained active after runtime close")
+	}
+}
+
+func TestProgrammaticUseRejectsServiceTypeBeforeCommit(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	if err := rt.Use(&programmaticServiceExtension{id: "provider", provide: "wrong"}); err != nil {
+		t.Fatalf("Use provider: %v", err)
+	}
+	var ref *ServiceRef
+	consumer := &programmaticServiceExtension{id: "consumer", ref: &ref}
+	if err := rt.Use(consumer); err == nil {
+		t.Fatal("consumer accepted an incompatible service provider")
+	}
+	if _, ok := rt.Extension("consumer"); ok {
+		t.Fatal("type mismatch mutated the runtime")
+	}
+	if ref != nil {
+		if _, err := ref.Get(); err == nil {
+			t.Fatal("rejected service reference became active")
+		}
 	}
 }
 
