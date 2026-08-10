@@ -428,7 +428,7 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 			FuncTypes:         []uint32{1, 0},
 			Globals:           []wasm.GlobalType{{Type: wasm.I32}},
 			Memories:          []wasm.MemType{{}},
-			Tables:            []wasm.TableType{{Ref: wasm.FuncRef.Ref}},
+			Tables:            []wasm.TableType{{Ref: wasm.FuncRef.Ref()}},
 		}
 	}
 	placeFunc := func(m *Module, f *Func) {
@@ -564,7 +564,7 @@ func callIndirectModuleForVerify() *Module {
 		TypeIsFunc:       []bool{true, true, true},
 		CanonicalTypeIDs: []uint32{0, 1, 1},
 		FuncTypes:        []uint32{0},
-		Tables:           []wasm.TableType{{Ref: wasm.FuncRef.Ref}},
+		Tables:           []wasm.TableType{{Ref: wasm.FuncRef.Ref()}},
 		Funcs:            []Func{*f},
 	}
 }

@@ -995,10 +995,13 @@ type compiledTagDef struct {
 	TypeIndex uint32
 }
 
-// Compiled is emitted machine code plus instantiate-time metadata. Function
-// exports remain isolated in the public Exports map.
+// Compiled owns emitted machine code plus instantiate-time metadata. Native
+// bytes are intentionally private; use CodeSize or WriteCodeTo for diagnostics.
+// Function exports remain isolated in the public Exports map. Call Close when
+// no new instances are needed; existing instances retain their executable image
+// until they close.
 type Compiled struct {
-	Code  []byte
+	code  []byte
 	Entry []int // host-wrapper offset, or the internal offset for direct-only functions
 	// InternalEntry mirrors Entry with each function's register-ABI internal
 	// entry offset. Entry[i] == InternalEntry[i] for a direct-only register-ABI
@@ -1078,6 +1081,9 @@ type Compiled struct {
 	importFuncSigs   []FuncSig
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
+
+	gcCodeTelemetry    gc.NativeCodeTelemetry
+	hasGCCodeTelemetry bool
 
 	// Cached during validateArenaFootprint.
 	maxParamSlots        int

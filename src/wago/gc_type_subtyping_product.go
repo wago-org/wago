@@ -254,7 +254,7 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 	for gi := range m.Types {
 		for si := range m.Types[gi].SubTypes {
 			st := &m.Types[gi].SubTypes[si]
-			if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return 0, fmt.Errorf("type-subtyping products reject descriptor metadata")
 			}
 			hasSubtypeMetadata = hasSubtypeMetadata || st.HasPrefix || len(st.Supers) != 0
@@ -299,7 +299,7 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 			return 0, fmt.Errorf("link product type group %d must contain one member", i)
 		}
 		st := &m.Types[i].SubTypes[0]
-		if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil || st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 1 {
+		if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() || st.Final || !st.HasPrefix || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 1 {
 			return 0, fmt.Errorf("link product type %d must be an open zero-parameter single-reference-result function subtype", i)
 		}
 		if i == 0 {
@@ -308,7 +308,7 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 			}
 		} else {
 			result := st.Comp.Results[0]
-			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Exact || result.Ref.Heap.Kind != wasm.HeapTypeIndex || !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind() != wasm.ValRef || !result.Ref().Nullable() || result.Ref().Exact() || result.Ref().Heap().Kind() != wasm.HeapTypeIndex || !result.Ref().Heap().Type().Rec || result.Ref().Heap().Type().Index != 0 {
 				return 0, fmt.Errorf("link product type %d must extend type %d and return its own nullable reference", i, i-1)
 			}
 		}
@@ -348,7 +348,7 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 		}
 		for i := range wantNames {
 			imp := m.Imports[i]
-			if imp.Module != "M" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+			if imp.Module != "M" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantTypes[i] {
 				return false
 			}
 		}
@@ -378,7 +378,7 @@ func stagedGCTypeSubtypingExtendedRecursiveLinkShape(m *wasm.Module) (stagedGCTy
 			return 0, fmt.Errorf("extended recursive link group %d root super is outside the exact product", groupIndex)
 		}
 		result := child.Comp.Results
-		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind != wasm.ValRef || result[0].Ref.Nullable || result[0].Ref.Heap.Kind != wasm.HeapTypeIndex || !result[0].Ref.Heap.Type.Rec || result[0].Ref.Heap.Type.Index != 0 {
+		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind() != wasm.ValRef || result[0].Ref().Nullable() || result[0].Ref().Heap().Kind() != wasm.HeapTypeIndex || !result[0].Ref().Heap().Type().Rec || result[0].Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("extended recursive link group %d child is outside the exact product", groupIndex)
 		}
 	}
@@ -400,7 +400,7 @@ func stagedGCTypeSubtypingExtendedRecursiveLinkShape(m *wasm.Module) (stagedGCTy
 	}
 	for i := range wantNames {
 		imp := m.Imports[i]
-		if imp.Module != "M9" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+		if imp.Module != "M9" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantTypes[i] {
 			return 0, fmt.Errorf("extended recursive link import %d is outside the exact product", i)
 		}
 	}
@@ -438,13 +438,13 @@ func stagedGCTypeSubtypingMismatchLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 		return 0, fmt.Errorf("mismatch link consumer requires one import")
 	}
 	imp := m.Imports[0]
-	if imp.Name != "f" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec {
+	if imp.Name != "f" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec {
 		return 0, fmt.Errorf("mismatch link consumer import is outside the exact product")
 	}
-	if imp.Module == "M10" && len(m.Types) == 1 && imp.Type.Type.Index == 0 {
+	if imp.Module == "M10" && len(m.Types) == 1 && imp.Type.FuncType().Index == 0 {
 		return stagedGCTypeSubtypingCrossGroupMismatchLinkConsumer, nil
 	}
-	if imp.Module == "M11" && len(m.Types) == 2 && imp.Type.Type.Index == 2 {
+	if imp.Module == "M11" && len(m.Types) == 2 && imp.Type.FuncType().Index == 2 {
 		return stagedGCTypeSubtypingTransitiveMismatchLinkConsumer, nil
 	}
 	return 0, fmt.Errorf("mismatch link consumer namespace/type is outside the exact product")
@@ -476,7 +476,7 @@ func stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m *wasm.Module) (stagedGCT
 			return 0, fmt.Errorf("duplicate recursive link group %d root must be open () -> (ref func)", groupIndex)
 		}
 		result := child.Comp.Results
-		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || child.Comp.Kind != wasm.CompFunc || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind != wasm.ValRef || result[0].Ref.Nullable || result[0].Ref.Exact || result[0].Ref.Heap.Kind != wasm.HeapTypeIndex || !result[0].Ref.Heap.Type.Rec || result[0].Ref.Heap.Type.Index != 0 {
+		if child.Final || !child.HasPrefix || len(child.Supers) != 1 || !child.Supers[0].Rec || child.Supers[0].Index != 0 || child.Comp.Kind != wasm.CompFunc || len(child.Comp.Params) != 0 || len(result) != 1 || result[0].Kind() != wasm.ValRef || result[0].Ref().Nullable() || result[0].Ref().Exact() || result[0].Ref().Heap().Kind() != wasm.HeapTypeIndex || !result[0].Ref().Heap().Type().Rec || result[0].Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("duplicate recursive link group %d child must extend and return recursive member 0", groupIndex)
 		}
 	}
@@ -502,7 +502,7 @@ func stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m *wasm.Module) (stagedGCT
 	wantTypes := []uint32{0, 2, 1, 3}
 	for i := range wantNames {
 		imp := m.Imports[i]
-		if imp.Module != "M8" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantTypes[i] {
+		if imp.Module != "M8" || imp.Name != wantNames[i] || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantTypes[i] {
 			return 0, fmt.Errorf("duplicate recursive link consumer import %d is outside the exact M8 product", i)
 		}
 	}
@@ -518,7 +518,7 @@ func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 			return 0, fmt.Errorf("finality link type group %d must contain one member", i)
 		}
 		st := &m.Types[i].SubTypes[0]
-		if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil || len(st.Supers) != 0 || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 0 {
+		if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() || len(st.Supers) != 0 || st.Comp.Kind != wasm.CompFunc || len(st.Comp.Params) != 0 || len(st.Comp.Results) != 0 {
 			return 0, fmt.Errorf("finality link type %d must be a metadata-free () -> () function without supers", i)
 		}
 		if i == 0 && (st.Final || !st.HasPrefix) {
@@ -556,10 +556,10 @@ func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 		return 0, fmt.Errorf("finality link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M2" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec {
+	if imp.Module != "M2" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec {
 		return 0, fmt.Errorf("finality link consumer import is outside the exact M2 function product")
 	}
-	if imp.Name == "f1" && imp.Type.Type.Index == 1 || imp.Name == "f2" && imp.Type.Type.Index == 0 {
+	if imp.Name == "f1" && imp.Type.FuncType().Index == 1 || imp.Name == "f2" && imp.Type.FuncType().Index == 0 {
 		return stagedGCTypeSubtypingFinalityLinkConsumer, nil
 	}
 	return 0, fmt.Errorf("finality link consumer import direction is outside the exact inverse pair")
@@ -572,7 +572,7 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 	for gi := range m.Types {
 		for si := range m.Types[gi].SubTypes {
 			st := &m.Types[gi].SubTypes[si]
-			if st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return 0, fmt.Errorf("struct link type group/member %d/%d carries descriptor metadata", gi, si)
 			}
 		}
@@ -586,8 +586,8 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 		return 0, fmt.Errorf("struct link first-group companion must be a final one-field struct")
 	}
 	field := s.Comp.Fields[0]
-	ref := field.Storage.Val
-	if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+	ref := field.Storage().Val()
+	if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 		return 0, fmt.Errorf("struct link first-group field must be an immutable non-null reference to recursive member 0")
 	}
 	g := &m.Types[1].SubTypes[0]
@@ -620,7 +620,7 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 		return 0, fmt.Errorf("struct link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M3" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+	if imp.Module != "M3" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 2 {
 		return 0, fmt.Errorf("struct link consumer import is outside the exact M3.g product")
 	}
 	return stagedGCTypeSubtypingStructLinkConsumer, nil
@@ -637,7 +637,7 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 		}
 		for memberIndex := range group.SubTypes {
 			st := &group.SubTypes[memberIndex]
-			if st.Final || !st.HasPrefix || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.Final || !st.HasPrefix || st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return 0, fmt.Errorf("struct projection link group/member %d/%d must be an open metadata-free subtype", groupIndex, memberIndex)
 			}
 		}
@@ -661,8 +661,8 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 			}
 		}
 		field := m.Types[groupIndex].SubTypes[1].Comp.Fields[0]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("struct projection link root group %d field must be an immutable non-null reference to recursive member 0", groupIndex)
 		}
 	}
@@ -684,8 +684,8 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 	}
 	for fieldIndex, want := range wantFields {
 		field := last.SubTypes[1].Comp.Fields[fieldIndex]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 			return 0, fmt.Errorf("struct projection link final struct field %d is outside the exact ordered projection", fieldIndex)
 		}
 	}
@@ -706,7 +706,7 @@ func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTyp
 		return 0, fmt.Errorf("struct projection link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M4" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 4 {
+	if imp.Module != "M4" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 4 {
 		return 0, fmt.Errorf("struct projection link consumer import is outside the exact M4.g product")
 	}
 	return stagedGCTypeSubtypingStructProjectionLinkConsumer, nil
@@ -727,11 +727,11 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 			return 0, fmt.Errorf("struct mismatch link group %d must contain two members", groupIndex)
 		}
 		f := &group.SubTypes[0]
-		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+		if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 			return 0, fmt.Errorf("struct mismatch link group %d function must be an open metadata-free () -> () subtype", groupIndex)
 		}
 		s := &group.SubTypes[1]
-		if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
+		if !s.Final || s.HasPrefix || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
 			return 0, fmt.Errorf("struct mismatch link group %d companion must be a final metadata-free struct without supers", groupIndex)
 		}
 		if groupIndex == wantGroups-1 {
@@ -745,9 +745,9 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 			return 0, fmt.Errorf("struct mismatch link root group %d must have no function super and one struct field", groupIndex)
 		}
 		field := s.Comp.Fields[0]
-		ref := field.Storage.Val
+		ref := field.Storage().Val()
 		want := wasm.TypeIdx{Index: 0, Rec: groupIndex == 0}
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 			return 0, fmt.Errorf("struct mismatch link root group %d field is outside the exact recursive projection", groupIndex)
 		}
 	}
@@ -775,7 +775,7 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 		return 0, fmt.Errorf("struct mismatch link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M5" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 2 {
+	if imp.Module != "M5" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 2 {
 		return 0, fmt.Errorf("struct mismatch link consumer import is outside the exact M5.g product")
 	}
 	return stagedGCTypeSubtypingStructMismatchLinkConsumer, nil
@@ -791,11 +791,11 @@ func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTy
 			return 0, fmt.Errorf("independent struct link group %d must contain two members", groupIndex)
 		}
 		f := &group.SubTypes[0]
-		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+		if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 			return 0, fmt.Errorf("independent struct link group %d function must be an open metadata-free () -> () subtype", groupIndex)
 		}
 		s := &group.SubTypes[1]
-		if !s.Final || s.HasPrefix || s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
+		if !s.Final || s.HasPrefix || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || len(s.Supers) != 0 || s.Comp.Kind != wasm.CompStruct {
 			return 0, fmt.Errorf("independent struct link group %d companion must be a final metadata-free struct without supers", groupIndex)
 		}
 		if groupIndex < 2 {
@@ -803,8 +803,8 @@ func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTy
 				return 0, fmt.Errorf("independent struct link root group %d must have no function super and one struct field", groupIndex)
 			}
 			field := s.Comp.Fields[0]
-			ref := field.Storage.Val
-			if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+			ref := field.Storage().Val()
+			if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 				return 0, fmt.Errorf("independent struct link root group %d field must be an immutable non-null self reference", groupIndex)
 			}
 			continue
@@ -835,7 +835,7 @@ func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTy
 		return 0, fmt.Errorf("independent struct link consumer requires exactly one function import")
 	}
 	imp := m.Imports[0]
-	if imp.Module != "M6" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != 0 {
+	if imp.Module != "M6" || imp.Name != "g" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != 0 {
 		return 0, fmt.Errorf("independent struct link consumer import is outside the exact M6.g product")
 	}
 	return stagedGCTypeSubtypingIndependentStructLinkConsumer, nil
@@ -851,11 +851,11 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 			return 0, fmt.Errorf("extended projection link group %d must contain two members", groupIndex)
 		}
 		f := &group.SubTypes[0]
-		if f.Final || !f.HasPrefix || f.Metadata.Describes != nil || f.Metadata.Descriptor != nil || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
+		if f.Final || !f.HasPrefix || f.Metadata.Describes.Present() || f.Metadata.Descriptor.Present() || f.Comp.Kind != wasm.CompFunc || len(f.Comp.Params) != 0 || len(f.Comp.Results) != 0 {
 			return 0, fmt.Errorf("extended projection link group %d function must be an open metadata-free () -> () subtype", groupIndex)
 		}
 		s := &group.SubTypes[1]
-		if s.Metadata.Describes != nil || s.Metadata.Descriptor != nil || s.Comp.Kind != wasm.CompStruct {
+		if s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || s.Comp.Kind != wasm.CompStruct {
 			return 0, fmt.Errorf("extended projection link group %d companion must be a metadata-free struct", groupIndex)
 		}
 	}
@@ -866,8 +866,8 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 			return 0, fmt.Errorf("extended projection link root group %d must be an open self-recursive pair", groupIndex)
 		}
 		field := s.Comp.Fields[0]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || !ref.Ref.Heap.Type.Rec || ref.Ref.Heap.Type.Index != 0 {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || !ref.Ref().Heap().Type().Rec || ref.Ref().Heap().Type().Index != 0 {
 			return 0, fmt.Errorf("extended projection link root group %d field must be an immutable non-null self reference", groupIndex)
 		}
 	}
@@ -887,8 +887,8 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 	}
 	for fieldIndex, want := range wantFields {
 		field := projected.SubTypes[1].Comp.Fields[fieldIndex]
-		ref := field.Storage.Val
-		if field.Mut != wasm.Const || field.Storage.Packed || ref.Kind != wasm.ValRef || ref.Ref.Nullable || ref.Ref.Exact || ref.Ref.Heap.Kind != wasm.HeapTypeIndex || ref.Ref.Heap.Type != want {
+		ref := field.Storage().Val()
+		if field.Mut() != wasm.Const || field.Storage().Packed() || ref.Kind() != wasm.ValRef || ref.Ref().Nullable() || ref.Ref().Exact() || ref.Ref().Heap().Kind() != wasm.HeapTypeIndex || ref.Ref().Heap().Type() != want {
 			return 0, fmt.Errorf("extended projection link projected field %d is outside the exact ordered projection", fieldIndex)
 		}
 	}
@@ -917,7 +917,7 @@ func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCT
 	}
 	for i, wantType := range []uint32{0, 4} {
 		imp := m.Imports[i]
-		if imp.Module != "M7" || imp.Name != "h" || imp.Type.Kind != wasm.ExternFunc || imp.Type.Type.Rec || imp.Type.Type.Index != wantType {
+		if imp.Module != "M7" || imp.Name != "h" || imp.Type.Kind != wasm.ExternFunc || imp.Type.FuncType().Rec || imp.Type.FuncType().Index != wantType {
 			return 0, fmt.Errorf("extended projection link consumer import %d is outside the exact M7.h type-%d product", i, wantType)
 		}
 	}
@@ -991,7 +991,7 @@ func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubt
 			}
 		} else {
 			result := st.Comp.Results[0]
-			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Heap.Kind != wasm.HeapTypeIndex || !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+			if len(st.Supers) != 1 || st.Supers[0].Rec || st.Supers[0].Index != uint32(i-1) || result.Kind() != wasm.ValRef || !result.Ref().Nullable() || result.Ref().Heap().Kind() != wasm.HeapTypeIndex || !result.Ref().Heap().Type().Rec || result.Ref().Heap().Type().Index != 0 {
 				return 0, fmt.Errorf("runtime call/cast type %d must extend type %d and return its own nullable reference", i, i-1)
 			}
 		}
@@ -1007,7 +1007,7 @@ func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubt
 		}
 	}
 	t := m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 3 || t.Limits.Max == nil || *t.Limits.Max != 3 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 3 || !t.Limits.HasMax || t.Limits.Max != 3 || m.Tables[0].Init != nil {
 		return 0, fmt.Errorf("runtime call/cast table must be exact table 3 3 funcref")
 	}
 	e := &m.Elements[0]
@@ -1073,7 +1073,7 @@ func stagedGCTypeSubtypingRuntimeFinalityCallCastShape(m *wasm.Module) (stagedGC
 		}
 	}
 	t := m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 2 || t.Limits.Max == nil || *t.Limits.Max != 2 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 2 || !t.Limits.HasMax || t.Limits.Max != 2 || m.Tables[0].Init != nil {
 		return 0, fmt.Errorf("runtime finality call/cast table must be exact table 2 2 funcref")
 	}
 	e := &m.Elements[0]
@@ -1143,7 +1143,7 @@ func stagedGCTypeSubtypingRuntimeTypedTableCallShape(m *wasm.Module) (stagedGCTy
 	}
 	t := m.Tables[0].Type
 	wantTableType := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wantTableType) || t.Limits.Addr64 || t.Limits.Min != 2 || t.Limits.Max == nil || *t.Limits.Max != 2 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wantTableType) || t.Limits.Addr64 || t.Limits.Min != 2 || !t.Limits.HasMax || t.Limits.Max != 2 || m.Tables[0].Init != nil {
 		return 0, fmt.Errorf("runtime typed table must be exact table 2 2 (ref null type 1)")
 	}
 	for _, source := range []uint32{1, 2} {

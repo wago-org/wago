@@ -24,7 +24,7 @@ func BenchmarkValidateAtomicEffects(b *testing.B) {
 	}
 	mod := modWithFunc(nil, nil, body...)
 	max := uint64(1)
-	mod.Memories = []MemType{{Shared: true, Limits: Limits{Min: 1, Max: &max}}}
+	mod.Memories = []MemType{{Shared: true, Limits: Limits{Min: 1, Max: max, HasMax: true}}}
 	b.ReportMetric(float64(len(loads)*32), "lookups/op")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

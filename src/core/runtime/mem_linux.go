@@ -48,6 +48,12 @@ func mmapRWReserve(n int) ([]byte, error) {
 		syscall.MAP_ANON|syscall.MAP_PRIVATE|syscall.MAP_NORESERVE)
 }
 
+func mmapCodeRW(n int) ([]byte, error) { return mmapRW(n) }
+
+func protectCodeRX(mem []byte) error {
+	return syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_EXEC)
+}
+
 // mmapExec uses W^X: allocate RW, copy, then flip to R-X.
 func mmapExec(code []byte) ([]byte, error) {
 	mem, err := mmapRW(len(code))
@@ -55,7 +61,7 @@ func mmapExec(code []byte) ([]byte, error) {
 		return nil, err
 	}
 	copy(mem, code)
-	if err := syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_EXEC); err != nil {
+	if err := protectCodeRX(mem); err != nil {
 		_ = syscall.Munmap(mem)
 		return nil, err
 	}

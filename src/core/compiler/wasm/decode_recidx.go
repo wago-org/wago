@@ -23,13 +23,11 @@ func markRecursiveSubTypeIndexes(st *SubType, base, limit uint32) {
 	for i := range st.Supers {
 		st.Supers[i] = markRecursiveTypeIdx(st.Supers[i], base, limit)
 	}
-	if st.Metadata.Describes != nil {
-		idx := markRecursiveTypeIdx(*st.Metadata.Describes, base, limit)
-		st.Metadata.Describes = &idx
+	if idx, ok := st.Metadata.Describes.Get(); ok {
+		st.Metadata.Describes = SomeTypeIdx(markRecursiveTypeIdx(idx, base, limit))
 	}
-	if st.Metadata.Descriptor != nil {
-		idx := markRecursiveTypeIdx(*st.Metadata.Descriptor, base, limit)
-		st.Metadata.Descriptor = &idx
+	if idx, ok := st.Metadata.Descriptor.Get(); ok {
+		st.Metadata.Descriptor = SomeTypeIdx(markRecursiveTypeIdx(idx, base, limit))
 	}
 	markRecursiveCompTypeIndexes(&st.Comp, base, limit)
 }
@@ -38,10 +36,10 @@ func markRecursiveCompTypeIndexes(ct *CompType, base, limit uint32) {
 	switch ct.Kind {
 	case CompFunc:
 		for i := range ct.Params {
-			markRecursiveValTypeIndexes(&ct.Params[i], base, limit)
+			ct.Params[i] = markRecursiveValTypeIndexes(ct.Params[i], base, limit)
 		}
 		for i := range ct.Results {
-			markRecursiveValTypeIndexes(&ct.Results[i], base, limit)
+			ct.Results[i] = markRecursiveValTypeIndexes(ct.Results[i], base, limit)
 		}
 	case CompStruct:
 		for i := range ct.Fields {
@@ -53,24 +51,26 @@ func markRecursiveCompTypeIndexes(ct *CompType, base, limit uint32) {
 }
 
 func markRecursiveFieldTypeIndexes(ft *FieldType, base, limit uint32) {
-	if ft.Storage.Packed {
+	storage := ft.Storage()
+	if storage.Packed() {
 		return
 	}
-	markRecursiveValTypeIndexes(&ft.Storage.Val, base, limit)
+	*ft = NewFieldType(StorageVal(markRecursiveValTypeIndexes(storage.Val(), base, limit)), ft.Mut())
 }
 
-func markRecursiveValTypeIndexes(vt *ValType, base, limit uint32) {
-	if vt.Kind != ValRef {
-		return
+func markRecursiveValTypeIndexes(vt ValType, base, limit uint32) ValType {
+	if vt.Kind() != ValRef {
+		return vt
 	}
-	markRecursiveRefTypeIndexes(&vt.Ref, base, limit)
+	return RefVal(markRecursiveRefTypeIndexes(vt.Ref(), base, limit))
 }
 
-func markRecursiveRefTypeIndexes(rt *RefType, base, limit uint32) {
-	if rt.Heap.Kind != HeapTypeIndex {
-		return
+func markRecursiveRefTypeIndexes(rt RefType, base, limit uint32) RefType {
+	heap := rt.Heap()
+	if heap.Kind() != HeapTypeIndex {
+		return rt
 	}
-	rt.Heap.Type = markRecursiveTypeIdx(rt.Heap.Type, base, limit)
+	return rt.WithHeap(IndexedHeap(markRecursiveTypeIdx(heap.Type(), base, limit)))
 }
 
 func markRecursiveTypeIdx(idx TypeIdx, base, limit uint32) TypeIdx {

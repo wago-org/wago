@@ -140,7 +140,7 @@ func TestHelperHeapAllocObjectFiltersNonRefOperands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllocObject: %v", err)
 	}
-	if got.Type.Kind != wasm.ValRef {
+	if got.Type.Kind() != wasm.ValRef {
 		t.Fatalf("AllocObject result type = %s, want ref", got.Type)
 	}
 	if len(emit.calls) != 1 {

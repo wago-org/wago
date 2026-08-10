@@ -199,7 +199,7 @@ func TestStagedGCExternProductBoundaryLifecycle(t *testing.T) {
 		t.Fatalf("codec-loaded gc/extern instantiate = %v", err)
 	}
 
-	t.Logf("gc/extern product: wasm=%d code=%d codec=%d tableState=%d conversionState=%d entry=%d plugin=%d", len(data), len(c.Code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(gcExternConversionEntry{}), unsafe.Sizeof(instancePluginState{}))
+	t.Logf("gc/extern product: wasm=%d code=%d codec=%d tableState=%d conversionState=%d entry=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(gcExternConversionEntry{}), unsafe.Sizeof(instancePluginState{}))
 }
 
 func BenchmarkStagedGCExternStableRoundTrip(b *testing.B) {

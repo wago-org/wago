@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/bits"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -134,13 +133,69 @@ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)
 }
 
-func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) {
-	r.walk(nil, sink)
+func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) bool {
+	return r.walk(nil, sink)
 }
 
-func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) {
+// RangeClassifiedRootRefs preserves exact runtime ownership for opt-in
+// collector telemetry without allocating composite RootSet values on helper
+// paths.
+func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
+	if r == nil || sink == nil {
+		return true
+	}
+	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+		return false
+	}
+	state := r.suspended
+	if state != nil && state.hostRootPlan != nil {
+		for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
+			activation := &state.hostActivations[i]
+			if activation.noFrame {
+				continue
+			}
+			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
+				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+			}
+			callsite := &state.hostRootPlan.callsites[activation.callsite]
+			chain := gcNativeFrameRoots{
+				owner:                r.owner,
+				base:                 activation.base,
+				offsets:              callsite.offsets,
+				frameBytes:           callsite.frameBytes,
+				frameLayout:          r.frameLayout,
+				allowExternalReturn:  r.allowExternalReturn,
+				codeBase:             state.hostCodeBase,
+				codeBytes:            state.hostCodeBytes,
+				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
+				callsites:            state.hostRootPlan.callsites,
+			}
+			if !chain.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+				return false
+			}
+		}
+	}
+	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
+		return r.owner.refStore.rangeGCDomainPersistentRootsClassified(r.owner.gc, sink)
+	}
+	if r.owner != nil {
+		return r.owner.rangeLocalGCTableRoots(nil, classifiedRootSink{sink: sink, class: gc.RootTable})
+	}
+	return true
+}
+
+type classifiedRootSink struct {
+	sink  gc.ClassifiedRootRefSink
+	class gc.RootClass
+}
+
+func (s classifiedRootSink) VisitRootRef(r gc.Ref) bool {
+	return s.sink.VisitClassifiedRootRef(s.class, r)
+}
+
+func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	if !r.rangeChain(fn, sink) {
-		return
+		return false
 	}
 	state := r.suspended
 	if state != nil && state.hostRootPlan != nil {
@@ -166,7 +221,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				callsites:            state.hostRootPlan.callsites,
 			}
 			if !chain.rangeChain(fn, sink) {
-				return
+				return false
 			}
 		}
 	}
@@ -174,12 +229,13 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
 		domainRoots = true
 		if !r.owner.refStore.rangeGCDomainPersistentRoots(r.owner.gc, fn, sink) {
-			return
+			return false
 		}
 	}
 	if !domainRoots && r.owner != nil {
-		_ = r.owner.rangeLocalGCTableRoots(fn, sink)
+		return r.owner.rangeLocalGCTableRoots(fn, sink)
 	}
+	return true
 }
 
 type gcNativeTableRoots struct {
@@ -191,8 +247,8 @@ func (r *gcNativeTableRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)
 }
 
-func (r *gcNativeTableRoots) RangeRootRefs(sink gc.RootRefSink) {
-	r.walk(nil, sink)
+func (r *gcNativeTableRoots) RangeRootRefs(sink gc.RootRefSink) bool {
+	return r.walk(nil, sink)
 }
 
 func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
@@ -320,7 +376,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			}
 			owner = foreign
 			plan := foreign.c.genericGCFrameRoots()
-			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.Code))
+			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
 			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 		}
 		rel := uint32(retPC - codeBase)
@@ -495,6 +551,36 @@ func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, f
 	return true
 }
 
+func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Collector, sink gc.ClassifiedRootRefSink) bool {
+	if s == nil || collector == nil || sink == nil {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for candidate, state := range s.instances {
+		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil {
+			continue
+		}
+		for i, global := range candidate.globalCells {
+			if global == nil || i >= len(candidate.c.Globals) || !isGCRefValType(candidate.c.Globals[i].Type) || len(global.cell) < 8 {
+				continue
+			}
+			bits := binary.LittleEndian.Uint64(global.cell)
+			ref := gc.Ref(uint32(bits))
+			if bits != uint64(ref) {
+				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain global %d contains non-compact reference %#x", i, bits)})
+			}
+			if !sink.VisitClassifiedRootRef(gc.RootGlobal, ref) {
+				return false
+			}
+		}
+		if !candidate.rangeLocalGCTableRoots(nil, classifiedRootSink{sink: sink, class: gc.RootTable}) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Instance {
 	if s == nil || collector == nil {
 		return nil
@@ -505,7 +591,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
 			continue
 		}
-		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.Code)) {
+		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
 			return candidate
 		}
 	}
@@ -541,7 +627,17 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 	s.mu.Unlock()
 }
 
+func equalGCConfigs(a, b gc.Config) bool {
+	// Telemetry is a diagnostic sink, not a heap-semantics parameter. A consumer
+	// may join an existing Runtime domain without supplying the owner's recorder.
+	a.Telemetry, b.Telemetry = nil, nil
+	return a == b
+}
+
 func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, preferred *gc.Collector, domainRestore bool) (*gc.Collector, *gcTypeMapping, error) {
+	if !gc.TelemetryAvailable() {
+		config.Telemetry = nil
+	}
 	if s == nil || s.private {
 		return nil, nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
 	}
@@ -566,18 +662,26 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: imported WasmGC collector is not a live Runtime domain")
 		}
-		if !reflect.DeepEqual(selected.config, config) {
+		if !equalGCConfigs(selected.config, config) {
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the imported Runtime GC domain")
+		}
+		if config.Telemetry != nil && selected.config.Telemetry != config.Telemetry {
+			s.mu.Unlock()
+			return nil, nil, fmt.Errorf("wago: WasmGC telemetry recorder does not own the imported Runtime GC domain")
 		}
 	} else {
 		for domain := s.gcDomains; domain != nil; domain = domain.next {
 			if !gcModuleFitsDomain(c, domain) {
 				continue
 			}
-			if !reflect.DeepEqual(domain.config, config) {
+			if !equalGCConfigs(domain.config, config) {
 				s.mu.Unlock()
 				return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the matching Runtime GC domain")
+			}
+			if config.Telemetry != nil && domain.config.Telemetry != config.Telemetry {
+				s.mu.Unlock()
+				return nil, nil, fmt.Errorf("wago: WasmGC telemetry recorder does not own the matching Runtime GC domain")
 			}
 			selected = domain
 			break
@@ -1075,7 +1179,7 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	var slot uint32
 	if ownerIndex == state.resultRootsMade {
 		var slotErr error
-		slot, slotErr = source.gc.NewCheckedGlobalSlot(ref)
+		slot, slotErr = source.gc.NewCheckedClassifiedGlobalSlot(ref, gc.RootPublicToken)
 		if slotErr != nil {
 			return 0, fmt.Errorf("root public GC result: %w", slotErr)
 		}
@@ -1242,7 +1346,7 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	}
 	rootIndex := targetState.argumentRootCount
 	if rootIndex == targetState.argumentRootsMade {
-		slot, err := target.gc.NewCheckedGlobalSlot(current.ref)
+		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(current.ref, gc.RootForeignInstance)
 		if err != nil {
 			return gc.Null(), fmt.Errorf("root GC reference argument: %w", err)
 		}
@@ -1298,7 +1402,7 @@ func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch ui
 					return fmt.Errorf("GC host object argument count exceeds %d", len(state.hostArgumentRootSlots[index]))
 				}
 				if count == state.hostArgumentRootsMade[index] {
-					root, err := in.gc.NewCheckedGlobalSlot(ref)
+					root, err := in.gc.NewCheckedClassifiedGlobalSlot(ref, gc.RootPublicToken)
 					if err != nil {
 						return fmt.Errorf("root GC host argument %d: %w", i, err)
 					}
@@ -1368,7 +1472,7 @@ func (s *referenceStore) stageGCHostResult(target *Instance, ctrl uintptr, token
 		return gc.Null(), fmt.Errorf("GC host result count exceeds %d", len(targetState.hostResultRootSlots[activation]))
 	}
 	if count == targetState.hostResultRootsMade[activation] {
-		slot, err := target.gc.NewCheckedGlobalSlot(current.ref)
+		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(current.ref, gc.RootForeignInstance)
 		if err != nil {
 			return gc.Null(), fmt.Errorf("root GC host result: %w", err)
 		}

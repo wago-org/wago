@@ -97,10 +97,10 @@ func TestReferenceAndTableMetadataScanners(t *testing.T) {
 	externRef := wasm.AbsRef(wasm.HeapExtern)
 	max := uint64(9)
 	m := &wasm.Module{
-		Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: externRef}}}},
+		Imports: []wasm.Import{{Type: wasm.NewTableExternType(wasm.TableType{Ref: externRef})}},
 		Exports: []wasm.Export{{Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 2}}},
 		Tables: []wasm.Table{
-			{Type: wasm.TableType{Ref: funcRef, Limits: wasm.Limits{Min: 3, Max: &max}}},
+			{Type: wasm.TableType{Ref: funcRef, Limits: wasm.Limits{Min: 3, Max: max, HasMax: true}}},
 			{Type: wasm.TableType{Ref: externRef, Limits: wasm.Limits{Min: 2}}},
 		},
 	}
@@ -151,10 +151,10 @@ func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 		m    *wasm.Module
 	}{
 		{"type", &wasm.Module{Types: []wasm.RecType{funcType}}},
-		{"struct field", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{{Storage: wasm.StorageType{Val: wasm.V128}}}}}}}}}},
-		{"array element", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.FieldType{Storage: wasm.StorageType{Val: wasm.V128}}}}}}}}},
-		{"function import", &wasm.Module{Types: []wasm.RecType{funcType}, Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}}}},
-		{"global import", &wasm.Module{Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.V128}}}}}},
+		{"struct field", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)}}}}}}}},
+		{"array element", &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)}}}}}}},
+		{"function import", &wasm.Module{Types: []wasm.RecType{funcType}, Imports: []wasm.Import{{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}}}},
+		{"global import", &wasm.Module{Imports: []wasm.Import{{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.V128})}}}},
 		{"global type", &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.V128}}}}},
 		{"global initializer", &wasm.Module{Globals: []wasm.Global{{Init: wasm.Expr{BodyBytes: fd}}}}},
 		{"table initializer", &wasm.Module{Tables: []wasm.Table{{Init: &wasm.Expr{BodyBytes: fd}}}}},
@@ -176,7 +176,7 @@ func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 
 func TestSupportPassRejectsV128ArrayStorageWhenSIMDDisabled(t *testing.T) {
 	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{
-		Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.FieldType{Storage: wasm.StorageType{Val: wasm.V128}}},
+		Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)},
 	}}}}}
 	err := RejectUnsupportedWithFeatures(m, Features{TypedFunctionReferences: true, GCArrayProducts: true})
 	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
@@ -191,7 +191,7 @@ func TestRuntimeFootprintSupportValidation(t *testing.T) {
 	}
 	funcRef := wasm.AbsRef(wasm.HeapFunc)
 	m := &wasm.Module{
-		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{{Kind: wasm.ValRef, Ref: funcRef}}}}}}},
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.RefVal(funcRef)}}}}}},
 		FuncTypes: []wasm.TypeIdx{{Index: 0}},
 		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: funcRef, Limits: wasm.Limits{Min: 2}}}},
 		Elements:  []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0, 1}}}},
@@ -457,7 +457,7 @@ func TestGlobalSupportValidation(t *testing.T) {
 	}{
 		{"simd disabled", supportPass{m: &wasm.Module{Globals: valid.Globals[1:2]}, feat: Features{}}},
 		{"reference disabled", supportPass{m: &wasm.Module{Globals: valid.Globals[2:]}, feat: Features{}}},
-		{"invalid type", supportPass{m: &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.ValType{Kind: wasm.ValBot}}, Init: wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x0b}}}}}, feat: AllFeatures()}},
+		{"invalid type", supportPass{m: &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.Bot}, Init: wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x0b}}}}}, feat: AllFeatures()}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.pass.globals(); err == nil {
@@ -473,7 +473,7 @@ func TestMemorySupportValidation(t *testing.T) {
 		t.Fatalf("valid memory: %v", err)
 	}
 	max := uint64(1)
-	shared := supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Shared: true, Limits: wasm.Limits{Min: 1, Max: &max}}}}, feat: Features{Threads: true}}
+	shared := supportPass{m: &wasm.Module{Memories: []wasm.MemType{{Shared: true, Limits: wasm.Limits{Min: 1, Max: max, HasMax: true}}}}, feat: Features{Threads: true}}
 	if err := shared.memories(); err != nil {
 		t.Fatalf("threads-enabled shared memory: %v", err)
 	}
@@ -664,7 +664,7 @@ func TestValueAndGlobalTypeSupportHelpers(t *testing.T) {
 		}
 	}
 	unsupportedRef := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapEq), false))
-	if err := full.globalType(unsupportedRef, "test"); err == nil || valTypeName(unsupportedRef) == "" || refTypeName(unsupportedRef.Ref) == "" {
+	if err := full.globalType(unsupportedRef, "test"); err == nil || valTypeName(unsupportedRef) == "" || refTypeName(unsupportedRef.Ref()) == "" {
 		t.Fatal("unsupported reference global accepted")
 	}
 	if err := base.globalType(wasm.FuncRef, "test"); err == nil || base.supportedValTypes([]wasm.ValType{wasm.FuncRef}) {

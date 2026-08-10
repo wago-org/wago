@@ -544,8 +544,8 @@ func proposalSpectestTypes() map[string]proposalExternType {
 		"spectest.global_i64":    global(corewasm.I64),
 		"spectest.global_f32":    global(corewasm.F32),
 		"spectest.global_f64":    global(corewasm.F64),
-		"spectest.memory":        {kind: proposalExternMemory, memory: corewasm.MemType{Limits: corewasm.Limits{Min: 1, Max: &memoryMax}}},
-		"spectest.table":         {kind: proposalExternTable, table: corewasm.TableType{Ref: corewasm.FuncRef.Ref, Limits: corewasm.Limits{Min: 10, Max: &tableMax}}},
+		"spectest.memory":        {kind: proposalExternMemory, memory: corewasm.MemType{Limits: corewasm.Limits{Min: 1, Max: memoryMax, HasMax: true}}},
+		"spectest.table":         {kind: proposalExternTable, table: corewasm.TableType{Ref: corewasm.FuncRef.Ref(), Limits: corewasm.Limits{Min: 10, Max: tableMax, HasMax: true}}},
 	}
 }
 
@@ -593,18 +593,18 @@ func proposalModuleTypes(data []byte) (exports map[string]proposalExternType, im
 		switch imp.Type.Kind {
 		case corewasm.ExternFunc:
 			typ.kind = proposalExternFunc
-			typ.typeIndex, typ.hasTypeIndex = imp.Type.Type.Index, true
-			typ.fn, _ = module.TypeFunc(imp.Type.Type.Index)
+			typ.typeIndex, typ.hasTypeIndex = imp.Type.FuncType().Index, true
+			typ.fn, _ = module.TypeFunc(imp.Type.FuncType().Index)
 		case corewasm.ExternGlobal:
-			typ.kind, typ.global = proposalExternGlobal, imp.Type.Global
+			typ.kind, typ.global = proposalExternGlobal, imp.Type.GlobalType()
 		case corewasm.ExternMem:
-			typ.kind, typ.memory = proposalExternMemory, imp.Type.Mem
+			typ.kind, typ.memory = proposalExternMemory, imp.Type.MemType()
 		case corewasm.ExternTable:
-			typ.kind, typ.table = proposalExternTable, imp.Type.Table
+			typ.kind, typ.table = proposalExternTable, imp.Type.TableType()
 		case corewasm.ExternTag:
 			typ.kind = proposalExternTag
-			typ.typeIndex, typ.hasTypeIndex = imp.Type.Tag.Type.Index, true
-			typ.fn, _ = module.TypeFunc(imp.Type.Tag.Type.Index)
+			typ.typeIndex, typ.hasTypeIndex = imp.Type.TagType().Type.Index, true
+			typ.fn, _ = module.TypeFunc(imp.Type.TagType().Type.Index)
 		default:
 			continue
 		}
@@ -653,7 +653,7 @@ func proposalTagTypeByIndex(module *corewasm.Module, index uint32) (corewasm.Tag
 			continue
 		}
 		if current == index {
-			return module.Imports[i].Type.Tag, true
+			return module.Imports[i].Type.TagType(), true
 		}
 		current++
 	}
@@ -671,7 +671,7 @@ func proposalMemoryTypeByIndex(module *corewasm.Module, index uint32) (corewasm.
 			continue
 		}
 		if current == index {
-			return module.Imports[i].Type.Mem, true
+			return module.Imports[i].Type.MemType(), true
 		}
 		current++
 	}
@@ -860,32 +860,32 @@ func proposalValTypesEquivalent(a corewasm.ValType, am *corewasm.Module, b corew
 }
 
 func proposalValTypeSubtype(a corewasm.ValType, am *corewasm.Module, b corewasm.ValType, bm *corewasm.Module, depth int) bool {
-	if depth > 32 || a.Kind != b.Kind {
+	if depth > 32 || a.Kind() != b.Kind() {
 		return false
 	}
-	if a.Kind != corewasm.ValRef {
-		return a.Num == b.Num
+	if a.Kind() != corewasm.ValRef {
+		return a.Num() == b.Num()
 	}
-	if a.Ref.Nullable && !b.Ref.Nullable || b.Ref.Exact && !a.Ref.Exact {
+	if a.Ref().Nullable() && !b.Ref().Nullable() || b.Ref().Exact() && !a.Ref().Exact() {
 		return false
 	}
-	return proposalHeapTypeSubtype(a.Ref.Heap, am, b.Ref.Heap, bm, depth+1)
+	return proposalHeapTypeSubtype(a.Ref().Heap(), am, b.Ref().Heap(), bm, depth+1)
 }
 
 func proposalHeapTypeSubtype(a corewasm.HeapType, am *corewasm.Module, b corewasm.HeapType, bm *corewasm.Module, depth int) bool {
 	if depth > 32 {
 		return false
 	}
-	if a.Kind == corewasm.HeapAbs && b.Kind == corewasm.HeapAbs {
-		return proposalAbsHeapSubtype(a.Abs, b.Abs)
+	if a.Kind() == corewasm.HeapAbs && b.Kind() == corewasm.HeapAbs {
+		return proposalAbsHeapSubtype(a.Abs(), b.Abs())
 	}
-	if a.Kind == corewasm.HeapTypeIndex {
-		afn, aok := proposalIndexedFuncType(am, a.Type)
-		if b.Kind == corewasm.HeapAbs {
-			return aok && proposalAbsHeapSubtype(corewasm.HeapFunc, b.Abs)
+	if a.Kind() == corewasm.HeapTypeIndex {
+		afn, aok := proposalIndexedFuncType(am, a.Type())
+		if b.Kind() == corewasm.HeapAbs {
+			return aok && proposalAbsHeapSubtype(corewasm.HeapFunc, b.Abs())
 		}
-		if b.Kind == corewasm.HeapTypeIndex {
-			bfn, bok := proposalIndexedFuncType(bm, b.Type)
+		if b.Kind() == corewasm.HeapTypeIndex {
+			bfn, bok := proposalIndexedFuncType(bm, b.Type())
 			return aok && bok && proposalFuncTypesEquivalent(afn, am, bfn, bm, depth+1)
 		}
 	}
@@ -922,10 +922,10 @@ func proposalLimitsCompatible(actual, expected corewasm.Limits) bool {
 	if actual.Addr64 != expected.Addr64 || actual.Min < expected.Min {
 		return false
 	}
-	if expected.Max == nil {
+	if !expected.HasMax {
 		return true
 	}
-	return actual.Max != nil && *actual.Max <= *expected.Max
+	return actual.HasMax && actual.Max <= expected.Max
 }
 
 func proposalImportValueKind(value any) proposalExternKind {

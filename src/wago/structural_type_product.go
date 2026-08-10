@@ -94,7 +94,7 @@ func stagedStructuralTypeMetadataShape(m *wasm.Module) error {
 	for gi := range m.Types {
 		for si := range m.Types[gi].SubTypes {
 			st := &m.Types[gi].SubTypes[si]
-			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() {
 				return fmt.Errorf("collector-free structural products reject subtype and descriptor metadata")
 			}
 			switch st.Comp.Kind {
@@ -102,7 +102,7 @@ func stagedStructuralTypeMetadataShape(m *wasm.Module) error {
 			case wasm.CompStruct:
 				hasStruct = true
 				for i := range st.Comp.Fields {
-					if st.Comp.Fields[i].Mut != 0 {
+					if st.Comp.Fields[i].Mut() != 0 {
 						return fmt.Errorf("collector-free structural products reject mutable struct fields")
 					}
 				}
@@ -131,7 +131,7 @@ func stagedStructuralRefFuncGlobalShape(m *wasm.Module) (stagedStructuralTypePro
 		return 0, false
 	}
 	types, err := typeDescriptorsFromWasm(m)
-	if err != nil || !tagTypeEquivalent(m.FuncTypes[0].Index, types, g.Type.Type.Ref.Heap.Type.Index, types) {
+	if err != nil || !tagTypeEquivalent(m.FuncTypes[0].Index, types, g.Type.Type.Ref().Heap().Type().Index, types) {
 		return 0, false
 	}
 	return stagedStructuralRefFuncGlobal, true
@@ -168,7 +168,7 @@ func stagedStructuralCallIndirectShape(m *wasm.Module) (stagedStructuralTypeProd
 		return 0, false
 	}
 	t := &m.Tables[0].Type
-	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 1 || t.Limits.Max == nil || *t.Limits.Max != 1 || m.Tables[0].Init != nil {
+	if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 || t.Limits.Min != 1 || !t.Limits.HasMax || t.Limits.Max != 1 || m.Tables[0].Init != nil {
 		return 0, false
 	}
 	e := &m.Elements[0]
@@ -193,10 +193,10 @@ func stagedStructuralCallIndirectShape(m *wasm.Module) (stagedStructuralTypeProd
 }
 
 func isNonNullIndexedFunctionRef(m *wasm.Module, typ wasm.ValType) bool {
-	if typ.Kind != wasm.ValRef || typ.Ref.Nullable || typ.Ref.Exact || typ.Ref.Heap.Kind != wasm.HeapTypeIndex {
+	if typ.Kind() != wasm.ValRef || typ.Ref().Nullable() || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 		return false
 	}
-	_, ok := m.ResolvedTypeFunc(typ.Ref.Heap.Type.Index)
+	_, ok := m.ResolvedTypeFunc(typ.Ref().Heap().Type().Index)
 	return ok
 }
 

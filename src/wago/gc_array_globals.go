@@ -48,10 +48,10 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 	imports := m.ImportedGlobalCount()
 	out := make([]gcArrayGlobalInit, 0, 2)
 	for i, g := range m.Globals {
-		if g.Type.Type.Kind != wasm.ValRef || g.Type.Type.Ref.Heap.Kind != wasm.HeapTypeIndex {
+		if g.Type.Type.Kind() != wasm.ValRef || g.Type.Type.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 			continue
 		}
-		sub, ok := stagedGCStructSubtype(m, g.Type.Type.Ref.Heap.Type.Index)
+		sub, ok := stagedGCStructSubtype(m, g.Type.Type.Ref().Heap().Type().Index)
 		if !ok || sub.Comp.Kind != wasm.CompArray {
 			continue
 		}
@@ -140,18 +140,18 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 			if err != nil {
 				return gcArrayGlobalInit{}, err
 			}
-			if g.Type.Type.Ref.Heap.Type.Index != typeID || g.Type.Type.Ref.Nullable {
+			if g.Type.Type.Ref().Heap().Type().Index != typeID || g.Type.Type.Ref().Nullable() {
 				return gcArrayGlobalInit{}, fmt.Errorf("result type does not match non-null array type %d", typeID)
 			}
 			sub, ok := stagedGCStructSubtype(m, typeID)
 			if !ok || sub.Comp.Kind != wasm.CompArray {
 				return gcArrayGlobalInit{}, fmt.Errorf("type %d is not an array", typeID)
 			}
-			want := sub.Comp.Array.Storage.Val
-			if sub.Comp.Array.Storage.Packed {
+			want := sub.Comp.Array.Storage().Val()
+			if sub.Comp.Array.Storage().Packed() {
 				want = wasm.I32
 			}
-			if want.Kind == wasm.ValRef && product != stagedGCArrayProductInitElem {
+			if want.Kind() == wasm.ValRef && product != stagedGCArrayProductInitElem {
 				return gcArrayGlobalInit{}, fmt.Errorf("reference array initializer remains unsupported")
 			}
 			init := gcArrayGlobalInit{GlobalIndex: globalIndex, TypeID: typeID}
@@ -161,7 +161,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 					return gcArrayGlobalInit{}, fmt.Errorf("array.new operands do not match %s, i32", want)
 				}
 				init.Mode = gcArrayGlobalInitUniform
-				if want.Kind == wasm.ValRef {
+				if want.Kind() == wasm.ValRef {
 					init.Mode = gcArrayGlobalInitFuncUniform
 				}
 				init.Length = uint32(values[1].bits)
@@ -321,22 +321,34 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	return in.CollectGC()
 }
 
-// reconcileGCGlobalRoots synchronizes the exact staged mutable GC global cells
-// with their checked collector slots after a successful native invocation. The
-// admitted bulk-copy product performs global.set only as its final operation, so
-// no allocating helper can observe the new cell before this bounded two-slot
-// reconciliation runs.
+// reconcileGCGlobalRoots synchronizes exact staged mutable GC global cells with
+// their checked collector slots after every successful native invocation. Native
+// allocation can now satisfy several constructors without a Go helper boundary,
+// so helper-triggered synchronization alone is no longer authoritative.
 func (in *Instance) reconcileGCGlobalRoots() error {
-	if in == nil || in.gc == nil || in.c == nil || in.c.stagedGCArrayProduct() != stagedGCArrayProductBulkCopy {
+	if in == nil || in.gc == nil || in.c == nil || !in.c.hasGCRefGlobals() {
 		return nil
 	}
 	state := in.pluginState.Load()
-	if state == nil || state.gcGlobalRootCount == 0 {
+	public := in.existingPublicGCState()
+	hasGeneric := public != nil && len(public.globalRoots) != 0
+	hasStaged := state != nil && state.gcGlobalRootCount != 0
+	if !hasGeneric && !hasStaged {
 		return nil
 	}
-	public := in.publicGCState()
+	if public == nil {
+		public = in.publicGCState()
+	}
 	public.mu.Lock()
 	defer public.mu.Unlock()
+	if hasGeneric {
+		if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
+			return err
+		}
+	}
+	if !hasStaged {
+		return nil
+	}
 	for i := uint8(0); i < state.gcGlobalRootCount; i++ {
 		mapping := state.gcGlobalRoots[i]
 		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {

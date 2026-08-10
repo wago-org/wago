@@ -103,15 +103,16 @@ current optimization priorities. The Core 3.0 implementation ledger is
 **WebAssembly 3.0** (primary conformance complete; product hardening continues)
 - [x] Pin and execute the complete official `WebAssembly/spec` `wg-3.0` corpus.
   Linux/amd64 native and Linux/arm64 QEMU explicit-bounds `CoreFeaturesV3` runs
-  pass all 2,226 modules and 58,238 assertions with zero failures, skips, or gap
+  pass all 2,226 modules and 58,038 assertions with zero failures, skips, or gap
   categories; native Linux/Darwin arm64 runs are now required in CI.
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
   primary product. Release 1/2 defaults remain unchanged; Core 3 is opt-in.
-- [x] Add exact linux/amd64 WasmGC roots across local direct/indirect/reference
-  calls, recursion, bounded host re-entry, mutable/shared GC globals, local/shared
-  collector-reference tables, EH payload records, and same-Runtime cross-instance
-  calls. Codec v30 persists and validates the native root metadata.
+- [x] Add exact linux/amd64 and Linux/Darwin arm64 WasmGC roots across local
+  direct/indirect/reference calls, recursion, bounded host re-entry,
+  mutable/shared GC globals, local/shared collector-reference tables, EH payload
+  records, local starts, and same-Runtime cross-instance calls. One-/two-word and
+  bounded flat masks cover up to 1,024 roots; codec v34 validates the native maps.
 - [x] Add snapshot v4 stable-ID heap graphs for objects reachable from owned local
   GC globals, preserving cycles and sharing without serializing compact handles.
 - [x] Add snapshot v5 roots for one owned local collector-reference table, then
@@ -190,7 +191,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   retain bounded argument/result roots across parked host execution. Ordinary host
   owners and direct foreign Runtime domains continue to reject.
 - [x] **Bounds-mode parity:** linux/amd64 explicit and signal-backed Core 3 pass
-  2,226 modules and 58,238 assertions with zero failures, skips, or gaps. ARM64
+  2,226 modules and 58,038 assertions with zero failures, skips, or gaps. ARM64
   signal builds now admit exception handling, multi-memory, and memory64: memory 0
   uses native guard faults while indexed memories and memory64 retain carry-safe
   explicit checks. Native Linux/ARM64 and Darwin/ARM64 `spec3-signals` are mandatory
@@ -234,8 +235,17 @@ current optimization priorities. The Core 3.0 implementation ledger is
   forwarding, and a CPUID-gated BMI2 path remain.
 <!-- roadmap:P4 status=planned -->
 - [ ] **P4 — restricted pending `local.set`/`tee`** *(gated on P1 counters)*
-<!-- roadmap:P7 status=planned -->
-- [ ] **P7 — compile path** *(premise re-measured post-#96)*: fused validate+compile
+<!-- roadmap:P7 status=partial -->
+- 🚧 **P7 — compile path**: post-#96 profiling rejected validator/codegen
+  entanglement as the first move. The existing requirements scan now also
+  produces module footprint facts, passive-segment state bounds, and atomic
+  wait-helper selection, indexed-function ref-test/cast requirements, and the
+  ARM64 GC ref-test helper obligation, removing four later whole-body walks.
+  Identical-commit full-compile A/Bs on darwin/arm64 show 7.70–9.90% for the
+  first summary fusion and a further 9.99–13.94% for the ref-operation fusion
+  on ruby, esbuild, sqlite3, and json-as, with allocation traffic and peak RSS
+  neutral. Fusing support admission and backend hints remains premise-gated on
+  preserving validation/error order and per-architecture code identity.
 
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
 - [x] **Synchronous host-import results** — returning host imports use the no-cgo
@@ -337,7 +347,7 @@ Official `gc/type-subtyping.wast` is complete: 45 modules, 29 assertions, 24 inv
 
 The remaining feature families are integrated under explicit `CoreFeaturesV3`
 admission. The pinned official Release 3 suite completes at 2,226 passing modules
-and 58,238 passing assertions with zero failures, skips, or gap categories. The
+and 58,038 passing assertions with zero failures, skips, or gap categories. The
 final integration includes prior-local-global constant offsets, typed element
 initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
 `spectest.table64`, shared-memory co-tenant serialization, and reference
@@ -475,6 +485,49 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   composition allocation-free with reusable scratch, switch early Throughput
   growth to geometric capacity, and release the duplicate Go-heap JIT code copy
   after RX mapping.
+- [x] Add decision-grade opt-in GC telemetry behind `wago_gcstats`: bounded pause
+  histograms, additive phase timing, exact trace/root/card/promotion/path counters,
+  managed-memory domains, JSONL A/B reports, code-neutral JIT byte attribution,
+  and hot-versus-sparse static-site benchmarks. Ordinary builds retain the
+  uninstrumented collector path and only one 4-KiB stripped-file alignment step.
+- [x] Remove linear Throughput old-space allocation: constant-time class mapping
+  feeds one arena-backed augmented AVL free-span index with logarithmic fit,
+  insertion, exact coalescing, top-bump reclamation, exact fragmentation
+  summaries, lazy post-full-GC indexing, size-grouped promotion destinations,
+  randomized interval-oracle/fuzz coverage, and warmed allocation-free churn.
+- [x] Make Throughput minor collection card-driven: measured 128-byte payload
+  cards retain linked disjoint ranges, persistent globals/tables use stable-index
+  bitmaps instead of a Go map, bulk barriers avoid a mutator rescan, generated
+  same-card stores stay native, and metadata-growth failures take one shared safe
+  whole-object/full-root fallback until evacuation. Removed/coalesced card slots
+  are reused at the peak high-water mark, and helper hits swap non-head intervals
+  into the stable native head slot; repeated non-head writes improve 16.9% in the
+  interleaved control. The 256K two-write fixture falls from 262,144 to 64 scanned
+  slots while dense work remains within 3% of baseline.
+- [x] Generalize exact native-root admission: retain the one-word <=64-root path,
+  add two-word <=128-root masks and a bounded flat arena through 1,024 roots,
+  admit exact local starts, omit independently proven non-collecting functions,
+  share repeated immutable offset maps, and expose fail-closed diagnostics. The
+  one-root 16K-instruction compile benchmark improves 3.2% while temporary bytes
+  fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero allocation.
+- [x] Add bounded Throughput survivor aging: Eden feeds two bump-copy semispaces,
+  handle-owned age bits retain the 20-byte native entry, medium-lived objects
+  tenure after measured survival, and large young objects age in place. Exact
+  cards persist only while young edges remain, movement is transactionally
+  preflighted, and occupancy/old-pressure/full-GC plus optional pause targets
+  adapt the threshold from one through three minors. The one-minor workload
+  eliminates 32 promoted bytes/object and improves its median about 19%; the
+  zero-survival path remains allocation-free and within 1% of immediate promotion.
+- [x] Extend transactional AMD64 nursery allocation through #311: the retained
+  32-handle batch now exposes contiguous runs and optional bounded 4-KiB array chunks;
+  statically sized final numeric/vector/packed and nullable abstract-reference
+  arrays up to 256 object bytes use checked native default, uniform, and fixed
+  constructors. Dynamic, large, data/element-segment, and unsupported reference
+  shapes remain exact rooted helpers after measurements rejected broader native
+  admission. ABI v6 keeps the established direct struct bump, delays generic
+  array refill until nine slow constructors, cancels unused handles/chunks on every
+  Go allocation, trap, collection, epoch change, and close, and reconciles exact GC
+  globals after successful helper-free invocation sequences.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 const (
@@ -25,6 +26,9 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayAllocDefaultNative  uint32 = 32
+	gcArrayAllocUniformNative  uint32 = 33
+	gcArrayAllocFixedNative    uint32 = 34
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -37,17 +41,24 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
+		field, ok := f.stagedArrayType(typeIndex)
 		if !ok {
 			return fmt.Errorf("amd64: array.new type %d is unavailable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if err := f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+		helper := uint32(gcArrayAllocUniform)
+		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native {
+			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeUniform}
+				helper = gcArrayAllocUniformNative
+			}
+		}
+		if err := f.callGCStructHelper(helper, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.markTopExactGCType(typeIndex)
@@ -61,8 +72,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
-		if !ok || field.Storage.Val.Kind != wasm.ValRef {
+		field, ok := f.stagedArrayType(typeIndex)
+		if !ok || field.Storage().Val().Kind() != wasm.ValRef {
 			return fmt.Errorf("amd64: array.new_elem type %d is not a reference array", typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -82,11 +93,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
+		field, ok := f.stagedArrayType(typeIndex)
 		if !ok {
 			return fmt.Errorf("amd64: array.new_data type %d is unavailable", typeIndex)
 		}
-		if field.Storage.Val.Kind == wasm.ValRef || (field.Storage.Packed && field.Storage.Pack != wasm.PackI8 && field.Storage.Pack != wasm.PackI16) {
+		if field.Storage().Val().Kind() == wasm.ValRef || (field.Storage().Packed() && field.Storage().Pack() != wasm.PackI8 && field.Storage().Pack() != wasm.PackI16) {
 			return fmt.Errorf("amd64: array.new_data type %d has unsupported storage", typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -106,12 +117,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
+		field, ok := f.stagedArrayType(typeIndex)
 		if !ok {
 			return fmt.Errorf("amd64: array.new_fixed type %d is unavailable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
@@ -137,7 +148,16 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if err := f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result}); err != nil {
+		helper := uint32(gcArrayAllocFixed)
+		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native {
+			bytes := uint64(gc.PayloadOffset) + uint64(count)*uint64(layout.elemSize)
+			bytes = (bytes + 7) &^ 7
+			if bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: count, mode: gcArrayNativeFixed}
+				helper = gcArrayAllocFixedNative
+			}
+		}
+		if err := f.callGCStructHelper(helper, params, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.markTopExactGCType(typeIndex)
@@ -147,12 +167,19 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		if _, ok := stagedArrayType(f.m, typeIndex); !ok {
+		if _, ok := f.stagedArrayType(typeIndex); !ok {
 			return fmt.Errorf("amd64: array.new_default type %d is unavailable", typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if err := f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+		helper := uint32(gcArrayAllocDefault)
+		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault}
+				helper = gcArrayAllocDefaultNative
+			}
+		}
+		if err := f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.markTopExactGCType(typeIndex)
@@ -162,14 +189,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
+		field, ok := f.stagedArrayType(typeIndex)
 		if !ok {
 			return fmt.Errorf("amd64: array.get type %d is unavailable", typeIndex)
 		}
 		helper := uint32(gcArrayGet)
-		resultType := field.Storage.Val
+		resultType := field.Storage().Val()
 		if sub == 12 || sub == 13 {
-			if !field.Storage.Packed {
+			if !field.Storage().Packed() {
 				return fmt.Errorf("amd64: array.get_s/u type %d is not packed", typeIndex)
 			}
 			resultType = wasm.I32
@@ -178,14 +205,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			} else {
 				helper = gcArrayGetU
 			}
-		} else if field.Storage.Packed {
+		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain array.get cannot access packed type %d", typeIndex)
 		}
 		if f.emitDirectGCArrayGet(typeIndex, helper) {
 			return nil
 		}
-		if sub == 11 && field.Storage.Val.Kind == wasm.ValRef && gcFrameRefType(f.m, field.Storage.Val) {
-			if target, ok := nativeGCFlatType(f.m, typeIndex); ok && target.Final {
+		if sub == 11 && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
+			if target, ok := f.stagedGCType(typeIndex); ok && target.Final {
 				return f.emitNativeFinalArrayRefGet(typeIndex)
 			}
 		}
@@ -197,21 +224,21 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
+		field, ok := f.stagedArrayType(typeIndex)
 		if !ok {
 			return fmt.Errorf("amd64: array.set type %d is unavailable", typeIndex)
 		}
-		if field.Mut != wasm.Var {
+		if field.Mut() != wasm.Var {
 			return fmt.Errorf("amd64: array.set type %d is immutable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		if f.emitDirectGCArraySet(typeIndex) {
 			return nil
 		}
-		if target, found := nativeGCFlatType(f.m, typeIndex); found && target.Final && field.Storage.Val.Kind == wasm.ValRef && field.Storage.Val.Ref.Heap.Kind == wasm.HeapAbs && (field.Storage.Val.Ref.Heap.Abs == wasm.HeapAny || field.Storage.Val.Ref.Heap.Abs == wasm.HeapEq) {
+		if target, found := f.stagedGCType(typeIndex); found && target.Final && field.Storage().Val().Kind() == wasm.ValRef && field.Storage().Val().Ref().Heap().Kind() == wasm.HeapAbs && (field.Storage().Val().Ref().Heap().Abs() == wasm.HeapAny || field.Storage().Val().Ref().Heap().Abs() == wasm.HeapEq) {
 			return f.emitNativeCardSafeArrayRefSet(typeIndex, valueType)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -228,12 +255,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
-		if !ok || field.Mut != wasm.Var {
+		field, ok := f.stagedArrayType(typeIndex)
+		if !ok || field.Mut() != wasm.Var {
 			return fmt.Errorf("amd64: array.fill type %d is unavailable or immutable", typeIndex)
 		}
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -248,8 +275,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
-		if !ok || field.Mut != wasm.Var || (!field.Storage.Packed && field.Storage.Val.Kind == wasm.ValRef) {
+		field, ok := f.stagedArrayType(typeIndex)
+		if !ok || field.Mut() != wasm.Var || (!field.Storage().Packed() && field.Storage().Val().Kind() == wasm.ValRef) {
 			return fmt.Errorf("amd64: array.init_data type %d is unavailable", typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -265,8 +292,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedArrayType(f.m, typeIndex)
-		if !ok || field.Mut != wasm.Var || field.Storage.Val.Kind != wasm.ValRef {
+		field, ok := f.stagedArrayType(typeIndex)
+		if !ok || field.Mut() != wasm.Var || field.Storage().Val().Kind() != wasm.ValRef {
 			return fmt.Errorf("amd64: array.init_elem type %d is unavailable", typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -282,11 +309,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		dstField, ok := stagedArrayType(f.m, dstType)
-		if !ok || dstField.Mut != wasm.Var {
+		dstField, ok := f.stagedArrayType(dstType)
+		if !ok || dstField.Mut() != wasm.Var {
 			return fmt.Errorf("amd64: array.copy destination type %d is unavailable or immutable", dstType)
 		}
-		if _, ok := stagedArrayType(f.m, srcType); !ok {
+		if _, ok := f.stagedArrayType(srcType); !ok {
 			return fmt.Errorf("amd64: array.copy source type %d is unavailable", srcType)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dstType)})
@@ -334,6 +361,23 @@ func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.
 	}
 	f.pushReg(result, mtI64)
 	return nil
+}
+
+func nativeGCStaticArraySize(f *fn, layout nativeGCArrayAllocLayout) (length uint32, objectBytes uint64, ok bool) {
+	if f == nil || f.s == nil {
+		return 0, 0, false
+	}
+	value := f.s.back()
+	if value != nil {
+		value = value.prev // trailing type-index constant was pushed before admission
+	}
+	if value == nil || value.kind != ekValue || value.st.kind != stConst || value.st.typ != mtI32 {
+		return 0, 0, false
+	}
+	length = uint32(value.st.cval)
+	objectBytes = uint64(gc.PayloadOffset) + uint64(length)*uint64(layout.elemSize)
+	objectBytes = (objectBytes + 7) &^ 7
+	return length, objectBytes, objectBytes <= uint64(^uint32(0))
 }
 
 func stagedArrayType(m *wasm.Module, typeIndex uint32) (wasm.FieldType, bool) {

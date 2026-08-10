@@ -152,28 +152,28 @@ func (v *moduleValidator) compTypeSubtype(sub CompType, subGroup int, sup CompTy
 	subVal := func(a ValType, aGroup int, b ValType, bGroup int) bool {
 		a = v.resolveValTypeRecIndexes(a, aGroup)
 		b = v.resolveValTypeRecIndexes(b, bGroup)
-		if a.Kind == ValBot {
+		if a.Kind() == ValBot {
 			return true
 		}
-		if a.Kind != b.Kind || a.Num != b.Num {
+		if a.Kind() != b.Kind() || a.Num() != b.Num() {
 			return false
 		}
-		return a.Kind != ValRef || v.refSubtype(a.Ref, b.Ref)
+		return a.Kind() != ValRef || v.refSubtype(a.Ref(), b.Ref())
 	}
 	storageSubtype := func(a StorageType, aGroup int, b StorageType, bGroup int) bool {
-		if a.Packed || b.Packed {
-			return a.Packed == b.Packed && a.Pack == b.Pack
+		if a.Packed() || b.Packed() {
+			return a.Packed() == b.Packed() && a.Pack() == b.Pack()
 		}
-		return subVal(a.Val, aGroup, b.Val, bGroup)
+		return subVal(a.Val(), aGroup, b.Val(), bGroup)
 	}
 	fieldSubtype := func(a FieldType, aGroup int, b FieldType, bGroup int) bool {
-		if a.Mut != b.Mut {
+		if a.Mut() != b.Mut() {
 			return false
 		}
-		if !storageSubtype(a.Storage, aGroup, b.Storage, bGroup) {
+		if !storageSubtype(a.Storage(), aGroup, b.Storage(), bGroup) {
 			return false
 		}
-		return a.Mut == Const || storageSubtype(b.Storage, bGroup, a.Storage, aGroup)
+		return a.Mut() == Const || storageSubtype(b.Storage(), bGroup, a.Storage(), aGroup)
 	}
 	switch sub.Kind {
 	case CompFunc:
@@ -298,27 +298,26 @@ func (v *moduleValidator) resolveCompTypeRecIndexes(ct CompType, recGroup int) C
 }
 
 func (v *moduleValidator) resolveFieldTypeRecIndexes(ft FieldType, recGroup int) FieldType {
-	if ft.Storage.Packed {
+	storage := ft.Storage()
+	if storage.Packed() {
 		return ft
 	}
-	ft.Storage.Val = v.resolveValTypeRecIndexes(ft.Storage.Val, recGroup)
-	return ft
+	return NewFieldType(StorageVal(v.resolveValTypeRecIndexes(storage.Val(), recGroup)), ft.Mut())
 }
 
 func (v *moduleValidator) resolveValTypeRecIndexes(t ValType, recGroup int) ValType {
-	if t.Kind != ValRef {
+	if t.Kind() != ValRef {
 		return t
 	}
-	t.Ref = v.resolveRefTypeRecIndexes(t.Ref, recGroup)
-	return t
+	return RefVal(v.resolveRefTypeRecIndexes(t.Ref(), recGroup))
 }
 
 func (v *moduleValidator) resolveRefTypeRecIndexes(rt RefType, recGroup int) RefType {
-	if rt.Heap.Kind != HeapTypeIndex {
+	heap := rt.Heap()
+	if heap.Kind() != HeapTypeIndex {
 		return rt
 	}
-	rt.Heap.Type = v.resolveTypeIdxRecIndex(rt.Heap.Type, recGroup)
-	return rt
+	return rt.WithHeap(IndexedHeap(v.resolveTypeIdxRecIndex(heap.Type(), recGroup)))
 }
 
 func (v *moduleValidator) resolveTypeIdxRecIndex(idx TypeIdx, recGroup int) TypeIdx {
@@ -330,20 +329,20 @@ func (v *moduleValidator) resolveTypeIdxRecIndex(idx TypeIdx, recGroup int) Type
 }
 
 func storageValType(st StorageType, signedGet bool) ValType {
-	if !st.Packed {
-		return st.Val
+	if !st.Packed() {
+		return st.Val()
 	}
 	_ = signedGet
 	return I32
 }
 
 func valTypeDefaultable(t ValType) bool {
-	return t.Kind != ValRef || t.Ref.Nullable
+	return t.Kind() != ValRef || t.Ref().Nullable()
 }
 
 func (v *moduleValidator) descriptorTargetRefType(nullable bool, ht HeapType, exact bool) (ValType, bool) {
-	if ht.Kind == HeapTypeIndex {
-		if _, ok := v.subtypeByTypeIdx(ht.Type); !ok {
+	if ht.Kind() == HeapTypeIndex {
+		if _, ok := v.subtypeByTypeIdx(ht.Type()); !ok {
 			return ValType{}, false
 		}
 	}
@@ -396,14 +395,14 @@ const (
 // the other: the dynamic result is simply false. Disjoint top-level reference
 // hierarchies (for example func and i31/data) remain validation errors.
 func (v *moduleValidator) refTestCompatible(a, b RefType) bool {
-	af, aok := v.refTestHeapFamily(a.Heap)
-	bf, bok := v.refTestHeapFamily(b.Heap)
+	af, aok := v.refTestHeapFamily(a.Heap())
+	bf, bok := v.refTestHeapFamily(b.Heap())
 	return aok && bok && af == bf
 }
 
 func (v *moduleValidator) refTestHeapFamily(h HeapType) (refTestFamily, bool) {
-	if h.Kind == HeapAbs {
-		switch h.Abs {
+	if h.Kind() == HeapAbs {
+		switch h.Abs() {
 		case HeapNone, HeapI31, HeapStruct, HeapArray, HeapEq, HeapAny:
 			return refTestFamilyData, true
 		case HeapNoFunc, HeapFunc:
@@ -419,18 +418,19 @@ func (v *moduleValidator) refTestHeapFamily(h HeapType) (refTestFamily, bool) {
 		}
 	}
 	var kind CompTypeKind
-	switch h.Kind {
+	switch h.Kind() {
 	case HeapTypeIndex:
-		ct, ok := v.compTypeFromTypeIdx(h.Type)
+		ct, ok := v.compTypeFromTypeIdx(h.Type())
 		if !ok {
 			return 0, false
 		}
 		kind = ct.Kind
 	case HeapDefType:
-		if h.Def == nil || h.Def.Index >= uint32(len(h.Def.Rec.SubTypes)) {
+		defKind, valid := h.DefCompKind()
+		if !valid {
 			return 0, false
 		}
-		kind = h.Def.Rec.SubTypes[h.Def.Index].Comp.Kind
+		kind = defKind
 	default:
 		return 0, false
 	}
@@ -445,56 +445,56 @@ func (v *moduleValidator) refTestHeapFamily(h HeapType) (refTestFamily, bool) {
 }
 
 func (v *moduleValidator) descriptorCompatible(a, b RefType) bool {
-	if a.Heap.Kind == HeapAbs && b.Heap.Kind == HeapAbs {
-		return absHeapSubtype(a.Heap.Abs, b.Heap.Abs) || absHeapSubtype(b.Heap.Abs, a.Heap.Abs)
+	if a.Heap().Kind() == HeapAbs && b.Heap().Kind() == HeapAbs {
+		return absHeapSubtype(a.Heap().Abs(), b.Heap().Abs()) || absHeapSubtype(b.Heap().Abs(), a.Heap().Abs())
 	}
-	if a.Exact && b.Exact && a.Heap.Kind == HeapTypeIndex && b.Heap.Kind == HeapTypeIndex {
-		return v.typeIdxEquivalent(a.Heap.Type, b.Heap.Type)
+	if a.Exact() && b.Exact() && a.Heap().Kind() == HeapTypeIndex && b.Heap().Kind() == HeapTypeIndex {
+		return v.typeIdxEquivalent(a.Heap().Type(), b.Heap().Type())
 	}
 	return v.refSubtype(a, b) || v.refSubtype(b, a)
 }
 
 func (v *moduleValidator) refSubtype(a, b RefType) bool {
-	if !b.Nullable && a.Nullable {
+	if !b.Nullable() && a.Nullable() {
 		return false
 	}
-	if v.heapTypeEquivalent(a.Heap, b.Heap) {
-		if b.Exact && !a.Exact {
+	if v.heapTypeEquivalent(a.Heap(), b.Heap()) {
+		if b.Exact() && !a.Exact() {
 			return false
 		}
 		return true
 	}
-	if a.Heap.Kind == HeapTypeIndex && b.Heap.Kind == HeapTypeIndex {
-		return !b.Exact && v.typeIdxSuperSubtype(a.Heap.Type, b.Heap.Type)
+	if a.Heap().Kind() == HeapTypeIndex && b.Heap().Kind() == HeapTypeIndex {
+		return !b.Exact() && v.typeIdxSuperSubtype(a.Heap().Type(), b.Heap().Type())
 	}
-	if a.Heap.Kind == HeapAbs && b.Heap.Kind == HeapTypeIndex {
-		ct, ok := v.compTypeFromTypeIdx(b.Heap.Type)
+	if a.Heap().Kind() == HeapAbs && b.Heap().Kind() == HeapTypeIndex {
+		ct, ok := v.compTypeFromTypeIdx(b.Heap().Type())
 		if !ok {
 			return false
 		}
 		switch ct.Kind {
 		case CompFunc:
-			return a.Heap.Abs == HeapNoFunc
+			return a.Heap().Abs() == HeapNoFunc
 		case CompStruct, CompArray:
-			return a.Heap.Abs == HeapNone
+			return a.Heap().Abs() == HeapNone
 		}
 	}
-	if a.Heap.Kind == HeapTypeIndex && b.Heap.Kind == HeapAbs {
-		ct, ok := v.compTypeFromTypeIdx(a.Heap.Type)
+	if a.Heap().Kind() == HeapTypeIndex && b.Heap().Kind() == HeapAbs {
+		ct, ok := v.compTypeFromTypeIdx(a.Heap().Type())
 		if !ok {
 			return false
 		}
 		switch ct.Kind {
 		case CompStruct:
-			return absHeapSubtype(HeapStruct, b.Heap.Abs)
+			return absHeapSubtype(HeapStruct, b.Heap().Abs())
 		case CompArray:
-			return absHeapSubtype(HeapArray, b.Heap.Abs)
+			return absHeapSubtype(HeapArray, b.Heap().Abs())
 		case CompFunc:
-			return absHeapSubtype(HeapFunc, b.Heap.Abs)
+			return absHeapSubtype(HeapFunc, b.Heap().Abs())
 		}
 	}
-	if a.Heap.Kind == HeapAbs && b.Heap.Kind == HeapAbs {
-		return absHeapSubtype(a.Heap.Abs, b.Heap.Abs)
+	if a.Heap().Kind() == HeapAbs && b.Heap().Kind() == HeapAbs {
+		return absHeapSubtype(a.Heap().Abs(), b.Heap().Abs())
 	}
 	return false
 }
@@ -520,45 +520,44 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 	var eqType func(int, int) bool
 	var eqVal func(ValType, ValType, int, int) bool
 	eqHeap := func(x, y HeapType, xGroup, yGroup int) bool {
-		if x.Kind != y.Kind {
+		if x.Kind() != y.Kind() {
 			return false
 		}
-		switch x.Kind {
+		switch x.Kind() {
 		case HeapAbs:
-			return x.Abs == y.Abs
+			return x.Abs() == y.Abs()
 		case HeapTypeIndex:
-			if x.Type.Rec != y.Type.Rec {
+			if x.Type().Rec != y.Type().Rec {
 				return false
 			}
-			xi, xok := v.flatTypeIdxInRecGroup(x.Type, xGroup)
-			yi, yok := v.flatTypeIdxInRecGroup(y.Type, yGroup)
+			xi, xok := v.flatTypeIdxInRecGroup(x.Type(), xGroup)
+			yi, yok := v.flatTypeIdxInRecGroup(y.Type(), yGroup)
 			return xok && yok && eqType(xi, yi)
 		case HeapDefType:
-			if x.Def == nil || y.Def == nil {
-				return x.Def == y.Def
-			}
-			return x.Def.GroupIndex == y.Def.GroupIndex && x.Def.Index == y.Def.Index
+			xg, xi, _, xv := x.Def()
+			yg, yi, _, yv := y.Def()
+			return xv == yv && (!xv || xg == yg && xi == yi)
 		default:
 			return false
 		}
 	}
 	eqVal = func(x, y ValType, xGroup, yGroup int) bool {
-		if x.Kind != y.Kind || x.Num != y.Num {
+		if x.Kind() != y.Kind() || x.Num() != y.Num() {
 			return false
 		}
-		if x.Kind != ValRef {
+		if x.Kind() != ValRef {
 			return true
 		}
-		return x.Ref.Nullable == y.Ref.Nullable && x.Ref.Exact == y.Ref.Exact && eqHeap(x.Ref.Heap, y.Ref.Heap, xGroup, yGroup)
+		return x.Ref().Nullable() == y.Ref().Nullable() && x.Ref().Exact() == y.Ref().Exact() && eqHeap(x.Ref().Heap(), y.Ref().Heap(), xGroup, yGroup)
 	}
 	eqStorage := func(x, y StorageType, xGroup, yGroup int) bool {
-		if x.Packed != y.Packed || x.Pack != y.Pack {
+		if x.Packed() != y.Packed() || x.Pack() != y.Pack() {
 			return false
 		}
-		return x.Packed || eqVal(x.Val, y.Val, xGroup, yGroup)
+		return x.Packed() || eqVal(x.Val(), y.Val(), xGroup, yGroup)
 	}
 	eqField := func(x, y FieldType, xGroup, yGroup int) bool {
-		return x.Mut == y.Mut && eqStorage(x.Storage, y.Storage, xGroup, yGroup)
+		return x.Mut() == y.Mut() && eqStorage(x.Storage(), y.Storage(), xGroup, yGroup)
 	}
 	groupLocation := func(flat int) (group, local, base int, ok bool) {
 		if flat < 0 {
@@ -606,15 +605,17 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 				}
 			}
 		}
-		eqOptionalType := func(x, y *TypeIdx) bool {
-			if x == nil || y == nil {
-				return x == nil && y == nil
+		eqOptionalType := func(x, y OptionalTypeIdx) bool {
+			xv, xpresent := x.Get()
+			yv, ypresent := y.Get()
+			if !xpresent || !ypresent {
+				return xpresent == ypresent
 			}
-			if x.Rec != y.Rec {
+			if xv.Rec != yv.Rec {
 				return false
 			}
-			xi, xok := v.flatTypeIdxInRecGroup(*x, xGroup)
-			yi, yok := v.flatTypeIdxInRecGroup(*y, yGroup)
+			xi, xok := v.flatTypeIdxInRecGroup(xv, xGroup)
+			yi, yok := v.flatTypeIdxInRecGroup(yv, yGroup)
 			return xok && yok && eqType(xi, yi)
 		}
 		if ok {
@@ -670,5 +671,5 @@ func (v *moduleValidator) heapTypeEquivalent(a, b HeapType) bool {
 	if equalHeapType(a, b) {
 		return true
 	}
-	return a.Kind == HeapTypeIndex && b.Kind == HeapTypeIndex && v.typeIdxEquivalent(a.Type, b.Type)
+	return a.Kind() == HeapTypeIndex && b.Kind() == HeapTypeIndex && v.typeIdxEquivalent(a.Type(), b.Type())
 }

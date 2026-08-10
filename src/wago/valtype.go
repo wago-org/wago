@@ -90,8 +90,8 @@ func (t ValType) String() string {
 }
 
 func valTypeFromWasm(t wasm.ValType) ValType {
-	if t.Kind == wasm.ValRef && t.Ref.Heap.Kind == wasm.HeapAbs {
-		switch t.Ref.Heap.Abs {
+	if t.Kind() == wasm.ValRef && t.Ref().Heap().Kind() == wasm.HeapAbs {
+		switch t.Ref().Heap().Abs() {
 		case wasm.HeapAny, wasm.HeapNone:
 			return ValAnyRef
 		case wasm.HeapI31:

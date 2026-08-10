@@ -12,7 +12,7 @@ import (
 const (
 	domainSnapshotMagic      = "WGDN"
 	domainSnapshotVersionMin = 1
-	domainSnapshotVersion    = 3
+	domainSnapshotVersion    = 4
 )
 
 // IsDomainSnapshot reports whether b starts with the whole-domain snapshot wire
@@ -34,8 +34,11 @@ func (s *DomainSnapshot) marshalBinaryVersion(version byte) ([]byte, error) {
 	if err := validateDomainSnapshot(s); err != nil {
 		return nil, err
 	}
+	if version < 4 && (s.gc.SurvivorBytes != 0 || s.gc.MinorPauseTargetMicros != 0) {
+		return nil, fmt.Errorf("wago: domain snapshot v%d cannot encode survivor policy", version)
+	}
 	out := append([]byte(domainSnapshotMagic), version)
-	out = appendDomainGCConfig(out, s.gc)
+	out = appendDomainGCConfig(out, s.gc, version)
 	out = binary.AppendUvarint(out, uint64(len(s.members)))
 	for member, entry := range s.members {
 		compiled, err := entry.state.c.MarshalBinary()
@@ -149,7 +152,7 @@ func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) {
 		return nil, fmt.Errorf("wago: domain snapshot version %d unsupported", version)
 	}
 	rd := &snapReader{buf: data[len(domainSnapshotMagic)+1:]}
-	cfg := readDomainGCConfig(rd)
+	cfg := readDomainGCConfig(rd, version)
 	members := make([]domainSnapshotMember, rd.count("domain member", 1))
 	loaded := make([]*Compiled, 0, len(members))
 	fail := func(err error) (*DomainSnapshot, error) {
@@ -282,10 +285,14 @@ func readDomainRefs(rd *snapReader, name string) []gcSnapshotRef {
 	return refs
 }
 
-func appendDomainGCConfig(out []byte, cfg GCConfig) []byte {
+func appendDomainGCConfig(out []byte, cfg GCConfig, version byte) []byte {
 	out = append(out, byte(cfg.Profile), byte(cfg.Allocator), byte(cfg.Runtime))
 	for _, value := range []uint32{cfg.NurseryBytes, cfg.OldBlockBytes, cfg.LargeObjectBytes, cfg.StressNurseryBytes, cfg.TinyHeapBytes, cfg.TinyBlockBytes, cfg.TinyStepBudget, cfg.ThroughputHeapBytes, cfg.ThroughputPageBytes, cfg.ThroughputClassLimit} {
 		out = binary.LittleEndian.AppendUint32(out, value)
+	}
+	if version >= 4 {
+		out = binary.LittleEndian.AppendUint32(out, cfg.SurvivorBytes)
+		out = binary.LittleEndian.AppendUint32(out, cfg.MinorPauseTargetMicros)
 	}
 	for _, value := range []bool{cfg.CollectEveryAlloc, cfg.ForceMajorEveryMinor, cfg.VerifyAfterCollect, cfg.PoisonFreed, cfg.StressBarriers, cfg.DisableMovingNursery, cfg.DisableCollection, cfg.TinyCollectEveryAlloc, cfg.TinyStepEveryAlloc} {
 		if value {
@@ -315,11 +322,15 @@ func ReadDomainSnapshotFile(path string) (*DomainSnapshot, error) {
 	return LoadDomainSnapshot(data)
 }
 
-func readDomainGCConfig(rd *snapReader) GCConfig {
+func readDomainGCConfig(rd *snapReader, version byte) GCConfig {
 	cfg := GCConfig{Profile: GCProfile(rd.byte()), Allocator: gc.AllocatorKind(rd.byte()), Runtime: gc.RuntimeKind(rd.byte())}
 	values := []*uint32{&cfg.NurseryBytes, &cfg.OldBlockBytes, &cfg.LargeObjectBytes, &cfg.StressNurseryBytes, &cfg.TinyHeapBytes, &cfg.TinyBlockBytes, &cfg.TinyStepBudget, &cfg.ThroughputHeapBytes, &cfg.ThroughputPageBytes, &cfg.ThroughputClassLimit}
 	for _, value := range values {
 		*value = rd.u32()
+	}
+	if version >= 4 {
+		cfg.SurvivorBytes = rd.u32()
+		cfg.MinorPauseTargetMicros = rd.u32()
 	}
 	bools := []*bool{&cfg.CollectEveryAlloc, &cfg.ForceMajorEveryMinor, &cfg.VerifyAfterCollect, &cfg.PoisonFreed, &cfg.StressBarriers, &cfg.DisableMovingNursery, &cfg.DisableCollection, &cfg.TinyCollectEveryAlloc, &cfg.TinyStepEveryAlloc}
 	for _, value := range bools {

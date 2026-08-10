@@ -181,11 +181,7 @@ func TestRuntimeImportedFuncrefUsesProducerIdentityAndLifetime(t *testing.T) {
 	if importer.hostLog != nil {
 		t.Fatal("host-free cross-instance importer allocated an async host log")
 	}
-	if forceSyncHostImports {
-		if !importer.syncMode || importer.ctrl == nil {
-			t.Fatal("forced-sync architecture omitted the host control frame")
-		}
-	} else if importer.syncMode || importer.ctrl != nil {
+	if importer.syncMode || importer.ctrl != nil {
 		t.Fatal("host-free cross-instance importer allocated host-dispatch state")
 	}
 	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())

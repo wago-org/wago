@@ -222,24 +222,24 @@ func TestDecodeTypeForms(t *testing.T) {
 		if len(m.Types) != 1 || len(m.Types[0].SubTypes) != 2 {
 			t.Fatalf("rectype=%#v", m.Types)
 		}
-		if !m.Types[0].SubTypes[0].Final || m.Types[0].SubTypes[0].Metadata.Descriptor == nil {
+		if !m.Types[0].SubTypes[0].Final || !m.Types[0].SubTypes[0].Metadata.Descriptor.Present() {
 			t.Fatalf("final descriptor subtype not decoded: %#v", m.Types[0].SubTypes[0])
 		}
-		if m.Types[0].SubTypes[1].Final || len(m.Types[0].SubTypes[1].Supers) != 1 || m.Types[0].SubTypes[1].Metadata.Describes == nil {
+		if m.Types[0].SubTypes[1].Final || len(m.Types[0].SubTypes[1].Supers) != 1 || !m.Types[0].SubTypes[1].Metadata.Describes.Present() {
 			t.Fatalf("open describes subtype not decoded: %#v", m.Types[0].SubTypes[1])
 		}
 	})
 	t.Run("exact reference heap type", func(t *testing.T) {
 		r := newReader([]byte{0x64, 0x62, 0x03})
 		rt, err := decodeRefType(r)
-		if err != nil || rt.Nullable || !rt.Exact || rt.Heap.Type.Index != 3 {
+		if err != nil || rt.Nullable() || !rt.Exact() || rt.Heap().Type().Index != 3 {
 			t.Fatalf("rt=%#v err=%v", rt, err)
 		}
 	})
 	t.Run("memory64 and shared memory encodings", func(t *testing.T) {
 		r := newReader([]byte{0x07, 0x02, 0x04})
 		mt, err := decodeMemType(r)
-		if err != nil || !mt.Shared || !mt.Limits.Addr64 || mt.Limits.Min != 2 || mt.Limits.Max == nil || *mt.Limits.Max != 4 {
+		if err != nil || !mt.Shared || !mt.Limits.Addr64 || mt.Limits.Min != 2 || !mt.Limits.HasMax || mt.Limits.Max != 4 {
 			t.Fatalf("memtype=%#v err=%v", mt, err)
 		}
 	})
@@ -260,8 +260,8 @@ func TestDecodeRecursiveFunctionSignatureIndexesValidate(t *testing.T) {
 		t.Fatalf("DecodeModule: %v", err)
 	}
 	result := m.Types[0].SubTypes[1].Comp.Results[0]
-	if !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
-		t.Fatalf("function result heap = %#v, want recursive type 0", result.Ref.Heap)
+	if !result.Ref().Heap().Type().Rec || result.Ref().Heap().Type().Index != 0 {
+		t.Fatalf("function result heap = %#v, want recursive type 0", result.Ref().Heap())
 	}
 	if err := ValidateModule(m); err != nil {
 		t.Fatalf("ValidateModule: %v", err)
@@ -286,7 +286,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 	t.Run("descriptor br_on_cast immediate order", func(t *testing.T) {
 		r := newReader([]byte{0xfb, 0x18, 0x03, 0x02, 0x6e, 0x6d})
 		in, err := decodeInstruction(r, 0)
-		if err != nil || in.Kind != InstrBrOnCast || in.Index != 2 || !in.Cast.SourceNullable || !in.Cast.TargetNullable || in.HeapType().Abs != HeapAny || in.HeapType2().Abs != HeapEq {
+		if err != nil || in.Kind != InstrBrOnCast || in.Index != 2 || !in.Cast.SourceNullable || !in.Cast.TargetNullable || in.HeapType().Abs() != HeapAny || in.HeapType2().Abs() != HeapEq {
 			t.Fatalf("instr=%#v err=%v", in, err)
 		}
 	})

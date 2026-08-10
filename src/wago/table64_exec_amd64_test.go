@@ -640,8 +640,8 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal table64: %v", err)
 	}
-	if blob[4] != 32 {
-		t.Fatalf("table64 codec version = %d, want 32", blob[4])
+	if blob[4] != 34 {
+		t.Fatalf("table64 codec version = %d, want 34", blob[4])
 	}
 	var public Compiled
 	if err := public.UnmarshalBinary(blob); err != nil {
@@ -949,7 +949,7 @@ func TestStagedTable64CopyFullWidthOverlapAtomicityAndCodecRoundTrip(t *testing.
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(ordinary.Code, staged.Code) {
+	if !bytes.Equal(ordinary.code, staged.code) {
 		t.Fatal("enabling staged table64.copy changed table32 code bytes")
 	}
 }
@@ -1074,7 +1074,7 @@ func TestStagedTable64PassiveInitDropFullWidthAtomicityAndCodecRoundTrip(t *test
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(ordinary.Code, staged.Code) {
+	if !bytes.Equal(ordinary.code, staged.code) {
 		t.Fatal("enabling staged table64.init/drop changed table32 code bytes")
 	}
 }
@@ -1231,7 +1231,7 @@ func TestStagedTable64TwoLocalCopyMixedWidthsDirectoryAndCodecRoundTrip(t *testi
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(ordinary.Code, staged.Code) {
+	if !bytes.Equal(ordinary.code, staged.code) {
 		t.Fatal("enabling staged two-local table64.copy changed ordinary table32 code bytes")
 	}
 }
@@ -1352,7 +1352,7 @@ func TestStagedTable64TwoLocalReadWriteMixedWidthsDirectoryAndCodecRoundTrip(t *
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(ordinary.Code, staged.Code) {
+	if !bytes.Equal(ordinary.code, staged.code) {
 		t.Fatal("enabling staged two-local table64 read/write changed ordinary table32 code bytes")
 	}
 }
@@ -1478,7 +1478,7 @@ func TestStagedTable64TwoLocalGrowFillMixedWidthsDirectoryAndCodecRoundTrip(t *t
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(ordinary.Code, staged.Code) {
+	if !bytes.Equal(ordinary.code, staged.code) {
 		t.Fatal("enabling staged two-local table64 grow/fill changed ordinary table32 code bytes")
 	}
 }
@@ -1618,7 +1618,7 @@ func TestStagedTable64TwoLocalInitDropMixedWidthsDirectoryAndCodecRoundTrip(t *t
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(ordinary.Code, staged.Code) {
+	if !bytes.Equal(ordinary.code, staged.code) {
 		t.Fatal("enabling staged two-local table64.init/drop changed ordinary table32 code bytes")
 	}
 }
@@ -2542,9 +2542,9 @@ func TestStagedThreeLocalTableInit64ShapeIsExact(t *testing.T) {
 	module := wasm.Module{
 		Imports: []wasm.Import{{Module: "a", Name: "f", Type: wasm.ExternType{Kind: wasm.ExternFunc}}},
 		Tables: []wasm.Table{
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max}}},
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max}}},
-			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max, Addr64: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: max, HasMax: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: max, HasMax: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: max, HasMax: true, Addr64: true}}},
 		},
 		Elements: []wasm.Elem{
 			{Mode: wasm.ElemMode{Kind: wasm.ElemActive, Table: 2}},
@@ -2704,7 +2704,7 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer staged.Close()
-	if !bytes.Equal(base.Code, staged.Code) {
+	if !bytes.Equal(base.code, staged.code) {
 		t.Fatal("enabling staged table64 changed table32 code bytes")
 	}
 	ordinaryIndirect := table32CallIndirectModule()
@@ -2718,7 +2718,7 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stagedIndirect.Close()
-	if !bytes.Equal(baseIndirect.Code, stagedIndirect.Code) {
+	if !bytes.Equal(baseIndirect.code, stagedIndirect.code) {
 		t.Fatal("enabling staged table64 changed table32 call_indirect code bytes")
 	}
 }

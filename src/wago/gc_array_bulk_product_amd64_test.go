@@ -86,7 +86,7 @@ func TestStagedGCArrayBulkProductBoundary(t *testing.T) {
 				_ = in.Close()
 				t.Fatal("codec-loaded bulk array artifact instantiated")
 			}
-			t.Logf("%s product: wasm=%d code=%d codec=%d", tc.base, len(data), len(c.Code), len(blob))
+			t.Logf("%s product: wasm=%d code=%d codec=%d", tc.base, len(data), len(c.code), len(blob))
 
 			in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: tc.tinyBytes, TinyBlockBytes: 16, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
 			if err != nil {

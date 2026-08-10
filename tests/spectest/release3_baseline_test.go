@@ -2,8 +2,11 @@ package spectest
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -77,6 +80,73 @@ func TestCommittedRelease3BaselineIsPinnedAndComplete(t *testing.T) {
 			t.Errorf("baseline lacks mandatory family %q", family)
 		} else if entry.RedFiles != 0 {
 			t.Errorf("baseline family %q has %d red files", family, entry.RedFiles)
+		}
+	}
+}
+
+func TestRelease3DocumentationMatchesCommittedBaseline(t *testing.T) {
+	baselinePath := filepath.Clean("../../tests/spec-v3-baseline.json")
+	raw, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var baseline struct {
+		Suite struct {
+			WastFiles int `json:"wast_files"`
+		} `json:"suite"`
+		Totals struct {
+			Modules struct {
+				Passed int `json:"passed"`
+			} `json:"modules"`
+			Assertions struct {
+				Passed int `json:"passed"`
+			} `json:"assertions"`
+		} `json:"totals_excluding_parser_failures"`
+	}
+	if err := json.Unmarshal(raw, &baseline); err != nil {
+		t.Fatal(err)
+	}
+	formatCount := func(n int) string {
+		if n < 1000 {
+			return fmt.Sprint(n)
+		}
+		return fmt.Sprintf("%d,%03d", n/1000, n%1000)
+	}
+	wantModules := formatCount(baseline.Totals.Modules.Passed)
+	wantAssertions := formatCount(baseline.Totals.Assertions.Passed)
+	wantFiles := formatCount(baseline.Suite.WastFiles)
+	claimRE := regexp.MustCompile(regexp.QuoteMeta(wantModules) + `[^.]{0,200}([0-9]{2},[0-9]{3})`)
+	fileRE := regexp.MustCompile(`[0-9]{3}-file`)
+
+	for _, path := range []string{
+		"../../FEATURES.md",
+		"../../ROADMAP.md",
+		"../../VERIFICATION.md",
+		"../../docs/gc.md",
+		"../../docs/runtime-abi.md",
+		"../../docs/spec-testing.md",
+		"../../docs/wasm3.md",
+	} {
+		doc, err := os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		normalized := strings.Join(strings.Fields(string(doc)), " ")
+		claims := claimRE.FindAllStringSubmatch(normalized, -1)
+		if len(claims) == 0 {
+			t.Errorf("%s has no Core 3 module/assertion total sourced from %s", path, baselinePath)
+		}
+		for _, claim := range claims {
+			if claim[1] != wantAssertions || !strings.Contains(claim[0], wantModules) {
+				t.Errorf("%s claim %q disagrees with baseline modules=%s assertions=%s", path, claim[0], wantModules, wantAssertions)
+			}
+		}
+		if strings.Contains(normalized, "pinned 258-file") {
+			for _, claim := range fileRE.FindAllString(normalized, -1) {
+				if claim != wantFiles+"-file" {
+					t.Errorf("%s file-count claim %q disagrees with baseline files=%s", path, claim, wantFiles)
+				}
+			}
 		}
 	}
 }

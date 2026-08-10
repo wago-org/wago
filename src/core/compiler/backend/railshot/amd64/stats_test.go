@@ -212,6 +212,26 @@ func TestModuleStatsReport(t *testing.T) {
 // single emitted byte: the counters live in CodegenStats, never in the Asm
 // buffer. This is the guardrail that lets every later phase trust the dashboard
 // without suspecting it perturbs the code it measures.
+func TestCodegenStatsGCNativeByteAttribution(t *testing.T) {
+	var stats ModuleStats
+	if _, err := CompileModuleWith(exactGCRefFactModule(t, true), CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	s := stats.Funcs[0]
+	if s.GCCodeBytes.Allocation <= 0 || s.GCCodeBytes.HelperCall <= 0 {
+		t.Fatalf("GC allocation/helper bytes = %+v", s.GCCodeBytes)
+	}
+	if s.GCCodeBytes.TypeCast <= 0 || s.GCCodeBytes.NullCheck <= 0 || s.GCCodeBytes.HandleResolution <= 0 {
+		t.Fatalf("GC cast/resolve/null bytes = %+v", s.GCCodeBytes)
+	}
+	if s.GCCodeBytes.TrapStub <= 0 {
+		t.Fatalf("GC trap-stub bytes = %+v", s.GCCodeBytes)
+	}
+	if s.GCCodeBytes.Allocation > s.CodeBytes || s.GCCodeBytes.TypeCast > s.CodeBytes || s.GCCodeBytes.HelperCall > s.CodeBytes || s.GCCodeBytes.TrapStub > s.CodeBytes {
+		t.Fatalf("attribution exceeds total code %d: %+v", s.CodeBytes, s.GCCodeBytes)
+	}
+}
+
 func TestCodegenStatsCodegenNeutral(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}

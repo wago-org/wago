@@ -7,6 +7,9 @@ import (
 )
 
 func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
+	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.ChunkEnd != 0 {
+		c.discardNativeStructHandles()
+	}
 	if c.cfg.Profile == ProfileTiny {
 		return c.tinyAlloc(d, size, aux, roots)
 	}
@@ -14,9 +17,25 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		return Null(), err
 	}
 	if c.cfg.DisableCollection {
-		e, err := c.throughput.alloc(size, spaceLarge)
+		var tx throughputAllocTransaction
+		if failureInjectionEnabled {
+			if err := c.throughput.sweepAllPending(); err != nil {
+				return Null(), err
+			}
+			tx = c.throughput.beginAllocTransaction()
+		}
+		e, err := c.allocThroughput(size, spaceLarge)
 		if err != nil {
+			if isInjectedFailure(err) {
+				c.throughput.restoreAllocTransaction(tx)
+				return Null(), err
+			}
 			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
+		}
+		if err := injectFailure(c, failHandlePublication); err != nil {
+			c.throughput.rollbackSuccessfulAlloc(e, tx.bump)
+			c.throughput.restoreAllocTransaction(tx)
+			return Null(), err
 		}
 		h := c.newHandle(e)
 		r := makeObjRef(h)
@@ -26,6 +45,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 		c.stats.Allocations++
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.paths.GoAllocationPaths++
+		}
 		c.refreshNativeView()
 		return r, nil
 	}
@@ -33,7 +55,13 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		if roots == nil {
 			return Null(), errors.New("gc: allocation-triggered collection requires roots")
 		}
-		if err := c.CollectMinor(roots); err != nil {
+		var err error
+		if stressFullCollection() {
+			err = c.CollectFull(roots)
+		} else {
+			err = c.CollectMinor(roots)
+		}
+		if err != nil {
 			if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
 				return Null(), err
 			}
@@ -42,10 +70,22 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	sp := spaceNursery
 	var off uint32
 	var e handleEntry
+	var oldNurseryBump uint32
+	var allocationTx throughputAllocTransaction
 	if c.shouldAllocateLarge(size) {
 		var err error
-		e, err = c.throughput.alloc(size, spaceLarge)
+		if failureInjectionEnabled {
+			if err := c.throughput.sweepAllPending(); err != nil {
+				return Null(), err
+			}
+			allocationTx = c.throughput.beginAllocTransaction()
+		}
+		e, err = c.allocThroughput(size, spaceLarge)
 		if err != nil {
+			if isInjectedFailure(err) {
+				c.throughput.restoreAllocTransaction(allocationTx)
+				return Null(), err
+			}
 			if errors.Is(err, ErrAllocationTooLarge) {
 				return Null(), err
 			}
@@ -55,13 +95,22 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			if err := c.CollectFull(roots); err != nil {
 				return Null(), err
 			}
-			e, err = c.throughput.alloc(size, spaceLarge)
+			if failureInjectionEnabled {
+				if err := c.throughput.sweepAllPending(); err != nil {
+					return Null(), err
+				}
+				allocationTx = c.throughput.beginAllocTransaction()
+			}
+			e, err = c.allocThroughput(size, spaceLarge)
 			if err != nil {
 				return Null(), err
 			}
 		}
 		sp = spaceLarge
 		off = e.off
+		if !c.cfg.DisableMovingNursery {
+			e.setYoungAge(0)
+		}
 	} else {
 		objectAlign := d.Align
 		if objectAlign < 8 {
@@ -69,11 +118,15 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		nurseryOffset := func() (uint32, bool) {
 			off := align(c.nurseryBump, objectAlign)
-			return off, off <= uint32(len(c.nursery)) && size <= uint32(len(c.nursery))-off
+			limit := c.edenBytes()
+			return off, off <= limit && size <= limit-off
 		}
 		var fits bool
 		off, fits = nurseryOffset()
 		if !fits {
+			if c.telemetryEnabled() {
+				c.cfg.Telemetry.paths.NurseryExhaustions++
+			}
 			if roots == nil {
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
@@ -87,13 +140,23 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 				return Null(), errors.New("gc: nursery exhausted without roots")
 			}
 		}
+		oldNurseryBump = c.nurseryBump
 		c.nurseryBump = off + size
 	}
 	if sp == spaceNursery {
 		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
 	}
+	if err := injectFailure(c, failHandlePublication); err != nil {
+		if sp == spaceNursery {
+			c.nurseryBump = oldNurseryBump
+		} else {
+			c.throughput.rollbackSuccessfulAlloc(e, allocationTx.bump)
+			c.throughput.restoreAllocTransaction(allocationTx)
+		}
+		return Null(), err
+	}
 	h := c.newHandle(e)
-	if sp == spaceNursery {
+	if sp == spaceNursery || (sp == spaceLarge && e.young()) {
 		c.nurseryHandles = append(c.nurseryHandles, h)
 	}
 	r := makeObjRef(h)
@@ -106,6 +169,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.stats.Allocations++
+	if c.telemetryEnabled() {
+		c.cfg.Telemetry.paths.GoAllocationPaths++
+	}
 	if sp == spaceNursery {
 		c.refreshNativeHandles()
 	} else {
@@ -133,7 +199,7 @@ func (c *Collector) shouldAllocateLarge(size uint32) bool {
 	// a hard safety boundary: an object that cannot fit in an empty nursery must
 	// be allocated in non-moving large space even when tests choose a higher
 	// threshold to stress tiny nurseries.
-	return size >= c.cfg.LargeObjectBytes || size > uint32(len(c.nursery))
+	return size >= c.cfg.LargeObjectBytes || size > c.edenBytes()
 }
 
 func (c *Collector) newHandle(e handleEntry) uint32 {

@@ -106,20 +106,19 @@ func minAddrType(a, b wasm.ValType) wasm.ValType {
 }
 
 func isFuncRefTableType(m *wasm.Module, rt wasm.RefType) bool {
-	switch rt.Heap.Kind {
+	heap := rt.Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc
+		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc
 	case wasm.HeapTypeIndex:
 		if m == nil {
 			return true
 		}
-		_, ok := m.TypeFunc(rt.Heap.Type.Index)
+		_, ok := m.TypeFunc(heap.Type().Index)
 		return ok
 	case wasm.HeapDefType:
-		if rt.Heap.Def == nil || int(rt.Heap.Def.Index) >= len(rt.Heap.Def.Rec.SubTypes) {
-			return false
-		}
-		return rt.Heap.Def.Rec.SubTypes[int(rt.Heap.Def.Index)].Comp.Kind == wasm.CompFunc
+		kind, valid := heap.DefCompKind()
+		return valid && kind == wasm.CompFunc
 	default:
 		return false
 	}
@@ -131,7 +130,7 @@ func buildModuleMeta(m *wasm.Module) *Module {
 	out.FuncTypes = make([]uint32, 0, int(out.ImportedFuncCount)+len(m.FuncTypes))
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
-			out.FuncTypes = append(out.FuncTypes, m.Imports[i].Type.Type.Index)
+			out.FuncTypes = append(out.FuncTypes, m.Imports[i].Type.FuncType().Index)
 		}
 	}
 	for i := range m.FuncTypes {
@@ -140,13 +139,13 @@ func buildModuleMeta(m *wasm.Module) *Module {
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
 		case wasm.ExternGlobal:
-			gt := m.Imports[i].Type.Global
+			gt := m.Imports[i].Type.GlobalType()
 			gt.Type = globalTypeValue(gt)
 			out.Globals = append(out.Globals, gt)
 		case wasm.ExternMem:
-			out.Memories = append(out.Memories, m.Imports[i].Type.Mem)
+			out.Memories = append(out.Memories, m.Imports[i].Type.MemType())
 		case wasm.ExternTable:
-			out.Tables = append(out.Tables, m.Imports[i].Type.Table)
+			out.Tables = append(out.Tables, m.Imports[i].Type.TableType())
 		}
 	}
 	for i := range m.Globals {

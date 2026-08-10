@@ -130,6 +130,12 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	if c == nil {
 		return nil, errors.New("wago: instantiate: nil compiled module")
 	}
+	// Closed is an ownership state, not malformed metadata. Check it before
+	// preflight/validation so Close remains the authoritative error even after it
+	// has released and cleared the native-code view.
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	restoreMemories := snapshotMemories(opts.restore)
 	if opts.restore != nil {
 		if err := validateSnapshotMemories(c, restoreMemories); err != nil {

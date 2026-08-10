@@ -7,8 +7,9 @@ than a non-goal. The current implementation is an initial foundation under
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
 knobs, and tests.
 
-The decision-grade collector measurement contract and roadmap-aligned benchmark
-matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
+The decision-grade collector measurement contract, canonical
+[benchmark review protocol](gc-benchmarks.md#benchmark-review-protocol), and
+roadmap-aligned matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
 
 ## Current generated-payload boundary
 
@@ -41,29 +42,36 @@ disabled while a native invocation is active: objects remain stable, no
 incomplete frame-root set is scanned, and one invocation that exceeds
 `ThroughputHeapBytes` returns `gc: collection-disabled heap exhausted`.
 
-A bounded linux/amd64 slice now collects within an invocation. It admits local
-call graphs, numeric host imports, module-local GC globals, direct tail calls,
-and at most 64 collector-reference roots at a site; start functions and
-GC-reference parameters/results remain closed. Local-only `call_ref` and
-`return_call_ref` are admitted when descriptor ingress is impossible. EH
-functions use conservative local masks and fixed rooted payload records.
-Private local-function tables admit direct and tail `call_indirect`; one private
-collector-reference table admits mutable entries scanned from its off-heap descriptor. Compile admission builds an exact structured-CFG
-local-liveness mask for every reachable allocation and direct call. The amd64 backend adds live hidden operand spills, assigns a compact
-safepoint ID in the GC dispatch word, records direct-call return PCs, and
-publishes final frame size. The synchronous control frame supplies parked RSP;
-Go validates the selected site and exposes actual off-heap qwords as mutable
-collector roots. Compact handles currently remain stable while object locations
-move, but collector updates still write through to the parked frames.
+The bounded linux/amd64 and Linux/Darwin arm64 products collect within admitted
+native invocations. They cover local and same-domain call graphs, host re-entry,
+module-local and shared GC globals/tables, direct and discarded-frame tail calls,
+exact GC-reference parameters/results, local start functions, EH payload records,
+and up to 1,024 collector-reference roots in one frame. Imported starts and
+unknown host/cross-runtime ownership remain fail-closed. Local-only or proven
+same-domain `call_ref`/`return_call_ref` and direct/tail `call_indirect` retain
+their existing ownership restrictions.
+
+Compile admission builds exact structured-CFG local liveness for every reachable
+allocation and native call. Functions through 64 tracked roots retain one-word
+masks; 65-128 roots use two words; wider functions use one bounded flat word
+arena rather than per-node heap bitsets. A non-collecting function may omit a
+frame plan independently, so an unrelated wide leaf no longer disables an
+otherwise exact module. The backends add hidden operand spills and fixed EH
+roots, assign dense safepoint IDs, record call return PCs, and publish final frame
+sizes. Parked synchronous control records expose actual off-heap qwords as
+mutable collector roots, including caller-frame rewrites after moving collection.
 
 The native walker follows validated return-PC maps through bounded direct local
 call graphs and recursion. Throughput collect-every-allocation/forced-major verification and
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec v32 persists and revalidates
-safepoint, liveness, spill, callsite, frame-size, and adapter-return metadata; it
-never persists collector handles or live frames. Five 500 ms samples of
+call-sites, and adapter returns fail closed. Codec v34 persists and revalidates
+safepoint, spill, callsite, frame-size, local-start, and adapter-return metadata;
+repeated offset vectors share immutable storage after compilation and reload.
+It never persists collector handles, liveness work arenas, or live frames.
+`Compiled.GCNativeRootAdmission` reports exactness, map counts, maximum roots,
+metadata bytes, and an actionable fail-closed reason. Five 500 ms samples of
 `BenchmarkGCSingleNativeFrameRoots` measured 432.5-443.5 ns/op, 0 B/op, and
 0 allocs/op on the Ryzen 7 8845HS host for boundary collection plus two parked
 allocating-helper transitions.
@@ -167,7 +175,7 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec v32 persists generic helper admission, vector layout, and bounded native
+Codec v34 persists generic helper admission, vector layout, and bounded native
 root maps; compact handles remain process-local. Snapshot format v4 separately
 serializes every object reachable from owned local GC globals using one-based
 stable IDs, exact type IDs, array lengths, and typed field/element payloads.
@@ -402,7 +410,19 @@ Payload begins at `PayloadOffset == HeaderSize`, currently 16 bytes. Logical obj
 
 ## Compiled metadata and instantiation
 
-Frontend lowering produces immutable descriptor metadata during compile. `Compiled.GCTypeDescs` stores the descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including function sentinels used only to preserve indexes. Codec v32 retains the appended `StorageV128` kind, the 16-byte layout contract, and validated native safepoint/callsite root maps; older codec versions are rejected.
+Frontend lowering produces immutable descriptor metadata during compile. The same
+flattened type-section traversal also builds a compiler-only table containing each
+type's recursive-group bounds, struct field offsets/sizes/initializer slots,
+array-element layout, alignment, object size, and collector-reference classification.
+Railshot indexes that table directly while compiling GC instructions instead of
+walking recursive groups and preceding fields at every use. The table points at the
+immutable decoded subtype declarations and is discarded after code generation; it is
+not retained by `Compiled` or serialized. `Compiled.GCTypeDescs` stores the runtime
+descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type
+section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including
+function sentinels used only to preserve indexes. Codec v34 retains the appended
+`StorageV128` kind, the 16-byte layout contract, and validated native
+safepoint/callsite root maps; older codec versions are rejected.
 
 Each `Instance` normally owns its own `gc.Collector` when its executable product can create or retain heap objects. Collectors are never shared across instances: nursery state, old-space state, roots, remembered sets, cards, and collection statistics are per-instance runtime state. MVP/non-GC modules keep `Instance.gc == nil` to avoid allocating an unused heap.
 
@@ -412,7 +432,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec v32 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec v34 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,
@@ -1576,28 +1596,43 @@ The throughput/default target architecture is GenImmix-shaped:
 - typed object descriptors;
 - remembered sets and card marking.
 
-The current throughput implementation keeps the nursery simple and routes old
-and large allocations through a reusable paged size-class allocator. Objects at
-or above `LargeObjectBytes`, or any object larger than an empty nursery, are
-allocated in non-moving large space so stress configurations cannot overrun or
-permanently reject nursery-impossible allocations. Small and medium promoted
-objects are rounded into supported size classes and returned to per-class free
-lists on full collection. `ThroughputClassLimit` must be zero for the default or
-exactly one of those size classes (`32` through `32768` bytes today);
-unsupported below-minimum, above-maximum, or between-class values such as `4097`
-are rejected at collector construction rather than rounded. Larger objects use a
-coalescing free-span list.
+The Throughput young generation is Eden followed by two bounded survivor
+semispaces in one aligned backing. `NurseryBytes` remains the hard Eden allocation
+limit; `SurvivorBytes` selects each semispace and defaults to half of Eden.
+Generated allocation uses the separately published Eden limit, while ordinary
+handle resolution sees the complete backing. `DisableMovingNursery` remains the
+A/B and compatibility control for immediate first-survival promotion.
 
-Throughput minor collection maintains a dense nursery-handle set and traces only nursery roots, remembered old/large
-objects, and transitive nursery children. It does not mark or scan the complete old live graph. Global/table slots are
-checked directly; old/large object roots depend on the invariant that every direct old/large-to-nursery edge is in the
-remembered set. Promotion and nursery sweep iterate the dense nursery set rather than the complete handle table.
-`Stats.MinorObjectsScanned` and `Stats.MinorRememberedScanned` expose cumulative cold-path scan counts for complexity
-tests. Fresh large struct initialization performs all validated field stores first, then records one remembered entry
-when the finished payload contains a nursery child; reference arrays use the corresponding post-bulk reconciliation.
-The additional nursery slice and scan counters bring the fixed `Collector` to 712 bytes on linux/amd64 with Go 1.24.4.
+Minor collection traces only exact transient roots, dirty persistent-root slots,
+dirty old/large cards, and the resulting live young graph. First survivors copy
+contiguously into the inactive semispace, preserving compact handle identity while
+changing only the handle offset. The next successful minor swaps semispaces.
+Two age bits use previously unused high `handleEntry.class` bits, retaining the
+20-byte handle layout. Large young objects use the same age state but remain in
+large backing; they become old in place rather than copying their payload.
 
-Minor promotion plans use collector-owned reusable scratch in ascending handle order. Every success or rollback clears the used entries and resets the slice length, so no stale allocation record survives a collection. Allocation failure frees planned old-space entries in reverse order before publishing any move. A repeated allocate/promote/full-collect benchmark on linux/amd64 drops from 188.8–200.8 ns/op, 96–100 B/op, and 3 allocs/op to 178.8–189.1 ns/op, 72–81 B/op, and 2 allocs/op; the removed allocation is the per-minor promotion plan.
+The initial tenuring threshold is two survivals and remains bounded from one
+through three. Survivor occupancy, old-space pressure, recent full collections,
+and promoted-versus-copied bytes update it deterministically. A nonzero
+`MinorPauseTargetMicros` additionally opts policy adaptation into one minor-cycle
+clock sample; zero performs no release-build clock read. Pointer-free and
+reference-bearing age populations remain separately visible through
+`wago_gcstats` telemetry.
+
+Movement planning covers survivor copies, old-space destinations, and in-place
+large aging before any handle is published. Destination and commit failure points
+run before inactive survivor bytes are written; old-space allocations roll back
+in reverse order. Native handle batches are invalidated before tracing. Useful
+cards and dirty roots remain authoritative across survivor movement, while
+card-range pruning examines only recorded ranges rather than complete old
+objects. Metadata clears directly once no young object remains.
+
+Objects promoted into old space are rounded into supported size classes.
+`ThroughputClassLimit` must be zero for the default or exactly one built-in class
+(`32` through `32768` bytes); unsupported values reject rather than round. The
+fixed 64-bit layouts are 20 bytes for `handleEntry`, 72 bytes for `Config`, and
+1,120 bytes for `Collector` in the ordinary build. The 16-byte increase is the
+ABI-v6 native allocation state for contiguous handle runs and nursery chunks.
 
 Allocation-triggered minor collection treats old-space promotion exhaustion as a
 cold reclamation signal. Because promotion planning has published no move, the
@@ -2021,7 +2056,7 @@ type RootSlot interface {
 
 `RootSet` ranges over root slots. Tests use simple root slots, globals, and tables. Future codegen should expose frame/safepoint roots through a lower-allocation equivalent generated from exact stack maps.
 
-Global and table root-slot constructors accept only nullable stored refs: `null`, `i31`, or a live object ref owned by the same collector. Checked constructors (`NewCheckedGlobalSlot` and `NewCheckedTableSlot`) are the safe API for production decode/instantiation: they return errors and do not append a slot when they see a forged, stale, or cross-collector ref. The exported convenience constructors (`NewGlobalSlot` and `NewTableSlot`) are trusted/test setup wrappers that delegate to the same validation and panic on invalid initial refs, so there is no root-slot creation path that silently installs invalid metadata. Checked setters validate later slot stores and prune stale nursery slot cards when a slot is overwritten with a non-nursery value.
+Global and table root-slot constructors accept only nullable stored refs: `null`, `i31`, or a live object ref owned by the same collector. Checked constructors (`NewCheckedGlobalSlot` and `NewCheckedTableSlot`) are the safe API for production decode/instantiation: they return errors and do not append a slot when they see a forged, stale, or cross-collector ref. The exported convenience constructors (`NewGlobalSlot` and `NewTableSlot`) are trusted/test setup wrappers that delegate to the same validation and panic on invalid initial refs, so there is no root-slot creation path that silently installs invalid metadata. A slot created with a nursery ref is dirtied immediately. Checked setters validate later stores and retain a dirty bit conservatively until collection instead of paying a map lookup or vector removal when the slot is overwritten with an old, null, or `i31` value.
 
 Safepoint contract for generated code:
 
@@ -2045,13 +2080,17 @@ The barriers have two responsibilities:
 1. Generational remembered-set/card marking: old-to-young object edges and root/table/global slots containing young refs must be discoverable by minor collection.
 2. Incremental tri-color marking: future concurrent/incremental marking must preserve the no-black-to-white invariant.
 
-Generated code must call object barriers for `struct.set` and ref array stores, slot barriers for `global.set` and `table.set`, and bulk barriers for array initialization/copy/fill paths that write refs. Fresh old/large objects are not exempt: constructors must reconcile the completed payload once before publication so direct nursery children are remembered. `SlotFrame` barriers remain unsupported until exact frame-root maps exist; frame roots must be supplied through explicit root publication/safepoint machinery instead of recorded as slot cards. `BulkWriteBarrier` is a post-write barrier: generated helpers must store or copy refs into the destination array range before invoking `BulkWriteBarrier`/`PostBulkWriteBarrier`. A pre-write bulk barrier cannot observe newly written nursery refs and is not a safe substitute.
+Generated code must call object barriers for `struct.set` and ref array stores, slot barriers for `global.set` and `table.set`, and bulk barriers for array initialization/copy/fill paths that write refs. Fresh old/large objects are not exempt: constructors reconcile the completed payload once before publication so direct nursery children receive complete card coverage. `SlotFrame` barriers remain unsupported because exact frame roots are supplied directly at safepoints rather than retained as persistent slot cards. `BulkWriteBarrier` remains a post-write contract: generated helpers publish the complete destination range before invoking `BulkWriteBarrier`/`PostBulkWriteBarrier`. The Throughput barrier does not rescan the destination values; it conservatively dirties the exact byte range, and collection determines which cards are useful.
 
-Remembered-set and card metadata is deliberately conservative and has bounded membership cost. Each handle stores a remembered bit, so repeated `remember` is O(1) without a linear membership scan. Sweeping clears the bit immediately and compacts the dense remembered list once on the collection cold path instead of removing each dead handle with a quadratic sequence of scans; handle reuse therefore cannot inherit stale membership. Verification checks the bit/list bijection and rejects duplicates. Ordinary old-object stores never rescan the complete parent merely because the new value is old or null. They retain the remembered bit conservatively until minor/full collection performs exact cold-path pruning.
+Remembered/card metadata is deliberately conservative and has bounded membership cost. Each handle stores a remembered bit, so repeated old-object dirties are O(1) without a membership map. The dense remembered vector is now the dirty-object index for minor collection; members normally own fixed-card ranges. Any object-card or persistent-root metadata failure arms one shared cold fallback that scans every remembered object and persistent root until evacuation clears the young generation. This also preserves an edge whose first card addition failed when a later write successfully creates a different exact card. Sweeping clears ownership before handle reuse. Ordinary old-object stores never rescan the complete parent merely because the new value is old or null.
 
-Cards are currently verification/scaffolding metadata, not collection inputs. Throughput arrays keep at most one coalesced inclusive dirty interval per old/large object, global/table slots use a lazily allocated indexed dense list, and nursery destinations create no generational cards. Bulk writes inspect only the overwritten reference range to decide whether to remember the destination; they do not scan unrelated elements or remove an existing remembered bit. Collection clears card scaffolding after remembered-set processing, object freeing removes its interval in O(1), and checked slot overwrites remove their slot card in O(1). Verification enforces both directions of every membership/index relation and rejects stale ranges or owners.
+Throughput cards are authoritative minor-GC inputs. The default is a measured 128-byte payload card. One 16-byte `objectCard` stores a handle, an inclusive payload-byte range aligned to card boundaries, and a one-based link to another disjoint range for the same object. Dense adjacent writes coalesce into one range; two distant writes remain separate and do not widen across the clean middle of a large array. A helper access to a non-head range swaps only its interval into the stable head slot, preserving links and native backing while allowing subsequent Go and generated stores to use the constant-time head-card check. Removed or coalesced ranges become an intrusive free list in tombstoned card slots and are reused before the arena grows, so continuously surviving young workloads retain only the peak card-slot high-water mark rather than accumulating stranded metadata. Minor collection walks exact transient roots, dirty persistent slots, and these linked card ranges, then traces the nursery graph. Struct scanning checks exact field offsets; array scanning converts each range to exact element bounds. A complete dirty range uses the same one-pass descriptor walk as dense tracing rather than dispatching once per card.
 
-The bounded metadata adds one remembered bit plus one object-card index to each handle: `handleEntry` grows from 16 to 20 bytes. The lazy slot-card index adds one map word to the fixed collector, growing `Collector` from 640 to 648 bytes without allocating a map until a global/table nursery edge is recorded. The reusable promotion-plan slice described above brings the current fixed `Collector` size to 672 bytes. On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), 4,096 repeated old-array writes improve from 935.7–963.2 ns/op with 4,096 retained cards to 36.4–37.4 ns/op with one interval; both remain 0 B/op and 0 allocs/op. Tiny remains card-free at 32.7–33.1 ns/op.
+Persistent global/table slots use stable-index bitmaps plus one compact dirty-slot vector, replacing the lazy Go map. Minor collection visits only vector members; full and Tiny collection continue to enumerate every persistent slot. Bits are cleared by walking the dirty vector rather than zeroing a root-sized table. A metadata-growth injection arms the shared cold fallback for both persistent roots and remembered objects. Verification independently reconstructs every old-to-nursery field/element and nursery persistent root, proving that its exact byte/slot is carded or that the explicit fallback is active.
+
+Successful minor evacuation clears all remembered/card metadata only when no young object remains. While survivors remain, collection retains ranges and persistent slots that still contain young edges and prunes obsolete membership by scanning recorded cards rather than complete old objects. A full Throughput collection does not move surviving young objects and preserves their useful metadata. Object freeing unlinks all owned ranges before handle reuse. The Native collector ABI is version 6: `objectCard` remains 16 bytes, `handleEntry` remains 20 bytes, the 168-byte view retains the Eden limit and adds the nursery-object maximum, `Config` is 72 bytes, and the ordinary linux/amd64 `Collector` is 1,120 bytes.
+
+On the August 8, 2026 Ryzen 7 8845HS host, interleaved release benchmarks remain allocation-free. Nursery-parent struct stores change from 25.57 to 25.14 ns/op, old-parent/old-child stores from 27.61 to 27.81 ns/op, and newly exact old-struct/young-child same-card stores from 28.18 to 29.10 ns/op. Existing old-array same-card stores improve from 36.82 to 35.51 ns/op, and repeated dirty persistent-root stores improve from 9.94 to 7.03 ns/op. Generated old-array fixture code shrinks from 1,864 to 1,856 bytes; barrier-attributed bytes remain 404. All cases remain 0 B/op and 0 allocs/op. An August 9 follow-up benchmark alternated fourteen 750 ms samples of repeated writes to a non-head card: interval promotion reduces the median from 77.99 to 64.83 ns/op (**-16.88%**, bootstrap 95% interval **-20.75% to -12.86%**) with zero allocations. Relative to `81e36324`, the stripped standard runtime is unchanged, the stripped minimal runtime adds one 4-KiB file-alignment page, and the TinyGo minimal runtime adds 320 bytes; `Collector` remains 1,120 bytes.
 
 ## Reference storage classes
 
@@ -2061,7 +2100,33 @@ Array copy accepts exact storage kinds plus the three non-null-to-nullable widen
 
 On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), removing redundant production validation reduces 4,096-element compact-ref copy from 37.1–38.2 µs to 213–218 ns, nullable widening from 37.5–38.2 µs to 200–201 ns, and same-array overlap from 36.6–40.4 µs to 157–159 ns. The 256-element forms fall from roughly 2.3–2.5 µs to 45–52 ns. All remain 0 B/op and 0 allocs/op.
 
-Array constructors preflight every value and root before allocation, then initialize the compact payload in bulk. Uniform constructors use one doubling fill; fixed constructors use unchecked width-specialized stores after complete validation. Collector-reference arrays perform one post-construction barrier reconciliation rather than one barrier/card operation per element. Tiny scans the final range once to maintain its incremental mark invariant; Throughput records at most one card interval and one remembered membership. Internal value-root sets are traversed directly during mark and verification, avoiding one escaping `RootSlot` interface value per fixed-array element.
+Array constructors preflight every value and root before allocation, then initialize the compact payload in bulk. Uniform constructors use one doubling fill; fixed constructors use unchecked width-specialized stores after complete validation. Collector-reference arrays perform one post-construction barrier reconciliation rather than one barrier/card operation per element. Tiny scans the final range once to maintain its incremental mark invariant; Throughput records at most one card interval and one remembered membership. Internal value-root sets are traversed directly during mark and verification, avoiding one escaping `RootSlot` interface value per fixed-array element. Allocation-free direct root enumerators return whether the sink accepted the complete walk, allowing composite groups and constructor scratch sets to propagate early termination without allocating an adapter. Classified direct enumerators use the same completion contract, so constant-expression temporary stacks do not continue after an attributed frame or element-root sink stops.
+
+On AMD64, ABI v6 extends the retained 32-handle native struct batch into one
+generic struct/array allocation ticket. A helper reserves a contiguous handle run
+when available. Arrays additionally reserve one bounded 4-KiB Eden chunk and
+advance its private cursor; structs retain the measured direct collector-bump path
+so chunk support adds no checks to established struct code. Statically sized final
+arrays up to 256 object bytes admit native `array.new`,
+`array.new_fixed`, and defaultable `array.new_default` for numeric, packed,
+vector, and nullable abstract `any`/`eq` reference elements. All reference
+initializers are checked before any payload or handle publication. The final
+write publishes the handle space byte, then advances semantic allocation count.
+
+The 256-byte admission ceiling is measured policy, not a semantic limit.
+Dynamic lengths and larger candidates initially regressed because a 4-KiB chunk
+exhausted before the fixed handle batch, forcing repeated exact cancellation of
+unused identities. Those shapes, large-object classifications,
+non-final/defined-heap references, `array.new_data`, and `array.new_elem` stay on
+the rooted helper path. Every Go allocation cancels the ticket first; collection,
+traps, malformed metadata, epoch changes, and `Close` recycle unused handles and
+rewind only an exclusively owned top chunk. Generic public calls keep their first
+eight constructors helper-only and refill after the ninth because the next public
+boundary collects and cancels the batch; products without that mandatory boundary
+refill immediately. Post-invocation GC-global reconciliation covers exact mapped
+products because successful native batches may cross several constructors without
+a helper synchronization point, while modules without collector-reference globals
+return before touching reconciliation state.
 
 On the same machine, 4,096-element uniform i32 construction improves from 25.6–25.7 µs to 96 ns and uniform compact-ref construction from 27.4–27.5 µs to 263 ns. Fixed compact-ref construction improves from 96.5–97.4 µs, 43,851–43,858 B/op, and 1,371 allocs/op to 25.4–25.9 µs, 172 B/op, and 6 allocs/op. The remaining allocations are collection/constructor control metadata, not per-element growth.
 
@@ -2102,6 +2167,58 @@ Verification checks that live refs point to valid handles, object type IDs exist
 
 Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, roots, minor/full collection, and barrier metadata. Environment variables can be layered on later if needed; the first pass keeps the knobs explicit and testable.
 
+The GC package's randomized graph stress tests also run an independent shadow
+tracer before full collection. The oracle walks root slots, globals, tables, and
+descriptor layouts without calling the production mark or object-scan helpers,
+then checks both missing retention and unnecessary retention. Promotion-failure
+tests snapshot nursery, handle, card, mark, and old-space allocator state and
+require byte-for-byte-equivalent observable state after rollback.
+
+### Hardened GC stress build
+
+Build tag `wagodebug` enables deterministic failure injection and a reproducible
+mixed minor/full choice at `CollectEveryAlloc` safepoints. Release builds compile
+the hooks to constant no-ops and retain no injector state. The hardening suite is
+run with:
+
+```sh
+go test -tags wagodebug ./src/core/runtime/gc
+go test -race -tags wagodebug ./src/core/runtime/gc
+```
+
+The injection matrix covers promotion planning, destination allocation, commit
+preflight, handle publication, object-card growth, slot-card growth, and backing
+growth. Promotion failures at every survivor index must restore handles, object
+bytes, nursery allocation state, marks, remembered/card metadata, and the
+throughput allocator. Armed failures are scoped to one collector (or its
+throughput heap), so concurrent collectors cannot consume each other's test
+faults. Native handle-batch tests bracket both collection and
+`Close` and require reservation cancellation plus epoch advancement.
+
+Randomized Throughput and Tiny operation fuzzers feed every full collection
+through the independent shadow tracer. Descriptor fuzzing covers every storage
+kind, packed fields, alignment, invalid layouts, and bounded size arithmetic;
+operation fuzzing covers sparse/dense reference graphs, giant rejected arrays,
+globals, tables, old-to-young writes, promotion exhaustion, incremental Tiny
+phases, and pointer-free ref-looking payloads. Product tests separately retain
+the public-token, cross-instance, host re-entry, exception, snapshot, subtype,
+bulk-operation, trap-order, and collection-disabled fail-closed gates.
+
+The scheduled `Regression stress` workflow supplies the independently runnable
+CI shard. Its `gc-hardening` matrix runs three repetitions on native Linux
+amd64 and arm64 in explicit-bounds and `wago_guardpage` builds, including the
+collector suite and real native frame-root/host-transition products. This is the
+architecture execution gate; cross-compilation alone is not treated as arm64
+coverage.
+
+Focused amd64 comparison against `main` on a Ryzen 7 7800X3D found no new
+allocations: `ForcePromote` measured 113.4 ns/op at baseline and 114.5 ns/op with
+transactional failure restoration (+1.0%, 0 B/op), while the retained promotion
+plan remained 24 bytes per survivor. Nursery constructor and remembered-array
+write means stayed within 2.2% of baseline. `BenchmarkForcePromoteTransactional`
+and the `plan-B` metric on `BenchmarkMinorPromotionScratch` retain these gates
+for future comparisons.
+
 ## Current limitations
 
 - The mandatory Core 3 WasmGC corpus is complete on linux/amd64 explicit and
@@ -2140,14 +2257,14 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
   table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
   growth state, cross-table cycles/sharing, deterministic repeated capture, malformed
   graph rejection, exact root/field subtype checks, and near-capacity restore rollback.
-  Whole-domain shared snapshots use exhaustive ordered `WGDN` v3 domain capture and
-  transactional restore with strict v1/v2 compatibility. Dropped and reconstructible
+  Whole-domain shared snapshots use exhaustive ordered `WGDN` v4 domain capture and
+  transactional restore with strict v1/v2/v3 compatibility; v4 persists survivor
+  capacity and optional pause-target policy. Dropped and reconstructible
   live passive state restores, including immutable-global GC/i31 payload identity;
   external, independently owned, or cyclic ownership shapes reject.
-- Minor collection promotes marked nursery survivors through handles rather than
-  implementing a final copying nursery/root-update path. The Throughput allocator
-  reuses freed memory but does not yet implement full Immix line/block marking or
-  compaction.
+- Minor collection copies first survivors through stable handles and promotes at
+  a bounded adaptive age. The Throughput old generation reuses freed spans but
+  does not yet implement full Immix line/block marking or selective evacuation.
 - The Throughput heap uses growable Go byte slices, so generated code must not
   cache raw payload pointers. Direct checked JIT object access will require a
   measured stable access contract with helper slow paths retained.
@@ -2173,4 +2290,4 @@ products are no longer rejected merely for missing a pinned identity. Generic
 ranges, destination element type, and allocation bounds before publishing a
 collector reference. Reference argument/result conversion uses store-owned
 extern/any tokens and releases transient ownership after matching. The pinned
-full suite passes 2,226 modules and 58,238 assertions with zero gaps.
+full suite passes 2,226 modules and 58,038 assertions with zero gaps.

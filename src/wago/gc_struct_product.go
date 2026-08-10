@@ -251,50 +251,6 @@ func moduleUsesGCExternConversion(m *wasm.Module) bool {
 	return false
 }
 
-func moduleUsesIndexedFunctionRefTestOrCast(m *wasm.Module) (refTest, refCast bool) {
-	if m == nil {
-		return false, false
-	}
-	for i := range m.Code {
-		r := wasm.NewReader(m.Code[i].BodyBytes)
-		for r.HasNext() {
-			op, err := r.Byte()
-			if err != nil {
-				return false, false
-			}
-			probe := *r
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
-				return false, false
-			}
-			if op != 0xfb || (imm.Kind != wasm.InstrRefTest && imm.Kind != wasm.InstrRefCast) {
-				continue
-			}
-			sub, err := probe.U32()
-			if err != nil || (sub != 20 && sub != 21 && sub != 22 && sub != 23) {
-				continue
-			}
-			heap, err := probe.S33()
-			if err != nil || heap < 0 {
-				continue
-			}
-			if _, ok := m.TypeFunc(uint32(heap)); !ok {
-				continue
-			}
-			switch imm.Kind {
-			case wasm.InstrRefTest:
-				refTest = true
-			case wasm.InstrRefCast:
-				refCast = true
-			}
-			if refTest && refCast {
-				return true, true
-			}
-		}
-	}
-	return refTest, refCast
-}
-
 func moduleHasGCHeapType(m *wasm.Module) bool {
 	if m == nil {
 		return false
@@ -471,7 +427,7 @@ func stagedGCStructTypeGraph(m *wasm.Module) string {
 			default:
 				member = fmt.Sprintf("composite(%d)", sub.Comp.Kind)
 			}
-			if len(sub.Supers) != 0 || sub.HasPrefix || sub.Metadata.Describes != nil || sub.Metadata.Descriptor != nil {
+			if len(sub.Supers) != 0 || sub.HasPrefix || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 				member = fmt.Sprintf("sub(final=%t,supers=%v,%s)", sub.Final, sub.Supers, member)
 			}
 			members = append(members, member)
@@ -482,15 +438,15 @@ func stagedGCStructTypeGraph(m *wasm.Module) string {
 }
 
 func stagedGCStructFieldString(field wasm.FieldType) string {
-	storage := field.Storage.Val.String()
-	if field.Storage.Packed {
-		if field.Storage.Pack == wasm.PackI8 {
+	storage := field.Storage().Val().String()
+	if field.Storage().Packed() {
+		if field.Storage().Pack() == wasm.PackI8 {
 			storage = "i8"
 		} else {
 			storage = "i16"
 		}
 	}
-	if field.Mut == wasm.Var {
+	if field.Mut() == wasm.Var {
 		return "mut " + storage
 	}
 	return storage

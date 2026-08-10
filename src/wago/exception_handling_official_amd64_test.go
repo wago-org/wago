@@ -99,15 +99,15 @@ func stagedExceptionHandlingGateList(counts map[string]int) []stagedExceptionHan
 }
 
 func stagedReferencePayloadIsFunc(m *corewasm.Module, typ corewasm.ValType) bool {
-	if typ.Kind != corewasm.ValRef {
+	if typ.Kind() != corewasm.ValRef {
 		return false
 	}
-	heap := typ.Ref.Heap
-	if heap.Kind == corewasm.HeapAbs {
-		return heap.Abs == corewasm.HeapFunc || heap.Abs == corewasm.HeapNoFunc
+	heap := typ.Ref().Heap()
+	if heap.Kind() == corewasm.HeapAbs {
+		return heap.Abs() == corewasm.HeapFunc || heap.Abs() == corewasm.HeapNoFunc
 	}
-	if heap.Kind == corewasm.HeapTypeIndex {
-		_, ok := m.ResolvedTypeFunc(heap.Type.Index)
+	if heap.Kind() == corewasm.HeapTypeIndex {
+		_, ok := m.ResolvedTypeFunc(heap.Type().Index)
 		return ok
 	}
 	return false

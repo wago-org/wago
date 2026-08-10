@@ -156,12 +156,16 @@ func (f *fn) markLocalDirty(x int) {
 	}
 }
 
-func (f *fn) materializeGCFrameLocals(mask uint64) {
+func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 	if f.gcFrameRoots == nil || !f.lazyZero {
 		return
 	}
 	for i, index := range f.gcFrameRoots.LocalIndexes {
-		if mask&(uint64(1)<<uint(i)) == 0 {
+		live := f.gcFrameRoots.LocalLiveAt(site, i)
+		if call {
+			live = f.gcFrameRoots.CallLocalLiveAt(site, i)
+		}
+		if !live {
 			continue
 		}
 		x := int(index)

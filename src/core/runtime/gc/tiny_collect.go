@@ -24,11 +24,12 @@ const (
 )
 
 type tinyGC struct {
-	state     tinyGCState
-	color     []tinyColor
-	grayStack []uint32
-	sweep     uint32
-	cycles    uint64
+	state          tinyGCState
+	color          []tinyColor
+	grayStack      []uint32
+	sweep          uint32
+	cycles         uint64
+	telemetryOwned bool
 }
 
 // Step performs one bounded unit of Tiny incremental tri-color collection. When
@@ -40,11 +41,33 @@ func (c *Collector) Step(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	if collectorTelemetryEnabled {
+		if c.tinyGC.state == tinyIdle && c.telemetryEnabled() && !c.cfg.Telemetry.active.active {
+			c.beginCollectionTelemetry(telemetryFull)
+			c.tinyGC.telemetryOwned = true
+		}
+		if c.tinyGC.telemetryOwned {
+			// Incremental telemetry sums the bounded collector steps rather than
+			// charging arbitrary mutator time between separate Step calls.
+			c.cfg.Telemetry.resume()
+			defer func() {
+				if c.tinyGC.telemetryOwned {
+					c.cfg.Telemetry.suspend()
+				}
+			}()
+		}
+	}
 	if c.tinyGC.state == tinyIdle {
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
+		}
 		c.tinyStartMark(roots)
 		return nil
 	}
 	if c.tinyGC.state == tinyMark {
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.setPhase(telemetryPhaseMarking)
+		}
 		if len(c.tinyGC.grayStack) == 0 {
 			c.tinyGC.state = tinyRemark
 			return nil
@@ -59,6 +82,9 @@ func (c *Collector) Step(roots RootSet) error {
 		return nil
 	}
 	if c.tinyGC.state == tinyRemark {
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
+		}
 		if len(c.tinyGC.grayStack) > 0 {
 			c.tinyGC.state = tinyMark
 			return nil
@@ -72,6 +98,9 @@ func (c *Collector) Step(roots RootSet) error {
 		c.tinyGC.sweep = 1
 		return nil
 	}
+	if c.telemetryEnabled() {
+		c.cfg.Telemetry.setPhase(telemetryPhaseSweep)
+	}
 	if c.tinyGC.sweep >= uint32(len(c.handles)) {
 		c.tinyFinishCycle()
 		return nil
@@ -81,16 +110,27 @@ func (c *Collector) Step(roots RootSet) error {
 	if c.handles[h].space == spaceTiny {
 		switch c.tinyColorOf(h) {
 		case tinyWhite:
+			if c.telemetryEnabled() {
+				c.cfg.Telemetry.noteSweep(c.handles[h].size)
+			}
 			c.free(h)
 		case tinyBlack:
 			c.tinySetColor(h, tinyWhite)
 		case tinyGray:
-			return fmt.Errorf("gc: gray object %d reached tiny sweep", h)
+			return c.failTinyTelemetryCycle(fmt.Errorf("gc: gray object %d reached tiny sweep", h))
 		default:
-			return fmt.Errorf("gc: invalid tiny color for handle %d", h)
+			return c.failTinyTelemetryCycle(fmt.Errorf("gc: invalid tiny color for handle %d", h))
 		}
 	}
 	return nil
+}
+
+func (c *Collector) failTinyTelemetryCycle(err error) error {
+	if c.tinyGC.telemetryOwned {
+		c.endCollectionTelemetry(false)
+		c.tinyGC.telemetryOwned = false
+	}
+	return err
 }
 
 func (c *Collector) tinyCollectFull(roots RootSet) error {
@@ -120,17 +160,21 @@ func (c *Collector) tinyStartMark(roots RootSet) {
 }
 
 func (c *Collector) tinyMarkRoots(roots RootSet) {
-	if direct, ok := roots.(DirectRootRefSet); ok {
-		c.markDirectRoots(direct, rootMarkTiny)
-	} else if roots != nil && !rangeRootRefs(roots, func(r Ref) bool { c.tinyMarkRef(r); return true }) {
-		roots.RangeRoots(func(s RootSlot) bool { c.tinyMarkRef(s.GetRef()); return true })
+	if !c.telemetryEnabled() {
+		if direct, ok := roots.(DirectRootRefSet); ok {
+			c.markDirectRoots(direct, rootMarkTiny)
+		} else if roots != nil && !rangeRootRefs(roots, func(r Ref) bool { c.tinyMarkRef(r); return true }) {
+			roots.RangeRoots(func(s RootSlot) bool { c.tinyMarkRef(s.GetRef()); return true })
+		}
+		for _, r := range c.globalSlots {
+			c.tinyMarkRef(r)
+		}
+		for _, r := range c.tableSlots {
+			c.tinyMarkRef(r)
+		}
+		return
 	}
-	for _, r := range c.globalSlots {
-		c.tinyMarkRef(r)
-	}
-	for _, r := range c.tableSlots {
-		c.tinyMarkRef(r)
-	}
+	c.enumerateRoots(roots, rootMarkTiny)
 }
 
 func (c *Collector) tinyFinishCycle() {
@@ -138,6 +182,11 @@ func (c *Collector) tinyFinishCycle() {
 	c.tinyGC.state = tinyIdle
 	c.tinyGC.sweep = 1
 	c.tinyGC.cycles++
+	if c.tinyGC.telemetryOwned {
+		c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
+		c.endCollectionTelemetry(true)
+		c.tinyGC.telemetryOwned = false
+	}
 }
 
 func (c *Collector) tinyMarkRef(r Ref) {
@@ -191,25 +240,57 @@ func (c *Collector) tinySetColor(h uint32, color tinyColor) {
 }
 
 func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
+	if !c.telemetryEnabled() {
+		r := makeObjRef(h)
+		d, err := c.refDesc(r)
+		if err != nil || !d.HasRefs {
+			return
+		}
+		hdr := c.header(r)
+		b := c.bytes(r)
+		if d.Kind == KindStruct {
+			for _, f := range d.Fields {
+				if isCollectorRefKind(f.Kind) {
+					visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
+				}
+			}
+		} else if d.ArrayElementsAreRefs() {
+			for i := uint32(0); i < hdr.Aux; i++ {
+				off := PayloadOffset + i*d.ElemSize
+				visit(Ref(binary.LittleEndian.Uint32(b[off:])))
+			}
+		}
+		return
+	}
+	start := c.cfg.Telemetry.scanStart()
+	var size uint32
+	if h != 0 && int(h) < len(c.handles) {
+		size = c.handles[h].size
+	}
 	r := makeObjRef(h)
 	d, err := c.refDesc(r)
 	if err != nil || !d.HasRefs {
+		c.cfg.Telemetry.noteObjectScan(start, size, 0)
 		return
 	}
 	hdr := c.header(r)
 	b := c.bytes(r)
+	var slots uint32
 	if d.Kind == KindStruct {
 		for _, f := range d.Fields {
 			if isCollectorRefKind(f.Kind) {
+				slots++
 				visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
 			}
 		}
 	} else if d.ArrayElementsAreRefs() {
+		slots = hdr.Aux
 		for i := uint32(0); i < hdr.Aux; i++ {
 			off := PayloadOffset + i*d.ElemSize
 			visit(Ref(binary.LittleEndian.Uint32(b[off:])))
 		}
 	}
+	c.cfg.Telemetry.noteObjectScan(start, size, slots)
 }
 
 func (c *Collector) verifyTiny(roots RootSet) error {

@@ -835,7 +835,7 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 				return RefType{}, err
 			}
 		}
-		return FuncRef.Ref, nil
+		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
 		if err := v.validateRefType(e.ref); err != nil {
 			return RefType{}, err
@@ -860,7 +860,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	e := &v.direct.elements[index]
 	switch e.kind {
 	case ElemFuncs, ElemFuncExprs:
-		return FuncRef.Ref, nil
+		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
 		return e.ref, nil
 	default:

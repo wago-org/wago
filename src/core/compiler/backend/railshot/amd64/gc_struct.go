@@ -34,10 +34,12 @@ const (
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
+	before := f.a.Len()
 	sub, err := r.U32()
 	if err != nil {
 		return err
 	}
+	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
 		return f.emitGCArray(sub, r)
 	}
@@ -71,7 +73,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		st, ok := stagedStructType(f.m, typeIndex)
+		st, ok := f.stagedStructType(typeIndex)
 		if !ok {
 			return fmt.Errorf("amd64: struct.new type %d is unavailable", typeIndex)
 		}
@@ -81,8 +83,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		params := make([]wasm.ValType, 0, fieldN+1)
 		for _, field := range st.Comp.Fields {
-			valueType := field.Storage.Val
-			if field.Storage.Packed {
+			valueType := field.Storage().Val()
+			if field.Storage().Packed() {
 				valueType = wasm.I32
 			}
 			params = append(params, valueType)
@@ -90,7 +92,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if _, _, _, _, native := nativeGCStructAllocLayout(f.m, typeIndex); native {
+		if _, native := f.nativeGCStructAllocLayout(typeIndex); native {
 			f.nativeStructAllocType = typeIndex + 1
 		}
 		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
@@ -103,7 +105,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		if _, ok := stagedStructType(f.m, typeIndex); !ok {
+		if _, ok := f.stagedStructType(typeIndex); !ok {
 			return fmt.Errorf("amd64: struct.new_default type %d is unavailable", typeIndex)
 		}
 		if f.skipDroppedGCConstructor(r, 0) || f.deferGCConstructorForDroppedStruct(r, 0) {
@@ -125,15 +127,15 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedStructField(f.m, typeIndex, fieldIndex)
+		field, ok := f.stagedStructField(typeIndex, fieldIndex)
 		if !ok {
 			return fmt.Errorf("amd64: struct.get type %d field %d is unavailable", typeIndex, fieldIndex)
 		}
 		f.observeGCStructGet(typeIndex, fieldIndex)
 		helper := uint32(gcStructGet)
-		resultType := field.Storage.Val
+		resultType := field.Storage().Val()
 		if sub == 3 || sub == 4 {
-			if !field.Storage.Packed {
+			if !field.Storage().Packed() {
 				return fmt.Errorf("amd64: struct.get_s/u type %d field %d is not packed", typeIndex, fieldIndex)
 			}
 			resultType = wasm.I32
@@ -142,7 +144,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			} else {
 				helper = gcStructGetU
 			}
-		} else if field.Storage.Packed {
+		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
 		if f.emitDirectGCStructGet(typeIndex, fieldIndex, helper) {
@@ -161,25 +163,25 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		field, ok := stagedStructField(f.m, typeIndex, fieldIndex)
+		field, ok := f.stagedStructField(typeIndex, fieldIndex)
 		if !ok {
 			return fmt.Errorf("amd64: struct.set type %d field %d is unavailable", typeIndex, fieldIndex)
 		}
-		if field.Mut != wasm.Var {
+		if field.Mut() != wasm.Var {
 			return fmt.Errorf("amd64: struct.set type %d field %d is immutable", typeIndex, fieldIndex)
 		}
 		valueRoot := f.s.back()
 		f.observeGCStructSet(baseOfValentBlock(valueRoot).prev, typeIndex, fieldIndex)
-		valueType := field.Storage.Val
-		if field.Storage.Packed {
+		valueType := field.Storage().Val()
+		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
 		if f.emitDirectGCStructSet(typeIndex, fieldIndex) {
 			return nil
 		}
-		if st, found := nativeGCFlatType(f.m, typeIndex); found && st.Final && field.Storage.Val.Kind == wasm.ValRef && field.Storage.Val.Ref.Heap.Kind == wasm.HeapAbs && (field.Storage.Val.Ref.Heap.Abs == wasm.HeapAny || field.Storage.Val.Ref.Heap.Abs == wasm.HeapEq) {
-			if off, size, final, layoutOK := nativeGCStructFieldLayout(f.m, typeIndex, fieldIndex); layoutOK && final && size == 4 {
-				return f.emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, off, field.Storage.Val)
+		if field.Storage().Val().Kind() == wasm.ValRef && field.Storage().Val().Ref().Heap().Kind() == wasm.HeapAbs && (field.Storage().Val().Ref().Heap().Abs() == wasm.HeapAny || field.Storage().Val().Ref().Heap().Abs() == wasm.HeapEq) {
+			if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && final && layout.Size == 4 {
+				return f.emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, layout.Offset, field.Storage().Val())
 			}
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -291,7 +293,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	finalTarget := false
 	knownExactTarget := false
 	if heap >= 0 {
-		if target, ok := nativeGCFlatType(f.m, uint32(heap)); ok && target.Final {
+		if target, ok := f.stagedGCType(uint32(heap)); ok && target.Final {
 			finalTarget = true
 			if known, exact := exactGCType(f.s.back()); exact && known == uint32(heap) {
 				knownExactTarget = true
@@ -318,7 +320,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			f.stats.peep("gc-ref-cast-elide")
 			return nil
 		}
-		if target, ok := nativeGCFlatType(f.m, uint32(heap)); ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
+		if target, ok := f.stagedGCType(uint32(heap)); ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
 			if err := f.emitNativeFinalCast(uint32(heap), sub == 23); err != nil {
 				return err
 			}
@@ -386,7 +388,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
-	st, ok := stagedStructType(f.m, typeIndex)
+	st, ok := f.stagedStructType(typeIndex)
 	if !ok || !st.Final {
 		return false, nil
 	}
@@ -415,27 +417,26 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 	if err != nil {
 		return false, err
 	}
-	field, ok := stagedStructField(f.m, accessType, fieldIndex)
-	if !ok || accessType != typeIndex || (sub == 2) == field.Storage.Packed {
+	field, ok := f.stagedStructField(accessType, fieldIndex)
+	if !ok || accessType != typeIndex || (sub == 2) == field.Storage().Packed() {
 		_ = r.JumpTo(start)
 		return false, nil
 	}
-	if _, direct := directGCScalarStorage(field.Storage); direct {
+	if _, direct := directGCScalarStorage(field.Storage()); direct {
 		// Let the shared native final-cast stub and existing direct scalar access
 		// run independently; this removes the Go transition at a measured code-size cost.
 		_ = r.JumpTo(start)
 		return false, nil
 	}
 	f.observeGCStructGet(typeIndex, fieldIndex)
-	if nativeGCCollectorRefStorage(f.m, typeIndex, field.Storage) {
-		off, size, final, layoutOK := nativeGCStructFieldLayout(f.m, typeIndex, fieldIndex)
-		if layoutOK && final && size == 4 {
+	if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && layout.CollectorRef {
+		if final && layout.Size == 4 {
 			f.stats.peep("final-cast-struct-get-fuse")
-			return true, f.emitNativeFinalCastStructRefGet(typeIndex, off, nullable)
+			return true, f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable)
 		}
 	}
-	resultType := field.Storage.Val
-	if field.Storage.Packed {
+	resultType := field.Storage().Val()
+	if field.Storage().Packed() {
 		resultType = wasm.I32
 	}
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -452,7 +453,7 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 }
 
 func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
-	st, ok := stagedArraySubtype(f.m, typeIndex)
+	st, ok := f.stagedArraySubtype(typeIndex)
 	if !ok || !st.Final {
 		return false, nil
 	}
@@ -674,6 +675,18 @@ func (f *fn) emitGCI31(sub uint32) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	before := f.a.Len()
+	defer func() {
+		n := f.a.Len() - before
+		f.stats.addGCHelperCallBytes(n)
+		if gcHelperMayAllocate(helper) {
+			f.stats.addGCAllocationBytes(n)
+		}
+		switch helper {
+		case gcStructSet, gcStructTableSet, gcArraySet, gcArrayFill, gcArrayCopy, gcArrayInitData, gcArrayInitElem:
+			f.stats.addGCBarrierBytes(n)
+		}
+	}()
 	safepoint := uint32(0)
 	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && gcHelperMayAllocate(helper) {
 		safepoint = f.recordGCFrameSafepoint(len(params))
@@ -706,10 +719,9 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		plan.Exact = false
 		return id
 	}
-	liveLocals := plan.LiveLocalMasks[siteIndex]
 	offsets := make([]uint32, 0, len(plan.LocalOffsets))
 	for i, off := range plan.LocalOffsets {
-		if liveLocals&(uint64(1)<<uint(i)) != 0 {
+		if plan.LocalLiveAt(siteIndex, i) {
 			offsets = append(offsets, off)
 		}
 	}
@@ -728,34 +740,35 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	}
 	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > 64 {
+	if len(offsets) > shared.GCFrameRootLimit {
 		plan.Exact = false
 	}
 	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
+	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id
 }
 
 func gcFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind != wasm.ValRef {
+	if t.Kind() != wasm.ValRef {
 		return false
 	}
-	switch t.Ref.Heap.Kind {
+	heap := t.Ref().Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		switch t.Ref.Heap.Abs {
+		switch heap.Abs() {
 		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 			return true
 		default:
 			return false
 		}
 	case wasm.HeapDefType:
-		def := t.Ref.Heap.Def
-		if def == nil || def.Index >= uint32(len(def.Rec.SubTypes)) {
+		kind, valid := heap.DefCompKind()
+		if !valid {
 			return true
 		}
-		kind := def.Rec.SubTypes[def.Index].Comp.Kind
 		return kind == wasm.CompStruct || kind == wasm.CompArray
 	case wasm.HeapTypeIndex:
-		index := t.Ref.Heap.Type.Index
+		index := heap.Type().Index
 		for _, group := range m.Types {
 			if index < uint32(len(group.SubTypes)) {
 				kind := group.SubTypes[index].Comp.Kind
@@ -785,7 +798,8 @@ func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
 	case gcStructAllocDefault, gcStructAllocOne,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
-		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
+		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
+		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative:
 		return true
 	default:
 		return false

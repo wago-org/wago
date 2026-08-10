@@ -15,14 +15,14 @@ func TestBuildModuleCopiesMetadata(t *testing.T) {
 	m := &wasm.Module{
 		Types: []wasm.RecType{recFuncType(type0), recFuncType(type1)},
 		Imports: []wasm.Import{
-			{Module: "env", Name: "f", Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}},
-			{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64}}},
-			{Type: wasm.ExternType{Kind: wasm.ExternMem, Mem: wasm.MemType{Limits: wasm.Limits{Min: 1, Max: &maxMem}}}},
-			{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 3}}}},
+			{Module: "env", Name: "f", Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})},
+			{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I64})},
+			{Type: wasm.NewMemExternType(wasm.MemType{Limits: wasm.Limits{Min: 1, Max: maxMem, HasMax: true}})},
+			{Type: wasm.NewTableExternType(wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 3}})},
 		},
 		FuncTypes: []wasm.TypeIdx{{Index: 1}},
 		Globals:   []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
-		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 5}}}},
+		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 5}}}},
 		Elements:  []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive, Table: 1}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0, 1}}}},
 		Data:      []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataActive, Mem: 0}, Init: []byte{1, 2, 3}}},
 		Code:      []wasm.Func{{BodyBytes: bytes(0x41, 0x00, 0x0b)}},
@@ -37,7 +37,7 @@ func TestBuildModuleCopiesMetadata(t *testing.T) {
 	if len(im.Globals) != 2 || im.Globals[0].Type != wasm.I64 || !im.Globals[1].Mutable {
 		t.Fatalf("bad global metadata: %+v", im.Globals)
 	}
-	if len(im.Memories) != 1 || im.Memories[0].Limits.Max == nil || *im.Memories[0].Limits.Max != 2 {
+	if len(im.Memories) != 1 || !im.Memories[0].Limits.HasMax || im.Memories[0].Limits.Max != 2 {
 		t.Fatalf("bad memory metadata: %+v", im.Memories)
 	}
 	if len(im.Tables) != 2 || im.Tables[0].Limits.Min != 3 || im.Tables[1].Limits.Min != 5 {
@@ -316,7 +316,7 @@ func TestBuildMemory64UsesI64AddressesAndSizes(t *testing.T) {
 
 func TestBuildCallIndirectReferenceAndAddressTypes(t *testing.T) {
 	t.Run("non-bare funcref table", func(t *testing.T) {
-		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
+		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
 			wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)),
 		}))
 		m.Tables[0].Type.Ref = wasm.Ref(true, wasm.AbsHeap(wasm.HeapFunc), false)
@@ -327,7 +327,7 @@ func TestBuildCallIndirectReferenceAndAddressTypes(t *testing.T) {
 	})
 
 	t.Run("table64 index", func(t *testing.T) {
-		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1, Addr64: true}}}, nil, nil, [][]byte{
+		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1, Addr64: true}}}, nil, nil, [][]byte{
 			wasmtest.Code(bytes(0x42, 0x00, 0x11, 0x00, 0x00, 0x0b)),
 		}))
 		assertBuilds(t, m, "call_indirect type=0 table=0")
@@ -376,7 +376,7 @@ func TestBuildAllLoadStoreWidths(t *testing.T) {
 
 func TestBuildImportedCallAndGlobal(t *testing.T) {
 	m := rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x10, 0x00, 0x23, 0x00, 0x6a, 0x0b))
-	m.Imports = []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}, {Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I32}}}}
+	m.Imports = []wasm.Import{{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}, {Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32})}}
 	f, err := BuildFunc(m, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -448,9 +448,9 @@ func TestMetadataAndReferenceHelpers(t *testing.T) {
 		{"indexed_nonfunction", wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false), false, false},
 		{"indexed_recursive", wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0, Rec: true}), false), true, false},
 		{"indexed_out_of_range", wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 9}), false), false, false},
-		{"defined_function", wasm.Ref(true, wasm.HeapType{Kind: wasm.HeapDefType, Def: funcDef}, false), true, true},
-		{"defined_nonfunction", wasm.Ref(true, wasm.HeapType{Kind: wasm.HeapDefType, Def: structDef}, false), false, false},
-		{"defined_invalid", wasm.Ref(true, wasm.HeapType{Kind: wasm.HeapDefType, Def: &wasm.DefType{Index: 1}}, false), false, false},
+		{"defined_function", wasm.Ref(true, wasm.DefinedHeap(funcDef), false), true, true},
+		{"defined_nonfunction", wasm.Ref(true, wasm.DefinedHeap(structDef), false), false, false},
+		{"defined_invalid", wasm.Ref(true, wasm.DefinedHeap(&wasm.DefType{Index: 1}), false), false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := isFuncRefTableType(wasmModule, tc.ref); got != tc.build {

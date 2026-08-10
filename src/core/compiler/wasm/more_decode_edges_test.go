@@ -64,28 +64,28 @@ func TestMoreReferenceDecodeEdges(t *testing.T) {
 		}{{[]byte{0x64}, true}, {[]byte{0x63, 0x64}, true}, {[]byte{0x64, 0x64}, false}}
 		for _, tc := range cases {
 			vt, err := decodeValType(newReader(tc.bytes))
-			if err != nil || vt.Kind != ValRef || vt.Ref.Heap.Abs != HeapString || vt.Ref.Nullable != tc.nullable {
+			if err != nil || vt.Kind() != ValRef || vt.Ref().Heap().Abs() != HeapString || vt.Ref().Nullable() != tc.nullable {
 				t.Fatalf("%x -> %#v err=%v", tc.bytes, vt, err)
 			}
 		}
 	})
 	t.Run("ref.null abstract and exact indexed", func(t *testing.T) {
 		in, err := decodeInstruction(newReader([]byte{0xd0, 0x6f}), 0)
-		if err != nil || in.Kind != InstrRefNull || in.RefType().Heap.Abs != HeapExtern {
+		if err != nil || in.Kind != InstrRefNull || in.RefType().Heap().Abs() != HeapExtern {
 			t.Fatalf("ref.null extern=%#v err=%v", in, err)
 		}
 		in, err = decodeInstruction(newReader([]byte{0xd0, 0x62, 0x00}), 0)
-		if err != nil || in.Kind != InstrRefNull || !in.RefType().Exact || in.RefType().Heap.Type.Index != 0 {
+		if err != nil || in.Kind != InstrRefNull || !in.RefType().Exact() || in.RefType().Heap().Type().Index != 0 {
 			t.Fatalf("ref.null exact=%#v err=%v", in, err)
 		}
 	})
 	t.Run("exact ref.cast and ref.cast_desc_eq", func(t *testing.T) {
 		in, err := decodeInstruction(newReader([]byte{0xfb, 0x16, 0x62, 0x01}), 0)
-		if err != nil || in.Kind != InstrRefCast || !in.Cast.SourceNullable || in.HeapType().Type.Index != 1 {
+		if err != nil || in.Kind != InstrRefCast || !in.Cast.SourceNullable || in.HeapType().Type().Index != 1 {
 			t.Fatalf("ref.cast=%#v err=%v", in, err)
 		}
 		in, err = decodeInstruction(newReader([]byte{0xfb, 0x24, 0x62, 0x01}), 0)
-		if err != nil || in.Kind != InstrRefCastDescEq || !in.Cast.SourceNullable || !in.Cast.TargetNullable || in.HeapType().Type.Index != 1 {
+		if err != nil || in.Kind != InstrRefCastDescEq || !in.Cast.SourceNullable || !in.Cast.TargetNullable || in.HeapType().Type().Index != 1 {
 			t.Fatalf("ref.cast_desc_eq=%#v err=%v", in, err)
 		}
 	})

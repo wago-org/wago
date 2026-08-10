@@ -54,7 +54,8 @@ func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
 	case gcStructAllocDefault, gcStructAllocOne,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
-		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
+		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
+		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative:
 		return true
 	default:
 		return false
@@ -86,6 +87,10 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
 	if gcHelperMayAllocate(helper) {
+		// Native batches own unpublished handles and a top nursery chunk. Cancel
+		// them before any Go allocation, trap, or collecting fallback so the helper
+		// sees the exact used bump and cannot overlap reserved bytes.
+		in.gc.CancelNativeAllocationBatch()
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()

@@ -962,19 +962,18 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 }
 
 func irIsFuncRefTableType(m *Module, rt wasm.RefType) bool {
-	switch rt.Heap.Kind {
+	heap := rt.Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc
+		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc
 	case wasm.HeapTypeIndex:
-		if m == nil || rt.Heap.Type.Rec || int(rt.Heap.Type.Index) >= len(m.Types) {
+		if m == nil || heap.Type().Rec || int(heap.Type().Index) >= len(m.Types) {
 			return false
 		}
-		return irTypeIsFunc(m, rt.Heap.Type.Index)
+		return irTypeIsFunc(m, heap.Type().Index)
 	case wasm.HeapDefType:
-		if rt.Heap.Def == nil || int(rt.Heap.Def.Index) >= len(rt.Heap.Def.Rec.SubTypes) {
-			return false
-		}
-		return rt.Heap.Def.Rec.SubTypes[int(rt.Heap.Def.Index)].Comp.Kind == wasm.CompFunc
+		kind, valid := heap.DefCompKind()
+		return valid && kind == wasm.CompFunc
 	default:
 		return false
 	}

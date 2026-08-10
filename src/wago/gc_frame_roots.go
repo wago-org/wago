@@ -7,7 +7,61 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const gcNativeFrameRootLimit = 64
+const gcNativeFrameRootLimit = shared.GCFrameRootLimit
+
+// GCNativeRootAdmission describes whether a compiled generic-GC module can
+// collect while native frames are active. Reason is populated for fail-closed
+// collection-disabled admission. MetadataBytes is the direct serialized root-map
+// payload estimate, excluding outer codec section framing.
+type GCNativeRootAdmission struct {
+	Required      bool
+	Exact         bool
+	Reason        string
+	Safepoints    uint32
+	Callsites     uint32
+	MaximumRoots  uint32
+	MetadataBytes uint64
+}
+
+// GCNativeRootAdmission reports exact native-root coverage and actionable
+// fail-closed diagnostics without exposing live frames or process-local handles.
+func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
+	status := GCNativeRootAdmission{Required: c != nil && c.usesGenericGCExecution()}
+	if c == nil {
+		status.Reason = "nil compiled module"
+		return status
+	}
+	rootMap := c.genericGCFrameRoots()
+	if rootMap == nil {
+		if !status.Required {
+			status.Reason = "module does not require generic collector execution"
+		} else {
+			status.Reason = c.gcRootAdmissionFailure()
+		}
+		return status
+	}
+	status.Exact = true
+	status.Safepoints = uint32(len(rootMap.safepoints))
+	status.Callsites = uint32(len(rootMap.callsites))
+	status.MetadataBytes = uint64(compiledUvarintLen(uint64(len(rootMap.adapterReturnOffsets)))+len(rootMap.adapterReturnOffsets)*4) +
+		uint64(compiledUvarintLen(uint64(len(rootMap.safepoints)))) +
+		uint64(compiledUvarintLen(uint64(len(rootMap.callsites))))
+	for i := range rootMap.safepoints {
+		roots := len(rootMap.safepoints[i].offsets)
+		if roots > int(status.MaximumRoots) {
+			status.MaximumRoots = uint32(roots)
+		}
+		status.MetadataBytes += uint64(8 + compiledUvarintLen(uint64(roots)) + roots*4)
+	}
+	for i := range rootMap.callsites {
+		roots := len(rootMap.callsites[i].offsets)
+		if roots > int(status.MaximumRoots) {
+			status.MaximumRoots = uint32(roots)
+		}
+		status.MetadataBytes += uint64(12 + compiledUvarintLen(uint64(roots)) + roots*4)
+	}
+	return status
+}
 
 func gcFrameCollectorElementExprSafe(expr wasm.Expr) bool {
 	body := expr.BodyBytes
@@ -31,7 +85,10 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 	totalSafepoints := 0
 	var previousID uint32
 	for _, plan := range module.Functions {
-		if plan == nil || !plan.Candidate || !plan.Exact || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
+		if plan == nil {
+			continue // proven non-collecting function; no active-frame map is needed
+		}
+		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
 			return false
 		}
 		active := len(plan.Safepoints) != 0 || len(plan.Callsites) != 0
@@ -68,8 +125,11 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	if c == nil || !c.usesGenericGCExecution() {
 		return fmt.Errorf("GC frame-root metadata requires generic GC execution")
 	}
-	if c.HasStart || !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
-		return fmt.Errorf("GC frame-root metadata requires a start-free local call graph with private tables")
+	if !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
+		return fmt.Errorf("GC frame-root metadata requires a validated local call graph with private tables")
+	}
+	if c.HasStart && (c.StartIsImport || c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Funcs)) {
+		return fmt.Errorf("GC frame-root metadata requires an exact local start function")
 	}
 	for i := range c.GlobalImports {
 		global := c.GlobalImports[i]
@@ -90,7 +150,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	}
 	var previousAdapter uint32
 	for i, off := range rootMap.adapterReturnOffsets {
-		if off == 0 || uint64(off) >= uint64(len(c.Code)) || (i != 0 && off <= previousAdapter) {
+		if off == 0 || uint64(off) >= uint64(len(c.code)) || (i != 0 && off <= previousAdapter) {
 			return fmt.Errorf("GC frame-root adapter return offset %d is invalid", off)
 		}
 		previousAdapter = off
@@ -98,7 +158,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
-		if callsite.frameBytes < shared.AMD64FrameHeaderBytes || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.Code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
+		if callsite.frameBytes < shared.AMD64FrameHeaderBytes || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset

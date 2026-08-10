@@ -216,7 +216,7 @@ func decodeValType(r *reader) (ValType, error) {
 	switch b {
 	case 0x7f, 0x7e, 0x7d, 0x7c:
 		n, err := decodeNumType(r)
-		return ValType{Kind: ValNum, Num: n}, err
+		return newValType(ValNum, n), err
 	case 0x7b:
 		_, _ = r.byte()
 		return V128, nil
@@ -249,10 +249,10 @@ func decodeMut(r *reader) (Mut, error) {
 func decodeStorageType(r *reader) (StorageType, error) {
 	if b, ok := r.peek(); ok && (b == 0x77 || b == 0x78) {
 		_, _ = r.byte()
-		return StorageType{Packed: true, Pack: PackType(b)}, nil
+		return StoragePacked(PackType(b)), nil
 	}
 	vt, err := decodeValType(r)
-	return StorageType{Val: vt}, err
+	return StorageVal(vt), err
 }
 func decodeFieldType(r *reader) (FieldType, error) {
 	st, err := decodeStorageType(r)
@@ -263,7 +263,7 @@ func decodeFieldType(r *reader) (FieldType, error) {
 	if err != nil {
 		return FieldType{}, err
 	}
-	return FieldType{Storage: st, Mut: m}, nil
+	return NewFieldType(st, m), nil
 }
 
 func decodeCompType(r *reader) (CompType, error) {
@@ -302,15 +302,15 @@ func decodeTypeMetadata(r *reader) (TypeMetadata, error) {
 			return tm, err
 		}
 		if b == 0x4c {
-			if tm.Describes != nil || tm.Descriptor != nil {
+			if tm.Describes.Present() || tm.Descriptor.Present() {
 				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 			}
-			tm.Describes = &idx
+			tm.Describes = SomeTypeIdx(idx)
 		} else {
-			if tm.Descriptor != nil {
+			if tm.Descriptor.Present() {
 				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 			}
-			tm.Descriptor = &idx
+			tm.Descriptor = SomeTypeIdx(idx)
 		}
 	}
 }
@@ -373,8 +373,7 @@ func decodeLimits(r *reader) (Limits, error) {
 			if err != nil {
 				return l, err
 			}
-			max64 := uint64(max)
-			l.Max = &max64
+			l.Max, l.HasMax = uint64(max), true
 		}
 		return l, nil
 	case 0x04, 0x05:
@@ -389,7 +388,7 @@ func decodeLimits(r *reader) (Limits, error) {
 			if err != nil {
 				return l, err
 			}
-			l.Max = &max
+			l.Max, l.HasMax = max, true
 		}
 		return l, nil
 	default:
@@ -419,8 +418,7 @@ func decodeMemType(r *reader) (MemType, error) {
 			if err != nil {
 				return mt, err
 			}
-			max64 := uint64(max)
-			mt.Limits.Max = &max64
+			mt.Limits.Max, mt.Limits.HasMax = uint64(max), true
 		}
 		return mt, nil
 	case 4, 5, 6, 7:
@@ -439,7 +437,7 @@ func decodeMemType(r *reader) (MemType, error) {
 			if err != nil {
 				return mt, err
 			}
-			mt.Limits.Max = &max
+			mt.Limits.Max, mt.Limits.HasMax = max, true
 		}
 		return mt, nil
 	default:
@@ -485,23 +483,25 @@ func decodeExternType(r *reader) (ExternType, error) {
 }
 
 func decodeExternTypeKind(r *reader, kind ExternKind) (ExternType, error) {
-	et := ExternType{Kind: kind}
-	var err error
 	switch kind {
 	case ExternFunc:
-		et.Type, err = decodeTypeIdx(r)
+		t, err := decodeTypeIdx(r)
+		return NewFuncExternType(t), err
 	case ExternTable:
-		et.Table, err = decodeTableType(r)
+		t, err := decodeTableType(r)
+		return NewTableExternType(t), err
 	case ExternMem:
-		et.Mem, err = decodeMemType(r)
+		t, err := decodeMemType(r)
+		return NewMemExternType(t), err
 	case ExternGlobal:
-		et.Global, err = decodeGlobalType(r)
+		t, err := decodeGlobalType(r)
+		return NewGlobalExternType(t), err
 	case ExternTag:
-		et.Tag, err = decodeTagType(r)
+		t, err := decodeTagType(r)
+		return NewTagExternType(t), err
 	default:
-		return et, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
+		return ExternType{Kind: kind}, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
 	}
-	return et, err
 }
 
 func decodeImports(r *reader) ([]Import, bool, error) {

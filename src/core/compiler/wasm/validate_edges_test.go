@@ -173,7 +173,7 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 	t.Run("direct call payload mismatch", func(t *testing.T) {
 		m := &Module{
 			Types:     []RecType{ft([]ValType{I32}, nil), ft(nil, nil)},
-			Imports:   []Import{{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}}},
+			Imports:   []Import{{Type: NewFuncExternType(TypeIdx{Index: 0})}},
 			FuncTypes: []TypeIdx{{Index: 1}},
 			Code:      []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrCall, Index: 0}}}}},
 		}
@@ -182,7 +182,7 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 	t.Run("return_call result mismatch", func(t *testing.T) {
 		m := &Module{
 			Types:     []RecType{ft(nil, []ValType{I64}), ft(nil, []ValType{I32})},
-			Imports:   []Import{{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}}},
+			Imports:   []Import{{Type: NewFuncExternType(TypeIdx{Index: 0})}},
 			FuncTypes: []TypeIdx{{Index: 1}},
 			Code:      []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrReturnCall, Index: 0}}}}},
 		}
@@ -199,7 +199,7 @@ func TestValidateModuleLevelIndexes(t *testing.T) {
 	})
 	t.Run("tag result type", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{I32})}, Tags: []TagType{{Type: TypeIdx{Index: 0}}}}, ErrTypeMismatch)
-		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{I32})}, Imports: []Import{{Type: ExternType{Kind: ExternTag, Tag: TagType{Type: TypeIdx{Index: 0}}}}}}, ErrTypeMismatch)
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{I32})}, Imports: []Import{{Type: NewTagExternType(TagType{Type: TypeIdx{Index: 0}})}}}, ErrTypeMismatch)
 	})
 	badRef := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 99}), false))
 	t.Run("function signature unknown heap type", func(t *testing.T) {
@@ -210,10 +210,10 @@ func TestValidateModuleLevelIndexes(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{badField}}}}}}}, ErrUnknownType)
 	})
 	t.Run("imported global unknown heap type", func(t *testing.T) {
-		expectValidateErr(t, &Module{Types: []RecType{ft(nil, nil)}, Imports: []Import{{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: badRef}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, nil)}, Imports: []Import{{Type: NewGlobalExternType(GlobalType{Type: badRef})}}}, ErrUnknownType)
 	})
 	t.Run("table unknown heap type", func(t *testing.T) {
-		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: badRef.Ref, Limits: Limits{Min: 1}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: badRef.Ref(), Limits: Limits{Min: 1}}}}}, ErrUnknownType)
 	})
 	t.Run("unused local unknown heap type", func(t *testing.T) {
 		m := modWithFunc(nil, nil)
@@ -237,12 +237,12 @@ func TestValidateModuleLevelIndexes(t *testing.T) {
 	})
 	t.Run("start function with parameter", func(t *testing.T) {
 		start := FuncIdx(0)
-		m := &Module{Types: []RecType{ft([]ValType{I32}, nil)}, Imports: []Import{{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}}}, Start: &start}
+		m := &Module{Types: []RecType{ft([]ValType{I32}, nil)}, Imports: []Import{{Type: NewFuncExternType(TypeIdx{Index: 0})}}, Start: &start}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("start function with result", func(t *testing.T) {
 		start := FuncIdx(0)
-		m := &Module{Types: []RecType{ft(nil, []ValType{I32})}, Imports: []Import{{Type: ExternType{Kind: ExternFunc, Type: TypeIdx{Index: 0}}}}, Start: &start}
+		m := &Module{Types: []RecType{ft(nil, []ValType{I32})}, Imports: []Import{{Type: NewFuncExternType(TypeIdx{Index: 0})}}, Start: &start}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 }
@@ -250,7 +250,7 @@ func TestValidateModuleLevelIndexes(t *testing.T) {
 func TestValidateGlobalsTablesMemoryAndConstExprs(t *testing.T) {
 	t.Run("immutable global.set", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrGlobalSet, Index: 0})
-		m.Imports = []Import{{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I32}}}}
+		m.Imports = []Import{{Type: NewGlobalExternType(GlobalType{Type: I32})}}
 		expectValidateErr(t, m, ErrImmutableGlobal)
 	})
 	t.Run("global initializer cannot read local global", func(t *testing.T) {
@@ -258,7 +258,7 @@ func TestValidateGlobalsTablesMemoryAndConstExprs(t *testing.T) {
 		expectValidateErr(t, m, ErrConstExprRequired)
 	})
 	t.Run("global initializer can read imported immutable global", func(t *testing.T) {
-		m := &Module{Imports: []Import{{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: I32}}}}, Globals: []Global{{Type: GlobalType{Type: I32}, Init: Expr{Instrs: []Instruction{{Kind: InstrGlobalGet, Index: 0}}}}}}
+		m := &Module{Imports: []Import{{Type: NewGlobalExternType(GlobalType{Type: I32})}}, Globals: []Global{{Type: GlobalType{Type: I32}, Init: Expr{Instrs: []Instruction{{Kind: InstrGlobalGet, Index: 0}}}}}}
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
 		}

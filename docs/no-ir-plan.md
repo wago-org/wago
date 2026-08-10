@@ -343,6 +343,74 @@ differential-fuzzed old-vs-fused on accept/reject agreement. Keep the
 standalone validator as the API surface either way. Add compile-side stats
 (allocs, arena high-water) to P1's stats while in here.
 
+Current remeasurement confirms that standalone validation is not the best
+first fusion seam: it accounts for roughly 10–14% of full compile time on the
+large corpus modules, while body summaries are redundantly rebuilt around it.
+The first retained P7 slice deepens `analyzeModuleRequirements` into the shared
+summary pass: its existing body decode now also records `ModuleFacts`, passive
+segment state bounds, and atomic wait-helper selection. The standalone
+validator and its error precedence remain unchanged.
+
+Identical-commit darwin/arm64 A/Bs (`-benchtime=500ms -count=10`) measured the
+following median full-compile changes:
+
+| Module | Latency | Allocated bytes | Allocations |
+|---|---:|---:|---:|
+| many_funcs | -2.68% | neutral | neutral |
+| json-as | -9.90% | neutral | neutral |
+| sqlite3 | -7.70% | neutral | neutral |
+| ruby | -7.74% | neutral | neutral |
+| esbuild | -9.00% | neutral | neutral |
+
+All latency comparisons were significant at `p <= 0.001` with ten samples per
+side. Allocated bytes and allocation counts were statistically unchanged;
+esbuild was independently repeated at two iterations per sample to retain all
+ten timing samples. A future support/hint fusion must beat this same gate
+without duplicating feature admission logic inside `wago` or changing which
+phase owns malformed-module diagnostics. `WAGO_FUSED_VALIDATE` remains
+reserved; this slice needs no kill switch because it removes redundant pure
+analysis while retaining the reference validator and frontend admission pass.
+
+Seven interleaved fresh-process compile-only runs kept median peak RSS neutral:
+ruby moved from 136,364,032 to 136,495,104 bytes (+0.10%), while esbuild moved
+from 114,622,464 to 114,458,624 bytes (-0.14%). Native code size and SHA-256
+stayed byte-identical for all five benchmark modules, so execution time and
+generated code size are unchanged by construction.
+
+The second retained P7 slice folds indexed-function `ref.test`/`ref.cast`
+requirements and ARM64 GC ref-test helper selection into the same summary
+decode. These booleans previously required two additional full body walks. An
+identical-commit darwin/arm64 A/B (`-benchtime=500ms -count=10`) measured this
+increment independently from the first summary fusion:
+
+| Module | Latency | Allocated bytes | Allocations |
+|---|---:|---:|---:|
+| many_funcs | -6.28% | neutral | neutral |
+| json-as | -13.94% | neutral | neutral |
+| sqlite3 | -9.99% | neutral | neutral |
+| ruby | -10.15% | neutral | neutral |
+| esbuild | -12.44% | neutral | neutral |
+
+All latency comparisons were significant at `p < 0.001`. The post-fusion Ruby
+profile attributes the remaining full-compile CPU chiefly to native emission,
+standalone validation (13.73%), backend hints (8.96%), and frontend admission
+(5.60%). Those remaining walks own type correctness, architecture-specific
+code-quality policy, or product diagnostics; they are not folded into the
+requirements summary without a separate differential design and code-identity
+gate.
+
+Seven interleaved fresh-process runs kept this second slice's median peak RSS
+neutral as well: ruby moved from 136,445,952 to 136,347,648 bytes (-0.07%) and
+esbuild from 114,556,928 to 114,491,392 bytes (-0.06%). Native code size and
+SHA-256 again stayed byte-identical across all five benchmark modules.
+
+Across the complete three-commit compile-path branch rebased onto current main,
+the identical-origin A/B improves full compile latency by 8.55% on many_funcs
+and 18.74–23.25% on the four large modules. Allocated bytes fall 6.72–10.86%
+on those large modules; the summary-fusion commits themselves are
+allocation-neutral, while the byte reduction comes from serial direct-to-image
+emission.
+
 ### P8. Runtime & product track (original plan; feature value, not exec perf)
 
 The list below is retained as the original July plan. Current disposition:

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -27,6 +28,128 @@ func TestMarshalRoundTripsReturningImportDispatch(t *testing.T) {
 	defer loaded.Close()
 	if !loaded.dynamicImports {
 		t.Fatal("loaded returning import lost dynamic dispatch metadata")
+	}
+}
+
+func TestCompiledWriteToMatchesMarshalBinary(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchImportedModule(16, 8))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	defer c.Close()
+	want, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	var dst bytes.Buffer
+	n, err := c.WriteTo(&dst)
+	if err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	if n != int64(len(want)) || !bytes.Equal(dst.Bytes(), want) {
+		t.Fatalf("WriteTo = %d bytes (equal %v), want %d byte-identical bytes", n, bytes.Equal(dst.Bytes(), want), len(want))
+	}
+	sizes, err := c.ArtifactSectionSizes()
+	if err != nil {
+		t.Fatalf("ArtifactSectionSizes: %v", err)
+	}
+	if sizes.Total != int64(len(want)) || sizes.Code != int64(len(c.code)) || sizes.Framing <= 0 || sizes.Metadata <= 0 {
+		t.Fatalf("artifact section sizes = %+v, blob=%d code=%d", sizes, len(want), len(c.code))
+	}
+	attributed := sizes.Entries + sizes.Imports + sizes.Types + sizes.Functions + sizes.ExportsAndNames + sizes.Globals + sizes.Tables + sizes.Elements + sizes.Data + sizes.Memories + sizes.Tags + sizes.Features + sizes.GC
+	if attributed != sizes.Metadata {
+		t.Fatalf("attributed metadata = %d, want %d: %+v", attributed, sizes.Metadata, sizes)
+	}
+}
+
+func TestCompiledReadFromLoadsCodeImageDirectly(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(1), benchAddOneModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	c.Close()
+
+	var loaded Compiled
+	n, err := loaded.ReadFrom(bytes.NewReader(blob))
+	if err != nil {
+		t.Fatalf("ReadFrom: %v", err)
+	}
+	defer loaded.Close()
+	if n != int64(len(blob)) {
+		t.Fatalf("ReadFrom count = %d, want %d", n, len(blob))
+	}
+	if loaded.codeCache == nil || loaded.codeCache.flags&compiledCacheWritableCode == 0 {
+		t.Fatal("ReadFrom did not transfer a writable code image")
+	}
+	before := unsafe.Pointer(&loaded.code[0])
+	in, err := Instantiate(&loaded, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if after := unsafe.Pointer(&loaded.code[0]); after != before {
+		t.Fatalf("streamed code moved on first instantiate: %p -> %p", before, after)
+	}
+}
+
+func TestCompiledReadFromEnforcesSectionLimits(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	codeLen := len(c.code)
+	c.Close()
+
+	limits := DefaultArtifactLimits()
+	limits.MaxCodeBytes = int64(codeLen - 1)
+	var loaded Compiled
+	if _, err := loaded.ReadFromWithLimits(bytes.NewReader(blob), limits); err == nil || !strings.Contains(err.Error(), "code section length") {
+		t.Fatalf("code limit error = %v", err)
+	}
+	if loaded.code != nil {
+		t.Fatal("limit rejection published a partial module")
+	}
+}
+
+func TestCompiledSectionsRejectReorderingAndDuplicates(t *testing.T) {
+	blob, err := (&Compiled{}).MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	for _, id := range []byte{compiledSectionMetadata, 99} {
+		bad := append([]byte(nil), blob...)
+		bad[6] = id
+		var loaded Compiled
+		if err := loaded.UnmarshalBinary(bad); err == nil || !strings.Contains(err.Error(), "out of order") {
+			t.Fatalf("first section id %d error = %v", id, err)
+		}
+	}
+	_, codeLengthBytes := binary.Uvarint(blob[7:])
+	codeLength, _ := binary.Uvarint(blob[7:])
+	metadataID := 7 + codeLengthBytes + int(codeLength)
+	duplicate := append([]byte(nil), blob...)
+	duplicate[metadataID] = compiledSectionCode
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(duplicate); err == nil || !strings.Contains(err.Error(), "out of order") {
+		t.Fatalf("duplicate code section error = %v", err)
+	}
+
+	nonCanonical := append([]byte(nil), blob[:7]...)
+	nonCanonical = append(nonCanonical, 0x80, 0x00)
+	nonCanonical = append(nonCanonical, blob[8:]...)
+	if _, err := loaded.ReadFrom(bytes.NewReader(nonCanonical)); err == nil || !strings.Contains(err.Error(), "non-canonical") {
+		t.Fatalf("non-canonical section length error = %v", err)
+	}
+	if err := loaded.UnmarshalBinary(nonCanonical); err == nil || !strings.Contains(err.Error(), "non-canonical") {
+		t.Fatalf("non-canonical slice section length error = %v", err)
 	}
 }
 
@@ -58,19 +181,18 @@ func TestMarshalRoundTripsSyncHostDispatch(t *testing.T) {
 }
 
 func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
-	input := &Compiled{
-		Code:       []byte{0xc3},
+	input := newHandBuiltCompiled([]byte{0xc3}, Compiled{
 		Entry:      []int{0},
 		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
 		FuncTypeID: []uint64{0},
 		Exports:    map[string]int{"refs": 0},
-	}
+	})
 	blob, err := input.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 32 {
-		t.Fatalf("compiled codec version = %d, want atomic-feature version 32", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 34 {
+		t.Fatalf("compiled codec version = %d, want native-allocation ABI version 34", blob[4])
 	}
 	for _, version := range []byte{19, 20, 30, 31} {
 		oldVersion := append([]byte(nil), blob...)
@@ -100,8 +222,7 @@ func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
 	indexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
 	stored := indexed
 	stored.Ref.Nullable = true
-	input := &Compiled{
-		Code:       []byte{0xc3},
+	input := newHandBuiltCompiled([]byte{0xc3}, Compiled{
 		Entry:      []int{0},
 		ValueTypes: []ValueTypeDescriptor{stored},
 		Types: []DefinedTypeDescriptor{
@@ -122,7 +243,7 @@ func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
 		HasTable: true, TableType: ValFuncRef, TableValueTypeIndex: 0, TableHasValueType: true,
 		Elems:            []ElemInit{{TableIndex: 0, RefType: ValFuncRef, ValueTypeIndex: 0, HasValueType: true, Mode: ElemModeActive, Values: []RefInit{{Null: true}}}},
 		requiredFeatures: CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences,
-	}
+	})
 	meta := (&Module{c: input}).Metadata()
 	if len(meta.Types) != 2 || len(meta.Functions) != 1 || meta.Functions[0].ParamTypes[1] != indexed || len(meta.Globals) != 1 || !meta.Globals[0].HasValueType || meta.Globals[0].ValueType != stored || len(meta.Tables) != 1 || !meta.Tables[0].HasValueType || meta.Tables[0].ValueType != stored {
 		t.Fatalf("structural module metadata = %#v", meta)

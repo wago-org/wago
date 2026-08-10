@@ -8,16 +8,16 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecV32VersionContract(t *testing.T) {
+func TestCompiledCodecV34VersionContract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != 32 {
-		t.Fatalf("compiled codec version = %d, want 32", got)
+	if got := blob[4]; got != 34 {
+		t.Fatalf("compiled codec version = %d, want 34", got)
 	}
 
-	for _, version := range []byte{31, 30, 26, 25, 24, 23, 22} {
+	for _, version := range []byte{33, 32, 31, 30, 26, 25, 24, 23, 22} {
 		old := append([]byte(nil), blob...)
 		old[4] = version
 		var got Compiled
@@ -261,8 +261,7 @@ func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.
 }
 
 func structuralReferenceCodecFixture() *Compiled {
-	return &Compiled{
-		Code:       []byte{0xc3},
+	return newHandBuiltCompiled([]byte{0xc3}, Compiled{
 		Entry:      []int{0},
 		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
 		FuncTypeID: []uint64{7},
@@ -299,5 +298,5 @@ func structuralReferenceCodecFixture() *Compiled {
 			{RefType: ValExternRef, Mode: ElemModePassive, Values: []RefInit{{Null: true}}},
 			{RefType: ValFuncRef, Mode: ElemModeDeclarative},
 		},
-	}
+	})
 }

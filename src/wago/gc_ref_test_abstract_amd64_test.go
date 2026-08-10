@@ -152,7 +152,7 @@ func TestStagedGCRefTestAbstractMixedTableLifecycle(t *testing.T) {
 		t.Fatal("snapshot admitted mixed ref.test product")
 	}
 
-	t.Logf("abstract ref.test product: wasm=%d code=%d codec=%d tableState=%d conversionState=%d plugin=%d", len(data), len(c.Code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(instancePluginState{}))
+	t.Logf("abstract ref.test product: wasm=%d code=%d codec=%d tableState=%d conversionState=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(instancePluginState{}))
 }
 
 func BenchmarkStagedGCRefTestAbstractActions(b *testing.B) {

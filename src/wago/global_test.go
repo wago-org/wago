@@ -292,7 +292,7 @@ func TestExtendedConstFeatureGateRejectsBeforeCompilation(t *testing.T) {
 
 func TestExtendedConstASTEncodingAndStrictEvaluation(t *testing.T) {
 	m := &wasm.Module{
-		Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64}}}},
+		Imports: []wasm.Import{{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I64})}},
 	}
 	expr := wasm.Expr{Instrs: []wasm.Instruction{
 		{Kind: wasm.InstrGlobalGet, Index: 0},
@@ -371,14 +371,13 @@ func TestCompileRejectsMalformedGlobalConstExpressions(t *testing.T) {
 
 func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 	base := func() *Compiled {
-		return &Compiled{
-			Code:       []byte{0xc3},
+		return newHandBuiltCompiled([]byte{0xc3}, Compiled{
 			Entry:      []int{0},
 			Funcs:      []FuncSig{{Results: []ValType{ValI32}}},
 			Exports:    map[string]int{"f": 0},
 			FuncTypeID: []uint64{1},
 			Globals:    []GlobalDef{{Type: ValI32}},
-		}
+		})
 	}
 	tests := []struct {
 		name string
@@ -482,13 +481,12 @@ func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 
 func TestInstantiateLateGlobalErrorCleansResources(t *testing.T) {
 	before := procSelfMapsCount(t)
-	c := &Compiled{
-		Code: []byte{0xc3}, // ret; code is mapped before global initialization reaches this malformed reference.
+	c := newHandBuiltCompiled([]byte{0xc3}, Compiled{ // ret; code is mapped before global initialization reaches this malformed reference.
 		Globals: []GlobalDef{
 			{Type: ValI32, Bits: 1},
 			{Type: ValI32, HasInitGlobal: true, InitGlobal: 2},
 		},
-	}
+	})
 	for i := 0; i < 5; i++ {
 		if in, err := Instantiate(c, InstantiateOptions{}); err == nil {
 			in.Close()

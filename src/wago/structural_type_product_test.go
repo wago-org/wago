@@ -127,7 +127,7 @@ func TestStagedStructuralTypeProductRejectsWidening(t *testing.T) {
 		t.Fatal("structural product with start unexpectedly admitted")
 	}
 	m.Start = nil
-	m.Types[0].SubTypes[1].Comp.Fields = append(m.Types[0].SubTypes[1].Comp.Fields, wasm.FieldType{Mut: 1})
+	m.Types[0].SubTypes[1].Comp.Fields = append(m.Types[0].SubTypes[1].Comp.Fields, wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Var))
 	if _, err := stagedStructuralTypeProductShape(m); err == nil {
 		t.Fatal("structural product with mutable struct field unexpectedly admitted")
 	}

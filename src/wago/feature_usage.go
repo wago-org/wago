@@ -6,9 +6,14 @@ import (
 )
 
 type moduleRequirements struct {
-	features       CoreFeatures
-	elemStateCount int
-	dataStateCount int
+	features             CoreFeatures
+	elemStateCount       int
+	dataStateCount       int
+	moduleFacts          *frontend.ModuleFacts
+	atomicWaitHelpers    bool
+	indexedFuncRefTest   bool
+	indexedFuncRefCast   bool
+	arm64GCRefTestHelper bool
 }
 
 // moduleRequiredFeatures records optional core features that remain execution
@@ -26,6 +31,15 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	var out CoreFeatures
 	programmaticCode := false
 	elemStateCount, dataStateCount := 0, 0
+	moduleFacts := &frontend.ModuleFacts{
+		TableGrowUsed:  make([]bool, m.TableCount()),
+		TableExported:  make([]bool, m.TableCount()),
+		MemoryGrowUsed: make([]bool, m.MemCount()),
+		MemoryExported: make([]bool, m.MemCount()),
+	}
+	atomicWaitHelpers := false
+	indexedFuncRefTest, indexedFuncRefCast := false, false
+	arm64GCRefTestHelper := false
 	if frontend.ModuleNonCodeRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
@@ -57,27 +71,38 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
 		case wasm.ExternGlobal:
-			out |= requiredFeaturesForValType(im.Type.Global.Type)
-			if im.Type.Global.Mutable {
+			out |= requiredFeaturesForValType(im.Type.GlobalType().Type)
+			if im.Type.GlobalType().Mutable {
 				out |= CoreFeatureMutableGlobal
 			}
 		case wasm.ExternTable:
-			if wasm.EqualValType(wasm.RefVal(im.Type.Table.Ref), wasm.ExternRef) {
+			if wasm.EqualValType(wasm.RefVal(im.Type.TableType().Ref), wasm.ExternRef) {
 				out |= CoreFeatureReferenceTypes
 			}
-			if im.Type.Table.Limits.Addr64 {
+			if im.Type.TableType().Limits.Addr64 {
 				out |= CoreFeatureTable64
 			}
 		}
 	}
 	for _, g := range m.Globals {
 		out |= requiredFeaturesForValType(g.Type.Type)
-		out |= requiredFeaturesForConstExpr(g.Init, m.ImportedGlobalCount())
+		features, usesRefFunc := analyzeConstExprRequirements(g.Init, m.ImportedGlobalCount())
+		out |= features
+		moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || usesRefFunc
 	}
 	for _, ex := range m.Exports {
-		if ex.Index.Kind == wasm.ExternGlobal {
+		switch ex.Index.Kind {
+		case wasm.ExternGlobal:
 			if gt, ok := m.GlobalTypeByIndex(uint32(ex.Index.Index)); ok && gt.Mutable {
 				out |= CoreFeatureMutableGlobal
+			}
+		case wasm.ExternTable:
+			if uint64(ex.Index.Index) < uint64(len(moduleFacts.TableExported)) {
+				moduleFacts.TableExported[ex.Index.Index] = true
+			}
+		case wasm.ExternMem:
+			if uint64(ex.Index.Index) < uint64(len(moduleFacts.MemoryExported)) {
+				moduleFacts.MemoryExported[ex.Index.Index] = true
 			}
 		}
 	}
@@ -89,10 +114,10 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	}
 	for _, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternMem {
-			if im.Type.Mem.Limits.Addr64 {
+			if im.Type.MemType().Limits.Addr64 {
 				out |= CoreFeatureMemory64
 			}
-			if im.Type.Mem.Shared {
+			if im.Type.MemType().Shared {
 				out |= CoreFeatureThreads
 			}
 		}
@@ -121,8 +146,11 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 			out |= requiredFeaturesForConstExpr(elem.Mode.Offset, m.ImportedGlobalCount())
 		}
 		for _, expr := range elem.Kind.Exprs {
-			out |= requiredFeaturesForConstExpr(expr, m.ImportedGlobalCount())
+			features, usesRefFunc := analyzeConstExprRequirements(expr, m.ImportedGlobalCount())
+			out |= features
+			moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || usesRefFunc
 		}
+		moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || (elem.Kind.Kind == wasm.ElemFuncs && len(elem.Kind.Funcs) != 0)
 		if elem.Mode.Kind != wasm.ElemActive {
 			out |= CoreFeatureBulkMemoryOperations
 		}
@@ -147,45 +175,67 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 			out |= requiredFeaturesForValType(local.Type)
 		}
 		if len(fn.BodyBytes) != 0 {
-			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount)
+			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers, m, &indexedFuncRefTest, &indexedFuncRefCast, &arm64GCRefTestHelper)
 		} else if len(fn.Body.Instrs) != 0 {
 			programmaticCode = true
-			instrsSegmentStateCounts(fn.Body.Instrs, &elemStateCount, &dataStateCount)
+			instrsModuleRequirements(fn.Body.Instrs, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers)
 		}
 	}
 	if programmaticCode && frontend.ModuleRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
-	return moduleRequirements{features: out, elemStateCount: elemStateCount, dataStateCount: dataStateCount}
+	return moduleRequirements{
+		features:             out,
+		elemStateCount:       elemStateCount,
+		dataStateCount:       dataStateCount,
+		moduleFacts:          moduleFacts,
+		atomicWaitHelpers:    atomicWaitHelpers,
+		indexedFuncRefTest:   indexedFuncRefTest,
+		indexedFuncRefCast:   indexedFuncRefCast,
+		arm64GCRefTestHelper: arm64GCRefTestHelper,
+	}
 }
 
 func requiredFeaturesForConstExpr(expr wasm.Expr, importedGlobals int) CoreFeatures {
+	features, _ := analyzeConstExprRequirements(expr, importedGlobals)
+	return features
+}
+
+func analyzeConstExprRequirements(expr wasm.Expr, importedGlobals int) (CoreFeatures, bool) {
 	body := expr.BodyBytes
 	if len(body) == 0 {
 		encoded, err := wasm.EncodeExpr(expr)
 		if err != nil {
-			return 0
+			return 0, true
 		}
 		body = encoded
 	}
-	return requiredFeaturesForConstExprBytes(body, importedGlobals)
+	return analyzeConstExprBytes(body, importedGlobals)
 }
 
 func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFeatures {
+	features, _ := analyzeConstExprBytes(body, importedGlobals)
+	return features
+}
+
+func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool) {
 	r := wasm.NewReader(body)
 	var out CoreFeatures
+	usesRefFunc := false
 	usesArithmetic, usesPriorLocal := false, false
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
-			break
+			return out, true
 		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
-			break
+			return out, true
 		}
 		out |= requiredFeaturesForInstructionKind(imm.Kind)
 		switch imm.Kind {
+		case wasm.InstrRefFunc:
+			usesRefFunc = true
 		case wasm.InstrGlobalGet:
 			if int(imm.Index) >= importedGlobals {
 				usesPriorLocal = true
@@ -200,7 +250,7 @@ func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFea
 	} else if usesArithmetic {
 		out |= CoreFeatureExtendedConst
 	}
-	return out
+	return out, usesRefFunc
 }
 
 func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
@@ -212,18 +262,20 @@ func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
 }
 
 func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
-	switch typ.Kind {
+	switch typ.Kind() {
 	case wasm.ValRef:
 		out := CoreFeatureReferenceTypes
-		if typ.Ref.Heap.Kind == wasm.HeapAbs {
-			switch typ.Ref.Heap.Abs {
+		rt := typ.Ref()
+		heap := rt.Heap()
+		if heap.Kind() == wasm.HeapAbs {
+			switch heap.Abs() {
 			case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 				out |= CoreFeatureGC
 			case wasm.HeapExn, wasm.HeapNoExn:
 				out |= CoreFeatureExceptionHandling
 			}
 		}
-		if typ.Ref.Heap.Kind == wasm.HeapTypeIndex || !typ.Ref.Nullable || typ.Ref.Exact {
+		if heap.Kind() == wasm.HeapTypeIndex || !rt.Nullable() || rt.Exact() {
 			out |= CoreFeatureTypedFunctionReferences
 		}
 		return out
@@ -237,31 +289,10 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 
 func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 	elemStateCount, dataStateCount := 0, 0
-	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount)
+	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount, nil, nil, nil, nil, nil, nil)
 }
 
-func moduleUsesAtomicWaitHelpers(m *wasm.Module) bool {
-	for i := range m.Code {
-		r := wasm.NewReader(m.Code[i].BodyBytes)
-		for r.HasNext() {
-			op, err := r.Byte()
-			if err != nil {
-				break
-			}
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
-				break
-			}
-			switch imm.Kind {
-			case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int) CoreFeatures {
+func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool, m *wasm.Module, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper *bool) CoreFeatures {
 	var out CoreFeatures
 	r := wasm.NewReader(body)
 	for r.HasNext() {
@@ -314,6 +345,9 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 				return out
 			}
 			out |= CoreFeatureReferenceTypes
+			if op == 0xd2 && facts != nil {
+				facts.UsesRefFunc = true
+			}
 			continue
 		case 0x41:
 			if _, err := r.I32(); err != nil {
@@ -402,17 +436,100 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 			}
 			continue
 		}
+		var probe wasm.Reader
+		if op == 0xfb {
+			probe = *r
+		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
 			break
 		}
 		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemStateCount, dataStateCount)
+		recordModuleRequirementFact(imm.Kind, imm.Index, facts, atomicWaitHelpers)
+		if op == 0xfb {
+			recordRefTypeRequirements(m, imm.Kind, &probe, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper)
+		}
 		out |= requiredFeaturesForInstructionKind(imm.Kind)
 		if imm.Kind == wasm.InstrCallIndirect && imm.Index2 != 0 {
 			out |= CoreFeatureReferenceTypes
 		}
 	}
 	return out
+}
+
+func recordRefTypeRequirements(m *wasm.Module, kind wasm.InstrKind, probe *wasm.Reader, refTest, refCast, arm64GCRefTestHelper *bool) {
+	if m == nil || (kind != wasm.InstrRefTest && kind != wasm.InstrRefCast) {
+		return
+	}
+	subopcode, err := probe.U32()
+	if err != nil || (subopcode != 20 && subopcode != 21 && subopcode != 22 && subopcode != 23) {
+		return
+	}
+	heap, err := probe.S33()
+	if err != nil {
+		return
+	}
+	if kind == wasm.InstrRefTest && (subopcode == 20 || subopcode == 21) && arm64GCRefTestHelper != nil {
+		if heap >= 0 {
+			if _, isFunc := m.TypeFunc(uint32(heap)); !isFunc {
+				*arm64GCRefTestHelper = true
+			}
+		} else {
+			switch heap {
+			case -16, -17, -13, -14:
+			default:
+				*arm64GCRefTestHelper = true
+			}
+		}
+	}
+	if heap < 0 {
+		return
+	}
+	if _, ok := m.TypeFunc(uint32(heap)); !ok {
+		return
+	}
+	if kind == wasm.InstrRefTest {
+		if refTest != nil {
+			*refTest = true
+		}
+	} else if refCast != nil {
+		*refCast = true
+	}
+}
+
+func instrsModuleRequirements(instrs []wasm.Instruction, elemCount, dataCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool) {
+	for i := range instrs {
+		in := &instrs[i]
+		segmentStateCount(in.Kind, in.Index, in.Index2, elemCount, dataCount)
+		recordModuleRequirementFact(in.Kind, in.Index, facts, atomicWaitHelpers)
+		instrsModuleRequirements(in.Body().Instrs, elemCount, dataCount, facts, atomicWaitHelpers)
+		instrsModuleRequirements(in.Then(), elemCount, dataCount, facts, atomicWaitHelpers)
+		instrsModuleRequirements(in.Else(), elemCount, dataCount, facts, atomicWaitHelpers)
+	}
+}
+
+func recordModuleRequirementFact(kind wasm.InstrKind, index uint32, facts *frontend.ModuleFacts, atomicWaitHelpers *bool) {
+	if atomicWaitHelpers != nil {
+		switch kind {
+		case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
+			*atomicWaitHelpers = true
+		}
+	}
+	if facts == nil {
+		return
+	}
+	switch kind {
+	case wasm.InstrTableGrow:
+		if uint64(index) < uint64(len(facts.TableGrowUsed)) {
+			facts.TableGrowUsed[index] = true
+		}
+	case wasm.InstrMemoryGrow:
+		if uint64(index) < uint64(len(facts.MemoryGrowUsed)) {
+			facts.MemoryGrowUsed[index] = true
+		}
+	case wasm.InstrRefFunc:
+		facts.UsesRefFunc = true
+	}
 }
 
 func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {

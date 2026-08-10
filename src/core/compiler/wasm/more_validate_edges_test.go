@@ -5,17 +5,17 @@ import "testing"
 func TestMoreValidateLimitsAndStartTopology(t *testing.T) {
 	t.Run("imported table invalid limit range", func(t *testing.T) {
 		max := uint64(1)
-		m := &Module{Imports: []Import{{Type: ExternType{Kind: ExternTable, Table: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 2, Max: &max}}}}}}
+		m := &Module{Imports: []Import{{Type: NewTableExternType(TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 2, Max: max, HasMax: true}})}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	t.Run("local table invalid limit range", func(t *testing.T) {
 		max := uint64(1)
-		m := &Module{Tables: []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 2, Max: &max}}}}}
+		m := &Module{Tables: []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 2, Max: max, HasMax: true}}}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	t.Run("local memory invalid limit range", func(t *testing.T) {
 		max := uint64(1)
-		m := &Module{Memories: []MemType{{Limits: Limits{Min: 2, Max: &max}}}}
+		m := &Module{Memories: []MemType{{Limits: Limits{Min: 2, Max: max, HasMax: true}}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	// The decoder stores table/memory proposal limits as uint64, but each address
@@ -33,7 +33,7 @@ func TestMoreValidateLimitsAndStartTopology(t *testing.T) {
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	t.Run("memory32 max over page range", func(t *testing.T) {
-		m := &Module{Memories: []MemType{{Limits: Limits{Min: 0, Max: &boundsMax}}}}
+		m := &Module{Memories: []MemType{{Limits: Limits{Min: 0, Max: boundsMax, HasMax: true}}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	t.Run("memory64 min over page range", func(t *testing.T) {
@@ -41,11 +41,11 @@ func TestMoreValidateLimitsAndStartTopology(t *testing.T) {
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	t.Run("memory64 max over page range", func(t *testing.T) {
-		m := &Module{Memories: []MemType{{Limits: Limits{Addr64: true, Max: &memory64MaxPlusOne}}}}
+		m := &Module{Memories: []MemType{{Limits: Limits{Addr64: true, Max: memory64MaxPlusOne, HasMax: true}}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
 	t.Run("imported shared memory64 without max", func(t *testing.T) {
-		m := &Module{Imports: []Import{{Type: ExternType{Kind: ExternMem, Mem: MemType{Shared: true, Limits: Limits{Addr64: true, Min: 1}}}}}}
+		m := &Module{Imports: []Import{{Type: NewMemExternType(MemType{Shared: true, Limits: Limits{Addr64: true, Min: 1}})}}}
 		expectValidateErr(t, m, ErrInvalidSharedMemory)
 	})
 	t.Run("start wrong-kind index", func(t *testing.T) {

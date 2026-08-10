@@ -215,8 +215,8 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 		t.Fatalf("Global size = %d, want 40", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 680 {
-		t.Fatalf("Compiled size = %d, want 680", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 784 {
+		t.Fatalf("Compiled size = %d, want 784", got)
 	}
 	if got := unsafe.Sizeof(HostFuncRef{}); got != 128 {
 		t.Fatalf("HostFuncRef size = %d, want 128", got)

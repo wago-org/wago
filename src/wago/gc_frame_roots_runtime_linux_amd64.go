@@ -58,7 +58,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.frameBytes = frameBytes
 	state.frameRoots.frameLayout = gcNativeFrameLayoutAMD64
 	state.frameRoots.codeBase = in.base
-	state.frameRoots.codeBytes = uintptr(len(in.c.Code))
+	state.frameRoots.codeBytes = uintptr(len(in.c.code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state

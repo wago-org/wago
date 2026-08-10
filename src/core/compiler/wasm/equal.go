@@ -4,11 +4,11 @@ package wasm
 func EqualValType(a, b ValType) bool { return equalValType(a, b) }
 
 func equalValType(a, b ValType) bool {
-	if a.Kind != b.Kind || a.Num != b.Num {
+	if a.Kind() != b.Kind() || a.Num() != b.Num() {
 		return false
 	}
-	if a.Kind == ValRef {
-		return equalRefType(a.Ref, b.Ref)
+	if a.Kind() == ValRef {
+		return equalRefType(a.Ref(), b.Ref())
 	}
 	return true
 }
@@ -16,34 +16,33 @@ func equalValType(a, b ValType) bool {
 func equalRefType(a, b RefType) bool {
 	// Bare records whether the binary used a one-byte shorthand such as
 	// funcref. It is encoding metadata, not part of WebAssembly type identity.
-	return a.Nullable == b.Nullable && a.Exact == b.Exact && equalHeapType(a.Heap, b.Heap)
+	return a.Nullable() == b.Nullable() && a.Exact() == b.Exact() && equalHeapType(a.Heap(), b.Heap())
 }
 
 func equalHeapType(a, b HeapType) bool {
-	if a.Kind != b.Kind || a.Abs != b.Abs || a.Type != b.Type {
+	if a.Kind() != b.Kind() || a.Abs() != b.Abs() || a.Type() != b.Type() {
 		return false
 	}
-	if a.Kind == HeapDefType {
-		if a.Def == nil || b.Def == nil {
-			return a.Def == b.Def
-		}
-		return a.Def.GroupIndex == b.Def.GroupIndex && a.Def.Index == b.Def.Index
+	if a.Kind() == HeapDefType {
+		ag, ai, _, av := a.Def()
+		bg, bi, _, bv := b.Def()
+		return av == bv && (!av || ag == bg && ai == bi)
 	}
 	return true
 }
 
 func equalStorageType(a, b StorageType) bool {
-	if a.Packed != b.Packed || a.Pack != b.Pack {
+	if a.Packed() != b.Packed() || a.Pack() != b.Pack() {
 		return false
 	}
-	if !a.Packed && !equalValType(a.Val, b.Val) {
+	if !a.Packed() && !equalValType(a.Val(), b.Val()) {
 		return false
 	}
 	return true
 }
 
 func equalFieldType(a, b FieldType) bool {
-	return a.Mut == b.Mut && equalStorageType(a.Storage, b.Storage)
+	return a.Mut() == b.Mut() && equalStorageType(a.Storage(), b.Storage())
 }
 
 func equalCompType(a, b CompType) bool {

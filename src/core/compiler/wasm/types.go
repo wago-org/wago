@@ -44,53 +44,145 @@ const (
 	HeapDefType
 )
 
-type HeapType struct {
-	Kind HeapTypeKind
-	Abs  AbsHeapType
-	Type TypeIdx
-	Def  *DefType
+// HeapType, RefType, ValType, StorageType, and FieldType share one canonical,
+// pointer-free two-word encoding. The second word is necessary only because a
+// resolved definition carries two full uint32 coordinates; retaining the full
+// accepted domain leaves no room for a variant tag in one uint64. Ordinary
+// decoded types use only a uint32 payload, but keeping one representation makes
+// values directly comparable and avoids pointer-rich tagged unions.
+//
+// lo bit layout:
+//
+//	0..1   heap kind      8..15  abstract heap type
+//	16     recursive TypeIdx
+//	17     defined-type coordinate is present
+//	18..19 defined component kind
+//	20     nullable      21 exact      22 bare binary alias
+//	23     defined component kind is valid
+//	24..25 value kind    32..39 numeric type
+//	40     packed        41..48 packed storage type
+//	49     mutable
+//
+// hi contains a uint32 TypeIdx, or group/member uint32 coordinates for a
+// resolved definition. Scalar operations are endian-independent.
+type HeapType struct{ lo, hi uint64 }
+
+const (
+	heapKindShift   = 0
+	heapKindMask    = uint64(0x3)
+	heapAbsShift    = 8
+	heapAbsMask     = uint64(0xff) << heapAbsShift
+	typeRecBit      = uint64(1) << 16
+	defPresentBit   = uint64(1) << 17
+	defKindShift    = 18
+	defKindMask     = uint64(0x3) << defKindShift
+	nullableBit     = uint64(1) << 20
+	exactBit        = uint64(1) << 21
+	bareBit         = uint64(1) << 22
+	defKindValidBit = uint64(1) << 23
+	valKindShift    = 24
+	valKindMask     = uint64(0x3) << valKindShift
+	numTypeShift    = 32
+	numTypeMask     = uint64(0xff) << numTypeShift
+	packedBit       = uint64(1) << 40
+	packTypeShift   = 41
+	packTypeMask    = uint64(0xff) << packTypeShift
+	mutableBit      = uint64(1) << 49
+)
+
+func AbsHeap(abs AbsHeapType) HeapType {
+	return HeapType{lo: uint64(HeapAbs)<<heapKindShift | uint64(abs)<<heapAbsShift}
+}
+func IndexedHeap(idx TypeIdx) HeapType {
+	lo := uint64(HeapTypeIndex) << heapKindShift
+	if idx.Rec {
+		lo |= typeRecBit
+	}
+	return HeapType{lo: lo, hi: uint64(idx.Index)}
+}
+func DefinedHeap(def *DefType) HeapType {
+	h := HeapType{lo: uint64(HeapDefType) << heapKindShift}
+	if def == nil {
+		return h
+	}
+	h.lo |= defPresentBit
+	h.hi = uint64(def.GroupIndex) | uint64(def.Index)<<32
+	if def.Index < uint32(len(def.Rec.SubTypes)) {
+		h.lo |= defKindValidBit | uint64(def.Rec.SubTypes[def.Index].Comp.Kind)<<defKindShift
+	}
+	return h
+}
+func (h HeapType) Kind() HeapTypeKind { return HeapTypeKind((h.lo >> heapKindShift) & heapKindMask) }
+func (h HeapType) Abs() AbsHeapType   { return AbsHeapType((h.lo & heapAbsMask) >> heapAbsShift) }
+func (h HeapType) Type() TypeIdx {
+	return TypeIdx{Index: uint32(h.hi), Rec: h.lo&typeRecBit != 0}
+}
+func (h HeapType) Def() (group, member uint32, kind CompTypeKind, valid bool) {
+	return uint32(h.hi), uint32(h.hi >> 32), CompTypeKind((h.lo & defKindMask) >> defKindShift), h.lo&defPresentBit != 0
+}
+func (h HeapType) DefCompKind() (CompTypeKind, bool) {
+	return CompTypeKind((h.lo & defKindMask) >> defKindShift), h.lo&defKindValidBit != 0
 }
 
-func AbsHeap(abs AbsHeapType) HeapType { return HeapType{Kind: HeapAbs, Abs: abs} }
-func IndexedHeap(idx TypeIdx) HeapType { return HeapType{Kind: HeapTypeIndex, Type: idx} }
+type RefType struct{ lo, hi uint64 }
 
-type RefType struct {
-	Nullable bool
-	Exact    bool
-	Heap     HeapType
-	// Bare is true for one-byte abstract aliases such as funcref/externref.
-	Bare bool
+func AbsRef(abs AbsHeapType) RefType {
+	h := AbsHeap(abs)
+	return RefType{lo: h.lo | nullableBit | bareBit, hi: h.hi}
 }
-
-func AbsRef(abs AbsHeapType) RefType { return RefType{Nullable: true, Heap: AbsHeap(abs), Bare: true} }
 func Ref(nullable bool, heap HeapType, exact bool) RefType {
-	return RefType{Nullable: nullable, Heap: heap, Exact: exact}
+	lo := heap.lo
+	if nullable {
+		lo |= nullableBit
+	}
+	if exact {
+		lo |= exactBit
+	}
+	return RefType{lo: lo, hi: heap.hi}
 }
 
-func (rt RefType) IsDefaultable() bool { return rt.Nullable }
+func (rt RefType) Nullable() bool { return rt.lo&nullableBit != 0 }
+func (rt RefType) Exact() bool    { return rt.lo&exactBit != 0 }
+func (rt RefType) Bare() bool     { return rt.lo&bareBit != 0 }
+func (rt RefType) Heap() HeapType {
+	return HeapType{lo: rt.lo & (heapKindMask | heapAbsMask | typeRecBit | defPresentBit | defKindMask | defKindValidBit), hi: rt.hi}
+}
+func (rt RefType) WithNullable(nullable bool) RefType {
+	if nullable {
+		rt.lo |= nullableBit
+	} else {
+		rt.lo &^= nullableBit
+	}
+	return rt
+}
+func (rt RefType) WithHeap(heap HeapType) RefType {
+	return RefType{lo: heap.lo | rt.lo&(nullableBit|exactBit|bareBit), hi: heap.hi}
+}
+func (rt RefType) IsDefaultable() bool { return rt.Nullable() }
 
 func (rt RefType) String() string {
 	prefix := "ref"
-	if rt.Nullable {
+	if rt.Nullable() {
 		prefix = "ref null"
 	}
-	if rt.Exact {
+	if rt.Exact() {
 		prefix += " exact"
 	}
-	return prefix + " " + rt.Heap.String()
+	return prefix + " " + rt.Heap().String()
 }
 
 func (h HeapType) String() string {
-	switch h.Kind {
+	switch h.Kind() {
 	case HeapAbs:
-		return h.Abs.String()
+		return h.Abs().String()
 	case HeapTypeIndex:
-		return fmt.Sprintf("type %d", h.Type.Index)
+		return fmt.Sprintf("type %d", h.Type().Index)
 	case HeapDefType:
-		if h.Def == nil {
+		group, member, _, valid := h.Def()
+		if !valid {
 			return "def ?"
 		}
-		return fmt.Sprintf("def %d.%d", h.Def.GroupIndex, h.Def.Index)
+		return fmt.Sprintf("def %d.%d", group, member)
 	default:
 		return "heap?"
 	}
@@ -138,33 +230,40 @@ const (
 	ValBot
 )
 
-type ValType struct {
-	Kind ValTypeKind
-	Num  NumType
-	Ref  RefType
+type ValType struct{ lo, hi uint64 }
+
+func newValType(kind ValTypeKind, num NumType) ValType {
+	return ValType{lo: uint64(kind)<<valKindShift | uint64(num)<<numTypeShift}
 }
 
 var (
-	I32       = ValType{Kind: ValNum, Num: NumI32}
-	I64       = ValType{Kind: ValNum, Num: NumI64}
-	F32       = ValType{Kind: ValNum, Num: NumF32}
-	F64       = ValType{Kind: ValNum, Num: NumF64}
-	V128      = ValType{Kind: ValVec}
-	Bot       = ValType{Kind: ValBot}
-	FuncRef   = ValType{Kind: ValRef, Ref: AbsRef(HeapFunc)}
-	ExternRef = ValType{Kind: ValRef, Ref: AbsRef(HeapExtern)}
-	AnyRef    = ValType{Kind: ValRef, Ref: AbsRef(HeapAny)}
-	EqRef     = ValType{Kind: ValRef, Ref: AbsRef(HeapEq)}
-	I31Ref    = ValType{Kind: ValRef, Ref: AbsRef(HeapI31)}
-	StringRef = ValType{Kind: ValRef, Ref: AbsRef(HeapString)}
+	I32       = newValType(ValNum, NumI32)
+	I64       = newValType(ValNum, NumI64)
+	F32       = newValType(ValNum, NumF32)
+	F64       = newValType(ValNum, NumF64)
+	V128      = newValType(ValVec, 0)
+	Bot       = newValType(ValBot, 0)
+	FuncRef   = RefVal(AbsRef(HeapFunc))
+	ExternRef = RefVal(AbsRef(HeapExtern))
+	AnyRef    = RefVal(AbsRef(HeapAny))
+	EqRef     = RefVal(AbsRef(HeapEq))
+	I31Ref    = RefVal(AbsRef(HeapI31))
+	StringRef = RefVal(AbsRef(HeapString))
 )
 
-func RefVal(rt RefType) ValType { return ValType{Kind: ValRef, Ref: rt} }
+func RefVal(rt RefType) ValType {
+	return ValType{lo: rt.lo | uint64(ValRef)<<valKindShift, hi: rt.hi}
+}
+func (v ValType) Kind() ValTypeKind { return ValTypeKind((v.lo & valKindMask) >> valKindShift) }
+func (v ValType) Num() NumType      { return NumType((v.lo & numTypeMask) >> numTypeShift) }
+func (v ValType) Ref() RefType {
+	return RefType{lo: v.lo &^ (valKindMask | numTypeMask | packedBit | packTypeMask | mutableBit), hi: v.hi}
+}
 
 func (v ValType) String() string {
-	switch v.Kind {
+	switch v.Kind() {
 	case ValNum:
-		switch v.Num {
+		switch v.Num() {
 		case NumI32:
 			return "i32"
 		case NumI64:
@@ -177,15 +276,16 @@ func (v ValType) String() string {
 	case ValVec:
 		return "v128"
 	case ValRef:
-		if v.Ref.Bare && v.Ref.Nullable && !v.Ref.Exact && v.Ref.Heap.Kind == HeapAbs {
-			switch v.Ref.Heap.Abs {
+		rt := v.Ref()
+		if rt.Bare() && rt.Nullable() && !rt.Exact() && rt.Heap().Kind() == HeapAbs {
+			switch rt.Heap().Abs() {
 			case HeapFunc:
 				return "funcref"
 			case HeapExtern:
 				return "externref"
 			}
 		}
-		return v.Ref.String()
+		return rt.String()
 	case ValBot:
 		return "⊥"
 	}
@@ -206,15 +306,35 @@ const (
 	PackI8  PackType = 0x78
 )
 
-type StorageType struct {
-	Packed bool
-	Val    ValType
-	Pack   PackType
-}
+type StorageType struct{ lo, hi uint64 }
 
-type FieldType struct {
-	Storage StorageType
-	Mut     Mut
+func StorageVal(v ValType) StorageType { return StorageType(v) }
+func StoragePacked(pack PackType) StorageType {
+	return StorageType{lo: packedBit | uint64(pack)<<packTypeShift}
+}
+func (s StorageType) Packed() bool { return s.lo&packedBit != 0 }
+func (s StorageType) Val() ValType {
+	return ValType{lo: s.lo &^ (packedBit | packTypeMask | mutableBit), hi: s.hi}
+}
+func (s StorageType) Pack() PackType { return PackType((s.lo & packTypeMask) >> packTypeShift) }
+
+type FieldType struct{ lo, hi uint64 }
+
+func NewFieldType(storage StorageType, mut Mut) FieldType {
+	lo := storage.lo
+	if mut == Var {
+		lo |= mutableBit
+	}
+	return FieldType{lo: lo, hi: storage.hi}
+}
+func (f FieldType) Storage() StorageType {
+	return StorageType{lo: f.lo &^ mutableBit, hi: f.hi}
+}
+func (f FieldType) Mut() Mut {
+	if f.lo&mutableBit != 0 {
+		return Var
+	}
+	return Const
 }
 
 type TypeIdx struct {
@@ -248,9 +368,32 @@ type CompType struct {
 	Results []ValType
 }
 
+// OptionalTypeIdx stores a full TypeIdx and explicit presence without a Go
+// pointer. Bits 0..31 hold Index, bit 32 holds Rec, and bit 33 holds presence.
+type OptionalTypeIdx struct{ bits uint64 }
+
+const (
+	optionalTypeIdxRec     = uint64(1) << 32
+	optionalTypeIdxPresent = uint64(1) << 33
+)
+
+func SomeTypeIdx(idx TypeIdx) OptionalTypeIdx {
+	b := optionalTypeIdxPresent | uint64(idx.Index)
+	if idx.Rec {
+		b |= optionalTypeIdxRec
+	}
+	return OptionalTypeIdx{bits: b}
+}
+
+func (o OptionalTypeIdx) Get() (TypeIdx, bool) {
+	return TypeIdx{Index: uint32(o.bits), Rec: o.bits&optionalTypeIdxRec != 0}, o.bits&optionalTypeIdxPresent != 0
+}
+
+func (o OptionalTypeIdx) Present() bool { return o.bits&optionalTypeIdxPresent != 0 }
+
 type TypeMetadata struct {
-	Describes  *TypeIdx
-	Descriptor *TypeIdx
+	Describes  OptionalTypeIdx
+	Descriptor OptionalTypeIdx
 }
 
 type SubType struct {
@@ -273,7 +416,8 @@ type DefType struct {
 
 type Limits struct {
 	Min    uint64
-	Max    *uint64
+	Max    uint64
+	HasMax bool
 	Addr64 bool
 }
 
@@ -301,14 +445,103 @@ const (
 	ExternTag
 )
 
+// ExternType stores the payload for exactly one external kind. value holds a
+// global value or table reference type, index holds a function/tag type index,
+// and min/max hold table/memory limits. flags represents optional maxima and
+// scalar booleans without retaining Go pointers.
 type ExternType struct {
-	Kind   ExternKind
-	Type   TypeIdx
-	Table  TableType
-	Mem    MemType
-	Global GlobalType
-	Tag    TagType
+	Kind  ExternKind
+	flags uint8
+	index uint32
+	value ValType
+	min   uint64
+	max   uint64
 }
+
+const (
+	externTypeRecursive = uint8(1 << iota)
+	externTypeHasMax
+	externTypeAddr64
+	externTypeShared
+	externTypeMutable
+)
+
+func NewFuncExternType(t TypeIdx) ExternType {
+	e := ExternType{Kind: ExternFunc, index: t.Index}
+	if t.Rec {
+		e.flags |= externTypeRecursive
+	}
+	return e
+}
+
+func NewTableExternType(t TableType) ExternType {
+	e := ExternType{Kind: ExternTable, value: RefVal(t.Ref), min: t.Limits.Min, max: t.Limits.Max}
+	e.setLimitFlags(t.Limits)
+	return e
+}
+
+func NewMemExternType(t MemType) ExternType {
+	e := ExternType{Kind: ExternMem, min: t.Limits.Min, max: t.Limits.Max}
+	e.setLimitFlags(t.Limits)
+	if t.Shared {
+		e.flags |= externTypeShared
+	}
+	return e
+}
+
+func NewGlobalExternType(t GlobalType) ExternType {
+	e := ExternType{Kind: ExternGlobal, value: t.Type}
+	if t.Mutable {
+		e.flags |= externTypeMutable
+	}
+	return e
+}
+
+func NewTagExternType(t TagType) ExternType {
+	e := ExternType{Kind: ExternTag, index: t.Type.Index}
+	if t.Type.Rec {
+		e.flags |= externTypeRecursive
+	}
+	return e
+}
+
+func (e *ExternType) setLimitFlags(l Limits) {
+	if l.HasMax {
+		e.flags |= externTypeHasMax
+	}
+	if l.Addr64 {
+		e.flags |= externTypeAddr64
+	}
+}
+
+func (e ExternType) limits() Limits {
+	return Limits{
+		Min: e.min, Max: e.max,
+		HasMax: e.flags&externTypeHasMax != 0,
+		Addr64: e.flags&externTypeAddr64 != 0,
+	}
+}
+
+func (e ExternType) FuncType() TypeIdx {
+	return TypeIdx{Index: e.index, Rec: e.flags&externTypeRecursive != 0}
+}
+
+func (e ExternType) TableType() TableType {
+	return TableType{Ref: e.value.Ref(), Limits: e.limits()}
+}
+
+func (e ExternType) MemType() MemType {
+	return MemType{Limits: e.limits(), Shared: e.flags&externTypeShared != 0}
+}
+
+func (e ExternType) GlobalType() GlobalType {
+	return GlobalType{Type: e.value, Mutable: e.flags&externTypeMutable != 0}
+}
+
+func (e ExternType) TagType() TagType {
+	return TagType{Type: TypeIdx{Index: e.index, Rec: e.flags&externTypeRecursive != 0}}
+}
+
 type ExternIdx struct {
 	Kind  ExternKind
 	Index uint32

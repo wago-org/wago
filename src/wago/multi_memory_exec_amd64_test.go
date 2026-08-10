@@ -397,7 +397,7 @@ func TestStagedMultiMemoryScalarWidthsAndGrow(t *testing.T) {
 			t.Fatalf("compile staged: %v", err)
 		}
 		defer staged.Close()
-		if string(base.Code) != string(staged.Code) {
+		if string(base.code) != string(staged.code) {
 			t.Fatal("enabling staged multi-memory changed ordinary memory-0 code bytes")
 		}
 	})

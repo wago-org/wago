@@ -193,10 +193,10 @@ func (v *moduleValidator) validateModule() error {
 					return v.err(ErrUnknownType, "supertype")
 				}
 			}
-			if st.Metadata.Describes != nil && !v.validTypeIdxInRecGroup(*st.Metadata.Describes, gi) {
+			if describes, present := st.Metadata.Describes.Get(); present && !v.validTypeIdxInRecGroup(describes, gi) {
 				return v.err(ErrUnknownType, "describes")
 			}
-			if st.Metadata.Descriptor != nil && !v.validTypeIdxInRecGroup(*st.Metadata.Descriptor, gi) {
+			if descriptor, present := st.Metadata.Descriptor.Get(); present && !v.validTypeIdxInRecGroup(descriptor, gi) {
 				return v.err(ErrUnknownType, "descriptor")
 			}
 			if err := v.validateCompTypeInRecGroup(st.Comp, gi); err != nil {
@@ -234,7 +234,7 @@ func (v *moduleValidator) validateModule() error {
 				return err
 			}
 		}
-		if !hasInit && !t.Type.Ref.Nullable {
+		if !hasInit && !t.Type.Ref.Nullable() {
 			return v.err(ErrTypeMismatch, "non-defaultable table requires an initializer")
 		}
 	}
@@ -303,12 +303,12 @@ func (v *moduleValidator) validateModule() error {
 	for i, d := range v.m.Data {
 		if d.Mode.Kind == DataActive {
 			activeData++
-			mt, ok := v.memoryType(uint32(d.Mode.Mem))
+			flags, ok := v.memoryProperties(uint32(d.Mode.Mem))
 			if !ok {
 				return v.err(ErrUnknownMemory, "data")
 			}
 			want := I32
-			if mt.Limits.Addr64 {
+			if flags&externTypeAddr64 != 0 {
 				want = I64
 			}
 			if v.direct != nil {
@@ -411,17 +411,38 @@ func (v *moduleValidator) isDeclaredFunc(idx uint32) bool {
 func (v *moduleValidator) validateExternType(et ExternType) error {
 	switch et.Kind {
 	case ExternFunc:
-		if v.funcTypeFromTypeIdx(et.Type) == nil {
+		if v.funcTypeFromTypeIdx(et.FuncType()) == nil {
 			return v.err(ErrUnknownType, "import func")
 		}
 	case ExternTable:
-		return v.validateTableType(et.Table)
+		if err := v.validateRefType(et.value.Ref()); err != nil {
+			return err
+		}
+		if et.flags&externTypeAddr64 == 0 && (et.min > maxTable32Limit || et.flags&externTypeHasMax != 0 && et.max > maxTable32Limit) {
+			return v.err(ErrInvalidLimitRange, "table32 limit out of range")
+		}
+		if et.flags&externTypeHasMax != 0 && et.max < et.min {
+			return v.err(ErrInvalidLimitRange, "table max < min")
+		}
 	case ExternMem:
-		return v.validateMemType(et.Mem)
+		hasMax := et.flags&externTypeHasMax != 0
+		if et.flags&externTypeShared != 0 && !hasMax {
+			return v.err(ErrInvalidSharedMemory, "")
+		}
+		if et.flags&externTypeAddr64 != 0 {
+			if et.min > maxMemory64Pages || hasMax && et.max > maxMemory64Pages {
+				return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
+			}
+		} else if et.min > maxMemory32Pages || hasMax && et.max > maxMemory32Pages {
+			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
+		}
+		if hasMax && et.max < et.min {
+			return v.err(ErrInvalidLimitRange, "memory max < min")
+		}
 	case ExternGlobal:
-		return v.validateGlobalType(et.Global)
+		return v.validateValType(et.value)
 	case ExternTag:
-		return v.validateTagType(et.Tag, "import tag")
+		return v.validateTagType(et.TagType(), "import tag")
 	}
 	return nil
 }
@@ -443,11 +464,11 @@ func (v *moduleValidator) validateTableType(tt TableType) error {
 	if !tt.Limits.Addr64 {
 		// Table32 limits are u32 in the binary format; keep oversized values out
 		// even though the shared Limits representation stores proposal limits as u64.
-		if tt.Limits.Min > maxTable32Limit || (tt.Limits.Max != nil && *tt.Limits.Max > maxTable32Limit) {
+		if tt.Limits.Min > maxTable32Limit || (tt.Limits.HasMax && tt.Limits.Max > maxTable32Limit) {
 			return v.err(ErrInvalidLimitRange, "table32 limit out of range")
 		}
 	}
-	if tt.Limits.Max != nil && *tt.Limits.Max < tt.Limits.Min {
+	if tt.Limits.HasMax && tt.Limits.Max < tt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "table max < min")
 	}
 	return nil
@@ -485,19 +506,19 @@ func (v *moduleValidator) validateCompTypeInRecGroup(ct CompType, recGroup int) 
 }
 
 func (v *moduleValidator) validateFieldTypeInRecGroup(ft FieldType, recGroup int) error {
-	return v.validateStorageTypeInRecGroup(ft.Storage, recGroup)
+	return v.validateStorageTypeInRecGroup(ft.Storage(), recGroup)
 }
 
 func (v *moduleValidator) validateStorageTypeInRecGroup(st StorageType, recGroup int) error {
-	if st.Packed {
-		switch st.Pack {
+	if st.Packed() {
+		switch st.Pack() {
 		case PackI8, PackI16:
 			return nil
 		default:
 			return v.err(ErrUnknownType, "packed storage")
 		}
 	}
-	return v.validateValTypeInRecGroup(st.Val, recGroup)
+	return v.validateValTypeInRecGroup(st.Val(), recGroup)
 }
 
 func (v *moduleValidator) validateValType(t ValType) error {
@@ -505,11 +526,11 @@ func (v *moduleValidator) validateValType(t ValType) error {
 }
 
 func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) error {
-	switch t.Kind {
+	switch t.Kind() {
 	case ValNum, ValVec:
 		return nil
 	case ValRef:
-		return v.validateRefTypeInRecGroup(t.Ref, recGroup)
+		return v.validateRefTypeInRecGroup(t.Ref(), recGroup)
 	default:
 		return v.err(ErrUnknownType, "value type")
 	}
@@ -520,7 +541,7 @@ func (v *moduleValidator) validateRefType(rt RefType) error {
 }
 
 func (v *moduleValidator) validateRefTypeInRecGroup(rt RefType, recGroup int) error {
-	return v.validateHeapTypeInRecGroup(rt.Heap, recGroup)
+	return v.validateHeapTypeInRecGroup(rt.Heap(), recGroup)
 }
 
 func (v *moduleValidator) validateHeapType(ht HeapType) error {
@@ -528,16 +549,16 @@ func (v *moduleValidator) validateHeapType(ht HeapType) error {
 }
 
 func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) error {
-	switch ht.Kind {
+	switch ht.Kind() {
 	case HeapAbs:
 		return nil
 	case HeapTypeIndex:
-		if !v.validTypeIdxInRecGroup(ht.Type, recGroup) {
+		if !v.validTypeIdxInRecGroup(ht.Type(), recGroup) {
 			return v.err(ErrUnknownType, "heap type")
 		}
 		return nil
 	case HeapDefType:
-		if ht.Def == nil {
+		if _, _, _, valid := ht.Def(); !valid {
 			return v.err(ErrUnknownType, "heap def type")
 		}
 		return nil
@@ -546,23 +567,23 @@ func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) 
 	}
 }
 func (v *moduleValidator) validateMemType(mt MemType) error {
-	if mt.Shared && mt.Limits.Max == nil {
+	if mt.Shared && !mt.Limits.HasMax {
 		return v.err(ErrInvalidSharedMemory, "")
 	}
 	if mt.Limits.Addr64 {
 		// Core 3 memory64 limits are bounded to 2^48 pages even though their
 		// binary representation and the common Limits storage are uint64.
-		if mt.Limits.Min > maxMemory64Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory64Pages) {
+		if mt.Limits.Min > maxMemory64Pages || (mt.Limits.HasMax && mt.Limits.Max > maxMemory64Pages) {
 			return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
 		}
 	} else {
 		// Memory32 limits are page counts bounded to the 4 GiB address space.
 		// Reject values that only fit because the common Limits storage is uint64.
-		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory32Pages) {
+		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.HasMax && mt.Limits.Max > maxMemory32Pages) {
 			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
 		}
 	}
-	if mt.Limits.Max != nil && *mt.Limits.Max < mt.Limits.Min {
+	if mt.Limits.HasMax && mt.Limits.Max < mt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "memory max < min")
 	}
 	return nil
@@ -572,7 +593,7 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternFunc {
 			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.Type)
+				ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
 				return ft, ft != nil
 			}
 			n++
@@ -586,31 +607,49 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 	return ft, ft != nil
 }
 
-// globalType returns a pointer to the resolved global's type. Returning a pointer
-// (into the module's stable Imports/Globals slices) rather than a value avoids a
-// per-access struct copy (runtime.duffcopy) on the validation hot path.
-func (v *moduleValidator) globalType(idx uint32) (*GlobalType, bool) {
+// globalType returns the resolved global type by value. Imported types are
+// packed, so returning a pointer would force their reconstructed value to
+// escape on every global.get/global.set validation.
+func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
 	n := uint32(0)
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
 			if n == idx {
-				return &im.Type.Global, true
+				return im.Type.GlobalType(), true
 			}
 			n++
 		}
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
-		return nil, false
+		return GlobalType{}, false
 	}
-	return &v.m.Globals[local].Type, true
+	return v.m.Globals[local].Type, true
+}
+
+func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable bool, ok bool) {
+	n := uint32(0)
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
+			if n == idx {
+				return im.Type.value, im.Type.flags&externTypeMutable != 0, true
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.Globals) {
+		return ValType{}, false, false
+	}
+	gt := v.m.Globals[local].Type
+	return gt.Type, gt.Mutable, true
 }
 func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	n := uint32(0)
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternTable {
 			if n == idx {
-				return im.Type.Table, true
+				return im.Type.TableType(), true
 			}
 			n++
 		}
@@ -622,24 +661,49 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	return v.m.Tables[local].Type, true
 }
 
-// memoryType returns a pointer to the resolved memory's type. Pointer return (into
-// the module's stable Imports/Memories slices) avoids a per-memory-op struct copy
-// on the validation hot path — checkMemArg calls this for every load/store.
-func (v *moduleValidator) memoryType(idx uint32) (*MemType, bool) {
+// memoryType returns the resolved memory type by value. Imported types are
+// packed, so returning a pointer would make reconstruction escape on every
+// load/store validated by checkMemArg.
+func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
 	n := uint32(0)
 	for i := range v.m.Imports {
 		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
 			if n == idx {
-				return &im.Type.Mem, true
+				return im.Type.MemType(), true
 			}
 			n++
 		}
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
-		return nil, false
+		return MemType{}, false
 	}
-	return &v.m.Memories[local], true
+	return v.m.Memories[local], true
+}
+
+func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
+	n := uint32(0)
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
+			if n == idx {
+				return im.Type.flags, true
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.Memories) {
+		return 0, false
+	}
+	mt := v.m.Memories[local]
+	var flags uint8
+	if mt.Limits.Addr64 {
+		flags |= externTypeAddr64
+	}
+	if mt.Shared {
+		flags |= externTypeShared
+	}
+	return flags, true
 }
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
@@ -717,7 +781,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 				return RefType{}, err
 			}
 		}
-		return FuncRef.Ref, nil
+		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
 		// Validate the declared element reference type even when the segment has no
 		// initializer expressions; empty typed segments still carry type indexes.
@@ -748,7 +812,7 @@ func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
 	e := &v.m.Elements[index]
 	switch e.Kind.Kind {
 	case ElemFuncs, ElemFuncExprs:
-		return FuncRef.Ref, nil
+		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
 		return e.Kind.Ref, nil
 	default:
@@ -952,7 +1016,7 @@ func (v *funcValidator) resetLocalInitialization() {
 func (v *funcValidator) localIsInitialized(idx uint32, t ValType) bool {
 	// Function parameters are initialized by the caller. Numeric, vector, and
 	// nullable reference locals have a default value at function entry.
-	if uint64(idx) < uint64(len(v.localParams)) || t.Kind != ValRef || t.Ref.Nullable {
+	if uint64(idx) < uint64(len(v.localParams)) || t.Kind() != ValRef || t.Ref().Nullable() {
 		return true
 	}
 	_, ok := v.initializedLocals[idx]
@@ -960,7 +1024,7 @@ func (v *funcValidator) localIsInitialized(idx uint32, t ValType) bool {
 }
 
 func (v *funcValidator) initializeLocal(idx uint32, t ValType) {
-	if uint64(idx) < uint64(len(v.localParams)) || t.Kind != ValRef || t.Ref.Nullable {
+	if uint64(idx) < uint64(len(v.localParams)) || t.Kind() != ValRef || t.Ref().Nullable() {
 		return
 	}
 	if _, ok := v.initializedLocals[idx]; ok {
@@ -992,14 +1056,14 @@ func (v *funcValidator) label(depth uint32) ([]ValType, error) {
 	return f.out, nil
 }
 func (v *funcValidator) subtype(a, b ValType) bool {
-	if b.Kind == ValBot || a.Kind == ValBot {
+	if b.Kind() == ValBot || a.Kind() == ValBot {
 		return true
 	}
 	if equalValType(a, b) {
 		return true
 	}
-	if a.Kind == ValRef && b.Kind == ValRef {
-		return v.refSubtype(a.Ref, b.Ref)
+	if a.Kind() == ValRef && b.Kind() == ValRef {
+		return v.refSubtype(a.Ref(), b.Ref())
 	}
 	return false
 }
@@ -1040,9 +1104,9 @@ var (
 )
 
 func singleValTypeSlice(t ValType) []ValType {
-	switch t.Kind {
+	switch t.Kind() {
 	case ValNum:
-		switch t.Num {
+		switch t.Num() {
 		case NumI32:
 			return blockOutI32
 		case NumI64:

@@ -63,6 +63,42 @@ func (s gcConstStackRootSet) RangeRoots(fn func(gc.RootSlot) bool) {
 	}
 }
 
+func (s gcConstStackRootSet) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
+	if sink == nil {
+		return true
+	}
+	classified := classifiedRootSink{sink: sink, class: gc.RootSnapshotTemporary}
+	if s.extra != nil {
+		if direct, ok := s.extra.(gc.DirectClassifiedRootRefSet); ok {
+			if !direct.RangeClassifiedRootRefs(sink) {
+				return false
+			}
+		} else if direct, ok := s.extra.(gc.DirectRootRefSet); ok {
+			if !direct.RangeRootRefs(classified) {
+				return false
+			}
+		} else {
+			keepGoing := true
+			s.extra.RangeRoots(func(slot gc.RootSlot) bool {
+				keepGoing = sink.VisitClassifiedRootRef(gc.RootSnapshotTemporary, slot.GetRef())
+				return keepGoing
+			})
+			if !keepGoing {
+				return false
+			}
+		}
+	}
+	if s.stack == nil {
+		return true
+	}
+	for i := range *s.stack {
+		if (*s.stack)[i].kind == gcConstCollectorRef && !sink.VisitClassifiedRootRef(gc.RootSnapshotTemporary, (*s.stack)[i].ref) {
+			return false
+		}
+	}
+	return true
+}
+
 // compactRefRootSlot roots an off-heap compact reference in place while an
 // instance is still being assembled and its table descriptors are not yet part
 // of the collector's permanent root view.

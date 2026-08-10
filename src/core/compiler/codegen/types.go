@@ -32,6 +32,7 @@ type Backend[M any] interface {
 type Options struct {
 	Runtime RuntimeABI
 	Heap    HeapABI
+	Module  ModuleInfo
 }
 
 // Value is an opaque backend-owned value handle paired with its wasm type.
@@ -46,7 +47,7 @@ type Value struct {
 
 // IsRef reports whether v is a wasm reference value and therefore may need root
 // publication across allocating runtime calls.
-func (v Value) IsRef() bool { return v.Type.Kind == wasm.ValRef }
+func (v Value) IsRef() bool { return v.Type.Kind() == wasm.ValRef }
 
 // RefLayout documents the compact guest reference representation used by a heap
 // policy. The current runtime/gc.Ref layout is 32-bit: null is 0, i31 immediates
@@ -72,9 +73,61 @@ var GCRefLayout = RefLayout{
 
 // ModuleInfo is the heap-relevant module metadata passed to HeapABI.
 type ModuleInfo struct {
-	Features    Features
-	GCTypeDescs []gc.TypeDesc
+	Features      Features
+	GCTypeDescs   []gc.TypeDesc
+	GCTypeLayouts []GCTypeLayout
 }
+
+// GCTypeLayout is immutable compile-time metadata indexed by flattened Wasm
+// type index. It keeps the decoded storage declarations alongside offsets and
+// sizes derived during descriptor lowering, so backends do not repeatedly walk
+// recursive groups or preceding struct fields at each GC instruction.
+type GCTypeLayout struct {
+	Type        *wasm.SubType
+	RecBase     uint32
+	RecLen      uint32
+	FieldLayout []GCFieldLayout
+	ScanOffsets []uint32
+	ElemLayout  GCFieldLayout
+	ObjectSize  uint32
+	Align       uint32
+	PointerFree bool
+	NativeAlloc bool
+	DirectCast  bool
+	DirectLen   bool
+}
+
+// GCFieldLayout is the precomputed payload layout and initializer-slot shape
+// for one struct field or array element.
+type GCFieldLayout struct {
+	Offset       uint32
+	Size         uint32
+	Align        uint32
+	Slot         uint32
+	Storage      gc.StorageKind
+	Mutable      bool
+	Nullable     bool
+	CollectorRef bool
+	DirectAccess bool
+	RefClass     GCRefClass
+	Barrier      GCBarrierClass
+}
+
+type GCRefClass uint8
+
+const (
+	GCRefNone GCRefClass = iota
+	GCRefCollector
+	GCRefFunction
+	GCRefExtern
+)
+
+type GCBarrierClass uint8
+
+const (
+	GCBarrierNone GCBarrierClass = iota
+	GCBarrierCollector
+)
 
 // FuncInfo is the heap-relevant function metadata passed to ModuleHeapABI.
 type FuncInfo struct {

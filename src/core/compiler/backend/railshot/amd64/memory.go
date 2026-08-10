@@ -129,6 +129,8 @@ func (f *fn) trapSite(branch int) trapSite {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
+	before := f.a.Len()
+	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
 	for code := uint32(1); code <= trapMax; code++ { // deterministic order
 		sites := f.sc.trapSites[code]
 		if len(sites) == 0 {

@@ -304,6 +304,18 @@ func MapCode(code []byte) (mem []byte, entry uintptr, err error) {
 	return mem, slicePtr(mem), nil
 }
 
+// SealCode changes an existing code mapping from RW to RX and registers it for
+// safe host interruption. The caller retains ownership on failure.
+func SealCode(mem []byte) error {
+	if len(mem) == 0 {
+		return fmt.Errorf("seal executable code: empty mapping")
+	}
+	if err := protectCodeRX(mem); err != nil {
+		return err
+	}
+	return registerExecutableCode(mem)
+}
+
 // Unmap releases a mapping returned by MapCode.
 func Unmap(mem []byte) error {
 	unregisterExecutableCode(mem)

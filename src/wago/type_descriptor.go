@@ -642,15 +642,15 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 		}
 		d.Supers = append(d.Supers, x)
 	}
-	if st.Metadata.Describes != nil {
-		x, err := c.typeIndex(*st.Metadata.Describes, sourceGroup)
+	if describes, present := st.Metadata.Describes.Get(); present {
+		x, err := c.typeIndex(describes, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("describes: %w", err)
 		}
 		d.HasDescribes, d.Describes = true, x
 	}
-	if st.Metadata.Descriptor != nil {
-		x, err := c.typeIndex(*st.Metadata.Descriptor, sourceGroup)
+	if descriptor, present := st.Metadata.Descriptor.Get(); present {
+		x, err := c.typeIndex(descriptor, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("descriptor: %w", err)
 		}
@@ -692,20 +692,20 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 }
 
 func (c wasmTypeDescriptorConverter) fieldType(f wasm.FieldType, group int) (FieldTypeDescriptor, error) {
-	out := FieldTypeDescriptor{Mutable: f.Mut == wasm.Var}
-	if f.Storage.Packed {
+	out := FieldTypeDescriptor{Mutable: f.Mut() == wasm.Var}
+	if f.Storage().Packed() {
 		out.Storage.Packed = true
-		switch f.Storage.Pack {
+		switch f.Storage().Pack() {
 		case wasm.PackI8:
 			out.Storage.PackedType = PackedTypeI8
 		case wasm.PackI16:
 			out.Storage.PackedType = PackedTypeI16
 		default:
-			return out, fmt.Errorf("unknown packed type 0x%x", byte(f.Storage.Pack))
+			return out, fmt.Errorf("unknown packed type 0x%x", byte(f.Storage().Pack()))
 		}
 		return out, nil
 	}
-	v, err := c.valueType(f.Storage.Val, group)
+	v, err := c.valueType(f.Storage().Val(), group)
 	if err != nil {
 		return out, err
 	}
@@ -726,9 +726,9 @@ func (c wasmTypeDescriptorConverter) valueTypes(ts []wasm.ValType, group int) ([
 }
 
 func (c wasmTypeDescriptorConverter) valueType(t wasm.ValType, group int) (ValueTypeDescriptor, error) {
-	switch t.Kind {
+	switch t.Kind() {
 	case wasm.ValNum:
-		switch t.Num {
+		switch t.Num() {
 		case wasm.NumI32:
 			return ValueTypeDescriptor{Kind: ValueTypeI32}, nil
 		case wasm.NumI64:
@@ -738,41 +738,43 @@ func (c wasmTypeDescriptorConverter) valueType(t wasm.ValType, group int) (Value
 		case wasm.NumF64:
 			return ValueTypeDescriptor{Kind: ValueTypeF64}, nil
 		default:
-			return ValueTypeDescriptor{}, fmt.Errorf("unknown numeric type 0x%x", byte(t.Num))
+			return ValueTypeDescriptor{}, fmt.Errorf("unknown numeric type 0x%x", byte(t.Num()))
 		}
 	case wasm.ValVec:
 		return ValueTypeDescriptor{Kind: ValueTypeV128}, nil
 	case wasm.ValRef:
-		r, err := c.refType(t.Ref, group)
+		r, err := c.refType(t.Ref(), group)
 		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: r}, err
 	default:
-		return ValueTypeDescriptor{}, fmt.Errorf("unsupported value type kind %d", t.Kind)
+		return ValueTypeDescriptor{}, fmt.Errorf("unsupported value type kind %d", t.Kind())
 	}
 }
 
 func (c wasmTypeDescriptorConverter) refType(t wasm.RefType, group int) (ReferenceTypeDescriptor, error) {
-	out := ReferenceTypeDescriptor{Nullable: t.Nullable, Exact: t.Exact}
-	switch t.Heap.Kind {
+	out := ReferenceTypeDescriptor{Nullable: t.Nullable(), Exact: t.Exact()}
+	heap := t.Heap()
+	switch heap.Kind() {
 	case wasm.HeapAbs:
-		a, ok := abstractHeapTypeFromWasm(t.Heap.Abs)
+		a, ok := abstractHeapTypeFromWasm(heap.Abs())
 		if !ok {
-			return out, fmt.Errorf("unknown abstract heap type 0x%x", byte(t.Heap.Abs))
+			return out, fmt.Errorf("unknown abstract heap type 0x%x", byte(heap.Abs()))
 		}
 		out.Heap.Abstract = a
 	case wasm.HeapTypeIndex:
-		x, err := c.typeIndex(t.Heap.Type, group)
+		x, err := c.typeIndex(heap.Type(), group)
 		if err != nil {
 			return out, err
 		}
 		out.Heap.Defined, out.Heap.TypeIndex = true, x
 	case wasm.HeapDefType:
-		if c.m == nil || t.Heap.Def == nil || int(t.Heap.Def.GroupIndex) >= len(c.groupAt)-1 || t.Heap.Def.Index >= uint32(len(c.m.Types[t.Heap.Def.GroupIndex].SubTypes)) {
+		groupIndex, memberIndex, _, valid := heap.Def()
+		if c.m == nil || !valid || int(groupIndex) >= len(c.groupAt)-1 || memberIndex >= uint32(len(c.m.Types[groupIndex].SubTypes)) {
 			return out, fmt.Errorf("unknown defined heap type")
 		}
 		out.Heap.Defined = true
-		out.Heap.TypeIndex = c.groupAt[t.Heap.Def.GroupIndex] + t.Heap.Def.Index
+		out.Heap.TypeIndex = c.groupAt[groupIndex] + memberIndex
 	default:
-		return out, fmt.Errorf("unknown heap type kind %d", t.Heap.Kind)
+		return out, fmt.Errorf("unknown heap type kind %d", heap.Kind())
 	}
 	return out, nil
 }

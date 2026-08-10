@@ -231,7 +231,7 @@ func TestStagedGCRefCastProductBoundaryLifecycle(t *testing.T) {
 		loaded.Close()
 	}
 
-	t.Logf("gc/ref_cast products: abstract wasm=%d code=%d codec=%d; concrete wasm=%d code=%d codec=%d; tableState=%d conversionState=%d plugin=%d", len(abstract), len(abstractCompiled.Code), len(abstractBlob), len(concrete), len(concreteCompiled.Code), len(concreteBlob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(instancePluginState{}))
+	t.Logf("gc/ref_cast products: abstract wasm=%d code=%d codec=%d; concrete wasm=%d code=%d codec=%d; tableState=%d conversionState=%d plugin=%d", len(abstract), len(abstractCompiled.code), len(abstractBlob), len(concrete), len(concreteCompiled.code), len(concreteBlob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(instancePluginState{}))
 }
 
 func BenchmarkStagedGCRefCastStableI31(b *testing.B) {

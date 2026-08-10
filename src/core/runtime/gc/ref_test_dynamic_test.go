@@ -153,6 +153,40 @@ func TestCollectorRefTestDynamicTypes(t *testing.T) {
 	}
 }
 
+func TestCollectorTypeSubtype(t *testing.T) {
+	c, err := NewCollector(Config{}, refTestTypes(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		actual, required TypeID
+		want             bool
+	}{
+		{1, 1, true},
+		{1, 0, true},
+		{2, 1, false},
+		{4, 3, true},
+		{4, 0, false},
+		{0, 1, false},
+	}
+	for _, tc := range cases {
+		got, err := c.TypeSubtype(tc.actual, tc.required)
+		if err != nil || got != tc.want {
+			t.Fatalf("TypeSubtype(%d, %d) = %v, %v; want %v", tc.actual, tc.required, got, err, tc.want)
+		}
+	}
+	if _, err := c.TypeSubtype(99, 0); err == nil {
+		t.Fatal("TypeSubtype accepted unavailable actual type")
+	}
+	if _, err := c.TypeSubtype(0, 99); err == nil {
+		t.Fatal("TypeSubtype accepted unavailable required type")
+	}
+	c.Close()
+	if _, err := c.TypeSubtype(0, 0); !errors.Is(err, errCollectorClosed) {
+		t.Fatalf("closed TypeSubtype error = %v", err)
+	}
+}
+
 func TestCollectorRefTestRejectsInvalidState(t *testing.T) {
 	c, err := NewCollector(Config{StressNurseryBytes: 128}, refTestTypes(t))
 	if err != nil {

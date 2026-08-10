@@ -114,7 +114,7 @@ func TestStagedGCI31RemainingProductsLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Logf("%s product: wasm=%d code=%d codec=%d", product, len(data), len(c.Code), len(blob))
+			t.Logf("%s product: wasm=%d code=%d codec=%d", product, len(data), len(c.code), len(blob))
 			var loaded Compiled
 			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 				t.Fatal(err)

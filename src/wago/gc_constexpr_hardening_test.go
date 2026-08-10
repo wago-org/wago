@@ -9,6 +9,59 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+type gcConstDirectTestRoots []corergc.Ref
+
+func (r gcConstDirectTestRoots) RangeRoots(fn func(corergc.RootSlot) bool) {
+	for i := range r {
+		root := corergc.Root(r[i])
+		if !fn(&root) {
+			return
+		}
+	}
+}
+
+func (r gcConstDirectTestRoots) RangeRootRefs(sink corergc.RootRefSink) bool {
+	for _, ref := range r {
+		if !sink.VisitRootRef(ref) {
+			return false
+		}
+	}
+	return true
+}
+
+type gcConstStoppingClassifiedSink struct {
+	refs  []corergc.Ref
+	limit int
+}
+
+func (s *gcConstStoppingClassifiedSink) VisitClassifiedRootRef(_ corergc.RootClass, ref corergc.Ref) bool {
+	s.refs = append(s.refs, ref)
+	return s.limit == 0 || len(s.refs) < s.limit
+}
+
+func TestGCConstClassifiedRootsHonorDirectSinkStop(t *testing.T) {
+	stack := []gcConstStackValue{{ref: corergc.I31New(2), kind: gcConstCollectorRef}}
+	roots := gcConstStackRootSet{stack: &stack, extra: gcConstDirectTestRoots{corergc.I31New(1)}}
+	sink := &gcConstStoppingClassifiedSink{limit: 1}
+	if roots.RangeClassifiedRootRefs(sink) {
+		t.Fatal("classified direct stop reported completion")
+	}
+	if len(sink.refs) != 1 || sink.refs[0] != corergc.I31New(1) {
+		t.Fatalf("classified direct stop visited %v", sink.refs)
+	}
+
+	elements := &gcArrayElementRoots{Count: 1}
+	elements.Values[0] = corergc.Root(corergc.I31New(3))
+	roots.extra = elements
+	sink = &gcConstStoppingClassifiedSink{limit: 1}
+	if roots.RangeClassifiedRootRefs(sink) {
+		t.Fatal("classified attributed stop reported completion")
+	}
+	if len(sink.refs) != 1 || sink.refs[0] != corergc.I31New(3) {
+		t.Fatalf("classified attributed stop visited %v", sink.refs)
+	}
+}
+
 func gcConstExprRootingModule() []byte {
 	leaf := []byte{0x5f, 0x01, 0x7f, 0x00} // struct { const i32 }
 	pair := []byte{0x5f, 0x02, 0x64, 0x00, 0x00, 0x64, 0x00, 0x00}

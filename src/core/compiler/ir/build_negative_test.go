@@ -28,8 +28,8 @@ func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 		{"unknown_global", rawModule(wasm.FuncType{}, bytes(0x23, 0x00, 0x0b)), "unknown global"},
 		{"unknown_func_call", rawModule(wasm.FuncType{}, bytes(0x10, 0x01, 0x0b)), "unknown function"},
 		{"unknown_call_indirect_table", rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)), "unknown table"},
-		{"unknown_call_indirect_type", moduleWith(rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x09, 0x00, 0x0b)), func(m *wasm.Module) { m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref}}} }), "unknown type"},
-		{"call_indirect_non_funcref_table", moduleWith(rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)), func(m *wasm.Module) { m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.ExternRef.Ref}}} }), "element type"},
+		{"unknown_call_indirect_type", moduleWith(rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x09, 0x00, 0x0b)), func(m *wasm.Module) { m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref()}}} }), "unknown type"},
+		{"call_indirect_non_funcref_table", moduleWith(rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)), func(m *wasm.Module) { m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.ExternRef.Ref()}}} }), "element type"},
 		{"load_without_memory", rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x28, 0x00, 0x00, 0x0b)), "unknown memory"},
 		{"memory_size_without_memory", rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x3f, 0x00, 0x0b)), "unknown memory"},
 		{"memory_size_nonzero_memory", moduleWith(rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x3f, 0x01, 0x0b)), func(m *wasm.Module) { m.Memories = []wasm.MemType{{}} }), "multi-memory unsupported"},
@@ -89,7 +89,7 @@ func TestBuildRejectsUnsupportedCallSignature(t *testing.T) {
 			recFuncType(wasm.FuncType{Params: []wasm.ValType{wasm.FuncRef}}),
 			recFuncType(wasm.FuncType{}),
 		},
-		Imports:   []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}},
+		Imports:   []wasm.Import{{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}},
 		FuncTypes: []wasm.TypeIdx{{Index: 1}},
 		Code:      []wasm.Func{{BodyBytes: bytes(0x10, 0x00, 0x0b)}},
 	}
@@ -104,7 +104,7 @@ func TestBuildRejectsUnsupportedCallIndirectSignature(t *testing.T) {
 			recFuncType(wasm.FuncType{}),
 		},
 		FuncTypes: []wasm.TypeIdx{{Index: 1}},
-		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref}}},
+		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref()}}},
 		Code:      []wasm.Func{{BodyBytes: bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)}},
 	}
 	_, err := BuildFunc(m, 0)

@@ -86,7 +86,7 @@ func TestBuildCall(t *testing.T) {
 }
 
 func TestBuildCallIndirect(t *testing.T) {
-	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
+	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
 		wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)),
 	}))
 	assertBuilds(t, m, "call_indirect type=0 table=0 canon=0")
@@ -270,14 +270,14 @@ func codeWithLocals(locals []wasm.LocalEntry, instr []byte) []byte {
 }
 
 func appendLimits(out []byte, l wasm.Limits) []byte {
-	if l.Max != nil {
+	if l.HasMax {
 		flag := byte(0x01)
 		if l.Addr64 {
 			flag = 0x05
 		}
 		out = append(out, flag)
 		out = append(out, wasmtest.ULEB(uint32(l.Min))...)
-		return append(out, wasmtest.ULEB(uint32(*l.Max))...)
+		return append(out, wasmtest.ULEB(uint32(l.Max))...)
 	}
 	flag := byte(0x00)
 	if l.Addr64 {

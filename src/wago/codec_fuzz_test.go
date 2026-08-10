@@ -157,12 +157,12 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 		c.FuncTypeID[i] = uint64(r.next()) | uint64(r.next())<<8 | uint64(r.next())<<16 | uint64(r.next())<<24 | uint64(r.next())<<32
 	}
 	if localFuncCount > 0 {
-		c.Code = make([]byte, localFuncCount+r.n(4))
-		for i := range c.Code {
-			c.Code[i] = r.next()
+		c.code = make([]byte, localFuncCount+r.n(4))
+		for i := range c.code {
+			c.code[i] = r.next()
 		}
 		for i := range c.Entry {
-			c.Entry[i] = r.n(len(c.Code))
+			c.Entry[i] = r.n(len(c.code))
 		}
 	}
 	for i := range c.importFuncSigs {
@@ -319,8 +319,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 	valid := []*Compiled{
 		{},
 		structuralReferenceCodecFixture(),
-		{
-			Code:           []byte{0xc3},
+		newHandBuiltCompiled([]byte{0xc3}, Compiled{
 			Entry:          []int{0},
 			NumImports:     1,
 			dynamicImports: true,
@@ -349,7 +348,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 			HasMemory:    true,
 			MemMaxPages:  65535,
 			GCTypeDescs:  []gc.TypeDesc{structDesc, arrayDesc},
-		},
+		}),
 	}
 
 	seeds := make([][]byte, 0, len(valid)+2)
