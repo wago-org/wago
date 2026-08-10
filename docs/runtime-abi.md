@@ -934,7 +934,7 @@ copying or serializing basedata images. Reference harness arguments/results
 externalize through exact store-owned tokens and release transient roots after
 comparison. These changes preserve no-cgo operation, transactional rollback,
 deduplicated producer retention, and fail-closed live snapshot/platform
-boundaries. The recorded conformance baseline is 2,226 modules and 58,238
+boundaries. The recorded conformance baseline is 2,226 modules and 58,038
 assertions passed with zero failures, skips, or gap counters.
 
 ## Iteration 75 generated WasmGC helper ABI

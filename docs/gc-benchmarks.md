@@ -75,6 +75,194 @@ after every operation and is deliberately superlinear under adversarial
 fragmentation. This favors fuzzing breadth and bounded worker latency; the
 32-seed deterministic model test retains 20,000-byte sequence depth.
 
+## Benchmark review protocol
+
+This section is the canonical repository policy for GC, runtime, compiler, and
+JIT performance changes. Workload-specific sections below provide fixtures and
+historical results; they do not weaken this review protocol.
+
+### Correctness is the first gate
+
+Do not interpret performance results until the relevant unit tests, forced
+collection, shadow verification, failure injection, race tests, fuzz/model tests,
+codec or snapshot tests, and available cross-architecture checks pass. Every
+timed fixture must retain an observable semantic result: an exact value or
+checksum, live-object count and type, expected trap, or required side-effect
+ordering. Dead work that the compiler or runtime may eliminate is not evidence.
+
+### Measure complete lifecycle costs
+
+An isolated pause is not sufficient evidence when work is deferred. Report both
+the pause and the pause plus the first operation forced to consume its debt. For
+example, pair full GC alone with full GC plus the next promotion, immediate minor
+collection, or refill; pair deferred sweeping with the first allocation that
+reconciles it. Moving equal or greater cost onto the next mutator operation is
+not automatically a win.
+
+### Keep cost domains separate
+
+Report Wasm mutator execution, collector work, Go runtime or host allocation,
+compiler work, JIT executable memory, managed WasmGC memory, metadata, and RSS or
+OS effects separately. Go `B/op` is not a proxy for managed-GC efficiency.
+Compiler/JIT changes should also report generated native bytes, shared-stub and
+per-site bytes, linked executable delta, compile time, compiler `B/op` and
+`allocs/op`, runtime speed, and helper/native transition counts. A small runtime
+win does not automatically justify extreme generated-code growth.
+
+### Use repeated interleaved A/B measurements
+
+Build baseline and candidate from named commits with the same Go toolchain,
+build flags, tags, and environment. Pin both to the same CPU when practical, set
+`GOMAXPROCS` explicitly where appropriate, and alternate baseline/candidate order
+rather than exhausting one binary first. Use repeated samples and report medians
+and distributions or confidence intervals, not one run. Use `benchstat` or an
+equivalent comparison when available.
+
+Record at least CPU, OS/kernel, Go version, `GOMAXPROCS`, affinity/pinning, sample
+count, benchtime or fixed iteration count, relevant tags/environment variables,
+baseline SHA, and candidate SHA.
+
+### Treat noisy hosts honestly
+
+Record unrelated CPU load, thermal instability, virtualization noise, and
+unavailable counters. Preserve large deterministic effects, but mark narrow
+timing differences as inconclusive and repeat them on a cleaner reviewer or CI
+host before making a strong claim. Do not manufacture precision or omit an
+unfavorable/noisy row.
+
+### Prefer deterministic work counters to tiny timing movement
+
+When available, exact objects and reference slots scanned, dirty/useful cards,
+bytes copied/promoted, collection counts, allocator search steps, helper
+transitions, native-fast paths, generated/linked bytes, allocation counts, and
+semantic checksums are stronger evidence than a 1–3% timing movement. Record both
+when timing and semantic work differ; neither should be hidden.
+
+### Predeclare workload-specific budgets
+
+State important hot-path noise and regression thresholds before tuning. Existing
+3% gates apply only to the dense-card and telemetry controls that declared them;
+there is no universal 3% rule. Acceptance budgets must match the workload and
+must not be invented after seeing the result.
+
+### Preserve unfavorable and rejected experiments
+
+Retain intermediate regressions, their causes, follow-up measurements, and the
+reason alternatives were rejected. Current architectural evidence includes the
+initial survivor-cycle slowdown before its fast path, the remaining 64-span AVL
+churn cost, the rejected free-span search cache that improved fragmentation but
+badly hurt fresh bump allocation, and oversized native-array admission removed
+after regressions. Later fixes do not erase those results.
+
+### Measure fresh and sustained execution
+
+Batch, chunk, and cache changes can shift cost between startup and warmed loops.
+Report fresh Runtime/first invocation and warmed repeated execution when relevant,
+as well as single-operation, small-batch, and sustained-batch shapes. Do not hide
+startup cost behind long-running throughput.
+
+### Cover density, size, and lifetime distributions
+
+GC evidence should cross representative survival ratios (0%, 1%, 10%, 50%, and
+90%), pointer-free, sparse-reference, dense struct-reference, and dense
+array-reference layouts, small/medium/large objects, one-minor and multi-minor
+lifetimes, and long-lived objects. Card/barrier changes require both sparse and
+dense mutation. Compiler/JIT changes must distinguish one static site executed
+many times from many static sites executed sparsely.
+
+### Use summaries without hiding cells
+
+Geometric means are useful matrix summaries, but report important individual
+cells. A geomean win must not hide a catastrophic high-survival or one-shot
+regression, code-size explosion, pathological small-heap behavior, or p99/maximum
+pause regression.
+
+### Hardware counters are optional evidence, never invented evidence
+
+When `perf` or an equivalent is available, capture relevant instructions, cycles,
+branches and misses, L1/LLC and I-cache behavior, TLB misses, and page faults.
+When unavailable, say so and leave the gate for reviewer/CI hardware. Do not infer
+exact cache behavior from wall-clock time alone.
+
+### Retain reproducible raw evidence
+
+Record exact commands and preserve raw benchmark output long enough to reproduce
+`benchstat` or comparison tables. Prose tables summarize evidence; they are not
+the original evidence.
+
+### Reproducible optimization-review recipe
+
+Start with correctness on the candidate checkout. Tags are independent products;
+run all applicable combinations before benchmarking:
+
+```sh
+go test ./src/core/runtime/gc
+go test -tags wagodebug ./src/core/runtime/gc
+go test -tags wago_gcstats ./src/core/runtime/gc
+go test -tags 'wagodebug wago_gcstats' ./src/core/runtime/gc
+go test -race ./src/core/runtime/gc
+```
+
+Use a detached temporary worktree for the baseline so the active working tree is
+not rewritten. Confirm that both worktrees resolve the same `go` executable and
+version:
+
+```sh
+BEFORE_SHA=<reviewed-baseline-sha>
+CANDIDATE_SHA=$(git rev-parse HEAD)
+BEFORE_DIR=$(mktemp -d /tmp/wago-bench-before.XXXXXX)
+git worktree add --detach "$BEFORE_DIR" "$BEFORE_SHA"
+trap 'git worktree remove --force "$BEFORE_DIR"; rm -rf "$BEFORE_DIR"' EXIT
+
+command -v go
+go version
+(cd "$BEFORE_DIR" && command -v go && go version)
+uname -a
+```
+
+Choose an exact benchmark regex after listing the package's current benchmark
+names. A normal collector/allocator review can use the following real fixtures:
+
+```sh
+REGEX='^(BenchmarkGCCollectionMatrix|BenchmarkGCSparseRememberedArray|BenchmarkGCReferenceStoreBarrier|BenchmarkGCArrayReferenceStoreBarrier|BenchmarkGCArrayReferenceStoreBarrierNonHeadCard|BenchmarkThroughputFreshBump|BenchmarkThroughputCommonSpanReuse|BenchmarkThroughputLargeSpanMiss|BenchmarkThroughputLargeSpanChurn|BenchmarkThroughputRandomFragmentation|BenchmarkThroughputFullOldHeapPause|BenchmarkThroughputFullOldHeapAmortized|BenchmarkThroughputFullOldHeapMinorAmortized)($|/)'
+```
+
+Capture alternating single-sample runs into raw files. Set `CPU_PREFIX=()` on
+portable hosts; Linux reviewers may use `CPU_PREFIX=(taskset -c 2)` after choosing
+an otherwise idle physical core:
+
+```sh
+: > /tmp/gc-before.txt
+: > /tmp/gc-after.txt
+CPU_PREFIX=()
+# Optional on Linux: CPU_PREFIX=(taskset -c 2)
+
+for i in $(seq 1 10); do
+  if [ $((i % 2)) -eq 1 ]; then
+    (cd "$BEFORE_DIR" && GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+      -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1) \
+      >> /tmp/gc-before.txt
+    GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+      -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1 \
+      >> /tmp/gc-after.txt
+  else
+    GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+      -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1 \
+      >> /tmp/gc-after.txt
+    (cd "$BEFORE_DIR" && GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+      -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1) \
+      >> /tmp/gc-before.txt
+  fi
+done
+
+benchstat /tmp/gc-before.txt /tmp/gc-after.txt
+```
+
+Narrow the regex or use fixed `-benchtime=Nx` when a complete matrix would exceed
+the review budget. Keep baseline/candidate commands identical. Linux CPU affinity
+and hardware counters improve timing evidence but are not required for ordinary
+correctness validation on other supported hosts.
+
 ## Telemetry acceptance thresholds
 
 Issue #300 uses these gates for the measurement layer itself:

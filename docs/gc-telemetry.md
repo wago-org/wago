@@ -241,8 +241,10 @@ go test -tags wago_gcstats ./src/wago \
   -run '^$' -bench '^BenchmarkGCStaticSiteExecution$' -benchmem -count=10
 ```
 
-Hardware counters, CPU pinning, frequency control, and repeated interleaved A/B
-procedures remain in `docs/gc-benchmarks.md`.
+The canonical performance-change evidence policy, complete-lifecycle rules,
+workload gates, raw-evidence requirements, CPU pinning, hardware counters, and
+repeated interleaved A/B recipe are in the
+[benchmark review protocol](gc-benchmarks.md#benchmark-review-protocol).
 
 ## Current footprint and overhead
 

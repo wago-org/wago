@@ -7,8 +7,9 @@ than a non-goal. The current implementation is an initial foundation under
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
 knobs, and tests.
 
-The decision-grade collector measurement contract and roadmap-aligned benchmark
-matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
+The decision-grade collector measurement contract, canonical
+[benchmark review protocol](gc-benchmarks.md#benchmark-review-protocol), and
+roadmap-aligned matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
 
 ## Current generated-payload boundary
 
@@ -2277,4 +2278,4 @@ products are no longer rejected merely for missing a pinned identity. Generic
 ranges, destination element type, and allocation bounds before publishing a
 collector reference. Reference argument/result conversion uses store-owned
 extern/any tokens and releases transient ownership after matching. The pinned
-full suite passes 2,226 modules and 58,238 assertions with zero gaps.
+full suite passes 2,226 modules and 58,038 assertions with zero gaps.

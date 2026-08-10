@@ -1,6 +1,6 @@
 # WebAssembly 3.0 implementation status
 
-Last updated: 2026-08-02.
+Last updated: 2026-08-10.
 
 This document is the implementation ledger for the WebAssembly Core 3.0 effort.
 The primary product target is `linux/amd64`. A row is not complete merely because
@@ -71,7 +71,7 @@ order.
 
 `make spec3-signals` runs the same strict zero-gap harness with
 `-tags wago_guardpage` and `WAGO_BOUNDS=signals`. Every Core 3 family now executes
-under this linux/amd64 product: **2,226 modules and 58,238 assertions pass with
+under this linux/amd64 product: **2,226 modules and 58,038 assertions pass with
 zero failures, skips, or gap categories**.
 
 The final memory families use a deliberate hybrid. Memory 0 memory32 accesses may
@@ -90,13 +90,14 @@ faulting 4 KiB host page after `memory.grow`; aligning the absolute fault addres
 to 64 KiB could move before a merely host-page-aligned mmap reservation, make
 `mprotect` fail, and refault forever.
 
-The current schema-2 inventory at `tests/spec-v3-baseline.json` processes all 258
-files and reports:
+The current schema-2 inventory at `tests/spec-v3-baseline.json` is the
+authoritative source for repeated repository totals. CI qualifies the same pinned
+suite and platform products. The baseline processes all 258 files and reports:
 
 - 230 files converted directly by WABT and 28 through the official interpreter;
 - zero parser/tool failures and no excluded files;
 - **2,226 modules passed, 0 failed, and 0 skipped**;
-- **58,238 assertions passed, 0 failed, and 0 skipped**;
+- **58,038 assertions passed, 0 failed, and 0 skipped**;
 - every gap counter is zero: compile rejection, instantiation rejection,
   unavailable module, absent export, reference argument/result, and reference
   global;
@@ -185,7 +186,10 @@ Release 2 feature set plus extended constants; callers opt into Core 3 with
 `WithCoreFeatures(CoreFeaturesV3)`, and the versioned spec harness does so when
 `WAGO_SPEC_VERSION=3.0`. Unsupported build/platform requests return
 `UnsupportedFeatureError` with the exact requested bits, admitted bits, and
-`GOOS/GOARCH` platform.
+`GOOS/GOARCH` platform. In particular, `memory64` and typed function references
+including `call_ref` are implemented on the admitted Core 3 products above, not
+implicitly on every Wago target; `SupportedFeatures()` is the executable
+authority for the current build and host.
 
 ## Mandatory area status
 
@@ -5059,7 +5063,7 @@ Continue in this thread with small atomic commits. Recommended iteration 72:
 
 WebAssembly Core 3.0 is complete for the pinned official linux/amd64
 explicit-bounds product. `make spec3` exits successfully with 2,226 passing
-modules and 58,238 passing assertions, zero failed or skipped modules/assertions,
+modules and 58,038 passing assertions, zero failed or skipped modules/assertions,
 and zero gap counters. `tests/spec-v3-baseline.json` records the same zero-gap
 result. Release 1 and Release 2 compatibility defaults remain unchanged, and the
 runtime remains pure Go/no-cgo.

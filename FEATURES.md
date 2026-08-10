@@ -18,14 +18,17 @@ every Core 3 family is admitted. ARM64 signal mode uses guard faults for eligibl
 memory-0 memory32 accesses and retains explicit checks for indexed memories and
 memory64; native `spec3-signals` cells are mandatory on both operating systems. The pinned 258-file suite is green on linux/amd64 and under Linux/arm64
 QEMU execution: **2,226 modules and 58,038 assertions passed, with zero failures,
-skips, or gap categories**. Native Linux/Darwin arm64 runs are mandatory CI gates.
+skips, or gap categories**. These totals come from the checked-in
+`tests/spec-v3-baseline.json`, which is the machine-readable source of truth. Native Linux/Darwin arm64 runs are mandatory CI gates.
 Linux/amd64 signal-backed builds now admit every Core 3 family and pass the same
 **2,226 modules and 58,038 assertions with zero failures, skips, or gaps**.
 Indexed nonzero memories retain explicit directory bounds checks, while memory64
 retains full-u64 explicit checks inside the signal-backed product.
-Release 1 and Release 2 defaults
-remain unchanged. This official-suite result is not an unrestricted WasmGC
-claim. Shape-independent struct/array helper admission now also compiles, links,
+`memory64` and typed function references including `call_ref` are implemented
+on those explicitly admitted Core 3 products; this is not a claim for every Wago
+target. `SupportedFeatures()` remains the executable build/host authority.
+Release 1 and Release 2 defaults remain unchanged. This official-suite result is
+not an unrestricted WasmGC claim. Shape-independent struct/array helper admission now also compiles, links,
 and starts the 3,225,249-byte MoonBit Starshine CLI smoke payload (SHA-256
 `3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`).
 Linux/amd64 generated code publishes exact roots across the admitted local,
