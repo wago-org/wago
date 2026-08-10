@@ -272,15 +272,19 @@ command below before making a hardware-counter claim.
 `BenchmarkThroughputLargeSpanMiss`, `BenchmarkThroughputLargeSpanChurn`, and
 `BenchmarkThroughputRandomFragmentation` cover issue #312's allocator tradeoff.
 Every freed old/large span now enters one reusable arena-backed AVL address
-index, regardless of its original size class. Subtree maximums provide a
-leftmost first-fit query, exact `largest-free`, free-byte, and span-count
-summaries without rescanning. Adjacent class and large spans coalesce, top spans
-rewind the bump, and a later class allocation can consume a span produced by a
-large object or vice versa. Full collection queues dead old-space spans in a
-bounded reusable pending arena; allocation incrementally indexes pending spans
-only until it finds a fit, moving balancing/coalescing work out of the full-GC
-pause without changing poisoning or heap limits. Promotion planning stable-sorts
-multiple survivors by destination size class before reserving old-space spans.
+index after reconciliation, regardless of its original size class. Subtree
+maximums provide the lowest-address first fit among currently reconciled/indexed
+spans, plus exact `largest-free`, free-byte, and span-count summaries without
+rescanning. Deferred spans are reclamation debt, not allocation candidates: an
+indexed higher-address fit is selected before a lower-address pending fit. Only
+an indexed miss reconciles pending spans, one LIFO debt item at a time, and
+retries the indexed lowest-address search after each item. Adjacent class and
+large spans coalesce, top spans rewind the bump, and a later class allocation can
+consume a span produced by a large object or vice versa. Full collection queues
+dead old-space spans in a bounded reusable pending arena, moving balancing and
+coalescing work out of the full-GC pause without changing poisoning or heap
+limits. Promotion planning stable-sorts multiple survivors by destination size
+class before reserving old-space spans.
 
 `BenchmarkThroughputLargeSpanMiss` constructs 64, 1,024, and 16,384 fragmented
 spans that are all too small. The augmented root rejects every impossible fit in

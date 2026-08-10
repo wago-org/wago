@@ -10,10 +10,12 @@ import (
 )
 
 type throughputIntervalModel struct {
-	limit      uint32
-	classLimit uint32
-	bump       uint32
-	free       []throughputFreeSpan
+	limit        uint32
+	classLimit   uint32
+	bump         uint32
+	free         []throughputFreeSpan
+	pending      []throughputFreeSpan
+	pendingBytes uint64
 }
 
 func (m *throughputIntervalModel) alloc(size uint32, sp spaceKind) (handleEntry, error) {
@@ -30,20 +32,28 @@ func (m *throughputIntervalModel) alloc(size uint32, sp spaceKind) (handleEntry,
 		allocSize = throughputClassSizes[cls]
 		class = uint16(cls)
 	}
-	for i, span := range m.free {
-		if span.size < allocSize {
-			continue
+	for {
+		for i, span := range m.free {
+			if span.size < allocSize {
+				continue
+			}
+			off := span.off
+			if span.size-allocSize >= 32 {
+				m.free[i].off += allocSize
+				m.free[i].size -= allocSize
+			} else {
+				allocSize = span.size
+				class = uint16(len(throughputClassSizes))
+				m.free = append(m.free[:i], m.free[i+1:]...)
+			}
+			return handleEntry{off: off, size: size, allocSize: allocSize, class: class, space: sp}, nil
 		}
-		off := span.off
-		if span.size-allocSize >= 32 {
-			m.free[i].off += allocSize
-			m.free[i].size -= allocSize
-		} else {
-			allocSize = span.size
-			class = uint16(len(throughputClassSizes))
-			m.free = append(m.free[:i], m.free[i+1:]...)
+		if len(m.pending) == 0 {
+			break
 		}
-		return handleEntry{off: off, size: size, allocSize: allocSize, class: class, space: sp}, nil
+		if err := m.reconcileOne(); err != nil {
+			return handleEntry{}, err
+		}
 	}
 	off := Align16(m.bump)
 	end := uint64(off) + uint64(allocSize)
@@ -52,6 +62,68 @@ func (m *throughputIntervalModel) alloc(size uint32, sp spaceKind) (handleEntry,
 	}
 	m.bump = uint32(end)
 	return handleEntry{off: off, size: size, allocSize: allocSize, class: class, space: sp}, nil
+}
+
+func (m *throughputIntervalModel) deferRelease(e handleEntry) error {
+	if e.allocSize == 0 || e.off%16 != 0 || e.off+e.allocSize < e.off || e.off+e.allocSize > m.bump {
+		return errors.New("model: invalid deferred free")
+	}
+	m.pending = append(m.pending, throughputFreeSpan{off: e.off, size: e.allocSize})
+	m.pendingBytes += uint64(e.allocSize)
+	return nil
+}
+
+func (m *throughputIntervalModel) reconcileOne() error {
+	last := len(m.pending) - 1
+	span := m.pending[last]
+	if err := m.release(handleEntry{off: span.off, allocSize: span.size}); err != nil {
+		return err
+	}
+	m.pending[last] = throughputFreeSpan{}
+	m.pending = m.pending[:last]
+	m.pendingBytes -= uint64(span.size)
+	return nil
+}
+
+func (m *throughputIntervalModel) reconcileAll() error {
+	if len(m.pending) > 1 {
+		ascending, descending := true, true
+		for i := 1; i < len(m.pending); i++ {
+			previous, current := m.pending[i-1], m.pending[i]
+			if current.off < previous.off+previous.size {
+				ascending = false
+			}
+			if current.off+current.size > previous.off {
+				descending = false
+			}
+			if !ascending && !descending {
+				break
+			}
+		}
+		if ascending || descending {
+			spans := m.pending
+			out := spans[:1]
+			for _, span := range spans[1:] {
+				last := &out[len(out)-1]
+				if ascending && last.off+last.size == span.off {
+					last.size += span.size
+				} else if descending && span.off+span.size == last.off {
+					last.off = span.off
+					last.size += span.size
+				} else {
+					out = append(out, span)
+				}
+			}
+			clear(spans[len(out):])
+			m.pending = out
+		}
+	}
+	for len(m.pending) != 0 {
+		if err := m.reconcileOne(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *throughputIntervalModel) release(e handleEntry) error {
@@ -104,6 +176,9 @@ func assertThroughputMatchesModel(t testing.TB, h *throughputHeap, m *throughput
 	if !slices.Equal(got, m.free) {
 		t.Fatalf("free spans = %v, want %v", got, m.free)
 	}
+	if !slices.Equal(h.pendingFree, m.pending) || h.pendingBytes != m.pendingBytes {
+		t.Fatalf("pending spans/bytes = %v/%d, want %v/%d", h.pendingFree, h.pendingBytes, m.pending, m.pendingBytes)
+	}
 	var freeBytes uint64
 	var largest uint32
 	for _, span := range m.free {
@@ -132,8 +207,12 @@ func runThroughputModelOperations(t testing.TB, operations []byte) {
 	for at := 0; at < len(operations); {
 		op := operations[at]
 		at++
-		if op&3 == 0 && len(live) != 0 {
-			index := int(op>>2) % len(live)
+		switch op & 7 {
+		case 0:
+			if len(live) == 0 {
+				break
+			}
+			index := int(op>>3) % len(live)
 			e := live[index]
 			if err := h.free(e); err != nil {
 				t.Fatalf("free %d: %v", index, err)
@@ -143,7 +222,28 @@ func runThroughputModelOperations(t testing.TB, operations []byte) {
 			}
 			live[index] = live[len(live)-1]
 			live = live[:len(live)-1]
-		} else {
+		case 4:
+			if len(live) == 0 {
+				break
+			}
+			index := int(op>>3) % len(live)
+			e := live[index]
+			if err := h.deferFree(e); err != nil {
+				t.Fatalf("defer free %d: %v", index, err)
+			}
+			if err := model.deferRelease(e); err != nil {
+				t.Fatalf("model defer free %d: %v", index, err)
+			}
+			live[index] = live[len(live)-1]
+			live = live[:len(live)-1]
+		case 6:
+			if err := h.sweepAllPending(); err != nil {
+				t.Fatalf("reconcile all: %v", err)
+			}
+			if err := model.reconcileAll(); err != nil {
+				t.Fatalf("model reconcile all: %v", err)
+			}
+		default:
 			if at+1 >= len(operations) {
 				break
 			}

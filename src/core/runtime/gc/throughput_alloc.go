@@ -20,7 +20,10 @@ type throughputFreeSpan struct {
 // throughputSpanNode is an arena-owned AVL node. Free spans of every size share
 // this one address index, so adjacent size-class and large-object frees can
 // coalesce and immediately serve either allocation path. maxSize augments the
-// tree for a leftmost first-fit search without walking unrelated spans.
+// tree for a lowest-address first-fit search among reconciled/indexed spans
+// without walking unrelated spans. Deferred spans are reclamation debt, not
+// allocation candidates, until incremental or complete reconciliation indexes
+// them.
 type throughputSpanNode struct {
 	off      uint32
 	size     uint32
@@ -121,6 +124,9 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 		class = uint16(cls)
 	}
 
+	// Reconciled spans have priority even when a lower-address suitable span is
+	// still pending. Only an indexed miss pays deferred reconciliation; each LIFO
+	// debt item is indexed and the lowest-address indexed fit is retried.
 	idx := h.findSpan(allocSize)
 	for idx == throughputNoSlot && len(h.pendingFree) != 0 {
 		if err := h.sweepOnePending(); err != nil {
@@ -199,10 +205,19 @@ func (h *throughputHeap) deferFree(e handleEntry) error {
 func (h *throughputHeap) sweepOnePending() error {
 	last := len(h.pendingFree) - 1
 	span := h.pendingFree[last]
+	// Pending debt remains authoritative until index insertion succeeds. On any
+	// validation, overlap, metadata, or injected failure, a later allocation can
+	// retry the exact same span instead of silently losing reclaimable space.
+	if err := injectFailure(h, failThroughputReconciliation); err != nil {
+		return err
+	}
+	if err := h.insertFreeSpan(span); err != nil {
+		return err
+	}
 	h.pendingFree[last] = throughputFreeSpan{}
 	h.pendingFree = h.pendingFree[:last]
 	h.pendingBytes -= uint64(span.size)
-	return h.insertFreeSpan(span)
+	return nil
 }
 
 func (h *throughputHeap) sweepAllPending() error {
