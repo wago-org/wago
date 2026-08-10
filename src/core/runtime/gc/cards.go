@@ -55,6 +55,11 @@ func (c *Collector) scanRememberedCards(h uint32) {
 		slot = card.next
 	}
 	if !valid {
+		// Detach the untrusted chain from its authoritative handle before falling
+		// back. The backing records remain intact for strict Verify diagnostics,
+		// but later writes and complete metadata clearing cannot follow a stale or
+		// wrong-owner link.
+		e.cardSlot = 0
 		c.cardFallback = true
 		c.scanObjectRefs(h, c.markNurseryRef)
 		return

@@ -448,14 +448,11 @@ func (c *Collector) pruneRemembered() {
 
 // clearRememberedMetadata is valid after complete nursery evacuation: without
 // nursery objects, no old-to-nursery edge can remain. It clears the dense-list
-// metadata without rescanning the payload of every remembered parent. Clear the
-// authoritative head slot here as well so malformed card ownership cannot leave
-// a stale head after the complete card arena is discarded.
+// metadata without rescanning the payload of every remembered parent.
 func (c *Collector) clearRememberedMetadata() {
 	for _, h := range c.remembered {
 		if h != 0 && int(h) < len(c.handles) {
 			c.handles[h].remembered = false
-			c.handles[h].cardSlot = 0
 		}
 	}
 	clear(c.remembered)

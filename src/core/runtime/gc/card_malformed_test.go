@@ -108,6 +108,9 @@ func TestMalformedObjectCardChainsFallBackToWholeObjectScan(t *testing.T) {
 			c.refreshNativeCards()
 
 			root := Root(array)
+			if err := c.verifyCardMetadata(); err == nil || !strings.Contains(err.Error(), test.verify) {
+				t.Fatalf("strict card verifier error = %v, want substring %q", err, test.verify)
+			}
 			if err := c.CollectMinor(Slots{&root}); err != nil {
 				t.Fatalf("minor collection: %v", err)
 			}
@@ -117,8 +120,8 @@ func TestMalformedObjectCardChainsFallBackToWholeObjectScan(t *testing.T) {
 			if !c.cardFallback {
 				t.Fatal("malformed chain did not leave conservative fallback active")
 			}
-			if err := c.Verify(Slots{&root}); err == nil || !strings.Contains(err.Error(), test.verify) {
-				t.Fatalf("strict verifier error = %v, want substring %q", err, test.verify)
+			if err := c.Verify(Slots{&root}); err == nil {
+				t.Fatal("strict verifier accepted detached malformed card records")
 			}
 
 			// The fallback remains authoritative for another minor. Once the child
