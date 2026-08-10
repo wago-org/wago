@@ -166,9 +166,20 @@ when the first result is captured by the immediately following local assignment 
 both source and result locals remain unchanged. This bounded result-local scheme adds
 no hidden frame slot or reserved register. Immutable field caches survive unrelated
 mutable stores and calls; mutable caches retain stricter alias/publication/unknown-
-effect invalidation. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only this value
-reuse, while `WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a
-whole.
+effect invalidation. A constructor-known length plus constant index also selects a
+constant-displacement array get/set sequence. It validates the immutable Aux length
+against the semantic fact and asks the handle resolver for the complete constant
+extent, removing the scale and duplicate dynamic extent sequence without trusting
+malformed metadata. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only repeated-load
+reuse, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` disables the constant-index sequence, and
+`WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole.
+
+Dead allocation remains bounded and postfix. Direct struct/fixed-array drops can
+remove complete nested `struct.new`/`array.new_fixed` trees. Dynamic/default/data/
+element array drops instead call nonallocating validation helpers that preserve the
+original type, physical-size/capacity, passive-segment range, and initializer-ref
+checks before omitting allocation. Oversized Throughput and Tiny objects therefore
+still trap, while successful dead constructors publish no handle or safepoint.
 
 Reference stores select an explicit late state: `NoBarrier`, `YoungParent`,
 `KnownOldChild`, `ExistingCard`, `CardMark`, or `SlowBarrier`. Null and i31 children
@@ -184,8 +195,10 @@ Reference `array.fill` with a statically proven null/i31 child uses the guarded
 value preflight as ordinary fill and rejects an object child before the first write.
 All other reference fill/copy/init operations retain exact post-write destination
 range barriers, overlap-safe copy, and trap atomicity. Throughput `array.init_elem`
-preflights the complete retained segment, performs checked stores with a deferred
-barrier, and publishes one exact destination range after all writes. Tiny keeps
+preflights the complete retained segment, then performs type-compatible prevalidated
+stores with a deferred barrier and publishes one exact destination range after all
+writes. No collection can occur between preflight and publication; explicit
+hardening modes repeat ownership validation to detect contract misuse. Tiny keeps
 immediate per-edge shading; bulk ranges are handled in 64-element chunks with at most
 64 gray-object drains between chunks so queued incremental publication work stays
 bounded at one-object scan granularity. Numeric arrays and non-collector function-

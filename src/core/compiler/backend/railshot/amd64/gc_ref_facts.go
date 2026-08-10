@@ -51,6 +51,16 @@ func gcKnownI32Const(e *elem) (uint32, bool) {
 	return uint32(e.st.cval), true
 }
 
+func gcKnownArrayIndexInBounds(object, index *elem) (indexValue, length uint32, ok bool) {
+	if !gcKnownArrayBoundsEnabled {
+		return 0, 0, false
+	}
+	i, constant := gcKnownI32Const(index)
+	fact := gcRefFact(object)
+	length, known := fact.KnownArrayLength()
+	return i, length, constant && known && fact.Nullability() == shared.GCKnownNonNull && i < length
+}
+
 func gcRefFact(e *elem) shared.GCRefFact {
 	if !exactGCRefFactsEnabled || e == nil || e.kind != ekValue || !e.st.gcRoot {
 		return shared.GCRefFact{}

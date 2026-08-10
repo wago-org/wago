@@ -7,6 +7,47 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+type checkedDeadGCUse uint8
+
+const (
+	checkedDeadGCNone checkedDeadGCUse = iota
+	checkedDeadGCImmediate
+	checkedDeadGCNested
+)
+
+// checkedDeadGCConstructorUse recognizes dynamic constructors whose allocation
+// can disappear only after a nonallocating helper preserves size/segment/value
+// traps. Immediate drops consume no future operand; the nested shape uses the
+// same bounded postfix proof as recursive fixed constructors.
+func (f *fn) checkedDeadGCConstructorUse(r *wasm.Reader) checkedDeadGCUse {
+	if !deadGCNewEnabled {
+		return checkedDeadGCNone
+	}
+	if op, ok := r.Peek(); ok && op == 0x1a {
+		return checkedDeadGCImmediate
+	}
+	if f.gcConstructorFeedsDroppedTree(r) {
+		return checkedDeadGCNested
+	}
+	return checkedDeadGCNone
+}
+
+func (f *fn) finishCheckedDeadGCConstructor(r *wasm.Reader, use checkedDeadGCUse) {
+	if use == checkedDeadGCImmediate {
+		op, err := r.Byte()
+		if err != nil || op != 0x1a {
+			panic("amd64: checked dead GC constructor lost following drop")
+		}
+	} else if use == checkedDeadGCNested {
+		f.pushValue(storage{kind: stConst, typ: mtI64}) // private null placeholder
+	} else {
+		panic("amd64: invalid checked dead GC constructor use")
+	}
+	f.retireGCFrameSafepoint()
+	f.stats.peep("gc-dead-new")
+	f.stats.peep("gc-dead-new-checked")
+}
+
 // skipDroppedGCConstructor consumes an immediately following drop and removes
 // operandN constructor arguments from the compiler stack without allocating the
 // object. All constructor arguments have already been evaluated in Wasm order.
@@ -28,12 +69,11 @@ func (f *fn) skipDroppedGCConstructor(r *wasm.Reader, operandN int) bool {
 }
 
 // deferGCConstructorForDroppedStruct replaces a constructor result with a null
-// placeholder only when bounded lookahead proves that the result flows untouched
-// into a following struct.new whose result is immediately dropped. The outer
-// struct constructor will be removed by skipDroppedGCConstructor, so the
-// placeholder is never observed as a Wasm value.
+// placeholder only when bounded lookahead proves that it flows through a tree of
+// struct.new/array.new_fixed containers whose final result is dropped. Every
+// container is removed before the placeholder can become an observable Wasm value.
 func (f *fn) deferGCConstructorForDroppedStruct(r *wasm.Reader, operandN int) bool {
-	if !deadGCNewEnabled || !f.gcConstructorFeedsDroppedStruct(r) {
+	if !deadGCNewEnabled || !f.gcConstructorFeedsDroppedTree(r) {
 		return false
 	}
 	f.discardGCConstructorOperands(operandN)
@@ -43,12 +83,13 @@ func (f *fn) deferGCConstructorForDroppedStruct(r *wasm.Reader, operandN int) bo
 	return true
 }
 
-// gcConstructorFeedsDroppedStruct recognizes a deliberately small postfix
-// shape: the current constructor result, followed by zero or more push-only
-// leaves, then struct.new and drop. Push-only leaves cannot consume or expose the
-// candidate reference. This covers Dew's fixed vector -> dropped wrapper trees
-// without constructing an instruction graph or retaining body-wide IR.
-func (f *fn) gcConstructorFeedsDroppedStruct(r *wasm.Reader) bool {
+// gcConstructorFeedsDroppedTree recognizes a bounded postfix constructor tree.
+// It tracks only how many values sit above the candidate; struct.new and
+// array.new_fixed either combine that candidate into a new candidate or build a
+// sibling value that a later container consumes. Dynamic array constructors are
+// excluded because their checked dead path must validate the real initializer,
+// not the private null placeholder used for an already-elided child.
+func (f *fn) gcConstructorFeedsDroppedTree(r *wasm.Reader) bool {
 	look := *r
 	above := 0
 	const maxLookaheadInstructions = 32
@@ -99,20 +140,48 @@ func (f *fn) gcConstructorFeedsDroppedStruct(r *wasm.Reader) bool {
 			above++
 		case 0xfb:
 			sub, err := look.U32()
-			if err != nil || sub != 0 { // struct.new only
-				return false
-			}
-			typeIndex, err := look.U32()
 			if err != nil {
 				return false
 			}
-			st, ok := f.stagedStructType(typeIndex)
-			if !ok || len(st.Comp.Fields) <= above {
-				// The outer constructor does not consume the candidate.
+			var operands int
+			switch sub {
+			case 0: // struct.new typeidx
+				typeIndex, err := look.U32()
+				if err != nil {
+					return false
+				}
+				st, ok := f.stagedStructType(typeIndex)
+				if !ok {
+					return false
+				}
+				operands = len(st.Comp.Fields)
+			case 1: // struct.new_default typeidx
+				if _, err := look.U32(); err != nil {
+					return false
+				}
+				operands = 0
+			case 8: // array.new_fixed typeidx count
+				if _, err := look.U32(); err != nil {
+					return false
+				}
+				count, err := look.U32()
+				if err != nil || uint64(count) > uint64(^uint(0)>>1) {
+					return false
+				}
+				operands = int(count)
+			default:
 				return false
 			}
-			next, err := look.Byte()
-			return err == nil && next == 0x1a
+			if operands > above {
+				above = 0 // candidate was consumed and the constructor result replaces it.
+			} else {
+				above = above - operands + 1
+			}
+		case 0x1a: // drop
+			if above == 0 {
+				return true
+			}
+			above--
 		default:
 			return false
 		}

@@ -235,7 +235,14 @@ func MergeGCRefFacts(a, b GCRefFact) GCRefFact {
 	aHeap, bHeap := a.HeapClass(), b.HeapClass()
 	switch {
 	case aExact && bExact && aType == bType:
-		out = out.WithExactType(aType, aHeap)
+		heap := aHeap
+		if heap == GCHeapUnknown {
+			heap = bHeap
+		} else if bHeap != GCHeapUnknown && bHeap != heap {
+			// Exact identity survives, but inconsistent class metadata does not.
+			heap = GCHeapUnknown
+		}
+		out = out.WithExactType(aType, heap)
 	case aHeap != GCHeapUnknown && aHeap == bHeap:
 		out = out.WithHeapClass(aHeap)
 	}

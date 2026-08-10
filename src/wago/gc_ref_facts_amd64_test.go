@@ -72,6 +72,108 @@ func TestGCBoundedLoadForwardingExecutes(t *testing.T) {
 	}
 }
 
+func TestGCKnownArrayBoundsExecutesAndRetainsOutOfBoundsTrap(t *testing.T) {
+	inBounds := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x01, 0x41, 0x04, 0xfb, 0x06, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0x41, 0x09, 0xfb, 0x0e, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0xfb, 0x0b, 0x00, 0x0b,
+	}
+	outOfBounds := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x01, 0x41, 0x04, 0xfb, 0x06, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x04, 0xfb, 0x0b, 0x00, 0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("in-bounds", 0, 0),
+			wasmtest.ExportEntry("out-of-bounds", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(inBounds))), inBounds...),
+			append(wasmtest.ULEB(uint32(len(outOfBounds))), outOfBounds...),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("in-bounds"); err != nil || len(got) != 1 || got[0] != 9 {
+		t.Fatalf("in-bounds = %v, %v", got, err)
+	}
+	if got, err := instance.Invoke("out-of-bounds"); err == nil {
+		t.Fatalf("out-of-bounds = %v, want trap", got)
+	}
+}
+
+func TestGCCheckedDeadDynamicArrayPreservesSizeTrapWithoutAllocation(t *testing.T) {
+	body := []byte{
+		0x00,                               // no locals
+		0x20, 0x00, 0xfb, 0x07, 0x00, 0x1a, // array.new_default 0; drop
+		0x41, 0x07, 0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	for _, tc := range []struct {
+		name  string
+		gc    GCConfig
+		small uint64
+	}{
+		{name: "throughput", small: 64},
+		{name: "tiny", gc: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16}, small: 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: tc.gc})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+
+			before := instance.gc.Stats()
+			got, err := instance.Invoke("run", tc.small)
+			after := instance.gc.Stats()
+			if err != nil || len(got) != 1 || got[0] != 7 {
+				t.Fatalf("small dropped array = %v, %v", got, err)
+			}
+			if after.Allocations != before.Allocations || after.LiveObjects != before.LiveObjects {
+				t.Fatalf("dropped dynamic array allocated: before=%+v after=%+v", before, after)
+			}
+
+			before = instance.gc.Stats()
+			if got, err = instance.Invoke("run", 1_073_741_817); err == nil {
+				t.Fatalf("overflowing dropped array returned %v", got)
+			}
+			after = instance.gc.Stats()
+			if after.Allocations != before.Allocations || after.LiveObjects != before.LiveObjects {
+				t.Fatalf("overflowing dropped array changed collector: before=%+v after=%+v", before, after)
+			}
+		})
+	}
+}
+
 func TestGCExactReferenceFactClearsOnLocalSet(t *testing.T) {
 	body := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local

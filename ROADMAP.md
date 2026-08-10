@@ -207,17 +207,22 @@ current optimization priorities. The Core 3.0 implementation ledger is
   and constructor lengths, and keeps raw resolved addresses in a separately
   safepoint-invalidated one-entry certificate. A bounded result-local cache now
   eliminates repeated dynamic `array.len` and immutable `struct.get`, immutable values
-  survive unrelated mutable effects, and validated subtype forests use packed
-  constant-time intervals after a shallow parent fast path. Broad scalar replacement
-  remains rejected by measured frame growth rather than introducing SSA or a second IR.
+  survive unrelated mutable effects, constructor-known constant indexes use a compact
+  get/set sequence, and validated subtype forests use packed constant-time intervals
+  after a shallow parent fast path. Bounded dead-constructor proofs now cover nested
+  struct/fixed-array trees plus checked dynamic/default/data/element arrays without
+  dropping deterministic traps. Broad scalar replacement remains rejected by measured
+  frame growth rather than introducing SSA or a second IR.
 - [x] **Explicit late GC barrier states (#315):** reference stores select
   `NoBarrier`, `YoungParent`, `KnownOldChild`, `ExistingCard`, `CardMark`, or
   `SlowBarrier` after structured facts. Null/i31 scalar stores and guarded null/i31
   `array.fill` omit barrier work; unknown profile/generation, metadata growth,
   foreign/malformed refs, and Tiny incremental shading retain checked native/helper
-  paths. Throughput `array.init_elem` publishes one post-write destination range,
+  paths. Throughput `array.init_elem` validates the complete source once, publishes
+  one post-write destination range, and avoids duplicate release-path ownership checks;
   Tiny bulk publication is chunked, and diagnostic telemetry counts every checked
-  barrier state separately. Copy/fill/init retain exact overlap and trap atomicity.
+  barrier state separately. Copy/fill/init retain exact overlap and trap atomicity, with
+  permanent nursery/remembered-old/unremembered-old/large/Tiny barrier benchmarks.
 - [x] **Bounded foreign-Runtime GC graph transfer:** `target.CloneGCRefFrom(source,
   ref)` selects explicit transactional graph cloning rather than sharing compact
   handles. It preserves cycles and internal sharing under 1,024-object, 65,536-value,

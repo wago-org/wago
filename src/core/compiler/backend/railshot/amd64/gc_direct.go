@@ -2186,7 +2186,7 @@ func (f *fn) emitDirectGCArrayLen(typeIndex uint32) bool {
 	return true
 }
 
-func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
+func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, knownLength uint32, logicalBoundsProven bool) bool {
 	scalar, final, ok := f.directGCArrayLayout(typeIndex)
 	if !ok || !final {
 		return false
@@ -2198,14 +2198,48 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
 	f.spillFloor = f.curSpillSlot()
 	indexValue := f.popValue()
 	object := f.popValue()
+	constantOffset := uint64(gc.PayloadOffset) + uint64(knownIndex)*uint64(scalar.size)
+	constantExtent := constantOffset + uint64(scalar.size)
+	if logicalBoundsProven && constantExtent <= math.MaxInt32 {
+		obj, done := f.emitDirectGCObject(object, typeIndex, uint32(constantExtent), local, hasLocal)
+		tmp := f.allocReg(maskOf(obj))
+		f.a.Load32(tmp, obj, 8)
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.release(tmp)
+		disp := int32(constantOffset)
+		f.stats.peep("gc-array-known-bounds")
+		f.stats.peep("gc-array-const-index")
+		if scalar.typ.isFloat() {
+			x := f.allocFReg(0)
+			f.a.FLoadDisp(x, obj, disp, scalar.typ == mtF64)
+			done()
+			f.spillFloor = oldFloor
+			f.pushFReg(x, scalar.typ)
+			return true
+		}
+		result := f.allocReg(maskOf(obj))
+		f.a.LoadIdx(result, obj, RSP, disp, scalar.size, helper == gcArrayGetS, scalar.typ == mtI64)
+		done()
+		f.spillFloor = oldFloor
+		f.pushReg(result, scalar.typ)
+		return true
+	}
+
 	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
 	f.a.Load32(tmp, obj, 8) // ObjHeader.Aux array length
-	f.a.Cmp32(index, tmp)
-	f.trapIf(condAE, trapCastFailure)
+	if logicalBoundsProven {
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.stats.peep("gc-array-known-bounds")
+	} else {
+		f.a.Cmp32(index, tmp)
+		f.trapIf(condAE, trapCastFailure)
+	}
 	f.a.ImulRI(index, int32(scalar.size), true)
 	// Defend against corrupted Aux metadata as well as the logical index check:
 	// payload offset + scaled index + element width must fit the object header size.
@@ -2241,7 +2275,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
 	return true
 }
 
-func (f *fn) emitDirectGCArraySet(typeIndex uint32) bool {
+func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, logicalBoundsProven bool) bool {
 	scalar, final, ok := f.directGCArrayLayout(typeIndex)
 	if !ok || !final {
 		return false
@@ -2255,14 +2289,46 @@ func (f *fn) emitDirectGCArraySet(typeIndex uint32) bool {
 	value := f.popValue()
 	indexValue := f.popValue()
 	object := f.popValue()
+	constantOffset := uint64(gc.PayloadOffset) + uint64(knownIndex)*uint64(scalar.size)
+	constantExtent := constantOffset + uint64(scalar.size)
+	if logicalBoundsProven && constantExtent <= math.MaxInt32 {
+		obj, done := f.emitDirectGCObject(object, typeIndex, uint32(constantExtent), local, hasLocal)
+		tmp := f.allocReg(maskOf(obj))
+		f.a.Load32(tmp, obj, 8)
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.release(tmp)
+		disp := int32(constantOffset)
+		f.stats.peep("gc-array-known-bounds")
+		f.stats.peep("gc-array-const-index")
+		if scalar.typ.isFloat() {
+			x := f.materializeF(value)
+			f.a.FStoreDisp(obj, disp, x, scalar.typ == mtF64)
+			f.releaseF(x)
+		} else {
+			r := f.materialize(value)
+			f.a.StoreIdx(obj, RSP, r, disp, scalar.size)
+			f.release(r)
+		}
+		done()
+		f.spillFloor = oldFloor
+		return true
+	}
+
 	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
 	f.a.Load32(tmp, obj, 8)
-	f.a.Cmp32(index, tmp)
-	f.trapIf(condAE, trapCastFailure)
+	if logicalBoundsProven {
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.stats.peep("gc-array-known-bounds")
+	} else {
+		f.a.Cmp32(index, tmp)
+		f.trapIf(condAE, trapCastFailure)
+	}
 	f.a.ImulRI(index, int32(scalar.size), true)
 	f.a.Load32(tmp, obj, 4)
 	end := f.allocReg(maskOf(obj, index, tmp))

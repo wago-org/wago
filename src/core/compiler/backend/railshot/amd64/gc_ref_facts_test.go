@@ -476,6 +476,35 @@ func TestGCReferenceFactEliminatesRepeatedLoadsViaBoundedResultLocal(t *testing.
 	t.Logf("bounded array.len forwarding code bytes: enabled=%d disabled=%d", array.CodeBytes, disabled.CodeBytes)
 }
 
+func TestGCConstructorKnownBoundsElideLogicalArrayChecks(t *testing.T) {
+	savedFacts, savedBounds := exactGCRefFactsEnabled, gcKnownArrayBoundsEnabled
+	defer func() { exactGCRefFactsEnabled, gcKnownArrayBoundsEnabled = savedFacts, savedBounds }()
+	exactGCRefFactsEnabled, gcKnownArrayBoundsEnabled = true, true
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
+		0x20, 0x00, 0x41, 0x04, 0xfb, 0x06, 0x00, 0x21, 0x01,
+		0x20, 0x01, 0x41, 0x02, 0x41, 0x09, 0xfb, 0x0e, 0x00,
+		0x20, 0x01, 0x41, 0x02, 0xfb, 0x0b, 0x00,
+		0x0b,
+	}
+	on := gcResolveReuseStats(t, []byte{0x5e, 0x7f, 0x01}, []byte{0x60, 0x01, 0x7f, 0x01, 0x7f}, body)
+	if got := on.Peephole["gc-array-known-bounds"]; got != 2 {
+		t.Fatalf("gc-array-known-bounds = %d, want 2 (all: %v)", got, on.Peephole)
+	}
+	if got := on.Peephole["gc-array-const-index"]; got != 2 {
+		t.Fatalf("gc-array-const-index = %d, want 2", got)
+	}
+	gcKnownArrayBoundsEnabled = false
+	off := gcResolveReuseStats(t, []byte{0x5e, 0x7f, 0x01}, []byte{0x60, 0x01, 0x7f, 0x01, 0x7f}, body)
+	if got := off.Peephole["gc-array-known-bounds"]; got != 0 {
+		t.Fatalf("disabled gc-array-known-bounds = %d", got)
+	}
+	if on.CodeBytes >= off.CodeBytes {
+		t.Fatalf("known-bounds code = %d bytes, disabled = %d; want smaller", on.CodeBytes, off.CodeBytes)
+	}
+	t.Logf("known array bounds code bytes: enabled=%d disabled=%d", on.CodeBytes, off.CodeBytes)
+}
+
 func TestGCReferenceFactLoadOpportunityCounters(t *testing.T) {
 	arrayBody := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local

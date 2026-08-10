@@ -31,6 +31,10 @@ const (
 	gcArrayAllocUniformNative  uint32 = 33
 	gcArrayAllocFixedNative    uint32 = 34
 	gcArrayFillNoBarrier       uint32 = 35
+	gcArrayCheckDefault        uint32 = 36
+	gcArrayCheckUniform        uint32 = 37
+	gcArrayCheckData           uint32 = 38
+	gcArrayCheckElem           uint32 = 39
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -52,6 +56,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			valueType = wasm.I32
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
+		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+			if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, nil); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
@@ -84,8 +96,16 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return fmt.Errorf("amd64: array.new_elem type %d is not a reference array", typeIndex)
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
+		deadUse := f.checkedDeadGCConstructorUse(r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIndex)})
+		if deadUse != checkedDeadGCNone {
+			if err := f.callGCStructHelper(gcArrayCheckElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if err := f.callGCStructHelper(gcArrayAllocElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
@@ -113,8 +133,16 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return fmt.Errorf("amd64: array.new_data type %d has unsupported storage", typeIndex)
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
+		deadUse := f.checkedDeadGCConstructorUse(r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
+		if deadUse != checkedDeadGCNone {
+			if err := f.callGCStructHelper(gcArrayCheckData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if err := f.callGCStructHelper(gcArrayAllocData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
@@ -188,6 +216,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return fmt.Errorf("amd64: array.new_default type %d is unavailable", typeIndex)
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
+		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+			if err := f.callGCStructHelper(gcArrayCheckDefault, []wasm.ValType{wasm.I32, wasm.I32}, nil); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
@@ -230,11 +266,13 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain array.get cannot access packed type %d", typeIndex)
 		}
-		if f.emitDirectGCArrayGet(typeIndex, helper) {
+		indexRoot := f.s.back()
+		objectRoot := baseOfValentBlock(indexRoot).prev
+		knownIndex, knownLength, boundsProven := gcKnownArrayIndexInBounds(objectRoot, indexRoot)
+		if f.emitDirectGCArrayGet(typeIndex, helper, knownIndex, knownLength, boundsProven) {
 			return nil
 		}
-		indexRoot := f.s.back()
-		f.refineGCDereferencedObject(baseOfValentBlock(indexRoot).prev)
+		f.refineGCDereferencedObject(objectRoot)
 		if sub == 11 && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
 			if target, ok := f.stagedGCType(typeIndex); ok && target.Final {
 				return f.emitNativeFinalArrayRefGet(typeIndex)
@@ -263,7 +301,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		indexRoot := baseOfValentBlock(valueRoot).prev
 		objectRoot := baseOfValentBlock(indexRoot).prev
 		f.refineGCDereferencedObject(objectRoot)
-		if f.emitDirectGCArraySet(typeIndex) {
+		knownIndex, knownLength, boundsProven := gcKnownArrayIndexInBounds(objectRoot, indexRoot)
+		if f.emitDirectGCArraySet(typeIndex, knownIndex, knownLength, boundsProven) {
 			return nil
 		}
 		if target, found := f.stagedGCType(typeIndex); found && target.Final && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {

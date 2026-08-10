@@ -60,6 +60,10 @@ go test ./src/core/runtime/gc -run '^$' \
   -benchmem -count=10
 go test ./src/core/runtime/gc -run '^$' \
   -bench '^BenchmarkGCSubtypeInterval$' -benchmem -count=10
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkArrayDeferredReferenceBatch$' -benchmem -count=10 -cpu=1
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkGCBarrierStateMatrix$' -benchmem -count=10 -cpu=1
 ```
 
 For a retained compiler/JIT result, also run the real Dew/Starshine workload A/B with
@@ -83,7 +87,8 @@ go test ./src/wago -run '^$' -bench '^BenchmarkGCOptimizationWorkload$' \
 ```
 
 Run interleaved processes with `WAGO_AMD64_NO_GC_REF_FACTS=1`,
-`WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`, or `WAGO_GC_SUBTYPE_INTERVALS=0` as relevant.
+`WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`,
+`WAGO_AMD64_NO_DEAD_GC_NEW=1`, or `WAGO_GC_SUBTYPE_INTERVALS=0` as relevant.
 The benchmark requires a zero-argument export, uses deterministic no-op imports,
 checks a result checksum, and reports linked, barrier, and helper bytes separately.
 
@@ -105,6 +110,18 @@ allocs/op. Code telemetry measured 294,341/294,181 linked bytes, 4,168/4,642 bar
 bytes, and 72,500/74,202 helper bytes for facts enabled/disabled. Timing is a modest,
 host-noisy result; retain the deterministic code/work deltas and repeat on reviewer
 hardware before claiming a broad speedup.
+
+The August 10 tertiary review added constant-index known-length array get/set,
+checked dead dynamic arrays, and a complete barrier-parent benchmark. The paired
+constant-index set/get fixture emits 1,029 bytes versus 1,084 with
+`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`. Checked dead constructor-family bytes are
+64/142 for default, 82/178 for uniform, and 100/214 for data or element arrays
+(enabled/disabled); oversized Throughput and Tiny cases still trap before publishing
+an allocation. Three `GOMAXPROCS=1`, 200 ms deferred-reference-batch samples measured
+prevalidated/revalidated medians of 438.2/452.7 ns at 16 elements, 6,560/6,740 ns at
+256, and 104,405/108,576 ns at 4,096, all allocation-free. The matching barrier-state
+matrix medians were 25.50 ns nursery, 34.03 remembered old, 41.16 unremembered old
+including metadata creation, 34.28 large, and 28.50 Tiny, also 0 B/op and 0 allocs/op.
 
 This document defines the measurement contract for collector changes tracked by
 issue #300. The opt-in recorder, public API, JSONL schema, phase semantics, and

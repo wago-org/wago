@@ -38,6 +38,17 @@ func TestGCRefFactRoundTripAndMerge(t *testing.T) {
 	if _, ok := merged.KnownArrayLength(); ok {
 		t.Fatalf("different lengths survived merge: %+v", merged)
 	}
+
+	knownClass := ExactGCRefFact(11, 0, GCHeapStruct)
+	unknownClass := ExactGCRefFact(11, 0, GCHeapUnknown)
+	merged = MergeGCRefFacts(unknownClass, knownClass)
+	if typ, exact := merged.ExactType(); !exact || typ != 11 || merged.HeapClass() != GCHeapStruct {
+		t.Fatalf("same exact type lost available heap class: %+v", merged)
+	}
+	merged = MergeGCRefFacts(knownClass, ExactGCRefFact(11, 0, GCHeapArray))
+	if typ, exact := merged.ExactType(); !exact || typ != 11 || merged.HeapClass() != GCHeapUnknown {
+		t.Fatalf("inconsistent exact classes were not intersected: %+v", merged)
+	}
 }
 
 func BenchmarkMergeGCRefFacts(b *testing.B) {

@@ -31,12 +31,11 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
-// deadGCNewEnabled removes fixed-size GC constructor trees whose result is
-// immediately dropped, including nested struct.new/array.new_fixed values that
-// flow untouched into a dropped outer struct. Allocation has no observable
-// identity once the complete tree is dead; initializer computations that may
-// trap are still forced in original order. WAGO_AMD64_NO_DEAD_GC_NEW=1 keeps
-// every constructor helper for differential A/B testing.
+// deadGCNewEnabled removes bounded GC constructor trees whose result is dropped.
+// Struct and fixed-array trees disappear directly; dynamic/default/data/element
+// arrays retain a nonallocating preflight helper so size, segment, and initializer
+// traps remain ordered. WAGO_AMD64_NO_DEAD_GC_NEW=1 keeps every allocation helper
+// for differential A/B testing.
 var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 
 // exactGCRefFactsEnabled propagates exact non-null reference facts through
@@ -47,6 +46,11 @@ var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1"
 // gcLoadForwardingEnabled keeps the bounded result-local array.len and immutable
 // struct.get cache independently A/B-testable from the semantic fact engine.
 var gcLoadForwardingEnabled = os.Getenv("WAGO_AMD64_NO_GC_LOAD_FORWARDING") != "1"
+
+// gcKnownArrayBoundsEnabled lets a constructor-known length plus constant index
+// remove the redundant logical Aux comparison from direct array.get/set. The
+// physical object-extent hardening check remains. Keep an independent A/B switch.
+var gcKnownArrayBoundsEnabled = os.Getenv("WAGO_AMD64_NO_GC_KNOWN_BOUNDS") != "1"
 
 // nativeGCStructAllocEnabled consumes collector-reserved handle runs and nursery
 // chunks for admitted struct and array constructors. Rooted Go helpers remain the

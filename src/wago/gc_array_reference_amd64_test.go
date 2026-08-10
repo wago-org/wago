@@ -165,6 +165,21 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 				t.Fatalf("instance element state = %+v", state)
 			}
 
+			beforeCheck := in.gc.Stats()
+			in.dispatchGCArrayHelper(gcArrayCheckElem, []uint64{0, 2, 1, 0}, nil)
+			afterCheck := in.gc.Stats()
+			if afterCheck.Allocations != beforeCheck.Allocations || afterCheck.LiveObjects != beforeCheck.LiveObjects {
+				t.Fatalf("element preflight allocated: before=%+v after=%+v", beforeCheck, afterCheck)
+			}
+			func() {
+				defer func() {
+					if recover() == nil {
+						t.Fatal("out-of-range dead element preflight did not trap")
+					}
+				}()
+				in.dispatchGCArrayHelper(gcArrayCheckElem, []uint64{2, 1, 1, 0}, nil)
+			}()
+
 			var result [1]uint64
 			in.dispatchGCArrayHelper(gcArrayAllocElem, []uint64{0, 2, 1, 0}, result[:])
 			outer := gc.Ref(uint32(result[0]))

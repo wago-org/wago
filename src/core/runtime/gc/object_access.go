@@ -189,6 +189,35 @@ func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, err
 	return c.NewArrayWithRoots(typeID, length, init, nil)
 }
 
+// CheckArrayAllocation validates the deterministic type/size traps of an array
+// constructor without allocating collector state. Dead-constructor lowering uses
+// it after all Wasm operands have executed so dynamic size overflow is preserved.
+func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return err
+	}
+	size, err := ArraySize(d, length)
+	if err != nil {
+		return err
+	}
+	if c.cfg.Profile == ProfileTiny {
+		if uint64(size) > uint64(len(c.tiny.mem)) {
+			return errTinyHeapExhausted
+		}
+		return nil
+	}
+	// Throughput rounds every physical allocation to sixteen bytes. ArraySize's
+	// eight-byte object ABI rounding can still leave this final round overflowing.
+	if size > ^uint32(0)-15 {
+		return ErrAllocationTooLarge
+	}
+	if uint64(Align16(size)) > uint64(c.throughput.limit) {
+		return errThroughputHeapExhausted
+	}
+	return nil
+}
+
 // NewArrayFixedWithRoots allocates an array initialized from one value per
 // element. Reference operands are rooted across allocation and reread before
 // stores, matching the atomic operand lifetime required by array.new_fixed.
@@ -689,10 +718,10 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 }
 
 // ArraySetDeferredBarrier stores one preflighted bulk element without publishing
-// a Throughput barrier. The caller must invoke PostBulkWriteBarrier for the exact
-// completed destination range before returning to Wasm. Tiny rejects this API
-// because its incremental invariant requires each newly published edge to shade
-// immediately.
+// a Throughput barrier. The caller must have validated every value before the
+// first mutation and must invoke PostBulkWriteBarrier for the exact completed
+// destination range before returning to Wasm. Tiny rejects this API because its
+// incremental invariant requires each newly published edge to shade immediately.
 func (c *Collector) ArraySetDeferredBarrier(ref Ref, index uint32, value Value) error {
 	if c.cfg.Profile == ProfileTiny {
 		return errors.New("gc: deferred array barrier is unavailable for Tiny")
@@ -704,8 +733,16 @@ func (c *Collector) ArraySetDeferredBarrier(ref Ref, index uint32, value Value) 
 	if d.Kind != KindArray || index >= c.header(ref).Aux {
 		return errRange
 	}
-	if err := c.validateArrayStore(d, value); err != nil {
+	if err := checkValueCompatible(d.Elem, value); err != nil {
 		return err
+	}
+	// Production callers completed ownership/nullability preflight for the full
+	// range. Hardening modes intentionally repeat that expensive check so tests can
+	// catch misuse without charging every retained element twice in release paths.
+	if isCollectorRefKind(d.Elem) && (c.cfg.VerifyAfterCollect || c.cfg.StressBarriers) {
+		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
+			return err
+		}
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }

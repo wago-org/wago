@@ -6,6 +6,33 @@ import (
 	"testing"
 )
 
+func TestCheckArrayAllocationPreservesDeterministicCapacityAndOverflowTraps(t *testing.T) {
+	wide, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	throughput, err := NewCollector(Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, []TypeDesc{wide})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer throughput.Close()
+	if err := throughput.CheckArrayAllocation(0, 2000); err != errThroughputHeapExhausted {
+		t.Fatalf("throughput impossible array = %v, want %v", err, errThroughputHeapExhausted)
+	}
+	if err := throughput.CheckArrayAllocation(0, 1_073_741_817); !errors.Is(err, ErrAllocationTooLarge) {
+		t.Fatalf("throughput physical overflow = %v, want ErrAllocationTooLarge", err)
+	}
+
+	tiny, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16}, []TypeDesc{wide})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tiny.Close()
+	if err := tiny.CheckArrayAllocation(0, 100); err != errTinyHeapExhausted {
+		t.Fatalf("tiny impossible array = %v, want %v", err, errTinyHeapExhausted)
+	}
+}
+
 func TestDescriptorsAndLayout(t *testing.T) {
 	pf, err := NewStructDesc(1, []StorageKind{StorageI32, StorageI64, StorageI8})
 	if err != nil {
