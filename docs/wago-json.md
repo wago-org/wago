@@ -139,8 +139,9 @@ runtime from the locked versions.
 These grants do not sandbox arbitrary Go code. Plugins are forced-open-source,
 compiled into the consumer's binary, and expected to be audited like any other
 Go dependency. The grants control access to privileged Wago API surfaces.
-`runtime.core` is the broadest grant and should be reserved for audited runtimes
-such as `wago.component-model`; ordinary plugins should request narrower APIs.
+`runtime.core` is reserved for audited execution models such as
+`wago-org/component-model`; ordinary plugins should request narrower APIs or
+consume the execution model's versioned service.
 
 Guest permissions such as `fs.read`, `net.outbound`, or `wasi` are different:
 plugins provide those to Wasm modules, and runtime `Policy` controls whether a

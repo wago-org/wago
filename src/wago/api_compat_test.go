@@ -518,7 +518,7 @@ func TestRuntimeReferenceAndErrorPortableSurface(t *testing.T) {
 	if !errors.Is(extErr, ErrPermissionDenied) || extErr.Error() != "wago extension test: use: wago: permission denied" {
 		t.Fatalf("ExtensionError = %q", extErr)
 	}
-	for _, cap := range []PluginCapability{PluginHostImports, PluginHostEnvironment, PluginCompileHooks, PluginInstanceHooks, PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances, PluginCoreRuntime} {
+	for _, cap := range []PluginCapability{PluginHostImports, PluginHostEnvironment, PluginCompileHooks, PluginInstanceHooks, PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances, PluginCoreEngine} {
 		if !validPluginCapability(cap) {
 			t.Errorf("validPluginCapability(%q) = false", cap)
 		}

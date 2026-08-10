@@ -130,9 +130,9 @@ type CoreFuncImport struct {
 	Params, Results []ValueType
 }
 
-type runtimeAdapter struct{ rt *core.Runtime }
+type runtimeAdapter struct{ rt core.CoreEngine }
 
-func Wrap(rt *core.Runtime) Runtime { return &runtimeAdapter{rt: rt} }
+func Wrap(rt core.CoreEngine) Runtime { return &runtimeAdapter{rt: rt} }
 
 type compiledModule struct{ mod *core.Module }
 

@@ -36,6 +36,56 @@ func TestServiceRequirementOrdersAndBindsPlugins(t *testing.T) {
 	}
 }
 
+type programmaticServiceExtension struct {
+	id      string
+	provide any
+	ref     **ServiceRef
+}
+
+func (e *programmaticServiceExtension) Info() ExtensionInfo { return ExtensionInfo{ID: e.id} }
+func (e *programmaticServiceExtension) Register(reg *Registry) error {
+	if e.provide != nil {
+		return ProvideService(reg, "test.programmatic/v1", e.provide)
+	}
+	ref, err := RequireService(reg, "test.programmatic/v1")
+	if err == nil && e.ref != nil {
+		*e.ref = ref
+	}
+	return err
+}
+
+func TestProgrammaticUseResolvesServicesTransactionally(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	var ref *ServiceRef
+	consumer := &programmaticServiceExtension{id: "consumer", ref: &ref}
+	if err := rt.Use(consumer); err == nil {
+		t.Fatal("consumer loaded without its service provider")
+	}
+	if _, ok := rt.Extension("consumer"); ok {
+		t.Fatal("failed consumer registration mutated the runtime")
+	}
+	if err := rt.Use(&programmaticServiceExtension{id: "provider", provide: 42}); err != nil {
+		t.Fatalf("Use provider: %v", err)
+	}
+	if err := rt.Use(consumer); err != nil {
+		t.Fatalf("Use consumer: %v", err)
+	}
+	value, err := ref.Get()
+	if err != nil || value != 42 {
+		t.Fatalf("bound service = %v, %v", value, err)
+	}
+	if err := rt.Use(&programmaticServiceExtension{id: "duplicate", provide: 7}); !errors.Is(err, ErrExtensionConflict) {
+		t.Fatalf("duplicate provider error = %v, want conflict", err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := ref.Get(); err == nil {
+		t.Fatal("service reference remained active after runtime close")
+	}
+}
+
 type lifecycleTestExtension struct {
 	name      string
 	events    *[]string

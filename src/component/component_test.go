@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/wago-org/wago/plugin"
 	"github.com/wago-org/wago/src/component"
 	"github.com/wago-org/wago/src/wago"
 )
@@ -15,6 +16,18 @@ import (
 //
 //go:embed testdata/adder.wasm
 var adderWasm []byte
+
+type componentServiceConsumer struct {
+	ref *plugin.Ref[component.Service]
+}
+
+func (*componentServiceConsumer) Info() wago.ExtensionInfo {
+	return wago.ExtensionInfo{ID: "test.component-consumer"}
+}
+func (e *componentServiceConsumer) Register(reg *wago.Registry) (err error) {
+	e.ref, err = plugin.Require(reg, component.RuntimeService)
+	return err
+}
 
 func TestInstantiateAdder(t *testing.T) {
 	ctx := context.Background()
@@ -93,5 +106,25 @@ func TestPluginRuntimeAccessIsRevokedOnClose(t *testing.T) {
 	}
 	if _, err := components.Instantiate(context.Background(), adderWasm); !errors.Is(err, wago.ErrPermissionDenied) {
 		t.Fatalf("Instantiate after Close = %v, want permission denied", err)
+	}
+}
+
+func TestPluginProvidesVersionedRuntimeService(t *testing.T) {
+	if component.PluginID != "wago-org/component-model" {
+		t.Fatalf("PluginID = %q", component.PluginID)
+	}
+	r := wago.NewRuntime()
+	defer r.Close()
+	components, err := component.Enable(r)
+	if err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	consumer := &componentServiceConsumer{}
+	if err := r.Use(consumer); err != nil {
+		t.Fatalf("Use consumer: %v", err)
+	}
+	service, err := consumer.ref.Get()
+	if err != nil || service != components {
+		t.Fatalf("component service = %#v, %v; want %#v", service, err, components)
 	}
 }

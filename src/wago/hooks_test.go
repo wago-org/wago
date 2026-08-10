@@ -309,12 +309,12 @@ func TestCapabilityAccessorsRegisterHooks(t *testing.T) {
 	}
 	invokeHooks.Before(func(*InvokeContext) error { return nil })
 	invokeHooks.After(func(*InvokeContext, []Value, error) {})
-	coreRuntime, err := r.CoreRuntime()
+	coreEngine, err := r.CoreEngine()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := coreRuntime.Runtime(); err == nil {
-		t.Fatal("inactive core runtime access succeeded")
+	if _, err := coreEngine.Compile(wasmtest.Module()); err == nil {
+		t.Fatal("inactive core engine access succeeded")
 	}
 
 	if len(r.used) != 6 || len(r.activate) != 2 || len(r.hooks.internalClose) != 1 || len(r.hooks.beforeCompile) != 1 || len(r.hooks.afterCompile) != 1 ||
@@ -341,20 +341,20 @@ func TestCapabilityAccessorsEnforceGrants(t *testing.T) {
 	if _, err := r.HostImports(); err == nil {
 		t.Fatal("ungranted host imports access succeeded")
 	}
-	if _, err := r.CoreRuntime(); err == nil {
-		t.Fatal("ungranted core runtime access succeeded")
+	if _, err := r.CoreEngine(); err == nil {
+		t.Fatal("ungranted core engine access succeeded")
 	}
 	if _, err := (*Registry)(nil).InstanceInvocation(); err == nil {
 		t.Fatal("nil registry access succeeded")
 	}
 }
 
-func TestCoreRuntimeAccessActivatesAndRevokesWithRuntime(t *testing.T) {
+func TestCoreEngineAccessActivatesAndRevokesWithRuntime(t *testing.T) {
 	reg := &Registry{
 		hooks:  &HookRegistry{},
-		grants: map[PluginCapability]struct{}{PluginCoreRuntime: {}},
+		grants: map[PluginCapability]struct{}{PluginCoreEngine: {}},
 	}
-	access, err := reg.CoreRuntime()
+	access, err := reg.CoreEngine()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,14 +363,18 @@ func TestCoreRuntimeAccessActivatesAndRevokesWithRuntime(t *testing.T) {
 	for _, activate := range reg.activate {
 		activate(rt)
 	}
-	if got, err := access.Runtime(); err != nil || got != rt {
-		t.Fatalf("Runtime before close = %p, %v; want %p", got, err, rt)
+	mod, err := access.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatalf("Compile before close: %v", err)
+	}
+	if err := mod.Close(); err != nil {
+		t.Fatalf("module Close: %v", err)
 	}
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := access.Runtime(); !errors.Is(err, ErrPermissionDenied) {
-		t.Fatalf("Runtime after close = %v, want permission denied", err)
+	if _, err := access.Compile(wasmtest.Module()); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("Compile after close = %v, want permission denied", err)
 	}
 }
 

@@ -50,9 +50,9 @@ These capabilities authorize Wago integration, not arbitrary Go behavior:
 Plugin packages declare the capabilities they require in `ExtensionInfo`. The
 runtime checks both that declaration and what the plugin actually registered.
 This prevents a stale declaration from hiding newly-added authority.
-The `runtime.core` capability is intentionally broad and revocable; use it only
-when narrower host-import, hook, or managed-instance APIs cannot express the
-plugin's execution model.
+The `runtime.core` capability is intentionally privileged, narrow, and
+revocable; use it only to implement an execution model. Dependent plugins should
+consume that model's versioned service instead of requesting `runtime.core`.
 
 Guest permissions such as `fs.read`, `net.outbound`, or `wasi` are separate.
 Plugins provide those permissions for Wasm modules; host policy decides whether
@@ -79,7 +79,10 @@ Plugins may also compose through typed services. A provider calls
 `plugin.Provide`; a consumer calls `plugin.Require`. The service dependency is
 added to the same load graph automatically, duplicate providers and missing
 services are rejected, and the typed reference becomes readable only after the
-complete graph resolves. `github.com/wago-org/workers` exposes
+complete graph resolves. For programmatic installation, install the provider
+before the consumer; `Runtime.Use` validates and binds the service
+transactionally. Service references become inactive when the runtime closes.
+`github.com/wago-org/workers` exposes
 `workers.ServiceKey`, allowing pools,
 actors, and schedulers to build on it without coupling to a concrete plugin
 instance.

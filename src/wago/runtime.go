@@ -46,6 +46,7 @@ type Runtime struct {
 	caps         map[Capability]string
 	capOrder     []Capability
 	instructions map[string]*registeredInstruction
+	services     map[string]serviceProvision
 	closed       bool
 	pluginStops  []registeredPluginStop
 }
@@ -82,6 +83,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		moduleOwner:  map[string]string{},
 		caps:         map[Capability]string{},
 		instructions: map[string]*registeredInstruction{},
+		services:     map[string]serviceProvision{},
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -192,6 +194,23 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 				return &ExtensionError{Extension: info.ID, Operation: "use", Err: ErrExtensionConflict}
 			}
 		}
+		for _, provided := range reg.provides {
+			if previous, exists := rt.services[provided.name]; exists {
+				return &ExtensionError{Extension: info.ID, Operation: "register",
+					Err: fmt.Errorf("service %q is already provided with type %v: %w", provided.name, previous.typ, ErrExtensionConflict)}
+			}
+		}
+		for _, required := range reg.requires {
+			provided, exists := rt.services[required.serviceName()]
+			if !exists {
+				return &ExtensionError{Extension: info.ID, Operation: "resolve",
+					Err: fmt.Errorf("required service %q has no active provider", required.serviceName())}
+			}
+			if typ := required.serviceType(); typ != nil && !provided.typ.AssignableTo(typ) {
+				return &ExtensionError{Extension: info.ID, Operation: "resolve",
+					Err: fmt.Errorf("service %q type mismatch: provider has %v, consumer wants %v", required.serviceName(), provided.typ, typ)}
+			}
+		}
 		// Validate all imports before mutating any runtime state.
 		for _, imp := range reg.imports {
 			if imp.fn == nil {
@@ -211,6 +230,11 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 			key := ins.spec.Module + "." + ins.spec.Name
 			rt.instructions[key] = ins
 		}
+		for _, required := range reg.requires {
+			if err := required.bindService(rt.services[required.serviceName()].value); err != nil {
+				return &ExtensionError{Extension: info.ID, Operation: "resolve", Err: err}
+			}
+		}
 
 		// Commit.
 		for _, imp := range reg.imports {
@@ -224,6 +248,9 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 				rt.capOrder = append(rt.capOrder, spec.cap)
 			}
 			rt.caps[spec.cap] = info.ID
+		}
+		for _, provided := range reg.provides {
+			rt.services[provided.name] = provided
 		}
 		rt.hooks.appendFrom(reg.hooks)
 		for _, manager := range reg.managers {

@@ -41,6 +41,16 @@ func (r *ServiceRef) bindService(value any) error {
 	return nil
 }
 
+func (r *ServiceRef) close() error {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	r.value, r.bound = nil, false
+	r.mu.Unlock()
+	return nil
+}
+
 type serviceBinder interface {
 	serviceName() string
 	serviceType() reflect.Type
@@ -70,5 +80,9 @@ func RequireService(reg *Registry, name string) (*ServiceRef, error) {
 	}
 	ref := &ServiceRef{name: name}
 	reg.requires = append(reg.requires, ref)
+	if reg.hooks == nil {
+		reg.hooks = &HookRegistry{}
+	}
+	reg.hooks.internalClose = append(reg.hooks.internalClose, ref.close)
 	return ref, nil
 }

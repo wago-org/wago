@@ -65,7 +65,7 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Decode and instantiate Preview 2 components with canonical ABI lift/lower,
   typed host linking, resources, composition, and safe adapter-mediated host
   re-entry. The component runtime is exposed as the capability-gated
-  `wago.component-model` plugin from `src/component`; WASI host capabilities
+  `wago-org/component-model` plugin from `src/component`; WASI host capabilities
   remain in the separate `wago-org/wasi` module.
 
 **Tooling**

@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"sync"
 )
@@ -111,49 +112,81 @@ func (a *InvokeHookAccess) After(fns ...func(*InvokeContext, []Value, error)) {
 	a.hooks.AfterInvoke(fns...)
 }
 
-// CoreRuntimeAccess is a revocable handle to the runtime's core execution
-// surface. Only trusted execution-model plugins should request it; ordinary
-// host-import and lifecycle plugins should use their narrower accessors.
-type CoreRuntimeAccess struct {
+// CoreEngine is the narrow core-Wasm surface exposed to trusted execution-model
+// plugins. It deliberately excludes extension registration, runtime inspection,
+// policies, hooks, and arbitrary lifecycle control.
+type CoreEngine interface {
+	Compile([]byte) (*Module, error)
+	Instantiate(context.Context, *Module, ...InstantiateOption) (*Instance, error)
+	NewHostFuncRef(HostFunc, FuncSig) (*HostFuncRef, error)
+}
+
+// CoreEngineAccess is a revocable CoreEngine implementation. Only trusted
+// execution-model plugins should request it; ordinary host-import and lifecycle
+// plugins should use their narrower accessors.
+type CoreEngineAccess struct {
 	mu sync.RWMutex
 	rt *Runtime
 }
 
-// CoreRuntime requests direct core-runtime authority. The handle is inactive
+// CoreEngine requests core execution authority. The handle is inactive
 // until plugin registration commits and is revoked before Runtime.Close returns.
-func (r *Registry) CoreRuntime() (*CoreRuntimeAccess, error) {
-	if err := r.authorize(PluginCoreRuntime); err != nil {
+func (r *Registry) CoreEngine() (*CoreEngineAccess, error) {
+	if err := r.authorize(PluginCoreEngine); err != nil {
 		return nil, err
 	}
-	a := &CoreRuntimeAccess{}
+	a := &CoreEngineAccess{}
 	r.activate = append(r.activate, a.activate)
 	r.hooks.internalClose = append(r.hooks.internalClose, a.close)
 	return a, nil
 }
 
-func (a *CoreRuntimeAccess) activate(rt *Runtime) {
+func (a *CoreEngineAccess) activate(rt *Runtime) {
 	a.mu.Lock()
 	a.rt = rt
 	a.mu.Unlock()
 }
 
-func (a *CoreRuntimeAccess) close() error {
+func (a *CoreEngineAccess) close() error {
 	a.mu.Lock()
 	a.rt = nil
 	a.mu.Unlock()
 	return nil
 }
 
-// Runtime returns the authorized runtime while the plugin is active.
-func (a *CoreRuntimeAccess) Runtime() (*Runtime, error) {
+func (a *CoreEngineAccess) runtime() (*Runtime, error) {
 	if a == nil {
-		return nil, fmt.Errorf("wago: nil core runtime access: %w", ErrPermissionDenied)
+		return nil, fmt.Errorf("wago: nil core engine access: %w", ErrPermissionDenied)
 	}
 	a.mu.RLock()
 	rt := a.rt
 	a.mu.RUnlock()
 	if rt == nil {
-		return nil, fmt.Errorf("wago: core runtime access is inactive: %w", ErrPermissionDenied)
+		return nil, fmt.Errorf("wago: core engine access is inactive: %w", ErrPermissionDenied)
 	}
 	return rt, nil
+}
+
+func (a *CoreEngineAccess) Compile(source []byte) (*Module, error) {
+	rt, err := a.runtime()
+	if err != nil {
+		return nil, err
+	}
+	return rt.Compile(source)
+}
+
+func (a *CoreEngineAccess) Instantiate(ctx context.Context, mod *Module, opts ...InstantiateOption) (*Instance, error) {
+	rt, err := a.runtime()
+	if err != nil {
+		return nil, err
+	}
+	return rt.Instantiate(ctx, mod, opts...)
+}
+
+func (a *CoreEngineAccess) NewHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error) {
+	rt, err := a.runtime()
+	if err != nil {
+		return nil, err
+	}
+	return rt.NewHostFuncRef(fn, sig)
 }
