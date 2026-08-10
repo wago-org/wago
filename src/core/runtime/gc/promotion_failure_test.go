@@ -2,7 +2,6 @@ package gc
 
 import (
 	"errors"
-	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -91,8 +90,11 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	nurseryHandlesBefore := slices.Clone(c.nurseryHandles)
 	rememberedBefore := slices.Clone(c.remembered)
 	objectCardsBefore := slices.Clone(c.objectCards)
+	freeCardSlotBefore := c.freeObjectCardSlot
 	slotCardsBefore := slices.Clone(c.slotCards)
-	slotCardSlotBefore := maps.Clone(c.slotCardSlot)
+	globalCardBitsBefore := slices.Clone(c.globalCardBits)
+	tableCardBitsBefore := slices.Clone(c.tableCardBits)
+	cardFallbackBefore := c.cardFallback
 
 	err = c.CollectMinor(slots)
 	if err == nil || !strings.Contains(err.Error(), "throughput heap exhausted") {
@@ -107,8 +109,9 @@ func TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved(t *testing.T)
 	if !slices.Equal(c.nurseryHandles, nurseryHandlesBefore) {
 		t.Fatal("nursery handle set changed after failed promotion")
 	}
-	if !slices.Equal(c.remembered, rememberedBefore) || !slices.Equal(c.objectCards, objectCardsBefore) ||
-		!slices.Equal(c.slotCards, slotCardsBefore) || !maps.Equal(c.slotCardSlot, slotCardSlotBefore) {
+	if !slices.Equal(c.remembered, rememberedBefore) || !slices.Equal(c.objectCards, objectCardsBefore) || c.freeObjectCardSlot != freeCardSlotBefore ||
+		!slices.Equal(c.slotCards, slotCardsBefore) ||
+		!slices.Equal(c.globalCardBits, globalCardBitsBefore) || !slices.Equal(c.tableCardBits, tableCardBitsBefore) || c.cardFallback != cardFallbackBefore {
 		t.Fatal("remembered or card metadata changed after failed promotion")
 	}
 	if len(c.promotionScratch) != 0 || cap(c.promotionScratch) == 0 {

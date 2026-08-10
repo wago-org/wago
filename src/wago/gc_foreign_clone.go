@@ -288,7 +288,7 @@ func restoreForeignGCGraph(target *Instance, objects []gcObjectSnapshot, root gc
 			return rollback(fmt.Errorf("root cloned GC graph: %w", err))
 		}
 	} else {
-		slot, err := target.gc.NewCheckedGlobalSlot(result)
+		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(result, gc.RootForeignInstance)
 		if err != nil {
 			return rollback(fmt.Errorf("root cloned GC graph: %w", err))
 		}

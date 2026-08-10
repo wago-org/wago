@@ -6,7 +6,7 @@ import "unsafe"
 // generated code. Native code must compare this value before following any
 // pointer. The view is refreshed in place whenever a growable backing slice can
 // relocate; callers must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 3
+const NativeABIVersion uint32 = 6
 
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
@@ -23,10 +23,11 @@ const (
 	NativeSpaceLarge             byte = byte(spaceLarge)
 	NativeSpaceTiny              byte = byte(spaceTiny)
 	NativeSpaceCount                  = 5
-	NativeObjectCardStride            = 12
+	NativeObjectCardStride            = 16
 	NativeObjectCardHandleOffset      = 0
 	NativeObjectCardStartOffset       = 4
 	NativeObjectCardEndOffset         = 8
+	NativeObjectCardNextOffset        = 12
 )
 
 // NativeSpaceView names one collector heap backing. Space zero deliberately
@@ -45,39 +46,43 @@ type NativeSpaceView struct {
 // All fields use naturally aligned fixed-width words so their offsets are the
 // same on amd64 and arm64. Keep offset constants below in sync.
 type NativeCollectorView struct {
-	Version           uint32
-	HandleStride      uint32
-	Handles           uintptr
-	HandleCount       uint32
-	_                 uint32
-	Spaces            [NativeSpaceCount]NativeSpaceView
-	RefreshGeneration uint64
-	ObjectCards       uintptr
-	ObjectCardCount   uint32
-	_                 uint32
-	StructAllocState  uintptr
-	StructAllocEpoch  uintptr
-	NurseryBump       uintptr
-	AllocationCount   uintptr
+	Version               uint32
+	HandleStride          uint32
+	Handles               uintptr
+	HandleCount           uint32
+	_                     uint32
+	Spaces                [NativeSpaceCount]NativeSpaceView
+	RefreshGeneration     uint64
+	ObjectCards           uintptr
+	ObjectCardCount       uint32
+	NurseryAllocBytes     uint32
+	StructAllocState      uintptr
+	StructAllocEpoch      uintptr
+	NurseryBump           uintptr
+	AllocationCount       uintptr
+	NurseryObjectMaxBytes uint32
+	_                     uint32
 }
 
 const (
-	NativeViewVersionOffset           = 0
-	NativeViewHandleStrideOffset      = 4
-	NativeViewHandlesOffset           = 8
-	NativeViewHandleCountOffset       = 16
-	NativeViewSpacesOffset            = 24
-	NativeViewSpaceStride             = 16
-	NativeSpaceBaseOffset             = 0
-	NativeSpaceBytesOffset            = 8
-	NativeViewRefreshGenerationOffset = 104
-	NativeViewObjectCardsOffset       = 112
-	NativeViewObjectCardCountOffset   = 120
-	NativeViewStructAllocStateOffset  = 128
-	NativeViewStructAllocEpochOffset  = 136
-	NativeViewNurseryBumpOffset       = 144
-	NativeViewAllocationCountOffset   = 152
-	NativeCollectorViewSize           = 160
+	NativeViewVersionOffset               = 0
+	NativeViewHandleStrideOffset          = 4
+	NativeViewHandlesOffset               = 8
+	NativeViewHandleCountOffset           = 16
+	NativeViewSpacesOffset                = 24
+	NativeViewSpaceStride                 = 16
+	NativeSpaceBaseOffset                 = 0
+	NativeSpaceBytesOffset                = 8
+	NativeViewRefreshGenerationOffset     = 104
+	NativeViewObjectCardsOffset           = 112
+	NativeViewObjectCardCountOffset       = 120
+	NativeViewNurseryAllocBytesOffset     = 124
+	NativeViewStructAllocStateOffset      = 128
+	NativeViewStructAllocEpochOffset      = 136
+	NativeViewNurseryBumpOffset           = 144
+	NativeViewAllocationCountOffset       = 152
+	NativeViewNurseryObjectMaxBytesOffset = 160
+	NativeCollectorViewSize               = 168
 )
 
 // NativeInstanceView adds the immutable module-local to canonical-domain type
@@ -133,21 +138,25 @@ func (c *Collector) refreshNativeView() {
 	v.ObjectCards = sliceData(c.objectCards)
 	v.ObjectCardCount = uint32(len(c.objectCards))
 	if c.closed {
+		v.NurseryAllocBytes = 0
 		v.StructAllocState = 0
 		v.StructAllocEpoch = 0
 		v.NurseryBump = 0
 		v.AllocationCount = 0
+		v.NurseryObjectMaxBytes = 0
 	} else {
+		v.NurseryAllocBytes = c.edenBytes()
 		v.StructAllocState = uintptr(unsafe.Pointer(&c.nativeStructAlloc))
 		v.StructAllocEpoch = uintptr(unsafe.Pointer(&c.nativeAllocEpoch))
 		v.NurseryBump = uintptr(unsafe.Pointer(&c.nurseryBump))
 		v.AllocationCount = uintptr(unsafe.Pointer(&c.stats.Allocations))
+		v.NurseryObjectMaxBytes = c.cfg.LargeObjectBytes
 	}
 	v.RefreshGeneration++
 }
 
 // refreshNativeCards republishes the relocatable object-card backing after
-// append/remove/clear operations. In-place interval widening needs no refresh.
+// append/remove/clear operations. In-place range coalescing needs no refresh.
 func (c *Collector) refreshNativeCards() {
 	if c == nil || c.nativeView == nil {
 		return

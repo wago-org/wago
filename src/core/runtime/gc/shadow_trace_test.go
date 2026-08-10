@@ -232,7 +232,9 @@ type mismatchedShadowRoots struct {
 }
 
 func (r *mismatchedShadowRoots) RangeRoots(fn func(RootSlot) bool) { fn(&r.slot) }
-func (r *mismatchedShadowRoots) RangeRootRefs(sink RootRefSink)    { sink.VisitRootRef(r.direct) }
+func (r *mismatchedShadowRoots) RangeRootRefs(sink RootRefSink) bool {
+	return sink.VisitRootRef(r.direct)
+}
 
 func TestShadowTraceRejectsDivergentDirectRootEnumeration(t *testing.T) {
 	c := newTestCollector(t, Config{})

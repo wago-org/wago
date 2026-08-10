@@ -152,25 +152,41 @@ func (f *fn) materializeGCFrameRootLocalsForCall(importIdx int) {
 	if !gcHelperMayAllocate(helper) {
 		return
 	}
-	f.materializeGCFrameLocals(^uint64(0))
+	f.materializeAllGCFrameLocals()
 }
 
-func (f *fn) materializeGCFrameLocals(mask uint64) {
+func (f *fn) materializeAllGCFrameLocals() {
+	if f.gcFrameRoots == nil || !f.lazyZero {
+		return
+	}
+	for _, index := range f.gcFrameRoots.LocalIndexes {
+		f.materializeGCFrameLocal(index)
+	}
+}
+
+func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 	if f.gcFrameRoots == nil || !f.lazyZero {
 		return
 	}
 	for i, index := range f.gcFrameRoots.LocalIndexes {
-		if mask&(uint64(1)<<uint(i)) == 0 {
-			continue
+		live := f.gcFrameRoots.LocalLiveAt(site, i)
+		if call {
+			live = f.gcFrameRoots.CallLocalLiveAt(site, i)
 		}
-		x := int(index)
-		if x < 0 || x >= f.nLocals {
-			f.gcFrameRoots.Exact = false
-			continue
+		if live {
+			f.materializeGCFrameLocal(index)
 		}
-		if f.locals[x].state == lsConstZero {
-			f.materializeZeroLocal(x, true)
-		}
+	}
+}
+
+func (f *fn) materializeGCFrameLocal(index uint32) {
+	x := int(index)
+	if x < 0 || x >= f.nLocals {
+		f.gcFrameRoots.Exact = false
+		return
+	}
+	if f.locals[x].state == lsConstZero {
+		f.materializeZeroLocal(x, true)
 	}
 }
 

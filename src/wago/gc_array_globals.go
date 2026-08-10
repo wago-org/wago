@@ -321,22 +321,34 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	return in.CollectGC()
 }
 
-// reconcileGCGlobalRoots synchronizes the exact staged mutable GC global cells
-// with their checked collector slots after a successful native invocation. The
-// admitted bulk-copy product performs global.set only as its final operation, so
-// no allocating helper can observe the new cell before this bounded two-slot
-// reconciliation runs.
+// reconcileGCGlobalRoots synchronizes exact staged mutable GC global cells with
+// their checked collector slots after every successful native invocation. Native
+// allocation can now satisfy several constructors without a Go helper boundary,
+// so helper-triggered synchronization alone is no longer authoritative.
 func (in *Instance) reconcileGCGlobalRoots() error {
-	if in == nil || in.gc == nil || in.c == nil || in.c.stagedGCArrayProduct() != stagedGCArrayProductBulkCopy {
+	if in == nil || in.gc == nil || in.c == nil || !in.c.hasGCRefGlobals() {
 		return nil
 	}
 	state := in.pluginState.Load()
-	if state == nil || state.gcGlobalRootCount == 0 {
+	public := in.existingPublicGCState()
+	hasGeneric := public != nil && len(public.globalRoots) != 0
+	hasStaged := state != nil && state.gcGlobalRootCount != 0
+	if !hasGeneric && !hasStaged {
 		return nil
 	}
-	public := in.publicGCState()
+	if public == nil {
+		public = in.publicGCState()
+	}
 	public.mu.Lock()
 	defer public.mu.Unlock()
+	if hasGeneric {
+		if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
+			return err
+		}
+	}
+	if !hasStaged {
+		return nil
+	}
 	for i := uint8(0); i < state.gcGlobalRootCount; i++ {
 		mapping := state.gcGlobalRoots[i]
 		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {

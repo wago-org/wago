@@ -1,5 +1,7 @@
 package wago
 
+import corergc "github.com/wago-org/wago/src/core/runtime/gc"
+
 // GCHelperStats reports executed synchronous Go helper transitions for one
 // tracked collector domain.
 type GCHelperStats struct {
@@ -35,6 +37,13 @@ func (in *Instance) GCHelperStats() GCHelperStats {
 		return GCHelperStats{}
 	}
 	return snapshotGCHelperStats(in.gc)
+}
+
+// TelemetryPaths converts build-tagged helper transitions into the common
+// machine-readable path schema. Conditional native successes are measured by
+// the invoking fixture and deliberately are not inferred from fallback calls.
+func (s GCHelperStats) TelemetryPaths() corergc.PathTelemetry {
+	return corergc.PathTelemetry{GoHelperTransitions: s.Calls}
 }
 
 // SetGCHelperStatsTracking selects or clears this instance's collector domain as

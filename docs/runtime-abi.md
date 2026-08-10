@@ -44,34 +44,51 @@ ordering and covers same-memory, different-memory, and cyclic call graphs.
 Linear-memory size/growth caches remain backing-owned, while trap and stack
 fields remain invocation-owned.
 
-## Native collector metadata ABI v3
+## Native collector metadata ABI v6
 
 Collector-backed instances install a pointer at `abi.GCNativeViewPtrOffset = 280`.
-It addresses a 32-byte native prefix containing ABI version 3, a pointer to one
+It addresses a 32-byte native prefix containing ABI version 6, a pointer to one
 collector-owned view, and an immutable local-type to canonical-domain `u32` map.
 The Go object retains that map through a typed trailing slice; native code sees
 only the fixed prefix.
 
-The shared collector view is 160 bytes. ABI v3 preserves the complete 128-byte v2
-prefix: version/20-byte handle stride, current handle pointer/count, five directly
-indexed 16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
-and object-card pointer/count. It appends four stable pointers: a 144-byte native
-struct-allocation state, its independent collection epoch, the real nursery bump,
-and the semantic allocation counter. Space zero is invalid; nursery, old, large,
-and Tiny match the stable one-byte `handleEntry.space` identity at byte 18. The
-stable remembered bit at byte 19 remains native-readable and is never mutated by
-generated code.
+The shared collector view is 168 bytes. ABI v6 preserves the v5
+version/20-byte handle stride, current handle pointer/count, five directly indexed
+16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
+object-card pointer/count, Eden limit, and stable allocation pointers. The new
+byte-160 word publishes the configured nursery-object maximum; byte 124 remains
+`NurseryAllocBytes`, while the nursery descriptor covers Eden plus both survivor
+semispaces so moved handles remain directly resolvable. Space zero is invalid;
+nursery, old, large, and Tiny match the stable one-byte `handleEntry.space`
+identity at byte 18. The remembered bit at byte 19 remains native-readable and
+is never mutated by generated code.
 
-The allocation state contains `{epoch u32, cursor u32, count u32, pad}` followed by
-32 compact handle indexes. A rooted helper reserves only unpublished handle
-identities; reservation consumes no nursery bytes and does not increment semantic
-allocation/live-object statistics. Checked AMD64 constructors validate the ABI,
-epoch, handle state, canonical final type, nursery extent, and every compact
-reference initializer before advancing the real bump, initializing the object, and
-publishing the handle. Collection and Close cancel and recycle every unconsumed
-identity before tracing or releasing backing. Tiny, collection-disabled,
-collect-every-allocation, unsupported layout, exhausted nursery, and malformed
-metadata paths retain the exact helper.
+The 160-byte allocation state now contains `{epoch, cursor, count, handleBase,
+chunkStart, chunkCursor, chunkEnd, chunkBump}` as `u32` words and the retained 32
+compact handle indexes. A nonzero `handleBase` identifies a contiguous run and
+lets generated code derive a handle without loading the index array. A rooted
+array helper advances the collector bump once to reserve a bounded 4-KiB nursery
+chunk; native arrays advance only `chunkCursor`. Native structs retain the direct
+collector-bump sequence and use the same handle ticket with zero chunk fields.
+Reservation publishes neither an object nor a semantic allocation. Before any Go
+allocation, trap, collection,
+epoch change, or `Close`, unused identities are recycled and an unused top chunk
+is rewound exactly.
+
+Checked AMD64 constructors validate ABI/epoch state, the canonical final type,
+handle identity, chunk extent, widened array-size arithmetic, and every compact
+reference initializer before completing bytes and publishing the handle. Native
+array admission is deliberately bounded to statically sized objects of at most
+256 bytes: numeric/vector/packed `array.new`, `array.new_fixed`, and defaultable
+`array.new_default`, plus nullable abstract `any`/`eq` reference arrays. Dynamic
+lengths, large objects, non-final or defined-heap reference arrays,
+`array.new_data`, `array.new_elem`, Tiny, collection-disabled,
+collect-every-allocation, exhaustion, and malformed metadata retain the exact
+rooted helper. Measurements rejected larger native reservations because repeated
+chunk cancellation outweighed the removed helper transition. Generic public calls
+also delay refill until the ninth slow constructor; shorter calls remain helper-only
+because their next mandatory boundary would cancel an unamortized batch. Products
+without mandatory boundary collection refill immediately.
 
 The Collector republishes handle and heap pointers/counts and increments the
 refresh generation after every helper allocation and collection, including
@@ -526,21 +543,35 @@ is visible. Tiny copy retains overlap-safe scalar stores, while Tiny fill and co
 payload first and scan the final range once through the incremental write barrier to preserve tri-color correctness.
 Numeric fill/copy/init operations mutate the already-validated little-endian payload directly.
 Same-array copy preserves memmove semantics and allocates no temporary buffer. Throughput remembered membership
-uses a handle-owned bit plus one cold-path dense-list compaction, and cards are non-collecting scaffolding coalesced to one dirty interval per
-old/large array. Nursery writes create no cards; bulk barriers inspect only the overwritten range and leave exact
-removal to collection-time pruning. Collector-owned promotion-plan scratch is cleared and reused after success or rollback;
-together these metadata changes make the current fixed `gc.Collector` 672 bytes and `handleEntry` 20 bytes. Collector tests
-separately prove nullable/non-null storage compatibility, rejected-copy atomicity, bounded metadata growth, Throughput
-remembered/card publication, promotion rollback, and Tiny remark preservation.
+uses a handle-owned bit plus a dense dirty-object vector. Authoritative 128-byte payload cards retain linked, coalesced
+byte ranges per old/large object, while globals/tables use stable-index bitmaps plus one compact dirty-slot vector.
+Nursery destinations create no object cards. Bulk barriers publish the complete destination first, then dirty the exact
+byte range without rescanning values. A helper hit on a non-head object range swaps only the interval into the stable
+head slot, so generated code can reuse its constant-time checked card path without relocating native backing or changing
+links. Minor collection scans only exact transient roots, dirty persistent slots, and those card ranges before tracing
+nursery survivors. A metadata-growth injection arms one shared whole-object/full-persistent-root fallback until the young
+generation drains, so a later successful card addition cannot hide an edge published during an earlier failure.
+Collector-owned promotion-plan scratch is cleared and
+reused after success or rollback. Throughput Eden now evacuates first survivors into one of two bounded semispaces;
+two age bits occupy unused high `handleEntry.class` bits, and large young objects age in place. A fixed threshold starts
+at two survivals and adapts between one and three from survivor occupancy, old-space pressure, recent full collections,
+and an optional pause target. Useful object/root cards remain authoritative across survivor movement and clear when no
+young edge remains. The Native collector view is ABI v6 for shared struct/array handle runs, nursery chunks, and the explicit
+nursery-object maximum; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
+`gc.Collector` is 1,120 bytes. Collector
+tests separately prove nullable/non-null storage compatibility, rejected-copy atomicity, sparse/dense card behavior,
+root bitmap consistency, failure fallback, promotion rollback, and Tiny remark preservation.
 
-The exact copy product also contains a mutable GC array global. Its overlap functions allocate one array,
-run only the non-collecting copy helper while that local is live, and perform `global.set` as the final native
-operation. After successful return, `Instance.invoke` and `invokeLocalContext` call a reconciliation routine
-that is gated to `stagedGCArrayProductBulkCopy`: it reads at most two compact global cells, validates that the
-high word is zero, and updates the corresponding checked collector slots under the existing GC mutex. No
-later may-collect helper runs before this synchronization. A trap before the final `global.set` leaves both
-cell and slot unchanged. This post-return rule must not be generalized to a mutable GC global whose new value
-can cross another allocation, host/cross-instance call, tail transfer, or snapshot boundary.
+After every successful native invocation with exact GC-global mappings,
+`Instance.invoke` and `invokeLocalContext` reconcile the compact global cells with
+their checked collector slots under the existing GC mutex. This is no longer
+limited to the bulk-copy product: a native allocation batch can satisfy several
+constructors without a Go helper boundary, so helper-triggered synchronization
+alone is not authoritative. Modules without collector-reference globals return
+before loading mutable reconciliation state. The routine remains a zero-work early return for
+instances without mapped GC globals, validates compact high words, and runs
+before any subsequent invocation or explicit boundary collection. A trap leaves
+both cell and slot at their last successfully published values.
 
 No fixed ABI layout grows: `Compiled=712`, `Instance=792`, `compiledCodeCache=64`,
 `compiledMemoryDirectory=136`, `gcArrayGlobalInit=48`, lazy `instancePluginState=144`, and
@@ -903,7 +934,7 @@ copying or serializing basedata images. Reference harness arguments/results
 externalize through exact store-owned tokens and release transient roots after
 comparison. These changes preserve no-cgo operation, transactional rollback,
 deduplicated producer retention, and fail-closed live snapshot/platform
-boundaries. The recorded conformance baseline is 2,226 modules and 58,238
+boundaries. The recorded conformance baseline is 2,226 modules and 58,038
 assertions passed with zero failures, skips, or gap counters.
 
 ## Iteration 75 generated WasmGC helper ABI
@@ -935,10 +966,36 @@ Runtime struct/array access accepts the object's declared subtype of the static
 instruction type; same-module type-index reachability avoids cross-module
 structural-equivalence maps on the hot path.
 
-General generated modules still publish no complete native frame chain. Their
-collector is therefore forced into bounded collection-disabled Throughput mode:
-allocation never scans an incomplete frame, object handles remain stable, and
-exhaustion is an explicit error. No raw Go heap or object-payload pointer crosses
-back into native code. This ABI does not authorize live generic GC values across
-host/cross-instance calls, snapshots, codec reload, signal-backed execution, or
-non-amd64 GC lowering.
+## Wide exact native-root maps
+
+The exact linux/amd64 and Linux/Darwin arm64 frame-map ABI supports at most 1,024
+collector roots in one native frame. This is a metadata bound, not a public
+parameter/result-slot bound. Functions with at most 64 tracked collector locals
+retain one `uint64` liveness word per site. Functions with 65-128 roots use one
+low word plus one extra word. Wider functions store all remaining words in one
+flat, site-major arena; no instruction or CFG node owns a Go slice or heap bitset.
+The arenas are compile-only and are flattened into sorted frame offsets before
+code publication.
+
+Dense allocation safepoint IDs and return-PC callsite lookup are unchanged.
+Generated code tests each site's mask while materializing lazy-zero locals, then
+unions exact hidden operand spills and fixed EH payload offsets. Runtime and codec
+metadata permit at most 1,024 sorted, aligned offsets per frame. Repeated identical
+offset vectors share immutable backing storage after compilation and codec load;
+the serialized v33 form remains an independently validated offset sequence and
+never contains live frames, liveness arenas, collector handles, or process-local
+owners.
+
+A local `() -> ()` start function may use this exact frame protocol. Imported
+starts remain closed because their host ownership graph is unknown. Admission is
+per function where provably safe: a function that cannot allocate or call may
+omit a frame plan without disabling exact collecting functions in the same
+module. Any collecting function with an unsupported call ABI, ownership shape,
+frame layout, malformed liveness graph, more than 1,024 roots, or incomplete
+backend map keeps the module fail-closed in bounded collection-disabled
+Throughput mode. `Compiled.GCNativeRootAdmission` exposes the decision and its
+specific reason without exposing executable pointers or live runtime state.
+
+No raw Go heap or object-payload pointer crosses back into native code. Unknown
+host and cross-runtime collector graphs remain rejected even when their root
+count fits the metadata representation.

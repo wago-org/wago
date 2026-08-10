@@ -28,6 +28,9 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayAllocDefaultNative  uint32 = 32
+	gcArrayAllocUniformNative  uint32 = 33
+	gcArrayAllocFixedNative    uint32 = 34
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -68,6 +71,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
 	if gcHelperMayAllocate(helper) {
+		in.gc.CancelNativeAllocationBatch()
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
@@ -463,7 +467,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panic(gcStructHelperError{err: err})
 		}
 		results[0] = uint64(ref)
-	case gcArrayAllocUniform:
+	case gcArrayAllocUniform, gcArrayAllocUniformNative:
 		if len(args) < 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-uniform helper arity = %d/%d, want at least 3/at-least-1", len(args), len(results))})
 		}
@@ -479,7 +483,10 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panicArrayError(err)
 		}
 		results[0] = uint64(ref)
-	case gcArrayAllocFixed:
+		if helper == gcArrayAllocUniformNative {
+			in.prepareNativeArrayAllocation(typeID, length)
+		}
+	case gcArrayAllocFixed, gcArrayAllocFixedNative:
 		if len(args) < 2 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed helper arity = %d/%d, want at-least-2/at-least-1", len(args), len(results))})
 		}
@@ -502,7 +509,10 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panicArrayError(err)
 		}
 		results[0] = uint64(ref)
-	case gcArrayAllocDefault:
+		if helper == gcArrayAllocFixedNative {
+			in.prepareNativeArrayAllocation(typeID, count)
+		}
+	case gcArrayAllocDefault, gcArrayAllocDefaultNative:
 		if len(args) != 2 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-default helper arity = %d/%d, want 2/at-least-1", len(args), len(results))})
 		}
@@ -511,6 +521,9 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panicArrayError(err)
 		}
 		results[0] = uint64(ref)
+		if helper == gcArrayAllocDefaultNative {
+			in.prepareNativeArrayAllocation(uint32(args[1]), uint32(args[0]))
+		}
 	case gcArrayGet, gcArrayGetS, gcArrayGetU:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array get helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})

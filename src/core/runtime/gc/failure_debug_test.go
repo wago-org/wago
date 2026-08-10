@@ -8,6 +8,38 @@ import (
 	"testing"
 )
 
+func TestObjectCardReuseDoesNotConsumeGrowthFailure(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	arrays := make([]Ref, 4)
+	for i := range arrays {
+		var err error
+		arrays[i], err = c.NewArrayDefault(3, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(arrays[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.CardMarkArray(arrays[0], 0)
+	c.CardMarkArray(arrays[1], 0)
+	c.removeCardsForHandle(handleOf(arrays[0]))
+	if c.freeObjectCardSlot == 0 {
+		t.Fatal("card removal did not publish a reusable slot")
+	}
+
+	cleanup := armFailure(c, failObjectCardGrowth, 0)
+	c.CardMarkArray(arrays[2], 0)
+	if c.entry(arrays[2]).cardSlot == 0 || c.freeObjectCardSlot != 0 {
+		t.Fatalf("reusable slot incorrectly used growth failure: slot=%d free=%d", c.entry(arrays[2]).cardSlot, c.freeObjectCardSlot)
+	}
+	c.CardMarkArray(arrays[3], 0)
+	cleanup()
+	if c.entry(arrays[3]).cardSlot != 0 || !c.entry(arrays[3]).remembered || !c.cardFallback {
+		t.Fatalf("growth failure did not retain whole-object fallback: slot=%d remembered=%v fallback=%v", c.entry(arrays[3]).cardSlot, c.entry(arrays[3]).remembered, c.cardFallback)
+	}
+}
+
 func TestInjectedPromotionFailuresAreTransactional(t *testing.T) {
 	points := []failurePoint{failPromotionPlan, failPromotionDestination, failPromotionCommit}
 	for _, point := range points {
@@ -31,6 +63,30 @@ func TestInjectedPromotionFailuresAreTransactional(t *testing.T) {
 			assertPromotionStateEqual(t, c, before)
 			c.Close()
 		}
+	}
+}
+
+func TestInjectedPromotionFailureIsReportedByTelemetry(t *testing.T) {
+	if !collectorTelemetryEnabled {
+		t.Skip("collector telemetry requires wago_gcstats")
+	}
+	telemetry := new(Telemetry)
+	c := newTestCollector(t, Config{Telemetry: telemetry, NurseryBytes: 4096, ThroughputHeapBytes: 8192, ThroughputPageBytes: 4096})
+	defer c.Close()
+	object, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(object)
+	cleanup := armFailure(c, failPromotionPlan, 0)
+	err = c.CollectMinor(Slots{&root})
+	cleanup()
+	if !errors.Is(err, errInjectedFailure) {
+		t.Fatalf("error = %v", err)
+	}
+	snapshot, ok := c.TelemetrySnapshot()
+	if !ok || snapshot.Minor.Cycles != 1 || snapshot.Minor.FailedCycles != 1 || snapshot.Minor.Pause.Count != 1 {
+		t.Fatalf("failed-cycle telemetry = %+v, enabled=%v", snapshot.Minor, ok)
 	}
 }
 
@@ -107,8 +163,6 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 	})
 	t.Run("backing growth", func(t *testing.T) {
 		c := newTestCollector(t, Config{LargeObjectBytes: 16})
-		c.throughput.largestFree = 256
-		c.throughput.largestFreeDirty = true
 		before := snapshotPromotionState(c)
 		defer armFailure(&c.throughput, failBackingGrowth, 0)()
 		if _, err := c.NewStructDefault(0); !errors.Is(err, errInjectedFailure) {
@@ -118,8 +172,6 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 	})
 	t.Run("collection-disabled backing growth", func(t *testing.T) {
 		c := newTestCollector(t, Config{DisableCollection: true})
-		c.throughput.largestFree = 256
-		c.throughput.largestFreeDirty = true
 		before := snapshotPromotionState(c)
 		defer armFailure(&c.throughput, failBackingGrowth, 0)()
 		if _, err := c.NewStructDefault(0); !errors.Is(err, errInjectedFailure) {
@@ -133,8 +185,6 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c.throughput.largestFree = 256
-		c.throughput.largestFreeDirty = true
 		before := snapshotPromotionState(c)
 		defer armFailure(&c.throughput, failBackingGrowth, 0)()
 		if err := c.ForcePromote(object); !errors.Is(err, errInjectedFailure) {
@@ -211,8 +261,8 @@ func TestInjectedCardGrowthLeavesMetadataUnchanged(t *testing.T) {
 	cleanup = armFailure(c, failSlotCardGrowth, 0)
 	c.addSlotCard(SlotGlobal, global)
 	cleanup()
-	if !reflect.DeepEqual(c.slotCards, beforeSlotCards) || len(c.slotCardSlot) != 0 {
-		t.Fatal("slot card failure partially mutated metadata")
+	if !reflect.DeepEqual(c.slotCards, beforeSlotCards) || cardBitIsSet(c.globalCardBits, global) || !c.cardFallback {
+		t.Fatal("slot card failure did not preserve metadata and arm the full-root fallback")
 	}
 }
 
@@ -225,14 +275,14 @@ func TestNativeBatchCancellationAcrossCollectionAndClose(t *testing.T) {
 	if err := c.CollectFull(EmptyRoots{}); err != nil {
 		t.Fatal(err)
 	}
-	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || len(c.nurseryHandles) != 0 {
+	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.ChunkEnd != 0 || len(c.nurseryHandles) != 0 {
 		t.Fatal("collection did not atomically cancel native handle batch")
 	}
 	if !c.PrepareNativeStructHandles() {
 		t.Fatal("prepare replacement native handles")
 	}
 	c.Close()
-	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 || c.nativeStructAlloc.Epoch != c.nativeAllocEpoch {
+	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 || c.nativeStructAlloc.ChunkEnd != 0 || c.nativeStructAlloc.Epoch != c.nativeAllocEpoch {
 		t.Fatal("Close left native handle reservations or a stale epoch")
 	}
 }
@@ -254,7 +304,7 @@ func TestNativeBatchCancellationSurvivesInjectedCollectionFailure(t *testing.T) 
 	if !errors.Is(err, errInjectedFailure) {
 		t.Fatalf("collection error = %v", err)
 	}
-	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 {
+	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 || c.nativeStructAlloc.ChunkEnd != 0 {
 		t.Fatal("failed collection retained native reservations or stale epoch")
 	}
 	occurrences := 0

@@ -76,6 +76,8 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 
 // spillF evicts a V-resident float/vector value to a fresh frame slot.
 func (f *fn) spillF(e *elem) {
+	before := f.a.Len()
+	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
 	r := e.st.reg
 	if e.st.typ == mtCustom {
 		slot := f.allocSpillSlots(int(e.st.custom.Size() / 8))
@@ -119,7 +121,9 @@ func (f *fn) materializeF(e *elem) Reg {
 		return x
 	case stSlot:
 		x := f.allocFReg(0)
+		before := f.a.Len()
 		f.a.LdrF(x, a64.SP, f.spillOff(e.st.slot), true) // 8B; f32 uses the low 4
+		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:

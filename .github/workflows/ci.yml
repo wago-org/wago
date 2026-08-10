@@ -501,7 +501,8 @@ jobs:
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.
-      # Coverage merges the normal, guard-page, spec1, spec2, and SIMD gates.
+      # Coverage merges normal, focused wago_gcstats collector, guard-page,
+      # spec1, spec2, and SIMD gates.
       # The spec card still renders its own per-version accounting afterward.
       - name: Produce card fragments
         env:

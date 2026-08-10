@@ -118,6 +118,46 @@ func TestGCExecutedHelperStatsTrackOldStructBarrierFallback(t *testing.T) {
 	}
 }
 
+func TestGCExecutedHelperStatsTrackDistantArrayCardFallbacks(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeOldArrayReferenceStoreFixture(130, 129))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("init"); err != nil {
+		t.Fatal(err)
+	}
+	array := corergc.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	if err := instance.gc.ForcePromote(array); err != nil {
+		t.Fatal(err)
+	}
+	instance.SetGCHelperStatsTracking(true)
+	defer instance.SetGCHelperStatsTracking(false)
+	if _, err := instance.Invoke("set_both"); err != nil {
+		t.Fatal(err)
+	}
+	if stats := instance.GCHelperStats(); stats.MutationCalls != 2 || stats.AllocationCalls != 0 {
+		t.Fatalf("distant old-array stores stats = %+v, want one fallback per fixed card", stats)
+	}
+	if _, err := instance.Invoke("set_first"); err != nil {
+		t.Fatal(err)
+	}
+	if stats := instance.GCHelperStats(); stats.MutationCalls != 3 || stats.AllocationCalls != 0 {
+		t.Fatalf("first repeated non-head store stats = %+v, want one move-to-front fallback", stats)
+	}
+	if _, err := instance.Invoke("set_first"); err != nil {
+		t.Fatal(err)
+	}
+	if stats := instance.GCHelperStats(); stats.MutationCalls != 3 || stats.AllocationCalls != 0 {
+		t.Fatalf("warmed moved card store stats = %+v, want native head-card reuse", stats)
+	}
+}
+
 func TestGCExecutedHelperStatsTrackOldArrayCardFallback(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeOldArrayReferenceStoreBytes())
 	if err != nil {

@@ -430,63 +430,49 @@ func TestThroughputReservationLenDoesNotWrapPastUint32(t *testing.T) {
 }
 
 func TestThroughputVerifyFreeSpanCorruption(t *testing.T) {
-	c := newTestCollector(t, Config{StressNurseryBytes: 96, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, LargeObjectBytes: 128})
-	a, _ := c.NewStructDefault(0)
-	root := Root(a)
-	if err := c.CollectMinor(Slots{&root}); err != nil {
-		t.Fatal(err)
-	}
-	root = Root(Null())
-	if err := c.CollectFull(Slots{&root}); err != nil {
-		t.Fatal(err)
-	}
-	cls := c.throughput.classFor(Align8(StructSizeMust(testTypes(t)[0])))
-	if cls < 0 || c.throughput.freeHeads[cls] == throughputNoSlot {
-		t.Fatal("expected class free slot")
-	}
-	idx := c.throughput.freeHeads[cls]
-	c.throughput.freeSlots[cls][idx].next = idx
-	if err := c.Verify(nil); err == nil {
-		t.Fatal("duplicate/cyclic class free slot passed verify")
-	}
-
-	c = newTestCollector(t, Config{StressNurseryBytes: 96, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, LargeObjectBytes: 128})
-	a, _ = c.NewStructDefault(0)
-	root = Root(a)
-	if err := c.CollectMinor(Slots{&root}); err != nil {
-		t.Fatal(err)
-	}
-	root = Root(Null())
-	if err := c.CollectFull(Slots{&root}); err != nil {
-		t.Fatal(err)
-	}
-	cls = c.throughput.classFor(Align8(StructSizeMust(testTypes(t)[0])))
-	idx = c.throughput.freeHeads[cls]
-	slotOff := c.throughput.freeSlots[cls][idx].off
-	c.throughput.largeFree = append(c.throughput.largeFree, throughputLargeFree{off: slotOff, size: 64})
-	c.throughput.recomputeLargestFree()
-	if err := c.Verify(nil); err == nil {
-		t.Fatal("class free slot overlapping large free span passed verify")
+	newFragmented := func(t *testing.T) *Collector {
+		t.Helper()
+		c := newTestCollector(t, Config{DisableCollection: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
+		entries := make([]handleEntry, 4)
+		for i := range entries {
+			var err error
+			entries[i], err = c.throughput.alloc(64, spaceLarge)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := c.throughput.free(entries[0]); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.throughput.free(entries[2]); err != nil {
+			t.Fatal(err)
+		}
+		return c
 	}
 
-	c = newTestCollector(t, Config{LargeObjectBytes: 64, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
-	large, _ := c.NewArray(2, 32, I32Value(1))
-	root = Root(large)
-	if err := c.CollectFull(Slots{&root}); err != nil {
-		t.Fatal(err)
+	c := newFragmented(t)
+	root := c.throughput.spanRoot
+	c.throughput.spanNodes[root].left = root
+	if err := c.throughput.verify(nil); err == nil {
+		t.Fatal("cyclic free-span tree passed verify")
 	}
-	root = Root(Null())
-	if err := c.CollectFull(Slots{&root}); err != nil {
-		t.Fatal(err)
+
+	c = newFragmented(t)
+	root = c.throughput.spanRoot
+	c.throughput.spanNodes[root].maxSize++
+	if err := c.throughput.verify(nil); err == nil {
+		t.Fatal("stale free-span summary passed verify")
 	}
-	if len(c.throughput.largeFree) == 0 {
-		t.Fatal("expected large free span")
+
+	c = newFragmented(t)
+	spans := c.throughput.freeSpans()
+	if len(spans) != 2 {
+		t.Fatalf("free spans = %v, want two", spans)
 	}
-	s := c.throughput.largeFree[0]
-	c.throughput.largeFree = append(c.throughput.largeFree, throughputLargeFree{off: s.off + 8, size: 32})
-	c.throughput.recomputeLargestFree()
-	if err := c.Verify(nil); err == nil {
-		t.Fatal("overlapping large free spans passed verify")
+	idx := c.throughput.findSpanByOffset(spans[1].off)
+	c.throughput.spanNodes[idx].off = spans[0].off + 16
+	if err := c.throughput.verify(nil); err == nil {
+		t.Fatal("overlapping free spans passed verify")
 	}
 }
 

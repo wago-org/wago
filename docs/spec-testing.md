@@ -48,12 +48,12 @@ check.
 
 `make spec3` verifies checksum-pinned WABT 1.0.41 and the official 3.0.0
 reference interpreter built from the exact Release 3 pin. WABT remains primary;
-28 unsupported text files fall back to the strict binary-script converter. The
-current schema-2 inventory processes all 258 files with zero parser failures:
-144 green/114 red, modules pass=1,691/skip=535, assertions
-pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
-in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
-`select` funcref wildcard failure is green. Iteration 13 decodes bounded Core 3
+28 unsupported text files fall back to the strict binary-script converter. The authoritative current schema-2 inventory is
+`tests/spec-v3-baseline.json`: all 258 files are green with zero parser failures,
+2,226 modules passed, and 58,038 assertions passed, with zero failures, skips, or
+gap categories. CI qualifies the same pinned suite. The iteration accounting
+below is retained as historical implementation evidence rather than current
+conformance status. Iteration 13 decodes bounded Core 3
 `0x7f` mixed-kind and `0x7e` shared-kind compact import groups on both decoder
 paths, with malformed count/kind/type/index rejection and default Release 2
 fail-closed validation. A focused runner converts the actual pinned

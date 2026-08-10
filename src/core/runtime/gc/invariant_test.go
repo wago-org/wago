@@ -296,13 +296,11 @@ func TestVerifyRejectsInvalidCardMetadata(t *testing.T) {
 		t.Fatal("Verify accepted inconsistent object-card membership")
 	}
 	c.handles[h].cardSlot = cardSlot
-	globalCardKey := slotCardKey(SlotGlobal, g)
-	globalCardSlot := c.slotCardSlot[globalCardKey]
-	delete(c.slotCardSlot, globalCardKey)
+	c.globalCardBits[g>>6] &^= uint64(1) << (g & 63)
 	if err := c.Verify(nil); err == nil {
 		t.Fatal("Verify accepted inconsistent slot-card membership")
 	}
-	c.slotCardSlot[globalCardKey] = globalCardSlot
+	c.globalCardBits[g>>6] |= uint64(1) << (g & 63)
 
 	validObjectCards := append([]objectCard(nil), c.objectCards...)
 	validSlotCards := append([]slotCard(nil), c.slotCards...)
@@ -315,7 +313,7 @@ func TestVerifyRejectsInvalidCardMetadata(t *testing.T) {
 	if err := c.Verify(nil); err == nil {
 		t.Fatal("Verify accepted out-of-range object-card handle")
 	}
-	c.objectCards = append(validObjectCards[:0:0], objectCard{handle: handleOf(arr), index: 0})
+	c.objectCards = validObjectCards
 	c.slotCards = validSlotCards
 	root := Root(Null())
 	if err := c.SetGlobalSlot(g, Null()); err != nil {
@@ -412,6 +410,35 @@ func TestCollectMinorRunsRememberedShadowBeforeEvacuation(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsMalformedObjectCardFreeList(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	tests := []struct {
+		name  string
+		cards []objectCard
+		head  uint32
+	}{
+		{name: "stale head", cards: []objectCard{{}}, head: 2},
+		{name: "cycle", cards: []objectCard{{next: 1}}, head: 1},
+		{name: "unlinked tombstone", cards: []objectCard{{}}, head: 0},
+		{name: "free slot retains payload", cards: []objectCard{{index: 1}}, head: 1},
+		{name: "free slot retains handle", cards: []objectCard{{handle: 1}}, head: 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c.objectCards = append(c.objectCards[:0], tc.cards...)
+			c.freeObjectCardSlot = tc.head
+			if err := c.Verify(nil); err == nil {
+				t.Fatalf("Verify accepted cards=%+v free=%d", tc.cards, tc.head)
+			}
+		})
+	}
+	c.objectCards = c.objectCards[:0]
+	c.freeObjectCardSlot = 0
+	if err := c.Verify(nil); err != nil {
+		t.Fatalf("restored card metadata: %v", err)
+	}
+}
+
 func TestVerifyTinyRetainsRememberedMetadataChecks(t *testing.T) {
 	c := newTinyTestCollector(t, Config{})
 	r, err := c.NewStructDefault(0)
@@ -487,14 +514,14 @@ func TestRememberedCardMetadataIsBoundedAndPruned(t *testing.T) {
 		if err := c.SetGlobalSlot(g, Null()); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := len(c.slotCards), beforeSlots+1; got != want {
-			t.Fatalf("global slot card not pruned after null overwrite: got %d want %d", got, want)
+		if got, want := len(c.slotCards), beforeSlots+2; got != want {
+			t.Fatalf("global slot card should remain conservative until collection: got %d want %d", got, want)
 		}
 		if err := c.SetTableSlot(tab, I31New(7)); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := len(c.slotCards), beforeSlots; got != want {
-			t.Fatalf("table slot card not pruned after i31 overwrite: got %d want %d", got, want)
+		if got, want := len(c.slotCards), beforeSlots+2; got != want {
+			t.Fatalf("table slot card should remain conservative until collection: got %d want %d", got, want)
 		}
 		oldRoot, err := c.NewStructDefault(0)
 		if err != nil {
@@ -506,21 +533,21 @@ func TestRememberedCardMetadataIsBoundedAndPruned(t *testing.T) {
 		if err := c.SetGlobalSlot(g, young); err != nil {
 			t.Fatal(err)
 		}
-		if len(c.slotCards) != beforeSlots+1 {
-			t.Fatalf("global young overwrite did not restore slot card: got %d want %d", len(c.slotCards), beforeSlots+1)
+		if len(c.slotCards) != beforeSlots+2 {
+			t.Fatalf("global young overwrite duplicated stable slot card: got %d want %d", len(c.slotCards), beforeSlots+2)
 		}
 		if err := c.SetGlobalSlot(g, oldRoot); err != nil {
 			t.Fatal(err)
 		}
-		if len(c.slotCards) != beforeSlots {
-			t.Fatalf("global slot card not pruned after old overwrite: got %d want %d", len(c.slotCards), beforeSlots)
+		if len(c.slotCards) != beforeSlots+2 {
+			t.Fatalf("global slot card should remain conservative after old overwrite: got %d want %d", len(c.slotCards), beforeSlots+2)
 		}
 
 		if err := c.ArraySet(arr, 2, RefValue(Null())); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := c.CardCount(), beforeCards+1; got != want {
-			t.Fatalf("object card range should stay conservative and coalesced: got %d want %d", got, want)
+		if got, want := c.CardCount(), beforeCards+3; got != want {
+			t.Fatalf("object and root cards should stay conservative until collection: got %d want %d", got, want)
 		}
 		if err := c.CollectMinor(nil); err != nil {
 			t.Fatal(err)
@@ -584,8 +611,8 @@ func TestRememberedAndCardMetadataScaleWithObjectsNotWrites(t *testing.T) {
 	if c.RememberedCount() != 1 || len(c.objectCards) != 1 {
 		t.Fatalf("one-array metadata = remembered %d cards %d, want 1/1", c.RememberedCount(), len(c.objectCards))
 	}
-	if card := c.objectCards[0]; card.index != 0 || card.end != 4095 {
-		t.Fatalf("one-array dirty interval = %d..%d, want 0..4095", card.index, card.end)
+	if card := c.objectCards[0]; card.index != 0 || card.end != 16383 {
+		t.Fatalf("one-array dirty byte interval = %d..%d, want 0..16383", card.index, card.end)
 	}
 
 	const objectCount = 256
@@ -640,8 +667,8 @@ func TestRememberedAndCardMetadataScaleWithObjectsNotWrites(t *testing.T) {
 	if got, want := c.RememberedCount(), objectCount/2; got != want {
 		t.Fatalf("full collection exact remembered=%d, want %d", got, want)
 	}
-	if c.CardCount() != 0 {
-		t.Fatalf("full collection retained scaffold cards=%d", c.CardCount())
+	if got, want := c.CardCount(), objectCount/2; got != want {
+		t.Fatalf("full collection card inputs=%d, want %d for surviving nursery edges", got, want)
 	}
 	for _, array := range arrays {
 		if err := c.ArraySet(array, 0, RefValue(Null())); err != nil {
