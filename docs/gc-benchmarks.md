@@ -386,7 +386,7 @@ A post-audit set of ten CPU-0-pinned 500 ms execution samples measured medians o
 0 allocs/op. Thus the retained path was 7.3% faster than shared-without-reuse and 6.9%
 faster than fully inline resolution on this repeated-access fixture. A same-command
 stripped `wago_runtime` TinyGo build was 2,096,928 bytes at the baseline SHA and
-2,106,840 bytes after the tertiary audit (+9,912, +0.473%); the fixed 64-byte
+2,106,824 bytes after the tertiary audit (+9,896, +0.472%); the fixed 64-byte
 compiled-code cache and runtime collector/instance/view layouts do not grow. This
 fixture proves the intended dense straight-line case; it does not claim every static
 shared-stub site is dynamically hot.

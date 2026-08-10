@@ -353,6 +353,15 @@ func TestGCHelperHintScannersMarkNativeCalls(t *testing.T) {
 	}
 }
 
+func TestGCReferenceHintRequiresHelperAdmission(t *testing.T) {
+	if gcOrAtomicInstructionMayCall(wasm.InstrRefTest, false) {
+		t.Fatal("helper-free ref.test was classified as a call")
+	}
+	if !gcOrAtomicInstructionMayCall(wasm.InstrRefTest, true) {
+		t.Fatal("generic ref.test helper call was not classified")
+	}
+}
+
 func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 	ast := wasm.Expr{Instrs: []wasm.Instruction{
 		{Kind: wasm.InstrTryTable},
@@ -385,7 +394,7 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		m.Code = append(m.Code, wasm.Func{BodyBytes: b, Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 1, Type: wasm.I32}}}})
 	}
 
-	allHints, agg, err := computeModuleHints(m, m.GlobalCount(), 0, nil)
+	allHints, agg, err := computeModuleHints(m, m.GlobalCount(), 0, nil, false)
 	if err != nil {
 		t.Fatalf("computeModuleHints: %v", err)
 	}

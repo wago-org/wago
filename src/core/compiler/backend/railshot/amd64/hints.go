@@ -211,27 +211,28 @@ func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h fun
 }
 
 func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
-	return scanFuncBodyIntoMemory64WithModule(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, nil, nil)
+	return scanFuncBodyIntoMemory64WithModule(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, nil, nil, false)
 }
 
-func scanFuncBodyIntoMemory64WithModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout) (funcHints, error) {
+func scanFuncBodyIntoMemory64WithModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoMemory64WithModule(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts)
+		return scanBodyBytesIntoMemory64WithModule(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers)
 	}
-	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts), nil
+	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers), nil
 }
 
-func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
+func gcOrAtomicInstructionMayCall(kind wasm.InstrKind, gcStructHelpers bool) bool {
 	switch kind {
 	case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
 		wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructAtomicGet, wasm.InstrStructAtomicGetS, wasm.InstrStructAtomicGetU, wasm.InstrStructSet,
 		wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem,
 		wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen,
 		wasm.InstrArrayFill, wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem,
-		wasm.InstrRefGetDesc, wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrRefTestDesc, wasm.InstrRefCastDescEq, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
-		wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny, wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU,
 		wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
 		return true
+	case wasm.InstrRefGetDesc, wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrRefTestDesc, wasm.InstrRefCastDescEq, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
+		wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny, wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU:
+		return gcStructHelpers
 	default:
 		return false
 	}
@@ -283,10 +284,10 @@ func directGCResolverInstruction(m *wasm.Module, gcTypeLayouts []codegen.GCTypeL
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, nil, nil)
+	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, nil, nil, false)
 }
 
-func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout) funcHints {
+func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) funcHints {
 	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
@@ -300,7 +301,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
 				h.moduleEH = true
 			}
-			if gcOrAtomicInstructionMayCall(in.Kind) {
+			if gcOrAtomicInstructionMayCall(in.Kind, gcStructHelpers) {
 				h.hasCall, sub = true, true
 			}
 			// Inline-candidacy control-flow signals (matches scanInlineFactsAST).
@@ -548,13 +549,13 @@ func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint3
 }
 
 func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {
-	return scanBodyBytesIntoMemory64WithModule(body, nLocals, nGlobals, selfIdx, h, elig, memory64, nil, nil)
+	return scanBodyBytesIntoMemory64WithModule(body, nLocals, nGlobals, selfIdx, h, elig, memory64, nil, nil, false)
 }
 
-func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout) (funcHints, error) {
+func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -576,11 +577,12 @@ type byteBodyScanner struct {
 	selfIdx  uint32
 	elig     *globalEligibilityTracker
 
-	entryPrefix   bool
-	entrySeen     uint64
-	memory64      bool
-	m             *wasm.Module
-	gcTypeLayouts []codegen.GCTypeLayout
+	entryPrefix     bool
+	entrySeen       uint64
+	memory64        bool
+	m               *wasm.Module
+	gcTypeLayouts   []codegen.GCTypeLayout
+	gcStructHelpers bool
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -742,7 +744,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
-			if gcOrAtomicInstructionMayCall(imm.Kind) {
+			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) {
 				s.h.hasCall, subHasCall = true, true
 			}
 			if op == 0xfb {

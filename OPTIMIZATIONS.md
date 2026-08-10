@@ -274,8 +274,8 @@ compile as one resolution plus seven reuses and shrink 821→452 bytes; eight di
 objects in one function still select sharing and shrink 1,806→949 bytes. Ten CPU-0-
 pinned 500 ms runtime samples measured medians of 317.0 ns/op default, 341.85 ns/op
 with reuse disabled, and 340.6 ns/op fully inline, all 0 B/op and 0 allocs/op. A
-same-command stripped plugin-complete TinyGo build grew 2,096,928→2,106,840 bytes
-(+9,912, +0.473%); `compiledCodeCache` remains 64 bytes and collector/instance/native-
+same-command stripped plugin-complete TinyGo build grew 2,096,928→2,106,824 bytes
+(+9,896, +0.472%); `compiledCodeCache` remains 64 bytes and collector/instance/native-
 view layouts do not grow. Differential controls are
 `WAGO_AMD64_NO_GC_SHARED_STUBS=1` and
 `WAGO_AMD64_NO_GC_RESOLVE_REUSE=1`; permanent attribution is

@@ -835,7 +835,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
-	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts)
+	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -1255,7 +1255,7 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 // those across functions — so summing here removes a second full-body
 // immediate-decoding pass per function (the standalone global-scores scan). The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
-func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout) ([]funcHints, []int64, error) {
+func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) ([]funcHints, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	localCounts := make([]int, n)
@@ -1320,7 +1320,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		var err error
-		h, err = scanFuncBodyIntoMemory64WithModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts)
+		h, err = scanFuncBodyIntoMemory64WithModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts, gcStructHelpers)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
