@@ -211,7 +211,11 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 	}
 	c.handles = append(c.handles, e)
 	c.mark = append(c.mark, false)
-	c.tinyGC.color = append(c.tinyGC.color, tinyWhite)
+	// The handle is unpublished until the profile-specific post-allocation path.
+	// Tiny overwrites this byte with its current-epoch gray/black state; keeping
+	// the shared Throughput handle-growth path at a zero append avoids irrelevant
+	// epoch encoding work.
+	c.tinyGC.color = append(c.tinyGC.color, 0)
 	return uint32(len(c.handles) - 1)
 }
 

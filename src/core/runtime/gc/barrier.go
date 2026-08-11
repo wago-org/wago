@@ -718,16 +718,22 @@ func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
 	if c.handles[ph].space != spaceTiny || c.handles[ch].space != spaceTiny {
 		return
 	}
-	if c.tinyColorOf(ch) != tinyWhite {
+	if !c.tinyIsWhite(ch) {
 		return
 	}
-	switch c.tinyColorOf(ph) {
-	case tinyGray:
+	c.tinyWriteBarrierWhiteChild(ph, ch, child)
+}
+
+//go:noinline
+func (c *Collector) tinyWriteBarrierWhiteChild(ph, ch uint32, child Ref) {
+	black := tinyMarkState(c.tinyGC.markEpoch)
+	switch c.tinyGC.color[ph] {
+	case black | tinyMarkGrayBit:
 		// A partially scanned gray parent may be mutated before its cursor. Shade
 		// the new child immediately; writes after the cursor are conservatively
 		// shaded too, avoiding cursor-position checks in the mutator barrier.
-		c.tinyGrayHandle(ch)
-	case tinyBlack:
+		c.tinyQueueGrayHandle(ch)
+	case black:
 		if c.tinyGC.state == tinySweep {
 			c.tinyMarkRefNow(child)
 			return
@@ -735,7 +741,7 @@ func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
 		// Preserve the existing hybrid policy for black parents: shade the child
 		// and re-gray the parent. Broader barrier simplification remains later
 		// #319 work.
-		c.tinyGrayHandle(ch)
-		c.tinyGrayHandle(ph)
+		c.tinyQueueGrayHandle(ch)
+		c.tinyQueueGrayHandle(ph)
 	}
 }

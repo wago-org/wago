@@ -774,7 +774,7 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput bool) {
 		if err := c.tiny.free(e.off); err != nil {
 			panic("gc: internal tiny free invariant: " + err.Error())
 		}
-		c.tinySetColor(h, tinyWhite)
+		c.tinySetWhite(h)
 	case spaceOld, spaceLarge:
 		var err error
 		if lazyThroughput {
