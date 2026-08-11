@@ -3,6 +3,7 @@
 package version
 
 import (
+	"context"
 	"io"
 
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
@@ -25,16 +26,32 @@ func InstallManagerUpdate(channel, dest string, progress *managerprogress.Progre
 	return installManagerUpdate(channel, dest, progress)
 }
 
+func InstallManagerUpdateContext(ctx context.Context, channel, dest string, progress *managerprogress.Progress) (string, error) {
+	return installManagerUpdateContext(ctx, channel, dest, progress)
+}
+
 func ResolveManagerUpdate(channel string, progress *managerprogress.Progress) (string, bool, error) {
 	return resolveManagerUpdate(channel, progress)
+}
+
+func ResolveManagerUpdateContext(ctx context.Context, channel string, progress *managerprogress.Progress) (string, bool, error) {
+	return resolveManagerUpdateContext(ctx, channel, progress)
 }
 
 func InstallManagerPayload(resolved, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
 	return installManagerPayload(resolved, dest, sourceOnly, progress)
 }
 
+func InstallManagerPayloadContext(ctx context.Context, resolved, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
+	return installManagerPayloadContext(ctx, resolved, dest, sourceOnly, progress)
+}
+
 func InstallRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
 	return installRunnerPayload(ref, profile, build, dest, sourceOnly, progress)
+}
+
+func InstallRunnerPayloadContext(ctx context.Context, ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
+	return installRunnerPayloadContext(ctx, ref, profile, build, dest, sourceOnly, progress)
 }
 
 func SyncInstalledSource(ref, dest string, progress *managerprogress.Progress) error {

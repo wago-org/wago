@@ -1,17 +1,22 @@
 package version
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/wago-org/wago/internal/httpclient"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -76,6 +81,43 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 	releases, err := fetchReleases()
 	if err != nil || len(releases) != 101 {
 		t.Fatalf("fetchReleases = %d releases, %v", len(releases), err)
+	}
+}
+
+func TestReleaseMetadataIsBoundedAndCancelable(t *testing.T) {
+	oldMaximum := releaseMetadataMaximum
+	releaseMetadataMaximum = 32
+	t.Cleanup(func() { releaseMetadataMaximum = oldMaximum })
+
+	oversized := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte(strings.Repeat("x", 33)))
+	}))
+	defer oversized.Close()
+	t.Setenv("WAGO_RELEASE_API", oversized.URL)
+	if _, err := latestMainCommitContext(context.Background()); !errors.Is(err, httpclient.ErrBodyTooLarge) {
+		t.Fatalf("oversized release metadata = %v", err)
+	}
+
+	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer stalled.Close()
+	t.Setenv("WAGO_RELEASE_API", stalled.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := latestMainCommitContext(ctx)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled release metadata = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled release metadata request did not return")
 	}
 }
 

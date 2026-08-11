@@ -1,7 +1,7 @@
 package version
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,13 +13,15 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
+	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/httpclient"
 	"github.com/wago-org/wago/internal/sourcearchive"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 var (
-	buildRunnerSource  = buildRunnerFromSource
-	buildManagerSource = buildManagerFromSource
+	buildRunnerSource  = buildRunnerFromSourceContext
+	buildManagerSource = buildManagerFromSourceContext
 )
 
 func sourceRepository() string {
@@ -40,13 +42,26 @@ func sourceArchiveURL(ref string) string {
 }
 
 func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *managerprogress.Progress) error {
-	temp, source, stamp, err := checkoutWagoSource(ref, progress)
+	return buildRunnerFromSourceContext(context.Background(), ref, profile, build, dest, progress)
+}
+
+func buildRunnerFromSourceContext(ctx context.Context, ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *managerprogress.Progress) error {
+	temp, source, stamp, err := checkoutWagoSourceContext(ctx, ref, progress)
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(temp)
 
-	tempRunner := dest + ".tmp"
+	tempFile, err := atomicfile.CreateTemp(dest)
+	if err != nil {
+		return err
+	}
+	tempRunner := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		_ = os.Remove(tempRunner)
+		return err
+	}
+	defer os.Remove(tempRunner)
 	if progress != nil {
 		progress.Begin("building " + string(profile) + " runtime from source")
 	}
@@ -89,13 +104,26 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 }
 
 func buildManagerFromSource(ref, dest string, progress *managerprogress.Progress) error {
-	temp, source, stamp, err := checkoutWagoSource(ref, progress)
+	return buildManagerFromSourceContext(context.Background(), ref, dest, progress)
+}
+
+func buildManagerFromSourceContext(ctx context.Context, ref, dest string, progress *managerprogress.Progress) error {
+	temp, source, stamp, err := checkoutWagoSourceContext(ctx, ref, progress)
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(temp)
 
-	tempManager := dest + ".tmp"
+	tempFile, err := atomicfile.CreateTemp(dest)
+	if err != nil {
+		return err
+	}
+	tempManager := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		_ = os.Remove(tempManager)
+		return err
+	}
+	defer os.Remove(tempManager)
 	if progress != nil {
 		progress.Begin("building Wago from source")
 	}
@@ -115,10 +143,18 @@ func buildManagerFromSource(ref, dest string, progress *managerprogress.Progress
 }
 
 func checkoutWagoSource(ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
-	return checkoutWagoSourceIn("", ref, progress)
+	return checkoutWagoSourceContext(context.Background(), ref, progress)
+}
+
+func checkoutWagoSourceContext(ctx context.Context, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
+	return checkoutWagoSourceInContext(ctx, "", ref, progress)
 }
 
 func checkoutWagoSourceIn(parent, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
+	return checkoutWagoSourceInContext(context.Background(), parent, ref, progress)
+}
+
+func checkoutWagoSourceInContext(ctx context.Context, parent, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
 	if err := automation.RequireOnline("source checkout"); err != nil {
 		return "", "", "", err
 	}
@@ -137,7 +173,7 @@ func checkoutWagoSourceIn(parent, ref string, progress *managerprogress.Progress
 		if progress != nil {
 			progress.Begin("fetching source archive")
 		}
-		if archiveErr := checkoutWagoSourceArchive(ref, temp, source); archiveErr != nil {
+		if archiveErr := checkoutWagoSourceArchiveContext(ctx, ref, temp, source); archiveErr != nil {
 			if progress != nil {
 				progress.Fail("could not fetch source")
 			}
@@ -174,15 +210,23 @@ func checkoutWagoSourceWithGit(ref, source string) error {
 }
 
 func checkoutWagoSourceArchive(ref, temp, source string) error {
+	return checkoutWagoSourceArchiveContext(context.Background(), ref, temp, source)
+}
+
+func checkoutWagoSourceArchiveContext(ctx context.Context, ref, temp, source string) error {
 	archive := filepath.Join(temp, "source.zip")
-	if err := downloadSourceArchive(sourceArchiveURL(ref), archive); err != nil {
+	if err := downloadSourceArchiveContext(ctx, sourceArchiveURL(ref), archive); err != nil {
 		return err
 	}
 	return sourcearchive.Extract(archive, source)
 }
 
 func downloadSourceArchive(address, target string) error {
-	response, err := http.Get(address)
+	return downloadSourceArchiveContext(context.Background(), address, target)
+}
+
+func downloadSourceArchiveContext(ctx context.Context, address, target string) error {
+	response, err := openReleaseStream(ctx, "source archive download", address)
 	if err != nil {
 		return err
 	}
@@ -190,20 +234,33 @@ func downloadSourceArchive(address, target string) error {
 	if response.StatusCode != http.StatusOK {
 		return &httpStatusError{url: address, code: response.StatusCode, status: response.Status}
 	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	const maxDownloadSize int64 = 256 << 20
+	if response.ContentLength > maxDownloadSize {
+		return &httpclient.BodyTooLargeError{URL: address, Limit: maxDownloadSize, ContentLength: response.ContentLength}
+	}
+	file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	const maxDownloadSize = 256 << 20
+	remove := true
+	defer func() {
+		if remove {
+			_ = os.Remove(target)
+		}
+	}()
 	written, copyErr := io.Copy(file, io.LimitReader(response.Body, maxDownloadSize+1))
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr
 	}
 	if written > maxDownloadSize {
-		return errors.New("source archive exceeds 256 MiB limit")
+		return &httpclient.BodyTooLargeError{URL: address, Limit: maxDownloadSize, ContentLength: -1}
 	}
-	return closeErr
+	if closeErr != nil {
+		return closeErr
+	}
+	remove = false
+	return nil
 }
 
 func syncInstalledSource(ref, dest string, progress *managerprogress.Progress) error {
@@ -211,7 +268,7 @@ func syncInstalledSource(ref, dest string, progress *managerprogress.Progress) e
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
-	temp, source, _, err := checkoutWagoSourceIn(parent, ref, progress)
+	temp, source, _, err := checkoutWagoSourceInContext(context.Background(), parent, ref, progress)
 	if err != nil {
 		return err
 	}
@@ -278,10 +335,7 @@ func executeSourceCommand(dir string, env []string, name string, args ...string)
 }
 
 func finishSourceBuild(tempRunner, dest string, progress *managerprogress.Progress, message string) error {
-	if err := os.Chmod(tempRunner, 0o755); err != nil {
-		return err
-	}
-	if err := os.Rename(tempRunner, dest); err != nil {
+	if err := atomicfile.CommitTempFile(tempRunner, dest, atomicfile.Options{Mode: 0o755, Sync: true}); err != nil {
 		return err
 	}
 	if progress != nil {

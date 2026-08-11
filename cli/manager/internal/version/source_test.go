@@ -3,6 +3,7 @@ package version
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
+	"github.com/wago-org/wago/internal/atomicfile"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -26,7 +28,7 @@ func TestMissingReleaseAssetFallsBackToSource(t *testing.T) {
 	var gotRef string
 	var gotProfile wagopaths.Profile
 	var gotBuild wagopaths.Build
-	buildRunnerSource = func(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, _ *managerprogress.Progress) error {
+	buildRunnerSource = func(_ context.Context, ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, _ *managerprogress.Progress) error {
 		gotRef, gotProfile = ref, profile
 		gotBuild = build
 		return os.WriteFile(dest, []byte("source runner"), 0o755)
@@ -61,7 +63,7 @@ func TestMissingManagerAssetFallsBackToSource(t *testing.T) {
 	old := buildManagerSource
 	t.Cleanup(func() { buildManagerSource = old })
 	var gotRef string
-	buildManagerSource = func(ref, dest string, _ *managerprogress.Progress) error {
+	buildManagerSource = func(_ context.Context, ref, dest string, _ *managerprogress.Progress) error {
 		gotRef = ref
 		return os.WriteFile(dest, []byte("source manager"), 0o755)
 	}
@@ -82,7 +84,8 @@ func TestMissingManagerAssetFallsBackToSource(t *testing.T) {
 func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, ".sha256") {
-			_, _ = w.Write([]byte("deadbeef\n"))
+			asset := strings.TrimPrefix(strings.TrimSuffix(r.URL.Path, ".sha256"), "/v1.0.0/")
+			_, _ = w.Write([]byte(strings.Repeat("0", 64) + "  " + asset + "\n"))
 			return
 		}
 		_, _ = w.Write([]byte("runner"))
@@ -93,7 +96,7 @@ func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	old := buildRunnerSource
 	t.Cleanup(func() { buildRunnerSource = old })
 	called := false
-	buildRunnerSource = func(string, wagopaths.Profile, wagopaths.Build, string, *managerprogress.Progress) error {
+	buildRunnerSource = func(context.Context, string, wagopaths.Profile, wagopaths.Build, string, *managerprogress.Progress) error {
 		called = true
 		return nil
 	}
@@ -129,7 +132,7 @@ func TestCanaryCommitMissingReleaseBuildsExactSource(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
 	target := canaryCommitTarget(sha)
 	var gotRef string
-	buildRunnerSource = func(ref string, _ wagopaths.Profile, _ wagopaths.Build, dest string, _ *managerprogress.Progress) error {
+	buildRunnerSource = func(_ context.Context, ref string, _ wagopaths.Profile, _ wagopaths.Build, dest string, _ *managerprogress.Progress) error {
 		gotRef = ref
 		return os.WriteFile(dest, []byte("source runner"), 0o755)
 	}
@@ -172,6 +175,36 @@ func TestBuildRunnerFromSourceUsesProfileTag(t *testing.T) {
 	}
 	if body, err := os.ReadFile(dest); err != nil || string(body) != "built" {
 		t.Fatalf("built runner = %q, %v", body, err)
+	}
+}
+
+func TestFinishSourceBuildReplacesExisting(t *testing.T) {
+	directory := t.TempDir()
+	destination := filepath.Join(directory, "wago")
+	if err := os.WriteFile(destination, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	temporary, err := atomicfile.CreateTemp(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := temporary.Name()
+	if _, err := temporary.Write([]byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	if err := temporary.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := finishSourceBuild(name, destination, nil, "built"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(destination)
+	if err != nil || string(data) != "new" {
+		t.Fatalf("source build destination = %q, %v", data, err)
+	}
+	matches, err := filepath.Glob(filepath.Join(directory, ".wago-atomic-*"))
+	if err != nil || len(matches) != 0 {
+		t.Fatalf("source build temporary debris = %v, %v", matches, err)
 	}
 }
 
