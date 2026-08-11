@@ -95,18 +95,15 @@ func TestLoopScansDecodeTryTableAndRejectPartialFindings(t *testing.T) {
 	}
 }
 
-// TestLoopPrecheckSlowTrap: an out-of-bounds invariant base fails the precheck and
-// runs the SLOW (checked) body, which must trap at the access — preserving exact
-// trap semantics (a hoisted check would have trapped before the loop regardless).
-func TestLoopHoistScanUsesMemory64OffsetWidth(t *testing.T) {
+func TestMemory64LoopDoesNotVersionWithoutElision(t *testing.T) {
 	body := []byte{
-		0x20, 0x00,
-		0x29, 0x03, 0x80, 0x80, 0x80, 0x80, 0x10, // i64.load align=3 offset=2^32
+		0x20, 0x00, 0x29, 0x03, 0x00, // small i64.load would otherwise be a candidate
+		0x21, 0x01, // mutation facts must still be returned
 		0x0b,
 	}
 	r := wasm.NewReader(body)
 	cands, elidable, grow, set, valid := scanLoopHoistable(r, true)
-	if !valid || len(cands) != 0 || elidable != 0 || grow || len(set) != 0 {
+	if !valid || len(cands) != 0 || elidable != 0 || grow || len(set) != 1 || !set[1] {
 		t.Fatalf("memory64 scan = cands %v n=%d grow=%v set=%v valid=%v", cands, elidable, grow, set, valid)
 	}
 	if r.Offset() != 0 {

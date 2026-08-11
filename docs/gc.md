@@ -145,12 +145,18 @@ storage and locals. Control frames snapshot and intersect local and stack facts 
 structured joins; loops reuse one shared-classifier prewalk of the existing body bytes
 so `try_table`, vector immediates, memory64 offsets, and malformed scans cannot create
 partial invariance claims. Loop parameters are rebuilt from declared ValTypes rather
-than first-entry identities, and only unmodified local facts survive. Exact type and
-nullability remain independent:
-a nullable exact value can prove a nullable cast, but a non-null cast is elided only
-when the fact also proves non-null. Distinct identities lose alias-sensitive state,
-and any multi-edge freshness merge is treated as published. Calls and allocating
-helpers may clear generation facts but do not invalidate compact identity.
+than first-entry identities. At every loop-header backedge join, modified locals are
+cleared, surviving fresh locals become published, and mutable field-forwarding windows
+are discarded; immutable field results survive only when both source and result locals
+are invariant. `try_table` and synthetic inline frames capture hidden operand-root
+shape before flushing, and every catch clause intersects its conservative local facts
+into the target just like an ordinary branch. Exact type and nullability remain
+independent: a nullable exact value can prove a nullable cast, but a non-null cast is
+elided only when the fact also proves non-null. `any` and `eq` heap classes are upper
+bounds rather than exact runtime families, so narrowing tests/casts remain dynamic
+until an i31/struct/array fact is exact. Distinct identities lose alias-sensitive
+state, and any multi-edge freshness merge is treated as published. Calls and
+allocating helpers may clear generation facts but do not invalidate compact identity.
 
 This semantic state is intentionally separate from the one-entry resolved-object
 certificate. The latter owns a native register containing a raw payload address and
@@ -179,7 +185,16 @@ malformed metadata. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only repeated-
 reuse, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` disables the constant-index sequence, and
 `WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole and avoids
 allocating its local/control fact tables. `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1` is
-accepted as a compatibility alias for review and older A/B commands.
+accepted as a compatibility alias for review and older A/B commands. The permanent
+subprocess oracle also compares exact results and trap codes with facts, load
+forwarding, and loop prechecks independently enabled and disabled.
+
+Loop bounds versioning remains memory32-only: prechecks zero-extend invariant i32
+bases before native-width arithmetic, and memory64 loops retain their carry-safe
+per-access checks until `memAddr64` has an explicit elision certificate. Functions
+with candidate native GC frame-root plans are not versioned because duplicating a
+loop body would otherwise duplicate allocation/call sites without remapping the
+validated linear liveness streams.
 
 Dead allocation remains bounded and postfix. Direct struct/fixed-array drops can
 remove complete nested `struct.new`/`array.new_fixed` trees. Pointer-free uniform,

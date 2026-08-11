@@ -877,6 +877,10 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
 			f.ctrl[clause.frame].ehRefResults[clause.payloadN-1] = true
 		}
+		// The exception edge can arrive with only the conservative local-fact state
+		// established before try_table. Intersect it at registration time just like
+		// an ordinary branch; the out-of-line route restores physical locals only.
+		f.mergeGCRefFactsInto(&f.ctrl[clause.frame].branchGCFacts)
 		// Catch dispatch writes canonical slots before jumping. Keep the target on
 		// that representation instead of the ordinary single-result register merge.
 		f.ctrl[clause.frame].regMerge1 = false
@@ -884,6 +888,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	}
 	fr.height = f.depth() - fr.paramN
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+	f.captureGCFrameShape(&fr)
 	if f.unreachable {
 		f.ctrl = append(f.ctrl, fr)
 		return nil

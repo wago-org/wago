@@ -202,10 +202,12 @@ current optimization priorities. The Core 3.0 implementation ledger is
   arrays, with 0 B/op and 0 allocs/op.
 - [x] **Bounded structured WasmGC facts (#314):** AMD64 carries compact
   nullability/heap/exact-type/identity/freshness/generation/pointer-free/array-length
-  facts through Valent stack values and locals, intersects them at structured joins,
-  retains loop-invariant locals from the existing loop scan, folds proven tests/casts
-  and constructor lengths, and keeps raw resolved addresses in a separately
-  safepoint-invalidated one-entry certificate. A bounded result-local cache now
+  facts through Valent stack values and locals, intersects them at structured joins
+  including exception catches, preserves hidden operand roots across `try_table`,
+  treats abstract `any`/`eq` classes as upper bounds, and retains only backedge-safe
+  loop facts and immutable forwarding. It folds proven tests/casts and constructor
+  lengths while keeping raw resolved addresses in a separately safepoint-invalidated
+  one-entry certificate. A bounded result-local cache now
   eliminates repeated dynamic `array.len` and immutable `struct.get`, immutable values
   survive unrelated mutable effects, constructor-known constant indexes use a compact
   get/set sequence, and validated subtype forests use packed constant-time intervals
@@ -214,7 +216,9 @@ current optimization priorities. The Core 3.0 implementation ledger is
   bounded-heap allocation side effect while omitting unreachable payload population.
   Reference-valued uniform/element constructors retain their full edge/card path.
   Broad scalar replacement remains rejected by measured
-  frame growth rather than introducing SSA or a second IR.
+  frame growth rather than introducing SSA or a second IR. Memory32 loop prechecks
+  canonicalize i32 bases; memory64 and candidate native-root-plan functions do not
+  version until carry-safe elision and explicit liveness-stream remapping exist.
 - [x] **Explicit late GC barrier states (#315):** reference stores select
   `NoBarrier`, `YoungParent`, `KnownOldChild`, `ExistingCard`, `CardMark`, or
   `SlowBarrier` after structured facts. Null/i31 scalar stores and guarded null/i31

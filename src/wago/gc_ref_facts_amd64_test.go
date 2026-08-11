@@ -492,6 +492,109 @@ func TestGCDirectNoBarrierArraySetUsesBuiltinBoundsTrap(t *testing.T) {
 	}
 }
 
+func gcCatchEdgeFactModule() []byte {
+	structType := []byte{0x5f, 0x00}
+	tagType := wasmtest.FuncType(nil, nil)
+	runType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00, // local $x (ref null 0)
+		0x02, 0x40, // block $out
+		0x20, 0x00, 0x04, 0x40, // if $normal
+		0xfb, 0x01, 0x00, 0x21, 0x01, 0x0c, 0x01, // x = struct.new_default; br $out
+		0x0b,
+		0x1f, 0x40, 0x01, byte(wasm.CatchAll), 0x00, // try_table (catch_all $out)
+		0x08, 0x00, // throw tag 0
+		0x0b,
+		0x00, // unreachable normal fallthrough
+		0x0b,
+		0x20, 0x01, 0xfb, 0x16, 0x00, 0x1a, // non-null cast must trap on catch edge
+		0x41, 0x01, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, tagType, runType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func gcLoopAbstractHeapFactModule(source wasm.AbsHeapType, cast bool) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	loopType := []byte{0x60, 0x01, 0x64, byte(source), 0x01, 0x7f} // (func (param (ref source)) (result i32))
+	body := []byte{0x00, 0xfb, 0x01, 0x00, 0x03, 0x01}             // struct.new_default; loop (type 1)
+	if cast {
+		body = append(body, 0xfb, 0x16, byte(wasm.HeapStruct), 0x1a, 0x41, 0x01)
+	} else {
+		body = append(body, 0xfb, 0x14, byte(wasm.HeapStruct))
+	}
+	body = append(body, 0x0b, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, loopType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func gcMutableFieldBackedgeModule() []byte {
+	body := []byte{
+		0x03, 0x01, 0x63, 0x00, 0x01, 0x7f, 0x01, 0x7f, // x, iteration, seen
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x21, 0x00, // x = struct.new $S(1)
+		0x02, 0x40, 0x03, 0x40, // block $done; loop $again
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x21, 0x02, // seen = x.field
+		0x20, 0x01, 0x0d, 0x01, // if iteration != 0, break
+		0x20, 0x00, 0x41, 0x02, 0xfb, 0x05, 0x00, 0x00, // x.field = 2
+		0x41, 0x01, 0x21, 0x01, 0x0c, 0x00, // iteration = 1; continue
+		0x0b, 0x0b,
+		0x20, 0x02, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01}, // (struct (field (mut i32)))
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCCatchEdgeIntersectsLocalFacts(t *testing.T) {
+	data := gcCatchEdgeFactModule()
+	if out := runGCRefFactDifferentialModule(t, "catch-normal", data, 1); out.Trap != 0 || len(out.Results) != 1 || out.Results[0] != 1 {
+		t.Fatalf("normal edge = %+v, want [1]", out)
+	}
+	if out := runGCRefFactDifferentialModule(t, "catch-exception", data, 0); out.Trap != uint32(TrapCastFailure) {
+		t.Fatalf("catch edge = %+v, want cast failure", out)
+	}
+}
+
+func TestGCLoopAbstractUpperBoundsDoNotFoldNarrowOperations(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source wasm.AbsHeapType
+		cast   bool
+	}{
+		{name: "eq-to-struct-test", source: wasm.HeapEq},
+		{name: "any-to-struct-cast", source: wasm.HeapAny, cast: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := runGCRefFactDifferentialModule(t, tc.name, gcLoopAbstractHeapFactModule(tc.source, tc.cast))
+			if out.Trap != 0 || len(out.Results) != 1 || out.Results[0] != 1 {
+				t.Fatalf("run = %+v, want [1]", out)
+			}
+		})
+	}
+}
+
+func TestGCMutableFieldForwardingDoesNotCrossBackedge(t *testing.T) {
+	out := runGCRefFactDifferentialModule(t, "mutable-field-backedge", gcMutableFieldBackedgeModule())
+	if out.Trap != 0 || len(out.Results) != 1 || out.Results[0] != 2 {
+		t.Fatalf("run = %+v, want [2]", out)
+	}
+}
+
 func gcFactDifferentialModules() []struct {
 	name string
 	data []byte
@@ -593,6 +696,11 @@ func gcFactDifferentialModules() []struct {
 		{name: "nullable-cast-trap", data: castTrap},
 		{name: "known-bounds-trap", data: boundsTrap},
 		{name: "no-barrier-array-set-bounds-trap", data: gcNoBarrierArraySetBoundsTrapModule()},
+		{name: "catch-normal", data: gcCatchEdgeFactModule(), args: []uint64{1}},
+		{name: "catch-exception", data: gcCatchEdgeFactModule(), args: []uint64{0}},
+		{name: "loop-eq-struct-test", data: gcLoopAbstractHeapFactModule(wasm.HeapEq, false)},
+		{name: "loop-any-struct-cast", data: gcLoopAbstractHeapFactModule(wasm.HeapAny, true)},
+		{name: "mutable-field-backedge", data: gcMutableFieldBackedgeModule()},
 		{name: "loop-backedge-cast-trap", data: loopTrap},
 		{name: "inline-zero-reset-cast-trap", data: inlineTrap},
 	}
@@ -614,26 +722,28 @@ func TestGCRefFactsSemanticDifferential(t *testing.T) {
 		return
 	}
 
-	run := func(disableVar string) []gcFactDifferentialOutcome {
+	run := func(envOverride string) []gcFactDifferentialOutcome {
 		t.Helper()
 		cmd := exec.Command(os.Args[0], "-test.run=^TestGCRefFactsSemanticDifferential$", "-test.count=1")
 		env := make([]string, 0, len(os.Environ())+2)
 		for _, entry := range os.Environ() {
 			if strings.HasPrefix(entry, "WAGO_AMD64_NO_GC_REF_FACTS=") ||
 				strings.HasPrefix(entry, "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=") ||
+				strings.HasPrefix(entry, "WAGO_AMD64_NO_GC_LOAD_FORWARDING=") ||
+				strings.HasPrefix(entry, "WAGO_LOOP_PRECHECK=") ||
 				strings.HasPrefix(entry, childEnv+"=") {
 				continue
 			}
 			env = append(env, entry)
 		}
 		env = append(env, childEnv+"=1")
-		if disableVar != "" {
-			env = append(env, disableVar+"=1")
+		if envOverride != "" {
+			env = append(env, envOverride)
 		}
 		cmd.Env = env
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf("differential child %q: %v\n%s", disableVar, err, output)
+			t.Fatalf("differential child %q: %v\n%s", envOverride, err, output)
 		}
 		for _, line := range strings.Split(string(output), "\n") {
 			if !strings.HasPrefix(line, prefix) {
@@ -641,21 +751,29 @@ func TestGCRefFactsSemanticDifferential(t *testing.T) {
 			}
 			var out []gcFactDifferentialOutcome
 			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, prefix)), &out); err != nil {
-				t.Fatalf("decode differential child %q: %v", disableVar, err)
+				t.Fatalf("decode differential child %q: %v", envOverride, err)
 			}
 			return out
 		}
-		t.Fatalf("differential child %q produced no oracle:\n%s", disableVar, output)
+		t.Fatalf("differential child %q produced no oracle:\n%s", envOverride, output)
 		return nil
 	}
 
-	on := run("")
-	for _, disableVar := range []string{"WAGO_AMD64_NO_GC_REF_FACTS", "WAGO_AMD64_NO_EXACT_GC_REF_FACTS"} {
-		off := run(disableVar)
+	for _, knob := range []struct {
+		name     string
+		enabled  string
+		disabled string
+	}{
+		{name: "GC facts", enabled: "WAGO_AMD64_NO_GC_REF_FACTS=0", disabled: "WAGO_AMD64_NO_GC_REF_FACTS=1"},
+		{name: "GC facts compatibility alias", enabled: "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=0", disabled: "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1"},
+		{name: "GC load forwarding", enabled: "WAGO_AMD64_NO_GC_LOAD_FORWARDING=0", disabled: "WAGO_AMD64_NO_GC_LOAD_FORWARDING=1"},
+		{name: "loop precheck", enabled: "WAGO_LOOP_PRECHECK=1", disabled: "WAGO_LOOP_PRECHECK=0"},
+	} {
+		on, off := run(knob.enabled), run(knob.disabled)
 		onJSON, _ := json.Marshal(on)
 		offJSON, _ := json.Marshal(off)
 		if string(onJSON) != string(offJSON) {
-			t.Fatalf("facts on/off semantic mismatch via %s:\non:  %s\noff: %s", disableVar, onJSON, offJSON)
+			t.Fatalf("%s semantic mismatch:\non:  %s\noff: %s", knob.name, onJSON, offJSON)
 		}
 	}
 }

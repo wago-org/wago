@@ -205,6 +205,18 @@ while retaining required root tracking. The earlier exact-only Dew result
 baseline evidence; the expanded fact set requires a fresh interleaved qualification
 before making an additional workload-speed claim.
 
+**Structured-fact adversarial hardening (2026-08-11).** `try_table` and synthetic
+inline frames now preserve hidden operand-root shape, and catch edges participate in
+local-fact intersections. Abstract `any`/`eq` classes are upper bounds, not exact
+runtime families; a complete class/target truth table keeps narrowing tests and casts
+dynamic. Ordinary loop headers discard mutable field forwarding, publish surviving
+fresh locals, and retain immutable cached results only across invariant locals. Loop
+versioning is memory32-only, zero-extends host-produced i32 bases before precheck
+arithmetic, and is disabled for candidate native GC root plans because their validated
+allocation/call liveness streams are linear in original Wasm order. Facts, load
+forwarding, and loop-precheck subprocess oracles compare exact results and trap codes
+under both switch states.
+
 **Executed WasmGC helper counters (2026-08-02).** The diagnostic
 `wago_gcstats` build tag exposes `Instance.SetGCHelperStatsTracking(true)` and
 `Instance.GCHelperStats()`, separating total, allocation, struct/array mutation,

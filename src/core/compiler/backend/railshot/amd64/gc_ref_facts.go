@@ -127,6 +127,65 @@ func markGCRefFact(e *elem, fact shared.GCRefFact) {
 	putGCRefFact(&e.st, fact)
 }
 
+func gcHeapClassMatches(source shared.GCHeapClass, target wasm.AbsHeapType) (match, known bool) {
+	if target == wasm.HeapNone || target == wasm.HeapNoFunc || target == wasm.HeapNoExtern {
+		return false, true
+	}
+	if source == shared.GCHeapUnknown {
+		return false, false
+	}
+	switch target {
+	case wasm.HeapAny:
+		switch source {
+		case shared.GCHeapAny, shared.GCHeapEq, shared.GCHeapI31, shared.GCHeapStruct, shared.GCHeapArray:
+			return true, true
+		case shared.GCHeapFunc, shared.GCHeapExtern:
+			return false, true
+		}
+	case wasm.HeapEq:
+		switch source {
+		case shared.GCHeapEq, shared.GCHeapI31, shared.GCHeapStruct, shared.GCHeapArray:
+			return true, true
+		case shared.GCHeapAny:
+			return false, false
+		case shared.GCHeapFunc, shared.GCHeapExtern:
+			return false, true
+		}
+	case wasm.HeapI31:
+		switch source {
+		case shared.GCHeapI31:
+			return true, true
+		case shared.GCHeapAny, shared.GCHeapEq:
+			return false, false
+		default:
+			return false, true
+		}
+	case wasm.HeapStruct:
+		switch source {
+		case shared.GCHeapStruct:
+			return true, true
+		case shared.GCHeapAny, shared.GCHeapEq:
+			return false, false
+		default:
+			return false, true
+		}
+	case wasm.HeapArray:
+		switch source {
+		case shared.GCHeapArray:
+			return true, true
+		case shared.GCHeapAny, shared.GCHeapEq:
+			return false, false
+		default:
+			return false, true
+		}
+	case wasm.HeapFunc:
+		return source == shared.GCHeapFunc, true
+	case wasm.HeapExtern:
+		return source == shared.GCHeapExtern, true
+	}
+	return false, false
+}
+
 func (f *fn) gcRefFactMatchesHeap(fact shared.GCRefFact, heap int64, nullable bool) (match, known bool) {
 	if fact.Nullability() == shared.GCKnownNull {
 		return nullable, true
@@ -143,30 +202,7 @@ func (f *fn) gcRefFactMatchesHeap(fact shared.GCRefFact, heap int64, nullable bo
 		target := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
 		return f.m.ReferenceTypeSubtype(source, target), true
 	}
-	switch wasm.AbsHeapType(byte(heap) & 0x7f) {
-	case wasm.HeapAny:
-		return fact.HeapClass() != shared.GCHeapFunc && fact.HeapClass() != shared.GCHeapExtern, fact.HeapClass() != shared.GCHeapUnknown
-	case wasm.HeapEq:
-		switch fact.HeapClass() {
-		case shared.GCHeapI31, shared.GCHeapStruct, shared.GCHeapArray:
-			return true, true
-		case shared.GCHeapFunc, shared.GCHeapExtern:
-			return false, true
-		}
-	case wasm.HeapI31:
-		return fact.HeapClass() == shared.GCHeapI31, fact.HeapClass() != shared.GCHeapUnknown
-	case wasm.HeapStruct:
-		return fact.HeapClass() == shared.GCHeapStruct, fact.HeapClass() != shared.GCHeapUnknown
-	case wasm.HeapArray:
-		return fact.HeapClass() == shared.GCHeapArray, fact.HeapClass() != shared.GCHeapUnknown
-	case wasm.HeapFunc:
-		return fact.HeapClass() == shared.GCHeapFunc, fact.HeapClass() != shared.GCHeapUnknown
-	case wasm.HeapExtern:
-		return fact.HeapClass() == shared.GCHeapExtern, fact.HeapClass() != shared.GCHeapUnknown
-	case wasm.HeapNone, wasm.HeapNoFunc, wasm.HeapNoExtern:
-		return false, true
-	}
-	return false, false
+	return gcHeapClassMatches(fact.HeapClass(), wasm.AbsHeapType(byte(heap)&0x7f))
 }
 
 func gcHeapClassForValType(m *wasm.Module, typ wasm.ValType) shared.GCHeapClass {
@@ -475,6 +511,19 @@ func (f *fn) installGCRefFacts(source []shared.GCRefFact) {
 }
 
 func (f *fn) invalidateLoopModifiedGCRefFacts(modified map[uint32]bool) {
+	isModified := func(local int) bool {
+		if local < f.localBase {
+			return false
+		}
+		return modified[uint32(local-f.localBase)]
+	}
+	// A loop header is a join with a backedge. Mutable field observations from
+	// straight-line entry can never dominate a later iteration. Immutable cached
+	// results survive only when both their object and result locals are invariant.
+	if f.gcLastField.valid && (!f.gcLastField.immutable || f.gcLastField.local < 0 || f.gcLastField.resultLocal < 0 || isModified(f.gcLastField.local) || isModified(f.gcLastField.resultLocal)) {
+		f.gcLastField.valid = false
+	}
+	f.invalidateGCResolvedObject()
 	if !exactGCRefFactsEnabled {
 		return
 	}
@@ -485,7 +534,13 @@ func (f *fn) invalidateLoopModifiedGCRefFacts(modified map[uint32]bool) {
 			f.invalidateGCLoadFactsForLocal(idx)
 		}
 	}
-	f.invalidateGCResolvedObject()
+	// A previous iteration may publish an otherwise invariant constructor without
+	// assigning its local. Identity/type facts remain valid, but freshness does not.
+	for i, fact := range f.localGCRefFacts {
+		if fact.Freshness() == shared.GCFreshUnpublished {
+			f.localGCRefFacts[i] = fact.WithFreshness(shared.GCPublished)
+		}
+	}
 }
 
 func (f *fn) publishGCIdentity(identity uint32) {

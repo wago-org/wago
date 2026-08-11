@@ -134,6 +134,12 @@ prevalidated/revalidated medians of 438.2/452.7 ns at 16 elements, 6,560/6,740 n
 matrix medians were 25.50 ns nursery, 34.03 remembered old, 41.16 unremembered old
 including metadata creation, 34.28 large, and 28.50 Tiny, also 0 B/op and 0 allocs/op.
 
+The August 11 adversarial qualification adds executable switch-parity oracles for
+exception joins, abstract `any`/`eq` narrowing, mutable-field backedges, dirty host
+i32 loop bases, memory64 non-versioning, and native root-plan call/allocation counts.
+These are correctness gates rather than new speed claims. Memory64 loops and
+candidate native-root-plan functions intentionally retain one checked body.
+
 This document defines the measurement contract for collector changes tracked by
 issue #300. The opt-in recorder, public API, JSONL schema, phase semantics, and
 footprint measurements are documented in

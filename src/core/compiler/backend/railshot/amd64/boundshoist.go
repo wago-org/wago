@@ -30,7 +30,9 @@ import (
 // that is what makes hoisting sound here (a plain hoisted check would move the
 // trap earlier, which is observable because a wasm trap leaves partial memory
 // writes visible). Explicit-bounds mode only (guard mode has no inline check to
-// elide). Defaults on; set WAGO_LOOP_PRECHECK=0/off/false to disable it for A/B runs.
+// elide). V1 is memory32-only and excludes functions with candidate native GC root
+// plans because their call/allocation liveness streams are linear in original Wasm
+// order. Defaults on; set WAGO_LOOP_PRECHECK=0/off/false to disable it for A/B runs.
 
 var loopPrecheckEnabled = envDefaultOn(os.Getenv("WAGO_LOOP_PRECHECK"))
 
@@ -112,7 +114,8 @@ func scanLoopBody(r *wasm.Reader, memory64 bool) (setLocals map[uint32]bool, has
 // set in the loop. Returns them with each one's max extent, the total number of
 // per-iteration accesses that would be elided (the check-density benefit signal),
 // whether the loop grows memory, and an explicit validity result. A classifier
-// failure returns no candidates or local findings.
+// failure returns no candidates or local findings. Memory64 still returns mutation
+// and grow facts but no candidates until memAddr64 consumes a carry-safe certificate.
 func scanLoopHoistable(r *wasm.Reader, memory64 bool) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool, valid bool) {
 	setLocals = map[uint32]bool{}
 	maxExt := map[uint32]int32{}
@@ -154,6 +157,11 @@ func scanLoopHoistable(r *wasm.Reader, memory64 bool) (cands []hoistCand, elidab
 	if !valid {
 		return nil, 0, false, nil, false
 	}
+	if memory64 {
+		// memAddr64 does not consume elideBases and must retain both carry checks.
+		// Keep the shared scan's mutation/grow facts, but do not version the loop.
+		return nil, 0, hasGrow, setLocals, true
+	}
 	for b, ext := range maxExt {
 		if !setLocals[b] && !poison[b] { // invariant, never set in the loop, all accesses sized
 			cands = append(cands, hoistCand{base: b, extent: ext})
@@ -190,7 +198,11 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	// v1 scope: void loops only (no params/results to stage and merge across the
 	// two entries), and never nest a versioned loop inside another (bounds code
 	// growth remains at 2×).
-	if len(paramTypes) != 0 || len(resultTypes) != 0 || f.inVersionedLoop {
+	if len(paramTypes) != 0 || len(resultTypes) != 0 || f.inVersionedLoop ||
+		(f.gcFrameRoots != nil && f.gcFrameRoots.Candidate) {
+		// The validated root-liveness streams are linear in original Wasm call and
+		// allocation order. Duplicating a loop body without duplicating/remapping
+		// both streams would make the native frame-root plan inexact.
 		return false
 	}
 	bodyStart := r.Offset()
@@ -233,6 +245,10 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	for _, c := range cands {
 		base := f.allocReg(0)
 		f.loadLocalValue(base, c.base)
+		// Memory32 addresses are i32 values even when a returning host import left
+		// arbitrary high bits in the 64-bit ABI word. Match memAddr's consuming-side
+		// canonicalization before native-width precheck arithmetic.
+		f.a.MovRegReg32(base, base)
 		t := f.allocReg(maskOf(base))
 		f.a.LeaDisp(t, base, c.extent) // t = base + off + size
 		f.a.Cmp64(t, f.memSizeReg)

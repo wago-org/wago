@@ -113,6 +113,49 @@ func TestNullableFinalGCParameterRetainsNonNullCast(t *testing.T) {
 	}
 }
 
+func TestGCHeapClassMatchTruthTable(t *testing.T) {
+	targets := []wasm.AbsHeapType{wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapFunc, wasm.HeapExtern}
+	for _, tc := range []struct {
+		name   string
+		source shared.GCHeapClass
+		want   string // 1=true, 0=false, ?=unknown in target order above
+	}{
+		{name: "unknown", source: shared.GCHeapUnknown, want: "???????"},
+		{name: "any-upper-bound", source: shared.GCHeapAny, want: "1????00"},
+		{name: "eq-upper-bound", source: shared.GCHeapEq, want: "11???00"},
+		{name: "i31-exact-family", source: shared.GCHeapI31, want: "1110000"},
+		{name: "struct-exact-family", source: shared.GCHeapStruct, want: "1101000"},
+		{name: "array-exact-family", source: shared.GCHeapArray, want: "1100100"},
+		{name: "func-exact-family", source: shared.GCHeapFunc, want: "0000010"},
+		{name: "extern-exact-family", source: shared.GCHeapExtern, want: "0000001"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for i, target := range targets {
+				match, known := gcHeapClassMatches(tc.source, target)
+				switch tc.want[i] {
+				case '1':
+					if !known || !match {
+						t.Fatalf("target %v = %v/%v, want true/known", target, match, known)
+					}
+				case '0':
+					if !known || match {
+						t.Fatalf("target %v = %v/%v, want false/known", target, match, known)
+					}
+				case '?':
+					if known {
+						t.Fatalf("target %v = %v/%v, want unknown", target, match, known)
+					}
+				}
+			}
+			for _, target := range []wasm.AbsHeapType{wasm.HeapNone, wasm.HeapNoFunc, wasm.HeapNoExtern} {
+				if match, known := gcHeapClassMatches(tc.source, target); !known || match {
+					t.Fatalf("bottom target %v = %v/%v, want false/known", target, match, known)
+				}
+			}
+		})
+	}
+}
+
 func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 	left := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
 		WithFreshness(shared.GCFreshUnpublished).
@@ -129,10 +172,37 @@ func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 	}
 	f.installGCRefFacts([]shared.GCRefFact{left, left})
 	f.invalidateLoopModifiedGCRefFacts(map[uint32]bool{0: true})
-	if !f.localGCRefFacts[0].IsZero() || f.localGCRefFacts[1].IsZero() {
-		t.Fatalf("loop subset invalidation = %+v", f.localGCRefFacts)
+	if !f.localGCRefFacts[0].IsZero() || f.localGCRefFacts[1].IsZero() || f.localGCRefFacts[1].Freshness() != shared.GCPublished {
+		t.Fatalf("loop subset invalidation/publication = %+v", f.localGCRefFacts)
 	}
 	f.freeGCRefFactBuf(joined)
+}
+
+func TestLoopHeaderClearsMutableFieldForwarding(t *testing.T) {
+	f := fn{
+		localGCRefFacts: []shared.GCRefFact{
+			shared.ExactGCRefFact(0, 1, shared.GCHeapStruct).WithFreshness(shared.GCFreshUnpublished),
+			{},
+		},
+		gcLastField: gcStructFieldFact{valid: true, fromStore: true, local: -1, resultLocal: -1, identity: 1},
+	}
+	f.invalidateLoopModifiedGCRefFacts(nil)
+	if f.gcLastField.valid {
+		t.Fatal("mutable constructor field forwarding survived loop header")
+	}
+	if got := f.localGCRefFacts[0].Freshness(); got != shared.GCPublished {
+		t.Fatalf("loop-invariant freshness = %v, want published", got)
+	}
+
+	f.gcLastField = gcStructFieldFact{valid: true, immutable: true, local: 0, resultLocal: 1}
+	f.invalidateLoopModifiedGCRefFacts(nil)
+	if !f.gcLastField.valid {
+		t.Fatal("loop-invariant immutable field forwarding was discarded")
+	}
+	f.invalidateLoopModifiedGCRefFacts(map[uint32]bool{1: true})
+	if f.gcLastField.valid {
+		t.Fatal("immutable field forwarding survived result-local mutation")
+	}
 }
 
 func TestDisabledGCReferenceFactsDoNotAllocateSnapshots(t *testing.T) {
