@@ -150,7 +150,7 @@ func TestStagedTypedStorageExactImports(t *testing.T) {
 	mismatch := wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64})
 
 	t.Run("public gate remains closed", func(t *testing.T) {
-		_, err := Compile(typedTableModule([][]byte{equivalent}, 0, false, true))
+		_, err := compatibilityDefaultConfig().Compile(typedTableModule([][]byte{equivalent}, 0, false, true))
 		if err == nil || !strings.Contains(err.Error(), "typed-function-references disabled") {
 			t.Fatalf("public typed table compile error = %v", err)
 		}

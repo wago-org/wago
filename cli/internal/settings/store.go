@@ -106,11 +106,14 @@ func LoadFile(path string) (Config, error) {
 		return Config{}, fmt.Errorf("unsupported settings version %d (want %d)", stored.Version, Version)
 	}
 	for name, value := range stored.Features {
-		if setting, ok := Lookup("features." + name); !ok || !setting.Available {
+		setting, ok := Lookup("features." + name)
+		if !ok {
 			return Config{}, fmt.Errorf("unknown feature setting %q", name)
-		} else {
-			setting.SetValue(&config, value)
 		}
+		if value && !setting.Available {
+			return Config{}, fmt.Errorf("feature setting %q is unavailable", name)
+		}
+		setting.SetValue(&config, value)
 	}
 	for name, value := range stored.Optimizations {
 		if setting, ok := Lookup("optimizations." + name); !ok || !setting.Available {

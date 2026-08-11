@@ -26,22 +26,22 @@ func TestExperimentalPreviewIsGeneratedFromRuntimeFeatures(t *testing.T) {
 	catalog := settings.Experimental()
 	found := false
 	for _, setting := range catalog {
-		if setting.Key == "features.tail-call" {
+		if setting.Key == "features.gc" {
 			found = true
 			if !setting.Experimental {
-				t.Fatal("tail calls should remain experimental")
+				t.Fatal("WasmGC should remain experimental")
 			}
 		}
 	}
 	if !found {
-		t.Fatal("tail-call preview is missing")
+		t.Fatal("WasmGC preview is missing")
 	}
 }
 
 func TestPrintIncludesExperimentalSectionOnRequest(t *testing.T) {
 	var output bytes.Buffer
 	Print(&output, settings.Default(), true, settings.ScopeLocal, "./wago.json", []settings.Override{{Key: "features.simd", Base: "false", Value: "true"}})
-	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "tail-call", "override"} {
+	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "gc", "override"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q:\n%s", want, output.String())
 		}

@@ -29,7 +29,7 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
 		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
-		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 (default) | 3"},
+		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		ParallelFlag(),
 	}
 	flags = append(flags, environment.ProfileFlags()...)
@@ -44,7 +44,8 @@ func Command(environment Environment) *command.Cmd {
 		},
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
-			"Use --core 3 for the complete opt-in WebAssembly Core 3 feature set. Use -p for\n" +
+			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
+			"or --core 3 for the complete release. Use -p for\n" +
 			"adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to force a\n" +
 			"worker maximum. Optimization knobs are listed in `wago run --help`.",
 		Run: implementation.Run,

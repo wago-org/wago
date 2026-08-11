@@ -618,7 +618,7 @@ func compileStagedTable64(data []byte) (*Compiled, error) {
 
 func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 	module := boundedTable64Module(4)
-	if _, err := Compile(nil, module); err == nil || !strings.Contains(err.Error(), "table64") {
+	if _, err := compatibilityDefaultConfig().Compile(module); err == nil || !strings.Contains(err.Error(), "table64") {
 		t.Fatalf("public table64 compile error = %v", err)
 	}
 	compiled, err := compileStagedTable64(module)

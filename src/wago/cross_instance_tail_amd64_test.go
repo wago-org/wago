@@ -124,7 +124,7 @@ func TestStagedDirectReturnCallDynamicHostDispatch(t *testing.T) {
 }
 
 func TestStagedDirectCrossInstanceReturnCall(t *testing.T) {
-	if _, err := Compile(nil, directCrossTailConsumerModule()); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
+	if _, err := compatibilityDefaultConfig().Compile(directCrossTailConsumerModule()); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
 		t.Fatalf("public direct cross-tail compile error = %v, want fail-closed feature rejection", err)
 	}
 	compiled, err := compileStagedTail(directCrossTailConsumerModule())
@@ -321,7 +321,7 @@ func instantiateDirectCrossTailFloat(t testing.TB) (*Instance, *Instance) {
 }
 
 func TestStagedDirectCrossInstanceReturnCallMixedFloat(t *testing.T) {
-	if _, err := Compile(nil, directCrossTailFloatConsumerModule()); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
+	if _, err := compatibilityDefaultConfig().Compile(directCrossTailFloatConsumerModule()); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
 		t.Fatalf("public float direct-tail compile error = %v", err)
 	}
 	producer, consumer := instantiateDirectCrossTailFloat(t)
@@ -422,7 +422,7 @@ func unprovenFloatResultCrossTailModule(imported bool) []byte {
 }
 
 func TestStagedDirectCrossInstanceReturnCallFloatParamIntegerResult(t *testing.T) {
-	if _, err := Compile(nil, floatParamIntegerResultCrossTailModule(true)); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
+	if _, err := compatibilityDefaultConfig().Compile(floatParamIntegerResultCrossTailModule(true)); err == nil || !strings.Contains(err.Error(), "tail-call disabled") {
 		t.Fatalf("public float-param direct-tail compile error = %v", err)
 	}
 	producerCompiled, err := compileStagedTail(floatParamIntegerResultCrossTailModule(false))

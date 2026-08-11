@@ -65,8 +65,12 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 		fatal("compile: %v", err)
 	}
 	if automation.DryRun() {
+		var core any = selection.Core
+		if selection.Core == 0 {
+			core = "auto"
+		}
 		plan := map[string]any{
-			"input": options.Input, "output": output, "target": target.String(), "core": selection.Core,
+			"input": options.Input, "output": output, "target": target.String(), "core": core,
 			"functionWorkers": selection.FunctionWorkers, "deferredBoundsChecking": selection.DeferredBoundsChecking,
 		}
 		if options.Invoke != "" {

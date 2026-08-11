@@ -137,7 +137,7 @@ func replayProposalAssertionsFile(t *testing.T, dir, base string) (counts propos
 		t.Fatalf("create spectest.memory: %v", err)
 	}
 	state := &proposalReplayState{
-		rt:            NewRuntime(),
+		rt:            NewRuntime(WithRuntimeConfig(compatibilityDefaultConfig())),
 		standard:      proposalSpectestImports(table, memory),
 		standardTypes: proposalSpectestTypes(),
 		named:         make(map[string]*proposalReplayModule),

@@ -11,8 +11,11 @@ Status: ✅ done · 🚧 partial · ⬜ planned · ❌ not planned.
 `CoreFeaturesV2` is the static WebAssembly 2.0 release group. `CoreFeaturesV3`
 describes the mandatory WebAssembly Core 3.0 scope, and `SupportedFeatures()`
 reports the executable build/host set. The compatibility default remains the
-Release 2 feature set plus completed extended constants; callers opt into the
-full Release 3 surface with `WithCoreFeatures(CoreFeaturesV3)`. On
+Release 2 feature set plus completed extended constants on incomplete backends.
+Complete Core 3 backends additionally default on tail calls, typed function
+references, multi-memory, memory64, and table64. WasmGC and exception handling
+remain opt-in; callers select the full Release 3 surface with
+`WithCoreFeatures(CoreFeaturesV3)`. On
 linux/amd64 explicit/signal builds and Linux/Darwin arm64 explicit/signal builds,
 every Core 3 family is admitted. ARM64 signal mode uses guard faults for eligible
 memory-0 memory32 accesses and retains explicit checks for indexed memories and
@@ -27,7 +30,7 @@ retains full-u64 explicit checks inside the signal-backed product.
 `memory64` and typed function references including `call_ref` are implemented
 on those explicitly admitted Core 3 products; this is not a claim for every Wago
 target. `SupportedFeatures()` remains the executable build/host authority.
-Release 1 and Release 2 defaults remain unchanged. This official-suite result is
+Explicit `CoreFeaturesV1` and `CoreFeaturesV2` selections remain unchanged. This official-suite result is
 not an unrestricted WasmGC claim. Shape-independent struct/array helper admission now also compiles, links,
 and starts the 3,225,249-byte MoonBit Starshine CLI smoke payload (SHA-256
 `3a92309ca48f80594c88ea6c3508982d6fc34953c018ce31786382e08a18d046`).

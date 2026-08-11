@@ -446,7 +446,7 @@ func TestStagedMultiMemoryLocalAndImportedExecution(t *testing.T) {
 		}
 	})
 
-	if _, err := Compile(nil, localMultiMemoryExecModule()); err == nil {
+	if _, err := compatibilityDefaultConfig().Compile(localMultiMemoryExecModule()); err == nil {
 		t.Fatal("public multi-memory compile unexpectedly succeeded")
 	}
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureMultiMemory)

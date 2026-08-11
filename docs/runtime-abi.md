@@ -918,8 +918,9 @@ M9 extends the same 40-byte canonical descriptor ABI to null plus two provider d
 ## Iteration 74 integrated Core 3 ABI
 
 The complete Release 3 harness uses the same bounded native ABI rather than a
-parallel conformance-only executor. `CoreFeaturesV3` is an explicit admission
-choice; the Release 2-compatible default remains unchanged. Typed element
+parallel conformance-only executor. At this iteration, `CoreFeaturesV3` was an
+explicit admission choice; a later policy pass promoted selected lower-risk
+families on complete backends. Typed element
 initializers persist either a canonical local function identity or a validated
 immutable-global source. Imported/exported tags carry store identity through the
 existing tag directory, whose codec count is bounded by the artifact reader

@@ -300,7 +300,7 @@ func compileStagedMemory64(data []byte) (*Compiled, error) {
 
 func TestStagedMemory64LocalExecutionAndProductRoundTrip(t *testing.T) {
 	module := boundedMemory64Module(3)
-	if _, err := Compile(nil, module); err == nil || !strings.Contains(err.Error(), "memory64") {
+	if _, err := compatibilityDefaultConfig().Compile(module); err == nil || !strings.Contains(err.Error(), "memory64") {
 		t.Fatalf("public memory64 compile error = %v, want fail-closed feature rejection", err)
 	}
 	compiled, err := compileStagedMemory64(module)
@@ -1011,7 +1011,7 @@ func TestStagedMemory64InstanceExportImportLifecycle(t *testing.T) {
 	}
 
 	consumerModule := memory64ImportModule(1, &max4)
-	if _, err := Compile(nil, consumerModule); err == nil || !strings.Contains(err.Error(), "memory64") {
+	if _, err := compatibilityDefaultConfig().Compile(consumerModule); err == nil || !strings.Contains(err.Error(), "memory64") {
 		t.Fatalf("public memory64 import compile = %v, want fail-closed feature rejection", err)
 	}
 	consumerCompiled, err := compileStagedMemory64(consumerModule)
