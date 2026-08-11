@@ -389,10 +389,21 @@ func (c *Collector) tinyPayAllocationDebt(roots RootSet) error {
 		steps = c.cfg.TinyPacingStepLimit
 	}
 	for i := uint32(0); i < steps; i++ {
-		if err := c.Step(roots); err != nil {
+		if err := c.tinyPacingStep(roots); err != nil {
 			return err
 		}
 		c.tinyGC.allocationDebt -= tinyAllocationDebtBytes
+	}
+	return nil
+}
+
+func (c *Collector) tinyPacingStep(roots RootSet) error {
+	wasActive := tinyIncrementalBuild && c.tinyGC.state != tinyIdle
+	if err := c.Step(roots); err != nil {
+		return err
+	}
+	if wasActive && c.tinyGC.state == tinyIdle {
+		c.stats.FullCollections++
 	}
 	return nil
 }
@@ -414,12 +425,8 @@ func (c *Collector) tinyAssistNearExhaustion(size uint32, roots RootSet) (uint32
 		limit = 1
 	}
 	for i := uint32(0); i < limit; i++ {
-		wasActive := c.tinyGC.state != tinyIdle
-		if err := c.Step(roots); err != nil {
+		if err := c.tinyPacingStep(roots); err != nil {
 			return 0, 0, err
-		}
-		if tinyIncrementalBuild && wasActive && c.tinyGC.state == tinyIdle {
-			c.stats.FullCollections++
 		}
 		if c.tinyGC.allocationDebt >= tinyAllocationDebtBytes {
 			c.tinyGC.allocationDebt -= tinyAllocationDebtBytes

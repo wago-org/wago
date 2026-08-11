@@ -43,6 +43,31 @@ func TestTinyAllocationDebtStartsIncrementalWork(t *testing.T) {
 	}
 }
 
+func TestTinyAllocationDebtCountsCompletedCycle(t *testing.T) {
+	requireTinyIncrementalBuild(t)
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+	for c.tinyGC.state != tinySweep {
+		if err := c.Step(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.tinyGC.sweep != c.tinyGC.sweepLimit {
+		t.Fatalf("empty Tiny sweep cursor/limit = %d/%d, want completion pending", c.tinyGC.sweep, c.tinyGC.sweepLimit)
+	}
+	c.tinyGC.allocationDebt = tinyAllocationDebtBytes
+	before := c.stats.FullCollections
+	if err := c.tinyPayAllocationDebt(EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.state != tinyIdle || c.stats.FullCollections != before+1 {
+		t.Fatalf("ordinary debt completion state/collections = %d/%d, want idle/%d", c.tinyGC.state, c.stats.FullCollections, before+1)
+	}
+}
+
 func TestTinySweepEndpointIgnoresNewHandleTail(t *testing.T) {
 	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
