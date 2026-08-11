@@ -96,6 +96,20 @@ func TestTinyPoisonSweepResumesLargeSpan(t *testing.T) {
 	if c.tinyGC.state != tinySweep {
 		t.Fatal("large poisoned sweep did not remain resumable")
 	}
+	cursor := c.tinyGC.scan
+	if err := c.CollectFull(nil); err == nil {
+		t.Fatal("CollectFull restarted a partially poisoned sweep object")
+	}
+	if c.tinyGC.scan != cursor || !c.validObjectRef(object) {
+		t.Fatal("rejected poison restart changed the active reclamation cursor")
+	}
+	global := c.NewGlobalSlot(Null())
+	if err := c.SetGlobalSlot(global, object); err == nil {
+		t.Fatal("checked root published an object during bounded poison reclamation")
+	}
+	if !c.GlobalSlot(global).IsNull() {
+		t.Fatal("rejected bounded-poison publication mutated the root")
+	}
 	for c.tinyGC.state != tinyIdle {
 		if err := c.Step(nil); err != nil {
 			t.Fatal(err)

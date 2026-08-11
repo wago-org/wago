@@ -154,7 +154,11 @@ func (h *tinyHeap) alloc(size uint32) (uint32, uint32, error) {
 	return b * h.blockBytes, need * h.blockBytes, nil
 }
 
-func (h *tinyHeap) free(off uint32) error {
+func (h *tinyHeap) free(off uint32) error { return h.freeSpan(off, h.poisonFreed) }
+
+func (h *tinyHeap) freeWithoutPoison(off uint32) error { return h.freeSpan(off, false) }
+
+func (h *tinyHeap) freeSpan(off uint32, poison bool) error {
 	if h.blockBytes == 0 || off%h.blockBytes != 0 {
 		return errors.New("gc: invalid tiny free offset")
 	}
@@ -163,6 +167,12 @@ func (h *tinyHeap) free(off uint32) error {
 		return errors.New("gc: invalid tiny free span")
 	}
 	span := h.spanSize(b)
+	if poison {
+		freed := h.mem[b*h.blockBytes : (b+span)*h.blockBytes]
+		for i := range freed {
+			freed[i] = 0xdd
+		}
+	}
 	h.setUsedStart(b, false)
 	if b > 0 {
 		prevSize := h.spanSize(b - 1)
@@ -170,6 +180,11 @@ func (h *tinyHeap) free(off uint32) error {
 			prev := b - prevSize
 			if !h.isUsedStart(prev) && h.spanSize(prev) == prevSize && prev+prevSize == b {
 				h.removeFree(prev, prevSize)
+				if h.poisonFreed {
+					for i := range h.mem[prev*h.blockBytes : prev*h.blockBytes+tinyFreeLinkBytes] {
+						h.mem[prev*h.blockBytes+uint32(i)] = 0xdd
+					}
+				}
 				h.clearSpan(prev, prevSize)
 				h.clearSpan(b, span)
 				b, span = prev, prevSize+span
@@ -181,16 +196,15 @@ func (h *tinyHeap) free(off uint32) error {
 		nextSize := h.spanSize(next)
 		if nextSize > 0 && nextSize <= h.blockCount-next && !h.isUsedStart(next) {
 			h.removeFree(next, nextSize)
+			if h.poisonFreed {
+				for i := range h.mem[next*h.blockBytes : next*h.blockBytes+tinyFreeLinkBytes] {
+					h.mem[next*h.blockBytes+uint32(i)] = 0xdd
+				}
+			}
 			h.clearSpan(b, span)
 			h.clearSpan(next, nextSize)
 			span += nextSize
 			h.setSpan(b, span, false)
-		}
-	}
-	if h.poisonFreed {
-		freed := h.mem[b*h.blockBytes : (b+span)*h.blockBytes]
-		for i := range freed {
-			freed[i] = 0xdd
 		}
 	}
 	h.insertFree(b, span)
@@ -384,20 +398,24 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 			}
 		}
 	}
-	if c.tinyGC.state == tinySweep {
-		if roots == nil {
-			return Null(), errors.New("gc: allocation during tiny sweep requires roots")
-		}
-		for c.tinyGC.state != tinyIdle {
-			if err := c.Step(roots); err != nil {
-				return Null(), err
-			}
-		}
-	}
 	if err := injectFailure(c, failHandlePublication); err != nil {
 		return Null(), err
 	}
 	off, _, err := c.tiny.alloc(size)
+	if err != nil && c.tinyGC.state == tinySweep {
+		if roots == nil {
+			return Null(), errors.New("gc: allocation during tiny sweep requires roots")
+		}
+		// One bounded assist may expose the next swept span, but allocation never
+		// drains the remaining cycle merely because sweep is active.
+		if stepErr := c.Step(roots); stepErr != nil {
+			return Null(), stepErr
+		}
+		off, _, err = c.tiny.alloc(size)
+		if err != nil {
+			return Null(), errors.New("gc: tiny heap exhausted during bounded sweep")
+		}
+	}
 	if err != nil {
 		if roots == nil {
 			return Null(), errors.New("gc: tiny heap exhausted and no roots were supplied")

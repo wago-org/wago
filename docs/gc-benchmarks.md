@@ -660,8 +660,12 @@ The persistent-root cursor stage adds `BenchmarkTinyStepPersistentRoots`. Five
 samples on the same host measured 520-526 ns for one 256-slot step at 256 and
 65,536 total slots; the 4,096-slot control was 520-550 ns. Every case reports
 0 B/op and 0 allocs/op, demonstrating that step work scales with the fixed chunk
-rather than total persistent-root count. Transient/native roots remain one
-atomic direct walk with a hard 1,024-reference limit because frame slots may
+rather than total persistent-root count. `BenchmarkTinyStepSweepBlack` measures
+one 64-handle survivor sweep at 188 ns for 64 handles, 191-193 ns for 4,096
+handles, and 174-177 ns for 65,536 handles, all with 0 B/op and 0 allocs/op.
+Sweep work is capped at 64 handles and 256 blocks; oversized debug-poison spans
+resume separately. Transient/native roots remain one atomic direct walk with a
+hard 1,024-reference limit because frame slots may
 change when the mutator resumes; callback-only root sets fail closed in Tiny.
 
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of

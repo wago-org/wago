@@ -1813,9 +1813,13 @@ at each safepoint through allocation-free direct visitors and fail closed above
 1,024 references; arbitrary callback-only root sets are not admitted to Tiny.
 Collector-owned globals and tables resume through a stable index cursor at
 most 256 slots per `Step`, including both initial mark and remark. Sweep walks handle indexes and frees
-white Tiny objects back to the fixed-block allocator. `CollectFull` completes one
-whole Tiny cycle. `CollectMinor` is specified as the same full Tiny cycle because
-Tiny is non-generational.
+white Tiny objects back to the fixed-block allocator. One sweep `Step` visits at
+most 64 handles and accounts at most 256 allocation blocks; one oversized span is
+handled alone. With `PoisonFreed`, a span larger than 256 blocks is poisoned through
+a stable handle/block cursor before it is released, so debug clearing cannot make
+one step scale with object size. `CollectFull` completes one whole Tiny cycle.
+`CollectMinor` is specified as the same full Tiny cycle because Tiny is
+non-generational.
 
 Tiny clears logical mark state in O(1). Each handle retains one byte whose low
 seven bits identify its mark epoch and whose high bit distinguishes current-epoch
@@ -1886,9 +1890,10 @@ Known Tiny limitations in this foundation:
 
 - transient roots use a hard 1,024-reference direct-visitor bound rather than a
   resumable cursor because native frame roots may change when the mutator resumes;
-- sweeping still advances by the existing handle-oriented policy; bounded sweep
-  regions, allocation from swept regions, and allocation-debt pacing are not part
-  of this stage. A reference graph published through an external `WriteBarrierRoot`
+- allocation may consume existing or already swept free spans without draining
+  the remaining cycle; on an allocation miss during sweep it performs one bounded
+  sweep assist and fails explicitly if no fitting span is exposed. Allocation-debt
+  and near-exhaustion pacing remain separate policy work. A reference graph published through an external `WriteBarrierRoot`
   during sweep must remain in the exact supplied roots until publication; the
   current one-pass sweep cannot resurrect descendants already reclaimed from an
   omitted graph. Checked collector global/table setters fail before mutating their

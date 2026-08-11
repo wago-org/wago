@@ -213,6 +213,11 @@ func TestTinyCollectFullRestartsSweepWithFreshEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for i := 0; i < int(tinyStepSweepHandles); i++ {
+		if _, err := c.NewStructDefault(0); err != nil {
+			t.Fatal(err)
+		}
+	}
 	keep, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)
@@ -234,8 +239,8 @@ func TestTinyCollectFullRestartsSweepWithFreshEpoch(t *testing.T) {
 	if err := c.Step(roots); err != nil {
 		t.Fatal(err)
 	}
-	if c.tinyGC.sweep != handleOf(keep) {
-		t.Fatalf("sweep cursor = %d, want next handle %d", c.tinyGC.sweep, handleOf(keep))
+	if c.tinyGC.state != tinySweep || c.tinyGC.sweep <= 1 {
+		t.Fatalf("bounded sweep did not advance partially: state=%d cursor=%d", c.tinyGC.state, c.tinyGC.sweep)
 	}
 	keepRoot := Root(keep)
 	if err := c.CollectFull(Slots{&keepRoot}); err != nil {
@@ -262,6 +267,11 @@ func TestTinyCheckedRootPublicationRejectsUnsafeSweepGraph(t *testing.T) {
 	child, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for i := 0; i < int(tinyStepSweepHandles); i++ {
+		if _, err := c.NewStructDefault(0); err != nil {
+			t.Fatal(err)
+		}
 	}
 	parent, err := c.NewStructDefault(1)
 	if err != nil {
@@ -437,8 +447,8 @@ func TestTinyAllocationsPublishCurrentEpochState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.tinyGC.state != tinyIdle || c.tinyGC.markEpoch != sweepEpoch {
-		t.Fatalf("allocation request did not finish sweep in the same epoch: state=%v epoch=%d want=%d", c.tinyGC.state, c.tinyGC.markEpoch, sweepEpoch)
+	if c.tinyGC.state != tinySweep || c.tinyGC.markEpoch != sweepEpoch {
+		t.Fatalf("allocation request did not remain in bounded sweep: state=%v epoch=%d want=%d", c.tinyGC.state, c.tinyGC.markEpoch, sweepEpoch)
 	}
 	assertCurrent(afterSweepRequest, tinyBlack)
 }

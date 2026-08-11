@@ -648,7 +648,14 @@ func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
 var errTinyUnsafeSweepRoot = errors.New("gc: Tiny sweep cannot publish an unmarked reference graph")
 
 func (c *Collector) validateTinySweepRootPublication(r Ref) error {
-	if !r.IsObj() || !c.tinyIsWhite(handleOf(r)) {
+	if !r.IsObj() {
+		return nil
+	}
+	h := handleOf(r)
+	if c.tinyGC.scan.handle == h {
+		return errTinyUnsafeSweepRoot
+	}
+	if !c.tinyIsWhite(h) {
 		return nil
 	}
 	d, err := c.refDesc(r)
