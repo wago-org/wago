@@ -129,7 +129,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 				panic(invalidHostReference{err: err})
 			}
 			active.jm.SetStackFence(active.eng.StackLimit())
-			if err := active.jm.BindTrapCell(active.trap); err != nil {
+			if err := active.jm.RebindTrapCell(active.trap); err != nil {
 				panic(invalidHostReference{err: err})
 			}
 			// bindNativeContext restores the instance's immutable context image,
