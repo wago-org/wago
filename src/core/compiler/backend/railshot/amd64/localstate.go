@@ -61,6 +61,30 @@ func (f *fn) localConstZero(x int) bool {
 	return x >= 0 && x < len(f.locals) && f.locals[x].state == lsConstZero
 }
 
+func (f *fn) loadFrameInt(dst Reg, off int32, typ machineType) {
+	if typ == mtI32 {
+		f.a.Load32(dst, RSP, off)
+	} else {
+		f.a.Load64(dst, RSP, off)
+	}
+}
+
+func (f *fn) moveInt(dst, src Reg, typ machineType) {
+	if typ == mtI32 {
+		f.a.MovRegReg32(dst, src)
+	} else {
+		f.a.MovReg64(dst, src)
+	}
+}
+
+func (f *fn) storeFrameInt(off int32, src Reg, typ machineType) {
+	if typ == mtI32 {
+		f.a.Store32(RSP, off, src)
+	} else {
+		f.a.Store64(RSP, off, src)
+	}
+}
+
 func (f *fn) markDeclaredLocalZero(x int) {
 	f.locals[x].state = lsConstZero
 }
@@ -71,7 +95,7 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	} else if isFloat {
 		f.a.FStoreDisp(RSP, f.localOff(x), reg, f.localType[x] == mtF64)
 	} else {
-		f.a.Store64(RSP, f.localOff(x), reg)
+		f.storeFrameInt(f.localOff(x), reg, f.localType[x])
 	}
 }
 
@@ -81,7 +105,7 @@ func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 	} else if isFloat {
 		f.a.FLoadDisp(reg, RSP, f.localOff(x), f.localType[x] == mtF64)
 	} else {
-		f.a.Load64(reg, RSP, f.localOff(x))
+		f.loadFrameInt(reg, f.localOff(x), f.localType[x])
 	}
 }
 
@@ -104,7 +128,7 @@ func (f *fn) materializeZeroLocal(x int, needSlot bool) {
 	if needSlot {
 		r := f.allocReg(0)
 		f.a.XorSelf32(r)
-		f.a.Store64(RSP, f.localOff(x), r)
+		f.storeFrameInt(f.localOff(x), r, f.localType[x])
 		f.release(r)
 		f.locals[x].state = lsMem
 	}

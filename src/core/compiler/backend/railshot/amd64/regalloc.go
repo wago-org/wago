@@ -149,6 +149,23 @@ func (f *fn) spill(e *elem) {
 		// e is now a plain register value; fall through to spill it.
 	}
 
+	// An unpinned scalar local.tee has already written this exact value to the
+	// local's canonical frame slot. Reuse that home instead of writing an
+	// identical copy to a temporary spill slot. idx is otherwise unused for an
+	// owned stReg and stores local+1; local.set clears the annotation before it
+	// changes the canonical slot.
+	if teeSpillElideEnabled && e.st.kind == stReg && !e.st.gcRoot && e.st.idx > 0 &&
+		(e.st.typ == mtI32 || e.st.typ == mtI64) {
+		r := e.st.reg
+		local := e.st.idx - 1
+		f.regUser[r] = nil
+		f.replaceStorage(e, storage{kind: stLocalRef, typ: e.st.typ, idx: local})
+		if f.stats != nil {
+			f.stats.peep("tee-spill-elide")
+		}
+		return
+	}
+
 	f.stats.addSpill()
 	r := e.st.reg
 	slot := f.allocSpillSlot()
@@ -222,20 +239,20 @@ func (f *fn) materialize(e *elem) Reg {
 			panic("amd64: v128 local requires XMM materialization")
 		}
 		r := f.allocReg(0)
-		f.a.Load64(r, RSP, f.localOff(e.st.idx))
+		f.loadFrameInt(r, f.localOff(e.st.idx), e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stLocalReg:
 		// Borrowed pinned-local register: copy its value into an owned register so
 		// the caller may clobber it without corrupting the local.
 		r := f.allocReg(0)
-		f.a.MovReg64(r, e.st.reg)
+		f.moveInt(r, e.st.reg, e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stGlobReg:
 		// Borrowed value-pinned global register: copy out, mirroring stLocalReg.
 		r := f.allocReg(0)
-		f.a.MovReg64(r, e.st.reg)
+		f.moveInt(r, e.st.reg, e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stMemRef:

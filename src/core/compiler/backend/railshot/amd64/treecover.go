@@ -50,7 +50,7 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	aliasCopy := regNone
 	if repeatedAlias {
 		aliasCopy = f.allocReg(maskOf(dest))
-		f.a.MovReg64(aliasCopy, dest)
+		f.moveInt(aliasCopy, dest, node.typ)
 		f.pinned = f.pinned.add(aliasCopy)
 		replaceAssociativeAliasLeaves(node, node.op, node.typ, first, dest, aliasCopy)
 	}
