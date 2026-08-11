@@ -4,7 +4,10 @@ package wago
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 )
 
 // Shared-memory importers capture their per-instance basedata pointers and
@@ -145,7 +148,138 @@ func TestSharedMemoryIndirectCallSwitchesPrivateContext(t *testing.T) {
 	}
 }
 
-func mustCompileWat(rt *Runtime, t *testing.T, wat string) *Module {
+func TestHostReentryRefreshesMemorySizeAfterNestedGrow(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
+	defer rt.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var instance *Instance
+	instance, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "reenter" (func $reenter (result i32)))
+		(memory (export "memory") 1 3)
+		(func (export "grow") (result i32)
+			(memory.grow (i32.const 1)))
+		(func (export "outer") (result i32 i32 i32 i32 i32 i32 i32)
+			(call $reenter) drop
+			memory.size
+			(i32.store (i32.const 65536) (i32.const 42))
+			(i32.load (i32.const 65536))
+			(memory.fill (i32.const 65540) (i32.const 127) (i32.const 4))
+			(memory.copy (i32.const 65544) (i32.const 65540) (i32.const 4))
+			(i32.load8_u (i32.const 65547))
+			(call $reenter)
+			(call $reenter)
+			memory.size
+			(i32.store (i32.const 131072) (i32.const 99))
+			(i32.load (i32.const 131072))))`), WithImports(Imports{
+		"env.reenter": HostFunc(func(caller HostModule, _, results []uint64) {
+			grown, callErr := instance.InvokeFromHost(ctx, caller, "grow")
+			if callErr != nil {
+				panic(HostTrap{Err: callErr})
+			}
+			if len(grown) != 1 {
+				panic(HostTrap{Err: fmt.Errorf("nested memory.grow = %v, want one result", grown)})
+			}
+			if got := len(instance.Memory().Bytes()); got < 2*65536 || got > 3*65536 {
+				panic(HostTrap{Err: fmt.Errorf("memory after nested grow = %d bytes", got)})
+			}
+			if got := len(caller.Memory()); got < 2*65536 || got > 3*65536 {
+				panic(HostTrap{Err: fmt.Errorf("caller memory after nested grow = %d bytes", got)})
+			}
+			results[0] = grown[0]
+		}),
+	}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer instance.Close()
+
+	got, err := instance.InvokeContext(ctx, "outer")
+	if err != nil {
+		t.Fatalf("outer after nested memory.grow: %v", err)
+	}
+	want := []int32{2, 42, 127, 2, -1, 3, 99}
+	if len(got) != len(want) {
+		t.Fatalf("outer = %v, want %v", got, want)
+	}
+	for i := range want {
+		if value := AsI32(got[i]); value != want[i] {
+			t.Fatalf("outer result %d = %d, want %d (all results %v)", i, value, want[i], got)
+		}
+	}
+}
+
+func BenchmarkExternalCallMemoryContinuation(b *testing.B) {
+	for _, tc := range []struct {
+		name          string
+		crossInstance bool
+		memoryAccess  bool
+		calls         int
+	}{
+		{name: "host-noop", calls: 1},
+		{name: "host-then-load", memoryAccess: true, calls: 1},
+		{name: "cross-instance", crossInstance: true, calls: 1},
+		{name: "host-64-sites", calls: 64},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
+			defer rt.Close()
+
+			var body strings.Builder
+			for range tc.calls {
+				body.WriteString("(call $external)\n")
+			}
+			if tc.memoryAccess {
+				body.WriteString("(i32.load (i32.const 0))")
+			} else {
+				body.WriteString("(i32.const 0)")
+			}
+			mod := mustCompileWat(rt, b, fmt.Sprintf(`(module
+				(import "env" "external" (func $external))
+				(memory 1 1)
+				(func (export "run") (result i32)
+					%s))`, body.String()))
+			var external any = HostFunc(func(HostModule, []uint64, []uint64) {})
+			var callee *Instance
+			if tc.crossInstance {
+				calleeMod := mustCompileWat(rt, b, `(module (func (export "external")))`)
+				var err error
+				callee, err = rt.Instantiate(context.Background(), calleeMod)
+				if err != nil {
+					b.Fatalf("instantiate callee: %v", err)
+				}
+				defer callee.Close()
+				external, err = callee.ExportedFunc("external")
+				if err != nil {
+					b.Fatalf("export callee: %v", err)
+				}
+			}
+			in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.external": external}), WithSynchronousHostCalls())
+			if err != nil {
+				b.Fatalf("instantiate caller: %v", err)
+			}
+			defer in.Close()
+			if _, err := in.Invoke("run"); err != nil {
+				b.Fatalf("warm invoke: %v", err)
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				result, err := in.Invoke("run")
+				if err != nil {
+					b.Fatal(err)
+				}
+				benchResultSink = result
+			}
+			b.ReportMetric(float64(mod.c.CodeSize()), "code-B")
+			b.ReportMetric(float64(tc.calls), "external-calls/op")
+		})
+	}
+}
+
+func mustCompileWat(rt *Runtime, t testing.TB, wat string) *Module {
 	t.Helper()
 	m, err := rt.Compile(watToWasm(t, wat))
 	if err != nil {

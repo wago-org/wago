@@ -14,6 +14,16 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// refreshCachedMemoryBoundAfterExternalCall reestablishes the memory-zero
+// bounds cache after a continuation resumes from code outside this compilation
+// context. The external code may have grown an aliased memory, and a
+// cross-instance continuation must read from the restored caller basedata.
+func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
+	if f.memSizeReg != regNone {
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
+	}
+}
+
 // regABIEnabled turns on the register-based internal-call ABI (default on;
 // WAGO_Amd64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_Amd64_NOREGABI") != "1"
@@ -629,9 +639,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(RBX, RSP, 0)
 	f.a.Load64(R10, RSP, 8)
 	f.copyInstanceContext(RBX, R10)
-	if f.memSizeReg != regNone {
-		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
-	}
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
 		if isFloatValType(ft.Results[0]) {
@@ -707,9 +715,7 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	trampoline := f.a.Len()
 	f.a.PatchRel32(trampolineSite, trampoline)
 	f.a.Load64(RBX, RSP, 0)
-	if f.memSizeReg != regNone {
-		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
-	}
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
 		if isFloatValType(ft.Results[0]) {
@@ -1142,6 +1148,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		}
 		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[j])
 	}
+	// Arbitrary host code can synchronously re-enter this instance and grow its
+	// memory. Reload after reconstructing the operand stack so the continuation
+	// cannot retain the parked activation's pre-call size.
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	return nil
 }
 
@@ -1409,6 +1419,10 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	if b.Dynamic {
 		f.copyInstanceContext(RBX, R9)
 	}
+	// A dynamic target may be arbitrary host code that synchronously re-enters
+	// this caller and grows its memory. R15 was saved before that call, so reload
+	// from the restored caller context instead of reviving the stale bound.
+	f.refreshCachedMemoryBoundAfterExternalCall()
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
@@ -2370,9 +2384,7 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.Load64(RBX, RSP, 0)
 	f.a.Load64(R10, RSP, 8)
 	f.copyInstanceContext(RBX, R10)
-	if f.memSizeReg != regNone {
-		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
-	}
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	if len(ft.Results) > 0 {
 		if mtOf(ft.Results[0]).isFloat() {
