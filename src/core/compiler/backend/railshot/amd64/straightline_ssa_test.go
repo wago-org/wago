@@ -32,6 +32,9 @@ func TestStraightLineSSAAdmissionAndFallback(t *testing.T) {
 	if got := guard.Funcs[0].Peephole["straightline-ssa-emitted"]; got != 1 {
 		t.Fatalf("guard straightline-ssa-emitted = %d, want 1", got)
 	}
+	if got := guard.Funcs[0].Peephole["compact-i32-frame"]; got != 0 {
+		t.Fatalf("guard compact-i32-frame = %d, want scheduler's 8-byte local slots", got)
+	}
 	explicit := compileWithStats(t, m, false)
 	if got := explicit.Funcs[0].Peephole["straightline-ssa-emitted"]; got != 0 {
 		t.Fatalf("explicit straightline-ssa-emitted = %d, want fallback", got)
@@ -41,5 +44,8 @@ func TestStraightLineSSAAdmissionAndFallback(t *testing.T) {
 	disabled := compileWithStats(t, m, true)
 	if got := disabled.Funcs[0].Peephole["straightline-ssa-emitted"]; got != 0 {
 		t.Fatalf("disabled straightline-ssa-emitted = %d, want fallback", got)
+	}
+	if got := disabled.Funcs[0].Peephole["compact-i32-frame"]; got != 1 {
+		t.Fatalf("disabled compact-i32-frame = %d, want direct-path optimization", got)
 	}
 }

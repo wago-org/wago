@@ -1754,7 +1754,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i32Locals++
 		}
 	}
-	compactI32Frame := compactI32FrameEnabled && !hints.hasCall && !hints.hasControlFlow && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
+	f.prepareStraightLineSSA(funcIdx, c, hints)
+	compactI32Frame := compactI32FrameEnabled && f.ssaPlan == nil && !hints.hasCall && !hints.hasControlFlow && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
 	if compactI32Frame {
 		f.stats.peep("compact-i32-frame")
 	}
@@ -1770,7 +1771,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		localBytes += 8 * mt.stackSlots()
 	}
 	f.nLocalSlots = (localBytes + 7) / 8
-	f.prepareStraightLineSSA(funcIdx, c, hints)
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	// Auto-inlining: collect the callees this caller will splice (before the pin
