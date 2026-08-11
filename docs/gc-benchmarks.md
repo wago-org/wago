@@ -601,11 +601,20 @@ collector globals and 377 us for collector tables. Native-frame p99 was about
 70 us. Exact classified counts were 4,096 per Throughput cycle; Tiny reports
 8,192 visits because it enumerates roots during both initial mark and remark.
 
-Tiny's 65,536-reference-array step fixture still completes in six steps, but one
-step scans the complete object. Across ten pinned 100-cycle samples, median step
-p50 was 383 ns, p90/p95 360 us, p99 377 us, and exact maximum 422 us. This is the
-baseline that #319's slot/byte-budgeted scanner must flatten while increasing
-`steps/op`.
+Before #319's first stage, Tiny's 65,536-reference-array fixture completed in six
+steps but one step scanned the complete object. In the same 100-cycle benchmark
+shape on the Ryzen 7 8845HS, the three-run baseline median was 175.4 us/cycle,
+196.6 us step-p99, 244.9 us maximum, and 6 steps/cycle. The resumable scanner now
+uses 261 steps/cycle with a deterministic maximum of 256 entries, 256 reference
+slots, and 1,024 payload bytes in any marking step. Five 100-cycle samples measure
+a 213.2 us median cycle (+21.5%), 1.34 us step-p99, and 26.1 us observed maximum;
+the remaining maximum is host scheduling/timing-harness noise rather than extra
+scan work. The direct-root `BenchmarkTinyStepReferenceArray` reports a 521 ns
+median at 65,536 elements, 0 B/op, and 0 allocs/op, while
+`BenchmarkTinyCompleteCycleReferenceArray` reports 147.8 us/cycle and 261 steps.
+The same direct benchmark reports 256 maximum entries/slots for 256, 4,096, and
+65,536 elements, proving the per-step object work no longer scales with object
+size.
 
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median

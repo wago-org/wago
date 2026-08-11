@@ -243,10 +243,13 @@ preflights the complete retained segment, then performs type-compatible prevalid
 stores with a deferred barrier and publishes one exact destination range after all
 writes. No collection can occur between preflight and publication; explicit
 hardening modes repeat ownership validation to detect contract misuse. Tiny keeps
-immediate per-edge shading; bulk ranges are handled in 64-element chunks with at most
-64 gray-object drains between chunks so queued incremental publication work stays
-bounded at one-object scan granularity. Numeric arrays and non-collector function-
-identity payloads remain barrier-free.
+immediate per-edge shading; bulk ranges are handled in 64-element chunks and each
+between-chunk drain uses the same 256-entry/256-reference/1,024-byte resumable
+object budget as a marking `Step`. The Tiny path validates the complete destination range
+with widened arithmetic before deriving any element index. This bounds collector
+scan work performed between chunks, but does not make the complete bulk mutation
+call itself incremental. Numeric arrays and non-collector function-identity payloads
+remain barrier-free.
 
 Diagnostic `wago_gcstats` snapshots include separate dynamic checked-path counts for
 `NoBarrier`, `YoungParent`, `KnownOldChild`, `ExistingCard`, `CardMark`, and
@@ -1843,21 +1846,43 @@ white Tiny objects back to the fixed-block allocator. `CollectFull` completes on
 whole Tiny cycle. `CollectMinor` is specified as the same full Tiny cycle because
 Tiny is non-generational.
 
-Exact scanning is shared with the default policy: pointer-free objects are not
-recursively scanned, struct ref fields are visited only at descriptor offsets,
-ref arrays scan elements, numeric fields and arrays are ignored even when their
-bits look like refs, and `null`/`i31` values are ignored. Global and table slots
-are part of the root set for both full and incremental Tiny collection.
+Object marking is resumable. Tiny retains at most one compact active cursor:
+one stable handle plus the next struct descriptor entry or array element index.
+Each resume reacquires the descriptor and object bytes from the handle; no raw
+payload pointer survives a `Step`. The active object remains gray and is absent
+from the gray stack until its final outgoing reference is visited, at which point
+it becomes black. Newly discovered children retain the previous descriptor/array
+visitation order and are processed after the active object completes.
+
+One marking `Step` is limited to at most 64 object-range setups, 256 descriptor
+or array entries, 256 reference slots, and 1,024 accounted payload bytes. A large
+dense reference array therefore advances by at most 256 elements per marking
+step. A large sparse-reference struct is also split because every descriptor
+entry, including numeric fields, consumes entry and storage-byte budget. These are
+internal object-tracing limits; `TinyStepBudget` keeps its existing meaning as the
+number of `Step` calls performed after an allocation when `TinyStepEveryAlloc` is
+enabled.
+
+Exact scanning is shared with the default policy through a cursor/range primitive:
+Throughput and synchronous full-scan callers run it to completion, while Tiny
+retains the cursor between bounded ranges. Pointer-free objects are not
+recursively scanned, struct ref fields are loaded only at descriptor offsets,
+ref arrays scan elements, numeric bits are never interpreted as refs, and
+`null`/`i31` values are ignored. Global and table slots are part of the root set
+for both full and incremental Tiny collection.
 
 Tiny write barriers preserve the incremental no-black-to-white invariant.
-Object stores use a conservative hybrid barrier: when a black parent receives a
-white child during Tiny marking, the child is grayed (forward barrier) and the
-parent is re-grayed (backward barrier). Handles already gray are not pushed to
-the gray stack again. Slot stores for globals/tables gray the stored child during
-active Tiny mark and remark phases. Pointerful objects allocated during active
-Tiny marking are born gray so array/ref initialization cannot publish an unscanned black object
-with white children. This keeps `struct.set`, ref-array stores, `global.set`, and
-`table.set` safe without introducing C-style intrusive lists or pointer headers.
+Object stores retain the existing conservative hybrid policy for black parents:
+the white child is grayed (forward barrier) and the parent is re-grayed (backward
+barrier). A store into a gray parent now also shades a white child, because a
+partially scanned parent's cursor may already be past the mutated slot. This
+conservatively covers writes both before and after the cursor without adding
+cursor-position checks to the mutator path. Handles already gray are not pushed
+to the gray stack again. Slot stores for globals/tables gray the stored child
+during active Tiny mark and remark phases and drain it synchronously during
+sweep. Pointerful objects allocated during active Tiny marking are born gray so
+array/ref initialization cannot publish an unscanned black object with white
+children.
 
 Tiny manages WasmGC heap objects only. It is separate from Wasm linear memory
 allocation. Iterations 38-39 connect exact numeric-struct parked-Go helper products,
@@ -1870,13 +1895,19 @@ are more important than moving/generational throughput.
 
 Known Tiny limitations in this foundation:
 
-- first-fit allocation is simple and deterministic but not fragmentation-optimal;
+- object tracing is bounded inside large objects, but initial/remark root
+  enumeration and the broader persistent-root cursor remain later #319 work;
+- sweeping still advances by the existing handle-oriented policy; bounded sweep
+  regions, allocation from swept regions, and allocation-debt pacing are not part
+  of this stage;
+- Tiny bulk barriers validate ranges with widened arithmetic and chunk mutator
+  publication, but bulk-barrier chunking and bounded object scanning are distinct:
+  the complete bulk mutation call itself is not yet a general bounded barrier;
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
-- handle-table entries remain the stable ref indirection;
-- only exact numeric struct products are wired: allocation-local empty-root shapes plus
-  two immutable collector-rooted globals. General frame publication, mutable root
-  synchronization, and reference barriers remain unwired.
+- handle-table entries remain the stable ref indirection; and
+- color epochs/polarity, near-exhaustion pacing, SATB/barrier-policy comparison,
+  and incremental/nonincremental Tiny product splitting remain later #319 work.
 
 ## Allocator/GC codegen dependency contract
 
