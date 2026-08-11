@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -327,6 +328,9 @@ func directGCStructLayout(m *wasm.Module, typeIndex, fieldIndex uint32) (payload
 		}
 		off = (off + align - 1) &^ (align - 1)
 		if uint32(i) == fieldIndex {
+			if uint64(gc.PayloadOffset)+uint64(off)+uint64(scalar.size) > math.MaxInt32 {
+				return 0, directGCScalar{}, false, false
+			}
 			return off, scalar, st.Final, true
 		}
 		if off > math.MaxUint32-size {
@@ -681,6 +685,30 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	return nil
 }
 
+func (f *fn) emitDirectGCStructRefSetNoBarrier(typeIndex, fieldOffset uint32, state shared.GCBarrierState) bool {
+	valueRoot := f.s.back()
+	if valueRoot == nil {
+		return false
+	}
+	objectRoot := baseOfValentBlock(valueRoot).prev
+	local, hasLocal := gcLocalProvenance(objectRoot)
+	f.flush()
+	oldFloor := f.spillFloor
+	f.spillFloor = f.curSpillSlot()
+	value := f.popValue()
+	object := f.popValue()
+	required := gc.PayloadOffset + fieldOffset + 4
+	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
+	child := f.materialize(value)
+	f.a.StoreIdx(obj, RSP, child, int32(gc.PayloadOffset+fieldOffset), 4)
+	f.release(child)
+	done()
+	f.spillFloor = oldFloor
+	f.recordGCBarrierState(state)
+	f.stats.peep("gc-barrier-elide")
+	return true
+}
+
 func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffset uint32, valueType wasm.ValType) error {
 	var savedLocals [16]locState
 	if len(f.pinnedLocals) > len(savedLocals) {
@@ -717,6 +745,54 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	f.reloadConditionalGCPinnedLocals(savedLocals[:len(f.pinnedLocals)])
 	f.a.PatchRel32(done, f.a.Len())
 	return err
+}
+
+func (f *fn) emitDirectGCArrayRefSetNoBarrier(typeIndex uint32, state shared.GCBarrierState) bool {
+	valueRoot := f.s.back()
+	if valueRoot == nil {
+		return false
+	}
+	indexRoot := baseOfValentBlock(valueRoot).prev
+	if indexRoot == nil {
+		return false
+	}
+	objectRoot := baseOfValentBlock(indexRoot).prev
+	local, hasLocal := gcLocalProvenance(objectRoot)
+	f.flush()
+	oldFloor := f.spillFloor
+	f.spillFloor = f.curSpillSlot()
+	value := f.popValue()
+	indexValue := f.popValue()
+	object := f.popValue()
+	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
+	index := f.materialize(indexValue)
+	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
+	f.pinned = f.pinned.add(index)
+	tmp := f.allocReg(maskOf(obj, index))
+	f.pinned = f.pinned.add(tmp)
+	f.a.Load32(tmp, obj, 8)
+	f.a.Cmp32(index, tmp)
+	f.trapIf(condAE, trapBuiltin)
+	f.a.ImulRI(index, 4, true)
+	f.a.Load32(tmp, obj, 4)
+	end := f.allocReg(maskOf(obj, index, tmp))
+	f.pinned = f.pinned.add(end)
+	f.a.MovReg64(end, index)
+	f.a.AluRI(0, end, int32(gc.PayloadOffset)+4, true)
+	f.a.Cmp64(end, tmp)
+	f.trapIf(condA, trapCastFailure)
+	f.pinned = f.pinned.remove(end)
+	f.pinned = f.pinned.remove(tmp)
+	child := f.materialize(value)
+	f.a.StoreIdx(obj, index, child, int32(gc.PayloadOffset), 4)
+	f.release(child)
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	done()
+	f.spillFloor = oldFloor
+	f.recordGCBarrierState(state)
+	f.stats.peep("gc-barrier-elide")
+	return true
 }
 
 func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValType) error {
@@ -2114,7 +2190,7 @@ func (f *fn) emitDirectGCArrayLen(typeIndex uint32) bool {
 	return true
 }
 
-func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
+func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, knownLength uint32, logicalBoundsProven bool) bool {
 	scalar, final, ok := f.directGCArrayLayout(typeIndex)
 	if !ok || !final {
 		return false
@@ -2126,14 +2202,49 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
 	f.spillFloor = f.curSpillSlot()
 	indexValue := f.popValue()
 	object := f.popValue()
+	constantOffset := uint64(gc.PayloadOffset) + uint64(knownIndex)*uint64(scalar.size)
+	constantExtent := constantOffset + uint64(scalar.size)
+	if logicalBoundsProven && constantExtent <= math.MaxInt32 {
+		obj, done := f.emitDirectGCObject(object, typeIndex, uint32(constantExtent), local, hasLocal)
+		tmp := f.allocReg(maskOf(obj))
+		f.a.Load32(tmp, obj, 8)
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.release(tmp)
+		disp := int32(constantOffset)
+		f.stats.peep("gc-array-known-bounds")
+		f.stats.peep("gc-array-const-index")
+		if scalar.typ.isFloat() {
+			x := f.allocFReg(0)
+			f.a.FLoadDisp(x, obj, disp, scalar.typ == mtF64)
+			done()
+			f.spillFloor = oldFloor
+			f.pushFReg(x, scalar.typ)
+			return true
+		}
+		result := f.allocReg(maskOf(obj))
+		f.a.LoadIdx(result, obj, RSP, disp, scalar.size, helper == gcArrayGetS, scalar.typ == mtI64)
+		done()
+		f.spillFloor = oldFloor
+		f.pushReg(result, scalar.typ)
+		return true
+	}
+
 	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
+	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
 	f.a.Load32(tmp, obj, 8) // ObjHeader.Aux array length
-	f.a.Cmp32(index, tmp)
-	f.trapIf(condAE, trapCastFailure)
+	if logicalBoundsProven {
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.stats.peep("gc-array-known-bounds")
+	} else {
+		f.a.Cmp32(index, tmp)
+		f.trapIf(condAE, trapBuiltin)
+	}
 	f.a.ImulRI(index, int32(scalar.size), true)
 	// Defend against corrupted Aux metadata as well as the logical index check:
 	// payload offset + scaled index + element width must fit the object header size.
@@ -2169,7 +2280,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32) bool {
 	return true
 }
 
-func (f *fn) emitDirectGCArraySet(typeIndex uint32) bool {
+func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, logicalBoundsProven bool) bool {
 	scalar, final, ok := f.directGCArrayLayout(typeIndex)
 	if !ok || !final {
 		return false
@@ -2183,14 +2294,47 @@ func (f *fn) emitDirectGCArraySet(typeIndex uint32) bool {
 	value := f.popValue()
 	indexValue := f.popValue()
 	object := f.popValue()
+	constantOffset := uint64(gc.PayloadOffset) + uint64(knownIndex)*uint64(scalar.size)
+	constantExtent := constantOffset + uint64(scalar.size)
+	if logicalBoundsProven && constantExtent <= math.MaxInt32 {
+		obj, done := f.emitDirectGCObject(object, typeIndex, uint32(constantExtent), local, hasLocal)
+		tmp := f.allocReg(maskOf(obj))
+		f.a.Load32(tmp, obj, 8)
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.release(tmp)
+		disp := int32(constantOffset)
+		f.stats.peep("gc-array-known-bounds")
+		f.stats.peep("gc-array-const-index")
+		if scalar.typ.isFloat() {
+			x := f.materializeF(value)
+			f.a.FStoreDisp(obj, disp, x, scalar.typ == mtF64)
+			f.releaseF(x)
+		} else {
+			r := f.materialize(value)
+			f.a.StoreIdx(obj, RSP, r, disp, scalar.size)
+			f.release(r)
+		}
+		done()
+		f.spillFloor = oldFloor
+		return true
+	}
+
 	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
+	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
 	f.a.Load32(tmp, obj, 8)
-	f.a.Cmp32(index, tmp)
-	f.trapIf(condAE, trapCastFailure)
+	if logicalBoundsProven {
+		f.a.AluRI(cmpDigit, tmp, int32(knownLength), false)
+		f.trapIf(condNE, trapCastFailure)
+		f.stats.peep("gc-array-known-bounds")
+	} else {
+		f.a.Cmp32(index, tmp)
+		f.trapIf(condAE, trapBuiltin)
+	}
 	f.a.ImulRI(index, int32(scalar.size), true)
 	f.a.Load32(tmp, obj, 4)
 	end := f.allocReg(maskOf(obj, index, tmp))

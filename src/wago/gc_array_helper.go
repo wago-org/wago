@@ -31,6 +31,11 @@ const (
 	gcArrayAllocDefaultNative  uint32 = 32
 	gcArrayAllocUniformNative  uint32 = 33
 	gcArrayAllocFixedNative    uint32 = 34
+	gcArrayFillNoBarrier       uint32 = 35
+	gcArrayCheckDefault        uint32 = 36
+	gcArrayCheckUniform        uint32 = 37
+	gcArrayCheckData           uint32 = 38
+	gcArrayCheckFixed          uint32 = 39
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -171,19 +176,27 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		entryBytes = elemEntryBytes(in.c.passiveElems[elemIndex].RefType)
 		return
 	}
-	arrayElemValue := func(typeID uint32, entries uintptr, entryBytes int, index uint32) gc.Value {
+	arrayElemBits := func(entries uintptr, entryBytes int, index uint32) uint64 {
 		off := uint64(index) * uint64(entryBytes)
 		if off > uint64(^uintptr(0))-uint64(entries) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array element entry %d address overflows", index)})
 		}
 		entry := unsafe.Slice((*byte)(offHeapPtr(entries+uintptr(off))), entryBytes)
-		var bits uint64
 		if entryBytes == coreruntime.TableEntryBytes {
-			bits = binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:])
-		} else {
-			bits = binary.LittleEndian.Uint64(entry)
+			return binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:])
 		}
-		return arrayStoredValue(typeID, []uint64{bits})
+		return binary.LittleEndian.Uint64(entry)
+	}
+	arrayElemValue := func(typeID uint32, entries uintptr, entryBytes int, index uint32) gc.Value {
+		return arrayStoredValue(typeID, []uint64{arrayElemBits(entries, entryBytes, index)})
+	}
+	arrayElemValuePrevalidated := func(typeID uint32, entries uintptr, entryBytes int, index uint32) gc.Value {
+		bits := arrayElemBits(entries, entryBytes, index)
+		kind := arrayElemKind(typeID)
+		if kind == gc.StorageRef || kind == gc.StorageRefNull {
+			return gc.RefValue(gc.Ref(uint32(bits)))
+		}
+		return gc.Value{Kind: kind, Bits: bits}
 	}
 	panicArrayError := func(err error) {
 		if errors.Is(err, gc.ErrAllocationTooLarge) {
@@ -193,6 +206,94 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 
 	switch helper {
+	case gcArrayCheckFixed:
+		if len(args) != 2 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array check-fixed helper arity = %d, want 2", len(args))})
+		}
+		ref, err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(uint32(args[0])), uint32(args[1]), frameRoots)
+		if err != nil {
+			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
+		}
+	case gcArrayCheckDefault:
+		if len(args) != 2 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array check-default helper arity = %d, want 2", len(args))})
+		}
+		ref, err := in.gc.ReserveDeadDefaultArrayAllocation(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots)
+		if err != nil {
+			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
+		}
+	case gcArrayCheckUniform:
+		if len(args) < 3 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array check-uniform helper arity = %d, want at least 3", len(args))})
+		}
+		typeID := uint32(args[len(args)-1])
+		if gcArrayElementStorage(arrayElemKind(typeID)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array dead-uniform reservation requires pointer-free elements")})
+		}
+		valueSlots := arrayValueSlots(typeID)
+		if len(args) != valueSlots+2 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array check-uniform helper arity = %d, want %d", len(args), valueSlots+2)})
+		}
+		_ = arrayStoredValue(typeID, args[:valueSlots])
+		ref, err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), uint32(args[valueSlots]), frameRoots)
+		if err != nil {
+			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
+		}
+	case gcArrayCheckData:
+		if len(args) != 4 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array check-data helper arity = %d, want 4", len(args))})
+		}
+		source, length := uint32(args[0]), uint32(args[1])
+		typeID, dataIndex := uint32(args[2]), uint32(args[3])
+		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data type %d is not an admitted array", typeID)})
+		}
+		var width uint64
+		switch in.c.GCTypeDescs[typeID].Elem {
+		case gc.StorageI8:
+			width = 1
+		case gc.StorageI16:
+			width = 2
+		case gc.StorageI32, gc.StorageF32:
+			width = 4
+		case gc.StorageI64, gc.StorageF64:
+			width = 8
+		case gc.StorageV128:
+			width = 16
+		default:
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data type %d has unsupported storage", typeID)})
+		}
+		if int(dataIndex) >= len(in.c.PassiveData) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d is unavailable", dataIndex)})
+		}
+		descOff := int(dataIndex) * coreruntime.PassiveDataDescBytes
+		if descOff < 0 || descOff+coreruntime.PassiveDataDescBytes > len(in.passiveDataDesc) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d has no instance descriptor", dataIndex)})
+		}
+		segmentLen := binary.LittleEndian.Uint32(in.passiveDataDesc[descOff+8:])
+		end := uint64(source) + uint64(length)*width
+		if end > uint64(segmentLen) {
+			panic(gcStructHelperTrap{code: coreruntime.TrapLinMemOutOfBounds})
+		}
+		if end > uint64(len(in.c.PassiveData[dataIndex].Bytes)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(in.c.PassiveData[dataIndex].Bytes))})
+		}
+		ref, err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), length, frameRoots)
+		if err != nil {
+			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
+		}
 	case gcArrayAllocFixedV128Spill:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
@@ -251,14 +352,24 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		for i := uint32(0); i < length; i++ {
 			_ = arrayElemValue(typeID, entries, entryBytes, srcStart+i)
 		}
+		deferredBarrier := in.gc.Profile() != gc.ProfileTiny
 		for i := uint32(0); i < length; i++ {
-			value := arrayElemValue(typeID, entries, entryBytes, srcStart+i)
-			if err := in.gc.ArraySet(ref, dstStart+i, value); err != nil {
+			value := arrayElemValuePrevalidated(typeID, entries, entryBytes, srcStart+i)
+			var err error
+			if deferredBarrier {
+				err = in.gc.ArraySetDeferredBarrier(ref, dstStart+i, value)
+			} else {
+				err = in.gc.ArraySet(ref, dstStart+i, value)
+			}
+			if err != nil {
 				if strings.Contains(err.Error(), "range") {
 					panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 				}
 				panic(gcStructHelperError{err: err})
 			}
+		}
+		if deferredBarrier {
+			in.gc.PostBulkWriteBarrier(ref, dstStart, length)
 		}
 	case gcArrayInitData:
 		if len(args) != 6 {
@@ -289,7 +400,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 			panic(gcStructHelperError{err: err})
 		}
-	case gcArrayFill:
+	case gcArrayFill, gcArrayFillNoBarrier:
 		if len(args) < 5 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want at least 5", len(args))})
 		}
@@ -301,7 +412,13 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		ref, start := gc.Ref(uint32(args[0])), uint32(args[1])
 		checkArray(ref, typeID)
 		value := arrayStoredValue(typeID, args[2:2+valueSlots])
-		if err := in.gc.ArrayFill(ref, start, value, uint32(args[2+valueSlots])); err != nil {
+		var err error
+		if helper == gcArrayFillNoBarrier {
+			err = in.gc.ArrayFillNoBarrier(ref, start, value, uint32(args[2+valueSlots]))
+		} else {
+			err = in.gc.ArrayFill(ref, start, value, uint32(args[2+valueSlots]))
+		}
+		if err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
 			}

@@ -26,8 +26,7 @@ func (f *fn) recordGCOpcodeBytes(sub uint32, n int) {
 	case 11, 12, 13, 14, 16, 17, 18, 19:
 		f.stats.addGCBoundsCheckBytes(n)
 	}
-	switch sub {
-	case 5, 14, 16, 17, 18, 19:
+	if f.gcOpcodeBarrier {
 		f.stats.addGCBarrierBytes(n)
 	}
 }

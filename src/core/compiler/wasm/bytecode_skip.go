@@ -218,6 +218,8 @@ func skipRefHeapTypeBytes(r *reader) error {
 
 func classifyMemArgBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error {
 	ma, err := decodeMemArgWithWidth(r, memarg64)
+	imm.MemAlign = ma.Align
+	imm.MemOffset = ma.Offset
 	if ma.Mem != nil {
 		imm.HasMemIndex = true
 		imm.MemIndex = uint32(*ma.Mem)

@@ -84,7 +84,9 @@ func TestPublicGCCodeAndCollectorTelemetry(t *testing.T) {
 		}
 	}
 	snapshot, ok := instance.GCTelemetrySnapshot()
-	if !ok || snapshot.Minor.Cycles != 2 || snapshot.Paths.GoAllocationPaths != 2 || snapshot.Paths.MinorCollections != 2 {
+	collections := snapshot.Minor.Cycles + snapshot.Full.Cycles
+	collectionPaths := snapshot.Paths.MinorCollections + snapshot.Paths.FullCollections
+	if !ok || snapshot.Paths.GoAllocationPaths != 2 || (!nativeGCEntryValidationEnabled && (snapshot.Minor.Cycles != 2 || snapshot.Paths.MinorCollections != 2)) || (nativeGCEntryValidationEnabled && (collections < 2 || collectionPaths < 2)) {
 		t.Fatalf("collector telemetry = %+v, enabled=%v", snapshot, ok)
 	}
 	if !instance.ResetGCTelemetry() {

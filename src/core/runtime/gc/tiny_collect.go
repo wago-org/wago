@@ -206,6 +206,17 @@ func (c *Collector) tinyMarkRef(r Ref) {
 func (c *Collector) tinyMarkRefNow(r Ref) {
 	c.tinyMarkRef(r)
 	for len(c.tinyGC.grayStack) > 0 {
+		c.tinyDrainGrayBudget(^uint32(0))
+	}
+}
+
+// tinyDrainGrayBudget performs at most budget object scans. Bulk mutation uses
+// one fixed-size chunk at a time so a large array cannot enqueue an unbounded
+// number of newly published children before collector work catches up. One
+// object remains the collector's indivisible scan unit.
+func (c *Collector) tinyDrainGrayBudget(budget uint32) {
+	for budget != 0 && len(c.tinyGC.grayStack) > 0 {
+		budget--
 		n := len(c.tinyGC.grayStack) - 1
 		h := c.tinyGC.grayStack[n]
 		c.tinyGC.grayStack = c.tinyGC.grayStack[:n]

@@ -46,6 +46,49 @@ func checkedPrototypeBytes(c *Collector, ref Ref, expected TypeID) ([]byte, bool
 	return object, true
 }
 
+func BenchmarkGCSubtypeInterval(b *testing.B) {
+	for _, depth := range []int{1, 16, 256} {
+		types := make([]TypeDesc, depth+1)
+		for i := range types {
+			types[i], _ = NewStructDesc(TypeID(i), []StorageKind{StorageI32})
+			types[i].Final = false
+			if i > 0 {
+				types[i].HasSuper, types[i].Super = true, TypeID(i-1)
+			}
+		}
+		c, err := NewCollector(Config{}, types)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Cleanup(c.Close)
+		actual := TypeID(depth)
+		b.Run("interval/depth="+benchmarkLength(uint32(depth)), func(b *testing.B) {
+			saved := gcSubtypeIntervalsEnabled
+			gcSubtypeIntervalsEnabled = true
+			defer func() { gcSubtypeIntervalsEnabled = saved }()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				matched, err := c.TypeSubtype(actual, 0)
+				if err != nil || !matched {
+					b.Fatalf("subtype = %v, %v", matched, err)
+				}
+			}
+		})
+		b.Run("parent-chain/depth="+benchmarkLength(uint32(depth)), func(b *testing.B) {
+			saved := gcSubtypeIntervalsEnabled
+			gcSubtypeIntervalsEnabled = false
+			defer func() { gcSubtypeIntervalsEnabled = saved }()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				matched, err := c.TypeSubtype(actual, 0)
+				if err != nil || !matched {
+					b.Fatalf("subtype = %v, %v", matched, err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkTypedGCStructAccess(b *testing.B) {
 	base, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {

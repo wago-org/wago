@@ -2,53 +2,92 @@
 
 package amd64
 
-import (
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
+type checkedDeadGCUse uint8
+
+const (
+	checkedDeadGCNone checkedDeadGCUse = iota
+	checkedDeadGCImmediate
+	checkedDeadGCNested
 )
 
-// skipDroppedGCConstructor consumes an immediately following drop and removes
-// operandN constructor arguments from the compiler stack without allocating the
-// object. All constructor arguments have already been evaluated in Wasm order.
-// Non-trapping deferred trees can disappear completely; if any argument still
-// carries a deferred trap, flush preserves the original bottom-to-top order.
-func (f *fn) skipDroppedGCConstructor(r *wasm.Reader, operandN int) bool {
+// checkedDeadGCConstructorUse recognizes constructors whose unreachable payload
+// population can disappear only after a reservation helper preserves the real
+// allocation plus size/segment/value traps. Immediate drops consume no future
+// operand. Nested reservations are limited to payloads whose omitted writes
+// cannot remove transitive roots before a later enclosing allocation.
+func (f *fn) checkedDeadGCConstructorUse(r *wasm.Reader, nestedPayloadSafe bool) checkedDeadGCUse {
 	if !deadGCNewEnabled {
-		return false
+		return checkedDeadGCNone
 	}
-	op, ok := r.Peek()
-	if !ok || op != 0x1a { // drop
-		return false
+	if op, ok := r.Peek(); ok && op == 0x1a {
+		return checkedDeadGCImmediate
 	}
-	_, _ = r.Byte() // Peek proved this byte exists.
-	f.discardGCConstructorOperands(operandN)
-	f.retireGCFrameSafepoint()
-	f.stats.peep("gc-dead-new")
-	return true
+	if nestedPayloadSafe && f.gcConstructorFeedsDroppedTree(r) {
+		return checkedDeadGCNested
+	}
+	return checkedDeadGCNone
 }
 
-// deferGCConstructorForDroppedStruct replaces a constructor result with a null
-// placeholder only when bounded lookahead proves that the result flows untouched
-// into a following struct.new whose result is immediately dropped. The outer
-// struct constructor will be removed by skipDroppedGCConstructor, so the
-// placeholder is never observed as a Wasm value.
-func (f *fn) deferGCConstructorForDroppedStruct(r *wasm.Reader, operandN int) bool {
-	if !deadGCNewEnabled || !f.gcConstructorFeedsDroppedStruct(r) {
-		return false
+func deadGCReservationResults(typeIndex uint32, use checkedDeadGCUse) []wasm.ValType {
+	if use != checkedDeadGCNested {
+		return nil
 	}
-	f.discardGCConstructorOperands(operandN)
-	f.retireGCFrameSafepoint()
-	f.pushValue(storage{kind: stConst, typ: mtI64}) // private null placeholder
-	f.stats.peep("gc-dead-new")
-	return true
+	result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+	return []wasm.ValType{result}
 }
 
-// gcConstructorFeedsDroppedStruct recognizes a deliberately small postfix
-// shape: the current constructor result, followed by zero or more push-only
-// leaves, then struct.new and drop. Push-only leaves cannot consume or expose the
-// candidate reference. This covers Dew's fixed vector -> dropped wrapper trees
-// without constructing an instruction graph or retaining body-wide IR.
-func (f *fn) gcConstructorFeedsDroppedStruct(r *wasm.Reader) bool {
+func (f *fn) reserveDeadGCStructConstructor(typeIndex uint32, operandN int, use checkedDeadGCUse) error {
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+	if err := f.callGCStructHelper(gcStructReserveDead, []wasm.ValType{wasm.I32}, deadGCReservationResults(typeIndex, use)); err != nil {
+		return err
+	}
+	if use == checkedDeadGCNested {
+		f.discardGCConstructorOperandsBelowResult(operandN)
+	} else {
+		f.discardGCConstructorOperands(operandN)
+	}
+	return nil
+}
+
+func (f *fn) reserveDeadGCFixedArrayConstructor(typeIndex, count uint32, use checkedDeadGCUse) error {
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
+	if err := f.callGCStructHelper(gcArrayCheckFixed, []wasm.ValType{wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, use)); err != nil {
+		return err
+	}
+	if use == checkedDeadGCNested {
+		f.discardGCConstructorOperandsBelowResult(int(count))
+	} else {
+		f.discardGCConstructorOperands(int(count))
+	}
+	return nil
+}
+
+func (f *fn) finishCheckedDeadGCConstructor(r *wasm.Reader, use checkedDeadGCUse) {
+	if use == checkedDeadGCImmediate {
+		op, err := r.Byte()
+		if err != nil || op != 0x1a {
+			panic("amd64: checked dead GC constructor lost following drop")
+		}
+	} else if use != checkedDeadGCNested {
+		panic("amd64: invalid checked dead GC constructor use")
+	}
+	// The checked helper now performs the dropped allocation itself and therefore
+	// records the constructor's real safepoint in callGCStructHelper.
+	f.stats.peep("gc-dead-new")
+	f.stats.peep("gc-dead-new-checked")
+}
+
+// gcConstructorFeedsDroppedTree recognizes a bounded postfix constructor tree.
+// It tracks only how many values sit above the candidate; struct.new and
+// array.new_fixed either combine that candidate into a new candidate or build a
+// sibling value that a later container consumes. Dynamic array constructors are
+// excluded because their checked dead path must validate the real initializer.
+// Nested reservations retain their real compact result so every earlier child
+// remains rooted across each later allocation exactly as in the source program.
+func (f *fn) gcConstructorFeedsDroppedTree(r *wasm.Reader) bool {
 	look := *r
 	above := 0
 	const maxLookaheadInstructions = 32
@@ -84,7 +123,7 @@ func (f *fn) gcConstructorFeedsDroppedStruct(r *wasm.Reader) bool {
 			}
 			above++
 		case 0xd0: // ref.null
-			if _, err := look.S33(); err != nil {
+			if _, _, err := readRefHeapTypeImmediate(&look); err != nil {
 				return false
 			}
 			above++
@@ -99,42 +138,53 @@ func (f *fn) gcConstructorFeedsDroppedStruct(r *wasm.Reader) bool {
 			above++
 		case 0xfb:
 			sub, err := look.U32()
-			if err != nil || sub != 0 { // struct.new only
-				return false
-			}
-			typeIndex, err := look.U32()
 			if err != nil {
 				return false
 			}
-			st, ok := f.stagedStructType(typeIndex)
-			if !ok || len(st.Comp.Fields) <= above {
-				// The outer constructor does not consume the candidate.
+			var operands int
+			switch sub {
+			case 0: // struct.new typeidx
+				typeIndex, err := look.U32()
+				if err != nil {
+					return false
+				}
+				st, ok := f.stagedStructType(typeIndex)
+				if !ok {
+					return false
+				}
+				operands = len(st.Comp.Fields)
+			case 1: // struct.new_default typeidx
+				if _, err := look.U32(); err != nil {
+					return false
+				}
+				operands = 0
+			case 8: // array.new_fixed typeidx count
+				if _, err := look.U32(); err != nil {
+					return false
+				}
+				count, err := look.U32()
+				if err != nil || uint64(count) > uint64(^uint(0)>>1) {
+					return false
+				}
+				operands = int(count)
+			default:
 				return false
 			}
-			next, err := look.Byte()
-			return err == nil && next == 0x1a
+			if operands > above {
+				above = 0 // candidate was consumed and the constructor result replaces it.
+			} else {
+				above = above - operands + 1
+			}
+		case 0x1a: // drop
+			if above == 0 {
+				return true
+			}
+			above--
 		default:
 			return false
 		}
 	}
 	return false
-}
-
-// retireGCFrameSafepoint consumes the frontend's liveness entry for an
-// allocation removed by this pass. Keeping the dense ID preserves every later
-// site's compiler/runtime identity; no native call can publish the retired ID.
-func (f *fn) retireGCFrameSafepoint() {
-	plan := f.gcFrameRoots
-	if plan == nil || !plan.Candidate {
-		return
-	}
-	index := len(plan.Safepoints)
-	id := plan.SafepointBase + uint32(index+1)
-	if index >= len(plan.LiveLocalMasks) || id == 0 || id > shared.GCSafepointIDMax {
-		plan.Exact = false
-		return
-	}
-	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id})
 }
 
 func (f *fn) discardGCConstructorOperands(n int) {
@@ -148,11 +198,34 @@ func (f *fn) discardGCConstructorOperands(n int) {
 	dead := roots[len(roots)-n:]
 	for _, root := range dead {
 		if !f.treeDiscardable(root) {
+			f.flush()
+			for _, operand := range dead {
+				f.erase(operand)
+			}
+			return
+		}
+	}
+	for i := len(dead) - 1; i >= 0; i-- {
+		f.discardTree(dead[i])
+	}
+}
+
+func (f *fn) discardGCConstructorOperandsBelowResult(n int) {
+	if n == 0 {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	if n < 0 || n+1 > len(roots) {
+		panic("amd64: invalid dead GC constructor operand count")
+	}
+	dead := roots[len(roots)-n-1 : len(roots)-1]
+	for _, root := range dead {
+		if !f.treeDiscardable(root) {
 			// Preserve deferred trap order. flush walks all roots bottom-to-top,
 			// exactly like the constructor helper call this replaces.
 			f.flush()
-			for range n {
-				f.erase(f.s.back())
+			for _, operand := range dead {
+				f.erase(operand)
 			}
 			return
 		}

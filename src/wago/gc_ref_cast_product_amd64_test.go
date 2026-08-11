@@ -193,7 +193,11 @@ func TestStagedGCRefCastProductBoundaryLifecycle(t *testing.T) {
 		}
 	}
 	word := binary.LittleEndian.Uint64(concreteState.Descriptor[8+1*8:])
-	if got, err := concreteState.refCast(concreteInstance.gc, word, gc.RefTestTarget{Kind: gc.RefTestDefined, Type: 2}); err != nil || got != word {
+	targetType, ok := concreteInstance.gcDomainType(2)
+	if !ok {
+		t.Fatal("canonical concrete cast target has no Runtime-domain identity")
+	}
+	if got, err := concreteState.refCast(concreteInstance.gc, word, gc.RefTestTarget{Kind: gc.RefTestDefined, Type: targetType}); err != nil || got != word {
 		t.Fatalf("canonical concrete cast = %#x, %v; want original %#x", got, err, word)
 	}
 	if err := concreteInstance.gc.CollectFull(nil); err != nil {

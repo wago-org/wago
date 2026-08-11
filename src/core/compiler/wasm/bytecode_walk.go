@@ -10,6 +10,8 @@ type InstructionImmediate struct {
 	Index2         uint32
 	HasMemIndex    bool
 	MemIndex       uint32
+	MemAlign       uint32
+	MemOffset      uint64
 	TouchesMemory  bool
 	UsesBulkMemory bool
 }

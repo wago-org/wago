@@ -109,14 +109,15 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			nullableFlag = 1
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullableFlag})
+		f.pushValue(storage{kind: stConst, typ: mtI32}) // ref.test does not admit exact heap markers
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32})
+		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
 	}
 	if sub == 24 || sub == 25 { // br_on_cast / br_on_cast_fail
 		return f.emitGCBranchCast(sub, r)
 	}
 	if sub == 22 || sub == 23 { // ref.cast / ref.cast_null
-		heap, err := r.S33()
+		heap, exactTarget, err := readRefHeapTypeImmediate(r)
 		if err != nil {
 			return err
 		}
@@ -133,7 +134,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				value := f.popValue()
 				gcRoot := value.st.gcRoot
 				ref := f.materialize(value)
-				f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, trapCastFailure)
+				f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, exactTarget, trapCastFailure)
 				f.pushReg(ref, mtI64).st.gcRoot = gcRoot
 				return nil
 			}
@@ -178,8 +179,13 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			nullable = 1
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullable})
+		exact := int64(0)
+		if exactTarget {
+			exact = 1
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{anyref})
+		return f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{anyref})
 	}
 	if sub == 26 || sub == 27 {
 		if !f.gcStructHelpers {
@@ -717,7 +723,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	return nil
 }
 
-func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {
+func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable, exactTarget bool, trapCode uint32) {
 	success := make([]int, 0, f.m.ImportedFuncCount()+len(f.m.FuncTypes)+1)
 	if nullable {
 		f.cmpImm(value, 0, true)
@@ -726,7 +732,7 @@ func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32,
 	base := f.allocReg(maskOf(value))
 	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))
 	candidate := f.allocReg(maskOf(value).add(base))
-	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), false)
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), exactTarget)
 	total := f.m.ImportedFuncCount() + len(f.m.FuncTypes)
 	for functionIndex := 0; functionIndex < total; functionIndex++ {
 		sourceType, ok := f.m.FuncTypeIndex(uint32(functionIndex))
@@ -779,10 +785,10 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.S33(); err != nil { // validated source heap type
+	if _, _, err := readRefHeapTypeImmediate(r); err != nil { // validated source reference type
 		return err
 	}
-	target, err := r.S33()
+	target, exactTarget, err := readRefHeapTypeImmediate(r)
 	if err != nil {
 		return err
 	}
@@ -799,8 +805,13 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 		nullable = 1
 	}
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullable})
+	exact := int64(0)
+	if exactTarget {
+		exact = 1
+	}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-	if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+	if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
 		return err
 	}
 	return f.brOnCastResult(depth, sub == 24)

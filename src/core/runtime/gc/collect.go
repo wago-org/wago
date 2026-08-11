@@ -712,10 +712,8 @@ func srcAlignment(c *Collector, h uint32) uint32 {
 	// immutable canonical descriptor directly instead of repeating the public
 	// ref/closed/handle checks for every survivor.
 	typeID := TypeID(binary.LittleEndian.Uint32(c.bytes(makeObjRef(h))))
-	if int(typeID) < len(c.typeIndex) {
-		if index := c.typeIndex[typeID]; index >= 0 && c.types[index].Align > 8 {
-			return c.types[index].Align
-		}
+	if int(typeID) < len(c.types) && c.types[typeID].Align > 8 {
+		return c.types[typeID].Align
 	}
 	return 8
 }

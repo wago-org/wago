@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -29,7 +30,9 @@ import (
 // that is what makes hoisting sound here (a plain hoisted check would move the
 // trap earlier, which is observable because a wasm trap leaves partial memory
 // writes visible). Explicit-bounds mode only (guard mode has no inline check to
-// elide). Defaults on; set WAGO_LOOP_PRECHECK=0/off/false to disable it for A/B runs.
+// elide). V1 is memory32-only and excludes functions with candidate native GC root
+// plans because their call/allocation liveness streams are linear in original Wasm
+// order. Defaults on; set WAGO_LOOP_PRECHECK=0/off/false to disable it for A/B runs.
 
 var loopPrecheckEnabled = envDefaultOn(os.Getenv("WAGO_LOOP_PRECHECK"))
 
@@ -56,99 +59,109 @@ type hoistCand struct {
 	extent int32
 }
 
+// walkLoopBody consumes validated instructions until the matching loop end and
+// always restores r. The shared Wasm classifier is the only immediate decoder:
+// try_table catch vectors, br_table labels, SIMD/atomic forms, and memory64
+// offsets therefore cannot desynchronize this scan. No partial findings escape
+// on failure.
+func walkLoopBody(r *wasm.Reader, memory64 bool, visit func(op byte, imm wasm.InstructionImmediate)) bool {
+	start := r.Offset()
+	defer func() { _ = r.JumpTo(start) }()
+	depth := 0
+	var imm wasm.InstructionImmediate
+	for {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(r, op, &imm, memory64); err != nil {
+			return false
+		}
+		switch op {
+		case 0x02, 0x03, 0x04, 0x1f: // block, loop, if, try_table
+			depth++
+		case 0x0b: // end
+			if depth == 0 {
+				return true
+			}
+			depth--
+		}
+		visit(op, imm)
+	}
+}
+
+// scanLoopBody records locals assigned anywhere in one loop and whether the loop
+// grows memory. valid is false on any classifier failure; callers must then
+// discard all findings and conservatively clear loop-sensitive facts.
+func scanLoopBody(r *wasm.Reader, memory64 bool) (setLocals map[uint32]bool, hasGrow, valid bool) {
+	setLocals = map[uint32]bool{}
+	valid = walkLoopBody(r, memory64, func(_ byte, imm wasm.InstructionImmediate) {
+		switch imm.Kind {
+		case wasm.InstrLocalSet, wasm.InstrLocalTee:
+			setLocals[imm.Index] = true
+		case wasm.InstrMemoryGrow:
+			hasGrow = true
+		}
+	})
+	if !valid {
+		return nil, false, false
+	}
+	return setLocals, hasGrow, true
+}
+
 // scanLoopHoistable scans the loop body (reader at the body start, restored on
 // return) for hoistable bases: locals accessed as a direct memory base and never
 // set in the loop. Returns them with each one's max extent, the total number of
 // per-iteration accesses that would be elided (the check-density benefit signal),
-// and whether the loop grows memory (a grower is not versioned in v1). Post-
-// validation, so a decode error just ends the scan with what was found.
-func scanLoopHoistable(r *wasm.Reader) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool) {
-	start := r.Offset()
+// whether the loop grows memory, and an explicit validity result. A classifier
+// failure returns no candidates or local findings. Memory64 still returns mutation
+// and grow facts but no candidates until memAddr64 consumes a carry-safe certificate.
+func scanLoopHoistable(r *wasm.Reader, memory64 bool) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool, valid bool) {
 	setLocals = map[uint32]bool{}
 	maxExt := map[uint32]int32{}
 	acc := map[uint32]int{}     // direct-access count per base
-	poison := map[uint32]bool{} // bases with a direct access this scan can't size (SIMD)
+	poison := map[uint32]bool{} // bases with a direct access this scan can't size
 	prevGet := int64(-1)        // local index of an immediately-preceding local.get, else -1
-	depth := 0
-scan:
-	for {
-		op, err := r.Byte()
-		if err != nil {
-			break
-		}
+	valid = walkLoopBody(r, memory64, func(op byte, imm wasm.InstructionImmediate) {
 		curGet := int64(-1)
-		switch op {
-		case 0x02, 0x03, 0x04: // block / loop / if
-			if _, err := r.S33(); err != nil {
-				break scan
-			}
-			depth++
-		case 0x0b: // end
-			if depth == 0 {
-				break scan
-			}
-			depth--
-		case 0x20: // local.get
-			idx, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			curGet = int64(idx)
-		case 0x21, 0x22: // local.set / local.tee
-			idx, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			setLocals[idx] = true
-		case 0x40: // memory.grow
-			if _, err := r.U32(); err != nil {
-				break scan
-			}
+		switch imm.Kind {
+		case wasm.InstrLocalGet:
+			curGet = int64(imm.Index)
+		case wasm.InstrLocalSet, wasm.InstrLocalTee:
+			setLocals[imm.Index] = true
+		case wasm.InstrMemoryGrow:
 			hasGrow = true
-		case 0x0e: // br_table
-			n, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			if err := r.SkipU32N(n + 1); err != nil {
-				break scan
-			}
-		case 0xfd: // SIMD prefix — a v128 load/store also goes through memAddr (and so
-			// through the elide) but this scan can't size it; poison the base so it is
-			// never hoisted with an under-covered extent.
-			if prevGet >= 0 {
-				poison[uint32(prevGet)] = true
-			}
-			if err := skipImmediates(r, op); err != nil {
-				break scan
-			}
-		default:
-			if size := memAccessSize(op); size != 0 {
-				// memarg: align, offset. A direct base is a local.get immediately before.
-				if _, err := r.U32(); err != nil { // align
-					break scan
+		}
+		if prevGet >= 0 && imm.TouchesMemory {
+			base := uint32(prevGet)
+			if imm.HasMemIndex && imm.MemIndex != 0 {
+				// The precheck compares against memory 0's cached byte length.
+				poison[base] = true
+			} else if size := memAccessSize(op); size != 0 {
+				acc[base]++
+				// The precheck's LEA displacement is int32. Memory64 and large
+				// memory32 offsets that exceed it are never candidates.
+				if imm.MemOffset > 0x7fffffff || imm.MemOffset+uint64(size) > 0x7fffffff {
+					poison[base] = true
+				} else if ext := int32(imm.MemOffset + uint64(size)); ext > maxExt[base] {
+					maxExt[base] = ext
 				}
-				off, err := r.U32()
-				if err != nil {
-					break scan
-				}
-				if prevGet >= 0 {
-					acc[uint32(prevGet)]++
-					// The precheck's LEA displacement is int32; an offset near 2^32 would
-					// overflow it and check a wrong (too-small) bound, so poison instead.
-					if ext := int64(off) + int64(size); ext > 0x7FFFFFFF {
-						poison[uint32(prevGet)] = true
-					} else if int32(ext) > maxExt[uint32(prevGet)] {
-						maxExt[uint32(prevGet)] = int32(ext)
-					}
-				}
-			} else if err := skipImmediates(r, op); err != nil {
-				break scan
+			} else {
+				// SIMD/atomic/bulk memory forms are decoded correctly, but this v1
+				// precheck does not model their complete access width.
+				poison[base] = true
 			}
 		}
 		prevGet = curGet
+	})
+	if !valid {
+		return nil, 0, false, nil, false
 	}
-	r.JumpTo(start)
+	if memory64 {
+		// memAddr64 does not consume elideBases and must retain both carry checks.
+		// Keep the shared scan's mutation/grow facts, but do not version the loop.
+		return nil, 0, hasGrow, setLocals, true
+	}
 	for b, ext := range maxExt {
 		if !setLocals[b] && !poison[b] { // invariant, never set in the loop, all accesses sized
 			cands = append(cands, hoistCand{base: b, extent: ext})
@@ -159,7 +172,7 @@ scan:
 	// function compilation creates these maps on different goroutines and exposed
 	// the latent nondeterminism as byte-different code for the same function.
 	slices.SortFunc(cands, func(a, b hoistCand) int { return cmp.Compare(a.base, b.base) })
-	return cands, elidable, hasGrow, setLocals
+	return cands, elidable, hasGrow, setLocals, true
 }
 
 // loopPrecheckMinChecks is the minimum per-iteration elided-check count for a loop
@@ -181,27 +194,50 @@ var loopPrecheckMinChecks = func() int {
 // are compiled from the same bytecode via bodyLoop; the reader ends past the
 // loop's `end`. Returns false if the loop shape is not versioned here (caller
 // falls back to the normal loop lowering).
-func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []machineType, res0 machineType, cands []hoistCand) bool {
-	// v1 scope: void loops only (no params to stage across the two entries), and
-	// never nest a versioned loop inside another (bounds code growth to 2×).
-	if len(paramTypes) != 0 || f.inVersionedLoop {
+func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []machineType, res0 machineType, cands []hoistCand, setLocals map[uint32]bool) bool {
+	// v1 scope: void loops only (no params/results to stage and merge across the
+	// two entries), and never nest a versioned loop inside another (bounds code
+	// growth remains at 2×).
+	if len(paramTypes) != 0 || len(resultTypes) != 0 || f.inVersionedLoop ||
+		(f.gcFrameRoots != nil && f.gcFrameRoots.Candidate) {
+		// The validated root-liveness streams are linear in original Wasm call and
+		// allocation order. Duplicating a loop body without duplicating/remapping
+		// both streams would make the native frame-root plan inexact.
 		return false
 	}
 	bodyStart := r.Offset()
 	preLoopCtrl := len(f.ctrl)
 
-	// Canonicalize the loop-entry state so both versions start identically, and
-	// snapshot it for restoring before the slow body.
+	// Canonicalize once, then preserve one semantic entry snapshot for both
+	// generated versions. Compiling the fast body must not seed the slow body.
 	f.reconcileLocals()
 	f.flush()
 	entryTypes := append([]machineType(nil), f.currentLogicalTypes()...)
-	var entryLocals []locState
-	if f.usesCalls {
-		entryLocals = make([]locState, f.nLocals)
-		for x := range entryLocals {
-			entryLocals[x] = f.locals[x].state
+	entryRoots := f.rootsBottomToTop()
+	entryGCRoots := gcRootFlags(entryRoots)
+	var entryStackFacts []shared.GCRefFact
+	if exactGCRefFactsEnabled {
+		entryStackFacts = make([]shared.GCRefFact, len(entryRoots))
+		for i, root := range entryRoots {
+			entryStackFacts[i] = gcRefFact(root)
 		}
 	}
+	entryLocalFacts := f.snapshotGCRefFacts()
+	var entryLocals []locState
+	if f.usesCalls {
+		entryLocals = make([]locState, len(f.pinnedLocals))
+		for i, x := range f.pinnedLocals {
+			entryLocals[i] = f.locals[x].state
+		}
+	}
+	installEntry := func() {
+		f.setDepthTypesWithGCInfo(entryTypes, entryGCRoots, entryStackFacts)
+		f.setLocalsState(entryLocals)
+		f.installGCRefFacts(entryLocalFacts)
+		f.invalidateLoopModifiedGCRefFacts(setLocals)
+		f.unreachable = false
+	}
+	installEntry()
 
 	// Precheck: for each invariant base, trap-free compare of base+extent to
 	// memBytes; any failure branches to the slow body. Scratch only (post-flush).
@@ -209,6 +245,10 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	for _, c := range cands {
 		base := f.allocReg(0)
 		f.loadLocalValue(base, c.base)
+		// Memory32 addresses are i32 values even when a returning host import left
+		// arbitrary high bits in the 64-bit ABI word. Match memAddr's consuming-side
+		// canonicalization before native-width precheck arithmetic.
+		f.a.MovRegReg32(base, base)
 		t := f.allocReg(maskOf(base))
 		f.a.LeaDisp(t, base, c.extent) // t = base + off + size
 		f.a.Cmp64(t, f.memSizeReg)
@@ -226,41 +266,50 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	// FAST body: invariant-base checks elided.
 	f.inVersionedLoop = true
 	f.elideBases = elide
-	f.enterLoopFrame(resultTypes, res0)
+	f.enterLoopFrame(resultTypes, res0, setLocals)
 	if err := f.bodyLoop(r, preLoopCtrl); err != nil {
 		panic(err) // decode/lowering error inside the fast body
 	}
+	fastExitFacts := f.snapshotGCRefFacts()
 	f.elideBases = nil
 	doneSite := f.a.JmpPlaceholder()
 
 	// SLOW body: normal per-access checks. Re-read the body from the start and
-	// restore the canonical loop-entry state first.
+	// reinstall the same conservative entry state, including loop-local fact
+	// invalidation and straight-line cache/resolver invalidation.
 	for _, s := range failSites {
 		f.a.PatchRel32(s, f.a.Len())
 	}
 	if err := r.JumpTo(bodyStart); err != nil {
 		panic(err)
 	}
-	f.setDepthTypes(entryTypes)
-	f.setLocalsState(entryLocals)
-	f.unreachable = false
-	f.enterLoopFrame(resultTypes, res0)
+	installEntry()
+	f.enterLoopFrame(resultTypes, res0, setLocals)
 	if err := f.bodyLoop(r, preLoopCtrl); err != nil {
 		panic(err)
 	}
 	f.inVersionedLoop = false
 	f.a.PatchRel32(doneSite, f.a.Len())
+
+	// Code after the versions is reached by either exit. Retain only facts both
+	// compiled bodies guarantee rather than allowing the slow compile to win.
+	f.mergeGCRefFactsInto(&fastExitFacts)
+	f.installGCRefFacts(fastExitFacts)
+	f.freeGCRefFactBuf(fastExitFacts)
+	f.freeGCRefFactBuf(entryLocalFacts)
 	return true
 }
 
 // enterLoopFrame replicates opBlock's cfLoop header for a versioned body: fix the
 // frame's base/height from the (already-flushed) entry, converge locals eagerly,
 // align the loop top, and push the frame.
-func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType) {
+func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType, setLocals map[uint32]bool) {
 	rN := len(resultTypes)
-	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, resultTypes: resultTypes, loopSetLocals: setLocals}
 	fr.height = f.depth()
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
+	f.captureGCFrameShape(&fr)
+	fr.branchGCFacts = f.snapshotGCRefFacts()
 	f.reconcileLocals()
 	f.convergeEdgeTo(&fr.branchState)
 	f.flush()

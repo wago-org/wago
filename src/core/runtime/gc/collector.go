@@ -119,7 +119,7 @@ type Collector struct {
 	nativeAllocEpoch    uint32
 	arraySlow           uint8
 	types               []TypeDesc
-	typeIndex           []int
+	subtypeIntervals    []uint64 // packed DFS [pre, post] interval by canonical TypeID
 	objectAlign         uint32
 	nursery             []byte // Eden followed by two survivor semispaces.
 	nurseryBump         uint32
@@ -198,7 +198,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.attach(config.Profile, 0)
 	}
-	if err := c.initTypeIndex(); err != nil {
+	if err := c.initSubtypeIntervals(); err != nil {
 		return nil, err
 	}
 	if err := c.throughput.Init(config); err != nil {
@@ -222,6 +222,7 @@ func (c *Collector) Close() {
 	c.nurseryHandles = nil
 	c.mark = nil
 	c.markStack = nil
+	c.subtypeIntervals = nil
 	c.promotionScratch = nil
 	c.remembered = nil
 	c.objectCards = nil
@@ -260,13 +261,21 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 	if c.cfg.Profile == ProfileTiny && requiredAlign > c.tiny.blockBytes {
 		return errors.New("gc: appended type alignment exceeds tiny block size")
 	}
-	oldTypes, oldIndex := c.types, c.typeIndex
+	oldTypes, oldIntervals := c.types, c.subtypeIntervals
 	c.types = combined
-	if err := c.initTypeIndex(); err != nil {
-		c.types, c.typeIndex = oldTypes, oldIndex
+	if err := c.initSubtypeIntervals(); err != nil {
+		c.types, c.subtypeIntervals = oldTypes, oldIntervals
 		return err
 	}
 	return nil
+}
+
+// Profile reports the collector's immutable barrier/allocation profile.
+func (c *Collector) Profile() Profile {
+	if c == nil {
+		return ProfileThroughput
+	}
+	return c.cfg.Profile
 }
 
 func (c *Collector) telemetryEnabled() bool {

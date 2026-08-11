@@ -784,6 +784,57 @@ func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
 	}
 }
 
+func arm64GCExactDefinedCastModule(exact bool) []byte {
+	target := []byte{0x00}
+	if exact {
+		target = []byte{0x62, 0x00}
+	}
+	body := []byte{
+		0x01, 0x01, 0x63, 0x6e,
+		0xfb, 0x01, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0xfb, 0x16,
+	}
+	body = append(body, target...)
+	body = append(body, 0x1a, 0x41, 0x01, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x00},
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCArm64ExactDefinedCastRejectsProperSubtype(t *testing.T) {
+	for _, exact := range []bool{false, true} {
+		compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCExactDefinedCastModule(exact))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(compiled, InstantiateOptions{})
+		if err != nil {
+			compiled.Close()
+			t.Fatal(err)
+		}
+		got, callErr := in.Invoke("run")
+		in.Close()
+		compiled.Close()
+		if !exact {
+			if callErr != nil || !reflect.DeepEqual(got, []uint64{1}) {
+				t.Fatalf("ordinary cast = %v, %v; want [1], nil", got, callErr)
+			}
+			continue
+		}
+		trap, ok := callErr.(*TrapError)
+		if !ok || trap.Code != TrapCastFailure {
+			t.Fatalf("exact cast = %v, %v; want cast-failure trap", got, callErr)
+		}
+	}
+}
+
 func TestGCArm64TypeSubtypingRefTestProvisionsHelpers(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCTypeSubtypingRefTestModule())
 	if err != nil {

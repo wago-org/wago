@@ -62,6 +62,50 @@ func gcHiddenOperandRootModule() []byte {
 	)
 }
 
+func gcTryTableHiddenOperandRootModule() []byte {
+	body := append([]byte{0x41}, wasmtest.SLEB32(73)...)
+	body = append(body,
+		0xfb, 0x00, 0x00, // struct.new 0; first ref remains on the operand stack
+		0x02, 0x40, // catch target block
+		0x1f, 0x40, 0x01, byte(wasm.CatchAll), 0x00, // try_table (catch_all 0)
+		0x01,       // nop: normal fallthrough
+		0x0b, 0x0b, // end try_table and block
+		0xfb, 0x01, 0x00, 0x1a, // allocating struct.new_default; drop
+		0xfb, 0x02, 0x00, 0x00, // hidden struct.get 0 0
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestGCTryTablePreservesHiddenStackRoot(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcTryTableHiddenOperandRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if !status.Required || !status.Exact || status.Safepoints != 2 {
+		t.Fatalf("try_table root admission = %+v", status)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, callErr := in.Invoke("run")
+	if callErr != nil || !reflect.DeepEqual(got, []uint64{73}) {
+		t.Fatalf("run = %v, %v; want [73]", got, callErr)
+	}
+}
+
 func gcEHFrameRootModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	tagType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
@@ -111,6 +155,76 @@ func TestGCEHNativeFrameRoots(t *testing.T) {
 			t.Fatalf("run = %v, %v; want [44]", got, callErr)
 		}
 		in.Close()
+	}
+}
+
+func gcVersionedLoopRootPlanModule() []byte {
+	callee := []byte{0x0b}
+	run := []byte{
+		0x01, 0x01, 0x63, 0x00, // local 1: rooted struct
+		0xfb, 0x01, 0x00, 0x21, 0x01, // initial allocation remains live
+		0x03, 0x40, // versioning-eligible void loop
+	}
+	for range 4 {
+		run = append(run, 0x20, 0x00, 0x28, 0x02, 0x00, 0x1a) // load invariant base; drop
+	}
+	run = append(run,
+		0xfb, 0x01, 0x00, 0x1a, // collecting allocation in the loop
+		0x10, 0x00, // ordinary call in the loop
+		0x0b,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, // return rooted field
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(callee),
+			append(wasmtest.ULEB(uint32(len(run))), run...),
+		)),
+	)
+}
+
+func compileGCVersionedLoopRootPlan(t *testing.T) *Compiled {
+	t.Helper()
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(cfg, gcVersionedLoopRootPlanModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := compiled.GCNativeRootAdmission()
+	if !status.Required || !status.Exact {
+		compiled.Close()
+		t.Fatalf("versionable-loop root admission = %+v", status)
+	}
+	return compiled
+}
+
+func TestGCVersionedLoopPreservesRootPlanSafepointCount(t *testing.T) {
+	compiled := compileGCVersionedLoopRootPlan(t)
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if status.Safepoints != 2 {
+		t.Fatalf("safepoints = %d, want original Wasm count 2", status.Safepoints)
+	}
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.safepoints) != 2 {
+		t.Fatalf("safepoint plan = %+v", plan)
+	}
+}
+
+func TestGCVersionedLoopPreservesRootPlanCallsiteCount(t *testing.T) {
+	compiled := compileGCVersionedLoopRootPlan(t)
+	defer compiled.Close()
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.callsites) != 1 {
+		t.Fatalf("callsite plan = %+v, want one original Wasm call", plan)
 	}
 }
 
@@ -884,7 +998,7 @@ func TestGCNativeRootAdmissionIsPerFunction(t *testing.T) {
 	}
 	defer compiled.Close()
 	status := compiled.GCNativeRootAdmission()
-	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 0 {
+	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 1 {
 		t.Fatalf("per-function admission = %+v", status)
 	}
 	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}})

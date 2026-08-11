@@ -70,7 +70,7 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.attach(config.Profile, 0)
 	}
-	if err := c.initTypeIndex(); err != nil {
+	if err := c.initSubtypeIntervals(); err != nil {
 		return nil, err
 	}
 	blocks := config.TinyHeapBytes / config.TinyBlockBytes
@@ -82,26 +82,12 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 	return c, nil
 }
 
-func (c *Collector) initTypeIndex() error {
-	var max TypeID
-	for _, d := range c.types {
-		if d.ID > max {
-			max = d.ID
-		}
+func (c *Collector) initSubtypeIntervals() error {
+	intervals, err := buildSubtypeIntervals(c.types)
+	if err != nil {
+		return err
 	}
-	c.typeIndex = make([]int, int(max)+1)
-	for i := range c.typeIndex {
-		c.typeIndex[i] = -1
-	}
-	for i, d := range c.types {
-		if int(d.ID) >= len(c.typeIndex) {
-			return errors.New("gc: internal type index error")
-		}
-		if c.typeIndex[d.ID] != -1 {
-			return fmt.Errorf("gc: duplicate type id %d", d.ID)
-		}
-		c.typeIndex[d.ID] = i
-	}
+	c.subtypeIntervals = intervals
 	return nil
 }
 

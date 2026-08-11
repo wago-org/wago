@@ -1364,6 +1364,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0xd0:
+		if b, ok := r.Peek(); ok && b == 0x62 { // exact indexed heap prefix
+			_, _ = r.Byte()
+		}
 		heap, err := r.S33()
 		if err != nil {
 			return false, err

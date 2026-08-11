@@ -8,8 +8,9 @@ import (
 )
 
 // gcTypeMapping translates immutable module-local flattened type indexes to the
-// canonical IDs used by one Runtime collector domain. Private collectors keep a
-// nil mapping and therefore retain the historical identity mapping.
+// canonical IDs used by one Runtime collector domain. Private collectors also
+// canonicalize structurally equivalent local types so exact references have the
+// same semantics with and without a shared store.
 type gcTypeMapping struct {
 	localToDomain []gc.TypeID
 	domainToLocal []uint32
@@ -37,6 +38,36 @@ func (m *gcTypeMapping) local(domain gc.TypeID) (uint32, bool) {
 	return m.domainToLocal[domain], true
 }
 
+func (m *gcTypeMapping) canonicalTypes(local []gc.TypeID) ([]gc.TypeID, error) {
+	if local == nil || m == nil {
+		return local, nil
+	}
+	if len(local) != len(m.localToDomain) {
+		return nil, fmt.Errorf("wago: local canonical type count %d, want %d", len(local), len(m.localToDomain))
+	}
+	domain := make([]gc.TypeID, len(m.domainToLocal))
+	seen := make([]bool, len(domain))
+	for i := range domain {
+		domain[i] = gc.TypeID(i)
+	}
+	for localType, representative := range local {
+		if int(representative) >= len(m.localToDomain) {
+			return nil, fmt.Errorf("wago: local canonical type %d maps to unavailable representative %d", localType, representative)
+		}
+		domainType := m.localToDomain[localType]
+		domainRepresentative := m.localToDomain[representative]
+		if int(domainType) >= len(domain) || int(domainRepresentative) >= len(domain) {
+			return nil, fmt.Errorf("wago: local canonical type %d has unavailable Runtime-domain identity", localType)
+		}
+		if seen[domainType] && domain[domainType] != domainRepresentative {
+			return nil, fmt.Errorf("wago: Runtime-domain type %d has conflicting canonical representatives %d and %d", domainType, domain[domainType], domainRepresentative)
+		}
+		domain[domainType] = domainRepresentative
+		seen[domainType] = true
+	}
+	return domain, nil
+}
+
 type gcDomainTypeRepresentative struct {
 	types []DefinedTypeDescriptor
 	index uint32
@@ -44,6 +75,24 @@ type gcDomainTypeRepresentative struct {
 
 func gcTypeEquivalentToRepresentative(c *Compiled, local uint32, rep gcDomainTypeRepresentative) bool {
 	return c != nil && int(local) < len(c.Types) && int(rep.index) < len(rep.types) && definedTypeEquivalent(local, c.Types, rep.index, rep.types)
+}
+
+func hasEquivalentLocalGCHeapTypes(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	for i := 1; i < len(c.Types); i++ {
+		kind := c.Types[i].Kind
+		if kind != CompositeTypeStruct && kind != CompositeTypeArray {
+			continue
+		}
+		for j := 0; j < i; j++ {
+			if c.Types[j].Kind == kind && definedTypeEquivalent(uint32(i), c.Types, uint32(j), c.Types) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainTypes []gc.TypeDesc, allowAppend bool) (*gcTypeMapping, []gc.TypeDesc, []gcDomainTypeRepresentative, error) {
@@ -112,11 +161,19 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 }
 
 func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
-	if c == nil || domain == nil || len(c.Types) != len(domain.typeReps) {
+	if c == nil || domain == nil {
 		return false
 	}
-	_, descs, reps, err := gcCanonicalTypePlan(c, domain.typeReps, domain.types, false)
-	return err == nil && len(descs) == len(domain.types) && len(reps) == len(domain.typeReps)
+	mapping, descs, reps, err := gcCanonicalTypePlan(c, domain.typeReps, domain.types, false)
+	if err != nil || len(descs) != len(domain.types) || len(reps) != len(domain.typeReps) {
+		return false
+	}
+	for _, local := range mapping.domainToLocal {
+		if local == unavailableLocalGCType {
+			return false
+		}
+	}
+	return true
 }
 
 func preferredGCCollectorFromImports(imports Imports, store *referenceStore) (*gc.Collector, error) {

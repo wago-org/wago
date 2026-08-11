@@ -30,9 +30,12 @@ func TestLoopHoistScanSuppliesLoopFacts(t *testing.T) {
 		0x0b, // loop end
 	}
 	bodyReader := wasm.NewReader(body)
-	wantSet, wantGrow := scanLoopBody(bodyReader)
+	wantSet, wantGrow, wantValid := scanLoopBody(bodyReader, false)
 	hoistReader := wasm.NewReader(body)
-	_, _, gotGrow, gotSet := scanLoopHoistable(hoistReader)
+	_, _, gotGrow, gotSet, gotValid := scanLoopHoistable(hoistReader, false)
+	if !wantValid || !gotValid {
+		t.Fatalf("valid loop scan rejected: body=%v hoist=%v", wantValid, gotValid)
+	}
 	if gotGrow != wantGrow || len(gotSet) != len(wantSet) {
 		t.Fatalf("hoist loop facts = %v/%v, want %v/%v", gotSet, gotGrow, wantSet, wantGrow)
 	}
@@ -46,9 +49,68 @@ func TestLoopHoistScanSuppliesLoopFacts(t *testing.T) {
 	}
 }
 
-// TestLoopPrecheckSlowTrap: an out-of-bounds invariant base fails the precheck and
-// runs the SLOW (checked) body, which must trap at the access — preserving exact
-// trap semantics (a hoisted check would have trapped before the loop regardless).
+func TestLoopScansDecodeTryTableAndRejectPartialFindings(t *testing.T) {
+	body := []byte{
+		0x21, 0x01, // local.set 1
+		0x1f, 0x40, 0x01, 0x00, 0x00, 0x00, // try_table void, catch tag 0 -> label 0
+		0x21, 0x02, // local.set 2 in try body
+		0x0b,       // end try_table
+		0x21, 0x03, // local.set 3 after try_table
+		0x0b, // loop end
+	}
+	for _, scan := range []struct {
+		name string
+		fn   func(*wasm.Reader) (map[uint32]bool, bool)
+	}{
+		{name: "facts", fn: func(r *wasm.Reader) (map[uint32]bool, bool) {
+			set, _, valid := scanLoopBody(r, false)
+			return set, valid
+		}},
+		{name: "hoist", fn: func(r *wasm.Reader) (map[uint32]bool, bool) {
+			_, _, _, set, valid := scanLoopHoistable(r, false)
+			return set, valid
+		}},
+	} {
+		t.Run(scan.name, func(t *testing.T) {
+			r := wasm.NewReader(body)
+			set, valid := scan.fn(r)
+			if !valid || len(set) != 3 || !set[1] || !set[2] || !set[3] {
+				t.Fatalf("try_table scan = %v valid=%v", set, valid)
+			}
+			if r.Offset() != 0 {
+				t.Fatalf("reader offset = %d, want 0", r.Offset())
+			}
+		})
+	}
+
+	malformed := []byte{
+		0x21, 0x01, // a partial finding that must be discarded
+		0x1f, 0x40, 0x01, 0x00, 0x00, // truncated catch label
+	}
+	if set, _, valid := scanLoopBody(wasm.NewReader(malformed), false); valid || set != nil {
+		t.Fatalf("malformed fact scan retained partial findings: %v valid=%v", set, valid)
+	}
+	if _, n, grow, set, valid := scanLoopHoistable(wasm.NewReader(malformed), false); valid || n != 0 || grow || set != nil {
+		t.Fatalf("malformed hoist scan retained partial findings: %v/%d/%v valid=%v", set, n, grow, valid)
+	}
+}
+
+func TestMemory64LoopDoesNotVersionWithoutElision(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x29, 0x03, 0x00, // small i64.load would otherwise be a candidate
+		0x21, 0x01, // mutation facts must still be returned
+		0x0b,
+	}
+	r := wasm.NewReader(body)
+	cands, elidable, grow, set, valid := scanLoopHoistable(r, true)
+	if !valid || len(cands) != 0 || elidable != 0 || grow || len(set) != 1 || !set[1] {
+		t.Fatalf("memory64 scan = cands %v n=%d grow=%v set=%v valid=%v", cands, elidable, grow, set, valid)
+	}
+	if r.Offset() != 0 {
+		t.Fatalf("memory64 reader offset = %d, want 0", r.Offset())
+	}
+}
+
 func TestLoopPrecheckSlowTrap(t *testing.T) {
 	withLoopPrecheck(t, func() {
 		i32 := wasm.I32
