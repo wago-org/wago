@@ -615,6 +615,29 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		}
 		return nil
 	}
+	// An integer comparison immediately consumed by an 8-bit store needs only its
+	// low byte. Keep SETcc's upper-register garbage dead and omit MOVZX; the byte
+	// store cannot observe it. Pending loads were materialized above, preserving
+	// pre-store reads and trap order before this dedicated sink condenses the tree.
+	if top := f.s.back(); size == 1 && store8FlagsEnabled && isFusableCompare(top) && !top.typ.isFloat() {
+		// condenseToFlags may recursively lower div/rem or a variable shift. Those
+		// paths temporarily claim and then unpin x86's fixed-role registers; because
+		// the pin mask is not reference-counted, nesting would drop this outer
+		// reservation. Keep the byte result in a neutral scratch instead.
+		vreg := f.allocReg(maskOf(RAX, RDX, RCX))
+		f.pinned = f.pinned.add(vreg)
+		cc := f.condenseToFlags(top)
+		f.stats.reclassifyPeep("cmp-branch-fuse", "store8-flags")
+		f.a.SetccReg8(cc, vreg)
+		ea, eaOwned, _, disp := f.memAddr(off32, size, true)
+		f.a.StoreIdx(RBX, ea, vreg, disp, size)
+		f.pinned = f.pinned.remove(vreg)
+		if eaOwned {
+			f.release(ea)
+		}
+		f.release(vreg)
+		return nil
+	}
 	// Both the value and the address are immediate read-only uses here, so a
 	// pinned local feeds the store in place — no copy (nothing between the reads
 	// and the StoreIdx can write a local).

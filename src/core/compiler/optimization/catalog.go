@@ -162,6 +162,7 @@ func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
 var catalog = []Definition{
 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
 	both("st-flags", "Flags results", "keep comparison results in the flags register"),
+	amd64("store8-flags", "Byte-store flags", "sink comparison results directly into byte stores"),
 	both("reg-merge", "Register merge", "keep block results in registers across joins"),
 	both("tee-sink", "Tee sinking", "sink local.tee expressions into local registers"),
 	both("unary-sink", "Unary sinking", "sink unary and conversion expressions in place"),
