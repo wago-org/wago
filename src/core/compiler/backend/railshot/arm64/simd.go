@@ -294,15 +294,68 @@ func (f *fn) i8x16Swizzle() {
 	f.pushVReg(dst)
 }
 
-func (f *fn) i8x16Shuffle(lanes [16]byte) {
+var (
+	i8x16Rotate16 = [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}
+	i8x16Rotate8  = [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
+	i8x16Zip1D    = [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23}
+	i8x16Zip2D    = [16]byte{8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31}
+	i8x16Zip1S    = [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}
+	i8x16Zip2S    = [16]byte{8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31}
+)
+
+func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
+	// One-instruction shuffle forms can write a following pinned local directly.
+	// REV32 and ZIP read their complete inputs before committing the destination,
+	// so aliasing dst with either input is safe. Rotate-8 stays on the fresh-result
+	// path because its USHR+SLI sequence needs the original source twice.
+	directSink := v128ShuffleSinkEnabled && (lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S)
+	if directSink {
+		if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
+			f.stats.peep("v128-shuffle-sink")
+			b := f.popValue()
+			a := f.popValue()
+			s1, o1 := f.operandRegV128(a)
+			if lanes == i8x16Rotate16 {
+				f.a.NeonRev32H(dst, s1)
+				if o1 && dst != s1 {
+					f.releaseF(s1)
+				}
+				if b.st.kind == stReg {
+					f.releaseF(b.st.reg)
+				}
+				return
+			}
+			f.fpinned = f.fpinned.add(s1)
+			s2, o2 := f.operandRegV128(b)
+			f.fpinned = f.fpinned.add(s2)
+			switch lanes {
+			case i8x16Zip1D:
+				f.a.NeonZip1D(dst, s1, s2)
+			case i8x16Zip2D:
+				f.a.NeonZip2D(dst, s1, s2)
+			case i8x16Zip1S:
+				f.a.NeonZip1S(dst, s1, s2)
+			case i8x16Zip2S:
+				f.a.NeonZip2S(dst, s1, s2)
+			}
+			f.fpinned = f.fpinned.remove(s1).remove(s2)
+			if o1 && dst != s1 {
+				f.releaseF(s1)
+			}
+			if o2 && dst != s2 {
+				f.releaseF(s2)
+			}
+		}); done || err != nil {
+			return err
+		}
+	}
+
 	// AssemblyScript spells BLAKE's per-i32 rotate-right-by-16 and -8 as
 	// one-input byte shuffles. Lower those masks directly: REV32.8H swaps the
 	// halfwords in every i32 lane, while USHR+SLI rotates every lane by 8.
 	// The second wasm operand is unselected by both masks, so only its consumed
 	// owned register (if any) needs releasing.
-	rotate16 := [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}
-	rotate8 := [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
-	if lanes == rotate16 || lanes == rotate8 {
+	if lanes == i8x16Rotate16 || lanes == i8x16Rotate8 {
 		bElem := f.popValue()
 		if bElem.st.kind == stReg {
 			f.releaseF(bElem.st.reg)
@@ -311,7 +364,7 @@ func (f *fn) i8x16Shuffle(lanes [16]byte) {
 		src, owned := f.operandRegV128(aElem)
 		f.fpinned = f.fpinned.add(src)
 		dst := f.allocFReg(maskOf(src))
-		if lanes == rotate16 {
+		if lanes == i8x16Rotate16 {
 			f.a.NeonRev32H(dst, src)
 		} else {
 			f.a.NeonUshrS(dst, src, 8)
@@ -323,16 +376,12 @@ func (f *fn) i8x16Shuffle(lanes [16]byte) {
 		}
 		f.stats.peep("simd-shuffle-rotr")
 		f.pushVReg(dst)
-		return
+		return nil
 	}
 
 	// BLAKE's message schedule also uses the four canonical ZIP masks. They map
 	// directly to ZIP1/ZIP2 at 64- or 32-bit lane widths.
-	zip1D := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23}
-	zip2D := [16]byte{8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31}
-	zip1S := [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}
-	zip2S := [16]byte{8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31}
-	if lanes == zip1D || lanes == zip2D || lanes == zip1S || lanes == zip2S {
+	if lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S {
 		bElem := f.popValue()
 		aElem := f.popValue()
 		xa, aOwned := f.operandRegV128(aElem)
@@ -341,13 +390,13 @@ func (f *fn) i8x16Shuffle(lanes [16]byte) {
 		f.fpinned = f.fpinned.add(xb)
 		dst := f.allocFReg(maskOf(xa, xb))
 		switch lanes {
-		case zip1D:
+		case i8x16Zip1D:
 			f.a.NeonZip1D(dst, xa, xb)
-		case zip2D:
+		case i8x16Zip2D:
 			f.a.NeonZip2D(dst, xa, xb)
-		case zip1S:
+		case i8x16Zip1S:
 			f.a.NeonZip1S(dst, xa, xb)
-		case zip2S:
+		case i8x16Zip2S:
 			f.a.NeonZip2S(dst, xa, xb)
 		}
 		f.fpinned = f.fpinned.remove(xa).remove(xb)
@@ -359,7 +408,7 @@ func (f *fn) i8x16Shuffle(lanes [16]byte) {
 		}
 		f.stats.peep("simd-shuffle-zip")
 		f.pushVReg(dst)
-		return
+		return nil
 	}
 
 	var aMask, bMask [16]byte
@@ -396,28 +445,58 @@ func (f *fn) i8x16Shuffle(lanes [16]byte) {
 	f.a.NeonOrr16b(xa, xa, xb)
 	f.releaseF(xb)
 	f.pushVReg(xa)
+	return nil
 }
 
 // v128Bin lowers a two-operand v128 op. When the op is immediately consumed by
 // `local.set/tee $x` into a register-pinned v128 local, tryV128BinLocalSet emits
 // it in place into $x's V register (one instruction, no accumulator copy and no
-// result-to-pin copy). Otherwise it falls back to the eager form: an owned
-// writable copy of the left operand that the op accumulates into.
+// result-to-pin copy). Otherwise it reads both operands in place and reuses an
+// owned operand register for the result when possible. If both operands are
+// borrowed pinned locals, a fresh destination is enough: NEON's three-register
+// form does not require copying either source first.
 func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 	if done, err := f.tryV128BinLocalSet(r, op); done || err != nil {
 		return err
 	}
+	if !v128DirectResultEnabled {
+		b := f.popValue()
+		a := f.popValue()
+		xa := f.materializeV128(a)
+		f.fpinned = f.fpinned.add(xa)
+		xb, bOwned := f.operandRegV128(b)
+		f.fpinned = f.fpinned.remove(xa)
+		op(xa, xa, xb)
+		if bOwned {
+			f.releaseF(xb)
+		}
+		f.pushVReg(xa)
+		return nil
+	}
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeV128(a) // owned writable copy: op writes s1
-	f.fpinned = f.fpinned.add(xa)
-	xb, bOwned := f.operandRegV128(b) // read-only source: a pinned local is used in place
-	f.fpinned = f.fpinned.remove(xa)
-	op(xa, xa, xb)
-	if bOwned {
-		f.releaseF(xb)
+	s1, o1 := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegV128(b)
+	f.fpinned = f.fpinned.add(s2)
+	dst := s1
+	if !o1 {
+		f.stats.peep("v128-direct-result")
+		if o2 {
+			dst = s2
+		} else {
+			dst = f.allocFReg(maskOf(s1, s2))
+		}
 	}
-	f.pushVReg(xa)
+	op(dst, s1, s2)
+	f.fpinned = f.fpinned.remove(s1).remove(s2)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+	f.pushVReg(dst)
 	return nil
 }
 
@@ -506,9 +585,22 @@ func (f *fn) v128Unary(r *wasm.Reader, op func(dst, src Reg)) error {
 		return err
 	}
 	a := f.popValue()
-	x := f.materializeV128(a)
-	op(x, x)
-	f.pushVReg(x)
+	if !v128DirectResultEnabled {
+		x := f.materializeV128(a)
+		op(x, x)
+		f.pushVReg(x)
+		return nil
+	}
+	src, owned := f.operandRegV128(a)
+	dst := src
+	if !owned {
+		f.stats.peep("v128-direct-result")
+		f.fpinned = f.fpinned.add(src)
+		dst = f.allocFReg(maskOf(src))
+		f.fpinned = f.fpinned.remove(src)
+	}
+	op(dst, src)
+	f.pushVReg(dst)
 	return nil
 }
 
@@ -834,6 +926,55 @@ func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst,
 	}); done || err != nil {
 		return err
 	}
+	if !v128DirectResultEnabled {
+		return f.v128ShiftLegacy(op, opImm, countMask, laneSize, right)
+	}
+	countElem := f.popValue()
+	if countElem.st.kind == stConst {
+		value := f.popValue()
+		src, owned := f.operandRegV128(value)
+		dst := src
+		if shift := uint8(countElem.st.cval & int64(countMask)); shift != 0 {
+			if !owned {
+				f.stats.peep("v128-direct-result")
+				f.fpinned = f.fpinned.add(src)
+				dst = f.allocFReg(maskOf(src))
+				f.fpinned = f.fpinned.remove(src)
+			}
+			opImm(dst, src, shift)
+		} else if !owned {
+			dst = f.allocFReg(maskOf(src))
+			f.a.NeonMov16b(dst, src)
+		}
+		f.stats.peep("simd-shift-imm")
+		f.pushVReg(dst)
+		return nil
+	}
+	count := f.materialize(countElem)
+	f.andImm(count, int64(countMask), false) // Wasm shifts use count modulo lane width.
+	if right {
+		f.a.Sub64(count, ZR, count) // NEON USHL/SSHL use negative counts for right shifts.
+	}
+
+	value := f.popValue()
+	src, owned := f.operandRegV128(value)
+	f.fpinned = f.fpinned.add(src)
+	countX := f.v128SplatScalar(count, laneSize)
+	f.release(count)
+	f.fpinned = f.fpinned.add(countX)
+	dst := src
+	if !owned {
+		f.stats.peep("v128-direct-result")
+		dst = f.allocFReg(maskOf(src, countX))
+	}
+	op(dst, src, countX)
+	f.fpinned = f.fpinned.remove(src).remove(countX)
+	f.releaseF(countX)
+	f.pushVReg(dst)
+	return nil
+}
+
+func (f *fn) v128ShiftLegacy(op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) error {
 	countElem := f.popValue()
 	if countElem.st.kind == stConst {
 		value := f.popValue()
@@ -846,17 +987,15 @@ func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst,
 		return nil
 	}
 	count := f.materialize(countElem)
-	f.andImm(count, int64(countMask), false) // Wasm shifts use count modulo lane width.
+	f.andImm(count, int64(countMask), false)
 	if right {
-		f.a.Sub64(count, ZR, count) // NEON USHL/SSHL use negative counts for right shifts.
+		f.a.Sub64(count, ZR, count)
 	}
-
 	value := f.popValue()
 	x := f.materializeV128(value)
 	f.fpinned = f.fpinned.add(x)
 	countX := f.v128SplatScalar(count, laneSize)
 	f.release(count)
-
 	op(x, x, countX)
 	f.releaseF(countX)
 	f.fpinned = f.fpinned.remove(x)
@@ -2105,7 +2244,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 			}
 			lanes[i] = lane
 		}
-		f.i8x16Shuffle(lanes)
+		return f.i8x16Shuffle(r, lanes)
 	case 14: // i8x16.swizzle
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw TBL semantics.

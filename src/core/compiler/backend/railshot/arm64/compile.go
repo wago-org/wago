@@ -148,6 +148,12 @@ type fn struct {
 	pinnedLocalMask  regMask
 	fpinnedLocalMask regMask
 
+	// Bounded straight-line local intervals. A nonzero last-get offset plus the
+	// score marks eligibility; locals[x].reg exists only while the cache is live.
+	intervalLast  []uint32
+	intervalScore []uint32
+	intervalOwner [32]int
+
 	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
@@ -187,16 +193,17 @@ type fn struct {
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
 	spillFloor       int
-	subRspAt         int   // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
-	addRspAt         int   // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
-	tailFrameSites   []int // tail-transfer frame-free MOVZ sites (patched with frameSize)
-	frameElided      bool  // simple register-only internal entry leaves SP unchanged
-	adapterReturnOff int   // register-ABI wrapper continuation used by cross-tail reuse
-	guardMode        bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts      bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible    bool  // emit context-cancellation polls at entries and loop headers
-	lazyZero         bool  // defer declared-local zeroing for small call+memory functions
-	skipFence        bool  // call-free leaf with a provably small frame: no stack-fence check
+	subRspAt         int    // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
+	addRspAt         int    // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	tailFrameSites   []int  // tail-transfer frame-free MOVZ sites (patched with frameSize)
+	frameElided      bool   // simple register-only internal entry leaves SP unchanged
+	adapterReturnOff int    // register-ABI wrapper continuation used by cross-tail reuse
+	guardMode        bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts      bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible    bool   // emit context-cancellation polls at entries and loop headers
+	lazyZero         bool   // defer declared-local zeroing for small call+memory functions
+	entryInitialized uint64 // locals proven assigned before their first entry-prefix read
+	skipFence        bool   // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([linMemReg-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize=R27, which
@@ -1001,6 +1008,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
 	localScores := make([]uint32, totalLocals)
+	localLastGets := make([]uint32, totalLocals)
 	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
 	var globalScores []uint32
 	var globalEligibility []bool
@@ -1033,6 +1041,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
+		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		var err error
 		h, err = scanFuncBodyInto(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m)
@@ -1325,7 +1334,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f := &sc.fnState
 	localType, localSlot, locals := f.localType, f.localSlot, f.locals
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared}
+	entryInitialized := hints.entryInitialized
+	if !entryInitElisionEnabled || gcFrameRoots != nil && gcFrameRoots.Candidate {
+		entryInitialized = 0
+	}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
@@ -1496,6 +1509,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	f.installModuleGlobals(modGlobals)
+	intervalRegion := pinLocals && regABI && !hasCall && !hints.hasControlFlow &&
+		!hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	if intervalRegion {
+		gpPool = nil // regional assignments supersede whole-function GP pins
+	}
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, hasCall, pinLocals)
 	for i := range f.locals {
 		if r := f.locals[i].reg; r >= X2 && r <= X7 {
@@ -1783,9 +1801,13 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 	// preserve the low 64 bits, so a v128 pin is confined to the call-free class.
 	pinV128 := v128LocalPinsEnabled && !hasCall
 	fc := f.tmpInts[:0]
+	hotV128Candidates := 0
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
 			fc = append(fc, i)
+			if f.localType[i] == mtV128 && scores[i] > 0 {
+				hotV128Candidates++
+			}
 		}
 	}
 	slices.SortFunc(fc, func(a, b int) int {
@@ -1796,10 +1818,18 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 	})
 	f.tmpInts = fc
 	fpPinLimit := len(pinnedFLocalRegs)
+	deepV128Pins := false
 	if legacyFPPinsEnabled && fpPinLimit > 4 {
 		fpPinLimit = 4
 	} else if !extendedFPPinsEnabled && fpPinLimit > basePinnedFLocalRegs {
 		fpPinLimit = basePinnedFLocalRegs
+	} else if !hasCall && hotV128Candidates >= 24 {
+		// Wide vector kernels have short expression trees but large named v128
+		// state. Keeping that state resident is worth the smaller transient pool;
+		// scalar-float kernels retain the measured 15-pin cap below.
+		fpPinLimit = len(pinnedFLocalRegs)
+		deepV128Pins = true
+		f.stats.peep("deep-v128-local-pins")
 	} else if !hasCall && fpPinLimit > callFreePinnedFLocalRegs {
 		// Call-free numeric loops still need room for wide expression trees. Past
 		// this point nbody loses more to transient-register pressure than it gains
@@ -1827,6 +1857,9 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 	}
 	for k, i := range fc {
 		if k >= fpPinLimit {
+			break
+		}
+		if deepV128Pins && scores[i] == 0 {
 			break
 		}
 		f.locals[i].reg = pinnedFLocalRegs[k]
@@ -2056,6 +2089,10 @@ func (f *fn) zeroDeclaredLocals() {
 		a := f.a
 		// AArch64 has a zero register (XZR): store it directly, no scratch to clear.
 		for i := f.nParams; i < f.nLocals; i++ {
+			if i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0 {
+				f.stats.peep("entry-init-elide")
+				continue
+			}
 			if pr, _, ok := f.pinReg(i); ok && f.localType[i] == mtV128 {
 				a.NeonEor16b(pr, pr, pr) // zero the whole 128-bit pin register
 			} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {

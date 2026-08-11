@@ -160,6 +160,12 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
 		var value *elem
+		f.activateIntervalLocal(int(x), r.Offset(), true)
+		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
+			value = f.pushReg(reg, f.localType[x])
+			value.st.gcRoot = f.gcFrameLocal(int(x))
+			break
+		}
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
@@ -190,7 +196,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 				return err
 			}
 		}
-		f.setLocal(int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
+		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set
@@ -1116,7 +1122,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
 	return false
 }
 
-func (f *fn) setLocal(x int, tee bool) {
+func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if f.bcKind == 1 && f.bcIdx == uint32(x) {
 		f.invalidateBoundsCert() // the certified base local changed value
 	}
@@ -1139,6 +1145,9 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
+	if reader != nil {
+		f.activateIntervalLocal(x, reader.Offset(), false)
+	}
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {
 		// Register-pinned local: compute/load directly into the local's register.
 		// condenseInto may temporarily mark pr as an owned result for deferred

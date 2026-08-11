@@ -789,6 +789,36 @@ func TestSIMDNarrowSinkAlias(t *testing.T) {
 	}
 }
 
+func TestSIMDShuffleSinkAlias(t *testing.T) {
+	a := i32x4Bytes(0x11223344, 0x55667788, 0x10203040, 0x50607080)
+	b := i32x4Bytes(-0x66554434, 0x12345678, 0x23456789, 0x3456789a)
+	for _, tc := range []struct {
+		name string
+		mask [16]byte
+		lane byte
+		want uint32
+	}{
+		{"rotate16-self-alias", i8x16Rotate16, 0, 0x33441122},
+		{"zip1s-self-alias", i8x16Zip1S, 1, 0x99aabbcc},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x01, 0x02, 0x7b}
+			body = append(body, simdConst(a)...)
+			body = append(body, 0x21, 0x00)
+			body = append(body, simdConst(b)...)
+			body = append(body, 0x21, 0x01)
+			body = append(body, 0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d)
+			body = append(body, tc.mask[:]...)
+			body = append(body, 0x21, 0x00, 0x20, 0x00)
+			body = append(body, simdOp(27)...)
+			body = append(body, tc.lane, 0x0b)
+			if got := runArm64I32(t, body); got != tc.want {
+				t.Fatalf("lane %d = %#x, want %#x", tc.lane, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestSIMDPMinMaxSinkAlias covers the pmin/pmax fallback where an operand IS the
 // pinned dst (`local.set $x (pmin (get $y) (get $x))`): dst cannot serve as the
 // FCMP/BSL selector, so the sink must use a scratch mask and copy the result in.
