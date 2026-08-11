@@ -1808,7 +1808,11 @@ Tiny collection is an incremental tri-color mark/sweep collector with states
 `idle -> mark -> remark -> sweep -> idle`. Marking grays exact roots from the
 supplied `RootSet`, globals, and tables, then scans guest objects by `TypeDesc`.
 Before sweep, Tiny re-scans roots so stack/frame/local root stores that do not
-run object barriers are still observed. Sweep walks handle indexes and frees
+run object barriers are still observed. Transient roots are captured atomically
+at each safepoint through allocation-free direct visitors and fail closed above
+1,024 references; arbitrary callback-only root sets are not admitted to Tiny.
+Collector-owned globals and tables resume through a stable index cursor at
+most 256 slots per `Step`, including both initial mark and remark. Sweep walks handle indexes and frees
 white Tiny objects back to the fixed-block allocator. `CollectFull` completes one
 whole Tiny cycle. `CollectMinor` is specified as the same full Tiny cycle because
 Tiny is non-generational.
@@ -1849,7 +1853,12 @@ and element order. Pointer-free objects are not recursively scanned, struct ref
 fields are loaded only at descriptor offsets, ref arrays scan elements, numeric
 bits are never interpreted as refs, and `null`/`i31` values are ignored. Global
 and table slots are part of the root set for both full and incremental Tiny
-collection.
+collection. Appended persistent slots remain ahead of the cursor, while stores
+behind it retain the ordinary Tiny insertion barrier; the complete remark pass
+therefore observes root movement without retaining mutable slot interfaces or
+raw object pointers across `Step` calls. On the Ryzen 7 8845HS host, a 256-slot
+persistent-root step measures about 520-526 ns with 0 B/op and 0 allocs/op,
+independent of whether the collector owns 256, 4,096, or 65,536 slots.
 
 Tiny write barriers preserve the incremental no-black-to-white invariant.
 Object stores retain the existing conservative hybrid policy for black parents:
@@ -1875,8 +1884,8 @@ are more important than moving/generational throughput.
 
 Known Tiny limitations in this foundation:
 
-- object tracing is bounded inside large objects, but initial/remark root
-  enumeration and the broader persistent-root cursor remain later #319 work;
+- transient roots use a hard 1,024-reference direct-visitor bound rather than a
+  resumable cursor because native frame roots may change when the mutator resumes;
 - sweeping still advances by the existing handle-oriented policy; bounded sweep
   regions, allocation from swept regions, and allocation-debt pacing are not part
   of this stage. A reference graph published through an external `WriteBarrierRoot`

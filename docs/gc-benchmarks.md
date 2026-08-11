@@ -656,6 +656,14 @@ in one cold noinline helper. Ten CPU-affined interleaved samples of
 `BenchmarkTinyIncrementalBarrierMarkedChild` measure 3.3055 ns on `main` and
 3.347 ns current (+1.26%; paired median +2.34%), again with no allocations.
 
+The persistent-root cursor stage adds `BenchmarkTinyStepPersistentRoots`. Five
+samples on the same host measured 520-526 ns for one 256-slot step at 256 and
+65,536 total slots; the 4,096-slot control was 520-550 ns. Every case reports
+0 B/op and 0 allocs/op, demonstrating that step work scales with the fixed chunk
+rather than total persistent-root count. Transient/native roots remain one
+atomic direct walk with a hard 1,024-reference limit because frame slots may
+change when the mutator resumes; callback-only root sets fail closed in Tiny.
+
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median
 and an 814.30 ns current median (+0.29%), with identical 40 B/op and 2 allocs/op

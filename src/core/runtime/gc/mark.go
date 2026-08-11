@@ -27,12 +27,23 @@ const (
 	rootMarkFull uint8 = iota + 1
 	rootMarkNursery
 	rootMarkTiny
+	rootMarkTinyCount
+	rootMarkTinyBounded
 )
 
 // VisitRootRef implements RootRefSink. Collection is synchronous per Collector,
 // so the active mark mode can live in the collector instead of an escaping
 // closure allocated once per collection.
 func (c *Collector) VisitRootRef(r Ref) bool {
+	if c.rootMarkMode == rootMarkTinyCount || c.rootMarkMode == rootMarkTinyBounded {
+		if uint32(c.tinyGC.lastStepWork.refSlots) >= tinyTransientRootLimit {
+			return false
+		}
+		c.tinyGC.lastStepWork.refSlots++
+		if c.rootMarkMode == rootMarkTinyCount {
+			return true
+		}
+	}
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.noteRoot(c.telemetryRootClass)
 	}
@@ -41,7 +52,7 @@ func (c *Collector) VisitRootRef(r Ref) bool {
 		c.markRef(r)
 	case rootMarkNursery:
 		c.markNurseryRef(r)
-	case rootMarkTiny:
+	case rootMarkTiny, rootMarkTinyBounded:
 		c.tinyMarkRef(r)
 	}
 	return true
@@ -51,6 +62,15 @@ func (c *Collector) VisitRootRef(r Ref) bool {
 // integration is telemetry-only, so per-class timing can remain out of release
 // builds and ordinary root walks.
 func (c *Collector) VisitClassifiedRootRef(class RootClass, r Ref) bool {
+	if c.rootMarkMode == rootMarkTinyCount || c.rootMarkMode == rootMarkTinyBounded {
+		if uint32(c.tinyGC.lastStepWork.refSlots) >= tinyTransientRootLimit {
+			return false
+		}
+		c.tinyGC.lastStepWork.refSlots++
+		if c.rootMarkMode == rootMarkTinyCount {
+			return true
+		}
+	}
 	if !c.telemetryEnabled() {
 		return c.VisitRootRef(r)
 	}
@@ -288,7 +308,7 @@ func (c *Collector) markRootForMode(r Ref, mode uint8) {
 	switch mode {
 	case rootMarkNursery:
 		c.markNurseryRef(r)
-	case rootMarkTiny:
+	case rootMarkTiny, rootMarkTinyBounded:
 		c.tinyMarkRef(r)
 	default:
 		c.markRef(r)
