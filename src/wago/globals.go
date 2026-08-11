@@ -1103,6 +1103,10 @@ type Compiled struct {
 	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
+	// independentInstances opts this compiled module into instance-local native
+	// execution leases. It is not serialized because snapshots and codecs cannot
+	// safely infer the embedder's cross-instance ownership contract.
+	independentInstances bool
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the

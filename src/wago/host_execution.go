@@ -99,6 +99,21 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		active.popGCHostActivation(activation)
 		panic(invalidHostReference{err: err})
 	}
+	if active.c != nil && active.c.independentInstances {
+		mu := active.independentNativeExecutionMu()
+		mu.Unlock()
+		defer active.popGCHostActivation(activation)
+		defer func() {
+			mu.Lock()
+			active.clearGCHostResultRoots(activation)
+			if err := active.bindNativeContext(); err != nil {
+				panic(invalidHostReference{err: err})
+			}
+		}()
+		active.hostCall(ctrl, importIdx, args, results)
+
+		return
+	}
 	epoch := nativeExecutionEpoch
 	nativeExecutionMu.Unlock()
 	// Keep the parked activation and any GC host-result roots published until the

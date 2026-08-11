@@ -150,10 +150,34 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 }
 
 func (b *instanceBuilder) validateCompiled() error {
+	if err := b.c.validateIndependentInstanceImports(b.imports); err != nil {
+		return err
+	}
 	if err := b.c.validateImportBindings(b.imports, b.opts.store); err != nil {
 		return err
 	}
 	return b.c.validateCached()
+}
+
+func (c *Compiled) validateIndependentInstanceImports(imports Imports) error {
+	if !c.independentInstances {
+		return nil
+	}
+	if c.memoryImport != "" || c.tableImport != "" || len(c.GlobalImports) != 0 {
+		return errors.New("wago: independent instance execution does not allow imported Wasm memory, table, or global state")
+	}
+	for i := range c.extraTables {
+		if c.extraTables[i].ImportKey != "" {
+			return errors.New("wago: independent instance execution does not allow imported Wasm memory, table, or global state")
+		}
+	}
+	for _, key := range c.Imports {
+		if _, ok := imports[key].(*InstanceExport); ok {
+			return fmt.Errorf("wago: independent instance execution does not allow cross-instance function import %q", key)
+		}
+	}
+
+	return nil
 }
 
 func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {

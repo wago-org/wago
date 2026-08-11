@@ -27,6 +27,17 @@ type executionLease struct{ local *sync.Mutex }
 // size/growth fields remain backing-owned; invocation control is refreshed by
 // the engine entry/resume paths.
 func (in *Instance) beginNativeEntry() (executionLease, error) {
+	if in.c.independentInstances {
+		mu := in.independentNativeExecutionMu()
+		mu.Lock()
+		if err := in.bindAndValidateNativeContext(); err != nil {
+			mu.Unlock()
+
+			return executionLease{}, err
+		}
+
+		return executionLease{local: mu}, nil
+	}
 	if in.c.threadedMemory0() {
 		mu := &in.memoryDir.nativeMu
 		mu.Lock()
@@ -100,6 +111,14 @@ func (l executionLease) unlockExecution() {
 	nativeExecutionMu.Unlock()
 }
 
+func (in *Instance) independentNativeExecutionMu() *sync.Mutex {
+	if in.memoryDir != nil {
+		return &in.memoryDir.nativeMu
+	}
+
+	return &in.lifeMu
+}
+
 func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
 	if in == nil || in.c == nil || !in.c.threadedMemory0() {
 		return nil
@@ -109,6 +128,12 @@ func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
 }
 
 func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
+	if in != nil && in.c != nil && in.c.independentInstances {
+		mu := in.independentNativeExecutionMu()
+		mu.Lock()
+
+		return mu.Unlock
+	}
 	if in != nil && in.c != nil && in.c.threadedMemory0() {
 		in.memoryDir.nativeMu.Lock()
 		return in.memoryDir.nativeMu.Unlock

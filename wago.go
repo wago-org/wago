@@ -69,6 +69,7 @@ type (
 	GlobalImport               = impl.GlobalImport
 	GlobalImportDef            = impl.GlobalImportDef
 	GlobalMetadata             = impl.GlobalMetadata
+	GlobalsSnapshot            = impl.GlobalsSnapshot
 	GuardPageUnavailableError  = impl.GuardPageUnavailableError
 	Handle                     = impl.Handle
 	HandleTable                = impl.HandleTable
@@ -113,6 +114,8 @@ type (
 	OffsetInit                 = impl.OffsetInit
 	OptKnobInfo                = impl.OptKnobInfo
 	PackedType                 = impl.PackedType
+	PageSnapshot               = impl.PageSnapshot
+	PageSnapshotBinding        = impl.PageSnapshotBinding
 	PassiveDataInit            = impl.PassiveDataInit
 	PluginCapability           = impl.PluginCapability
 	PluginConfig               = impl.PluginConfig
@@ -319,6 +322,18 @@ func CaptureGCMemoryDomains(compilerHeapBytes uint64, executableJITBytes uint64,
 	return impl.CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes, heap)
 }
 
+func CaptureGlobals(in *Instance) (*GlobalsSnapshot, error) { return impl.CaptureGlobals(in) }
+
+func CapturePageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
+	return impl.CapturePageSnapshot(in)
+}
+
+func CaptureStubGlobals(in *Instance) (*GlobalsSnapshot, error) { return impl.CaptureStubGlobals(in) }
+
+func CaptureStubPageSnapshot(in *Instance) (*PageSnapshot, *PageSnapshotBinding, error) {
+	return impl.CaptureStubPageSnapshot(in)
+}
+
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
@@ -360,6 +375,8 @@ func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 func IsDomainSnapshot(b []byte) bool { return impl.IsDomainSnapshot(b) }
 
 func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
+
+func IsPageSnapshotMemoryGrown(err error) bool { return impl.IsPageSnapshotMemoryGrown(err) }
 
 func IsSnapshot(b []byte) bool { return impl.IsSnapshot(b) }
 

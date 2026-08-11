@@ -227,6 +227,25 @@ func TestCrossInstanceFunctionImportRetainsProducerResources(t *testing.T) {
 	}
 }
 
+func TestIndependentInstanceExecutionRejectsCrossInstanceFunction(t *testing.T) {
+	producer, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export function: %v", err)
+	}
+	consumerCode, err := NewRuntimeConfig().WithIndependentInstanceExecution(true).Compile(benchReturningImportModule())
+	if err != nil {
+		t.Fatalf("compile consumer: %v", err)
+	}
+	if _, err = Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}}); err == nil {
+		t.Fatal("independent instance accepted a cross-instance function import")
+	}
+}
+
 func TestCrossInstanceCallNoArgs(t *testing.T) {
 	modA := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),

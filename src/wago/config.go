@@ -218,13 +218,14 @@ func (m BoundsCheckMode) String() string {
 // RuntimeConfig configures compilation and execution. It is immutable — every
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
-	features        CoreFeatures
-	optimizations   map[string]bool
-	maxMemoryPages  uint32
-	boundsChecks    BoundsCheckMode
-	noDeferBounds   bool // disable skipping of provably-redundant bounds checks (default: enabled)
-	functionWorkers int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
-	gcCodeTelemetry bool // collect code-neutral per-family WasmGC native byte attribution
+	features             CoreFeatures
+	optimizations        map[string]bool
+	maxMemoryPages       uint32
+	boundsChecks         BoundsCheckMode
+	noDeferBounds        bool // disable skipping of provably-redundant bounds checks (default: enabled)
+	functionWorkers      int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
+	gcCodeTelemetry      bool // collect code-neutral per-family WasmGC native byte attribution
+	independentInstances bool // allow unrelated instances to execute native code concurrently
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -367,6 +368,18 @@ func (c *RuntimeConfig) WithFunctionWorkers(workers int) *RuntimeConfig {
 	return &n
 }
 
+// WithIndependentInstanceExecution allows separately instantiated modules to
+// execute native code concurrently. Enable this only when instances do not
+// import memories, tables, globals, or functions from other Wasm instances.
+// Host function imports remain supported. The default process-wide execution
+// lease preserves Wago's general cross-instance linking semantics.
+func (c *RuntimeConfig) WithIndependentInstanceExecution(enabled bool) *RuntimeConfig {
+	n := *c
+	n.independentInstances = enabled
+
+	return &n
+}
+
 // WithCompileWorkers is retained for source compatibility.
 // Deprecated: use WithFunctionWorkers.
 func (c *RuntimeConfig) WithCompileWorkers(workers int) *RuntimeConfig {
@@ -410,6 +423,10 @@ func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 // adaptive, one serial, or a positive forced maximum.
 func (c *RuntimeConfig) FunctionWorkers() int { return c.functionWorkers }
 
+// IndependentInstanceExecution reports whether native calls use instance-local
+// execution leases instead of the process-wide cross-instance lease.
+func (c *RuntimeConfig) IndependentInstanceExecution() bool { return c.independentInstances }
+
 // CompileWorkers is retained for source compatibility.
 // Deprecated: use FunctionWorkers.
 func (c *RuntimeConfig) CompileWorkers() int { return c.FunctionWorkers() }
@@ -434,8 +451,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, functionWorkers: %d}",
-		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.functionWorkers)
+	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, functionWorkers: %d, independentInstances: %t}",
+		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.functionWorkers, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
