@@ -184,7 +184,7 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 	}
 	if !in.preparedIsolatedEligible() {
 		t.Fatalf("plain scalar instance should be isolated: private=%v dir=%v sharedctx=%v sync=%v memory=%v owns=%v globals=%d table=%#x gc=%v imports=%d refs=%v",
-			in.preparedPrivateEligible(), in.memoryDir != nil, in.nativeControlShared, in.syncMode, in.memory != nil, in.ownsMem,
+			in.preparedPrivateEligible(), in.memoryDir != nil, in.nativeControlIsShared(), in.syncMode, in.memory != nil, in.ownsMem,
 			len(in.globalCells), in.tableDescPtr, in.gc != nil, in.c.NumImports, in.c.NeedsFuncRefDescs)
 	}
 
@@ -307,7 +307,7 @@ func TestInvokeScalarUsesIsolatedEntry(t *testing.T) {
 
 	// Attachment can make native control shared after this export was cached.
 	// The cached scalar shape must then fall back to rebinding under the lease.
-	in.nativeControlShared = true
+	in.markNativeControlShared()
 	done = make(chan result, 1)
 	nativeExecutionMu.Lock()
 	go func() {

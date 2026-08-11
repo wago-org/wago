@@ -2,11 +2,48 @@ package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestIndependentInstanceExecutionBypassesProcessLease(t *testing.T) {
+	sig := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0x10, 0x00, 0x0b} // call 0; end
+	c, err := NewRuntimeConfig().Compile(returningImportModule(sig, body))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = I32(7)
+	})}})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+
+	nativeExecutionMu.Lock()
+	defer nativeExecutionMu.Unlock()
+	done := make(chan error, 1)
+	go func() {
+		results, invokeErr := in.Invoke("g")
+		if invokeErr == nil && (len(results) != 1 || AsI32(results[0]) != 7) {
+			invokeErr = errors.New("unexpected independent invocation result")
+		}
+		done <- invokeErr
+	}()
+	select {
+	case invokeErr := <-done:
+		if invokeErr != nil {
+			t.Fatalf("invoke: %v", invokeErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("independent invocation waited for the process-wide native execution lease")
+	}
+}
 
 // returningImportModule builds a module whose func 0 is an import of type `sig`
 // (env.f) and func 1 (exported "g") has body `body`. Optional extra sections

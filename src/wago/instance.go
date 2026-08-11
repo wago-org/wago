@@ -59,7 +59,7 @@ type Instance struct {
 	ownsMem                bool                     // false when memory 0 is host-imported (don't close it)
 	memoryDir              *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode               bool                     // true when host imports use the synchronous re-entry protocol
-	nativeControlShared    bool                     // entered from another instance; prepared control fields may be overwritten
+	executionFlags         atomic.Uint32            // independent eligibility and cross-instance native-control sharing
 	nativeContext          uintptr                  // arena-backed context bytes rebound before every native entry
 	instructionState       instructionState
 

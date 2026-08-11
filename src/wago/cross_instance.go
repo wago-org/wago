@@ -62,7 +62,7 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 		return nil, fmt.Errorf("export %q function index %d out of range", name, gfi)
 	}
 	sig := in.c.Funcs[li]
-	in.nativeControlShared = true
+	in.markNativeControlShared()
 	return &InstanceExport{inst: in, localIdx: li, params: sig.Params, results: sig.Results}, nil
 }
 
@@ -430,7 +430,7 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 		}
 		return false
 	}
-	in.nativeControlShared = true
+	in.markNativeControlShared()
 	if t.retained == nil {
 		t.retained = make(map[*Instance]*retainedInstanceRoot)
 	}
@@ -610,7 +610,7 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 		if state == nil {
 			state = &retainedInstanceRoot{}
 			t.retained[owner] = state
-			owner.nativeControlShared = true
+			owner.markNativeControlShared()
 		} else {
 			release = append(release, owner)
 		}
@@ -653,7 +653,7 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 			if state == nil {
 				state = &retainedInstanceRoot{}
 				t.retained[proxy] = state
-				proxy.nativeControlShared = true
+				proxy.markNativeControlShared()
 			} else {
 				release = append(release, proxy)
 			}

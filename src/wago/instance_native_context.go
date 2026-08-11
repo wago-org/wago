@@ -23,6 +23,11 @@ var (
 	nativeActive         = map[nativeActivation]uint32{}
 )
 
+const (
+	executionFlagIndependent uint32 = 1 << iota
+	executionFlagNativeControlShared
+)
+
 type invocationID uint64
 
 var nextInvocationID atomic.Uint64
@@ -72,6 +77,18 @@ type executionLease struct{ local *sync.Mutex }
 // size/growth fields remain backing-owned; invocation control is refreshed by
 // the engine entry/resume paths.
 func (in *Instance) beginNativeEntry() (executionLease, error) {
+	if in.usesIndependentExecution() {
+		mu := in.independentNativeExecutionMu()
+		mu.Lock()
+		in.ensurePluginState().nativeExecutionEpoch++
+		if err := in.bindAndValidateNativeContext(); err != nil {
+			mu.Unlock()
+
+			return executionLease{}, err
+		}
+
+		return executionLease{local: mu}, nil
+	}
 	if in.c.threadedMemory0() {
 		mu := &in.memoryDir.nativeMu
 		mu.Lock()
@@ -145,6 +162,31 @@ func (l executionLease) unlockExecution() {
 	nativeExecutionMu.Unlock()
 }
 
+func (in *Instance) independentNativeExecutionMu() *sync.Mutex {
+	if in.memoryDir != nil {
+		return &in.memoryDir.nativeMu
+	}
+
+	return &in.ensurePluginState().nativeExecutionMu
+}
+
+func (in *Instance) usesIndependentExecution() bool {
+	if in == nil {
+		return false
+	}
+	flags := in.executionFlags.Load()
+
+	return flags&executionFlagIndependent != 0 && flags&executionFlagNativeControlShared == 0
+}
+
+func (in *Instance) markNativeControlShared() {
+	in.executionFlags.Or(executionFlagNativeControlShared)
+}
+
+func (in *Instance) nativeControlIsShared() bool {
+	return in != nil && in.executionFlags.Load()&executionFlagNativeControlShared != 0
+}
+
 func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
 	if in == nil || in.c == nil || !in.c.threadedMemory0() {
 		return nil
@@ -154,6 +196,12 @@ func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
 }
 
 func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
+	if in.usesIndependentExecution() {
+		mu := in.independentNativeExecutionMu()
+		mu.Lock()
+
+		return mu.Unlock
+	}
 	if in != nil && in.c != nil && in.c.threadedMemory0() {
 		in.memoryDir.nativeMu.Lock()
 		return in.memoryDir.nativeMu.Unlock
@@ -203,7 +251,7 @@ const (
 
 func (in *Instance) preparedEntryMode() preparedEntryMode {
 	if in == nil || in.c == nil || in.c.boundsMode == BoundsChecksSignalsBased ||
-		in.memoryDir != nil || in.nativeControlShared || in.syncMode {
+		in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode {
 		return preparedEntryGeneral
 	}
 	if in.memory != nil {

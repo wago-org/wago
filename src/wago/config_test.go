@@ -405,6 +405,9 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if got := NewRuntimeConfig().WithCompileWorkers(3); got.CompileWorkers() != 3 || got.FunctionWorkers() != 3 {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
 	}
+	if !NewRuntimeConfig().IndependentInstanceExecution() || NewRuntimeConfig().WithIndependentInstanceExecution(false).IndependentInstanceExecution() {
+		t.Fatal("independent instance execution must default on and support explicit opt-out")
+	}
 	wantFeatures := coreFeaturesWago
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		unsupported := CoreFeatureTailCall |

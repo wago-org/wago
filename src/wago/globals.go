@@ -321,7 +321,7 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 		if state == nil {
 			state = &retainedInstanceRoot{precise: true}
 			o.retained[owner] = state
-			owner.nativeControlShared = true
+			owner.markNativeControlShared()
 		} else {
 			state.precise = true
 			release = append(release, owner)
@@ -346,7 +346,7 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 			if state == nil {
 				state = &retainedInstanceRoot{}
 				o.retained[proxy] = state
-				proxy.nativeControlShared = true
+				proxy.markNativeControlShared()
 			} else {
 				release = append(release, proxy)
 			}
@@ -723,7 +723,7 @@ func (g *Global) setValueNoLease(v Value) error {
 				release = append(release, retainedOwner)
 			} else {
 				o.retained[retainedOwner] = &retainedInstanceRoot{precise: true}
-				retainedOwner.nativeControlShared = true
+				retainedOwner.markNativeControlShared()
 			}
 		}
 	}
@@ -1103,6 +1103,10 @@ type Compiled struct {
 	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
+	// independentInstances allows instances without cross-instance Wasm imports
+	// to use instance-local native execution leases. It is intentionally not
+	// serialized because it is runtime policy rather than a module property.
+	independentInstances bool
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the

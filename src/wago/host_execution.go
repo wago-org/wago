@@ -100,17 +100,30 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		active.popGCHostActivation(activation)
 		panic(invalidHostReference{err: err})
 	}
+	var localMu *sync.Mutex
+	var localState *instancePluginState
 	epoch := nativeExecutionEpoch
-	nativeExecutionMu.Unlock()
+	if active.usesIndependentExecution() {
+		localState = active.ensurePluginState()
+		epoch = localState.nativeExecutionEpoch
+		localMu = active.independentNativeExecutionMu()
+		localMu.Unlock()
+	} else {
+		nativeExecutionMu.Unlock()
+	}
 	// Keep the parked activation and any GC host-result roots published until the
 	// native execution lease is reacquired. A competing entry may collect while
 	// arbitrary host code runs, but cannot observe the unrooted handoff window
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
-		nativeExecutionMu.Lock()
+		if localMu != nil {
+			localMu.Lock()
+		} else {
+			nativeExecutionMu.Lock()
+		}
 		active.clearGCHostResultRoots(activation)
-		if nativeExecutionEpoch != epoch {
+		if (localState != nil && localState.nativeExecutionEpoch != epoch) || (localState == nil && nativeExecutionEpoch != epoch) {
 			if err := active.bindNativeContext(); err != nil {
 				panic(invalidHostReference{err: err})
 			}
