@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +101,22 @@ func TestUnavailableFeaturesMayRemainDisabled(t *testing.T) {
 	values[unavailable.name] = true
 	if err := ValidateFeatureValues(values); err == nil || !strings.Contains(err.Error(), "unavailable") {
 		t.Fatalf("enabled unavailable feature should be rejected clearly, got %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "settings.json")
+	contents := fmt.Sprintf(`{"version":1,"features":{"%s":false},"runtime":{}}`, unavailable.name)
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFile(path); err != nil {
+		t.Fatalf("loading a disabled unavailable feature should be portable: %v", err)
+	}
+	contents = fmt.Sprintf(`{"version":1,"features":{"%s":true},"runtime":{}}`, unavailable.name)
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("loading an enabled unavailable feature should fail clearly, got %v", err)
 	}
 }
 
