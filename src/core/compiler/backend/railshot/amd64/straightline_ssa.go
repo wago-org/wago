@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	compilerir "github.com/wago-org/wago/src/core/compiler/ir"
+	compilerir "github.com/wago-org/wago/src/core/compiler/backend/railshot/straightline"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -28,7 +28,7 @@ func (f *fn) prepareStraightLineSSA(funcIdx int, code *wasm.Func, hints funcHint
 }
 
 func straightLineSSASupported(irf *compilerir.Func) bool {
-	if irf == nil || len(irf.Blocks) != 1 || irf.Blocks[0].Term.Kind != compilerir.TermReturn || irf.Blocks[0].Term.Args.Len != 0 {
+	if irf == nil {
 		return false
 	}
 	seenStore := false

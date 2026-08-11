@@ -15,8 +15,8 @@ import (
 
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	compilerir "github.com/wago-org/wago/src/core/compiler/backend/railshot/straightline"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
-	compilerir "github.com/wago-org/wago/src/core/compiler/ir"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"

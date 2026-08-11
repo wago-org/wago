@@ -8,10 +8,10 @@ destroying the reason it exists* (fast compile, no cgo, tiny footprint, single p
 2. **Port what's still worth porting from [WARP](https://github.com/wago-org/warp)** — the C++ reference engine the
    backend is a port of. Used as a *reference axis*, not a target to clone.
 
-The current architecture keeps Railshot's direct compiler as the universal fallback,
-but allows a bounded per-function IR tier when whole-region scheduling has measured
-value. The first such tier is AMD64 guard-mode straight-line SSA; the superseded no-IR
-decision remains recorded in `docs/no-ir-plan.md`.
+The headline architectural decision remains: **no general compiler IR on any
+execution path.** Railshot may spend bounded compile time on backend-local bytecode
+planning, but `src/core/compiler/ir` stays an off-path research/debug tool. See
+`docs/no-ir-plan.md`.
 
 Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very high.
 
@@ -19,10 +19,11 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ## What's in place (updated 2026-08-11)
 
-**Bounded straight-line SSA scheduling (2026-08-11).** Large AMD64 and
+**Bounded straight-line value scheduling (2026-08-11).** Large AMD64 and
 ARM64 guard-mode functions with one call-free/control-free block and the admitted
-integer operation set may build a local-SSA value DAG and schedule the complete
-region. The tier accepts integer add/subtract/multiply/logic, constant
+integer operation set may scan validated Wasm bytes into a backend-local value plan
+and schedule the complete region. It does not import or build `compiler/ir`. The
+tier accepts integer add/subtract/multiply/logic, constant
 shift/rotate, i64-to-i32 wrap, every integer load/store width, and interleaved
 loads/stores while preserving memory order. The direct one-pass compiler remains
 the fallback for every other function and for explicit bounds mode.
@@ -1143,25 +1144,20 @@ in #112–#115; the `linking`/`data` spec files now pass.)
 
 ---
 
-## The architecture choice (revised 2026-08-10)
+## The one architecture choice (revised 2026-08-11)
 
-**Direct by default, bounded IR when it earns its cost.** Railshot's single-pass
-compiler remains the universal backend and fallback. A backend may opt a tightly
-admitted function into a bounded IR scheduler when repeated corpus measurements show
-that cross-statement information buys materially better native code within the compile
-budget.
+**No general IR on any execution path — Railshot is the only backend.** The
+`src/core/compiler/ir` package remains off-path research/debug infrastructure.
 
-- The common pipeline remains `decode → validate → summary hints → direct Railshot →
-  native`; functions outside an optimizer's narrow contract never pay its IR-building
-  cost.
-- `src/core/compiler/ir` is backend-neutral compiler infrastructure, but production
-  imports stay below `src/core/compiler/backend/`. It grows by measured use cases, not
-  by mirroring every Wasm instruction speculatively.
-- Every IR tier needs a strict admission contract, a direct-compiler differential
-  switch, bounded working memory, code-size/frame accounting, and broad no-hit corpus
-  verification.
-- `scanBody` stays summary-only. A backend that needs instruction identities builds
-  them explicitly after admission rather than hiding an IR in the byte scanner.
+- The common pipeline is `decode → validate (byte-backed) → scanBody hints →
+  Railshot → native`; there is no AST or general SSA lowering stage.
+- A tightly admitted Railshot optimization may make a second bounded walk over one
+  function's validated bytes and retain only the values its native scheduler needs.
+  This state is backend-private, size-capped, and discarded with compilation.
+- Every such planner needs a direct-compiler differential switch, bounded working
+  memory, code-size/frame accounting, and broad no-hit corpus verification.
+- `scanBody` stays summary-only, and production code must not import
+  `src/core/compiler/ir`.
 
-Wago still prioritizes low compile latency and predictable memory; it no longer gives
-up a large execution win merely to preserve a categorical "no IR" identity.
+Wago keeps its direct-compiler identity while allowing measured, backend-local
+scheduling work where it materially improves generated code.
