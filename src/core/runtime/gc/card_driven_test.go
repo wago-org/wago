@@ -445,6 +445,15 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(Config{}); got != 72 {
 		t.Fatalf("Config size=%d, want 72", got)
 	}
+	if got := unsafe.Sizeof(tinyScanCursor{}); got != 8 {
+		t.Fatalf("tinyScanCursor size=%d, want 8", got)
+	}
+	if got := unsafe.Sizeof(tinyStepWork{}); got != 8 {
+		t.Fatalf("tinyStepWork size=%d, want 8", got)
+	}
+	if got := unsafe.Sizeof(tinyGC{}); got != 80 {
+		t.Fatalf("tinyGC size=%d, want 80", got)
+	}
 	wantCollector := uintptr(1120)
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)

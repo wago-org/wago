@@ -316,6 +316,22 @@ func addTraceTelemetry(dst *TraceTelemetry, src TraceTelemetry) {
 	dst.ObjectsVisited += src.ObjectsVisited
 	dst.PayloadBytesVisited += src.PayloadBytesVisited
 	dst.ReferenceSlotsVisited += src.ReferenceSlotsVisited
+	dst.ScanEntriesVisited += src.ScanEntriesVisited
+	dst.ObjectScansBegun += src.ObjectScansBegun
+	dst.ObjectScansResumed += src.ObjectScansResumed
+	dst.ObjectScansCompleted += src.ObjectScansCompleted
+	if src.MaxStepObjectRanges > dst.MaxStepObjectRanges {
+		dst.MaxStepObjectRanges = src.MaxStepObjectRanges
+	}
+	if src.MaxStepScanEntries > dst.MaxStepScanEntries {
+		dst.MaxStepScanEntries = src.MaxStepScanEntries
+	}
+	if src.MaxStepReferenceSlots > dst.MaxStepReferenceSlots {
+		dst.MaxStepReferenceSlots = src.MaxStepReferenceSlots
+	}
+	if src.MaxStepPayloadBytes > dst.MaxStepPayloadBytes {
+		dst.MaxStepPayloadBytes = src.MaxStepPayloadBytes
+	}
 	dst.ObjectsSwept += src.ObjectsSwept
 	dst.PayloadBytesSwept += src.PayloadBytesSwept
 }
@@ -419,20 +435,57 @@ func (t *Telemetry) scanStart() time.Time {
 }
 
 func (t *Telemetry) noteObjectScan(start time.Time, size, slots uint32) {
+	work := objectScanWork{ObjectRanges: 1, RefSlots: slots}
+	if size > PayloadOffset {
+		work.PayloadBytes = size - PayloadOffset
+	}
+	t.noteObjectScanWork(start, work, true, false, true)
+}
+
+func (t *Telemetry) noteObjectScanWork(start time.Time, work objectScanWork, began, resumed, completed bool) {
 	if t == nil || !t.active.active || !t.active.suspendStart.IsZero() {
 		return
 	}
-	t.active.trace.ObjectsVisited++
-	if size > PayloadOffset {
-		t.active.trace.PayloadBytesVisited += uint64(size - PayloadOffset)
+	if began {
+		t.active.trace.ObjectsVisited++
+		t.active.trace.ObjectScansBegun++
 	}
-	t.active.trace.ReferenceSlotsVisited += uint64(slots)
+	if resumed {
+		t.active.trace.ObjectScansResumed++
+	}
+	if completed {
+		t.active.trace.ObjectScansCompleted++
+	}
+	t.active.trace.PayloadBytesVisited += uint64(work.PayloadBytes)
+	t.active.trace.ReferenceSlotsVisited += uint64(work.RefSlots)
+	t.active.trace.ScanEntriesVisited += uint64(work.ScanEntries)
 	if t.active.rememberedScan {
-		t.active.cards.ScannedSlots += uint64(slots)
-		t.active.cards.WholeObjectScans++
+		t.active.cards.ScannedSlots += uint64(work.RefSlots)
+		if began && completed {
+			t.active.cards.WholeObjectScans++
+		}
 	}
 	if !start.IsZero() && t.active.phase < telemetryPhaseCount {
 		t.active.nestedScanNS[t.active.phase] += uint64(time.Since(start))
+	}
+}
+
+func (t *Telemetry) noteTinyStepWork(work objectScanWork) {
+	if t == nil || !t.active.active || !t.active.suspendStart.IsZero() {
+		return
+	}
+	trace := &t.active.trace
+	if uint64(work.ObjectRanges) > trace.MaxStepObjectRanges {
+		trace.MaxStepObjectRanges = uint64(work.ObjectRanges)
+	}
+	if uint64(work.ScanEntries) > trace.MaxStepScanEntries {
+		trace.MaxStepScanEntries = uint64(work.ScanEntries)
+	}
+	if uint64(work.RefSlots) > trace.MaxStepReferenceSlots {
+		trace.MaxStepReferenceSlots = uint64(work.RefSlots)
+	}
+	if uint64(work.PayloadBytes) > trace.MaxStepPayloadBytes {
+		trace.MaxStepPayloadBytes = uint64(work.PayloadBytes)
 	}
 }
 

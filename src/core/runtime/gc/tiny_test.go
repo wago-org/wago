@@ -632,6 +632,7 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 	f.Add([]byte{1, 0, 0, 6, 0, 0, 1, 0, 0, 6, 1, 0, 12, 0, 0, 16, 0, 0, 17, 0, 0})
 	f.Add([]byte("\xd500000200900b00b00"))
 	f.Add([]byte("000000000700b00b00b00A00000"))
+	f.Add([]byte("700x00000700000000000000000200"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > 192 {
@@ -651,7 +652,7 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 		rootSet := func() Slots { return tinyFuzzSlots(roots) }
 
 		for pc := 0; pc+2 < len(data); pc += 3 {
-			op, a, b := data[pc]%18, data[pc+1], data[pc+2]
+			op, a, b := data[pc]%20, data[pc+1], data[pc+2]
 			slots := func() Slots { return rootSet() }
 			switch op {
 			case 0:
@@ -663,11 +664,13 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 					refs = append(refs, r)
 				}
 			case 2:
-				if r, err := c.NewArrayDefaultWithRoots(3, uint32(a%8)+1, slots()); err == nil {
+				// Lengths above the internal scan-entry budget force resumable
+				// reference-array scans during stateful fuzz sequences.
+				if r, err := c.NewArrayDefaultWithRoots(3, uint32(a%96)+1, slots()); err == nil {
 					refs = append(refs, r)
 				}
 			case 3:
-				if r, err := c.NewArrayDefaultWithRoots(2, uint32(a%8)+1, slots()); err == nil {
+				if r, err := c.NewArrayDefaultWithRoots(2, uint32(a%32)+1, slots()); err == nil {
 					refs = append(refs, r)
 				}
 			case 4:
@@ -718,9 +721,9 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 			case 13:
 				tinyFuzzMutateRootDuringRemark(t, c, &roots, refs, a, b)
 			case 14:
-				tinyFuzzBarrierDance(t, c, roots, false)
+				tinyFuzzBarrierDance(t, c, roots, &refs, false)
 			case 15:
-				tinyFuzzBarrierDance(t, c, roots, true)
+				tinyFuzzBarrierDance(t, c, roots, &refs, true)
 			case 16:
 				if err := c.CollectMinor(slots()); err != nil {
 					t.Fatal(err)
@@ -729,11 +732,31 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 				if err := c.Verify(slots()); err != nil {
 					t.Fatal(err)
 				}
+			case 18:
+				parent, child, ok := fuzzPickTwo(c, refs, a, b)
+				if ok {
+					if ln, err := c.ArrayLen(parent); err == nil && ln != 0 {
+						start := uint32(a) % ln
+						length := uint32(b) % (ln - start + 1)
+						_ = c.ArrayFill(parent, start, RefValue(child), length)
+					}
+				}
+			case 19:
+				dst, src, ok := fuzzPickTwo(c, refs, a, b)
+				if ok {
+					dstLen, dstErr := c.ArrayLen(dst)
+					srcLen, srcErr := c.ArrayLen(src)
+					if dstErr == nil && srcErr == nil && dstLen != 0 && srcLen != 0 {
+						length := min(dstLen, srcLen)
+						length = uint32(a+b) % (length + 1)
+						_ = c.ArrayCopy(dst, 0, src, 0, length)
+					}
+				}
 			}
 			refs = pruneLiveRefs(c, refs)
 			roots = tinyFuzzPruneRoots(c, roots)
 			if err := c.Verify(slots()); err != nil {
-				t.Fatal(err)
+				t.Fatalf("pc=%d op=%d state=%d scan=%+v: %v", pc, op, c.tinyGC.state, c.tinyGC.scan, err)
 			}
 		}
 	})
@@ -808,9 +831,13 @@ func tinyFuzzMutateRootDuringRemark(t *testing.T, c *Collector, roots *[]Root, r
 	}
 }
 
-func tinyFuzzBarrierDance(t *testing.T, c *Collector, baseRoots []Root, array bool) {
+func tinyFuzzBarrierDance(t *testing.T, c *Collector, baseRoots []Root, refs *[]Ref, array bool) {
 	t.Helper()
 	tinyFuzzDrain(t, c, tinyFuzzSlots(baseRoots))
+	// Prune stale compact handles before the helper allocates and may reuse their
+	// indexes; otherwise the reference model can mistake a recycled handle for
+	// the previously collected object.
+	*refs = pruneLiveRefs(c, *refs)
 	var (
 		parent Ref
 		err    error

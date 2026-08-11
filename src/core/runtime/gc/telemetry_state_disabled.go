@@ -49,24 +49,26 @@ type telemetryCycle struct {
 	cards          CardTelemetry
 }
 
-func (*Telemetry) attach(Profile, uint64)                                       {}
-func (*Telemetry) setGlobalRootClass(uint32, RootClass)                         {}
-func (*Telemetry) globalRootClass(uint32) RootClass                             { return RootGlobal }
-func (*Telemetry) begin(telemetryCycleKind)                                     {}
-func (*Telemetry) end(bool)                                                     {}
-func (*Telemetry) setPhase(telemetryPhase)                                      {}
-func (*Telemetry) suspend()                                                     {}
-func (*Telemetry) resume()                                                      {}
-func (*Telemetry) noteRoot(RootClass)                                           {}
-func (*Telemetry) addRootTime(RootClass, uint64)                                {}
-func (*Telemetry) scanStart() time.Time                                         { return time.Time{} }
-func (*Telemetry) noteObjectScan(time.Time, uint32, uint32)                     {}
-func (*Telemetry) noteCardScan(time.Time, uint64, uint64, uint64, uint64, bool) {}
-func (*Telemetry) noteNurseryOccupancy(uint64, uint64)                          {}
-func (*Telemetry) noteSurvivor(uint32, uint8, bool, bool)                       {}
-func (*Telemetry) notePromotion(uint32, bool)                                   {}
-func (*Telemetry) noteSweep(uint32)                                             {}
-func (*Telemetry) reset(Profile, uint64)                                        {}
+func (*Telemetry) attach(Profile, uint64)                                         {}
+func (*Telemetry) setGlobalRootClass(uint32, RootClass)                           {}
+func (*Telemetry) globalRootClass(uint32) RootClass                               { return RootGlobal }
+func (*Telemetry) begin(telemetryCycleKind)                                       {}
+func (*Telemetry) end(bool)                                                       {}
+func (*Telemetry) setPhase(telemetryPhase)                                        {}
+func (*Telemetry) suspend()                                                       {}
+func (*Telemetry) resume()                                                        {}
+func (*Telemetry) noteRoot(RootClass)                                             {}
+func (*Telemetry) addRootTime(RootClass, uint64)                                  {}
+func (*Telemetry) scanStart() time.Time                                           { return time.Time{} }
+func (*Telemetry) noteObjectScan(time.Time, uint32, uint32)                       {}
+func (*Telemetry) noteObjectScanWork(time.Time, objectScanWork, bool, bool, bool) {}
+func (*Telemetry) noteTinyStepWork(objectScanWork)                                {}
+func (*Telemetry) noteCardScan(time.Time, uint64, uint64, uint64, uint64, bool)   {}
+func (*Telemetry) noteNurseryOccupancy(uint64, uint64)                            {}
+func (*Telemetry) noteSurvivor(uint32, uint8, bool, bool)                         {}
+func (*Telemetry) notePromotion(uint32, bool)                                     {}
+func (*Telemetry) noteSweep(uint32)                                               {}
+func (*Telemetry) reset(Profile, uint64)                                          {}
 
 func (c *Collector) beginCollectionTelemetry(telemetryCycleKind) {}
 func (c *Collector) endCollectionTelemetry(bool)                 {}
