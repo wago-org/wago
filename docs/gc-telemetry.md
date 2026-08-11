@@ -102,8 +102,12 @@ per-step scan accounting. `ObjectScansBegun`, `ObjectScansResumed`, and
 show the largest bounded object-tracing vector consumed by one marking `Step`.
 Root enumeration and sweeping remain separately attributable phases and are not
 claimed to be covered by the object-scan maximum. Tiny's epoch advance performs
-no per-handle color-reset work, so root-enumeration time now measures roots rather
-than an implicit handle-table clearing pass; no telemetry schema field changed.
+no per-handle color-reset work, so root-enumeration time measures roots rather
+than an implicit handle-table clearing pass. The additive `Tiny` policy record
+reports current allocation debt, pacing limit, incremental/nonincremental build,
+root/sweep hard limits, poison-byte limit, and whether sweep is suspended for
+queued barrier work; release builds add no counter writes for this snapshot-only
+state.
 
 ## Root classes
 
@@ -268,7 +272,7 @@ Measured August 8, 2026 on linux/amd64 with Go 1.24.4:
   one, but `NewCollector` drops the pointer;
 - `wago_gcstats` `Telemetry`: 18,496 bytes plus an optional one-byte-per-
   classified-persistent-slot vector, fixed after slot construction;
-- `TelemetrySnapshot`: 1,640 bytes, copied only on explicit snapshot;
+- `TelemetrySnapshot`: 1,864 bytes, copied only on explicit snapshot;
 - twenty pinned interleaved 10,000-operation zero-survivor minor controls had an
   811.95 ns parent median and 814.30 ns current median (+0.29%), with identical
   fixture allocation metrics; direct collection remains 0 B/op and 0 allocs/op;
