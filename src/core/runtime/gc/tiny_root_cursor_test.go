@@ -6,6 +6,7 @@ import (
 )
 
 func TestTinyPersistentRootEnumerationIsResumable(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +45,7 @@ func TestTinyPersistentRootEnumerationIsResumable(t *testing.T) {
 }
 
 func TestTinyPersistentRootMutationAroundCursor(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +111,62 @@ func (r fallbackTinyRoots) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
+type classifiedOnlyTinyRoots []Root
+
+func (r classifiedOnlyTinyRoots) RangeRoots(fn func(RootSlot) bool) {
+	for i := range r {
+		if !fn(&r[i]) {
+			return
+		}
+	}
+}
+
+func (r classifiedOnlyTinyRoots) RangeClassifiedRootRefs(sink ClassifiedRootRefSink) bool {
+	for i := range r {
+		if !sink.VisitClassifiedRootRef(RootSnapshotTemporary, Ref(r[i])) {
+			return false
+		}
+	}
+	return true
+}
+
+func TestTinyClassifiedTransientRootsCountOnceWithoutTelemetry(t *testing.T) {
+	requireTinyIncrementalBuild(t)
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCollector := func(t *testing.T) (*Collector, Ref) {
+		t.Helper()
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16}, []TypeDesc{leaf})
+		object, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c, object
+	}
+
+	c, object := newCollector(t)
+	roots := make(classifiedOnlyTinyRoots, tinyTransientRootLimit)
+	for i := range roots {
+		roots[i] = Root(object)
+	}
+	if err := c.Step(roots); err != nil {
+		t.Fatalf("Step with %d classified roots: %v", len(roots), err)
+	}
+
+	c, object = newCollector(t)
+	roots = make(classifiedOnlyTinyRoots, tinyTransientRootLimit+1)
+	for i := range roots {
+		roots[i] = Root(object)
+	}
+	if err := c.Step(roots); err == nil || !strings.Contains(err.Error(), "transient root") {
+		t.Fatalf("Step with %d classified roots error = %v, want bounded transient-root rejection", len(roots), err)
+	}
+}
+
 func TestTinyRejectsUnboundedTransientRootWalk(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)

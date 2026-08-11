@@ -1,3 +1,5 @@
+//go:build !wago_tiny_nonincremental
+
 package gc
 
 import "testing"

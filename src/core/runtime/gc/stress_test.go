@@ -50,7 +50,18 @@ func stressBuildGraph(t *testing.T, c *Collector, seed int64, n int) ([]stressOb
 	for i := 0; i < n; i++ {
 		var r Ref
 		var err error
-		slots := stressRootSlots(roots)
+		allocationRoots := roots
+		if !tinyIncrementalBuild && c.cfg.Profile == ProfileTiny {
+			// The synchronous Tiny product may complete a full cycle while building
+			// the graph. Keep not-yet-connected objects alive until construction is
+			// complete; the final reachability assertion still uses only roots.
+			allocationRoots = make([]Root, 0, len(roots)+len(objs))
+			allocationRoots = append(allocationRoots, roots...)
+			for _, object := range objs {
+				allocationRoots = append(allocationRoots, Root(object.ref))
+			}
+		}
+		slots := stressRootSlots(allocationRoots)
 		switch rng.Intn(4) {
 		case 0:
 			r, err = c.NewStructDefaultWithRoots(0, slots)
@@ -165,6 +176,7 @@ func TestThroughputExactGraphHammer(t *testing.T) {
 }
 
 func TestTinyIncrementalMutationHammer(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 32 << 10, TinyBlockBytes: 16})
 	rng := rand.New(rand.NewSource(0x51a7))
 	roots := []Root{}

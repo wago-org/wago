@@ -476,6 +476,7 @@ func TestTinyGCRootsCyclesExactScanningAndSlots(t *testing.T) {
 }
 
 func TestTinyIncrementalStepAndBarriers(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
 	parent, _ := c.NewStructDefault(1)
 	child, _ := c.NewStructDefault(0)
@@ -528,6 +529,7 @@ func TestTinyAllocationFailureCollectsWithRootsAndMinorAlias(t *testing.T) {
 }
 
 func TestTinyRootRemarkSeesChangedRoot(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 256, TinyBlockBytes: 16})
 	a, _ := c.NewStructDefault(0)
 	b, _ := c.NewStructDefault(0)
@@ -576,6 +578,7 @@ func TestTinyRefArrayWritesSkipThroughputCardMetadata(t *testing.T) {
 }
 
 func TestTinyActiveMarkArrayInitializerKeepsWhiteChild(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
 	anchor, _ := c.NewStructDefault(0)
 	child, _ := c.NewStructDefault(0)
@@ -605,6 +608,7 @@ func TestTinyActiveMarkArrayInitializerKeepsWhiteChild(t *testing.T) {
 }
 
 func TestTinyBarrierAvoidsDuplicateGrayPushes(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
 	parent, _ := c.NewStructDefault(1)
 	child, _ := c.NewStructDefault(0)
@@ -622,6 +626,9 @@ func TestTinyBarrierAvoidsDuplicateGrayPushes(t *testing.T) {
 }
 
 func FuzzTinyCollectorOperations(f *testing.F) {
+	if !tinyIncrementalBuild {
+		f.Skip("requires the default incremental Tiny build")
+	}
 	// Seeds pin the stateful Tiny paths that targeted tests exercise separately:
 	// incremental object and array barriers, root mutation during remark, global
 	// and table roots, and deterministic failed allocation cleanup.

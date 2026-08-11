@@ -34,6 +34,7 @@ func TestTinyMarkStateDecodingExhaustive(t *testing.T) {
 }
 
 func TestTinyEpochAdvanceMakesOldMarksWhiteWithoutRewrite(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -71,6 +72,7 @@ func TestTinyEpochAdvanceMakesOldMarksWhiteWithoutRewrite(t *testing.T) {
 }
 
 func TestTinySweepRetainsSurvivorMarkUntilNextEpoch(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -147,6 +149,7 @@ func TestTinyEpochWrapAndHandleReuse(t *testing.T) {
 }
 
 func TestTinyCollectFullRestartsPartialScanWithFreshEpoch(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +205,7 @@ func TestTinyCollectFullRestartsPartialScanWithFreshEpoch(t *testing.T) {
 }
 
 func TestTinyCollectFullRestartsSweepWithFreshEpoch(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -255,6 +259,7 @@ func TestTinyCollectFullRestartsSweepWithFreshEpoch(t *testing.T) {
 }
 
 func TestTinyCheckedRootPublicationRejectsUnsafeSweepGraph(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -340,6 +345,7 @@ func TestTinyCheckedRootPublicationRejectsUnsafeSweepGraph(t *testing.T) {
 }
 
 func TestTinyCheckedRootPublicationAllowsMarkedSweepGraph(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -385,6 +391,7 @@ func TestTinyCheckedRootPublicationAllowsMarkedSweepGraph(t *testing.T) {
 }
 
 func TestTinyAllocationsPublishCurrentEpochState(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -215,6 +215,7 @@ func TestClassifiedPersistentRootSurvivesTelemetryReset(t *testing.T) {
 }
 
 func TestTinyCollectorTelemetryAndIncrementalCycle(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c, err := NewCollector(Config{
 		Profile:        ProfileTiny,
 		TinyHeapBytes:  64 << 10,

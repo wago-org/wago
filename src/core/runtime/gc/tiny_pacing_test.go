@@ -16,6 +16,7 @@ func TestTinyPacingConfigBounds(t *testing.T) {
 }
 
 func TestTinyAllocationDebtStartsIncrementalWork(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -43,6 +44,7 @@ func TestTinyAllocationDebtStartsIncrementalWork(t *testing.T) {
 }
 
 func TestTinyNearExhaustionAssistIsBounded(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -62,6 +62,9 @@ func (c *Collector) VisitRootRef(r Ref) bool {
 // integration is telemetry-only, so per-class timing can remain out of release
 // builds and ordinary root walks.
 func (c *Collector) VisitClassifiedRootRef(class RootClass, r Ref) bool {
+	if !c.telemetryEnabled() {
+		return c.VisitRootRef(r)
+	}
 	if c.rootMarkMode == rootMarkTinyCount || c.rootMarkMode == rootMarkTinyBounded {
 		if uint32(c.tinyGC.lastStepWork.refSlots) >= tinyTransientRootLimit {
 			return false
@@ -70,9 +73,6 @@ func (c *Collector) VisitClassifiedRootRef(class RootClass, r Ref) bool {
 		if c.rootMarkMode == rootMarkTinyCount {
 			return true
 		}
-	}
-	if !c.telemetryEnabled() {
-		return c.VisitRootRef(r)
 	}
 	if class >= rootClassCount {
 		class = RootNativeFrame
