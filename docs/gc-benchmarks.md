@@ -655,6 +655,14 @@ inflated the marked-child fast path. The retained barrier keeps white-child work
 in one cold noinline helper. Ten CPU-affined interleaved samples of
 `BenchmarkTinyIncrementalBarrierMarkedChild` measure 3.3055 ns on `main` and
 3.347 ns current (+1.26%; paired median +2.34%), again with no allocations.
+The final #319 barrier comparison isolates the minimum marked-edge work at
+2.45-2.56 ns for retained incremental update and 1.98-2.03 ns for an SATB
+old-edge test, both allocation-free. SATB was not retained: it would require an
+additional pre-store payload load on every scalar overwrite, old-edge traversal
+for every bulk overwrite, and more barrier/product code while transient roots
+already use an atomic bounded snapshot. The retained incremental-update policy
+instead removes the actual latency hazard by pausing sweep and queueing ordinary
+bounded mark work rather than synchronously draining a graph.
 
 The persistent-root cursor stage adds `BenchmarkTinyStepPersistentRoots`. Five
 samples on the same host measured 520-526 ns for one 256-slot step at 256 and

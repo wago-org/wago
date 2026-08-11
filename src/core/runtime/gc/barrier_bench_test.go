@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
 // BenchmarkGCBarrierStateMatrix isolates the parent states required by #315.
 // The unremembered-old case includes bounded remembered/card metadata creation;
@@ -124,6 +127,42 @@ func BenchmarkTinyIncrementalBarrierMarkedChild(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		c.writeBarrierObjectRange(parent, child, 0, 3)
 	}
+}
+
+// BenchmarkTinyBarrierPolicy compares the retained incremental-update fast path
+// with the minimum SATB overwrite work: load the deleted edge and test/queue it.
+// A complete SATB implementation would additionally require this pre-barrier on
+// every scalar and bulk overwrite.
+func BenchmarkTinyBarrierPolicy(b *testing.B) {
+	leaf, _ := NewStructDesc(0, nil)
+	refs, _ := NewArrayDesc(1, StorageRefNull)
+	c, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf, refs})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(c.Close)
+	parent, _ := c.NewArrayDefault(1, 1)
+	child, _ := c.NewStructDefault(0)
+	if err := c.ArraySet(parent, 0, RefValue(child)); err != nil {
+		b.Fatal(err)
+	}
+	c.tinyGC.state = tinyMark
+	c.tinySetBlack(handleOf(parent))
+	c.tinySetBlack(handleOf(child))
+	b.Run("incremental-update", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			c.tinyWriteBarrierObject(parent, child)
+		}
+	})
+	b.Run("satb-delete", func(b *testing.B) {
+		payload := c.bytes(parent)[PayloadOffset:]
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			old := Ref(binary.LittleEndian.Uint32(payload))
+			c.tinyMarkRef(old)
+		}
+	})
 }
 
 func BenchmarkRememberedArrayWrite(b *testing.B) {

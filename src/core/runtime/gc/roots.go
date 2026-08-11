@@ -652,7 +652,7 @@ func (c *Collector) validateTinySweepRootPublication(r Ref) error {
 		return nil
 	}
 	h := handleOf(r)
-	if c.tinyGC.scan.handle == h {
+	if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == h {
 		return errTinyUnsafeSweepRoot
 	}
 	if !c.tinyIsWhite(h) {
@@ -679,7 +679,7 @@ func (c *Collector) newRootSlot(kind SlotKind, slots *[]Ref, initial Ref) (uint3
 	if err := c.validateStoredRef(initial, true); err != nil {
 		return 0, err
 	}
-	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
 		if err := c.validateTinySweepRootPublication(initial); err != nil {
 			return 0, err
 		}
@@ -738,7 +738,7 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
 	}
-	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
 		if err := c.validateTinySweepRootPublication(r); err != nil {
 			return err
 		}
@@ -800,7 +800,7 @@ func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
 	}
-	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
 		if err := c.validateTinySweepRootPublication(r); err != nil {
 			return err
 		}

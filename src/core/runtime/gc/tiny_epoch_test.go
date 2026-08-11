@@ -323,8 +323,8 @@ func TestTinyCheckedRootPublicationRejectsUnsafeSweepGraph(t *testing.T) {
 	if err := c.SetGlobalSlot(global, safe); err != nil {
 		t.Fatalf("pointer-free sweep publication failed: %v", err)
 	}
-	if c.tinyColorOf(handleOf(safe)) != tinyBlack {
-		t.Fatal("pointer-free sweep publication was not marked immediately")
+	if c.tinyGC.state != tinyMark || c.tinyColorOf(handleOf(safe)) != tinyGray {
+		t.Fatal("pointer-free sweep publication was not queued before sweep resumed")
 	}
 	if err := c.Verify(nil); err != nil {
 		t.Fatal(err)

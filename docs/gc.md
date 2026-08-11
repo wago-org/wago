@@ -1874,9 +1874,11 @@ barrier). A store into a gray parent now also shades a white child, because a
 partially scanned parent's cursor may already be past the mutated slot. This
 conservatively covers writes both before and after the cursor without adding
 cursor-position checks to the mutator path. Handles already gray are not pushed
-to the gray stack again. Slot stores for globals/tables gray the stored child
-during active Tiny mark and remark phases and drain it synchronously during
-sweep. Pointerful objects allocated during active Tiny marking are born gray so
+to the gray stack again. Slot and object stores during sweep pause the sweep
+cursor, enqueue the child, and resume sweep only after ordinary bounded marking
+steps complete; barriers no longer trace a complete graph synchronously. Checked
+stores reject a white pointerful graph whose earlier descendants may already
+have been reclaimed. Pointerful objects allocated during active Tiny marking are born gray so
 array/ref initialization cannot publish an unscanned black object with white
 children.
 
@@ -1905,13 +1907,13 @@ Known Tiny limitations in this foundation:
   slot when asked to publish a white pointerful graph during sweep, while
   pointer-free objects remain safe for immediate marking;
 - Tiny bulk barriers validate ranges with widened arithmetic and chunk mutator
-  publication, but bulk-barrier chunking and bounded object scanning are distinct:
-  the complete bulk mutation call itself is not yet a general bounded barrier;
+  publication. The complete bulk mutation remains proportional to its requested
+  range, but collector graph tracing between chunks and after sweep publication
+  uses the fixed Step work vector;
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
 - handle-table entries remain the stable ref indirection; and
-- SATB/barrier-policy comparison and incremental/nonincremental Tiny product
-  splitting remain later #319 work.
+- incremental/nonincremental Tiny product splitting remains later #319 work.
 
 ## Allocator/GC codegen dependency contract
 

@@ -21,6 +21,7 @@ const (
 	tinyRootsTransient
 	tinyRootsGlobals
 	tinyRootsTables
+	tinyRootsSweepBarrier
 )
 
 type tinyColor uint8
@@ -171,6 +172,26 @@ func (c *Collector) Step(roots RootSet) error {
 		return c.tinyStartMark(roots)
 	}
 	if c.tinyGC.state == tinyMark {
+		if c.tinyGC.rootPhase == tinyRootsSweepBarrier {
+			if c.telemetryEnabled() {
+				c.cfg.Telemetry.setPhase(telemetryPhaseMarking)
+			}
+			if c.tinyGC.scan.handle == 0 && len(c.tinyGC.grayStack) == 0 {
+				c.tinyGC.state = tinySweep
+				c.tinyGC.rootPhase = tinyRootsNone
+				return nil
+			}
+			work := c.tinyDrainGrayBudget(tinyStepObjectScanBudget)
+			c.tinyGC.lastStepWork = makeTinyStepWork(work)
+			if c.telemetryEnabled() {
+				c.cfg.Telemetry.noteTinyStepWork(work)
+			}
+			if c.tinyGC.scan.handle == 0 && len(c.tinyGC.grayStack) == 0 {
+				c.tinyGC.state = tinySweep
+				c.tinyGC.rootPhase = tinyRootsNone
+			}
+			return nil
+		}
 		if c.tinyGC.rootPhase != tinyRootsNone {
 			if c.telemetryEnabled() {
 				c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
@@ -490,6 +511,30 @@ func (c *Collector) tinyMarkRef(r Ref) {
 	c.tinyQueueGrayHandle(h)
 }
 
+func (c *Collector) tinySweepActive() bool {
+	return c.tinyGC.state == tinySweep || c.tinyGC.rootPhase == tinyRootsSweepBarrier
+}
+
+func (c *Collector) tinyMarkSweepRef(r Ref) {
+	if c.tinyGC.state != tinySweep {
+		c.tinyMarkRef(r)
+		return
+	}
+	if c.tinyGC.scan.handle != 0 {
+		// Debug poison owns the shared compact cursor. Checked stores reject its
+		// object, and this rare external-root fallback retains the old complete
+		// drain rather than corrupting either cursor.
+		c.tinyMarkRefNow(r)
+		return
+	}
+	before := len(c.tinyGC.grayStack)
+	c.tinyMarkRef(r)
+	if len(c.tinyGC.grayStack) != before {
+		c.tinyGC.state = tinyMark
+		c.tinyGC.rootPhase = tinyRootsSweepBarrier
+	}
+}
+
 func (c *Collector) tinyMarkRefNow(r Ref) {
 	var sweepCursor tinyScanCursor
 	if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle != 0 {
@@ -635,7 +680,7 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	if c.tinyGC.markEpoch > tinyMarkEpochMask {
 		return fmt.Errorf("gc: invalid tiny mark epoch %d", c.tinyGC.markEpoch)
 	}
-	if c.tinyGC.rootPhase > tinyRootsTables {
+	if c.tinyGC.rootPhase > tinyRootsSweepBarrier {
 		return fmt.Errorf("gc: invalid Tiny root phase %d", c.tinyGC.rootPhase)
 	}
 	switch c.tinyGC.rootPhase {
@@ -657,6 +702,10 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	case tinyRootsTables:
 		if c.tinyGC.state != tinyMark && c.tinyGC.state != tinyRemark || c.tinyGC.sweep > uint32(len(c.tableSlots)) {
 			return fmt.Errorf("gc: invalid Tiny table-root cursor %d in state %d", c.tinyGC.sweep, c.tinyGC.state)
+		}
+	case tinyRootsSweepBarrier:
+		if c.tinyGC.state != tinyMark || c.tinyGC.sweep == 0 {
+			return fmt.Errorf("gc: invalid Tiny sweep-barrier cursor %d in state %d", c.tinyGC.sweep, c.tinyGC.state)
 		}
 	}
 	if (c.tinyGC.state == tinyIdle || c.tinyGC.state == tinySweep) && c.tinyGC.rootPhase != tinyRootsNone {
