@@ -4,6 +4,57 @@ package gc
 
 import "testing"
 
+func TestTinyTelemetryCollectFullRestartsPartialEpoch(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := NewArrayDesc(1, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16, Telemetry: new(Telemetry)}, []TypeDesc{leaf, refs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	partial, err := c.NewArrayDefault(1, tinyStepScanEntries*2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partialRoot := Root(partial)
+	if err := c.Step(Slots{&partialRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Step(Slots{&partialRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.scan.handle != handleOf(partial) {
+		t.Fatal("test did not establish a partial scan")
+	}
+	keepRoot := Root(keep)
+	if err := c.CollectFull(Slots{&keepRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.telemetryOwned || c.cfg.Telemetry.active.active {
+		t.Fatal("synchronous restart left Tiny telemetry active")
+	}
+	if !c.validObjectRef(keep) || c.validObjectRef(partial) {
+		t.Fatal("telemetry-enabled restart retained the wrong epoch population")
+	}
+	snapshot, ok := c.TelemetrySnapshot()
+	if !ok {
+		t.Fatal("telemetry snapshot unavailable")
+	}
+	if snapshot.Full.Cycles != 2 || snapshot.Full.FailedCycles != 1 {
+		t.Fatalf("restart telemetry cycles=%d failed=%d, want 2/1", snapshot.Full.Cycles, snapshot.Full.FailedCycles)
+	}
+}
+
 func TestObjectScanTelemetryPreservesLogicalPayloadBytes(t *testing.T) {
 	mixed, err := NewStructDesc(0, []StorageKind{StorageI8, StorageRefNull})
 	if err != nil {

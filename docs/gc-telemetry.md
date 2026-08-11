@@ -101,7 +101,9 @@ per-step scan accounting. `ObjectScansBegun`, `ObjectScansResumed`, and
 `ObjectScansCompleted` expose cursor lifecycle, while the four `MaxStep*` fields
 show the largest bounded object-tracing vector consumed by one marking `Step`.
 Root enumeration and sweeping remain separately attributable phases and are not
-claimed to be covered by the object-scan maximum.
+claimed to be covered by the object-scan maximum. Tiny's epoch advance performs
+no per-handle color-reset work, so root-enumeration time now measures roots rather
+than an implicit handle-table clearing pass; no telemetry schema field changed.
 
 ## Root classes
 

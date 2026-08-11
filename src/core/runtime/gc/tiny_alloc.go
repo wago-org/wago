@@ -77,7 +77,7 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 	c.tiny = newTinyHeap(makeAlignedBytes(config.TinyHeapBytes, uintptr(objectAlign)), blocks, config.TinyBlockBytes, config.PoisonFreed)
 	c.tinyGC.state = tinyIdle
 	c.tinyGC.sweep = 1
-	c.tinyGC.color = []tinyColor{tinyWhite}
+	c.tinyGC.color = []tinyMarkState{tinyEncodeMarkState(c.tinyGC.markEpoch, tinyWhite)}
 	c.initNativeView()
 	return c, nil
 }
@@ -427,17 +427,17 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 }
 
 func (c *Collector) tinyPostAlloc(r Ref, d TypeDesc) {
-	if !r.IsObj() || c.tinyGC.state == tinyIdle {
+	if !r.IsObj() {
 		return
 	}
 	h := handleOf(r)
-	if c.tinyGC.state == tinySweep {
-		c.tinySetColor(h, tinyBlack)
-		return
+	if c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark {
+		if d.HasRefs {
+			c.tinyGrayHandle(h)
+			return
+		}
 	}
-	if d.HasRefs {
-		c.tinyGrayHandle(h)
-		return
-	}
+	// Idle objects and allocations protected from the current mark/sweep are
+	// black in the current epoch. The next cycle's epoch advance makes them white.
 	c.tinySetColor(h, tinyBlack)
 }

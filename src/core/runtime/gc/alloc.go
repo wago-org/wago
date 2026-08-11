@@ -211,7 +211,7 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 	}
 	c.handles = append(c.handles, e)
 	c.mark = append(c.mark, false)
-	c.tinyGC.color = append(c.tinyGC.color, tinyWhite)
+	c.tinyGC.color = append(c.tinyGC.color, tinyEncodeMarkState(c.tinyGC.markEpoch, tinyWhite))
 	return uint32(len(c.handles) - 1)
 }
 

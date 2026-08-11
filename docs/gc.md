@@ -1846,6 +1846,16 @@ white Tiny objects back to the fixed-block allocator. `CollectFull` completes on
 whole Tiny cycle. `CollectMinor` is specified as the same full Tiny cycle because
 Tiny is non-generational.
 
+Tiny clears logical mark state in O(1). Each handle retains one byte whose low
+seven bits identify its mark epoch and whose high bit distinguishes current-epoch
+gray from black. Advancing the epoch makes every older state logically white,
+so cycle start does not walk the handle table and sweep does not rewrite black
+survivors. Idle and sweep-protected allocations are black in the current epoch;
+pointerful mark/remark allocations are born gray. A synchronous `CollectFull`
+restart advances again to a third epoch, distinct from both current marks and the
+preceding white population. Normal completion and restart therefore remain safe
+across the 128-value wrap without increasing per-handle metadata.
+
 Object marking is resumable. Tiny retains at most one compact active cursor:
 one stable handle plus the next struct descriptor entry or array element index.
 Each resume reacquires the descriptor and object bytes from the handle; no raw
@@ -1911,8 +1921,8 @@ Known Tiny limitations in this foundation:
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
 - handle-table entries remain the stable ref indirection; and
-- color epochs/polarity, near-exhaustion pacing, SATB/barrier-policy comparison,
-  and incremental/nonincremental Tiny product splitting remain later #319 work.
+- near-exhaustion pacing, SATB/barrier-policy comparison, and
+  incremental/nonincremental Tiny product splitting remain later #319 work.
 
 ## Allocator/GC codegen dependency contract
 

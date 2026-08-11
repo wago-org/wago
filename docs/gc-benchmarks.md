@@ -624,6 +624,28 @@ five-sample controls put current medians versus `main` at +0.75%/-4.66% for the
 50%/90% dense-struct cells and +1.02%/+1.43% for the matching dense-array cells;
 allocations and bytes/op remain identical.
 
+The next #319 stage replaces Tiny's handle-wide color reset with a compact mark
+epoch. Five one-second `GOMAXPROCS=1` samples of
+`BenchmarkTinyCycleStartHandleReset` measured the following medians on the same
+Ryzen 7 8845HS host:
+
+| Live handle entries | Handle-reset baseline | Epoch start | Change |
+|---:|---:|---:|---:|
+| 256 | 237.5 ns | 4.341 ns | -98.17% |
+| 4,096 | 3.698 us | 4.223 ns | -99.89% |
+| 65,536 | 60.959 us | 4.510 ns | -99.99% |
+
+Every case remains 0 B/op and 0 allocs/op, and the epoch path is independent of
+handle count. Ten CPU-affined, single-P, interleaved 300 ms controls at 4,096
+reference-array elements measured a 428.05 ns baseline versus 435.25 ns current
+median for an individual bounded Step (+1.68%), while complete cycles changed
+from 9.0085 us to 9.0355 us (+0.30%). Median paired deltas were -0.13% and +0.19%
+respectively. Per-handle mark metadata remains one byte and the compact Tiny
+scan/collector structures retain their previous sizes. The stripped
+linux/amd64 size card reports runtime-standard -4.0 KiB, runtime-minimal -8.0 KiB,
+and runtime-minimal-tiny -0.2 KiB versus `main`; all four release profiles remain
+within budget.
+
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median
 and an 814.30 ns current median (+0.29%), with identical 40 B/op and 2 allocs/op
