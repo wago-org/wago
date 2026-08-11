@@ -684,9 +684,9 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 	}
 }
 
-// BenchmarkGCTinyStepMatrix exposes the unbounded-object problem tracked by
-// #319. A future slot-budgeted scanner should increase steps with array length
-// while keeping p99/max step latency bounded.
+// BenchmarkGCTinyStepMatrix qualifies #319's bounded object scanner. Steps grow
+// with array length while each mark Step remains capped by the internal
+// entry/reference-slot/payload-byte work vector.
 func BenchmarkGCTinyStepMatrix(b *testing.B) {
 	refs, err := NewArrayDesc(0, StorageRefNull)
 	if err != nil {
@@ -897,9 +897,10 @@ func TestGCTinyStepWorkloadSmoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := Root(array)
+	maxSteps := int((uint32(64<<10)+tinyStepScanEntries-1)/tinyStepScanEntries) + len(c.handles) + 8
 	for steps := 0; ; steps++ {
-		if steps > len(c.handles)+8 {
-			t.Fatal("Tiny cycle did not finish within bounded state/handle steps")
+		if steps > maxSteps {
+			t.Fatal("Tiny cycle did not finish within bounded scan/state/handle steps")
 		}
 		if err := c.Step(Slots{&root}); err != nil {
 			t.Fatal(err)

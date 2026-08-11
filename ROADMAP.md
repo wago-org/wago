@@ -243,6 +243,14 @@ current optimization priorities. The Core 3.0 implementation ledger is
   and 1 MiB payload bounds, remaps structurally equivalent target types, roots both
   phases exactly, and rejects non-null funcref/externref payloads. The clone receives
   new target identity; direct foreign-domain reference calls remain fail-closed.
+- 🚧 **Tiny incremental work (#319, foundational stage):** marking retains one
+  handle/index cursor and can pause inside large structs and reference arrays. Each
+  mark `Step` is capped at 64 object ranges, 256 scan entries, 256 reference slots,
+  and 1,024 payload bytes; the active object remains gray until complete. Tiny bulk
+  barriers now prevalidate widened ranges, and gray-parent stores shade white
+  children that may be written behind the cursor. Persistent-root cursors, color
+  epochs, bounded sweep/allocation policy, debt and near-exhaustion pacing, bounded
+  barrier work, and the final barrier/product split remain open.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
 <!-- roadmap:P1 status=done -->

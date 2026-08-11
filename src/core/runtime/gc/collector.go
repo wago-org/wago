@@ -53,9 +53,12 @@ type Config struct {
 	StressNurseryBytes     uint32
 	TinyHeapBytes          uint32
 	TinyBlockBytes         uint32
-	TinyStepBudget         uint32
-	ThroughputHeapBytes    uint32
-	ThroughputPageBytes    uint32
+	// TinyStepBudget is the number of Step calls performed after an allocation
+	// when TinyStepEveryAlloc is enabled. It does not scale one Step's internal
+	// object-scan work vector.
+	TinyStepBudget      uint32
+	ThroughputHeapBytes uint32
+	ThroughputPageBytes uint32
 	// ThroughputClassLimit is zero for the default or exactly one of the
 	// built-in throughput size classes. Values between classes are rejected rather
 	// than rounded. Objects above the limit use large-span allocation.

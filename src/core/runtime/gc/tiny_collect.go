@@ -1,7 +1,6 @@
 package gc
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 )
@@ -23,17 +22,73 @@ const (
 	tinyBlack
 )
 
-type tinyGC struct {
-	state          tinyGCState
-	color          []tinyColor
-	grayStack      []uint32
-	sweep          uint32
-	cycles         uint64
-	telemetryOwned bool
+const (
+	// TinyStepBudget remains the allocation-time count of Step calls. Object
+	// tracing inside each mark Step uses this independent fixed work vector.
+	tinyStepObjectRanges = uint32(64)
+	tinyStepScanEntries  = uint32(256)
+	tinyStepRefSlots     = uint32(256)
+	tinyStepPayloadBytes = uint32(1024)
+)
+
+var tinyStepObjectScanBudget = objectScanBudget{
+	ObjectRanges: tinyStepObjectRanges,
+	ScanEntries:  tinyStepScanEntries,
+	RefSlots:     tinyStepRefSlots,
+	PayloadBytes: tinyStepPayloadBytes,
 }
 
-// Step performs one bounded unit of Tiny incremental tri-color collection. When
-// called while idle it starts a new cycle by graying the supplied roots.
+type tinyScanCursor struct {
+	handle uint32
+	scan   objectScanCursor
+}
+
+type tinyStepWork struct {
+	objectRanges uint16
+	scanEntries  uint16
+	refSlots     uint16
+	payloadBytes uint16
+}
+
+func makeTinyStepWork(work objectScanWork) tinyStepWork {
+	return tinyStepWork{
+		objectRanges: uint16(work.ObjectRanges),
+		scanEntries:  uint16(work.ScanEntries),
+		refSlots:     uint16(work.RefSlots),
+		payloadBytes: uint16(work.PayloadBytes),
+	}
+}
+
+func (work tinyStepWork) objectScanWork() objectScanWork {
+	return objectScanWork{
+		ObjectRanges: uint32(work.objectRanges),
+		ScanEntries:  uint32(work.scanEntries),
+		RefSlots:     uint32(work.refSlots),
+		PayloadBytes: uint32(work.payloadBytes),
+	}
+}
+
+type tinyGC struct {
+	// Scalar fields precede slices so the cursor and per-Step work vector reuse
+	// the former alignment padding; tinyGC retains its 64-bit footprint.
+	state          tinyGCState
+	telemetryOwned bool
+	sweep          uint32
+	cycles         uint64
+
+	// At most one object scan is active. Its handle remains gray until scan is
+	// complete; the cursor stores only stable handle/index state, never a raw
+	// heap pointer. Step never exceeds tinyStepObjectScanBudget while marking.
+	scan         tinyScanCursor
+	lastStepWork tinyStepWork
+
+	color     []tinyColor
+	grayStack []uint32
+}
+
+// Step performs one Tiny incremental tri-color unit. Object tracing is bounded
+// by tinyStepObjectScanBudget; root enumeration and sweep pacing are separate
+// stages. When called while idle it starts a cycle by graying supplied roots.
 func (c *Collector) Step(roots RootSet) error {
 	if c.cfg.Profile != ProfileTiny {
 		return c.CollectMinor(roots)
@@ -57,6 +112,7 @@ func (c *Collector) Step(roots RootSet) error {
 			}()
 		}
 	}
+	c.tinyGC.lastStepWork = tinyStepWork{}
 	if c.tinyGC.state == tinyIdle {
 		if c.telemetryEnabled() {
 			c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
@@ -68,16 +124,14 @@ func (c *Collector) Step(roots RootSet) error {
 		if c.telemetryEnabled() {
 			c.cfg.Telemetry.setPhase(telemetryPhaseMarking)
 		}
-		if len(c.tinyGC.grayStack) == 0 {
+		if c.tinyGC.scan.handle == 0 && len(c.tinyGC.grayStack) == 0 {
 			c.tinyGC.state = tinyRemark
 			return nil
 		}
-		n := len(c.tinyGC.grayStack) - 1
-		h := c.tinyGC.grayStack[n]
-		c.tinyGC.grayStack = c.tinyGC.grayStack[:n]
-		if int(h) < len(c.handles) && c.handles[h].space == spaceTiny {
-			c.tinySetColor(h, tinyBlack)
-			c.scanObjectRefs(h, c.tinyMarkRef)
+		work := c.tinyDrainGrayBudget(tinyStepObjectScanBudget)
+		c.tinyGC.lastStepWork = makeTinyStepWork(work)
+		if c.telemetryEnabled() {
+			c.cfg.Telemetry.noteTinyStepWork(work)
 		}
 		return nil
 	}
@@ -85,7 +139,11 @@ func (c *Collector) Step(roots RootSet) error {
 		if c.telemetryEnabled() {
 			c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)
 		}
-		if len(c.tinyGC.grayStack) > 0 {
+		// A bulk barrier can perform bounded marking while the collector is in
+		// remark and leave one object partially scanned with an empty gray stack.
+		// Return to mark for either form of pending work; sweep must never begin
+		// while an active cursor still owns a gray object.
+		if c.tinyGC.scan.handle != 0 || len(c.tinyGC.grayStack) > 0 {
 			c.tinyGC.state = tinyMark
 			return nil
 		}
@@ -154,6 +212,8 @@ func (c *Collector) tinyStartMark(roots RootSet) {
 		}
 	}
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
+	c.tinyGC.scan = tinyScanCursor{}
+	c.tinyGC.lastStepWork = tinyStepWork{}
 	c.tinyGC.state = tinyMark
 	c.tinyGC.sweep = 1
 	c.tinyMarkRoots(roots)
@@ -179,6 +239,8 @@ func (c *Collector) tinyMarkRoots(roots RootSet) {
 
 func (c *Collector) tinyFinishCycle() {
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
+	c.tinyGC.scan = tinyScanCursor{}
+	c.tinyGC.lastStepWork = tinyStepWork{}
 	c.tinyGC.state = tinyIdle
 	c.tinyGC.sweep = 1
 	c.tinyGC.cycles++
@@ -205,26 +267,69 @@ func (c *Collector) tinyMarkRef(r Ref) {
 
 func (c *Collector) tinyMarkRefNow(r Ref) {
 	c.tinyMarkRef(r)
-	for len(c.tinyGC.grayStack) > 0 {
-		c.tinyDrainGrayBudget(^uint32(0))
+	for c.tinyGC.scan.handle != 0 || len(c.tinyGC.grayStack) > 0 {
+		if work := c.tinyDrainGrayBudget(completeObjectScanBudget); work == (objectScanWork{}) {
+			break
+		}
 	}
 }
 
-// tinyDrainGrayBudget performs at most budget object scans. Bulk mutation uses
-// one fixed-size chunk at a time so a large array cannot enqueue an unbounded
-// number of newly published children before collector work catches up. One
-// object remains the collector's indivisible scan unit.
-func (c *Collector) tinyDrainGrayBudget(budget uint32) {
-	for budget != 0 && len(c.tinyGC.grayStack) > 0 {
-		budget--
-		n := len(c.tinyGC.grayStack) - 1
-		h := c.tinyGC.grayStack[n]
-		c.tinyGC.grayStack = c.tinyGC.grayStack[:n]
-		if int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyGray {
+// tinyDrainGrayBudget consumes a bounded vector of object-scan work. The active
+// object always resumes before newly discovered gray objects, preserving the
+// complete scanner's descriptor/element visitation order. An active object
+// remains gray and is not present on grayStack; it becomes black only after its
+// final outgoing reference has been visited.
+func (c *Collector) tinyDrainGrayBudget(budget objectScanBudget) (used objectScanWork) {
+	for {
+		remaining := budget.remaining(used)
+		if remaining.ObjectRanges == 0 {
+			return used
+		}
+		began := false
+		if c.tinyGC.scan.handle == 0 {
+			for len(c.tinyGC.grayStack) > 0 {
+				n := len(c.tinyGC.grayStack) - 1
+				h := c.tinyGC.grayStack[n]
+				c.tinyGC.grayStack = c.tinyGC.grayStack[:n]
+				if int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyGray {
+					continue
+				}
+				c.tinyGC.scan.handle = h
+				began = true
+				break
+			}
+			if c.tinyGC.scan.handle == 0 {
+				return used
+			}
+		}
+
+		h := c.tinyGC.scan.handle
+		var work objectScanWork
+		var complete bool
+		if c.telemetryEnabled() {
+			start := c.cfg.Telemetry.scanStart()
+			work, complete = c.scanObjectRefsRange(h, &c.tinyGC.scan.scan, remaining, objectScanVisitor{mode: objectScanVisitTinyMark})
+			telemetryWork := work
+			telemetryWork.PayloadBytes = 0
+			if complete {
+				// Preserve PayloadBytesVisited's pre-cursor meaning: account the
+				// complete logical payload once when an object scan completes. The
+				// per-Step maximum still uses work.PayloadBytes below.
+				telemetryWork.PayloadBytes = c.objectPayloadBytes(h)
+			}
+			c.cfg.Telemetry.noteObjectScanWork(start, telemetryWork, began, !began, complete)
+		} else {
+			work, complete = c.scanObjectRefsRange(h, &c.tinyGC.scan.scan, remaining, objectScanVisitor{mode: objectScanVisitTinyMark})
+		}
+		used.add(work)
+		if complete {
+			if int(h) < len(c.handles) && c.handles[h].space == spaceTiny && c.tinyColorOf(h) == tinyGray {
+				c.tinySetColor(h, tinyBlack)
+			}
+			c.tinyGC.scan = tinyScanCursor{}
 			continue
 		}
-		c.tinySetColor(h, tinyBlack)
-		c.scanObjectRefs(h, c.tinyMarkRef)
+		return used
 	}
 }
 
@@ -250,61 +355,13 @@ func (c *Collector) tinySetColor(h uint32, color tinyColor) {
 	c.tinyGC.color[h] = color
 }
 
-func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
-	if !c.telemetryEnabled() {
-		r := makeObjRef(h)
-		d, err := c.refDesc(r)
-		if err != nil || !d.HasRefs {
-			return
-		}
-		hdr := c.header(r)
-		b := c.bytes(r)
-		if d.Kind == KindStruct {
-			for _, f := range d.Fields {
-				if isCollectorRefKind(f.Kind) {
-					visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
-				}
-			}
-		} else if d.ArrayElementsAreRefs() {
-			for i := uint32(0); i < hdr.Aux; i++ {
-				off := PayloadOffset + i*d.ElemSize
-				visit(Ref(binary.LittleEndian.Uint32(b[off:])))
-			}
-		}
-		return
-	}
-	start := c.cfg.Telemetry.scanStart()
-	var size uint32
-	if h != 0 && int(h) < len(c.handles) {
-		size = c.handles[h].size
-	}
-	r := makeObjRef(h)
-	d, err := c.refDesc(r)
-	if err != nil || !d.HasRefs {
-		c.cfg.Telemetry.noteObjectScan(start, size, 0)
-		return
-	}
-	hdr := c.header(r)
-	b := c.bytes(r)
-	var slots uint32
-	if d.Kind == KindStruct {
-		for _, f := range d.Fields {
-			if isCollectorRefKind(f.Kind) {
-				slots++
-				visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
-			}
-		}
-	} else if d.ArrayElementsAreRefs() {
-		slots = hdr.Aux
-		for i := uint32(0); i < hdr.Aux; i++ {
-			off := PayloadOffset + i*d.ElemSize
-			visit(Ref(binary.LittleEndian.Uint32(b[off:])))
-		}
-	}
-	c.cfg.Telemetry.noteObjectScan(start, size, slots)
-}
-
 func (c *Collector) verifyTiny(roots RootSet) error {
+	if c.tinyGC.state > tinySweep {
+		return fmt.Errorf("gc: invalid tiny collector state %d", c.tinyGC.state)
+	}
+	if work := c.tinyGC.lastStepWork.objectScanWork(); work.ObjectRanges > tinyStepObjectRanges || work.ScanEntries > tinyStepScanEntries || work.RefSlots > tinyStepRefSlots || work.PayloadBytes > tinyStepPayloadBytes {
+		return fmt.Errorf("gc: Tiny Step work exceeds bound: %+v", work)
+	}
 	if c.tiny.blockBytes == 0 || len(c.tiny.mem) == 0 {
 		return errors.New("gc: tiny heap is not initialized")
 	}
@@ -344,6 +401,49 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 		}
 		if col := c.tinyColorOf(h); col != tinyWhite && col != tinyGray && col != tinyBlack {
 			return fmt.Errorf("gc: invalid tiny color for handle %d", h)
+		}
+	}
+	seenGray := make([]bool, len(c.handles))
+	for _, h := range c.tinyGC.grayStack {
+		if h == 0 || int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyGray {
+			return fmt.Errorf("gc: invalid tiny gray-stack handle %d", h)
+		}
+		if seenGray[h] {
+			return fmt.Errorf("gc: duplicate tiny gray-stack handle %d", h)
+		}
+		seenGray[h] = true
+	}
+	if active := c.tinyGC.scan.handle; active != 0 {
+		if c.tinyGC.state != tinyMark && c.tinyGC.state != tinyRemark {
+			return fmt.Errorf("gc: active tiny scan in state %d", c.tinyGC.state)
+		}
+		if int(active) >= len(c.handles) || c.handles[active].space != spaceTiny || c.tinyColorOf(active) != tinyGray || seenGray[active] {
+			return fmt.Errorf("gc: invalid active tiny scan handle %d", active)
+		}
+		r := makeObjRef(active)
+		d, err := c.refDesc(r)
+		if err != nil || !d.HasRefs {
+			return fmt.Errorf("gc: active tiny scan handle %d has no reference layout", active)
+		}
+		limit := uint32(len(d.Fields))
+		if d.Kind == KindArray {
+			if !d.ArrayElementsAreRefs() {
+				return fmt.Errorf("gc: active tiny array scan handle %d has non-reference elements", active)
+			}
+			limit = c.header(r).Aux
+		}
+		if c.tinyGC.scan.scan.index >= limit {
+			return fmt.Errorf("gc: active tiny scan handle %d cursor %d beyond %d entries", active, c.tinyGC.scan.scan.index, limit)
+		}
+		seenGray[active] = true
+	} else if c.tinyGC.state == tinyIdle || c.tinyGC.state == tinySweep {
+		if len(c.tinyGC.grayStack) != 0 {
+			return fmt.Errorf("gc: tiny state %d retains gray-stack work", c.tinyGC.state)
+		}
+	}
+	for h := uint32(1); int(h) < len(c.handles); h++ {
+		if c.handles[h].space == spaceTiny && (c.tinyColorOf(h) == tinyGray) != seenGray[h] {
+			return fmt.Errorf("gc: tiny gray handle %d is missing from queue/cursor state", h)
 		}
 	}
 	if err := c.verifyTinyFreeList(liveBlocks); err != nil {

@@ -137,8 +137,9 @@ func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end ui
 
 // WriteBarrierRoot publishes a child stored in an exact externally walked root
 // such as an off-heap native table descriptor. Throughput collections rescan
-// external roots directly; Tiny must shade stores made during an incremental
-// mark/remark/sweep cycle.
+// external roots directly; Tiny shades stores made during an incremental cycle.
+// During sweep, the source graph must have remained in the exact roots until the
+// store; a one-pass sweep cannot resurrect descendants reclaimed earlier.
 func (c *Collector) WriteBarrierRoot(child Ref) {
 	if !child.IsObj() || !c.validObjectRef(child) || c.cfg.Profile != ProfileTiny {
 		return
@@ -177,9 +178,10 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 		case tinyMark, tinyRemark:
 			c.tinyMarkRef(child)
 		case tinySweep:
-			// Root stores during sweep publish a new root after the remark root
-			// snapshot. Mark and drain it immediately so the remaining sweep cannot
-			// reclaim the newly rooted object or its children.
+			// Root stores during sweep publish a new root after the remark snapshot.
+			// Mark and drain it before later sweep indexes. The source graph must
+			// still be retained by the exact roots until publication: this one-pass
+			// sweep cannot resurrect a descendant reclaimed by an earlier index.
 			c.tinyMarkRefNow(child)
 		}
 		return
@@ -229,6 +231,11 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 		if err != nil || d.Kind != KindArray || !isCollectorRefKind(d.Elem) {
 			return
 		}
+		// Validate the complete range with widened arithmetic before deriving any
+		// per-element index. In particular, never let start+base+i wrap in uint32.
+		if uint64(start)+uint64(length) > uint64(c.header(dst).Aux) {
+			return
+		}
 		c.noteBarrierState(runtimeBarrierSlowBarrier)
 		const tinyBulkBarrierChunk = uint32(64)
 		for base := uint32(0); base < length; {
@@ -237,7 +244,8 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 				n = tinyBulkBarrierChunk
 			}
 			for i := uint32(0); i < n; i++ {
-				value, err := c.loadValue(dst, uint64(PayloadOffset)+uint64(start+base+i)*uint64(d.ElemSize), d.Elem)
+				index := uint64(start) + uint64(base) + uint64(i)
+				value, err := c.loadValue(dst, uint64(PayloadOffset)+index*uint64(d.ElemSize), d.Elem)
 				if err != nil {
 					return
 				}
@@ -248,7 +256,7 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 					c.cfg.Telemetry.resume()
 					c.cfg.Telemetry.setPhase(telemetryPhaseMarking)
 				}
-				c.tinyDrainGrayBudget(tinyBulkBarrierChunk)
+				c.tinyDrainGrayBudget(tinyStepObjectScanBudget)
 				if c.tinyGC.telemetryOwned {
 					c.cfg.Telemetry.suspend()
 				}
@@ -710,14 +718,23 @@ func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
 	if c.handles[ph].space != spaceTiny || c.handles[ch].space != spaceTiny {
 		return
 	}
-	if c.tinyColorOf(ph) == tinyBlack && c.tinyColorOf(ch) == tinyWhite {
+	if c.tinyColorOf(ch) != tinyWhite {
+		return
+	}
+	switch c.tinyColorOf(ph) {
+	case tinyGray:
+		// A partially scanned gray parent may be mutated before its cursor. Shade
+		// the new child immediately; writes after the cursor are conservatively
+		// shaded too, avoiding cursor-position checks in the mutator barrier.
+		c.tinyGrayHandle(ch)
+	case tinyBlack:
 		if c.tinyGC.state == tinySweep {
 			c.tinyMarkRefNow(child)
 			return
 		}
-		// Hybrid Tiny barrier: gray the child (forward barrier) and re-gray the
-		// parent (backward barrier). This is conservative and simple for the first
-		// non-moving incremental policy; repeated container writes remain safe.
+		// Preserve the existing hybrid policy for black parents: shade the child
+		// and re-gray the parent. Broader barrier simplification remains later
+		// #319 work.
 		c.tinyGrayHandle(ch)
 		c.tinyGrayHandle(ph)
 	}

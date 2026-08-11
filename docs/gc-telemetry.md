@@ -54,7 +54,9 @@ includes:
 - bounded p50, p90, p95, p99, and maximum pause estimates;
 - phase wall time;
 - root counts and root-enumeration time by ownership class;
-- visited objects, payload bytes, and reference slots;
+- visited objects, payload bytes, reference slots, and descriptor/array scan entries;
+- object scans begun, resumed, and completed, plus Tiny's maximum object-range,
+  entry, reference-slot, and payload-byte work observed in one `Step`;
 - swept objects and payload bytes;
 - Eden/survivor occupancy, copying, promotion, age histograms, and separate
   pointer-free age populations; and
@@ -90,8 +92,16 @@ back into the pause merely to make a phase counter nonzero.
 Tiny `CollectFull`/`CollectMinor` records the complete incremental cycle. A cycle
 driven directly through repeated `Step` calls is also recorded once, from its
 initial root mark through final sweep. The recorder suspends between separate
-`Step` calls, so cycle and phase time sum bounded collector work rather than
-arbitrary mutator delays.
+`Step` calls, so cycle and phase time sum collector work rather than arbitrary
+mutator delays. Partial ranges contribute reference-slot and scan-entry work
+exactly once. The established `PayloadBytesVisited` field still records one
+complete aligned logical payload when an object scan completes, including
+pointer-free payloads; `MaxStepPayloadBytes` separately reports actual bounded
+per-step scan accounting. `ObjectScansBegun`, `ObjectScansResumed`, and
+`ObjectScansCompleted` expose cursor lifecycle, while the four `MaxStep*` fields
+show the largest bounded object-tracing vector consumed by one marking `Step`.
+Root enumeration and sweeping remain separately attributable phases and are not
+claimed to be covered by the object-scan maximum.
 
 ## Root classes
 

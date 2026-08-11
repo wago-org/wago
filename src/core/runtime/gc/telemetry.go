@@ -79,6 +79,14 @@ type TraceTelemetry struct {
 	ObjectsVisited        uint64 `json:"objects_visited"`
 	PayloadBytesVisited   uint64 `json:"payload_bytes_visited"`
 	ReferenceSlotsVisited uint64 `json:"reference_slots_visited"`
+	ScanEntriesVisited    uint64 `json:"scan_entries_visited"`
+	ObjectScansBegun      uint64 `json:"object_scans_begun"`
+	ObjectScansResumed    uint64 `json:"object_scans_resumed"`
+	ObjectScansCompleted  uint64 `json:"object_scans_completed"`
+	MaxStepObjectRanges   uint64 `json:"max_step_object_ranges"`
+	MaxStepScanEntries    uint64 `json:"max_step_scan_entries"`
+	MaxStepReferenceSlots uint64 `json:"max_step_reference_slots"`
+	MaxStepPayloadBytes   uint64 `json:"max_step_payload_bytes"`
 	ObjectsSwept          uint64 `json:"objects_swept"`
 	PayloadBytesSwept     uint64 `json:"payload_bytes_swept"`
 }
