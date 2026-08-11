@@ -35,6 +35,7 @@ const (
 	gcArrayCheckDefault        uint32 = 36
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
+	gcArrayCheckFixed          uint32 = 39
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -205,12 +206,27 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 
 	switch helper {
+	case gcArrayCheckFixed:
+		if len(args) != 2 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array check-fixed helper arity = %d, want 2", len(args))})
+		}
+		ref, err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(uint32(args[0])), uint32(args[1]), frameRoots)
+		if err != nil {
+			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
+		}
 	case gcArrayCheckDefault:
 		if len(args) != 2 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array check-default helper arity = %d, want 2", len(args))})
 		}
-		if err := in.gc.ReserveDeadDefaultArrayAllocation(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots); err != nil {
+		ref, err := in.gc.ReserveDeadDefaultArrayAllocation(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots)
+		if err != nil {
 			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
 		}
 	case gcArrayCheckUniform:
 		if len(args) < 3 {
@@ -225,8 +241,12 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panic(gcStructHelperError{err: fmt.Errorf("gc array check-uniform helper arity = %d, want %d", len(args), valueSlots+2)})
 		}
 		_ = arrayStoredValue(typeID, args[:valueSlots])
-		if err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), uint32(args[valueSlots]), frameRoots); err != nil {
+		ref, err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), uint32(args[valueSlots]), frameRoots)
+		if err != nil {
 			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
 		}
 	case gcArrayCheckData:
 		if len(args) != 4 {
@@ -267,8 +287,12 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if end > uint64(len(in.c.PassiveData[dataIndex].Bytes)) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array.new_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(in.c.PassiveData[dataIndex].Bytes))})
 		}
-		if err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), length, frameRoots); err != nil {
+		ref, err := in.gc.ReserveDeadArrayAllocation(in.requireGCDomainType(typeID), length, frameRoots)
+		if err != nil {
 			panicArrayError(err)
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
 		}
 	case gcArrayAllocFixedV128Spill:
 		if len(args) != 3 || len(results) < 1 {

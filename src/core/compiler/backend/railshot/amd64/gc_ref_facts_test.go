@@ -156,6 +156,25 @@ func TestGCHeapClassMatchTruthTable(t *testing.T) {
 	}
 }
 
+func TestExactGCReferenceFactUsesCanonicalTypeEquivalence(t *testing.T) {
+	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(
+		[]byte{0x5f, 0x00},
+		[]byte{0x5f, 0x00},
+	)))
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	f := fn{m: m}
+	fact := shared.ExactGCRefFact(1, 1, shared.GCHeapStruct)
+	if matched, known := f.gcRefFactMatchesTarget(fact, 0, false, true); !known || !matched {
+		t.Fatalf("equivalent exact type match = %v/%v, want true/known", matched, known)
+	}
+}
+
 func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 	left := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
 		WithFreshness(shared.GCFreshUnpublished).

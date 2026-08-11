@@ -565,7 +565,7 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 }
 
 func (f *fn) refNull(r *wasm.Reader) error {
-	heap, err := r.S33()
+	heap, _, err := readRefHeapTypeImmediate(r)
 	if err != nil {
 		return err
 	}
@@ -749,16 +749,17 @@ func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, tabl
 	return idxReg, tbl
 }
 
-func skipRefHeapTypeImmediate(r *wasm.Reader) error {
-	b, err := r.Byte()
+func readRefHeapTypeImmediate(r *wasm.Reader) (heap int64, exact bool, err error) {
+	if b, ok := r.Peek(); ok && b == 0x62 { // exact indexed heap prefix
+		_, _ = r.Byte()
+		exact = true
+	}
+	heap, err = r.S33()
 	if err != nil {
-		return err
+		return 0, false, err
 	}
-	for b&0x80 != 0 {
-		b, err = r.Byte()
-		if err != nil {
-			return err
-		}
+	if exact && heap < 0 {
+		return 0, false, fmt.Errorf("amd64: exact reference heap type %d is not indexed", heap)
 	}
-	return nil
+	return heap, exact, nil
 }

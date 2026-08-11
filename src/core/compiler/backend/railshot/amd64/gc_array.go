@@ -34,6 +34,7 @@ const (
 	gcArrayCheckDefault        uint32 = 36
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
+	gcArrayCheckFixed          uint32 = 39
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -58,7 +59,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if valueType.Kind() != wasm.ValRef {
 			if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
 				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
-				if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, nil); err != nil {
+				if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
 					return err
 				}
 				f.finishCheckedDeadGCConstructor(r, deadUse)
@@ -130,7 +131,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
 		if deadUse != checkedDeadGCNone {
-			if err := f.callGCStructHelper(gcArrayCheckData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil); err != nil {
+			if err := f.callGCStructHelper(gcArrayCheckData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
 				return err
 			}
 			f.finishCheckedDeadGCConstructor(r, deadUse)
@@ -163,20 +164,21 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCFixedArrayConstructor(typeIndex, count, deadUse); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
 		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
 			if wasm.EqualValType(valueType, wasm.V128) {
-				if f.skipDroppedGCConstructor(r, int(count)) || f.deferGCConstructorForDroppedStruct(r, int(count)) {
-					return nil
-				}
 				result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 				return f.callGCArrayFixedV128Spill(typeIndex, count, result)
 			}
 			maxValues := (maxSyncHostSlots - 2) / valueSlots
 			return fmt.Errorf("amd64: array.new_fixed count %d of %s exceeds helper slot bound %d values", count, valueType, maxValues)
-		}
-		if f.skipDroppedGCConstructor(r, int(count)) || f.deferGCConstructorForDroppedStruct(r, int(count)) {
-			return nil
 		}
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
@@ -211,7 +213,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		length, lengthKnown := gcKnownI32Const(f.s.back())
 		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
-			if err := f.callGCStructHelper(gcArrayCheckDefault, []wasm.ValType{wasm.I32, wasm.I32}, nil); err != nil {
+			if err := f.callGCStructHelper(gcArrayCheckDefault, []wasm.ValType{wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
 				return err
 			}
 			f.finishCheckedDeadGCConstructor(r, deadUse)

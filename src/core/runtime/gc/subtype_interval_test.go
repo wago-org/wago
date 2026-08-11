@@ -45,6 +45,30 @@ func TestSubtypeIntervalsCoverForestAndAppendedChildren(t *testing.T) {
 	}
 }
 
+func TestExactDefinedRefTestRejectsProperSubtype(t *testing.T) {
+	root, _ := NewStructDesc(0, nil)
+	root.Final = false
+	child, _ := NewStructDesc(1, nil)
+	child.HasSuper, child.Super = true, 0
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{root, child})
+	ref, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matched, err := c.RefTest(ref, RefTestTarget{Kind: RefTestDefined, Type: 0}); err != nil || !matched {
+		t.Fatalf("ordinary subtype test = %v, %v; want true", matched, err)
+	}
+	if matched, err := c.RefTest(ref, RefTestTarget{Kind: RefTestDefined, Type: 0, Exact: true}); err != nil || matched {
+		t.Fatalf("exact supertype test = %v, %v; want false", matched, err)
+	}
+	if matched, err := c.RefTest(ref, RefTestTarget{Kind: RefTestDefined, Type: 1, Exact: true}); err != nil || !matched {
+		t.Fatalf("exact dynamic-type test = %v, %v; want true", matched, err)
+	}
+	if _, err := c.RefTest(ref, RefTestTarget{Kind: RefTestStruct, Exact: true}); err == nil {
+		t.Fatal("exact abstract ref.test target accepted")
+	}
+}
+
 func TestSubtypeIntervalsRejectUnknownPair(t *testing.T) {
 	d, _ := NewStructDesc(0, nil)
 	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{d})

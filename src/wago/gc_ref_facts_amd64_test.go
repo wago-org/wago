@@ -492,6 +492,214 @@ func TestGCDirectNoBarrierArraySetUsesBuiltinBoundsTrap(t *testing.T) {
 	}
 }
 
+func gcDirectScalarArrayBoundsTrapModule(set bool) []byte {
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
+		0x41, 0x01, 0xfb, 0x07, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x01,
+	}
+	if set {
+		body = append(body, 0x41, 0x07, 0xfb, 0x0e, 0x00, 0x41, 0x00)
+	} else {
+		body = append(body, 0xfb, 0x0b, 0x00)
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01}, // (array (mut i32))
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCDirectScalarArrayBoundsUseBuiltinTrap(t *testing.T) {
+	for _, set := range []bool{false, true} {
+		name := "get"
+		if set {
+			name = "set"
+		}
+		t.Run(name, func(t *testing.T) {
+			out := runGCRefFactDifferentialModule(t, "scalar-array-"+name+"-bounds", gcDirectScalarArrayBoundsTrapModule(set))
+			if out.Trap != uint32(TrapBuiltin) {
+				t.Fatalf("array.%s trap = %d, want %d", name, out.Trap, TrapBuiltin)
+			}
+		})
+	}
+}
+
+func gcDirectScalarDirtyHostIndexModule() []byte {
+	hostType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	runType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("idx")...), 0x00, 0x03)
+	getBody := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x25, 0x41, 0x01, 0xfb, 0x06, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x10, 0x00, 0xfb, 0x0b, 0x00, 0x0b,
+	}
+	setBody := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x00, 0x41, 0x01, 0xfb, 0x06, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x10, 0x00, 0x41, 0x2d, 0xfb, 0x0e, 0x00,
+		0x20, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x00, 0x0b,
+	}
+	refSetBody := []byte{
+		0x01, 0x01, 0x63, 0x02,
+		0xd0, 0x01, 0x41, 0x01, 0xfb, 0x06, 0x02, 0x21, 0x00,
+		0x20, 0x00, 0x10, 0x00, 0xd0, 0x01, 0xfb, 0x0e, 0x02,
+		0x41, 0x01, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			[]byte{0x5f, 0x00},
+			[]byte{0x5e, 0x63, 0x01, 0x01},
+			hostType,
+			runType,
+		)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(4), wasmtest.ULEB(4), wasmtest.ULEB(4))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("get", 0, 1),
+			wasmtest.ExportEntry("set", 0, 2),
+			wasmtest.ExportEntry("ref_set", 0, 3),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(getBody))), getBody...),
+			append(wasmtest.ULEB(uint32(len(setBody))), setBody...),
+			append(wasmtest.ULEB(uint32(len(refSetBody))), refSetBody...),
+		)),
+	)
+}
+
+func TestGCDirectScalarArrayCanonicalizesDirtyHostI32Index(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcDirectScalarDirtyHostIndexModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.idx": HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = 0xffff_ffff_0000_0000
+	})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	for name, want := range map[string]uint64{"get": 37, "set": 45, "ref_set": 1} {
+		got, err := in.Invoke(name)
+		if err != nil || len(got) != 1 || got[0] != want {
+			t.Fatalf("%s = %v, %v; want [%d]", name, got, err, want)
+		}
+	}
+}
+
+func gcExactRefNullModule() []byte {
+	body := []byte{0x00, 0xd0, 0x62, 0x00, 0xd1, 0x0b} // ref.null exact 0; ref.is_null
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCExactRefNullConsumesIndexedHeapImmediate(t *testing.T) {
+	out := runGCRefFactDifferentialModule(t, "exact-ref-null", gcExactRefNullModule())
+	if fmt.Sprint(out.Results) != "[1]" || out.Trap != 0 {
+		t.Fatalf("exact ref.null = %+v, want [1]", out)
+	}
+}
+
+func gcExactDefinedCastModule(exact bool) []byte {
+	target := []byte{0x00}
+	if exact {
+		target = []byte{0x62, 0x00}
+	}
+	body := []byte{
+		0x01, 0x01, 0x63, 0x6e, // one (ref null any) local
+		0xfb, 0x01, 0x01, 0x21, 0x00, // subtype-1 object into broad local
+		0x20, 0x00, 0xfb, 0x16, // ref.cast
+	}
+	body = append(body, target...)
+	body = append(body, 0x1a, 0x41, 0x01, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x00},       // open type 0
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x00}, // final type 1 <: 0
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func gcEquivalentExactDefinedCastModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x63, 0x6e,
+		0xfb, 0x01, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0xfb, 0x16, 0x62, 0x00, 0x1a,
+		0x41, 0x01, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			[]byte{0x5f, 0x00}, // structurally equivalent exact type
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestEquivalentExactTypesSharePrivateAndRuntimeDomainIdentity(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcEquivalentExactDefinedCastModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	first, err := instantiateCore(compiled, InstantiateOptions{store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := instantiateCore(compiled, InstantiateOptions{store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if first.gc != second.gc {
+		t.Fatal("equivalent duplicate local types prevented Runtime-domain reuse")
+	}
+	for _, in := range []*Instance{first, second} {
+		zero, ok0 := in.gcDomainType(0)
+		one, ok1 := in.gcDomainType(1)
+		if !ok0 || !ok1 || zero != one {
+			t.Fatalf("equivalent local type domains = %d/%v and %d/%v", zero, ok0, one, ok1)
+		}
+	}
+}
+
+func TestGCExactDefinedCastRejectsOnlyProperSubtype(t *testing.T) {
+	if out := runGCRefFactDifferentialModule(t, "nonexact-defined-cast", gcExactDefinedCastModule(false)); fmt.Sprint(out.Results) != "[1]" || out.Trap != 0 {
+		t.Fatalf("nonexact cast = %+v, want [1]", out)
+	}
+	if out := runGCRefFactDifferentialModule(t, "exact-defined-cast", gcExactDefinedCastModule(true)); out.Trap != uint32(TrapCastFailure) {
+		t.Fatalf("exact proper-subtype cast = %+v, want cast failure", out)
+	}
+	if out := runGCRefFactDifferentialModule(t, "equivalent-exact-defined-cast", gcEquivalentExactDefinedCastModule()); fmt.Sprint(out.Results) != "[1]" || out.Trap != 0 {
+		t.Fatalf("equivalent exact cast = %+v, want [1]", out)
+	}
+}
+
 func gcCatchEdgeFactModule() []byte {
 	structType := []byte{0x5f, 0x00}
 	tagType := wasmtest.FuncType(nil, nil)
@@ -514,6 +722,34 @@ func gcCatchEdgeFactModule() []byte {
 		wasmtest.Section(1, wasmtest.Vec(structType, tagType, runType)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func gcCatchEdgePostEntryMutationModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x63, byte(wasm.HeapAny), // local $x (ref null any)
+		0x42, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x00, // x = struct.new $A(i64.const 0)
+		0x02, 0x40, // block $out
+		0x1f, 0x40, 0x01, byte(wasm.CatchAll), 0x00, // try_table (catch_all $out)
+		0x41, 0x07, 0xfb, 0x00, 0x01, 0x21, 0x00, // x = struct.new $B(7)
+		0x08, 0x00, // throw tag 0
+		0x0b,
+		0x00, // unreachable normal fallthrough
+		0x0b,
+		0x20, 0x00, 0xfb, 0x16, 0x00, 0x1a, // cast $A must inspect post-entry x
+		0x41, 0x01, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7e, 0x00},
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(3))),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x02})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
@@ -567,6 +803,9 @@ func TestGCCatchEdgeIntersectsLocalFacts(t *testing.T) {
 	}
 	if out := runGCRefFactDifferentialModule(t, "catch-exception", data, 0); out.Trap != uint32(TrapCastFailure) {
 		t.Fatalf("catch edge = %+v, want cast failure", out)
+	}
+	if out := runGCRefFactDifferentialModule(t, "catch-post-entry-mutation", gcCatchEdgePostEntryMutationModule()); out.Trap != uint32(TrapCastFailure) {
+		t.Fatalf("post-entry catch mutation = %+v, want cast failure", out)
 	}
 }
 
@@ -696,8 +935,15 @@ func gcFactDifferentialModules() []struct {
 		{name: "nullable-cast-trap", data: castTrap},
 		{name: "known-bounds-trap", data: boundsTrap},
 		{name: "no-barrier-array-set-bounds-trap", data: gcNoBarrierArraySetBoundsTrapModule()},
+		{name: "scalar-array-get-bounds-trap", data: gcDirectScalarArrayBoundsTrapModule(false)},
+		{name: "scalar-array-set-bounds-trap", data: gcDirectScalarArrayBoundsTrapModule(true)},
+		{name: "exact-ref-null", data: gcExactRefNullModule()},
+		{name: "nonexact-defined-cast", data: gcExactDefinedCastModule(false)},
+		{name: "exact-defined-cast", data: gcExactDefinedCastModule(true)},
+		{name: "equivalent-exact-defined-cast", data: gcEquivalentExactDefinedCastModule()},
 		{name: "catch-normal", data: gcCatchEdgeFactModule(), args: []uint64{1}},
 		{name: "catch-exception", data: gcCatchEdgeFactModule(), args: []uint64{0}},
+		{name: "catch-post-entry-mutation", data: gcCatchEdgePostEntryMutationModule()},
 		{name: "loop-eq-struct-test", data: gcLoopAbstractHeapFactModule(wasm.HeapEq, false)},
 		{name: "loop-any-struct-cast", data: gcLoopAbstractHeapFactModule(wasm.HeapAny, true)},
 		{name: "mutable-field-backedge", data: gcMutableFieldBackedgeModule()},

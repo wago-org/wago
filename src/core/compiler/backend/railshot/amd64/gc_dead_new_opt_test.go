@@ -144,7 +144,7 @@ func TestCheckedDeadGCArrayConstructorsPreservePreflight(t *testing.T) {
 	}{
 		{name: "default", wantOnCalls: 1, wantOffCalls: 1, wantDead: 1},
 		{name: "uniform", uniform: true, wantOnCalls: 1, wantOffCalls: 1, wantDead: 1},
-		{name: "nested-default", nested: true, wantOnCalls: 1, wantOffCalls: 2, wantDead: 2},
+		{name: "nested-default", nested: true, wantOnCalls: 2, wantOffCalls: 2, wantDead: 2},
 		{name: "data", segment: 1, wantOnCalls: 1, wantOffCalls: 1, wantDead: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -166,8 +166,8 @@ func TestCheckedDeadGCArrayConstructorsPreservePreflight(t *testing.T) {
 			if got := on.Peephole["gc-dead-new"]; got != tc.wantDead {
 				t.Fatalf("enabled gc-dead-new = %d, want %d (all: %v)", got, tc.wantDead, on.Peephole)
 			}
-			if got := on.Peephole["gc-dead-new-checked"]; got != 1 {
-				t.Fatalf("enabled gc-dead-new-checked = %d, want 1", got)
+			if got := on.Peephole["gc-dead-new-checked"]; got != tc.wantDead {
+				t.Fatalf("enabled gc-dead-new-checked = %d, want %d", got, tc.wantDead)
 			}
 			if got := on.Calls[callKindHostSync]; got != tc.wantOnCalls {
 				t.Fatalf("enabled helper calls = %d, want %d", got, tc.wantOnCalls)
@@ -268,8 +268,8 @@ func TestDeadGCConstructorDeepStructArrayTreeElimination(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := stats.Funcs[0]
-	if got.Peephole["gc-dead-new"] != 3 || got.Calls[callKindHostSync] != 0 {
-		t.Fatalf("deep constructor tree stats = dead %d, calls %d (all: %v)", got.Peephole["gc-dead-new"], got.Calls[callKindHostSync], got.Peephole)
+	if got.Peephole["gc-dead-new"] != 3 || got.Peephole["gc-dead-new-checked"] != 3 || got.Calls[callKindHostSync] != 3 {
+		t.Fatalf("deep constructor tree stats = dead %d, checked %d, calls %d (all: %v)", got.Peephole["gc-dead-new"], got.Peephole["gc-dead-new-checked"], got.Calls[callKindHostSync], got.Peephole)
 	}
 }
 
@@ -294,8 +294,8 @@ func TestDeadGCConstructorTreeElimination(t *testing.T) {
 	if got := on.Peephole["gc-dead-new"]; got != 2 {
 		t.Fatalf("gc-dead-new = %d, want 2 (all: %v)", got, on.Peephole)
 	}
-	if got := on.Calls[callKindHostSync]; got != 0 {
-		t.Fatalf("optimized synchronous helper calls = %d, want 0", got)
+	if got := on.Calls[callKindHostSync]; got != 2 {
+		t.Fatalf("optimized reservation helper calls = %d, want 2", got)
 	}
 
 	deadGCNewEnabled = false

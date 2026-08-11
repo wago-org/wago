@@ -186,7 +186,7 @@ func gcHeapClassMatches(source shared.GCHeapClass, target wasm.AbsHeapType) (mat
 	return false, false
 }
 
-func (f *fn) gcRefFactMatchesHeap(fact shared.GCRefFact, heap int64, nullable bool) (match, known bool) {
+func (f *fn) gcRefFactMatchesTarget(fact shared.GCRefFact, heap int64, nullable, exactTarget bool) (match, known bool) {
 	if fact.Nullability() == shared.GCKnownNull {
 		return nullable, true
 	}
@@ -198,11 +198,18 @@ func (f *fn) gcRefFactMatchesHeap(fact shared.GCRefFact, heap int64, nullable bo
 		if !exact || f.m == nil {
 			return false, false
 		}
-		source := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: actual}), false)
-		target := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
+		source := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: actual}), exactTarget)
+		target := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), exactTarget)
 		return f.m.ReferenceTypeSubtype(source, target), true
 	}
+	if exactTarget {
+		return false, false
+	}
 	return gcHeapClassMatches(fact.HeapClass(), wasm.AbsHeapType(byte(heap)&0x7f))
+}
+
+func (f *fn) gcRefFactMatchesHeap(fact shared.GCRefFact, heap int64, nullable bool) (match, known bool) {
+	return f.gcRefFactMatchesTarget(fact, heap, nullable, false)
 }
 
 func gcHeapClassForValType(m *wasm.Module, typ wasm.ValType) shared.GCHeapClass {

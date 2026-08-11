@@ -123,8 +123,9 @@ size-only dead-array preflight with allocation reservation so occupied bounded h
 retain allocation/exhaustion parity. Updated constructor-family bytes are 128/142 for
 default, 164/178 for numeric uniform, and 200/214 for data arrays
 (enabled/disabled); reference element construction remains 214/214, and a nested
-default wrapper is 128/312. The earlier 64/82/100-byte
-figures are superseded. Successful dropped pointer-free uniform/data and default-initialized constructors now
+default wrapper is 264/312 after retaining the inner compact result across the outer
+allocation. The earlier 64/82/100-byte and 128/312 nested figures are superseded.
+Successful dropped pointer-free uniform/data and default-initialized constructors now
 retain allocation, handle, collection, and safepoint state while omitting unreachable
 payload population;
 reference-valued uniform/element constructors retain their complete edge/card path,

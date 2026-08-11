@@ -31,6 +31,7 @@ const (
 	gcStructFinalCastGet             = 12
 	gcStructFinalCastArrayLen        = 13
 	gcFuncRefTest                    = 14
+	gcStructReserveDead              = 15
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -80,7 +81,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return fmt.Errorf("amd64: struct.new type %d is unavailable", typeIndex)
 		}
 		fieldN := len(st.Comp.Fields)
-		if f.skipDroppedGCConstructor(r, fieldN) || f.deferGCConstructorForDroppedStruct(r, fieldN) {
+		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, fieldN, deadUse); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
 		var singleInitializer elem
@@ -118,7 +123,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if _, ok := f.stagedStructType(typeIndex); !ok {
 			return fmt.Errorf("amd64: struct.new_default type %d is unavailable", typeIndex)
 		}
-		if f.skipDroppedGCConstructor(r, 0) || f.deferGCConstructorForDroppedStruct(r, 0) {
+		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, 0, deadUse); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -304,8 +313,9 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 		} else {
 			f.pushValue(storage{kind: stConst, typ: mtI32})
 		}
+		f.pushValue(storage{kind: stConst, typ: mtI32}) // ref.test does not admit exact heap markers
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32})
+		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
 	}
 	value := f.materialize(f.popValue())
 	switch heap {
@@ -336,12 +346,12 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
-	heap, err := r.S33()
+	heap, exactTarget, err := readRefHeapTypeImmediate(r)
 	if err != nil {
 		return err
 	}
 	castFact := gcRefFact(f.s.back())
-	if matched, known := f.gcRefFactMatchesHeap(castFact, heap, sub == 23); known {
+	if matched, known := f.gcRefFactMatchesTarget(castFact, heap, sub == 23, exactTarget); known {
 		if matched {
 			if sub == 22 {
 				markGCRefFact(f.s.back(), castFact.WithNullability(shared.GCKnownNonNull))
@@ -407,7 +417,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if f.gcTypeSubtypingRefTest && heap >= 0 {
 		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc {
 			value := f.materialize(f.popValue())
-			f.emitLocalFunctionSubtypeIdentityCheck(value, uint32(heap), sub == 23, trapCastFailure)
+			f.emitLocalFunctionSubtypeIdentityCheck(value, uint32(heap), sub == 23, exactTarget, trapCastFailure)
 			f.pushReg(value, mtI64)
 			return nil
 		}
@@ -421,8 +431,13 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		} else {
 			f.pushValue(storage{kind: stConst, typ: mtI32})
 		}
+		exact := int64(0)
+		if exactTarget {
+			exact = 1
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		if err := f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{anyref}); err != nil {
+		if err := f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{anyref}); err != nil {
 			return err
 		}
 		if finalTarget && sub == 22 {
@@ -659,7 +674,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	return nil
 }
 
-func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable bool, trapCode uint32) {
+func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable, exactTarget bool, trapCode uint32) {
 	success := make([]int, 0, f.m.ImportedFuncCount()+len(f.m.FuncTypes)+1)
 	if nullable {
 		f.a.TestSelf(value, true)
@@ -668,7 +683,7 @@ func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32,
 	base := f.allocReg(maskOf(value))
 	f.a.Load64(base, RBX, -int32(offFuncRefDescPtr))
 	candidate := f.allocReg(maskOf(value, base))
-	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), false)
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: targetType}), exactTarget)
 	total := f.m.ImportedFuncCount() + len(f.m.FuncTypes)
 	for functionIndex := 0; functionIndex < total; functionIndex++ {
 		sourceType, ok := f.m.FuncTypeIndex(uint32(functionIndex))
@@ -709,15 +724,15 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.S33(); err != nil { // validated source heap type
+	if _, _, err := readRefHeapTypeImmediate(r); err != nil { // validated source reference type
 		return err
 	}
-	target, err := r.S33()
+	target, exactTarget, err := readRefHeapTypeImmediate(r)
 	if err != nil {
 		return err
 	}
 	fact := gcRefFact(f.s.back())
-	if matched, known := f.gcRefFactMatchesHeap(fact, target, flags&2 != 0); known {
+	if matched, known := f.gcRefFactMatchesTarget(fact, target, flags&2 != 0, exactTarget); known {
 		branchOnMatch := sub == 24
 		if matched && flags&2 == 0 {
 			markGCRefFact(f.s.back(), fact.WithNullability(shared.GCKnownNonNull))
@@ -746,8 +761,13 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	} else {
 		f.pushValue(storage{kind: stConst, typ: mtI32})
 	}
+	exact := int64(0)
+	if exactTarget {
+		exact = 1
+	}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-	if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+	if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
 		return err
 	}
 	return f.brOnCastResult(depth, sub == 24)
@@ -930,11 +950,11 @@ func (f *fn) gcFrameLocal(index int) bool {
 
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
 		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,
-		gcArrayCheckDefault, gcArrayCheckUniform, gcArrayCheckData:
+		gcArrayCheckDefault, gcArrayCheckUniform, gcArrayCheckData, gcArrayCheckFixed:
 		return true
 	default:
 		return false

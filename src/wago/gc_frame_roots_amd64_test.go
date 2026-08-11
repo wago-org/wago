@@ -95,7 +95,7 @@ func TestGCTryTablePreservesHiddenStackRoot(t *testing.T) {
 	if !status.Required || !status.Exact || status.Safepoints != 2 {
 		t.Fatalf("try_table root admission = %+v", status)
 	}
-	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -998,7 +998,7 @@ func TestGCNativeRootAdmissionIsPerFunction(t *testing.T) {
 	}
 	defer compiled.Close()
 	status := compiled.GCNativeRootAdmission()
-	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 0 {
+	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 1 {
 		t.Fatalf("per-function admission = %+v", status)
 	}
 	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}})

@@ -28,6 +28,7 @@ const (
 	gcStructFinalCastGet             = 12
 	gcStructFinalCastArrayLen        = 13
 	gcFuncRefTest                    = 14
+	gcStructReserveDead              = 15
 )
 
 type gcStructHelperError struct{ err error }
@@ -52,11 +53,11 @@ func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
 
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
 		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,
-		gcArrayCheckDefault, gcArrayCheckUniform, gcArrayCheckData:
+		gcArrayCheckDefault, gcArrayCheckUniform, gcArrayCheckData, gcArrayCheckFixed:
 		return true
 	default:
 		return false
@@ -197,6 +198,17 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		} else {
 			results[0] = 0
 		}
+	case gcStructReserveDead:
+		if len(args) != 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc struct dead reservation helper arity = %d, want 1", len(args))})
+		}
+		ref, err := in.gc.ReserveDeadStructAllocation(in.requireGCDomainType(uint32(args[0])), frameRoots)
+		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		if len(results) != 0 {
+			results[0] = uint64(ref)
+		}
 	case gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct alloc helper arity = %d/%d, want 1/at-least-1", len(args), len(results))})
@@ -302,10 +314,10 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			}
 		}
 	case gcStructRefTest:
-		if len(args) != 3 || len(results) < 1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		if len(args) != 4 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test helper arity = %d/%d, want 4/at-least-1", len(args), len(results))})
 		}
-		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0)
+		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0, args[3] != 0)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -324,10 +336,11 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			results[0] = 0
 		}
 	case gcStructRefCast:
-		if len(args) != 3 || len(results) < 1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc ref.cast helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+		if len(args) != 4 || len(results) < 1 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc ref.cast helper arity = %d/%d, want 4/at-least-1", len(args), len(results))})
 		}
-		if value, handled, err := in.gcFinalDefinedRefCast(args[0], int64(args[1]), args[2] != 0); handled {
+		exact := args[3] != 0
+		if value, handled, err := in.gcDefinedRefCast(args[0], int64(args[1]), args[2] != 0, exact); handled {
 			if errors.Is(err, gc.ErrCastFailure) {
 				panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
 			}
@@ -337,7 +350,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			results[0] = value
 			break
 		}
-		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0)
+		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0, exact)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -547,15 +560,14 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	}
 }
 
-// gcFinalDefinedRefCast avoids repeated descriptor/subtype walks for final
-// local struct and array targets. Runtime-domain canonical IDs make equality the
-// complete subtype decision for a final target.
-func (in *Instance) gcFinalDefinedRefCast(bits uint64, heap int64, nullable bool) (uint64, bool, error) {
+// gcDefinedRefCast avoids descriptor/subtype walks when equality is the complete
+// decision: either the encoded target is exact or the declared target is final.
+func (in *Instance) gcDefinedRefCast(bits uint64, heap int64, nullable, exact bool) (uint64, bool, error) {
 	if in == nil || in.gc == nil || in.existingGCRefTestTableState() != nil || heap < 0 || uint64(heap) >= uint64(len(in.c.Types)) {
 		return 0, false, nil
 	}
 	type_ := in.c.Types[heap]
-	if !type_.Final || (type_.Kind != CompositeTypeStruct && type_.Kind != CompositeTypeArray) {
+	if (!exact && !type_.Final) || (type_.Kind != CompositeTypeStruct && type_.Kind != CompositeTypeArray) {
 		return 0, false, nil
 	}
 	ref := gc.Ref(uint32(bits))
@@ -585,8 +597,8 @@ func (in *Instance) gcFinalDefinedRefCast(bits uint64, heap int64, nullable bool
 	return bits, true, nil
 }
 
-func (in *Instance) gcDynamicRefTarget(heap int64, nullable bool) (gc.RefTestTarget, error) {
-	target := gc.RefTestTarget{Nullable: nullable}
+func (in *Instance) gcDynamicRefTarget(heap int64, nullable, exact bool) (gc.RefTestTarget, error) {
+	target := gc.RefTestTarget{Nullable: nullable, Exact: exact}
 	switch heap {
 	case -15:
 		target.Kind = gc.RefTestNone
@@ -609,6 +621,9 @@ func (in *Instance) gcDynamicRefTarget(heap int64, nullable bool) (gc.RefTestTar
 			return gc.RefTestTarget{}, fmt.Errorf("gc dynamic reference heap type %d has no Runtime-domain identity", heap)
 		}
 		target.Kind, target.Type = gc.RefTestDefined, domain
+	}
+	if exact && target.Kind != gc.RefTestDefined {
+		return gc.RefTestTarget{}, fmt.Errorf("gc dynamic exact reference heap type %d is not defined", heap)
 	}
 	return target, nil
 }

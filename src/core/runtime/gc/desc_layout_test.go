@@ -69,7 +69,7 @@ func TestReserveDeadArrayAllocationUsesCurrentBoundedHeapState(t *testing.T) {
 				t.Fatalf("size-only check unexpectedly failed: %v", err)
 			}
 			_, actualErr := actual.NewArrayDefaultWithRoots(0, tc.next, actualRoots)
-			reserveErr := reserved.ReserveDeadDefaultArrayAllocation(0, tc.next, reserveRoots)
+			_, reserveErr := reserved.ReserveDeadDefaultArrayAllocation(0, tc.next, reserveRoots)
 			if (actualErr == nil) != (reserveErr == nil) {
 				t.Fatalf("allocation/reservation outcome mismatch: actual=%v reserve=%v", actualErr, reserveErr)
 			}
@@ -78,6 +78,39 @@ func TestReserveDeadArrayAllocationUsesCurrentBoundedHeapState(t *testing.T) {
 				t.Fatalf("allocation/reservation stats mismatch: actual=%+v reserve=%+v", actualStats, reserveStats)
 			}
 		})
+	}
+}
+
+func TestReserveDeadStructAllocationUsesCurrentBoundedHeapState(t *testing.T) {
+	d, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeCollector := func() (*Collector, RefSliceRoots) {
+		c, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 16, TinyBlockBytes: 16}, []TypeDesc{d})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := c.NewStructDefault(0)
+		if err != nil {
+			c.Close()
+			t.Fatalf("occupy heap: %v", err)
+		}
+		return c, RefSliceRoots{first}
+	}
+	actual, actualRoots := makeCollector()
+	defer actual.Close()
+	reserved, reserveRoots := makeCollector()
+	defer reserved.Close()
+
+	_, actualErr := actual.NewStructUninitializedWithRoots(0, actualRoots)
+	_, reserveErr := reserved.ReserveDeadStructAllocation(0, reserveRoots)
+	if (actualErr == nil) != (reserveErr == nil) || (actualErr != nil && actualErr.Error() != reserveErr.Error()) {
+		t.Fatalf("allocation/reservation outcome mismatch: actual=%v reserve=%v", actualErr, reserveErr)
+	}
+	actualStats, reserveStats := actual.Stats(), reserved.Stats()
+	if actualStats.Allocations != reserveStats.Allocations || actualStats.LiveObjects != reserveStats.LiveObjects {
+		t.Fatalf("allocation/reservation stats mismatch: actual=%+v reserve=%+v", actualStats, reserveStats)
 	}
 }
 

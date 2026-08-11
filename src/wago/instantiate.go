@@ -216,11 +216,21 @@ func (b *instanceBuilder) prepareCollector() error {
 		b.gcTypeMap = mapping
 		return nil
 	}
-	collector, err := gc.NewCollector(gcConfig, b.c.GCTypeDescs)
+	descs := b.c.GCTypeDescs
+	var mapping *gcTypeMapping
+	if len(b.c.Types) == len(descs) && hasEquivalentLocalGCHeapTypes(b.c) {
+		var err error
+		mapping, descs, _, err = gcCanonicalTypePlan(b.c, nil, nil, true)
+		if err != nil {
+			return err
+		}
+	}
+	collector, err := gc.NewCollector(gcConfig, descs)
 	if err != nil {
 		return err
 	}
 	b.collector = collector
+	b.gcTypeMap = mapping
 	b.gcDomainID = newGCDomainIdentity()
 	return nil
 }

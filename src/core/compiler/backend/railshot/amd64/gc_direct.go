@@ -328,6 +328,9 @@ func directGCStructLayout(m *wasm.Module, typeIndex, fieldIndex uint32) (payload
 		}
 		off = (off + align - 1) &^ (align - 1)
 		if uint32(i) == fieldIndex {
+			if uint64(gc.PayloadOffset)+uint64(off)+uint64(scalar.size) > math.MaxInt32 {
+				return 0, directGCScalar{}, false, false
+			}
 			return off, scalar, st.Final, true
 		}
 		if off > math.MaxUint32-size {
@@ -763,6 +766,7 @@ func (f *fn) emitDirectGCArrayRefSetNoBarrier(typeIndex uint32, state shared.GCB
 	object := f.popValue()
 	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
+	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
@@ -2228,6 +2232,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, k
 
 	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
+	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
@@ -2238,7 +2243,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, k
 		f.stats.peep("gc-array-known-bounds")
 	} else {
 		f.a.Cmp32(index, tmp)
-		f.trapIf(condAE, trapCastFailure)
+		f.trapIf(condAE, trapBuiltin)
 	}
 	f.a.ImulRI(index, int32(scalar.size), true)
 	// Defend against corrupted Aux metadata as well as the logical index check:
@@ -2317,6 +2322,7 @@ func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, log
 
 	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
 	index := f.materialize(indexValue)
+	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
@@ -2327,7 +2333,7 @@ func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, log
 		f.stats.peep("gc-array-known-bounds")
 	} else {
 		f.a.Cmp32(index, tmp)
-		f.trapIf(condAE, trapCastFailure)
+		f.trapIf(condAE, trapBuiltin)
 	}
 	f.a.ImulRI(index, int32(scalar.size), true)
 	f.a.Load32(tmp, obj, 4)

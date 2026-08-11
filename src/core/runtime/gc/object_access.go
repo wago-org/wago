@@ -185,6 +185,30 @@ func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref
 	c.zeroObjectPayload(r)
 	return r, nil
 }
+
+// ReserveDeadStructAllocation performs the allocation side effect of a dropped
+// struct.new without populating its unreachable fields. It returns the real
+// compact allocation so nested dead constructors can keep earlier operands
+// rooted across later reservations. Unlike NewStructDefaultWithRoots, it
+// intentionally does not apply defaultability: struct.new operands have already
+// been validated and evaluated by the caller.
+func (c *Collector) ReserveDeadStructAllocation(typeID TypeID, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	sz, err := StructSize(d)
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, sz, 0, roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	return r, nil
+}
+
 func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, error) {
 	return c.NewArrayWithRoots(typeID, length, init, nil)
 }
@@ -222,35 +246,36 @@ func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
 // dynamic constructor without populating its unreachable payload. Unlike
 // CheckArrayAllocation, this preserves exhaustion, collection, handle-table,
 // allocation-counter, and future-capacity behavior under an already occupied
-// bounded heap. The zero payload keeps verification and accidental diagnostics
-// safe until the unreachable object is collected.
-func (c *Collector) ReserveDeadArrayAllocation(typeID TypeID, length uint32, roots RootSet) error {
+// bounded heap. The returned compact allocation keeps nested operands live across
+// later reservations; the zero payload keeps verification and accidental
+// diagnostics safe until the unreachable object is collected.
+func (c *Collector) ReserveDeadArrayAllocation(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
-		return err
+		return Null(), err
 	}
 	size, err := ArraySize(d, length)
 	if err != nil {
-		return err
+		return Null(), err
 	}
 	r, err := c.alloc(d, size, length, roots)
 	if err != nil {
-		return err
+		return Null(), err
 	}
 	c.zeroObjectPayload(r)
-	return nil
+	return r, nil
 }
 
 // ReserveDeadDefaultArrayAllocation additionally preserves the defaultability
 // check required by array.new_default before reserving its dropped allocation.
-func (c *Collector) ReserveDeadDefaultArrayAllocation(typeID TypeID, length uint32, roots RootSet) error {
+func (c *Collector) ReserveDeadDefaultArrayAllocation(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
-		return err
+		return Null(), err
 	}
 	if length != 0 {
 		if err := checkDefaultable(d); err != nil {
-			return err
+			return Null(), err
 		}
 	}
 	return c.ReserveDeadArrayAllocation(typeID, length, roots)

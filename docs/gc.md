@@ -119,6 +119,9 @@ a coarse Go-to-native entry assertion. Dynamic semantic checks are unchanged:
 generated code reloads mutable handle/backing pointers and counts, then checks compact
 handle tag/range/liveness, space and backing extents, object extent, exact canonical
 type, array bounds, ownership/barrier state, and trap order before touching payload.
+Direct scalar/reference array paths zero-extend dynamic Wasm i32 indexes before
+native-width scaling; logical bounds failures use the builtin trap category, while
+physical object-extent hardening remains a cast-failure trap.
 
 At modules with two or more candidate direct scalar sites, AMD64 may emit one
 229-byte module-owned noncollecting compact-handle resolver leaf and patch local
@@ -152,7 +155,11 @@ are invariant. `try_table` and synthetic inline frames capture hidden operand-ro
 shape before flushing, and every catch clause intersects its conservative local facts
 into the target just like an ordinary branch. Exact type and nullability remain
 independent: a nullable exact value can prove a nullable cast, but a non-null cast is
-elided only when the fact also proves non-null. `any` and `eq` heap classes are upper
+elided only when the fact also proves non-null. Exact defined targets compare canonical
+structural identity rather than raw module-local indexes: equivalent duplicate types
+match, while proper subtypes still fail an exact cast. Private collectors create a
+canonical local map only when duplicate GC heap types require it; ordinary unique-type
+modules retain the identity-map footprint. `any` and `eq` heap classes are upper
 bounds rather than exact runtime families, so narrowing tests/casts remain dynamic
 until an i31/struct/array fact is exact. Distinct identities lose alias-sensitive
 state, and any multi-edge freshness merge is treated as published. Calls and
@@ -202,11 +209,14 @@ default-initialized, and pointer-free data-array drops call allocation-reservati
 helpers after complete type,
 physical-size, and passive-segment-range preflight. The helper preserves current
 bounded-heap exhaustion, collection, handle/allocation state, and a real frame-root
-safepoint, but omits population of the unreachable zeroed payload. Reference-valued
-uniform and element-segment constructors retain the full path because suppressing
-edges/cards could change later minor-collection retention and capacity. This is
-intentionally less aggressive than the earlier size-only preflight, which was not
-equivalent when prior live allocations occupied the bounded heap.
+safepoint, but omits population of the unreachable zeroed payload. Nested reservation
+helpers return the real compact allocation result rather than a null placeholder, so
+an inner dead object remains rooted across every enclosing allocation; this preserves
+tiny-heap exhaustion when the enclosing allocation cannot coexist with its operands.
+Reference-valued uniform and element-segment constructors retain the full path because
+suppressing edges/cards could change later minor-collection retention and capacity.
+This is intentionally less aggressive than the earlier size-only preflight, which was
+not equivalent when prior live allocations occupied the bounded heap.
 
 Reference stores select an explicit late state: `NoBarrier`, `YoungParent`,
 `KnownOldChild`, `ExistingCard`, `CardMark`, or `SlowBarrier`. Null and i31 children

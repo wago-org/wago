@@ -22,11 +22,13 @@ const (
 
 // RefTestTarget describes one ordinary dynamic reference test. Nullable
 // controls only the null result. Defined targets name a collector descriptor;
-// the descriptor and all traversed supers were validated at collector creation.
+// Exact requires equality with that canonical descriptor rather than admitting
+// its declared subtypes.
 type RefTestTarget struct {
 	Type     TypeID
 	Kind     RefTestKind
 	Nullable bool
+	Exact    bool
 }
 
 // ErrCastFailure reports a valid reference whose dynamic type does not match
@@ -162,6 +164,12 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 		if dynamic.Kind != defined.Kind {
 			return false, nil
 		}
+		if target.Exact {
+			if canonical == nil {
+				return dynamic.ID == defined.ID, nil
+			}
+			return canonical.types[dynamic.ID] == canonical.types[defined.ID], nil
+		}
 		if canonical == nil {
 			return c.typeSubtypeIDs(dynamic.ID, defined.ID)
 		}
@@ -184,6 +192,9 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 func (c *Collector) refTestTargetDesc(target RefTestTarget) (TypeDesc, error) {
 	switch target.Kind {
 	case RefTestAny, RefTestEq, RefTestI31, RefTestStruct, RefTestArray, RefTestNone:
+		if target.Exact {
+			return TypeDesc{}, fmt.Errorf("gc: exact ref.test target kind %d is not defined", target.Kind)
+		}
 		return TypeDesc{}, nil
 	case RefTestDefined:
 		d, err := c.desc(target.Type)

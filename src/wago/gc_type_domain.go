@@ -8,8 +8,9 @@ import (
 )
 
 // gcTypeMapping translates immutable module-local flattened type indexes to the
-// canonical IDs used by one Runtime collector domain. Private collectors keep a
-// nil mapping and therefore retain the historical identity mapping.
+// canonical IDs used by one Runtime collector domain. Private collectors also
+// canonicalize structurally equivalent local types so exact references have the
+// same semantics with and without a shared store.
 type gcTypeMapping struct {
 	localToDomain []gc.TypeID
 	domainToLocal []uint32
@@ -44,6 +45,24 @@ type gcDomainTypeRepresentative struct {
 
 func gcTypeEquivalentToRepresentative(c *Compiled, local uint32, rep gcDomainTypeRepresentative) bool {
 	return c != nil && int(local) < len(c.Types) && int(rep.index) < len(rep.types) && definedTypeEquivalent(local, c.Types, rep.index, rep.types)
+}
+
+func hasEquivalentLocalGCHeapTypes(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	for i := 1; i < len(c.Types); i++ {
+		kind := c.Types[i].Kind
+		if kind != CompositeTypeStruct && kind != CompositeTypeArray {
+			continue
+		}
+		for j := 0; j < i; j++ {
+			if c.Types[j].Kind == kind && definedTypeEquivalent(uint32(i), c.Types, uint32(j), c.Types) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainTypes []gc.TypeDesc, allowAppend bool) (*gcTypeMapping, []gc.TypeDesc, []gcDomainTypeRepresentative, error) {
@@ -112,11 +131,19 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 }
 
 func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
-	if c == nil || domain == nil || len(c.Types) != len(domain.typeReps) {
+	if c == nil || domain == nil {
 		return false
 	}
-	_, descs, reps, err := gcCanonicalTypePlan(c, domain.typeReps, domain.types, false)
-	return err == nil && len(descs) == len(domain.types) && len(reps) == len(domain.typeReps)
+	mapping, descs, reps, err := gcCanonicalTypePlan(c, domain.typeReps, domain.types, false)
+	if err != nil || len(descs) != len(domain.types) || len(reps) != len(domain.typeReps) {
+		return false
+	}
+	for _, local := range mapping.domainToLocal {
+		if local == unavailableLocalGCType {
+			return false
+		}
+	}
+	return true
 }
 
 func preferredGCCollectorFromImports(imports Imports, store *referenceStore) (*gc.Collector, error) {
