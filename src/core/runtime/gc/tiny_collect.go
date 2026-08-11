@@ -695,10 +695,9 @@ func (c *Collector) tinyMarkSweepRef(r Ref) {
 		return
 	}
 	if c.tinyGC.scan.handle != 0 {
-		// Debug poison owns the shared compact cursor. Checked stores reject its
-		// object, and this rare external-root fallback retains the old complete
-		// drain rather than corrupting either cursor.
-		c.tinyMarkRefNow(r)
+		// Debug poison owns the shared compact cursor. Queue root work alongside
+		// it; sweep yields to the fixed mark budget before advancing another handle.
+		c.tinyMarkRef(r)
 		return
 	}
 	before := len(c.tinyGC.grayStack)
@@ -706,21 +705,6 @@ func (c *Collector) tinyMarkSweepRef(r Ref) {
 	if len(c.tinyGC.grayStack) != before {
 		c.tinyGC.state = tinyMark
 		c.tinyGC.rootPhase = tinyRootsSweepBarrier
-	}
-}
-
-func (c *Collector) tinyMarkRefNow(r Ref) {
-	var sweepCursor tinyScanCursor
-	if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle != 0 {
-		sweepCursor = c.tinyGC.scan
-		c.tinyGC.scan = tinyScanCursor{}
-		defer func() { c.tinyGC.scan = sweepCursor }()
-	}
-	c.tinyMarkRef(r)
-	for c.tinyGC.scan.handle != 0 || len(c.tinyGC.grayStack) > 0 {
-		if work := c.tinyDrainGrayBudget(completeObjectScanBudget); work == (objectScanWork{}) {
-			break
-		}
 	}
 }
 

@@ -100,6 +100,7 @@ func TestTinySweepInitializedAllocationQueuesTrace(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		global := c.NewGlobalSlot(Null())
 		for c.tinyGC.state != tinySweep {
 			if err := c.Step(nil); err != nil {
 				t.Fatal(err)
@@ -117,6 +118,14 @@ func TestTinySweepInitializedAllocationQueuesTrace(t *testing.T) {
 		}
 		if c.tinyGC.state != tinySweep || c.tinyGC.scan.handle == 0 || c.tinyColorOf(handleOf(parent)) != tinyGray {
 			t.Fatalf("poisoned sweep allocation state/cursor/color = %d/%+v/%d, want sweep/active/gray", c.tinyGC.state, c.tinyGC.scan, c.tinyColorOf(handleOf(parent)))
+		}
+		poisonCursor := c.tinyGC.scan
+		queued := len(c.tinyGC.grayStack)
+		if err := c.SetGlobalSlot(global, parent); err != nil {
+			t.Fatal(err)
+		}
+		if c.tinyGC.scan != poisonCursor || len(c.tinyGC.grayStack) != queued || c.tinyColorOf(handleOf(parent)) != tinyGray {
+			t.Fatalf("poison root barrier drained queued work: cursor=%+v stack=%d color=%d", c.tinyGC.scan, len(c.tinyGC.grayStack), c.tinyColorOf(handleOf(parent)))
 		}
 		if err := c.Verify(nil); err != nil {
 			t.Fatalf("queued initialized allocation with poison cursor: %v", err)
@@ -136,6 +145,9 @@ func TestTinySweepInitializedAllocationQueuesTrace(t *testing.T) {
 			if err := c.Step(nil); err != nil {
 				t.Fatal(err)
 			}
+		}
+		if err := c.SetGlobalSlot(global, Null()); err != nil {
+			t.Fatal(err)
 		}
 		assertTinyInitializedSweepGraph(t, c, parent, child)
 	})
