@@ -544,26 +544,6 @@ func TestStagedMemory64ActiveDataLifecycle(t *testing.T) {
 	if !reflect.DeepEqual(loaded.Data, compiled.Data) {
 		t.Fatalf("memory64 data metadata changed across codec: got %#v want %#v", loaded.Data, compiled.Data)
 	}
-	snapshot, err := Capture(compiled, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture memory64 active data: %v", err)
-	}
-	restored, err := Instantiate(snapshot)
-	if err != nil {
-		t.Fatalf("restore memory64 active data: %v", err)
-	}
-	restoredMemory, err := restored.ExportedMemory("memory")
-	if err != nil {
-		restored.Close()
-		t.Fatal(err)
-	}
-	if got := restoredMemory.Bytes()[65532:65536]; !bytes.Equal(got, []byte{1, 2, 3, 4}) {
-		restored.Close()
-		t.Fatalf("restored memory64 active data bytes = %v, want [1 2 3 4]", got)
-	}
-	if err := restored.Close(); err != nil {
-		t.Fatal(err)
-	}
 	in, err := instantiateCore(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate memory64 active data: %v", err)
@@ -611,31 +591,6 @@ func TestStagedMemory64PassiveDataLifecycle(t *testing.T) {
 	if !reflect.DeepEqual(loaded.PassiveData, compiled.PassiveData) {
 		t.Fatalf("memory64 passive metadata changed across codec: got %#v want %#v", loaded.PassiveData, compiled.PassiveData)
 	}
-	snapshot, err := Capture(compiled, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture memory64 passive data: %v", err)
-	}
-	restored, err := Instantiate(snapshot)
-	if err != nil {
-		t.Fatalf("restore memory64 passive data: %v", err)
-	}
-	if _, err := restored.Invoke("init", uint64(16), I32(1), I32(3)); err != nil {
-		restored.Close()
-		t.Fatalf("restored memory64.init: %v", err)
-	}
-	restoredMemory, err := restored.ExportedMemory("memory")
-	if err != nil {
-		restored.Close()
-		t.Fatal(err)
-	}
-	if got := string(restoredMemory.Bytes()[16:19]); got != "ell" {
-		restored.Close()
-		t.Fatalf("restored memory64.init bytes = %q, want ell", got)
-	}
-	if err := restored.Close(); err != nil {
-		t.Fatal(err)
-	}
-
 	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": &loaded} {
 		t.Run(name, func(t *testing.T) {
 			in, err := instantiateCore(c, InstantiateOptions{})
@@ -1087,9 +1042,6 @@ func TestStagedMemory64InstanceExportImportLifecycle(t *testing.T) {
 	loaded.memoryDir.exactExports = true
 	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Memories, meta.Memories) {
 		t.Fatalf("memory64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Memories, meta.Memories)
-	}
-	if _, err := Capture(consumerCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "memory is imported or shared") {
-		t.Fatalf("memory64 imported snapshot = %v, want external-owner rejection", err)
 	}
 
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})

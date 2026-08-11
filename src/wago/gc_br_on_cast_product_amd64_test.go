@@ -161,9 +161,6 @@ func TestStagedGCBrOnCastProductBoundaryLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		blobs = append(blobs, blob)
-		if _, err := Capture(c, SnapshotOptions{}); err == nil {
-			t.Fatalf("snapshot admitted %s abstract branch-cast product", base)
-		}
 		t.Logf("%s abstract: wasm=%d code=%d codec=%d", base, len(data), len(c.code), len(blob))
 		if err := in.Close(); err != nil {
 			t.Fatal(err)
@@ -216,9 +213,6 @@ func TestStagedGCBrOnCastProductBoundaryLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		blobs = append(blobs, blob)
-		if _, err := Capture(c, SnapshotOptions{}); err == nil {
-			t.Fatalf("snapshot admitted %s concrete branch-cast product", base)
-		}
 		t.Logf("%s concrete: wasm=%d code=%d codec=%d", base, len(data), len(c.code), len(blob))
 		if err := in.Close(); err != nil {
 			t.Fatal(err)

@@ -36,7 +36,6 @@ type (
 	DataInit                   = impl.DataInit
 	DefinedTypeDescriptor      = impl.DefinedTypeDescriptor
 	Dirs                       = impl.Dirs
-	DomainSnapshot             = impl.DomainSnapshot
 	ElemInit                   = impl.ElemInit
 	ElemMode                   = impl.ElemMode
 	ExitError                  = impl.ExitError
@@ -138,9 +137,6 @@ type (
 	RuntimeHookAccess          = impl.RuntimeHookAccess
 	RuntimeOption              = impl.RuntimeOption
 	ServiceRef                 = impl.ServiceRef
-	Snapshot                   = impl.Snapshot
-	SnapshotKind               = impl.SnapshotKind
-	SnapshotOptions            = impl.SnapshotOptions
 	Stability                  = impl.Stability
 	StorageTypeDescriptor      = impl.StorageTypeDescriptor
 	Table                      = impl.Table
@@ -250,8 +246,6 @@ const (
 	PluginPhaseStart                           = impl.PluginPhaseStart
 	PluginPhaseStop                            = impl.PluginPhaseStop
 	PluginRuntimeHooks                         = impl.PluginRuntimeHooks
-	SnapshotInit                               = impl.SnapshotInit
-	SnapshotWarm                               = impl.SnapshotWarm
 	Stable                                     = impl.Stable
 	TrapAtomicUnaligned                        = impl.TrapAtomicUnaligned
 	TrapBuiltin                                = impl.TrapBuiltin
@@ -313,12 +307,6 @@ func BitsFromUint32(width int32, value uint32) (Bits, error) {
 
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
-func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
-
-func CaptureDomain(instances ...*Instance) (*DomainSnapshot, error) {
-	return impl.CaptureDomain(instances...)
-}
-
 func CaptureGCMemoryDomains(compilerHeapBytes uint64, executableJITBytes uint64, heap GCManagedHeapTelemetry) GCMemoryDomains {
 	return impl.CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes, heap)
 }
@@ -361,17 +349,9 @@ func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 
-func IsDomainSnapshot(b []byte) bool { return impl.IsDomainSnapshot(b) }
-
 func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
 
-func IsSnapshot(b []byte) bool { return impl.IsSnapshot(b) }
-
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
-
-func LoadDomainSnapshot(data []byte) (*DomainSnapshot, error) { return impl.LoadDomainSnapshot(data) }
-
-func LoadSnapshot(b []byte) (*Snapshot, error) { return impl.LoadSnapshot(b) }
 
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
@@ -434,12 +414,6 @@ func OptimizationInfosForArch(arch string) []OptKnobInfo { return impl.Optimizat
 func ProvideService(reg *Registry, name string, value any) error {
 	return impl.ProvideService(reg, name, value)
 }
-
-func ReadDomainSnapshotFile(path string) (*DomainSnapshot, error) {
-	return impl.ReadDomainSnapshotFile(path)
-}
-
-func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshotFile(path) }
 
 func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExtension(name, factory) }
 

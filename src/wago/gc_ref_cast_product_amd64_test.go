@@ -159,9 +159,6 @@ func TestStagedGCRefCastProductBoundaryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Capture(abstractCompiled, SnapshotOptions{}); err == nil {
-		t.Fatal("snapshot admitted abstract gc/ref_cast product")
-	}
 	if err := abstractInstance.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -209,9 +206,6 @@ func TestStagedGCRefCastProductBoundaryLifecycle(t *testing.T) {
 	concreteBlob, err := marshalCompiled(concreteCompiled)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := Capture(concreteCompiled, SnapshotOptions{}); err == nil {
-		t.Fatal("snapshot admitted concrete gc/ref_cast product")
 	}
 	if err := concreteInstance.Close(); err != nil {
 		t.Fatal(err)

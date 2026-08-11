@@ -132,9 +132,6 @@ func TestStagedDirectCrossInstanceReturnCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tail-call") {
-		t.Fatalf("direct cross-tail snapshot error = %v", err)
-	}
 
 	producer, consumer := instantiateDirectCrossTail(t, "f")
 	if got := tableTestCallI32(t, consumer, "run", I32(1_000_000)); got != 7 {

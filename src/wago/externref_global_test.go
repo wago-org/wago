@@ -163,9 +163,6 @@ func TestLocalExternrefGlobalsRemainOutOfSerializedState(t *testing.T) {
 	c := compileExplicitArtifact(t, nullableLocalExternrefGlobalsModule())
 	defer c.Close()
 	_ = roundTripCompiled(t, c)
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
-		t.Fatalf("Capture error = %v, want reference-global rejection", err)
-	}
 	if _, err := Instantiate(&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 1}}}); err == nil || !strings.Contains(err.Error(), "non-null externref global initializer") {
 		t.Fatalf("Instantiate forged externref metadata error = %v", err)
 	}

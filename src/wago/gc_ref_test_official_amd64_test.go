@@ -397,9 +397,6 @@ func verifyStagedGCRefTestConcreteProduct(c *Compiled) error {
 	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 		return fmt.Errorf("codec-loaded concrete instantiate = %v", err)
 	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil {
-		return fmt.Errorf("snapshot admitted concrete ref.test product")
-	}
 	return nil
 }
 

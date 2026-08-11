@@ -227,14 +227,6 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	if err := loadedProducer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := Capture(producerCompiled, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture declaration-only local tags: %v", err)
-	}
-	if _, err := snapshot.MarshalBinary(); err != nil {
-		t.Fatalf("marshal declaration-only tag snapshot: %v", err)
-	}
-
 	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate tag producer: %v", err)
@@ -281,9 +273,6 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	imports := consumerModule.Imports()
 	if len(imports) != 2 || imports[0].Kind != ImportTag || imports[0].Index != 0 || imports[1].Index != 1 || !reflect.DeepEqual(imports[0].Params, []ValType{ValI32, ValF64}) {
 		t.Fatalf("tag import inspection = %#v", imports)
-	}
-	if _, err := Capture(consumerCompiled, SnapshotOptions{Imports: Imports{"env.first": primary, "env.second": primary}}); err == nil || !strings.Contains(err.Error(), "declaration-only local tags") {
-		t.Fatalf("imported tag snapshot = %v, want local-only rejection", err)
 	}
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}})
 	if err != nil {

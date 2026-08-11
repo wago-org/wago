@@ -678,36 +678,3 @@ func TestStagedMultiMemoryFailedLinkIsAtomic(t *testing.T) {
 		t.Fatalf("failed link leaked first memory attachment: %v", err)
 	}
 }
-
-func multiMemorySnapshotStartModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("tick")...), 0x00, 0x00))),
-		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02}, []byte{0x01, 0x01, 0x02})),
-		wasmtest.Section(8, wasmtest.ULEB(0)),
-	)
-}
-
-func TestStagedMultiMemorySnapshotPolicyRejectsBeforeMutation(t *testing.T) {
-	compiled := stagedMultiMemoryCompile(t, multiMemorySnapshotStartModule())
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal staged compiled module: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload staged compiled module: %v", err)
-	}
-	defer loaded.Close()
-
-	for _, c := range []*Compiled{compiled, &loaded} {
-		calls := 0
-		_, err := Capture(c, SnapshotOptions{Imports: Imports{"env.tick": HostFunc(func(HostModule, []uint64, []uint64) { calls++ })}})
-		if err == nil || !strings.Contains(err.Error(), "multiple memories") {
-			t.Fatalf("Capture multi-memory module = %v, want explicit policy rejection", err)
-		}
-		if calls != 0 {
-			t.Fatalf("snapshot rejection ran start function %d time(s)", calls)
-		}
-	}
-}

@@ -248,9 +248,6 @@ func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
 	if c.stagedGCArrayProduct() != stagedGCArrayProductReferenceElements || c.memoryDir == nil || c.memoryDir.gcArrayElement == nil {
 		t.Fatalf("reference product metadata = %v/%+v", c.stagedGCArrayProduct(), c.memoryDir)
 	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "GC") {
-		t.Fatalf("reference array snapshot = %v, want fail-closed GC rejection", err)
-	}
 	blob, err := marshalCompiled(c)
 	if err != nil {
 		t.Fatal(err)

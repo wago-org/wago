@@ -107,9 +107,6 @@ func TestStagedGCI31RemainingProductsLifecycle(t *testing.T) {
 					t.Fatalf("anyref globals=%v err=%v", got, err)
 				}
 			}
-			if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC") {
-				t.Fatalf("snapshot gate=%v", err)
-			}
 			blob, err := marshalCompiled(c)
 			if err != nil {
 				t.Fatal(err)

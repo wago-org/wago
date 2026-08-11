@@ -439,9 +439,6 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 				t.Fatalf("public codec load = %v, want unsupported GC gate", err)
 			}
-			if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-				t.Fatalf("snapshot capture = %v, want explicit GC state gate", err)
-			}
 		})
 	}
 }
@@ -633,11 +630,6 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 			t.Fatalf("public %s reload = %v, want unsupported GC rejection", name, err)
 		}
 	}
-	for name, c := range map[string]*Compiled{"provider": providerCompiled, "consumer": consumerCompiled} {
-		if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
-		}
-	}
 }
 
 func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
@@ -826,9 +818,6 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 		var public Compiled
 		if err := public.UnmarshalBinary(item.blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("public %s reload = %v, want unsupported GC rejection", name, err)
-		}
-		if _, err := Capture(item.compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
 		}
 	}
 }
@@ -1020,9 +1009,6 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 		if err := public.UnmarshalBinary(item.blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("public %s reload = %v, want unsupported GC rejection", name, err)
 		}
-		if _, err := Capture(item.compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
-		}
 	}
 }
 
@@ -1069,9 +1055,6 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		var public Compiled
 		if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("M9 public reload = %v", err)
-		}
-		if _, err := Capture(item.c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("M9 snapshot = %v", err)
 		}
 	}
 	newM9Provider := func() (*Instance, map[string]*InstanceExport) {
@@ -1321,9 +1304,6 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 		if err := public.UnmarshalBinary(item.blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("public %s reload = %v", name, err)
 		}
-		if _, err := Capture(item.compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("%s snapshot = %v", name, err)
-		}
 	}
 }
 
@@ -1512,9 +1492,6 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 		var public Compiled
 		if err := public.UnmarshalBinary(item.blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("public %s reload = %v, want unsupported GC rejection", name, err)
-		}
-		if _, err := Capture(item.compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
 		}
 	}
 }
@@ -1706,9 +1683,6 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 		if err := public.UnmarshalBinary(item.blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("public %s reload = %v, want unsupported GC rejection", name, err)
 		}
-		if _, err := Capture(item.compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
-		}
 	}
 }
 
@@ -1872,9 +1846,6 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 		if err := public.UnmarshalBinary(item.blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("public %s reload = %v, want unsupported GC rejection", name, err)
 		}
-		if _, err := Capture(item.compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("%s snapshot = %v, want GC reference-product rejection", name, err)
-		}
 	}
 }
 
@@ -2016,9 +1987,6 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 		var public Compiled
 		if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 			t.Fatalf("public reload %d = %v, want unsupported GC rejection", i, err)
-		}
-		if _, err := Capture(allCompiled[i], SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-			t.Fatalf("snapshot %d = %v, want GC reference-product rejection", i, err)
 		}
 	}
 }

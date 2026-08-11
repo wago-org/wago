@@ -185,9 +185,6 @@ func TestStagedGCRefTestTableProductClosure(t *testing.T) {
 	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 		t.Fatalf("codec-loaded instantiate = %v, want required-feature rejection", err)
 	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || (!strings.Contains(err.Error(), "tables") && !strings.Contains(err.Error(), "GC")) {
-		t.Fatalf("Capture object ref.test product = %v, want table/GC rejection", err)
-	}
 
 	cfg := NewRuntimeConfig()
 	cfg.boundsChecks = BoundsChecksSignalsBased

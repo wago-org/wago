@@ -52,26 +52,12 @@ func TestNormalizeMemorySizesBoundaries(t *testing.T) {
 	}
 }
 
-func TestJobMemoryRestoreAndBasedataControl(t *testing.T) {
+func TestJobMemoryBasedataControl(t *testing.T) {
 	j, err := NewJobMemoryGrowable(128, 65536)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer j.Close()
-	copy(j.CurrentBytes(), []byte("before"))
-	j.putU32(offActualLinMemByteSize, 16)
-	copy(j.CurrentBytes(), []byte("grown-tail"))
-	j.RestoreLinear([]byte("after"))
-	if got := string(j.CurrentBytes()); got != "after" {
-		t.Fatalf("restored memory = %q", got)
-	}
-	if j.LinearMemory()[8] != 0 {
-		t.Fatalf("grown tail = %#x, want zero", j.LinearMemory()[8])
-	}
-	if got := len(j.HostBytes()); got != len("after") {
-		t.Fatalf("host bytes length = %d", got)
-	}
-
 	j.SetTablePtr(1)
 	j.SetFuncRefDesc(2)
 	j.SetPassiveElemPtr(3)

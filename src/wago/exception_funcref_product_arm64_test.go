@@ -111,11 +111,6 @@ func TestStagedExceptionFuncrefProductIdentityLifetimeAndGates(t *testing.T) {
 		c.Close()
 		t.Fatalf("repeated funcref EH catch allocations = %v, want 0", allocs)
 	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "exception") {
-		in.Close()
-		c.Close()
-		t.Fatalf("live funcref EH snapshot = %v, want explicit rejection", err)
-	}
 	if err := in.Close(); err != nil {
 		c.Close()
 		t.Fatal(err)

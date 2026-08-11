@@ -130,9 +130,6 @@ func TestStagedGCRefEqProductBoundaryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil {
-		t.Fatal("snapshot admitted gc/ref_eq product")
-	}
 	if err := in.Close(); err != nil {
 		t.Fatal(err)
 	}

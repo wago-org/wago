@@ -42,17 +42,6 @@ extension; forced-worker Ruby codegen is likewise flat at 1.0012x, with
 allocation volume unchanged.
 The full AMD64 backend, vet, and explicit/guard/wazero corpus gates pass.
 
-**Memory64 and global-element snapshot watchpoints (2026-08-01).** Owned memory64
-snapshot instantiation, including a grown two-page image, measures **3.72–3.76 µs/op**,
-1,184 B/op, and 6 allocs/op on linux/amd64 (Ryzen 7 8845HS, three samples). Full
-single-member `WGDN` v3 restore of an immutable-global object shared with a live
-passive element measures **10.90–11.66 µs/op**, 83,928 B/op, and 76 allocs/op; this
-includes creating and closing a Runtime, collector domain, native instance, restored
-heap graph, and passive payload. These are lifecycle watchpoints, not hot invocation
-paths. `DomainSnapshot` remains 112 bytes; the per-member in-memory record grows from
-80 to 104 bytes for one optional passive-root slice. Existing v1/v2 blobs remain
-loadable, while memory64 and global-dependent element ownership require v3.
-
 **Direct module-fact scalar scanning (2026-08-02).** `AnalyzeModuleFacts`
 needs only `memory.grow`, `table.grow`, and `ref.func`, but previously built full
 instruction metadata for every unrelated scalar operation. It now consumes

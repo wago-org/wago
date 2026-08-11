@@ -64,9 +64,6 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 			if got := c.stagedGCArrayProduct(); got != stagedGCArrayProductInitData || !c.usesGCArrayHelpers() {
 				t.Fatalf("product/helper=%s/%v, want init-data/true", got, c.usesGCArrayHelpers())
 			}
-			if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC") {
-				t.Fatalf("snapshot capture=%v, want WasmGC rejection", err)
-			}
 			blob, err := marshalCompiled(c)
 			if err != nil {
 				t.Fatal(err)
@@ -158,9 +155,6 @@ func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
 	}
 	if len(c.GCTypeDescs) < 3 || c.GCTypeDescs[1].Elem != corergc.StorageFuncRef || c.GCTypeDescs[2].Elem != corergc.StorageFuncRefNull || c.GCTypeDescs[1].HasRefs || c.GCTypeDescs[2].HasRefs {
 		t.Fatalf("funcref array layouts=%+v", c.GCTypeDescs)
-	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC") {
-		t.Fatalf("snapshot capture=%v, want WasmGC rejection", err)
 	}
 	blob, err := marshalCompiled(c)
 	if err != nil {

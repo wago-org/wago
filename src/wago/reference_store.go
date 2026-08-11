@@ -24,21 +24,20 @@ import (
 type referenceStore struct {
 	mu sync.Mutex
 
-	private                 bool
-	runtimeClosed           bool
-	domainSnapshotRestoring bool
-	liveInstances           uint32
-	liveObjects             uint32
-	instances               map[*Instance]*referenceStoreInstance
-	typeKeys                map[uint64]structuralTypeRegistration
-	instanceTypes           map[*Instance][]uint64
-	byIdentity              map[funcrefIdentity]*funcrefTokenEntry
-	byToken                 map[uint64]*funcrefTokenEntry
-	gcByToken               map[uint64]gcRefTokenEntry
-	externKey               uint64
-	externSeed              uint32
-	externrefs              []externrefSlot
-	gcDomains               *gcStoreDomain
+	private       bool
+	runtimeClosed bool
+	liveInstances uint32
+	liveObjects   uint32
+	instances     map[*Instance]*referenceStoreInstance
+	typeKeys      map[uint64]structuralTypeRegistration
+	instanceTypes map[*Instance][]uint64
+	byIdentity    map[funcrefIdentity]*funcrefTokenEntry
+	byToken       map[uint64]*funcrefTokenEntry
+	gcByToken     map[uint64]gcRefTokenEntry
+	externKey     uint64
+	externSeed    uint32
+	externrefs    []externrefSlot
+	gcDomains     *gcStoreDomain
 }
 
 // gcStoreDomain gives Runtime-owned WasmGC instances one compact-reference
@@ -634,7 +633,7 @@ func equalGCConfigs(a, b gc.Config) bool {
 	return a == b
 }
 
-func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, preferred *gc.Collector, domainRestore bool) (*gc.Collector, *gcTypeMapping, error) {
+func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
 	if !gc.TelemetryAvailable() {
 		config.Telemetry = nil
 	}
@@ -645,10 +644,6 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	if s.runtimeClosed {
 		s.mu.Unlock()
 		return nil, nil, fmt.Errorf("wago: reference store is closed")
-	}
-	if s.domainSnapshotRestoring && !domainRestore {
-		s.mu.Unlock()
-		return nil, nil, fmt.Errorf("wago: Runtime GC domain restore is in progress")
 	}
 	var selected *gcStoreDomain
 	if preferred != nil {

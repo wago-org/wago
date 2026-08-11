@@ -148,9 +148,6 @@ func TestStagedGCRefTestAbstractMixedTableLifecycle(t *testing.T) {
 	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 		t.Fatalf("codec-loaded mixed product instantiate = %v", err)
 	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil {
-		t.Fatal("snapshot admitted mixed ref.test product")
-	}
 
 	t.Logf("abstract ref.test product: wasm=%d code=%d codec=%d tableState=%d conversionState=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(instancePluginState{}))
 }
