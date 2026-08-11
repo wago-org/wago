@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"reflect"
@@ -423,9 +424,9 @@ func TestGCHostReentryNativeFrameRoots(t *testing.T) {
 		for _, cfg := range profiles {
 			var in *Instance
 			calls := 0
-			in, err = Instantiate(candidate, InstantiateOptions{GC: cfg, Imports: Imports{"env.reenter": HostFunc(func(_ HostModule, _, results []uint64) {
+			in, err = Instantiate(candidate, InstantiateOptions{GC: cfg, Imports: Imports{"env.reenter": HostFunc(func(mod HostModule, _, results []uint64) {
 				calls++
-				got, callErr := in.Invoke("inner")
+				got, callErr := in.InvokeFromHost(context.Background(), mod, "inner")
 				if callErr != nil || !reflect.DeepEqual(got, []uint64{0}) {
 					panic(fmt.Sprintf("inner = %v, %v", got, callErr))
 				}

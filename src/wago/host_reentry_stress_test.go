@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	gruntime "runtime"
 	"testing"
 
@@ -37,10 +38,10 @@ func TestNestedHostReentrySurvivesGCAndTrap(t *testing.T) {
 	var in *Instance
 	hostCalls, nestedTraps := 0, 0
 	var err error
-	in, err = Instantiate(c, InstantiateOptions{Imports: Imports{"env.reenter": HostFunc(func(_ HostModule, p, r []uint64) {
+	in, err = Instantiate(c, InstantiateOptions{Imports: Imports{"env.reenter": HostFunc(func(mod HostModule, p, r []uint64) {
 		hostCalls++
 		gruntime.GC()
-		out, callErr := in.Invoke("inner", p[0])
+		out, callErr := in.InvokeFromHost(context.Background(), mod, "inner", p[0])
 		if callErr != nil {
 			nestedTraps++
 			r[0] = I32(40)

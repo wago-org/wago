@@ -24,22 +24,34 @@ type HostModule interface {
 }
 
 // InvokeFromHost invokes an export while caller is an active synchronous host
-// callback. If the callback re-enters its own parked Instance, Wago supplies an
-// isolated native stack and call buffers for the nested activation.
+// callback. The HostModule carries an unforgeable, callback-scoped invocation
+// identity. If that call chain re-enters a parked Instance, Wago supplies an
+// isolated native stack and call buffers for the nested activation. Retained or
+// unrelated HostModule values fail closed.
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
+	var id invocationID
 	switch h := caller.(type) {
 	case instanceHostModule:
 		if h.valid() {
 			active = h.in
+			id = h.invocationID
 		}
-	case staticHostModule:
-		active = h.in
 	}
-	if active == nil {
+	if active == nil || id == 0 {
 		return nil, fmt.Errorf("wago: re-entry requires the active host caller: %w", ErrPermissionDenied)
 	}
-	return in.InvokeContext(ctx, export, args...)
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	var cancel context.Context
+	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
+		cancel = ctx
+	}
+	results, err = in.invokeWithToken(export, args, cancel, id, false)
+	return results, contextInterruptError(ctx, err)
 }
 
 // ExternRefHostModule is the optional reference-store surface implemented by the
@@ -107,7 +119,6 @@ func (r *CallerResolver) Resolve(caller HostModule) (*Instance, error) {
 
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
-	next   uint64
 	active atomic.Uint64
 	waiter atomic.Pointer[hostCallWaiter]
 }
@@ -119,6 +130,8 @@ type hostCallWaiter struct {
 
 type instancePluginState struct {
 	hostScope         hostCallScope
+	invokeMu          sync.Mutex // serializes unrelated public calls across parked host callbacks
+	invocationID      invocationID
 	close             atomic.Pointer[instanceCloseState]
 	gcConfig          *GCConfig
 	origin            InstantiateOrigin
@@ -145,16 +158,14 @@ func (in *Instance) instantiateOrigin() InstantiateOrigin {
 }
 
 func (s *hostCallScope) begin(in *Instance) instanceHostModule {
-	s.next++
-	if s.next == 0 {
-		s.next++
-	}
-	s.active.Store(s.next)
-	return instanceHostModule{in: in, scope: s, generation: s.next}
+	parent := s.active.Load()
+	generation := uint64(newInvocationID())
+	s.active.Store(generation)
+	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: in.currentInvocationID()}
 }
 
-func (s *hostCallScope) end(generation uint64) {
-	if !s.active.CompareAndSwap(generation, 0) {
+func (s *hostCallScope) end(generation, parent uint64) {
+	if !s.active.CompareAndSwap(generation, parent) {
 		return
 	}
 	if waiter := s.waiter.Load(); waiter != nil && waiter.generation == generation {
@@ -180,6 +191,13 @@ func (in *Instance) ensurePluginState() *instancePluginState {
 
 func (in *Instance) beginHostCallScope() instanceHostModule {
 	return in.ensurePluginState().hostScope.begin(in)
+}
+
+func (in *Instance) currentInvocationID() invocationID {
+	if state := in.pluginState.Load(); state != nil {
+		return state.invocationID
+	}
+	return 0
 }
 
 type staticHostModule struct{ in *Instance }
@@ -522,9 +540,11 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 
 // instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct {
-	in         *Instance
-	scope      *hostCallScope
-	generation uint64
+	in               *Instance
+	scope            *hostCallScope
+	generation       uint64
+	parentGeneration uint64
+	invocationID     invocationID
 }
 
 func (h instanceHostModule) valid() bool {
@@ -732,14 +752,9 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 		defer gcTemps.release(in)
-		var mod HostModule
-		if in.rt == nil || !in.rt.scopedHostCalls() {
-			mod = staticHostModule{in: in}
-		} else {
-			caller := in.beginHostCallScope()
-			defer caller.scope.end(caller.generation)
-			mod = caller
-		}
+		caller := in.beginHostCallScope()
+		defer caller.scope.end(caller.generation, caller.parentGeneration)
+		var mod HostModule = caller
 		fn(mod, args, results)
 		if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -251,9 +252,9 @@ func TestRecursiveHostReentry(t *testing.T) {
 	}
 	var in *Instance
 	hostCalls := 0
-	host := HostFunc(func(_ HostModule, _, _ []uint64) {
+	host := HostFunc(func(mod HostModule, _, _ []uint64) {
 		hostCalls++
-		got, callErr := in.Invoke("called_by_host_func")
+		got, callErr := in.InvokeFromHost(context.Background(), mod, "called_by_host_func")
 		if callErr != nil || len(got) != 1 || AsI32(got[0]) != 100 {
 			t.Errorf("recursive host re-entry = %v, err %v", got, callErr)
 		}
@@ -268,6 +269,92 @@ func TestRecursiveHostReentry(t *testing.T) {
 	}
 	if hostCalls != 3 {
 		t.Fatalf("host calls = %d, want 3", hostCalls)
+	}
+}
+
+func TestConcurrentPublicInvokeWaitsForParkedHostCallback(t *testing.T) {
+	funcImport := append(wasmtest.Name("env"), wasmtest.Name("host")...)
+	funcImport = append(funcImport, 0x00, 0x00)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		))),
+		wasmtest.Section(2, wasmtest.Vec(funcImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x10, 0x00, // call env.host
+			0x0b,
+		}))),
+	)
+	compiled, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	defer compiled.Close()
+
+	type callback struct {
+		id     int32
+		caller HostModule
+	}
+	entered := make(chan callback, 2)
+	release := map[int32]chan struct{}{1: make(chan struct{}), 2: make(chan struct{})}
+	host := HostFunc(func(caller HostModule, params, results []uint64) {
+		id := AsI32(params[0])
+		entered <- callback{id: id, caller: caller}
+		<-release[id]
+		results[0] = I32(id + 10)
+	})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.host": host}})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+
+	type outcome struct {
+		id  int32
+		got []uint64
+		err error
+	}
+	done := make(chan outcome, 2)
+	invoke := func(id int32) {
+		got, err := in.Invoke("run", I32(id))
+		done <- outcome{id: id, got: got, err: err}
+	}
+	go invoke(1)
+	firstCallback := <-entered
+	if firstCallback.id != 1 {
+		t.Fatalf("first callback id = %d, want 1", firstCallback.id)
+	}
+	go invoke(2)
+
+	select {
+	case callback := <-entered:
+		close(release[1])
+		close(release[2])
+		<-done
+		<-done
+		t.Fatalf("unrelated invocation %d entered while invocation 1 was parked", callback.id)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release[1])
+	first := <-done
+	if first.id != 1 || first.err != nil || len(first.got) != 1 || AsI32(first.got[0]) != 11 {
+		t.Fatalf("first invocation = id %d, %v, %v; want 1, [11], nil", first.id, first.got, first.err)
+	}
+	secondCallback := <-entered
+	if secondCallback.id != 2 {
+		t.Fatalf("second callback id = %d, want 2", secondCallback.id)
+	}
+	if _, err := in.InvokeFromHost(context.Background(), firstCallback.caller, "run", I32(3)); err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("expired first callback re-entry = %v, want permission denied", err)
+	}
+	close(release[2])
+	second := <-done
+	if second.id != 2 || second.err != nil || len(second.got) != 1 || AsI32(second.got[0]) != 12 {
+		t.Fatalf("second invocation = id %d, %v, %v; want 2, [12], nil", second.id, second.got, second.err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -19,29 +20,47 @@ var (
 	nativeExecutionMu    sync.Mutex
 	nativeExecutionEpoch uint64 // guarded by nativeExecutionMu; advances on every public native entry
 	nativeActiveMu       sync.Mutex
-	nativeActive         = map[*Instance]uint32{}
+	nativeActive         = map[nativeActivation]uint32{}
 )
 
-func markNativeActive(in *Instance) {
-	nativeActiveMu.Lock()
-	nativeActive[in]++
-	nativeActiveMu.Unlock()
+type invocationID uint64
 
+var nextInvocationID atomic.Uint64
+
+func newInvocationID() invocationID {
+	for {
+		if id := invocationID(nextInvocationID.Add(1)); id != 0 {
+			return id
+		}
+	}
+}
+
+type nativeActivation struct {
+	in *Instance
+	id invocationID
+}
+
+func markNativeActive(in *Instance) {
+	activation := nativeActivation{in: in, id: in.currentInvocationID()}
+	nativeActiveMu.Lock()
+	nativeActive[activation]++
+	nativeActiveMu.Unlock()
 }
 
 func unmarkNativeActive(in *Instance) {
+	activation := nativeActivation{in: in, id: in.currentInvocationID()}
 	nativeActiveMu.Lock()
-	if nativeActive[in] <= 1 {
-		delete(nativeActive, in)
+	if nativeActive[activation] <= 1 {
+		delete(nativeActive, activation)
 	} else {
-		nativeActive[in]--
+		nativeActive[activation]--
 	}
 	nativeActiveMu.Unlock()
 }
 
-func isNativeActive(in *Instance) bool {
+func isNativeActive(in *Instance, id invocationID) bool {
 	nativeActiveMu.Lock()
-	active := nativeActive[in] != 0
+	active := id != 0 && nativeActive[nativeActivation{in: in, id: id}] != 0
 	nativeActiveMu.Unlock()
 	return active
 }

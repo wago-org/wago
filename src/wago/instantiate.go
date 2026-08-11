@@ -1557,7 +1557,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 }
 
 func callImportedStart(fn HostFunc, caller instanceHostModule) (err error) {
-	defer caller.scope.end(caller.generation)
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			switch value := recovered.(type) {
