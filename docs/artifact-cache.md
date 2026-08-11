@@ -52,7 +52,14 @@ registry order is interpreted under the build identity that owns that registry.
 The final SHA-256 key remains hexadecimal in the filesystem path. Artifact
 loading keeps its existing version, ABI, target, and malformed-input checks;
 cache corruption remains a safe miss followed by recompilation and atomic
-replacement.
+replacement. Publication uses a unique same-directory temporary file and a
+platform-specific replace-existing operation, including `MoveFileExW` on
+Windows. Existing symlink, directory, and non-regular destinations are rejected;
+failed writes leave the prior regular artifact intact and remove the temporary
+file. Because cache entries are regenerable, publication does not promise
+power-loss durability or sync the parent directory. Publication failures remain
+best-effort for execution but are reported (or delivered to `Cache.ReportError`)
+so a persistent miss is diagnosable.
 
 ## Validation
 

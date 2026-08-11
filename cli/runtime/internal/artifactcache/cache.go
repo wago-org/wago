@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/internal/atomicfile"
 )
 
 // Cache is a best-effort store for regenerable .wago artifacts. The runtime
@@ -21,6 +24,9 @@ import (
 type Cache struct {
 	Dir      string
 	Identity []byte
+	// ReportError observes best-effort publication failures. When nil, failures
+	// are reported on stderr so persistent cache misses are diagnosable.
+	ReportError func(error)
 }
 
 const cacheKeyFormat = 1
@@ -61,7 +67,13 @@ func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *
 		// Some valid compilation modes intentionally cannot be serialized.
 		return module, nil
 	}
-	_ = writeAtomic(path, artifact)
+	if err := publishArtifact(path, artifact); err != nil {
+		if cache.ReportError != nil {
+			cache.ReportError(err)
+		} else {
+			fmt.Fprintf(os.Stderr, "wago: artifact cache publication failed: %v\n", err)
+		}
+	}
 	return module, nil
 }
 
@@ -203,27 +215,11 @@ func writeUint64(h interface{ Write([]byte) (int, error) }, value uint64) {
 	h.Write(encoded[:])
 }
 
+var publishArtifact = writeAtomic
+
 func writeAtomic(path string, artifact []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	return atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+		_, err := writer.Write(artifact)
 		return err
-	}
-	temp, err := os.CreateTemp(dir, ".wago-*")
-	if err != nil {
-		return err
-	}
-	tempName := temp.Name()
-	defer os.Remove(tempName)
-	if err := temp.Chmod(0o644); err != nil {
-		temp.Close()
-		return err
-	}
-	if _, err := temp.Write(artifact); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tempName, path)
+	})
 }
