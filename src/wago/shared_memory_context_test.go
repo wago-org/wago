@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -72,8 +73,8 @@ func TestSharedMemoryHostReentryRestoresParkedContext(t *testing.T) {
 	var in *Instance
 	in, err = Instantiate(compiled, Imports{
 		"env.memory": memory,
-		"env.reenter": HostFunc(func(_ HostModule, params, results []uint64) {
-			nested, nestedErr := in.Invoke("inner", params[0])
+		"env.reenter": HostFunc(func(mod HostModule, params, results []uint64) {
+			nested, nestedErr := in.InvokeFromHost(context.Background(), mod, "inner", params[0])
 			if nestedErr != nil {
 				panic(nestedErr)
 			}

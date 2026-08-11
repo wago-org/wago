@@ -170,8 +170,8 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 	t.Run("recursive_entry", func(t *testing.T) {
 		var in *Instance
 		var nestedErr error
-		imports := Imports{"env.host_func": HostFunc(func(_ HostModule, _, _ []uint64) {
-			_, nestedErr = in.Invoke("called_by_host_func")
+		imports := Imports{"env.host_func": HostFunc(func(mod HostModule, _, _ []uint64) {
+			_, nestedErr = in.InvokeFromHost(context.Background(), mod, "called_by_host_func")
 		})}
 		in = instantiateEngineFixture(t, "recursive.wasm", imports)
 		defer in.Close()

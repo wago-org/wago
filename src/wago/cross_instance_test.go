@@ -1,9 +1,10 @@
-//go:build linux && amd64
+//go:build linux && amd64 && !tinygo
 
 package wago
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"testing"
 
@@ -17,6 +18,452 @@ func crossInstanceTrapCode(err error) TrapCode {
 		return trap.Code
 	}
 	return TrapNone
+}
+
+func TestHostMediatedCrossInstanceCallRestoresCallerMemoryContext(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	ctx := context.Background()
+	memoryOwner, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module (memory (export "memory") 1))`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memoryOwner.Close()
+	callerMemory, err := memoryOwner.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var caller *Instance
+
+	callee, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "host" (func $host))
+		(memory (export "memory") 1)
+		(func (export "ping") (call $host)))`), WithImports(Imports{
+		"env.host": HostFunc(func(mod HostModule, _ []uint64, _ []uint64) {
+			if _, callErr := caller.InvokeFromHost(ctx, mod, "middle"); callErr != nil {
+				panic(HostTrap{Err: callErr})
+			}
+		}),
+	}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer callee.Close()
+	calleeMemory, err := callee.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calleeMemory.Bytes()[1000+6159], calleeMemory.Bytes()[10000+6159] = 9, 8
+
+	caller, err = rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "ping" (func $ping))
+		(import "env" "nested" (func $nested))
+		(import "env" "memory" (memory 1))
+		(func (export "run") (result i32)
+			(local $src i32) (local $dst i32)
+			(i32.const 1000) (local.set $src)
+			(i32.const 10000) (local.set $dst)
+			(i32.store8 (i32.const 7159) (i32.const 0))
+			(i32.store8 (i32.const 16159) (i32.const 2))
+			(call $ping)
+			(memory.copy (local.get $dst) (local.get $src) (i32.const 6160))
+			(i32.load8_u (i32.const 16159)))
+		(func (export "middle") (call $nested))
+		(func (export "alloc")))`), WithImports(Imports{
+		"env.ping": HostFunc(func(mod HostModule, _, _ []uint64) {
+			if _, callErr := callee.InvokeFromHost(ctx, mod, "ping"); callErr != nil {
+				panic(HostTrap{Err: callErr})
+			}
+		}),
+		"env.nested": HostFunc(func(mod HostModule, _ []uint64, _ []uint64) {
+			if _, callErr := caller.InvokeFromHost(ctx, mod, "alloc"); callErr != nil {
+				panic(HostTrap{Err: callErr})
+			}
+		}),
+		"env.memory": callerMemory,
+	}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+
+	got, err := caller.Invoke("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 0 {
+		t.Fatalf("run = %v, want caller memory byte 0", got)
+	}
+	if calleeMemory.Bytes()[10000+6159] != 8 {
+		t.Fatalf("callee memory was modified after returning to caller: byte = %d", calleeMemory.Bytes()[10000+6159])
+	}
+}
+
+func TestCrossInstanceImportedTablePreservesFourArguments(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	ctx := context.Background()
+
+	target, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(memory (export "mem") 1)
+		(func (export "target") (param i32 i32 i32 i32) (result i32)
+			(i32.store (i32.const 0) (local.get 0))
+			(i32.store (i32.const 4) (local.get 1))
+			(i32.store (i32.const 8) (local.get 2))
+			(i32.store (i32.const 12) (local.get 3))
+			(local.get 2)))`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	mem, err := target.ExportedMemory("mem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := target.ExportedFunc("target")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tableOwner, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(type $sig (func (param i32 i32 i32 i32) (result i32)))
+		(import "env" "mem" (memory 1))
+		(import "env" "target" (func $target (type $sig)))
+		(table (export "table") 1 funcref)
+		(elem (i32.const 0) func $target))`), WithImports(Imports{"env.mem": mem, "env.target": fn}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tableOwner.Close()
+	table, err := tableOwner.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	caller, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(type $sig (func (param i32 i32 i32 i32) (result i32)))
+		(import "env" "mem" (memory 1))
+		(import "env" "table" (table 1 funcref))
+		(func (export "call") (result i32)
+			(call_indirect (type $sig)
+				(i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44)
+				(i32.const 0))))`), WithImports(Imports{"env.mem": mem, "env.table": table}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+
+	got, err := caller.Invoke("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 33 {
+		t.Fatalf("result = %v, want 33", got)
+	}
+	for i, want := range []uint32{11, 22, 33, 44} {
+		if got := binary.LittleEndian.Uint32(mem.Bytes()[i*4:]); got != want {
+			t.Fatalf("argument %d = %d, want %d", i, got, want)
+		}
+	}
+}
+
+func TestCrossInstanceImportedTableTargetMayCallHost(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	ctx := context.Background()
+	target, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "host" (func $host (param i32) (result i32)))
+		(memory (export "mem") 1)
+		(func (export "target") (param i32 i32 i32 i32) (result i32)
+			(local.get 2) (call $host))
+		(func (export "void-target") (param i32 i32 i32 i32)
+			(local.get 2) (call $host) drop))`), WithImports(Imports{"env.host": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] })}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	mem, err := target.ExportedMemory("mem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := target.ExportedFunc("target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	voidFn, err := target.ExportedFunc("void-target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tableOwner, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(type $sig (func (param i32 i32 i32 i32) (result i32)))
+		(type $void-sig (func (param i32 i32 i32 i32)))
+		(import "env" "mem" (memory 1))
+		(import "env" "target" (func $target (type $sig)))
+		(import "env" "void-target" (func $void-target (type $void-sig)))
+		(table (export "table") 1 funcref)
+		(table (export "void-table") 1 funcref)
+		(elem (table 0) (i32.const 0) func $target)
+		(elem (table 1) (i32.const 0) func $void-target))`), WithImports(Imports{"env.mem": mem, "env.target": fn, "env.void-target": voidFn}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tableOwner.Close()
+	table, err := tableOwner.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	voidTable, err := tableOwner.ExportedTable("void-table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(type $sig (func (param i32 i32 i32 i32) (result i32)))
+		(import "env" "mem" (memory 1))
+		(import "env" "table" (table 1 funcref))
+		(func (export "call") (result i32)
+			(call_indirect (type $sig) (i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44) (i32.const 0))))`), WithImports(Imports{"env.mem": mem, "env.table": table}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	got, err := caller.Invoke("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 33 {
+		t.Fatalf("result = %v, want 33", got)
+	}
+	callerFn, err := caller.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "call" (func $call (result i32)))
+		(func (export "call") (result i32)
+			(call $call)
+			(i32.const 9)
+			(i32.add)))`), WithImports(Imports{"env.call": callerFn}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outer.Close()
+	got, err = outer.Invoke("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("nested table result = %v, want 42", got)
+	}
+	voidCaller, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(type $sig (func (param i32 i32 i32 i32)))
+		(import "env" "mem" (memory 1))
+		(import "env" "table" (table 1 funcref))
+		(func (export "call") (result i32)
+			(call_indirect (type $sig) (i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44) (i32.const 0))
+			(i32.const 55)))`), WithImports(Imports{"env.mem": mem, "env.table": voidTable}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer voidCaller.Close()
+	got, err = voidCaller.Invoke("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 55 {
+		t.Fatalf("void result = %v, want 55", got)
+	}
+}
+
+func TestNestedCrossInstanceCallsMayResumeAfterHostCall(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	ctx := context.Background()
+
+	hostCalls := 0
+	memoryOwner, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module (memory (export "memory") 1))`), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memoryOwner.Close()
+	sharedMemory, err := memoryOwner.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "host" (func $host (param i32) (result i32)))
+		(import "env" "memory" (memory 1))
+		(func (export "call") (param i32) (result i32)
+			(local.get 0)
+			(call $host)
+			(i32.const 3)
+			(i32.add)))`), WithImports(Imports{"env.host": HostFunc(func(_ HostModule, params, results []uint64) {
+		hostCalls++
+		results[0] = params[0]
+	}), "env.memory": sharedMemory}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	cCall, err := c.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "next" (func $next (param i32) (result i32)))
+		(import "env" "memory" (memory 1))
+		(func (export "call") (param i32) (result i32)
+			(local.get 0)
+			(i32.const 2)
+			(i32.add)
+			(call $next)
+			(i32.const 5)
+			(i32.add)))`), WithImports(Imports{"env.next": cCall, "env.memory": sharedMemory}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	bCall, err := b.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "next" (func $next (param i32) (result i32)))
+		(import "env" "memory" (memory 1))
+		(func (export "call") (param i32) (result i32)
+			(local.get 0)
+			(call $next)
+			(i32.const 7)
+			(i32.add)))`), WithImports(Imports{"env.next": bCall, "env.memory": sharedMemory}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+
+	got, err := a.Invoke("call", I32(11))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 28 {
+		t.Fatalf("result = %v, want 28", got)
+	}
+	if hostCalls != 1 {
+		t.Fatalf("host calls = %d, want 1", hostCalls)
+	}
+}
+
+func TestCrossInstanceCycleMayResumeAfterHostCall(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	ctx := context.Background()
+
+	memoryOwner, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module (memory (export "memory") 1))`), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memoryOwner.Close()
+	sharedMemory, err := memoryOwner.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shim, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(type $callback (func (param i32 i32 i32 i32) (result i32)))
+		(import "env" "memory" (memory 1))
+		(table (export "table") 1 funcref)
+		(func (export "call") (param i32 i32 i32 i32) (result i32)
+			(local.get 0) (local.get 1) (local.get 2) (local.get 3)
+			(i32.const 0)
+			(call_indirect (type $callback))))`), WithImports(Imports{"env.memory": sharedMemory}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shim.Close()
+	table, err := shim.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimCall, err := shim.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	middle, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "shim" (func $shim (param i32 i32 i32 i32) (result i32)))
+		(import "env" "memory" (memory 1))
+		(func (export "call") (param i32 i32 i32 i32) (result i32)
+			(local.get 0) (local.get 1) (local.get 2) (local.get 3)
+			(call $shim)
+			(i32.const 5)
+			(i32.add))
+		(func (export "allocate") (param i32) (result i32)
+			(local.get 0)
+			(i32.const 1)
+			(i32.add)))`), WithImports(Imports{"env.shim": shimCall, "env.memory": sharedMemory}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer middle.Close()
+	middleCall, err := middle.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	middleAllocate, err := middle.ExportedFunc("allocate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostCalls := 0
+	adapter, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(import "env" "middle" (func $middle (param i32 i32 i32 i32) (result i32)))
+		(import "env" "allocate" (func $allocate (param i32) (result i32)))
+		(import "env" "host" (func $host (param i32 i32 i32 i32)))
+		(import "env" "memory" (memory 1))
+		(func (export "run") (result i32)
+			(i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44)
+			(call $middle)
+			(i32.const 7)
+			(i32.add))
+		(func (export "callback") (param i32 i32 i32 i32) (result i32)
+			(i32.const 8)
+			(call $allocate)
+			(drop)
+			(local.get 0) (local.get 1) (local.get 2) (local.get 3)
+			(call $host)
+			(local.get 2)))`), WithImports(Imports{
+		"env.middle":   middleCall,
+		"env.allocate": middleAllocate,
+		"env.memory":   sharedMemory,
+		"env.host": HostFunc(func(_ HostModule, params, results []uint64) {
+			hostCalls++
+		}),
+	}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adapter.Close()
+	callback, err := adapter.ExportedFunc("callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initializer, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
+		(type $callback (func (param i32 i32 i32 i32) (result i32)))
+		(import "env" "table" (table 1 funcref))
+		(import "env" "callback" (func $callback (type $callback)))
+		(elem (i32.const 0) func $callback))`), WithImports(Imports{"env.table": table, "env.callback": callback}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer initializer.Close()
+
+	got, err := adapter.Invoke("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 45 {
+		t.Fatalf("result = %v, want 45", got)
+	}
+	if hostCalls != 1 {
+		t.Fatalf("host calls = %d, want 1", hostCalls)
+	}
 }
 
 func funcImportEntry(module, name string, typeIdx uint32) []byte {

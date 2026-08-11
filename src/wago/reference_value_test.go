@@ -258,7 +258,7 @@ func TestHostCallWaitRegistrationLifecycle(t *testing.T) {
 	if !h.registerWait(w) || w.generation != h.generation {
 		t.Fatal("active host module did not register waiter")
 	}
-	scope.end(h.generation)
+	scope.end(h.generation, h.parentGeneration)
 	select {
 	case <-w.wake:
 	default:

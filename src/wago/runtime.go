@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -45,6 +46,7 @@ type Runtime struct {
 	caps         map[Capability]string
 	capOrder     []Capability
 	instructions map[string]*registeredInstruction
+	services     map[string]serviceProvision
 	closed       bool
 	pluginStops  []registeredPluginStop
 }
@@ -81,6 +83,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		moduleOwner:  map[string]string{},
 		caps:         map[Capability]string{},
 		instructions: map[string]*registeredInstruction{},
+		services:     map[string]serviceProvision{},
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -191,6 +194,23 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 				return &ExtensionError{Extension: info.ID, Operation: "use", Err: ErrExtensionConflict}
 			}
 		}
+		for _, provided := range reg.provides {
+			if previous, exists := rt.services[provided.name]; exists {
+				return &ExtensionError{Extension: info.ID, Operation: "register",
+					Err: fmt.Errorf("service %q is already provided with type %v: %w", provided.name, previous.typ, ErrExtensionConflict)}
+			}
+		}
+		for _, required := range reg.requires {
+			provided, exists := rt.services[required.serviceName()]
+			if !exists {
+				return &ExtensionError{Extension: info.ID, Operation: "resolve",
+					Err: fmt.Errorf("required service %q has no active provider", required.serviceName())}
+			}
+			if typ := required.serviceType(); typ != nil && !provided.typ.AssignableTo(typ) {
+				return &ExtensionError{Extension: info.ID, Operation: "resolve",
+					Err: fmt.Errorf("service %q type mismatch: provider has %v, consumer wants %v", required.serviceName(), provided.typ, typ)}
+			}
+		}
 		// Validate all imports before mutating any runtime state.
 		for _, imp := range reg.imports {
 			if imp.fn == nil {
@@ -210,6 +230,11 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 			key := ins.spec.Module + "." + ins.spec.Name
 			rt.instructions[key] = ins
 		}
+		for _, required := range reg.requires {
+			if err := required.bindService(rt.services[required.serviceName()].value); err != nil {
+				return &ExtensionError{Extension: info.ID, Operation: "resolve", Err: err}
+			}
+		}
 
 		// Commit.
 		for _, imp := range reg.imports {
@@ -223,6 +248,9 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 				rt.capOrder = append(rt.capOrder, spec.cap)
 			}
 			rt.caps[spec.cap] = info.ID
+		}
+		for _, provided := range reg.provides {
+			rt.services[provided.name] = provided
 		}
 		rt.hooks.appendFrom(reg.hooks)
 		for _, manager := range reg.managers {
@@ -268,6 +296,22 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 		return nil, err
 	}
 	mod := rt.buildModule(c)
+	// The historical Imports key joins module and field with a dot. Both Wasm
+	// names may themselves contain dots, so recover the exact pair from the
+	// validated source for structured metadata and component-model linking.
+	// The flat key remains unchanged for backwards-compatible Imports lookup.
+	if decoded, decodeErr := wasm.DecodeModule(source); decodeErr == nil {
+		funcIndex := 0
+		for i := range decoded.Imports {
+			im := &decoded.Imports[i]
+			if im.Type.Kind != wasm.ExternFunc || funcIndex >= len(mod.imports) {
+				continue
+			}
+			mod.imports[funcIndex].Module = im.Module
+			mod.imports[funcIndex].Name = im.Name
+			funcIndex++
+		}
+	}
 	if len(rt.hooks.afterCompile) > 0 {
 		for _, fn := range rt.hooks.afterCompile {
 			if err := fn(ctx, mod); err != nil {
@@ -315,10 +359,11 @@ func (rt *Runtime) Module(c *Compiled) (*Module, error) {
 type InstantiateOption func(*instantiateConfig)
 
 type instantiateConfig struct {
-	imports Imports
-	gc      GCConfig
-	hasGC   bool
-	policy  Policy
+	imports       Imports
+	gc            GCConfig
+	hasGC         bool
+	policy        Policy
+	forceSyncHost bool
 }
 
 // WithPolicy applies a capability/resource policy to the instance. A module that
@@ -345,6 +390,13 @@ func WithImports(im Imports) InstantiateOption {
 // WithGC sets the GC configuration for this instance.
 func WithGC(gc GCConfig) InstantiateOption {
 	return func(c *instantiateConfig) { c.gc, c.hasGC = gc, true }
+}
+
+// WithSynchronousHostCalls forces the parked native host-call protocol even
+// when a module has no direct function imports. Component-model adapters need
+// this when host functions can arrive indirectly through an imported table.
+func WithSynchronousHostCalls() InstantiateOption {
+	return func(c *instantiateConfig) { c.forceSyncHost = true }
 }
 
 // Instantiate instantiates a module, wiring the runtime's extension imports plus
@@ -412,7 +464,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		}
 	}
 
-	return rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, origin)
+	return rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin)
 }
 
 func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
@@ -425,10 +477,10 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
-func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC bool, origin InstantiateOrigin) (*Instance, error) {
+func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin) (*Instance, error) {
 	iopts := InstantiateOptions{
 		Imports: imports, store: rt.refStore, runtime: rt, origin: origin,
-		forceSyncHost: rt.callerResolverActive.Load(),
+		forceSyncHost: forceSyncHost || rt.callerResolverActive.Load(),
 	}
 	if hasGC {
 		iopts.GC = gc

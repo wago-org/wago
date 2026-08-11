@@ -182,7 +182,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	if hasGC {
 		gc = *state.gcConfig
 	}
-	child, err := rt.instantiateWithHooksOrigin(rt.buildModule(parent.c), imports, gc, hasGC, InstantiateManaged)
+	child, err := rt.instantiateWithHooksOrigin(rt.buildModule(parent.c), imports, gc, hasGC, false, InstantiateManaged)
 	if err != nil {
 		m.mu.Lock()
 		m.live--

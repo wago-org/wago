@@ -134,10 +134,18 @@ runtime from the locked versions.
 | `instance.lifecycle` | Observe or affect instantiation and instance close. |
 | `instance.invoke` | Veto or observe runtime-managed function calls. |
 | `instance.manage` | Create and own restricted managed instances for workers, pools, schedulers, and routers. |
+| `core.runtime` | Directly compile, link, instantiate, and own core modules as a trusted execution-model plugin. |
 
 These grants do not sandbox arbitrary Go code. Plugins are forced-open-source,
 compiled into the consumer's binary, and expected to be audited like any other
 Go dependency. The grants control access to privileged Wago API surfaces.
+Plugin capability names are exact `resource.action` identifiers. The dot is a
+namespace separator, not an inheritance operator; parent and wildcard grants do
+not exist.
+
+`core.runtime` is reserved for audited execution models such as
+`wago-org/component-model`; ordinary plugins should request narrower APIs or
+consume the execution model's versioned service.
 
 Guest permissions such as `fs.read`, `net.outbound`, or `wasi` are different:
 plugins provide those to Wasm modules, and runtime `Policy` controls whether a

@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"unsafe"
@@ -109,14 +110,86 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	defer func() {
 		nativeExecutionMu.Lock()
 		active.clearGCHostResultRoots(activation)
-		// If no nested or competing public entry ran while host code owned the Go
-		// stack, the parked callee's basedata is still installed. Avoid rewriting
-		// all eight context words on this overwhelmingly common return path.
 		if nativeExecutionEpoch != epoch {
 			if err := active.bindNativeContext(); err != nil {
 				panic(invalidHostReference{err: err})
 			}
+			active.jm.SetStackFence(active.eng.StackLimit())
+			if err := active.jm.BindTrapCell(active.trap); err != nil {
+				panic(invalidHostReference{err: err})
+			}
+			// bindNativeContext restores the instance's immutable context image,
+			// whose custom-context word names its original control frame. A nested
+			// host re-entry has a distinct live frame; republish that exact frame
+			// before resuming its parked native activation.
+			active.jm.SetCustomCtx(ctrl)
 		}
 	}()
+	// Only arbitrary host code can synchronously re-enter this instance. The
+	// active marker includes the callback-scoped invocation identity, so another
+	// call chain cannot masquerade as this parked activation.
+	markNativeActive(active)
+	defer unmarkNativeActive(active)
 	active.hostCall(ctrl, importIdx, args, results)
+}
+
+// prepareHostReentryState gives arbitrary host code an isolated native stack,
+// control frame, trap cell, and call scratch. A host function may synchronously
+// call this same Instance through a component cycle while the outer activation
+// is parked. Reusing any of those buffers corrupts the parked frame and can turn
+// an ordinary guest trap into a process fault.
+func (in *Instance) prepareHostReentryState() (func(), error) {
+	eng, err := coreruntime.AcquireEngine()
+	if err != nil {
+		return nil, fmt.Errorf("acquire host re-entry engine: %w", err)
+	}
+	ctrl := make([]byte, coreruntime.HostCtrlFrameBytes)
+	if err := coreruntime.InitHostCtrlFrame(ctrl); err != nil {
+		_ = coreruntime.ReleaseEngine(eng)
+		return nil, err
+	}
+
+	outerEngine, outerCtrl := in.eng, in.ctrl
+	outerArgs, outerResults, outerTrap := in.serArgs, in.results, in.trap
+	outerResultVals := in.resultVals
+	outerInvokeCache, outerInvokeCacheNext := in.ic, in.icNext
+	outerInstructionState := in.instructionState
+	in.eng = eng
+	in.ctrl = ctrl
+	in.serArgs = make([]byte, len(outerArgs))
+	in.results = make([]byte, len(outerResults))
+	in.trap = make([]byte, len(outerTrap))
+	in.resultVals = make([]uint64, len(outerResultVals), cap(outerResultVals))
+	in.ic = [4]invokeCache{}
+	in.icNext = 0
+	in.instructionState = instructionState{}
+	if err := registerHostControl(in); err != nil {
+		in.eng, in.ctrl = outerEngine, outerCtrl
+		in.serArgs, in.results, in.trap = outerArgs, outerResults, outerTrap
+		in.resultVals = outerResultVals
+		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
+		in.instructionState = outerInstructionState
+		_ = coreruntime.ReleaseEngine(eng)
+		return nil, err
+	}
+	// Cross-instance and imported-host dispatch descriptors restore their target
+	// from this stable context image. Publish the activation's private control
+	// frame there as well as in basedata, otherwise a nested import switches back
+	// to the instance's original frame and overwrites the parked outer activation.
+	nativeCtx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), coreruntime.InstanceContextBytes)
+	outerCustomCtx := binary.LittleEndian.Uint64(nativeCtx)
+	binary.LittleEndian.PutUint64(nativeCtx, uint64(offHeapSlicePtr(ctrl)))
+
+	return func() {
+		binary.LittleEndian.PutUint64(nativeCtx, outerCustomCtx)
+		unregisterHostControl(in)
+		in.eng, in.ctrl = outerEngine, outerCtrl
+		in.serArgs, in.results, in.trap = outerArgs, outerResults, outerTrap
+		in.resultVals = outerResultVals
+		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
+		in.instructionState = outerInstructionState
+		if err := coreruntime.ReleaseEngine(eng); err != nil {
+			panic(invalidHostReference{err: fmt.Errorf("release host re-entry engine: %w", err)})
+		}
+	}, nil
 }
