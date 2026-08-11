@@ -309,8 +309,15 @@ func TestCapabilityAccessorsRegisterHooks(t *testing.T) {
 	}
 	invokeHooks.Before(func(*InvokeContext) error { return nil })
 	invokeHooks.After(func(*InvokeContext, []Value, error) {})
+	coreRuntime, err := r.CoreRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coreRuntime.Compile(wasmtest.Module()); err == nil {
+		t.Fatal("inactive core runtime access succeeded")
+	}
 
-	if len(r.used) != 5 || len(r.activate) != 1 || len(r.hooks.beforeCompile) != 1 || len(r.hooks.afterCompile) != 1 ||
+	if len(r.used) != 6 || len(r.activate) != 2 || len(r.hooks.internalClose) != 1 || len(r.hooks.beforeCompile) != 1 || len(r.hooks.afterCompile) != 1 ||
 		len(r.hooks.beforeInstantiate) != 1 || len(r.hooks.afterInstantiate) != 1 || len(r.hooks.onInstantiateError) != 1 ||
 		len(r.hooks.beforeClose) != 1 || len(r.hooks.afterClose) != 1 || len(r.hooks.beforeInvoke) != 1 || len(r.hooks.afterInvoke) != 1 ||
 		len(r.hooks.onRuntimeClose) != 1 {
@@ -334,8 +341,40 @@ func TestCapabilityAccessorsEnforceGrants(t *testing.T) {
 	if _, err := r.HostImports(); err == nil {
 		t.Fatal("ungranted host imports access succeeded")
 	}
+	if _, err := r.CoreRuntime(); err == nil {
+		t.Fatal("ungranted core runtime access succeeded")
+	}
 	if _, err := (*Registry)(nil).InstanceInvocation(); err == nil {
 		t.Fatal("nil registry access succeeded")
+	}
+}
+
+func TestCoreRuntimeAccessActivatesAndRevokesWithRuntime(t *testing.T) {
+	reg := &Registry{
+		hooks:  &HookRegistry{},
+		grants: map[PluginCapability]struct{}{PluginCoreRuntime: {}},
+	}
+	access, err := reg.CoreRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := NewRuntime()
+	rt.hooks.appendFrom(reg.hooks)
+	for _, activate := range reg.activate {
+		activate(rt)
+	}
+	mod, err := access.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatalf("Compile before close: %v", err)
+	}
+	if err := mod.Close(); err != nil {
+		t.Fatalf("module Close: %v", err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := access.Compile(wasmtest.Module()); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("Compile after close = %v, want permission denied", err)
 	}
 }
 

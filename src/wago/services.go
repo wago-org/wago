@@ -41,6 +41,16 @@ func (r *ServiceRef) bindService(value any) error {
 	return nil
 }
 
+func (r *ServiceRef) close() error {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	r.value, r.bound = nil, false
+	r.mu.Unlock()
+	return nil
+}
+
 type serviceBinder interface {
 	serviceName() string
 	serviceType() reflect.Type
@@ -63,12 +73,29 @@ func ProvideService(reg *Registry, name string, value any) error {
 	return nil
 }
 
-// RequireService declares a service dependency with an exact expected type.
-func RequireService(reg *Registry, name string) (*ServiceRef, error) {
+// RequireService declares a service dependency. An optional pointer type
+// witness records the expected type for transactional graph validation; typed
+// plugin helpers supply it automatically.
+func RequireService(reg *Registry, name string, typeWitness ...any) (*ServiceRef, error) {
 	if reg == nil || name == "" {
 		return nil, fmt.Errorf("wago: invalid service requirement")
 	}
-	ref := &ServiceRef{name: name}
+	if len(typeWitness) > 1 {
+		return nil, fmt.Errorf("wago: service %q has multiple type witnesses", name)
+	}
+	var typ reflect.Type
+	if len(typeWitness) == 1 {
+		witness := reflect.TypeOf(typeWitness[0])
+		if witness == nil || witness.Kind() != reflect.Pointer {
+			return nil, fmt.Errorf("wago: service %q type witness must be a typed pointer", name)
+		}
+		typ = witness.Elem()
+	}
+	ref := &ServiceRef{name: name, typ: typ}
 	reg.requires = append(reg.requires, ref)
+	if reg.hooks == nil {
+		reg.hooks = &HookRegistry{}
+	}
+	reg.hooks.internalClose = append(reg.hooks.internalClose, ref.close)
 	return ref, nil
 }

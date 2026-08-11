@@ -71,7 +71,7 @@ func TestManagedCallerAndWatcherDuringHostCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WatchCaller: %v", err)
 	}
-	in.pluginState.Load().hostScope.end(h.generation)
+	in.pluginState.Load().hostScope.end(h.generation, h.parentGeneration)
 	select {
 	case <-wake:
 	default:

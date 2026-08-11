@@ -35,7 +35,8 @@ func Provide[T any](reg *wago.Registry, key ServiceKey[T], value T) error {
 }
 
 func Require[T any](reg *wago.Registry, key ServiceKey[T]) (*Ref[T], error) {
-	raw, err := wago.RequireService(reg, key.name)
+	var typeWitness *T
+	raw, err := wago.RequireService(reg, key.name, typeWitness)
 	if err != nil {
 		return nil, err
 	}

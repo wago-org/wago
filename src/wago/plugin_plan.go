@@ -203,7 +203,7 @@ func resolveServiceOrder(plan []plannedExtension) ([]plannedExtension, error) {
 			if !ok {
 				return nil, &PluginError{Plugin: p.name, Phase: PluginPhaseResolve, Err: fmt.Errorf("required service %q has no provider", required.serviceName())}
 			}
-			if required.serviceType() != nil && provider.item.typ != required.serviceType() {
+			if required.serviceType() != nil && !provider.item.typ.AssignableTo(required.serviceType()) {
 				return nil, &PluginError{Plugin: p.name, Phase: PluginPhaseResolve, Err: fmt.Errorf("service %q type mismatch: provider has %v, consumer wants %v", required.serviceName(), provider.item.typ, required.serviceType())}
 			}
 			addEdge(provider.plugin, p.name)
@@ -383,6 +383,9 @@ func (rt *Runtime) commitPluginPlan(plan []plannedExtension) error {
 				rt.capOrder = append(rt.capOrder, spec.cap)
 			}
 			rt.caps[spec.cap] = p.info.ID
+		}
+		for _, provided := range p.reg.provides {
+			rt.services[provided.name] = provided
 		}
 		rt.hooks.appendFrom(p.reg.hooks)
 		for _, manager := range p.reg.managers {

@@ -142,9 +142,9 @@ func TestMemoryGrowThroughHostReentry(t *testing.T) {
 	var in *Instance
 	calls := 0
 	var nestedErr error
-	in, nestedErr = Instantiate(compiled, Imports{"env.reenter": HostFunc(func(_ HostModule, _, _ []uint64) {
+	in, nestedErr = Instantiate(compiled, Imports{"env.reenter": HostFunc(func(mod HostModule, _, _ []uint64) {
 		calls++
-		_, nestedErr = in.Invoke("grow")
+		_, nestedErr = in.InvokeFromHost(context.Background(), mod, "grow")
 	})})
 	if nestedErr != nil {
 		t.Fatalf("instantiate: %v", nestedErr)

@@ -10,6 +10,7 @@ var capabilityDescriptions = map[string]string{
 	"instance.invoke":    "hook guest invocations",
 	"runtime.lifecycle":  "hook runtime start/stop",
 	"instance.manage":    "create and manage guest instances",
+	"core.runtime":       "compile and compose core modules as a trusted execution model",
 }
 
 func CapabilityDescription(capability string) string {

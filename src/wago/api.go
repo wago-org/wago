@@ -3974,6 +3974,9 @@ func Load(b []byte) (*Compiled, error) {
 // little-endian uint64 slots in the argument and result slices. Public funcref
 // slots use opaque store-owned tokens: zero is null, and nonzero tokens are valid
 // only in the Runtime store (or standalone private store) that issued them.
+// Calls on one Instance are serialized, including while another call is parked
+// in a host callback. A host callback that must synchronously re-enter Wasm must
+// use InvokeFromHost with the HostModule value it received.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	return in.invoke(export, args, nil)
 }
@@ -4010,6 +4013,43 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 }
 
 func (in *Instance) invoke(export string, args []uint64, cancel context.Context) ([]uint64, error) {
+	// Close hooks run after the invocation gate is published and may probe that
+	// later calls fail closed. Check the gate before waiting for the per-instance
+	// serialization lock so such a probe cannot deadlock behind the activation
+	// that Close is interrupting. invokeWithToken checks again after locking to
+	// close the race with a concurrent Close.
+	if in.invocationState.Load()&instanceInvocationClosed != 0 {
+		return nil, fmt.Errorf("invoke %q: instance is closed", export)
+	}
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	id := newInvocationID()
+	state.invocationID = id
+	defer func() {
+		state.invocationID = 0
+		state.invokeMu.Unlock()
+	}()
+	return in.invokeWithToken(export, args, cancel, id, true)
+}
+
+func (in *Instance) invokeWithToken(export string, args []uint64, cancel context.Context, id invocationID, gateHeld bool) ([]uint64, error) {
+	reentry := !gateHeld && isNativeActive(in, id)
+	if !reentry && !gateHeld {
+		state := in.ensurePluginState()
+		state.invokeMu.Lock()
+		state.invocationID = id
+		defer func() {
+			state.invocationID = 0
+			state.invokeMu.Unlock()
+		}()
+	}
+	if reentry {
+		restore, err := in.prepareHostReentryState()
+		if err != nil {
+			return nil, err
+		}
+		defer restore()
+	}
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke %q: %w", export, err)
 	}
@@ -4341,13 +4381,9 @@ func (in *Instance) replayHostLog() (err error) {
 		if int(imp) < len(in.c.Imports) {
 			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
 				params[0] = uint64(uint32(arg))
-				if in.rt == nil || !in.rt.scopedHostCalls() {
-					fn(staticHostModule{in: in}, params[:], nil)
-					continue
-				}
 				caller := in.beginHostCallScope()
 				func() {
-					defer caller.scope.end(caller.generation)
+					defer caller.scope.end(caller.generation, caller.parentGeneration)
 					fn(caller, params[:], nil)
 				}()
 			}
@@ -4387,6 +4423,20 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			switch value := recovered.(type) {
+			case HostTrap:
+				if value.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = value.Err
+				}
+				results = nil
+			case *HostTrap:
+				if value == nil || value.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = value.Err
+				}
+				results = nil
 			case HostExit:
 				err = &ExitError{Code: value.Code}
 				results = nil
@@ -4402,13 +4452,9 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 		}
 	}()
 	fn := in.syncHosts[importIdx]
-	if in.rt == nil || !in.rt.scopedHostCalls() {
-		fn(staticHostModule{in: in}, params, results)
-	} else {
-		caller := in.beginHostCallScope()
-		defer caller.scope.end(caller.generation)
-		fn(caller, params, results)
-	}
+	caller := in.beginHostCallScope()
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	fn(caller, params, results)
 	return results, nil
 }
 

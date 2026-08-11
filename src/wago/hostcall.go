@@ -7,6 +7,7 @@ import (
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -20,6 +21,37 @@ type HostModule interface {
 	// (empty if the module declares no memory). Writes are visible to wasm; the
 	// slice is valid only for the duration of the host call.
 	Memory() []byte
+}
+
+// InvokeFromHost invokes an export while caller is an active synchronous host
+// callback. The HostModule carries an unforgeable, callback-scoped invocation
+// identity. If that call chain re-enters a parked Instance, Wago supplies an
+// isolated native stack and call buffers for the nested activation. Retained or
+// unrelated HostModule values fail closed.
+func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
+	var active *Instance
+	var id invocationID
+	switch h := caller.(type) {
+	case instanceHostModule:
+		if h.valid() {
+			active = h.in
+			id = h.invocationID
+		}
+	}
+	if active == nil || id == 0 {
+		return nil, fmt.Errorf("wago: re-entry requires the active host caller: %w", ErrPermissionDenied)
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	var cancel context.Context
+	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
+		cancel = ctx
+	}
+	results, err = in.invokeWithToken(export, args, cancel, id, false)
+	return results, contextInterruptError(ctx, err)
 }
 
 // ExternRefHostModule is the optional reference-store surface implemented by the
@@ -87,7 +119,6 @@ func (r *CallerResolver) Resolve(caller HostModule) (*Instance, error) {
 
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
-	next   uint64
 	active atomic.Uint64
 	waiter atomic.Pointer[hostCallWaiter]
 }
@@ -99,6 +130,8 @@ type hostCallWaiter struct {
 
 type instancePluginState struct {
 	hostScope         hostCallScope
+	invokeMu          sync.Mutex // serializes unrelated public calls across parked host callbacks
+	invocationID      invocationID
 	close             atomic.Pointer[instanceCloseState]
 	gcConfig          *GCConfig
 	origin            InstantiateOrigin
@@ -125,16 +158,14 @@ func (in *Instance) instantiateOrigin() InstantiateOrigin {
 }
 
 func (s *hostCallScope) begin(in *Instance) instanceHostModule {
-	s.next++
-	if s.next == 0 {
-		s.next++
-	}
-	s.active.Store(s.next)
-	return instanceHostModule{in: in, scope: s, generation: s.next}
+	parent := s.active.Load()
+	generation := uint64(newInvocationID())
+	s.active.Store(generation)
+	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: in.currentInvocationID()}
 }
 
-func (s *hostCallScope) end(generation uint64) {
-	if !s.active.CompareAndSwap(generation, 0) {
+func (s *hostCallScope) end(generation, parent uint64) {
+	if !s.active.CompareAndSwap(generation, parent) {
 		return
 	}
 	if waiter := s.waiter.Load(); waiter != nil && waiter.generation == generation {
@@ -160,6 +191,13 @@ func (in *Instance) ensurePluginState() *instancePluginState {
 
 func (in *Instance) beginHostCallScope() instanceHostModule {
 	return in.ensurePluginState().hostScope.begin(in)
+}
+
+func (in *Instance) currentInvocationID() invocationID {
+	if state := in.pluginState.Load(); state != nil {
+		return state.invocationID
+	}
+	return 0
 }
 
 type staticHostModule struct{ in *Instance }
@@ -502,9 +540,11 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 
 // instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct {
-	in         *Instance
-	scope      *hostCallScope
-	generation uint64
+	in               *Instance
+	scope            *hostCallScope
+	generation       uint64
+	parentGeneration uint64
+	invocationID     invocationID
 }
 
 func (h instanceHostModule) valid() bool {
@@ -712,14 +752,9 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 		defer gcTemps.release(in)
-		var mod HostModule
-		if in.rt == nil || !in.rt.scopedHostCalls() {
-			mod = staticHostModule{in: in}
-		} else {
-			caller := in.beginHostCallScope()
-			defer caller.scope.end(caller.generation)
-			mod = caller
-		}
+		caller := in.beginHostCallScope()
+		defer caller.scope.end(caller.generation, caller.parentGeneration)
+		var mod HostModule = caller
 		fn(mod, args, results)
 		if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
@@ -883,6 +918,12 @@ func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64,
 // reset on the engine's next entry.
 type HostExit struct{ Code int32 }
 
+// HostTrap aborts the current Wasm invocation with a host-provided error.
+// Host functions should panic with HostTrap instead of panicking with an
+// arbitrary value when they cannot represent failure in their Wasm signature.
+// Wago recovers HostTrap at the native boundary and returns Err to the caller.
+type HostTrap struct{ Err error }
+
 // ExitError is returned by Invoke when a host function requested termination via
 // panic(HostExit{...}). A zero code is a normal exit.
 type ExitError struct{ Code int32 }
@@ -903,25 +944,6 @@ func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (er
 }
 
 func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []byte, waitParent context.Context) (err error) {
-	var outerEngine *runtime.Engine
-	if state := in.existingPublicGCState(); state != nil {
-		state.mu.Lock()
-		reentrant := state.hostActivationCount != 0
-		state.mu.Unlock()
-		if reentrant {
-			reentryEngine, acquireErr := runtime.AcquireEngine()
-			if acquireErr != nil {
-				return fmt.Errorf("wago: acquire nested Wasm engine: %w", acquireErr)
-			}
-			outerEngine, in.eng = in.eng, reentryEngine
-			defer func() {
-				in.eng = outerEngine
-				if releaseErr := runtime.ReleaseEngine(reentryEngine); err == nil && releaseErr != nil {
-					err = releaseErr
-				}
-			}()
-		}
-	}
 	locked, err := in.beginNativeEntry()
 	if err != nil {
 		return err
@@ -932,6 +954,22 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
+			switch trap := r.(type) {
+			case HostTrap:
+				if trap.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = trap.Err
+				}
+				return
+			case *HostTrap:
+				if trap == nil || trap.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = trap.Err
+				}
+				return
+			}
 			if ex, ok := r.(HostExit); ok {
 				err = &ExitError{Code: ex.Code}
 				return
@@ -967,7 +1005,13 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 			panic(r)
 		}
 	}()
+	if err := in.jm.BindTrapCell(activeTrap); err != nil {
+		return err
+	}
 	in.jm.SetStackFence(in.eng.StackLimit())
+	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
+		in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
+	}
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}

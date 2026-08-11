@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -903,9 +904,9 @@ func TestGCArm64HostReentryRoots(t *testing.T) {
 		} {
 			var in *Instance
 			calls := 0
-			in, err = Instantiate(candidate, InstantiateOptions{GC: profile, Imports: Imports{"env.reenter": HostFunc(func(_ HostModule, _, results []uint64) {
+			in, err = Instantiate(candidate, InstantiateOptions{GC: profile, Imports: Imports{"env.reenter": HostFunc(func(caller HostModule, _, results []uint64) {
 				calls++
-				got, callErr := in.Invoke("inner")
+				got, callErr := in.InvokeFromHost(context.Background(), caller, "inner")
 				if callErr != nil || !reflect.DeepEqual(got, []uint64{0}) {
 					panic(fmt.Sprintf("inner = %v, %v", got, callErr))
 				}

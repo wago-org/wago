@@ -28,6 +28,8 @@ type (
 	CompositeTypeKind          = impl.CompositeTypeKind
 	ConfigSchemaProvider       = impl.ConfigSchemaProvider
 	CoreFeatures               = impl.CoreFeatures
+	CoreRuntime                = impl.CoreRuntime
+	CoreRuntimeAccess          = impl.CoreRuntimeAccess
 	CustomSignature            = impl.CustomSignature
 	CustomType                 = impl.CustomType
 	CustomTypeSpec             = impl.CustomTypeSpec
@@ -80,6 +82,7 @@ type (
 	HostFuncRef                = impl.HostFuncRef
 	HostImportAccess           = impl.HostImportAccess
 	HostModule                 = impl.HostModule
+	HostTrap                   = impl.HostTrap
 	I31Ref                     = impl.I31Ref
 	ImportFuncBuilder          = impl.ImportFuncBuilder
 	ImportKind                 = impl.ImportKind
@@ -234,6 +237,7 @@ const (
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
 	PluginCompileHooks                         = impl.PluginCompileHooks
+	PluginCoreRuntime                          = impl.PluginCoreRuntime
 	PluginHostEnvironment                      = impl.PluginHostEnvironment
 	PluginHostImports                          = impl.PluginHostImports
 	PluginInstanceHooks                        = impl.PluginInstanceHooks
@@ -441,8 +445,8 @@ func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExt
 
 func RegisteredPluginNames() []string { return impl.RegisteredPluginNames() }
 
-func RequireService(reg *Registry, name string) (*ServiceRef, error) {
-	return impl.RequireService(reg, name)
+func RequireService(reg *Registry, name string, typeWitness ...any) (*ServiceRef, error) {
+	return impl.RequireService(reg, name, typeWitness...)
 }
 
 func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
@@ -482,3 +486,5 @@ func WithPluginGrants(caps ...PluginCapability) UseOption { return impl.WithPlug
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
 func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
+
+func WithSynchronousHostCalls() InstantiateOption { return impl.WithSynchronousHostCalls() }

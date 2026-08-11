@@ -22,7 +22,7 @@ const (
 func validPluginCapability(cap PluginCapability) bool {
 	switch cap {
 	case PluginHostImports, PluginHostEnvironment, PluginCompileHooks, PluginInstanceHooks,
-		PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances:
+		PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances, PluginCoreRuntime:
 		return true
 	default:
 		return false
@@ -156,14 +156,18 @@ func (e *PluginError) Error() string {
 
 func (e *PluginError) Unwrap() error { return e.Err }
 
-// Capability names a coarse permission an extension provides and a policy can
-// allow or deny. Names are stable strings so they can appear in configs and
-// audit output.
+// Capability names a coarse guest permission an extension provides and a
+// policy can allow or deny. Guest permissions are distinct from the host-side
+// PluginCapability authority used to integrate a plugin with Wago.
 type Capability string
 
-// PluginCapability authorizes one privileged plugin API surface. These are host
-// powers, not guest permissions: a plugin may provide guest capability "fs.read"
-// while requiring plugin capability "host.imports" to implement its imports.
+// PluginCapability authorizes one privileged plugin interface. Names use the
+// exact "resource.action" form. Dots organize names only: capabilities do not
+// inherit authority and no wildcard or parent grant is implied.
+//
+// These are host powers, not guest permissions: a plugin may provide guest
+// capability "fs.read" while requiring plugin capability "host.imports" to
+// implement its imports.
 type PluginCapability string
 
 const (
@@ -174,6 +178,11 @@ const (
 	PluginInvokeHooks      PluginCapability = "instance.invoke"
 	PluginRuntimeHooks     PluginCapability = "runtime.lifecycle"
 	PluginManagedInstances PluginCapability = "instance.manage"
+	// PluginCoreRuntime grants a narrow core compile and instantiate surface. It
+	// is intended for trusted execution-model plugins
+	// such as the Component Model, which must compose and own multiple core
+	// modules. Prefer narrower capabilities for ordinary host plugins.
+	PluginCoreRuntime PluginCapability = "core.runtime"
 )
 
 // PluginConfig is one manifest-selected plugin plus its explicit authority and

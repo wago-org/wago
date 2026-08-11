@@ -115,6 +115,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 
 | Feature | Planned | Status |
 |---|:---:|---|
+| WebAssembly Component Model | ✓ | ✅ Preview 2 component binaries execute through the capability-gated [`wago-org/component-model`](https://github.com/wago-org/component-model) plugin, including typed values and resources, canonical ABI lift/lower, nested composition, typed host imports, and safe synchronous adapter re-entry. It provides the versioned `wago-org/component-model/runtime/v1` service for WASI and other component-world plugins while remaining absent from core-only dependency graphs. The plugin also contains an experimental Preview 3 async task/stream substrate; WASI policy and capabilities remain in the separate [`wago-org/wasi`](https://github.com/wago-org/wasi) host module. |
 | Sign-extension ops (`i32.extend8_s`, …) | ✓ | ✅ done (decoder/validator plus railshot runtime/codegen coverage for all five scalar opcodes) |
 | Non-trapping float→int (`trunc_sat`) | ✓ | ✅ done (decoder/validator plus railshot runtime/codegen coverage for all eight scalar opcodes, including NaN, negative unsigned, and overflow clamp cases) |
 | Multi-value (multiple block/func results) | ✓ | ✅ done (decoder/validator, block/if/branch/br_if/br_table/function results, direct and cross-instance calls, public `Invoke`/typed `Call`, and `.wago` metadata are executable; ARM64 additionally returns two integer results in `X0/X1`, while broader optimized register-return shapes remain a performance item) |
