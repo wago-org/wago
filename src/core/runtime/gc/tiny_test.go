@@ -645,6 +645,12 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 			cfg.TinyStepBudget = 1 + uint32(data[0]&3)
 		}
 		c := newTinyTestCollector(t, cfg)
+		if len(data) > 1 {
+			// Begin near arbitrary epoch and wrap boundaries without spending most
+			// fuzz programs on complete cycles before exercising encoded colors.
+			c.tinyGC.markEpoch = data[1] & tinyMarkEpochMask
+			c.tinyGC.color[0] = tinyEncodeMarkState(c.tinyGC.markEpoch, tinyWhite)
+		}
 
 		var refs []Ref
 		var roots []Root

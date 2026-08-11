@@ -235,7 +235,7 @@ func (c *Collector) retainedMetadataBytes() uint64 {
 		uintptr(cap(c.tableSlots))*unsafe.Sizeof(Ref(0))
 	if c.cfg.Profile == ProfileTiny {
 		bytes += c.tiny.metadataBytes()
-		bytes += uintptr(cap(c.tinyGC.color)) * unsafe.Sizeof(tinyColor(0))
+		bytes += uintptr(cap(c.tinyGC.color)) * unsafe.Sizeof(tinyMarkState(0))
 		bytes += uintptr(cap(c.tinyGC.grayStack)) * unsafe.Sizeof(uint32(0))
 	} else {
 		bytes += uintptr(cap(c.throughput.spanNodes)) * unsafe.Sizeof(throughputSpanNode{})

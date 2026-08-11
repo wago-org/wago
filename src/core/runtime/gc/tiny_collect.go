@@ -22,6 +22,32 @@ const (
 	tinyBlack
 )
 
+// tinyMarkState keeps one compact byte per handle. The low seven bits identify
+// the cycle that marked the object, and the high bit distinguishes gray from
+// black in that cycle. Any state from another epoch is logically white.
+type tinyMarkState uint8
+
+const (
+	tinyMarkGrayBit   tinyMarkState = 1 << 7
+	tinyMarkEpochMask uint8         = (1 << 7) - 1
+)
+
+func tinyEncodeMarkState(epoch uint8, color tinyColor) tinyMarkState {
+	epoch &= tinyMarkEpochMask
+	switch color {
+	case tinyWhite:
+		// Any non-current epoch is white. Use the immediately preceding epoch
+		// so freshly grown metadata is deterministic around wraparound.
+		return tinyMarkState((epoch + tinyMarkEpochMask) & tinyMarkEpochMask)
+	case tinyGray:
+		return tinyMarkState(epoch) | tinyMarkGrayBit
+	case tinyBlack:
+		return tinyMarkState(epoch)
+	default:
+		panic("gc: invalid Tiny color")
+	}
+}
+
 const (
 	// TinyStepBudget remains the allocation-time count of Step calls. Object
 	// tracing inside each mark Step uses this independent fixed work vector.
@@ -73,6 +99,7 @@ type tinyGC struct {
 	// the former alignment padding; tinyGC retains its 64-bit footprint.
 	state          tinyGCState
 	telemetryOwned bool
+	markEpoch      uint8
 	sweep          uint32
 	cycles         uint64
 
@@ -82,7 +109,7 @@ type tinyGC struct {
 	scan         tinyScanCursor
 	lastStepWork tinyStepWork
 
-	color     []tinyColor
+	color     []tinyMarkState
 	grayStack []uint32
 }
 
@@ -173,7 +200,8 @@ func (c *Collector) Step(roots RootSet) error {
 			}
 			c.free(h)
 		case tinyBlack:
-			c.tinySetColor(h, tinyWhite)
+			// Survivors retain their current-epoch black state. Advancing the
+			// epoch at the next cycle start makes them white in O(1).
 		case tinyGray:
 			return c.failTinyTelemetryCycle(fmt.Errorf("gc: gray object %d reached tiny sweep", h))
 		default:
@@ -202,15 +230,11 @@ func (c *Collector) tinyCollectFull(roots RootSet) error {
 }
 
 func (c *Collector) tinyStartMark(roots RootSet) {
-	if len(c.tinyGC.color) < len(c.handles) {
-		more := make([]tinyColor, len(c.handles)-len(c.tinyGC.color))
-		c.tinyGC.color = append(c.tinyGC.color, more...)
-	}
-	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space == spaceTiny {
-			c.tinySetColor(h, tinyWhite)
-		}
-	}
+	// Advancing to a fresh epoch makes every previously live object logically
+	// white without walking the handle table. Seven epoch bits are intentional:
+	// restarting CollectFull during an active cycle advances to a third value, so
+	// neither current marks nor the preceding white population can alias black.
+	c.tinyGC.markEpoch = (c.tinyGC.markEpoch + 1) & tinyMarkEpochMask
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
 	c.tinyGC.scan = tinyScanCursor{}
 	c.tinyGC.lastStepWork = tinyStepWork{}
@@ -259,10 +283,10 @@ func (c *Collector) tinyMarkRef(r Ref) {
 	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space != spaceTiny {
 		return
 	}
-	if c.tinyColorOf(h) != tinyWhite {
+	if !c.tinyIsWhite(h) {
 		return
 	}
-	c.tinyGrayHandle(h)
+	c.tinyQueueGrayHandle(h)
 }
 
 func (c *Collector) tinyMarkRefNow(r Ref) {
@@ -323,8 +347,8 @@ func (c *Collector) tinyDrainGrayBudget(budget objectScanBudget) (used objectSca
 		}
 		used.add(work)
 		if complete {
-			if int(h) < len(c.handles) && c.handles[h].space == spaceTiny && c.tinyColorOf(h) == tinyGray {
-				c.tinySetColor(h, tinyBlack)
+			if int(h) < len(c.handles) && c.handles[h].space == spaceTiny && c.tinyIsGray(h) {
+				c.tinySetBlack(h)
 			}
 			c.tinyGC.scan = tinyScanCursor{}
 			continue
@@ -334,10 +358,14 @@ func (c *Collector) tinyDrainGrayBudget(budget objectScanBudget) (used objectSca
 }
 
 func (c *Collector) tinyGrayHandle(h uint32) {
-	if c.tinyColorOf(h) == tinyGray {
+	if c.tinyIsGray(h) {
 		return
 	}
-	c.tinySetColor(h, tinyGray)
+	c.tinyQueueGrayHandle(h)
+}
+
+func (c *Collector) tinyQueueGrayHandle(h uint32) {
+	c.tinySetGray(h)
 	c.tinyGC.grayStack = append(c.tinyGC.grayStack, h)
 }
 
@@ -345,19 +373,63 @@ func (c *Collector) tinyColorOf(h uint32) tinyColor {
 	if int(h) >= len(c.tinyGC.color) {
 		return tinyWhite
 	}
-	return c.tinyGC.color[h]
+	state := c.tinyGC.color[h]
+	black := tinyMarkState(c.tinyGC.markEpoch)
+	if state == black {
+		return tinyBlack
+	}
+	if state == black|tinyMarkGrayBit {
+		return tinyGray
+	}
+	return tinyWhite
+}
+
+func (c *Collector) tinyIsWhite(h uint32) bool {
+	if int(h) >= len(c.tinyGC.color) {
+		return true
+	}
+	state := c.tinyGC.color[h]
+	black := tinyMarkState(c.tinyGC.markEpoch)
+	return state != black && state != black|tinyMarkGrayBit
+}
+
+func (c *Collector) tinyIsGray(h uint32) bool {
+	return int(h) < len(c.tinyGC.color) && c.tinyGC.color[h] == tinyMarkState(c.tinyGC.markEpoch)|tinyMarkGrayBit
+}
+
+// These setters are deliberately branch-free. Published Tiny handles always
+// have mark metadata; keeping the hot barrier/mark path direct avoids imposing
+// generic color encoding and metadata-growth checks on every shade operation.
+func (c *Collector) tinySetBlack(h uint32) { c.tinyGC.color[h] = tinyMarkState(c.tinyGC.markEpoch) }
+func (c *Collector) tinySetGray(h uint32) {
+	c.tinyGC.color[h] = tinyMarkState(c.tinyGC.markEpoch) | tinyMarkGrayBit
+}
+func (c *Collector) tinySetWhite(h uint32) {
+	c.tinyGC.color[h] = tinyMarkState((c.tinyGC.markEpoch + tinyMarkEpochMask) & tinyMarkEpochMask)
 }
 
 func (c *Collector) tinySetColor(h uint32, color tinyColor) {
-	for int(h) >= len(c.tinyGC.color) {
-		c.tinyGC.color = append(c.tinyGC.color, tinyWhite)
+	switch color {
+	case tinyWhite:
+		c.tinySetWhite(h)
+	case tinyGray:
+		c.tinySetGray(h)
+	case tinyBlack:
+		c.tinySetBlack(h)
+	default:
+		panic("gc: invalid Tiny color")
 	}
-	c.tinyGC.color[h] = color
 }
 
 func (c *Collector) verifyTiny(roots RootSet) error {
 	if c.tinyGC.state > tinySweep {
 		return fmt.Errorf("gc: invalid tiny collector state %d", c.tinyGC.state)
+	}
+	if c.tinyGC.markEpoch > tinyMarkEpochMask {
+		return fmt.Errorf("gc: invalid tiny mark epoch %d", c.tinyGC.markEpoch)
+	}
+	if len(c.tinyGC.color) < len(c.handles) {
+		return fmt.Errorf("gc: tiny mark metadata has %d entries for %d handles", len(c.tinyGC.color), len(c.handles))
 	}
 	if work := c.tinyGC.lastStepWork.objectScanWork(); work.ObjectRanges > tinyStepObjectRanges || work.ScanEntries > tinyStepScanEntries || work.RefSlots > tinyStepRefSlots || work.PayloadBytes > tinyStepPayloadBytes {
 		return fmt.Errorf("gc: Tiny Step work exceeds bound: %+v", work)
@@ -399,8 +471,8 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 			}
 			liveBlocks[i] = true
 		}
-		if col := c.tinyColorOf(h); col != tinyWhite && col != tinyGray && col != tinyBlack {
-			return fmt.Errorf("gc: invalid tiny color for handle %d", h)
+		if col := c.tinyColorOf(h); c.tinyGC.state == tinyIdle && col != tinyBlack {
+			return fmt.Errorf("gc: idle tiny handle %d has color %d, want black in epoch %d", h, col, c.tinyGC.markEpoch)
 		}
 	}
 	seenGray := make([]bool, len(c.handles))

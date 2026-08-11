@@ -511,12 +511,37 @@ func (s sliceRootSlot) SetRef(r Ref) { s.slice[s.idx] = r }
 
 func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
 
+var errTinyUnsafeSweepRoot = errors.New("gc: Tiny sweep cannot publish an unmarked reference graph")
+
+func (c *Collector) validateTinySweepRootPublication(r Ref) error {
+	if !r.IsObj() || !c.tinyIsWhite(handleOf(r)) {
+		return nil
+	}
+	d, err := c.refDesc(r)
+	if err != nil {
+		return err
+	}
+	if d.HasRefs {
+		// A one-pass sweep cannot reconstruct descendants reclaimed before an
+		// omitted white graph is published. Checked persistent-root APIs reject
+		// that unsafe late resurrection before mutating the slot. Pointer-free
+		// objects remain safe for the existing immediate sweep barrier.
+		return errTinyUnsafeSweepRoot
+	}
+	return nil
+}
+
 func (c *Collector) newRootSlot(kind SlotKind, slots *[]Ref, initial Ref) (uint32, error) {
 	if err := c.errIfClosed(); err != nil {
 		return 0, err
 	}
 	if err := c.validateStoredRef(initial, true); err != nil {
 		return 0, err
+	}
+	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+		if err := c.validateTinySweepRootPublication(initial); err != nil {
+			return 0, err
+		}
 	}
 	*slots = append(*slots, initial)
 	index := uint32(len(*slots) - 1)
@@ -527,8 +552,9 @@ func (c *Collector) newRootSlot(kind SlotKind, slots *[]Ref, initial Ref) (uint3
 
 // NewGlobalSlot creates a nullable global root slot for trusted/test setup. It
 // panics if initial is not null, i31, or a live object ref owned by this
-// collector; production decoding/instantiation paths must use
-// NewCheckedGlobalSlot so invalid refs are reported as errors.
+// collector, or if Tiny sweep cannot safely publish its pointerful graph;
+// production decoding/instantiation paths must use NewCheckedGlobalSlot so
+// rejected refs are reported as errors.
 func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 	i, err := c.NewCheckedGlobalSlot(initial)
 	if err != nil {
@@ -538,7 +564,8 @@ func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 }
 
 // NewCheckedGlobalSlot creates a nullable global root slot after validating the
-// initial ref. Rejected refs do not append a slot.
+// initial ref. Rejected refs, including unsafe Tiny sweep publications, do not
+// append a slot.
 func (c *Collector) NewCheckedGlobalSlot(initial Ref) (uint32, error) {
 	return c.newRootSlot(SlotGlobal, &c.globalSlots, initial)
 }
@@ -557,6 +584,9 @@ func (c *Collector) NewCheckedClassifiedGlobalSlot(initial Ref, class RootClass)
 	return i, err
 }
 
+// SetGlobalSlot validates and publishes a collector-owned global root. Tiny
+// rejects an unmarked pointerful graph during sweep because a one-pass sweep may
+// already have reclaimed one of its descendants.
 func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
@@ -566,6 +596,11 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	}
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
+	}
+	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+		if err := c.validateTinySweepRootPublication(r); err != nil {
+			return err
+		}
 	}
 	c.globalSlots[i] = r
 	c.WriteBarrierSlot(SlotGlobal, i, r)
@@ -594,8 +629,9 @@ func (c *Collector) CheckedGlobalSlot(i uint32) (Ref, error) {
 
 // NewTableSlot creates a nullable table root slot for trusted/test setup. It
 // panics if initial is not null, i31, or a live object ref owned by this
-// collector; production decoding/instantiation paths must use NewCheckedTableSlot
-// so invalid refs are reported as errors.
+// collector, or if Tiny sweep cannot safely publish its pointerful graph;
+// production decoding/instantiation paths must use NewCheckedTableSlot so
+// rejected refs are reported as errors.
 func (c *Collector) NewTableSlot(initial Ref) uint32 {
 	i, err := c.NewCheckedTableSlot(initial)
 	if err != nil {
@@ -605,10 +641,14 @@ func (c *Collector) NewTableSlot(initial Ref) uint32 {
 }
 
 // NewCheckedTableSlot creates a nullable table root slot after validating the
-// initial ref. Rejected refs do not append a slot.
+// initial ref. Rejected refs, including unsafe Tiny sweep publications, do not
+// append a slot.
 func (c *Collector) NewCheckedTableSlot(initial Ref) (uint32, error) {
 	return c.newRootSlot(SlotTable, &c.tableSlots, initial)
 }
+
+// SetTableSlot validates and publishes a collector-owned table root. It has the
+// same fail-closed Tiny sweep rule as SetGlobalSlot.
 func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
@@ -618,6 +658,11 @@ func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	}
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
+	}
+	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+		if err := c.validateTinySweepRootPublication(r); err != nil {
+			return err
+		}
 	}
 	c.tableSlots[i] = r
 	c.WriteBarrierSlot(SlotTable, i, r)
