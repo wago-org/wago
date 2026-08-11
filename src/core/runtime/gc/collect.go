@@ -758,11 +758,13 @@ func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
 	}
 	*e = oldEntry
 }
-func (c *Collector) free(h uint32) { c.releaseHandle(h, false) }
+func (c *Collector) free(h uint32) { c.releaseHandle(h, false, true) }
 
-func (c *Collector) deferThroughputFree(h uint32) { c.releaseHandle(h, true) }
+func (c *Collector) freeTinyPrepoisoned(h uint32) { c.releaseHandle(h, false, false) }
 
-func (c *Collector) releaseHandle(h uint32, lazyThroughput bool) {
+func (c *Collector) deferThroughputFree(h uint32) { c.releaseHandle(h, true, true) }
+
+func (c *Collector) releaseHandle(h uint32, lazyThroughput, poisonTiny bool) {
 	e := &c.handles[h]
 	// A live handle is the allocator ownership proof. Reject internal metadata
 	// corruption before clearing the handle or its remembered/card state; losing
@@ -771,7 +773,13 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput bool) {
 	// is safer than continuing with a corrupted allocator.
 	switch e.space {
 	case spaceTiny:
-		if err := c.tiny.free(e.off); err != nil {
+		var err error
+		if poisonTiny {
+			err = c.tiny.free(e.off)
+		} else {
+			err = c.tiny.freeWithoutPoison(e.off)
+		}
+		if err != nil {
 			panic("gc: internal tiny free invariant: " + err.Error())
 		}
 		c.tinySetWhite(h)

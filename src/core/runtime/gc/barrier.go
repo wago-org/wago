@@ -148,7 +148,7 @@ func (c *Collector) WriteBarrierRoot(child Ref) {
 	case tinyMark, tinyRemark:
 		c.tinyMarkRef(child)
 	case tinySweep:
-		c.tinyMarkRefNow(child)
+		c.tinyMarkSweepRef(child)
 	}
 }
 
@@ -178,11 +178,10 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 		case tinyMark, tinyRemark:
 			c.tinyMarkRef(child)
 		case tinySweep:
-			// Root stores during sweep publish a new root after the remark snapshot.
-			// Mark and drain it before later sweep indexes. The source graph must
-			// still be retained by the exact roots until publication: this one-pass
-			// sweep cannot resurrect a descendant reclaimed by an earlier index.
-			c.tinyMarkRefNow(child)
+			// Root stores during sweep pause the sweep cursor and enqueue bounded
+			// mark work. The source graph must still be retained by exact roots until
+			// publication: descendants reclaimed at earlier indexes cannot be revived.
+			c.tinyMarkSweepRef(child)
 		}
 		return
 	}
@@ -735,7 +734,7 @@ func (c *Collector) tinyWriteBarrierWhiteChild(ph, ch uint32, child Ref) {
 		c.tinyQueueGrayHandle(ch)
 	case black:
 		if c.tinyGC.state == tinySweep {
-			c.tinyMarkRefNow(child)
+			c.tinyMarkSweepRef(child)
 			return
 		}
 		// Preserve the existing hybrid policy for black parents: shade the child

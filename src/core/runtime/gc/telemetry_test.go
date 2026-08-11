@@ -215,6 +215,7 @@ func TestClassifiedPersistentRootSurvivesTelemetryReset(t *testing.T) {
 }
 
 func TestTinyCollectorTelemetryAndIncrementalCycle(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c, err := NewCollector(Config{
 		Profile:        ProfileTiny,
 		TinyHeapBytes:  64 << 10,
@@ -248,6 +249,9 @@ func TestTinyCollectorTelemetryAndIncrementalCycle(t *testing.T) {
 	}
 	if snapshot.Profile != ProfileTiny || snapshot.Heap.LiveObjects != 2 || snapshot.Heap.MetadataBytes == 0 {
 		t.Fatalf("tiny heap telemetry = %+v", snapshot.Heap)
+	}
+	if !snapshot.Tiny.IncrementalBuild || snapshot.Tiny.PacingStepLimit != 1 || snapshot.Tiny.TransientRootLimit != tinyTransientRootLimit || snapshot.Tiny.PersistentRootsPerStep != tinyStepPersistentRoots || snapshot.Tiny.SweepHandlesPerStep != tinyStepSweepHandles || snapshot.Tiny.SweepBlocksPerStep != tinyStepSweepBlocks || snapshot.Tiny.SweepPoisonBytesPerStep != tinyStepSweepBytes {
+		t.Fatalf("tiny policy telemetry = %+v", snapshot.Tiny)
 	}
 
 	if !c.ResetTelemetry() {

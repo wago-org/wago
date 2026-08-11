@@ -195,6 +195,20 @@ type ManagedHeapTelemetry struct {
 	OccupancyHistogram [11]uint64 `json:"occupancy_histogram"`
 }
 
+// TinyPolicyTelemetry reports current Tiny pacing/cursor state and the hard
+// work limits that interpret incremental pause measurements.
+type TinyPolicyTelemetry struct {
+	IncrementalBuild        bool   `json:"incremental_build"`
+	AllocationDebtBytes     uint64 `json:"allocation_debt_bytes"`
+	PacingStepLimit         uint32 `json:"pacing_step_limit"`
+	TransientRootLimit      uint32 `json:"transient_root_limit"`
+	PersistentRootsPerStep  uint32 `json:"persistent_roots_per_step"`
+	SweepHandlesPerStep     uint32 `json:"sweep_handles_per_step"`
+	SweepBlocksPerStep      uint32 `json:"sweep_blocks_per_step"`
+	SweepPoisonBytesPerStep uint32 `json:"sweep_poison_bytes_per_step"`
+	SweepBarrierWorkPending bool   `json:"sweep_barrier_work_pending"`
+}
+
 // TelemetrySnapshot is the collector-side portion of a benchmark report. Its
 // work counters are deterministic for a fixed fixture; pause and phase timing is
 // host-dependent. It is safe to JSON-marshal directly.
@@ -206,6 +220,7 @@ type TelemetrySnapshot struct {
 	Paths         PathTelemetry        `json:"paths"`
 	Barriers      BarrierTelemetry     `json:"barriers"`
 	Heap          ManagedHeapTelemetry `json:"managed_heap"`
+	Tiny          TinyPolicyTelemetry  `json:"tiny"`
 }
 
 // MemoryDomains keeps compiler, runtime, managed, executable, and process memory

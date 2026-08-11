@@ -1,4 +1,4 @@
-//go:build wago_gcstats
+//go:build wago_gcstats && !wago_tiny_nonincremental
 
 package gc
 

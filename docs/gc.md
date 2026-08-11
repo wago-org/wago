@@ -1690,7 +1690,10 @@ is next and must remain separate from source line 668.
 - `ProfileThroughput` is the zero-value/default profile. It pairs the
   `AllocatorPagedSizeClass` allocator with the `RuntimeGenerational` scaffold.
 - `ProfileTiny` pairs the `AllocatorTinyFixedBlock` allocator with the
-  `RuntimeIncrementalMarkSweep` runtime.
+  `RuntimeIncrementalMarkSweep` runtime. Builds with
+  `wago_tiny_nonincremental` retain the same API/profile and fixed heap but make
+  `Step` complete one synchronous mark/sweep cycle, allowing the linker to drop
+  incremental root/object/sweep policy code.
 
 Allocator choice and GC runtime choice are separate concepts internally. Today
 only those two preset combinations are supported; unsupported cross-products are
@@ -1788,7 +1791,10 @@ Tiny is intentionally fixed-size and non-moving:
   alignment. The allocator manages variable-size objects as contiguous block
   spans.
 - `TinyStepBudget`, `TinyStepEveryAlloc`, and `TinyCollectEveryAlloc` control
-  allocation-time incremental/full collection stress behavior.
+  allocation-time incremental/full collection stress behavior. `TinyStepBudget`
+  retains that exact step-count meaning.
+- `TinyPacingStepLimit` bounds ordinary allocation-debt work before one
+  allocation; zero selects one and values above 32 are rejected.
 - `PoisonFreed` and `VerifyAfterCollect` apply to Tiny as debug knobs.
 
 The allocator is a compact first-fit fixed-block allocator over one byte slice.
@@ -1808,17 +1814,28 @@ Tiny collection is an incremental tri-color mark/sweep collector with states
 `idle -> mark -> remark -> sweep -> idle`. Marking grays exact roots from the
 supplied `RootSet`, globals, and tables, then scans guest objects by `TypeDesc`.
 Before sweep, Tiny re-scans roots so stack/frame/local root stores that do not
-run object barriers are still observed. Sweep walks handle indexes and frees
-white Tiny objects back to the fixed-block allocator. `CollectFull` completes one
-whole Tiny cycle. `CollectMinor` is specified as the same full Tiny cycle because
-Tiny is non-generational.
+run object barriers are still observed. Transient roots are captured atomically
+at each safepoint through allocation-free direct visitors and fail closed above
+1,024 references; arbitrary callback-only root sets are not admitted to Tiny.
+Collector-owned globals and tables resume through a stable index cursor at
+most 256 slots per `Step`, including both initial mark and remark. Sweep walks handle indexes and frees
+white Tiny objects back to the fixed-block allocator. Remark snapshots a finite
+handle-table endpoint, so allocations appended during sweep are protected without
+extending the active cycle. One sweep `Step` visits at most 64 handles and accounts
+at most 256 allocation blocks; one oversized span is handled alone. With `PoisonFreed`, clearing is capped at 4,096 bytes and resumes
+through a stable handle/byte cursor before the span is released, so a large
+configured block or object cannot make one step scale with its size. `CollectFull` completes one whole Tiny cycle.
+`CollectMinor` is specified as the same full Tiny cycle because Tiny is
+non-generational.
 
 Tiny clears logical mark state in O(1). Each handle retains one byte whose low
 seven bits identify its mark epoch and whose high bit distinguishes current-epoch
 gray from black. Advancing the epoch makes every older state logically white,
 so cycle start does not walk the handle table and sweep does not rewrite black
-survivors. Idle and sweep-protected allocations are black in the current epoch;
-pointerful mark/remark allocations are born gray. A synchronous `CollectFull`
+survivors. Idle and pointer-free sweep-protected allocations are black in the
+current epoch; pointerful mark/remark/sweep allocations are born gray. Sweep-time
+initialized constructors therefore queue their complete payload for bounded tracing
+before reclamation resumes. A synchronous `CollectFull`
 restart advances again to a third epoch, distinct from both current marks and the
 preceding white population. Normal completion and restart therefore remain safe
 across the 128-value wrap without increasing per-handle metadata.
@@ -1849,7 +1866,12 @@ and element order. Pointer-free objects are not recursively scanned, struct ref
 fields are loaded only at descriptor offsets, ref arrays scan elements, numeric
 bits are never interpreted as refs, and `null`/`i31` values are ignored. Global
 and table slots are part of the root set for both full and incremental Tiny
-collection.
+collection. Appended persistent slots remain ahead of the cursor, while stores
+behind it retain the ordinary Tiny insertion barrier; the complete remark pass
+therefore observes root movement without retaining mutable slot interfaces or
+raw object pointers across `Step` calls. On the Ryzen 7 8845HS host, a 256-slot
+persistent-root step measures about 520-526 ns with 0 B/op and 0 allocs/op,
+independent of whether the collector owns 256, 4,096, or 65,536 slots.
 
 Tiny write barriers preserve the incremental no-black-to-white invariant.
 Object stores retain the existing conservative hybrid policy for black parents:
@@ -1858,9 +1880,11 @@ barrier). A store into a gray parent now also shades a white child, because a
 partially scanned parent's cursor may already be past the mutated slot. This
 conservatively covers writes both before and after the cursor without adding
 cursor-position checks to the mutator path. Handles already gray are not pushed
-to the gray stack again. Slot stores for globals/tables gray the stored child
-during active Tiny mark and remark phases and drain it synchronously during
-sweep. Pointerful objects allocated during active Tiny marking are born gray so
+to the gray stack again. Slot and object stores during sweep pause the sweep
+cursor, enqueue the child, and resume sweep only after ordinary bounded marking
+steps complete; barriers no longer trace a complete graph synchronously. Checked
+stores reject a white pointerful graph whose earlier descendants may already
+have been reclaimed. Pointerful objects allocated during active Tiny marking are born gray so
 array/ref initialization cannot publish an unscanned black object with white
 children.
 
@@ -1875,24 +1899,28 @@ are more important than moving/generational throughput.
 
 Known Tiny limitations in this foundation:
 
-- object tracing is bounded inside large objects, but initial/remark root
-  enumeration and the broader persistent-root cursor remain later #319 work;
-- sweeping still advances by the existing handle-oriented policy; bounded sweep
-  regions, allocation from swept regions, and allocation-debt pacing are not part
-  of this stage. A reference graph published through an external `WriteBarrierRoot`
+- transient roots use a hard 1,024-reference direct-visitor bound rather than a
+  resumable cursor because native frame roots may change when the mutator resumes;
+- allocation may consume existing or already swept free spans without draining
+  the remaining cycle. Ordinary allocations accrue physical-span debt and buy one
+  collector `Step` per 1,024 bytes, capped by `TinyPacingStepLimit` before each
+  allocation. An allocation miss adapts to near exhaustion with at most eight
+  times that configured work and an absolute 32-step ceiling, then fails
+  explicitly rather than synchronously draining an arbitrary cycle. A reference graph published through an external `WriteBarrierRoot`
   during sweep must remain in the exact supplied roots until publication; the
   current one-pass sweep cannot resurrect descendants already reclaimed from an
   omitted graph. Checked collector global/table setters fail before mutating their
   slot when asked to publish a white pointerful graph during sweep, while
   pointer-free objects remain safe for immediate marking;
 - Tiny bulk barriers validate ranges with widened arithmetic and chunk mutator
-  publication, but bulk-barrier chunking and bounded object scanning are distinct:
-  the complete bulk mutation call itself is not yet a general bounded barrier;
+  publication. The complete bulk mutation remains proportional to its requested
+  range, but collector graph tracing between chunks and after sweep publication
+  uses the fixed Step work vector;
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
 - handle-table entries remain the stable ref indirection; and
-- near-exhaustion pacing, SATB/barrier-policy comparison, and
-  incremental/nonincremental Tiny product splitting remain later #319 work.
+- the default product remains incremental; `wago_tiny_nonincremental` is an
+  explicit smallest-policy build and intentionally gives up bounded pauses.
 
 ## Allocator/GC codegen dependency contract
 
@@ -2317,6 +2345,7 @@ Verification checks that live refs point to valid handles, object type IDs exist
 - `TinyHeapBytes`
 - `TinyBlockBytes`
 - `TinyStepBudget`
+- `TinyPacingStepLimit`
 - `TinyCollectEveryAlloc`
 - `TinyStepEveryAlloc`
 - `ThroughputHeapBytes`

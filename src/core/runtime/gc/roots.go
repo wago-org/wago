@@ -119,6 +119,7 @@ func (groups RootGroups) RangeRootRefs(sink RootRefSink) bool {
 type EmptyRoots struct{}
 
 func (EmptyRoots) RangeRoots(func(RootSlot) bool) {}
+func (EmptyRoots) RangeRootRefs(RootRefSink) bool { return true }
 
 type Root Ref
 
@@ -133,6 +134,15 @@ func (s Slots) RangeRoots(fn func(RootSlot) bool) {
 			return
 		}
 	}
+}
+
+func (s Slots) RangeRootRefs(sink RootRefSink) bool {
+	for _, slot := range s {
+		if !sink.VisitRootRef(slot.GetRef()) {
+			return false
+		}
+	}
+	return true
 }
 
 type RefSliceRoots []Ref
@@ -360,6 +370,18 @@ type valueRootSlot struct {
 func (s valueRootSlot) GetRef() Ref  { return s.values[s.idx].Ref }
 func (s valueRootSlot) SetRef(r Ref) { s.values[s.idx].Ref = r }
 
+func (s valueRootSet) RangeRootRefs(sink RootRefSink) bool {
+	for i := range s.values {
+		if !s.all && (i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind)) {
+			continue
+		}
+		if !sink.VisitRootRef(s.values[i].Ref) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s valueRootSet) RangeRoots(fn func(RootSlot) bool) {
 	for i := range s.values {
 		if !s.all && (i >= len(s.fields) || !isCollectorRefKind(s.fields[i].Kind)) {
@@ -501,6 +523,15 @@ func (s RefSliceRoots) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
+func (s RefSliceRoots) RangeRootRefs(sink RootRefSink) bool {
+	for _, r := range s {
+		if !sink.VisitRootRef(r) {
+			return false
+		}
+	}
+	return true
+}
+
 type sliceRootSlot struct {
 	slice []Ref
 	idx   int
@@ -514,7 +545,14 @@ func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
 var errTinyUnsafeSweepRoot = errors.New("gc: Tiny sweep cannot publish an unmarked reference graph")
 
 func (c *Collector) validateTinySweepRootPublication(r Ref) error {
-	if !r.IsObj() || !c.tinyIsWhite(handleOf(r)) {
+	if !r.IsObj() {
+		return nil
+	}
+	h := handleOf(r)
+	if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == h {
+		return errTinyUnsafeSweepRoot
+	}
+	if !c.tinyIsWhite(h) {
 		return nil
 	}
 	d, err := c.refDesc(r)
@@ -538,7 +576,7 @@ func (c *Collector) newRootSlot(kind SlotKind, slots *[]Ref, initial Ref) (uint3
 	if err := c.validateStoredRef(initial, true); err != nil {
 		return 0, err
 	}
-	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
 		if err := c.validateTinySweepRootPublication(initial); err != nil {
 			return 0, err
 		}
@@ -597,7 +635,7 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
 	}
-	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
 		if err := c.validateTinySweepRootPublication(r); err != nil {
 			return err
 		}
@@ -659,7 +697,7 @@ func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
 	}
-	if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep {
+	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
 		if err := c.validateTinySweepRootPublication(r); err != nil {
 			return err
 		}

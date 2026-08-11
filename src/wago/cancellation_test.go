@@ -85,12 +85,14 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 		)),
 	)
 	calls := 0
+	var cancelRequested time.Time
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	c := MustCompile(mod)
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.tick": HostFunc(func(_ HostModule, _, r []uint64) {
 		calls++
 		if calls == 1<<20+1 {
+			cancelRequested = time.Now()
 			cancel()
 		}
 		r[0] = I32(0)
@@ -100,12 +102,17 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 	}
 	defer in.Close()
 
-	started := time.Now()
 	if _, err := in.InvokeContext(ctx, "spin"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("spin error = %v, want context cancellation (a re-entry-cap error here is the regression)", err)
 	}
-	if elapsed := time.Since(started); elapsed > 5*time.Second {
-		t.Fatalf("cancellation took %v, want bounded interruption", elapsed)
+	if cancelRequested.IsZero() {
+		t.Fatal("host loop returned before requesting cancellation")
+	}
+	// Only bound the interruption latency after the cancellation request. The
+	// million host calls before it deliberately test the removed re-entry cap and
+	// become much slower under the race detector without weakening cancellation.
+	if elapsed := time.Since(cancelRequested); elapsed > time.Second {
+		t.Fatalf("interruption after cancellation took %v, want bounded interruption", elapsed)
 	}
 	// Prove the loop sailed past the historical 1<<20 host-call re-entry cap:
 	// interruption, not a synthetic bound, is what stopped it.
