@@ -676,12 +676,17 @@ resume separately. `BenchmarkTinyAllocationDebtStep` measures one debt-purchased
 rootless cycle-start step at 16.4-17.1 ns, 0 B/op, and 0 allocs/op. Ordinary
 pacing buys one step per 1,024 allocated physical bytes and near-exhaustion work
 is capped at 32 steps per allocation. The `wago_tiny_nonincremental` policy
-build reduces the stripped Go runtime-minimal binary by 4,096 bytes and the
-stripped TinyGo runtime-minimal-tiny binary by 3,312 bytes in identical local
-builds; it makes every `Step` a complete synchronous cycle and is therefore a
+build has no aligned-file change in the final stripped Go runtime-minimal
+binary and reduces the stripped TinyGo runtime-minimal-tiny binary by 3,408
+bytes in identical local builds; it makes every `Step` a complete synchronous cycle and is therefore a
 footprint option, not a bounded-latency configuration. Transient/native roots remain one atomic direct walk with a
 hard 1,024-reference limit because frame slots may
 change when the mutator resumes; callback-only root sets fail closed in Tiny.
+
+The final release size card for the complete #319 branch remains within every
+budget: runtime-standard is +32.0 KiB, runtime-minimal +36.0 KiB, and
+runtime-minimal-tiny +13.6 KiB versus `main`; the corresponding free budget is
+362 KiB, 352 KiB, and 185 KiB.
 
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median
