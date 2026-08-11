@@ -20,7 +20,7 @@ func RuntimeCommands() []*command.Cmd {
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
 		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
-		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 (default) | 3"},
+		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		parallel,
 	}
 	runFlags = append(runFlags, profileFlags...)

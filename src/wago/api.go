@@ -2667,7 +2667,7 @@ func (c *Compiled) validate() error {
 		return err
 	}
 	required := c.requiredFeatures
-	unsupported := required &^ defaultCoreFeatures
+	unsupported := required &^ coreFeaturesWithoutSidecar
 	var staged CoreFeatures
 	if c.memoryDir != nil {
 		if c.memoryDir.staged {

@@ -38,6 +38,7 @@ type proposalFixtureFile struct {
 
 func TestUnsupportedProposalCorporaFailClosed(t *testing.T) {
 	root := filepath.Clean("../../tests/regressions/spectest-proposals")
+	config := compatibilityDefaultConfig()
 	type proposalWant struct {
 		files, accepted, unsupported, invalid, negativeInstantiation, malformedBinary, malformedText int
 	}
@@ -94,7 +95,7 @@ func TestUnsupportedProposalCorporaFailClosed(t *testing.T) {
 						t.Errorf("%s:%d read %s: %v", filepath.Base(jsonPath), cmd.Line, cmd.Filename, err)
 						continue
 					}
-					compiled, compileErr := Compile(nil, data)
+					compiled, compileErr := Compile(config, data)
 					if compileErr != nil && compiled != nil {
 						t.Errorf("%s:%d compile returned both artifact and error: %v", filepath.Base(jsonPath), cmd.Line, compileErr)
 						_ = compiled.Close()

@@ -50,7 +50,7 @@ func typedReferenceResultTailModule() []byte {
 
 func TestStagedTypedReferenceResultReturnCallRef(t *testing.T) {
 	module := typedReferenceResultTailModule()
-	if _, err := Compile(nil, module); err == nil || !strings.Contains(err.Error(), "typed") {
+	if _, err := compatibilityDefaultConfig().Compile(module); err == nil || !strings.Contains(err.Error(), "typed") {
 		t.Fatalf("public reference-result tail compile error = %v, want fail-closed feature rejection", err)
 	}
 	compiled := stagedTypedTailCompile(t, module)
@@ -180,7 +180,7 @@ func typedCrossTailPairConsumerModule() []byte {
 }
 
 func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
-	if _, err := Compile(nil, typedCrossTailConsumerModule()); err == nil || !strings.Contains(err.Error(), "typed") {
+	if _, err := compatibilityDefaultConfig().Compile(typedCrossTailConsumerModule()); err == nil || !strings.Contains(err.Error(), "typed") {
 		t.Fatalf("public typed-tail compile error = %v, want fail-closed feature rejection", err)
 	}
 	producer, consumer := instantiateTypedCrossTail(t)

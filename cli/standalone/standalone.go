@@ -109,7 +109,9 @@ func runtimeConfig(options Options) (*wago.RuntimeConfig, error) {
 	config := wago.NewRuntimeConfig().WithDeferBoundsChecks(options.DeferBoundsChecks).WithFunctionWorkers(options.FunctionWorkers)
 	config = config.WithOptimizations(options.OptimizationKnobs)
 	switch options.Core {
-	case 0, 2:
+	case 0:
+	case 2:
+		config = config.WithCoreFeatures(wago.CoreFeaturesV2)
 	case 3:
 		config = config.WithCoreFeatures(wago.CoreFeaturesV3)
 	default:

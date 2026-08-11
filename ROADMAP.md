@@ -69,7 +69,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   plugin; WASI host capabilities remain in the separate `wago-org/wasi` module.
 
 **Tooling**
-- [x] `wago` CLI: `run` / `validate` / `version`, typed args, and explicit `--core 3` opt-in while preserving the Release 2 default
+- [x] `wago` CLI: `run` / `validate` / `version`, typed args, automatic selected
+  Core 3 defaults on complete backends, and explicit `--core 2` / `--core 3`
+  release selection
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`, plus
   opt-in serial/adaptive/forced function-worker policy for validation and codegen
 - [x] Workers plugin: the separate `github.com/wago-org/workers` extension
@@ -108,7 +110,9 @@ current optimization priorities. The Core 3.0 implementation ledger is
   categories; native Linux/Darwin arm64 runs are now required in CI.
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
-  primary product. Release 1/2 defaults remain unchanged; Core 3 is opt-in.
+  primary product. Tail calls, typed function references, multi-memory, memory64,
+  and table64 now default on for complete backends; GC and exceptions remain
+  opt-in through the full Core 3 selection.
 - [x] Add exact linux/amd64 and Linux/Darwin arm64 WasmGC roots across local
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
@@ -371,8 +375,9 @@ and 58,038 passing assertions with zero failures, skips, or gap categories. The
 final integration includes prior-local-global constant offsets, typed element
 initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
 `spectest.table64`, shared-memory co-tenant serialization, and reference
-argument/result ownership. Release 1/2 defaults remain unchanged; Core 3 is an
-explicit opt-in outside the versioned spec harness.
+argument/result ownership. A later default-policy pass promoted the lower-risk
+tail, typed-reference, and indexed/wide memory/table families on complete
+backends while retaining GC and exceptions as explicit Core 3 opt-ins.
 
 ## Iteration 75 generated WasmGC smoke hardening
 

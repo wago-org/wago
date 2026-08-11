@@ -181,10 +181,13 @@ func validateValues(kind boolSettingKind, values map[string]bool) error {
 		prefix = "optimizations."
 		label = "optimization"
 	}
-	for name := range values {
+	for name, enabled := range values {
 		setting, ok := Lookup(prefix + name)
-		if !ok || setting.kind != kind || !setting.Available {
+		if !ok || setting.kind != kind {
 			return fmt.Errorf("unknown %s setting %q", label, name)
+		}
+		if enabled && !setting.Available {
+			return fmt.Errorf("%s setting %q is unavailable", label, name)
 		}
 	}
 	return nil

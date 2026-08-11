@@ -92,6 +92,9 @@ func TestRuntimeConfigUsesBakedFunctionWorkers(t *testing.T) {
 	if got := config.FunctionWorkers(); got != 4 {
 		t.Fatalf("function workers = %d, want 4", got)
 	}
+	if got := config.CoreFeatures(); got != wago.CoreFeaturesV2 {
+		t.Fatalf("baked Core 2 features = %s, want %s", got, wago.CoreFeaturesV2)
+	}
 }
 
 func emptyStartModule() []byte {
