@@ -510,15 +510,20 @@ func (c *Collector) tinyPostAlloc(r Ref, d TypeDesc) {
 		return
 	}
 	h := handleOf(r)
-	if c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark {
-		if d.HasRefs {
-			// The handle is newly published and cannot already be queued, so avoid
-			// the general duplicate-gray color check on this allocation path.
-			c.tinyQueueGrayHandle(h)
-			return
+	if d.HasRefs && (c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark || c.tinySweepActive()) {
+		// The handle is newly published and cannot already be queued, so avoid
+		// the general duplicate-gray color check on this allocation path. During
+		// sweep, constructors populate the payload after allocation; keeping the
+		// object gray makes those initialized edges part of bounded barrier work.
+		c.tinyQueueGrayHandle(h)
+		if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == 0 {
+			c.tinyGC.state = tinyMark
+			c.tinyGC.rootPhase = tinyRootsSweepBarrier
 		}
+		return
 	}
-	// Idle objects and allocations protected from the current mark/sweep are
-	// black in the current epoch. The next cycle's epoch advance makes them white.
+	// Idle objects and pointer-free allocations protected from the current
+	// mark/sweep are black in the current epoch. The next cycle's epoch advance
+	// makes them white.
 	c.tinySetBlack(h)
 }

@@ -250,6 +250,11 @@ func (c *Collector) Step(roots RootSet) error {
 func (c *Collector) tinySweepBudget() error {
 	var handles, blocks uint32
 	for handles < tinyStepSweepHandles {
+		if c.tinyGC.scan.handle == 0 && len(c.tinyGC.grayStack) != 0 {
+			c.tinyGC.state = tinyMark
+			c.tinyGC.rootPhase = tinyRootsSweepBarrier
+			return nil
+		}
 		if c.tinyGC.scan.handle != 0 {
 			h := c.tinyGC.scan.handle
 			if h != c.tinyGC.sweep || int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyWhite {
@@ -281,6 +286,10 @@ func (c *Collector) tinySweepBudget() error {
 			c.tinyGC.scan = tinyScanCursor{}
 			c.tinyGC.sweep++
 			c.freeTinyPrepoisoned(h)
+			if len(c.tinyGC.grayStack) != 0 {
+				c.tinyGC.state = tinyMark
+				c.tinyGC.rootPhase = tinyRootsSweepBarrier
+			}
 			return nil
 		}
 		if c.tinyGC.sweep >= uint32(len(c.handles)) {
@@ -934,9 +943,6 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 			totalBytes := uint64(span) * uint64(c.tiny.blockBytes)
 			if span == 0 || c.tinyGC.scan.scan.index == 0 || uint64(c.tinyGC.scan.scan.index) >= totalBytes {
 				return fmt.Errorf("gc: invalid active Tiny sweep cursor %d/%d", c.tinyGC.scan.scan.index, totalBytes)
-			}
-			if len(c.tinyGC.grayStack) != 0 {
-				return errors.New("gc: Tiny sweep poison cursor retains gray work")
 			}
 		} else {
 			if c.tinyGC.state != tinyMark && c.tinyGC.state != tinyRemark {

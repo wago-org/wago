@@ -1831,8 +1831,10 @@ Tiny clears logical mark state in O(1). Each handle retains one byte whose low
 seven bits identify its mark epoch and whose high bit distinguishes current-epoch
 gray from black. Advancing the epoch makes every older state logically white,
 so cycle start does not walk the handle table and sweep does not rewrite black
-survivors. Idle and sweep-protected allocations are black in the current epoch;
-pointerful mark/remark allocations are born gray. A synchronous `CollectFull`
+survivors. Idle and pointer-free sweep-protected allocations are black in the
+current epoch; pointerful mark/remark/sweep allocations are born gray. Sweep-time
+initialized constructors therefore queue their complete payload for bounded tracing
+before reclamation resumes. A synchronous `CollectFull`
 restart advances again to a third epoch, distinct from both current marks and the
 preceding white population. Normal completion and restart therefore remain safe
 across the 128-value wrap without increasing per-handle metadata.

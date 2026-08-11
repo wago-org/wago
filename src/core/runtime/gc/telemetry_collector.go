@@ -93,7 +93,7 @@ func (c *Collector) TelemetrySnapshot() (TelemetrySnapshot, bool) {
 			SweepHandlesPerStep:     tinyStepSweepHandles,
 			SweepBlocksPerStep:      tinyStepSweepBlocks,
 			SweepPoisonBytesPerStep: tinyStepSweepBytes,
-			SweepBarrierWorkPending: c.tinyGC.rootPhase == tinyRootsSweepBarrier,
+			SweepBarrierWorkPending: c.tinyGC.rootPhase == tinyRootsSweepBarrier || (c.tinyGC.state == tinySweep && len(c.tinyGC.grayStack) != 0),
 		}
 	}
 	return TelemetrySnapshot{
