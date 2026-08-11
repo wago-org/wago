@@ -675,7 +675,11 @@ Sweep work is capped at 64 handles and 256 blocks; oversized debug-poison spans
 resume separately. `BenchmarkTinyAllocationDebtStep` measures one debt-purchased
 rootless cycle-start step at 16.4-17.1 ns, 0 B/op, and 0 allocs/op. Ordinary
 pacing buys one step per 1,024 allocated physical bytes and near-exhaustion work
-is capped at 32 steps per allocation. Transient/native roots remain one atomic direct walk with a
+is capped at 32 steps per allocation. The `wago_tiny_nonincremental` policy
+build reduces the stripped Go runtime-minimal binary by 4,096 bytes and the
+stripped TinyGo runtime-minimal-tiny binary by 3,312 bytes in identical local
+builds; it makes every `Step` a complete synchronous cycle and is therefore a
+footprint option, not a bounded-latency configuration. Transient/native roots remain one atomic direct walk with a
 hard 1,024-reference limit because frame slots may
 change when the mutator resumes; callback-only root sets fail closed in Tiny.
 

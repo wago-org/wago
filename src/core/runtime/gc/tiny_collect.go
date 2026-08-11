@@ -148,6 +148,9 @@ func (c *Collector) Step(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	if !tinyIncrementalBuild {
+		return c.CollectFull(roots)
+	}
 	if collectorTelemetryEnabled {
 		if c.tinyGC.state == tinyIdle && c.telemetryEnabled() && !c.cfg.Telemetry.active.active {
 			c.beginCollectionTelemetry(telemetryFull)
@@ -333,6 +336,9 @@ func (c *Collector) failTinyTelemetryCycle(err error) error {
 }
 
 func (c *Collector) tinyCollectFull(roots RootSet) error {
+	if !tinyIncrementalBuild {
+		return c.tinyCollectNonIncremental(roots)
+	}
 	if err := c.tinyStartMark(roots); err != nil {
 		return err
 	}
@@ -341,6 +347,52 @@ func (c *Collector) tinyCollectFull(roots RootSet) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
+	if err := c.tinyCountTransientRoots(roots); err != nil {
+		return err
+	}
+	c.tinyGC.markEpoch = (c.tinyGC.markEpoch + 1) & tinyMarkEpochMask
+	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
+	c.tinyGC.scan = tinyScanCursor{}
+	c.tinyGC.rootPhase = tinyRootsNone
+	c.tinyGC.state = tinyMark
+	if err := c.tinyMarkTransientRoots(roots); err != nil {
+		return err
+	}
+	for _, r := range c.globalSlots {
+		c.tinyMarkRef(r)
+	}
+	for _, r := range c.tableSlots {
+		c.tinyMarkRef(r)
+	}
+	for c.tinyGC.scan.handle != 0 || len(c.tinyGC.grayStack) != 0 {
+		if work := c.tinyDrainGrayBudget(completeObjectScanBudget); work == (objectScanWork{}) {
+			return errors.New("gc: Tiny nonincremental mark made no progress")
+		}
+	}
+	c.tinyGC.state = tinySweep
+	c.tinyGC.sweep = 1
+	for h := uint32(1); int(h) < len(c.handles); h++ {
+		if c.handles[h].space != spaceTiny {
+			continue
+		}
+		switch c.tinyColorOf(h) {
+		case tinyWhite:
+			if c.telemetryEnabled() {
+				c.cfg.Telemetry.noteSweep(c.handles[h].size)
+			}
+			c.free(h)
+		case tinyBlack:
+		case tinyGray:
+			return fmt.Errorf("gc: gray object %d reached Tiny nonincremental sweep", h)
+		default:
+			return fmt.Errorf("gc: invalid Tiny color for handle %d", h)
+		}
+	}
+	c.tinyFinishCycle()
 	return nil
 }
 

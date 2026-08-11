@@ -1690,7 +1690,10 @@ is next and must remain separate from source line 668.
 - `ProfileThroughput` is the zero-value/default profile. It pairs the
   `AllocatorPagedSizeClass` allocator with the `RuntimeGenerational` scaffold.
 - `ProfileTiny` pairs the `AllocatorTinyFixedBlock` allocator with the
-  `RuntimeIncrementalMarkSweep` runtime.
+  `RuntimeIncrementalMarkSweep` runtime. Builds with
+  `wago_tiny_nonincremental` retain the same API/profile and fixed heap but make
+  `Step` complete one synchronous mark/sweep cycle, allowing the linker to drop
+  incremental root/object/sweep policy code.
 
 Allocator choice and GC runtime choice are separate concepts internally. Today
 only those two preset combinations are supported; unsupported cross-products are
@@ -1913,7 +1916,8 @@ Known Tiny limitations in this foundation:
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
 - handle-table entries remain the stable ref indirection; and
-- incremental/nonincremental Tiny product splitting remains later #319 work.
+- the default product remains incremental; `wago_tiny_nonincremental` is an
+  explicit smallest-policy build and intentionally gives up bounded pauses.
 
 ## Allocator/GC codegen dependency contract
 
