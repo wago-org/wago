@@ -139,7 +139,12 @@ The August 11 adversarial qualification adds executable switch-parity oracles fo
 exception joins, abstract `any`/`eq` narrowing, mutable-field backedges, dirty host
 i32 loop bases, memory64 non-versioning, and native root-plan call/allocation counts.
 These are correctness gates rather than new speed claims. Memory64 loops and
-candidate native-root-plan functions intentionally retain one checked body.
+candidate native-root-plan functions intentionally retain one checked body. The
+reference-intermediate dead-tree hardening deliberately changes the compiler proof
+fixture from three reservations to two reservations plus one full constructor, while
+keeping three allocation helper calls: only the unsafe omitted reference payload is
+restored. Tiny heaps of 56 bytes (struct intermediate) and 64 bytes (array
+intermediate) now reproduce exact enabled/disabled exhaustion parity.
 
 This document defines the measurement contract for collector changes tracked by
 issue #300. The opt-in recorder, public API, JSONL schema, phase semantics, and

@@ -240,7 +240,7 @@ func TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors(t *testing
 	}
 }
 
-func TestDeadGCConstructorDeepStructArrayTreeElimination(t *testing.T) {
+func TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate(t *testing.T) {
 	innerArray := []byte{0x5e, 0x7f, 0x01}
 	outerArray := []byte{0x5e, 0x63, 0x00, 0x00} // immutable (ref null 0) array
 	wrapper := []byte{0x5f}
@@ -268,7 +268,10 @@ func TestDeadGCConstructorDeepStructArrayTreeElimination(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := stats.Funcs[0]
-	if got.Peephole["gc-dead-new"] != 3 || got.Peephole["gc-dead-new-checked"] != 3 || got.Calls[callKindHostSync] != 3 {
+	// The pointer-free inner array and immediately dropped wrapper use reservations.
+	// The reference-array intermediate keeps its full constructor so a collection
+	// during the wrapper allocation can still trace the inner array transitively.
+	if got.Peephole["gc-dead-new"] != 2 || got.Peephole["gc-dead-new-checked"] != 2 || got.Calls[callKindHostSync] != 3 {
 		t.Fatalf("deep constructor tree stats = dead %d, checked %d, calls %d (all: %v)", got.Peephole["gc-dead-new"], got.Peephole["gc-dead-new-checked"], got.Calls[callKindHostSync], got.Peephole)
 	}
 }

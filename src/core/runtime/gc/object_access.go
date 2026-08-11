@@ -188,10 +188,12 @@ func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref
 
 // ReserveDeadStructAllocation performs the allocation side effect of a dropped
 // struct.new without populating its unreachable fields. It returns the real
-// compact allocation so nested dead constructors can keep earlier operands
-// rooted across later reservations. Unlike NewStructDefaultWithRoots, it
-// intentionally does not apply defaultability: struct.new operands have already
-// been validated and evaluated by the caller.
+// compact allocation so payload-safe nested reservations can root the result
+// across later allocations. A caller must not use the zeroed result as a nested
+// substitute for a reference-initialized object, because that would remove its
+// transitive child roots. Unlike NewStructDefaultWithRoots, this intentionally
+// does not apply defaultability: struct.new operands have already been validated
+// and evaluated by the caller.
 func (c *Collector) ReserveDeadStructAllocation(typeID TypeID, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
@@ -246,9 +248,11 @@ func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
 // dynamic constructor without populating its unreachable payload. Unlike
 // CheckArrayAllocation, this preserves exhaustion, collection, handle-table,
 // allocation-counter, and future-capacity behavior under an already occupied
-// bounded heap. The returned compact allocation keeps nested operands live across
-// later reservations; the zero payload keeps verification and accidental
-// diagnostics safe until the unreachable object is collected.
+// bounded heap. The returned compact allocation may be retained by payload-safe
+// nested reservations; reference-initialized intermediate arrays must use their
+// full constructor so transitive child roots remain visible. The zero payload
+// keeps verification and accidental diagnostics safe until the unreachable
+// object is collected.
 func (c *Collector) ReserveDeadArrayAllocation(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {

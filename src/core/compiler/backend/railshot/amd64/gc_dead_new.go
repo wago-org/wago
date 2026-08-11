@@ -15,15 +15,16 @@ const (
 // checkedDeadGCConstructorUse recognizes constructors whose unreachable payload
 // population can disappear only after a reservation helper preserves the real
 // allocation plus size/segment/value traps. Immediate drops consume no future
-// operand; the nested shape uses the same bounded postfix proof.
-func (f *fn) checkedDeadGCConstructorUse(r *wasm.Reader) checkedDeadGCUse {
+// operand. Nested reservations are limited to payloads whose omitted writes
+// cannot remove transitive roots before a later enclosing allocation.
+func (f *fn) checkedDeadGCConstructorUse(r *wasm.Reader, nestedPayloadSafe bool) checkedDeadGCUse {
 	if !deadGCNewEnabled {
 		return checkedDeadGCNone
 	}
 	if op, ok := r.Peek(); ok && op == 0x1a {
 		return checkedDeadGCImmediate
 	}
-	if f.gcConstructorFeedsDroppedTree(r) {
+	if nestedPayloadSafe && f.gcConstructorFeedsDroppedTree(r) {
 		return checkedDeadGCNested
 	}
 	return checkedDeadGCNone

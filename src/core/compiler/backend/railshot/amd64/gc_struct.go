@@ -81,7 +81,14 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return fmt.Errorf("amd64: struct.new type %d is unavailable", typeIndex)
 		}
 		fieldN := len(st.Comp.Fields)
-		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+		nestedPayloadSafe := true
+		for _, field := range st.Comp.Fields {
+			if field.Storage().Val().Kind() == wasm.ValRef {
+				nestedPayloadSafe = false
+				break
+			}
+		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, nestedPayloadSafe); deadUse != checkedDeadGCNone {
 			if err := f.reserveDeadGCStructConstructor(typeIndex, fieldN, deadUse); err != nil {
 				return err
 			}
@@ -123,7 +130,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if _, ok := f.stagedStructType(typeIndex); !ok {
 			return fmt.Errorf("amd64: struct.new_default type %d is unavailable", typeIndex)
 		}
-		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
 			if err := f.reserveDeadGCStructConstructor(typeIndex, 0, deadUse); err != nil {
 				return err
 			}

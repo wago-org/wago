@@ -66,6 +66,39 @@ func deadGCNestedAllocationModule() ([]byte, GCConfig) {
 	), GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 24, TinyBlockBytes: 8}
 }
 
+func deadGCNestedReferenceAllocationModule(arrayIntermediate bool) ([]byte, GCConfig) {
+	numericArray := []byte{0x5e, 0x7e, 0x01} // final (array (mut i64)); fixed length two is 32 bytes
+	intermediate := []byte{0x5f}
+	intermediate = append(intermediate, wasmtest.Vec([]byte{0x63, 0x00, 0x00})...) // struct (ref null 0)
+	outer := []byte{0x5f}
+	outer = append(outer, wasmtest.Vec([]byte{0x63, 0x01, 0x00})...) // struct (ref null 1)
+	body := []byte{
+		0x42, 0x00,
+		0x42, 0x00,
+		0xfb, 0x08, 0x00, 0x02, // array.new_fixed 0 2
+	}
+	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 56, TinyBlockBytes: 8}
+	if arrayIntermediate {
+		intermediate = []byte{0x5e, 0x63, 0x00, 0x01} // array (mut (ref null 0))
+		body = append(body, 0xfb, 0x08, 0x01, 0x01)   // array.new_fixed 1 1
+		cfg.TinyHeapBytes = 64
+	} else {
+		body = append(body, 0xfb, 0x00, 0x01) // struct.new 1
+	}
+	body = append(body,
+		0xfb, 0x00, 0x02, // struct.new 2
+		0x1a,
+		0x41, 0x01,
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(numericArray, intermediate, outer, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	), cfg
+}
+
 func runDeadGCAllocationChild(t *testing.T, disabled bool, kind string) deadGCAllocationOutcome {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestDeadGCConstructorsPreserveBoundedAllocation$", "-test.count=1")
@@ -104,8 +137,13 @@ func TestDeadGCConstructorsPreserveBoundedAllocation(t *testing.T) {
 	if os.Getenv("WAGO_DEAD_GC_ALLOCATION_CHILD") == "1" {
 		kind := os.Getenv("WAGO_DEAD_GC_ALLOCATION_KIND")
 		data, cfg := deadGCAllocationModule(kind == "array")
-		if kind == "nested" {
+		switch kind {
+		case "nested":
 			data, cfg = deadGCNestedAllocationModule()
+		case "nested-struct-ref":
+			data, cfg = deadGCNestedReferenceAllocationModule(false)
+		case "nested-array-ref":
+			data, cfg = deadGCNestedReferenceAllocationModule(true)
 		}
 		compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), data)
 		if err != nil {
@@ -129,7 +167,7 @@ func TestDeadGCConstructorsPreserveBoundedAllocation(t *testing.T) {
 		fmt.Println("DEAD_GC_ALLOCATION=" + string(encoded))
 		return
 	}
-	for _, kind := range []string{"struct", "array", "nested"} {
+	for _, kind := range []string{"struct", "array", "nested", "nested-struct-ref", "nested-array-ref"} {
 		t.Run(kind, func(t *testing.T) {
 			enabled := runDeadGCAllocationChild(t, false, kind)
 			disabled := runDeadGCAllocationChild(t, true, kind)

@@ -57,7 +57,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
 		if valueType.Kind() != wasm.ValRef {
-			if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+			if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
 				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 				if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
 					return err
@@ -127,7 +127,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return fmt.Errorf("amd64: array.new_data type %d has unsupported storage", typeIndex)
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
-		deadUse := f.checkedDeadGCConstructorUse(r)
+		deadUse := f.checkedDeadGCConstructorUse(r, true)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
 		if deadUse != checkedDeadGCNone {
@@ -164,7 +164,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
-		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+		if deadUse := f.checkedDeadGCConstructorUse(r, valueType.Kind() != wasm.ValRef); deadUse != checkedDeadGCNone {
 			if err := f.reserveDeadGCFixedArrayConstructor(typeIndex, count, deadUse); err != nil {
 				return err
 			}
@@ -211,7 +211,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return fmt.Errorf("amd64: array.new_default type %d is unavailable", typeIndex)
 		}
 		length, lengthKnown := gcKnownI32Const(f.s.back())
-		if deadUse := f.checkedDeadGCConstructorUse(r); deadUse != checkedDeadGCNone {
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 			if err := f.callGCStructHelper(gcArrayCheckDefault, []wasm.ValType{wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
 				return err
