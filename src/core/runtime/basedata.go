@@ -281,6 +281,18 @@ func (j *JobMemory) BindTrapCell(trap []byte) error {
 	return nil
 }
 
+// RebindTrapCell restores an active invocation's trap-cell pointer after a
+// nested entry changed basedata. Unlike BindTrapCell, it preserves a concurrent
+// interruption while clearing stale host-pending or ordinary trap state.
+func (j *JobMemory) RebindTrapCell(trap []byte) error {
+	if len(trap) < 4 {
+		return fmt.Errorf("trap cell requires at least 4 bytes")
+	}
+	clearTrapUnlessInterrupted(trap)
+	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
+	return nil
+}
+
 // HasTrapCell reports whether basedata still names this invocation's trap cell.
 // Cross-instance entry replaces the pointer (and the fence alongside it), so
 // this one-word identity check is sufficient for the prepared-call fast path.

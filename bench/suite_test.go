@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	wago "github.com/wago-org/wago"
@@ -410,5 +412,79 @@ func BenchmarkExec(b *testing.B) {
 			})
 		}
 		in.Close()
+	}
+}
+
+// BenchmarkExecParallel compares the default instance-local execution lease
+// with the conservative process-wide lease across the executable corpus. Each
+// benchmark worker owns an instance because Instance reuses invocation buffers.
+func BenchmarkExecParallel(b *testing.B) {
+	modes := []struct {
+		name        string
+		independent bool
+	}{
+		{name: "independent", independent: true},
+		{name: "process", independent: false},
+	}
+	for _, m := range loadCorpus(b) {
+		if len(m.Exec) == 0 || !m.supports("Exec") {
+			continue
+		}
+		for _, mode := range modes {
+			cfg := wago.NewRuntimeConfig().WithIndependentInstanceExecution(mode.independent)
+			c, err := cfg.Compile(m.bytes)
+			if err != nil {
+				b.Fatalf("%s compile: %v", m.name(), err)
+			}
+			workers := runtime.GOMAXPROCS(0)
+			instances := make([]*wago.Instance, workers)
+			for i := range instances {
+				instances[i], err = wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
+				if err != nil {
+					b.Fatalf("%s instantiate: %v", m.name(), err)
+				}
+				if m.Init != "" {
+					if _, err := instances[i].Invoke(m.Init); err != nil {
+						b.Fatalf("%s init %s: %v", m.name(), m.Init, err)
+					}
+				}
+			}
+			for _, e := range m.Exec {
+				args := make([]uint64, len(e.Args))
+				for i, a := range e.Args {
+					args[i] = wago.I32(a)
+				}
+				functions := make([]*wago.PreparedFunction, len(instances))
+				for i := range functions {
+					functions[i], err = instances[i].PrepareFunction(e.Export)
+					if err != nil {
+						b.Fatalf("%s prepare %s: %v", m.name(), e.Export, err)
+					}
+					if _, err := functions[i].Invoke(args...); err != nil {
+						b.Fatalf("%s warmup %s: %v", m.name(), e.Export, err)
+					}
+				}
+				b.Run(mode.name+"/"+m.name()+"."+e.Export, func(b *testing.B) {
+					var next atomic.Uint32
+					b.ReportAllocs()
+					b.SetParallelism(1)
+					b.RunParallel(func(pb *testing.PB) {
+						index := int(next.Add(1) - 1)
+						fn := functions[index]
+						for pb.Next() {
+							if _, err := fn.Invoke(args...); err != nil {
+								b.Errorf("invoke: %v", err)
+								return
+							}
+						}
+					})
+				})
+			}
+			for _, in := range instances {
+				if err := in.Close(); err != nil {
+					b.Fatalf("%s close: %v", m.name(), err)
+				}
+			}
+		}
 	}
 }

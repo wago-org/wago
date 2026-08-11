@@ -674,6 +674,54 @@ func TestCrossInstanceFunctionImportRetainsProducerResources(t *testing.T) {
 	}
 }
 
+func TestIndependentInstanceExecutionFallsBackForCrossInstanceFunction(t *testing.T) {
+	producer, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export function: %v", err)
+	}
+	consumerCode, err := NewRuntimeConfig().Compile(benchReturningImportModule())
+	if err != nil {
+		t.Fatalf("compile consumer: %v", err)
+	}
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	if err != nil {
+		t.Fatalf("instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	if consumer.usesIndependentExecution() {
+		t.Fatal("cross-instance function import used an instance-local execution lease")
+	}
+}
+
+func TestProcessLeaseAllowsCrossInstanceFunction(t *testing.T) {
+	producer, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export function: %v", err)
+	}
+	consumerCode, err := NewRuntimeConfig().WithIndependentInstanceExecution(false).Compile(benchReturningImportModule())
+	if err != nil {
+		t.Fatalf("compile consumer: %v", err)
+	}
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	if err != nil {
+		t.Fatalf("instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	if consumer.usesIndependentExecution() {
+		t.Fatal("explicit opt-out used an instance-local execution lease")
+	}
+}
+
 func TestCrossInstanceCallNoArgs(t *testing.T) {
 	modA := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),

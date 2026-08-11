@@ -100,22 +100,36 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		active.popGCHostActivation(activation)
 		panic(invalidHostReference{err: err})
 	}
+	var localMu *sync.Mutex
 	epoch := nativeExecutionEpoch
-	nativeExecutionMu.Unlock()
+	if active.usesIndependentExecution() {
+		localMu = active.independentNativeExecutionMu()
+		localMu.Unlock()
+	} else {
+		nativeExecutionMu.Unlock()
+	}
 	// Keep the parked activation and any GC host-result roots published until the
 	// native execution lease is reacquired. A competing entry may collect while
 	// arbitrary host code runs, but cannot observe the unrooted handoff window
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
-		nativeExecutionMu.Lock()
+		if localMu != nil {
+			localMu.Lock()
+		} else {
+			nativeExecutionMu.Lock()
+		}
 		active.clearGCHostResultRoots(activation)
-		if nativeExecutionEpoch != epoch {
+		// Public calls on one instance are serialized, but synchronous host code
+		// may re-enter the parked instance while its local lease is released.
+		// Always restore local context; the process lease can retain its epoch
+		// shortcut because competing entries advance the shared epoch.
+		if localMu != nil || nativeExecutionEpoch != epoch {
 			if err := active.bindNativeContext(); err != nil {
 				panic(invalidHostReference{err: err})
 			}
 			active.jm.SetStackFence(active.eng.StackLimit())
-			if err := active.jm.BindTrapCell(active.trap); err != nil {
+			if err := active.jm.RebindTrapCell(active.trap); err != nil {
 				panic(invalidHostReference{err: err})
 			}
 			// bindNativeContext restores the instance's immutable context image,

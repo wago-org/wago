@@ -131,15 +131,16 @@ type hostCallWaiter struct {
 type instancePluginState struct {
 	hostScope         hostCallScope
 	invokeMu          sync.Mutex // serializes unrelated public calls across parked host callbacks
+	nativeExecutionMu sync.Mutex // serializes native entry for an independent instance
 	invocationID      invocationID
 	close             atomic.Pointer[instanceCloseState]
 	gcConfig          *GCConfig
 	origin            InstantiateOrigin
+	gcGlobalRootCount uint8
 	gcPublic          atomic.Pointer[gcPublicState]
 	gcArrayElements   atomic.Pointer[gcArrayElementState]
 	gcRefTestTable    atomic.Pointer[gcRefTestTableState]
 	gcGlobalRoots     [3]gcGlobalRootMapping
-	gcGlobalRootCount uint8
 	tagIdentityBase   uintptr      // arena-owned bounded native u64 directory for staged EH
 	tagExports        map[int]*Tag // lazy stable identity handles for exported local tags
 }

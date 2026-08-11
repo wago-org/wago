@@ -62,7 +62,7 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 		return nil, fmt.Errorf("export %q function index %d out of range", name, gfi)
 	}
 	sig := in.c.Funcs[li]
-	in.nativeControlShared = true
+	in.markNativeControlShared()
 	return &InstanceExport{inst: in, localIdx: li, params: sig.Params, results: sig.Results}, nil
 }
 
@@ -430,7 +430,7 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 		}
 		return false
 	}
-	in.nativeControlShared = true
+	in.markNativeControlShared()
 	if t.retained == nil {
 		t.retained = make(map[*Instance]*retainedInstanceRoot)
 	}
@@ -610,7 +610,7 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 		if state == nil {
 			state = &retainedInstanceRoot{}
 			t.retained[owner] = state
-			owner.nativeControlShared = true
+			owner.markNativeControlShared()
 		} else {
 			release = append(release, owner)
 		}
@@ -653,7 +653,7 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 			if state == nil {
 				state = &retainedInstanceRoot{}
 				t.retained[proxy] = state
-				proxy.nativeControlShared = true
+				proxy.markNativeControlShared()
 			} else {
 				release = append(release, proxy)
 			}
@@ -795,6 +795,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	for table := in.table; table != nil; table = table.next {
 		if len(table.desc) != 0 && &table.desc[0] == &desc[0] {
 			in.lifeMu.Unlock()
+			in.markNativeControlShared()
 			return table, nil
 		}
 	}
@@ -807,6 +808,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	table := &Table{desc: desc, owner: owner, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
+	in.markNativeControlShared()
 	return table, nil
 }
 
@@ -848,6 +850,9 @@ func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 	}
 	if err := memory.share(owner, in.c.memoryDef(memoryIndex)); err != nil {
 		return nil, fmt.Errorf("export memory %q: %w", name, err)
+	}
+	if owns {
+		in.markNativeControlShared()
 	}
 	return memory, nil
 }
@@ -894,5 +899,6 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
 	}
 	in.lifeMu.Unlock()
+	in.markNativeControlShared()
 	return g, nil
 }

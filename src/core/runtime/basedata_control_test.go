@@ -106,6 +106,32 @@ func TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite(t *testing.T) {
 	}
 }
 
+func TestJobMemoryRebindTrapCellPreservesInterruption(t *testing.T) {
+	jm, err := NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	trap := make([]byte, TrapBufferBytes)
+	storeTrap(trap, uint32(TrapInterrupted))
+	if err := jm.RebindTrapCell(trap); err != nil {
+		t.Fatal(err)
+	}
+	if got := TrapCode(loadTrap(trap)); got != TrapInterrupted {
+		t.Fatalf("rebound trap = %v, want interrupted", got)
+	}
+	if !jm.HasTrapCell(trap) {
+		t.Fatal("rebound trap cell was not recognized")
+	}
+	storeTrap(trap, uint32(TrapLinMemOutOfBounds))
+	if err := jm.RebindTrapCell(trap); err != nil {
+		t.Fatal(err)
+	}
+	if got := TrapCode(loadTrap(trap)); got != TrapNone {
+		t.Fatalf("stale rebound trap = %v, want none", got)
+	}
+}
+
 func TestTrapMessagesStayCompactAndComplete(t *testing.T) {
 	if got := unsafe.Sizeof(trapMessages); got != 336 {
 		t.Fatalf("trap message storage = %d bytes, want 336", got)
