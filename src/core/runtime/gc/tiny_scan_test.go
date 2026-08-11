@@ -295,6 +295,54 @@ func TestTinyStepBoundsSparseLargeStruct(t *testing.T) {
 	}
 }
 
+func TestTinyPayloadByteBudgetLimitsWideStruct(t *testing.T) {
+	const fields = 257
+	kinds := make([]StorageKind, fields)
+	for i := range kinds {
+		kinds[i] = StorageV128
+	}
+	kinds[fields-1] = StorageRefNull
+	wide, err := NewStructDesc(1, kinds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16}, []TypeDesc{leaf, wide})
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, fields-1, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	root := Root(parent)
+	roots := Slots{&root}
+	if err := c.Step(roots); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Step(roots); err != nil {
+		t.Fatal(err)
+	}
+	work := c.tinyGC.lastStepWork.objectScanWork()
+	if work.ScanEntries != tinyStepPayloadBytes/16 || work.PayloadBytes != tinyStepPayloadBytes || work.ScanEntries >= tinyStepScanEntries {
+		t.Fatalf("wide struct work = %+v, want payload-byte-limited Step", work)
+	}
+	if c.tinyGC.scan.handle != handleOf(parent) || c.tinyColorOf(handleOf(parent)) != tinyGray {
+		t.Fatal("wide struct did not retain a partial gray cursor")
+	}
+	drainTinyWithWorkChecks(t, c, roots)
+	if !c.validObjectRef(child) {
+		t.Fatal("wide struct lost final reference")
+	}
+}
+
 func TestObjectScanCursorExactBoundaries(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -330,6 +378,86 @@ func TestObjectScanCursorExactBoundaries(t *testing.T) {
 	if !complete || cursor.index != 4 || work.ScanEntries != 2 || len(visited) != 2 || visited[1] != last {
 		t.Fatalf("final field: cursor=%d work=%+v complete=%v visited=%v", cursor.index, work, complete, visited)
 	}
+}
+
+func TestTinyVerifyRejectsPartialScanInvariantCorruption(t *testing.T) {
+	newPartial := func(t *testing.T) (*Collector, Ref, RootSet) {
+		t.Helper()
+		refs, err := NewArrayDesc(0, StorageRefNull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{refs})
+		array, err := c.NewArrayDefault(0, 512)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := Root(array)
+		roots := Slots{&root}
+		if err := c.Step(roots); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Step(roots); err != nil {
+			t.Fatal(err)
+		}
+		if c.tinyGC.scan.handle != handleOf(array) {
+			t.Fatal("test did not establish a partial scan")
+		}
+		return c, array, roots
+	}
+
+	t.Run("active also queued", func(t *testing.T) {
+		c, array, roots := newPartial(t)
+		c.tinyGC.grayStack = append(c.tinyGC.grayStack, handleOf(array))
+		if err := c.Verify(roots); err == nil {
+			t.Fatal("Verify accepted an active scan duplicated on the gray stack")
+		}
+	})
+	t.Run("cursor at end", func(t *testing.T) {
+		c, array, roots := newPartial(t)
+		c.tinyGC.scan.scan.index = c.header(array).Aux
+		if err := c.Verify(roots); err == nil {
+			t.Fatal("Verify accepted a completed active cursor")
+		}
+	})
+	t.Run("active during sweep", func(t *testing.T) {
+		c, _, roots := newPartial(t)
+		c.tinyGC.state = tinySweep
+		if err := c.Verify(roots); err == nil {
+			t.Fatal("Verify accepted an active cursor during sweep")
+		}
+	})
+	t.Run("recorded Step work exceeds bound", func(t *testing.T) {
+		refs, err := NewArrayDesc(0, StorageRefNull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{refs})
+		c.tinyGC.lastStepWork.scanEntries = uint16(tinyStepScanEntries + 1)
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted recorded Step work beyond the bound")
+		}
+	})
+	t.Run("gray object missing from work state", func(t *testing.T) {
+		refs, err := NewArrayDesc(0, StorageRefNull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{refs})
+		array, err := c.NewArrayDefault(0, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := Root(array)
+		roots := Slots{&root}
+		if err := c.Step(roots); err != nil {
+			t.Fatal(err)
+		}
+		c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
+		if err := c.Verify(roots); err == nil {
+			t.Fatal("Verify accepted a gray object missing from queue/cursor state")
+		}
+	})
 }
 
 func TestTinyMutationDuringPartialScan(t *testing.T) {
@@ -496,6 +624,70 @@ func TestTinyBulkBarrierRangeValidationEveryPhase(t *testing.T) {
 	}
 }
 
+func TestTinyRemarkBulkBarrierResumesActivePartialScan(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large, err := NewArrayDesc(1, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder, err := NewArrayDesc(2, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16, VerifyAfterCollect: true}, []TypeDesc{leaf, large, holder})
+	parent, err := c.NewArrayDefault(2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewArrayDefault(1, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(parent)
+	roots := Slots{&root}
+	if err := c.Step(roots); err != nil {
+		t.Fatal(err)
+	}
+	for c.tinyColorOf(handleOf(parent)) != tinyBlack {
+		if err := c.Step(roots); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.Step(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.state != tinyRemark {
+		t.Fatalf("state=%v, want remark", c.tinyGC.state)
+	}
+	d, err := c.refDesc(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.storeValue(parent, d, uint64(PayloadOffset), d.Elem, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	c.PostBulkWriteBarrier(parent, 0, 1)
+	if c.tinyGC.scan.handle != handleOf(child) || len(c.tinyGC.grayStack) != 0 || c.tinyColorOf(handleOf(child)) != tinyGray {
+		t.Fatalf("remark barrier partial state: scan=%+v stack=%v child=%v", c.tinyGC.scan, c.tinyGC.grayStack, c.tinyColorOf(handleOf(child)))
+	}
+	if err := c.Verify(roots); err != nil {
+		t.Fatalf("legitimate remark cursor failed verification: %v", err)
+	}
+	if err := c.Step(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.state != tinyMark || c.tinyGC.scan.handle != handleOf(child) {
+		t.Fatalf("remark did not return active cursor to mark: state=%v scan=%+v", c.tinyGC.state, c.tinyGC.scan)
+	}
+	drainTinyWithWorkChecks(t, c, roots)
+	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+		t.Fatal("remark bulk barrier lost partially scanned graph")
+	}
+}
+
 func TestTinyRootStoresDuringPartialMarkRemarkAndSweep(t *testing.T) {
 	for _, targetState := range []tinyGCState{tinyMark, tinyRemark, tinySweep} {
 		t.Run(targetStateName(targetState), func(t *testing.T) {
@@ -588,10 +780,19 @@ func TestTinyBoundedStepsMatchCollectFull(t *testing.T) {
 	}
 	bounded, boundedRoot := build(t)
 	full, fullRoot := build(t)
+	want, err := shadowTraceLive(bounded, Slots{&boundedRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := bounded.Step(Slots{&boundedRoot}); err != nil {
 		t.Fatal(err)
 	}
 	drainTinyWithWorkChecks(t, bounded, Slots{&boundedRoot})
+	for h := uint32(1); int(h) < len(bounded.handles); h++ {
+		if got := bounded.handles[h].space != spaceFree; got != want[h] {
+			t.Fatalf("bounded handle %d live=%v, shadow wants %v", h, got, want[h])
+		}
+	}
 	if err := full.CollectFull(Slots{&fullRoot}); err != nil {
 		t.Fatal(err)
 	}

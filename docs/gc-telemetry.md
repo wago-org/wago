@@ -93,8 +93,11 @@ Tiny `CollectFull`/`CollectMinor` records the complete incremental cycle. A cycl
 driven directly through repeated `Step` calls is also recorded once, from its
 initial root mark through final sweep. The recorder suspends between separate
 `Step` calls, so cycle and phase time sum collector work rather than arbitrary
-mutator delays. Partial object ranges contribute payload/reference/entry totals
-exactly once. `ObjectScansBegun`, `ObjectScansResumed`, and
+mutator delays. Partial ranges contribute reference-slot and scan-entry work
+exactly once. The established `PayloadBytesVisited` field still records one
+complete aligned logical payload when an object scan completes, including
+pointer-free payloads; `MaxStepPayloadBytes` separately reports actual bounded
+per-step scan accounting. `ObjectScansBegun`, `ObjectScansResumed`, and
 `ObjectScansCompleted` expose cursor lifecycle, while the four `MaxStep*` fields
 show the largest bounded object-tracing vector consumed by one marking `Step`.
 Root enumeration and sweeping remain separately attributable phases and are not

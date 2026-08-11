@@ -137,8 +137,9 @@ func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end ui
 
 // WriteBarrierRoot publishes a child stored in an exact externally walked root
 // such as an off-heap native table descriptor. Throughput collections rescan
-// external roots directly; Tiny must shade stores made during an incremental
-// mark/remark/sweep cycle.
+// external roots directly; Tiny shades stores made during an incremental cycle.
+// During sweep, the source graph must have remained in the exact roots until the
+// store; a one-pass sweep cannot resurrect descendants reclaimed earlier.
 func (c *Collector) WriteBarrierRoot(child Ref) {
 	if !child.IsObj() || !c.validObjectRef(child) || c.cfg.Profile != ProfileTiny {
 		return
@@ -177,9 +178,10 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 		case tinyMark, tinyRemark:
 			c.tinyMarkRef(child)
 		case tinySweep:
-			// Root stores during sweep publish a new root after the remark root
-			// snapshot. Mark and drain it immediately so the remaining sweep cannot
-			// reclaim the newly rooted object or its children.
+			// Root stores during sweep publish a new root after the remark snapshot.
+			// Mark and drain it before later sweep indexes. The source graph must
+			// still be retained by the exact roots until publication: this one-pass
+			// sweep cannot resurrect a descendant reclaimed by an earlier index.
 			c.tinyMarkRefNow(child)
 		}
 		return

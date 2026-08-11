@@ -616,6 +616,14 @@ The same direct benchmark reports 256 maximum entries/slots for 256, 4,096, and
 65,536 elements, proving the per-step object work no longer scales with object
 size.
 
+An adversarial follow-up A/B initially found that routing ordinary Throughput
+complete scans through finite cursor bookkeeping regressed dense full collection.
+The release path therefore retains its direct complete descriptor loop, while
+Tiny and diagnostic scans use the cursor primitive. Identical 200-iteration,
+five-sample controls put current medians versus `main` at +0.75%/-4.66% for the
+50%/90% dense-struct cells and +1.02%/+1.43% for the matching dense-array cells;
+allocations and bytes/op remain identical.
+
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median
 and an 814.30 ns current median (+0.29%), with identical 40 B/op and 2 allocs/op

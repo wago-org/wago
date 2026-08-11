@@ -93,6 +93,40 @@ func (c *Collector) scanObjectRefsRange(h uint32, cursor *objectScanCursor, budg
 		return work, true
 	}
 	b := c.bytes(r)
+	// Synchronous sweep barriers may request an effectively unlimited Tiny scan.
+	// Avoid finite-budget checks in that cold path. Ordinary complete scans use
+	// scanObjectRefsComplete below so Throughput retains its established hot loop.
+	if budget == completeObjectScanBudget && cursor.index == 0 && visitor.mode == objectScanVisitTinyMark {
+		switch d.Kind {
+		case KindStruct:
+			work.ScanEntries = uint32(len(d.Fields))
+			work.PayloadBytes = d.Size
+			for _, f := range d.Fields {
+				if isCollectorRefKind(f.Kind) {
+					c.tinyMarkRef(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
+					work.RefSlots++
+				}
+			}
+			cursor.index = uint32(len(d.Fields))
+			return work, true
+		case KindArray:
+			if !d.ArrayElementsAreRefs() {
+				return work, true
+			}
+			length := c.header(r).Aux
+			work.ScanEntries = length
+			work.RefSlots = length
+			work.PayloadBytes = length * d.ElemSize
+			for cursor.index < length {
+				off := uint64(PayloadOffset) + uint64(cursor.index)*uint64(d.ElemSize)
+				c.tinyMarkRef(Ref(binary.LittleEndian.Uint32(b[off:])))
+				cursor.index++
+			}
+			return work, true
+		default:
+			return work, true
+		}
+	}
 	switch d.Kind {
 	case KindStruct:
 		for cursor.index < uint32(len(d.Fields)) {
@@ -154,22 +188,45 @@ func (c *Collector) scanObjectRefsRange(h uint32, cursor *objectScanCursor, budg
 	}
 }
 
+func (c *Collector) objectPayloadBytes(h uint32) uint32 {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree || c.handles[h].size <= PayloadOffset {
+		return 0
+	}
+	return c.handles[h].size - PayloadOffset
+}
+
 // scanObjectRefs is the complete synchronous wrapper used by Throughput/full
-// collection and verification helpers. Tiny incremental marking uses the same
-// primitive with a retained cursor and a finite budget.
+// collection and heap helpers. Tiny incremental marking retains the range
+// primitive's cursor between bounded steps.
 func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
-	visitor := objectScanVisitor{fn: visit}
 	if !c.telemetryEnabled() {
-		cursor := objectScanCursor{}
-		for {
-			_, complete := c.scanObjectRefsRange(h, &cursor, completeObjectScanBudget, visitor)
-			if complete {
-				return
+		// Preserve the established synchronous Throughput loop exactly. The
+		// cursor/budget bookkeeping is required only for Tiny bounded marking;
+		// measurements showed that imposing it here regresses dense full scans.
+		r := makeObjRef(h)
+		d, err := c.refDesc(r)
+		if err != nil || !d.HasRefs {
+			return
+		}
+		hdr := c.header(r)
+		b := c.bytes(r)
+		if d.Kind == KindStruct {
+			for _, f := range d.Fields {
+				if isCollectorRefKind(f.Kind) {
+					visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
+				}
+			}
+		} else if d.ArrayElementsAreRefs() {
+			for i := uint32(0); i < hdr.Aux; i++ {
+				off := PayloadOffset + i*d.ElemSize
+				visit(Ref(binary.LittleEndian.Uint32(b[off:])))
 			}
 		}
+		return
 	}
 	start := c.cfg.Telemetry.scanStart()
 	cursor := objectScanCursor{}
+	visitor := objectScanVisitor{fn: visit}
 	var total objectScanWork
 	for {
 		work, complete := c.scanObjectRefsRange(h, &cursor, completeObjectScanBudget, visitor)
@@ -178,5 +235,10 @@ func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
 			break
 		}
 	}
+	// PayloadBytesVisited predates resumable scanning and reports the complete
+	// logical object payload once per object, including layout/alignment padding
+	// and pointer-free payloads. Keep that schema meaning while MaxStepPayloadBytes
+	// continues to report the actual bounded scan work.
+	total.PayloadBytes = c.objectPayloadBytes(h)
 	c.cfg.Telemetry.noteObjectScanWork(start, total, true, false, true)
 }

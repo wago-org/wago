@@ -1863,13 +1863,16 @@ internal object-tracing limits; `TinyStepBudget` keeps its existing meaning as t
 number of `Step` calls performed after an allocation when `TinyStepEveryAlloc` is
 enabled.
 
-Exact scanning is shared with the default policy through a cursor/range primitive:
-Throughput and synchronous full-scan callers run it to completion, while Tiny
-retains the cursor between bounded ranges. Pointer-free objects are not
-recursively scanned, struct ref fields are loaded only at descriptor offsets,
-ref arrays scan elements, numeric bits are never interpreted as refs, and
-`null`/`i31` values are ignored. Global and table slots are part of the root set
-for both full and incremental Tiny collection.
+Tiny's resumable path and diagnostic complete scans use one cursor/range
+primitive. The ordinary Throughput/full release path deliberately retains its
+specialized direct complete loop: identical-configuration A/B measurements found
+that cursor-budget bookkeeping regressed dense full scans, while the direct loop
+remains within the established 3% control. Both paths preserve the same descriptor
+and element order. Pointer-free objects are not recursively scanned, struct ref
+fields are loaded only at descriptor offsets, ref arrays scan elements, numeric
+bits are never interpreted as refs, and `null`/`i31` values are ignored. Global
+and table slots are part of the root set for both full and incremental Tiny
+collection.
 
 Tiny write barriers preserve the incremental no-black-to-white invariant.
 Object stores retain the existing conservative hybrid policy for black parents:
@@ -1899,7 +1902,9 @@ Known Tiny limitations in this foundation:
   enumeration and the broader persistent-root cursor remain later #319 work;
 - sweeping still advances by the existing handle-oriented policy; bounded sweep
   regions, allocation from swept regions, and allocation-debt pacing are not part
-  of this stage;
+  of this stage. A reference that will be published into a root during sweep must
+  remain in the exact supplied roots until publication; the current one-pass sweep
+  cannot resurrect descendants that were already reclaimed from an omitted graph;
 - Tiny bulk barriers validate ranges with widened arithmetic and chunk mutator
   publication, but bulk-barrier chunking and bounded object scanning are distinct:
   the complete bulk mutation call itself is not yet a general bounded barrier;

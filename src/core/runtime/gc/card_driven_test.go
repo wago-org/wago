@@ -451,6 +451,9 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(tinyStepWork{}); got != 8 {
 		t.Fatalf("tinyStepWork size=%d, want 8", got)
 	}
+	if tinyStepObjectRanges > uint32(^uint16(0)) || tinyStepScanEntries > uint32(^uint16(0)) || tinyStepRefSlots > uint32(^uint16(0)) || tinyStepPayloadBytes > uint32(^uint16(0)) {
+		t.Fatal("Tiny Step work bounds do not fit compact telemetry state")
+	}
 	if got := unsafe.Sizeof(tinyGC{}); got != 80 {
 		t.Fatalf("tinyGC size=%d, want 80", got)
 	}
