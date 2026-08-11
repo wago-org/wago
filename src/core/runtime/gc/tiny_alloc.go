@@ -52,6 +52,9 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if config.TinyStepBudget == 0 {
 		config.TinyStepBudget = defaultTinyStepBudget
 	}
+	if config.TinyPacingStepLimit == 0 {
+		config.TinyPacingStepLimit = 1
+	}
 	if err := validateTinyConfig(config); err != nil {
 		return nil, err
 	}
@@ -100,6 +103,9 @@ func validateTinyConfig(config Config) error {
 	}
 	if config.TinyBlockBytes < 8 {
 		return errors.New("gc: tiny block size is smaller than object alignment")
+	}
+	if config.TinyPacingStepLimit > tinyNearExhaustionStepLimit {
+		return errors.New("gc: Tiny pacing step limit must not exceed 32")
 	}
 	if config.TinyHeapBytes%config.TinyBlockBytes != 0 {
 		return errors.New("gc: tiny heap size must be a multiple of block size")
@@ -154,7 +160,11 @@ func (h *tinyHeap) alloc(size uint32) (uint32, uint32, error) {
 	return b * h.blockBytes, need * h.blockBytes, nil
 }
 
-func (h *tinyHeap) free(off uint32) error {
+func (h *tinyHeap) free(off uint32) error { return h.freeSpan(off, h.poisonFreed) }
+
+func (h *tinyHeap) freeWithoutPoison(off uint32) error { return h.freeSpan(off, false) }
+
+func (h *tinyHeap) freeSpan(off uint32, poison bool) error {
 	if h.blockBytes == 0 || off%h.blockBytes != 0 {
 		return errors.New("gc: invalid tiny free offset")
 	}
@@ -163,6 +173,12 @@ func (h *tinyHeap) free(off uint32) error {
 		return errors.New("gc: invalid tiny free span")
 	}
 	span := h.spanSize(b)
+	if poison {
+		freed := h.mem[b*h.blockBytes : (b+span)*h.blockBytes]
+		for i := range freed {
+			freed[i] = 0xdd
+		}
+	}
 	h.setUsedStart(b, false)
 	if b > 0 {
 		prevSize := h.spanSize(b - 1)
@@ -170,6 +186,11 @@ func (h *tinyHeap) free(off uint32) error {
 			prev := b - prevSize
 			if !h.isUsedStart(prev) && h.spanSize(prev) == prevSize && prev+prevSize == b {
 				h.removeFree(prev, prevSize)
+				if h.poisonFreed {
+					for i := range h.mem[prev*h.blockBytes : prev*h.blockBytes+tinyFreeLinkBytes] {
+						h.mem[prev*h.blockBytes+uint32(i)] = 0xdd
+					}
+				}
 				h.clearSpan(prev, prevSize)
 				h.clearSpan(b, span)
 				b, span = prev, prevSize+span
@@ -181,16 +202,15 @@ func (h *tinyHeap) free(off uint32) error {
 		nextSize := h.spanSize(next)
 		if nextSize > 0 && nextSize <= h.blockCount-next && !h.isUsedStart(next) {
 			h.removeFree(next, nextSize)
+			if h.poisonFreed {
+				for i := range h.mem[next*h.blockBytes : next*h.blockBytes+tinyFreeLinkBytes] {
+					h.mem[next*h.blockBytes+uint32(i)] = 0xdd
+				}
+			}
 			h.clearSpan(b, span)
 			h.clearSpan(next, nextSize)
 			span += nextSize
 			h.setSpan(b, span, false)
-		}
-	}
-	if h.poisonFreed {
-		freed := h.mem[b*h.blockBytes : (b+span)*h.blockBytes]
-		for i := range freed {
-			freed[i] = 0xdd
 		}
 	}
 	h.insertFree(b, span)
@@ -363,9 +383,73 @@ func (h *tinyHeap) metadataBytes() uintptr {
 		uintptr(len(h.usedStarts))*8 + uintptr(len(h.binHeads))*4 + uintptr(len(h.binWords))*8 + 8
 }
 
+func (c *Collector) tinyPayAllocationDebt(roots RootSet) error {
+	steps := c.tinyGC.allocationDebt / tinyAllocationDebtBytes
+	if steps > c.cfg.TinyPacingStepLimit {
+		steps = c.cfg.TinyPacingStepLimit
+	}
+	for i := uint32(0); i < steps; i++ {
+		if err := c.tinyPacingStep(roots); err != nil {
+			return err
+		}
+		c.tinyGC.allocationDebt -= tinyAllocationDebtBytes
+	}
+	return nil
+}
+
+func (c *Collector) tinyPacingStep(roots RootSet) error {
+	wasActive := tinyIncrementalBuild && c.tinyGC.state != tinyIdle
+	if err := c.Step(roots); err != nil {
+		return err
+	}
+	if wasActive && c.tinyGC.state == tinyIdle {
+		c.stats.FullCollections++
+	}
+	return nil
+}
+
+func (c *Collector) tinyAddAllocationDebt(bytes uint32) {
+	if ^uint32(0)-c.tinyGC.allocationDebt < bytes {
+		c.tinyGC.allocationDebt = ^uint32(0)
+		return
+	}
+	c.tinyGC.allocationDebt += bytes
+}
+
+func (c *Collector) tinyAssistNearExhaustion(size uint32, roots RootSet) (uint32, uint32, error) {
+	limit := c.cfg.TinyPacingStepLimit * tinyNearExhaustionFactor
+	if limit < c.cfg.TinyPacingStepLimit || limit > tinyNearExhaustionStepLimit {
+		limit = tinyNearExhaustionStepLimit
+	}
+	if limit == 0 {
+		limit = 1
+	}
+	for i := uint32(0); i < limit; i++ {
+		if err := c.tinyPacingStep(roots); err != nil {
+			return 0, 0, err
+		}
+		if c.tinyGC.allocationDebt >= tinyAllocationDebtBytes {
+			c.tinyGC.allocationDebt -= tinyAllocationDebtBytes
+		} else {
+			c.tinyGC.allocationDebt = 0
+		}
+		off, allocated, err := c.tiny.alloc(size)
+		if err == nil {
+			return off, allocated, nil
+		}
+	}
+	return 0, 0, errors.New("gc: tiny heap exhausted after bounded pacing assist")
+}
+
 func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
 	if err := c.errIfClosed(); err != nil {
 		return Null(), err
+	}
+	paced := !c.cfg.CollectEveryAlloc && !c.cfg.TinyCollectEveryAlloc && !c.cfg.TinyStepEveryAlloc
+	if paced && !tinyIncrementalBuild && roots != nil {
+		if err := c.tinyPayAllocationDebt(roots); err != nil {
+			return Null(), err
+		}
 	}
 	if c.cfg.CollectEveryAlloc || c.cfg.TinyCollectEveryAlloc {
 		if roots == nil {
@@ -384,30 +468,28 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 			}
 		}
 	}
-	if c.tinyGC.state == tinySweep {
-		if roots == nil {
-			return Null(), errors.New("gc: allocation during tiny sweep requires roots")
-		}
-		for c.tinyGC.state != tinyIdle {
-			if err := c.Step(roots); err != nil {
-				return Null(), err
-			}
-		}
-	}
 	if err := injectFailure(c, failHandlePublication); err != nil {
 		return Null(), err
 	}
-	off, _, err := c.tiny.alloc(size)
+	off, allocatedBytes, err := c.tiny.alloc(size)
 	if err != nil {
 		if roots == nil {
 			return Null(), errors.New("gc: tiny heap exhausted and no roots were supplied")
 		}
-		if err := c.CollectFull(roots); err != nil {
+		off, allocatedBytes, err = c.tinyAssistNearExhaustion(size, roots)
+		if err != nil {
 			return Null(), err
 		}
-		off, _, err = c.tiny.alloc(size)
-		if err != nil {
-			return Null(), errors.New("gc: tiny heap exhausted")
+	}
+	if paced && tinyIncrementalBuild && roots != nil {
+		// The allocator reservation is invisible to tracing until its handle is
+		// published, so debt work can run here even during sweep without exposing
+		// an uninitialized object or forfeiting already swept space.
+		if err := c.tinyPayAllocationDebt(roots); err != nil {
+			if freeErr := c.tiny.free(off); freeErr != nil {
+				panic("gc: failed to roll back unpublished Tiny reservation: " + freeErr.Error())
+			}
+			return Null(), err
 		}
 	}
 	h := c.newHandle(handleEntry{off: off, size: size, space: spaceTiny})
@@ -419,6 +501,9 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.tinyPostAlloc(r, d)
 	c.stats.Allocations++
+	if paced {
+		c.tinyAddAllocationDebt(allocatedBytes)
+	}
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.paths.GoAllocationPaths++
 	}
@@ -431,15 +516,20 @@ func (c *Collector) tinyPostAlloc(r Ref, d TypeDesc) {
 		return
 	}
 	h := handleOf(r)
-	if c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark {
-		if d.HasRefs {
-			// The handle is newly published and cannot already be queued, so avoid
-			// the general duplicate-gray color check on this allocation path.
-			c.tinyQueueGrayHandle(h)
-			return
+	if d.HasRefs && (c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark || c.tinySweepActive()) {
+		// The handle is newly published and cannot already be queued, so avoid
+		// the general duplicate-gray color check on this allocation path. During
+		// sweep, constructors populate the payload after allocation; keeping the
+		// object gray makes those initialized edges part of bounded barrier work.
+		c.tinyQueueGrayHandle(h)
+		if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == 0 {
+			c.tinyGC.state = tinyMark
+			c.tinyGC.rootPhase = tinyRootsSweepBarrier
 		}
+		return
 	}
-	// Idle objects and allocations protected from the current mark/sweep are
-	// black in the current epoch. The next cycle's epoch advance makes them white.
+	// Idle objects and pointer-free allocations protected from the current
+	// mark/sweep are black in the current epoch. The next cycle's epoch advance
+	// makes them white.
 	c.tinySetBlack(h)
 }

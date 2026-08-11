@@ -655,6 +655,38 @@ inflated the marked-child fast path. The retained barrier keeps white-child work
 in one cold noinline helper. Ten CPU-affined interleaved samples of
 `BenchmarkTinyIncrementalBarrierMarkedChild` measure 3.3055 ns on `main` and
 3.347 ns current (+1.26%; paired median +2.34%), again with no allocations.
+The final #319 barrier comparison isolates the minimum marked-edge work at
+2.45-2.56 ns for retained incremental update and 1.98-2.03 ns for an SATB
+old-edge test, both allocation-free. SATB was not retained: it would require an
+additional pre-store payload load on every scalar overwrite, old-edge traversal
+for every bulk overwrite, and more barrier/product code while transient roots
+already use an atomic bounded snapshot. The retained incremental-update policy
+instead removes the actual latency hazard by pausing sweep and queueing ordinary
+bounded mark work rather than synchronously draining a graph.
+
+The persistent-root cursor stage adds `BenchmarkTinyStepPersistentRoots`. Five
+samples on the same host measured 520-526 ns for one 256-slot step at 256 and
+65,536 total slots; the 4,096-slot control was 520-550 ns. Every case reports
+0 B/op and 0 allocs/op, demonstrating that step work scales with the fixed chunk
+rather than total persistent-root count. `BenchmarkTinyStepSweepBlack` measures
+one 64-handle survivor sweep at 188 ns for 64 handles, 191-193 ns for 4,096
+handles, and 174-177 ns for 65,536 handles, all with 0 B/op and 0 allocs/op.
+Sweep work is capped at 64 handles and 256 blocks; oversized debug-poison spans
+resume separately. `BenchmarkTinyAllocationDebtStep` measures one debt-purchased
+rootless cycle-start step at 16.4-17.1 ns, 0 B/op, and 0 allocs/op. Ordinary
+pacing buys one step per 1,024 allocated physical bytes and near-exhaustion work
+is capped at 32 steps per allocation. The `wago_tiny_nonincremental` policy
+build has no aligned-file change in the final stripped Go runtime-minimal
+binary and reduces the stripped TinyGo runtime-minimal-tiny binary by 3,408
+bytes in identical local builds; it makes every `Step` a complete synchronous cycle and is therefore a
+footprint option, not a bounded-latency configuration. Transient/native roots remain one atomic direct walk with a
+hard 1,024-reference limit because frame slots may
+change when the mutator resumes; callback-only root sets fail closed in Tiny.
+
+The final release size card for the complete #319 branch remains within every
+budget: runtime-standard is +36.0 KiB, runtime-minimal +36.0 KiB, and
+runtime-minimal-tiny +14.1 KiB versus `main`; the corresponding free budget is
+358 KiB, 352 KiB, and 184 KiB.
 
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median

@@ -1050,6 +1050,11 @@ func (c *Collector) validateArrayStore(d TypeDesc, value Value) error {
 
 func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Value) error {
 	if isCollectorRefKind(d.Elem) {
+		if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
+			if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
+				return err
+			}
+		}
 		if err := c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value); err != nil {
 			return err
 		}

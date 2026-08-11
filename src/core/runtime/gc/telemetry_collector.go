@@ -82,6 +82,20 @@ func (c *Collector) TelemetrySnapshot() (TelemetrySnapshot, bool) {
 	}
 	heap := c.managedHeapTelemetry()
 	heap.OccupancyHistogram = c.cfg.Telemetry.occupancyHistogram
+	var tiny TinyPolicyTelemetry
+	if c.cfg.Profile == ProfileTiny {
+		tiny = TinyPolicyTelemetry{
+			IncrementalBuild:        tinyIncrementalBuild,
+			AllocationDebtBytes:     uint64(c.tinyGC.allocationDebt),
+			PacingStepLimit:         c.cfg.TinyPacingStepLimit,
+			TransientRootLimit:      tinyTransientRootLimit,
+			PersistentRootsPerStep:  tinyStepPersistentRoots,
+			SweepHandlesPerStep:     tinyStepSweepHandles,
+			SweepBlocksPerStep:      tinyStepSweepBlocks,
+			SweepPoisonBytesPerStep: tinyStepSweepBytes,
+			SweepBarrierWorkPending: c.tinyGC.rootPhase == tinyRootsSweepBarrier || (c.tinyGC.state == tinySweep && len(c.tinyGC.grayStack) != 0),
+		}
+	}
 	return TelemetrySnapshot{
 		SchemaVersion: TelemetrySchemaVersion,
 		Profile:       c.cfg.Profile,
@@ -90,6 +104,7 @@ func (c *Collector) TelemetrySnapshot() (TelemetrySnapshot, bool) {
 		Paths:         paths,
 		Barriers:      c.cfg.Telemetry.barriers,
 		Heap:          heap,
+		Tiny:          tiny,
 	}, true
 }
 
