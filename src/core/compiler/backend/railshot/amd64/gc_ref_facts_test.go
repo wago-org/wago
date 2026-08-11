@@ -7,6 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -278,6 +279,88 @@ func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {
 	}
 	if got := boundary.Calls["gcnative"]; got != 0 {
 		t.Fatalf("structured-merge native cast calls = %d, want 0", got)
+	}
+}
+
+func TestTeeSpillElisionPreservesGCReferenceFacts(t *testing.T) {
+	const n = 20
+	body := []byte{
+		0x02,             // two local declaration groups
+		0x01, 0x63, 0x00, // one (ref null 0) local
+		n, wasm.MustEncodeValType(wasm.I32), // twenty i32 locals
+		0xfb, 0x01, 0x00, // struct.new_default 0
+		0x22, 0x00, // local.tee 0; keep the exact reference live
+	}
+	for i := byte(1); i <= n; i++ {
+		body = append(body, 0x41, i, 0x22, i) // i32.const i; local.tee i
+	}
+	for range n {
+		body = append(body, 0x1a) // drop the integer tee results
+	}
+	body = append(body,
+		0xfb, 0x16, 0x00, // ref.cast (ref 0)
+		0xd1, // ref.is_null => 0
+		0x0b,
+	)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("decode GC tee pressure module: %v", err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("validate GC tee pressure module: %v", err)
+	}
+
+	saved := teeSpillElideEnabled
+	teeSpillElideEnabled = true
+	defer func() { teeSpillElideEnabled = saved }()
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
+		t.Fatalf("compile GC tee pressure module: %v", err)
+	}
+	fn := stats.Funcs[0]
+	if got := fn.Peephole["tee-spill-elide"]; got == 0 {
+		t.Fatal("integer tee spill elision was not active under GC reference pressure")
+	}
+	if got := fn.Peephole["gc-ref-cast-elide"]; got != 1 {
+		t.Fatalf("GC reference fact lost across pressure: cast elisions = %d, want 1", got)
+	}
+}
+
+func TestTeeSpillElisionDoesNotReuseGCReferenceHome(t *testing.T) {
+	savedFacts, savedTee := exactGCRefFactsEnabled, teeSpillElideEnabled
+	exactGCRefFactsEnabled, teeSpillElideEnabled = true, true
+	defer func() { exactGCRefFactsEnabled, teeSpillElideEnabled = savedFacts, savedTee }()
+
+	stats := &CodegenStats{}
+	f := fn{a: &encoderamd64.Asm{}, s: newStack(), stats: stats}
+	e := f.pushValue(storage{kind: stReg, typ: mtI64, reg: RAX, gcRoot: true})
+	f.regUser[RAX] = e
+	want := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
+		WithNullability(shared.GCKnownNonNull).
+		WithKnownArrayLength(17)
+	putGCRefFact(&e.st, want)
+
+	f.spill(e)
+
+	if e.st.kind != stSlot {
+		t.Fatalf("GC reference spill storage = %v, want spill slot", e.st.kind)
+	}
+	if got := gcRefFact(e); got != want {
+		t.Fatalf("GC reference fact after spill = %+v, want %+v", got, want)
+	}
+	if stats.Spills != 1 {
+		t.Fatalf("GC reference spills = %d, want 1", stats.Spills)
+	}
+	if got := stats.Peephole["tee-spill-elide"]; got != 0 {
+		t.Fatalf("GC reference used integer tee spill home %d times", got)
 	}
 }
 

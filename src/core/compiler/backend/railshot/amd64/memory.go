@@ -732,7 +732,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		cc := f.condenseToFlags(top)
 		f.stats.reclassifyPeep("cmp-branch-fuse", "store8-flags")
 		f.a.SetccReg8(cc, vreg)
-		ea, eaOwned, _, disp := f.memAddr(off32, size, true)
+		ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
 		f.a.StoreIdx(RBX, ea, vreg, disp, size)
 		f.pinned = f.pinned.remove(vreg)
 		if eaOwned {
