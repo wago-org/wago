@@ -156,6 +156,22 @@ func (b *instanceBuilder) validateCompiled() error {
 	return b.c.validateCached()
 }
 
+func (c *Compiled) allowsIndependentInstanceExecution(imports Imports) bool {
+	if !c.independentInstances {
+		return false
+	}
+	if c.memoryImportCount() != 0 || c.tableImportCount() != 0 || len(c.GlobalImports) != 0 {
+		return false
+	}
+	for _, key := range c.Imports {
+		if _, ok := imports[key].(*InstanceExport); ok {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	need := c.instantiateArenaNeed
 	baselineHostBytes := 0
@@ -1382,6 +1398,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 		nativeContext: nativeContextPtr,
+	}
+	if c.allowsIndependentInstanceExecution(imports) {
+		in.executionFlags.Store(executionFlagIndependent)
 	}
 	b.registeredInstance = in
 	if in.syncMode {

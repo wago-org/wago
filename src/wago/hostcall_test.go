@@ -2,11 +2,110 @@ package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestIndependentInstanceExecutionBypassesProcessLease(t *testing.T) {
+	sig := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0x10, 0x00, 0x0b} // call 0; end
+	c, err := NewRuntimeConfig().Compile(returningImportModule(sig, body))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = I32(7)
+	})}})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+
+	nativeExecutionMu.Lock()
+	defer nativeExecutionMu.Unlock()
+	done := make(chan error, 1)
+	go func() {
+		results, invokeErr := in.Invoke("g")
+		if invokeErr == nil && (len(results) != 1 || AsI32(results[0]) != 7) {
+			invokeErr = errors.New("unexpected independent invocation result")
+		}
+		done <- invokeErr
+	}()
+	select {
+	case invokeErr := <-done:
+		if invokeErr != nil {
+			t.Fatalf("invoke: %v", invokeErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("independent invocation waited for the process-wide native execution lease")
+	}
+}
+
+func TestIndependentInstanceExecutionFallsBackForExportedState(t *testing.T) {
+	tests := []struct {
+		name   string
+		module []byte
+		export func(*Instance) error
+	}{
+		{
+			name: "memory",
+			module: wasmtest.Module(
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("state", 2, 0))),
+			),
+			export: func(in *Instance) error {
+				_, err := in.ExportedMemory("state")
+				return err
+			},
+		},
+		{
+			name: "table",
+			module: wasmtest.Module(
+				wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("state", 1, 0))),
+			),
+			export: func(in *Instance) error {
+				_, err := in.ExportedTable("state")
+				return err
+			},
+		},
+		{
+			name: "global",
+			module: wasmtest.Module(
+				wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("state", 3, 0))),
+			),
+			export: func(in *Instance) error {
+				_, err := in.ExportedGlobalObject("state")
+				return err
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			compiled := MustCompile(test.module)
+			defer compiled.Close()
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			if !in.usesIndependentExecution() {
+				t.Fatal("fresh instance did not use independent execution")
+			}
+			if err := test.export(in); err != nil {
+				t.Fatal(err)
+			}
+			if in.usesIndependentExecution() {
+				t.Fatal("exported cross-instance state retained independent execution")
+			}
+		})
+	}
+}
 
 // returningImportModule builds a module whose func 0 is an import of type `sig`
 // (env.f) and func 1 (exported "g") has body `body`. Optional extra sections
