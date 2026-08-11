@@ -49,19 +49,6 @@ func (s ClassifiedRoots) RangeRoots(fn func(RootSlot) bool) {
 	}
 }
 
-func (s ClassifiedRoots) RangeClassifiedRootRefs(sink ClassifiedRootRefSink) bool {
-	if s.Roots == nil {
-		return true
-	}
-	if direct, ok := s.Roots.(DirectClassifiedRootRefSet); ok {
-		return direct.RangeClassifiedRootRefs(sink)
-	}
-	if direct, ok := s.Roots.(DirectRootRefSet); ok {
-		return direct.RangeRootRefs(classifiedRootRefAdapter{sink: sink, class: s.Class})
-	}
-	return false
-}
-
 func (s ClassifiedRoots) RangeRootRefs(sink RootRefSink) bool {
 	if s.Roots == nil {
 		return true
@@ -101,34 +88,6 @@ func (groups RootGroups) RangeRoots(fn func(RootSlot) bool) {
 			return
 		}
 	}
-}
-
-func (groups RootGroups) RangeClassifiedRootRefs(sink ClassifiedRootRefSink) bool {
-	for _, group := range groups {
-		if group.Roots == nil {
-			continue
-		}
-		if direct, ok := group.Roots.(DirectClassifiedRootRefSet); ok {
-			if !direct.RangeClassifiedRootRefs(sink) {
-				return false
-			}
-			continue
-		}
-		direct, ok := group.Roots.(DirectRootRefSet)
-		if !ok || !direct.RangeRootRefs(classifiedRootRefAdapter{sink: sink, class: group.Class}) {
-			return false
-		}
-	}
-	return true
-}
-
-type classifiedRootRefAdapter struct {
-	sink  ClassifiedRootRefSink
-	class RootClass
-}
-
-func (a classifiedRootRefAdapter) VisitRootRef(r Ref) bool {
-	return a.sink.VisitClassifiedRootRef(a.class, r)
 }
 
 func (groups RootGroups) RangeRootRefs(sink RootRefSink) bool {
@@ -314,21 +273,6 @@ type InitializerRootScratch struct {
 	active bool
 }
 
-func (s *InitializerRootScratch) RangeRootRefs(sink RootRefSink) bool {
-	if s.first != nil {
-		direct, ok := s.first.(DirectRootRefSet)
-		if !ok || !direct.RangeRootRefs(sink) {
-			return false
-		}
-	}
-	for i := range s.values {
-		if i < len(s.fields) && isCollectorRefKind(s.fields[i].Kind) && !sink.VisitRootRef(s.values[i].Ref) {
-			return false
-		}
-	}
-	return true
-}
-
 func (s *InitializerRootScratch) RangeRoots(fn func(RootSlot) bool) {
 	keepGoing := true
 	if s.first != nil {
@@ -370,29 +314,6 @@ type InitializerWordRootScratch struct {
 	words  []uint64
 	fields []FieldDesc
 	active bool
-}
-
-func (s *InitializerWordRootScratch) RangeRootRefs(sink RootRefSink) bool {
-	if s.first != nil {
-		direct, ok := s.first.(DirectRootRefSet)
-		if !ok || !direct.RangeRootRefs(sink) {
-			return false
-		}
-	}
-	cursor := 0
-	for _, field := range s.fields {
-		if cursor >= len(s.words) {
-			break
-		}
-		if isCollectorRefKind(field.Kind) && !sink.VisitRootRef(Ref(uint32(s.words[cursor]))) {
-			return false
-		}
-		cursor++
-		if field.Kind == StorageV128 {
-			cursor++
-		}
-	}
-	return true
 }
 
 func (s *InitializerWordRootScratch) RangeRoots(fn func(RootSlot) bool) {
@@ -569,20 +490,6 @@ func combineRootSets(first, second RootSet) RootSet {
 	return combinedRootSet{first: first, second: second}
 }
 
-func (s combinedRootSet) RangeRootRefs(sink RootRefSink) bool {
-	if s.first != nil {
-		direct, ok := s.first.(DirectRootRefSet)
-		if !ok || !direct.RangeRootRefs(sink) {
-			return false
-		}
-	}
-	if s.second != nil {
-		direct, ok := s.second.(DirectRootRefSet)
-		return ok && direct.RangeRootRefs(sink)
-	}
-	return true
-}
-
 func (s combinedRootSet) RangeRoots(fn func(RootSlot) bool) {
 	keepGoing := true
 	s.first.RangeRoots(func(slot RootSlot) bool {
@@ -592,16 +499,6 @@ func (s combinedRootSet) RangeRoots(fn func(RootSlot) bool) {
 	if keepGoing {
 		s.second.RangeRoots(fn)
 	}
-}
-
-func (s extraRootSet) RangeRootRefs(sink RootRefSink) bool {
-	if s.roots != nil {
-		direct, ok := s.roots.(DirectRootRefSet)
-		if !ok || !direct.RangeRootRefs(sink) {
-			return false
-		}
-	}
-	return s.extra == nil || sink.VisitRootRef(s.extra.GetRef())
 }
 
 func (s extraRootSet) RangeRoots(fn func(RootSlot) bool) {

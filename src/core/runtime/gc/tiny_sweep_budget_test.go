@@ -35,8 +35,8 @@ func TestTinyAllocationUsesSweptSpaceWithoutDrainingCycle(t *testing.T) {
 	if c.tinyGC.state != tinySweep {
 		t.Fatal("allocation synchronously drained Tiny sweep")
 	}
-	if c.tinyGC.sweep != before {
-		t.Fatalf("allocation advanced sweep cursor %d -> %d despite available swept space", before, c.tinyGC.sweep)
+	if c.tinyGC.sweep < before || c.tinyGC.sweep-before > tinyStepSweepHandles {
+		t.Fatalf("allocation sweep progress %d -> %d exceeded one bounded debt Step", before, c.tinyGC.sweep)
 	}
 	if !c.validObjectRef(allocated) {
 		t.Fatal("allocation from swept space is invalid")
@@ -69,6 +69,29 @@ func TestTinySweepStepUsesBoundedHandleAndBlockWork(t *testing.T) {
 	}
 	if c.tinyGC.state != tinySweep {
 		t.Fatal("one bounded sweep Step completed a 1,000-handle sweep")
+	}
+}
+
+func TestTinyPoisonSweepBoundsConfiguredBlockBytes(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 16 << 10, TinyBlockBytes: 8 << 10, PoisonFreed: true}, []TypeDesc{leaf})
+	object, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for c.tinyGC.state != tinySweep {
+		if err := c.Step(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.Step(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.scan.handle != handleOf(object) || c.tinyGC.scan.scan.index != tinyStepSweepBytes {
+		t.Fatalf("large-block poison cursor = %+v, want handle %d byte %d", c.tinyGC.scan, handleOf(object), tinyStepSweepBytes)
 	}
 }
 

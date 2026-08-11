@@ -1821,9 +1821,9 @@ Collector-owned globals and tables resume through a stable index cursor at
 most 256 slots per `Step`, including both initial mark and remark. Sweep walks handle indexes and frees
 white Tiny objects back to the fixed-block allocator. One sweep `Step` visits at
 most 64 handles and accounts at most 256 allocation blocks; one oversized span is
-handled alone. With `PoisonFreed`, a span larger than 256 blocks is poisoned through
-a stable handle/block cursor before it is released, so debug clearing cannot make
-one step scale with object size. `CollectFull` completes one whole Tiny cycle.
+handled alone. With `PoisonFreed`, clearing is capped at 4,096 bytes and resumes
+through a stable handle/byte cursor before the span is released, so a large
+configured block or object cannot make one step scale with its size. `CollectFull` completes one whole Tiny cycle.
 `CollectMinor` is specified as the same full Tiny cycle because Tiny is
 non-generational.
 

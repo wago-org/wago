@@ -131,4 +131,33 @@ func TestTinyRejectsUnboundedTransientRootWalk(t *testing.T) {
 	if err := c2.Step(fallbackTinyRoots{root}); err == nil || !strings.Contains(err.Error(), "bounded direct enumeration") {
 		t.Fatalf("fallback Step error = %v, want bounded direct-enumeration rejection", err)
 	}
+	c3 := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+	nested := RootGroups{{Class: RootSnapshotTemporary, Roots: fallbackTinyRoots{root}}}
+	if err := c3.Step(nested); err == nil || !strings.Contains(err.Error(), "bounded direct enumeration") {
+		t.Fatalf("nested fallback Step error = %v, want bounded direct-enumeration rejection", err)
+	}
+	c4 := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+	if err := c4.Step(&nested); err == nil || !strings.Contains(err.Error(), "bounded direct enumeration") {
+		t.Fatalf("pointer nested fallback Step error = %v, want bounded direct-enumeration rejection", err)
+	}
+}
+
+func TestClassifiedFallbackRootsRemainVisibleToThroughputTelemetry(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Telemetry: new(Telemetry), ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, []TypeDesc{leaf})
+	object, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(object)
+	roots := ClassifiedRoots{Class: RootSnapshotTemporary, Roots: fallbackTinyRoots{root}}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	if !c.validObjectRef(object) {
+		t.Fatal("classified fallback root was skipped by Throughput collection")
+	}
 }

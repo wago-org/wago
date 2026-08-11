@@ -68,6 +68,7 @@ const (
 	tinyStepPersistentRoots = uint32(256)
 	tinyStepSweepHandles    = uint32(64)
 	tinyStepSweepBlocks     = uint32(256)
+	tinyStepSweepBytes      = uint32(4096)
 	// Native/transient roots can change while the mutator runs, so they are
 	// captured atomically at a safepoint rather than resumed across Steps. The
 	// hard cap keeps that snapshot bounded; persistent collector slots use the
@@ -256,21 +257,22 @@ func (c *Collector) tinySweepBudget() error {
 			}
 			block := c.handles[h].off / c.tiny.blockBytes
 			span := c.tiny.spanSize(block)
-			start := c.tinyGC.scan.scan.index
-			if span == 0 || start >= span {
-				return c.failTinyTelemetryCycle(fmt.Errorf("gc: invalid Tiny sweep poison offset %d/%d", start, span))
+			totalBytes := uint64(span) * uint64(c.tiny.blockBytes)
+			start := uint64(c.tinyGC.scan.scan.index)
+			if span == 0 || start >= totalBytes {
+				return c.failTinyTelemetryCycle(fmt.Errorf("gc: invalid Tiny sweep poison offset %d/%d", start, totalBytes))
 			}
-			n := span - start
-			if n > tinyStepSweepBlocks {
-				n = tinyStepSweepBlocks
+			n := totalBytes - start
+			if n > uint64(tinyStepSweepBytes) {
+				n = uint64(tinyStepSweepBytes)
 			}
-			lo := (block + start) * c.tiny.blockBytes
-			hi := (block + start + n) * c.tiny.blockBytes
+			lo := uint64(c.handles[h].off) + start
+			hi := lo + n
 			for i := range c.tiny.mem[lo:hi] {
-				c.tiny.mem[lo+uint32(i)] = 0xdd
+				c.tiny.mem[lo+uint64(i)] = 0xdd
 			}
-			c.tinyGC.scan.scan.index += n
-			if c.tinyGC.scan.scan.index < span {
+			c.tinyGC.scan.scan.index += uint32(n)
+			if uint64(c.tinyGC.scan.scan.index) < totalBytes {
 				return nil
 			}
 			if c.telemetryEnabled() {
@@ -302,7 +304,7 @@ func (c *Collector) tinySweepBudget() error {
 		blocks += span
 		switch c.tinyColorOf(h) {
 		case tinyWhite:
-			if c.tiny.poisonFreed && span > tinyStepSweepBlocks {
+			if c.tiny.poisonFreed && uint64(span)*uint64(c.tiny.blockBytes) > uint64(tinyStepSweepBytes) {
 				c.tinyGC.scan = tinyScanCursor{handle: h}
 				continue
 			}
@@ -423,21 +425,123 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 }
 
 func (c *Collector) tinyWalkTransientRoots(roots RootSet) (bool, error) {
+	return c.tinyWalkTransientRootSet(roots, RootNativeFrame)
+}
+
+func (c *Collector) tinyWalkTransientRootSet(roots RootSet, class RootClass) (bool, error) {
 	if roots == nil {
 		return true, nil
 	}
-	if !c.telemetryEnabled() {
-		if direct, ok := roots.(DirectRootRefSet); ok {
-			return direct.RangeRootRefs(c), nil
+	switch roots := roots.(type) {
+	case *ArrayInitializerRootScratch:
+		if roots == nil {
+			return true, nil
 		}
+		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
+			return complete, err
+		}
+		switch roots.mode {
+		case 1:
+			return c.tinyVisitTransientRoot(class, roots.uniform), nil
+		case 2:
+			for i := range roots.values {
+				if !c.tinyVisitTransientRoot(class, roots.values[i].Ref) {
+					return false, nil
+				}
+			}
+		}
+		return true, nil
+	case *InitializerRootScratch:
+		if roots == nil {
+			return true, nil
+		}
+		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
+			return complete, err
+		}
+		for i := range roots.values {
+			if i < len(roots.fields) && isCollectorRefKind(roots.fields[i].Kind) && !c.tinyVisitTransientRoot(class, roots.values[i].Ref) {
+				return false, nil
+			}
+		}
+		return true, nil
+	case *InitializerWordRootScratch:
+		if roots == nil {
+			return true, nil
+		}
+		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
+			return complete, err
+		}
+		cursor := 0
+		for _, field := range roots.fields {
+			if cursor >= len(roots.words) {
+				break
+			}
+			if isCollectorRefKind(field.Kind) && !c.tinyVisitTransientRoot(class, Ref(uint32(roots.words[cursor]))) {
+				return false, nil
+			}
+			cursor++
+			if field.Kind == StorageV128 {
+				cursor++
+			}
+		}
+		return true, nil
+	case combinedRootSet:
+		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
+			return complete, err
+		}
+		return c.tinyWalkTransientRootSet(roots.second, class)
+	case extraRootSet:
+		if complete, err := c.tinyWalkTransientRootSet(roots.roots, class); err != nil || !complete {
+			return complete, err
+		}
+		if roots.extra != nil {
+			return c.tinyVisitTransientRoot(class, roots.extra.GetRef()), nil
+		}
+		return true, nil
+	case *RootGroups:
+		if roots == nil {
+			return true, nil
+		}
+		return c.tinyWalkTransientRootSet(RootGroups(*roots), class)
+	case *ClassifiedRoots:
+		if roots == nil {
+			return true, nil
+		}
+		return c.tinyWalkTransientRootSet(ClassifiedRoots(*roots), class)
+	case RootGroups:
+		for _, group := range roots {
+			complete, err := c.tinyWalkTransientRootSet(group.Roots, group.Class)
+			if err != nil || !complete {
+				return complete, err
+			}
+		}
+		return true, nil
+	case ClassifiedRoots:
+		return c.tinyWalkTransientRootSet(roots.Roots, roots.Class)
+	}
+	if c.telemetryEnabled() {
+		if classified, ok := roots.(DirectClassifiedRootRefSet); ok {
+			return classified.RangeClassifiedRootRefs(c), nil
+		}
+	}
+	if direct, ok := roots.(DirectRootRefSet); ok {
+		previous := c.telemetryRootClass
+		c.telemetryRootClass = class
+		complete := direct.RangeRootRefs(c)
+		c.telemetryRootClass = previous
+		return complete, nil
 	}
 	if classified, ok := roots.(DirectClassifiedRootRefSet); ok {
 		return classified.RangeClassifiedRootRefs(c), nil
 	}
-	if direct, ok := roots.(DirectRootRefSet); ok {
-		return direct.RangeRootRefs(c), nil
-	}
 	return false, errors.New("gc: Tiny transient roots require bounded direct enumeration")
+}
+
+func (c *Collector) tinyVisitTransientRoot(class RootClass, r Ref) bool {
+	if c.telemetryEnabled() {
+		return c.VisitClassifiedRootRef(class, r)
+	}
+	return c.VisitRootRef(r)
 }
 
 func (c *Collector) tinyCountTransientRoots(roots RootSet) error {
@@ -827,8 +931,9 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 			}
 			block := c.handles[active].off / c.tiny.blockBytes
 			span := c.tiny.spanSize(block)
-			if span == 0 || c.tinyGC.scan.scan.index == 0 || c.tinyGC.scan.scan.index >= span {
-				return fmt.Errorf("gc: invalid active Tiny sweep cursor %d/%d", c.tinyGC.scan.scan.index, span)
+			totalBytes := uint64(span) * uint64(c.tiny.blockBytes)
+			if span == 0 || c.tinyGC.scan.scan.index == 0 || uint64(c.tinyGC.scan.scan.index) >= totalBytes {
+				return fmt.Errorf("gc: invalid active Tiny sweep cursor %d/%d", c.tinyGC.scan.scan.index, totalBytes)
 			}
 			if len(c.tinyGC.grayStack) != 0 {
 				return errors.New("gc: Tiny sweep poison cursor retains gray work")

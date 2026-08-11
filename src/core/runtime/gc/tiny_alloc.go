@@ -418,7 +418,7 @@ func (c *Collector) tinyAssistNearExhaustion(size uint32, roots RootSet) (uint32
 		if err := c.Step(roots); err != nil {
 			return 0, 0, err
 		}
-		if c.tinyGC.cycles != completedCycles {
+		if tinyIncrementalBuild && c.tinyGC.cycles != completedCycles {
 			c.stats.FullCollections += uint64(c.tinyGC.cycles - completedCycles)
 			completedCycles = c.tinyGC.cycles
 		}
@@ -440,7 +440,7 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 		return Null(), err
 	}
 	paced := !c.cfg.CollectEveryAlloc && !c.cfg.TinyCollectEveryAlloc && !c.cfg.TinyStepEveryAlloc
-	if paced && roots != nil && c.tinyGC.state != tinySweep {
+	if paced && !tinyIncrementalBuild && roots != nil {
 		if err := c.tinyPayAllocationDebt(roots); err != nil {
 			return Null(), err
 		}
@@ -472,6 +472,17 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 		}
 		off, allocatedBytes, err = c.tinyAssistNearExhaustion(size, roots)
 		if err != nil {
+			return Null(), err
+		}
+	}
+	if paced && tinyIncrementalBuild && roots != nil {
+		// The allocator reservation is invisible to tracing until its handle is
+		// published, so debt work can run here even during sweep without exposing
+		// an uninitialized object or forfeiting already swept space.
+		if err := c.tinyPayAllocationDebt(roots); err != nil {
+			if freeErr := c.tiny.free(off); freeErr != nil {
+				panic("gc: failed to roll back unpublished Tiny reservation: " + freeErr.Error())
+			}
 			return Null(), err
 		}
 	}
