@@ -180,7 +180,13 @@ func (in *Instance) usesIndependentExecution() bool {
 }
 
 func (in *Instance) markNativeControlShared() {
-	in.executionFlags.Or(executionFlagNativeControlShared)
+	for {
+		flags := in.executionFlags.Load()
+		if flags&executionFlagNativeControlShared != 0 ||
+			in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeControlShared) {
+			return
+		}
+	}
 }
 
 func (in *Instance) nativeControlIsShared() bool {
