@@ -1048,10 +1048,14 @@ the eager call-spill model, float `call; local.set` fusion (int-only today), mix
 parallel staging (`emitMixedRegisterCall` still does full `flush()` + slot staging).
 (Plan P5.1–.2.)
 
-### R3. Store-narrowing peephole  · S · ⬜
-`setcc; movzx; store8` keeps a dead `movzx` (sieve's inner loop). Ships standalone if
-trivial, otherwise falls out of `stFlags` for free — don't build scaffolding twice.
-(Plan P2.5/P3.)
+### R3. Store-narrowing peephole  · S · ✅
+Integer comparisons consumed immediately by `i32.store8` now remain in flags and
+emit `setcc` directly into a scratch low byte, omitting the dead `movzx`. The rule
+selects 173 explicit-mode and 165 guard-mode sites across 11 corpus modules,
+removing 684 and 569 native bytes respectively. On a pinned Ryzen 7 7800X3D,
+sieve improves from 81.15 to 81.01 µs/op (-0.17%, p=0.000, n=12), while SQLite
+and Ruby compilation remain flat at 1.0001x geomean with effectively unchanged
+allocation volume. `WAGO_NO_STORE8_FLAGS=1` is the differential oracle. (Plan P2.5/P3.)
 
 ### R4. json serialize gap — ✅ RESOLVED (2026-07-02)
 Closed by #99 + #100: guard-mode ser 190→**93ns (beats WARP's 97)**; deser 175ns

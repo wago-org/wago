@@ -43,6 +43,9 @@ var (
 	// storing $c with a flag-neutral SETcc after the CMP. WAGO_NO_STFLAGS=1 is the
 	// A/B oracle + kill switch for this flag-desync-sensitive path.
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
+	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
+	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
+	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
 	// swarMaskTestEnabled gates direct packed-word mask-test fusion.
 	// WAGO_NO_SWAR_MASK_TEST=1 is the A/B oracle.
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"
@@ -318,6 +321,20 @@ func (s *CodegenStats) peep(name string) {
 		s.Peephole = make(map[string]int)
 	}
 	s.Peephole[name]++
+}
+
+// reclassifyPeep moves one already-recorded selection event to a more specific
+// sink. It is used only on the opt-in explain path; ordinary compilation has a
+// nil stats receiver and returns immediately.
+func (s *CodegenStats) reclassifyPeep(from, to string) {
+	if s == nil {
+		return
+	}
+	s.Peephole[from]--
+	if s.Peephole[from] == 0 {
+		delete(s.Peephole, from)
+	}
+	s.Peephole[to]++
 }
 
 // ModuleGlobalPinInfo describes one module-wide global→register reservation.
