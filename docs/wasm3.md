@@ -181,9 +181,11 @@ on linux/amd64 and Linux/Darwin arm64 explicit and signal-backed products.
 green in both linux/amd64 bounds modes and under Linux/arm64 QEMU explicit
 bounds; native Linux/Darwin arm64 explicit and `spec3-signals` conformance runs
 are required by CI. ARM64 signal mode guard-checks eligible memory-0 memory32
-accesses while indexed memories and memory64 retain explicit checks. The compatibility default deliberately remains the
-Release 2 feature set plus extended constants; callers opt into Core 3 with
-`WithCoreFeatures(CoreFeaturesV3)`, and the versioned spec harness does so when
+accesses while indexed memories and memory64 retain explicit checks. On complete
+backends, the compatibility default adds tails, typed function references,
+multi-memory, memory64, and table64 to the Release 2 plus extended-constants
+surface. GC and exception handling remain opt-in; callers request the complete
+release with `WithCoreFeatures(CoreFeaturesV3)`, and the versioned spec harness does so when
 `WAGO_SPEC_VERSION=3.0`. Unsupported build/platform requests return
 `UnsupportedFeatureError` with the exact requested bits, admitted bits, and
 `GOOS/GOARCH` platform. In particular, `memory64` and typed function references
@@ -5048,12 +5050,13 @@ WebAssembly Core 3.0 is complete for the pinned official linux/amd64
 explicit-bounds product. `make spec3` exits successfully with 2,226 passing
 modules and 58,038 passing assertions, zero failed or skipped modules/assertions,
 and zero gap counters. `tests/spec-v3-baseline.json` records the same zero-gap
-result. Release 1 and Release 2 compatibility defaults remain unchanged, and the
-runtime remains pure Go/no-cgo.
+result. Explicit Release 1 and Release 2 feature groups remain unchanged, and
+the runtime remains pure Go/no-cgo.
 
-`coreFeaturesWago` is the implementation ceiling, while `defaultCoreFeatures`
-retains the prior default admission set. Applications must explicitly request
-`CoreFeaturesV3`; the spec harness does so only for `WAGO_SPEC_VERSION=3.0`.
+`coreFeaturesWago` is the implementation ceiling. `defaultCoreFeatures()` adds
+the selected lower-risk Core 3 families only on complete backends; applications
+must still request `CoreFeaturesV3` for GC, exception handling, and the complete
+release. The spec harness does so for `WAGO_SPEC_VERSION=3.0`.
 Persisted artifacts retain structural/type metadata, but feature-dependent live
 product state is admitted after reload only when its required structural sidecar
 is completely represented; otherwise codec load or instantiation remains

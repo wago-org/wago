@@ -316,6 +316,42 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	}
 }
 
+func TestDefaultCoreFeaturePolicy(t *testing.T) {
+	want := coreFeaturesWithoutSidecar
+	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+		want |= defaultCore3Features
+	}
+	if got := NewRuntimeConfig().CoreFeatures(); got != want {
+		t.Fatalf("default features = %s, want %s", got, want)
+	}
+	if want.IsEnabled(CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureThreads) {
+		t.Fatalf("default unexpectedly includes ownership-sensitive opt-in features: %s", want)
+	}
+	for _, info := range FeatureInfos() {
+		expected := want.IsEnabled(info.Feature)
+		if got := info.Default; got != expected {
+			t.Errorf("feature %q default = %v, want %v", info.Name, got, expected)
+		}
+	}
+
+	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+		return
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x12, 0x01, 0x0b}), // return_call 1
+			wasmtest.Code([]byte{0x0b}),
+		)),
+	)
+	compiled, err := Compile(nil, module)
+	if err != nil {
+		t.Fatalf("default compile of selected Core 3 tail call: %v", err)
+	}
+	_ = compiled.Close()
+}
+
 func TestFeatureRegistryCoversEveryRuntimeFeature(t *testing.T) {
 	seen := map[string]bool{}
 	var registered CoreFeatures

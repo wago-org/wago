@@ -51,3 +51,24 @@ func TestResolveCompilationFiltersTargetOptimizations(t *testing.T) {
 		t.Fatalf("supported runtime config: %v", err)
 	}
 }
+
+func TestCoreSelectionDefaultsAndExplicitRelease2(t *testing.T) {
+	selection, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Core != 0 {
+		t.Fatalf("automatic core selection = %d, want 0", selection.Core)
+	}
+	if got := selection.RuntimeConfig().CoreFeatures(); got != wago.NewRuntimeConfig().CoreFeatures() {
+		t.Fatalf("automatic features = %s, want runtime default %s", got, wago.NewRuntimeConfig().CoreFeatures())
+	}
+
+	selection, err = ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH, Core: "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := selection.RuntimeConfig().CoreFeatures(); got != wago.CoreFeaturesV2 {
+		t.Fatalf("explicit Core 2 features = %s, want %s", got, wago.CoreFeaturesV2)
+	}
+}

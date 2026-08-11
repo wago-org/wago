@@ -273,7 +273,7 @@ func instantiateEngineFixture(t *testing.T, name string, imports Imports) *Insta
 	return in
 }
 
-func TestTailCallProposalFailsClosed(t *testing.T) {
+func TestTailCallFeatureDisableFailsClosed(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
@@ -282,7 +282,7 @@ func TestTailCallProposalFailsClosed(t *testing.T) {
 			wasmtest.Code([]byte{0x12, 0x00, 0x0b}), // return_call 0
 		)),
 	)
-	compiled, err := Compile(nil, mod)
+	compiled, err := Compile(compatibilityDefaultConfig(), mod)
 	if compiled != nil {
 		_ = compiled.Close()
 		t.Fatal("unsupported tail-call module compiled")
@@ -292,7 +292,7 @@ func TestTailCallProposalFailsClosed(t *testing.T) {
 	}
 }
 
-func TestTypedFunctionReferenceProposalFailsClosed(t *testing.T) {
+func TestTypedFunctionReferenceFeatureDisableFailsClosed(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
@@ -305,7 +305,7 @@ func TestTypedFunctionReferenceProposalFailsClosed(t *testing.T) {
 			wasmtest.Code([]byte{0xd2, 0x00, 0x14, 0x00, 0x0b}), // ref.func 0; call_ref type 0
 		)),
 	)
-	compiled, err := Compile(nil, mod)
+	compiled, err := Compile(compatibilityDefaultConfig(), mod)
 	if compiled != nil {
 		_ = compiled.Close()
 		t.Fatal("unsupported typed-function-reference module compiled")

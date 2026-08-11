@@ -34,7 +34,7 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "output", Short: "o", Arg: "<file>", Help: "output executable path"},
 		{Name: "target", Arg: "<os/arch>", Help: "target platform (default: current platform)"},
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 (default) | 3"},
+		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		internalparallel.Flag(),
 		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable"},
 		{Name: "plugins", Arg: "<names>", Help: "alias for --plugin"},

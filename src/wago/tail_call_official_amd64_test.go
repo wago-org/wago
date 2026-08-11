@@ -64,7 +64,7 @@ func TestStagedOfficialReturnCall(t *testing.T) {
 				continue
 			}
 			if counts.Commands == 1 {
-				if public, err := Compile(nil, data); err == nil {
+				if public, err := compatibilityDefaultConfig().Compile(data); err == nil {
 					_ = public.Close()
 					counts.Failures++
 					t.Errorf("return_call.wast:%d public compile unexpectedly admitted tail calls", cmd.Line)

@@ -159,8 +159,9 @@ func TestTypedFunctionReferenceDynamicTableLifecycle(t *testing.T) {
 		t.Fatal("local typed table owner overwrite did not release closed consumer")
 	}
 
-	// Public admission remains closed even though the staged end-to-end path runs.
-	if _, err := Compile(nil, producerModule); err == nil {
+	// Explicitly disabling typed references remains fail-closed even though the
+	// default and staged end-to-end paths run.
+	if _, err := compatibilityDefaultConfig().Compile(producerModule); err == nil {
 		t.Fatal("public typed-reference table compile unexpectedly succeeded")
 	}
 }

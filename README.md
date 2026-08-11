@@ -63,8 +63,10 @@ wago fib.wasm 20
 wago run --core 3 --invoke main generated-wasmgc.wasm
 ```
 
-The CLI preserves the WebAssembly 2 compatibility default. Pass `--core 3` to
-compile and execute modules with the complete opt-in `CoreFeaturesV3` set.
+On complete backends, the CLI defaults on tail calls, typed function references,
+multi-memory, memory64, and table64. WasmGC and exception handling remain opt-in:
+pass `--core 3` for the complete `CoreFeaturesV3` set, or `--core 2` for the
+strict Release 2 set.
 
 Validate or precompile a module:
 
@@ -307,8 +309,9 @@ Wago supports the WebAssembly 1.0 core language and the implemented
 WebAssembly 2.0 release features, including multi-value, reference types, bulk
 memory, extended constant expressions, and SIMD. Native runtime paths, CI, and
 release assets cover Linux, macOS, and Windows on amd64 and arm64. Linux amd64
-is the primary performance target; the complete opt-in Core 3 feature set is
-currently admitted on linux/amd64, linux/arm64, and darwin/arm64.
+is the primary performance target. Selected Core 3 families default on for
+linux/amd64, linux/arm64, and darwin/arm64; the complete set is available there
+with `--core 3`.
 
 Wago is JIT-only. Unsupported or disabled features fail during decode or
 validation.

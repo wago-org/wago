@@ -80,7 +80,7 @@ func stagedOfficialMultiMemoryModules(t *testing.T, base string) [][]byte {
 
 func stagedCompactConsumerRoundTrip(t *testing.T, data []byte, wantImports []string) *Compiled {
 	t.Helper()
-	if _, err := Compile(nil, data); err == nil || !strings.Contains(err.Error(), "compact imports") {
+	if _, err := compatibilityDefaultConfig().Compile(data); err == nil || !strings.Contains(err.Error(), "compact imports") {
 		t.Fatalf("default compile error = %v, want fail-closed compact-import rejection", err)
 	}
 	compiled := stagedMultiMemoryCompile(t, data)

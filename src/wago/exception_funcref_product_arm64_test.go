@@ -68,7 +68,7 @@ func compileStagedExceptionFuncrefProduct(t testing.TB, data []byte) *Compiled {
 
 func TestStagedExceptionFuncrefProductIdentityLifetimeAndGates(t *testing.T) {
 	data := stagedExceptionFuncrefProductModule([]byte{0x64, 0x00}, 0x03, 0x00, true)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "disabled") {
+	if _, err := Compile(NewRuntimeConfig(), data); err == nil || (!strings.Contains(err.Error(), "disabled") && !strings.Contains(err.Error(), "exn")) {
 		t.Fatalf("public compile = %v, want a closed public Core 3 feature gate", err)
 	}
 	c := compileStagedExceptionFuncrefProduct(t, data)

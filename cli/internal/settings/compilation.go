@@ -111,7 +111,10 @@ func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 		WithDeferBoundsChecks(selection.DeferredBoundsChecking).
 		WithFunctionWorkers(selection.FunctionWorkers).
 		WithOptimizations(selection.Optimizations)
-	if selection.Core == 3 {
+	switch selection.Core {
+	case 2:
+		config = config.WithCoreFeatures(wago.CoreFeaturesV2)
+	case 3:
 		config = config.WithCoreFeatures(wago.CoreFeaturesV3)
 	}
 	for name, enabled := range selection.Features {
@@ -124,7 +127,9 @@ func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 
 func resolveCore(value string) (int, error) {
 	switch value {
-	case "", "2":
+	case "":
+		return 0, nil
+	case "2":
 		return 2, nil
 	case "3":
 		return 3, nil
