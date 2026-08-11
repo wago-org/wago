@@ -5,6 +5,7 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 
 // pkgOpts are the shared flags for the consume-side pkg commands.
 type pkgOpts struct {
+	ctx          context.Context
 	global       bool // operate on the ~/.wago set instead of the project
 	force        bool // ignore the build cache / fetch latest
 	verbose      bool // stream the underlying `go` output
@@ -45,7 +47,9 @@ func pkgAddMany(specs []string, o pkgOpts) {
 	}
 	progress.Title(title)
 	progress.Begin("Resolving packages")
-	packages, err := ResolvePackages(specs, registry.ResolveModule)
+	packages, err := ResolvePackages(specs, func(name string) (string, error) {
+		return registry.ResolveModuleContext(pluginContext(o.ctx), name)
+	})
 	if err != nil {
 		progress.Fail("Package resolution failed")
 		fatal("add: %v", err)
@@ -80,7 +84,7 @@ func pkgAddMany(specs []string, o pkgOpts) {
 				if automation.JSON() {
 					fatal("add: package %s was not found", getSpec)
 				}
-				printPackageNotFound(os.Stderr, pkg.Module, registry.Closest(pkg.Module))
+				printPackageNotFound(os.Stderr, pkg.Module, registry.ClosestContext(pluginContext(o.ctx), pkg.Module))
 				os.Exit(1)
 			}
 			progress.Fail("Package download failed")
@@ -139,7 +143,7 @@ func pkgAddMany(specs []string, o pkgOpts) {
 		progress.Finish(fmt.Sprintf("Built Wago with %d package%s", len(packages), plural(len(packages))))
 	}
 	for _, pkg := range packages {
-		registry.RecordInstall(pkg.Module, pkg.Resolved)
+		registry.RecordInstallContext(pluginContext(o.ctx), pkg.Module, pkg.Resolved)
 	}
 	// Then review capabilities — on a first install, or when the package's
 	// required capabilities have changed since the lockfile recorded them.
@@ -376,7 +380,7 @@ func pkgUpdate(target string, o pkgOpts) {
 	targets := deps
 	if target != "" {
 		if !strings.Contains(target, "/") && !strings.Contains(target, ".") {
-			if m, err := registry.ResolveModule(target); err == nil {
+			if m, err := registry.ResolveModuleContext(pluginContext(o.ctx), target); err == nil {
 				target = m
 			}
 		} else {
@@ -429,6 +433,13 @@ func pkgUpdate(target string, o pkgOpts) {
 		fatal("plugin update: %v", err)
 	}
 	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(pending), plural(len(pending)), bin)
+}
+
+func pluginContext(ctx context.Context) context.Context {
+	if ctx != nil {
+		return ctx
+	}
+	return context.Background()
 }
 
 func pluginUpdateRequired(current, locked, latest string, force bool) bool {

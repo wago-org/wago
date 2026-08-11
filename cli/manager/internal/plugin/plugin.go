@@ -3,6 +3,7 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 )
 
 type AddRequest struct {
+	Context        context.Context
 	Modules        []string
 	Global, Local  bool
 	Force, Verbose bool
@@ -21,6 +23,7 @@ type AddRequest struct {
 }
 
 type MutationRequest struct {
+	Context       context.Context
 	Name          string
 	Global, Local bool
 	Force         bool
@@ -49,6 +52,7 @@ func managerVersion() string { return configuredManagerVersion }
 
 func Add(request AddRequest) {
 	pkgAddMany(request.Modules, pkgOpts{
+		ctx:          request.Context,
 		global:       mustMutationScope(request.Global, request.Local),
 		force:        request.Force,
 		verbose:      request.Verbose,
@@ -68,6 +72,7 @@ func Grant(request MutationRequest) {
 
 func Update(request MutationRequest) {
 	pkgUpdate(normalizeModuleRef(request.Name), pkgOpts{
+		ctx:     request.Context,
 		global:  mustMutationScope(request.Global, request.Local),
 		force:   request.Force,
 		verbose: request.Verbose,

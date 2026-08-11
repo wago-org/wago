@@ -1,11 +1,13 @@
 package manager
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -40,6 +42,9 @@ func versionString() string {
 // installation so every profile retains the same management commands.
 func Main(v string) {
 	version = v
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	managerRoot = buildCommandRegistryContext(ctx)
 	managerplugin.ConfigureManagerVersion(versionString())
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {

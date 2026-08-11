@@ -1,11 +1,14 @@
 package registry
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/internal/httpclient"
 )
 
 func TestOAuthHelpers(t *testing.T) {
@@ -22,6 +25,17 @@ func TestOAuthHelpers(t *testing.T) {
 	}
 	if err := PostForm(server.URL, url.Values{"scope": {"read write"}}, &reply); err != nil || !reply.OK {
 		t.Fatalf("PostForm = %+v, %v", reply, err)
+	}
+	oldMaximum := oauthResponseMaximum
+	oauthResponseMaximum = 16
+	t.Cleanup(func() { oauthResponseMaximum = oldMaximum })
+	oversized := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte(strings.Repeat("x", 17)))
+	}))
+	defer oversized.Close()
+	if err := PostForm(oversized.URL, url.Values{}, &reply); !errors.Is(err, httpclient.ErrBodyTooLarge) {
+		t.Fatalf("oversized OAuth response = %v", err)
 	}
 	if !strings.Contains(SuccessHTML, "logged in") {
 		t.Fatal("login success HTML missing confirmation")

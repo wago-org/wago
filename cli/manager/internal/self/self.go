@@ -1,6 +1,7 @@
 package self
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -90,13 +91,33 @@ var (
 )
 
 func selfUpdate(current, executable string, force bool) {
+	selfUpdateUsing(current, executable, force, resolveManagerUpdate, installManagerPayload)
+}
+
+func selfUpdateContext(ctx context.Context, current, executable string, force bool) {
+	selfUpdateUsing(current, executable, force,
+		func(channel string, progress *managerprogress.Progress) (string, bool, error) {
+			return managerversion.ResolveManagerUpdateContext(ctx, channel, progress)
+		},
+		func(resolved, destination string, sourceOnly bool, progress *managerprogress.Progress) error {
+			return managerversion.InstallManagerPayloadContext(ctx, resolved, destination, sourceOnly, progress)
+		},
+	)
+}
+
+func selfUpdateUsing(
+	current, executable string,
+	force bool,
+	resolve func(string, *managerprogress.Progress) (string, bool, error),
+	install func(string, string, bool, *managerprogress.Progress) error,
+) {
 	progress := managerprogress.NewProgress(os.Stderr)
 	progress.Title("Updating Wago")
 	staged := executable + ".new"
 	_ = os.Remove(staged)
 	channel := Channel(current)
 
-	resolved, sourceOnly, err := resolveManagerUpdate(channel, progress)
+	resolved, sourceOnly, err := resolve(channel, progress)
 	if err != nil {
 		_ = os.Remove(staged)
 		fatal("self update: %v", err)
@@ -105,7 +126,7 @@ func selfUpdate(current, executable string, force bool) {
 		progress.Finish("Wago is already up to date (" + managerversion.DisplayRelease(resolved) + ")")
 		return
 	}
-	if err := installManagerPayload(resolved, staged, sourceOnly, progress); err != nil {
+	if err := install(resolved, staged, sourceOnly, progress); err != nil {
 		_ = os.Remove(staged)
 		fatal("self update: %v", err)
 	}

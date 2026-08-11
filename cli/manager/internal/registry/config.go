@@ -9,11 +9,17 @@ package registry
 // XDG config directory on Linux, unless WAGO_HOME overrides both.
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
+	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/filelock"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -116,42 +122,99 @@ func loadCredentials() (map[string]credential, error) {
 	return creds, nil
 }
 
-// saveCredentials records token+login for base, preserving other registries'
-// entries, and writes the file with 0600 permissions.
+// saveCredentials records token+login for base while holding the cross-process
+// credential-store lock, preserving other registries' latest entries.
 func saveCredentials(base, token, login string) error {
-	creds, err := loadCredentials()
-	if err != nil {
-		return err
-	}
-	creds[base] = credential{Token: token, Login: login}
-	return writeCredentials(creds)
+	return saveCredentialsContext(context.Background(), base, token, login)
+}
+
+func saveCredentialsContext(ctx context.Context, base, token, login string) error {
+	return mutateCredentials(ctx, func(creds map[string]credential) bool {
+		creds[base] = credential{Token: token, Login: login}
+		return true
+	})
 }
 
 // deleteCredentials removes the stored entry for base (a no-op if none exists).
 func deleteCredentials(base string) error {
-	creds, err := loadCredentials()
+	return deleteCredentialsContext(context.Background(), base)
+}
+
+func deleteCredentialsContext(ctx context.Context, base string) error {
+	return mutateCredentials(ctx, func(creds map[string]credential) bool {
+		if _, ok := creds[base]; !ok {
+			return false
+		}
+		delete(creds, base)
+		return true
+	})
+}
+
+func mutateCredentials(ctx context.Context, mutate func(map[string]credential) bool) error {
+	path := credentialsPath()
+	if err := prepareCredentialDirectory(filepath.Dir(path)); err != nil {
+		return err
+	}
+	lock, err := filelock.Acquire(ctx, path+".lock")
 	if err != nil {
 		return err
 	}
-	if _, ok := creds[base]; !ok {
-		return nil
+	creds, operationErr := loadCredentials()
+	if operationErr == nil && mutate(creds) {
+		operationErr = writeCredentialsLocked(path, creds)
 	}
-	delete(creds, base)
-	return writeCredentials(creds)
+	return errors.Join(operationErr, lock.Close())
 }
 
-// writeCredentials serializes the credential map to disk (0600), creating the
-// parent directory if needed.
+// writeCredentials replaces the complete credential map under the same lock
+// used by mutations. Existing malformed data is rejected rather than silently
+// overwritten.
 func writeCredentials(creds map[string]credential) error {
 	path := credentialsPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := prepareCredentialDirectory(filepath.Dir(path)); err != nil {
 		return err
 	}
+	lock, err := filelock.Acquire(context.Background(), path+".lock")
+	if err != nil {
+		return err
+	}
+	_, operationErr := loadCredentials()
+	if operationErr == nil {
+		operationErr = writeCredentialsLocked(path, creds)
+	}
+	return errors.Join(operationErr, lock.Close())
+}
+
+var (
+	replaceCredentialFile = atomicfile.ReplaceFile
+	credentialAtomicHooks *atomicfile.Hooks
+)
+
+func writeCredentialsLocked(path string, creds map[string]credential) error {
 	data, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o600)
+	data = append(data, '\n')
+	return replaceCredentialFile(path, atomicfile.Options{Mode: 0o600, Sync: true, Hooks: credentialAtomicHooks}, func(writer io.Writer) error {
+		_, err := writer.Write(data)
+		return err
+	})
+}
+
+func prepareCredentialDirectory(directory string) error {
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	// Windows mode bits do not provide ACL-equivalent privacy guarantees. The
+	// file remains atomically replaced there, while native ACL hardening is a
+	// separate platform concern.
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(directory, 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // resolveToken returns the API token for the current registry: WAGO_TOKEN wins,

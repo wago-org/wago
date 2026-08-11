@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,10 @@ import (
 )
 
 func registryLogin(options LoginRequest) {
+	registryLoginContext(context.Background(), options)
+}
+
+func registryLoginContext(ctx context.Context, options LoginRequest) {
 	withToken := options.WithToken
 	code := options.Code
 	link := options.Link
@@ -36,24 +41,24 @@ func registryLogin(options LoginRequest) {
 			fatal("login: no token on stdin")
 		}
 	case code:
-		token = githubDeviceLogin(base)
+		token = githubDeviceLoginContext(ctx, base)
 	case link:
-		token = browserLogin(base)
+		token = browserLoginContext(ctx, base)
 	default:
 		var ok bool
-		token, ok = chooseLoginMethod(base)
+		token, ok = chooseLoginMethodContext(ctx, base)
 		if !ok {
 			return
 		}
 	}
-	me, err := fetchMe(token)
+	me, err := fetchMeContext(ctx, token)
 	if err != nil {
 		if errors.Is(err, errUnauthorized) {
 			fatal("login: the registry rejected that token")
 		}
 		fatal("login: %v", err)
 	}
-	if err := saveCredentials(base, token, me.Login); err != nil {
+	if err := saveCredentialsContext(ctx, base, token, me.Login); err != nil {
 		fatal("login: saving credentials: %v", err)
 	}
 	fmt.Printf("%s Logged in as %s\n", cyan("✓"), bold(me.Login))
@@ -77,6 +82,10 @@ func loginMethodPicker() *tui.Picker {
 // chooseLoginMethod asks how to log in using the shared radio selector. Link is
 // selected by default and remains the fallback for non-interactive callers.
 func chooseLoginMethod(base string) (string, bool) {
+	return chooseLoginMethodContext(context.Background(), base)
+}
+
+func chooseLoginMethodContext(ctx context.Context, base string) (string, bool) {
 	p := loginMethodPicker()
 	submitted, cancelled := tui.Run(p)
 	if cancelled {
@@ -88,9 +97,9 @@ func chooseLoginMethod(base string) (string, bool) {
 	}
 	switch method {
 	case "code":
-		return githubDeviceLogin(base), true
+		return githubDeviceLoginContext(ctx, base), true
 	default:
-		return browserLogin(base), true
+		return browserLoginContext(ctx, base), true
 	}
 }
 
@@ -98,6 +107,10 @@ func chooseLoginMethod(base string) (string, bool) {
 // opens the browser to the registry's CLI-login endpoint, and waits for the
 // /callback redirect carrying the plaintext token. It fatals on error or timeout.
 func browserLogin(base string) string {
+	return browserLoginContext(context.Background(), base)
+}
+
+func browserLoginContext(ctx context.Context, base string) string {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		fatal("login: cannot open a loopback listener: %v", err)
@@ -146,6 +159,9 @@ func browserLogin(base string) string {
 			fatal("login: no token received from the registry")
 		}
 		return res.token
+	case <-ctx.Done():
+		fatal("login: %v", ctx.Err())
+		return ""
 	case <-time.After(2 * time.Minute):
 		fatal("login: timed out waiting for the browser callback")
 		return ""
@@ -163,8 +179,12 @@ func browserLogin(base string) string {
 // the GitHub token to the registry (POST /api/auth/github/exchange), which
 // verifies the token belongs to its app and returns a wago token.
 func githubDeviceLogin(base string) string {
+	return githubDeviceLoginContext(context.Background(), base)
+}
+
+func githubDeviceLoginContext(ctx context.Context, base string) string {
 	// 1. Ask the registry which GitHub OAuth app to authenticate against.
-	status, data, err := apiRequest(http.MethodGet, "/api/auth/github/client", "", nil)
+	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/auth/github/client", "", nil)
 	if err != nil {
 		fatal("login: fetching GitHub client config: %v", err)
 	}
@@ -191,7 +211,7 @@ func githubDeviceLogin(base string) string {
 		Interval        int    `json:"interval"`
 		Error           string `json:"error"`
 	}
-	if err := PostForm("https://github.com/login/device/code",
+	if err := PostFormContext(ctx, "https://github.com/login/device/code",
 		url.Values{"client_id": {cfg.ClientID}, "scope": {cfg.Scope}}, &dc); err != nil {
 		fatal("login: requesting device code from GitHub: %v", err)
 	}
@@ -228,12 +248,18 @@ func githubDeviceLogin(base string) string {
 	var ghToken string
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	for time.Now().Before(deadline) {
-		time.Sleep(time.Duration(interval) * time.Second)
+		timer := time.NewTimer(time.Duration(interval) * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			fatal("login: %v", ctx.Err())
+		case <-timer.C:
+		}
 		var tr struct {
 			AccessToken string `json:"access_token"`
 			Error       string `json:"error"`
 		}
-		if err := PostForm("https://github.com/login/oauth/access_token", url.Values{
+		if err := PostFormContext(ctx, "https://github.com/login/oauth/access_token", url.Values{
 			"client_id":   {cfg.ClientID},
 			"device_code": {dc.DeviceCode},
 			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
@@ -262,7 +288,7 @@ func githubDeviceLogin(base string) string {
 	}
 
 	// 4. Exchange the GitHub token for a wago API token.
-	status, data, err = apiRequest(http.MethodPost, "/api/auth/github/exchange", "",
+	status, data, err = apiRequestContext(ctx, http.MethodPost, "/api/auth/github/exchange", "",
 		map[string]string{"access_token": ghToken})
 	if err != nil {
 		fatal("login: exchanging GitHub token: %v", err)
@@ -284,13 +310,20 @@ func githubDeviceLogin(base string) string {
 
 // registryLogout deletes stored credentials for the current registry.
 func registryLogout() {
+	registryLogoutContext(context.Background())
+}
+
+func registryLogoutContext(ctx context.Context) {
 	base := registryBase()
-	creds, _ := loadCredentials()
+	creds, err := loadCredentials()
+	if err != nil {
+		fatal("logout: reading credentials: %v", err)
+	}
 	if _, ok := creds[base]; !ok {
 		fmt.Printf("%s Not logged in to %s\n", dim("·"), base)
 		return
 	}
-	if err := deleteCredentials(base); err != nil {
+	if err := deleteCredentialsContext(ctx, base); err != nil {
 		fatal("logout: %v", err)
 	}
 	fmt.Printf("%s Logged out of %s\n", cyan("✓"), base)
@@ -299,6 +332,10 @@ func registryLogout() {
 // registryWhoami prints the login of the current token, or a friendly hint when
 // there is no valid session.
 func registryWhoami() {
+	registryWhoamiContext(context.Background())
+}
+
+func registryWhoamiContext(ctx context.Context) {
 	token := resolveToken()
 	if token == "" {
 		if automation.JSON() {
@@ -308,7 +345,7 @@ func registryWhoami() {
 		fmt.Println("not logged in (run: wago auth login)")
 		return
 	}
-	me, err := fetchMe(token)
+	me, err := fetchMeContext(ctx, token)
 	if err != nil {
 		if errors.Is(err, errUnauthorized) {
 			if automation.JSON() {
