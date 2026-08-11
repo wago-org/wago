@@ -170,6 +170,54 @@ func TestTinyCollectFullRestartsPartialScanWithFreshEpoch(t *testing.T) {
 	}
 }
 
+func TestTinyCollectFullRestartsSweepWithFreshEpoch(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, VerifyAfterCollect: true}, []TypeDesc{leaf})
+	c.tinyGC.markEpoch = tinyMarkEpochMask - 1
+	c.tinyGC.color[0] = tinyEncodeMarkState(c.tinyGC.markEpoch, tinyWhite)
+	oldRoot, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drop, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(oldRoot)
+	roots := Slots{&root}
+	for c.tinyGC.state != tinySweep {
+		if err := c.Step(roots); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.tinyGC.markEpoch != tinyMarkEpochMask {
+		t.Fatalf("sweep epoch = %d, want %d", c.tinyGC.markEpoch, tinyMarkEpochMask)
+	}
+	if err := c.Step(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.sweep != handleOf(keep) {
+		t.Fatalf("sweep cursor = %d, want next handle %d", c.tinyGC.sweep, handleOf(keep))
+	}
+	keepRoot := Root(keep)
+	if err := c.CollectFull(Slots{&keepRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.markEpoch != 0 {
+		t.Fatalf("restart epoch = %d, want wrapped epoch 0", c.tinyGC.markEpoch)
+	}
+	if !c.validObjectRef(keep) || c.validObjectRef(oldRoot) || c.validObjectRef(drop) {
+		t.Fatal("sweep restart retained the wrong epoch population")
+	}
+}
+
 func TestTinyAllocationsPublishCurrentEpochState(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
