@@ -64,6 +64,11 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 			return r
 		}
 	}
+	// Regional pins are a cache, not a hard reservation. Under pressure, evict a
+	// non-borrowed cached local before spilling a live operand-stack value.
+	if r := f.evictIntervalLocal(avoid); r != regNone {
+		return r
+	}
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
 	for e := f.s.head.next; e != f.s.head; e = e.next {
