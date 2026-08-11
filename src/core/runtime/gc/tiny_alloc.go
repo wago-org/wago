@@ -52,6 +52,9 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if config.TinyStepBudget == 0 {
 		config.TinyStepBudget = defaultTinyStepBudget
 	}
+	if config.TinyPacingStepLimit == 0 {
+		config.TinyPacingStepLimit = 1
+	}
 	if err := validateTinyConfig(config); err != nil {
 		return nil, err
 	}
@@ -100,6 +103,9 @@ func validateTinyConfig(config Config) error {
 	}
 	if config.TinyBlockBytes < 8 {
 		return errors.New("gc: tiny block size is smaller than object alignment")
+	}
+	if config.TinyPacingStepLimit > tinyNearExhaustionStepLimit {
+		return errors.New("gc: Tiny pacing step limit must not exceed 32")
 	}
 	if config.TinyHeapBytes%config.TinyBlockBytes != 0 {
 		return errors.New("gc: tiny heap size must be a multiple of block size")
@@ -377,9 +383,67 @@ func (h *tinyHeap) metadataBytes() uintptr {
 		uintptr(len(h.usedStarts))*8 + uintptr(len(h.binHeads))*4 + uintptr(len(h.binWords))*8 + 8
 }
 
+func (c *Collector) tinyPayAllocationDebt(roots RootSet) error {
+	steps := c.tinyGC.allocationDebt / tinyAllocationDebtBytes
+	if steps > c.cfg.TinyPacingStepLimit {
+		steps = c.cfg.TinyPacingStepLimit
+	}
+	for i := uint32(0); i < steps; i++ {
+		if err := c.Step(roots); err != nil {
+			return err
+		}
+		c.tinyGC.allocationDebt -= tinyAllocationDebtBytes
+	}
+	return nil
+}
+
+func (c *Collector) tinyAddAllocationDebt(bytes uint32) {
+	if ^uint32(0)-c.tinyGC.allocationDebt < bytes {
+		c.tinyGC.allocationDebt = ^uint32(0)
+		return
+	}
+	c.tinyGC.allocationDebt += bytes
+}
+
+func (c *Collector) tinyAssistNearExhaustion(size uint32, roots RootSet) (uint32, uint32, error) {
+	limit := c.cfg.TinyPacingStepLimit * tinyNearExhaustionFactor
+	if limit < c.cfg.TinyPacingStepLimit || limit > tinyNearExhaustionStepLimit {
+		limit = tinyNearExhaustionStepLimit
+	}
+	if limit == 0 {
+		limit = 1
+	}
+	completedCycles := c.tinyGC.cycles
+	for i := uint32(0); i < limit; i++ {
+		if err := c.Step(roots); err != nil {
+			return 0, 0, err
+		}
+		if c.tinyGC.cycles != completedCycles {
+			c.stats.FullCollections += uint64(c.tinyGC.cycles - completedCycles)
+			completedCycles = c.tinyGC.cycles
+		}
+		if c.tinyGC.allocationDebt >= tinyAllocationDebtBytes {
+			c.tinyGC.allocationDebt -= tinyAllocationDebtBytes
+		} else {
+			c.tinyGC.allocationDebt = 0
+		}
+		off, allocated, err := c.tiny.alloc(size)
+		if err == nil {
+			return off, allocated, nil
+		}
+	}
+	return 0, 0, errors.New("gc: tiny heap exhausted after bounded pacing assist")
+}
+
 func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
 	if err := c.errIfClosed(); err != nil {
 		return Null(), err
+	}
+	paced := !c.cfg.CollectEveryAlloc && !c.cfg.TinyCollectEveryAlloc && !c.cfg.TinyStepEveryAlloc
+	if paced && roots != nil && c.tinyGC.state != tinySweep {
+		if err := c.tinyPayAllocationDebt(roots); err != nil {
+			return Null(), err
+		}
 	}
 	if c.cfg.CollectEveryAlloc || c.cfg.TinyCollectEveryAlloc {
 		if roots == nil {
@@ -401,31 +465,14 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 	if err := injectFailure(c, failHandlePublication); err != nil {
 		return Null(), err
 	}
-	off, _, err := c.tiny.alloc(size)
-	if err != nil && c.tinyGC.state == tinySweep {
-		if roots == nil {
-			return Null(), errors.New("gc: allocation during tiny sweep requires roots")
-		}
-		// One bounded assist may expose the next swept span, but allocation never
-		// drains the remaining cycle merely because sweep is active.
-		if stepErr := c.Step(roots); stepErr != nil {
-			return Null(), stepErr
-		}
-		off, _, err = c.tiny.alloc(size)
-		if err != nil {
-			return Null(), errors.New("gc: tiny heap exhausted during bounded sweep")
-		}
-	}
+	off, allocatedBytes, err := c.tiny.alloc(size)
 	if err != nil {
 		if roots == nil {
 			return Null(), errors.New("gc: tiny heap exhausted and no roots were supplied")
 		}
-		if err := c.CollectFull(roots); err != nil {
-			return Null(), err
-		}
-		off, _, err = c.tiny.alloc(size)
+		off, allocatedBytes, err = c.tinyAssistNearExhaustion(size, roots)
 		if err != nil {
-			return Null(), errors.New("gc: tiny heap exhausted")
+			return Null(), err
 		}
 	}
 	h := c.newHandle(handleEntry{off: off, size: size, space: spaceTiny})
@@ -437,6 +484,9 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.tinyPostAlloc(r, d)
 	c.stats.Allocations++
+	if paced {
+		c.tinyAddAllocationDebt(allocatedBytes)
+	}
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.paths.GoAllocationPaths++
 	}

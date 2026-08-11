@@ -1788,7 +1788,10 @@ Tiny is intentionally fixed-size and non-moving:
   alignment. The allocator manages variable-size objects as contiguous block
   spans.
 - `TinyStepBudget`, `TinyStepEveryAlloc`, and `TinyCollectEveryAlloc` control
-  allocation-time incremental/full collection stress behavior.
+  allocation-time incremental/full collection stress behavior. `TinyStepBudget`
+  retains that exact step-count meaning.
+- `TinyPacingStepLimit` bounds ordinary allocation-debt work before one
+  allocation; zero selects one and values above 32 are rejected.
 - `PoisonFreed` and `VerifyAfterCollect` apply to Tiny as debug knobs.
 
 The allocator is a compact first-fit fixed-block allocator over one byte slice.
@@ -1891,9 +1894,11 @@ Known Tiny limitations in this foundation:
 - transient roots use a hard 1,024-reference direct-visitor bound rather than a
   resumable cursor because native frame roots may change when the mutator resumes;
 - allocation may consume existing or already swept free spans without draining
-  the remaining cycle; on an allocation miss during sweep it performs one bounded
-  sweep assist and fails explicitly if no fitting span is exposed. Allocation-debt
-  and near-exhaustion pacing remain separate policy work. A reference graph published through an external `WriteBarrierRoot`
+  the remaining cycle. Ordinary allocations accrue physical-span debt and buy one
+  collector `Step` per 1,024 bytes, capped by `TinyPacingStepLimit` before each
+  allocation. An allocation miss adapts to near exhaustion with at most eight
+  times that configured work and an absolute 32-step ceiling, then fails
+  explicitly rather than synchronously draining an arbitrary cycle. A reference graph published through an external `WriteBarrierRoot`
   during sweep must remain in the exact supplied roots until publication; the
   current one-pass sweep cannot resurrect descendants already reclaimed from an
   omitted graph. Checked collector global/table setters fail before mutating their
@@ -1905,8 +1910,8 @@ Known Tiny limitations in this foundation:
 - collection is incremental by explicit `Step` calls or allocation-time stress
   knobs, not concurrent;
 - handle-table entries remain the stable ref indirection; and
-- near-exhaustion pacing, SATB/barrier-policy comparison, and
-  incremental/nonincremental Tiny product splitting remain later #319 work.
+- SATB/barrier-policy comparison and incremental/nonincremental Tiny product
+  splitting remain later #319 work.
 
 ## Allocator/GC codegen dependency contract
 
@@ -2331,6 +2336,7 @@ Verification checks that live refs point to valid handles, object type IDs exist
 - `TinyHeapBytes`
 - `TinyBlockBytes`
 - `TinyStepBudget`
+- `TinyPacingStepLimit`
 - `TinyCollectEveryAlloc`
 - `TinyStepEveryAlloc`
 - `ThroughputHeapBytes`

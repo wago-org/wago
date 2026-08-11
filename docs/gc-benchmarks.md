@@ -664,7 +664,10 @@ rather than total persistent-root count. `BenchmarkTinyStepSweepBlack` measures
 one 64-handle survivor sweep at 188 ns for 64 handles, 191-193 ns for 4,096
 handles, and 174-177 ns for 65,536 handles, all with 0 B/op and 0 allocs/op.
 Sweep work is capped at 64 handles and 256 blocks; oversized debug-poison spans
-resume separately. Transient/native roots remain one atomic direct walk with a
+resume separately. `BenchmarkTinyAllocationDebtStep` measures one debt-purchased
+rootless cycle-start step at 16.4-17.1 ns, 0 B/op, and 0 allocs/op. Ordinary
+pacing buys one step per 1,024 allocated physical bytes and near-exhaustion work
+is capped at 32 steps per allocation. Transient/native roots remain one atomic direct walk with a
 hard 1,024-reference limit because frame slots may
 change when the mutator resumes; callback-only root sets fail closed in Tiny.
 

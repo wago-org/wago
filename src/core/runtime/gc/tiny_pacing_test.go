@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestTinyPacingConfigBounds(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, TinyPacingStepLimit: tinyNearExhaustionStepLimit + 1}, []TypeDesc{leaf}); err == nil {
+		t.Fatal("oversized Tiny pacing limit was accepted")
+	}
+}
+
 func TestTinyAllocationDebtStartsIncrementalWork(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {

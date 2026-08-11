@@ -71,7 +71,10 @@ const (
 	// captured atomically at a safepoint rather than resumed across Steps. The
 	// hard cap keeps that snapshot bounded; persistent collector slots use the
 	// resumable cursor below.
-	tinyTransientRootLimit = 1024
+	tinyTransientRootLimit      = 1024
+	tinyAllocationDebtBytes     = uint32(1024)
+	tinyNearExhaustionFactor    = uint32(8)
+	tinyNearExhaustionStepLimit = uint32(32)
 )
 
 var tinyStepObjectScanBudget = objectScanBudget{
@@ -120,8 +123,9 @@ type tinyGC struct {
 	rootPhase      tinyRootPhase
 	// sweep indexes persistent roots during mark/remark and handles during sweep.
 	// Reusing one phase-exclusive word keeps tinyGC's 64-bit footprint.
-	sweep  uint32
-	cycles uint64
+	sweep          uint32
+	cycles         uint32
+	allocationDebt uint32
 
 	// At most one object scan is active. Its handle remains gray until scan is
 	// complete; the cursor stores only stable handle/index state, never a raw
