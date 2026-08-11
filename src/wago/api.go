@@ -3993,6 +3993,14 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 }
 
 func (in *Instance) invoke(export string, args []uint64, cancel context.Context) ([]uint64, error) {
+	// Close hooks run after the invocation gate is published and may probe that
+	// later calls fail closed. Check the gate before waiting for the per-instance
+	// serialization lock so such a probe cannot deadlock behind the activation
+	// that Close is interrupting. invokeWithToken checks again after locking to
+	// close the race with a concurrent Close.
+	if in.invocationState.Load()&instanceInvocationClosed != 0 {
+		return nil, fmt.Errorf("invoke %q: instance is closed", export)
+	}
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
 	id := newInvocationID()

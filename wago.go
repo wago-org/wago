@@ -27,9 +27,9 @@ type (
 	CompilerRegistry           = impl.CompilerRegistry
 	CompositeTypeKind          = impl.CompositeTypeKind
 	ConfigSchemaProvider       = impl.ConfigSchemaProvider
-	CoreEngine                 = impl.CoreEngine
-	CoreEngineAccess           = impl.CoreEngineAccess
 	CoreFeatures               = impl.CoreFeatures
+	CoreRuntime                = impl.CoreRuntime
+	CoreRuntimeAccess          = impl.CoreRuntimeAccess
 	CustomSignature            = impl.CustomSignature
 	CustomType                 = impl.CustomType
 	CustomTypeSpec             = impl.CustomTypeSpec
@@ -237,7 +237,7 @@ const (
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
 	PluginCompileHooks                         = impl.PluginCompileHooks
-	PluginCoreEngine                           = impl.PluginCoreEngine
+	PluginCoreRuntime                          = impl.PluginCoreRuntime
 	PluginHostEnvironment                      = impl.PluginHostEnvironment
 	PluginHostImports                          = impl.PluginHostImports
 	PluginInstanceHooks                        = impl.PluginInstanceHooks

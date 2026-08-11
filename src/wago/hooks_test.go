@@ -309,12 +309,12 @@ func TestCapabilityAccessorsRegisterHooks(t *testing.T) {
 	}
 	invokeHooks.Before(func(*InvokeContext) error { return nil })
 	invokeHooks.After(func(*InvokeContext, []Value, error) {})
-	coreEngine, err := r.CoreEngine()
+	coreRuntime, err := r.CoreRuntime()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := coreEngine.Compile(wasmtest.Module()); err == nil {
-		t.Fatal("inactive core engine access succeeded")
+	if _, err := coreRuntime.Compile(wasmtest.Module()); err == nil {
+		t.Fatal("inactive core runtime access succeeded")
 	}
 
 	if len(r.used) != 6 || len(r.activate) != 2 || len(r.hooks.internalClose) != 1 || len(r.hooks.beforeCompile) != 1 || len(r.hooks.afterCompile) != 1 ||
@@ -341,20 +341,20 @@ func TestCapabilityAccessorsEnforceGrants(t *testing.T) {
 	if _, err := r.HostImports(); err == nil {
 		t.Fatal("ungranted host imports access succeeded")
 	}
-	if _, err := r.CoreEngine(); err == nil {
-		t.Fatal("ungranted core engine access succeeded")
+	if _, err := r.CoreRuntime(); err == nil {
+		t.Fatal("ungranted core runtime access succeeded")
 	}
 	if _, err := (*Registry)(nil).InstanceInvocation(); err == nil {
 		t.Fatal("nil registry access succeeded")
 	}
 }
 
-func TestCoreEngineAccessActivatesAndRevokesWithRuntime(t *testing.T) {
+func TestCoreRuntimeAccessActivatesAndRevokesWithRuntime(t *testing.T) {
 	reg := &Registry{
 		hooks:  &HookRegistry{},
-		grants: map[PluginCapability]struct{}{PluginCoreEngine: {}},
+		grants: map[PluginCapability]struct{}{PluginCoreRuntime: {}},
 	}
-	access, err := reg.CoreEngine()
+	access, err := reg.CoreRuntime()
 	if err != nil {
 		t.Fatal(err)
 	}

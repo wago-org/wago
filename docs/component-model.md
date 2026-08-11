@@ -20,7 +20,7 @@ instance, err := components.Instantiate(ctx, componentBytes, opts...)
 ```
 
 `component.Enable` loads the registered `wago-org/component-model` extension with
-the `runtime.core` plugin capability. Manifest-driven hosts can select the same
+the `core.runtime` plugin capability. Manifest-driven hosts can select the same
 plugin by ID and must explicitly grant that capability. The compatibility
 `component.Instantiate(ctx, core, ...)` entry point resolves the installed plugin
 and fails if it has not been enabled.
@@ -36,7 +36,7 @@ authority by itself. Filesystem, network, clock, random, and HTTP policy belongs
 in a host package such as [`wago-org/wasi`](https://github.com/wago-org/wasi).
 Hosts should expose capabilities explicitly and keep them denied by default.
 
-`runtime.core` is deliberately privileged but narrow: it permits a trusted
+`core.runtime` is deliberately privileged but narrow: it permits a trusted
 execution-model plugin to compile and instantiate embedded core modules and own
 typed host-function references, without exposing plugin registration, policy,
 inspection, or arbitrary runtime lifecycle control.

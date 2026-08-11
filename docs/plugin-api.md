@@ -45,14 +45,18 @@ These capabilities authorize Wago integration, not arbitrary Go behavior:
 | `instance.lifecycle` | Observe or affect instantiation and instance close. |
 | `instance.invoke` | Intercept calls and observe their results or traps. |
 | `instance.manage` | Create and own restricted managed instance tasks. |
-| `runtime.core` | Directly compile and compose core modules for a trusted execution model. |
+| `core.runtime` | Directly compile and compose core modules for a trusted execution model. |
 
 Plugin packages declare the capabilities they require in `ExtensionInfo`. The
 runtime checks both that declaration and what the plugin actually registered.
 This prevents a stale declaration from hiding newly-added authority.
-The `runtime.core` capability is intentionally privileged, narrow, and
+Capability names are exact `resource.action` identifiers. Dots do not imply
+inheritance: granting `core.runtime` grants neither a wildcard nor any future
+`core.*` capability.
+
+The `core.runtime` capability is intentionally privileged, narrow, and
 revocable; use it only to implement an execution model. Dependent plugins should
-consume that model's versioned service instead of requesting `runtime.core`.
+consume that model's versioned service instead of requesting `core.runtime`.
 
 Guest permissions such as `fs.read`, `net.outbound`, or `wasi` are separate.
 Plugins provide those permissions for Wasm modules; host policy decides whether
