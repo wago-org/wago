@@ -21,7 +21,7 @@ no Darwin/amd64 binary for 1.0.41, that runner builds `wast2json` from the
 checksum-pinned release source with CMake. Windows downloads the checksum-pinned
 official WABT archive because the project does not publish a Chocolatey package;
 Windows 11 ARM runs that x64 tool through its application emulation layer.
-Linux/amd64 and pull-request coverage
+Linux/amd64 and main-push coverage
 additionally initialize the pinned `tests/spec-v3` submodule, build the
 interpreter from that exact checkout, and export its path and revision. The
 focused Linux/amd64 race lane initializes the same submodule without building
@@ -45,7 +45,8 @@ directly from PowerShell rather than through Make.
 
 Linux/amd64 continues to host architecture-independent lint, TinyGo, and
 binary-size jobs on pull requests and pushes to `main`; coverage runs only for
-pull requests because it feeds the review card rather than the release gate.
+code changes pushed to `main`, keeping the expensive merged report off pull
+requests while retaining it as a post-merge gate.
 The size job runs `scripts/size-card.sh` for four explicit Linux/AMD64 release
 profiles: manager, Standard runtime, Minimal runtime, and the TinyGo Minimal
 runtime. It fails above the byte ceilings in
@@ -65,10 +66,10 @@ identify the active test instead of reporting only an anonymous package failure.
 families on linux/amd64 plus linux/arm64 and darwin/arm64. Other runtime targets
 retain the portable Release 2 surface plus extended constant expressions and
 reject incomplete Core 3 families before decoding or native lowering.
-The pull-request CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
-for visibility without making their current gaps required checks. The final
-`CI` aggregation job is the stable branch-protection check and fails if any
-required matrix cell or supporting job fails.
+The main-push coverage job runs the WebAssembly 1.0, 2.0, and 3.0 suites and
+uploads their report fragments with the merged coverage profile. The final `CI`
+aggregation job is the stable branch-protection check and fails if any required
+matrix cell or supporting job fails.
 
 Nightly, canary, and tagged release workflows require Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with

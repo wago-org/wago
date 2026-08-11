@@ -463,16 +463,12 @@ jobs:
           echo "$out"
           test "$out" = "fib(20) = 6765"
 
-  # The CI card is built by three jobs so the expensive bits run in parallel: this
-  # job produces the Go-only fragments (coverage/tests/spec), the `size` job builds
-  # the TinyGo release binary for the "Build size" fragment, and `card-comment`
-  # waits for both, assembles, and posts the sticky comment.
+  # Coverage is deliberately kept off pull requests and runs after code changes
+  # land on main. The size job remains a separate pull-request and main gate.
   coverage:
     name: Coverage
     needs: changes
-    # Coverage feeds the PR card and is intentionally omitted from direct main
-    # pushes, where the native matrix already provides the required test signal.
-    if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+    if: github.event_name == 'push' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -499,19 +495,11 @@ jobs:
           echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
           echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
 
-      # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
-      # measures main in a worktree for the "Δ vs main" columns, so fetch main.
       # Coverage merges normal, focused wago_gcstats collector, guard-page,
-      # spec1, spec2, and SIMD gates.
+      # spec1, spec2, and SIMD gates after the change reaches main.
       # The spec card still renders its own per-version accounting afterward.
       - name: Produce card fragments
-        env:
-          CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
-        run: |
-          if [ -n "$CARD_BASELINE_REF" ]; then
-            git fetch --no-tags --depth=1 origin main
-          fi
-          make card-fragments
+        run: make card-fragments
 
       - name: Upload card fragments
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -564,35 +552,6 @@ jobs:
             ci-card/size-profiles.tsv
             ci-card/size-symbols.tsv
           if-no-files-found: error
-
-  card-comment:
-    name: Comment CI card
-    needs: [coverage, size]
-    runs-on: ubuntu-latest
-    # Only PRs from this repo get a comment; fork PRs have a read-only token.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Download card fragments
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: card-fragments
-          path: ci-card
-      - name: Download size fragment
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: card-size
-          path: ci-card
-      - name: Assemble and post the CI card
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          CARD_DIR=ci-card CARD_FILE=card.md scripts/pr-card.sh
-          scripts/pr-card-comment.sh
 
   # Single aggregation gate. Because the path-gated jobs above can be "skipped",
   # make THIS the sole required status check in branch protection: it always runs
