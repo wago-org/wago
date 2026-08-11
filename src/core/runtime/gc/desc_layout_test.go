@@ -6,6 +6,114 @@ import (
 	"testing"
 )
 
+func TestCheckArrayAllocationPreservesDeterministicCapacityAndOverflowTraps(t *testing.T) {
+	wide, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	throughput, err := NewCollector(Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, []TypeDesc{wide})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer throughput.Close()
+	if err := throughput.CheckArrayAllocation(0, 2000); err != errThroughputHeapExhausted {
+		t.Fatalf("throughput impossible array = %v, want %v", err, errThroughputHeapExhausted)
+	}
+	if err := throughput.CheckArrayAllocation(0, 1_073_741_817); !errors.Is(err, ErrAllocationTooLarge) {
+		t.Fatalf("throughput physical overflow = %v, want ErrAllocationTooLarge", err)
+	}
+
+	tiny, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16}, []TypeDesc{wide})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tiny.Close()
+	if err := tiny.CheckArrayAllocation(0, 100); err != errTinyHeapExhausted {
+		t.Fatalf("tiny impossible array = %v, want %v", err, errTinyHeapExhausted)
+	}
+}
+
+func TestReserveDeadArrayAllocationUsesCurrentBoundedHeapState(t *testing.T) {
+	d, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		config Config
+		first  uint32
+		next   uint32
+	}{
+		{name: "throughput", config: Config{DisableCollection: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, first: 600, next: 600},
+		{name: "tiny", config: Config{Profile: ProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16}, first: 24, next: 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			makeCollector := func() (*Collector, RefSliceRoots) {
+				c, err := NewCollector(tc.config, []TypeDesc{d})
+				if err != nil {
+					t.Fatal(err)
+				}
+				first, err := c.NewArrayDefault(0, tc.first)
+				if err != nil {
+					c.Close()
+					t.Fatalf("occupy heap: %v", err)
+				}
+				return c, RefSliceRoots{first}
+			}
+			actual, actualRoots := makeCollector()
+			defer actual.Close()
+			reserved, reserveRoots := makeCollector()
+			defer reserved.Close()
+
+			if err := reserved.CheckArrayAllocation(0, tc.next); err != nil {
+				t.Fatalf("size-only check unexpectedly failed: %v", err)
+			}
+			_, actualErr := actual.NewArrayDefaultWithRoots(0, tc.next, actualRoots)
+			_, reserveErr := reserved.ReserveDeadDefaultArrayAllocation(0, tc.next, reserveRoots)
+			if (actualErr == nil) != (reserveErr == nil) {
+				t.Fatalf("allocation/reservation outcome mismatch: actual=%v reserve=%v", actualErr, reserveErr)
+			}
+			actualStats, reserveStats := actual.Stats(), reserved.Stats()
+			if actualStats.Allocations != reserveStats.Allocations || actualStats.LiveObjects != reserveStats.LiveObjects {
+				t.Fatalf("allocation/reservation stats mismatch: actual=%+v reserve=%+v", actualStats, reserveStats)
+			}
+		})
+	}
+}
+
+func TestReserveDeadStructAllocationUsesCurrentBoundedHeapState(t *testing.T) {
+	d, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeCollector := func() (*Collector, RefSliceRoots) {
+		c, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 16, TinyBlockBytes: 16}, []TypeDesc{d})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := c.NewStructDefault(0)
+		if err != nil {
+			c.Close()
+			t.Fatalf("occupy heap: %v", err)
+		}
+		return c, RefSliceRoots{first}
+	}
+	actual, actualRoots := makeCollector()
+	defer actual.Close()
+	reserved, reserveRoots := makeCollector()
+	defer reserved.Close()
+
+	_, actualErr := actual.NewStructUninitializedWithRoots(0, actualRoots)
+	_, reserveErr := reserved.ReserveDeadStructAllocation(0, reserveRoots)
+	if (actualErr == nil) != (reserveErr == nil) || (actualErr != nil && actualErr.Error() != reserveErr.Error()) {
+		t.Fatalf("allocation/reservation outcome mismatch: actual=%v reserve=%v", actualErr, reserveErr)
+	}
+	actualStats, reserveStats := actual.Stats(), reserved.Stats()
+	if actualStats.Allocations != reserveStats.Allocations || actualStats.LiveObjects != reserveStats.LiveObjects {
+		t.Fatalf("allocation/reservation stats mismatch: actual=%+v reserve=%+v", actualStats, reserveStats)
+	}
+}
+
 func TestDescriptorsAndLayout(t *testing.T) {
 	pf, err := NewStructDesc(1, []StorageKind{StorageI32, StorageI64, StorageI8})
 	if err != nil {

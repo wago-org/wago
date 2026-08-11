@@ -216,11 +216,21 @@ func (b *instanceBuilder) prepareCollector() error {
 		b.gcTypeMap = mapping
 		return nil
 	}
-	collector, err := gc.NewCollector(gcConfig, b.c.GCTypeDescs)
+	descs := b.c.GCTypeDescs
+	var mapping *gcTypeMapping
+	if len(b.c.Types) == len(descs) && hasEquivalentLocalGCHeapTypes(b.c) {
+		var err error
+		mapping, descs, _, err = gcCanonicalTypePlan(b.c, nil, nil, true)
+		if err != nil {
+			return err
+		}
+	}
+	collector, err := gc.NewCollector(gcConfig, descs)
 	if err != nil {
 		return err
 	}
 	b.collector = collector
+	b.gcTypeMap = mapping
 	b.gcDomainID = newGCDomainIdentity()
 	return nil
 }
@@ -1166,7 +1176,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if !valid {
 				initErr = fmt.Errorf("GC ref.test product has an invalid mixed-table layout")
 			} else {
-				gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, product.refTestCanonicalTypes())
+				canonicalTypes, err := b.gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
+				if err != nil {
+					initErr = err
+				} else {
+					gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, canonicalTypes)
+				}
 			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))

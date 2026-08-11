@@ -213,6 +213,9 @@ func TestModuleStatsReport(t *testing.T) {
 // buffer. This is the guardrail that lets every later phase trust the dashboard
 // without suspecting it perturbs the code it measures.
 func TestCodegenStatsGCNativeByteAttribution(t *testing.T) {
+	savedFacts := exactGCRefFactsEnabled
+	exactGCRefFactsEnabled = false
+	defer func() { exactGCRefFactsEnabled = savedFacts }()
 	var stats ModuleStats
 	if _, err := CompileModuleWith(exactGCRefFactModule(t, true), CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
 		t.Fatal(err)

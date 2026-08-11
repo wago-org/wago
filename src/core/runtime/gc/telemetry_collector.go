@@ -88,6 +88,7 @@ func (c *Collector) TelemetrySnapshot() (TelemetrySnapshot, bool) {
 		Minor:         c.cfg.Telemetry.collectionSnapshot(&c.cfg.Telemetry.minor),
 		Full:          c.cfg.Telemetry.collectionSnapshot(&c.cfg.Telemetry.full),
 		Paths:         paths,
+		Barriers:      c.cfg.Telemetry.barriers,
 		Heap:          heap,
 	}, true
 }

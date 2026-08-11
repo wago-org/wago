@@ -185,8 +185,104 @@ func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref
 	c.zeroObjectPayload(r)
 	return r, nil
 }
+
+// ReserveDeadStructAllocation performs the allocation side effect of a dropped
+// struct.new without populating its unreachable fields. It returns the real
+// compact allocation so payload-safe nested reservations can root the result
+// across later allocations. A caller must not use the zeroed result as a nested
+// substitute for a reference-initialized object, because that would remove its
+// transitive child roots. Unlike NewStructDefaultWithRoots, this intentionally
+// does not apply defaultability: struct.new operands have already been validated
+// and evaluated by the caller.
+func (c *Collector) ReserveDeadStructAllocation(typeID TypeID, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	sz, err := StructSize(d)
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, sz, 0, roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	return r, nil
+}
+
 func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, error) {
 	return c.NewArrayWithRoots(typeID, length, init, nil)
+}
+
+// CheckArrayAllocation validates the deterministic type/size traps of an array
+// constructor without allocating collector state. Dead-constructor lowering uses
+// it after all Wasm operands have executed so dynamic size overflow is preserved.
+func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return err
+	}
+	size, err := ArraySize(d, length)
+	if err != nil {
+		return err
+	}
+	if c.cfg.Profile == ProfileTiny {
+		if uint64(size) > uint64(len(c.tiny.mem)) {
+			return errTinyHeapExhausted
+		}
+		return nil
+	}
+	// Throughput rounds every physical allocation to sixteen bytes. ArraySize's
+	// eight-byte object ABI rounding can still leave this final round overflowing.
+	if size > ^uint32(0)-15 {
+		return ErrAllocationTooLarge
+	}
+	if uint64(Align16(size)) > uint64(c.throughput.limit) {
+		return errThroughputHeapExhausted
+	}
+	return nil
+}
+
+// ReserveDeadArrayAllocation performs the allocation side effect of a dropped
+// dynamic constructor without populating its unreachable payload. Unlike
+// CheckArrayAllocation, this preserves exhaustion, collection, handle-table,
+// allocation-counter, and future-capacity behavior under an already occupied
+// bounded heap. The returned compact allocation may be retained by payload-safe
+// nested reservations; reference-initialized intermediate arrays must use their
+// full constructor so transitive child roots remain visible. The zero payload
+// keeps verification and accidental diagnostics safe until the unreachable
+// object is collected.
+func (c *Collector) ReserveDeadArrayAllocation(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	size, err := ArraySize(d, length)
+	if err != nil {
+		return Null(), err
+	}
+	r, err := c.alloc(d, size, length, roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	return r, nil
+}
+
+// ReserveDeadDefaultArrayAllocation additionally preserves the defaultability
+// check required by array.new_default before reserving its dropped allocation.
+func (c *Collector) ReserveDeadDefaultArrayAllocation(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	if length != 0 {
+		if err := checkDefaultable(d); err != nil {
+			return Null(), err
+		}
+	}
+	return c.ReserveDeadArrayAllocation(typeID, length, roots)
 }
 
 // NewArrayFixedWithRoots allocates an array initialized from one value per
@@ -512,10 +608,10 @@ func (c *Collector) StructGetFinalRef(ref Ref, required TypeID, field uint32) (v
 	if err := c.errIfClosed(); err != nil {
 		return Null(), false, err
 	}
-	if int(required) >= len(c.typeIndex) || c.typeIndex[required] < 0 {
+	if int(required) >= len(c.types) {
 		return Null(), false, fmt.Errorf("gc: unknown type id %d", required)
 	}
-	requiredDesc := &c.types[c.typeIndex[required]]
+	requiredDesc := &c.types[required]
 	if !requiredDesc.Final || requiredDesc.Kind != KindStruct {
 		return Null(), false, errors.New("gc: final reference access requires final struct type")
 	}
@@ -630,18 +726,7 @@ func (c *Collector) typeDescSubtype(dynamic TypeDesc, required TypeID, exact boo
 	if dynamic.Kind != want.Kind {
 		return false, nil
 	}
-	for {
-		if dynamic.ID == required {
-			return true, nil
-		}
-		if !dynamic.HasSuper {
-			return false, nil
-		}
-		dynamic, err = c.desc(dynamic.Super)
-		if err != nil {
-			return false, err
-		}
-	}
+	return c.typeSubtypeIDs(dynamic.ID, required)
 }
 
 func (c *Collector) ArrayGet(ref Ref, index uint32) (Value, error) {
@@ -699,6 +784,36 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 	return c.storeArrayValue(ref, d, index, value)
 }
 
+// ArraySetDeferredBarrier stores one preflighted bulk element without publishing
+// a Throughput barrier. The caller must have validated every value before the
+// first mutation and must invoke PostBulkWriteBarrier for the exact completed
+// destination range before returning to Wasm. Tiny rejects this API because its
+// incremental invariant requires each newly published edge to shade immediately.
+func (c *Collector) ArraySetDeferredBarrier(ref Ref, index uint32, value Value) error {
+	if c.cfg.Profile == ProfileTiny {
+		return errors.New("gc: deferred array barrier is unavailable for Tiny")
+	}
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return err
+	}
+	if d.Kind != KindArray || index >= c.header(ref).Aux {
+		return errRange
+	}
+	if err := checkValueCompatible(d.Elem, value); err != nil {
+		return err
+	}
+	// Production callers completed ownership/nullability preflight for the full
+	// range. Hardening modes intentionally repeat that expensive check so tests can
+	// catch misuse without charging every retained element twice in release paths.
+	if isCollectorRefKind(d.Elem) && (c.cfg.VerifyAfterCollect || c.cfg.StressBarriers) {
+		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
+			return err
+		}
+	}
+	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
+}
+
 // ArraySetTyped is ArrayGetTyped's mutation counterpart and retains reference
 // validation and write-barrier behavior through storeArrayValue.
 func (c *Collector) ArraySetTyped(ref Ref, required TypeID, exact bool, index uint32, value Value) (actual TypeID, matched bool, err error) {
@@ -728,6 +843,17 @@ func (c *Collector) ArraySetTyped(ref Ref, required TypeID, exact bool, index ui
 // one post-write range barrier. Tiny retains the scalar barrier while marking or
 // sweeping because its incremental tri-color invariant is per published edge.
 func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32) error {
+	return c.arrayFill(ref, start, value, length, true)
+}
+
+// ArrayFillNoBarrier performs the same complete preflight and atomic mutation
+// as ArrayFill, but accepts only stores that cannot create a collector edge.
+// It is the runtime guardrail for late compiler NoBarrier selection.
+func (c *Collector) ArrayFillNoBarrier(ref Ref, start uint32, value Value, length uint32) error {
+	return c.arrayFill(ref, start, value, length, false)
+}
+
+func (c *Collector) arrayFill(ref Ref, start uint32, value Value, length uint32, barrier bool) error {
 	d, err := c.refDesc(ref)
 	if err != nil {
 		return err
@@ -742,13 +868,19 @@ func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32)
 	if err := c.validateArrayStore(d, value); err != nil {
 		return err
 	}
+	if !barrier && isCollectorRefKind(d.Elem) && value.Ref.IsObj() {
+		return errors.New("gc: barrier-free array.fill cannot store an object reference")
+	}
+	if !barrier && isCollectorRefKind(d.Elem) {
+		c.noteBarrierState(runtimeBarrierNoBarrier)
+	}
 	if length == 0 {
 		return nil
 	}
 	if err := c.fillArrayPayload(ref, d, start, value, length); err != nil {
 		return err
 	}
-	if isCollectorRefKind(d.Elem) {
+	if barrier && isCollectorRefKind(d.Elem) {
 		c.PostBulkWriteBarrier(ref, start, length)
 	}
 	return nil

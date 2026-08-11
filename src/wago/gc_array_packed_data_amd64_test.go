@@ -53,6 +53,20 @@ func TestStagedGCArrayPackedDataOfficialProduct(t *testing.T) {
 			if len(in.passiveDataDesc) != 16 || binary.LittleEndian.Uint32(in.passiveDataDesc[8:]) != 5 {
 				t.Fatalf("passive data descriptor = %x", in.passiveDataDesc)
 			}
+			beforeCheck := in.gc.Stats()
+			in.dispatchGCArrayHelper(gcArrayCheckData, []uint64{1, 3, 0, 0}, nil)
+			afterCheck := in.gc.Stats()
+			if afterCheck.Allocations != beforeCheck.Allocations+1 || afterCheck.LiveObjects != beforeCheck.LiveObjects+1 {
+				t.Fatalf("dead data constructor did not preserve allocation state: before=%+v after=%+v", beforeCheck, afterCheck)
+			}
+			func() {
+				defer func() {
+					if recover() == nil {
+						t.Fatal("out-of-range dead data preflight did not trap")
+					}
+				}()
+				in.dispatchGCArrayHelper(gcArrayCheckData, []uint64{4, 2, 0, 0}, nil)
+			}()
 
 			raw, err := in.Invoke("new")
 			if err != nil || len(raw) != 1 || raw[0] == 0 || raw[0]>>32 == 0 {

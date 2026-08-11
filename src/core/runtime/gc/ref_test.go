@@ -106,12 +106,8 @@ func TestTinyAndThroughputAllocationHelpers(t *testing.T) {
 	if d, err := c.desc(1); err != nil || d.ID != 1 {
 		t.Fatalf("known descriptor = %#v, %v", d, err)
 	}
-	if _, err := c.desc(TypeID(len(c.typeIndex))); err == nil {
+	if _, err := c.desc(TypeID(len(c.types))); err == nil {
 		t.Fatal("out-of-range descriptor accepted")
-	}
-	c.typeIndex[1] = -1
-	if _, err := c.desc(1); err == nil {
-		t.Fatal("missing descriptor index accepted")
 	}
 }
 

@@ -17,6 +17,7 @@ type Telemetry struct {
 	full                    telemetryCollection
 	active                  telemetryCycle
 	paths                   PathTelemetry
+	barriers                BarrierTelemetry
 	pendingDuplicateDirties uint64
 	occupancyHistogram      [11]uint64
 	globalRootClasses       []uint8 // zero means RootGlobal; otherwise RootClass+1

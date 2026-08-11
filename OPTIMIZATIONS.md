@@ -160,11 +160,22 @@ fresh median **0.94→0.63 ms**, host allocation **924,536→524,512 B/op**, and
 native code **7,479,004→7,112,416 bytes**. Heap2Local alone was neutral-to-slower
 and expanded the frame **24,808→82,152 bytes**, so broad scalar replacement is
 rejected as the next step. Recursive dead-constructor elimination is now shipped
-on AMD64: a bounded postfix lookahead recognizes constructor values flowing
-untouched into an immediately dropped struct, while direct constructor/drop pairs
-are removed at the constructor. Non-trapping valent trees disappear completely;
-any deferred trap forces original bottom-to-top evaluation. Dense GC safepoint IDs
-are retired without becoming publishable native call sites. On Dew it fires exactly
+on AMD64: a bounded postfix stack-depth proof follows values through nested
+`struct.new`/`array.new_fixed` containers, while direct constructor/drop pairs are
+removed at the constructor. Pointer-free dynamic `array.new`, default-initialized `array.new_default`, and
+pointer-free `array.new_data` use allocation-reservation helpers 36-38. They preserve current bounded-heap exhaustion,
+collection, handle publication, allocation counters, size/capacity, and segment-range
+traps while omitting payload population for the unreachable result. Reference-valued
+uniform and element-segment constructors retain the full constructor path because
+omitting their edges/cards could change later minor-collection retention and capacity. Non-trapping valent
+trees disappear completely; any deferred trap forces original bottom-to-top
+evaluation. These helpers retain real GC safepoints. The differential control remains
+`WAGO_AMD64_NO_DEAD_GC_NEW=1`. After the request-changes correction, permanent
+fixtures reduce constructor-family code from **142→128 bytes** for dynamic default,
+**178→164** for numeric uniform, and **214→200** for data reservation; reference
+element construction remains **214→214**. A nested default wrapper falls
+**312→128 bytes**. Earlier 64/82/100-byte figures used a
+size-only preflight that was not equivalent on an occupied bounded heap. On Dew it fires exactly
 **2,048** times, cuts `hostsync` **8,188→6,140**, generated code
 **7,479,004→7,104,256 bytes**, fresh median about **0.94→0.62-0.67 ms**, and host
 allocation **924,536→524,512 B/op**. The stripped plugin-complete TinyGo binary is
@@ -173,20 +184,38 @@ order is structured exact/non-null facts and bounded GC load forwarding, then na
 bump allocation for constructors that remain live. See
 `docs/wasmgc-v8-cranelift-research-2026-08.md`.
 
-**Structured exact WasmGC reference facts (2026-08-02).** AMD64 now retains one
-compact exact-non-null canonical type per reference local inside conservative
-straight-line structured regions. Constructors and successful non-null final casts
-produce facts; local copies preserve them, local writes replace/clear them, and
-control boundaries clear the table rather than building SSA merge state. Facts carry
-compact identity only and survive collection; no raw heap pointer is cached. Adjacent
-cast/access fusion remains higher priority, so facts remove only standalone repeated
-casts. Dew reports **7,158** `gc-ref-cast-elide` hits, `gcnative`
-**50,101→42,943**, flushes **91,011→83,853**, and native code
-**7,104,256→6,957,024 bytes**. Interleaved fresh medians improve about
-**0.60-0.61→0.57-0.58 ms** (roughly 5-6%) with host allocation unchanged;
-sustained medians improve about **0.90-0.93→0.80-0.86 ms**. The stripped
-plugin-complete TinyGo binary is **1,777,788 bytes**, +1,088 bytes over the dead-new
-build. `WAGO_AMD64_NO_GC_REF_FACTS=1` restores the validated cast path.
+**Structured WasmGC reference facts (2026-08-10, #314).** AMD64 now carries a
+backend-neutral bounded two-word fact for compact GC references: nullability,
+abstract heap class or exact canonical type, bounded semantic identity,
+fresh/publication state, generation, pointer-free layout, and optional constant
+array length. Facts move with Valent stack storage and locals, intersect at structured
+joins, and preserve loop-invariant locals using the loop scan's existing modified-local
+set. `select`, block parameters/results, `br_on_null`, `br_on_cast`, casts, tests, and
+successful dereferences retain or refine the safe intersection. Structured facts may
+survive collection because they contain only compact semantic identity; the separate
+one-entry resolved raw address certificate is still invalidated at every safepoint,
+call, allocation, difficult merge, loop edge, and unknown effect. No SSA, second
+optimizer IR, whole-function alias analysis, or raw-pointer retention was added.
+Constructor lengths now replace `array.len` with constants; null/exact tests and casts
+fold; constant fresh `struct.set` values can forward to a same-field get; and facts
+remain bounded to local tables plus one-entry load windows. The existing
+`WAGO_AMD64_NO_GC_REF_FACTS=1` differential switch disables semantic optimization
+while retaining required root tracking. The earlier exact-only Dew result
+(**7,158** cast eliminations and **50,101→42,943** `gcnative` sites) remains historical
+baseline evidence; the expanded fact set requires a fresh interleaved qualification
+before making an additional workload-speed claim.
+
+**Structured-fact adversarial hardening (2026-08-11).** `try_table` and synthetic
+inline frames now preserve hidden operand-root shape, and catch edges participate in
+local-fact intersections. Abstract `any`/`eq` classes are upper bounds, not exact
+runtime families; a complete class/target truth table keeps narrowing tests and casts
+dynamic. Ordinary loop headers discard mutable field forwarding, publish surviving
+fresh locals, and retain immutable cached results only across invariant locals. Loop
+versioning is memory32-only, zero-extends host-produced i32 bases before precheck
+arithmetic, and is disabled for candidate native GC root plans because their validated
+allocation/call liveness streams are linear in original Wasm order. Facts, load
+forwarding, and loop-precheck subprocess oracles compare exact results and trap codes
+under both switch states.
 
 **Executed WasmGC helper counters (2026-08-02).** The diagnostic
 `wago_gcstats` build tag exposes `Instance.SetGCHelperStatsTracking(true)` and
@@ -263,15 +292,90 @@ call but made four-round fresh median-of-medians about 10% slower, added 800 B/o
 and two host allocations, increased fixed collector state by 128 bytes, and was
 neutral sustained. The retained 32-handle batch is the speed/footprint point.
 
-**WasmGC load-forwarding counters (2026-08-02).** AMD64 count-only facts report
-4,092 fused exact array accesses, 3,067 fused exact struct accesses, and 1,022
-repeated immutable `array.len` operations on the same unchanged exact local in
-Dew. Conservative same-field get/get and set/get counts are both zero. A
-one-entry runtime length cache (+8,208 generated bytes, neutral fresh and mostly
-slower sustained) and separate exact-known resolver stubs (-64,919 generated
-bytes, neutral-to-slightly slower execution) were measured and reverted. Static
-site count alone is not a dynamic-hotness signal; executed transition/stub
-instrumentation precedes further load-forwarding work.
+**Bounded WasmGC load/value forwarding (2026-08-10, #314).** Constructor facts
+forward a constant length directly to `array.len`; a one-entry identity/type/field
+window recognizes repeated exact loads, and a fresh unpublished object's constant
+`struct.set` can forward to the immediately proven same-field `struct.get` without
+reloading. A dynamic `array.len` or immutable `struct.get` result captured by the
+immediately following `local.set`/`local.tee` is now reused from that unchanged local;
+this avoids a second object resolution and payload load without adding a hidden frame
+slot or permanently reserving a register. Immutable field values survive unrelated
+mutable stores and calls, while source/result local replacement, difficult joins, and
+unknown control invalidate the bounded window. Mutable values still invalidate on
+aliasing stores, calls, publication, and unknown effects. Constructor-known lengths
+also fuse constant-index final array get/set: one immutable-Aux equality guard and a
+constant displacement replace the logical index comparison, scale, and second extent
+sequence while retaining malformed-header detection. The independent controls are
+`WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` and
+`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`. The permanent repeated-`array.len` fixture emits
+**353 bytes enabled versus 539 disabled**, with one rather than two handle
+resolutions; the paired constant-index set/get fixture emits **1,029 versus 1,084
+bytes**. The earlier count-only Dew scan reported 4,092 fused exact array
+accesses, 3,067 fused exact struct accesses, and 1,022 repeated lengths. The rejected
+runtime length cache (+8,208 generated bytes, neutral fresh and mostly slower
+sustained) and broad Heap2Local frame growth remain rejected; no unbounded cache,
+hidden frame slot, SSA, or second optimizer IR was added.
+
+**Constant-time WasmGC subtype intervals (2026-08-10, #314).** Validated collector
+`TypeDesc` supertype metadata is a forest, so the collector now stores one packed
+DFS `[pre,post]` interval per canonical type and uses interval containment after a
+four-parent shallow fast path. `WAGO_GC_SUBTYPE_INTERVALS=0` restores complete parent
+walks. The obsolete eight-byte-per-type `typeIndex` table was removed, so permanent
+per-type memory is unchanged and `Collector` remains **1,120 bytes**. Three pinned-
+shape 200 ms samples are neutral at depth 1 (**9.70 vs 9.75 ns/op** median), improve
+depth 16 from **68.69 to 19.00 ns/op** (-72.3%), and depth 256 from **1,113 to
+18.12 ns/op** (-98.4%), all 0 B/op and 0 allocs/op. Canonical-equivalence paths retain
+the validated parent-chain fallback where representative remapping makes raw interval
+identity inapplicable.
+
+**Late WasmGC barrier selection and guarded bulk no-barrier fill (2026-08-10,
+#315).** Structured facts now select an explicit state only after the destination
+and child reach the store: `NoBarrier`, `YoungParent`, `KnownOldChild`,
+`ExistingCard`, `CardMark`, or `SlowBarrier`. Compile-time null/i31 stores can omit
+barrier work; object-reference stores remain on the existing native discriminator,
+which preserves Throughput nursery/existing-card/card-mark paths and Tiny's complete
+incremental helper. Generation remains representable in the fact format, but it does
+not currently activate `YoungParent` or `KnownOldChild`: relocation validity,
+concurrent marking, and remembered-set requirements must be proved independently
+before those compile-time states are enabled. Reference
+`array.fill` with a proven null/i31 value uses helper 35, whose runtime
+`ArrayFillNoBarrier` repeats full range/type/value preflight and rejects any object
+reference before mutation. Other reference fill/copy/init operations retain exact
+post-write range barriers, overlap/trap atomicity, and Tiny scalar barriers;
+Throughput `array.init_elem` now preflights every retained segment value, performs
+barrier-deferred checked stores, and publishes one exact destination range, while
+Tiny keeps immediate per-edge shading. Tiny bulk barriers process 64 elements per
+chunk and drain at most 64 gray objects between chunks, bounding queued publication
+work at the collector's one-object scan granularity. Numeric and function-identity
+bulk operations remain barrier-free. Static barrier-state hits use
+`CodegenStats.Peephole`; `wago_gcstats` snapshots now expose dynamic checked-path
+counts for all six states separately. The existing native stubs remain the dynamic
+source of nursery/existing-card/card-mark decisions without adding release-build
+counter writes to hot code. Generated barrier/helper bytes retain separate code-size
+attribution. On linux/amd64 (Ryzen 7
+8845HS, Go 1.24.4, unpinned, GOMAXPROCS=16, three 200 ms samples), guarded null
+reference fill improves median **37.43→33.80 ns/op** at 16 elements (-9.7%),
+**53.96→51.39 ns/op** at 256 (-4.8%), and **158.2→155.9 ns/op** at 4,096
+(-1.5%), all at 0 B/op and 0 allocs/op. A tertiary preflight review removed two
+redundant retained-element ownership/type validations from Throughput
+`array.init_elem`: the permanent deferred-batch benchmark improves median
+**452.7→438.2 ns/op** at 16 elements (-3.2%), **6,740→6,560 ns/op** at 256
+(-2.7%), and **108,576→104,405 ns/op** at 4,096 (-3.8%), all 0 B/op and
+0 allocs/op. The explicit barrier-state matrix reports medians of **25.50 ns/op**
+for nursery, **34.03** remembered old, **41.16** unremembered old including metadata
+creation, **34.28** large, and **28.50** Tiny parents. Five 200 ms samples of bounded
+fact intersection measure **4.642 ns/op median**, 0 B/op, and 0 allocs/op.
+
+A seven-round `GOMAXPROCS=1`, 100-iteration real MoonBit WasmGC JSON workload A/B
+measured structured facts at **188.752 µs/op median** versus **191.401 µs/op** with
+`WAGO_AMD64_NO_GC_REF_FACTS=1` (-1.38%), with both at 208,779 B/op and 264 allocs/op.
+One code-telemetry compile measured **294,341 versus 294,181 linked bytes** (+160,
++0.054%) while GC barrier bytes fell **4,642→4,168** and helper-call bytes fell
+**74,202→72,500**. The retained external-fixture benchmark is
+`BenchmarkGCOptimizationWorkload`; it records a semantic checksum, linked bytes,
+barrier/helper bytes, runtime allocation, and execution time without vendoring the
+payload. The result is modest and host-noisy, but deterministic code/work counters
+show the intended reduction without an allocation regression.
 
 **Trusted native-GC ABI boundaries and bounded resolver reuse (2026-08-10, #307).**
 Collector ABI v6 is now validated against Go structure sizes/offsets at collector

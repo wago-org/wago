@@ -22,11 +22,13 @@ const (
 
 // RefTestTarget describes one ordinary dynamic reference test. Nullable
 // controls only the null result. Defined targets name a collector descriptor;
-// the descriptor and all traversed supers were validated at collector creation.
+// Exact requires equality with that canonical descriptor rather than admitting
+// its declared subtypes.
 type RefTestTarget struct {
 	Type     TypeID
 	Kind     RefTestKind
 	Nullable bool
+	Exact    bool
 }
 
 // ErrCastFailure reports a valid reference whose dynamic type does not match
@@ -87,18 +89,7 @@ func (c *Collector) TypeSubtype(actual, required TypeID) (bool, error) {
 	if dynamic.Kind != want.Kind {
 		return false, nil
 	}
-	for {
-		if dynamic.ID == required {
-			return true, nil
-		}
-		if !dynamic.HasSuper {
-			return false, nil
-		}
-		dynamic, err = c.desc(dynamic.Super)
-		if err != nil {
-			return false, err
-		}
-	}
+	return c.typeSubtypeIDs(actual, required)
 }
 
 // RefTestCanonical applies the same dynamic test while comparing defined types
@@ -173,22 +164,25 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 		if dynamic.Kind != defined.Kind {
 			return false, nil
 		}
-		want := defined.ID
-		if canonical != nil {
-			want = canonical.types[want]
-		}
-		for {
-			actual := dynamic.ID
-			if canonical != nil {
-				actual = canonical.types[actual]
+		if target.Exact {
+			if canonical == nil {
+				return dynamic.ID == defined.ID, nil
 			}
+			return canonical.types[dynamic.ID] == canonical.types[defined.ID], nil
+		}
+		if canonical == nil {
+			return c.typeSubtypeIDs(dynamic.ID, defined.ID)
+		}
+		want := canonical.types[defined.ID]
+		for {
+			actual := canonical.types[dynamic.ID]
 			if actual == want {
 				return true, nil
 			}
 			if !dynamic.HasSuper {
 				return false, nil
 			}
-			dynamic = c.types[c.typeIndex[dynamic.Super]]
+			dynamic = c.types[dynamic.Super]
 		}
 	default:
 		panic("unreachable")
@@ -198,6 +192,9 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 func (c *Collector) refTestTargetDesc(target RefTestTarget) (TypeDesc, error) {
 	switch target.Kind {
 	case RefTestAny, RefTestEq, RefTestI31, RefTestStruct, RefTestArray, RefTestNone:
+		if target.Exact {
+			return TypeDesc{}, fmt.Errorf("gc: exact ref.test target kind %d is not defined", target.Kind)
+		}
 		return TypeDesc{}, nil
 	case RefTestDefined:
 		d, err := c.desc(target.Type)

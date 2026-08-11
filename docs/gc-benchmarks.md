@@ -28,6 +28,124 @@ the separately owned runtime collector descriptors. Keep the two result sets
 separate: denser compiler values do not by themselves prove a collector heap or
 pause-time improvement.
 
+## Structured facts and late-barrier qualification
+
+Issues #314 and #315 add bounded compiler facts and a guarded no-barrier bulk
+path. Qualify them separately from collector throughput so compile-time wins do not
+hide runtime or code-size regressions.
+
+Correctness and allocation checks:
+
+```sh
+go test ./src/core/compiler/backend/railshot/shared
+go test ./src/core/compiler/backend/railshot/amd64
+go test ./src/core/runtime/gc
+go test -tags wagodebug ./src/core/runtime/gc
+go test -tags wago_gcstats ./src/core/runtime/gc
+go test -race ./src/core/runtime/gc
+```
+
+The authoritative official Core 3 qualification additionally requires a Release 3
+interpreter through `WAGO_SPEC_INTERPRETER`; an older WABT that rejects `rec`, packed
+storage, or current reference syntax is an environment block, not a passing result.
+Record the exact unavailable tool/version rather than silently dropping those gates.
+
+Permanent microbenchmarks:
+
+```sh
+go test ./src/core/compiler/backend/railshot/shared -run '^$' \
+  -bench '^BenchmarkMergeGCRefFacts$' -benchmem -count=10
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkArrayBulk/(reference-fill|reference-fill-no-barrier)-(16|256|4096)$' \
+  -benchmem -count=10
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkGCSubtypeInterval$' -benchmem -count=10
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkArrayDeferredReferenceBatch$' -benchmem -count=10 -cpu=1
+go test ./src/core/runtime/gc -run '^$' \
+  -bench '^BenchmarkGCBarrierStateMatrix$' -benchmem -count=10 -cpu=1
+```
+
+For a retained compiler/JIT result, also run the real Dew/Starshine workload A/B with
+`WAGO_AMD64_NO_GC_REF_FACTS=1`, record `gc-ref-test-fold`,
+`gc-ref-cast-elide`, `gc-array-len-elide`, `gc-struct-set-get-forward`, every
+`gc-barrier-*` state, `hostsync`/`gcnative` transitions, generated GC barrier/helper
+bytes, linked bytes, compile B/op and allocations, fresh and sustained execution,
+and collector card/scanned-slot telemetry. Barrier matrices must include nursery,
+remembered old, unremembered old, large, and Tiny parents with null, i31, old, and
+young object children. No barrier result is acceptable without forced collection and
+shadow-edge verification after each write family.
+
+A standalone generated workload can be retained outside the repository and measured
+through:
+
+```sh
+WAGO_GC_OPT_WORKLOAD_WASM=/path/to/workload.wasm \
+WAGO_GC_OPT_WORKLOAD_EXPORT=_start \
+WAGO_GC_OPT_WORKLOAD_EXPECT=none \
+go test ./src/wago -run '^$' -bench '^BenchmarkGCOptimizationWorkload$' \
+  -benchmem -benchtime=100x -count=7 -cpu=1
+```
+
+Run interleaved processes with `WAGO_AMD64_NO_GC_REF_FACTS=1` (or its
+compatibility alias `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1`),
+`WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`,
+`WAGO_AMD64_NO_DEAD_GC_NEW=1`, or `WAGO_GC_SUBTYPE_INTERVALS=0` as relevant.
+The benchmark requires a zero-argument export, uses deterministic no-op imports,
+requires an exact comma-separated result vector (`none` for no results) on every
+iteration, maintains a checksum only as a secondary anti-elision guard, and reports
+linked, barrier, and helper bytes separately.
+
+Initial candidate microbenchmarks on August 10, 2026 used linux/amd64, Ryzen 7
+8845HS, Go 1.24.4, GOMAXPROCS=16, no affinity pinning, 200 ms benchtime. Five
+fact-merge samples had a 4.642 ns/op median, 0 B/op, and 0 allocs/op. Three
+null-reference fill samples measured median ordinary/no-barrier pairs of
+37.43/33.80 ns at 16 elements, 53.96/51.39 ns at 256, and 158.2/155.9 ns at
+4,096, all allocation-free.
+
+The completion pass added actual bounded result-local load reuse and packed subtype
+intervals. A repeated `array.len` code-size fixture emits 353 bytes with forwarding
+versus 539 with `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`. Three 200 ms subtype samples
+are neutral at depth 1 (9.70/9.75 ns/op interval/parent median), improve depth 16
+68.69→19.00 ns/op, and depth 256 1,113→18.12 ns/op, all allocation-free. A seven-
+round `GOMAXPROCS=1`, 100-iteration MoonBit WasmGC JSON A/B measured facts at
+188.752 µs/op median versus 191.401 µs/op disabled, both 208,779 B/op and 264
+allocs/op. Code telemetry measured 294,341/294,181 linked bytes, 4,168/4,642 barrier
+bytes, and 72,500/74,202 helper bytes for facts enabled/disabled. Timing is a modest,
+host-noisy result; retain the deterministic code/work deltas and repeat on reviewer
+hardware before claiming a broad speedup.
+
+The August 10 tertiary review added constant-index known-length array get/set,
+checked dead dynamic arrays, and a complete barrier-parent benchmark. The paired
+constant-index set/get fixture emits 1,029 bytes versus 1,084 with
+`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`. Request-changes qualification then replaced the
+size-only dead-array preflight with allocation reservation so occupied bounded heaps
+retain allocation/exhaustion parity. Updated constructor-family bytes are 128/142 for
+default, 164/178 for numeric uniform, and 200/214 for data arrays
+(enabled/disabled); reference element construction remains 214/214, and a nested
+default wrapper is 264/312 after retaining the inner compact result across the outer
+allocation. The earlier 64/82/100-byte and 128/312 nested figures are superseded.
+Successful dropped pointer-free uniform/data and default-initialized constructors now
+retain allocation, handle, collection, and safepoint state while omitting unreachable
+payload population;
+reference-valued uniform/element constructors retain their complete edge/card path,
+and oversized cases still trap before allocation. Three `GOMAXPROCS=1`, 200 ms deferred-reference-batch samples measured
+prevalidated/revalidated medians of 438.2/452.7 ns at 16 elements, 6,560/6,740 ns at
+256, and 104,405/108,576 ns at 4,096, all allocation-free. The matching barrier-state
+matrix medians were 25.50 ns nursery, 34.03 remembered old, 41.16 unremembered old
+including metadata creation, 34.28 large, and 28.50 Tiny, also 0 B/op and 0 allocs/op.
+
+The August 11 adversarial qualification adds executable switch-parity oracles for
+exception joins, abstract `any`/`eq` narrowing, mutable-field backedges, dirty host
+i32 loop bases, memory64 non-versioning, and native root-plan call/allocation counts.
+These are correctness gates rather than new speed claims. Memory64 loops and
+candidate native-root-plan functions intentionally retain one checked body. The
+reference-intermediate dead-tree hardening deliberately changes the compiler proof
+fixture from three reservations to two reservations plus one full constructor, while
+keeping three allocation helper calls: only the unsafe omitted reference payload is
+restored. Tiny heaps of 56 bytes (struct intermediate) and 64 bytes (array
+intermediate) now reproduce exact enabled/disabled exhaustion parity.
+
 This document defines the measurement contract for collector changes tracked by
 issue #300. The opt-in recorder, public API, JSONL schema, phase semantics, and
 footprint measurements are documented in

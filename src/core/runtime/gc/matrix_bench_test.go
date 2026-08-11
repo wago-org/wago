@@ -161,7 +161,7 @@ func TestGCPauseHistogram(t *testing.T) {
 }
 
 func populateGCMatrixObject(c *Collector, layout gcMatrixLayout, r Ref) error {
-	d := c.types[c.typeIndex[layout.typeID]]
+	d := c.types[layout.typeID]
 	if !d.HasRefs {
 		return nil
 	}
@@ -184,7 +184,7 @@ func populateGCMatrixObject(c *Collector, layout gcMatrixLayout, r Ref) error {
 }
 
 func validateGCMatrixObject(c *Collector, layout gcMatrixLayout, r Ref) (uint64, error) {
-	d := c.types[c.typeIndex[layout.typeID]]
+	d := c.types[layout.typeID]
 	if !d.HasRefs {
 		return uint64(layout.typeID) + 1, nil
 	}

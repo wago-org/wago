@@ -95,6 +95,26 @@ func TestClassifyInstructionImmediateRepresentativeFamilies(t *testing.T) {
 	}
 }
 
+func TestClassifyInstructionImmediateReportsMemargMetadata(t *testing.T) {
+	var imm InstructionImmediate
+	r := NewReader([]byte{0x02, 0x80, 0x01}) // align=2, offset=128
+	if err := ClassifyInstructionImmediateIntoWithMemarg64(r, 0x28, &imm, false); err != nil {
+		t.Fatal(err)
+	}
+	if imm.Kind != InstrI32Load || imm.MemAlign != 2 || imm.MemOffset != 128 || !imm.TouchesMemory {
+		t.Fatalf("memory32 memarg metadata = %+v", imm)
+	}
+
+	// A width-aware walker must retain offsets beyond memory32's immediate range.
+	r = NewReader([]byte{0x03, 0x80, 0x80, 0x80, 0x80, 0x10}) // align=3, offset=2^32
+	if err := ClassifyInstructionImmediateIntoWithMemarg64(r, 0x29, &imm, true); err != nil {
+		t.Fatal(err)
+	}
+	if imm.Kind != InstrI64Load || imm.MemAlign != 3 || imm.MemOffset != 1<<32 {
+		t.Fatalf("memory64 memarg metadata = %+v", imm)
+	}
+}
+
 func TestSkipInstructionImmediateRejectsMalformedVectors(t *testing.T) {
 	cases := []struct {
 		name string

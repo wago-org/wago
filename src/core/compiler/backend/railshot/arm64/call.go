@@ -1938,7 +1938,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.add(code)
 		identity := f.allocReg(maskOf(idxReg, code))
 		f.ld64(identity, idxReg, 8+runtime.TableEntryRefSlotOffset)
-		f.emitLocalFunctionSubtypeIdentityCheck(identity, typeIdx, false, trapIndirectSig)
+		f.emitLocalFunctionSubtypeIdentityCheck(identity, typeIdx, false, false, trapIndirectSig)
 		f.release(identity)
 		f.pinned = f.pinned.remove(code)
 	} else if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
