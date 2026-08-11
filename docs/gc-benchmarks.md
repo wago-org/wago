@@ -684,9 +684,9 @@ hard 1,024-reference limit because frame slots may
 change when the mutator resumes; callback-only root sets fail closed in Tiny.
 
 The final release size card for the complete #319 branch remains within every
-budget: runtime-standard is +32.0 KiB, runtime-minimal +36.0 KiB, and
-runtime-minimal-tiny +13.6 KiB versus `main`; the corresponding free budget is
-362 KiB, 352 KiB, and 185 KiB.
+budget: runtime-standard is +36.0 KiB, runtime-minimal +36.0 KiB, and
+runtime-minimal-tiny +14.1 KiB versus `main`; the corresponding free budget is
+358 KiB, 352 KiB, and 184 KiB.
 
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median

@@ -43,6 +43,37 @@ func TestTinyAllocationDebtStartsIncrementalWork(t *testing.T) {
 	}
 }
 
+func TestTinySweepEndpointIgnoresNewHandleTail(t *testing.T) {
+	requireTinyIncrementalBuild(t)
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16}, []TypeDesc{leaf})
+	for i := uint32(0); i < tinyStepSweepHandles; i++ {
+		if _, err := c.NewStructDefault(0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for c.tinyGC.state != tinySweep {
+		if err := c.Step(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.tinyGC.allocationDebt = 0
+
+	const maxAllocations = 2*tinyAllocationDebtBytes/16 + 2
+	for i := uint32(0); i < maxAllocations; i++ {
+		if _, err := c.NewStructDefaultWithRoots(0, EmptyRoots{}); err != nil {
+			t.Fatal(err)
+		}
+		if c.tinyGC.state == tinyIdle {
+			return
+		}
+	}
+	t.Fatalf("Tiny sweep chased an allocation-grown handle tail: cursor=%d handles=%d", c.tinyGC.sweep, len(c.handles))
+}
+
 func TestTinyNearExhaustionAssistIsBounded(t *testing.T) {
 	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
@@ -58,12 +89,12 @@ func TestTinyNearExhaustionAssistIsBounded(t *testing.T) {
 		}
 		roots[i] = Root(object)
 	}
-	beforeCycles := c.tinyGC.cycles
+	beforeCollections := c.stats.FullCollections
 	if _, err := c.NewStructDefaultWithRoots(0, tinyRootSliceSlots(roots)); err == nil || !strings.Contains(err.Error(), "bounded pacing") {
 		t.Fatalf("near-exhaustion error = %v, want bounded pacing exhaustion", err)
 	}
-	if c.tinyGC.cycles > beforeCycles+1 {
-		t.Fatalf("one allocation completed %d cycles, want at most one", c.tinyGC.cycles-beforeCycles)
+	if c.stats.FullCollections > beforeCollections+1 {
+		t.Fatalf("one allocation completed %d cycles, want at most one", c.stats.FullCollections-beforeCollections)
 	}
 }
 

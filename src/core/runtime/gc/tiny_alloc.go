@@ -413,14 +413,13 @@ func (c *Collector) tinyAssistNearExhaustion(size uint32, roots RootSet) (uint32
 	if limit == 0 {
 		limit = 1
 	}
-	completedCycles := c.tinyGC.cycles
 	for i := uint32(0); i < limit; i++ {
+		wasActive := c.tinyGC.state != tinyIdle
 		if err := c.Step(roots); err != nil {
 			return 0, 0, err
 		}
-		if tinyIncrementalBuild && c.tinyGC.cycles != completedCycles {
-			c.stats.FullCollections += uint64(c.tinyGC.cycles - completedCycles)
-			completedCycles = c.tinyGC.cycles
+		if tinyIncrementalBuild && wasActive && c.tinyGC.state == tinyIdle {
+			c.stats.FullCollections++
 		}
 		if c.tinyGC.allocationDebt >= tinyAllocationDebtBytes {
 			c.tinyGC.allocationDebt -= tinyAllocationDebtBytes

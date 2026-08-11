@@ -154,6 +154,12 @@ func assertTinyInitializedSweepGraph(t *testing.T, c *Collector, parent, child R
 	if err := c.Verify(Slots{&root}); err != nil {
 		t.Fatal(err)
 	}
+	if err := c.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.validObjectRef(parent) || c.validObjectRef(child) {
+		t.Fatal("next Tiny cycle did not reclaim the unrooted sweep allocation graph")
+	}
 }
 
 func TestTinySweepRejectsWhitePointerfulObjectStore(t *testing.T) {

@@ -482,4 +482,20 @@ func TestTinyVerifyRejectsInvalidEpochMetadata(t *testing.T) {
 			t.Fatal("Verify accepted truncated mark metadata")
 		}
 	})
+	t.Run("sweep limit", func(t *testing.T) {
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+		c.tinyGC.state = tinySweep
+		c.tinyGC.sweep = 1
+		c.tinyGC.sweepLimit = uint32(len(c.handles) + 1)
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted a sweep endpoint beyond the handle table")
+		}
+	})
+	t.Run("stale sweep limit", func(t *testing.T) {
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+		c.tinyGC.sweepLimit = 1
+		if err := c.Verify(nil); err == nil {
+			t.Fatal("Verify accepted an idle collector with a sweep endpoint")
+		}
+	})
 }

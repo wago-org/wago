@@ -27,6 +27,7 @@ func BenchmarkTinyStepSweepBlack(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				c.tinyGC.state = tinySweep
 				c.tinyGC.sweep = 1
+				c.tinyGC.sweepLimit = uint32(len(c.handles))
 				if err := c.Step(nil); err != nil {
 					b.Fatal(err)
 				}

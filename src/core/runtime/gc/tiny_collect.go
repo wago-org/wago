@@ -124,9 +124,11 @@ type tinyGC struct {
 	markEpoch      uint8
 	rootPhase      tinyRootPhase
 	// sweep indexes persistent roots during mark/remark and handles during sweep.
-	// Reusing one phase-exclusive word keeps tinyGC's 64-bit footprint.
-	sweep          uint32
-	cycles         uint32
+	sweep uint32
+	// sweepLimit reuses the former cycle counter to preserve tinyGC's footprint.
+	// It snapshots the finite handle-table endpoint when remark enters sweep;
+	// allocations may append handles without extending the active cycle.
+	sweepLimit     uint32
 	allocationDebt uint32
 
 	// At most one object scan is active. Its handle remains gray until scan is
@@ -239,6 +241,7 @@ func (c *Collector) Step(roots RootSet) error {
 		}
 		c.tinyGC.state = tinySweep
 		c.tinyGC.sweep = 1
+		c.tinyGC.sweepLimit = uint32(len(c.handles))
 		return nil
 	}
 	if c.telemetryEnabled() {
@@ -248,6 +251,10 @@ func (c *Collector) Step(roots RootSet) error {
 }
 
 func (c *Collector) tinySweepBudget() error {
+	limit := c.tinyGC.sweepLimit
+	if limit == 0 || uint64(limit) > uint64(len(c.handles)) {
+		return c.failTinyTelemetryCycle(fmt.Errorf("gc: invalid Tiny sweep limit %d for %d handles", limit, len(c.handles)))
+	}
 	var handles, blocks uint32
 	for handles < tinyStepSweepHandles {
 		if c.tinyGC.scan.handle == 0 && len(c.tinyGC.grayStack) != 0 {
@@ -292,7 +299,7 @@ func (c *Collector) tinySweepBudget() error {
 			}
 			return nil
 		}
-		if c.tinyGC.sweep >= uint32(len(c.handles)) {
+		if c.tinyGC.sweep >= limit {
 			c.tinyFinishCycle()
 			return nil
 		}
@@ -366,6 +373,7 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 		return err
 	}
 	c.tinyGC.markEpoch = (c.tinyGC.markEpoch + 1) & tinyMarkEpochMask
+	c.tinyGC.sweepLimit = 0
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
 	c.tinyGC.scan = tinyScanCursor{}
 	c.tinyGC.rootPhase = tinyRootsNone
@@ -419,6 +427,7 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	// restarting CollectFull during an active cycle advances to a third value, so
 	// neither current marks nor the preceding white population can alias black.
 	c.tinyGC.markEpoch = (c.tinyGC.markEpoch + 1) & tinyMarkEpochMask
+	c.tinyGC.sweepLimit = 0
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
 	c.tinyGC.scan = tinyScanCursor{}
 	c.tinyGC.lastStepWork = tinyStepWork{}
@@ -654,7 +663,7 @@ func (c *Collector) tinyFinishCycle() {
 	c.tinyGC.state = tinyIdle
 	c.tinyGC.rootPhase = tinyRootsNone
 	c.tinyGC.sweep = 1
-	c.tinyGC.cycles++
+	c.tinyGC.sweepLimit = 0
 	if c.tinyGC.telemetryOwned {
 		c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
 		c.endCollectionTelemetry(true)
@@ -875,6 +884,14 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	}
 	if (c.tinyGC.state == tinyIdle || c.tinyGC.state == tinySweep) && c.tinyGC.rootPhase != tinyRootsNone {
 		return fmt.Errorf("gc: Tiny state %d retains root phase %d", c.tinyGC.state, c.tinyGC.rootPhase)
+	}
+	sweepActive := c.tinyGC.state == tinySweep || c.tinyGC.rootPhase == tinyRootsSweepBarrier
+	if sweepActive {
+		if c.tinyGC.sweepLimit == 0 || uint64(c.tinyGC.sweepLimit) > uint64(len(c.handles)) || c.tinyGC.sweep > c.tinyGC.sweepLimit {
+			return fmt.Errorf("gc: invalid Tiny sweep cursor/limit %d/%d for %d handles", c.tinyGC.sweep, c.tinyGC.sweepLimit, len(c.handles))
+		}
+	} else if c.tinyGC.sweepLimit != 0 {
+		return fmt.Errorf("gc: Tiny state %d retains sweep limit %d", c.tinyGC.state, c.tinyGC.sweepLimit)
 	}
 	if len(c.tinyGC.color) < len(c.handles) {
 		return fmt.Errorf("gc: tiny mark metadata has %d entries for %d handles", len(c.tinyGC.color), len(c.handles))
