@@ -703,7 +703,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	// The p args are the top operands (deepest = param 0). Pop each into its param
 	// local. setLocal takes the absolute index (localBase is still 0 here).
 	for i := t.params - 1; i >= 0; i-- {
-		f.setLocal(base+i, false)
+		f.setLocal(nil, base+i, false)
 	}
 	if t.nLocals > t.params {
 		z := f.allocReg(0)

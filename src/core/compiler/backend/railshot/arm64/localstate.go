@@ -151,7 +151,7 @@ func (f *fn) recoverLocal(x int) {
 
 // markLocalDirty records that pinned local x was just written (value only in reg).
 func (f *fn) markLocalDirty(x int) {
-	if f.usesCalls || f.lazyZero {
+	if f.usesCalls || f.lazyZero || len(f.intervalLast) != 0 {
 		f.locals[x].state = lsReg
 	}
 }
