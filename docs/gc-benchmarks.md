@@ -643,8 +643,18 @@ from 9.0085 us to 9.0355 us (+0.30%). Median paired deltas were -0.13% and +0.19
 respectively. Per-handle mark metadata remains one byte and the compact Tiny
 scan/collector structures retain their previous sizes. The final stripped
 linux/amd64 size card reports no aligned-file change for runtime-standard,
-runtime-minimal -4.0 KiB, and runtime-minimal-tiny -0.2 KiB versus `main`; all
+runtime-minimal -4.0 KiB, and runtime-minimal-tiny +0.1 KiB versus `main`; all
 four release profiles remain within budget.
+
+Adversarial follow-up found two hot-path hazards in the initial epoch factoring.
+First, shared handle growth performed Tiny encoding even for Throughput. A
+CPU-affined, pre-grown 100,000-handle control measured 4.939 ns on `main`, 6.745
+ns before the correction (+36.6%), and 4.879 ns after it (-1.2%), all at 0 B/op
+and 0 allocs/op. Second, inlining white-child shading into the active Tiny barrier
+inflated the marked-child fast path. The retained barrier keeps white-child work
+in one cold noinline helper. Ten CPU-affined interleaved samples of
+`BenchmarkTinyIncrementalBarrierMarkedChild` measure 3.3055 ns on `main` and
+3.347 ns current (+1.26%; paired median +2.34%), again with no allocations.
 
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median

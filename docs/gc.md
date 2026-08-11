@@ -1912,9 +1912,12 @@ Known Tiny limitations in this foundation:
   enumeration and the broader persistent-root cursor remain later #319 work;
 - sweeping still advances by the existing handle-oriented policy; bounded sweep
   regions, allocation from swept regions, and allocation-debt pacing are not part
-  of this stage. A reference that will be published into a root during sweep must
-  remain in the exact supplied roots until publication; the current one-pass sweep
-  cannot resurrect descendants that were already reclaimed from an omitted graph;
+  of this stage. A reference graph published through an external `WriteBarrierRoot`
+  during sweep must remain in the exact supplied roots until publication; the
+  current one-pass sweep cannot resurrect descendants already reclaimed from an
+  omitted graph. Checked collector global/table setters fail before mutating their
+  slot when asked to publish a white pointerful graph during sweep, while
+  pointer-free objects remain safe for immediate marking;
 - Tiny bulk barriers validate ranges with widened arithmetic and chunk mutator
   publication, but bulk-barrier chunking and bounded object scanning are distinct:
   the complete bulk mutation call itself is not yet a general bounded barrier;

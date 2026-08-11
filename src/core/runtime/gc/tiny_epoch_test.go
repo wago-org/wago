@@ -1,6 +1,37 @@
 package gc
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
+
+func TestTinyMarkStateDecodingExhaustive(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+	object, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := handleOf(object)
+	for epoch := uint16(0); epoch <= uint16(tinyMarkEpochMask); epoch++ {
+		c.tinyGC.markEpoch = uint8(epoch)
+		for raw := uint16(0); raw <= 255; raw++ {
+			c.tinyGC.color[h] = tinyMarkState(raw)
+			want := tinyWhite
+			if raw == epoch {
+				want = tinyBlack
+			} else if raw == epoch|uint16(tinyMarkGrayBit) {
+				want = tinyGray
+			}
+			if got := c.tinyColorOf(h); got != want {
+				t.Fatalf("epoch=%d raw=%#x color=%v, want %v", epoch, raw, got, want)
+			}
+		}
+	}
+}
 
 func TestTinyEpochAdvanceMakesOldMarksWhiteWithoutRewrite(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
@@ -215,6 +246,131 @@ func TestTinyCollectFullRestartsSweepWithFreshEpoch(t *testing.T) {
 	}
 	if !c.validObjectRef(keep) || c.validObjectRef(oldRoot) || c.validObjectRef(drop) {
 		t.Fatal("sweep restart retained the wrong epoch population")
+	}
+}
+
+func TestTinyCheckedRootPublicationRejectsUnsafeSweepGraph(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentType, err := NewStructDesc(1, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, VerifyAfterCollect: true}, []TypeDesc{leaf, parentType})
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	safe, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	global := c.NewGlobalSlot(Null())
+	table := c.NewTableSlot(Null())
+	for c.tinyGC.state != tinySweep {
+		if err := c.Step(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.Step(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.validObjectRef(child) || !c.validObjectRef(parent) || c.tinyColorOf(handleOf(parent)) != tinyWhite {
+		t.Fatal("test did not establish a white parent with an earlier reclaimed child")
+	}
+	for _, set := range []struct {
+		name string
+		fn   func() error
+	}{
+		{name: "global", fn: func() error { return c.SetGlobalSlot(global, parent) }},
+		{name: "table", fn: func() error { return c.SetTableSlot(table, parent) }},
+	} {
+		t.Run(set.name, func(t *testing.T) {
+			if err := set.fn(); !errors.Is(err, errTinyUnsafeSweepRoot) {
+				t.Fatalf("error = %v, want %v", err, errTinyUnsafeSweepRoot)
+			}
+		})
+	}
+	beforeGlobals, beforeTables := len(c.globalSlots), len(c.tableSlots)
+	if _, err := c.NewCheckedGlobalSlot(parent); !errors.Is(err, errTinyUnsafeSweepRoot) {
+		t.Fatalf("new global error = %v, want %v", err, errTinyUnsafeSweepRoot)
+	}
+	if _, err := c.NewCheckedTableSlot(parent); !errors.Is(err, errTinyUnsafeSweepRoot) {
+		t.Fatalf("new table error = %v, want %v", err, errTinyUnsafeSweepRoot)
+	}
+	if len(c.globalSlots) != beforeGlobals || len(c.tableSlots) != beforeTables || !c.GlobalSlot(global).IsNull() || !c.TableSlot(table).IsNull() {
+		t.Fatal("rejected sweep publication mutated persistent roots")
+	}
+	if err := c.SetGlobalSlot(global, safe); err != nil {
+		t.Fatalf("pointer-free sweep publication failed: %v", err)
+	}
+	if c.tinyColorOf(handleOf(safe)) != tinyBlack {
+		t.Fatal("pointer-free sweep publication was not marked immediately")
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+	for c.tinyGC.state != tinyIdle {
+		if err := c.Step(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.validObjectRef(parent) || !c.validObjectRef(safe) {
+		t.Fatal("sweep publication retained the unsafe graph or lost the safe object")
+	}
+}
+
+func TestTinyCheckedRootPublicationAllowsMarkedSweepGraph(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentType, err := NewStructDesc(1, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, VerifyAfterCollect: true}, []TypeDesc{leaf, parentType})
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	root := Root(parent)
+	for c.tinyGC.state != tinySweep {
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.tinyColorOf(handleOf(parent)) != tinyBlack || c.tinyColorOf(handleOf(child)) != tinyBlack {
+		t.Fatal("exactly rooted graph was not black on entry to sweep")
+	}
+	global := c.NewGlobalSlot(Null())
+	if err := c.SetGlobalSlot(global, parent); err != nil {
+		t.Fatalf("marked sweep graph publication failed: %v", err)
+	}
+	root = Root(Null())
+	for c.tinyGC.state != tinyIdle {
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+		t.Fatal("marked sweep graph publication was not retained")
 	}
 }
 
