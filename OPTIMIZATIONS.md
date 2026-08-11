@@ -30,22 +30,25 @@ the fallback for every other function and for explicit bounds mode.
 `WAGO_AMD64_NO_STRAIGHTLINE_SSA=1` and
 `WAGO_ARM64_NO_STRAIGHTLINE_SSA=1` are differential oracles.
 
-On linux/amd64 (Ryzen 7 7800X3D, GOMAXPROCS=1, CPU 7, seven one-second
-samples), median execution latency improves **704,096→490,763 ns/op (-30.3%)**
-for `blake-as` and **543,359→435,821 ns/op (-19.8%)** for independently built
-`blake-as-simd`, a **25.2% geometric-mean latency reduction**. Backend compile
-latency remains within the original budget: **286,468→322,242 ns/op (+12.5%)**
-and **860,518→1,025,900 ns/op (+19.2%)**. The hot functions remain
-8,417→7,016 and 8,545→7,025 native bytes. Broader admission also reaches
+On linux/amd64 at current `main` (Ryzen 7 7800X3D, GOMAXPROCS=1, CPU 7,
+five 750 ms samples), median execution latency improves
+**689,978→523,334 ns/op (-24.2%)** for `blake-as` and
+**538,766→454,792 ns/op (-15.6%)** for independently built `blake-as-simd`, a
+**20.0% geometric-mean latency reduction / 1.250x throughput**. Full compile
+latency remains well within budget: **487,756→508,498 ns/op (+4.3%)** and
+**1,530,199→1,567,645 ns/op (+2.4%)**. Replacing the general compiler-IR builder
+with the backend-local byte planner removes about 123 KB and 18 allocations per
+optimized compile. The hot functions remain 7,016 and 7,025 native bytes.
+Broader admission also reaches
 `blake3sum` and eleven large Ruby functions; those modules are compile-only in
 the current harness.
 
-On darwin/arm64 (Apple M4 Max, GOMAXPROCS=1, seven one-second samples), median
-execution improves **429,848→375,643 ns/op (-12.6%)** and
-**559,473→524,030 ns/op (-6.3%)**, a **9.5% geometric-mean latency reduction**.
-Full compile medians rise **301,993→358,176 ns/op (+18.6%)** and
-**1,060,990→1,158,131 ns/op (+9.2%)**; temporary allocation rises
-257,193→638,202 B/op and 608,786→1,162,148 B/op. AArch64's three-operand eager
+On darwin/arm64 at current `main` (Apple M4 Max, GOMAXPROCS=1, five 750 ms
+samples), median execution improves **402,594→379,398 ns/op (-5.8%)** and
+**436,976→425,390 ns/op (-2.7%)**, a **4.2% geometric-mean latency reduction**.
+Full compile medians rise **331,942→338,114 ns/op (+1.9%)** and
+**1,106,301→1,116,121 ns/op (+0.9%)**; temporary allocation rises
+257,641→515,490 B/op and 609,874→1,039,964 B/op. AArch64's three-operand eager
 schedule cuts the hot functions **5,476→4,228 bytes (-22.8%)** and
 **5,732→4,268 bytes (-25.5%)**; bounded frames grow 336→816 and 336→832 bytes.
 Pinned A/Bs of four unrelated executable corpora (`nbody`, `quicksort`,
