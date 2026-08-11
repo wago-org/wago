@@ -13,9 +13,10 @@ import (
 
 const irImportPath = "github.com/wago-org/wago/src/core/compiler/ir"
 
-// TestIRRemainsOffProductionPath prevents the research/debug SSA package from
-// becoming an accidental production execution tier.
-func TestIRRemainsOffProductionPath(t *testing.T) {
+// TestIRProductionImportsStayInCompilerBackends keeps the bounded IR out of the
+// public/runtime layers. Architecture backends may opt selected functions into
+// it while their direct compilers remain the universal fallback.
+func TestIRProductionImportsStayInCompilerBackends(t *testing.T) {
 	root := irRepositoryRoot(t)
 	irDir := filepath.Join(root, "src", "core", "compiler", "ir")
 	file := filepath.Join(irDir, "boundary_test.go")
@@ -45,7 +46,10 @@ func TestIRRemainsOffProductionPath(t *testing.T) {
 			}
 			if importPath == irImportPath {
 				rel, _ := filepath.Rel(root, path)
-				t.Errorf("production source %s imports off-path compiler IR", filepath.ToSlash(rel))
+				relSlash := filepath.ToSlash(rel)
+				if !strings.HasPrefix(relSlash, "src/core/compiler/backend/") {
+					t.Errorf("production source %s imports compiler IR outside a backend", relSlash)
+				}
 			}
 		}
 		return nil

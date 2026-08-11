@@ -8,16 +8,37 @@ destroying the reason it exists* (fast compile, no cgo, tiny footprint, single p
 2. **Port what's still worth porting from [WARP](https://github.com/wago-org/warp)** — the C++ reference engine the
    backend is a port of. Used as a *reference axis*, not a target to clone.
 
-The headline architectural decision (see the end, **revised 2026-07-03**): **no IR on any
-execution path.** Railshot is the one and only backend; the `src/core/compiler/ir` SSA
-package stays as an off-path research/debug tool, not a planned tier. The ceiling SSA was
-reserved for is attacked incrementally instead — see `docs/no-ir-plan.md`.
+The current architecture keeps Railshot's direct compiler as the universal fallback,
+but allows a bounded per-function IR tier when whole-region scheduling has measured
+value. The first such tier is AMD64 guard-mode straight-line SSA; the superseded no-IR
+decision remains recorded in `docs/no-ir-plan.md`.
 
 Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very high.
 
 ---
 
 ## What's in place (updated 2026-08-10)
+
+**Bounded straight-line SSA scheduling (2026-08-10).** Large AMD64 guard-mode
+functions with one call-free/control-free block, all loads before stores, and only
+the admitted integer operation set may now build a local-SSA value DAG and schedule
+the complete region. The direct one-pass compiler remains the fallback for every
+other function and for explicit bounds mode. The scheduler preserves store order,
+uses next-use spill selection and dying-operand register reuse, and saves module-global
+registers once around the region so the internal allocator can use the full scratch
+file without changing the wasm-to-wasm ABI. `WAGO_AMD64_NO_STRAIGHTLINE_SSA=1`
+is the differential oracle. On linux/amd64 (Ryzen 7 7800X3D, GOMAXPROCS=1, CPU 7,
+seven alternating one-second samples), median execution latency improves
+**702,045→490,899 ns/op (-30.1%)** for `blake-as` and
+**542,307→435,297 ns/op (-19.7%)** for independently built `blake-as-simd`, a
+**25.1% geometric-mean latency reduction**. Backend compile latency rises
+**286,468→322,242 ns/op (+12.5%)** and **860,518→1,025,900 ns/op (+19.2%)**;
+temporary compile allocation rises 229,941→610,607 B/op and
+474,818→1,027,747 B/op. The hot function's native code falls
+**8,417→7,016 bytes** and **8,545→7,025 bytes**, while its bounded spill frame
+grows 344→2,216 bytes in both modules. The current corpus admits only those two
+functions; explicit/guard differential execution and the compiler/runtime suites
+remain green.
 
 **High-pressure associative Valent covers (2026-08-10).** AMD64 deferred nodes
 now retain their Sethi--Ullman register-need label at construction. The
@@ -1110,25 +1131,25 @@ in #112–#115; the `linking`/`data` spec files now pass.)
 
 ---
 
-## The one architecture choice (revised 2026-07-03)
+## The architecture choice (revised 2026-08-10)
 
-**No IR on any execution path — railshot is the only backend.** The earlier "Tier 2
-optional SSA" framing is retired; the E-gate SSA-spike question in the perf plans is
-answered: no.
+**Direct by default, bounded IR when it earns its cost.** Railshot's single-pass
+compiler remains the universal backend and fallback. A backend may opt a tightly
+admitted function into a bounded IR scheduler when repeated corpus measurements show
+that cross-statement information buys materially better native code within the compile
+budget.
 
-- **The pipeline is the identity**: `decode → validate (byte-backed) → scanBody hints
-  (summary facts only) → railshot single-pass codegen → native`. Fast validated bytes →
-  direct native code; no AST, no SSA, no whole-function IR on the hot path.
-- **The ceiling gets attacked incrementally** ("Tier 1.5"): flags-resident values,
-  restricted pending sets, call-surviving trees, alias-aware load windows, bounds
-  facts — each a small extension of the valent-block storage model, each individually
-  gated and measured (`docs/no-ir-plan.md`). The original case for SSA (wazero's json
-  edge = its register allocator) has weakened: wago now beats wazero on both json
-  directions and most of the corpus without it.
-- **`src/core/compiler/ir` stays off-path** as a research/debug package (potential
-  differential oracle); it is not a planned tier, not deleted, and not grown.
-- **Guardrail**: `scanBody` stays summary-only (scores, shape flags). If it starts
-  storing instruction graphs, it has become IR in a trench coat — reject in review.
+- The common pipeline remains `decode → validate → summary hints → direct Railshot →
+  native`; functions outside an optimizer's narrow contract never pay its IR-building
+  cost.
+- `src/core/compiler/ir` is backend-neutral compiler infrastructure, but production
+  imports stay below `src/core/compiler/backend/`. It grows by measured use cases, not
+  by mirroring every Wasm instruction speculatively.
+- Every IR tier needs a strict admission contract, a direct-compiler differential
+  switch, bounded working memory, code-size/frame accounting, and broad no-hit corpus
+  verification.
+- `scanBody` stays summary-only. A backend that needs instruction identities builds
+  them explicitly after admission rather than hiding an IR in the byte scanner.
 
-wago's identity is **low-latency compile**: the single-pass tier is informed,
-flush-light, and register-resident, and it stays single-pass.
+Wago still prioritizes low compile latency and predictable memory; it no longer gives
+up a large execution win merely to preserve a categorical "no IR" identity.

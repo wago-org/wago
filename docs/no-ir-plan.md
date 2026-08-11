@@ -4,7 +4,9 @@
 > 2026 no-IR decision and the original P0–P8 designs. It is not the current work
 > queue: [ROADMAP.md](../ROADMAP.md) and [OPTIMIZATIONS.md](../OPTIMIZATIONS.md)
 > track priorities and completion status. The no-IR architectural decision in
-> §0 remains current.
+> §0 was superseded on 2026-08-10 by the measured bounded straight-line SSA tier
+> documented in `OPTIMIZATIONS.md`; the direct compiler remains the universal
+> fallback.
 
 Triage of an external repo review (LLM with GitHub read access; code/doc
 inspection only — no local build or bench run) against actual repo state,
@@ -19,7 +21,7 @@ How to read: `docs/perf-plan-2026-07.md` §1 (measurement protocol) and
 are referenced as "VB §n" below. This doc **supersedes both docs' ordering**
 (and the SSA/E-gate decision framing) but not their designs or pitfalls.
 
-## 0. The architecture decision: no IR on the execution path
+## 0. Historical architecture decision: no IR on the execution path
 
 Decided 2026-07-03: **wago builds no SSA and no whole-function IR on any
 execution path. Railshot is the one and only backend.** The prior framing

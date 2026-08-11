@@ -18,6 +18,7 @@ import (
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
+	compilerir "github.com/wago-org/wago/src/core/compiler/ir"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -168,6 +169,10 @@ var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 // pin allocator as an A/B and correctness oracle.
 var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
+// straightLineSSAEnabled admits the bounded IR-backed value-DAG lowering tier.
+// WAGO_AMD64_NO_STRAIGHTLINE_SSA=1 retains the direct one-pass path for differential A/B.
+var straightLineSSAEnabled = os.Getenv("WAGO_AMD64_NO_STRAIGHTLINE_SSA") != "1"
+
 // bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
 // the low-level backend default and selected by the public runtime only after
 // host CPUID confirms BMI2.
@@ -261,6 +266,8 @@ type fn struct {
 	intervalLast  []uint32
 	intervalScore []uint32
 	intervalOwner [16]int
+	ssaFunc       *compilerir.Func
+	ssaPlan       *compilerir.StraightLinePlan
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -1763,6 +1770,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		localBytes += 8 * mt.stackSlots()
 	}
 	f.nLocalSlots = (localBytes + 7) / 8
+	f.prepareStraightLineSSA(funcIdx, c, hints)
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	// Auto-inlining: collect the callees this caller will splice (before the pin
@@ -1847,7 +1855,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// dropping every local/global VALUE pin frees the entire neutral file for
 	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
 	// always correct.
-	if !pinLocals {
+	if !pinLocals || f.ssaPlan != nil {
 		gpPool = nil
 	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
@@ -1872,10 +1880,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if extendedFPPinsEnabled {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}
-	if !pinLocals {
+	if !pinLocals || f.ssaPlan != nil {
 		fpPinLimit = 0
 	}
-	intervalRegion := regABI && !hasCall && !hints.hasControlFlow && !hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	intervalRegion := f.ssaPlan == nil && regABI && !hasCall && !hints.hasControlFlow && !hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
@@ -1981,6 +1989,9 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	if f.ssaPlan != nil {
+		return f.emitStraightLineSSA()
+	}
 	resultTypes := typesOfVals(f.ft.Results)
 	// Seed the control-frame stack from scratch's retained backing so its
 	// (large-struct) array is reused across functions rather than regrown to peak
