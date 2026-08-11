@@ -315,6 +315,7 @@ func TestClosedCollectorRejectsLiveOperations(t *testing.T) {
 }
 
 func TestTinyBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 1024, VerifyAfterCollect: true})
 	parent, _ := c.NewStructDefault(1)
 	child, _ := c.NewStructDefault(0)
@@ -347,6 +348,7 @@ func TestTinyBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
 }
 
 func TestTinySlotBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 1024})
 	parent, _ := c.NewStructDefault(1)
 	child, _ := c.NewStructDefault(0)
@@ -382,6 +384,7 @@ func TestTinySlotBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
 }
 
 func TestTinyExternalRootBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 1024})
 	parent, _ := c.NewStructDefault(1)
 	child, _ := c.NewStructDefault(0)

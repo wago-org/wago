@@ -221,16 +221,17 @@ current optimization priorities. The Core 3.0 implementation ledger is
   and 1 MiB payload bounds, remaps structurally equivalent target types, roots both
   phases exactly, and rejects non-null funcref/externref payloads. The clone receives
   new target identity; direct foreign-domain reference calls remain fail-closed.
-- 🚧 **Tiny incremental work (#319, object-scan and epoch stages):** marking
-  retains one handle/index cursor and can pause inside large structs and reference
-  arrays. Each mark `Step` is capped at 64 object ranges, 256 scan entries, 256
-  reference slots, and 1,024 payload bytes; the active object remains gray until
-  complete. One byte per handle now encodes a seven-bit mark epoch plus current
-  gray state, making cycle-start color clearing O(1) and avoiding survivor rewrites
-  during sweep. Tiny bulk barriers prevalidate widened ranges, and gray-parent
-  stores shade white children that may be written behind the cursor. Persistent-root
-  cursors, bounded sweep/allocation policy, debt and near-exhaustion pacing, bounded
-  barrier work, and the final barrier/product split remain open.
+- [x] **Bounded Tiny incremental work (#319):** marking retains one stable
+  handle/index cursor and caps each object-mark `Step` at 64 ranges, 256 entries,
+  256 references, and 1,024 payload bytes. Seven-bit epochs make cycle start O(1).
+  Transient roots use an atomic allocation-free 1,024-reference direct walk;
+  globals/tables resume in 256-slot chunks. Sweep caps 64 handles, 256 blocks,
+  and 4,096 poison bytes, while allocation uses swept spans without draining the
+  cycle. Physical allocation debt buys bounded Steps and near-exhaustion assists
+  stop at 32. Sweep barriers pause the cursor and enqueue ordinary bounded mark
+  work; measured SATB was rejected because its required scalar/bulk deletion
+  barriers increased product complexity without solving a remaining latency gap.
+  `wago_tiny_nonincremental` provides the measured smallest synchronous policy.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
 <!-- roadmap:P1 status=done -->

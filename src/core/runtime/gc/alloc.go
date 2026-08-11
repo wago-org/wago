@@ -259,6 +259,14 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
 	if !c.validObjectRef(r) {
 		return errors.New("gc: invalid object ref")
 	}
+	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
+		if c.tinyGC.scan.handle == handleOf(r) {
+			return errors.New("gc: Tiny object is pending bounded sweep reclamation")
+		}
+		if err := c.validateTinySweepRootPublication(r); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

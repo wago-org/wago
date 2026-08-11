@@ -56,7 +56,11 @@ type Config struct {
 	// TinyStepBudget is the number of Step calls performed after an allocation
 	// when TinyStepEveryAlloc is enabled. It does not scale one Step's internal
 	// object-scan work vector.
-	TinyStepBudget      uint32
+	TinyStepBudget uint32
+	// TinyPacingStepLimit bounds ordinary allocation-debt work before one
+	// allocation. Near-exhaustion assistance may use up to eight times this
+	// value, capped by the collector's fixed hard maximum. Zero selects one.
+	TinyPacingStepLimit uint32
 	ThroughputHeapBytes uint32
 	ThroughputPageBytes uint32
 	// ThroughputClassLimit is zero for the default or exactly one of the

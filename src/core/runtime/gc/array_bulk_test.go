@@ -549,6 +549,7 @@ func TestArrayCopyBulkReconcilePreservesNurseryEdgesOutsideRange(t *testing.T) {
 }
 
 func TestArrayFillTinyRemarkBarrier(t *testing.T) {
+	requireTinyIncrementalBuild(t)
 	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 8, TinyStepBudget: 1}, bulkTestTypes(t))
 	parent, err := c.NewArrayDefault(3, 1)
 	if err != nil {
