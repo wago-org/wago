@@ -15,6 +15,16 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// refreshCachedMemoryBoundAfterExternalCall reestablishes the memory-zero
+// bounds cache after a continuation resumes from code outside this compilation
+// context. The external code may have grown an aliased memory, and a
+// cross-instance continuation must read from the restored caller basedata.
+func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
+	if f.memSizeReg != regNone {
+		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+	}
+}
+
 // regABIEnabled turns on the register-based internal-call ABI (default on;
 // WAGO_ARM64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
@@ -432,9 +442,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.ld64(X11, SP, 16)
 	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(linMemReg, X10)
-	if f.memSizeReg != regNone {
-		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
-	}
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
 	if len(ft.Results) > 0 {
@@ -686,9 +694,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.ld64(X11, SP, 16)
 	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(linMemReg, X10)
-	if f.memSizeReg != regNone {
-		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
-	}
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
 	if len(ft.Results) > 0 {
@@ -1064,6 +1070,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		}
 		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[j])
 	}
+	// Arbitrary host code can synchronously re-enter this instance and grow its
+	// memory. Reload after reconstructing the operand stack so the continuation
+	// cannot retain the parked activation's pre-call size.
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	return nil
 }
 
@@ -1323,6 +1333,10 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	if b.Dynamic {
 		f.copyInstanceContext(linMemReg, X16)
 	}
+	// A dynamic target may be arbitrary host code that synchronously re-enters
+	// this caller and grows its memory. Reload from the restored caller context
+	// before its continuation resumes.
+	f.refreshCachedMemoryBoundAfterExternalCall()
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
