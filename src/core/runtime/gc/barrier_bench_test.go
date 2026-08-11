@@ -39,6 +39,12 @@ func BenchmarkGCBarrierStateMatrix(b *testing.B) {
 			return c.ArraySet(parent, 0, RefValue(child))
 		}},
 		{name: "tiny-parent", cfg: Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16}, length: 64},
+		{name: "tiny-active-marked-child", cfg: Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16}, length: 64, prepare: func(c *Collector, parent, child Ref) error {
+			c.tinyGC.state = tinyMark
+			c.tinySetColor(handleOf(parent), tinyBlack)
+			c.tinySetColor(handleOf(child), tinyBlack)
+			return nil
+		}},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			leaf, err := NewStructDesc(0, nil)
@@ -82,6 +88,41 @@ func BenchmarkGCBarrierStateMatrix(b *testing.B) {
 			b.ReportMetric(float64(c.RememberedCount()), "remembered")
 			b.ReportMetric(float64(c.CardCount()), "cards")
 		})
+	}
+}
+
+// BenchmarkTinyIncrementalBarrierMarkedChild isolates the common active-cycle
+// post-write barrier when the child is already marked in the current epoch. It
+// guards the epoch lookup independently from object-access validation and stores.
+func BenchmarkTinyIncrementalBarrierMarkedChild(b *testing.B) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	refs, err := NewArrayDesc(1, StorageRefNull)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf, refs})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(c.Close)
+	parent, err := c.NewArrayDefault(1, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	c.tinyGC.state = tinyMark
+	c.tinySetColor(handleOf(parent), tinyBlack)
+	c.tinySetColor(handleOf(child), tinyBlack)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c.writeBarrierObjectRange(parent, child, 0, 3)
 	}
 }
 

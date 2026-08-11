@@ -433,11 +433,13 @@ func (c *Collector) tinyPostAlloc(r Ref, d TypeDesc) {
 	h := handleOf(r)
 	if c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark {
 		if d.HasRefs {
-			c.tinyGrayHandle(h)
+			// The handle is newly published and cannot already be queued, so avoid
+			// the general duplicate-gray color check on this allocation path.
+			c.tinyQueueGrayHandle(h)
 			return
 		}
 	}
 	// Idle objects and allocations protected from the current mark/sweep are
 	// black in the current epoch. The next cycle's epoch advance makes them white.
-	c.tinySetColor(h, tinyBlack)
+	c.tinySetBlack(h)
 }

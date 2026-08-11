@@ -283,10 +283,10 @@ func (c *Collector) tinyMarkRef(r Ref) {
 	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space != spaceTiny {
 		return
 	}
-	if c.tinyColorOf(h) != tinyWhite {
+	if !c.tinyIsWhite(h) {
 		return
 	}
-	c.tinyGrayHandle(h)
+	c.tinyQueueGrayHandle(h)
 }
 
 func (c *Collector) tinyMarkRefNow(r Ref) {
@@ -347,8 +347,8 @@ func (c *Collector) tinyDrainGrayBudget(budget objectScanBudget) (used objectSca
 		}
 		used.add(work)
 		if complete {
-			if int(h) < len(c.handles) && c.handles[h].space == spaceTiny && c.tinyColorOf(h) == tinyGray {
-				c.tinySetColor(h, tinyBlack)
+			if int(h) < len(c.handles) && c.handles[h].space == spaceTiny && c.tinyIsGray(h) {
+				c.tinySetBlack(h)
 			}
 			c.tinyGC.scan = tinyScanCursor{}
 			continue
@@ -358,10 +358,14 @@ func (c *Collector) tinyDrainGrayBudget(budget objectScanBudget) (used objectSca
 }
 
 func (c *Collector) tinyGrayHandle(h uint32) {
-	if c.tinyColorOf(h) == tinyGray {
+	if c.tinyIsGray(h) {
 		return
 	}
-	c.tinySetColor(h, tinyGray)
+	c.tinyQueueGrayHandle(h)
+}
+
+func (c *Collector) tinyQueueGrayHandle(h uint32) {
+	c.tinySetGray(h)
 	c.tinyGC.grayStack = append(c.tinyGC.grayStack, h)
 }
 
@@ -370,20 +374,51 @@ func (c *Collector) tinyColorOf(h uint32) tinyColor {
 		return tinyWhite
 	}
 	state := c.tinyGC.color[h]
-	if uint8(state)&tinyMarkEpochMask != c.tinyGC.markEpoch {
-		return tinyWhite
+	black := tinyMarkState(c.tinyGC.markEpoch)
+	if state == black {
+		return tinyBlack
 	}
-	if state&tinyMarkGrayBit != 0 {
+	if state == black|tinyMarkGrayBit {
 		return tinyGray
 	}
-	return tinyBlack
+	return tinyWhite
+}
+
+func (c *Collector) tinyIsWhite(h uint32) bool {
+	if int(h) >= len(c.tinyGC.color) {
+		return true
+	}
+	state := c.tinyGC.color[h]
+	black := tinyMarkState(c.tinyGC.markEpoch)
+	return state != black && state != black|tinyMarkGrayBit
+}
+
+func (c *Collector) tinyIsGray(h uint32) bool {
+	return int(h) < len(c.tinyGC.color) && c.tinyGC.color[h] == tinyMarkState(c.tinyGC.markEpoch)|tinyMarkGrayBit
+}
+
+// These setters are deliberately branch-free. Published Tiny handles always
+// have mark metadata; keeping the hot barrier/mark path direct avoids imposing
+// generic color encoding and metadata-growth checks on every shade operation.
+func (c *Collector) tinySetBlack(h uint32) { c.tinyGC.color[h] = tinyMarkState(c.tinyGC.markEpoch) }
+func (c *Collector) tinySetGray(h uint32) {
+	c.tinyGC.color[h] = tinyMarkState(c.tinyGC.markEpoch) | tinyMarkGrayBit
+}
+func (c *Collector) tinySetWhite(h uint32) {
+	c.tinyGC.color[h] = tinyMarkState((c.tinyGC.markEpoch + tinyMarkEpochMask) & tinyMarkEpochMask)
 }
 
 func (c *Collector) tinySetColor(h uint32, color tinyColor) {
-	for int(h) >= len(c.tinyGC.color) {
-		c.tinyGC.color = append(c.tinyGC.color, tinyEncodeMarkState(c.tinyGC.markEpoch, tinyWhite))
+	switch color {
+	case tinyWhite:
+		c.tinySetWhite(h)
+	case tinyGray:
+		c.tinySetGray(h)
+	case tinyBlack:
+		c.tinySetBlack(h)
+	default:
+		panic("gc: invalid Tiny color")
 	}
-	c.tinyGC.color[h] = tinyEncodeMarkState(c.tinyGC.markEpoch, color)
 }
 
 func (c *Collector) verifyTiny(roots RootSet) error {
