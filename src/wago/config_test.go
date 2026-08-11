@@ -461,6 +461,9 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if !hostSupportsSIMD() {
 		wantFeatures &^= CoreFeatureSIMD
 	}
+	if !supportsThreadsBackend(runtime.GOOS, runtime.GOARCH) {
+		wantFeatures &^= CoreFeatureThreads
+	}
 	if SupportedFeatures() != wantFeatures {
 		t.Fatal("SupportedFeatures mismatch")
 	}

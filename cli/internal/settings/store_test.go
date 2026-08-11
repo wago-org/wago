@@ -81,6 +81,28 @@ func TestSettingsRejectPreviewAndUnknown(t *testing.T) {
 	}
 }
 
+func TestUnavailableFeaturesMayRemainDisabled(t *testing.T) {
+	var unavailable BoolSetting
+	for _, setting := range allFeatures() {
+		if !setting.Available {
+			unavailable = setting
+			break
+		}
+	}
+	if unavailable.Key == "" {
+		t.Skip("all features are available on this platform")
+	}
+
+	values := map[string]bool{unavailable.name: false}
+	if err := ValidateFeatureValues(values); err != nil {
+		t.Fatalf("disabled unavailable feature should be portable: %v", err)
+	}
+	values[unavailable.name] = true
+	if err := ValidateFeatureValues(values); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("enabled unavailable feature should be rejected clearly, got %v", err)
+	}
+}
+
 func TestResetRestoresBuiltInValue(t *testing.T) {
 	config := Default()
 	if err := Set(&config, "features.simd", "off", false); err != nil {
