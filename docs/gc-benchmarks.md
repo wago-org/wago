@@ -641,10 +641,10 @@ reference-array elements measured a 428.05 ns baseline versus 435.25 ns current
 median for an individual bounded Step (+1.68%), while complete cycles changed
 from 9.0085 us to 9.0355 us (+0.30%). Median paired deltas were -0.13% and +0.19%
 respectively. Per-handle mark metadata remains one byte and the compact Tiny
-scan/collector structures retain their previous sizes. The stripped
-linux/amd64 size card reports runtime-standard -4.0 KiB, runtime-minimal -8.0 KiB,
-and runtime-minimal-tiny -0.2 KiB versus `main`; all four release profiles remain
-within budget.
+scan/collector structures retain their previous sizes. The final stripped
+linux/amd64 size card reports no aligned-file change for runtime-standard,
+runtime-minimal -4.0 KiB, and runtime-minimal-tiny -0.2 KiB versus `main`; all
+four release profiles remain within budget.
 
 For disabled-build overhead, twenty pinned interleaved 10,000-operation runs of
 the zero-survivor Throughput minor control measured an 811.95 ns parent median
