@@ -219,7 +219,7 @@ type fn struct {
 	nParams             int
 	nLocals             int                // params + declared locals
 	localType           []machineType      // per-local machine type
-	localSlot           []int              // per-local frame slot in 8-byte units; v128 occupies two
+	localSlot           []int              // per-local byte offset within the local-frame area
 	localGCRefFacts     []shared.GCRefFact // semantic facts for compact refs; no raw addresses
 	nextGCRefIdentity   uint32             // bounded constructor identity, zero means unavailable
 	gcOpcodeBarrier     bool               // current 0xfb opcode emits real barrier work
@@ -249,6 +249,10 @@ type fn struct {
 	// so two uint16 masks fit in the bool cluster's existing alignment padding.
 	callDeadGP uint16
 	callDeadFP uint16
+	// Number of commutative self-update spill opportunities seen in this function.
+	// The first keeps the conservative form; repeated pressure selects the denser
+	// register form without perturbing one-off sites in otherwise cold functions.
+	commuteSelfUpdates uint16
 
 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
 	// an eligible local; locals[x].reg is populated only while its cached value is
@@ -622,7 +626,7 @@ const (
 	frResultsOff  = 8                            // results buffer pointer
 )
 
-func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
+func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
 		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
@@ -1731,10 +1735,34 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localSlot = f.localSlot[:nLocals]
 	}
-	for i, mt := range f.localType {
-		f.localSlot[i] = f.nLocalSlots
-		f.nLocalSlots += mt.stackSlots()
+	// Call-free integer kernels benefit from a denser frame: two i32
+	// locals share one 8-byte slot. Besides halving their footprint, this keeps
+	// more RSP-relative accesses in x86's compact disp8 encoding. Other functions
+	// retain the longstanding 8-byte-word layout, keeping call/EH/GC frame maps
+	// deliberately boring. Tiny functions stay on the old layout because their
+	// locals are normally register-homed and do not repay a second layout mode.
+	i32Locals := 0
+	for _, mt := range f.localType {
+		if mt == mtI32 {
+			i32Locals++
+		}
 	}
+	compactI32Frame := compactI32FrameEnabled && !hints.hasCall && !hints.hasControlFlow && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
+	if compactI32Frame {
+		f.stats.peep("compact-i32-frame")
+	}
+	localBytes := 0
+	for i, mt := range f.localType {
+		if compactI32Frame && mt == mtI32 {
+			f.localSlot[i] = localBytes
+			localBytes += 4
+			continue
+		}
+		localBytes = (localBytes + 7) &^ 7
+		f.localSlot[i] = localBytes
+		localBytes += 8 * mt.stackSlots()
+	}
+	f.nLocalSlots = (localBytes + 7) / 8
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	// Auto-inlining: collect the callees this caller will splice (before the pin
@@ -2329,7 +2357,7 @@ func (f *fn) prologue() {
 				a.FLoadDisp(pr, RDI, paramOff, f.localType[i] == mtF64) // pinned float param → XMM
 			} else {
 				a.Load64(RAX, RDI, paramOff)
-				a.Store64(RSP, f.localOff(i), RAX)
+				f.storeFrameInt(f.localOff(i), RAX, f.localType[i])
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -2365,7 +2393,7 @@ func (f *fn) zeroDeclaredLocals() {
 				a.Store64(RSP, f.localOff(i), RAX)
 				a.Store64(RSP, f.localOff(i)+8, RAX)
 			} else {
-				a.Store64(RSP, f.localOff(i), RAX)
+				f.storeFrameInt(f.localOff(i), RAX, f.localType[i])
 			}
 		}
 		return
@@ -2464,7 +2492,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 				fp++
 				continue
 			}
-			a.Store64(RSP, f.localOff(i), intArgRegs[gp])
+			f.storeFrameInt(f.localOff(i), intArgRegs[gp], mt)
 			gp++
 		}
 		gp, fp = 0, 0
@@ -2482,9 +2510,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 		} else if len(f.intervalReg) != 0 {
 			// Already homed; the regional cache loads it on first use.
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
-			a.MovReg64(pr, intArgRegs[gp])
+			f.moveInt(pr, intArgRegs[gp], mt)
 		} else {
-			a.Store64(RSP, f.localOff(i), intArgRegs[gp])
+			f.storeFrameInt(f.localOff(i), intArgRegs[gp], mt)
 		}
 		if !mt.isFloat() {
 			gp++

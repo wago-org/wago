@@ -9,8 +9,9 @@ import (
 )
 
 // TestBoundsFactsElision checks P6.1 straight-line elision (docs/no-ir-plan.md
-// P6): a second access on the same address source, within the extent a prior
-// check proved, needs no check of its own. Correctness at scale is covered by
+// P6): one check may prove same-source fixed-offset loads across a pure range,
+// and a later covered access needs no check of its own. Correctness at scale is
+// covered by
 // TestCorpusDifferential on the compute kernels (nbody/fannkuch/sha256/raytrace);
 // this pins the counter behaviour and the invalidation points.
 func TestBoundsFactsElision(t *testing.T) {
@@ -27,14 +28,37 @@ func TestBoundsFactsElision(t *testing.T) {
 		t.Errorf("covered: bounds=%d elidable=%d, want 1/1", s.BoundsChecks, s.BoundsChecksElidable)
 	}
 
-	// A LARGER later extent is not covered by a smaller prior one → both checked.
+	// A larger later extent in the same pure range is certified by the first
+	// access's lookahead, so it still emits only one check.
 	grow := []byte{0x00,
 		0x20, 0x00, 0x28, 0x02, 0x00, 0x1a, // off 0 → proves p+4
 		0x20, 0x00, 0x28, 0x02, 0x04, 0x1a, // off 4 → needs p+8 > p+4 → checked
 		0x0b}
 	s = compileWithStats(t, modMem(t, 1, i32, nil, grow), false).Funcs[0]
+	if s.BoundsChecks != 1 || s.BoundsChecksElidable != 1 {
+		t.Errorf("grow: bounds=%d elidable=%d, want 1/1", s.BoundsChecks, s.BoundsChecksElidable)
+	}
+
+	// A shared memory may grow concurrently between the two loads. Looking ahead
+	// would then be able to trap on a range that becomes valid before its original
+	// access, so shared memory keeps the ordinary forward-only certificates.
+	shared := modMem(t, 1, i32, nil, grow)
+	shared.Memories[0].Shared = true
+	s = compileWithStats(t, shared, false).Funcs[0]
 	if s.BoundsChecks != 2 || s.BoundsChecksElidable != 0 {
-		t.Errorf("grow: bounds=%d elidable=%d, want 2/0", s.BoundsChecks, s.BoundsChecksElidable)
+		t.Errorf("shared: bounds=%d elidable=%d, want 2/0", s.BoundsChecks, s.BoundsChecksElidable)
+	}
+
+	// Potentially trapping integer arithmetic is a hard range barrier: the later
+	// OOB check must not move before a possible division trap.
+	divBarrier := []byte{0x00,
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x1a,
+		0x41, 0x01, 0x41, 0x00, 0x6e, 0x1a, // i32.div_u by zero
+		0x20, 0x00, 0x28, 0x02, 0x04, 0x1a,
+		0x0b}
+	s = compileWithStats(t, modMem(t, 1, i32, nil, divBarrier), false).Funcs[0]
+	if s.BoundsChecks != 2 || s.BoundsChecksElidable != 0 {
+		t.Errorf("division barrier: bounds=%d elidable=%d, want 2/0", s.BoundsChecks, s.BoundsChecksElidable)
 	}
 
 	// A local.set of the certified base between the two accesses invalidates the

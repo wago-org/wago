@@ -957,7 +957,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 		}
 		return nil
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(uint32(off), size, true)
+	ea, eaOwned, borrow, disp := f.memAddr(uint32(off), size, true, 0)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
 	if eaOwned {
 		f.regUser[ea] = e
@@ -989,7 +989,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 			f.release(ea)
 		}
 	} else {
-		ea, eaOwned, _, disp := f.memAddr(uint32(off), size, true)
+		ea, eaOwned, _, disp := f.memAddr(uint32(off), size, true, 0)
 		f.a.FStoreIdx(RBX, ea, xmm, disp, f64)
 		if eaOwned {
 			f.release(ea)

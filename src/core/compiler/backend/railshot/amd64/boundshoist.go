@@ -326,5 +326,5 @@ func (f *fn) loadLocalValue(reg Reg, x uint32) {
 		f.a.MovReg64(reg, pr)
 		return
 	}
-	f.a.Load64(reg, RSP, f.localOff(int(x)))
+	f.loadFrameInt(reg, f.localOff(int(x)), f.localType[x])
 }
