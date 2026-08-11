@@ -17,28 +17,40 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ---
 
-## What's in place (updated 2026-08-10)
+## What's in place (updated 2026-08-11)
 
-**Bounded straight-line SSA scheduling (2026-08-10).** Large AMD64 guard-mode
-functions with one call-free/control-free block, all loads before stores, and only
-the admitted integer operation set may now build a local-SSA value DAG and schedule
-the complete region. The direct one-pass compiler remains the fallback for every
-other function and for explicit bounds mode. The scheduler preserves store order,
-uses next-use spill selection and dying-operand register reuse, and saves module-global
-registers once around the region so the internal allocator can use the full scratch
-file without changing the wasm-to-wasm ABI. `WAGO_AMD64_NO_STRAIGHTLINE_SSA=1`
-is the differential oracle. On linux/amd64 (Ryzen 7 7800X3D, GOMAXPROCS=1, CPU 7,
-seven alternating one-second samples), median execution latency improves
-**702,045→490,899 ns/op (-30.1%)** for `blake-as` and
-**542,307→435,297 ns/op (-19.7%)** for independently built `blake-as-simd`, a
-**25.1% geometric-mean latency reduction**. Backend compile latency rises
-**286,468→322,242 ns/op (+12.5%)** and **860,518→1,025,900 ns/op (+19.2%)**;
-temporary compile allocation rises 229,941→610,607 B/op and
-474,818→1,027,747 B/op. The hot function's native code falls
-**8,417→7,016 bytes** and **8,545→7,025 bytes**, while its bounded spill frame
-grows 344→2,216 bytes in both modules. The current corpus admits only those two
-functions; explicit/guard differential execution and the compiler/runtime suites
-remain green.
+**Bounded straight-line SSA scheduling (2026-08-11).** Large AMD64 and
+ARM64 guard-mode functions with one call-free/control-free block and the admitted
+integer operation set may build a local-SSA value DAG and schedule the complete
+region. The tier accepts integer add/subtract/multiply/logic, constant
+shift/rotate, i64-to-i32 wrap, every integer load/store width, and interleaved
+loads/stores while preserving memory order. The direct one-pass compiler remains
+the fallback for every other function and for explicit bounds mode.
+`WAGO_AMD64_NO_STRAIGHTLINE_SSA=1` and
+`WAGO_ARM64_NO_STRAIGHTLINE_SSA=1` are differential oracles.
+
+On linux/amd64 (Ryzen 7 7800X3D, GOMAXPROCS=1, CPU 7, seven one-second
+samples), median execution latency improves **704,096→490,763 ns/op (-30.3%)**
+for `blake-as` and **543,359→435,821 ns/op (-19.8%)** for independently built
+`blake-as-simd`, a **25.2% geometric-mean latency reduction**. Backend compile
+latency remains within the original budget: **286,468→322,242 ns/op (+12.5%)**
+and **860,518→1,025,900 ns/op (+19.2%)**. The hot functions remain
+8,417→7,016 and 8,545→7,025 native bytes. Broader admission also reaches
+`blake3sum` and eleven large Ruby functions; those modules are compile-only in
+the current harness.
+
+On darwin/arm64 (Apple M4 Max, GOMAXPROCS=1, seven one-second samples), median
+execution improves **429,848→375,643 ns/op (-12.6%)** and
+**559,473→524,030 ns/op (-6.3%)**, a **9.5% geometric-mean latency reduction**.
+Full compile medians rise **301,993→358,176 ns/op (+18.6%)** and
+**1,060,990→1,158,131 ns/op (+9.2%)**; temporary allocation rises
+257,193→638,202 B/op and 608,786→1,162,148 B/op. AArch64's three-operand eager
+schedule cuts the hot functions **5,476→4,228 bytes (-22.8%)** and
+**5,732→4,268 bytes (-25.5%)**; bounded frames grow 336→816 and 336→832 bytes.
+Pinned A/Bs of four unrelated executable corpora (`nbody`, `quicksort`,
+`sha256`, and both `json-as` paths) stay within -0.7% to +1.2% on ARM64 and
+within -0.1% to +0.4% on AMD64. Guard/explicit differential execution and the
+compiler/runtime suites remain the correctness gates.
 
 **High-pressure associative Valent covers (2026-08-10).** AMD64 deferred nodes
 now retain their Sethi--Ullman register-need label at construction. The

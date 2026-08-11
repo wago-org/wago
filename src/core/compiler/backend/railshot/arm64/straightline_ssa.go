@@ -1,6 +1,6 @@
-//go:build amd64
+//go:build arm64
 
-package amd64
+package arm64
 
 import (
 	"fmt"
@@ -10,8 +10,12 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+const maxStraightLineSSABody = 16 << 10
+
+// prepareStraightLineSSA spends bounded IR construction on large integer
+// kernels whose complete value DAG can replace repeated local-slot traffic.
 func (f *fn) prepareStraightLineSSA(funcIdx int, code *wasm.Func, hints funcHints) {
-	if !straightLineSSAEnabled || !f.guardMode || len(code.BodyBytes) < 1024 || len(code.BodyBytes) > maxIntervalRegionBody ||
+	if !straightLineSSAEnabled || !f.guardMode || len(code.BodyBytes) < 1024 || len(code.BodyBytes) > maxStraightLineSSABody ||
 		hints.hasCall || hints.hasControlFlow || hints.usesBulkMem || f.moduleEH || len(f.ft.Results) != 0 {
 		return
 	}
@@ -93,7 +97,7 @@ type straightLineSSACompiler struct {
 	plan *compilerir.StraightLinePlan
 
 	values   []ssaValueLoc
-	gpOwner  [16]compilerir.ValueID
+	gpOwner  [32]compilerir.ValueID
 	gpPinned regMask
 
 	scalarUses    []int
@@ -125,7 +129,7 @@ func (f *fn) emitStraightLineSSA() error {
 	for _, r := range gpAlloc {
 		if f.reserved.has(r) {
 			slot := c.allocSlots(1)
-			f.a.Store64(RSP, f.spillOff(slot), r)
+			f.st64(SP, f.spillOff(slot), r)
 			c.savedReserved = append(c.savedReserved, ssaSavedReg{reg: r, slot: slot})
 		}
 	}
@@ -172,19 +176,27 @@ func (f *fn) emitStraightLineSSA() error {
 		}
 	}
 	for i := range c.irf.Insts {
-		switch c.irf.Insts[i].Op {
+		in := &c.irf.Insts[i]
+		switch in.Op {
+		case compilerir.OpIBinary, compilerir.OpConvert:
+			v := c.result(in)
+			if c.markedScalar[v] && c.values[v].kind == 0 {
+				if _, err := c.scalar(v); err != nil {
+					return err
+				}
+			}
 		case compilerir.OpLoad:
-			if err := c.emitLoad(&c.irf.Insts[i]); err != nil {
+			if err := c.emitLoad(in); err != nil {
 				return err
 			}
 		case compilerir.OpStore:
-			if err := c.emitStore(&c.irf.Insts[i]); err != nil {
+			if err := c.emitStore(in); err != nil {
 				return err
 			}
 		}
 	}
 	for _, saved := range c.savedReserved {
-		f.a.Load64(saved.reg, RSP, f.spillOff(saved.slot))
+		f.ld64(saved.reg, SP, f.spillOff(saved.slot))
 	}
 	f.stats.peep("straightline-ssa-emitted")
 	return nil
@@ -240,13 +252,12 @@ func (c *straightLineSSACompiler) emitLoad(in *compilerir.Inst) error {
 	if err != nil {
 		return err
 	}
-	c.f.a.MovRegReg32(addr, addr)
 	dst := addr
 	if !c.canReuseScalar(addrID, addr) {
 		dst = c.allocGP(maskOf(addr))
 	}
 	size, signed, wide := straightLineLoadShape(compilerir.MemOp(uint8(in.Aux)))
-	c.f.a.LoadIdx(dst, RBX, addr, int32(uint32(in.Aux>>32)), size, signed, wide)
+	c.f.a.LoadIdx(dst, linMemReg, addr, int32(uint32(in.Aux>>32)), size, signed, wide)
 	v := c.result(in)
 	c.consumeScalar(addrID)
 	c.values[v] = ssaValueLoc{kind: 1, reg: dst}
@@ -266,8 +277,7 @@ func (c *straightLineSSACompiler) emitStore(in *compilerir.Inst) error {
 	if err != nil {
 		return err
 	}
-	c.f.a.MovRegReg32(addr, addr)
-	c.f.a.StoreIdx(RBX, addr, value, int32(uint32(in.Aux>>32)), straightLineStoreSize(compilerir.MemOp(uint8(in.Aux))))
+	c.f.a.StoreIdx(linMemReg, addr, value, int32(uint32(in.Aux>>32)), straightLineStoreSize(compilerir.MemOp(uint8(in.Aux))))
 	c.consumeScalar(c.arg(in, 0))
 	c.consumeScalar(c.arg(in, 1))
 	return nil
@@ -282,21 +292,21 @@ func (c *straightLineSSACompiler) scalar(v compilerir.ValueID) (Reg, error) {
 		c.values[v].kind = 0
 	} else if loc.kind == 2 {
 		r := c.allocGP(0)
-		c.f.a.Load64(r, RSP, c.f.spillOff(loc.slot))
+		c.f.ld64(r, SP, c.f.spillOff(loc.slot))
 		c.values[v] = ssaValueLoc{kind: 1, reg: r, slot: loc.slot}
 		c.gpOwner[r] = v
 		return r, nil
 	}
 	if local, ok := c.initialLocal[v]; ok {
 		r := c.allocGP(0)
-		c.f.a.Load64(r, RSP, c.f.localOff(local))
+		c.f.ld64(r, SP, c.f.localOff(local))
 		c.values[v] = ssaValueLoc{kind: 1, reg: r}
 		c.gpOwner[r] = v
 		return r, nil
 	}
 	in, ok := c.inst(v)
 	if !ok {
-		return regNone, fmt.Errorf("amd64: straight-line SSA value %d has no definition", v)
+		return regNone, fmt.Errorf("arm64: straight-line SSA value %d has no definition", v)
 	}
 	switch in.Op {
 	case compilerir.OpConst:
@@ -321,13 +331,13 @@ func (c *straightLineSSACompiler) scalar(v compilerir.ValueID) (Reg, error) {
 		if !c.canReuseScalar(srcID, src) {
 			dst = c.allocGP(maskOf(src))
 		}
-		c.f.a.MovRegReg32(dst, src)
+		c.f.a.MovReg32(dst, src)
 		c.consumeScalar(srcID)
 		c.values[v] = ssaValueLoc{kind: 1, reg: dst}
 		c.gpOwner[dst] = v
 		return dst, nil
 	}
-	return regNone, fmt.Errorf("amd64: unsupported straight-line SSA value %d op %d", v, in.Op)
+	return regNone, fmt.Errorf("arm64: unsupported straight-line SSA value %d op %d", v, in.Op)
 }
 
 func (c *straightLineSSACompiler) scalarBinary(v compilerir.ValueID, in *compilerir.Inst) (Reg, error) {
@@ -339,58 +349,40 @@ func (c *straightLineSSACompiler) scalarBinary(v compilerir.ValueID, in *compile
 	kind := compilerir.IBinaryOp(uint8(in.Aux))
 	wide := c.irf.Values[v].Type == wasm.I64
 	if kind == compilerir.IBinShl || kind == compilerir.IBinShrS || kind == compilerir.IBinShrU || kind == compilerir.IBinRotl || kind == compilerir.IBinRotr {
-		if ri, ok := c.inst(rightID); ok && ri.Op == compilerir.OpConst {
-			dst := left
-			reuse := c.canReuseScalar(leftID, left)
-			if !reuse {
-				dst = c.allocGP(maskOf(left))
-			}
-			count := byte(ri.Aux)
-			if wide {
-				count &= 63
-			} else {
-				count &= 31
-			}
-			if kind == compilerir.IBinRotr && bmi2RorxEnabled {
-				c.f.a.Rorx(dst, left, count, wide)
-			} else {
-				if !reuse {
-					if wide {
-						c.f.a.MovReg64(dst, left)
-					} else {
-						c.f.a.MovRegReg32(dst, left)
-					}
-				}
-				digit := byte(1)
-				switch kind {
-				case compilerir.IBinShl:
-					digit = 4
-				case compilerir.IBinShrS:
-					digit = 7
-				case compilerir.IBinShrU:
-					digit = 5
-				case compilerir.IBinRotl:
-					digit = 0
-				}
-				c.f.a.ShiftImm(digit, dst, count, wide)
-			}
-			c.consumeScalar(leftID)
-			c.consumeScalar(rightID)
-			c.values[v] = ssaValueLoc{kind: 1, reg: dst}
-			c.gpOwner[dst] = v
-			return dst, nil
+		ri, ok := c.inst(rightID)
+		if !ok || ri.Op != compilerir.OpConst {
+			return regNone, fmt.Errorf("arm64: non-constant straight-line shift")
 		}
+		dst := left
+		if !c.canReuseScalar(leftID, left) {
+			dst = c.allocGP(maskOf(left))
+		}
+		width := byte(32)
+		if wide {
+			width = 64
+		}
+		count := byte(ri.Aux) & (width - 1)
+		switch kind {
+		case compilerir.IBinShl:
+			c.f.a.LslImm(dst, left, count, !wide)
+		case compilerir.IBinShrS:
+			c.f.a.AsrImm(dst, left, count, !wide)
+		case compilerir.IBinShrU:
+			c.f.a.LsrImm(dst, left, count, !wide)
+		case compilerir.IBinRotl:
+			c.f.a.RorImm(dst, left, (-count)&(width-1), !wide)
+		case compilerir.IBinRotr:
+			c.f.a.RorImm(dst, left, count, !wide)
+		}
+		c.consumeScalar(leftID)
+		c.consumeScalar(rightID)
+		c.values[v] = ssaValueLoc{kind: 1, reg: dst}
+		c.gpOwner[dst] = v
+		return dst, nil
 	}
 	savedPinned := c.gpPinned
 	var right Reg
-	// Reserving more module-global registers leaves fewer long-lived values in
-	// the ordinary allocator before this tier saves them. Scale the recursion
-	// spine accordingly: one saved register benefits from switching at depth 6,
-	// two at depth 7, while still leaving a broad scratch floor.
-	if c.gpPinned.count() >= 5+len(c.savedReserved) {
-		// Do not extend an already-deep left spine until every allocatable GPR is
-		// pinned. The value is recoverable from its SSA definition or spill; form
-		// the right side first, then recover the left while protecting the right.
+	if c.gpPinned.count() >= 10+len(c.savedReserved) {
 		right, err = c.scalar(rightID)
 		if err == nil {
 			c.gpPinned = c.gpPinned.add(right)
@@ -405,39 +397,48 @@ func (c *straightLineSSACompiler) scalarBinary(v compilerir.ValueID, in *compile
 	if err != nil {
 		return regNone, err
 	}
-	dst, lhs, rhs := left, left, right
-	if !c.canReuseScalar(leftID, left) {
-		if kind != compilerir.IBinSub && c.canReuseScalar(rightID, right) {
-			dst, lhs, rhs = right, right, left
-		} else {
-			dst = c.allocGP(maskOf(left, right))
-			if wide {
-				c.f.a.MovReg64(dst, left)
-			} else {
-				c.f.a.MovRegReg32(dst, left)
-			}
-			lhs = dst
+	dst := regNone
+	if c.canReuseScalar(leftID, left) {
+		dst = left
+	} else if c.canReuseScalar(rightID, right) {
+		dst = right
+	} else {
+		dst = c.allocGP(maskOf(left, right))
+	}
+	if wide {
+		switch kind {
+		case compilerir.IBinAdd:
+			c.f.a.Add64(dst, left, right)
+		case compilerir.IBinSub:
+			c.f.a.Sub64(dst, left, right)
+		case compilerir.IBinMul:
+			c.f.a.Mul64(dst, left, right)
+		case compilerir.IBinAnd:
+			c.f.a.And64(dst, left, right)
+		case compilerir.IBinOr:
+			c.f.a.Orr64(dst, left, right)
+		case compilerir.IBinXor:
+			c.f.a.Eor64(dst, left, right)
+		default:
+			return regNone, fmt.Errorf("arm64: unsupported straight-line SSA binary %d", kind)
 		}
-	}
-	opcode := byte(0)
-	switch kind {
-	case compilerir.IBinAdd:
-		opcode = 0x01
-	case compilerir.IBinSub:
-		opcode = 0x29
-	case compilerir.IBinAnd:
-		opcode = 0x21
-	case compilerir.IBinOr:
-		opcode = 0x09
-	case compilerir.IBinXor:
-		opcode = 0x31
-	case compilerir.IBinMul:
-		c.f.a.IMul(lhs, rhs, wide)
-	default:
-		return regNone, fmt.Errorf("amd64: unsupported straight-line SSA binary %d", kind)
-	}
-	if kind != compilerir.IBinMul {
-		c.f.a.AluRR(opcode, lhs, rhs, wide)
+	} else {
+		switch kind {
+		case compilerir.IBinAdd:
+			c.f.a.Add32(dst, left, right)
+		case compilerir.IBinSub:
+			c.f.a.Sub32(dst, left, right)
+		case compilerir.IBinMul:
+			c.f.a.Mul32(dst, left, right)
+		case compilerir.IBinAnd:
+			c.f.a.And32(dst, left, right)
+		case compilerir.IBinOr:
+			c.f.a.Orr32(dst, left, right)
+		case compilerir.IBinXor:
+			c.f.a.Eor32(dst, left, right)
+		default:
+			return regNone, fmt.Errorf("arm64: unsupported straight-line SSA binary %d", kind)
+		}
 	}
 	c.consumeScalar(leftID)
 	c.consumeScalar(rightID)
@@ -541,7 +542,7 @@ func (c *straightLineSSACompiler) allocGP(avoid regMask) Reg {
 	}
 	r := c.values[victim].reg
 	slot := c.allocSlots(1)
-	c.f.a.Store64(RSP, c.f.spillOff(slot), r)
+	c.f.st64(SP, c.f.spillOff(slot), r)
 	c.values[victim] = ssaValueLoc{kind: 2, slot: slot}
 	c.gpOwner[r] = compilerir.InvalidValue
 	return r

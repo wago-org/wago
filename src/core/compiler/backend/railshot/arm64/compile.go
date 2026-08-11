@@ -16,6 +16,7 @@ import (
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
+	compilerir "github.com/wago-org/wago/src/core/compiler/ir"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -33,6 +34,10 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 // experiment. It remains opt-in until candidate scoring proves it improves the
 // corpus: WAGO_ARM64_LOOP_PINS=1 enables it.
 var loopRegionPinsEnabled = os.Getenv("WAGO_ARM64_LOOP_PINS") == "1"
+
+// straightLineSSAEnabled admits the bounded IR-backed value-DAG tier.
+// WAGO_ARM64_NO_STRAIGHTLINE_SSA=1 retains the direct compiler as an A/B oracle.
+var straightLineSSAEnabled = os.Getenv("WAGO_ARM64_NO_STRAIGHTLINE_SSA") != "1"
 
 // uxtwAddEnabled gates folding i64.add(x, i64.extend_i32_u(y)) into a single
 // UXTW extended-register add. On by default; WAGO_ARM64_NOUXTW=1 disables it for
@@ -190,6 +195,8 @@ type fn struct {
 	vconsts []v128ConstReg
 
 	maxSpill int // high-water number of operand spill slots used
+	ssaFunc  *compilerir.Func
+	ssaPlan  *compilerir.StraightLinePlan
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
 	spillFloor       int
@@ -1374,6 +1381,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.localSlot[i] = f.nLocalSlots
 		f.nLocalSlots += mt.stackSlots()
 	}
+	f.prepareStraightLineSSA(funcIdx, c, hints)
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	// Auto-inlining: collect the callees this caller will splice (before the pin
@@ -1491,7 +1499,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// dropping every local/global VALUE pin frees the entire neutral file for
 	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
 	// always correct.
-	if !pinLocals || nLocals > 64 {
+	if !pinLocals || nLocals > 64 || f.ssaPlan != nil {
 		gpPool = nil
 	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
@@ -1509,12 +1517,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	f.installModuleGlobals(modGlobals)
-	intervalRegion := pinLocals && regABI && !hasCall && !hints.hasControlFlow &&
+	intervalRegion := f.ssaPlan == nil && pinLocals && regABI && !hasCall && !hints.hasControlFlow &&
 		!hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional assignments supersede whole-function GP pins
 	}
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, hasCall, pinLocals)
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, hasCall, pinLocals && f.ssaPlan == nil)
 	for i := range f.locals {
 		if r := f.locals[i].reg; r >= X2 && r <= X7 {
 			f.stats.peep("entry-arg-local-pin")
@@ -1632,6 +1640,9 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the current epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	if f.ssaPlan != nil {
+		return f.emitStraightLineSSA()
+	}
 	resultTypes := typesOfVals(f.ft.Results)
 	sc := f.scratchState()
 	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})

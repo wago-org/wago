@@ -1,6 +1,6 @@
-//go:build (linux || darwin || windows) && amd64
+//go:build arm64
 
-package amd64
+package arm64
 
 import (
 	"testing"
