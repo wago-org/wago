@@ -53,8 +53,8 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 				return reject("table import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternMem:
-			// Linear-memory imports add no collector roots. Snapshot and linking
-			// admission separately prove exact same-domain ownership.
+			// Linear-memory imports add no collector roots. Linking admission
+			// separately proves exact same-domain ownership.
 		case wasm.ExternTag:
 			// Tag directories are immutable identities; active exception payloads
 			// are covered by the function EH root maps below.

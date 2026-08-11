@@ -266,9 +266,6 @@ func TestNullableLocalFuncrefGlobalsRemainOutOfSerializedState(t *testing.T) {
 	defer c.Close()
 
 	_ = roundTripCompiled(t, c)
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
-		t.Fatalf("Capture error = %v, want reference-global rejection", err)
-	}
 }
 
 func TestRelease2NullableFuncrefGlobalSourceGuard(t *testing.T) {

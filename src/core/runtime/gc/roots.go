@@ -71,7 +71,7 @@ type RootGroup struct {
 }
 
 // RootGroups is an exact composite RootSet used by telemetry-aware runtime
-// integrations for frames, public tokens, foreign instances, and snapshot roots.
+// integrations for frames, public tokens, foreign instances, and temporary roots.
 type RootGroups []RootGroup
 
 func (groups RootGroups) RangeRoots(fn func(RootSlot) bool) {

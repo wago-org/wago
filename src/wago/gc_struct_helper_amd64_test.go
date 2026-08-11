@@ -177,9 +177,6 @@ func TestStagedGCStructPackedGlobalExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-		t.Fatalf("packed snapshot capture = %v, want explicit WasmGC state gate", err)
-	}
 	blob, err := marshalCompiled(c)
 	if err != nil {
 		t.Fatal(err)
@@ -296,10 +293,6 @@ func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
 	}
 	if _, err := in.Invoke("get"); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
 		t.Fatalf("tiny exhausted recovery invocation = %v, want repeatable failure", err)
-	}
-
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-		t.Fatalf("snapshot capture = %v, want explicit WasmGC state gate", err)
 	}
 
 	blob, err := marshalCompiled(c)

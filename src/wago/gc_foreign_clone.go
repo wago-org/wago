@@ -15,6 +15,41 @@ const (
 	maxForeignGCCloneBytes   = 1 << 20
 )
 
+// gcCloneRef is a collector-independent reference used while copying an object
+// graph. Object indexes are one-based so the zero value is null.
+type gcCloneRef struct {
+	kind  uint8
+	value uint32
+}
+
+const (
+	gcCloneRefNull uint8 = iota
+	gcCloneRefI31
+	gcCloneRefObject
+)
+
+type gcCloneValue struct {
+	kind   gc.StorageKind
+	bits   uint64
+	bitsHi uint64
+	ref    gcCloneRef
+}
+
+type gcCloneObject struct {
+	typeID   gc.TypeID
+	arrayLen uint32
+	values   []gcCloneValue
+}
+
+func cloneGCDescriptor(c *Compiled, id gc.TypeID) (gc.TypeDesc, bool) {
+	if c == nil || uint64(id) >= uint64(len(c.GCTypeDescs)) {
+		return gc.TypeDesc{}, false
+	}
+	d := c.GCTypeDescs[id]
+
+	return d, d.ID == id
+}
+
 // CloneGCRefFrom copies one host-retained WasmGC object graph from source's
 // Runtime into target's distinct Runtime collector domain. Object identity,
 // cycles, and internal sharing are preserved within the cloned graph, but the
@@ -57,14 +92,14 @@ func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, er
 	return GCRef{token: token}, nil
 }
 
-func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]gcObjectSnapshot, gcSnapshotRef, error) {
+func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]gcCloneObject, gcCloneRef, error) {
 	unlockNative := lockNativeExecutionForHostAccess()
 	defer unlockNative()
 	lockedDomain := source.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	state := source.existingPublicGCState()
 	if state == nil {
-		return nil, gcSnapshotRef{}, fmt.Errorf("source GC token state is unavailable")
+		return nil, gcCloneRef{}, fmt.Errorf("source GC token state is unavailable")
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -73,11 +108,11 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 	_, registered := source.refStore.instances[source]
 	source.refStore.mu.Unlock()
 	if !ok || entry.owner != source || !registered || entry.ownerIndex >= state.resultRootsMade || state.resultTokens[entry.ownerIndex] != token || state.resultRootSlots[entry.ownerIndex] != entry.slot {
-		return nil, gcSnapshotRef{}, fmt.Errorf("invalid, stale, or foreign source GC reference token")
+		return nil, gcCloneRef{}, fmt.Errorf("invalid, stale, or foreign source GC reference token")
 	}
 	rootRef := source.gc.GlobalSlot(entry.slot)
 	if !rootRef.IsObj() {
-		return nil, gcSnapshotRef{}, fmt.Errorf("source GC reference token has no live object root")
+		return nil, gcCloneRef{}, fmt.Errorf("source GC reference token has no live object root")
 	}
 
 	typeMap := make(map[uint32]uint32)
@@ -99,71 +134,71 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 
 	ids := make(map[gc.Ref]uint32)
 	queue := make([]gc.Ref, 0, 16)
-	encodeRef := func(ref gc.Ref) (gcSnapshotRef, error) {
+	encodeRef := func(ref gc.Ref) (gcCloneRef, error) {
 		if ref.IsNull() {
-			return gcSnapshotRef{}, nil
+			return gcCloneRef{}, nil
 		}
 		if ref.IsI31() {
-			return gcSnapshotRef{kind: gcSnapshotRefI31, value: uint32(ref)}, nil
+			return gcCloneRef{kind: gcCloneRefI31, value: uint32(ref)}, nil
 		}
 		if id, exists := ids[ref]; exists {
-			return gcSnapshotRef{kind: gcSnapshotRefObject, value: id}, nil
+			return gcCloneRef{kind: gcCloneRefObject, value: id}, nil
 		}
 		if len(queue) >= maxForeignGCCloneObjects {
-			return gcSnapshotRef{}, fmt.Errorf("GC graph exceeds clone object bound %d", maxForeignGCCloneObjects)
+			return gcCloneRef{}, fmt.Errorf("GC graph exceeds clone object bound %d", maxForeignGCCloneObjects)
 		}
 		if _, err := source.gc.ObjectType(ref); err != nil {
-			return gcSnapshotRef{}, fmt.Errorf("source graph reference %#x: %w", uint32(ref), err)
+			return gcCloneRef{}, fmt.Errorf("source graph reference %#x: %w", uint32(ref), err)
 		}
 		id := uint32(len(queue) + 1)
 		ids[ref] = id
 		queue = append(queue, ref)
-		return gcSnapshotRef{kind: gcSnapshotRefObject, value: id}, nil
+		return gcCloneRef{kind: gcCloneRefObject, value: id}, nil
 	}
 	root, err := encodeRef(rootRef)
 	if err != nil {
-		return nil, gcSnapshotRef{}, err
+		return nil, gcCloneRef{}, err
 	}
-	objects := make([]gcObjectSnapshot, 0, 16)
+	objects := make([]gcCloneObject, 0, 16)
 	valueCount, payloadBytes := 0, uint64(0)
 	for pos := 0; pos < len(queue); pos++ {
 		ref := queue[pos]
 		domainType, err := source.gc.ObjectType(ref)
 		if err != nil {
-			return nil, gcSnapshotRef{}, fmt.Errorf("source object %d type: %w", pos+1, err)
+			return nil, gcCloneRef{}, fmt.Errorf("source object %d type: %w", pos+1, err)
 		}
 		sourceLocal, ok := source.gcLocalType(domainType)
 		if !ok {
-			return nil, gcSnapshotRef{}, fmt.Errorf("source canonical type %d has no local structural identity", domainType)
+			return nil, gcCloneRef{}, fmt.Errorf("source canonical type %d has no local structural identity", domainType)
 		}
 		targetLocal, err := mapType(sourceLocal)
 		if err != nil {
-			return nil, gcSnapshotRef{}, fmt.Errorf("source object %d: %w", pos+1, err)
+			return nil, gcCloneRef{}, fmt.Errorf("source object %d: %w", pos+1, err)
 		}
-		sourceDesc, ok := snapshotGCDescriptor(source.c, gc.TypeID(sourceLocal))
+		sourceDesc, ok := cloneGCDescriptor(source.c, gc.TypeID(sourceLocal))
 		if !ok || (sourceDesc.Kind != gc.KindStruct && sourceDesc.Kind != gc.KindArray) {
-			return nil, gcSnapshotRef{}, fmt.Errorf("source object %d type %d is not transferable", pos+1, sourceLocal)
+			return nil, gcCloneRef{}, fmt.Errorf("source object %d type %d is not transferable", pos+1, sourceLocal)
 		}
-		targetDesc, ok := snapshotGCDescriptor(target.c, gc.TypeID(targetLocal))
+		targetDesc, ok := cloneGCDescriptor(target.c, gc.TypeID(targetLocal))
 		if !ok || targetDesc.Kind != sourceDesc.Kind {
-			return nil, gcSnapshotRef{}, fmt.Errorf("target type %d has incompatible collector layout", targetLocal)
+			return nil, gcCloneRef{}, fmt.Errorf("target type %d has incompatible collector layout", targetLocal)
 		}
-		record := gcObjectSnapshot{typeID: gc.TypeID(targetLocal)}
+		record := gcCloneObject{typeID: gc.TypeID(targetLocal)}
 		var count uint32
 		if sourceDesc.Kind == gc.KindStruct {
 			count = uint32(len(sourceDesc.Fields))
 		} else {
 			count, err = source.gc.ArrayLen(ref)
 			if err != nil {
-				return nil, gcSnapshotRef{}, fmt.Errorf("source object %d array length: %w", pos+1, err)
+				return nil, gcCloneRef{}, fmt.Errorf("source object %d array length: %w", pos+1, err)
 			}
 			record.arrayLen = count
 		}
 		if uint64(valueCount)+uint64(count) > maxForeignGCCloneValues {
-			return nil, gcSnapshotRef{}, fmt.Errorf("GC graph exceeds clone value bound %d", maxForeignGCCloneValues)
+			return nil, gcCloneRef{}, fmt.Errorf("GC graph exceeds clone value bound %d", maxForeignGCCloneValues)
 		}
 		valueCount += int(count)
-		record.values = make([]gcSnapshotValue, count)
+		record.values = make([]gcCloneValue, count)
 		for i := uint32(0); i < count; i++ {
 			var value gc.Value
 			if sourceDesc.Kind == gc.KindStruct {
@@ -172,9 +207,9 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 				value, err = source.gc.ArrayGet(ref, i)
 			}
 			if err != nil {
-				return nil, gcSnapshotRef{}, fmt.Errorf("source object %d value %d: %w", pos+1, i, err)
+				return nil, gcCloneRef{}, fmt.Errorf("source object %d value %d: %w", pos+1, i, err)
 			}
-			entry := gcSnapshotValue{kind: value.Kind, bits: value.Bits, bitsHi: value.BitsHi}
+			entry := gcCloneValue{kind: value.Kind, bits: value.Bits, bitsHi: value.BitsHi}
 			switch value.Kind {
 			case gc.StorageRef, gc.StorageRefNull:
 				entry.ref, err = encodeRef(value.Ref)
@@ -182,7 +217,7 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 				payloadBytes += 4
 			case gc.StorageFuncRef, gc.StorageFuncRefNull, gc.StorageExternRef, gc.StorageExternRefNull:
 				if value.Bits != 0 {
-					return nil, gcSnapshotRef{}, fmt.Errorf("source object %d value %d contains non-transferable non-null opaque reference", pos+1, i)
+					return nil, gcCloneRef{}, fmt.Errorf("source object %d value %d contains non-transferable non-null opaque reference", pos+1, i)
 				}
 				payloadBytes += 8
 			case gc.StorageV128:
@@ -197,10 +232,10 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 				payloadBytes += 8
 			}
 			if err != nil {
-				return nil, gcSnapshotRef{}, fmt.Errorf("source object %d value %d: %w", pos+1, i, err)
+				return nil, gcCloneRef{}, fmt.Errorf("source object %d value %d: %w", pos+1, i, err)
 			}
 			if payloadBytes > maxForeignGCCloneBytes {
-				return nil, gcSnapshotRef{}, fmt.Errorf("GC graph exceeds clone payload bound %d bytes", maxForeignGCCloneBytes)
+				return nil, gcCloneRef{}, fmt.Errorf("GC graph exceeds clone payload bound %d bytes", maxForeignGCCloneBytes)
 			}
 			record.values[i] = entry
 		}
@@ -209,8 +244,8 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 	return objects, root, nil
 }
 
-func restoreForeignGCGraph(target *Instance, objects []gcObjectSnapshot, root gcSnapshotRef) (gc.Ref, uint32, error) {
-	if root.kind != gcSnapshotRefObject || root.value == 0 || int(root.value) > len(objects) {
+func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcCloneRef) (gc.Ref, uint32, error) {
+	if root.kind != gcCloneRefObject || root.value == 0 || int(root.value) > len(objects) {
 		return gc.Null(), 0, fmt.Errorf("foreign GC graph has an invalid root")
 	}
 	unlockNative := lockNativeExecutionForHostAccess()
@@ -234,7 +269,7 @@ func restoreForeignGCGraph(target *Instance, objects []gcObjectSnapshot, root gc
 		return gc.Null(), 0, cause
 	}
 	for i, object := range objects {
-		desc, ok := snapshotGCDescriptor(target.c, object.typeID)
+		desc, ok := cloneGCDescriptor(target.c, object.typeID)
 		if !ok || (desc.Kind != gc.KindStruct && desc.Kind != gc.KindArray) {
 			return rollback(fmt.Errorf("target object %d type %d is unavailable", i+1, object.typeID))
 		}
@@ -254,18 +289,18 @@ func restoreForeignGCGraph(target *Instance, objects []gcObjectSnapshot, root gc
 		}
 		refs[i] = ref
 	}
-	decodeRef := func(encoded gcSnapshotRef) gc.Ref {
+	decodeRef := func(encoded gcCloneRef) gc.Ref {
 		switch encoded.kind {
-		case gcSnapshotRefI31:
+		case gcCloneRefI31:
 			return gc.Ref(encoded.value)
-		case gcSnapshotRefObject:
+		case gcCloneRefObject:
 			return refs[encoded.value-1]
 		default:
 			return gc.Null()
 		}
 	}
 	for i, object := range objects {
-		desc, _ := snapshotGCDescriptor(target.c, object.typeID)
+		desc, _ := cloneGCDescriptor(target.c, object.typeID)
 		for j, encoded := range object.values {
 			value := gc.Value{Kind: encoded.kind, Bits: encoded.bits, BitsHi: encoded.bitsHi}
 			if encoded.kind == gc.StorageRef || encoded.kind == gc.StorageRefNull {

@@ -155,9 +155,6 @@ func TestStagedMultiMemoryBulkDataAndAliasLifecycle(t *testing.T) {
 		}
 		defer in.Close()
 		exerciseIndexedBulkMemory(t, in)
-		if err := validateSnapshotModule(compiled); err != nil {
-			t.Fatalf("owned local multi-memory snapshot admission = %v", err)
-		}
 	})
 
 	t.Run("duplicate imported aliases attach once", func(t *testing.T) {

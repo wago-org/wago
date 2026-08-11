@@ -5,8 +5,6 @@ package wago
 import (
 	"strings"
 	"testing"
-
-	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func expectIndirectTrapAt(t *testing.T, in *Instance, index int32) {
@@ -286,36 +284,4 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 			t.Fatalf("linking3 trapped start table side effect = %d, want 0xdead", got)
 		}
 	})
-}
-
-func importedMultiMemorySnapshotModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(2, wasmtest.Vec(
-			memoryImportEntry("env", "first", 0x01, 0x01, 0x02),
-			memoryImportEntry("env", "second", 0x01, 0x01, 0x02),
-		)),
-	)
-}
-
-func TestStagedMultiMemorySnapshotRejectsImportedShapeBeforeAttachment(t *testing.T) {
-	compiled := stagedMultiMemoryCompile(t, importedMultiMemorySnapshotModule())
-	defer compiled.Close()
-	first, err := NewMemory(1, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := NewMemory(1, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = Capture(compiled, SnapshotOptions{Imports: Imports{"env.first": first, "env.second": second}})
-	if err == nil || !strings.Contains(err.Error(), "multiple memories that are imported or shared") {
-		t.Fatalf("imported multi-memory snapshot error = %v", err)
-	}
-	if err := first.Close(); err != nil {
-		t.Fatalf("snapshot rejection attached first memory: %v", err)
-	}
-	if err := second.Close(); err != nil {
-		t.Fatalf("snapshot rejection attached second memory: %v", err)
-	}
 }

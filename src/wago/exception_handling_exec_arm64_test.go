@@ -259,9 +259,6 @@ func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 		t.Fatalf("reloaded EH tag metadata = %#v, want %#v", got, meta.Tags)
 	}
 	_ = loaded.Close()
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "exception-handling") {
-		t.Fatalf("Capture staged EH = %v, want explicit snapshot gate", err)
-	}
 
 	in, err := instantiateCore(c, InstantiateOptions{})
 	if err != nil {

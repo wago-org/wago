@@ -227,9 +227,6 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 	compiled := MustCompile(importedReferenceGlobalModule(wasm.FuncRef, true))
 	defer compiled.Close()
 	_ = roundTripCompiled(t, compiled)
-	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
-		t.Fatalf("Capture error = %v, want reference-global rejection", err)
-	}
 }
 
 func hostFuncRefGlobalProducerModule(t *testing.T) []byte {

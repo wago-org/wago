@@ -8,25 +8,6 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-func FuzzLoadDomainSnapshot(f *testing.F) {
-	f.Add([]byte(""))
-	f.Add([]byte(domainSnapshotMagic))
-	f.Add(append([]byte(domainSnapshotMagic), domainSnapshotVersion))
-	f.Fuzz(func(t *testing.T, data []byte) {
-		snapshot, err := LoadDomainSnapshot(data)
-		if err != nil {
-			return
-		}
-		encoded, err := snapshot.MarshalBinary()
-		if err != nil {
-			t.Fatalf("accepted domain snapshot failed to re-encode: %v", err)
-		}
-		if !IsDomainSnapshot(encoded) {
-			t.Fatal("re-encoded domain snapshot lost its wire header")
-		}
-	})
-}
-
 func FuzzCompiledCodecGeneratedValidModules(f *testing.F) {
 	for _, seed := range [][]byte{
 		nil,

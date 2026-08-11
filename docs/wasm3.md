@@ -216,8 +216,8 @@ missing official opcode families:
 1. preserve the completed Runtime GC-domain lifecycle, rollback, multi-hop
    foreign-frame walking, codec reload, and shared-global/table call coexistence.
    Runtime domains now canonicalize recursive structural identities across reordered
-   or additional module-local type graphs; helpers, host tokens, initializers, and
-   snapshots translate through immutable per-instance local/domain maps;
+   or additional module-local type graphs; helpers, host tokens, and initializers
+   translate through immutable per-instance local/domain maps;
 2. preserve exact polymorphic local/foreign return-path maps and descriptor-resolved
    discarded-frame `return_call_ref` for local, host-wrapper, and retained same-Runtime
    cross-instance targets, including mutable/imported funcref tables. GC-bearing tails
@@ -226,16 +226,9 @@ missing official opcode families:
    transactional multi-result rollback;
 3. preserve the completed heterogeneous shared-table attachment, mutation, growth,
    rollback, codec, close-order, moving-collection, and foreign-Runtime rejection proofs;
-4. preserve the completed snapshot-v5 single-table and snapshot-v6 heterogeneous
-   multi-table proofs plus `WGDN` v4 whole-domain capture (strict v1/v2/v3 load
-   compatibility and persisted survivor policy): exhaustive ordered members, internal function/global/table/
-   memory32/memory64/exception-tag aliases, immutable tag directories, one shared
-   stable-ID graph, exact GC config, reconstructible live passive funcref/i31/null and
-   immutable-global GC payloads, strict malformed-input validation, and atomic
-   all-member publication;
-5. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
+4. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
    conformance mandatory in CI; and
-6. preserve native collector ABI v6, AMD64 checked final-scalar/object-card access,
+5. preserve native collector ABI v6, AMD64 checked final-scalar/object-card access,
    and transactional batched final struct/array allocation, while extending direct paths
    only where metadata lifetime, collection epochs, roots, and barriers remain exact.
 
@@ -286,16 +279,6 @@ structural types into the target, and reconstructs it transactionally under boun
 1,024 objects, 65,536 values, and 1 MiB payload. Cycles and internal sharing survive,
 but target identity is new. Non-null opaque references reject; direct foreign Runtime
 calls and tails remain fail-closed.
-
-`WGDN` v4 retains typed passive-element root vectors and same-domain memory64 aliases,
-adds survivor-policy configuration, and strictly loads v1/v2/v3. Live passive element state is admitted for available funcrefs,
-immediate i31 values, null references, and exact GC/i31 values sourced from immutable
-internal GC globals. Stable object IDs preserve sharing between a global and its passive
-payload, and restore rewrites the off-heap segment entries only after graph reconstruction.
-Owned single-instance memory64 snapshots and internal memory64 aliases retain address
-form, grown pages, bytes, and one shared restored mapping. Opaque non-null externrefs,
-unavailable functions, malformed i31 values, independently owned collector payloads,
-shared memories, and cyclic ownership remain strict pre-publication errors.
 
 Historical iteration sections below retain the boundary statements that were true
 at each commit. They are not the current support matrix; use `FEATURES.md` and the

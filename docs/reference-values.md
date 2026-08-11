@@ -987,30 +987,7 @@ allocs/op; imported-table instantiation remained 1,840 B/op and 9 allocs/op. The
 imported-table timing shift has no corresponding instantiation or layout change
 and remains a noise watchpoint rather than evidence of a regression.
 
-## Snapshots, inspection, and linked teardown
-
-Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
-`LoadSnapshot` and `Instantiate(*Snapshot)` reject every table and every reference
-global until a resolver/state format exists. Iteration 12 additionally rejects any
-artifact whose code or metadata requires typed function references or tail calls,
-before imports are retained, start runs, or memory/global state mutates. Typed/tail
-opcode requirements are now recorded in the full-width codec-v26 feature word;
-compile-only staged admission is kept in a non-serialized code-cache sidecar, so a
-public load of the same artifact remains fail-closed. Iteration 13 keeps that rule
-for the compile-only typed-tail gate and makes multi-memory snapshot errors shape-
-specific. Iteration 14 implements the owned-local side through snapshot version 3:
-each memory record carries a bounded page count and independently zero-tail-trimmed
-image; restore sizes every mapping first, copies every image, rebuilds every 16-byte
-native directory entry, and restores passive-data drop lengths with the same
-snapshot. Blob loading retains only the stored prefixes, so a malicious page count
-does not allocate a zero tail before module-limit validation. The sparse two-memory
-fixture is 198,339 bytes for 327,680 bytes of live pages; `Snapshot` grows from 160
-to 184 bytes and each `memorySnap` is 32 bytes. Imported/shared memories, function/
-global/table imports in a multi-memory snapshot, registered tenants, guard mode,
-tables, reference globals, and typed/tail artifacts still reject before attachment
-or mutation. Public load of a staged multi-memory snapshot still rejects its
-unsupported feature bits. Forged in-memory snapshots and raw blobs cannot bypass
-count, page, image-length, declared-limit, passive-state, or feature checks.
+## Inspection and linked teardown
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
 `Globals`, and `Tables`. Function entries carry exact parameter/result reference
@@ -1039,7 +1016,7 @@ watchpoints remain 51,354 B/op and 365 allocs/op, 26,880 B/op and 62 allocs/op,
 0/0 for Invoke paths, and 1,224 B/op plus 7 allocs/op for both instantiation
 shapes. Scalar marshal/unmarshal medians are 382.3/1,535 ns/op at 336 B/2 and
 1,240 B/16; structural-reference marshal/unmarshal medians are 1,364/3,127 ns/op
-at 976 B/5 and 2,424 B/36. The inspection and pool checks are off ordinary
+at 976 B/5 and 2,424 B/36. The inspection checks are off ordinary
 compile/invoke/instantiate hot paths, and the local-table explicit-maximum bit
 occupied existing struct padding in codec v20. These are historical v20 codec measurements; v21 added extended-expression
 metadata and v22 adds recursive/indexed type graphs, a deduplicated storage-type

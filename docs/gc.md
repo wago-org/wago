@@ -322,39 +322,6 @@ front half are explicit optimization targets rather than footprint claims.
 
 Codec v35 persists generic helper admission, the required native-GC ABI version,
 vector layout, and bounded native root maps; compact handles remain process-local.
-Snapshot format v4 separately serializes every object reachable from owned local GC globals using one-based
-stable IDs, exact type IDs, array lengths, and typed field/element payloads.
-Snapshot v5 adds the live length and entries of one owned local collector-reference
-table. Snapshot v6 extends that record to multiple heterogeneous local tables with
-one indexed live-entry vector per table. Global, table, struct-field, and
-array-element roots are checked against exact structural subtyping before allocation.
-Capture rejects non-null
-funcref/externref object fields. Restore validates the complete graph before
-allocation, clears replayed initializer roots and table entries, allocates all
-objects under a temporary root slice, and then fills and barrier-publishes
-references, preserving cycles and shared identity without reusing handles. Both
-`SnapshotInit` and `SnapshotWarm` support this bounded local-root graph product.
-Single-module `Capture` continues to reject GC-reference function imports and imported
-GC storage. `CaptureDomain` is the corresponding complete-domain product: callers supply
-every live instance in stable order; capture quiesces native execution and the collector,
-proves the set exhaustive, records internal function/global/table edges and alias identity,
-and traverses one shared stable-ID object graph. `DomainSnapshot.Instantiate` restores an
-acyclic internal import graph privately into a Runtime without an existing GC domain,
-reconstructs the shared heap once, then returns the member slice only after success. `WGDN` version 3 persists compiled members, exact GC
-configuration, memory/global/passive-data state, passive-element lifecycle and typed
-stable-ID payload roots, aliases, cycles, and sharing while retaining strict version 1/2
-load compatibility. Live passive entries may contain available funcrefs, immediate i31
-values, null references, or exact GC/i31 values sourced from immutable internal GC
-globals; their value sequence, global identity, and dropped/live state round-trip.
-Same-domain imported memory32 links preserve the owning member and restore one shared
-backing mapping after validating duplicate member images. Same-domain imported tags
-preserve the owning member's immutable native identity and structural tag type. Live
-public tokens, active calls, external imports, shared memories, opaque externrefs,
-independently owned non-null collector payloads, incomplete sets, and cyclic
-instantiation graphs remain strict pre-publication rejections. Owned single-instance
-memory64 state and same-domain imported memory64 aliases preserve exact address form,
-grown pages, bytes, and alias identity. Completed EH invocations carry no additional mutable
-snapshot state and round-trip through their compiled member and ordinary GC graph.
 
 Numeric host imports may re-enter the same instance: codec-v32 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
@@ -2444,15 +2411,6 @@ for future comparisons.
   values rooted until return, including concurrent release after staging; shared-domain
   collector mutation is serialized independently of parked host transitions. Untyped
   `uint64` values are never accepted as compact collector handles.
-- Snapshot v5 roots include owned local GC globals and one owned local collector
-  table; snapshot v6 extends this to multiple heterogeneous local tables with indexed
-  growth state, cross-table cycles/sharing, deterministic repeated capture, malformed
-  graph rejection, exact root/field subtype checks, and near-capacity restore rollback.
-  Whole-domain shared snapshots use exhaustive ordered `WGDN` v4 domain capture and
-  transactional restore with strict v1/v2/v3 compatibility; v4 persists survivor
-  capacity and optional pause-target policy. Dropped and reconstructible
-  live passive state restores, including immutable-global GC/i31 payload identity;
-  external, independently owned, or cyclic ownership shapes reject.
 - Minor collection copies first survivors through stable handles and promotes at
   a bounded adaptive age. The Throughput old generation reuses freed spans but
   does not yet implement full Immix line/block marking or selective evacuation.

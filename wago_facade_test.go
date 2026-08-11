@@ -1,7 +1,6 @@
 package wago
 
 import (
-	"path/filepath"
 	"testing"
 )
 
@@ -46,28 +45,6 @@ func TestFacadeForwards(t *testing.T) {
 	if _, err := Load(encoded); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	snap, err := Capture(c, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("Capture: %v", err)
-	}
-	snapshotBytes, err := snap.MarshalBinary()
-	if err != nil {
-		t.Fatalf("snapshot MarshalBinary: %v", err)
-	}
-	if !IsSnapshot(snapshotBytes) {
-		t.Fatal("IsSnapshot false for encoded snapshot")
-	}
-	if _, err := LoadSnapshot(snapshotBytes); err != nil {
-		t.Fatalf("LoadSnapshot: %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "module.wagos")
-	if err := snap.WriteFile(path); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	if _, err := ReadSnapshotFile(path); err != nil {
-		t.Fatalf("ReadSnapshotFile: %v", err)
-	}
-
 	for _, g := range []*Global{
 		NewGlobalF32(1, true), NewGlobalF64(1, true), NewGlobalI32(1, true), NewGlobalI64(1, true), NewGlobalV128(V128{}, true),
 	} {

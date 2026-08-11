@@ -64,9 +64,6 @@ func TestStagedStructuralMetadataProducts(t *testing.T) {
 			if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 				t.Fatalf("public codec load = %v, want unsupported GC/typed feature gate", err)
 			}
-			if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC reference products") {
-				t.Fatalf("snapshot capture = %v, want explicit GC state gate", err)
-			}
 		})
 	}
 }

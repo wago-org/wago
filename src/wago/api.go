@@ -3284,20 +3284,6 @@ func (c *Compiled) validateCodecMetadata() error {
 	return nil
 }
 
-func (c *Compiled) validateSnapshotReferenceGlobals() error {
-	for i, g := range c.GlobalImports {
-		if isReferenceValType(g.Type) {
-			return fmt.Errorf("snapshot reference global metadata at import %d is unsupported until a live-state resolver exists", i)
-		}
-	}
-	for i, g := range c.Globals {
-		if isReferenceValType(g.Type) {
-			return fmt.Errorf("snapshot reference global metadata at global %d is unsupported until a live-state resolver exists", i)
-		}
-	}
-	return nil
-}
-
 func maxInt() int { return int(^uint(0) >> 1) }
 
 func valTypeSlots(t ValType) int {

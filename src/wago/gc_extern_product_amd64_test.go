@@ -174,9 +174,6 @@ func TestStagedGCExternProductBoundaryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Capture(c, SnapshotOptions{}); err == nil {
-		t.Fatal("snapshot admitted gc/extern product")
-	}
 	if err := in.Close(); err != nil {
 		t.Fatal(err)
 	}

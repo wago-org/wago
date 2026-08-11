@@ -8,8 +8,43 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func gcCloneCycleModule() []byte {
+	// (struct (field (mut (ref null 0))) (field (mut i32)))
+	structType := []byte{0x5f, 0x02, 0x63, 0x00, 0x01, 0x7f, 0x01}
+	warmType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	getType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	global := []byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b}
+	warm := []byte{0x01, 0x01, 0x63, 0x00,
+		0xfb, 0x01, 0x00, 0x21, 0x01,
+		0x20, 0x01, 0x20, 0x01, 0xfb, 0x05, 0x00, 0x00,
+		0x20, 0x01, 0x20, 0x00, 0xfb, 0x05, 0x00, 0x01,
+		0x20, 0x01, 0x24, 0x00,
+		0x20, 0x01, 0x24, 0x01,
+		0x0b}
+	get := []byte{0x00, 0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xfb, 0x02, 0x00, 0x01, 0x0b}
+	same := []byte{0x00, 0x23, 0x00, 0x23, 0x01, 0xd3, 0x0b}
+
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, warmType, getType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(global, global)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("warm", 0, 0),
+			wasmtest.ExportEntry("get", 0, 1),
+			wasmtest.ExportEntry("same", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(warm))), warm...),
+			append(wasmtest.ULEB(uint32(len(get))), get...),
+			append(wasmtest.ULEB(uint32(len(same))), same...),
+		)),
+	)
+}
 
 func instantiateForeignCloneFixture(t *testing.T, cfg *RuntimeConfig, gcCfg GCConfig) (*Runtime, *HostFuncRef, *Module, *Instance) {
 	t.Helper()
@@ -95,7 +130,7 @@ func TestForeignRuntimeGCGraphClonePreservesCycle(t *testing.T) {
 	newInstance := func(t *testing.T) (*Runtime, *Module, *Instance) {
 		t.Helper()
 		rt := NewRuntime(WithRuntimeConfig(cfg))
-		module, err := rt.Compile(gcLiveSnapshotCycleModule())
+		module, err := rt.Compile(gcCloneCycleModule())
 		if err != nil {
 			rt.Close()
 			t.Fatal(err)
