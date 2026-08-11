@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
