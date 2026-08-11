@@ -91,6 +91,7 @@ func runLoopPrecheckChild(t *testing.T, testName, childEnv, prefix, precheck str
 }
 
 func TestMemory64LoopDoesNotVersionWithoutElision(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	const childEnv = "WAGO_MEMORY64_LOOP_VERSION_CHILD"
 	const prefix = "MEMORY64_LOOP_VERSION="
 	if os.Getenv(childEnv) == "1" {
