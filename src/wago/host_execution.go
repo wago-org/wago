@@ -101,11 +101,8 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		panic(invalidHostReference{err: err})
 	}
 	var localMu *sync.Mutex
-	var localState *instancePluginState
 	epoch := nativeExecutionEpoch
 	if active.usesIndependentExecution() {
-		localState = active.ensurePluginState()
-		epoch = localState.nativeExecutionEpoch
 		localMu = active.independentNativeExecutionMu()
 		localMu.Unlock()
 	} else {
@@ -123,7 +120,11 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 			nativeExecutionMu.Lock()
 		}
 		active.clearGCHostResultRoots(activation)
-		if (localState != nil && localState.nativeExecutionEpoch != epoch) || (localState == nil && nativeExecutionEpoch != epoch) {
+		// Public calls on one instance are serialized, but synchronous host code
+		// may re-enter the parked instance while its local lease is released.
+		// Always restore local context; the process lease can retain its epoch
+		// shortcut because competing entries advance the shared epoch.
+		if localMu != nil || nativeExecutionEpoch != epoch {
 			if err := active.bindNativeContext(); err != nil {
 				panic(invalidHostReference{err: err})
 			}

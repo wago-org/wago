@@ -795,6 +795,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	for table := in.table; table != nil; table = table.next {
 		if len(table.desc) != 0 && &table.desc[0] == &desc[0] {
 			in.lifeMu.Unlock()
+			in.markNativeControlShared()
 			return table, nil
 		}
 	}
@@ -807,6 +808,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	table := &Table{desc: desc, owner: owner, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
+	in.markNativeControlShared()
 	return table, nil
 }
 
@@ -848,6 +850,9 @@ func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 	}
 	if err := memory.share(owner, in.c.memoryDef(memoryIndex)); err != nil {
 		return nil, fmt.Errorf("export memory %q: %w", name, err)
+	}
+	if owns {
+		in.markNativeControlShared()
 	}
 	return memory, nil
 }
@@ -894,5 +899,6 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
 	}
 	in.lifeMu.Unlock()
+	in.markNativeControlShared()
 	return g, nil
 }

@@ -80,7 +80,6 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
-		in.ensurePluginState().nativeExecutionEpoch++
 		if err := in.bindAndValidateNativeContext(); err != nil {
 			mu.Unlock()
 
