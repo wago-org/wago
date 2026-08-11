@@ -620,7 +620,11 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// store cannot observe it. Pending loads were materialized above, preserving
 	// pre-store reads and trap order before this dedicated sink condenses the tree.
 	if top := f.s.back(); size == 1 && store8FlagsEnabled && isFusableCompare(top) && !top.typ.isFloat() {
-		vreg := f.allocReg(0)
+		// condenseToFlags may recursively lower div/rem or a variable shift. Those
+		// paths temporarily claim and then unpin x86's fixed-role registers; because
+		// the pin mask is not reference-counted, nesting would drop this outer
+		// reservation. Keep the byte result in a neutral scratch instead.
+		vreg := f.allocReg(maskOf(RAX, RDX, RCX))
 		f.pinned = f.pinned.add(vreg)
 		cc := f.condenseToFlags(top)
 		f.stats.reclassifyPeep("cmp-branch-fuse", "store8-flags")

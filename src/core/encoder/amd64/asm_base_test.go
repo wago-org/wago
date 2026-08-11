@@ -108,6 +108,7 @@ func TestIntegerMemoryAndControlEncodings(t *testing.T) {
 		{"conditional move", func(a *Asm) { a.Cmovcc(CondGE, R8, R9, true) }, []byte{0x4d, 0x0f, 0x4d, 0xc1}},
 		{"setcc register", func(a *Asm) { a.SetccReg(CondNE, R8) }, []byte{0x41, 0x0f, 0x95, 0xc0, 0x45, 0x0f, 0xb6, 0xc0}},
 		{"setcc low byte", func(a *Asm) { a.SetccReg8(CondNE, R8) }, []byte{0x41, 0x0f, 0x95, 0xc0}},
+		{"setcc low byte bare rex", func(a *Asm) { a.SetccReg8(CondNE, RSI) }, []byte{0x40, 0x0f, 0x95, 0xc6}},
 		{"jump register", func(a *Asm) { a.JmpReg(R9) }, []byte{0x41, 0xff, 0xe1}},
 		{"neg", func(a *Asm) { a.Neg(R8, true) }, []byte{0x49, 0xf7, 0xd8}},
 	}
