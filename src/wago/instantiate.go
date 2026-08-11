@@ -1176,7 +1176,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if !valid {
 				initErr = fmt.Errorf("GC ref.test product has an invalid mixed-table layout")
 			} else {
-				gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, product.refTestCanonicalTypes())
+				canonicalTypes, err := b.gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
+				if err != nil {
+					initErr = err
+				} else {
+					gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, canonicalTypes)
+				}
 			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))

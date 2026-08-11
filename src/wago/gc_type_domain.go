@@ -38,6 +38,36 @@ func (m *gcTypeMapping) local(domain gc.TypeID) (uint32, bool) {
 	return m.domainToLocal[domain], true
 }
 
+func (m *gcTypeMapping) canonicalTypes(local []gc.TypeID) ([]gc.TypeID, error) {
+	if local == nil || m == nil {
+		return local, nil
+	}
+	if len(local) != len(m.localToDomain) {
+		return nil, fmt.Errorf("wago: local canonical type count %d, want %d", len(local), len(m.localToDomain))
+	}
+	domain := make([]gc.TypeID, len(m.domainToLocal))
+	seen := make([]bool, len(domain))
+	for i := range domain {
+		domain[i] = gc.TypeID(i)
+	}
+	for localType, representative := range local {
+		if int(representative) >= len(m.localToDomain) {
+			return nil, fmt.Errorf("wago: local canonical type %d maps to unavailable representative %d", localType, representative)
+		}
+		domainType := m.localToDomain[localType]
+		domainRepresentative := m.localToDomain[representative]
+		if int(domainType) >= len(domain) || int(domainRepresentative) >= len(domain) {
+			return nil, fmt.Errorf("wago: local canonical type %d has unavailable Runtime-domain identity", localType)
+		}
+		if seen[domainType] && domain[domainType] != domainRepresentative {
+			return nil, fmt.Errorf("wago: Runtime-domain type %d has conflicting canonical representatives %d and %d", domainType, domain[domainType], domainRepresentative)
+		}
+		domain[domainType] = domainRepresentative
+		seen[domainType] = true
+	}
+	return domain, nil
+}
+
 type gcDomainTypeRepresentative struct {
 	types []DefinedTypeDescriptor
 	index uint32
