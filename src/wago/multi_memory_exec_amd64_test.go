@@ -419,9 +419,6 @@ func TestStagedMultiMemoryLocalAndImportedExecution(t *testing.T) {
 		if got := binary.LittleEndian.Uint32(m1.Bytes()[32:]); got != 0x12345678 {
 			t.Fatalf("exported memory-1 bytes = %#x", got)
 		}
-		if err := validateSnapshotModule(compiled); err != nil {
-			t.Fatalf("owned local multi-memory snapshot admission = %v", err)
-		}
 	})
 
 	t.Run("imported", func(t *testing.T) {

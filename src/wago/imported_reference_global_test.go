@@ -345,9 +345,6 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 		Globals:       []GlobalDef{{Type: ValExternRef}},
 	}
 	_ = roundTripCompiled(t, c)
-	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
-		t.Fatalf("Capture error = %v", err)
-	}
 }
 
 func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {

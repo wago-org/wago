@@ -147,8 +147,8 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 // NewStructUninitializedWithRoots allocates a zeroed reconstruction object
 // without applying Wasm's defaultability rule. The object must remain in roots
 // and every non-null field must be initialized before it becomes observable or
-// before roots are released. Snapshot and cross-domain graph reconstruction use
-// this bounded two-pass primitive to restore cycles.
+// before roots are released. Cross-domain graph cloning uses this bounded
+// two-pass primitive to restore cycles.
 func (c *Collector) NewStructUninitializedWithRoots(typeID TypeID, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {

@@ -203,9 +203,6 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 	}
 	defer compiled.Close()
 	_ = roundTripCompiled(t, compiled)
-	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables") {
-		t.Fatalf("Capture error = %v, want table snapshot rejection", err)
-	}
 
 	rtA, rtB := NewRuntime(), NewRuntime()
 	foreign := issueExternref(t, rtA, "foreign-table")

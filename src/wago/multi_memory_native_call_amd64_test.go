@@ -606,9 +606,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalTableComposition(t *test
 	if _, err := chain.middle.c.MarshalBinary(); err != nil {
 		t.Fatalf("marshal global+table structural module: %v", err)
 	}
-	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
-		t.Fatalf("global+table snapshot = %v, want table rejection", err)
-	}
 	if _, err := Compile(nil, sameMemoryNativeGlobalTableTenantModule("A", 20)); err == nil {
 		t.Fatal("public compile admitted global+table staged multi-memory composition")
 	}
@@ -733,9 +730,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T)
 	if _, err := chain.middle.c.MarshalBinary(); err != nil {
 		t.Fatalf("marshal table-composed structural module: %v", err)
 	}
-	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
-		t.Fatalf("table-composed snapshot = %v, want table rejection", err)
-	}
 	if _, err := Compile(nil, sameMemoryNativeTableTenantModule("A", 20)); err == nil {
 		t.Fatal("public compile admitted imported-table staged multi-memory composition")
 	}
@@ -846,9 +840,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 
 	if _, err := chain.middle.c.MarshalBinary(); err != nil {
 		t.Fatalf("marshal composed structural module: %v", err)
-	}
-	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "imported or shared") {
-		t.Fatalf("composed snapshot = %v, want imported/shared rejection", err)
 	}
 	if _, err := Compile(nil, sameMemoryNativeGlobalTenantModule("A", 20)); err == nil {
 		t.Fatal("public compile admitted imported-global same-memory native composition")
@@ -971,9 +962,6 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 		t.Fatalf("public reload of multi-memory module: %v", err)
 	}
 	defer loaded.Close()
-	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "imported or shared") {
-		t.Fatalf("same-memory native snapshot = %v, want imported/shared rejection", err)
-	}
 	if _, err := Compile(nil, sameMemoryNativeTenantModule("A", 20)); err == nil {
 		t.Fatal("public default compile admitted staged multi-memory native calls")
 	}

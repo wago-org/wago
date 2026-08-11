@@ -191,7 +191,7 @@ func TestCompiledCodecV21CompileRecordsUsedFeatureFamilies(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
+func TestCompiledCodecV21LoadedReferenceExecution(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		module []byte
@@ -247,9 +247,6 @@ func TestCompiledCodecV21LoadedReferenceExecutionAndSnapshotBoundary(t *testing.
 				t.Fatalf("Load: %v", err)
 			}
 			defer loaded.Close()
-			if _, err := Capture(loaded, SnapshotOptions{}); err == nil || (!strings.Contains(err.Error(), "tables") && !strings.Contains(err.Error(), "reference global metadata") && !strings.Contains(err.Error(), "typed function references")) {
-				t.Fatalf("Capture loaded reference module = %v, want live-state rejection", err)
-			}
 			in, err := Instantiate(loaded)
 			if err != nil {
 				t.Fatalf("Instantiate loaded: %v", err)

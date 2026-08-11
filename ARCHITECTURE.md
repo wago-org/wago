@@ -98,17 +98,9 @@ and foreign tokens reject. Explicit cross-Runtime transfer uses
 `target.CloneGCRefFrom(source, ref)`: a bounded stable-ID graph clone maps
 structurally equivalent target types, preserves cycles/internal sharing, assigns
 new target identity, and rejects non-null opaque store-owned payloads. Direct
-cross-Runtime compact-handle sharing remains impossible. `CaptureDomain` separately quiesces an exhaustive ordered
-collector domain and persists every member, internal function/global/table edge,
-memory32/memory64 and tag aliases, typed live passive roots, and one stable-ID heap
-graph in `WGDN` v3 with strict v1/v2 loading; restore publishes the complete member
-slice only after transactional graph reconstruction. Codec v35 persists helper admission,
-the required native-GC ABI version, and the 16-byte `v128` storage contract, but never compact handles.
-Snapshot v4 persists reachable local-global object graphs with stable IDs and
-two-pass cycle/sharing reconstruction; snapshot v5 adds one owned local
-collector-reference table, while snapshot v6 adds multiple heterogeneous local
-tables with indexed lengths, barriers, sharing, and exact structural root
-validation. AMD64 final scalar struct/array accesses and initialized final-struct
+cross-Runtime compact-handle sharing remains impossible. Codec v35 persists helper
+admission, the required native-GC ABI version, and the 16-byte `v128` storage
+contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
 allocation use collector native ABI v6. Artifact loading validates the Go/native
 layout and v35 records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
@@ -504,6 +496,10 @@ clean (`github.com/wago-org/wago`) while the code lives under `src/`, the root
 (`go generate ./...`); a test (`TestFacadeUpToDate`) and a CI step fail if it
 drifts. It rejects exported package-level vars (a var alias would copy, not
 alias) and signatures needing external-package types.
+
+Core intentionally exposes no instance-state snapshot or reset API. Reuse,
+checkpointing, and reset policy belong in capability-gated plugins rather than
+the runtime facade.
 
 ---
 

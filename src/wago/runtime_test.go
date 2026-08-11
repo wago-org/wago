@@ -290,7 +290,6 @@ func TestReservedModuleUserOverrideRejected(t *testing.T) {
 
 func TestInstantiationMarkersAndOwnedHostThunk(t *testing.T) {
 	(&Compiled{}).instantiable()
-	(&Snapshot{}).instantiable()
 	owned := railshotHostIndirectOwnedSyncThunk(3, 1, 2)
 	borrowed := railshotHostIndirectSyncThunk(3, 1, 2)
 	if len(owned) == 0 || len(borrowed) == 0 || string(owned) == string(borrowed) {

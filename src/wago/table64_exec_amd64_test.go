@@ -658,9 +658,6 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 	if !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) || !loaded.TableAddr64 || !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
 		t.Fatalf("table64 codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
 	}
-	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
-		t.Fatalf("table64 snapshot error = %v", err)
-	}
 
 	in, err := instantiateCore(compiled, InstantiateOptions{})
 	if err != nil {
@@ -2118,9 +2115,6 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	loaded.hasTableExportMetadata = true
 	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
 		t.Fatalf("table64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
-	}
-	if _, err := Capture(consumerCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
-		t.Fatalf("imported table64 snapshot = %v", err)
 	}
 
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.table": table}})

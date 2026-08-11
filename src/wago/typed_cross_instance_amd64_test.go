@@ -344,7 +344,7 @@ func BenchmarkStagedTypedCrossInstanceCallRef(b *testing.B) {
 	}
 }
 
-func TestStagedTypedSnapshotPolicyRejectsCodecRoundTrip(t *testing.T) {
+func TestStagedTypedCodecRoundTrip(t *testing.T) {
 	for name, module := range map[string][]byte{
 		"call_ref":     typedLocalCallRefModule(),
 		"null_control": typedNullControlModule(),
@@ -368,13 +368,6 @@ func TestStagedTypedSnapshotPolicyRejectsCodecRoundTrip(t *testing.T) {
 			defer loaded.Close()
 			if loaded.requiredFeatures&CoreFeatureTypedFunctionReferences == 0 {
 				t.Fatal("codec reload lost typed required feature bit")
-			}
-
-			for _, c := range []*Compiled{compiled, &loaded} {
-				_, err := Capture(c, SnapshotOptions{})
-				if err == nil || !strings.Contains(err.Error(), "typed function references") {
-					t.Fatalf("Capture typed module = %v, want explicit descriptor snapshot rejection", err)
-				}
 			}
 		})
 	}

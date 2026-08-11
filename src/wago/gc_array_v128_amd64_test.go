@@ -245,58 +245,6 @@ func BenchmarkGCArrayV128Set(b *testing.B) {
 	}
 }
 
-func TestGCVectorInitSnapshotReplay(t *testing.T) {
-	if !hostSupportsSIMD() {
-		t.Skip("host SIMD unavailable")
-	}
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
-	for _, tc := range []struct {
-		name   string
-		module []byte
-	}{
-		{name: "array", module: v128ArrayModule()},
-		{name: "struct", module: v128StructModule()},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			compiled, err := Compile(cfg, tc.module)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer compiled.Close()
-			warm, err := Capture(compiled, SnapshotOptions{Kind: SnapshotWarm, WarmFunc: "global"})
-			if err != nil {
-				t.Fatalf("warm/live GC snapshot: %v", err)
-			}
-			if warm.Kind() != SnapshotWarm {
-				t.Fatalf("warm snapshot kind = %v", warm.Kind())
-			}
-			snap, err := Capture(compiled, SnapshotOptions{Kind: SnapshotInit})
-			if err != nil {
-				t.Fatal(err)
-			}
-			blob, err := snap.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadSnapshot(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Module().Close()
-			in, err := Instantiate(loaded)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			got, err := in.Invoke("global")
-			want := []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}
-			if err != nil || !reflect.DeepEqual(got, want) {
-				t.Fatalf("restored global = %#x, %v; want %#x", got, err, want)
-			}
-		})
-	}
-}
-
 func TestGCArrayV128HelpersPreserveBothSlots(t *testing.T) {
 	if !hostSupportsSIMD() {
 		t.Skip("host SIMD unavailable")

@@ -5,7 +5,6 @@ package wago
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"unsafe"
 
@@ -66,9 +65,6 @@ func TestStagedGCArrayBulkProductBoundary(t *testing.T) {
 			}
 			if !c.usesGCArrayHelpers() {
 				t.Fatal("bulk array product omitted helper admission")
-			}
-			if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "WasmGC") {
-				t.Fatalf("snapshot capture=%v, want WasmGC rejection", err)
 			}
 			blob, err := marshalCompiled(c)
 			if err != nil {

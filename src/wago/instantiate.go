@@ -11,42 +11,28 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-// InstantiateOptions configures instance creation from a *Compiled. When
-// instantiating from a *Snapshot both fields are ignored: the snapshot carries
-// the imports and GC config it was created with.
+// InstantiateOptions configures instance creation from a *Compiled.
 type InstantiateOptions struct {
 	Imports Imports
 	GC      GCConfig
 	store   *referenceStore
 
-	// restore, when set, seeds the new instance from a captured Snapshot instead
-	// of the module's declared initial state: linear memory and module-local
-	// globals are loaded from the snapshot, and active data segments plus the
-	// start function are skipped. Table modules are rejected by Capture until
-	// table state is snapshotted too. Set only via the *Snapshot instantiation path;
-	// unexported so it stays an internal instantiation mode.
-	restore       *Snapshot
 	runtime       *Runtime
 	origin        InstantiateOrigin
 	pluginGC      *GCConfig
 	forceSyncHost bool
-	domainRestore bool
 }
 
-// Instantiable is the set of sources Instantiate accepts: a compiled module or a
-// captured snapshot. The interface is sealed — only *Compiled and *Snapshot
-// implement it.
+// Instantiable is the set of sources Instantiate accepts. The interface is
+// sealed so only *Compiled implements it.
 type Instantiable interface {
 	instantiable()
 }
 
 func (*Compiled) instantiable() {}
-func (*Snapshot) instantiable() {}
 
-// Instantiate creates a live instance from either a *Compiled (wiring the
-// module's imports from opts and running its start function) or a *Snapshot
-// (loading captured memory/globals; opts is ignored — the snapshot supplies its
-// own imports and GC config, and the start function is not re-run).
+// Instantiate creates a live instance from a *Compiled, wiring the module's
+// imports from opts and running its start function.
 //
 // It accepts InstantiateOptions, Imports, nil, or no second argument. The Imports
 // form keeps older callers source-compatible while the options struct remains the
@@ -59,17 +45,6 @@ func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 	switch s := source.(type) {
 	case *Compiled:
 		return instantiateCore(s, instOpts)
-	case *Snapshot:
-		if s == nil || s.c == nil {
-			return nil, errors.New("wago: snapshot has no bound module (load it with LoadSnapshot)")
-		}
-		if err := validateSnapshotModule(s.c); err != nil {
-			return nil, err
-		}
-		if err := validateSnapshotKind(s.c, s.kind); err != nil {
-			return nil, err
-		}
-		return instantiateCore(s.c, InstantiateOptions{Imports: s.imports, GC: s.gc, restore: s})
 	case nil:
 		return nil, errors.New("wago: Instantiate: nil source")
 	default:
@@ -121,11 +96,9 @@ type instanceBuilder struct {
 	tableAttachments    tableImportAttachments
 	globalAttachments   globalImportAttachments
 	tagAttachments      tagImportAttachments
-	restoreMemories     []memorySnap
 }
 
-// instantiateCore maps code and applies explicit instance options. It is the
-// shared engine behind Instantiate for both the compiled and snapshot paths.
+// instantiateCore maps code and applies explicit instance options.
 func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	if c == nil {
 		return nil, errors.New("wago: instantiate: nil compiled module")
@@ -136,16 +109,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	restoreMemories := snapshotMemories(opts.restore)
-	if opts.restore != nil {
-		if err := validateSnapshotMemories(c, restoreMemories); err != nil {
-			return nil, fmt.Errorf("snapshot memories: %w", err)
-		}
-	}
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err
 	}
-	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, restoreMemories: restoreMemories}
+	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports}
 	return b.instantiate()
 }
 
@@ -200,7 +167,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		if err != nil {
 			return err
 		}
-		collector, mapping, err := b.opts.store.acquireGCCollector(gcConfig, b.c, preferred, b.opts.domainRestore)
+		collector, mapping, err := b.opts.store.acquireGCCollector(gcConfig, b.c, preferred)
 		if err != nil {
 			return err
 		}
@@ -307,7 +274,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		return nil, err
 	}
 	c, opts, imports := b.c, b.opts, b.imports
-	restoreMemories := b.restoreMemories
 	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	needsExternConversion := c.stagedGCStructProduct().requiresExternConversion()
 	var conversionStore *referenceStore
@@ -403,17 +369,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
-		// Restoring from a snapshot: size the fresh mapping to the snapshot's
-		// (possibly grown) linear-memory size so the saved bytes fit and memory.size
-		// reports the captured value, not the module's declared minimum.
-		if len(restoreMemories) != 0 {
-			if rb := int(restoreMemories[0].pages) * 65536; rb > initialBytes {
-				initialBytes = rb
-				if initialBytes > maxBytes {
-					maxBytes = initialBytes
-				}
-			}
-		}
 		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
 			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
@@ -479,9 +434,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			maxPages = def.Max
 		}
 		initialPages := def.Min
-		if i < len(restoreMemories) && uint64(restoreMemories[i].pages) > initialPages {
-			initialPages = uint64(restoreMemories[i].pages)
-		}
 		var secondaryJM *runtime.JobMemory
 		var allocErr error
 		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
@@ -988,28 +940,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 			}
 		}
-		// Snapshot restore: replace each module-local global's freshly-initialized
-		// value with the captured one. Imported globals (the leading cells) keep the
-		// value of whatever the caller re-imported this time — their state lives in
-		// the host, not in the snapshot.
-		if opts.restore != nil {
-			for i := len(importGlobals); i < len(globalCells) && i < len(opts.restore.globals); i++ {
-				gs := opts.restore.globals[i]
-				if globalCells[i] == nil {
-					continue
-				}
-				if gs.typ == ValAnyRef || gs.typ == ValI31Ref {
-					// Replay-safe generic-GC init snapshots reconstruct immutable
-					// object graphs from persisted initializer expressions. Compact
-					// handles from the closed capture collector are never reusable.
-					continue
-				}
-				writeGlobalObject(globalCells[i], gs.typ, gs.bits)
-				if gs.typ == ValV128 {
-					writeGlobalObjectV128(globalCells[i], gs.vec)
-				}
-			}
-		}
 		if len(c.Entry) > 0 {
 			jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 		}
@@ -1192,13 +1122,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 
 	var gcArrayElements *gcArrayElementState
 	if initErr == nil && len(c.passiveElems) > 0 {
-		var restoreElemLens []uint32
-		if opts.restore != nil {
-			restoreElemLens = snapshotPassiveElemLens(opts.restore)
-			if err := validatePassiveElemLens(c, restoreElemLens); err != nil {
-				return nil, fmt.Errorf("snapshot passive elements: %w", err)
-			}
-		}
 		edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
 		for i, el := range c.passiveElems {
 			if len(el.Values) == 0 {
@@ -1217,11 +1140,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			off := i * runtime.PassiveElemDescBytes
 			binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
-			length := uint32(len(el.Values))
-			if opts.restore != nil {
-				length = restoreElemLens[i]
-			}
-			binary.LittleEndian.PutUint32(edesc[off+8:], length)
+			binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Values)))
 		}
 		if initErr == nil && c.memoryDir != nil && c.memoryDir.gcArrayElement != nil {
 			seg := int(c.memoryDir.gcArrayElement.SegmentIndex)
@@ -1230,9 +1149,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			} else {
 				desc := edesc[seg*runtime.PassiveElemDescBytes : (seg+1)*runtime.PassiveElemDescBytes]
 				gcArrayElements, initErr = instantiateGCArrayElementSegment(b.collector, b.gcTypeMap, c.GCTypeDescs, c.memoryDir.gcArrayElement, desc)
-				if initErr == nil && opts.restore != nil && restoreElemLens[seg] == 0 {
-					gcArrayElements.drop(b.collector)
-				}
 			}
 		}
 		jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
@@ -1243,49 +1159,19 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		// Descriptor layout is shared with the JIT: {ptr u64, len u32, pad u32}.
 		// Descriptors are per-instance because data.drop mutates len. Passive bytes
 		// are retained by c; active slots have nil bytes and start at length zero.
-		var restoreLens []uint32
-		if opts.restore != nil {
-			restoreLens = snapshotPassiveDataLens(opts.restore)
-			if err := validatePassiveDataLens(c, restoreLens); err != nil {
-				return nil, fmt.Errorf("snapshot passive data: %w", err)
-			}
-		}
 		desc := ar.Alloc(runtime.PassiveDataDescBytes * len(c.PassiveData))
 		for i, d := range c.PassiveData {
 			off := i * runtime.PassiveDataDescBytes
 			if len(d.Bytes) != 0 {
 				binary.LittleEndian.PutUint64(desc[off:], uint64(uintptr(unsafe.Pointer(&d.Bytes[0]))))
 			}
-			segLen := uint32(len(d.Bytes))
-			if opts.restore != nil {
-				segLen = restoreLens[i]
-			}
-			binary.LittleEndian.PutUint32(desc[off+8:], segLen)
+			binary.LittleEndian.PutUint32(desc[off+8:], uint32(len(d.Bytes)))
 		}
 		jm.SetPassiveDataPtr(uintptr(unsafe.Pointer(&desc[0])))
 		passiveDataDesc = desc
 	}
 
-	if opts.restore != nil {
-		// Snapshot memory images already reflect post-data-init state plus every
-		// mutation up to capture. Blob-loaded images may trim zero tails; fresh
-		// mappings are zeroed, so copying the stored prefixes restores them exactly.
-		for i, memory := range restoreMemories {
-			memoryJM := jm
-			if i != 0 {
-				memoryJM = memoryObjs[i].jobMemory()
-			}
-			dst, hostErr := memoryJM.HostBytesChecked()
-			if hostErr != nil {
-				return nil, fmt.Errorf("snapshot memory %d host access: %w", i, hostErr)
-			}
-			if len(memory.image) > len(dst) {
-				return nil, fmt.Errorf("snapshot memory %d image (%d bytes) exceeds instance memory (%d bytes)", i, len(memory.image), len(dst))
-			}
-			copy(dst, memory.image)
-		}
-	}
-	if initErr == nil && len(c.Data) > 0 && opts.restore == nil {
+	if initErr == nil && len(c.Data) > 0 {
 		for seg, d := range c.Data {
 			dataJM := jm
 			if d.MemoryIndex != 0 {
@@ -1430,11 +1316,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
 		}
-		if opts.restore != nil && (len(opts.restore.gcGlobalRefs) != 0 || len(opts.restore.gcTableRefs) != 0 || len(opts.restore.gcObjects) != 0) {
-			if err := restoreGCHeapSnapshot(in, opts.restore); err != nil {
-				return nil, fmt.Errorf("snapshot GC heap: %w", err)
-			}
-		}
 	}
 	if gcArrayElements != nil {
 		in.ensurePluginState().gcArrayElements.Store(gcArrayElements)
@@ -1514,10 +1395,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	// Run the start function (() -> ()) now that memory, globals, table, and data
-	// are initialized. A trap here aborts instantiation. Skip it on a snapshot
-	// restore: start already ran in the instance the snapshot was taken from, and
-	// its effects are baked into the restored memory/globals.
-	if c.HasStart && opts.restore == nil {
+	// are initialized. A trap here aborts instantiation.
+	if c.HasStart {
 		if c.StartIsImport {
 			// Imported start: run the imported function through the same normalized
 			// binding machinery used by ordinary host imports. Validation guarantees

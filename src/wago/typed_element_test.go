@@ -275,9 +275,6 @@ func TestTypedElementMetadataStaysBoundedAndRoundTripsCodecV21(t *testing.T) {
 		t.Fatal("externref-only element metadata requested funcref descriptors")
 	}
 	_ = roundTripCompiled(t, active)
-	if _, err := Capture(active, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables") {
-		t.Fatalf("Capture active externref element error = %v, want table snapshot rejection", err)
-	}
 	if unsafe.Sizeof(Compiled{}) != 784 || unsafe.Sizeof(Table{}) != 64 || unsafe.Sizeof(Global{}) != 40 || unsafe.Sizeof(referenceStore{}) != 120 {
 		t.Fatalf("layout changed: Compiled=%d Instance=%d Table=%d Global=%d referenceStore=%d", unsafe.Sizeof(Compiled{}), unsafe.Sizeof(Instance{}), unsafe.Sizeof(Table{}), unsafe.Sizeof(Global{}), unsafe.Sizeof(referenceStore{}))
 	}

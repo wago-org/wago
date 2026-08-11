@@ -150,10 +150,6 @@ current optimization priorities. The Core 3.0 implementation ledger is
 - [x] **Cross-instance persistent GC graphs:** exact GC-reference function imports
   coexist with shared GC globals and heterogeneous tables under Throughput/Tiny
   collection, codec reload, attachment rollback, and producer-first close.
-- [x] **Snapshot v5/v6 local-root hardening:** v5 preserves one owned collector
-  table; v6 preserves multiple heterogeneous local tables with indexed lengths,
-  cross-table sharing, deterministic repeated capture, strict subtype validation,
-  and near-capacity restore rollback on amd64 and Linux/ARM64.
 - [x] **Cross-module canonical GC type identity:** Runtime domains canonicalize
   recursive structural types and give every instance an immutable local/domain type
   map. Structurally equivalent producer/consumer modules with reordered or additional
@@ -161,24 +157,6 @@ current optimization priorities. The Core 3.0 implementation ledger is
   collector descriptors append safely under the domain lock, codec-loaded modules and
   checked host tokens use the same mapping, and incompatible layouts/configurations
   remain fail-closed.
-- [x] **Whole-domain snapshots:** `CaptureDomain` quiesces and exhaustively captures an
-  explicitly ordered Runtime collector domain: every member module/memory/global/table,
-  internal function/global/table import edge, alias identity, and one shared stable-ID GC
-  graph. `DomainSnapshot.Instantiate` restores acyclic internal links and publishes the
-  member slice only after graph reconstruction; any failure closes the unpublished domain.
-  The `WGDN` v3 blob (retaining strict v1/v2 load compatibility) persists compiled
-  members, exact GC configuration, imports, aliases, cycles, sharing, heterogeneous
-  canonical types, and passive-element lifecycle/payload state; restore requires a
-  Runtime without an existing live GC domain. Live passive payloads admit reconstructible
-  funcrefs, immediate i31 values, null references, and exact GC/i31 values read from
-  immutable internal GC globals; v3 stores those values as typed stable-ID roots and
-  validates identity against the captured global. Live public GC tokens, active calls,
-  external imports, shared memories, opaque externrefs, independently owned non-null
-  collector payloads, incomplete member sets, and cyclic instantiation graphs reject
-  before publication. Same-domain imported memory32/memory64 and exception-tag aliases
-  preserve their exact owner and identity; memory links also preserve address form,
-  grown size, and bytes. Completed EH state needs
-  no extra mutable snapshot payload and restores through the compiled member.
 - [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
   opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,
   reuse released checked slots, retain exact Runtime/store ownership after producer
@@ -296,8 +274,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
 - [x] WebAssembly 2.0 product closeout: `.wago` codec v27 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table/memory-limit forms, indexed memory imports/exports, and required-feature
-  bits without serializing live runtime
-  identity. Snapshot products reject every table/reference-global module.
+  bits without serializing live runtime identity.
   Deterministic module inspection reports all
   reference signatures/globals and every table/import/export/index/type/limit,
   including duplicate aliases and loaded modules. Consolidated trap and cross-link

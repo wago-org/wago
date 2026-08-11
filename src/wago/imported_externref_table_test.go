@@ -279,9 +279,6 @@ func TestImportedExternrefTablePersistenceAndFootprintBoundaries(t *testing.T) {
 	}
 	defer compiled.Close()
 	_ = roundTripCompiled(t, compiled)
-	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables") {
-		t.Fatalf("Capture error = %v, want table snapshot rejection", err)
-	}
 	if got := unsafe.Sizeof(Table{}); got != 64 {
 		t.Fatalf("Table size = %d, want 64", got)
 	}
