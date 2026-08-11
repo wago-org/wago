@@ -467,6 +467,31 @@ func runGCRefFactDifferentialModule(t *testing.T, name string, data []byte, args
 	return out
 }
 
+func gcNoBarrierArraySetBoundsTrapModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
+		0x41, 0x01, 0xfb, 0x07, 0x00, 0x21, 0x00, // one-element default array
+		0x20, 0x00, 0x41, 0x01, 0xd0, 0x6d, 0xfb, 0x0e, 0x00, // array[1] = ref.null eq: OOB
+		0x41, 0x00, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x6d, 0x01}, // (array (mut eqref))
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCDirectNoBarrierArraySetUsesBuiltinBoundsTrap(t *testing.T) {
+	out := runGCRefFactDifferentialModule(t, "no-barrier-array-set-bounds", gcNoBarrierArraySetBoundsTrapModule())
+	if out.Trap != uint32(TrapBuiltin) {
+		t.Fatalf("array.set trap = %d, want %d", out.Trap, TrapBuiltin)
+	}
+}
+
 func gcFactDifferentialModules() []struct {
 	name string
 	data []byte
@@ -567,6 +592,7 @@ func gcFactDifferentialModules() []struct {
 		{name: "known-array-length", data: array},
 		{name: "nullable-cast-trap", data: castTrap},
 		{name: "known-bounds-trap", data: boundsTrap},
+		{name: "no-barrier-array-set-bounds-trap", data: gcNoBarrierArraySetBoundsTrapModule()},
 		{name: "loop-backedge-cast-trap", data: loopTrap},
 		{name: "inline-zero-reset-cast-trap", data: inlineTrap},
 	}

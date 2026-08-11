@@ -768,7 +768,7 @@ func (f *fn) emitDirectGCArrayRefSetNoBarrier(typeIndex uint32, state shared.GCB
 	f.pinned = f.pinned.add(tmp)
 	f.a.Load32(tmp, obj, 8)
 	f.a.Cmp32(index, tmp)
-	f.trapIf(condAE, trapCastFailure)
+	f.trapIf(condAE, trapBuiltin)
 	f.a.ImulRI(index, 4, true)
 	f.a.Load32(tmp, obj, 4)
 	end := f.allocReg(maskOf(obj, index, tmp))
