@@ -344,12 +344,29 @@ var (
 	i8x16Zip2S    = [16]byte{8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31}
 )
 
+// i8x16ExtOffset recognizes a contiguous 16-byte window crossing the two Wasm
+// shuffle operands. AArch64 EXT implements exactly concat(a,b)[offset:offset+16]
+// for offsets 1..15.
+func i8x16ExtOffset(lanes [16]byte) (byte, bool) {
+	offset := lanes[0]
+	if offset == 0 || offset >= 16 {
+		return 0, false
+	}
+	for i, lane := range lanes {
+		if lane != offset+byte(i) {
+			return 0, false
+		}
+	}
+	return offset, true
+}
+
 func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 	// One-instruction shuffle forms can write a following pinned local directly.
-	// REV32 and ZIP read their complete inputs before committing the destination,
+	// REV32, ZIP, and EXT read their complete inputs before committing the destination,
 	// so aliasing dst with either input is safe. Rotate-8 stays on the fresh-result
 	// path because its USHR+SLI sequence needs the original source twice.
-	directSink := v128ShuffleSinkEnabled && (lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S)
+	extOffset, isExt := i8x16ExtOffset(lanes)
+	directSink := v128ShuffleSinkEnabled && (isExt || lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S)
 	if directSink {
 		if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
 			f.stats.peep("v128-shuffle-sink")
@@ -369,15 +386,20 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 			f.fpinned = f.fpinned.add(s1)
 			s2, o2 := f.operandRegV128(b)
 			f.fpinned = f.fpinned.add(s2)
-			switch lanes {
-			case i8x16Zip1D:
-				f.a.NeonZip1D(dst, s1, s2)
-			case i8x16Zip2D:
-				f.a.NeonZip2D(dst, s1, s2)
-			case i8x16Zip1S:
-				f.a.NeonZip1S(dst, s1, s2)
-			case i8x16Zip2S:
-				f.a.NeonZip2S(dst, s1, s2)
+			if isExt {
+				f.a.NeonExt16b(dst, s1, s2, extOffset)
+				f.stats.peep("simd-shuffle-ext")
+			} else {
+				switch lanes {
+				case i8x16Zip1D:
+					f.a.NeonZip1D(dst, s1, s2)
+				case i8x16Zip2D:
+					f.a.NeonZip2D(dst, s1, s2)
+				case i8x16Zip1S:
+					f.a.NeonZip1S(dst, s1, s2)
+				case i8x16Zip2S:
+					f.a.NeonZip2S(dst, s1, s2)
+				}
 			}
 			f.fpinned = f.fpinned.remove(s1).remove(s2)
 			if o1 && dst != s1 {
@@ -389,6 +411,36 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 		}); done || err != nil {
 			return err
 		}
+	}
+
+	// Contiguous cross-input windows are a single EXT rather than two mask
+	// constants, two TBLs, and an ORR.
+	if isExt {
+		bElem := f.popValue()
+		aElem := f.popValue()
+		xa, aOwned := f.operandRegV128(aElem)
+		f.fpinned = f.fpinned.add(xa)
+		xb, bOwned := f.operandRegV128(bElem)
+		f.fpinned = f.fpinned.add(xb)
+		dst := xa
+		if !aOwned {
+			if bOwned {
+				dst = xb
+			} else {
+				dst = f.allocFReg(maskOf(xa, xb))
+			}
+		}
+		f.a.NeonExt16b(dst, xa, xb, extOffset)
+		f.fpinned = f.fpinned.remove(xa).remove(xb)
+		if bOwned && dst != xb {
+			f.releaseF(xb)
+		}
+		if aOwned && dst != xa {
+			f.releaseF(xa)
+		}
+		f.stats.peep("simd-shuffle-ext")
+		f.pushVReg(dst)
+		return nil
 	}
 
 	// AssemblyScript spells BLAKE's per-i32 rotate-right-by-16 and -8 as

@@ -947,6 +947,9 @@ func (a *Asm) NeonInsLaneD(dst Reg, lane byte, src Reg) {
 func (a *Asm) NeonTbl(dst, table, idx Reg) {
 	a.word(0x4E000000 | r(idx)<<16 | r(table)<<5 | r(dst)) // TBL Vd.16b,{Vn.16b},Vm.16b
 }
+func (a *Asm) NeonExt16b(dst, lo, hi Reg, offset byte) {
+	a.word(0x6E000000 | r(hi)<<16 | (uint32(offset)&15)<<11 | r(lo)<<5 | r(dst))
+}
 func (a *Asm) NeonPshufS(dst, src Reg, imm byte) {
 	_ = imm
 	if dst != src {

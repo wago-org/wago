@@ -145,6 +145,7 @@ func TestAdditionalNEONInstructionEncodersEmitWords(t *testing.T) {
 		{"ins-b", func(a *Asm) { a.NeonInsB(X0, X1, 2) }},
 		{"ins-h", func(a *Asm) { a.NeonInsH(X0, X1, 2) }},
 		{"umov-h", func(a *Asm) { a.NeonUmovH(X0, X1, 2) }},
+		{"ext-16b", func(a *Asm) { a.NeonExt16b(X0, X1, X2, 7) }},
 		{"pshuf-s", func(a *Asm) { a.NeonPshufS(X0, X1, 0) }},
 		{"movemask-b", func(a *Asm) { a.NeonMovemaskB(X0, X1) }},
 	}

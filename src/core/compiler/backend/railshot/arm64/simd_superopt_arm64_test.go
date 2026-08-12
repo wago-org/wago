@@ -121,6 +121,62 @@ func TestSIMDBitmaskNonZeroSuperoptRejectsOtherConstantArm64(t *testing.T) {
 	}
 }
 
+func simdExtShuffleBodyArm64(a, b [16]byte, offset byte) []byte {
+	body := []byte{0x00}
+	body = append(body, simdConst(a)...)
+	body = append(body, simdConst(b)...)
+	body = append(body, simdOp(13)...)
+	for lane := byte(0); lane < 16; lane++ {
+		body = append(body, offset+lane)
+	}
+	return append(body, 0x0b)
+}
+
+func TestSIMDShuffleExtSelectorArm64(t *testing.T) {
+	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	b := i8x16Bytes(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31)
+	for offset := byte(1); offset < 16; offset++ {
+		body := simdExtShuffleBodyArm64(a, b, offset)
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+		if got := compileWithStats(t, m, false).Funcs[0].Peephole["simd-shuffle-ext"]; got != 1 {
+			t.Fatalf("offset %d: simd-shuffle-ext = %d, want 1", offset, got)
+		}
+		var want [16]byte
+		for i := range want {
+			want[i] = offset + byte(i)
+		}
+		if got := runArm64V128(t, m); got != want {
+			t.Fatalf("offset %d: ext = %v, want %v", offset, got, want)
+		}
+	}
+}
+
+func TestSIMDShuffleExtSelectorRejectsNonContiguousArm64(t *testing.T) {
+	body := simdExtShuffleBodyArm64(i8x16Bytes(), i8x16Bytes(), 7)
+	body[len(body)-2] = 0 // Break the final lane of the shuffle immediate.
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+	if got := compileWithStats(t, m, false).Funcs[0].Peephole["simd-shuffle-ext"]; got != 0 {
+		t.Fatalf("simd-shuffle-ext = %d, want 0 for non-contiguous shuffle", got)
+	}
+}
+
+func TestSIMDShuffleExtSelectorSinksToPinnedLocalArm64(t *testing.T) {
+	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01}
+	body = append(body, simdOp(13)...)
+	for lane := byte(0); lane < 16; lane++ {
+		body = append(body, 13+lane)
+	}
+	body = append(body, 0x21, 0x00, 0x20, 0x00, 0x0b) // local.set 0; local.get 0; end
+	m := mod1(t, []wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}, body)
+	s := compileWithStats(t, m, false).Funcs[0]
+	if got := s.Peephole["simd-shuffle-ext"]; got != 1 {
+		t.Fatalf("simd-shuffle-ext = %d, want 1 (all: %v)", got, s.Peephole)
+	}
+	if got := s.Peephole["v128-shuffle-sink"]; got != 1 {
+		t.Fatalf("v128-shuffle-sink = %d, want 1 (all: %v)", got, s.Peephole)
+	}
+}
+
 func simdNotAndBodyArm64(a, b [16]byte) []byte {
 	body := []byte{0x00}
 	body = append(body, simdConst(a)...)
