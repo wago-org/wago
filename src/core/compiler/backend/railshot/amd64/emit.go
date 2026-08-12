@@ -272,7 +272,14 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 				rr = safe
 				f.pinned = f.pinned.add(rr)
 				pinnedRight = rr
-				right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+				// Keep the relocated value owned by its existing operand-stack node.
+				// The register is pinned until the LHS has been condensed, so normal
+				// allocation cannot spill it; tracking the owner still makes any
+				// forced spill update the operand consumed below instead of leaving a
+				// detached register copy. Reusing the arena node also avoids one heap
+				// allocation for every relocation.
+				f.occupy(right, rr)
+				f.stats.peep("rhs-relocate")
 				rightReleaseAfter = rr
 			} else {
 				// Nested hazards can exhaust the hazard-free registers (each level
