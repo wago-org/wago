@@ -2,6 +2,7 @@ package version
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,9 +20,12 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
+const sourceArchiveLimit int64 = 256 << 20
+
 var (
-	buildRunnerSource  = buildRunnerFromSourceContext
-	buildManagerSource = buildManagerFromSourceContext
+	buildRunnerSource    = buildRunnerFromSourceContext
+	buildManagerSource   = buildManagerFromSourceContext
+	sourceArchiveMaximum = sourceArchiveLimit
 )
 
 func sourceRepository() string {
@@ -77,10 +81,13 @@ func buildRunnerFromSourceContext(ctx context.Context, ref string, profile wagop
 			args = append(args, "-tags", tags)
 		}
 		args = append(args, "-o", tempRunner, "./cli/wago")
-		output, buildErr := runSourceCommand(source, nil, "tinygo", args...)
+		output, buildErr := runSourceCommand(ctx, source, nil, "tinygo", args...)
 		if buildErr != nil {
 			if progress != nil {
 				progress.Fail("TinyGo source build failed")
+			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
 			}
 			return commandFailure("tinygo build", buildErr, output)
 		}
@@ -93,10 +100,13 @@ func buildRunnerFromSourceContext(ctx context.Context, ref string, profile wagop
 		args = append(args, "-tags", tags)
 	}
 	args = append(args, "-o", tempRunner, "./cli/wago")
-	output, err := runSourceCommand(source, append(os.Environ(), "CGO_ENABLED=0"), "go", args...)
+	output, err := runSourceCommand(ctx, source, append(os.Environ(), "CGO_ENABLED=0"), "go", args...)
 	if err != nil {
 		if progress != nil {
 			progress.Fail("source build failed")
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
 		}
 		return commandFailure("go build", err, output)
 	}
@@ -132,10 +142,13 @@ func buildManagerFromSourceContext(ctx context.Context, ref, dest string, progre
 		"-ldflags", "-s -w -X main.version=" + stamp,
 		"-o", tempManager, "./cli/wago",
 	}
-	output, err := runSourceCommand(source, append(os.Environ(), "CGO_ENABLED=0"), "go", args...)
+	output, err := runSourceCommand(ctx, source, append(os.Environ(), "CGO_ENABLED=0"), "go", args...)
 	if err != nil {
 		if progress != nil {
 			progress.Fail("manager source build failed")
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
 		}
 		return commandFailure("go build", err, output)
 	}
@@ -155,6 +168,12 @@ func checkoutWagoSourceIn(parent, ref string, progress *managerprogress.Progress
 }
 
 func checkoutWagoSourceInContext(ctx context.Context, parent, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
+	if ctx == nil {
+		return "", "", "", errors.New("nil source checkout context")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", "", "", err
+	}
 	if err := automation.RequireOnline("source checkout"); err != nil {
 		return "", "", "", err
 	}
@@ -167,9 +186,16 @@ func checkoutWagoSourceInContext(ctx context.Context, parent, ref string, progre
 		progress.Begin("fetching source")
 	}
 	stamp = ref
-	gitErr := checkoutWagoSourceWithGit(ref, source)
+	gitErr := checkoutWagoSourceWithGit(ctx, ref, source)
 	if gitErr != nil {
 		_ = os.RemoveAll(source)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			if progress != nil {
+				progress.Fail("source fetch canceled")
+			}
+			_ = os.RemoveAll(temp)
+			return "", "", "", ctxErr
+		}
 		if progress != nil {
 			progress.Begin("fetching source archive")
 		}
@@ -190,7 +216,7 @@ func checkoutWagoSourceInContext(ctx context.Context, parent, ref string, progre
 	return temp, source, stamp, nil
 }
 
-func checkoutWagoSourceWithGit(ref, source string) error {
+func checkoutWagoSourceWithGit(ctx context.Context, ref, source string) error {
 	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
 		commands := [][]string{
 			{"init", "--quiet", source},
@@ -199,11 +225,11 @@ func checkoutWagoSourceWithGit(ref, source string) error {
 			{"-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
 		}
 		for _, args := range commands {
-			if output, err := runSourceCommand("", nil, "git", args...); err != nil {
+			if output, err := runSourceCommand(ctx, "", nil, "git", args...); err != nil {
 				return commandFailure("git "+args[0], err, output)
 			}
 		}
-	} else if output, err := runSourceCommand("", nil, "git", "clone", "--depth", "1", "--single-branch", "--branch", ref, "--", sourceRepository(), source); err != nil {
+	} else if output, err := runSourceCommand(ctx, "", nil, "git", "clone", "--depth", "1", "--single-branch", "--branch", ref, "--", sourceRepository(), source); err != nil {
 		return commandFailure("git clone", err, output)
 	}
 	return nil
@@ -234,9 +260,8 @@ func downloadSourceArchiveContext(ctx context.Context, address, target string) e
 	if response.StatusCode != http.StatusOK {
 		return &httpStatusError{url: address, code: response.StatusCode, status: response.Status}
 	}
-	const maxDownloadSize int64 = 256 << 20
-	if response.ContentLength > maxDownloadSize {
-		return &httpclient.BodyTooLargeError{URL: address, Limit: maxDownloadSize, ContentLength: response.ContentLength}
+	if response.ContentLength > sourceArchiveMaximum {
+		return &httpclient.BodyTooLargeError{URL: address, Limit: sourceArchiveMaximum, ContentLength: response.ContentLength}
 	}
 	file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -248,13 +273,22 @@ func downloadSourceArchiveContext(ctx context.Context, address, target string) e
 			_ = os.Remove(target)
 		}
 	}()
-	written, copyErr := io.Copy(file, io.LimitReader(response.Body, maxDownloadSize+1))
+	written, copyErr := io.Copy(file, io.LimitReader(response.Body, sourceArchiveMaximum))
+	if copyErr == nil && response.ContentLength >= 0 && written != response.ContentLength {
+		copyErr = io.ErrUnexpectedEOF
+	}
+	if copyErr == nil && written == sourceArchiveMaximum {
+		var extra [1]byte
+		read, readErr := io.ReadFull(response.Body, extra[:])
+		if read != 0 {
+			copyErr = &httpclient.BodyTooLargeError{URL: address, Limit: sourceArchiveMaximum, ContentLength: -1}
+		} else if readErr != nil && readErr != io.EOF {
+			copyErr = readErr
+		}
+	}
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr
-	}
-	if written > maxDownloadSize {
-		return &httpclient.BodyTooLargeError{URL: address, Limit: maxDownloadSize, ContentLength: -1}
 	}
 	if closeErr != nil {
 		return closeErr
@@ -264,11 +298,15 @@ func downloadSourceArchiveContext(ctx context.Context, address, target string) e
 }
 
 func syncInstalledSource(ref, dest string, progress *managerprogress.Progress) error {
+	return syncInstalledSourceContext(context.Background(), ref, dest, progress)
+}
+
+func syncInstalledSourceContext(ctx context.Context, ref, dest string, progress *managerprogress.Progress) error {
 	parent := filepath.Dir(dest)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
-	temp, source, _, err := checkoutWagoSourceInContext(context.Background(), parent, ref, progress)
+	temp, source, _, err := checkoutWagoSourceInContext(ctx, parent, ref, progress)
 	if err != nil {
 		return err
 	}
@@ -325,8 +363,11 @@ func sourceBuildTag(profile wagopaths.Profile) string {
 
 var runSourceCommand = executeSourceCommand
 
-func executeSourceCommand(dir string, env []string, name string, args ...string) ([]byte, error) {
-	command := exec.Command(name, args...)
+func executeSourceCommand(ctx context.Context, dir string, env []string, name string, args ...string) ([]byte, error) {
+	if ctx == nil {
+		return nil, errors.New("nil source command context")
+	}
+	command := exec.CommandContext(ctx, name, args...)
 	command.Dir = dir
 	if env != nil {
 		command.Env = env

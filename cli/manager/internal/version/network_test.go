@@ -84,6 +84,43 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 	}
 }
 
+func TestReleaseDiscoveryBoundsTotalPagination(t *testing.T) {
+	releases := make([]remoteRelease, 100)
+	commits := make([]remoteCommit, 100)
+	for index := range releases {
+		releases[index].TagName = fmt.Sprintf("v%d.0.0", index)
+		commits[index].SHA = fmt.Sprintf("%040x", index+1)
+	}
+	releaseRequests, commitRequests := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/wago-org/wago/releases":
+			releaseRequests++
+			_ = json.NewEncoder(writer).Encode(releases)
+		case "/repos/wago-org/wago/commits":
+			commitRequests++
+			_ = json.NewEncoder(writer).Encode(commits)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+
+	if _, err := fetchReleasesContext(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("unbounded release pagination error = %v", err)
+	}
+	if releaseRequests != discoveryPageLimit {
+		t.Fatalf("release page requests = %d, want %d", releaseRequests, discoveryPageLimit)
+	}
+	if _, err := fetchMainCommitsContext(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("unbounded commit pagination error = %v", err)
+	}
+	if commitRequests != discoveryPageLimit {
+		t.Fatalf("commit page requests = %d, want %d", commitRequests, discoveryPageLimit)
+	}
+}
+
 func TestReleaseMetadataIsBoundedAndCancelable(t *testing.T) {
 	oldMaximum := releaseMetadataMaximum
 	releaseMetadataMaximum = 32

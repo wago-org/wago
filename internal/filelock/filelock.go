@@ -23,6 +23,9 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 	if ctx == nil {
 		return nil, errors.New("nil lock context")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
@@ -35,6 +38,10 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 		return nil, err
 	}
 	for {
+		if err := ctx.Err(); err != nil {
+			_ = file.Close()
+			return nil, err
+		}
 		locked, err := tryLock(file)
 		if err != nil {
 			_ = file.Close()

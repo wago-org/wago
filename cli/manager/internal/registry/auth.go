@@ -182,6 +182,33 @@ func githubDeviceLogin(base string) string {
 	return githubDeviceLoginContext(context.Background(), base)
 }
 
+const (
+	defaultDeviceFlowLifetime = 15 * time.Minute
+	maximumDeviceFlowLifetime = 20 * time.Minute
+	defaultDevicePollInterval = 5 * time.Second
+	maximumDevicePollInterval = 60 * time.Second
+)
+
+func deviceFlowTiming(expiresIn, interval int) (lifetime, pollInterval time.Duration) {
+	lifetime = defaultDeviceFlowLifetime
+	if expiresIn > 0 {
+		if expiresIn > int(maximumDeviceFlowLifetime/time.Second) {
+			lifetime = maximumDeviceFlowLifetime
+		} else {
+			lifetime = time.Duration(expiresIn) * time.Second
+		}
+	}
+	pollInterval = defaultDevicePollInterval
+	if interval > 0 {
+		if interval > int(maximumDevicePollInterval/time.Second) {
+			pollInterval = maximumDevicePollInterval
+		} else {
+			pollInterval = time.Duration(interval) * time.Second
+		}
+	}
+	return lifetime, pollInterval
+}
+
 func githubDeviceLoginContext(ctx context.Context, base string) string {
 	// 1. Ask the registry which GitHub OAuth app to authenticate against.
 	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/auth/github/client", "", nil)
@@ -225,14 +252,7 @@ func githubDeviceLoginContext(ctx context.Context, base string) string {
 		fatal("login: GitHub returned an incomplete device authorization response")
 	}
 
-	interval := dc.Interval
-	if interval <= 0 {
-		interval = 5 // RFC 8628 §3.5 default
-	}
-	expiresIn := dc.ExpiresIn
-	if expiresIn <= 0 {
-		expiresIn = 15 * 60
-	}
+	lifetime, pollInterval := deviceFlowTiming(dc.ExpiresIn, dc.Interval)
 	verifyURI := dc.VerificationURI
 	if verifyURI == "" {
 		verifyURI = "https://github.com/login/device"
@@ -246,14 +266,18 @@ func githubDeviceLoginContext(ctx context.Context, base string) string {
 
 	// 3. Poll GitHub for the access token until the user authorizes or it expires.
 	var ghToken string
-	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
+	deadline := time.Now().Add(lifetime)
 	for time.Now().Before(deadline) {
-		timer := time.NewTimer(time.Duration(interval) * time.Second)
+		wait := min(pollInterval, time.Until(deadline))
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			fatal("login: %v", ctx.Err())
 		case <-timer.C:
+		}
+		if !time.Now().Before(deadline) {
+			break
 		}
 		var tr struct {
 			AccessToken string `json:"access_token"`
@@ -274,7 +298,9 @@ func githubDeviceLoginContext(ctx context.Context, base string) string {
 		case "authorization_pending":
 			// not authorized yet — keep polling
 		case "slow_down":
-			interval += 5 // RFC 8628 §3.5: back off by 5s on slow_down
+			// RFC 8628 §3.5 asks for a five-second backoff. Keep the
+			// server-controlled interval within the command's bounded policy.
+			pollInterval = min(pollInterval+5*time.Second, maximumDevicePollInterval)
 		case "access_denied":
 			fatal("login: authorization was denied on GitHub")
 		case "expired_token":
@@ -315,16 +341,13 @@ func registryLogout() {
 
 func registryLogoutContext(ctx context.Context) {
 	base := registryBase()
-	creds, err := loadCredentials()
+	removed, err := deleteCredentialsResultContext(ctx, base)
 	if err != nil {
-		fatal("logout: reading credentials: %v", err)
+		fatal("logout: %v", err)
 	}
-	if _, ok := creds[base]; !ok {
+	if !removed {
 		fmt.Printf("%s Not logged in to %s\n", dim("·"), base)
 		return
-	}
-	if err := deleteCredentialsContext(ctx, base); err != nil {
-		fatal("logout: %v", err)
 	}
 	fmt.Printf("%s Logged out of %s\n", cyan("✓"), base)
 }

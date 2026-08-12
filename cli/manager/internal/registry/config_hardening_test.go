@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,6 +16,60 @@ import (
 
 	"github.com/wago-org/wago/internal/atomicfile"
 )
+
+func TestCredentialMutationRejectsPreCanceledContextWithoutCreatingStore(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WAGO_HOME", root)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := saveCredentialsContext(ctx, "https://one.test", "token", "one"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled credential save = %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(credentialsPath())); !os.IsNotExist(err) {
+		t.Fatalf("pre-canceled credential save created store: %v", err)
+	}
+}
+
+func TestCredentialMutationRejectsNullStoreWithoutOverwritingIt(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credentialsPath(), []byte("null\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveCredentials("https://one.test", "token", "one"); err == nil {
+		t.Fatal("credential save accepted a null store")
+	}
+	data, err := os.ReadFile(credentialsPath())
+	if err != nil || string(data) != "null\n" {
+		t.Fatalf("null credential store changed to %q: %v", data, err)
+	}
+	assertNoCredentialTemps(t)
+}
+
+func TestCredentialMutationRejectsSymlinkDestination(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "target.json")
+	original := []byte("{}\n")
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, credentialsPath()); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := saveCredentials("https://one.test", "token", "one"); err == nil {
+		t.Fatal("credential save accepted a symlink destination")
+	}
+	data, err := os.ReadFile(target)
+	if err != nil || string(data) != string(original) {
+		t.Fatalf("credential symlink target changed to %q: %v", data, err)
+	}
+	assertNoCredentialTemps(t)
+}
 
 func TestCredentialUpdateRepairsPrivateMode(t *testing.T) {
 	root := t.TempDir()

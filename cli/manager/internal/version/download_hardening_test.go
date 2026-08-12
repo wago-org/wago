@@ -25,7 +25,9 @@ func TestParseReleaseChecksumStrict(t *testing.T) {
 	digest := strings.Repeat("a", 64)
 	for _, valid := range []string{
 		digest + "  " + asset + "\n",
+		digest + "  ./" + asset + "\n",
 		strings.ToUpper(digest) + " *" + asset + "\r\n",
+		strings.ToUpper(digest) + " *./" + asset + "\r\n",
 	} {
 		got, err := parseReleaseChecksum([]byte(valid), asset)
 		if err != nil || hex.EncodeToString(got[:]) != strings.ToLower(digest) {
@@ -37,6 +39,8 @@ func TestParseReleaseChecksumStrict(t *testing.T) {
 		"truncated":      digest[:63] + "  " + asset + "\n",
 		"non-hex":        strings.Repeat("z", 64) + "  " + asset + "\n",
 		"wrong filename": digest + "  other\n",
+		"nested path":    digest + "  releases/" + asset + "\n",
+		"parent path":    digest + "  ../" + asset + "\n",
 		"multiple":       digest + "  " + asset + "\n" + digest + "  " + asset + "\n",
 		"extra field":    digest + "  " + asset + " extra\n",
 	} {
@@ -118,6 +122,30 @@ func TestDownloadReleaseAssetStreamsVerifiesAndReplaces(t *testing.T) {
 		}
 	}
 	assertNoDownloadTemps(t, destination)
+}
+
+func TestDownloadReleaseAssetAcceptsExactUnknownLengthLimit(t *testing.T) {
+	asset := "wago-test"
+	payload := []byte(strings.Repeat("x", 128))
+	oldMaximum := releaseAssetMaximum
+	releaseAssetMaximum = int64(len(payload))
+	t.Cleanup(func() { releaseAssetMaximum = oldMaximum })
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, ".sha256") {
+			writeChecksum(writer, payload, asset)
+			return
+		}
+		writer.(http.Flusher).Flush()
+		_, _ = writer.Write(payload)
+	}))
+	defer server.Close()
+	destination := filepath.Join(t.TempDir(), "wago")
+	if err := downloadReleaseAssetWithProgressContext(context.Background(), server.URL, "v1", asset, destination, nil); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(destination); err != nil || string(data) != string(payload) {
+		t.Fatalf("exact-limit release asset = %d bytes, %v", len(data), err)
+	}
 }
 
 func TestDownloadReleaseAssetFailuresPreserveDestination(t *testing.T) {

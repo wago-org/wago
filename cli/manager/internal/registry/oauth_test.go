@@ -7,9 +7,30 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/internal/httpclient"
 )
+
+func TestDeviceFlowTimingIsBounded(t *testing.T) {
+	for _, test := range []struct {
+		name                string
+		expiresIn, interval int
+		wantLifetime        time.Duration
+		wantInterval        time.Duration
+	}{
+		{name: "defaults", wantLifetime: defaultDeviceFlowLifetime, wantInterval: defaultDevicePollInterval},
+		{name: "server values", expiresIn: 600, interval: 10, wantLifetime: 10 * time.Minute, wantInterval: 10 * time.Second},
+		{name: "huge values", expiresIn: int(^uint(0) >> 1), interval: int(^uint(0) >> 1), wantLifetime: maximumDeviceFlowLifetime, wantInterval: maximumDevicePollInterval},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			lifetime, interval := deviceFlowTiming(test.expiresIn, test.interval)
+			if lifetime != test.wantLifetime || interval != test.wantInterval {
+				t.Fatalf("device timing = %v/%v, want %v/%v", lifetime, interval, test.wantLifetime, test.wantInterval)
+			}
+		})
+	}
+}
 
 func TestOAuthHelpers(t *testing.T) {
 	state, err := RandomState()

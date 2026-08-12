@@ -58,6 +58,10 @@ func SyncInstalledSource(ref, dest string, progress *managerprogress.Progress) e
 	return syncInstalledSource(ref, dest, progress)
 }
 
+func SyncInstalledSourceContext(ctx context.Context, ref, dest string, progress *managerprogress.Progress) error {
+	return syncInstalledSourceContext(ctx, ref, dest, progress)
+}
+
 func SetActiveInstallation(d wagopaths.Dirs, name string, profile wagopaths.Profile, build wagopaths.Build) error {
 	return setActiveInstallation(d, name, profile, build)
 }

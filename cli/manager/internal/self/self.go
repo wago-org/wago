@@ -11,6 +11,7 @@ import (
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	selfreplace "github.com/wago-org/wago/cli/manager/internal/self/replace"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
+	"github.com/wago-org/wago/internal/atomicfile"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -113,18 +114,19 @@ func selfUpdateUsing(
 ) {
 	progress := managerprogress.NewProgress(os.Stderr)
 	progress.Title("Updating Wago")
-	staged := executable + ".new"
-	_ = os.Remove(staged)
 	channel := Channel(current)
 
 	resolved, sourceOnly, err := resolve(channel, progress)
 	if err != nil {
-		_ = os.Remove(staged)
 		fatal("self update: %v", err)
 	}
 	if !force && managerversion.SameRelease(current, resolved) {
 		progress.Finish("Wago is already up to date (" + managerversion.DisplayRelease(resolved) + ")")
 		return
+	}
+	staged, err := createSelfUpdateStage(executable)
+	if err != nil {
+		fatal("self update: prepare replacement: %v", err)
 	}
 	if err := install(resolved, staged, sourceOnly, progress); err != nil {
 		_ = os.Remove(staged)
@@ -141,6 +143,19 @@ func selfUpdateUsing(
 	}
 	progress.Finish("Updated Wago to " + managerversion.DisplayRelease(resolved))
 	printDetail(progress.Writer(), "location", displayPath(executable))
+}
+
+func createSelfUpdateStage(executable string) (string, error) {
+	file, err := atomicfile.CreateTemp(executable)
+	if err != nil {
+		return "", err
+	}
+	staged := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(staged)
+		return "", err
+	}
+	return staged, nil
 }
 
 func selfUninstall(

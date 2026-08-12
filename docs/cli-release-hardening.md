@@ -14,17 +14,23 @@ limits instead of the process default client:
 - dial, TLS-handshake, response-header, idle-connection, and
   `Expect: 100-continue` waits have independent transport timeouts.
 
-A parent command cancellation is propagated to active manager requests. In-memory
-bodies are explicitly bounded: registry and GitHub release JSON use a 4 MiB
-limit, OAuth responses use 1 MiB, release checksums use 4 KiB, and non-success
-response capture uses an independent 64 KiB limit. Declared oversized bodies are
-rejected before reading; chunked or dishonest responses are stopped after the
-configured limit.
+A parent command cancellation is propagated to active manager requests and to
+Git/TinyGo/Go subprocesses used by source-build fallback. In-memory bodies are
+explicitly bounded: registry and GitHub release JSON use a 4 MiB limit, OAuth
+responses use 1 MiB, release checksums use 4 KiB, and non-success response
+capture uses an independent 64 KiB limit. Declared oversized bodies are rejected
+before reading; chunked or dishonest responses are stopped after the configured
+limit. Release/commit browsing is capped at ten 100-item pages so repeated full
+pages cannot accumulate metadata indefinitely. OAuth device-flow lifetimes and
+server-provided polling intervals are also capped.
 
 ## Release downloads
 
 Executable checksums are fetched before assets. The parser accepts exactly one
-64-hexadecimal SHA-256 record naming the expected asset. The executable is then
+64-hexadecimal SHA-256 record naming the expected asset; the checksum tools'
+harmless `./` filename prefix is accepted for existing releases, while arbitrary
+parent or nested paths are rejected. New release workflows emit basename-only
+records. The executable is then
 streamed through a 64 KiB copy buffer into a unique same-directory temporary
 file while SHA-256 and progress are updated. Executables are limited to 512 MiB,
 which leaves substantial headroom over current stripped Wago binaries without
@@ -39,8 +45,8 @@ the previous destination unchanged and remove temporary files.
 
 Publication rejects destination symlinks, directories, and non-regular files.
 Unix uses same-filesystem rename replacement; Windows uses `MoveFileExW` with
-replace-existing and write-through flags. Running-manager self-replacement keeps
-its specialized delayed-restart fallback when Windows prevents immediate
+replace-existing and write-through flags. Running-manager self-replacement uses a unique same-directory staging path and
+keeps its specialized delayed-restart fallback when Windows prevents immediate
 replacement.
 
 File contents are synced before release publication, but Wago does not claim
@@ -50,7 +56,7 @@ platforms.
 ## Registry credentials
 
 Registry credentials remain a plaintext fallback store containing long-lived
-bearer tokens. Every mutation:
+bearer tokens. Every mutation, including the decision whether logout has anything to remove:
 
 1. acquires an OS-backed exclusive lock associated with `credentials.json`;
 2. re-reads and validates the latest JSON while locked;

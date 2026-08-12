@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,11 +13,136 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/httpclient"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
+
+func TestExecuteSourceCommandCancellation(t *testing.T) {
+	if os.Getenv("WAGO_TEST_SOURCE_COMMAND_HELPER") == "1" {
+		time.Sleep(10 * time.Second)
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := executeSourceCommand(ctx, "", append(os.Environ(), "WAGO_TEST_SOURCE_COMMAND_HELPER=1"), os.Args[0], "-test.run=^TestExecuteSourceCommandCancellation$")
+		done <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("canceled source command returned no error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled source command did not stop")
+	}
+}
+
+func TestSourceCheckoutRejectsNilContext(t *testing.T) {
+	if _, _, _, err := checkoutWagoSourceInContext(nil, t.TempDir(), "v1.2.3", nil); err == nil {
+		t.Fatal("source checkout accepted a nil context")
+	}
+}
+
+func TestSourceCheckoutCancellationStopsGitWithoutArchiveFallback(t *testing.T) {
+	old := runSourceCommand
+	t.Cleanup(func() { runSourceCommand = old })
+	started := make(chan struct{})
+	runSourceCommand = func(ctx context.Context, _ string, _ []string, _ string, _ ...string) ([]byte, error) {
+		close(started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	parent := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		temp, _, _, err := checkoutWagoSourceInContext(ctx, parent, "v1.2.3", nil)
+		if temp != "" {
+			done <- fmt.Errorf("canceled checkout returned temp %q", temp)
+			return
+		}
+		done <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled source checkout = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled source checkout did not return")
+	}
+	matches, err := filepath.Glob(filepath.Join(parent, ".wago-source-*"))
+	if err != nil || len(matches) != 0 {
+		t.Fatalf("canceled source checkout left temporary directories: %v, %v", matches, err)
+	}
+}
+
+func TestDownloadSourceArchiveIsSizeBounded(t *testing.T) {
+	oldMaximum := sourceArchiveMaximum
+	sourceArchiveMaximum = 8
+	t.Cleanup(func() { sourceArchiveMaximum = oldMaximum })
+
+	for _, test := range []struct {
+		name    string
+		handler http.HandlerFunc
+	}{
+		{name: "declared", handler: func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Length", "9")
+			writer.WriteHeader(http.StatusOK)
+		}},
+		{name: "chunked", handler: func(writer http.ResponseWriter, _ *http.Request) {
+			writer.(http.Flusher).Flush()
+			_, _ = writer.Write([]byte("123456789"))
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(test.handler)
+			defer server.Close()
+			target := filepath.Join(t.TempDir(), "source.zip")
+			if err := downloadSourceArchiveContext(context.Background(), server.URL, target); !errors.Is(err, httpclient.ErrBodyTooLarge) {
+				t.Fatalf("oversized source archive = %v", err)
+			}
+			if _, err := os.Stat(target); !os.IsNotExist(err) {
+				t.Fatalf("oversized source archive left target: %v", err)
+			}
+		})
+	}
+
+	truncated := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Length", "8")
+		_, _ = writer.Write([]byte("1234"))
+	}))
+	defer truncated.Close()
+	truncatedTarget := filepath.Join(t.TempDir(), "source.zip")
+	if err := downloadSourceArchiveContext(context.Background(), truncated.URL, truncatedTarget); err == nil {
+		t.Fatal("truncated source archive was accepted")
+	}
+	if _, err := os.Stat(truncatedTarget); !os.IsNotExist(err) {
+		t.Fatalf("truncated source archive left target: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.(http.Flusher).Flush()
+		_, _ = writer.Write([]byte("12345678"))
+	}))
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "source.zip")
+	if err := downloadSourceArchiveContext(context.Background(), server.URL, target); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(target); err != nil || string(data) != "12345678" {
+		t.Fatalf("exact-limit source archive = %q, %v", data, err)
+	}
+}
 
 func TestMissingReleaseAssetFallsBackToSource(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
@@ -149,7 +275,7 @@ func TestBuildRunnerFromSourceUsesProfileTag(t *testing.T) {
 	old := runSourceCommand
 	t.Cleanup(func() { runSourceCommand = old })
 	var commands []string
-	runSourceCommand = func(_ string, _ []string, name string, args ...string) ([]byte, error) {
+	runSourceCommand = func(_ context.Context, _ string, _ []string, name string, args ...string) ([]byte, error) {
 		commands = append(commands, name+" "+strings.Join(args, " "))
 		switch name {
 		case "git":
@@ -230,7 +356,7 @@ func TestBuildRunnerFromSourceFallsBackToArchiveWithoutGit(t *testing.T) {
 	old := runSourceCommand
 	t.Cleanup(func() { runSourceCommand = old })
 	var commands []string
-	runSourceCommand = func(dir string, _ []string, name string, args ...string) ([]byte, error) {
+	runSourceCommand = func(_ context.Context, dir string, _ []string, name string, args ...string) ([]byte, error) {
 		commands = append(commands, name+" "+strings.Join(args, " "))
 		if name == "git" {
 			return nil, errors.New(`exec: "git": executable file not found in %PATH%`)
@@ -277,7 +403,7 @@ func TestBuildRunnerFromSourceChecksOutExactCanaryCommit(t *testing.T) {
 	t.Cleanup(func() { runSourceCommand = old })
 	const sha = "deadbee123456789012345678901234567890123"
 	var commands []string
-	runSourceCommand = func(_ string, _ []string, name string, args ...string) ([]byte, error) {
+	runSourceCommand = func(_ context.Context, _ string, _ []string, name string, args ...string) ([]byte, error) {
 		commands = append(commands, name+" "+strings.Join(args, " "))
 		if name == "go" {
 			output := args[slices.Index(args, "-o")+1]
@@ -308,7 +434,7 @@ func TestSyncInstalledSourceReplacesManagedCheckoutAtExactCanaryCommit(t *testin
 	t.Cleanup(func() { runSourceCommand = old })
 	const sha = "880e153000000000000000000000000000000000"
 	var commands []string
-	runSourceCommand = func(_ string, _ []string, name string, args ...string) ([]byte, error) {
+	runSourceCommand = func(_ context.Context, _ string, _ []string, name string, args ...string) ([]byte, error) {
 		commands = append(commands, name+" "+strings.Join(args, " "))
 		if name == "git" && len(args) >= 3 && args[0] == "init" {
 			source := args[len(args)-1]

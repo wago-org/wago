@@ -113,10 +113,8 @@ func downloadReleaseAssetWithProgressContext(ctx context.Context, baseURL, ver, 
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		_, readErr := httpclient.ReadBounded(response.Body, response.ContentLength, httpclient.DefaultErrorBodyLimit, address)
-		if readErr != nil && !errors.Is(readErr, httpclient.ErrBodyTooLarge) {
-			return readErr
-		}
+		// The status is sufficient for release fallback/error handling. Do not
+		// wait for an unused error body under the much longer streaming timeout.
 		err := &httpStatusError{url: address, code: response.StatusCode, status: response.Status}
 		if progress != nil {
 			if releaseAssetUnavailable(err) {
@@ -143,16 +141,25 @@ func downloadReleaseAssetWithProgressContext(ctx context.Context, baseURL, ver, 
 		for {
 			read, readErr := limited.Read(buffer)
 			if read > 0 {
-				written, writeErr := output.Write(buffer[:read])
-				current += int64(written)
-				if progress != nil {
-					progress.Percent("downloading "+asset, current, response.ContentLength)
+				allowed := read
+				if remaining := releaseAssetMaximum - current; int64(allowed) > remaining {
+					allowed = int(remaining)
 				}
-				if writeErr != nil {
-					return writeErr
+				if allowed > 0 {
+					written, writeErr := output.Write(buffer[:allowed])
+					current += int64(written)
+					if progress != nil {
+						progress.Percent("downloading "+asset, current, response.ContentLength)
+					}
+					if writeErr != nil {
+						return writeErr
+					}
+					if written != allowed {
+						return io.ErrShortWrite
+					}
 				}
-				if written != read {
-					return io.ErrShortWrite
+				if allowed != read {
+					return &httpclient.BodyTooLargeError{URL: address, Limit: releaseAssetMaximum, ContentLength: -1}
 				}
 			}
 			if readErr == io.EOF {
@@ -161,9 +168,6 @@ func downloadReleaseAssetWithProgressContext(ctx context.Context, baseURL, ver, 
 			if readErr != nil {
 				return readErr
 			}
-		}
-		if current > releaseAssetMaximum {
-			return &httpclient.BodyTooLargeError{URL: address, Limit: releaseAssetMaximum, ContentLength: -1}
 		}
 		if response.ContentLength >= 0 && current != response.ContentLength {
 			return io.ErrUnexpectedEOF
@@ -209,7 +213,14 @@ func parseReleaseChecksum(data []byte, asset string) ([sha256.Size]byte, error) 
 	if strings.HasPrefix(remainder, "*") {
 		remainder = remainder[1:]
 	}
-	if remainder != asset || strings.ContainsAny(remainder, " \t") {
+	// The release workflow invokes checksum tools with paths such as
+	// "./wago-linux-amd64", while downloaded assets are addressed by basename.
+	// Accept only that harmless current-directory prefix in addition to the
+	// exact asset name; arbitrary directories remain invalid.
+	if remainder != asset && remainder != "./"+asset {
+		return digest, errChecksumFormat
+	}
+	if strings.ContainsAny(remainder, " \t") {
 		return digest, errChecksumFormat
 	}
 	decoded, err := hex.DecodeString(digestText)

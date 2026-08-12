@@ -119,6 +119,9 @@ func loadCredentials() (map[string]credential, error) {
 	if err := json.Unmarshal(data, &creds); err != nil {
 		return nil, err
 	}
+	if creds == nil {
+		return nil, errors.New("credential store must be a JSON object")
+	}
 	return creds, nil
 }
 
@@ -129,10 +132,11 @@ func saveCredentials(base, token, login string) error {
 }
 
 func saveCredentialsContext(ctx context.Context, base, token, login string) error {
-	return mutateCredentials(ctx, func(creds map[string]credential) bool {
+	_, err := mutateCredentials(ctx, func(creds map[string]credential) bool {
 		creds[base] = credential{Token: token, Login: login}
 		return true
 	})
+	return err
 }
 
 // deleteCredentials removes the stored entry for base (a no-op if none exists).
@@ -141,6 +145,11 @@ func deleteCredentials(base string) error {
 }
 
 func deleteCredentialsContext(ctx context.Context, base string) error {
+	_, err := deleteCredentialsResultContext(ctx, base)
+	return err
+}
+
+func deleteCredentialsResultContext(ctx context.Context, base string) (bool, error) {
 	return mutateCredentials(ctx, func(creds map[string]credential) bool {
 		if _, ok := creds[base]; !ok {
 			return false
@@ -150,20 +159,30 @@ func deleteCredentialsContext(ctx context.Context, base string) error {
 	})
 }
 
-func mutateCredentials(ctx context.Context, mutate func(map[string]credential) bool) error {
+func mutateCredentials(ctx context.Context, mutate func(map[string]credential) bool) (bool, error) {
+	if ctx == nil {
+		return false, errors.New("nil credential mutation context")
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	path := credentialsPath()
 	if err := prepareCredentialDirectory(filepath.Dir(path)); err != nil {
-		return err
+		return false, err
 	}
 	lock, err := filelock.Acquire(ctx, path+".lock")
 	if err != nil {
-		return err
+		return false, err
 	}
 	creds, operationErr := loadCredentials()
-	if operationErr == nil && mutate(creds) {
-		operationErr = writeCredentialsLocked(path, creds)
+	changed := false
+	if operationErr == nil {
+		changed = mutate(creds)
+		if changed {
+			operationErr = writeCredentialsLocked(path, creds)
+		}
 	}
-	return errors.Join(operationErr, lock.Close())
+	return changed, errors.Join(operationErr, lock.Close())
 }
 
 // writeCredentials replaces the complete credential map under the same lock
@@ -191,6 +210,9 @@ var (
 )
 
 func writeCredentialsLocked(path string, creds map[string]credential) error {
+	if creds == nil {
+		return errors.New("credential store must be a JSON object")
+	}
 	data, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
 		return err

@@ -83,9 +83,11 @@ for asset in \
   if [[ ! -s "$asset" ]]; then
     continue
   fi
+  asset_dir="$(dirname "$asset")"
+  asset_name="$(basename "$asset")"
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$asset" > "${asset}.sha256"
+    (cd "$asset_dir" && sha256sum "$asset_name" > "${asset_name}.sha256")
   else
-    shasum -a 256 "$asset" > "${asset}.sha256"
+    (cd "$asset_dir" && shasum -a 256 "$asset_name" > "${asset_name}.sha256")
   fi
 done

@@ -76,9 +76,11 @@ func fetchReleases() ([]remoteRelease, error) {
 	return fetchReleasesContext(context.Background())
 }
 
+const discoveryPageLimit = 10
+
 func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 	var releases []remoteRelease
-	for page := 1; ; page++ {
+	for page := 1; page <= discoveryPageLimit; page++ {
 		address := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page)
 		response, err := getReleaseBytes(ctx, "release discovery", address, releaseMetadataMaximum)
 		if err != nil {
@@ -91,11 +93,15 @@ func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 		if err := json.Unmarshal(response.Body, &batch); err != nil {
 			return nil, err
 		}
+		if len(batch) > 100 {
+			return nil, fmt.Errorf("GitHub returned too many releases on page %d", page)
+		}
 		releases = append(releases, batch...)
 		if len(batch) < 100 {
 			return releases, nil
 		}
 	}
+	return nil, fmt.Errorf("GitHub release discovery exceeded %d pages", discoveryPageLimit)
 }
 
 // vmUpdate resolves the moving channel before touching the installed runtime.
@@ -337,7 +343,7 @@ func fetchMainCommits() ([]remoteCommit, error) {
 
 func fetchMainCommitsContext(ctx context.Context) ([]remoteCommit, error) {
 	var commits []remoteCommit
-	for page := 1; ; page++ {
+	for page := 1; page <= discoveryPageLimit; page++ {
 		address := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=100&page=%d", releaseAPI(), page)
 		response, err := getReleaseBytes(ctx, "main commit discovery", address, releaseMetadataMaximum)
 		if err != nil {
@@ -350,11 +356,15 @@ func fetchMainCommitsContext(ctx context.Context) ([]remoteCommit, error) {
 		if err := json.Unmarshal(response.Body, &batch); err != nil {
 			return nil, err
 		}
+		if len(batch) > 100 {
+			return nil, fmt.Errorf("GitHub returned too many commits on page %d", page)
+		}
 		commits = append(commits, batch...)
 		if len(batch) < 100 {
 			return commits, nil
 		}
 	}
+	return nil, fmt.Errorf("GitHub commit discovery exceeded %d pages", discoveryPageLimit)
 }
 
 func latestChannelRelease(channel string) (string, error) {

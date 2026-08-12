@@ -86,6 +86,30 @@ func TestReplaceFileFailuresPreserveDestination(t *testing.T) {
 	}
 }
 
+func TestCloseFailureStillClosesAndCleansTemporary(t *testing.T) {
+	directory := t.TempDir()
+	destination := filepath.Join(directory, "value")
+	injected := errors.New("injected close failure")
+	var temporary *os.File
+	err := ReplaceFile(destination, Options{Hooks: &Hooks{Close: func(file *os.File) error {
+		temporary = file
+		return injected
+	}}}, writeString("new"))
+	if !errors.Is(err, injected) {
+		t.Fatalf("close failure = %v", err)
+	}
+	if temporary == nil {
+		t.Fatal("close hook did not receive temporary file")
+	}
+	if _, err := temporary.Stat(); err == nil {
+		t.Fatal("temporary descriptor remained open after close failure")
+	}
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatalf("destination was published after close failure: %v", err)
+	}
+	assertNoTemps(t, directory)
+}
+
 func TestReplaceFileRejectsDirectoryAndSymlink(t *testing.T) {
 	directory := t.TempDir()
 	if err := ReplaceFile(directory, Options{}, writeString("x")); err == nil {

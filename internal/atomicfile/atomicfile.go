@@ -154,11 +154,16 @@ func finalize(file *os.File, options Options) error {
 			return fmt.Errorf("sync temporary file: %w", err)
 		}
 	}
-	closeFile := (*os.File).Close
 	if options.Hooks != nil && options.Hooks.Close != nil {
-		closeFile = options.Hooks.Close
+		if err := options.Hooks.Close(file); err != nil {
+			// A failure injector must not be able to leave the descriptor open.
+			// This matters on Windows, where an open temporary file cannot be
+			// removed or moved reliably during cleanup.
+			_ = file.Close()
+			return fmt.Errorf("close temporary file: %w", err)
+		}
 	}
-	if err := closeFile(file); err != nil {
+	if err := file.Close(); err != nil {
 		return fmt.Errorf("close temporary file: %w", err)
 	}
 	return nil
