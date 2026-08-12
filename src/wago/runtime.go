@@ -17,43 +17,72 @@ import (
 type ImportOverridePolicy int
 
 const (
-	// NoExtensionOverrides is the default: extension import namespaces must be
+	// NoPluginOverrides is the default: plugin import namespaces must be
 	// unique, and per-call imports may not replace a reserved wago_* module.
-	NoExtensionOverrides ImportOverridePolicy = iota
+	NoPluginOverrides ImportOverridePolicy = iota
 	// AllowTestOverrides relaxes both rules, for tests that need to stub a
 	// reserved module or a previously-registered import.
 	AllowTestOverrides
 )
 
-// Runtime is the high-level entry point: extensions register capabilities and
+// Runtime is the high-level entry point: selected plugins contribute guest capabilities and
 // host imports into it, and it threads those through Compile/Instantiate. The
 // package-level Compile/Instantiate remain available as the low-level API.
 type Runtime struct {
 	mu                   sync.Mutex
+	stateCond            *sync.Cond
+	state                runtimeState
+	pluginsLoadAttempted bool
+	operational          bool
+	activeOperations     uint64
+	closeState           *runtimeCloseState
+	instances            map[*Instance]uint64
+	instanceSequence     uint64
+	moduleCloseMu        sync.RWMutex
+	moduleCloseBarrier   struct{}
 	cfg                  *RuntimeConfig
 	overridePolicy       ImportOverridePolicy
 	managedActive        atomic.Bool
 	callerResolverActive atomic.Bool
-	hooks                *HookRegistry
+	hooks                *hookRegistry
 	refStore             *referenceStore
+	guestArguments       []string
 
-	exts         []ExtensionInfo
-	extensions   map[string]Extension
+	plugins      []PluginDefinition
 	imports      Imports                      // "module.name" -> host fn (any)
 	importMeta   map[string]*registeredImport // "module.name" -> declared signature/cap/docs
-	importOwner  map[string]string            // "module.name" -> owning extension ID
-	moduleOwner  map[string]string            // import module -> owning extension ID
+	importOwner  map[string]string            // "module.name" -> owning plugin ID
+	moduleOwner  map[string]string            // import module -> owning plugin ID
 	caps         map[Capability]string
 	capOrder     []Capability
 	instructions map[string]*registeredInstruction
-	services     map[string]serviceProvision
-	closed       bool
-	pluginStops  []registeredPluginStop
+	pluginRuns   []registeredPluginRun
 }
 
-type registeredPluginStop struct {
-	name string
-	stop func(context.Context) error
+type runtimeState uint8
+
+const (
+	runtimeReady runtimeState = iota
+	runtimeLoading
+	runtimeClosing
+	runtimeClosed
+)
+
+type runtimeCloseState struct {
+	done   chan struct{}
+	result error
+}
+
+type registeredPluginRun struct {
+	name           string
+	lifecycle      PluginLifecycle
+	shouldStop     bool
+	consumed       []*contractSlot
+	provided       []*contractSlot
+	closeInstances []func() error
+	drainInstances []func() error
+	callbacks      *pluginCallGate
+	handles        []func() error
 }
 
 // RuntimeOption configures a Runtime at construction.
@@ -70,21 +99,28 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return func(rt *Runtime) { rt.overridePolicy = p }
 }
 
-// NewRuntime creates a runtime with no extensions registered.
+// WithGuestArguments sets the immutable guest argv visible through the exact
+// host.arguments.read authority on this Runtime only.
+func WithGuestArguments(args []string) RuntimeOption {
+	copyArgs := append([]string(nil), args...)
+	return func(rt *Runtime) { rt.guestArguments = copyArgs }
+}
+
+// NewRuntime creates a runtime with no plugins loaded.
 func NewRuntime(opts ...RuntimeOption) *Runtime {
 	rt := &Runtime{
 		cfg:          NewRuntimeConfig(),
-		hooks:        &HookRegistry{},
+		hooks:        &hookRegistry{},
 		refStore:     newReferenceStore(false),
-		extensions:   map[string]Extension{},
 		imports:      Imports{},
 		importMeta:   map[string]*registeredImport{},
 		importOwner:  map[string]string{},
 		moduleOwner:  map[string]string{},
 		caps:         map[Capability]string{},
 		instructions: map[string]*registeredInstruction{},
-		services:     map[string]serviceProvision{},
+		instances:    map[*Instance]uint64{},
 	}
+	rt.stateCond = sync.NewCond(&rt.mu)
 	for _, opt := range opts {
 		opt(rt)
 	}
@@ -94,191 +130,153 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 	return rt
 }
 
-// UseOption configures one programmatic plugin registration. Manifest-driven
-// loading supplies these from wago.json after validating the complete load DAG.
-type UseOption func(*useConfig)
-
-type useConfig struct {
-	strict bool
-	grants map[PluginCapability]struct{}
-	config []byte
+// beginOperation permanently seals plugin loading on first public runtime use
+// and leases the immutable plugin callback set through the operation. Loading
+// excludes public callers; committed authority handles may opt into the Start
+// phase after the complete plan has activated.
+func (rt *Runtime) beginOperation(label string, allowLoading bool) (func(), error) {
+	if rt == nil {
+		return nil, fmt.Errorf("wago: %s on a nil runtime", label)
+	}
+	rt.mu.Lock()
+	switch rt.state {
+	case runtimeLoading:
+		if !allowLoading {
+			rt.mu.Unlock()
+			return nil, fmt.Errorf("wago: %s while plugins are loading", label)
+		}
+	case runtimeClosing, runtimeClosed:
+		rt.mu.Unlock()
+		return nil, fmt.Errorf("wago: %s on a closed runtime", label)
+	}
+	rt.operational = true
+	rt.activeOperations++
+	rt.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			rt.mu.Lock()
+			if rt.activeOperations > 0 {
+				rt.activeOperations--
+			}
+			rt.stateCond.Broadcast()
+			rt.mu.Unlock()
+		})
+	}, nil
 }
 
-// WithPluginGrants explicitly grants privileged plugin capabilities. Supplying
-// this option makes registration strict: every declared and exercised plugin
-// capability must be present.
-func WithPluginGrants(caps ...PluginCapability) UseOption {
-	return func(cfg *useConfig) {
-		cfg.strict = true
-		if cfg.grants == nil {
-			cfg.grants = map[PluginCapability]struct{}{}
-		}
-		for _, cap := range caps {
-			cfg.grants[cap] = struct{}{}
-		}
+func (rt *Runtime) registerInstance(in *Instance) error {
+	if rt == nil || in == nil {
+		return fmt.Errorf("wago: cannot register a nil runtime instance")
 	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.state == runtimeClosing || rt.state == runtimeClosed {
+		return fmt.Errorf("wago: runtime closed during instantiation")
+	}
+	rt.instanceSequence++
+	rt.instances[in] = rt.instanceSequence
+	return nil
 }
 
-// Use registers an extension: it runs the extension's Register, checks version
-// compatibility, and merges the declared capabilities and host imports. Import
-// collisions are rejected per the runtime's override policy, leaving the runtime
-// unchanged on error.
-func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
-	if ext == nil {
-		return fmt.Errorf("wago: Use: nil extension")
+func (rt *Runtime) directInstancesSnapshot() []*Instance {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	type orderedInstance struct {
+		value    *Instance
+		sequence uint64
 	}
-	info := ext.Info()
-	if info.ID == "" {
-		return fmt.Errorf("wago: Use: extension has no ID")
+	ordered := make([]orderedInstance, 0, len(rt.instances))
+	for in, sequence := range rt.instances {
+		// Plugin-managed instances are owned by their InstanceManager. Closing
+		// them here would tear down a provider's workers before dependent plugin
+		// Stop callbacks have finished using that provider's contract.
+		if in.instantiateOrigin() != InstantiateDirect {
+			continue
+		}
+		ordered = append(ordered, orderedInstance{value: in, sequence: sequence})
 	}
-	if err := checkCompat(info.Compat); err != nil {
-		return &ExtensionError{Extension: info.ID, Operation: "use", Err: err}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].sequence < ordered[j].sequence })
+	out := make([]*Instance, len(ordered))
+	for i := range ordered {
+		out[i] = ordered[i].value
 	}
+	return out
+}
 
-	cfg := useConfig{}
-	for _, opt := range opts {
-		opt(&cfg)
+func (rt *Runtime) unregisterInstance(in *Instance) {
+	if rt == nil || in == nil {
+		return
 	}
-	if cfg.strict {
-		for cap := range cfg.grants {
-			if !validPluginCapability(cap) {
-				return &ExtensionError{Extension: info.ID, Operation: "authorize", Err: fmt.Errorf("unknown plugin capability %q", cap)}
-			}
-		}
-		for _, cap := range info.RequiresCapabilities {
-			if _, ok := cfg.grants[cap]; !ok {
-				return &ExtensionError{Extension: info.ID, Operation: "authorize", Err: fmt.Errorf("plugin capability %q was not granted: %w", cap, ErrPermissionDenied)}
-			}
-		}
-	}
+	rt.mu.Lock()
+	delete(rt.instances, in)
+	rt.mu.Unlock()
+}
 
-	// Register into a scratch registry so a failure leaves the runtime untouched,
-	// including hooks (which must not become active until the whole Use commits).
-	reg := &Registry{info: info, hooks: &HookRegistry{}, grants: cfg.grants, config: cfg.config}
-	if err := ext.Register(reg); err != nil {
-		return &ExtensionError{Extension: info.ID, Operation: "register", Err: err}
+func (rt *Runtime) allowsLifecycleCallbacks() bool {
+	if rt == nil {
+		return false
 	}
-	if len(reg.instructions) > 0 && !registryDeclaresCapability(reg, CapCompilerCodegen) {
-		return &ExtensionError{Extension: info.ID, Operation: "register",
-			Err: fmt.Errorf("compiler contributions require capability %q: %w", CapCompilerCodegen, ErrPermissionDenied)}
-	}
-	seenInstructions := make(map[string]struct{}, len(reg.instructions))
-	for _, ins := range reg.instructions {
-		key := ins.spec.Module + "." + ins.spec.Name
-		if _, duplicate := seenInstructions[key]; duplicate {
-			return &ExtensionError{Extension: info.ID, Operation: "register",
-				Err: fmt.Errorf("instruction import %q conflicts with another registration: %w", key, ErrExtensionConflict)}
-		}
-		seenInstructions[key] = struct{}{}
-		reg.imports = append(reg.imports, instructionImport(ins))
-	}
-	if len(reg.instructions) > 0 {
-		reg.imports = append(reg.imports, instructionABIImports()...)
-	}
-	if cfg.strict {
-		for _, cap := range reg.requiredPluginCapabilities() {
-			if _, ok := cfg.grants[cap]; !ok {
-				return &ExtensionError{Extension: info.ID, Operation: "authorize", Err: fmt.Errorf("plugin exercised capability %q without a grant: %w", cap, ErrPermissionDenied)}
-			}
-		}
-	}
+	rt.mu.Lock()
+	active := rt.state != runtimeClosing && rt.state != runtimeClosed
+	rt.mu.Unlock()
+	return active
+}
 
-	commitErr := func() error {
-		rt.mu.Lock()
-		defer rt.mu.Unlock()
-		if rt.closed {
-			return fmt.Errorf("wago: Use on a closed runtime")
-		}
-		for _, id := range rt.exts {
-			if id.ID == info.ID {
-				return &ExtensionError{Extension: info.ID, Operation: "use", Err: ErrExtensionConflict}
-			}
-		}
-		for _, provided := range reg.provides {
-			if previous, exists := rt.services[provided.name]; exists {
-				return &ExtensionError{Extension: info.ID, Operation: "register",
-					Err: fmt.Errorf("service %q is already provided with type %v: %w", provided.name, previous.typ, ErrExtensionConflict)}
-			}
-		}
-		for _, required := range reg.requires {
-			provided, exists := rt.services[required.serviceName()]
-			if !exists {
-				return &ExtensionError{Extension: info.ID, Operation: "resolve",
-					Err: fmt.Errorf("required service %q has no active provider", required.serviceName())}
-			}
-			if typ := required.serviceType(); typ != nil && !provided.typ.AssignableTo(typ) {
-				return &ExtensionError{Extension: info.ID, Operation: "resolve",
-					Err: fmt.Errorf("service %q type mismatch: provider has %v, consumer wants %v", required.serviceName(), provided.typ, typ)}
-			}
-		}
-		// Validate all imports before mutating any runtime state.
-		for _, imp := range reg.imports {
-			if imp.fn == nil {
-				return &ExtensionError{Extension: info.ID, Operation: "register",
-					Err: fmt.Errorf("import %q has no function", imp.key())}
-			}
-			if owner, ok := rt.moduleOwner[imp.module]; ok && owner != info.ID && rt.overridePolicy != AllowTestOverrides {
-				return &ExtensionError{Extension: info.ID, Operation: "register",
-					Err: fmt.Errorf("import module %q already owned by extension %q: %w", imp.module, owner, ErrExtensionConflict)}
-			}
-			if owner, ok := rt.importOwner[imp.key()]; ok && owner != info.ID && rt.overridePolicy != AllowTestOverrides {
-				return &ExtensionError{Extension: info.ID, Operation: "register",
-					Err: fmt.Errorf("import %q already provided by extension %q: %w", imp.key(), owner, ErrExtensionConflict)}
-			}
-		}
-		for _, ins := range reg.instructions {
-			key := ins.spec.Module + "." + ins.spec.Name
-			rt.instructions[key] = ins
-		}
-		for _, required := range reg.requires {
-			if err := required.bindService(rt.services[required.serviceName()].value); err != nil {
-				return &ExtensionError{Extension: info.ID, Operation: "resolve", Err: err}
-			}
-		}
-
-		// Commit.
-		for _, imp := range reg.imports {
-			rt.imports[imp.key()] = imp.fn
-			rt.importMeta[imp.key()] = imp
-			rt.importOwner[imp.key()] = info.ID
-			rt.moduleOwner[imp.module] = info.ID
-		}
-		for _, spec := range reg.caps {
-			if _, ok := rt.caps[spec.cap]; !ok {
-				rt.capOrder = append(rt.capOrder, spec.cap)
-			}
-			rt.caps[spec.cap] = info.ID
-		}
-		for _, provided := range reg.provides {
-			rt.services[provided.name] = provided
-		}
-		rt.hooks.appendFrom(reg.hooks)
-		for _, manager := range reg.managers {
-			manager.activate(rt)
-		}
-		for _, activate := range reg.activate {
-			activate(rt)
-		}
-		rt.exts = append(rt.exts, info)
-		rt.extensions[info.ID] = ext
-		return nil
-	}()
-	if commitErr != nil {
-		return commitErr
+func (rt *Runtime) isClosed() bool {
+	if rt == nil {
+		return true
 	}
-	return rt.startPluginPlan(context.Background(), []plannedExtension{{name: info.ID, ext: ext, info: info, reg: reg}})
+	rt.mu.Lock()
+	closed := rt.state == runtimeClosing || rt.state == runtimeClosed
+	rt.mu.Unlock()
+	return closed
 }
 
 // Compile compiles a wasm module under the runtime's configuration and wraps it
-// as a *Module, resolving its imports against the registered extensions and
-// running any AfterCompile hooks.
+// as a *Module, resolving its imports against registered plugins and notifying
+// successful-compile observers.
 func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
-	ctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
+	return rt.compile(wasmBytes, false)
+}
+
+func (rt *Runtime) compilePlugin(wasmBytes []byte) (*Module, error) {
+	return rt.compile(wasmBytes, true)
+}
+
+func (rt *Runtime) compile(wasmBytes []byte, allowLoading bool) (*Module, error) {
+	end, err := rt.beginOperation("Compile", allowLoading)
+	if err != nil {
+		return nil, err
+	}
+	defer end()
+	var compilation CompilationIdentity
+	if len(rt.hooks.beforeCompile) != 0 || len(rt.hooks.afterCompile) != 0 || len(rt.hooks.onCompileError) != 0 {
+		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
+	}
+	ctx := ModuleSourceContext{Compilation: compilation}
+	emitError := func(original error) error {
+		var hookErrs []error
+		for _, fn := range rt.hooks.onCompileError {
+			if panicErr := callHookSafely("ModuleCompileObserver.OnError", func() {
+				fn(ModuleCompileErrorEvent{Compilation: compilation, Err: original})
+			}); panicErr != nil {
+				hookErrs = append(hookErrs, panicErr)
+			}
+		}
+		return joinPrimary(original, hookErrs...)
+	}
 	source := wasmBytes
+	if len(rt.hooks.beforeCompile) != 0 {
+		source = append([]byte(nil), wasmBytes...)
+	}
 	for _, fn := range rt.hooks.beforeCompile {
-		next, err := fn(ctx, source)
-		if err != nil {
-			return nil, err
+		transform := fn
+		var next []byte
+		var transformErr error
+		panicErr := callHookSafely("ModuleSourceTransformer", func() { next, transformErr = transform(ctx, source) })
+		if err := joinPrimary(transformErr, panicErr); err != nil {
+			return nil, emitError(err)
 		}
 		if next != nil {
 			source = next
@@ -293,7 +291,7 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 	rt.mu.Unlock()
 	c, err := compileWithConfigAndInstructions(cfg, source, instructions)
 	if err != nil {
-		return nil, err
+		return nil, emitError(err)
 	}
 	mod := rt.buildModule(c)
 	// The historical Imports key joins module and field with a dot. Both Wasm
@@ -313,22 +311,16 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 		}
 	}
 	if len(rt.hooks.afterCompile) > 0 {
+		sourceDigest := DigestModuleSource(source)
 		for _, fn := range rt.hooks.afterCompile {
-			if err := fn(ctx, mod); err != nil {
-				return nil, err
+			if err := callHookSafely("ModuleCompileObserver", func() {
+				fn(ModuleCompiledEvent{Compilation: compilation, Module: moduleView(mod), SourceDigest: sourceDigest})
+			}); err != nil {
+				return nil, emitError(joinPrimary(err, mod.Close(), c.Close()))
 			}
 		}
 	}
 	return mod, nil
-}
-
-func registryDeclaresCapability(reg *Registry, want Capability) bool {
-	for _, spec := range reg.caps {
-		if spec.cap == want {
-			return true
-		}
-	}
-	return false
 }
 
 // Module binds an already compiled artifact to this runtime's plugin imports
@@ -337,18 +329,31 @@ func (rt *Runtime) Module(c *Compiled) (*Module, error) {
 	if rt == nil || c == nil {
 		return nil, fmt.Errorf("wago: nil runtime or compiled module")
 	}
-	rt.mu.Lock()
-	closed := rt.closed
-	rt.mu.Unlock()
-	if closed {
-		return nil, fmt.Errorf("wago: Module on a closed runtime")
+	end, err := rt.beginOperation("Module", false)
+	if err != nil {
+		return nil, err
+	}
+	defer end()
+	var compilation CompilationIdentity
+	if len(rt.hooks.afterCompile) != 0 || len(rt.hooks.onCompileError) != 0 {
+		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
+	}
+	emitError := func(original error) error {
+		var hookErrs []error
+		for _, fn := range rt.hooks.onCompileError {
+			if panicErr := callHookSafely("ModuleCompileObserver.OnError", func() {
+				fn(ModuleCompileErrorEvent{Compilation: compilation, Err: original})
+			}); panicErr != nil {
+				hookErrs = append(hookErrs, panicErr)
+			}
+		}
+		return joinPrimary(original, hookErrs...)
 	}
 	mod := rt.buildModule(c)
 	if len(rt.hooks.afterCompile) > 0 {
-		ctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
 		for _, fn := range rt.hooks.afterCompile {
-			if err := fn(ctx, mod); err != nil {
-				return nil, err
+			if err := callHookSafely("ModuleCompileObserver", func() { fn(ModuleCompiledEvent{Compilation: compilation, Module: moduleView(mod)}) }); err != nil {
+				return nil, emitError(joinPrimary(err, mod.Close()))
 			}
 		}
 	}
@@ -373,7 +378,7 @@ func WithPolicy(p Policy) InstantiateOption {
 	return func(c *instantiateConfig) { c.policy = p }
 }
 
-// WithImports adds per-call imports on top of the extension-provided namespace.
+// WithImports adds per-call imports on top of the plugin-provided namespace.
 // A per-call import may not shadow a reserved wago_* module unless the runtime's
 // override policy is AllowTestOverrides.
 func WithImports(im Imports) InstantiateOption {
@@ -399,20 +404,32 @@ func WithSynchronousHostCalls() InstantiateOption {
 	return func(c *instantiateConfig) { c.forceSyncHost = true }
 }
 
-// Instantiate instantiates a module, wiring the runtime's extension imports plus
+// Instantiate instantiates a module, wiring the runtime's plugin imports plus
 // any per-call imports. ctx is honored for cancellation before the (synchronous)
 // instantiate work begins. Runtime ownership is attached before start executes;
 // a failed start or AfterInstantiate hook closes the partial instance through the
-// normal lifecycle before returning its joined failure. A function import that no
-// extension or per-call import provides is reported with a hint rather than a
+// normal lifecycle before returning its joined failure. Fallible post-create
+// interceptors run after initialization but before the start function. A function import that no
+// plugin or per-call import provides is reported with a hint rather than a
 // downstream binding failure.
 func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...InstantiateOption) (*Instance, error) {
-	return rt.instantiateOrigin(ctx, mod, InstantiateDirect, opts...)
+	return rt.instantiateOrigin(ctx, mod, InstantiateDirect, false, opts...)
 }
 
-func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin InstantiateOrigin, opts ...InstantiateOption) (*Instance, error) {
+func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin InstantiateOrigin, allowLoading bool, opts ...InstantiateOption) (*Instance, error) {
+	end, err := rt.beginOperation("Instantiate", allowLoading)
+	if err != nil {
+		return nil, err
+	}
+	defer end()
 	if mod == nil {
 		return nil, fmt.Errorf("wago: Instantiate: nil module")
+	}
+	if mod.isClosed() {
+		return nil, fmt.Errorf("wago: Instantiate: module is closed")
+	}
+	if mod.rt != rt {
+		return nil, fmt.Errorf("wago: Instantiate: module belongs to a different runtime")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -429,11 +446,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	}
 
 	rt.mu.Lock()
-	if rt.closed {
-		rt.mu.Unlock()
-		return nil, fmt.Errorf("wago: Instantiate on a closed runtime")
-	}
-	// Merge extension imports first, then per-call imports on top.
+	// Merge plugin imports first, then per-call imports on top.
 	var merged Imports
 	if n := len(rt.imports) + len(cfg.imports); n != 0 {
 		merged = make(Imports, n)
@@ -464,7 +477,12 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		}
 	}
 
-	return rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin)
+	in, err := rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin)
+	if err == nil && rt.isClosed() {
+		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
+		in = nil
+	}
+	return in, err
 }
 
 func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
@@ -480,7 +498,8 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin) (*Instance, error) {
 	iopts := InstantiateOptions{
 		Imports: imports, store: rt.refStore, runtime: rt, origin: origin,
-		forceSyncHost: forceSyncHost || rt.callerResolverActive.Load(),
+		forceSyncHost:  forceSyncHost || rt.callerResolverActive.Load(),
+		moduleIdentity: mod.moduleIdentity(),
 	}
 	if hasGC {
 		iopts.GC = gc
@@ -489,15 +508,19 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 
 	// Keep the no-lifecycle-hook path allocation-free. The instance still retains
 	// rt so invoke/close hooks registered before later calls can be observed.
-	if len(rt.hooks.beforeInstantiate) == 0 && len(rt.hooks.afterInstantiate) == 0 && len(rt.hooks.onInstantiateError) == 0 {
-		return instantiateCore(mod.c, iopts)
+	if len(rt.hooks.beforeInstantiate) == 0 && len(rt.hooks.afterCreate) == 0 && len(rt.hooks.afterInstantiate) == 0 && len(rt.hooks.onInstantiateError) == 0 {
+		inst, err := instantiateCore(mod.c, iopts)
+		if err != nil {
+			return nil, err
+		}
+		return inst, nil
 	}
 
-	hctx := &InstantiateContext{Runtime: rt, Module: mod, Compiled: mod.c, Imports: imports, Origin: origin, Metadata: map[string]any{}}
+	request := InstantiationRequest{Module: moduleView(mod), Origin: origin}
 	emitError := func(original error) error {
 		var hookErrs []error
 		for _, fn := range rt.hooks.onInstantiateError {
-			if panicErr := callHookSafely("OnInstantiateError", func() { fn(hctx, original) }); panicErr != nil {
+			if panicErr := callHookSafely("OnInstantiateError", func() { fn(InstantiationErrorEvent{Module: request.Module, Origin: origin, Err: original}) }); panicErr != nil {
 				hookErrs = append(hookErrs, panicErr)
 			}
 		}
@@ -506,21 +529,29 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 
 	for _, fn := range rt.hooks.beforeInstantiate {
 		var hookErr error
-		panicErr := callHookSafely("BeforeInstantiate", func() { hookErr = fn(hctx) })
+		panicErr := callHookSafely("BeforeInstantiate", func() { hookErr = fn(request) })
 		if err := joinPrimary(hookErr, panicErr); err != nil {
 			return nil, emitError(err)
 		}
 	}
-	iopts.Imports = hctx.Imports
-
+	iopts.afterCreate = func(inst *Instance) error {
+		event := InstantiationEvent{Module: request.Module, Instance: InstanceIdentity{value: inst}, Origin: origin}
+		for _, fn := range rt.hooks.afterCreate {
+			var hookErr error
+			panicErr := callHookSafely("InstanceInstantiateInterceptor.After", func() { hookErr = fn(event) })
+			if err := joinPrimary(hookErr, panicErr); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	inst, err := instantiateCore(mod.c, iopts)
 	if err != nil {
 		return nil, emitError(err)
 	}
 	for _, fn := range rt.hooks.afterInstantiate {
-		var hookErr error
-		panicErr := callHookSafely("AfterInstantiate", func() { hookErr = fn(hctx, inst) })
-		if err := joinPrimary(hookErr, panicErr); err != nil {
+		event := InstantiationEvent{Module: request.Module, Instance: InstanceIdentity{value: inst}, Origin: origin}
+		if err := callHookSafely("InstanceInstantiateObserver", func() { fn(event) }); err != nil {
 			failed := joinPrimary(err, inst.Close())
 			return nil, emitError(failed)
 		}
@@ -528,14 +559,18 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 	return inst, nil
 }
 
-// Extensions returns the registered extensions in registration order.
-func (rt *Runtime) Extensions() []ExtensionInfo {
+// Plugins returns immutable definitions in dependency-resolved activation order.
+func (rt *Runtime) Plugins() []PluginDefinition {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	return append([]ExtensionInfo(nil), rt.exts...)
+	out := make([]PluginDefinition, len(rt.plugins))
+	for i := range rt.plugins {
+		out[i], _ = freezeDefinition(rt.plugins[i])
+	}
+	return out
 }
 
-// Capabilities returns the capabilities declared by registered extensions,
+// Capabilities returns the capabilities declared by registered plugins,
 // sorted.
 func (rt *Runtime) Capabilities() []Capability {
 	rt.mu.Lock()
@@ -545,30 +580,98 @@ func (rt *Runtime) Capabilities() []Capability {
 	return caps
 }
 
-// Close stops plugins, runs runtime-close hooks in reverse registration order,
-// closes managed instances, and marks the runtime unusable. Direct instances
-// remain caller-owned.
+// ProvidedImports returns immutable metadata for host functions contributed by
+// loaded plugins, sorted by Wasm module and name. It intentionally omits each
+// callable HostFunc binding; this is an inspection surface, not an authority
+// escape into the low-level instantiator.
+func (rt *Runtime) ProvidedImports() []ImportSpec {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	specs := make([]ImportSpec, 0, len(rt.importMeta))
+	for _, meta := range rt.importMeta {
+		specs = append(specs, ImportSpec{
+			Module:        meta.module,
+			Name:          meta.name,
+			Kind:          ImportFunc,
+			Params:        append([]ValType(nil), meta.params...),
+			Results:       append([]ValType(nil), meta.results...),
+			Capability:    meta.cap,
+			HasCapability: meta.hasCap,
+			Docs:          meta.docs,
+			Provided:      true,
+		})
+	}
+	sort.Slice(specs, func(i, j int) bool { return specs[i].Key() < specs[j].Key() })
+	return specs
+}
+
+// Close stops plugins and marks the runtime unusable. It closes every instance
+// created through this Runtime; callers retain only idempotent closed handles.
 func (rt *Runtime) Close() error { return rt.CloseContext(context.Background()) }
 
-// CloseContext stops plugins in reverse load order, then closes internal
-// services and runtime hooks. It is idempotent.
+// CloseContext is idempotent and joinable: concurrent callers wait for and
+// receive the same complete shutdown result. The first caller's context is used
+// for plugin Stop callbacks; later callers do not cancel an active shutdown.
+// It must not be called synchronously from a callback or hook running on this
+// Runtime because shutdown waits for the current operation to return.
 func (rt *Runtime) CloseContext(ctx context.Context) error {
-	rt.mu.Lock()
-	if rt.closed {
-		rt.mu.Unlock()
+	if rt == nil {
 		return nil
 	}
-	rt.closed = true
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rt.mu.Lock()
+	for rt.state == runtimeLoading {
+		rt.stateCond.Wait()
+	}
+	if rt.closeState != nil {
+		state := rt.closeState
+		rt.mu.Unlock()
+		<-state.done
+		return state.result
+	}
+	state := &runtimeCloseState{done: make(chan struct{})}
+	rt.closeState = state
+	rt.state = runtimeClosing
 	hooks := rt.hooks.onRuntimeClose
 	internalClose := append([]func() error(nil), rt.hooks.internalClose...)
-	pluginStops := append([]registeredPluginStop(nil), rt.pluginStops...)
+	pluginRuns := append([]registeredPluginRun(nil), rt.pluginRuns...)
 	store := rt.refStore
 	rt.mu.Unlock()
 
 	var errs []error
-	for i := len(pluginStops) - 1; i >= 0; i-- {
-		if err := pluginStops[i].stop(ctx); err != nil {
-			errs = append(errs, &PluginError{Plugin: pluginStops[i].name, Phase: PluginPhaseStop, Err: err})
+	for i := len(hooks) - 1; i >= 0; i-- {
+		observer := hooks[i]
+		if err := callHookSafely("RuntimeCloseObserver", func() { observer(RuntimeCloseEvent{}) }); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	// A Module.Close already inside an observer finishes before teardown. New
+	// module closes see runtimeClosing and suppress callbacks into stopped code.
+	rt.moduleCloseMu.Lock()
+	_ = rt.moduleCloseBarrier
+	rt.moduleCloseMu.Unlock()
+
+	instances := rt.directInstancesSnapshot()
+	for i := len(instances) - 1; i >= 0; i-- {
+		if err := instances[i].Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for i := len(pluginRuns) - 1; i >= 0; i-- {
+		pluginRuns[i].deactivateProviders()
+		errs = append(errs, closePluginRun(ctx, pluginRuns[i])...)
+	}
+	rt.mu.Lock()
+	for rt.activeOperations != 0 {
+		rt.stateCond.Wait()
+	}
+	rt.mu.Unlock()
+	for i := len(instances) - 1; i >= 0; i-- {
+		state := instances[i].ensurePluginState().close.Load()
+		if state != nil {
+			<-state.quiesced
 		}
 	}
 	for i := len(internalClose) - 1; i >= 0; i-- {
@@ -576,12 +679,82 @@ func (rt *Runtime) CloseContext(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
-	rctx := &RuntimeContext{Runtime: rt}
-	for i := len(hooks) - 1; i >= 0; i-- {
-		hooks[i](rctx)
-	}
 	store.closeRuntime()
-	return errors.Join(errs...)
+	result := errors.Join(errs...)
+	rt.mu.Lock()
+	rt.state = runtimeClosed
+	state.result = result
+	close(state.done)
+	rt.stateCond.Broadcast()
+	rt.mu.Unlock()
+	return result
+}
+
+func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
+	err := rt.CloseContext(ctx)
+	rt.mu.Lock()
+	rt.plugins = nil
+	rt.imports = Imports{}
+	rt.importMeta = map[string]*registeredImport{}
+	rt.importOwner = map[string]string{}
+	rt.moduleOwner = map[string]string{}
+	rt.caps = map[Capability]string{}
+	rt.capOrder = nil
+	rt.instructions = map[string]*registeredInstruction{}
+	rt.hooks = &hookRegistry{}
+	rt.pluginRuns = nil
+	rt.managedActive.Store(false)
+	rt.callerResolverActive.Store(false)
+	rt.instances = map[*Instance]uint64{}
+	rt.instanceSequence = 0
+	rt.mu.Unlock()
+	return err
+}
+
+func (run registeredPluginRun) deactivateProviders() {
+	for _, slot := range run.provided {
+		slot.deactivate()
+	}
+}
+
+func closePluginRun(ctx context.Context, run registeredPluginRun) (errs []error) {
+	for i := len(run.provided) - 1; i >= 0; i-- {
+		if err := run.provided[i].revoke(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for i := len(run.closeInstances) - 1; i >= 0; i-- {
+		if err := run.closeInstances[i](); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	run.callbacks.deactivate()
+	if run.shouldStop && run.lifecycle.Stop != nil {
+		var stopErr error
+		panicErr := callSafely("plugin Stop", func() { stopErr = run.lifecycle.Stop(ctx) })
+		if err := joinPrimary(stopErr, panicErr); err != nil {
+			errs = append(errs, &PluginError{Plugin: run.name, Phase: PluginPhaseStop, Err: err})
+		}
+	}
+	if err := run.callbacks.closeAndWait(); err != nil {
+		errs = append(errs, err)
+	}
+	for i := len(run.drainInstances) - 1; i >= 0; i-- {
+		if err := run.drainInstances[i](); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for i := len(run.consumed) - 1; i >= 0; i-- {
+		if err := run.consumed[i].revoke(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for i := len(run.handles) - 1; i >= 0; i-- {
+		if err := run.handles[i](); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
 }
 
 // importModule returns the module part of a "module.name" import key (up to the
@@ -593,10 +766,6 @@ func importModule(key string) string {
 		}
 	}
 	return key
-}
-
-func (rt *Runtime) scopedHostCalls() bool {
-	return rt != nil && (rt.managedActive.Load() || rt.callerResolverActive.Load())
 }
 
 func isReserved(module string) bool {
@@ -613,14 +782,14 @@ func isReserved(module string) bool {
 // missingImportError explains an unsatisfied function import and hints at the
 // fix, wrapping ErrMissingImport for errors.Is.
 func missingImportError(spec ImportSpec) error {
-	hint := fmt.Sprintf("provide it via WithImports or an extension that registers module %q", spec.Module)
+	hint := fmt.Sprintf("provide it via WithImports or a plugin that registers module %q", spec.Module)
 	if isReserved(spec.Module) {
-		hint = fmt.Sprintf("register the extension that provides %q, e.g. rt.Use(<ext>.Ext(...))", spec.Module)
+		hint = fmt.Sprintf("select the plugin that provides %q in PluginSet", spec.Module)
 	}
 	return fmt.Errorf("module imports %q, but nothing provides it; %s: %w", spec.Key(), hint, ErrMissingImport)
 }
 
-// checkCompat validates the running wago Version against an extension's declared
+// checkCompat validates the running wago Version against a plugin's declared
 // "wago" engine constraint, a full semver 2.0.0 range (see src/core/semver). Other
 // engines (tinygo, go, …) and platforms are advisory — surfaced by inspection but
 // not enforced here, since the running binary already embodies them.

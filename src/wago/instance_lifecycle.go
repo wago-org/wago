@@ -46,7 +46,7 @@ func (in *Instance) beginClose() (*instanceCloseState, bool) {
 	if active := state.close.Load(); active != nil {
 		return active, false
 	}
-	candidate := &instanceCloseState{done: make(chan struct{})}
+	candidate := &instanceCloseState{done: make(chan struct{}), quiesced: make(chan struct{})}
 	if state.close.CompareAndSwap(nil, candidate) {
 		return candidate, true
 	}
@@ -87,14 +87,13 @@ func (in *Instance) closeOnce() error {
 		}
 	}
 
-	var hctx *InstanceContext
+	var closeEvent *InstanceCloseEvent
 	if in.rt != nil && (len(in.rt.hooks.beforeClose) != 0 || len(in.rt.hooks.afterClose) != 0) {
-		hctx = &InstanceContext{
-			Runtime: in.rt, Compiled: in.c, Instance: in, Origin: in.instantiateOrigin(), Metadata: map[string]any{},
-		}
+		event := InstanceCloseEvent{Module: ModuleView{compiled: in.c, identity: in.moduleIdentity}, Instance: InstanceIdentity{value: in}, Origin: in.instantiateOrigin()}
+		closeEvent = &event
 		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
 			fn := in.rt.hooks.beforeClose[i]
-			appendStep("BeforeClose", func() { fn(hctx) })
+			appendStep("BeforeClose", func() { fn(*closeEvent) })
 		}
 	}
 
@@ -109,13 +108,29 @@ func (in *Instance) closeOnce() error {
 
 	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
 	appendStep("finalize instance resources", in.tryFinalize)
-	if hctx != nil {
+	if closeEvent != nil {
 		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
 			fn := in.rt.hooks.afterClose[i]
-			appendStep("AfterClose", func() { fn(hctx) })
+			appendStep("AfterClose", func() { fn(*closeEvent) })
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// closeAndWait closes the public invocation gate and waits until no guest
+// activation or synchronous host callback can still execute plugin code. It is
+// used by Runtime and manager shutdown; ordinary Instance.Close intentionally
+// remains a prompt logical close when retained references defer physical release.
+func (in *Instance) closeAndWait() error {
+	if in == nil {
+		return nil
+	}
+	err := in.Close()
+	state := in.ensurePluginState().close.Load()
+	if state != nil {
+		<-state.quiesced
+	}
+	return err
 }
 
 func (in *Instance) isLogicallyClosed() bool {
@@ -166,6 +181,9 @@ func (in *Instance) endInvocation() {
 			continue
 		}
 		if next == instanceInvocationClosed {
+			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+			}
 			in.tryFinalize()
 		}
 		return
@@ -175,6 +193,11 @@ func (in *Instance) endInvocation() {
 // tryFinalize delegates the reference-lifetime transition. Keeping this small
 // call point lets resource-root and invocation paths remain direct.
 func (in *Instance) tryFinalize() {
+	if in != nil && in.invocationState.Load()&instanceInvocationClosed != 0 && in.invocationState.Load()&instanceInvocationCount == 0 {
+		if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+			closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+		}
+	}
 	in.referenceLifetime().finalize()
 }
 
@@ -254,6 +277,9 @@ func (in *Instance) releaseResources() {
 		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)
+	if in.rt != nil {
+		in.rt.unregisterInstance(in)
+	}
 
 	// Reusable arenas and job-memory objects may immediately back a later
 	// instance. Keep the closed instance from retaining any stale view into that

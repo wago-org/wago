@@ -18,7 +18,7 @@ import (
 
 type Environment interface {
 	ProfileFlags() []command.Flag
-	LoadRuntime(*wago.RuntimeConfig, string) *wago.Runtime
+	LoadRuntime(*wago.RuntimeConfig, []string) *wago.Runtime
 }
 
 func Command(environment Environment) *command.Cmd {
@@ -78,9 +78,6 @@ func (cmd implementation) Run(c *command.Ctx) {
 		if len(selection.Optimizations) != 0 {
 			plan["optimizations"] = selection.Optimizations
 		}
-		if plugins := runcmd.PluginList(c); plugins != "" {
-			plan["plugins"] = plugins
-		}
 		automation.PrintPlan("build artifact", plan)
 		return
 	}
@@ -92,7 +89,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 		ui.Fatal("build: %s is already a .wago artifact", input)
 	}
 	cfg := selection.RuntimeConfig()
-	rt := cmd.environment.LoadRuntime(cfg, runcmd.PluginList(c))
+	rt := cmd.environment.LoadRuntime(cfg, nil)
 	defer rt.Close()
 	module, err := rt.Compile(source)
 	if err != nil {

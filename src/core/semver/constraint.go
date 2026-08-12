@@ -221,6 +221,9 @@ func parsePartial(s string) (partial, error) {
 	}
 	main := s
 	if b := strings.IndexByte(main, '+'); b >= 0 { // build metadata is ignored in ranges
+		if _, err := parseIdentifiers(main[b+1:], false); err != nil {
+			return partial{}, fmt.Errorf("semver: invalid build metadata in %q: %w", s, err)
+		}
 		main = main[:b]
 	}
 	var pre []string

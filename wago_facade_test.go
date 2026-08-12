@@ -16,10 +16,6 @@ func TestFacadeForwards(t *testing.T) {
 	_ = CapabilityDocs("test")
 	_ = DirsFor("test")
 	_ = GuardPageSupported()
-	SetGuestArgs([]string{"facade"})
-	if len(GuestArgs()) != 1 {
-		t.Fatal("GuestArgs did not round-trip")
-	}
 
 	c, err := Compile([]byte(wasm))
 	if err != nil {
@@ -80,31 +76,19 @@ func TestFacadeForwards(t *testing.T) {
 	_ = ValueI64(1)
 	_ = ValueOf(ValI32, I32(1))
 
-	rt := NewRuntime(WithImportOverridePolicy(NoExtensionOverrides), WithRuntimeConfig(NewRuntimeConfig()))
+	rt := NewRuntime(WithImportOverridePolicy(NoPluginOverrides), WithRuntimeConfig(NewRuntimeConfig()), WithGuestArguments([]string{"facade"}))
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close: %v", err)
 	}
-	reg := &Registry{}
-	if err := ProvideService(reg, "facade", 1); err != nil {
-		t.Fatalf("ProvideService: %v", err)
-	}
-	if _, err := RequireService(reg, "facade"); err != nil {
-		t.Fatalf("RequireService: %v", err)
-	}
-	_ = WithPluginGrants()
 	_ = WithImports(Imports{})
 	_ = WithPolicy(Policy{})
 	_ = WithGC(GCConfig{})
 	_ = IsGuardPageUnavailable(nil)
-	_, _ = InspectPluginPlan(nil)
+	_, _ = InspectPluginPlan(PluginSet{})
+	_ = ValidatePluginSet(PluginSet{})
 	_ = SetOptKnob("missing", true)
-
-	const extensionName = "wago-test/facade"
-	RegisterExtension(extensionName, func() Extension { return nil })
-	if _, ok := NewExtension(extensionName); !ok {
-		t.Fatal("registered extension was not found")
-	}
-	if len(RegisteredPluginNames()) == 0 {
-		t.Fatal("RegisteredPluginNames empty")
+	def := PluginDefinition{ID: "example.com/facade/plugin", Version: "1.0.0", Provenance: PluginProvenance{Repository: "https://example.com/facade", License: "MIT"}}
+	if digest, err := DefinitionDigest(def); err != nil || digest == "" {
+		t.Fatalf("DefinitionDigest=%q,%v", digest, err)
 	}
 }

@@ -14,8 +14,8 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		defer rt.Close()
 		gatePublished := make(chan struct{})
 		releaseClose := make(chan struct{})
-		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
-			if ctx.Instance == in {
+		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx InstanceCloseEvent) {
+			if sameInstance(ctx.Instance, in) {
 				close(gatePublished)
 				<-releaseClose
 			}
@@ -60,8 +60,8 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 
 		gatePublished := make(chan struct{})
 		releaseClose := make(chan struct{})
-		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
-			if ctx.Instance == in {
+		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx InstanceCloseEvent) {
+			if sameInstance(ctx.Instance, in) {
 				close(gatePublished)
 				<-releaseClose
 			}
@@ -112,8 +112,8 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 
 		gatePublished := make(chan struct{})
 		releaseClose := make(chan struct{})
-		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
-			if ctx.Instance == in {
+		rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx InstanceCloseEvent) {
+			if sameInstance(ctx.Instance, in) {
 				close(gatePublished)
 				<-releaseClose
 			}

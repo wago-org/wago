@@ -4,53 +4,67 @@ package plugin
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
-	"slices"
 	"testing"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/cli/internal/project"
-	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func TestRunLoadsGlobalPluginConfiguration(t *testing.T) {
-	t.Setenv("WAGO_HOME", t.TempDir())
-	t.Setenv("WAGO_BARE", "")
-	t.Setenv("WAGO_GLOBAL", "")
+type inertPlugin struct{}
 
-	wd, err := os.Getwd()
+func (inertPlugin) Register(*wago.Registrar) error { return nil }
+
+func TestConfigureExposesOnlyExplicitReviewedPluginSet(t *testing.T) {
+	definition := wago.PluginDefinition{
+		ID: "github.com/acme/metrics", Name: "Metrics", Version: "1.2.3",
+		Stability:     wago.Experimental,
+		Compatibility: wago.Compatibility{Engines: map[string]string{"wago": "*"}},
+		Provenance:    wago.PluginProvenance{Repository: "https://github.com/acme/metrics", License: "MIT"},
+	}
+	digest, err := wago.DefinitionDigest(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	emptyProject := t.TempDir()
-	if err := os.Chdir(emptyProject); err != nil {
-		t.Fatal(err)
+	set := wago.PluginSet{
+		Providers:  []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { return inertPlugin{} }}},
+		Selections: []wago.PluginSelection{{ID: definition.ID, DefinitionDigest: digest, Direct: true, Dependencies: map[string]string{}, Config: json.RawMessage(`{}`)}},
 	}
-	t.Cleanup(func() { _ = os.Chdir(wd) })
+	Configure(set)
+	t.Cleanup(func() { Configure(wago.PluginSet{}) })
 
-	manifestDir := wagopaths.DirsFor("runtime").Data
-	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
-		t.Fatal(err)
+	// Mutating the caller's slices cannot mutate the configured catalog.
+	set.Providers = nil
+	set.Selections = nil
+	if got := Definitions(); len(got) != 1 || got[0].ID != definition.ID {
+		t.Fatalf("definitions = %#v", got)
 	}
-	manifest := `{"plugins":{"wago-org/wasi":"^0.0.0"}}`
-	if err := os.WriteFile(filepath.Join(manifestDir, project.File), []byte(manifest), 0o644); err != nil {
-		t.Fatal(err)
+	if _, ok := Definition(definition.ID); !ok {
+		t.Fatalf("Definition(%q) missing", definition.ID)
 	}
-	if err := project.WriteLock(manifestDir, project.LockDocument{Packages: map[string]project.LockEntry{
-		"wago-org/wasi": {Capabilities: json.RawMessage(`["wasi"]`)},
-	}}); err != nil {
-		t.Fatal(err)
-	}
-
-	configs, err := activePluginConfigs()
+	plan, err := Inspect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(configs) != 1 || configs[0].Name != "wago-org/wasi" {
-		t.Fatalf("active plugin configs = %#v, want global wago-org/wasi", configs)
+	if len(plan.Plugins) != 1 || plan.Plugins[0].DefinitionDigest != digest {
+		t.Fatalf("plan = %#v", plan)
 	}
-	if !slices.Equal(configs[0].Capabilities, []wago.PluginCapability{"wasi"}) {
-		t.Fatalf("global plugin capabilities = %#v, want wasi", configs[0].Capabilities)
+}
+
+func TestVerifyRejectsDefinitionDigestDriftWithoutRunningProvider(t *testing.T) {
+	definition := wago.PluginDefinition{
+		ID: "github.com/acme/drift", Version: "1.0.0",
+		Compatibility: wago.Compatibility{Engines: map[string]string{"wago": "*"}},
+		Provenance:    wago.PluginProvenance{Repository: "https://github.com/acme/drift", License: "MIT"},
+	}
+	ran := false
+	Configure(wago.PluginSet{
+		Providers:  []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { ran = true; return inertPlugin{} }}},
+		Selections: []wago.PluginSelection{{ID: definition.ID, DefinitionDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Direct: true, Dependencies: map[string]string{}}},
+	})
+	t.Cleanup(func() { Configure(wago.PluginSet{}) })
+	if err := Verify(); err == nil {
+		t.Fatal("Verify accepted a stale definition digest")
+	}
+	if ran {
+		t.Fatal("side-effect-free verification invoked provider factory")
 	}
 }

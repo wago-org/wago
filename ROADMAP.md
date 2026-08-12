@@ -74,7 +74,7 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   release selection
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`, plus
   opt-in serial/adaptive/forced function-worker policy for validation and codegen
-- [x] Workers plugin: the separate `github.com/wago-org/workers` extension
+- [x] Workers plugin: the separate `github.com/wago-org/workers` plugin
   owns a transactional worker service with bounded copied tagged delivery,
   cooperative kill, neutral exit events, and creator-authorized lifetime links;
   actor/PID/mailbox/supervisor policy remains plugin-owned

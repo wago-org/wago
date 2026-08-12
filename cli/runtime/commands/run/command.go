@@ -20,7 +20,7 @@ import (
 // runtime construction. All command behavior remains in this package.
 type Environment interface {
 	ProfileFlags() []command.Flag
-	LoadRuntime(*wago.RuntimeConfig, string) *wago.Runtime
+	LoadRuntime(*wago.RuntimeConfig, []string) *wago.Runtime
 	ArtifactCache() artifactcache.Cache
 }
 
@@ -72,7 +72,6 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	if len(positionals) == 0 {
 		ui.Usage("run: need a <file>")
 	}
-	wago.SetGuestArgs(positionals)
 	optimizations, err := OptimizationOverrides(ctx)
 	if err != nil {
 		ui.Usage("run: %v", err)
@@ -88,7 +87,7 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Usage("run: %v", err)
 	}
 	config := selection.RuntimeConfig()
-	runtime := cmd.environment.LoadRuntime(config, PluginList(ctx))
+	runtime := cmd.environment.LoadRuntime(config, positionals)
 	defer runtime.Close()
 	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache())
 	compiled := module.Compiled()
@@ -110,17 +109,6 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
 	}
 	fmt.Println(format(export, values, result, params, results))
-}
-
-// PluginList combines the singular and plural spellings of the plugin flag.
-func PluginList(ctx *command.Ctx) string {
-	values := make([]string, 0, 2)
-	for _, name := range []string{"plugin", "plugins"} {
-		if value := strings.TrimSpace(ctx.Str(name)); value != "" {
-			values = append(values, value)
-		}
-	}
-	return strings.Join(values, ",")
 }
 
 func runStart(runtime *wago.Runtime, module *wago.Module) {

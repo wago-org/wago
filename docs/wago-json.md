@@ -1,21 +1,26 @@
-# `wago.json` reference
+# `wago.json` and `wago-lock.json`
 
-`wago.json` is both Wago's project configuration and its open-source package
-manifest. The same file can contain consumer settings, publish metadata, or both.
+`wago.json` contains human-owned project intent. `wago-lock.json` contains the
+machine-resolved, authority-bearing graph. The generated runtime is a cache of
+that graph, never a source of intent.
 
-Add the schema URI for editor completion, inline documentation, and typo
-detection:
+The v1 formats are intentionally incompatible with the unreleased v0 design.
+Unknown fields, shorthand Plugin IDs, coarse capabilities, and old lock entries
+are errors rather than migration hints.
+
+## `wago.json`
+
+Start every manifest with the canonical schema URI:
 
 ```json
 {
-  "$schema": "https://wago.sh/v0/schema.json"
+  "$schema": "https://wago.sh/v1/schema.json"
 }
 ```
 
-The canonical schema is also committed as [`schema.json`](../schema.json).
-It uses JSON Schema draft 2020-12 and rejects unknown fields.
-
-Validate a manifest in CI with any draft-2020-12 validator. For example:
+The canonical draft-2020-12 schema is committed as
+[`schema.json`](../schema.json) and served at the URI above. It rejects unknown
+fields. Validate the local copy in CI with any conforming validator, for example:
 
 ```sh
 npx --yes --package ajv-cli@5 --package ajv-formats@3 \
@@ -23,15 +28,41 @@ npx --yes --package ajv-cli@5 --package ajv-formats@3 \
   -s schema.json -d wago.json
 ```
 
-## Local runtime settings
+### Direct Plugin Requirements
 
-`settings` contains sparse project overrides for `wago run`, `wago build`, and
-`wago validate`. They take precedence over the user's global configuration but
-remain below explicit command flags:
+`plugins` maps canonical Go module or package paths to semantic-version ranges:
 
 ```json
 {
-  "$schema": "https://wago.sh/v0/schema.json",
+  "$schema": "https://wago.sh/v1/schema.json",
+  "plugins": {
+    "github.com/JairusSW/pool": "^0.1.0",
+    "github.com/wago-org/wasi": "~0.2.0"
+  }
+}
+```
+
+The full path is the Plugin ID in the manifest, registry, generated provider
+catalog, lock graph, runtime plan, and diagnostics. Relative aliases such as
+`JairusSW/pool` are invalid.
+
+Ranges accept exact versions, comparators, caret and tilde ranges, partial and
+x-ranges, hyphen ranges, whitespace-separated intersections, and `||` unions.
+Pre-release matching follows node-semver rules. Examples include `1.2.3`,
+`^1.2.0`, `~1.2.3`, `>=1.2 <2`, `1.2.x`, `1.2.3 - 2.0.0`, and
+`^1.0.0 || ^2.0.0`.
+
+Only direct requirements belong in the manifest. The resolver discovers and
+locks transitive requirements from published Plugin Definitions.
+
+### Project settings
+
+`settings` contains sparse project overrides for `wago run`, `wago build`,
+`wago compile`, and `wago validate`:
+
+```json
+{
+  "$schema": "https://wago.sh/v1/schema.json",
   "settings": {
     "features": {
       "simd": false
@@ -40,65 +71,195 @@ remain below explicit command flags:
       "inline-loop-callees": true
     },
     "runtime": {
-      "parallel": "auto"
+      "parallel": "auto",
+      "deferredBoundsChecking": false
     }
   }
 }
 ```
 
-Inside a project, `wago config` edits local overrides by default. Use
-`wago config --global` for user-wide defaults, or select scope explicitly in
-scripts with `--local`, `-l`, `--global`, or `-g`. Resetting a local setting
-removes its override so it inherits the global value again. This field is
-separate from opaque per-plugin `config`, which remains authority-bearing and
-lockfile-owned.
+Project values override the user's global defaults and remain below explicit
+command flags. Resetting a project setting removes it so the global value is
+inherited again. Experimental settings require the CLI's `--experimental`
+acknowledgement.
 
-Experimental features and optimizations are deliberately opt-in. Discover them
-with `wago config list --experimental`, and pass `--experimental` when changing
-one, for example `wago config set tail-call on --experimental`. The available
-list is generated from the runtime feature and compiler optimization
-registrations for the current build.
+### Package metadata
 
-## Plugin requirements
-
-`plugins` maps GitHub-relative plugin IDs to semantic-version constraints. A
-single entry declares the Go module build dependency and activates its
-registration at runtime:
+A publishable plugin module puts public discovery and provenance metadata under
+`package`:
 
 ```json
 {
-  "$schema": "https://wago.sh/v0/schema.json",
-  "plugins": {
-    "wago-org/wasi": "^0.0.0",
-    "wago-org/workers": "^0.0.0"
+  "$schema": "https://wago.sh/v1/schema.json",
+  "package": {
+    "module": "github.com/acme/wago-observability",
+    "version": "0.1.0",
+    "name": "Wago Observability",
+    "description": "Tracing and metrics for Wago runtimes.",
+    "stability": "experimental",
+    "license": "Apache-2.0",
+    "repository": "https://github.com/acme/wago-observability",
+    "homepage": "https://github.com/acme/wago-observability#readme",
+    "category": "observability",
+    "tags": ["metrics", "tracing"],
+    "authors": [
+      {
+        "name": "Example Maintainer",
+        "email": "maintainer@example.com",
+        "github": "example"
+      }
+    ],
+    "engines": {
+      "wago": "^0.1.0"
+    },
+    "platforms": ["darwin/arm64", "linux/amd64"]
   }
 }
 ```
 
-Wago expands `wago-org/wasi` to `github.com/wago-org/wasi` for the Go module
-build. `wago add <module>` resolves the installed version and writes a compatible
-caret constraint. Exact resolution and runtime authority are kept out of the
-manifest.
+`module`, `name`, `description`, `license`, `repository`, and at least one author
+are required for publication. `repository` is an absolute HTTPS URL and
+`license` is an SPDX expression. If `version` is absent, the publisher resolves
+the newest Git tag and includes that exact version in the signed publish
+request.
+
+The manifest does not hand-author provider definitions or authority requests.
+Run `wago plugin catalog` to execute the current module's explicit `/register`
+catalog and write canonical `wago.providers.json` at the module root. The
+snapshot uses
+[`https://wago.sh/v1/providers.schema.json`](../providers.schema.json). Commit it
+before creating the release tag, and use `wago plugin catalog --check` in CI to
+reject a missing or stale snapshot.
+
+`wago plugin publish` executes only the current local `/register` catalog, and
+only to check snapshot drift. It then downloads the exact tagged Go module at
+the selected version and `h1:` checksum. The tagged artifact's `wago.json`
+`package` metadata must match the local manifest, and its `wago.providers.json`
+must exactly match the current canonical snapshot, before anything is submitted.
+The registry independently downloads that exact module and verifies its `h1:`
+checksum, then reads both root files without building or executing plugin code.
+
+Modules that publish several Plugin IDs describe discovery-only child entries
+with `package.subpackages`. Their definitions still come from the single
+explicit catalog; relative child-manifest loading is not part of v1.
+
+### Root fields
+
+| Field | Purpose |
+|---|---|
+| `$schema` | Must be `https://wago.sh/v1/schema.json`. |
+| `plugins` | Direct canonical Plugin IDs mapped to version ranges. |
+| `settings` | Sparse project-local runtime defaults. |
+| `package` | Public package metadata used only when publishing. |
+
+No grant or plugin configuration appears in `wago.json`; both are reviewed lock
+state.
 
 ## `wago-lock.json`
 
-The lockfile records exact versions, the capabilities declared by the package,
-the subset reviewed and granted by the user, and opaque plugin configuration:
+The lockfile records everything needed to reproduce the selected plugin plan:
+
+- direct and transitive Plugin IDs;
+- source module, exact Go module version, and `h1:` checksum;
+- exact `/register` import path and immutable definition digest;
+- registry release fingerprint covering source and every published definition;
+- non-empty dependency constraints copied from the selected definition;
+- published Authority Requests and consumer-reviewed Authority Grants;
+- provided and consumed Contract IDs, majors, and modes;
+- exact consumer-to-provider Contract bindings; and
+- opaque plugin configuration.
+
+For a project that directly selects Pool while Pool depends on Workers, a lock
+graph has this shape (digests and checksums shortened only for this explanation):
 
 ```json
 {
+  "formatVersion": 1,
   "plugins": {
-    "wago-org/workers": {
-      "version": "0.0.0",
-      "requiredCapabilities": [
-        "instance.manage"
-      ],
-      "capabilities": {
-        "instance.manage": {
-          "maxInstances": 8,
-          "maxMemoryBytes": 4194304
-        }
+    "github.com/JairusSW/pool": {
+      "direct": true,
+      "source": {
+        "module": "github.com/JairusSW/pool",
+        "version": "v0.1.2",
+        "checksum": "h1:complete-go-module-checksum"
       },
+      "provider": {
+        "importPath": "github.com/JairusSW/pool/register"
+      },
+      "definitionDigest": "sha256:complete-definition-digest",
+      "releaseFingerprint": "sha256:complete-release-fingerprint",
+      "dependencies": {
+        "github.com/wago-org/workers": "^0.1.0"
+      },
+      "requestedAuthorities": [],
+      "grants": [],
+      "contracts": {
+        "provides": [
+          {
+            "id": "github.com/JairusSW/pool/service",
+            "major": 1
+          }
+        ],
+        "requires": [
+          {
+            "id": "github.com/wago-org/workers/service",
+            "major": 1,
+            "mode": "required"
+          }
+        ]
+      },
+      "bindings": [
+        {
+          "id": "github.com/wago-org/workers/service",
+          "major": 1,
+          "providers": ["github.com/wago-org/workers"]
+        }
+      ],
+      "config": {}
+    },
+    "github.com/wago-org/workers": {
+      "direct": false,
+      "source": {
+        "module": "github.com/wago-org/workers",
+        "version": "v0.1.4",
+        "checksum": "h1:complete-go-module-checksum"
+      },
+      "provider": {
+        "importPath": "github.com/wago-org/workers/register"
+      },
+      "definitionDigest": "sha256:complete-definition-digest",
+      "releaseFingerprint": "sha256:complete-release-fingerprint",
+      "dependencies": {},
+      "requestedAuthorities": [
+        {
+          "name": "instance.manage",
+          "mode": "required",
+          "reason": "own a bounded set of worker instances",
+          "scope": {
+            "maxInstances": 8,
+            "maxMemoryBytes": 67108864
+          }
+        }
+      ],
+      "grants": [
+        {
+          "name": "instance.manage",
+          "scope": {
+            "maxInstances": 8,
+            "maxMemoryBytes": 67108864
+          }
+        }
+      ],
+      "contracts": {
+        "provides": [
+          {
+            "id": "github.com/wago-org/workers/service",
+            "major": 1
+          }
+        ],
+        "requires": []
+      },
+      "bindings": [],
       "config": {
         "maxWorkers": 8,
         "maxQueueBytes": 1048576
@@ -108,119 +269,110 @@ the subset reviewed and granted by the user, and opaque plugin configuration:
 }
 ```
 
-Simple grants use a string array. The object form attaches core-enforced limits
-to resource-owning capabilities while using `true` for an unlimited grant.
-`maxInstances` limits simultaneously live managed instances.
-`maxMemoryBytes` rejects modules whose declared maximum memory exceeds the
-per-instance limit.
+Actual lockfiles contain complete SHA-256 definition digests and Go module
+checksums. Empty arrays, objects, and config values are written explicitly so a
+missing field cannot be confused with an older format or a default grant.
 
-The lockfile is authority-bearing and parsed strictly. A malformed lockfile is
-an error instead of being silently ignored. Lock entries not selected by
-`wago.json` are ignored.
+### Authority policy
 
-`wago add` and `wago plugin update` resolve manifest constraints and write exact
-module versions here. `wago plugin outdated` reports newer module versions
-without changing either file, while `wago plugin rebuild` reproduces the plugin
-runtime from the locked versions.
-
-### Host-integration capabilities
-
-| Capability | Allows the plugin to |
-|---|---|
-| `host.imports` | Add host functions to Wasm import namespaces and resolve exact active caller identity. |
-| `host.environment` | Read the narrow host environment explicitly exposed by Wago. |
-| `runtime.lifecycle` | Observe runtime shutdown and release plugin resources. |
-| `module.compile` | Transform Wasm bytes before compilation or observe compiled modules. |
-| `instance.lifecycle` | Observe or affect instantiation and instance close. |
-| `instance.invoke` | Veto or observe runtime-managed function calls. |
-| `instance.manage` | Create and own restricted managed instances for workers, pools, schedulers, and routers. |
-| `core.runtime` | Directly compile, link, instantiate, and own core modules as a trusted execution-model plugin. |
-
-These grants do not sandbox arbitrary Go code. Plugins are forced-open-source,
-compiled into the consumer's binary, and expected to be audited like any other
-Go dependency. The grants control access to privileged Wago API surfaces.
-Plugin capability names are exact `resource.action` identifiers. The dot is a
-namespace separator, not an inheritance operator; parent and wildcard grants do
-not exist.
-
-`core.runtime` is reserved for audited execution models such as
-`wago-org/component-model`; ordinary plugins should request narrower APIs or
-consume the execution model's versioned service.
-
-Guest permissions such as `fs.read`, `net.outbound`, or `wasi` are different:
-plugins provide those to Wasm modules, and runtime `Policy` controls whether a
-module may use them.
-
-## Load ordering
-
-Plugin packages declare mandatory dependencies and default `before`/`after`
-ordering in their compiled metadata.
-
-Wago resolves one directed acyclic graph. Mandatory dependencies must be
-selected. Missing optional `before`/`after` targets are ignored. Unrelated ready
-plugins use lexical name order, making startup reproducible. Shutdown callbacks
-run in reverse resolved order.
-
-## Plugin configuration
-
-Wago does not interpret a lock entry's `config`. The plugin decodes it through
-`Registry.Config`. Plugins may expose a schema through `ConfigSchemaProvider`;
-`wago plugin plan --json` includes it. A plugin must still reject invalid
-configuration during transactional registration.
-
-Use `wago plugin check` in CI to validate compiled availability, provenance,
-grants, configuration registration, service dependencies, and load order. Use
-`wago plugin plan` to inspect the exact order without starting plugins.
-
-## Publishing an open-source package
-
-When `module` is present, the schema also requires `license` and an HTTPS
-`repository`:
+An Authority Request is immutable publisher metadata:
 
 ```json
 {
-  "$schema": "https://wago.sh/v0/schema.json",
-  "module": "github.com/acme/wago-observability",
-  "version": "0.0.0",
-  "name": "Wago Observability",
-  "short": "observability",
-  "description": "Tracing and metrics plugins for Wago hosts.",
-  "license": "Apache-2.0",
-  "repository": "https://github.com/acme/wago-observability",
-  "homepage": "https://github.com/acme/wago-observability#readme",
-  "category": "observability",
-  "tags": ["metrics", "tracing"],
-  "authors": [
-    {
-      "name": "Example Maintainer",
-      "email": "maintainer@example.com"
-    }
-  ],
-  "subpackages": ["./metrics/wago.json", "./tracing/wago.json"]
+  "name": "host.import.define",
+  "mode": "required",
+  "reason": "provide the wasi_snapshot_preview1 API",
+  "scope": {
+    "modules": ["wasi_snapshot_preview1"]
+  }
 }
 ```
 
-`version` follows semantic versioning and may omit a leading `v`. Publishing
-falls back to the newest Git tag when it is absent. `license` is an SPDX license
-expression. Relative subpackage manifests are recursively inlined before upload.
+An Authority Grant is consumer-reviewed state. It can equal or narrow any
+request but can never add a module, increase a resource limit, or grant an
+authority that was not requested. A required Authority must remain present; an
+optional Authority may be omitted. If a plugin cannot operate within a narrowed
+required scope, its registration fails and the transaction is cancelled.
+Authority names are exact and non-inheriting.
 
-Manifest-loaded runtime plugins additionally declare repository and license
-provenance in their compiled `ExtensionInfo`; Wago validates that metadata during
-plugin planning.
+The CLI authors narrower grants with one strict JSON document rather than
+repeated flags, which the command parser does not accumulate:
 
-## Root fields
+```sh
+wago plugin grant github.com/acme/plugin --scopes '{
+  "github.com/acme/plugin": {
+    "host.import.define": {"modules": ["clock"]},
+    "instance.manage": {"maxInstances": 2, "maxMemoryBytes": 67108864}
+  }
+}'
+```
 
-| Field | Purpose |
-|---|---|
-| `$schema` | Editor-facing JSON Schema URI. |
-| `plugins` | GitHub-relative plugin IDs mapped to version constraints. |
-| `settings` | Sparse project-local runtime defaults layered over global settings. |
-| `module` | Canonical Go module path for publishing. |
-| `version` | Semantic package version. |
-| `name`, `short`, `description` | Registry display and discovery metadata. |
-| `license`, `repository`, `homepage` | Open-source provenance. |
-| `category`, `tags` | Registry discovery metadata. `keywords` is the legacy alias for tags. |
-| `authors` | String or structured author records. |
-| `subpackages` | Inline manifests or relative child `wago.json` references. |
-| `stability` | `experimental`, `stable`, or `deprecated`. |
-| `engines`, `platforms` | Compatible toolchain ranges and GOOS/GOARCH targets. |
+The same `--scopes` document is accepted by `wago add` and `wago plugin update`
+and may name direct or transitive plugins in the resolved graph. Scope overrides
+are applied to the in-memory lock candidate, validated as non-widening, and
+included in the staged runtime validation before any lockfile or artifact is
+published. Optional Authorities still require an explicit `--allow`,
+`--allow-all`, or interactive choice.
+
+`host.import.define` and `compiler.instruction.define` accept exact module-name
+scopes; `compiler.type.define` accepts exact type namespaces. Instance-owning
+authorities require positive `maxInstances` and aggregate live
+`maxMemoryBytes`; zero is not an implicit unlimited grant. Other authorities
+reject scope fields they cannot enforce.
+
+The grants control access to privileged Wago handles. They do not sandbox the
+ordinary Go code linked into the process.
+
+### Contract bindings
+
+A Contract identity is its canonical ID plus incompatible positive major
+version. Consumption mode is one of:
+
+- `required`: exactly one selected provider;
+- `optional`: zero or one selected provider; or
+- `many`: zero or more selected providers in the exact reviewed binding order.
+
+A newly introduced optional consumption with available providers requires
+review instead of silently choosing one. A `many` binding contains every
+selected matching provider. On update, surviving providers keep their reviewed
+order, new providers are appended in lexical Plugin ID order, and additions or
+removals require review.
+
+Every consumption has a `bindings` entry, including an empty binding for an
+unavailable optional or many Contract. Locked replay compares those provider IDs
+with the linked graph rather than choosing again. A missing provider,
+incompatible major, duplicate single provider, altered binding, or cycle rejects
+the complete plan before a plugin factory runs.
+
+The resolver selects exact versions and checksums for every direct and transitive
+requirement. Those requirement edges and the reviewed Contract binding edges are
+validated as one DAG. Providers start before consumers and consumers stop first.
+During consumer `Stop`, its dependency references still work. Wago then revokes
+them, so a retained reference fails closed. Before provider `Stop`, Wago rejects
+new Contract calls and waits for existing leased calls to return. Guest-callable
+callbacks use a separate admission gate: Wago closes it before that plugin's
+`Stop`, lets `Stop` cancel admitted work, and then drains it.
+
+### Strictness and CI
+
+The lock parser rejects unknown and missing fields, unsupported format versions,
+invalid IDs or ranges, malformed checksums or digests, invalid scopes, widened
+grants, inconsistent bindings, missing transitive resolutions, and graph cycles.
+Entries not reachable from a direct manifest requirement are invalid rather
+than silently ignored.
+
+Use these commands to inspect and verify it:
+
+```sh
+wago plugin tree
+wago plugin list --json
+wago plugin inspect github.com/JairusSW/pool
+wago plugin rebuild --locked
+```
+
+`tree` explains direct and transitive causes. `list --json` and `inspect` read
+linked immutable definitions and side-effect-free plan entries without starting
+plugins. `rebuild --locked` verifies the registry release, source checksum,
+committed provider snapshot, linked definition digests, configuration, grants,
+bindings, and dry-run Plugin Plan, then reproduces the artifact without changing
+resolution or authority.

@@ -80,6 +80,11 @@ func run(ctx *command.Ctx, in io.Reader, out io.Writer, interactive bool) (resul
 		return result{}, err
 	}
 	project.EnsureGitignore(".wago/")
+	if mode == modePlugin {
+		if err := writePluginScaffold(".", fields["package"].(map[string]any)); err != nil {
+			return result{}, err
+		}
+	}
 	return result{Mode: mode, Created: created, Plugins: pluginCount}, nil
 }
 
@@ -192,17 +197,18 @@ func ask(reader *bufio.Reader, out io.Writer, label, provided, fallback string) 
 func inferDefaults(manifest map[string]any) answers {
 	cwd, _ := os.Getwd()
 	defaults := answers{name: filepath.Base(cwd)}
-	defaults.name = manifestString(manifest, "name", defaults.name)
-	defaults.description = manifestString(manifest, "description", "")
-	defaults.module = manifestString(manifest, "module", moduleFromGoMod())
-	defaults.version = manifestString(manifest, "version", "")
-	defaults.license = manifestString(manifest, "license", "")
-	defaults.repository = manifestString(manifest, "repository", repositoryForModule(defaults.module))
-	defaults.homepage = manifestString(manifest, "homepage", defaults.repository)
-	defaults.category = manifestString(manifest, "category", "")
-	defaults.stability = manifestString(manifest, "stability", "experimental")
-	defaults.author = firstString(manifest["authors"])
-	defaults.tags = joinedStrings(manifest["tags"])
+	pkg, _ := manifest["package"].(map[string]any)
+	defaults.name = manifestString(pkg, "name", defaults.name)
+	defaults.description = manifestString(pkg, "description", "")
+	defaults.module = manifestString(pkg, "module", moduleFromGoMod())
+	defaults.version = manifestString(pkg, "version", "")
+	defaults.license = manifestString(pkg, "license", "")
+	defaults.repository = manifestString(pkg, "repository", repositoryForModule(defaults.module))
+	defaults.homepage = manifestString(pkg, "homepage", defaults.repository)
+	defaults.category = manifestString(pkg, "category", "")
+	defaults.stability = manifestString(pkg, "stability", "experimental")
+	defaults.author = firstAuthor(pkg["authors"])
+	defaults.tags = joinedStrings(pkg["tags"])
 	defaults.plugins = joinedPlugins(manifest["plugins"])
 	return defaults
 }

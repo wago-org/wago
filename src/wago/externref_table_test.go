@@ -239,8 +239,8 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 	if err := rtB.Close(); err != nil {
 		t.Fatalf("Runtime B Close with live instance: %v", err)
 	}
-	if value, ok := inB.ExternRefValue(local); !ok || value != "local-table-root" {
-		t.Fatalf("live table root after Runtime.Close = %#v, %v", value, ok)
+	if value, ok := inB.ExternRefValue(local); ok {
+		t.Fatalf("table root after Runtime.Close = %#v, %v; want released", value, ok)
 	}
 	if err := inB.Close(); err != nil {
 		t.Fatalf("Runtime B instance Close: %v", err)

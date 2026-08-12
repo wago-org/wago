@@ -44,7 +44,7 @@ func TestRuntimeCommandsCarryRoutingAndCompilationSurface(t *testing.T) {
 	for _, flag := range run.AllFlags() {
 		flags[flag.Name] = true
 	}
-	for _, name := range []string{"core", "parallel", "deferred-bounds-checking", "no-deferred-bounds-checking", "plugin", "bare"} {
+	for _, name := range []string{"core", "parallel", "deferred-bounds-checking", "no-deferred-bounds-checking", "local", "bare"} {
 		if !flags[name] {
 			t.Errorf("runtime run description omits --%s", name)
 		}

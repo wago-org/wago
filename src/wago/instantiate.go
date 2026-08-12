@@ -17,10 +17,12 @@ type InstantiateOptions struct {
 	GC      GCConfig
 	store   *referenceStore
 
-	runtime       *Runtime
-	origin        InstantiateOrigin
-	pluginGC      *GCConfig
-	forceSyncHost bool
+	runtime        *Runtime
+	origin         InstantiateOrigin
+	pluginGC       *GCConfig
+	forceSyncHost  bool
+	afterCreate    func(*Instance) error
+	moduleIdentity ModuleIdentity
 }
 
 // Instantiable is the set of sources Instantiate accepts. The interface is
@@ -1283,7 +1285,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
-		nativeContext: nativeContextPtr,
+		nativeContext:  nativeContextPtr,
+		moduleIdentity: opts.moduleIdentity,
 	}
 	if c.allowsIndependentInstanceExecution(imports) {
 		in.executionFlags.Store(executionFlagIndependent)
@@ -1360,6 +1363,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	if opts.runtime != nil {
+		if err := opts.runtime.registerInstance(in); err != nil {
+			return nil, err
+		}
 		// Once a Runtime-owned Instance exists, every later failure must dispose it
 		// through the normal lifecycle before the instantiation error escapes.
 		defer func() {
@@ -1411,6 +1417,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 		}
 		return nil, initErr
+	}
+	if opts.afterCreate != nil {
+		if err := opts.afterCreate(in); err != nil {
+			return nil, err
+		}
 	}
 
 	// Run the start function (() -> ()) now that memory, globals, table, and data

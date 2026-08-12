@@ -102,19 +102,26 @@ func (r *CallerResolver) activate(rt *Runtime) {
 	rt.callerResolverActive.Store(true)
 }
 
+func (r *CallerResolver) close() error {
+	if r != nil {
+		r.rt.Store(nil)
+	}
+	return nil
+}
+
 // Resolve returns the exact instance making caller's active synchronous host
 // call. Forged, expired, cross-runtime, and low-level HostModule values are
 // rejected.
-func (r *CallerResolver) Resolve(caller HostModule) (*Instance, error) {
+func (r *CallerResolver) Resolve(caller HostModule) (InstanceIdentity, error) {
 	if r == nil {
-		return nil, fmt.Errorf("wago: nil caller resolver: %w", ErrPermissionDenied)
+		return InstanceIdentity{}, fmt.Errorf("wago: nil caller resolver: %w", ErrPermissionDenied)
 	}
 	rt := r.rt.Load()
 	h, ok := caller.(instanceHostModule)
 	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt {
-		return nil, fmt.Errorf("wago: caller identity requires an active host call from the owning runtime: %w", ErrPermissionDenied)
+		return InstanceIdentity{}, fmt.Errorf("wago: caller identity requires an active host call from the owning runtime: %w", ErrPermissionDenied)
 	}
-	return h.in, nil
+	return InstanceIdentity{value: h.in}, nil
 }
 
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
@@ -147,6 +154,8 @@ type instancePluginState struct {
 
 type instanceCloseState struct {
 	done          chan struct{}
+	quiesced      chan struct{}
+	quiescedOnce  sync.Once
 	result        error
 	interruptStop func()
 }
@@ -242,7 +251,7 @@ type hostFuncRefGCState struct {
 // signature. The returned handle is suitable as an Imports value for matching
 // function imports and must be closed after every importing instance.
 func (rt *Runtime) NewHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error) {
-	return rt.newHostFuncRef(fn, sig, false)
+	return rt.newHostFuncRef(fn, sig, false, false)
 }
 
 // NewGCHostFuncRef creates a Runtime-owned host function that may transfer
@@ -255,13 +264,18 @@ func (rt *Runtime) NewGCHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, err
 	if !funcSigHasGCRefs(sig) {
 		return nil, fmt.Errorf("wago: GC host function signature has no collector references")
 	}
-	return rt.newHostFuncRef(fn, sig, true)
+	return rt.newHostFuncRef(fn, sig, true, false)
 }
 
-func (rt *Runtime) newHostFuncRef(fn HostFunc, sig FuncSig, gcCapable bool) (*HostFuncRef, error) {
+func (rt *Runtime) newHostFuncRef(fn HostFunc, sig FuncSig, gcCapable, allowLoading bool) (*HostFuncRef, error) {
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
+	end, err := rt.beginOperation("NewHostFuncRef", allowLoading)
+	if err != nil {
+		return nil, err
+	}
+	defer end()
 	if fn == nil {
 		return nil, fmt.Errorf("wago: host function is nil")
 	}
@@ -270,11 +284,6 @@ func (rt *Runtime) newHostFuncRef(fn HostFunc, sig FuncSig, gcCapable bool) (*Ho
 	}
 	if _, err := valTypesSlots(sig.Results); err != nil {
 		return nil, fmt.Errorf("wago: host function results: %w", err)
-	}
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	if rt.closed {
-		return nil, fmt.Errorf("wago: NewHostFuncRef on a closed runtime")
 	}
 	owner := &HostFuncRef{
 		fn:    fn,

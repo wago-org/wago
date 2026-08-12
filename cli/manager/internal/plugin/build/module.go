@@ -1,7 +1,7 @@
 // The .wago build module: a small generated Go module that compiles wago together
 // with a project's plugins into a custom binary. Each plugin is a normal Go module
-// dependency (added with `go get`, recorded in .wago/go.mod), blank-imported via
-// its `register` package so its init() self-registers it with the engine. wago's
+// dependency (added with `go get`, recorded in .wago/go.mod), imported through
+// its `register` package so Providers() contributes to an explicit catalog. Wago's
 // runtime is imported as a library (github.com/wago-org/wago/cli/runtime), so there
 // are no source edits and no overlay — just `go build`.
 
@@ -24,13 +24,17 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/cli/internal/project"
 
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/internal/atomicfile"
 )
 
-// buildModuleName is the generated module's path. It never leaves the machine.
-const buildModuleName = "wago.local/build"
+const (
+	// buildModuleName is the generated module's path. It never leaves the machine.
+	buildModuleName = "wago.local/build"
+	wagoModuleName  = "github.com/wago-org/wago"
+)
 
 type Config struct {
 	RuntimeVersion string
@@ -38,9 +42,69 @@ type Config struct {
 	BuildTag       string
 }
 
-// registerImport is the package a build blank-imports to self-register a plugin:
-// the module's conventional `register` subpackage.
-func registerImport(module string) string { return module + "/register" }
+type Input struct {
+	Sources         []project.PluginSource    `json:"sources"`
+	ProviderImports []string                  `json:"providerImports"`
+	Selections      []project.PluginSelection `json:"selections"`
+}
+
+func InputFromLock(lock project.LockDocument) (Input, error) {
+	if err := project.ValidateLock(lock); err != nil {
+		return Input{}, err
+	}
+	input := Input{}
+	type linkedRelease struct {
+		id          string
+		source      project.PluginSource
+		provider    project.ProviderSource
+		fingerprint string
+	}
+	seenSource := map[string]linkedRelease{}
+	seenProvider := map[string]linkedRelease{}
+	ids := make([]string, 0, len(lock.Plugins))
+	for id := range lock.Plugins {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		entry := lock.Plugins[id]
+		linked := linkedRelease{id: id, source: entry.Source, provider: entry.Provider, fingerprint: entry.ReleaseFingerprint}
+		if previous, ok := seenSource[entry.Source.Module]; ok {
+			if previous.source != linked.source || previous.provider != linked.provider || previous.fingerprint != linked.fingerprint {
+				return Input{}, fmt.Errorf("plugins %q and %q link conflicting releases for source module %q", previous.id, id, entry.Source.Module)
+			}
+		} else {
+			seenSource[entry.Source.Module] = linked
+			input.Sources = append(input.Sources, entry.Source)
+		}
+		if previous, ok := seenProvider[entry.Provider.ImportPath]; ok {
+			if previous.source != linked.source || previous.provider != linked.provider || previous.fingerprint != linked.fingerprint {
+				return Input{}, fmt.Errorf("plugins %q and %q link provider import %q from conflicting source releases", previous.id, id, entry.Provider.ImportPath)
+			}
+		} else {
+			seenProvider[entry.Provider.ImportPath] = linked
+			input.ProviderImports = append(input.ProviderImports, entry.Provider.ImportPath)
+		}
+		input.Selections = append(input.Selections, project.PluginSelection{
+			ID: id, DefinitionDigest: entry.DefinitionDigest,
+			Direct: entry.Direct, Dependencies: cloneStringMap(entry.Dependencies),
+			Grants:    append([]project.AuthorityGrant(nil), entry.Grants...),
+			Contracts: append([]project.ContractBinding(nil), entry.Bindings...),
+			Config:    append(json.RawMessage(nil), entry.Config...),
+		})
+	}
+	sort.Slice(input.Sources, func(i, j int) bool { return input.Sources[i].Module < input.Sources[j].Module })
+	sort.Strings(input.ProviderImports)
+	return input, nil
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
+}
 
 // ensureBuildModule creates or refreshes the .wago module. Refreshing matters
 // because a cached project build may have been created from a different Wago
@@ -62,6 +126,14 @@ func syncBuildModule(dir string) (changed bool, err error) {
 	}
 	before, readErr := os.ReadFile(gomod)
 	exists := readErr == nil
+	current := goModJSON{}
+	if exists {
+		var err error
+		current, err = readGoModStrict(dir)
+		if err != nil {
+			return false, fmt.Errorf("read generated build module: %w", err)
+		}
+	}
 	src, haveSrc := SourceDir()
 	goVer := strings.TrimPrefix(runtime.Version(), "go")
 	if haveSrc {
@@ -69,32 +141,48 @@ func syncBuildModule(dir string) (changed bool, err error) {
 			goVer = v
 		}
 	}
+	desiredReplaces := map[string]string{}
+	if haveSrc {
+		desiredReplaces[wagoModuleName] = filepath.ToSlash(src)
+		for _, replacement := range mirroredReplaces(src) {
+			old, replacement, ok := strings.Cut(replacement, "=")
+			if ok && old != wagoModuleName {
+				desiredReplaces[old] = replacement
+			}
+		}
+	}
 	var edits [][]string
 	if !exists {
 		edits = append(edits, []string{"mod", "init", buildModuleName})
 	}
 	edits = append(edits, []string{"mod", "edit", "-go=" + goVer})
-	if haveSrc {
-		// Local development: build against the wago checkout and mirror its
-		// filesystem replaces so private / untagged sibling plugins resolve.
-		edits = append(edits,
-			[]string{"mod", "edit", "-require=github.com/wago-org/wago@v0.0.0"},
-			[]string{"mod", "edit", "-replace=github.com/wago-org/wago=" + filepath.ToSlash(src)},
-		)
-		for _, r := range mirroredReplaces(src) {
-			edits = append(edits, []string{"mod", "edit", "-replace=" + r})
+	for _, replacement := range current.Replace {
+		old := moduleVersionSpec(replacement.Old.Path, replacement.Old.Version)
+		want, wanted := desiredReplaces[old]
+		if !wanted || want != moduleVersionSpec(replacement.New.Path, replacement.New.Version) {
+			edits = append(edits, []string{"mod", "edit", "-dropreplace=" + old})
 		}
-	} else if exists {
-		// A generated module can outlive an installed source checkout. Do not
-		// leave it pinned to a stale local tree when it should use the proxy.
-		edits = append(edits, []string{"mod", "edit", "-dropreplace=github.com/wago-org/wago"})
+	}
+	if haveSrc {
+		// Local development builds against the Wago checkout and mirrors its
+		// current replaces. Reconciliation above removes replaces that disappeared
+		// or changed instead of leaving mutable local code in the generated module.
+		edits = append(edits, []string{"mod", "edit", "-require=" + wagoModuleName + "@v0.0.0"})
+		keys := make([]string, 0, len(desiredReplaces))
+		for old := range desiredReplaces {
+			keys = append(keys, old)
+		}
+		sort.Strings(keys)
+		for _, old := range keys {
+			edits = append(edits, []string{"mod", "edit", "-replace=" + old + "=" + desiredReplaces[old]})
+		}
 	}
 	// Otherwise wago is expected to be published: `go mod tidy` (in
 	// ensureBuiltBinary) resolves it from the module proxy — a globally-installed
 	// wago needs no source checkout to build a project's plugins.
 	for _, args := range edits {
 		cmd := exec.Command("go", args...)
-		automation.ConfigureCommand(cmd)
+		configureGeneratedModuleGoCommand(cmd)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if !exists {
@@ -120,18 +208,69 @@ type goModJSON struct {
 }
 
 func readGoMod(dir string) (goModJSON, bool) {
+	m, err := readGoModStrict(dir)
+	return m, err == nil
+}
+
+func readGoModStrict(dir string) (goModJSON, error) {
 	cmd := exec.Command("go", "mod", "edit", "-json")
-	automation.ConfigureCommand(cmd)
+	configureGeneratedModuleGoCommand(cmd)
 	cmd.Dir = dir
 	data, err := cmd.Output()
 	if err != nil {
-		return goModJSON{}, false
+		return goModJSON{}, err
 	}
 	var m goModJSON
-	if json.Unmarshal(data, &m) != nil {
-		return goModJSON{}, false
+	if err := json.Unmarshal(data, &m); err != nil {
+		return goModJSON{}, err
 	}
-	return m, true
+	return m, nil
+}
+
+func moduleVersionSpec(path, version string) string {
+	if version != "" {
+		return path + "@" + version
+	}
+	return path
+}
+
+// RejectLockedSourceReplacements prevents a generated build module from
+// substituting mutable local code (or another module release) for an exact
+// version and checksum recorded in wago-lock.json.
+func RejectLockedSourceReplacements(dir string, sources []project.PluginSource) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	m, err := readGoModStrict(dir)
+	if err != nil {
+		return fmt.Errorf("read generated build module: %w", err)
+	}
+	locked := make(map[string]project.PluginSource, len(sources))
+	for _, source := range sources {
+		// The active Wago source checkout is the generated runtime itself, not
+		// mutable third-party plugin code. Local development intentionally replaces
+		// this module and fingerprints its complete Git state in Hash.
+		if source.Module == wagoModuleName {
+			continue
+		}
+		locked[source.Module] = source
+	}
+	for _, replacement := range m.Replace {
+		source, ok := locked[replacement.Old.Path]
+		if !ok {
+			continue
+		}
+		old := moduleVersionSpec(replacement.Old.Path, replacement.Old.Version)
+		new := moduleVersionSpec(replacement.New.Path, replacement.New.Version)
+		return fmt.Errorf("locked plugin source %s@%s cannot use go.mod replace %s => %s; remove the replace so Go can verify the locked version and checksum", source.Module, source.Version, old, new)
+	}
+	return nil
 }
 
 // wagoGoDirective returns wago's declared go version (e.g. "1.22"), or "".
@@ -186,11 +325,26 @@ func RunGo(dir string, verbose bool, args ...string) error {
 	return withBuildLock(dir, func() error { return runGo(dir, verbose, args...) })
 }
 
+func configureGeneratedModuleGoCommand(command *exec.Cmd) {
+	env := command.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	filtered := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, "GOWORK=") {
+			filtered = append(filtered, entry)
+		}
+	}
+	command.Env = append(filtered, "GOWORK=off")
+	automation.ConfigureCommand(command)
+}
+
 func runGo(dir string, verbose bool, args ...string) error {
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
-	automation.ConfigureCommand(cmd)
+	configureGeneratedModuleGoCommand(cmd)
 	if verbose {
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
@@ -212,7 +366,7 @@ func Get(dir, modspec string, verbose bool) error {
 		cmd := exec.Command("go", "get", modspec)
 		cmd.Dir = dir
 		cmd.Env = os.Environ()
-		automation.ConfigureCommand(cmd)
+		configureGeneratedModuleGoCommand(cmd)
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			return nil
@@ -246,44 +400,74 @@ func Update(dir, target string, verbose bool) error {
 	return RunGo(dir, verbose, "get", "-u", target)
 }
 
-// writeBuildMain generates .wago/main.go: import wago's CLI as a library and
-// blank-import each dependency's register package.
-func WriteMain(dir string, deps []string, config Config) error {
-	return withBuildLock(dir, func() error { return writeMain(dir, deps, config, newBuildIdentity(Hash(deps, config))) })
+// WriteMain generates a catalog whose register packages are called explicitly.
+func WriteMain(dir string, input Input, config Config) error {
+	return withBuildLock(dir, func() error { return writeMain(dir, input, config, newBuildIdentity(Hash(input, config))) })
 }
 
-func writeMain(dir string, deps []string, config Config, buildIdentity string) error {
-	sorted := append([]string(nil), deps...)
-	sort.Strings(sorted)
+func writeMain(dir string, input Input, config Config, buildIdentity string) error {
+	selectionJSON, err := json.Marshal(input.Selections)
+	if err != nil {
+		return fmt.Errorf("encode plugin selections: %w", err)
+	}
 	var b strings.Builder
 	b.WriteString("// Code generated by `wago`. DO NOT EDIT.\npackage main\n\nimport (\n")
+	b.WriteString("\t\"encoding/json\"\n")
+	b.WriteString("\t\"fmt\"\n")
+	b.WriteString("\t\"os\"\n")
+	b.WriteString("\twago \"github.com/wago-org/wago\"\n")
 	b.WriteString("\truntime \"github.com/wago-org/wago/cli/runtime\"\n")
-	for _, m := range sorted {
-		fmt.Fprintf(&b, "\t_ %q\n", registerImport(m))
+	for index, importPath := range input.ProviderImports {
+		fmt.Fprintf(&b, "\tprovider%d %q\n", index, importPath)
 	}
 	b.WriteString(")\n\n")
 	fmt.Fprintf(&b, "const version = %q\n", config.RuntimeVersion)
 	fmt.Fprintf(&b, "const buildIdentity = %q\n\n", buildIdentity)
-	b.WriteString("func main() { runtime.MainWithArtifactCacheIdentity(version, buildIdentity) }\n")
+	fmt.Fprintf(&b, "var selectionJSON = []byte(%q)\n\n", selectionJSON)
+	b.WriteString("func pluginSet() wago.PluginSet {\n")
+	b.WriteString("\tvar selections []wago.PluginSelection\n")
+	b.WriteString("\tif err := json.Unmarshal(selectionJSON, &selections); err != nil { panic(err) }\n")
+	b.WriteString("\tvar providers []wago.PluginProvider\n")
+	for index := range input.ProviderImports {
+		fmt.Fprintf(&b, "\tproviders = append(providers, provider%d.Providers()...)\n", index)
+	}
+	b.WriteString("\treturn wago.PluginSet{Providers: providers, Selections: selections}\n}\n\n")
+	b.WriteString("func main() {\n")
+	b.WriteString("\tset := pluginSet()\n")
+	b.WriteString("\tif os.Getenv(\"WAGO_INTERNAL_VALIDATE_PLUGIN_SET\") == \"1\" {\n")
+	b.WriteString("\t\tif err := wago.ValidatePluginSet(set); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }; return\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\truntime.MainWithPluginSet(version, buildIdentity, set)\n")
+	b.WriteString("}\n")
 	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(b.String()), 0o644)
 }
 
 // ensureBuiltBinary builds (or reuses a cached) custom wago binary at
 // .wago/bin/wago for deps. cached reports a hash hit (deps + toolchain unchanged).
-func EnsureBinary(dir string, deps []string, force, verbose bool, config Config) (bin string, cached bool, err error) {
+func EnsureBinary(dir string, input Input, force, verbose bool, config Config) (bin string, cached bool, err error) {
 	err = withBuildLock(dir, func() error {
-		bin, cached, err = ensureBinary(dir, deps, force, verbose, config)
+		bin, cached, err = ensureBinary(dir, input, force, verbose, config)
 		return err
 	})
 	return bin, cached, err
 }
 
-func ensureBinary(dir string, deps []string, force, verbose bool, config Config) (bin string, cached bool, err error) {
+func ensureBinary(dir string, input Input, force, verbose bool, config Config) (bin string, cached bool, err error) {
 	bin = BinaryPath(dir)
 	hashFile := bin + ".hash"
-	want := Hash(deps, config)
+	want := Hash(input, config)
+	// Check before reconciliation so a preexisting replacement cannot be
+	// silently dropped and mistaken for a reusable exact-source build.
+	if err := RejectLockedSourceReplacements(dir, input.Sources); err != nil {
+		return "", false, err
+	}
 	moduleChanged, err := syncBuildModule(dir)
 	if err != nil {
+		return "", false, err
+	}
+	// syncBuildModule may mirror replaces from a development Wago checkout.
+	// Locked plugin sources must remain exact even in that configuration.
+	if err := RejectLockedSourceReplacements(dir, input.Sources); err != nil {
 		return "", false, err
 	}
 	if !force && !moduleChanged {
@@ -297,7 +481,7 @@ func ensureBinary(dir string, deps []string, force, verbose bool, config Config)
 		return "", false, err
 	}
 	buildIdentity := newBuildIdentity(want)
-	if err := writeMain(dir, deps, config, buildIdentity); err != nil {
+	if err := writeMain(dir, input, config, buildIdentity); err != nil {
 		return "", false, err
 	}
 	// Resolve the import graph (fetch any published plugins; local replaces stay
@@ -362,7 +546,7 @@ func newBuildIdentity(buildHash string) string {
 func ModuleVersion(dir, module string) (version string, ok bool) {
 	_ = withBuildLock(dir, func() error {
 		cmd := exec.Command("go", "list", "-m", "-f={{.Version}}", module)
-		automation.ConfigureCommand(cmd)
+		configureGeneratedModuleGoCommand(cmd)
 		cmd.Dir = dir
 		if output, err := cmd.Output(); err == nil {
 			version = strings.TrimSpace(string(output))
@@ -380,16 +564,95 @@ func BinaryPath(dir string) string {
 // buildHash keys the built binary on the exact dependency set, toolchain, and
 // Wago source used by the generated module. Including local source state keeps
 // `go run ./cli/wago` from handing commands to a stale plugin binary.
-func Hash(deps []string, config Config) string {
-	sorted := append([]string(nil), deps...)
-	sort.Strings(sorted)
+func Hash(input Input, config Config) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "wago-build\x00%s\x00%s\x00%s\x00%s/%s\x00", config.RuntimeVersion, config.Profile, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	if src, ok := SourceDir(); ok {
 		fmt.Fprintf(h, "source\x00%s\x00", localSourceFingerprint(src))
+		for _, replacement := range localReplacementFingerprints(src) {
+			fmt.Fprintf(h, "replace\x00%s\x00", replacement)
+		}
 	}
-	for _, d := range sorted {
-		fmt.Fprintf(h, "%s\x00", d)
+	if encoded, err := json.Marshal(input); err == nil {
+		_, _ = h.Write(encoded)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func localReplacementFingerprints(src string) []string {
+	m, ok := readGoMod(src)
+	if !ok {
+		return nil
+	}
+	fingerprints := make([]string, 0, len(m.Replace))
+	for _, replacement := range m.Replace {
+		if !isFilesystemPath(replacement.New.Path) {
+			continue
+		}
+		target := replacement.New.Path
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(src, target)
+		}
+		if _, err := os.Stat(target); err != nil {
+			continue
+		}
+		fingerprints = append(fingerprints,
+			moduleVersionSpec(replacement.Old.Path, replacement.Old.Version)+"="+
+				filepath.ToSlash(filepath.Clean(target))+"@"+localTreeFingerprint(target),
+		)
+	}
+	sort.Strings(fingerprints)
+	return fingerprints
+}
+
+// localTreeFingerprint hashes all files that a filesystem-replaced module can
+// contribute to a build. This intentionally includes ignored and generated
+// files; Git status alone cannot prove that mutable local source is unchanged.
+func localTreeFingerprint(root string) string {
+	h := sha256.New()
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			fmt.Fprintf(h, "error\x00%s\x00%v\x00", filepath.ToSlash(path), walkErr)
+			return nil
+		}
+		if entry.IsDir() {
+			if path != root && entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			fmt.Fprintf(h, "relative-error\x00%s\x00%v\x00", filepath.ToSlash(path), err)
+			return nil
+		}
+		fmt.Fprintf(h, "file\x00%s\x00", filepath.ToSlash(relative))
+		info, err := entry.Info()
+		if err != nil {
+			fmt.Fprintf(h, "info-error\x00%v\x00", err)
+			return nil
+		}
+		fmt.Fprintf(h, "%s\x00", info.Mode().Type())
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			fmt.Fprintf(h, "link\x00%s\x00%v\x00", target, err)
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			fmt.Fprintf(h, "open-error\x00%v\x00", err)
+			return nil
+		}
+		_, copyErr := io.Copy(h, file)
+		closeErr := file.Close()
+		fmt.Fprintf(h, "\x00copy-error\x00%v\x00close-error\x00%v\x00", copyErr, closeErr)
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(h, "walk-error\x00%v\x00", err)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }

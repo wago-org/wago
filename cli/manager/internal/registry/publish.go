@@ -2,101 +2,134 @@ package registry
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/cli/internal/project"
 )
 
-func registryPublish(options PublishRequest) {
-	registryPublishContext(context.Background(), options)
+type publishProvider struct {
+	ImportPath       string                `json:"importPath"`
+	Definition       wago.PluginDefinition `json:"definition"`
+	DefinitionDigest string                `json:"definitionDigest"`
 }
 
+func registryPublish(options PublishRequest) { registryPublishContext(context.Background(), options) }
+
 func registryPublishContext(ctx context.Context, options PublishRequest) {
-	manifestPath := options.Manifest
-	var ver string
-	commit := options.Commit
-	notes := options.Notes
-	category := options.Category
-	tags := options.Tags
+	if err := automation.RequireOnline("plugin publication"); err != nil {
+		fatal("publish: %v", err)
+	}
 	token := resolveToken()
 	if token == "" {
 		fatal("publish: not logged in (run: wago auth login)")
 	}
+	manifestPath := options.Manifest
 	if manifestPath == "" {
-		// The standard manifest is wago.json; fall back to the older
-		// wago-plugin.json name if that's what the module ships.
-		manifestPath = "wago.json"
-		for _, cand := range []string{"wago.json", "wago-plugin.json"} {
-			if _, err := os.Stat(cand); err == nil {
-				manifestPath = cand
-				break
-			}
-		}
+		manifestPath = project.File
 	}
-	raw, err := os.ReadFile(manifestPath)
+	manifest, metadata, err := readPublishManifest(manifestPath)
 	if err != nil {
-		fatal("publish: reading manifest: %v", err)
+		fatal("publish: %v", err)
 	}
-	// wago.json is self-similar: a subpackage may be a "./path/wago.json" string.
-	// The server can't read those local files, so inline them here before upload.
-	raw, err = InlineManifest(raw, filepath.Dir(manifestPath))
-	if err != nil {
-		fatal("publish: resolving subpackage refs in %s: %v", manifestPath, err)
+	moduleRoot := filepath.Dir(manifestPath)
+	version := strings.TrimSpace(metadata.Version)
+	if version == "" {
+		version = strings.TrimSpace(gitOutputAt(moduleRoot, "describe", "--tags", "--abbrev=0"))
 	}
-	var mf struct {
-		Module  string `json:"module"`
-		Version string `json:"version"`
+	if version == "" {
+		fatal("publish: no version — set package.version or tag the repository")
 	}
-	if err := json.Unmarshal(raw, &mf); err != nil {
-		fatal("publish: parsing %s: %v", manifestPath, err)
-	}
-	if strings.TrimSpace(mf.Module) == "" {
-		fatal("publish: %s has no \"module\" field", manifestPath)
-	}
-
-	// The version comes from the manifest, falling back to the newest git tag.
-	ver = strings.TrimSpace(mf.Version)
-	if ver == "" {
-		ver = strings.TrimSpace(GitOutput("describe", "--tags", "--abbrev=0"))
-	}
-	if ver == "" {
-		fatal("publish: no version — set \"version\" in %s or tag the repo", manifestPath)
-	}
+	version = canonicalGoVersion(version)
+	commit := strings.TrimSpace(gitOutputAt(moduleRoot, "rev-list", "-n", "1", version))
 	if commit == "" {
-		commit = strings.TrimSpace(GitOutput("rev-parse", "HEAD")) // best-effort; "" if not a repo
+		fatal("publish: cannot resolve the commit for tag %s; fetch the exact release tag", version)
 	}
-
+	if !fullGitCommit(commit) {
+		fatal("publish: commit must be the full 40-character commit for tag %s", version)
+	}
+	generated, localProviders, err := generateLocalProviderCatalog(ctx, moduleRoot, metadata)
+	if err != nil {
+		fatal("publish: local provider catalog: %v", err)
+	}
+	localVersion, err := catalogVersion(metadata.Version, localProviders)
+	if err != nil {
+		fatal("publish: local provider catalog: %v", err)
+	}
+	if strings.TrimPrefix(localVersion, "v") != strings.TrimPrefix(version, "v") {
+		fatal("publish: local provider version %s does not match release %s", localVersion, version)
+	}
+	if err := validatePublishProviders(localProviders, metadata, version); err != nil {
+		fatal("publish: local provider catalog: %v", err)
+	}
+	committedPath := filepath.Join(moduleRoot, wago.ProviderCatalogFile)
+	committed, err := readRegularFile(committedPath, providerCatalogFileLimit)
+	if err != nil {
+		fatal("publish: read %s: %v (run: wago plugin catalog)", committedPath, err)
+	}
+	if !bytes.Equal(committed, generated) {
+		fatal("publish: %s is stale (run: wago plugin catalog)", committedPath)
+	}
+	download, err := downloadModuleSource(ctx, metadata.Module, version)
+	if err != nil {
+		fatal("publish: source artifact: %v", err)
+	}
+	artifactManifestRaw, err := readRegularFile(filepath.Join(download.Dir, project.File), providerCatalogFileLimit)
+	if err != nil {
+		fatal("publish: exact source artifact %s: %v", project.File, err)
+	}
+	artifactManifest, artifactMetadata, _, err := parsePublishManifest(artifactManifestRaw)
+	if err != nil {
+		fatal("publish: exact source artifact %s: %v", project.File, err)
+	}
+	if err := comparePublishedPackageManifest(manifest, artifactManifest); err != nil {
+		fatal("publish: exact source artifact %s: %v", project.File, err)
+	}
+	if artifactMetadata.Module != metadata.Module {
+		fatal("publish: exact source artifact module is %s, want %s", artifactMetadata.Module, metadata.Module)
+	}
+	artifactCatalog, err := readRegularFile(filepath.Join(download.Dir, wago.ProviderCatalogFile), providerCatalogFileLimit)
+	if err != nil {
+		fatal("publish: exact source artifact %s: %v", wago.ProviderCatalogFile, err)
+	}
+	if !bytes.Equal(artifactCatalog, generated) {
+		fatal("publish: exact source artifact %s does not match the local generated catalog", wago.ProviderCatalogFile)
+	}
+	document, err := wago.DecodeProviderCatalog(artifactCatalog)
+	if err != nil {
+		fatal("publish: exact source artifact %s: %v", wago.ProviderCatalogFile, err)
+	}
+	providers := providerEntries(document.Providers)
+	if err := validatePublishProviders(providers, artifactMetadata, version); err != nil {
+		fatal("publish: exact source artifact provider catalog: %v", err)
+	}
 	body := map[string]any{
-		"manifest": json.RawMessage(raw),
-		"version":  ver,
-		"commit":   commit,
-		"notes":    notes,
-		"category": category,
+		"manifest": artifactManifest, "version": version, "checksum": download.Sum, "providers": providers,
+		"commit": commit, "notes": options.Notes, "unpackedKB": UnpackedKB(moduleRoot),
 	}
-	if t := splitCommaList(tags); len(t) > 0 {
-		body["tags"] = t
-	}
-	if kb := UnpackedKB(filepath.Dir(manifestPath)); kb > 0 {
-		body["unpackedKB"] = kb
-	}
-
 	status, data, err := apiRequestContext(ctx, http.MethodPost, "/api/publish", token, body)
 	if err != nil {
 		fatal("publish: %v", err)
 	}
 	switch status {
 	case http.StatusOK:
-		fmt.Printf("%s Published %s %s\n", cyan("✓"), bold(mf.Module), ver)
-		fmt.Printf("  %s\n", dim(packageURL(mf.Module)))
+		fmt.Printf("%s Published %s %s with %d provider%s\n", cyan("✓"), bold(metadata.Module), version, len(providers), pluralRegistry(len(providers)))
+		fmt.Printf("  %s\n", dim(packageURL(metadata.Module)))
 	case http.StatusConflict:
-		fatal("publish: version %s is already published", ver)
+		fatal("publish: version %s is already published", version)
 	case http.StatusForbidden:
-		fatal("publish: you are not the owner of %s", mf.Module)
+		fatal("publish: you are not the owner of %s", metadata.Module)
 	case http.StatusUnauthorized:
 		fatal("publish: not logged in (run: wago auth login)")
 	default:
@@ -104,8 +137,271 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	}
 }
 
-// registryUnpublish removes a whole package, or a single version when the
-// argument carries an @version suffix. It confirms first unless --yes is given.
+type publishMetadata struct {
+	Module, Version, Repository, Homepage, License string
+	Authors                                        []string
+	Definitions                                    map[string]publishDefinitionMetadata
+}
+
+type publishDefinitionMetadata struct {
+	Name, Description string
+	Stability         wago.Stability
+	Engines           map[string]string
+	Platforms         []string
+}
+
+func parsePublishManifest(raw []byte) (map[string]any, publishMetadata, []string, error) {
+	var manifest map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&manifest); err != nil {
+		return nil, publishMetadata{}, nil, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, publishMetadata{}, nil, fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return nil, publishMetadata{}, nil, err
+	}
+	if err := project.ValidateManifest(manifest); err != nil {
+		return nil, publishMetadata{}, nil, err
+	}
+	if schema, _ := manifest["$schema"].(string); schema != project.SchemaURI {
+		return nil, publishMetadata{}, nil, fmt.Errorf("$schema must be %q", project.SchemaURI)
+	}
+	pkg, ok := manifest["package"].(map[string]any)
+	if !ok {
+		return nil, publishMetadata{}, nil, fmt.Errorf("package must be an object")
+	}
+	module, _ := pkg["module"].(string)
+	if err := project.ValidatePluginID(module); err != nil {
+		return nil, publishMetadata{}, nil, err
+	}
+	version, _ := pkg["version"].(string)
+	metadata := publishMetadata{
+		Module: module, Version: version,
+		Repository: manifestStringValue(pkg, "repository"), Homepage: manifestStringValue(pkg, "homepage"), License: manifestStringValue(pkg, "license"),
+		Authors: publishAuthorNames(pkg["authors"]), Definitions: map[string]publishDefinitionMetadata{},
+	}
+	metadata.Definitions[module] = publishDefinitionFromManifest(pkg, publishDefinitionMetadata{})
+	imports := []string{module + "/register"}
+	if subpackages, ok := pkg["subpackages"].([]any); ok {
+		for index, rawSubpackage := range subpackages {
+			subpackage, ok := rawSubpackage.(map[string]any)
+			if !ok {
+				return nil, publishMetadata{}, nil, fmt.Errorf("package.subpackages[%d] must be an object", index)
+			}
+			id, _ := subpackage["module"].(string)
+			if err := project.ValidatePluginID(id); err != nil {
+				return nil, publishMetadata{}, nil, fmt.Errorf("package.subpackages[%d]: %w", index, err)
+			}
+			if id != module && !strings.HasPrefix(id, module+"/") {
+				return nil, publishMetadata{}, nil, fmt.Errorf("subpackage %q must belong to module %q", id, module)
+			}
+			if _, duplicate := metadata.Definitions[id]; duplicate {
+				return nil, publishMetadata{}, nil, fmt.Errorf("duplicate published provider %q", id)
+			}
+			metadata.Definitions[id] = publishDefinitionFromManifest(subpackage, metadata.Definitions[module])
+		}
+	}
+	return manifest, metadata, imports, nil
+}
+
+func validatePublishProviders(providers []publishProvider, metadata publishMetadata, version string) error {
+	if len(providers) == 0 || len(providers) > 128 {
+		return fmt.Errorf("catalog must contain 1 to 128 providers")
+	}
+	seen := map[string]bool{}
+	for _, provider := range providers {
+		definition := provider.Definition
+		if provider.ImportPath != metadata.Module+"/register" {
+			return fmt.Errorf("provider %q import path must be %q", definition.ID, metadata.Module+"/register")
+		}
+		expected, ok := metadata.Definitions[definition.ID]
+		if !ok {
+			return fmt.Errorf("provider %q is not declared by package or package.subpackages", definition.ID)
+		}
+		if seen[definition.ID] {
+			return fmt.Errorf("provider %q is repeated", definition.ID)
+		}
+		seen[definition.ID] = true
+		if strings.TrimPrefix(definition.Version, "v") != strings.TrimPrefix(version, "v") {
+			return fmt.Errorf("provider %s version %s does not match release %s", definition.ID, definition.Version, version)
+		}
+		if definition.Name != expected.Name || definition.Description != expected.Description || definition.Stability != expected.Stability {
+			return fmt.Errorf("provider %q name, description, and stability must match wago.json", definition.ID)
+		}
+		if !sameStringMap(definition.Compatibility.Engines, expected.Engines) || !sameStrings(definition.Compatibility.Platforms, expected.Platforms) {
+			return fmt.Errorf("provider %q compatibility must match wago.json", definition.ID)
+		}
+		if definition.Provenance.Repository != metadata.Repository || definition.Provenance.Homepage != metadata.Homepage || definition.Provenance.License != metadata.License || !sameStrings(definition.Provenance.Authors, metadata.Authors) {
+			return fmt.Errorf("provider %q provenance must match wago.json", definition.ID)
+		}
+		digest, err := wago.DefinitionDigest(definition)
+		if err != nil {
+			return fmt.Errorf("provider %q definition: %w", definition.ID, err)
+		}
+		if digest != provider.DefinitionDigest {
+			return fmt.Errorf("provider %q definition digest changed while publishing", definition.ID)
+		}
+	}
+	for id := range metadata.Definitions {
+		if !seen[id] {
+			return fmt.Errorf("wago.json declares provider %q but register.Providers omitted it", id)
+		}
+	}
+	return nil
+}
+
+func publishDefinitionFromManifest(object map[string]any, inherited publishDefinitionMetadata) publishDefinitionMetadata {
+	definition := inherited
+	definition.Name = manifestStringValue(object, "name")
+	definition.Description = manifestStringValue(object, "description")
+	if value := manifestStringValue(object, "stability"); value != "" {
+		definition.Stability = wago.Stability(value)
+	}
+	if raw, ok := object["engines"].(map[string]any); ok {
+		definition.Engines = make(map[string]string, len(raw))
+		for name, value := range raw {
+			definition.Engines[name], _ = value.(string)
+		}
+	}
+	if raw, ok := object["platforms"].([]any); ok {
+		definition.Platforms = make([]string, 0, len(raw))
+		for _, value := range raw {
+			text, _ := value.(string)
+			definition.Platforms = append(definition.Platforms, text)
+		}
+	}
+	return definition
+}
+
+func publishAuthorNames(raw any) []string {
+	authors, _ := raw.([]any)
+	names := make([]string, 0, len(authors))
+	for _, rawAuthor := range authors {
+		author, _ := rawAuthor.(map[string]any)
+		names = append(names, manifestStringValue(author, "name"))
+	}
+	return names
+}
+
+func manifestStringValue(object map[string]any, key string) string {
+	value, _ := object[key].(string)
+	return value
+}
+
+func sameStringMap(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range left {
+		if right[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+type downloadedModule struct {
+	Path, Version, Sum, Dir string
+}
+
+func downloadModuleSource(ctx context.Context, module, version string) (downloadedModule, error) {
+	version = canonicalGoVersion(version)
+	dir, err := os.MkdirTemp("", "wago-publish-source-*")
+	if err != nil {
+		return downloadedModule{}, err
+	}
+	defer os.RemoveAll(dir)
+	command := exec.CommandContext(ctx, "go", "mod", "download", "-json", module+"@"+version)
+	command.Dir = dir
+	command.Env = isolatedGoEnvironment(os.Environ())
+	automation.ConfigureCommand(command)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return downloadedModule{}, fmt.Errorf("download %s@%s: %w: %s", module, version, err, strings.TrimSpace(string(output)))
+	}
+	var report struct{ Path, Version, Sum, Dir, Error string }
+	if err := json.Unmarshal(output, &report); err != nil {
+		return downloadedModule{}, err
+	}
+	if report.Error != "" {
+		return downloadedModule{}, fmt.Errorf("download %s@%s: %s", module, version, report.Error)
+	}
+	if report.Path != module || report.Version != version || !strings.HasPrefix(report.Sum, "h1:") || report.Dir == "" {
+		return downloadedModule{}, fmt.Errorf("download returned source %s@%s checksum %q directory %q", report.Path, report.Version, report.Sum, report.Dir)
+	}
+	return downloadedModule{Path: report.Path, Version: report.Version, Sum: report.Sum, Dir: report.Dir}, nil
+}
+
+func comparePublishedPackageManifest(local, artifact map[string]any) error {
+	localPackage, _ := local["package"].(map[string]any)
+	artifactPackage, _ := artifact["package"].(map[string]any)
+	localJSON, err := json.Marshal(localPackage)
+	if err != nil {
+		return err
+	}
+	artifactJSON, err := json.Marshal(artifactPackage)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(localJSON, artifactJSON) {
+		return fmt.Errorf("manifest.package does not match the local manifest")
+	}
+	return nil
+}
+
+func canonicalGoVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if !strings.HasPrefix(version, "v") {
+		return "v" + version
+	}
+	return version
+}
+
+func fullGitCommit(value string) bool {
+	if len(value) != 40 {
+		return false
+	}
+	for _, char := range value {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isolatedGoEnvironment(environment []string) []string {
+	result := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, "GOWORK=") {
+			result = append(result, entry)
+		}
+	}
+	return append(result, "GOWORK=off")
+}
+
+func pluralRegistry(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
+}
+
 func registryUnpublish(options UnpublishRequest) {
 	registryUnpublishContext(context.Background(), options)
 }
@@ -125,7 +421,6 @@ func registryUnpublishContext(ctx context.Context, options UnpublishRequest) {
 		fmt.Println("aborted")
 		return
 	}
-
 	path := "/api/packages/" + url.PathEscape(name)
 	if ver != "" {
 		path += "/versions/" + url.PathEscape(ver)
@@ -148,15 +443,12 @@ func registryUnpublishContext(ctx context.Context, options UnpublishRequest) {
 	}
 }
 
-// registryDeprecate marks a package (or a specific @version) deprecated, or
-// reverses it with --undo. --message sets the deprecation notice.
 func registryDeprecate(options DeprecateRequest) {
 	registryDeprecateContext(context.Background(), options)
 }
 
 func registryDeprecateContext(ctx context.Context, options DeprecateRequest) {
-	undo := options.Undo
-	message := options.Message
+	undo, message := options.Undo, options.Message
 	token := resolveToken()
 	if token == "" {
 		fatal("deprecate: not logged in (run: wago auth login)")
@@ -166,7 +458,6 @@ func registryDeprecateContext(ctx context.Context, options DeprecateRequest) {
 	if ver != "" {
 		target = name + "@" + ver
 	}
-
 	body := map[string]any{"message": message, "version": ver, "undo": undo}
 	path := "/api/packages/" + url.PathEscape(name) + "/deprecate"
 	status, data, err := apiRequestContext(ctx, http.MethodPost, path, token, body)
@@ -175,11 +466,11 @@ func registryDeprecateContext(ctx context.Context, options DeprecateRequest) {
 	}
 	switch status {
 	case http.StatusOK:
+		verb := "Deprecated"
 		if undo {
-			fmt.Printf("%s Un-deprecated %s\n", cyan("✓"), target)
-		} else {
-			fmt.Printf("%s Deprecated %s\n", cyan("✓"), target)
+			verb = "Un-deprecated"
 		}
+		fmt.Printf("%s %s %s\n", cyan("✓"), verb, target)
 	case http.StatusForbidden:
 		fatal("deprecate: you are not the owner of %s", name)
 	case http.StatusNotFound:
@@ -191,7 +482,6 @@ func registryDeprecateContext(ctx context.Context, options DeprecateRequest) {
 	}
 }
 
-// confirm prompts on stderr and reads a yes/no answer from stdin (default no).
 func confirm(prompt string) bool {
 	fmt.Printf("%s [y/N] ", prompt)
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')

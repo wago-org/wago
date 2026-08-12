@@ -230,7 +230,7 @@ func TestStoreBoundExternrefTableRejectsTypeLimitsAndCloseOrder(t *testing.T) {
 	}
 }
 
-func TestStoreBoundExternrefTableKeepsRootsUntilRuntimeAndTableClose(t *testing.T) {
+func TestStoreBoundExternrefTableReleasesRootsAtRuntimeClose(t *testing.T) {
 	rt := NewRuntime()
 	shared := requireExternrefTable(t, rt, 1, 1)
 	mod, err := rt.Compile(watToWasm(t, `(module
@@ -251,14 +251,11 @@ func TestStoreBoundExternrefTableKeepsRootsUntilRuntimeAndTableClose(t *testing.
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime Close: %v", err)
 	}
-	if value, ok := rt.ExternRefValue(ref); !ok || value != "rooted-by-store-table" {
-		t.Fatalf("root after Runtime.Close with live instance/table = %#v, %v", value, ok)
+	if value, ok := rt.ExternRefValue(ref); ok {
+		t.Fatalf("root after Runtime.Close = %#v, %v; want released", value, ok)
 	}
 	if err := in.Close(); err != nil {
 		t.Fatalf("Instance Close: %v", err)
-	}
-	if value, ok := rt.ExternRefValue(ref); !ok || value != "rooted-by-store-table" {
-		t.Fatalf("root after last instance but live table = %#v, %v", value, ok)
 	}
 	if err := shared.Close(); err != nil {
 		t.Fatalf("Table Close: %v", err)

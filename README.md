@@ -83,7 +83,6 @@ wago compile app.wasm -o app
 wago compile app.wasm --target linux/arm64 -o app-linux-arm64
 wago compile fib.wasm --invoke fib -o fib
 wago compile component.wasm --core 3 -p -o component
-wago compile app.wasm --plugin wago-org/wasi -o app
 ./fib 20
 # fib(20) = 6765
 ```
@@ -93,9 +92,10 @@ different exported function; executable arguments are parsed from its typed Wasm
 signature just like `wago run --invoke`. The executable embeds Wago, the Wasm
 module, and the active local or global plugin configuration, so it runs without
 a Wago installation. Use `--bare`, `--local`, or `--global` to choose the plugin
-scope; `--plugin` and `--plugins` resolve and link additional plugins directly
-into the executable. `--core 3`, `--parallel`, and compiler flags such as
-`--no-inline` and `--no-deferred-bounds-checking` are baked into the executable.
+scope. Add plugins to `wago.json` before compiling so resolution, Authorities,
+and Contract bindings stay reviewable and reproducible. `--core 3`, `--parallel`,
+and compiler flags such as `--no-inline` and `--no-deferred-bounds-checking` are
+baked into the executable.
 There is no standalone watch mode because the module is immutable once embedded.
 Cross-builds support Darwin, Linux, and Windows on AMD64 and ARM64.
 
@@ -116,26 +116,32 @@ Create a project and add the WASI plugin:
 
 ```sh
 wago init --run
-wago add wago-org/wasi
+wago add github.com/wago-org/wasi
 wago run program.wasm hello world
 ```
 
-`wago add` writes the plugin to `wago.json`, pins its resolved version and
-reviewed capabilities in `wago-lock.json`, and rebuilds the selected runtime.
+`wago add` resolves the complete dependency and Contract graph, reviews exact
+scoped Authorities, pins sources and bindings in `wago-lock.json`, verifies the
+linked definitions, and atomically publishes the rebuilt runtime.
 
 Useful plugin commands:
 
 ```sh
 wago plugin list
-wago plugin inspect
-wago plugin grant
+wago plugin list --json
+wago plugin inspect github.com/wago-org/wasi
+wago plugin tree
+wago plugin grant github.com/wago-org/wasi
+wago plugin grant github.com/wago-org/wasi --scopes '{"github.com/wago-org/wasi":{"host.import.define":{"modules":["wasi_snapshot_preview1"]}}}'
+wago plugin config github.com/wago-org/wasi '{"stdout":"discard"}'
 wago plugin update
-wago plugin remove wago-org/wasi
+wago plugin rebuild --locked
+wago plugin remove github.com/wago-org/wasi
 ```
 
 Browse packages at [plugins.wago.sh](https://plugins.wago.sh). Read
 [Use plugins](https://docs.wago.sh/guides/plugins) for local and global scopes,
-capabilities, lockfiles, and publishing.
+Authorities, Contracts, lockfiles, and publishing.
 
 ## Go API
 
@@ -218,7 +224,7 @@ wago update
 
 # Work with project plugins
 wago init
-wago add wago-org/wasi wago-org/workers
+wago add github.com/wago-org/wasi github.com/wago-org/workers
 wago plugin outdated
 wago plugin tree
 

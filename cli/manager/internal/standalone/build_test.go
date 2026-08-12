@@ -1,12 +1,10 @@
 package standalone
 
 import (
-	"archive/zip"
 	"debug/elf"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,7 +26,7 @@ func TestMainSourceBakesInvokeExport(t *testing.T) {
 	source := string(mainSource(nil, nil, "fib", 3, false, 4, map[string]bool{"inline": false}))
 	if !strings.Contains(source, `Invoke: "fib", Core: 3, DeferBoundsChecks: false, FunctionWorkers: 4`) ||
 		!strings.Contains(source, `"inline": false`) ||
-		!strings.Contains(source, `standalone.Run(module, pluginConfig, options, os.Args)`) {
+		!strings.Contains(source, `standalone.Run(module, pluginSet(), options, os.Args)`) {
 		t.Fatalf("generated main does not invoke fib:\n%s", source)
 	}
 }
@@ -96,54 +94,6 @@ func TestBuildRejectsCore3OnUnsupportedTarget(t *testing.T) {
 	}
 }
 
-func TestBuildRunsNativeWithCommandLinePlugin(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxy := t.TempDir()
-	writeTestPluginProxy(t, proxy)
-	project := t.TempDir()
-	input := filepath.Join(project, "hello.wasm")
-	target := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
-	core, module := 2, emptyStartModule()
-	if target.supportsCore3() {
-		core, module = 3, tailCallStartModule()
-	}
-	if err := os.WriteFile(input, module, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	output := filepath.Join(project, "hello")
-	if target.OS == "windows" {
-		output += ".exe"
-	}
-	t.Setenv("WAGO_SRC", root)
-	t.Setenv("WAGO_HOME", t.TempDir())
-	t.Setenv("WAGO_BARE", "1")
-	t.Setenv("GOPROXY", "file:///"+strings.TrimLeft(filepath.ToSlash(proxy), "/"))
-	t.Setenv("GOSUMDB", "off")
-	moduleCache := t.TempDir()
-	t.Setenv("GOMODCACHE", moduleCache)
-	t.Cleanup(func() {
-		_ = filepath.Walk(moduleCache, func(path string, _ os.FileInfo, err error) error {
-			if err == nil {
-				_ = os.Chmod(path, 0o755)
-			}
-			return nil
-		})
-	})
-
-	if _, err := Build(Request{
-		Input: input, Output: output, Target: target,
-		Core: core, FunctionWorkers: 2, Plugins: "example.com/standalone-plugin@v0.0.0",
-	}); err != nil {
-		t.Fatalf("build with command-line plugin: %v", err)
-	}
-	if output, err := exec.Command(output).CombinedOutput(); err != nil {
-		t.Fatalf("run with command-line plugin: %v\n%s", err, output)
-	}
-}
-
 func tailCallStartModule() []byte {
 	return []byte{
 		'\x00', 'a', 's', 'm', 1, 0, 0, 0,
@@ -151,68 +101,6 @@ func tailCallStartModule() []byte {
 		3, 3, 2, 0, 0,
 		7, 10, 1, 6, '_', 's', 't', 'a', 'r', 't', 0, 1,
 		10, 9, 2, 2, 0, 0x0b, 4, 0, 0x12, 0, 0x0b,
-	}
-}
-
-func writeTestPluginProxy(t *testing.T, proxy string) {
-	t.Helper()
-	const (
-		module  = "example.com/standalone-plugin"
-		version = "v0.0.0"
-	)
-	dir := filepath.Join(proxy, "example.com", "standalone-plugin", "@v")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	files := map[string]string{
-		version + ".mod":  "module " + module + "\n\ngo 1.22\n\nrequire github.com/wago-org/wago v0.0.0\n",
-		version + ".info": `{"Version":"v0.0.0","Time":"2026-01-01T00:00:00Z"}`,
-		"list":            version + "\n",
-	}
-	for name, contents := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	archive, err := os.Create(filepath.Join(dir, version+".zip"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	zw := zip.NewWriter(archive)
-	entries := map[string]string{
-		"go.mod": files[version+".mod"],
-		"register/register.go": `package register
-
-import "github.com/wago-org/wago"
-
-type extension struct{}
-
-func (extension) Info() wago.ExtensionInfo {
-	return wago.ExtensionInfo{
-		ID: "test.standalone", Repository: "https://example.com/standalone-plugin", License: "Apache-2.0",
-	}
-}
-func (extension) Register(*wago.Registry) error { return nil }
-
-func init() {
-	wago.RegisterExtension("example.com/standalone-plugin", func() wago.Extension { return extension{} })
-}
-`,
-	}
-	for name, contents := range entries {
-		entry, err := zw.Create(module + "@" + version + "/" + name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := entry.Write([]byte(contents)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := archive.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 

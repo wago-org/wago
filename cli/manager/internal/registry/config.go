@@ -41,6 +41,10 @@ func registryBase() string {
 	return defaultRegistry
 }
 
+// BaseURL returns the configured registry API origin for narrow consumers such
+// as the v1 plugin catalog adapter.
+func BaseURL() string { return registryBase() }
+
 // frontendBase derives the website base URL (for package-page links) from the
 // registry API base by dropping a leading "api." host label — e.g.
 // https://api.plugins.wago.sh -> https://plugins.wago.sh. A base with no "api." host

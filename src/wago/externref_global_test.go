@@ -133,8 +133,8 @@ func TestLocalExternrefGlobalsRespectFeatureStoreAndLifetimeBoundaries(t *testin
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close with live instance: %v", err)
 	}
-	if value, ok := live.ExternRefValue(root); !ok || value != "retained" {
-		t.Fatalf("live global root after Runtime.Close = %#v, %v", value, ok)
+	if value, ok := live.ExternRefValue(root); ok || value != nil {
+		t.Fatalf("closed instance resolved root after Runtime.Close = %#v, %v", value, ok)
 	}
 	if err := live.Close(); err != nil {
 		t.Fatalf("close live instance: %v", err)

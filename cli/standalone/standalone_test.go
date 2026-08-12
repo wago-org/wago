@@ -9,14 +9,14 @@ import (
 )
 
 func TestRunEmptyStartModule(t *testing.T) {
-	if code := Run(emptyStartModule(), nil, Options{DeferBoundsChecks: true}, []string{"hello"}); code != 0 {
+	if code := Run(emptyStartModule(), wago.PluginSet{}, Options{DeferBoundsChecks: true}, []string{"hello"}); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 }
 
 func TestExecuteRequiresStartExport(t *testing.T) {
 	empty := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}
-	if err := execute(empty, nil, Options{DeferBoundsChecks: true}, nil); err == nil || err.Error() != "module does not export _start" {
+	if err := execute(empty, wago.PluginSet{}, Options{DeferBoundsChecks: true}, nil); err == nil || err.Error() != "module does not export _start" {
 		t.Fatalf("execute error = %v", err)
 	}
 }
@@ -30,7 +30,7 @@ func TestExecuteInvokesExportWithTypedArgs(t *testing.T) {
 	os.Stdout = write
 	t.Cleanup(func() { os.Stdout = original })
 
-	if err := execute(addModule(), nil, Options{Invoke: "add", DeferBoundsChecks: true}, []string{"add", "20", "22"}); err != nil {
+	if err := execute(addModule(), wago.PluginSet{}, Options{Invoke: "add", DeferBoundsChecks: true}, []string{"add", "20", "22"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := write.Close(); err != nil {
@@ -47,7 +47,7 @@ func TestExecuteInvokesExportWithTypedArgs(t *testing.T) {
 }
 
 func TestExecuteRejectsWrongInvokeArguments(t *testing.T) {
-	err := execute(addModule(), nil, Options{Invoke: "add", DeferBoundsChecks: true}, []string{"add", "20"})
+	err := execute(addModule(), wago.PluginSet{}, Options{Invoke: "add", DeferBoundsChecks: true}, []string{"add", "20"})
 	if err == nil || err.Error() != "expected 2 arg(s), got 1" {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -65,14 +65,14 @@ func TestExecuteAppliesOptimizationKnobs(t *testing.T) {
 }
 
 func TestExecuteRejectsUnknownOptimization(t *testing.T) {
-	err := execute(emptyStartModule(), nil, Options{OptimizationKnobs: map[string]bool{"not-a-knob": true}}, nil)
+	err := execute(emptyStartModule(), wago.PluginSet{}, Options{OptimizationKnobs: map[string]bool{"not-a-knob": true}}, nil)
 	if err == nil || !strings.Contains(err.Error(), `unknown`) || !strings.Contains(err.Error(), `not-a-knob`) {
 		t.Fatalf("execute error = %v", err)
 	}
 }
 
 func TestExecuteSupportsCore3(t *testing.T) {
-	err := execute(tailCallStartModule(), nil, Options{Core: 3, DeferBoundsChecks: true}, []string{"hello"})
+	err := execute(tailCallStartModule(), wago.PluginSet{}, Options{Core: 3, DeferBoundsChecks: true}, []string{"hello"})
 	if wago.CoreFeaturesV3&^wago.SupportedFeatures() != 0 {
 		if err == nil {
 			t.Fatal("execute Core 3 module succeeded on an incomplete Core 3 backend")

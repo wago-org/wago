@@ -116,7 +116,7 @@ func TestManagerOwnsPluginLifecycleWithoutSelectedRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(output)
-	if !strings.Contains(text, "Usage: wago add <module>[@version]...") {
+	if !strings.Contains(text, "Usage: wago add <plugin-id>[@range]...") {
 		t.Fatalf("manager add help = %q", text)
 	}
 }
@@ -389,7 +389,7 @@ func TestManagerOwnsInitWithoutSelectedRunner(t *testing.T) {
 	}
 	manifest, err := os.ReadFile(filepath.Join(project, "wago.json"))
 	if err != nil ||
-		!strings.Contains(string(manifest), `"$schema": "https://wago.sh/v0/schema.json"`) ||
+		!strings.Contains(string(manifest), `"$schema": "https://wago.sh/v1/schema.json"`) ||
 		strings.Contains(string(manifest), `"schema":`) {
 		t.Fatalf("manager init manifest = %q, %v", manifest, err)
 	}

@@ -23,7 +23,7 @@ Shared CLI foundations live directly under `cli/internal`:
 cli/internal/
   command/   command tree, parsing, dispatch, and help rendering
   handoff/   manager-to-runtime launch metadata and routing rules
-  project/   wago.json, plugin intent, and local/global/bare scope
+  project/   v1 manifests, strict lock graphs, Plugin Requirements, and scope
   settings/  user runtime defaults, catalog, validation, and persistence
   tui/       shared radio, drill-down, and multi-select terminal interaction
   ui/        non-interactive output primitives
@@ -35,7 +35,7 @@ Manager-only workflows live under `cli/manager/internal`:
 cli/manager/internal/
   cache/     regenerable download/build cache inspection and cleanup
   config/    configuration TUI and shell completion installation
-  plugin/    plugin lifecycle, capability review, migration, and custom runtimes
+  plugin/    resolution, Authority review, staged builds, and atomic publication
   progress/  live status for long-running manager transactions
   registry/  credentials, OAuth, resolution, publishing, and registry HTTP
   self/      manager update, replacement, and uninstall
@@ -49,26 +49,29 @@ Runtime-only workflows live under `cli/runtime/internal`:
 ```text
 cli/runtime/internal/
   module/    module loading shared by runtime inspection commands
-  plugin/    manifest loading and compiled plugin inspection
+  plugin/    explicit provider catalogs, locked selections, planning, and inspection
   profile/   build-tag-selected runtime capabilities
   version/   runtime diagnostics and version reporting
 ```
 
-`cli/internal/project` is the sole owner of project manifests and plugin intent.
-Its model is deliberately runtime-neutral: the runtime adapts `PluginIntent`
-values into engine configuration. Manager and runtime code must not define
-separate `wago.json` models, and the shared project package must not import the
-runtime facade.
+`cli/internal/project` is the sole owner of v1 project manifests, complete lock
+graphs, and Plugin Requirements. Its model is deliberately runtime-neutral: the
+runtime adapts strict locked selections into engine configuration. Manager and
+runtime code must not define separate `wago.json` or `wago-lock.json` models,
+and the shared project package must not import the runtime facade.
 
 `wago compile` is manager-owned because it orchestrates the Go toolchain and
 cross-target builds. Its generated module embeds the Wasm command, imports the
-active plugins' registration packages, and records their resolved capability
-configuration. The generated entry point also records the selected `--invoke`
+active plugins' explicit `/register` provider catalogs, and embeds their exact
+definition digests, Authority Grants, configuration, and Contract bindings. Each
+package exports an explicit provider catalog; none self-registers through
+`init`. The generated entry point also records the selected `--invoke`
 export, Core feature set, function-worker policy, and resolved compiler-knob
 overrides; `cli/internal/wasmcall` keeps its typed argument and result behavior in
 parity with `wago run`. Command-line-only plugins are resolved into the isolated
-Go module and imported through their conventional `/register` package. The
-resulting executable imports `cli/standalone`, not the runtime CLI. The manager
+Go module and imported through their conventional `/register` package. Linked
+definitions must match the lockfile before activation. The resulting executable
+imports `cli/standalone`, not the runtime CLI. The manager
 reads the architecture-neutral settings and parallel-policy packages, while the
 generated target applies the settings through the selected runtime backend.
 GOOS/GOARCH select exactly one build-tagged Railshot backend, so an AMD64
@@ -162,8 +165,10 @@ cli/runtime/
 The manager's `version.Toolchain` is the transaction boundary for list,
 install, switch, update, and uninstall operations. Plugin mutation requests and
 registry requests are domain-owned values assembled by the root environment
-adapter. Command packages do not coordinate download, build, migration, or
-installation steps.
+adapter. One manager-owned transaction resolves the graph, reviews Authorities,
+stages downloads and builds, validates the linked plan, and atomically publishes
+the manifest, lockfile, and artifact. Command packages do not coordinate those
+steps.
 
 Runtime Installation bootstrap policy lives in `internal/installbootstrap`.
 It owns release-channel selection, target asset naming, and checksum validation.
@@ -174,7 +179,7 @@ directly for manager selection and verification.
 
 All interactive manager workflows also expose flags for automation. A command
 without enough information may open a selector, but CI and scripts can always
-provide the version, profile, build, scope, confirmation, and capability policy
+provide the version, profile, build, scope, confirmation, and Authority policy
 directly. Bare `wago update` opens an all-selected multi-choice screen for the
 manager, rolling runtime, and plugins. Positional targets and matching flags
 provide one-shot updates; the narrower `self update`, `version update`, and

@@ -80,23 +80,15 @@ func TestRuntimeCompileHookTransformAndFailures(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	var beforeCalls, afterCalls int
-	rt.hooks.BeforeCompile(func(ctx *CompileContext, source []byte) ([]byte, error) {
+	rt.hooks.beforeCompile = append(rt.hooks.beforeCompile, func(ModuleSourceContext, []byte) ([]byte, error) {
 		beforeCalls++
-		if ctx.Runtime != rt || ctx.Metadata == nil {
-			t.Fatal("compile hook received incomplete context")
-		}
-		ctx.Metadata["transformed"] = true
-		if len(source) == 0 {
-			return []byte(module), nil
-		}
-		return nil, nil
+		return []byte(module), nil
 	})
-	rt.hooks.AfterCompile(func(ctx *CompileContext, mod *Module) error {
+	rt.hooks.afterCompile = append(rt.hooks.afterCompile, func(event ModuleCompiledEvent) {
 		afterCalls++
-		if ctx.Metadata["transformed"] != true || mod == nil {
-			t.Fatal("after hook lost compile context or module")
+		if event.Module.compiled == nil {
+			t.Fatal("compile observer lost immutable module view")
 		}
-		return nil
 	})
 	if _, err := rt.Compile(nil); err != nil {
 		t.Fatalf("transformed Compile: %v", err)
@@ -104,16 +96,16 @@ func TestRuntimeCompileHookTransformAndFailures(t *testing.T) {
 	if beforeCalls != 1 || afterCalls != 1 {
 		t.Fatalf("hook calls before/after = %d/%d", beforeCalls, afterCalls)
 	}
-	rt.hooks.BeforeCompile(func(*CompileContext, []byte) ([]byte, error) { return nil, errors.New("before rejected") })
+	rt.hooks.beforeCompile = append(rt.hooks.beforeCompile, func(ModuleSourceContext, []byte) ([]byte, error) { return nil, errors.New("before rejected") })
 	if _, err := rt.Compile([]byte(module)); err == nil || afterCalls != 1 {
 		t.Fatalf("before-hook failure = %v; after calls = %d", err, afterCalls)
 	}
 
 	failedAfter := NewRuntime()
 	defer failedAfter.Close()
-	failedAfter.hooks.AfterCompile(func(*CompileContext, *Module) error { return errors.New("after rejected") })
+	failedAfter.hooks.afterCompile = append(failedAfter.hooks.afterCompile, func(ModuleCompiledEvent) { panic(errors.New("observer panicked")) })
 	if _, err := failedAfter.Compile([]byte(module)); err == nil {
-		t.Fatal("after-hook failure accepted")
+		t.Fatal("observer panic was not contained")
 	}
 }
 

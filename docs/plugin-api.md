@@ -1,261 +1,369 @@
-# Capability-based plugin API
+# Plugin API
 
-Wago plugins are open-source Go modules compiled into the host binary. A plugin
-can run ordinary Go code; Wago does not pretend to sandbox that code. Instead,
-the plugin API controls which privileged Wago integration surfaces the plugin
-may use. Consumers review the source dependency and grant only the integration
-powers they accept. Grants are recorded in `wago-lock.json`.
+Wago plugins are trusted Go packages linked into a generated runtime. They can
+run ordinary Go code, so Plugin Authorities are not a sandbox. Authorities
+instead make every privileged Wago integration explicit, scoped, reviewable,
+and deny-by-default. Do not compile a plugin whose Go source you do not trust.
 
-## Manifest model
+The vNext API is intentionally breaking. It has no `Extension`, global
+registration, compatibility alias, or coarse capability group.
 
-`plugins` is the single source of package intent: its keys are GitHub-relative
-plugin IDs and its values are semantic-version constraints. Each entry is
-compiled into the custom Wago binary and activated at runtime:
+## One definition, one explicit provider
 
-```json
-{
-  "plugins": {
-    "acme/wago-metrics": "^0.0.0",
-    "wago-org/workers": "^0.0.0"
-  }
-}
-```
-
-Activation does not grant authority. Exact resolved versions, reviewed
-capabilities, and opaque plugin config live in `wago-lock.json`. A plugin that
-exercises an ungranted API fails registration, and the complete plan commits
-nothing.
-
-`wago pkg add` adds the version-constrained plugin entry, resolves its exact
-version, reviews requested capabilities, and writes the result to the lockfile.
-
-The complete manifest field reference and JSON Schema are documented in
-[`wago-json.md`](wago-json.md).
-
-## Plugin capabilities
-
-These capabilities authorize Wago integration, not arbitrary Go behavior:
-
-| Capability | Authority |
-|---|---|
-| `host.imports` | Add host functions to Wasm import namespaces and resolve the exact active caller identity. |
-| `host.environment` | Read the host environment explicitly exposed to plugins. |
-| `runtime.lifecycle` | Observe runtime shutdown and release plugin resources. |
-| `module.compile` | Observe or transform runtime module compilation. |
-| `instance.lifecycle` | Observe or affect instantiation and instance close. |
-| `instance.invoke` | Intercept calls and observe their results or traps. |
-| `instance.manage` | Create and own restricted managed instance tasks. |
-| `core.runtime` | Directly compile and compose core modules for a trusted execution model. |
-
-Plugin packages declare the capabilities they require in `ExtensionInfo`. The
-runtime checks both that declaration and what the plugin actually registered.
-This prevents a stale declaration from hiding newly-added authority.
-Capability names are exact `resource.action` identifiers. Dots do not imply
-inheritance: granting `core.runtime` grants neither a wildcard nor any future
-`core.*` capability.
-
-The `core.runtime` capability is intentionally privileged, narrow, and
-revocable; use it only to implement an execution model. Dependent plugins should
-consume that model's versioned service instead of requesting `core.runtime`.
-
-Guest permissions such as `fs.read`, `net.outbound`, or `wasi` are separate.
-Plugins provide those permissions for Wasm modules; host policy decides whether
-a module may exercise them.
-
-## Load order
-
-Each plugin may declare mandatory `requires` dependencies plus optional
-`before`/`after` constraints in its package metadata.
-
-The runtime builds one directed graph:
-
-- every required plugin must be selected;
-- requirements load before dependants;
-- missing optional ordering targets are ignored;
-- cycles reject the complete plan;
-- unrelated ready plugins use lexical registry-name order.
-
-Registration is planned in resolved order and committed transactionally.
-Lifecycle teardown runs in reverse order so dependants stop before their
-dependencies.
-
-Plugins may also compose through typed services. A provider calls
-`plugin.Provide`; a consumer calls `plugin.Require`. The service dependency is
-added to the same load graph automatically, duplicate providers and missing
-services are rejected, and the typed reference becomes readable only after the
-complete graph resolves. For programmatic installation, install the provider
-before the consumer; `Runtime.Use` validates and binds the service
-transactionally. Service references become inactive when the runtime closes.
-`github.com/wago-org/workers` exposes
-`workers.ServiceKey`, allowing pools,
-actors, and schedulers to build on it without coupling to a concrete plugin
-instance.
-
-## Open-source provenance
-
-Manifest-loaded plugins must declare an absolute HTTPS source repository and an
-SPDX license identifier. `Private` plugins are rejected. The plugin key expands
-to its GitHub module path for the build, while the lockfile records the exact
-resolved version so consumers can pin, mirror, audit, and reproduce the source
-compiled into their host.
-
-Wago does not claim that provenance metadata is a security sandbox. A host that
-does not trust a plugin's Go source must not compile that plugin.
-
-## Registration
+Every plugin publishes an immutable `PluginDefinition` and an explicit factory:
 
 ```go
-type Extension interface {
-    Info() ExtensionInfo
-    Register(*Registry) error
+package metrics
+
+import (
+    "encoding/json"
+
+    "github.com/wago-org/wago"
+)
+
+var Definition = wago.PluginDefinition{
+    ID:          "github.com/acme/wago-metrics",
+    Name:        "Metrics",
+    Version:     "0.1.0",
+    Description: "Exports runtime metrics.",
+    Stability:   wago.Experimental,
+    Provenance: wago.PluginProvenance{
+        Repository: "https://github.com/acme/wago-metrics",
+        License:    "Apache-2.0",
+    },
+    Authorities: []wago.AuthorityRequest{
+        {
+            Name:   wago.AuthorityHostImportDefine,
+            Mode:   wago.AuthorityRequired,
+            Reason: "expose the acme_metrics guest API",
+            Scope:  wago.AuthorityScope{Modules: []string{"acme_metrics"}},
+        },
+    },
+}
+
+func Provider() wago.PluginProvider {
+    return wago.PluginProvider{
+        Definition: Definition,
+        New: func() wago.Plugin { return new(plugin) },
+        ValidateConfig: func(raw json.RawMessage) error {
+            // Validate semantic constraints that JSON Schema cannot express.
+            return nil
+        },
+    }
 }
 ```
 
-`Register` declares contributions into a scratch registry. It should not start
-goroutines, open sockets, or mutate global state. Runtime activation occurs only
-after the whole plan validates. Plugin-owned configuration is opaque JSON and
-is decoded with `Registry.Config`.
+A module's conventional `register` package exports all its providers as values:
 
-Programmatic `Runtime.Use` remains a trusted embedder escape hatch.
-`Runtime.LoadPlugins` is the strict manifest path and requires explicit grants.
+```go
+func Providers() []wago.PluginProvider {
+    return []wago.PluginProvider{metrics.Provider()}
+}
+```
 
-Plugins can optionally implement `PluginStarter` and `PluginStopper`. Start is
-called only after transactional commit; Stop runs in reverse order on shutdown
-or startup rollback. `ConfigSchemaProvider` exposes plugin-owned JSON Schema to
-inspection tools, while validation remains the plugin's responsibility during
-Register. `wago plugin plan` shows the resolved graph and `wago plugin check`
-validates it without starting plugins.
+It must not register providers from `init`. Generated runtimes import each
+`/register` package explicitly and combine those catalogs. This removes hidden
+process-global selection and makes an empty runtime stay empty. Linked Go
+packages can still contain ordinary Go `init` functions; Wago does not claim to
+sandbox or defer those.
 
-Each privileged surface also has a capability-specific handle (`HostImports`,
-`ModuleCompiler`, `InstanceInvocation`, and so on), so APIs obtained for one
-grant cannot be used to reach another. Resource-owning capabilities may carry
-core-enforced budgets in the lockfile.
+## Release snapshot and publication
+
+`wago plugin catalog` executes the current local `/register` catalog and writes
+canonical `wago.providers.json` at the module root. The snapshot uses
+[`https://wago.sh/v1/providers.schema.json`](../providers.schema.json) and holds
+each immutable definition, its canonical digest, and the `/register` import
+path. Commit it before creating the release tag. `wago plugin catalog --check`
+verifies that the committed snapshot still matches the current local catalog.
+
+`wago plugin publish` reruns only that current local catalog to check drift. It
+then downloads the exact tagged Go module by version and `h1:` checksum, and
+requires the tagged artifact's `wago.json` `package` metadata and
+`wago.providers.json` to match the local release inputs before submission. The
+registry independently downloads the same exact module, verifies its `h1:`
+checksum, and reads both files from the artifact root without building or
+executing plugin code.
+
+The verified `PluginDefinition` is included in the release fingerprint. The
+installer reviews that metadata before download or build. The generated runtime
+then hashes the linked definition and refuses to activate it if it differs from
+the reviewed `definitionDigest` in `wago-lock.json`.
+
+## Registration is a transaction
+
+A plugin has one method:
+
+```go
+type Plugin interface {
+    Register(*Registrar) error
+}
+```
+
+`Register` decodes configuration and declares contributions into a scratch
+plan. It must not start goroutines, open sockets, mutate package globals, or
+perform other externally visible work. Wago validates the complete dependency,
+authority, contribution, and Contract graph before committing anything.
+
+Activation and teardown are declared explicitly:
+
+```go
+func (p *plugin) Register(reg *wago.Registrar) error {
+    var cfg Config
+    if err := reg.Config(&cfg); err != nil {
+        return err
+    }
+
+    imports, err := reg.HostImports()
+    if err != nil {
+        return err
+    }
+    module, err := imports.Module("acme_metrics")
+    if err != nil {
+        return err
+    }
+    module.Func("increment", p.increment).Params(wago.I32)
+
+    return reg.Lifecycle(wago.PluginLifecycle{
+        Start: p.start,
+        Stop:  p.stop,
+    })
+}
+```
+
+`Start` runs only after the complete plan commits. If any start fails, already
+started plugins stop in reverse graph order. Normal shutdown also stops
+consumers before providers. `Start` receives no `*Runtime`; privileged work is
+available only through the exact handles acquired during registration. Those
+handles remain inactive before commit and are revoked during teardown. During
+`Start`, committed Contract references and granted core handles are active, so a
+plugin can call an already-started dependency or compile and instantiate through
+its reviewed limits. Public Runtime operations remain excluded until the whole
+Plugin Set has started, so unrelated callers cannot observe a partially started
+graph.
+
+Configuration is opaque to Wago but not permissive: the registrar rejects
+unknown struct fields and trailing JSON, the provider validates its published
+JSON Schema, and `ValidateConfig` can enforce additional semantic rules.
+
+## Exact authorities and scopes
+
+Authority names are exact. Dots are for display grouping and do not grant a
+parent, wildcard, descendant, or future authority.
+
+| Authority | Allows |
+|---|---|
+| `host.import.define` | Define host functions in specifically granted import modules. |
+| `host.caller.identify` | Resolve the exact active instance during a synchronous host call. |
+| `host.arguments.read` | Read guest arguments exposed by the host. |
+| `runtime.close.observe` | Observe logical runtime close. |
+| `module.source.transform` | Replace module bytes before compilation. |
+| `module.compile.observe` | Correlate source processing with compile success or failure through opaque identities and the final transformed-source digest. |
+| `module.close.observe` | Observe logical close of a runtime-bound module. |
+| `instance.instantiate.intercept` | Reject a request, or attach fallible identity-keyed state after initialization and before the start function. |
+| `instance.instantiate.observe` | Observe successful or failed instantiation. |
+| `instance.close.observe` | Observe exact-instance logical close. |
+| `instance.invoke.intercept` | Inspect or reject runtime-managed calls. |
+| `instance.invoke.observe` | Observe call results and traps. |
+| `instance.manage` | Create and own bounded managed instances. |
+| `core.module.compile` | Compile core modules for an execution model. |
+| `core.instance.instantiate` | Instantiate core modules within reviewed limits. |
+| `core.funcref.create` | Create typed host function references. |
+| `compiler.type.define` | Define custom compiler value types. |
+| `compiler.instruction.define` | Define and lower custom Wasm instructions. |
+
+Every request says whether it is `required` or `optional`, gives a human reason,
+and carries any enforceable scope. A required Authority must be present but its
+scope may be narrowed; an optional Authority may also be denied. Registration
+fails clearly if the plugin cannot operate within the reviewed scope.
+`host.import.define` and
+`compiler.instruction.define` grant exact module names;
+`compiler.type.define` grants exact type namespaces. Instance-owning authorities
+carry positive instance limits and an aggregate declared-memory ceiling across
+all live instances owned through the handle. A plugin cannot use an authority
+it did not declare, and a lockfile cannot grant an authority the plugin did not
+request.
+
+For automation, `wago plugin grant`, `wago add`, and `wago plugin update` accept
+one strict `--scopes` JSON object keyed by full Plugin ID and exact Authority.
+Named scopes must be non-empty subsets of the request; instance-owning scopes
+must specify both positive limits no greater than the request. Optional
+Authorities are still selected explicitly with `--allow`, `--allow-all`, or
+`--deny-all`. The candidate lock graph and runtime are validated through the
+normal staged transaction before publication.
+
+Source transformers, compile success, and compile failure share one comparable
+`CompilationIdentity`; the resulting `ModuleView.Identity()` is also opaque and
+comparable. A successful `Runtime.Compile` event carries an opaque
+`ModuleSourceDigest` of the final bytes after every transformer. A transformer
+can compare it with `DigestModuleSource` without compile observers receiving the
+source itself. The precompiled `Runtime.Module` path reports a zero digest
+because its original source is unavailable. `Module.Close` emits one close event
+with the final module identity, clears the wrapper identity, and rejects later
+runtime instantiation through that wrapper; it does not close or take ownership
+of `Module.Compiled()`. Plugins can therefore move metadata into module- and
+instance-identity maps and release it deterministically without retaining a
+`Runtime`, `Module`, `Compiled`, or `Instance` through an identity.
+The instantiate interceptor's `After` phase is fallible and runs after an exact
+instance identity exists but before the Wasm start function and success
+observers. Failure closes the partial instance through normal close observation
+and then emits the instantiation error event.
+
+Guest permissions such as `fs.read` and `net.outbound` are a different domain.
+They describe powers a plugin offers to Wasm. Plugin Authorities describe powers
+Wago offers to trusted Go code.
+
+## Dependencies and typed Contracts
+
+`PluginDefinition.Requires` contains package dependencies needed for resolution
+and linking. IDs are canonical Go module or package paths. Every dependency has
+a non-empty constraint using the same semantic-version range language as
+`wago.json`. The resolver selects one exact version and `h1:` checksum for every
+direct and transitive Plugin ID that satisfies all incoming constraints; the
+lockfile records those selections.
+
+Plugins call each other only through typed, major-versioned Contracts:
+
+```go
+package workers
+
+var Contract = plugin.NewContract[Service](
+    "github.com/wago-org/workers/service",
+    1,
+)
+```
+
+The provider declares the same ID and major in `PluginDefinition.Provides`, then
+registers its value:
+
+```go
+if err := plugin.Provide(reg, workers.Contract, service); err != nil {
+    return err
+}
+```
+
+The consumer declares it in `PluginDefinition.Consumes` and requests the typed
+reference during registration:
+
+```go
+workersRef, err := plugin.Require(reg, workers.Contract)
+if err != nil {
+    return err
+}
+
+err = workersRef.With(func(service workers.Service) error {
+    return service.Submit(ctx, job)
+})
+```
+
+`Require`, `Optional`, and `Many` express exactly one required provider, zero or
+one provider, and zero or more providers. A required plugin dependency selects
+the package; a Contract selects the stable interface among the resolved
+providers. The lockfile records the exact binding so replay does not silently
+choose a different implementation.
+
+A new optional Contract with available providers is always reviewed; its safe
+proposal is no provider, and an interactive install can select one. `Many`
+binds every selected provider for the Contract. Updates retain the reviewed
+order of providers that remain, append newly selected providers in lexical ID
+order, and review every addition or removal.
+
+The exact dependency edges and reviewed Contract binding edges form one
+deterministic DAG. Wago rejects missing requirements, incompatible majors,
+duplicate single providers, unreviewed bindings, and cycles before calling a
+factory. Diamond dependencies resolve once. Equal ready nodes use lexical
+Plugin ID order.
+
+Contract values never escape through a raw `Get`. `Ref.With` holds an in-flight
+lease for the callback, and the value's supported lifetime ends when that
+callback returns. Native Go plugins remain trusted to honor the lifetime. During
+close, a consumer can use its dependencies from its own `Stop`; Wago then
+revokes that consumer's references, and any retained reference fails closed.
+Before stopping a provider, Wago rejects new contract calls and waits for every
+in-flight contract call to finish. This makes cross-plugin shutdown deterministic
+even when calls race with close.
+
+Guest-callable host imports and host funcrefs created through a plugin's core
+handle use the same stop boundary. Runtime shutdown rejects new callback entries
+before invoking that plugin's `Stop`, then drains entries already in flight.
+`Stop` may therefore signal or cancel a callback that is waiting on plugin-owned
+state, but must not free state until those callbacks have returned. A low-level
+instance may retain a Runtime instance's native export after logical close, but
+calling through that retained export cannot re-enter stopped plugin code; the
+callback traps with `ErrPermissionDenied` instead.
+
+## Inspection and loading
+
+Embedder code supplies one explicit catalog and reviewed selection set:
+
+```go
+set := wago.PluginSet{
+    Providers: append(wasi_register.Providers(), metrics_register.Providers()...),
+    Selections: selectionsFromLock,
+}
+
+plan, err := wago.InspectPluginPlan(set)
+if err != nil {
+    return err
+}
+if err := runtime.LoadPlugins(ctx, set); err != nil {
+    return err
+}
+```
+
+Inspection uses definitions only: it does not call factories, registration, or
+lifecycle code. Loading validates the same immutable graph, then creates and
+registers selected plugins transactionally.
+
+`wago plugin tree` explains direct and transitive causes. `wago plugin list
+--json` reports every linked immutable definition together with its
+side-effect-free plan entry, including granted scopes, Contract providers, and
+activation order. `wago plugin rebuild --locked` is the CI check: it verifies
+the committed graph and provenance, rebuilds the runtime, and validates its
+linked definitions and complete dry-run Plugin Plan before publication.
 
 ## Exact-instance resource lifecycle
 
-A resource-owning plugin should key its private state by the exact
-`*wago.Instance`. Attach state in `AfterInstantiate`, associate host calls with
-that pointer through `CallerResolver`, and retire the state in `BeforeClose`.
-The map belongs to the plugin object; Wago does not maintain or require a
-process-global instance registry.
+Resource-owning plugins key state by the exact `*wago.Instance`. Attach state in
+an instantiate observer, associate synchronous host calls through the separately
+granted caller resolver, and retire state from the close observer.
 
-```go
-type plugin struct {
-    mu      sync.Mutex
-    callers *wago.CallerResolver
-    state   map[*wago.Instance]*resource
-}
+`BeforeClose` is the authoritative logical disposal event. The invocation gate
+has already closed, so no new public call can begin. It does not promise that
+native code, arena memory, or retained references have already been physically
+released; active invocations can defer physical teardown. Concurrent close
+calls share one logical close, every hook runs once, and hook failures are
+joined without skipping remaining cleanup.
 
-func (p *plugin) Register(reg *wago.Registry) error {
-    host, err := reg.HostImports()
-    if err != nil {
-        return err
-    }
-    p.callers = host.CallerResolver()
-    host.Module("acme_resource").
-        Func("open", p.open).
-        Params().Results()
+A Runtime-owned instance is tracked immediately after construction, before its
+post-create hooks or Wasm start function run. An ordinary invocation trap,
+cancellation, or `HostExit` does not dispose an instance. A start-function
+failure does: instantiation never succeeded, so Wago closes the partial instance
+before returning. `Runtime.Close` logically closes every tracked direct and
+managed instance in reverse creation order before plugin `Stop` callbacks run,
+preventing new calls. It then lets `Stop` cancel admitted work and waits for
+in-flight Runtime operations, callback admission, invocation, and
+managed-instance quiescence before returning.
+A direct caller retains its handle, but only as an idempotent closed handle;
+calling `Close` again is safe.
 
-    lifecycle, err := reg.InstanceLifecycle()
-    if err != nil {
-        return err
-    }
-    lifecycle.AfterInstantiate(p.attach)
-    lifecycle.BeforeClose(p.detach)
-    return nil
-}
+Managed-instance limits account for physical ownership, not just the managed
+handle's logical close. If another instance retains an exported function, the
+manager's instance and declared-memory reservations remain charged until that
+last importer closes and physical resources are released.
 
-func (p *plugin) attach(_ *wago.InstantiateContext, in *wago.Instance) error {
-    p.mu.Lock()
-    defer p.mu.Unlock()
-    if p.state == nil {
-        p.state = make(map[*wago.Instance]*resource)
-    }
-    p.state[in] = newResource()
-    return nil
-}
+`Runtime.Close` and `Runtime.CloseContext` are synchronous drains. Do not call
+either from a host callback, Contract callback, lifecycle hook, or observer
+currently running on that same Runtime: shutdown waits for the current operation
+to return. Initiate close from the owning goroutine after the callback returns.
 
-func (p *plugin) open(caller wago.HostModule, _, _ []uint64) {
-    in, err := p.callers.Resolve(caller)
-    if err != nil {
-        panic(err)
-    }
-    p.mu.Lock()
-    resource := p.state[in]
-    p.mu.Unlock()
-    _ = resource
-}
-
-func (p *plugin) detach(ctx *wago.InstanceContext) {
-    p.mu.Lock()
-    resource := p.state[ctx.Instance]
-    delete(p.state, ctx.Instance)
-    p.mu.Unlock()
-    if resource != nil {
-        resource.Close()
-    }
-}
-```
-
-`BeforeClose` is the authoritative **logical** disposal event. The invocation
-entry gate is already published when it runs, so no new public call can begin. It
-receives the same instance identity delivered to successful instantiation and
-active caller resolution, plus the owning runtime, compiled module,
-direct/managed origin, and a metadata map shared with `AfterClose`. `AfterClose`
-brackets the end of that same logical-close operation; it does not guarantee that
-native code, arena, memory, engine, or retained import attachments have already
-been physically released. Active invocations and persistent reference roots can
-defer that teardown until later. Hooks run in reverse registration order.
-Concurrent `Instance.Close` calls wait for one close operation; `BeforeClose`,
-Wago's logical cleanup, and `AfterClose` each execute once. Each hook panic is
-recovered independently, remaining hooks and internal cleanup continue, and
-`Close` returns an aggregated error rather than silently losing the panic.
-
-`CallerResolver` is deliberately available from the `host.imports` handle. It
-grants identity only and does **not** grant instance creation, invocation, close,
-management, pooling, or worker authority, so `instance.manage` is not required.
-Resolution succeeds only during the synchronous `HostFunc` callback. Retained,
-expired, forged, cross-runtime, low-level, and otherwise incompatible
-`HostModule` values fail closed.
-
-The runtime attaches ownership and origin before imported or local Wasm start
-functions execute. If a start function calls a host import and then traps, exits,
-or otherwise fails, the partially initialized instance runs the normal close
-lifecycle before `Instantiate` returns. An `AfterInstantiate` failure is handled
-the same way. `OnInstantiateError` still observes the failure after cleanup; a
-panic in that observer is reported without replacing the original failure or
-preventing disposal. Original instantiation and cleanup errors remain available
-through `errors.Is`/`errors.As` because Wago joins them.
-
-A trap, context cancellation, `HostExit`/`ExitError`, or exported-function error
-from an ordinary invocation is **not** a disposal event. `AfterInvoke` may observe
-it, but a caller-owned instance remains open until its owner closes it. A
-`HostExit` raised while executing a start function is different: instantiation
-never succeeds, so the partially created instance is closed as failed-start
-cleanup.
-
-Runtime-created direct instances remain caller-owned when `Runtime.Close` runs.
-Managed instances, including forks still owned by an `InstanceManager`, are
-closed by manager/runtime shutdown. Wago's managed API does not logically reset
-or republish an instance: creation and fork paths physically instantiate. A
-plugin that implements its own leases or pooling and owns non-Wasm sockets,
-handles, quotas, registrations, or similar state must close the old physical
-instance through the full lifecycle before publishing another owner, or require
-physical reinstantiation.
-
-The package-level low-level `Compile`/`Instantiate`/`Invoke` APIs remain outside
-the Runtime plugin lifecycle. Their instances do not emit plugin hooks and their
-`HostModule` values cannot be resolved by a runtime `CallerResolver`.
-
-Finally, these guarantees cover controlled in-process Wago lifecycle paths. A
-native host-process crash, `SIGSEGV`, forced termination, or power loss cannot
-reliably execute an in-process close callback; plugins needing crash durability
-must use operating-system or external-service recovery mechanisms.
+The package-level low-level `Compile`, `Instantiate`, and `Invoke` APIs are
+outside the Runtime plugin lifecycle. Native process crashes and forced
+termination cannot reliably execute in-process cleanup; durable plugins need an
+external recovery strategy.
 
 ## Core-size rule
 
-Privileged APIs expose mechanisms, not product policy. Pools, workers, actors,
-routers, metrics aggregation, caching, and retry behavior belong in plugins.
-Core mechanisms must be bounded and useful to more than one plugin category.
-An unlinked plugin must add no goroutines or allocations and should be removed
-by TinyGo dead-code elimination.
+Privileged APIs expose bounded mechanisms, not product policy. Pools, workers,
+actors, routers, metrics aggregation, retries, and caching belong in plugins.
+Core mechanisms must be useful to more than one plugin category. An unlinked
+plugin must add no runtime goroutines or allocations.

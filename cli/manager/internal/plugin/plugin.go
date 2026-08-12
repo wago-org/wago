@@ -1,47 +1,44 @@
-// Package plugin owns plugin scope, dependency installation, capability review,
-// custom-runtime builds, and invocation routing.
+// Package plugin owns the strict plugin graph, review, build, and invocation
+// boundary for the Wago manager.
 package plugin
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/project"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
-	"github.com/wago-org/wago/cli/manager/internal/registry"
 )
 
 type AddRequest struct {
-	Context        context.Context
-	Modules        []string
-	Global, Local  bool
-	Force, Verbose bool
-	Capabilities   []string
-	GrantAll       bool
-	DenyAll        bool
+	Context         context.Context
+	Modules         []string
+	Global, Local   bool
+	Force, Verbose  bool
+	Authorities     []string
+	GrantAll        bool
+	DenyAll         bool
+	AcceptContracts bool
+	Scopes          map[string]map[string]project.AuthorityScope
 }
 
 type MutationRequest struct {
-	Context       context.Context
-	Name          string
-	Global, Local bool
-	Force         bool
-	Verbose       bool
-	Capabilities  []string
-	GrantAll      bool
-	DenyAll       bool
+	Context         context.Context
+	Name            string
+	Global, Local   bool
+	Force           bool
+	Verbose         bool
+	Authorities     []string
+	GrantAll        bool
+	DenyAll         bool
+	AcceptContracts bool
+	Scopes          map[string]map[string]project.AuthorityScope
 }
 
-type StandaloneInputs struct {
-	Dependencies []string
-	Plugins      []project.PluginIntent
-}
+type StandaloneInputs struct{ Build pluginbuild.Input }
 
 var configuredManagerVersion = "0.0.0"
 
-// ConfigureManagerVersion binds plugin artifacts to the manager's toolchain.
-// The manager calls it once, before dispatching any command.
 func ConfigureManagerVersion(version string) {
 	if version != "" {
 		configuredManagerVersion = version
@@ -52,30 +49,28 @@ func managerVersion() string { return configuredManagerVersion }
 
 func Add(request AddRequest) {
 	pkgAddMany(request.Modules, pkgOpts{
-		ctx:          request.Context,
-		global:       mustMutationScope(request.Global, request.Local),
-		force:        request.Force,
-		verbose:      request.Verbose,
-		capabilities: request.Capabilities,
-		grantAll:     request.GrantAll,
-		denyAll:      request.DenyAll,
+		ctx: request.Context, global: mustMutationScope(request.Global, request.Local), force: request.Force, verbose: request.Verbose,
+		authorities: request.Authorities, grantAll: request.GrantAll, denyAll: request.DenyAll, acceptContracts: request.AcceptContracts,
+		scopes: request.Scopes,
 	})
 }
 
 func Remove(request MutationRequest) {
-	pkgRemove(normalizeModuleRef(request.Name), mustMutationScope(request.Global, request.Local))
+	pkgRemove(strings.TrimSpace(request.Name), pkgOpts{
+		ctx: request.Context, global: mustMutationScope(request.Global, request.Local),
+		acceptContracts: request.AcceptContracts,
+	})
 }
 
 func Grant(request MutationRequest) {
-	pkgGrant(request.Name, mustMutationScope(request.Global, request.Local), request.Capabilities, request.GrantAll, request.DenyAll)
+	pkgGrant(request.Name, mustMutationScope(request.Global, request.Local), request.Authorities, request.GrantAll, request.DenyAll, request.Scopes)
 }
 
 func Update(request MutationRequest) {
-	pkgUpdate(normalizeModuleRef(request.Name), pkgOpts{
-		ctx:     request.Context,
-		global:  mustMutationScope(request.Global, request.Local),
-		force:   request.Force,
-		verbose: request.Verbose,
+	pkgUpdate(strings.TrimSpace(request.Name), pkgOpts{
+		ctx: request.Context, global: mustMutationScope(request.Global, request.Local), force: request.Force, verbose: request.Verbose,
+		authorities: request.Authorities, grantAll: request.GrantAll, denyAll: request.DenyAll,
+		acceptContracts: request.AcceptContracts, scopes: request.Scopes,
 	})
 }
 
@@ -91,92 +86,53 @@ func mustMutationScope(global, local bool) bool {
 	return useGlobal
 }
 
-func RuntimeBinary() (string, bool, error) {
-	return pluginRuntimeBinary()
-}
+func RuntimeBinary() (string, bool, error) { return pluginRuntimeBinary() }
 
-// PrepareStandalone resolves the active plugin scope into an isolated build
-// module and returns the configuration that must be baked into an executable.
-func PrepareStandalone(buildDir string, verbose bool, extraPlugins string) (StandaloneInputs, error) {
+func PrepareStandalone(buildDir string, verbose bool) (StandaloneInputs, error) {
 	environment, err := resolvePluginEnvironment()
 	if err != nil {
+		return StandaloneInputs{}, err
+	}
+	if environment.scope == "bare" || len(environment.dependencies) == 0 {
+		return StandaloneInputs{Build: pluginbuild.Input{}}, pluginbuild.EnsureModule(buildDir)
+	}
+	requirements, err := project.Requirements(environment.manifestDir)
+	if err != nil {
+		return StandaloneInputs{}, err
+	}
+	lock, err := project.ReadLock(environment.manifestDir)
+	if err != nil {
+		return StandaloneInputs{}, err
+	}
+	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
 		return StandaloneInputs{}, err
 	}
 	if err := pluginbuild.EnsureModule(buildDir); err != nil {
 		return StandaloneInputs{}, err
 	}
-	var plugins []project.PluginIntent
-	if len(environment.dependencies) != 0 {
-		if _, err := syncLockedPluginVersions(buildDir, environment.manifestDir, verbose); err != nil {
-			return StandaloneInputs{}, err
-		}
-		plugins, err = project.PluginIntents(environment.manifestDir)
-		if err != nil {
-			return StandaloneInputs{}, err
-		}
-	}
-	dependencies := append([]string(nil), environment.dependencies...)
-	dependencies, plugins, err = addStandalonePlugins(buildDir, verbose, dependencies, plugins, extraPlugins)
+	input, err := pluginbuild.InputFromLock(lock)
 	if err != nil {
 		return StandaloneInputs{}, err
 	}
-	return StandaloneInputs{
-		Dependencies: dependencies,
-		Plugins:      plugins,
-	}, nil
+	for _, source := range input.Sources {
+		if err := pluginbuild.Get(buildDir, source.Module+"@"+source.Version, verbose); err != nil {
+			return StandaloneInputs{}, err
+		}
+	}
+	if err := pluginbuild.RunGo(buildDir, verbose, "mod", "verify"); err != nil {
+		return StandaloneInputs{}, err
+	}
+	if err := verifySourceChecksums(buildDir, input.Sources); err != nil {
+		return StandaloneInputs{}, err
+	}
+	return StandaloneInputs{Build: input}, nil
 }
 
-func addStandalonePlugins(buildDir string, verbose bool, dependencies []string, intents []project.PluginIntent, list string) ([]string, []project.PluginIntent, error) {
-	specs := splitPluginList(list)
-	if len(specs) == 0 {
-		return dependencies, intents, nil
-	}
-	packages, err := ResolvePackages(specs, registry.ResolveModule)
-	if err != nil {
-		return nil, nil, err
-	}
-	haveDependency := make(map[string]bool, len(dependencies))
-	for _, dependency := range dependencies {
-		haveDependency[dependency] = true
-	}
-	selected := append([]project.PluginIntent(nil), intents...)
-	have := make(map[string]bool, len(selected))
-	for _, intent := range selected {
-		have[strings.TrimPrefix(intent.Name, "github.com/")] = true
-	}
-	for _, pkg := range packages {
-		if !haveDependency[pkg.Module] || pkg.Requested != "" {
-			spec := pkg.Module
-			if pkg.Requested != "" {
-				spec += "@" + pkg.Requested
-			}
-			if err := pluginbuild.Get(buildDir, spec, verbose); err != nil {
-				return nil, nil, fmt.Errorf("fetch standalone plugin %s: %w", spec, err)
-			}
-		}
-		if !haveDependency[pkg.Module] {
-			haveDependency[pkg.Module] = true
-			dependencies = append(dependencies, pkg.Module)
-		}
-		name := strings.TrimPrefix(pkg.Module, "github.com/")
-		if !have[name] {
-			have[name] = true
-			selected = append(selected, project.PluginIntent{Name: name})
-		}
-	}
-	return dependencies, selected, nil
-}
+func Select(global, local, bare bool) error { return project.SelectScope(global, local, bare) }
 
-func splitPluginList(list string) []string {
-	var specs []string
-	for _, value := range strings.Split(list, ",") {
-		if value = strings.TrimSpace(value); value != "" {
-			specs = append(specs, value)
-		}
+func plural(count int) string {
+	if count == 1 {
+		return ""
 	}
-	return specs
-}
-
-func Select(global, local, bare bool) error {
-	return project.SelectScope(global, local, bare)
+	return "s"
 }

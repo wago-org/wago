@@ -510,8 +510,8 @@ func TestRuntimeReferenceAndErrorPortableSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pluginErr := &PluginError{Plugin: "test", Phase: PluginPhaseRegister, Capability: PluginHostImports, Path: "x", Err: ErrMissingImport}
-	if !errors.Is(pluginErr, ErrMissingImport) || pluginErr.Error() != "wago plugin test: register capability host.imports at x: wago: missing import" {
+	pluginErr := &PluginError{Plugin: "test", Phase: PluginPhaseRegister, Authority: AuthorityHostImportDefine, Path: "x", Err: ErrMissingImport}
+	if !errors.Is(pluginErr, ErrMissingImport) || pluginErr.Error() != "wago plugin test: register authority host.import.define at x: wago: missing import" {
 		t.Fatalf("PluginError = %q", pluginErr)
 	}
 	extErr := &ExtensionError{Extension: "test", Operation: "use", Err: ErrPermissionDenied}
@@ -528,8 +528,8 @@ func TestRuntimeReferenceAndErrorPortableSurface(t *testing.T) {
 			t.Errorf("plugin capability %q is not an exact resource.action name", cap)
 		}
 	}
-	if PluginCoreRuntime != "core.runtime" {
-		t.Fatalf("PluginCoreRuntime = %q", PluginCoreRuntime)
+	if AuthorityCoreModuleCompile != "core.module.compile" {
+		t.Fatalf("AuthorityCoreModuleCompile = %q", AuthorityCoreModuleCompile)
 	}
 	if validPluginCapability("unknown") {
 		t.Fatal("unknown plugin capability accepted")

@@ -56,10 +56,38 @@ func (lifetime referenceLifetime) finalize() {
 		return
 	}
 	in.resourcesClosed = true
+	finalizer := in.physicalFinalizer
+	in.physicalFinalizer = nil
 	in.lifeMu.Unlock()
 
 	lifetime.notifyStore(store, referenceLifetimeResourcesReleased)
 	in.releaseResources()
+	if finalizer != nil {
+		finalizer()
+	}
+}
+
+func (lifetime referenceLifetime) afterPhysicalRelease(fn func()) {
+	in := lifetime.instance
+	if in == nil || fn == nil {
+		return
+	}
+	in.lifeMu.Lock()
+	if in.resourcesClosed {
+		in.lifeMu.Unlock()
+		fn()
+		return
+	}
+	if in.physicalFinalizer == nil {
+		in.physicalFinalizer = fn
+	} else {
+		previous := in.physicalFinalizer
+		in.physicalFinalizer = func() {
+			previous()
+			fn()
+		}
+	}
+	in.lifeMu.Unlock()
 }
 
 type referenceLifetimeSnapshot struct {

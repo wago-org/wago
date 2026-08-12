@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wago.sh/v1/providers.schema.json",
+  "title": "Wago provider catalog",
+  "description": "Immutable Plugin Definitions and their digests emitted by an explicit Wago register catalog. Wago additionally enforces uniqueness by semantic key and canonicalizes set-like fields before computing each digest; those keyed uniqueness and ordering rules cannot be expressed completely in JSON Schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "providers"],
+  "properties": {
+    "$schema": {
+      "const": "https://wago.sh/v1/providers.schema.json",
+      "description": "Canonical Wago v1 provider-catalog schema."
+    },
+    "providers": {
+      "type": "array",
+      "description": "Providers returned by the catalog. Plugin IDs must be unique; explicit catalog order is retained, while definition set-like fields are canonicalized for digesting.",
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/provider" }
+    }
+  },
+  "$defs": {
+    "canonicalPath": {
+      "type": "string",
+      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:/[A-Za-z0-9](?:[A-Za-z0-9._~-]*[A-Za-z0-9])?)+$",
+      "maxLength": 300,
+      "description": "Canonical fully qualified Go module or package path."
+    },
+    "importPath": {
+      "type": "string",
+      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:/[A-Za-z0-9](?:[A-Za-z0-9._~-]*[A-Za-z0-9])?)+$",
+      "maxLength": 309,
+      "description": "Go import path exposing Providers(), conventionally the source module followed by /register."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[vV]?(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Complete semantic version accepted by Wago."
+    },
+    "versionRange": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9A-Za-z.*+<>=~^|() _-]+$",
+      "description": "Non-empty semantic-version constraint. Wago performs the definitive range parse."
+    },
+    "definitionDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Lowercase SHA-256 of Wago's canonical Plugin Definition JSON."
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["importPath", "definition", "definitionDigest"],
+      "properties": {
+        "importPath": { "$ref": "#/$defs/importPath" },
+        "definition": { "$ref": "#/$defs/pluginDefinition" },
+        "definitionDigest": { "$ref": "#/$defs/definitionDigest" }
+      }
+    },
+    "pluginDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "provenance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/canonicalPath" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "version": { "$ref": "#/$defs/version" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "stability": { "type": "string", "enum": ["experimental", "stable", "deprecated"] },
+        "compatibility": { "$ref": "#/$defs/compatibility" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "requires": {
+          "type": "array",
+          "description": "Explicit plugin dependencies. Requirement IDs must be unique, must differ from this definition's ID, and are canonicalized by ID then version for digesting.",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/pluginRequirement" }
+        },
+        "authorities": {
+          "type": "array",
+          "description": "Exact non-inheriting authority requests. Authority names must be unique and are canonicalized by name for digesting.",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/authorityRequest" }
+        },
+        "configSchema": {
+          "type": "object",
+          "description": "Plugin-owned draft-2020-12 object schema. It must reject unknown top-level configuration and Wago limits its encoded form to 256 KiB and canonicalizes the JSON for digesting.",
+          "required": ["type", "additionalProperties"],
+          "properties": {
+            "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+            "type": { "const": "object" },
+            "additionalProperties": { "const": false }
+          }
+        },
+        "provides": {
+          "type": "array",
+          "description": "Typed contracts provided by the plugin. ID-major pairs must be unique and are canonicalized by ID then major for digesting.",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/contractSpec" }
+        },
+        "consumes": {
+          "type": "array",
+          "description": "Typed contracts consumed by the plugin. ID-major pairs must be unique and are canonicalized by ID, major, then mode for digesting.",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/contractRequirement" }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "engines": {
+          "type": "object",
+          "description": "Host or toolchain names mapped to non-empty semantic-version constraints.",
+          "maxProperties": 64,
+          "propertyNames": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "additionalProperties": { "$ref": "#/$defs/versionRange" }
+        },
+        "platforms": {
+          "type": "array",
+          "description": "Unique exact GOOS/GOARCH labels, canonicalized lexicographically for digesting.",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9]+/[a-z0-9]+$" }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "license"],
+      "properties": {
+        "homepage": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "repository": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "license": { "type": "string", "minLength": 1, "description": "SPDX license identifier." },
+        "authors": {
+          "type": "array",
+          "description": "Unique author display strings, canonicalized lexicographically for digesting.",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^\\S(?:.*\\S)?$" }
+        }
+      }
+    },
+    "pluginRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/canonicalPath" },
+        "version": { "$ref": "#/$defs/versionRange" }
+      }
+    },
+    "contractSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "major"],
+      "properties": {
+        "id": { "$ref": "#/$defs/canonicalPath" },
+        "major": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+      }
+    },
+    "contractRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "major", "mode"],
+      "properties": {
+        "id": { "$ref": "#/$defs/canonicalPath" },
+        "major": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "mode": { "type": "string", "enum": ["required", "optional", "many"] }
+      }
+    },
+    "authorityRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "mode", "reason"],
+      "properties": {
+        "name": { "$ref": "#/$defs/authority" },
+        "mode": { "type": "string", "enum": ["required", "optional"] },
+        "reason": { "type": "string", "pattern": "\\S", "maxLength": 500 },
+        "scope": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "enum": ["host.import.define", "compiler.type.define", "compiler.instruction.define"]
+              }
+            }
+          },
+          "then": {
+            "required": ["scope"],
+            "properties": { "scope": { "$ref": "#/$defs/moduleScope" } }
+          }
+        },
+        {
+          "if": {
+            "required": ["name"],
+            "properties": {
+              "name": { "enum": ["instance.manage", "core.instance.instantiate"] }
+            }
+          },
+          "then": {
+            "required": ["scope"],
+            "properties": { "scope": { "$ref": "#/$defs/instanceScope" } }
+          }
+        },
+        {
+          "if": {
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "enum": [
+                  "host.caller.identify",
+                  "host.arguments.read",
+                  "runtime.close.observe",
+                  "module.source.transform",
+                  "module.compile.observe",
+                  "module.close.observe",
+                  "instance.instantiate.intercept",
+                  "instance.instantiate.observe",
+                  "instance.close.observe",
+                  "instance.invoke.intercept",
+                  "instance.invoke.observe",
+                  "core.module.compile",
+                  "core.funcref.create"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": { "scope": { "$ref": "#/$defs/emptyScope" } }
+          }
+        }
+      ]
+    },
+    "authority": {
+      "type": "string",
+      "enum": [
+        "host.import.define",
+        "host.caller.identify",
+        "host.arguments.read",
+        "runtime.close.observe",
+        "module.source.transform",
+        "module.compile.observe",
+        "module.close.observe",
+        "instance.instantiate.intercept",
+        "instance.instantiate.observe",
+        "instance.close.observe",
+        "instance.invoke.intercept",
+        "instance.invoke.observe",
+        "instance.manage",
+        "core.module.compile",
+        "core.instance.instantiate",
+        "core.funcref.create",
+        "compiler.type.define",
+        "compiler.instruction.define"
+      ]
+    },
+    "moduleScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modules"],
+      "properties": {
+        "modules": {
+          "type": "array",
+          "description": "Unique exact non-wildcard module names, canonicalized lexicographically for digesting.",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S",
+            "not": { "pattern": "\\*" }
+          }
+        }
+      }
+    },
+    "instanceScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxInstances", "maxMemoryBytes"],
+      "properties": {
+        "maxInstances": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "maxMemoryBytes": { "type": "integer", "minimum": 1, "maximum": 18446744073709551615 }
+      }
+    },
+    "emptyScope": {
+      "type": "object",
+      "maxProperties": 0
+    }
+  },
+  "examples": [
+    {
+      "$schema": "https://wago.sh/v1/providers.schema.json",
+      "providers": [
+        {
+          "importPath": "github.com/wago-org/wasi/register",
+          "definition": {
+            "id": "github.com/wago-org/wasi",
+            "name": "WASI",
+            "version": "0.1.0",
+            "description": "WASI host imports for Wago.",
+            "stability": "experimental",
+            "compatibility": { "engines": { "wago": "^0.1.0" } },
+            "provenance": {
+              "repository": "https://github.com/wago-org/wasi",
+              "license": "Apache-2.0",
+              "authors": ["Wago contributors"]
+            },
+            "authorities": [
+              {
+                "name": "host.import.define",
+                "mode": "required",
+                "reason": "Defines the wasi_snapshot_preview1 host module.",
+                "scope": { "modules": ["wasi_snapshot_preview1"] }
+              }
+            ]
+          },
+          "definitionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  ]
+}
