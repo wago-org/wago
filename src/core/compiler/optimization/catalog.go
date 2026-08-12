@@ -271,6 +271,7 @@ var catalog = []Definition{
 	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
 	amd64("tee-spill-elide", "Reuse tee spill homes", "reuse a local.tee frame slot when spilling its still-live scalar result"),
 	amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
+	amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
 	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),

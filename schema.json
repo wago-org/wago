@@ -74,6 +74,7 @@
               "ext-fp-pins",
               "frame-elide",
               "frame-elide-reghomed",
+              "i64-mask32",
               "immutable-poly-fastpath",
               "immutable-table",
               "immutable-table-type",

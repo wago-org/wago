@@ -1063,7 +1063,17 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	switch right.st.kind {
 	case stConst:
-		if fitsImm32(right.st.cval) {
+		// `i64.and x, 0xffffffff` is exactly a zero-extension of x's low
+		// 32 bits. `and r32, -1` performs that operation directly on x86-64 and
+		// preserves the ordinary AND's flag writes. The 64-bit form cannot encode
+		// this positive mask because its imm32 is sign-extended and would therefore
+		// need a temporary register. Select this only at final emission so tree
+		// scheduling, associative covering, and higher-level SWAR recognition retain
+		// their original shapes.
+		if i64Mask32Enabled && w && enc == aluTable[opAnd] && isI64Mask32(right) {
+			f.a.AluRI(enc.digit, dest, -1, false)
+			f.stats.peep("i64-mask32")
+		} else if fitsImm32(right.st.cval) {
 			f.a.AluRI(enc.digit, dest, int32(right.st.cval), w)
 		} else {
 			t := f.allocReg(maskOf(dest))
@@ -1091,6 +1101,11 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 			f.releaseMemRef(right.st)
 		}
 	}
+}
+
+func isI64Mask32(e *elem) bool {
+	return e != nil && e.kind == ekValue && e.st.kind == stConst &&
+		e.st.typ == mtI64 && uint64(e.st.cval) == 0xffffffff
 }
 
 // applyMul emits `dest = dest * right` (imul), folding the right operand.
