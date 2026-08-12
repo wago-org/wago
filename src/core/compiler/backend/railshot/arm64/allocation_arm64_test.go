@@ -4,10 +4,52 @@ package arm64
 
 import (
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x2a, 0x0b})
+	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	if err != nil {
+		t.Fatalf("compute hints: %v", err)
+	}
+
+	wantCap := minStackArenaCap
+	gotCap := moduleStackArenaCap(m, hints)
+	if gotCap != wantCap {
+		t.Fatalf("module stack arena cap = %d, want %d", gotCap, wantCap)
+	}
+	sc := newScratchWithStackCap(gotCap)
+	if got := cap(sc.stack.chunks[0]); got != wantCap {
+		t.Fatalf("scratch first chunk cap = %d, want %d", got, wantCap)
+	}
+
+	// elem is the unit actually reserved by newStackWithCap. Pin the static
+	// allocation reduction rather than a runtime.MemStats sample, which would be
+	// vulnerable to unrelated test-process allocation noise.
+	savedBytes := uintptr(defaultStackArenaCap-gotCap) * unsafe.Sizeof(elem{})
+	if minimum := uintptr(24 << 10); savedBytes < minimum {
+		t.Fatalf("initial arena saving = %d bytes, want at least %d", savedBytes, minimum)
+	}
+}
+
+func TestModuleStackArenaCapDoesNotGrowPastLegacyDefaultArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 4096)}}}
+	hints := []funcHints{{stackArenaNodes: 4096}}
+	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
+		t.Fatalf("large-module initial cap = %d, want legacy cap %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestHintSizedModuleStackArenaExecArm64(t *testing.T) {
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x2a, 0x0b})
+	if got := runArm64(t, m); got != 42 {
+		t.Fatalf("hint-sized scratch result = %d, want 42", got)
+	}
+}
 
 // Allocator-pressure regression net, ported from amd64/{reg_pressure,
 // regalloc_memref_spill,brtable_regalloc,allocation}_test.go. The amd64 versions
