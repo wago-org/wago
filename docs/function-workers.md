@@ -29,6 +29,14 @@ effective count for a particular module.
 aliases. New code should use `WithFunctionWorkers` and `FunctionWorkers`, because
 the policy covers validation as well as native code generation.
 
+Function-worker policy affects only transient scheduling. It is excluded from
+the automatic artifact-cache identity because serial, adaptive, and forced
+worker counts produce identical serialized artifacts. Core features, bounds
+behavior, memory limits, optimization selections, platform, source bytes, and
+the immutable runtime build identity remain key dimensions because they can
+change generated code or its interpretation; logging and progress settings are
+likewise excluded.
+
 ## CLI
 
 Both compilation through `run` and validation-only workflows accept the same

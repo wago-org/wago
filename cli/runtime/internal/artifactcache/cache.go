@@ -29,7 +29,7 @@ type Cache struct {
 	ReportError func(error)
 }
 
-const cacheKeyFormat = 1
+const cacheKeyFormat = 2
 
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
@@ -50,6 +50,9 @@ func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *
 			if compiled.UnmarshalBinary(blob) == nil {
 				if module, err := rt.Module(compiled); err == nil {
 					return module, nil
+				} else {
+					_ = compiled.Close()
+					return nil, err
 				}
 			}
 		}
@@ -100,7 +103,9 @@ func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool
 		encoded[len(encoded)-1] = 1
 	}
 	encoded = binary.LittleEndian.AppendUint32(encoded, config.MemoryLimitPages())
-	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(config.FunctionWorkers()))
+	// FunctionWorkers is deliberately excluded: it controls only transient
+	// compilation scheduling, and serialized output is deterministic across
+	// worker policies. The key contains only semantic/codegen dimensions.
 
 	knobs := config.OptimizationInfos()
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(len(knobs)))

@@ -14,6 +14,47 @@ import (
 	"github.com/wago-org/wago"
 )
 
+type rejectingCompileExtension struct {
+	err   error
+	calls *int
+}
+
+func (e rejectingCompileExtension) Info() wago.ExtensionInfo {
+	return wago.ExtensionInfo{ID: "test.reject-cache-bind"}
+}
+
+func (e rejectingCompileExtension) Register(reg *wago.Registry) error {
+	hooks, err := reg.ModuleCompiler()
+	if err != nil {
+		return err
+	}
+	hooks.After(func(*wago.CompileContext, *wago.Module) error {
+		(*e.calls)++
+		return e.err
+	})
+	return nil
+}
+
+type countingCompileExtension struct {
+	calls *int
+}
+
+func (e countingCompileExtension) Info() wago.ExtensionInfo {
+	return wago.ExtensionInfo{ID: "test.count-cache-compile"}
+}
+
+func (e countingCompileExtension) Register(reg *wago.Registry) error {
+	hooks, err := reg.ModuleCompiler()
+	if err != nil {
+		return err
+	}
+	hooks.Before(func(*wago.CompileContext, []byte) ([]byte, error) {
+		(*e.calls)++
+		return nil, nil
+	})
+	return nil
+}
+
 func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
 	source := constantModule()
 	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
@@ -79,6 +120,63 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	}
 }
 
+func TestLoadOrCompilePropagatesCachedModuleBindingFailureOnce(t *testing.T) {
+	source := constantModule()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	producer := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	module, err := cache.LoadOrCompile(source, config, producer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Compiled().Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rejected := errors.New("cached artifact rejected")
+	var calls int
+	consumer := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	if err := consumer.Use(rejectingCompileExtension{err: rejected, calls: &calls}, wago.WithPluginGrants(wago.PluginCompileHooks)); err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	if _, err := cache.LoadOrCompile(source, config, consumer); !errors.Is(err, rejected) {
+		t.Fatalf("LoadOrCompile error = %v, want cached binding rejection", err)
+	}
+	if calls != 1 {
+		t.Fatalf("AfterCompile called %d times, want exactly once", calls)
+	}
+}
+
+func TestLoadOrCompileReusesArtifactAcrossWorkerPolicies(t *testing.T) {
+	source := constantModule()
+	serial := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit).WithFunctionWorkers(1)
+	parallel := serial.WithFunctionWorkers(4)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	var compileCalls int
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(serial))
+	if err := rt.Use(countingCompileExtension{calls: &compileCalls}, wago.WithPluginGrants(wago.PluginCompileHooks)); err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	first, err := cache.LoadOrCompile(source, serial, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Compiled().Close()
+	second, err := cache.LoadOrCompile(source, parallel, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Compiled().Close()
+	if compileCalls != 1 {
+		t.Fatalf("source compiled %d times across worker policies, want one warm hit", compileCalls)
+	}
+}
+
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	source := constantModule()
 	dir := t.TempDir()
@@ -112,8 +210,8 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	if basePath == optimizationPath {
 		t.Fatal("optimization selection did not change artifact key")
 	}
-	if basePath == workersPath {
-		t.Fatal("function-worker policy did not change artifact key")
+	if basePath != workersPath {
+		t.Fatal("scheduling-only function-worker policy changed artifact key")
 	}
 	if basePath == boundsPath {
 		t.Fatal("bounds-check mode did not change artifact key")
