@@ -6,6 +6,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
@@ -54,17 +55,25 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 	if err := producer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- rt.Close() }()
 
-	rt.refStore.mu.Lock()
-	writerState := rt.refStore.instances[writer]
-	tokens := len(rt.refStore.byToken)
-	rt.refStore.mu.Unlock()
+	var writerState *referenceStoreInstance
+	var tokens int
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		rt.refStore.mu.Lock()
+		writerState = rt.refStore.instances[writer]
+		tokens = len(rt.refStore.byToken)
+		rt.refStore.mu.Unlock()
+		if writerState != nil && writerState.closeAccounted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("runtime close did not account for the active writer")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if writerState == nil || !writerState.closeAccounted || writerState.quiesced || writerState.resourcesReleased {
 		t.Fatalf("writer store state before resume = %+v", writerState)
 	}
@@ -78,6 +87,12 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 	close(resume)
 	if err := <-callDone; err != nil && !strings.Contains(err.Error(), "interrupt") {
 		t.Fatalf("resumed descriptor use = %v; want result 42 or caller-close interruption", err)
+	}
+	if err := <-closeDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
 	}
 	rt.refStore.mu.Lock()
 	remainingInstances := len(rt.refStore.instances)
