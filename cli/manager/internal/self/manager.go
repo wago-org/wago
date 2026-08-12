@@ -2,6 +2,7 @@
 package self
 
 import (
+	"context"
 	"io"
 
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -13,6 +14,10 @@ func ExecutablePath() string {
 
 func Update(current, executable string, force bool) {
 	selfUpdate(current, executable, force)
+}
+
+func UpdateContext(ctx context.Context, current, executable string, force bool) {
+	selfUpdateContext(ctx, current, executable, force)
 }
 
 func RequestedMode(value string, yes bool) (Mode, bool) {

@@ -1,11 +1,13 @@
 package manager
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -40,6 +42,17 @@ func versionString() string {
 // installation so every profile retains the same management commands.
 func Main(v string) {
 	version = v
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	// NotifyContext suppresses the default interrupt action while registered.
+	// Restore it after the first signal so context-aware work can unwind, while
+	// a second Ctrl-C still terminates commands that have not reached a context
+	// cancellation point.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+	managerRoot = buildCommandRegistryContext(ctx)
 	managerplugin.ConfigureManagerVersion(versionString())
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {

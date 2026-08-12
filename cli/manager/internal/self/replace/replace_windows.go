@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/wago-org/wago/internal/atomicfile"
 )
 
 const (
@@ -69,7 +71,7 @@ func containsPath(parent, child string) bool {
 }
 
 func Executable(executable, staged string) (bool, error) {
-	if err := os.Rename(staged, executable); err == nil {
+	if err := atomicfile.ReplaceExisting(staged, executable); err == nil {
 		return false, nil
 	}
 	return true, scheduleMove(staged, executable, moveFileReplaceExisting|moveFileDelayUntilReboot)

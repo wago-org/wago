@@ -1,17 +1,22 @@
 package version
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/wago-org/wago/internal/httpclient"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -76,6 +81,80 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 	releases, err := fetchReleases()
 	if err != nil || len(releases) != 101 {
 		t.Fatalf("fetchReleases = %d releases, %v", len(releases), err)
+	}
+}
+
+func TestReleaseDiscoveryBoundsTotalPagination(t *testing.T) {
+	releases := make([]remoteRelease, 100)
+	commits := make([]remoteCommit, 100)
+	for index := range releases {
+		releases[index].TagName = fmt.Sprintf("v%d.0.0", index)
+		commits[index].SHA = fmt.Sprintf("%040x", index+1)
+	}
+	releaseRequests, commitRequests := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/wago-org/wago/releases":
+			releaseRequests++
+			_ = json.NewEncoder(writer).Encode(releases)
+		case "/repos/wago-org/wago/commits":
+			commitRequests++
+			_ = json.NewEncoder(writer).Encode(commits)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+
+	if _, err := fetchReleasesContext(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("unbounded release pagination error = %v", err)
+	}
+	if releaseRequests != discoveryPageLimit {
+		t.Fatalf("release page requests = %d, want %d", releaseRequests, discoveryPageLimit)
+	}
+	if _, err := fetchMainCommitsContext(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("unbounded commit pagination error = %v", err)
+	}
+	if commitRequests != discoveryPageLimit {
+		t.Fatalf("commit page requests = %d, want %d", commitRequests, discoveryPageLimit)
+	}
+}
+
+func TestReleaseMetadataIsBoundedAndCancelable(t *testing.T) {
+	oldMaximum := releaseMetadataMaximum
+	releaseMetadataMaximum = 32
+	t.Cleanup(func() { releaseMetadataMaximum = oldMaximum })
+
+	oversized := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte(strings.Repeat("x", 33)))
+	}))
+	defer oversized.Close()
+	t.Setenv("WAGO_RELEASE_API", oversized.URL)
+	if _, err := latestMainCommitContext(context.Background()); !errors.Is(err, httpclient.ErrBodyTooLarge) {
+		t.Fatalf("oversized release metadata = %v", err)
+	}
+
+	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer stalled.Close()
+	t.Setenv("WAGO_RELEASE_API", stalled.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := latestMainCommitContext(ctx)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled release metadata = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled release metadata request did not return")
 	}
 }
 
