@@ -296,8 +296,29 @@ func verifySourceChecksums(buildDir string, sources []project.PluginSource) erro
 			}
 		}
 		got, ok := selected[source.Module]
-		if !ok || got.Version != source.Version || got.Checksum != source.Checksum {
-			return fmt.Errorf("locked source %s@%s checksum %s does not match selected module %s@%s checksum %s", source.Module, source.Version, source.Checksum, got.Module, got.Version, got.Checksum)
+		if !ok || got.Version != source.Version {
+			return fmt.Errorf("locked source %s@%s is not the selected module version %s@%s", source.Module, source.Version, got.Module, got.Version)
+		}
+		download := exec.Command("go", "mod", "download", "-json", source.Module+"@"+source.Version)
+		download.Dir = buildDir
+		download.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
+		automation.ConfigureCommand(download)
+		data, err := download.Output()
+		if err != nil {
+			return fmt.Errorf("download locked source %s@%s: %w", source.Module, source.Version, err)
+		}
+		var artifact struct {
+			Path, Version, Sum string
+			Error              string
+		}
+		if err := json.Unmarshal(data, &artifact); err != nil {
+			return fmt.Errorf("decode locked source %s@%s: %w", source.Module, source.Version, err)
+		}
+		if artifact.Error != "" {
+			return fmt.Errorf("download locked source %s@%s: %s", source.Module, source.Version, artifact.Error)
+		}
+		if artifact.Path != source.Module || artifact.Version != source.Version || artifact.Sum != source.Checksum {
+			return fmt.Errorf("locked source %s@%s checksum %s does not match downloaded module %s@%s checksum %s", source.Module, source.Version, source.Checksum, artifact.Path, artifact.Version, artifact.Sum)
 		}
 	}
 	return nil
