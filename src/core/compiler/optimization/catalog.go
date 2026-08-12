@@ -176,23 +176,20 @@ func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
 }
 
 // ApplySnapshot installs a captured selection for one compile. When revision
-// still names the current process defaults, only deltas are installed. The
-// revision comparison, delta installation, compilation lease, and restoration
-// all share the same lock, so a concurrent Set cannot invalidate the fast path.
-// If the process defaults changed since capture, overrides is applied in full.
+// still names the current process defaults and deltas exactly describe every
+// difference in overrides, only deltas are installed. Otherwise overrides is
+// validated and applied in full. The revision comparison, installation,
+// compilation lease, and restoration all share the same lock, so a concurrent
+// Set cannot invalidate the fast path.
 func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (func(), error) {
 	b.mu.Lock()
 	if overrides == nil {
 		return b.mu.Unlock, nil
 	}
-	if snapshot.bindings == b && snapshot.revision == b.revision {
+	if snapshot.bindings == b && snapshot.revision == b.revision && b.deltasMatchLocked(overrides, deltas) {
 		changed := 0
 		for name := range deltas {
-			index, ok := b.index[name]
-			if !ok {
-				b.mu.Unlock()
-				return nil, fmt.Errorf("unknown %s optimization %q", b.arch, name)
-			}
+			index := b.index[name]
 			b.changed[changed] = index
 			changed++
 		}
@@ -236,6 +233,31 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 		}
 		b.mu.Unlock()
 	}, nil
+}
+
+// deltasMatchLocked reports whether deltas are a complete, coherent summary of
+// overrides relative to the current process defaults. Unknown override names
+// deliberately force the full path, which reports the validation error.
+func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
+	changed := 0
+	for name, on := range overrides {
+		index, ok := b.index[name]
+		if !ok {
+			return false
+		}
+		current := *b.entries[index].value
+		if b.entries[index].inverted {
+			current = !current
+		}
+		if on == current {
+			continue
+		}
+		changed++
+		if delta, ok := deltas[name]; !ok || delta != on {
+			return false
+		}
+	}
+	return changed == len(deltas)
 }
 
 var catalog = []Definition{

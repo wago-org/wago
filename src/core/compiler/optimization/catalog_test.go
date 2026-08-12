@@ -85,6 +85,50 @@ func TestBindingsApplySnapshotUsesDeltasAtMatchingRevision(t *testing.T) {
 	}
 }
 
+func TestBindingsApplySnapshotUsesChangedOverrideMissingFromDeltas(t *testing.T) {
+	bindings, values, definitions := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	selection[definitions[0].Name] = false
+
+	restore, err := bindings.ApplySnapshot(selection, snapshot, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values[0] {
+		t.Fatal("changed override omitted from deltas was not applied")
+	}
+	restore()
+}
+
+func TestBindingsApplySnapshotUsesSelectionWhenDeltaConflicts(t *testing.T) {
+	bindings, values, definitions := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	name := definitions[0].Name
+	selection[name] = false
+
+	restore, err := bindings.ApplySnapshot(selection, snapshot, map[string]bool{name: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values[0] {
+		t.Fatal("conflicting delta took precedence over complete selection")
+	}
+	restore()
+}
+
+func TestBindingsApplySnapshotRejectsUnknownOverrideAtMatchingRevision(t *testing.T) {
+	bindings, _, _ := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	selection["unknown"] = false
+
+	if _, err := bindings.ApplySnapshot(selection, snapshot, nil); err == nil {
+		t.Fatal("unknown override was accepted at matching revision")
+	}
+}
+
 func TestBindingsApplySnapshotRevisionMismatchUsesCapturedSelection(t *testing.T) {
 	bindings, values, definitions := testBindings(t, "amd64", true)
 	infos, snapshot := bindings.Snapshot()
