@@ -43,7 +43,7 @@ func planPlugins(configs []PluginConfig) ([]plannedExtension, error) {
 		if !ok {
 			return nil, fmt.Errorf("wago: plugin %q is not compiled into this binary", cfg.Name)
 		}
-		info := ext.Info()
+		info := cloneExtensionInfo(ext.Info())
 		if info.ID == "" {
 			return nil, fmt.Errorf("wago: plugin %q has no extension ID", cfg.Name)
 		}
@@ -273,7 +273,7 @@ func resolvePluginOrder(configs []PluginConfig) ([]PluginConfig, error) {
 		if !ok {
 			return nil, fmt.Errorf("wago: plugin %q is not compiled into this binary", cfg.Name)
 		}
-		byName[cfg.Name], infos[cfg.Name] = cfg, ext.Info()
+		byName[cfg.Name], infos[cfg.Name] = cfg, cloneExtensionInfo(ext.Info())
 	}
 	edges := make(map[string]map[string]struct{}, len(configs))
 	indegree := make(map[string]int, len(configs))
@@ -394,7 +394,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedExtension) error {
 		for _, activate := range p.reg.activate {
 			activate(rt)
 		}
-		rt.exts = append(rt.exts, p.info)
+		rt.exts = append(rt.exts, cloneExtensionInfo(p.info))
 		rt.extensions[p.info.ID] = p.ext
 	}
 	return nil

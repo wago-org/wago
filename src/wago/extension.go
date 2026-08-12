@@ -232,6 +232,37 @@ const (
 	ErrExtensionConflict     = extErr("wago: extension conflict")
 )
 
+// cloneExtensionInfo returns a caller-owned snapshot of extension metadata.
+// ExtensionInfo is retained after registration and exposed through inspection,
+// so neither boundary may share mutable containers with extension code or
+// callers.
+func cloneExtensionInfo(info ExtensionInfo) ExtensionInfo {
+	info.Authors = cloneSlice(info.Authors)
+	info.Tags = cloneSlice(info.Tags)
+	info.Requires = cloneSlice(info.Requires)
+	info.Before = cloneSlice(info.Before)
+	info.After = cloneSlice(info.After)
+	info.RequiresCapabilities = cloneSlice(info.RequiresCapabilities)
+	info.Compat.Platforms = cloneSlice(info.Compat.Platforms)
+	if info.Compat.Engines != nil {
+		engines := make(map[string]string, len(info.Compat.Engines))
+		for engine, constraint := range info.Compat.Engines {
+			engines[engine] = constraint
+		}
+		info.Compat.Engines = engines
+	}
+	return info
+}
+
+func cloneSlice[T any](values []T) []T {
+	if values == nil {
+		return nil
+	}
+	cloned := make([]T, len(values))
+	copy(cloned, values)
+	return cloned
+}
+
 // ExtensionError attributes a failure to a specific extension and operation while
 // preserving the underlying error for errors.Is/As.
 type ExtensionError struct {

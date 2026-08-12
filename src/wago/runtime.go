@@ -132,7 +132,7 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 	if ext == nil {
 		return fmt.Errorf("wago: Use: nil extension")
 	}
-	info := ext.Info()
+	info := cloneExtensionInfo(ext.Info())
 	if info.ID == "" {
 		return fmt.Errorf("wago: Use: extension has no ID")
 	}
@@ -551,11 +551,17 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 	return inst, nil
 }
 
-// Extensions returns the registered extensions in registration order.
+// Extensions returns caller-owned snapshots of the registered extensions in
+// registration order. Mutating nested slices or maps does not affect runtime
+// state.
 func (rt *Runtime) Extensions() []ExtensionInfo {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	return append([]ExtensionInfo(nil), rt.exts...)
+	extensions := make([]ExtensionInfo, len(rt.exts))
+	for i := range rt.exts {
+		extensions[i] = cloneExtensionInfo(rt.exts[i])
+	}
+	return extensions
 }
 
 // Capabilities returns the capabilities declared by registered extensions,
