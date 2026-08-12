@@ -55,17 +55,9 @@ func downloadBinaryContext(ctx context.Context, baseURL, ver string, profile wag
 	return downloadBinaryWithProgressContext(ctx, baseURL, ver, profile, build, dest, nil)
 }
 
-func downloadBinaryWithProgress(baseURL, ver string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *managerprogress.Progress) error {
-	return downloadBinaryWithProgressContext(context.Background(), baseURL, ver, profile, build, dest, progress)
-}
-
 func downloadBinaryWithProgressContext(ctx context.Context, baseURL, ver string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *managerprogress.Progress) error {
 	asset := versionAsset(profile, build)
 	return downloadReleaseAssetWithProgressContext(ctx, baseURL, ver, asset, dest, progress)
-}
-
-func downloadReleaseAssetWithProgress(baseURL, ver, asset, dest string, progress *managerprogress.Progress) error {
-	return downloadReleaseAssetWithProgressContext(context.Background(), baseURL, ver, asset, dest, progress)
 }
 
 func downloadReleaseAssetWithProgressContext(ctx context.Context, baseURL, ver, asset, dest string, progress *managerprogress.Progress) error {
@@ -210,9 +202,7 @@ func parseReleaseChecksum(data []byte, asset string) ([sha256.Size]byte, error) 
 	}
 	digestText := line[:separator]
 	remainder := strings.TrimLeft(line[separator:], " \t")
-	if strings.HasPrefix(remainder, "*") {
-		remainder = remainder[1:]
-	}
+	remainder = strings.TrimPrefix(remainder, "*")
 	// The release workflow invokes checksum tools with paths such as
 	// "./wago-linux-amd64", while downloaded assets are addressed by basename.
 	// Accept only that harmless current-directory prefix in addition to the
@@ -237,10 +227,6 @@ func versionAsset(profile wagopaths.Profile, build wagopaths.Build) string {
 
 func managerAsset() string {
 	return "wago-" + runtime.GOOS + "-" + runtime.GOARCH
-}
-
-func httpGetBytes(url string) ([]byte, error) {
-	return httpGetBytesProgress(url, nil)
 }
 
 // httpGetBytesProgress remains for small metadata tests/callers only. Release

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/wago-org/wago/internal/atomicfile"
@@ -279,6 +280,12 @@ func TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON(t *testing.T)
 			}
 			data, err := os.ReadFile(credentialsPath())
 			if err != nil {
+				// MoveFileEx can briefly exclude readers while replacing a file on
+				// Windows. That is a transient sharing condition, not a partial
+				// credential document.
+				if runtime.GOOS == "windows" && (errors.Is(err, syscall.Errno(5)) || errors.Is(err, syscall.Errno(32))) {
+					continue
+				}
 				readerDone <- err
 				return
 			}

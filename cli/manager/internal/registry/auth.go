@@ -79,12 +79,8 @@ func loginMethodPicker() *tui.Picker {
 	})
 }
 
-// chooseLoginMethod asks how to log in using the shared radio selector. Link is
-// selected by default and remains the fallback for non-interactive callers.
-func chooseLoginMethod(base string) (string, bool) {
-	return chooseLoginMethodContext(context.Background(), base)
-}
-
+// chooseLoginMethodContext asks how to log in using the shared radio selector.
+// Link is selected by default and remains the fallback for non-interactive callers.
 func chooseLoginMethodContext(ctx context.Context, base string) (string, bool) {
 	p := loginMethodPicker()
 	submitted, cancelled := tui.Run(p)
@@ -103,13 +99,10 @@ func chooseLoginMethodContext(ctx context.Context, base string) (string, bool) {
 	}
 }
 
-// browserLogin runs the loopback OAuth flow: it listens on a free localhost port,
-// opens the browser to the registry's CLI-login endpoint, and waits for the
-// /callback redirect carrying the plaintext token. It fatals on error or timeout.
-func browserLogin(base string) string {
-	return browserLoginContext(context.Background(), base)
-}
-
+// browserLoginContext runs the loopback OAuth flow: it listens on a free
+// localhost port, opens the browser to the registry's CLI-login endpoint, and
+// waits for the /callback redirect carrying the plaintext token. It fatals on
+// error or timeout.
 func browserLoginContext(ctx context.Context, base string) string {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -168,20 +161,6 @@ func browserLoginContext(ctx context.Context, base string) string {
 	}
 }
 
-// githubDeviceLogin runs GitHub's OAuth device flow (RFC 8628) and exchanges the
-// resulting GitHub token for a wago API token. It's the login path for
-// headless/remote machines: the user enters a code at github.com/login/device
-// instead of relying on a localhost redirect.
-//
-// The registry advertises its GitHub OAuth client_id (GET /api/auth/github/client)
-// so a self-hosted registry with its own OAuth app works without recompiling the
-// CLI. The CLI talks to GitHub directly for the device + access token, then hands
-// the GitHub token to the registry (POST /api/auth/github/exchange), which
-// verifies the token belongs to its app and returns a wago token.
-func githubDeviceLogin(base string) string {
-	return githubDeviceLoginContext(context.Background(), base)
-}
-
 const (
 	defaultDeviceFlowLifetime = 15 * time.Minute
 	maximumDeviceFlowLifetime = 20 * time.Minute
@@ -209,6 +188,16 @@ func deviceFlowTiming(expiresIn, interval int) (lifetime, pollInterval time.Dura
 	return lifetime, pollInterval
 }
 
+// githubDeviceLoginContext runs GitHub's OAuth device flow (RFC 8628) and
+// exchanges the resulting GitHub token for a wago API token. It's the login path
+// for headless/remote machines: the user enters a code at github.com/login/device
+// instead of relying on a localhost redirect.
+//
+// The registry advertises its GitHub OAuth client_id (GET /api/auth/github/client)
+// so a self-hosted registry with its own OAuth app works without recompiling the
+// CLI. The CLI talks to GitHub directly for the device + access token, then hands
+// the GitHub token to the registry (POST /api/auth/github/exchange), which
+// verifies the token belongs to its app and returns a wago token.
 func githubDeviceLoginContext(ctx context.Context, base string) string {
 	// 1. Ask the registry which GitHub OAuth app to authenticate against.
 	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/auth/github/client", "", nil)

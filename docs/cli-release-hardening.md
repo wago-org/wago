@@ -45,9 +45,10 @@ the previous destination unchanged and remove temporary files.
 
 Publication rejects destination symlinks, directories, and non-regular files.
 Unix uses same-filesystem rename replacement; Windows uses `MoveFileExW` with
-replace-existing and write-through flags. Running-manager self-replacement uses a unique same-directory staging path and
-keeps its specialized delayed-restart fallback when Windows prevents immediate
-replacement.
+replace-existing and write-through flags and briefly retries sharing conflicts
+from readers or concurrent publishers. Running-manager self-replacement uses a
+unique same-directory staging path and keeps its specialized delayed-restart
+fallback when Windows prevents immediate replacement.
 
 File contents are synced before release publication, but Wago does not claim
 perfect power-loss durability because the parent directory is not synced on all

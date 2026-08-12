@@ -3,13 +3,19 @@
 package atomicfile
 
 import (
+	"errors"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
 const (
-	moveFileReplaceExisting = 0x1
-	moveFileWriteThrough    = 0x8
+	moveFileReplaceExisting      = 0x1
+	moveFileWriteThrough         = 0x8
+	windowsErrorSharingViolation = syscall.Errno(32)
+	windowsErrorLockViolation    = syscall.Errno(33)
+	windowsReplaceRetryDelay     = 10 * time.Millisecond
+	windowsReplaceRetryTimeout   = 2 * time.Second
 )
 
 var moveFileEx = syscall.NewLazyDLL("kernel32.dll").NewProc("MoveFileExW")
@@ -23,13 +29,25 @@ func replaceExisting(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	result, _, callErr := moveFileEx.Call(
-		uintptr(unsafe.Pointer(sourcePointer)),
-		uintptr(unsafe.Pointer(destinationPointer)),
-		moveFileReplaceExisting|moveFileWriteThrough,
-	)
-	if result == 0 {
-		return callErr
+	deadline := time.Now().Add(windowsReplaceRetryTimeout)
+	for {
+		result, _, callErr := moveFileEx.Call(
+			uintptr(unsafe.Pointer(sourcePointer)),
+			uintptr(unsafe.Pointer(destinationPointer)),
+			moveFileReplaceExisting|moveFileWriteThrough,
+		)
+		if result != 0 {
+			return nil
+		}
+		if !retryableWindowsReplaceError(callErr) || !time.Now().Before(deadline) {
+			return callErr
+		}
+		time.Sleep(windowsReplaceRetryDelay)
 	}
-	return nil
+}
+
+func retryableWindowsReplaceError(err error) bool {
+	return errors.Is(err, syscall.ERROR_ACCESS_DENIED) ||
+		errors.Is(err, windowsErrorSharingViolation) ||
+		errors.Is(err, windowsErrorLockViolation)
 }

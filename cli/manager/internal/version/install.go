@@ -10,10 +10,6 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func vmInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string) {
-	vmInstallContext(context.Background(), d, ver, profile, build, use)
-}
-
 func vmInstallContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string) {
 	installVersionContext(ctx, d, ver, profile, build, true, true, use)
 }
@@ -67,10 +63,6 @@ func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, pr
 	if offer {
 		finishVersionInstall(d, installName, profile, build, use)
 	}
-}
-
-func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue, use string) {
-	vmInstallRequestedContext(context.Background(), d, args, latest, nightly, canary, profileValue, buildValue, use)
 }
 
 func vmInstallRequestedContext(ctx context.Context, d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue, use string) {

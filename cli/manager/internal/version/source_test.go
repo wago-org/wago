@@ -45,7 +45,8 @@ func TestExecuteSourceCommandCancellation(t *testing.T) {
 }
 
 func TestSourceCheckoutRejectsNilContext(t *testing.T) {
-	if _, _, _, err := checkoutWagoSourceInContext(nil, t.TempDir(), "v1.2.3", nil); err == nil {
+	var nilContext context.Context
+	if _, _, _, err := checkoutWagoSourceInContext(nilContext, t.TempDir(), "v1.2.3", nil); err == nil {
 		t.Fatal("source checkout accepted a nil context")
 	}
 }

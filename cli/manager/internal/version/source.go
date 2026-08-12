@@ -113,10 +113,6 @@ func buildRunnerFromSourceContext(ctx context.Context, ref string, profile wagop
 	return finishSourceBuild(tempRunner, dest, progress, "built "+string(profile)+" runtime with Go")
 }
 
-func buildManagerFromSource(ref, dest string, progress *managerprogress.Progress) error {
-	return buildManagerFromSourceContext(context.Background(), ref, dest, progress)
-}
-
 func buildManagerFromSourceContext(ctx context.Context, ref, dest string, progress *managerprogress.Progress) error {
 	temp, source, stamp, err := checkoutWagoSourceContext(ctx, ref, progress)
 	if err != nil {
@@ -155,16 +151,8 @@ func buildManagerFromSourceContext(ctx context.Context, ref, dest string, progre
 	return finishSourceBuild(tempManager, dest, progress, "built Wago with Go")
 }
 
-func checkoutWagoSource(ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
-	return checkoutWagoSourceContext(context.Background(), ref, progress)
-}
-
 func checkoutWagoSourceContext(ctx context.Context, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
 	return checkoutWagoSourceInContext(ctx, "", ref, progress)
-}
-
-func checkoutWagoSourceIn(parent, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
-	return checkoutWagoSourceInContext(context.Background(), parent, ref, progress)
 }
 
 func checkoutWagoSourceInContext(ctx context.Context, parent, ref string, progress *managerprogress.Progress) (temp, source, stamp string, err error) {
@@ -235,20 +223,12 @@ func checkoutWagoSourceWithGit(ctx context.Context, ref, source string) error {
 	return nil
 }
 
-func checkoutWagoSourceArchive(ref, temp, source string) error {
-	return checkoutWagoSourceArchiveContext(context.Background(), ref, temp, source)
-}
-
 func checkoutWagoSourceArchiveContext(ctx context.Context, ref, temp, source string) error {
 	archive := filepath.Join(temp, "source.zip")
 	if err := downloadSourceArchiveContext(ctx, sourceArchiveURL(ref), archive); err != nil {
 		return err
 	}
 	return sourcearchive.Extract(archive, source)
-}
-
-func downloadSourceArchive(address, target string) error {
-	return downloadSourceArchiveContext(context.Background(), address, target)
 }
 
 func downloadSourceArchiveContext(ctx context.Context, address, target string) error {

@@ -15,18 +15,6 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func latestRelease() string {
-	release, err := latestStableRelease()
-	if err != nil {
-		fatal("version latest: %v", err)
-	}
-	return release
-}
-
-func latestStableRelease() (string, error) {
-	return latestStableReleaseContext(context.Background())
-}
-
 func latestStableReleaseContext(ctx context.Context) (string, error) {
 	response, err := getReleaseBytes(ctx, "release discovery", releaseAPI()+"/repos/wago-org/wago/releases/latest", releaseMetadataMaximum)
 	if err != nil {
@@ -42,10 +30,6 @@ func latestStableReleaseContext(ctx context.Context) (string, error) {
 		return "", errors.New("GitHub returned an invalid latest release")
 	}
 	return release.TagName, nil
-}
-
-func vmBrowse(d wagopaths.Dirs, profileValue, buildValue, use string) {
-	vmBrowseContext(context.Background(), d, profileValue, buildValue, use)
 }
 
 func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildValue, use string) {
