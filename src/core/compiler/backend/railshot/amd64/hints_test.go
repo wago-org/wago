@@ -5,10 +5,18 @@ package amd64
 import (
 	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestFuncHintsSize(t *testing.T) {
+	const want = 200
+	if got := unsafe.Sizeof(funcHints{}); got != want {
+		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
 
 func TestScanBodyHints(t *testing.T) {
 	callOnly := wasm.Expr{Instrs: []wasm.Instruction{
@@ -560,5 +568,40 @@ func TestScanBodyBytesEntryInitializedLocals(t *testing.T) {
 	}
 	if got, want := h.entryInitialized, uint64(1)<<1; got != want {
 		t.Fatalf("entryInitialized = %#x, want %#x", got, want)
+	}
+}
+
+func TestControlDepthHintCountsNestedFrames(t *testing.T) {
+	h, err := scanBodyBytes([]byte{
+		0x02, 0x40, // block
+		0x04, 0x40, // if
+		0x03, 0x40, // loop
+		0x0e, 0x01, 0x00, 0x00, // br_table 0 0; does not open a frame
+		0x0b, 0x05, 0x0b, 0x0b, 0x0b,
+	}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.maxControlDepth != 3 {
+		t.Fatalf("max control depth = %d, want 3", h.maxControlDepth)
+	}
+}
+
+func TestControlDepthHintSaturates(t *testing.T) {
+	var h funcHints
+	h.noteControlDepth(254)
+	h.noteControlDepth(300)
+	if h.maxControlDepth != 255 {
+		t.Fatalf("saturated max control depth = %d, want 255", h.maxControlDepth)
+	}
+}
+
+func TestControlDepthHintLeavesStraightLineLazy(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.maxControlDepth != 0 {
+		t.Fatalf("max control depth = %d, want 0", h.maxControlDepth)
 	}
 }

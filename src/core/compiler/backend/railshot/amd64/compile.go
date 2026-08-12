@@ -589,6 +589,27 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	return capHint
 }
 
+const maxHintedControlFrames = 64
+
+// moduleControlFrameCap sizes the reusable control stack from the same one-pass
+// bytecode hints. Zero preserves lazy allocation for straight-line, incomplete,
+// AST-only, or unusually deep modules; append remains the correctness fallback.
+func moduleControlFrameCap(m *wasm.Module, hints []funcHints) int {
+	if len(hints) != len(m.Code) {
+		return 0
+	}
+	maxDepth := 0
+	for i := range hints {
+		if depth := int(hints[i].maxControlDepth); depth > maxDepth {
+			maxDepth = depth
+		}
+	}
+	if maxDepth == 0 || maxDepth >= maxHintedControlFrames {
+		return 0
+	}
+	return maxDepth + 1 // implicit function frame
+}
+
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
@@ -983,6 +1004,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
+		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
+			sc.ctrl = make([]ctrlFrame, 0, ctrlCap)
+		}
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: allocate code image: %w", err)
@@ -1094,11 +1118,15 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
 	stackCap := moduleStackArenaCap(m, allHints)
+	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		if ctrlCap != 0 {
+			states[i].scratch.ctrl = make([]ctrlFrame, 0, ctrlCap)
+		}
 	}
 	results := make([]funcResult, n)
 	var next atomic.Int64

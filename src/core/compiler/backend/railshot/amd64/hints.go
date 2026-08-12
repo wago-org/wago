@@ -32,13 +32,18 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals          int
-	hasCall          bool // any direct or indirect call
-	hasTailCall      bool // any return_call/return_call_indirect/return_call_ref
-	callsSelf        bool // a direct call to the function's own index
-	touchesMemory    bool // any linear-memory op
-	usesBulkMem      bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
-	mutatesTable     bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	nLocals       int
+	hasCall       bool // any direct or indirect call
+	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
+	callsSelf     bool // a direct call to the function's own index
+	touchesMemory bool // any linear-memory op
+	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
+	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	// maxControlDepth is the greatest simultaneously open structured-control
+	// depth, excluding the implicit function frame. Byte-backed production
+	// modules populate it during the existing one-pass hint scan. The byte uses
+	// existing alignment padding; 255 is a saturated fallback sentinel.
+	maxControlDepth  uint8
 	gcResolverSites  int  // conservative direct scalar/length resolver site count
 	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
 
@@ -87,6 +92,14 @@ type funcHints struct {
 	// stack's heap fallback still preserves pointer stability if the estimate is
 	// low for unusual control flow.
 	stackArenaNodes int
+}
+
+func (h *funcHints) noteControlDepth(depth int) {
+	if depth >= 255 {
+		h.maxControlDepth = 255
+	} else if d := uint8(depth); d > h.maxControlDepth {
+		h.maxControlDepth = d
+	}
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
@@ -622,6 +635,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -764,6 +778,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}

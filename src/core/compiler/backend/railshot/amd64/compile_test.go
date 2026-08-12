@@ -57,6 +57,26 @@ func TestHintSizedScratchRemovesFixedArenaBacking(t *testing.T) {
 	}
 }
 
+func TestModuleControlFrameCapIsExactAndLazy(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 2)}
+	if got := moduleControlFrameCap(m, []funcHints{{}, {}}); got != 0 {
+		t.Fatalf("straight-line control cap = %d, want lazy zero", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 4}}); got != 5 {
+		t.Fatalf("nested control cap = %d, want 5", got)
+	}
+}
+
+func TestModuleControlFrameCapFallsBackConservatively(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{}}}
+	if got := moduleControlFrameCap(m, nil); got != 0 {
+		t.Fatalf("incomplete hints cap = %d, want zero fallback", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: maxHintedControlFrames}}); got != 0 {
+		t.Fatalf("deep control cap = %d, want zero fallback", got)
+	}
+}
+
 func TestAsmCapForBodyClamps(t *testing.T) {
 	for _, tc := range []struct {
 		bodyLen int

@@ -20,7 +20,7 @@ func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 	}{
 		{name: "tiny", module: readParallelTestModule(t, filepath.Join(root, "tiny.wasm")), wantAllocs: 28},
 		{name: "many_funcs", module: readParallelTestModule(t, filepath.Join(root, "many_funcs.wasm")), wantAllocs: 342},
-		{name: "blake-as", module: readParallelTestModule(t, filepath.Join(root, "blake-as.wasm")), wantAllocs: 176},
+		{name: "blake-as", module: readParallelTestModule(t, filepath.Join(root, "blake-as.wasm")), wantAllocs: 161},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
