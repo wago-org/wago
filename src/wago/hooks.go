@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// ErrCallbackPanic identifies a panic recovered at an untrusted runtime-close
+// callback boundary. Panic values and stacks are deliberately not retained.
+const ErrCallbackPanic = extErr("wago: callback panicked")
+
 // HookRegistry collects lifecycle callbacks contributed by extensions: runtime
 // close, compile, instantiate, instance close, and invoke. Hooks fire on the
 // Runtime-aware paths (rt.Compile, rt.Instantiate, Instance.Call, and
@@ -186,6 +190,19 @@ func callHookSafely(phase string, fn func()) (err error) {
 			} else {
 				err = fmt.Errorf("wago: %s hook panicked: %v", phase, recovered)
 			}
+		}
+	}()
+	fn()
+	return nil
+}
+
+func callRuntimeCloseSafely(phase string, fn func()) (err error) {
+	defer func() {
+		if recover() != nil {
+			// Runtime-shutdown callbacks are plugin boundaries. Panic values and
+			// stacks may contain credentials or attacker-sized data, so expose only
+			// the bounded phase label and a stable sentinel through normal errors.
+			err = fmt.Errorf("wago: %s: %w", phase, ErrCallbackPanic)
 		}
 	}()
 	fn()

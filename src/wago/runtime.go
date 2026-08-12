@@ -590,18 +590,24 @@ func (rt *Runtime) CloseContext(ctx context.Context) error {
 
 	var errs []error
 	for i := len(pluginStops) - 1; i >= 0; i-- {
-		if err := pluginStops[i].stop(ctx); err != nil {
+		var stopErr error
+		panicErr := callRuntimeCloseSafely("plugin Stop", func() { stopErr = pluginStops[i].stop(ctx) })
+		if err := joinPrimary(stopErr, panicErr); err != nil {
 			errs = append(errs, &PluginError{Plugin: pluginStops[i].name, Phase: PluginPhaseStop, Err: err})
 		}
 	}
 	for i := len(internalClose) - 1; i >= 0; i-- {
-		if err := internalClose[i](); err != nil {
+		var closeErr error
+		panicErr := callRuntimeCloseSafely("internal runtime close", func() { closeErr = internalClose[i]() })
+		if err := joinPrimary(closeErr, panicErr); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	rctx := &RuntimeContext{Runtime: rt}
 	for i := len(hooks) - 1; i >= 0; i-- {
-		hooks[i](rctx)
+		if err := callRuntimeCloseSafely("OnRuntimeClose", func() { hooks[i](rctx) }); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }
