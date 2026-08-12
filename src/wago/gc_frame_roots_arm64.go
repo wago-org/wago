@@ -427,8 +427,8 @@ func arm64FunctionFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 	case wasm.HeapAbs:
 		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc
 	case wasm.HeapTypeIndex:
-		ft, ok := m.ResolvedTypeFunc(heap.Type().Index)
-		return ok && ft != nil
+		var ft wasm.CompType
+		return m.ResolveTypeFunc(heap.Type().Index, &ft)
 	case wasm.HeapDefType:
 		kind, valid := heap.DefCompKind()
 		return valid && kind == wasm.CompFunc

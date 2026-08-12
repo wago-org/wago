@@ -119,6 +119,22 @@ type ModuleFacts struct {
 	UsesRefFunc    bool
 }
 
+// NewModuleFacts allocates the four indexed fact vectors in one backing store.
+// The vectors remain independently addressable while modules with both tables
+// and memories pay one transient backing allocation instead of four.
+func NewModuleFacts(tableCount, memoryCount int) *ModuleFacts {
+	storage := make([]bool, 2*(tableCount+memoryCount))
+	tableGrowEnd := tableCount
+	tableExportEnd := tableGrowEnd + tableCount
+	memoryGrowEnd := tableExportEnd + memoryCount
+	return &ModuleFacts{
+		TableGrowUsed:  storage[:tableGrowEnd:tableGrowEnd],
+		TableExported:  storage[tableGrowEnd:tableExportEnd:tableExportEnd],
+		MemoryGrowUsed: storage[tableExportEnd:memoryGrowEnd:memoryGrowEnd],
+		MemoryExported: storage[memoryGrowEnd:],
+	}
+}
+
 const (
 	minOnlyTableGrowCapacity          uint64 = 1024
 	minOnlyExternrefTableGrowCapacity uint64 = 1024
@@ -312,12 +328,7 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil module")
 	}
-	facts := &ModuleFacts{
-		TableGrowUsed:  make([]bool, m.TableCount()),
-		TableExported:  make([]bool, m.TableCount()),
-		MemoryGrowUsed: make([]bool, m.MemCount()),
-		MemoryExported: make([]bool, m.MemCount()),
-	}
+	facts := NewModuleFacts(m.TableCount(), m.MemCount())
 	for i := range m.Exports {
 		ex := m.Exports[i].Index
 		switch ex.Kind {
@@ -564,8 +575,8 @@ func (p supportPass) types() error {
 				}
 				return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
 			}
-			comp, ok := p.m.ResolvedTypeFunc(uint32(typeIndex))
-			if !ok {
+			var comp wasm.CompType
+			if !p.m.ResolveTypeFunc(uint32(typeIndex), &comp) {
 				return p.unsupported("gc type", "unresolved function type", ctx)
 			}
 			if !p.supportedValTypes(comp.Params) {
@@ -601,8 +612,8 @@ func (p supportPass) imports() error {
 		ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			ft := p.funcType(im.Type.FuncType())
-			if ft == nil {
+			ft, ok := p.funcType(im.Type.FuncType())
+			if !ok {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
 			// Reflection-free host imports admit externref handles and opaque funcref
@@ -2372,7 +2383,7 @@ func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			if ft := p.funcType(im.Type.FuncType()); ft != nil && (compValTypesRequireSIMD(ft.Params) || compValTypesRequireSIMD(ft.Results)) {
+			if ft, ok := p.funcType(im.Type.FuncType()); ok && (compValTypesRequireSIMD(ft.Params) || compValTypesRequireSIMD(ft.Results)) {
 				return true
 			}
 		case wasm.ExternGlobal:
@@ -2528,15 +2539,13 @@ func instrsRequireSIMD(instrs []wasm.Instruction) bool {
 
 func maxInt() int { return int(^uint(0) >> 1) }
 
-func (p supportPass) funcType(idx wasm.TypeIdx) *wasm.CompType {
+func (p supportPass) funcType(idx wasm.TypeIdx) (wasm.CompType, bool) {
 	if idx.Rec {
-		return nil
+		return wasm.CompType{}, false
 	}
-	ct, ok := p.m.ResolvedTypeFunc(idx.Index)
-	if !ok {
-		return nil
-	}
-	return ct
+	var ct wasm.CompType
+	ok := p.m.ResolveTypeFunc(idx.Index, &ct)
+	return ct, ok
 }
 
 func (p supportPass) supportedTypedFuncRef(rt wasm.RefType) bool {

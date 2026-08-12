@@ -32,13 +32,18 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals          int
-	hasCall          bool // any direct or indirect call
-	hasTailCall      bool // any return_call/return_call_indirect/return_call_ref
-	callsSelf        bool // a direct call to the function's own index
-	touchesMemory    bool // any linear-memory op
-	usesBulkMem      bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
-	mutatesTable     bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	nLocals       int
+	hasCall       bool // any direct or indirect call
+	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
+	callsSelf     bool // a direct call to the function's own index
+	touchesMemory bool // any linear-memory op
+	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
+	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	// maxControlDepth is the greatest simultaneously open structured-control
+	// depth, excluding the implicit function frame. Byte-backed production
+	// modules populate it during the existing one-pass hint scan. The byte uses
+	// existing alignment padding; 255 is a saturated fallback sentinel.
+	maxControlDepth  uint8
 	gcResolverSites  int  // conservative direct scalar/length resolver site count
 	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
 
@@ -50,6 +55,8 @@ type funcHints struct {
 	hasLoop        bool
 	hasControlFlow bool
 	moduleEH       bool
+	hasFloatConst  bool // body contains f32.const or f64.const
+	hasSIMD        bool // body contains an 0xfd SIMD instruction
 
 	// immutableTables is derived after the one-pass per-function scans have been
 	// aggregated (computeModuleHints). Each admitted table is local, unexported,
@@ -87,6 +94,14 @@ type funcHints struct {
 	// stack's heap fallback still preserves pointer stability if the estimate is
 	// low for unusual control flow.
 	stackArenaNodes int
+}
+
+func (h *funcHints) noteControlDepth(depth int) {
+	if depth >= 255 {
+		h.maxControlDepth = 255
+	} else if d := uint8(depth); d > h.maxControlDepth {
+		h.maxControlDepth = d
+	}
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
@@ -297,6 +312,12 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
+				h.hasFloatConst = true
+			}
+			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
+				h.hasSIMD = true
+			}
 			switch in.Kind {
 			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
 				h.moduleEH = true
@@ -595,6 +616,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		if err != nil {
 			return true, 0, err
 		}
+		if op == 0x43 || op == 0x44 {
+			s.h.hasFloatConst = true
+		} else if op == 0xfd {
+			s.h.hasSIMD = true
+		}
 		switch op {
 		case 0x08, 0x0a, 0x1f: // throw, throw_ref, try_table
 			s.h.moduleEH = true
@@ -622,6 +648,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -764,6 +791,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}

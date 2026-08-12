@@ -100,11 +100,29 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	return x
 }
 
-// buildV128Const materializes the 128-bit constant (lo,hi) into V register x via a
-// GP scratch: FMOV Dn,Xt sets the low 64 (and zeroes the high half), then an INS
-// writes the high 64 when non-zero.
+// buildV128Const materializes the 128-bit constant (lo,hi) into V register x.
+// Lane splats use one scalar materialization plus DUP, avoiding the two full
+// 64-bit materializations needed by the generic FMOV+INS path. SIMD kernels use
+// byte/half/word splats heavily for masks and lookup tables, and AArch64's DUP
+// preserves the exact bits without relying on a floating-point immediate form.
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
 	t := f.allocReg(0)
+	if v, laneBytes := v128Splat(lo, hi); laneBytes != 0 {
+		f.a.MovImm64(t, v)
+		switch laneBytes {
+		case 1:
+			f.a.NeonDupGprB(x, t)
+		case 2:
+			f.a.NeonDupGprH(x, t)
+		case 4:
+			f.a.NeonDupGprS(x, t)
+		case 8:
+			f.a.NeonDupGprD(x, t)
+		}
+		f.release(t)
+		f.stats.peep("v128-const-splat")
+		return
+	}
 	f.a.MovImm64(t, lo)
 	f.a.FmovFromGpr(x, t, true) // FMOV Dn,Xt zeroes the high 64 bits.
 	if hi != 0 {
@@ -112,6 +130,29 @@ func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
 		f.a.NeonInsD(x, t, 1)
 	}
 	f.release(t)
+}
+
+// v128Splat returns the scalar lane value and smallest lane width whose
+// replication produces (lo,hi). Smallest-first is intentional: a byte splat
+// uses the cheapest scalar immediate even though it is also a half/word/dword
+// splat.
+func v128Splat(lo, hi uint64) (value uint64, laneBytes int) {
+	b := lo & 0xff
+	if lo == b*0x0101010101010101 && hi == lo {
+		return b, 1
+	}
+	h := lo & 0xffff
+	if lo == h*0x0001000100010001 && hi == lo {
+		return h, 2
+	}
+	w := lo & 0xffffffff
+	if lo == w|w<<32 && hi == lo {
+		return w, 4
+	}
+	if hi == lo {
+		return lo, 8
+	}
+	return 0, 0
 }
 
 // v128ConstReg holds a v128.const value cached in a reserved V register.
@@ -303,12 +344,29 @@ var (
 	i8x16Zip2S    = [16]byte{8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31}
 )
 
+// i8x16ExtOffset recognizes a contiguous 16-byte window crossing the two Wasm
+// shuffle operands. AArch64 EXT implements exactly concat(a,b)[offset:offset+16]
+// for offsets 1..15.
+func i8x16ExtOffset(lanes [16]byte) (byte, bool) {
+	offset := lanes[0]
+	if offset == 0 || offset >= 16 {
+		return 0, false
+	}
+	for i, lane := range lanes {
+		if lane != offset+byte(i) {
+			return 0, false
+		}
+	}
+	return offset, true
+}
+
 func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 	// One-instruction shuffle forms can write a following pinned local directly.
-	// REV32 and ZIP read their complete inputs before committing the destination,
+	// REV32, ZIP, and EXT read their complete inputs before committing the destination,
 	// so aliasing dst with either input is safe. Rotate-8 stays on the fresh-result
 	// path because its USHR+SLI sequence needs the original source twice.
-	directSink := v128ShuffleSinkEnabled && (lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S)
+	extOffset, isExt := i8x16ExtOffset(lanes)
+	directSink := v128ShuffleSinkEnabled && (isExt || lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S)
 	if directSink {
 		if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
 			f.stats.peep("v128-shuffle-sink")
@@ -328,15 +386,20 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 			f.fpinned = f.fpinned.add(s1)
 			s2, o2 := f.operandRegV128(b)
 			f.fpinned = f.fpinned.add(s2)
-			switch lanes {
-			case i8x16Zip1D:
-				f.a.NeonZip1D(dst, s1, s2)
-			case i8x16Zip2D:
-				f.a.NeonZip2D(dst, s1, s2)
-			case i8x16Zip1S:
-				f.a.NeonZip1S(dst, s1, s2)
-			case i8x16Zip2S:
-				f.a.NeonZip2S(dst, s1, s2)
+			if isExt {
+				f.a.NeonExt16b(dst, s1, s2, extOffset)
+				f.stats.peep("simd-shuffle-ext")
+			} else {
+				switch lanes {
+				case i8x16Zip1D:
+					f.a.NeonZip1D(dst, s1, s2)
+				case i8x16Zip2D:
+					f.a.NeonZip2D(dst, s1, s2)
+				case i8x16Zip1S:
+					f.a.NeonZip1S(dst, s1, s2)
+				case i8x16Zip2S:
+					f.a.NeonZip2S(dst, s1, s2)
+				}
 			}
 			f.fpinned = f.fpinned.remove(s1).remove(s2)
 			if o1 && dst != s1 {
@@ -348,6 +411,36 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 		}); done || err != nil {
 			return err
 		}
+	}
+
+	// Contiguous cross-input windows are a single EXT rather than two mask
+	// constants, two TBLs, and an ORR.
+	if isExt {
+		bElem := f.popValue()
+		aElem := f.popValue()
+		xa, aOwned := f.operandRegV128(aElem)
+		f.fpinned = f.fpinned.add(xa)
+		xb, bOwned := f.operandRegV128(bElem)
+		f.fpinned = f.fpinned.add(xb)
+		dst := xa
+		if !aOwned {
+			if bOwned {
+				dst = xb
+			} else {
+				dst = f.allocFReg(maskOf(xa, xb))
+			}
+		}
+		f.a.NeonExt16b(dst, xa, xb, extOffset)
+		f.fpinned = f.fpinned.remove(xa).remove(xb)
+		if bOwned && dst != xb {
+			f.releaseF(xb)
+		}
+		if aOwned && dst != xa {
+			f.releaseF(xa)
+		}
+		f.stats.peep("simd-shuffle-ext")
+		f.pushVReg(dst)
+		return nil
 	}
 
 	// AssemblyScript spells BLAKE's per-i32 rotate-right-by-16 and -8 as
@@ -1760,6 +1853,78 @@ func (f *fn) i8x16Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
+// tryI8x16BitmaskNonZero selects the exact adjacent
+// `i8x16.bitmask; i32.const 0; i32.ne` sequence. A full movemask is unnecessary
+// when only its zero-ness is observed: shifting each byte's sign bit into bit 0
+// and reducing with UMAXV produces the final 0/1 boolean directly.
+func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled {
+		return false
+	}
+	save := r.Offset()
+	op, err := r.Byte()
+	if err != nil || op != 0x41 { // i32.const
+		_ = r.JumpTo(save)
+		return false
+	}
+	zero, err := r.I32()
+	if err != nil || zero != 0 {
+		_ = r.JumpTo(save)
+		return false
+	}
+	op, err = r.Byte()
+	if err != nil || op != 0x47 { // i32.ne
+		_ = r.JumpTo(save)
+		return false
+	}
+
+	v := f.popValue()
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	f.a.NeonUshrB(x, src, 7)
+	f.a.NeonUmaxvB(x, x)
+	result := f.allocReg(0)
+	f.a.NeonUmovB(result, x, 0)
+	f.releaseF(x)
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-bitmask-nonzero")
+	return true
+}
+
+// tryI8x16BitmaskPopcnt selects `i8x16.bitmask; i32.popcnt`. The population
+// count is the number of byte lanes with their sign bit set, so shift those
+// bits to 0/1 and sum all sixteen lanes directly instead of materializing a
+// scalar bitmask only to feed it back through the scalar popcnt sequence.
+func (f *fn) tryI8x16BitmaskPopcnt(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled {
+		return false
+	}
+	save := r.Offset()
+	op, err := r.Byte()
+	if err != nil || op != 0x69 { // i32.popcnt
+		_ = r.JumpTo(save)
+		return false
+	}
+
+	v := f.popValue()
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	f.a.NeonUshrB(x, src, 7)
+	f.a.NeonAddvB(x, x)
+	result := f.allocReg(0)
+	f.a.NeonUmovB(result, x, 0)
+	f.releaseF(x)
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-bitmask-popcnt")
+	return true
+}
+
 // v128MaskReg materializes a 128-bit constant into a fresh V register without
 // clobbering the caller's live operand(s) named in avoid.
 func (f *fn) v128MaskReg(lo, hi uint64, avoid regMask) Reg {
@@ -2634,6 +2799,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 99: // i8x16.all_true
 		f.i8x16AllTrue()
 	case 100: // i8x16.bitmask
+		if f.tryI8x16BitmaskPopcnt(r) {
+			break
+		}
+		if f.tryI8x16BitmaskNonZero(r) {
+			break
+		}
 		f.i8x16Bitmask()
 	case 131: // i16x8.all_true
 		f.i16x8AllTrue()

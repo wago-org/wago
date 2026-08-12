@@ -23,6 +23,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bmi2-rorx", &bmi2RorxEnabled),
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
+	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
 	optimization.Bind("immutable-table", &immutableLocalTableEnabled),
 	optimization.Bind("immutable-table-type", &immutableTableTypeEnabled),
 	optimization.Bind("inline-callfree", &inlineCallFreeHintsEnabled),
@@ -31,6 +32,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("compact-i32-frame", &compactI32FrameEnabled),
 	optimization.Bind("tee-spill-elide", &teeSpillElideEnabled),
 	optimization.Bind("commute-self-update", &commuteSelfUpdateEnabled),
+	optimization.Bind("i64-mask32", &i64Mask32Enabled),
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
@@ -43,7 +45,12 @@ var optimizationBindings = optimization.NewBindings("amd64",
 )
 
 type KnobInfo = optimization.Info
+type OptimizationSnapshot = optimization.Snapshot
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
+
+func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) { return optimizationBindings.Snapshot() }
+
+func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings.CurrentSnapshot() }
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }

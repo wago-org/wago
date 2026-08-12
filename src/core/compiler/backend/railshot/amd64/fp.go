@@ -187,6 +187,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	if f.usesCalls || f.syncHostCalls {
 		return
 	}
+	f.stats.peep("float-preload-scan")
 	r := wasm.NewReader(code)
 	for r.HasNext() && len(f.fconsts) < 2 {
 		op, err := r.Byte()

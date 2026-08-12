@@ -40,6 +40,54 @@ func TestResolvedTypeFuncResolvesRecursiveTypeIndexes(t *testing.T) {
 	}
 }
 
+func TestResolveTypeFuncAliasesOnlyNonRecursiveModuleSlices(t *testing.T) {
+	m := &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{
+		Kind: CompFunc, Params: []ValType{I32}, Results: []ValType{I64},
+	}}}}}}
+	stored, _ := m.TypeFunc(0)
+	var resolved CompType
+	if !m.ResolveTypeFunc(0, &resolved) {
+		t.Fatal("ResolveTypeFunc(0) failed")
+	}
+	if &resolved.Params[0] != &stored.Params[0] || &resolved.Results[0] != &stored.Results[0] {
+		t.Fatal("non-recursive destination did not alias immutable module slices")
+	}
+
+	public, ok := m.ResolvedTypeFunc(0)
+	if !ok {
+		t.Fatal("ResolvedTypeFunc(0) failed")
+	}
+	public.Params[0] = F32
+	public.Results[0] = F64
+	if !EqualValType(stored.Params[0], I32) || !EqualValType(stored.Results[0], I64) {
+		t.Fatal("public resolved signature mutated module storage")
+	}
+}
+
+func TestResolveTypeFuncOwnsRecursiveDestinationSlices(t *testing.T) {
+	m := &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{
+		Kind:    CompFunc,
+		Params:  []ValType{RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false))},
+		Results: []ValType{I32},
+	}}}}}}
+	stored, _ := m.TypeFunc(0)
+	var resolved CompType
+	if !m.ResolveTypeFunc(0, &resolved) {
+		t.Fatal("ResolveTypeFunc(0) failed")
+	}
+	if &resolved.Params[0] == &stored.Params[0] || &resolved.Results[0] == &stored.Results[0] {
+		t.Fatal("recursive destination retained module slice storage")
+	}
+	resolved.Params[0] = I64
+	resolved.Results[0] = F64
+	if got := stored.Params[0].Ref().Heap().Type(); !got.Rec {
+		t.Fatal("recursive destination mutated stored params")
+	}
+	if !EqualValType(stored.Results[0], I32) {
+		t.Fatal("recursive destination mutated stored results")
+	}
+}
+
 func TestResolvedLocalFuncTypeResolvesRecursiveAndPreservesAbsoluteIndexes(t *testing.T) {
 	m := &Module{
 		Types: []RecType{

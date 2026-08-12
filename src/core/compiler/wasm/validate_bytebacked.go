@@ -1110,7 +1110,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, memarg64, multiMemory bool, ou
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfd:
-		in, err := decodeFDWithMemarg64(r, memarg64)
+		in, err := decodeFDWithMemarg64Into(r, memarg64, &v.opExt)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfe:

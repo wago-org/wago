@@ -31,12 +31,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	var out CoreFeatures
 	programmaticCode := false
 	elemStateCount, dataStateCount := 0, 0
-	moduleFacts := &frontend.ModuleFacts{
-		TableGrowUsed:  make([]bool, m.TableCount()),
-		TableExported:  make([]bool, m.TableCount()),
-		MemoryGrowUsed: make([]bool, m.MemCount()),
-		MemoryExported: make([]bool, m.MemCount()),
-	}
+	moduleFacts := frontend.NewModuleFacts(m.TableCount(), m.MemCount())
 	atomicWaitHelpers := false
 	indexedFuncRefTest, indexedFuncRefCast := false, false
 	arm64GCRefTestHelper := false

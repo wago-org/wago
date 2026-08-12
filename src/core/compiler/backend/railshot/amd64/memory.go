@@ -209,6 +209,7 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // eaOwned reports whether the caller must release ea.
 func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	e := f.popValue()
+	cleanAddress := f.cleanMemory32Address(e)
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
@@ -227,7 +228,11 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	}
 	// Host results and canonical spill slots are 64-bit ABI words. Establish the
 	// memory32 consuming-side invariant before any native-width arithmetic.
-	f.a.MovRegReg32(ea, ea)
+	if cleanAddress {
+		f.stats.peep("addr-zext-elim")
+	} else {
+		f.a.MovRegReg32(ea, ea)
+	}
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
@@ -554,10 +559,15 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 
 func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
 	e := f.popValue()
+	cleanAddress := f.cleanMemory32Address(e)
 	ea = f.materialize(e)
 	addr64 := f.memoryAddr64(memoryIndex)
 	if !addr64 {
-		f.a.MovRegReg32(ea, ea)
+		if cleanAddress {
+			f.stats.peep("addr-zext-elim")
+		} else {
+			f.a.MovRegReg32(ea, ea)
+		}
 		off32 := uint32(off)
 		disp = int32(off32)
 		if int64(off32)+int64(size) > 0x7fffffff {
@@ -598,6 +608,25 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.release(mb)
 	f.pinned = f.pinned.remove(ea)
 	return base, ea, disp
+}
+
+// cleanMemory32Address reports concrete storage forms whose materialization
+// necessarily writes a 32-bit destination. Borrowed local/global registers,
+// spill slots, and deferred operations are deliberately excluded: their
+// native-width carriers may have nonzero high bits, including after local.tee,
+// a sign-extending narrow load, or an identity-folded deferred operation.
+func (f *fn) cleanMemory32Address(e *elem) bool {
+	if !memory32AddrZExtElimEnabled || e == nil {
+		return false
+	}
+	if e.kind != ekValue || e.st.typ != mtI32 {
+		return false
+	}
+	switch e.st.kind {
+	case stConst, stLocalRef:
+		return true
+	}
+	return false
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;

@@ -21,7 +21,8 @@ func exceptionPayloadRootKind(m *wasm.Module, typ wasm.ValType) (nativeabi.RootK
 		}
 		return nativeabi.RootGCRef, true
 	case wasm.HeapTypeIndex:
-		if ft, ok := m.ResolvedTypeFunc(heap.Type().Index); ok && ft != nil {
+		var ft wasm.CompType
+		if m.ResolveTypeFunc(heap.Type().Index, &ft) {
 			return nativeabi.RootFuncRef, true
 		}
 		return nativeabi.RootGCRef, true
@@ -43,8 +44,8 @@ func catchAllPayloadRootKinds(m *wasm.Module) ([2]nativeabi.RootKind, [2]bool, e
 		if !ok {
 			return kinds, roots, fmt.Errorf("tag %d is unavailable", tag)
 		}
-		ft, ok := m.ResolvedTypeFunc(tagType.Type.Index)
-		if !ok || len(ft.Params) > len(kinds) {
+		var ft wasm.CompType
+		if !m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > len(kinds) {
 			return kinds, roots, fmt.Errorf("tag %d payload is unsupported", tag)
 		}
 		for payload, typ := range ft.Params {
@@ -145,8 +146,8 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 					if !ok {
 						return nil, fmt.Errorf("exception root map function %d tag %d is unavailable", function, tag)
 					}
-					tagFunc, ok := m.ResolvedTypeFunc(tagType.Type.Index)
-					if !ok || len(tagFunc.Params) > 2 {
+					var tagFunc wasm.CompType
+					if !m.ResolveTypeFunc(tagType.Type.Index, &tagFunc) || len(tagFunc.Params) > 2 {
 						return nil, fmt.Errorf("exception root map function %d tag %d payload is unsupported", function, tag)
 					}
 					for payload, typ := range tagFunc.Params {

@@ -251,6 +251,13 @@ func decodeAtomicOrder(r *reader) (AtomicOrder, error) {
 var feMem = [...]InstrKind{0x00: InstrMemoryAtomicNotify, 0x01: InstrMemoryAtomicWait32, 0x02: InstrMemoryAtomicWait64, 0x10: InstrI32AtomicLoad, 0x11: InstrI64AtomicLoad, 0x12: InstrI32AtomicLoad8U, 0x13: InstrI32AtomicLoad16U, 0x14: InstrI64AtomicLoad8U, 0x15: InstrI64AtomicLoad16U, 0x16: InstrI64AtomicLoad32U, 0x17: InstrI32AtomicStore, 0x18: InstrI64AtomicStore, 0x19: InstrI32AtomicStore8, 0x1a: InstrI32AtomicStore16, 0x1b: InstrI64AtomicStore8, 0x1c: InstrI64AtomicStore16, 0x1d: InstrI64AtomicStore32}
 
 func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
+	return decodeFDWithMemarg64Into(r, memarg64, nil)
+}
+
+// decodeFDWithMemarg64Into decodes a SIMD-prefixed instruction. If ext is
+// non-nil, rare immediate payloads are written into that caller-owned scratch;
+// otherwise the returned Instruction owns a newly allocated payload.
+func decodeFDWithMemarg64Into(r *reader, memarg64 bool, ext *instrExt) (Instruction, error) {
 	sub, err := r.u32()
 	if err != nil {
 		return Instruction{}, err
@@ -264,7 +271,13 @@ func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 			}
 			bs[i] = LaneIdx(b)
 		}
-		return Instruction{Kind: InstrV128Const, ext: &instrExt{Lanes: bs}}, nil
+		if ext == nil {
+			ext = &instrExt{}
+		} else {
+			*ext = instrExt{}
+		}
+		ext.Lanes = bs
+		return Instruction{Kind: InstrV128Const, ext: ext}, nil
 	}
 	if sub == 13 {
 		var lanes [16]LaneIdx
@@ -278,7 +291,13 @@ func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 			}
 			lanes[i] = LaneIdx(b)
 		}
-		return Instruction{Kind: InstrI8x16Shuffle, ext: &instrExt{Lanes: lanes}}, nil
+		if ext == nil {
+			ext = &instrExt{}
+		} else {
+			*ext = instrExt{}
+		}
+		ext.Lanes = lanes
+		return Instruction{Kind: InstrI8x16Shuffle, ext: ext}, nil
 	}
 	if k, ok := lookupPrefixKind(fdNoImm[:], sub); ok {
 		return Instruction{Kind: k}, nil
@@ -288,7 +307,13 @@ func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 		if err != nil {
 			return Instruction{}, err
 		}
-		in := Instruction{Kind: k, ext: &instrExt{MemArg: ma}}
+		if ext == nil {
+			ext = &instrExt{}
+		} else {
+			*ext = instrExt{}
+		}
+		ext.MemArg = ma
+		in := Instruction{Kind: k, ext: ext}
 		if sub >= 84 && sub <= 91 {
 			// SIMD lane memory instructions carry a lane immediate after memarg.
 			lane, err := r.byte()

@@ -65,6 +65,160 @@ func TestBindingsApplyAndRestoreSelection(t *testing.T) {
 	}
 }
 
+func TestBindingsApplySnapshotUsesDeltasAtMatchingRevision(t *testing.T) {
+	bindings, values, definitions := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	name := definitions[0].Name
+	selection[name] = false
+
+	restore, err := bindings.ApplySnapshot(selection, snapshot, map[string]bool{name: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values[0] {
+		t.Fatal("matching snapshot delta was not applied")
+	}
+	restore()
+	if !values[0] {
+		t.Fatal("matching snapshot delta was not restored")
+	}
+}
+
+func TestBindingsApplySnapshotUsesChangedOverrideMissingFromDeltas(t *testing.T) {
+	bindings, values, definitions := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	selection[definitions[0].Name] = false
+
+	restore, err := bindings.ApplySnapshot(selection, snapshot, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values[0] {
+		t.Fatal("changed override omitted from deltas was not applied")
+	}
+	restore()
+}
+
+func TestBindingsApplySnapshotUsesSelectionWhenDeltaConflicts(t *testing.T) {
+	bindings, values, definitions := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	name := definitions[0].Name
+	selection[name] = false
+
+	restore, err := bindings.ApplySnapshot(selection, snapshot, map[string]bool{name: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values[0] {
+		t.Fatal("conflicting delta took precedence over complete selection")
+	}
+	restore()
+}
+
+func TestBindingsApplySnapshotRejectsUnknownOverrideAtMatchingRevision(t *testing.T) {
+	bindings, _, _ := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	selection["unknown"] = false
+
+	if _, err := bindings.ApplySnapshot(selection, snapshot, nil); err == nil {
+		t.Fatal("unknown override was accepted at matching revision")
+	}
+}
+
+func TestBindingsApplySnapshotRevisionMismatchUsesCapturedSelection(t *testing.T) {
+	bindings, values, definitions := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	name := definitions[0].Name
+	if !bindings.Set(name, false) {
+		t.Fatalf("Set(%q) failed", name)
+	}
+
+	restore, err := bindings.ApplySnapshot(selection, snapshot, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !values[0] {
+		t.Fatal("stale snapshot did not install its captured selection")
+	}
+	restore()
+	if values[0] {
+		t.Fatal("stale snapshot did not restore the newer process default")
+	}
+}
+
+func TestBindingsApplySnapshotSerializesConcurrentSet(t *testing.T) {
+	bindings, values, definitions := testBindings(t, "amd64", true)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	name := definitions[0].Name
+	selection[name] = false
+	restore, err := bindings.ApplySnapshot(selection, snapshot, map[string]bool{name: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entered := make(chan struct{})
+	done := make(chan bool, 1)
+	go func() {
+		close(entered)
+		done <- bindings.Set(name, false)
+	}()
+	<-entered
+	select {
+	case <-done:
+		t.Fatal("Set completed while a compile snapshot held the binding lease")
+	default:
+	}
+	restore()
+	if !<-done {
+		t.Fatalf("Set(%q) failed", name)
+	}
+	if values[0] {
+		t.Fatal("concurrent Set did not become the process default after restore")
+	}
+}
+
+func TestBindingsDefaultApplyAllocationBudget(t *testing.T) {
+	bindings, _, _ := testBindings(t, "amd64", false)
+	infos, snapshot := bindings.Snapshot()
+	selection := infoValues(infos)
+	allocs := testing.AllocsPerRun(1000, func() {
+		restore, err := bindings.ApplySnapshot(selection, snapshot, nil)
+		if err != nil {
+			panic(err)
+		}
+		restore()
+	})
+	if allocs > 1 {
+		t.Fatalf("matching default ApplySnapshot allocations = %.0f, want <= 1", allocs)
+	}
+}
+
+func testBindings(t *testing.T, arch string, initial bool) (*Bindings, []bool, []Definition) {
+	t.Helper()
+	definitions := ForArch(arch)
+	values := make([]bool, len(definitions))
+	specs := make([]BindingSpec, len(definitions))
+	for index, definition := range definitions {
+		values[index] = initial
+		specs[index] = Bind(definition.Name, &values[index])
+	}
+	return NewBindings(arch, specs...), values, definitions
+}
+
+func infoValues(infos []Info) map[string]bool {
+	values := make(map[string]bool, len(infos))
+	for _, info := range infos {
+		values[info.Name] = info.On
+	}
+	return values
+}
+
 func assertPanics(t *testing.T, f func()) {
 	t.Helper()
 	defer func() {
