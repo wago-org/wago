@@ -1,6 +1,7 @@
 package artifactcache
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -171,24 +172,33 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	}
 }
 
-type rejectingCompileExtension struct {
-	calls *int
-	err   error
-}
+type cachePlugin func(*wago.Registrar) error
 
-func (e rejectingCompileExtension) Info() wago.ExtensionInfo {
-	return wago.ExtensionInfo{ID: "test.cache-reject"}
-}
+func (f cachePlugin) Register(reg *wago.Registrar) error { return f(reg) }
 
-func (e rejectingCompileExtension) Register(reg *wago.Registry) error {
-	reg.Hooks().AfterCompile(func(*wago.CompileContext, *wago.Module) error {
-		*e.calls++
-		if *e.calls == 1 {
-			return e.err
+func loadCachePlugin(t testing.TB, rt *wago.Runtime, id string, authorities []wago.AuthorityRequest, register cachePlugin) {
+	t.Helper()
+	definition := wago.PluginDefinition{
+		ID: id, Version: "1.0.0",
+		Provenance:  wago.PluginProvenance{Repository: "https://example.com/" + id, License: "MIT"},
+		Authorities: authorities,
+	}
+	digest, err := wago.DefinitionDigest(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := wago.PluginSelection{ID: id, DefinitionDigest: digest, Direct: true, Dependencies: map[string]string{}}
+	for _, authority := range authorities {
+		if authority.Mode == wago.AuthorityRequired {
+			selection.Grants = append(selection.Grants, wago.AuthorityGrant{Name: authority.Name, Scope: authority.Scope})
 		}
-		return nil
-	})
-	return nil
+	}
+	if err := rt.LoadPlugins(context.Background(), wago.PluginSet{
+		Providers:  []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { return register }}},
+		Selections: []wago.PluginSelection{selection},
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCacheHitPropagatesAfterCompileErrorExactlyOnce(t *testing.T) {
@@ -200,7 +210,7 @@ func TestCacheHitPropagatesAfterCompileErrorExactlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := module.Compiled().Close(); err != nil {
+	if err := module.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := seedRuntime.Close(); err != nil {
@@ -211,9 +221,20 @@ func TestCacheHitPropagatesAfterCompileErrorExactlyOnce(t *testing.T) {
 	calls := 0
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
 	defer rt.Close()
-	if err := rt.Use(rejectingCompileExtension{calls: &calls, err: rejected}); err != nil {
-		t.Fatal(err)
-	}
+	loadCachePlugin(t, rt, "example.com/cache/reject", []wago.AuthorityRequest{{
+		Name: wago.AuthorityModuleCompileObserve, Mode: wago.AuthorityRequired, Reason: "reject adopted artifacts",
+	}}, func(reg *wago.Registrar) error {
+		observer, err := reg.ModuleCompileObserver()
+		if err != nil {
+			return err
+		}
+		return observer.Observe(func(wago.ModuleCompiledEvent) {
+			calls++
+			if calls == 1 {
+				panic(rejected)
+			}
+		})
+	})
 	if _, err := cache.LoadOrCompile(source, config, rt); !errors.Is(err, rejected) {
 		t.Fatalf("cache binding error = %v, want %v", err, rejected)
 	}
@@ -299,9 +320,18 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 	telemetry := base.WithGCCodeTelemetry(true)
 	var compileCalls int
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(telemetry))
-	if err := rt.Use(telemetryCountingExtension{calls: &compileCalls}, wago.WithPluginGrants(wago.PluginCompileHooks)); err != nil {
-		t.Fatal(err)
-	}
+	loadCachePlugin(t, rt, "example.com/cache/telemetry", []wago.AuthorityRequest{{
+		Name: wago.AuthorityModuleSourceTransform, Mode: wago.AuthorityRequired, Reason: "count fresh compiles",
+	}}, func(reg *wago.Registrar) error {
+		transformer, err := reg.ModuleSourceTransformer()
+		if err != nil {
+			return err
+		}
+		return transformer.Transform(func(wago.ModuleSourceContext, []byte) ([]byte, error) {
+			compileCalls++
+			return nil, nil
+		})
+	})
 	module, err := cache.LoadOrCompile(source, telemetry, rt)
 	if err != nil {
 		t.Fatal(err)
@@ -318,26 +348,6 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
-}
-
-type telemetryCountingExtension struct {
-	calls *int
-}
-
-func (e telemetryCountingExtension) Info() wago.ExtensionInfo {
-	return wago.ExtensionInfo{ID: "test.telemetry-cache-compile"}
-}
-
-func (e telemetryCountingExtension) Register(reg *wago.Registry) error {
-	hooks, err := reg.ModuleCompiler()
-	if err != nil {
-		return err
-	}
-	hooks.Before(func(*wago.CompileContext, []byte) ([]byte, error) {
-		(*e.calls)++
-		return nil, nil
-	})
-	return nil
 }
 
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {

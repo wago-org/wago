@@ -46,30 +46,38 @@ func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *
 	if rt == nil {
 		return nil, fmt.Errorf("wago: artifact cache requires a runtime")
 	}
-	if config == nil {
-		return rt.Compile(source)
-	}
 	// Runtime.Compile is authoritative. The explicit config parameter is retained
-	// for source compatibility, but a mismatched caller value must never select an
-	// artifact compiled under policy the destination runtime did not request.
+	// for source compatibility, but cannot select code under a different policy.
 	config = rt.Config()
-	if config.GCCodeTelemetry() || config.BoundsChecks() == wago.BoundsChecksSignalsBased {
-		// Telemetry is intentionally compile-only and absent from serialized
-		// artifacts. Signals-based native code is also deliberately nonserializable.
-		return rt.Compile(source)
+	if config == nil {
+		return nil, fmt.Errorf("wago: artifact cache runtime has no configuration")
 	}
-	path, cacheable := cache.path(source, config)
+	// Validate before lookup, bypass, or plugin preparation: a warm entry must not
+	// admit a configuration that a cold Runtime.Compile rejects.
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	prepared, err := rt.PrepareCompile(source)
+	if err != nil {
+		return nil, err
+	}
+	defer prepared.Close()
+
+	cacheableGeneration := prepared.Cacheable()
+	if config.GCCodeTelemetry() || config.BoundsChecks() == wago.BoundsChecksSignalsBased {
+		// Telemetry is compile-only and absent from serialized artifacts. Signals-
+		// based native code is also deliberately nonserializable.
+		cacheableGeneration = false
+	}
+	path, cacheable := cache.path(prepared.Source(), config)
+	cacheable = cacheable && cacheableGeneration
 	if cacheable {
 		if compiled, hit := loadArtifact(path); hit {
-			module, bindErr := rt.AdoptModule(compiled)
-			if bindErr == nil {
-				return module, nil
-			}
-			return nil, bindErr
+			return prepared.Adopt(compiled)
 		}
 	}
 
-	module, err := rt.Compile(source)
+	module, err := prepared.Compile()
 	if err != nil {
 		return nil, err
 	}

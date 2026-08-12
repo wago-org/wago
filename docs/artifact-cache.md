@@ -46,12 +46,22 @@ fixed-order configuration values:
 Function-worker policy is intentionally excluded: it controls only bounded
 compiler scheduling, while validation order, generated native code, and
 serialized artifact bytes remain deterministic across worker counts. Cache
-lookup always uses the destination runtime's effective configuration—the
-caller's compatibility parameter cannot select code compiled under a different
-runtime policy. The compile-only GC native-code telemetry option bypasses the
-cache entirely because that attribution is deliberately not serialized and a
-warm artifact cannot satisfy the request. Signals-based compilation also
-bypasses the cache because guard-page native code is intentionally nonserializable.
+lookup validates and uses the destination runtime's effective configuration
+before lookup or bypass decisions—the caller's compatibility parameter cannot
+select code compiled under a different runtime policy, and a warm entry cannot
+admit a configuration that a cold compile rejects.
+
+One `PreparedCompile` owns each lookup. Source transforms run exactly once before
+key selection, and compile observers see the same `CompilationIdentity` on cold
+compilation and warm artifact adoption. Generations with source transforms or
+custom compiler instructions currently bypass serialized reuse because those
+plugin semantics do not yet expose a deterministic fingerprint. Observer-only
+generations remain cacheable and still receive warm-hit events.
+
+The compile-only GC native-code telemetry option bypasses the cache entirely
+because that attribution is deliberately not serialized and a warm artifact
+cannot satisfy the request. Signals-based compilation also bypasses the cache
+because guard-page native code is intentionally nonserializable.
 
 The binary key format has an explicit version and domain prefix. Changing the
 meaning or order of any encoded field requires incrementing `cacheKeyFormat`.
