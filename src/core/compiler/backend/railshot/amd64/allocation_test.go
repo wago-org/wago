@@ -3,10 +3,48 @@
 package amd64
 
 import (
+	"bytes"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	tests := []struct {
+		name       string
+		module     *wasm.Module
+		wantAllocs float64
+	}{
+		{name: "tiny", module: readParallelTestModule(t, filepath.Join(root, "tiny.wasm")), wantAllocs: 28},
+		{name: "many_funcs", module: readParallelTestModule(t, filepath.Join(root, "many_funcs.wasm")), wantAllocs: 342},
+		{name: "blake-as", module: readParallelTestModule(t, filepath.Join(root, "blake-as.wasm")), wantAllocs: 176},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			baseline, err := CompileModuleWith(tc.module, CompileOptions{Workers: 1})
+			if err != nil {
+				t.Fatalf("CompileModuleWith baseline: %v", err)
+			}
+			allocs := testing.AllocsPerRun(20, func() {
+				got, err := CompileModuleWith(tc.module, CompileOptions{Workers: 1})
+				if err != nil {
+					t.Fatalf("CompileModuleWith: %v", err)
+				}
+				if !bytes.Equal(got.Code, baseline.Code) {
+					t.Fatal("native code changed across identical serial compiles")
+				}
+				benchCompiledSink = got
+			})
+			t.Logf("CompileModuleWith allocations = %.0f", allocs)
+			if allocs != tc.wantAllocs {
+				t.Fatalf("CompileModuleWith allocations = %.0f, want %.0f", allocs, tc.wantAllocs)
+			}
+		})
+	}
+}
 
 func TestCompileSmallScalarAllocationBudget(t *testing.T) {
 	m := benchSmallScalarModule(t)

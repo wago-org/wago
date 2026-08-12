@@ -418,6 +418,14 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		if !reflect.DeepEqual(allHints[i], want) {
 			t.Fatalf("func %d cached hints = %+v, want %+v", i, allHints[i], want)
 		}
+		ft, _ := m.LocalFuncType(i)
+		wantLocals, err := countLocals(ft.Params, m.Code[i].Locals)
+		if err != nil {
+			t.Fatalf("countLocals %d: %v", i, err)
+		}
+		if allHints[i].nLocals != wantLocals {
+			t.Fatalf("func %d nLocals = %d, want %d", i, allHints[i].nLocals, wantLocals)
+		}
 	}
 }
 

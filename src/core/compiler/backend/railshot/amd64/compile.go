@@ -1313,7 +1313,6 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) ([]funcHints, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
-	localCounts := make([]int, n)
 	totalLocals := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
@@ -1329,7 +1328,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 		if count > int(^uint(0)>>1)-totalLocals {
 			return nil, nil, fmt.Errorf("function hint locals overflow")
 		}
-		localCounts[i] = count
+		allHints[i].nLocals = count
 		totalLocals += count
 	}
 	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
@@ -1362,7 +1361,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 	}
 	localAt := 0
 	for i := range m.Code {
-		nLocals := localCounts[i]
+		nLocals := allHints[i].nLocals
 		var h funcHints
 		if denseGlobals {
 			globalAt := i * nGlobals
