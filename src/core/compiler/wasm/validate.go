@@ -102,11 +102,16 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 	importedFuncs := v.m.ImportedFuncCount()
 	memarg64 := moduleMemargOffset64(v.m)
-	errs := make([]error, len(v.m.Code))
+	type result struct {
+		index int
+		err   error
+	}
+	results := make([]result, workers)
 	var next atomic.Int64
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for worker := 0; worker < workers; worker++ {
+		worker := worker
 		go func() {
 			defer wg.Done()
 			fv := funcValidator{moduleValidator: v}
@@ -115,17 +120,23 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 				if i >= len(v.m.Code) {
 					return
 				}
-				errs[i] = v.validateFunction(&fv, i, importedFuncs, memarg64)
+				if err := v.validateFunction(&fv, i, importedFuncs, memarg64); err != nil {
+					results[worker] = result{index: i, err: err}
+					return
+				}
 			}
 		}()
 	}
 	wg.Wait()
-	for i := range errs {
-		if errs[i] != nil {
-			return errs[i]
+	lowest := len(v.m.Code)
+	var first error
+	for i := range results {
+		if results[i].err != nil && results[i].index < lowest {
+			lowest = results[i].index
+			first = results[i].err
 		}
 	}
-	return nil
+	return first
 }
 
 // freezeCompCache resolves every valid flat type index before workers start.
