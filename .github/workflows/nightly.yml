@@ -42,7 +42,7 @@ jobs:
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=nightly-$(date -u +%Y%m%d)-${sha::7}" >> "$GITHUB_OUTPUT"
-          echo "tag=nightly-$(date -u +%Y%m%d)-${sha::7}" >> "$GITHUB_OUTPUT"
+          echo "tag=nightly-$(date -u +%Y%m%d)-$sha" >> "$GITHUB_OUTPUT"
       - name: Compare HEAD to the newest nightly release
         id: decide
         env:
@@ -175,6 +175,11 @@ jobs:
             '${{ needs.check.outputs.sha }}' '${{ needs.check.outputs.version }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; \
             sed -n '1,$p' .github/release-asset-naming.md)
           if gh release view "${{ needs.check.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            target=$(gh api "repos/${{ github.repository }}/releases/tags/${{ needs.check.outputs.tag }}" --jq '.target_commitish')
+            if [ "$target" != "${{ needs.check.outputs.sha }}" ]; then
+              echo "GitHub release ${{ needs.check.outputs.tag }} has an invalid target commit: $target" >&2
+              exit 1
+            fi
             gh release upload "${{ needs.check.outputs.tag }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"
             gh release edit "${{ needs.check.outputs.tag }}" --repo "${{ github.repository }}" --notes "$notes"
           else
