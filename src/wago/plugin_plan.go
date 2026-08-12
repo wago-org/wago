@@ -141,6 +141,11 @@ func (rt *Runtime) beginFailedPluginRollback() {
 	if rt.state == runtimeLoading {
 		rt.state = runtimeClosing
 	}
+	select {
+	case <-rt.loadingDone:
+	default:
+		close(rt.loadingDone)
+	}
 	rt.stateCond.Broadcast()
 	rt.mu.Unlock()
 }
@@ -162,6 +167,7 @@ func (rt *Runtime) beginPluginLoad() error {
 	}
 	rt.pluginsLoadAttempted = true
 	rt.state = runtimeLoading
+	rt.loadingDone = make(chan struct{})
 	return nil
 }
 
@@ -169,6 +175,11 @@ func (rt *Runtime) finishPluginLoad() {
 	rt.mu.Lock()
 	if rt.state == runtimeLoading {
 		rt.state = runtimeReady
+	}
+	select {
+	case <-rt.loadingDone:
+	default:
+		close(rt.loadingDone)
 	}
 	rt.stateCond.Broadcast()
 	rt.mu.Unlock()

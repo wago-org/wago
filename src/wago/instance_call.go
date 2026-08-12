@@ -21,6 +21,17 @@ import (
 // by compiler feature support. v128
 // parameters/results are not expressible as a Value; use Invoke for those.
 func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]Value, error) {
+	if err := in.beginInvocation(); err != nil {
+		return nil, fmt.Errorf("call %q: %w", export, err)
+	}
+	defer in.endInvocation()
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	state.invocationID = newInvocationID()
+	defer func() {
+		state.invocationID = 0
+		state.invokeMu.Unlock()
+	}()
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -53,18 +64,24 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		cancel = ctx
 	}
 
-	// Fast path: no runtime or no invoke hooks — invoke directly, zero overhead.
+	// Fast path: no runtime or no invoke hooks — invoke directly under the one
+	// already-admitted invocation lease, with no plugin reservation allocation.
 	if in.rt == nil {
-		out, err := in.callInner(export, slots, results, cancel)
+		out, err := in.callInnerAdmitted(export, slots, results, cancel, nil)
 		return out, contextInterruptError(ctx, err)
 	}
 	hooks := in.rt.loadHooks()
 	if len(hooks.beforeInvoke) == 0 && len(hooks.afterInvoke) == 0 {
-		out, err := in.callInner(export, slots, results, cancel)
+		out, err := in.callInnerAdmitted(export, slots, results, cancel, nil)
 		return out, contextInterruptError(ctx, err)
 	}
+	reservation, err := reservePluginOperation(hooks.operationGates)
+	if err != nil {
+		return nil, err
+	}
+	defer reservation.release()
 
-	request := InvocationRequest{Operation: OperationIdentity{value: &operationIdentityToken{}}, Instance: InstanceIdentity{value: in}, Export: export, Args: append([]Value(nil), args...), Start: time.Now()}
+	request := InvocationRequest{Operation: OperationIdentity{value: &operationIdentityToken{}}, Instance: InstanceIdentity{value: in}, Export: export, Args: append([]Value(nil), args...), Start: time.Now(), reservation: reservation}
 	emitAfter := func(event InvocationEvent) error {
 		var hookErrs []error
 		for _, fn := range hooks.afterInvoke {
@@ -86,12 +103,12 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		if err := joinPrimary(interceptErr, panicErr); err != nil {
 			// A BeforeInvoke veto aborts the call; report it to AfterInvoke too so
 			// paired hooks can unwind.
-			return nil, joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Err: err, Start: request.Start}))
+			return nil, joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Err: err, Start: request.Start, reservation: reservation}))
 		}
 	}
-	out, err := in.callInner(export, slots, results, cancel)
+	out, err := in.callInnerAdmitted(export, slots, results, cancel, reservation)
 	err = contextInterruptError(ctx, err)
-	err = joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Results: out, Err: err, Start: request.Start}))
+	err = joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Results: out, Err: err, Start: request.Start, reservation: reservation}))
 	return out, err
 }
 
@@ -111,9 +128,10 @@ func contextInterruptError(ctx context.Context, err error) error {
 	return err
 }
 
-// callInner performs the actual invocation and result decoding.
-func (in *Instance) callInner(export string, slots []uint64, results []ValType, cancel context.Context) ([]Value, error) {
-	raw, err := in.invoke(export, slots, cancel)
+// callInnerAdmitted performs the actual invocation and result decoding under
+// the invocation lease already held by Call.
+func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, cancel context.Context, reservation *pluginOperationReservation) ([]Value, error) {
+	raw, err := in.invokeAdmitted(export, slots, cancel, reservation)
 	if err != nil {
 		return nil, err
 	}

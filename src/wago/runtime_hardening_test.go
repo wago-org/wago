@@ -350,7 +350,7 @@ func TestRuntimeClosedAndWaitClosedObserveFinalError(t *testing.T) {
 		t.Fatalf("canceled WaitClosed = %v", err)
 	}
 	close(release)
-	if err := <-owner; !errors.Is(err, stopErr) {
+	if err := <-owner; err != nil {
 		t.Fatalf("owner Close = %v", err)
 	}
 	if err := rt.WaitClosed(context.Background()); !errors.Is(err, stopErr) {

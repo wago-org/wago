@@ -58,18 +58,17 @@ func TestLoadPluginsExclusiveAndCloseWaitsForStart(t *testing.T) {
 	if _, err := rt.Compile(wasmtest.Module()); err == nil || !strings.Contains(err.Error(), "plugins are loading") {
 		t.Fatalf("Compile during Start = %v", err)
 	}
-	closeDone := make(chan error, 1)
-	go func() { closeDone <- rt.Close() }()
-	select {
-	case err := <-closeDone:
-		t.Fatalf("Close returned before Start: %v", err)
-	case <-time.After(25 * time.Millisecond):
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if rt.Closed() == nil {
+		t.Fatal("Close did not publish shutdown while Start was active")
 	}
 	close(release)
 	if err := <-loadDone; err != nil {
 		t.Fatal(err)
 	}
-	if err := <-closeDone; err != nil {
+	if err := rt.WaitClosed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -229,6 +228,9 @@ func TestConsumerStopCanInvokeProviderManagedInstance(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if stoppedValue != 7 {
 		t.Fatalf("consumer Stop value = %d, want 7", stoppedValue)
 	}
@@ -311,7 +313,7 @@ func TestRuntimeCloseCompletionPublishesSameError(t *testing.T) {
 	close(release)
 	err1 := <-first
 	err2 := rt.WaitClosed(context.Background())
-	if !errors.Is(err1, stopErr) || !errors.Is(err2, stopErr) || err1.Error() != err2.Error() {
+	if err1 != nil || !errors.Is(err2, stopErr) {
 		t.Fatalf("Close/WaitClosed results = %v / %v", err1, err2)
 	}
 }
@@ -355,6 +357,9 @@ func TestRuntimeCloseObserverAndInstancesPrecedePluginStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(events, []string{"runtime", "instance", "stop"}) {
@@ -403,6 +408,9 @@ func TestRuntimeCloseClosesInstancesInReverseCreationOrder(t *testing.T) {
 		created = append(created, InstanceIdentity{value: in})
 	}
 	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	want := []InstanceIdentity{created[2], created[1], created[0]}
@@ -492,17 +500,18 @@ func TestRuntimeStopCanReleaseBlockedPublicInvoke(t *testing.T) {
 	invokeDone := make(chan error, 1)
 	go func() { _, err := in.Invoke("call"); invokeDone <- err }()
 	<-entered
-	closeDone := make(chan error, 1)
-	go func() { closeDone <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
 	select {
-	case err := <-closeDone:
-		if err != nil {
-			t.Fatal(err)
-		}
+	case <-release:
 	case <-time.After(time.Second):
 		t.Fatal("Runtime.Close did not run Stop to release a blocked public Invoke")
 	}
 	<-invokeDone // interruption or successful unwind are both valid
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRuntimeStopCanReleaseBlockedImportedStart(t *testing.T) {
@@ -554,21 +563,22 @@ func TestRuntimeStopCanReleaseBlockedImportedStart(t *testing.T) {
 	instantiateDone := make(chan error, 1)
 	go func() { _, err := rt.Instantiate(context.Background(), mod); instantiateDone <- err }()
 	<-entered
-	closeDone := make(chan error, 1)
-	go func() { closeDone <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
 	select {
-	case err := <-closeDone:
-		if err != nil {
-			t.Fatal(err)
-		}
+	case <-release:
 	case <-time.After(time.Second):
 		t.Fatal("Runtime.Close did not run Stop to release a blocked imported start")
 	}
 	if err := <-instantiateDone; err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("Instantiate racing Runtime.Close = %v, want closed failure", err)
 	}
-	if got := afterInstantiate.Load(); got != 0 {
-		t.Fatalf("AfterInstantiate ran %d time(s) after plugin Stop", got)
+	if got := afterInstantiate.Load(); got != 1 {
+		t.Fatalf("admitted AfterInstantiate ran %d time(s), want 1", got)
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -653,6 +663,59 @@ func TestRuntimeCloseDrainsManagedForkBeforeManagerTeardown(t *testing.T) {
 	}
 }
 
+func TestAdmittedImportedStartKeepsPluginGenerationUntilTerminalObserver(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	afterReturned, stopped := make(chan struct{}), make(chan struct{})
+	def := testDefinition("example.com/close/reserved-start")
+	def.Authorities = []AuthorityRequest{
+		{Name: AuthorityHostImportDefine, Mode: AuthorityRequired, Reason: "block imported start", Scope: AuthorityScope{Modules: []string{"env"}}},
+		{Name: AuthorityInstanceInstantiateObserve, Mode: AuthorityRequired, Reason: "prove terminal generation retention"},
+	}
+	provider := PluginProvider{Definition: def, New: func() Plugin {
+		return pluginFunc(func(r *Registrar) error {
+			hosts, _ := r.HostImports()
+			module, _ := hosts.Module("env")
+			module.Func("f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
+			observer, _ := r.InstanceInstantiateObserver()
+			if err := observer.After(func(InstantiationEvent) { close(afterReturned) }); err != nil {
+				return err
+			}
+			return r.Lifecycle(PluginLifecycle{Stop: func(context.Context) error { close(stopped); return nil }})
+		})
+	}}
+	rt := NewRuntime()
+	if err := rt.LoadPlugins(context.Background(), testSet(t, provider)); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(blockingImportedStartModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	instantiateDone := make(chan error, 1)
+	go func() { _, err := rt.Instantiate(context.Background(), mod); instantiateDone <- err }()
+	<-entered
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("plugin Stop did not run")
+	}
+	close(release)
+	if err := <-instantiateDone; err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("Instantiate racing close = %v, want closed failure", err)
+	}
+	select {
+	case <-afterReturned:
+	case <-time.After(time.Second):
+		t.Fatal("admitted terminal observer did not run after Stop")
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func blockingImportedStartModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -716,16 +779,17 @@ func TestRetainedCrossInstanceCallCannotEnterPluginAfterStop(t *testing.T) {
 	callDone := make(chan error, 1)
 	go func() { _, err := consumer.Invoke("call"); callDone <- err }()
 	<-entered
-	closeDone := make(chan error, 1)
-	go func() { closeDone <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
 	select {
-	case <-time.After(25 * time.Millisecond):
-	case err := <-closeDone:
-		t.Fatalf("Runtime.Close returned while a retained plugin callback was active: %v", err)
+	case <-rt.Closed():
+		t.Fatal("Runtime teardown completed while a retained plugin callback was active")
+	default:
 	}
 	close(release)
 	<-callDone // runtime interruption or normal unwind are both valid
-	if err := <-closeDone; err != nil {
+	if err := rt.WaitClosed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !stopped.Load() {

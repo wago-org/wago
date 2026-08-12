@@ -23,6 +23,7 @@ type InstantiateOptions struct {
 	forceSyncHost        bool
 	afterCreate          func(*Instance) error
 	moduleIdentity       ModuleIdentity
+	operationReservation *pluginOperationReservation
 	independentInstances bool
 	hasExecutionPolicy   bool
 }
@@ -1387,11 +1388,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	if opts.runtime != nil {
+		in.beginConstruction(opts.operationReservation)
 		if err := opts.runtime.registerInstance(in); err != nil {
+			in.endConstruction()
 			return nil, err
 		}
 		// Once a Runtime-owned Instance exists, every later failure must dispose it
-		// through the normal lifecycle before the instantiation error escapes.
+		// through the normal lifecycle before the instantiation error escapes. The
+		// construction lifetime remains active through rollback and is released only
+		// after all terminal instantiation observers return.
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				result = nil
@@ -1401,11 +1406,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
 				}
 			}
-			if b.success {
-				return
+			if !b.success {
+				b.success = true // the normal Close path now owns all instance resources
+				err = joinPrimary(err, in.Close())
 			}
-			b.success = true // the normal Close path now owns all instance resources
-			err = joinPrimary(err, in.Close())
+			in.endConstruction()
 		}()
 	}
 	if opts.store != nil {
@@ -1466,7 +1471,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}
-			caller := in.beginHostCallScope()
+			caller := in.beginHostCallScopeReserved(in.constructionReservationSnapshot())
 			if err := callImportedStart(fn, caller); err != nil {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}

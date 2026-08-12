@@ -475,23 +475,24 @@ func TestLifecycleRollbackReverseStopAndContractLease(t *testing.T) {
 	doneCall := make(chan error, 1)
 	go func() { doneCall <- ref.Call(func(any) error { close(entered); <-release; return nil }) }()
 	<-entered
-	closed := make(chan error, 1)
-	go func() { closed <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 1000; i++ {
 		if err := ref.Call(func(any) error { return nil }); err != nil {
 			break
 		}
 	}
 	select {
-	case err := <-closed:
-		t.Fatalf("close returned early: %v", err)
+	case <-rt.Closed():
+		t.Fatal("runtime teardown completed while a contract call was active")
 	default:
 	}
 	close(release)
 	if err := <-doneCall; err != nil {
 		t.Fatal(err)
 	}
-	if err := <-closed; err != nil {
+	if err := rt.WaitClosed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := ref.Call(func(any) error { return nil }); !errors.Is(err, ErrPermissionDenied) {
@@ -1010,6 +1011,9 @@ func TestGuestArgumentsAreRuntimeScopedAndRevoked(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := access.Args(); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("after close=%v", err)
 	}
@@ -1031,6 +1035,9 @@ func TestGuestArgumentsEmptyIsActiveAndRevoked(t *testing.T) {
 		t.Fatalf("empty args=%#v err=%v", args, err)
 	}
 	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := access.Args(); !errors.Is(err, ErrPermissionDenied) {
@@ -1243,8 +1250,11 @@ func TestObserverPanicsAreContainedAndTeardownContinues(t *testing.T) {
 	if err := rt.LoadPlugins(context.Background(), testSet(t, provider)); err != nil {
 		t.Fatal(err)
 	}
-	err := rt.Close()
-	if err == nil || !strings.Contains(err.Error(), "RuntimeCloseObserver hook panicked") {
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err := rt.WaitClosed(context.Background())
+	if !errors.Is(err, ErrCallbackPanic) {
 		t.Fatalf("close error=%v", err)
 	}
 	if !reflect.DeepEqual(events, []string{"second", "first"}) {

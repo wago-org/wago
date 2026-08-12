@@ -258,6 +258,7 @@ const (
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
 	ElemModePassive                            = impl.ElemModePassive
+	ErrCallbackPanic                           = impl.ErrCallbackPanic
 	ErrForeignModule                           = impl.ErrForeignModule
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
 	ErrManagedImportLifetime                   = impl.ErrManagedImportLifetime
