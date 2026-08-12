@@ -185,29 +185,98 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	if f.usesCalls {
 		return
 	}
+	// Tally constants before reserving the two cache registers. The old first-seen
+	// policy was cheap, but frequently spent both registers on one-shot setup
+	// values while repeatedly materializing hot constants in the function body.
+	// Keep the scan allocation-free and bounded: up to 32 distinct constants are
+	// ranked without growing compile-time memory with input size. If a function
+	// exceeds that cap, conservatively fall back to the old first-two policy rather
+	// than rank an incomplete set. Ties retain bytecode order, also preserving the
+	// old choice for functions whose constants are all used equally often.
+	var cand [32]struct {
+		typ  machineType
+		bits int64
+		n    int
+	}
+	nCand := 0
 	r := wasm.NewReader(code)
-	for r.HasNext() && len(f.fconsts) < 2 {
+	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return
 		}
+		var typ machineType
+		var bits int64
 		switch op {
 		case 0x43: // f32.const
-			bits, err := r.LEU32()
+			v, err := r.LEU32()
 			if err != nil {
 				return
 			}
-			f.floatConstReg(storage{kind: stConst, typ: mtF32, cval: int64(bits)})
+			typ, bits = mtF32, int64(v)
 		case 0x44: // f64.const
-			bits, err := r.LEU64()
+			v, err := r.LEU64()
 			if err != nil {
 				return
 			}
-			f.floatConstReg(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
+			typ, bits = mtF64, int64(v)
 		default:
 			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 				return
 			}
+			continue
+		}
+		found := false
+		for i := 0; i < nCand; i++ {
+			if cand[i].typ == typ && cand[i].bits == bits {
+				cand[i].n++
+				found = true
+				break
+			}
+		}
+		if !found {
+			if nCand == len(cand) {
+				for i := 0; i < 2; i++ {
+					f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+				}
+				return
+			}
+			cand[nCand].typ, cand[nCand].bits, cand[nCand].n = typ, bits, 1
+			nCand++
+		}
+	}
+	if nCand == 0 {
+		return
+	}
+	choice := [2]int{0, -1}
+	if nCand > 1 {
+		choice[1] = 1
+	}
+	best := [2]int{-1, -1}
+	for i := 0; i < nCand; i++ {
+		if best[0] < 0 || cand[i].n > cand[best[0]].n {
+			best[1], best[0] = best[0], i
+		} else if best[1] < 0 || cand[i].n > cand[best[1]].n {
+			best[1] = i
+		}
+	}
+	// Static frequency is only a proxy for dynamic heat: a syntactically rarer
+	// constant can sit in a deeper loop. Replace the first-seen choices only with
+	// decisive evidence (at least twice their combined occurrence count). This
+	// keeps marginal reorderings from perturbing register pressure and scheduling.
+	firstN, bestN := cand[choice[0]].n, cand[best[0]].n
+	if choice[1] >= 0 {
+		firstN += cand[choice[1]].n
+	}
+	if best[1] >= 0 {
+		bestN += cand[best[1]].n
+	}
+	if bestN >= 2*firstN {
+		choice = best
+	}
+	for _, i := range choice {
+		if i >= 0 {
+			f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 		}
 	}
 }
