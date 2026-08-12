@@ -564,8 +564,8 @@ func (p supportPass) types() error {
 				}
 				return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
 			}
-			comp, ok := p.m.ResolvedTypeFunc(uint32(typeIndex))
-			if !ok {
+			var comp wasm.CompType
+			if !p.m.ResolveTypeFunc(uint32(typeIndex), &comp) {
 				return p.unsupported("gc type", "unresolved function type", ctx)
 			}
 			if !p.supportedValTypes(comp.Params) {
@@ -601,8 +601,8 @@ func (p supportPass) imports() error {
 		ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			ft := p.funcType(im.Type.FuncType())
-			if ft == nil {
+			ft, ok := p.funcType(im.Type.FuncType())
+			if !ok {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
 			// Reflection-free host imports admit externref handles and opaque funcref
@@ -2372,7 +2372,7 @@ func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			if ft := p.funcType(im.Type.FuncType()); ft != nil && (compValTypesRequireSIMD(ft.Params) || compValTypesRequireSIMD(ft.Results)) {
+			if ft, ok := p.funcType(im.Type.FuncType()); ok && (compValTypesRequireSIMD(ft.Params) || compValTypesRequireSIMD(ft.Results)) {
 				return true
 			}
 		case wasm.ExternGlobal:
@@ -2528,15 +2528,13 @@ func instrsRequireSIMD(instrs []wasm.Instruction) bool {
 
 func maxInt() int { return int(^uint(0) >> 1) }
 
-func (p supportPass) funcType(idx wasm.TypeIdx) *wasm.CompType {
+func (p supportPass) funcType(idx wasm.TypeIdx) (wasm.CompType, bool) {
 	if idx.Rec {
-		return nil
+		return wasm.CompType{}, false
 	}
-	ct, ok := p.m.ResolvedTypeFunc(idx.Index)
-	if !ok {
-		return nil
-	}
-	return ct
+	var ct wasm.CompType
+	ok := p.m.ResolveTypeFunc(idx.Index, &ct)
+	return ct, ok
 }
 
 func (p supportPass) supportedTypedFuncRef(rt wasm.RefType) bool {

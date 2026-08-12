@@ -183,9 +183,9 @@ func stagedStructuralCallIndirectShape(m *wasm.Module) (stagedStructuralTypeProd
 	if !ok {
 		return 0, false
 	}
+	var ft wasm.CompType
 	for _, typeIndex := range []uint32{m.FuncTypes[0].Index, m.FuncTypes[1].Index, callType} {
-		ft, ok := m.ResolvedTypeFunc(typeIndex)
-		if !ok || len(ft.Params) != 0 || len(ft.Results) != 0 {
+		if !m.ResolveTypeFunc(typeIndex, &ft) || len(ft.Params) != 0 || len(ft.Results) != 0 {
 			return 0, false
 		}
 	}
@@ -196,8 +196,8 @@ func isNonNullIndexedFunctionRef(m *wasm.Module, typ wasm.ValType) bool {
 	if typ.Kind() != wasm.ValRef || typ.Ref().Nullable() || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 		return false
 	}
-	_, ok := m.ResolvedTypeFunc(typ.Ref().Heap().Type().Index)
-	return ok
+	var ft wasm.CompType
+	return m.ResolveTypeFunc(typ.Ref().Heap().Type().Index, &ft)
 }
 
 func isExactEndBody(body []byte) bool {

@@ -992,7 +992,8 @@ func exceptionPayloadMachineType(m *wasm.Module, typ wasm.ValType) (machineType,
 	if typ.Kind() != wasm.ValRef || typ.Ref().Nullable() || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 		return mtNone, false
 	}
-	if ft, ok := m.ResolvedTypeFunc(typ.Ref().Heap().Type().Index); !ok || ft == nil {
+	var ft wasm.CompType
+	if !m.ResolveTypeFunc(typ.Ref().Heap().Type().Index, &ft) {
 		return mtNone, false
 	}
 	return mtI64, true
@@ -1045,8 +1046,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			if !ok {
 				return fmt.Errorf("bounded exception handling catch tag %d is unavailable", clause.tag)
 			}
-			ft, ok := f.m.ResolvedTypeFunc(tagType.Type.Index)
-			if !ok || len(ft.Params) > 2 {
+			var ft wasm.CompType
+			if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > 2 {
 				return fmt.Errorf("bounded exception handling catch tag %d signature unavailable", clause.tag)
 			}
 			clause.scalarN = len(ft.Params)
@@ -1142,8 +1143,8 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("bounded exception handling throw tag %d is unavailable", tag)
 	}
-	ft, ok := f.m.ResolvedTypeFunc(tagType.Type.Index)
-	if !ok || len(ft.Params) > 2 {
+	var ft wasm.CompType
+	if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > 2 {
 		return fmt.Errorf("bounded exception handling tag signature unavailable")
 	}
 	types := f.currentLogicalTypes()

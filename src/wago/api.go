@@ -489,29 +489,27 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	return stagedExactTableOperationShape(m, "exact two-local-table slice", allowed)
 }
 
-func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
+func stagedTagFuncType(m *wasm.Module, index uint32, dst *wasm.CompType) bool {
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		if im.Type.Kind != wasm.ExternTag {
 			continue
 		}
 		if index == 0 {
-			ft, ok := m.ResolvedTypeFunc(im.Type.TagType().Type.Index)
-			return ft, ok
+			return m.ResolveTypeFunc(im.Type.TagType().Type.Index, dst)
 		}
 		index--
 	}
 	if int(index) >= len(m.Tags) {
-		return nil, false
+		return false
 	}
-	ft, ok := m.ResolvedTypeFunc(m.Tags[index].Type.Index)
-	return ft, ok
+	return m.ResolveTypeFunc(m.Tags[index].Type.Index, dst)
 }
 
 func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeIndex uint32, ok bool, err error) {
 	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
-		ft, found := stagedTagFuncType(m, tag)
-		if !found {
+		var ft wasm.CompType
+		if !stagedTagFuncType(m, tag, &ft) {
 			return 0, 0, false, fmt.Errorf("bounded exception handling tag %d signature is unavailable", tag)
 		}
 		for _, typ := range ft.Params {
@@ -526,8 +524,8 @@ func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeI
 			if m.TagCount() != 1 || len(ft.Params) != 1 || typ.Kind() != wasm.ValRef || rt.Nullable() || rt.Exact() || heap.Kind() != wasm.HeapTypeIndex {
 				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one local non-null indexed-function tag payload")
 			}
-			payloadFunc, found := m.ResolvedTypeFunc(heap.Type().Index)
-			if !found || payloadFunc == nil || len(payloadFunc.Params) != 0 || len(payloadFunc.Results) != 0 {
+			var payloadFunc wasm.CompType
+			if !m.ResolveTypeFunc(heap.Type().Index, &payloadFunc) || len(payloadFunc.Params) != 0 || len(payloadFunc.Results) != 0 {
 				return 0, 0, false, fmt.Errorf("bounded exception handling indexed-function payload must have type () -> ()")
 			}
 			typeIndex, ok = heap.Type().Index, true
@@ -604,8 +602,8 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 		}
 	}
 	for i := uint32(0); i < uint32(m.TagCount()); i++ {
-		ft, ok := stagedTagFuncType(m, i)
-		if !ok || len(ft.Results) != 0 || len(ft.Params) > 2 {
+		var ft wasm.CompType
+		if !stagedTagFuncType(m, i, &ft) || len(ft.Results) != 0 || len(ft.Params) > 2 {
 			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
 		}
 		for _, typ := range ft.Params {
@@ -766,8 +764,8 @@ func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct
 	if len(m.Types) != 6 || m.FuncCount() != 5 || len(m.Code) != 5 || len(m.Globals) != 5 || len(m.Exports) != 5 {
 		return 0, fmt.Errorf("null-reference product is not one of the two exact pinned module shapes")
 	}
-	base, ok := m.ResolvedTypeFunc(0)
-	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+	var base wasm.CompType
+	if !m.ResolveTypeFunc(0, &base) || len(base.Params) != 0 || len(base.Results) != 0 {
 		return 0, fmt.Errorf("first null-reference product type 0 must be () -> ()")
 	}
 	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
@@ -802,8 +800,8 @@ func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct
 }
 
 func stagedBottomNullReferenceProductShape(m *wasm.Module) error {
-	base, ok := m.ResolvedTypeFunc(0)
-	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+	var base wasm.CompType
+	if !m.ResolveTypeFunc(0, &base) || len(base.Params) != 0 || len(base.Results) != 0 {
 		return fmt.Errorf("bottom-global null-reference product type 0 must be () -> ()")
 	}
 	anyref := wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
@@ -1424,8 +1422,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if !ok {
 				continue
 			}
-			ft, ok := m.ResolvedTypeFunc(typeIdx.Index)
-			if !ok {
+			var ft wasm.CompType
+			if !m.ResolveTypeFunc(typeIdx.Index, &ft) {
 				continue
 			}
 			params, err := typeConverter.abiTypes(ft.Params, c.Types)

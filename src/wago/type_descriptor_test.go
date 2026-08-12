@@ -109,6 +109,51 @@ func TestTypeDescriptorCorpusAllocations(t *testing.T) {
 	}
 }
 
+func TestResolveTypeFuncCorpusAllocationReduction(t *testing.T) {
+	for _, name := range []string{"tiny.wasm", "dispatch.wasm", "blake-as.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			src, err := os.ReadFile(filepath.Join("..", "..", "bench", "corpus", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(src)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			var typeIndexes []uint32
+			var index uint32
+			for gi := range m.Types {
+				for si := range m.Types[gi].SubTypes {
+					if m.Types[gi].SubTypes[si].Comp.Kind == wasm.CompFunc {
+						typeIndexes = append(typeIndexes, index)
+					}
+					index++
+				}
+			}
+			publicAllocs := testing.AllocsPerRun(100, func() {
+				for _, typeIndex := range typeIndexes {
+					if _, ok := m.ResolvedTypeFunc(typeIndex); !ok {
+						panic("public type resolution failed")
+					}
+				}
+			})
+			internalAllocs := testing.AllocsPerRun(100, func() {
+				var dst wasm.CompType
+				for _, typeIndex := range typeIndexes {
+					if !m.ResolveTypeFunc(typeIndex, &dst) {
+						panic("internal type resolution failed")
+					}
+				}
+			})
+			if reduction := publicAllocs - internalAllocs; reduction < 2 {
+				t.Fatalf("allocation reduction = %.0f (%.0f -> %.0f), want at least 2", reduction, publicAllocs, internalAllocs)
+			} else {
+				t.Logf("exact allocation reduction = %.0f (%.0f -> %.0f)", reduction, publicAllocs, internalAllocs)
+			}
+		})
+	}
+}
+
 func TestTypeDescriptorsPreserveRecursiveReferenceStructure(t *testing.T) {
 	recRef := func(index uint32) wasm.ValType {
 		return wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: index, Rec: true}), true))
