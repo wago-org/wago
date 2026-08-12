@@ -97,6 +97,44 @@ func TestPreparedCompilePreservesGenerationAndWarmAdoption(t *testing.T) {
 	}
 }
 
+func TestPreparedCompileOwnsTransformedSourceSnapshot(t *testing.T) {
+	def := testDefinition("example.com/compile/source-snapshot")
+	def.Authorities = []AuthorityRequest{{Name: AuthorityModuleSourceTransform, Mode: AuthorityRequired, Reason: "return plugin-owned source"}}
+	transformed := wasmtest.Module(wasmtest.Section(0, wasmtest.Name("snapshot")))
+	provider := PluginProvider{Definition: def, New: func() Plugin {
+		return pluginFunc(func(reg *Registrar) error {
+			transformer, err := reg.ModuleSourceTransformer()
+			if err != nil {
+				return err
+			}
+			return transformer.Transform(func(ModuleSourceContext, []byte) ([]byte, error) { return transformed, nil })
+		})
+	}}
+	rt := NewRuntime()
+	defer rt.Close()
+	if err := rt.LoadPlugins(context.Background(), testSet(t, provider)); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := rt.PrepareCompile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := append([]byte(nil), prepared.Source()...)
+	for i := range transformed {
+		transformed[i] ^= 0xff
+	}
+	if !reflect.DeepEqual(prepared.Source(), want) {
+		t.Fatal("prepared source aliased transformer-owned storage")
+	}
+	mod, err := prepared.Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mod.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPreparedCompileTerminalOperationsRaceExactlyOnce(t *testing.T) {
 	rt := NewRuntime()
 	prepared, err := rt.PrepareCompile(wasmtest.Module())

@@ -374,9 +374,13 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 		if err := joinPrimary(transformErr, panicErr); err != nil {
 			return fail(emitCompileError(hooks, compilation, err))
 		}
-		if next != nil {
-			source = next
+		if next == nil {
+			next = source
 		}
+		// A transformer may retain either its input or returned slice. Snapshot
+		// after every callback so the admitted generation cannot be mutated later
+		// through plugin-owned storage.
+		source = append([]byte(nil), next...)
 	}
 	return &PreparedCompile{
 		rt: rt, end: end, compilation: compilation, source: source, cfg: cfg,
@@ -385,10 +389,11 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 	}, nil
 }
 
-// Source returns the transformed source for this preparation. The returned
-// bytes must remain immutable until the preparation is closed or adopted. If
-// Compile succeeds, ownership transfers to the returned Module and the bytes
-// must remain immutable until that Module closes.
+// Source returns the admitted transformed source for this preparation. Callers
+// receive a read-only view and must not mutate it. Transformer return slices are
+// snapshotted; without transforms, the view retains PrepareCompile's input under
+// the same ownership contract as Compile. A successful Compile may retain that
+// storage until the returned Module closes.
 func (p *PreparedCompile) Source() []byte {
 	if p == nil {
 		return nil

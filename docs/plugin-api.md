@@ -203,9 +203,9 @@ instruction generation across lookup: transforms run exactly once, and warm
 adoption emits compile success under the same immutable generation. A prepared
 compilation must terminate through `Compile`, `Adopt`, or `Close` before runtime
 shutdown can tear down its plugin generation. `PreparedCompile.Source()` is a
-borrowed immutable view: after successful `Compile`, the returned `Module` owns
-source storage retained by decoded metadata, so callers must not mutate that
-backing array until the Module closes.
+read-only view of runtime-owned transformed bytes. Transformer return slices are
+snapshotted after each callback; after successful `Compile`, the returned
+`Module` retains that source storage until it closes.
 
 `Module.Close` emits one close event with the final module identity, clears the
 wrapper identity, and rejects later runtime instantiation through that wrapper.
