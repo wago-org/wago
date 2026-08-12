@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -457,7 +458,7 @@ func TestHugeCallStackUnwindsToStartTrap(t *testing.T) {
 	}
 }
 
-func TestCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
+func TestCrossRuntimeInstantiationRequiresExplicitRebind(t *testing.T) {
 	funcImport := append(wasmtest.Name("env"), wasmtest.Name("proxy")...)
 	funcImport = append(funcImport, 0x00, 0x02) // function import, type index 2
 	mod := wasmtest.Module(
@@ -485,9 +486,16 @@ func TestCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
 	if err := rt2.Use(crossRuntimeImportExt{}); err != nil {
 		t.Fatalf("register runtime 2 import: %v", err)
 	}
-	in, err := rt2.Instantiate(context.Background(), compiled)
+	if _, err := rt2.Instantiate(context.Background(), compiled); !errors.Is(err, ErrForeignModule) {
+		t.Fatalf("foreign module error = %v, want ErrForeignModule", err)
+	}
+	rebound, err := rt2.Module(compiled.Compiled())
 	if err != nil {
-		t.Fatalf("cross-runtime instantiate with structurally identical import: %v", err)
+		t.Fatalf("rebind in runtime 2: %v", err)
+	}
+	in, err := rt2.Instantiate(context.Background(), rebound)
+	if err != nil {
+		t.Fatalf("instantiate explicitly rebound module: %v", err)
 	}
 	defer in.Close()
 	got, err := in.Invoke("f", I32(37))

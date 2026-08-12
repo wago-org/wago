@@ -57,6 +57,10 @@ type registeredPluginStop struct {
 	stop func(context.Context) error
 }
 
+// ErrForeignModule reports an attempt to instantiate a Module through a Runtime
+// other than the one that bound its imports and lifecycle policy.
+const ErrForeignModule = extErr("wago: module belongs to a different runtime")
+
 // RuntimeOption configures a Runtime at construction.
 type RuntimeOption func(*Runtime)
 
@@ -429,6 +433,9 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin InstantiateOrigin, opts ...InstantiateOption) (*Instance, error) {
 	if mod == nil {
 		return nil, fmt.Errorf("wago: Instantiate: nil module")
+	}
+	if mod.rt != rt {
+		return nil, fmt.Errorf("wago: Instantiate: %w; rebind it with Runtime.Module", ErrForeignModule)
 	}
 	if ctx == nil {
 		ctx = context.Background()
