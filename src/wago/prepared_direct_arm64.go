@@ -1,4 +1,4 @@
-//go:build amd64 && !tinygo
+//go:build arm64 && !tinygo && (linux || darwin || windows)
 
 package wago
 
@@ -10,7 +10,7 @@ import (
 )
 
 const preparedDirectIntSupported = true
-const preparedDirectIntPrivateSupported = false
+const preparedDirectIntPrivateSupported = true
 
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	in := fn.in
@@ -42,6 +42,11 @@ func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 		if fn.scalarWideMask&1 == 0 {
 			a0 = uint64(uint32(a0))
 		}
+	}
+	if !fn.isolatedFast {
+		nativeExecutionMu.Lock()
+		nativeExecutionEpoch++
+		defer nativeExecutionMu.Unlock()
 	}
 	result := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
