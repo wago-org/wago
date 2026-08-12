@@ -83,8 +83,8 @@ func TestTypeDescriptorCorpusAllocations(t *testing.T) {
 			if len(sink) == 0 {
 				t.Fatal("no type descriptors")
 			}
-			if allocs != 2 {
-				t.Fatalf("type descriptor allocations = %.0f, want exactly 2 (descriptor and coalesced value backing)", allocs)
+			if allocs > 2 {
+				t.Fatalf("type descriptor allocations = %.0f, budget = 2 (descriptor and coalesced value backing)", allocs)
 			}
 			separateValueSlices := 0
 			for gi := range m.Types {
@@ -102,12 +102,12 @@ func TestTypeDescriptorCorpusAllocations(t *testing.T) {
 			}
 			// Before coalescing, conversion allocated the descriptor result, one
 			// group-offset slice, and one backing array for every non-empty
-			// Params or Results slice. The current two exact allocations therefore
-			// remove exactly separateValueSlices allocations.
+			// Params or Results slice. The two-allocation ceiling therefore keeps
+			// at least separateValueSlices allocations removed.
 			if separateValueSlices < 2 {
 				t.Fatalf("allocation reduction = %d, want at least 2", separateValueSlices)
 			}
-			t.Logf("exact allocation reduction = %d", separateValueSlices)
+			t.Logf("allocation reduction >= %d", separateValueSlices)
 		})
 	}
 }

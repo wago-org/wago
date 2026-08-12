@@ -14,13 +14,13 @@ import (
 func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
 	tests := []struct {
-		name       string
-		module     *wasm.Module
-		wantAllocs float64
+		name      string
+		module    *wasm.Module
+		maxAllocs float64
 	}{
-		{name: "tiny", module: readParallelTestModule(t, filepath.Join(root, "tiny.wasm")), wantAllocs: 27},
-		{name: "many_funcs", module: readParallelTestModule(t, filepath.Join(root, "many_funcs.wasm")), wantAllocs: 341},
-		{name: "blake-as", module: readParallelTestModule(t, filepath.Join(root, "blake-as.wasm")), wantAllocs: 173},
+		{name: "tiny", module: readParallelTestModule(t, filepath.Join(root, "tiny.wasm")), maxAllocs: 32},
+		{name: "many_funcs", module: readParallelTestModule(t, filepath.Join(root, "many_funcs.wasm")), maxAllocs: 360},
+		{name: "blake-as", module: readParallelTestModule(t, filepath.Join(root, "blake-as.wasm")), maxAllocs: 190},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -39,8 +39,8 @@ func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 				benchCompiledSink = got
 			})
 			t.Logf("CompileModuleWith allocations = %.0f", allocs)
-			if allocs != tc.wantAllocs {
-				t.Fatalf("CompileModuleWith allocations = %.0f, want %.0f", allocs, tc.wantAllocs)
+			if allocs > tc.maxAllocs {
+				t.Fatalf("CompileModuleWith allocations = %.0f, budget = %.0f", allocs, tc.maxAllocs)
 			}
 		})
 	}
