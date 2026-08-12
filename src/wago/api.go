@@ -489,29 +489,27 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	return stagedExactTableOperationShape(m, "exact two-local-table slice", allowed)
 }
 
-func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
+func stagedTagFuncType(m *wasm.Module, index uint32, dst *wasm.CompType) bool {
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		if im.Type.Kind != wasm.ExternTag {
 			continue
 		}
 		if index == 0 {
-			ft, ok := m.ResolvedTypeFunc(im.Type.TagType().Type.Index)
-			return ft, ok
+			return m.ResolveTypeFunc(im.Type.TagType().Type.Index, dst)
 		}
 		index--
 	}
 	if int(index) >= len(m.Tags) {
-		return nil, false
+		return false
 	}
-	ft, ok := m.ResolvedTypeFunc(m.Tags[index].Type.Index)
-	return ft, ok
+	return m.ResolveTypeFunc(m.Tags[index].Type.Index, dst)
 }
 
 func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeIndex uint32, ok bool, err error) {
 	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
-		ft, found := stagedTagFuncType(m, tag)
-		if !found {
+		var ft wasm.CompType
+		if !stagedTagFuncType(m, tag, &ft) {
 			return 0, 0, false, fmt.Errorf("bounded exception handling tag %d signature is unavailable", tag)
 		}
 		for _, typ := range ft.Params {
@@ -526,8 +524,8 @@ func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeI
 			if m.TagCount() != 1 || len(ft.Params) != 1 || typ.Kind() != wasm.ValRef || rt.Nullable() || rt.Exact() || heap.Kind() != wasm.HeapTypeIndex {
 				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one local non-null indexed-function tag payload")
 			}
-			payloadFunc, found := m.ResolvedTypeFunc(heap.Type().Index)
-			if !found || payloadFunc == nil || len(payloadFunc.Params) != 0 || len(payloadFunc.Results) != 0 {
+			var payloadFunc wasm.CompType
+			if !m.ResolveTypeFunc(heap.Type().Index, &payloadFunc) || len(payloadFunc.Params) != 0 || len(payloadFunc.Results) != 0 {
 				return 0, 0, false, fmt.Errorf("bounded exception handling indexed-function payload must have type () -> ()")
 			}
 			typeIndex, ok = heap.Type().Index, true
@@ -604,8 +602,8 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 		}
 	}
 	for i := uint32(0); i < uint32(m.TagCount()); i++ {
-		ft, ok := stagedTagFuncType(m, i)
-		if !ok || len(ft.Results) != 0 || len(ft.Params) > 2 {
+		var ft wasm.CompType
+		if !stagedTagFuncType(m, i, &ft) || len(ft.Results) != 0 || len(ft.Params) > 2 {
 			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
 		}
 		for _, typ := range ft.Params {
@@ -766,8 +764,8 @@ func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct
 	if len(m.Types) != 6 || m.FuncCount() != 5 || len(m.Code) != 5 || len(m.Globals) != 5 || len(m.Exports) != 5 {
 		return 0, fmt.Errorf("null-reference product is not one of the two exact pinned module shapes")
 	}
-	base, ok := m.ResolvedTypeFunc(0)
-	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+	var base wasm.CompType
+	if !m.ResolveTypeFunc(0, &base) || len(base.Params) != 0 || len(base.Results) != 0 {
 		return 0, fmt.Errorf("first null-reference product type 0 must be () -> ()")
 	}
 	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
@@ -802,8 +800,8 @@ func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct
 }
 
 func stagedBottomNullReferenceProductShape(m *wasm.Module) error {
-	base, ok := m.ResolvedTypeFunc(0)
-	if !ok || len(base.Params) != 0 || len(base.Results) != 0 {
+	var base wasm.CompType
+	if !m.ResolveTypeFunc(0, &base) || len(base.Params) != 0 || len(base.Results) != 0 {
 		return fmt.Errorf("bottom-global null-reference product type 0 must be () -> ()")
 	}
 	anyref := wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
@@ -1348,12 +1346,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
 	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
-	var gcCodeStats railshotModuleStats
-	var gcCodeStatsSink *railshotModuleStats
+	var gcCodeStats *railshotModuleStats
 	if cfg.gcCodeTelemetry {
-		gcCodeStatsSink = &gcCodeStats
+		gcCodeStats = new(railshotModuleStats)
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStatsSink})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1370,7 +1367,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 
-	types, err := typeDescriptorsFromWasm(m)
+	typeConverter := newWasmTypeDescriptorConverter(m)
+	types, err := typeConverter.typeDescriptors()
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
@@ -1378,12 +1376,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if genericGCExecution || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := &Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry}
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c.memoryDir.exactExports = true
+	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
+	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
 	if cfg.gcCodeTelemetry {
-		c.gcCodeTelemetry = railshotGCNativeCodeTelemetry(&gcCodeStats)
+		c.gcCodeTelemetry = railshotGCNativeCodeTelemetry(gcCodeStats)
 		c.gcCodeTelemetry.TotalBytes = uint64(len(code))
 	}
-	typeConverter := newWasmTypeDescriptorConverter(m)
 	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
 		init, err := stagedGCI31TableInitializer(m)
@@ -1422,8 +1422,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if !ok {
 				continue
 			}
-			ft, ok := m.ResolvedTypeFunc(typeIdx.Index)
-			if !ok {
+			var ft wasm.CompType
+			if !m.ResolveTypeFunc(typeIdx.Index, &ft) {
 				continue
 			}
 			params, err := typeConverter.abiTypes(ft.Params, c.Types)
@@ -1581,6 +1581,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
+			if c.memoryDir.exports == nil {
+				c.memoryDir.exports = make(map[string]int)
+			}
 			c.memoryDir.exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternTag:
 			if c.memoryDir.ehTagExports == nil {
@@ -1879,7 +1882,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		c.Data = append(c.Data, init)
 	}
-	compiled := installCompiledFinalizer(c)
+	compiled := installCompilerCompiledFinalizer(c)
 	compiled.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
 	if cm.CodeImage != nil {
 		mapping, base, err := cm.CodeImage.Take()

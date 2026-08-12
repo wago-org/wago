@@ -88,9 +88,10 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 	if int(typeIdx) >= flatCount {
 		return false
 	}
-	groupOf := make([]int, flatCount)
-	position := make([]uint32, flatCount)
-	starts := make([]uint32, len(m.Types))
+	indexScratch := make([]uint32, 2*flatCount+len(m.Types))
+	groupOf := indexScratch[:flatCount:flatCount]
+	position := indexScratch[flatCount : 2*flatCount : 2*flatCount]
+	starts := indexScratch[2*flatCount:]
 	flat := uint32(0)
 	for group := range m.Types {
 		starts[group] = flat
@@ -98,7 +99,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 			if int(flat) >= flatCount {
 				return false
 			}
-			groupOf[flat] = group
+			groupOf[flat] = uint32(group)
 			position[flat] = uint32(member)
 			flat++
 		}
@@ -134,7 +135,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 			return false
 		}
 		target := uint32(resolved)
-		if groupOf[target] == currentGroup {
+		if groupOf[target] == uint32(currentGroup) {
 			return appendByte(dst, 0xf2) && appendU32(dst, position[target])
 		}
 		digest, ok := memberDigest(target)
@@ -294,7 +295,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 		if int(index) >= flatCount {
 			return zero, false
 		}
-		group := groupOf[index]
+		group := int(groupOf[index])
 		encoded, ok := buildGroup(group)
 		if !ok {
 			return zero, false
@@ -312,7 +313,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 		return digest, true
 	}
 
-	group := groupOf[typeIdx]
+	group := int(groupOf[typeIdx])
 	encoded, ok := buildGroup(group)
 	if !ok {
 		return false

@@ -145,6 +145,7 @@ func TestAdditionalNEONInstructionEncodersEmitWords(t *testing.T) {
 		{"ins-b", func(a *Asm) { a.NeonInsB(X0, X1, 2) }},
 		{"ins-h", func(a *Asm) { a.NeonInsH(X0, X1, 2) }},
 		{"umov-h", func(a *Asm) { a.NeonUmovH(X0, X1, 2) }},
+		{"ext-16b", func(a *Asm) { a.NeonExt16b(X0, X1, X2, 7) }},
 		{"pshuf-s", func(a *Asm) { a.NeonPshufS(X0, X1, 0) }},
 		{"movemask-b", func(a *Asm) { a.NeonMovemaskB(X0, X1) }},
 	}
@@ -345,7 +346,7 @@ func TestAdditionalScalarAndNEONWrapperForms(t *testing.T) {
 		func() { a.Ldrh(X0, X1, 2) }, func() { a.Strh(X0, X1, 2) }, func() { a.Lsrv64(X0, X1, X2) }, func() { a.Asrv64(X0, X1, X2) },
 		func() { a.LslImm64(X0, X1, 3) }, func() { a.LsrImm32(X0, X1, 3) }, func() { a.AsrImm64(X0, X1, 3) },
 		func() { a.AndImm32(X0, X1, 0xff) }, func() { a.OrrImm32(X0, X1, 1) }, func() { a.EorImm32(X0, X1, 0xff) },
-		func() { a.NeonMov16b(X0, X1) }, func() { a.Addv8b(X0, X1) }, func() { a.NeonUminvB(X0, X1) }, func() { a.NeonUminvH(X0, X1) }, func() { a.NeonUminvS(X0, X1) }, func() { a.NeonAddvH(X0, X1) }, func() { a.NeonAddvS(X0, X1) },
+		func() { a.NeonMov16b(X0, X1) }, func() { a.Addv8b(X0, X1) }, func() { a.NeonAddvB(X0, X1) }, func() { a.NeonUminvB(X0, X1) }, func() { a.NeonUminvH(X0, X1) }, func() { a.NeonUminvS(X0, X1) }, func() { a.NeonAddvH(X0, X1) }, func() { a.NeonAddvS(X0, X1) },
 		func() { a.NeonAnd16b(X0, X1, X2) }, func() { a.NeonOrr16b(X0, X1, X2) }, func() { a.NeonEor16b(X0, X1, X2) }, func() { a.NeonAndn16b(X0, X1, X2) },
 		func() { a.NeonAddB(X0, X1, X2) }, func() { a.NeonAddH(X0, X1, X2) }, func() { a.NeonAddS(X0, X1, X2) }, func() { a.NeonAddD(X0, X1, X2) },
 		func() { a.NeonSubB(X0, X1, X2) }, func() { a.NeonSubH(X0, X1, X2) }, func() { a.NeonSubS(X0, X1, X2) }, func() { a.NeonSubD(X0, X1, X2) },

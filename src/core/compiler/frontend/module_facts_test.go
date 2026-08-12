@@ -8,6 +8,21 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestNewModuleFactsVectorsAreDisjoint(t *testing.T) {
+	facts := NewModuleFacts(2, 3)
+	facts.TableGrowUsed[0] = true
+	facts.TableExported[1] = true
+	facts.MemoryGrowUsed[2] = true
+	facts.MemoryExported[0] = true
+
+	if !reflect.DeepEqual(facts.TableGrowUsed, []bool{true, false}) ||
+		!reflect.DeepEqual(facts.TableExported, []bool{false, true}) ||
+		!reflect.DeepEqual(facts.MemoryGrowUsed, []bool{false, false, true}) ||
+		!reflect.DeepEqual(facts.MemoryExported, []bool{true, false, false}) {
+		t.Fatalf("fact vectors alias: %+v", facts)
+	}
+}
+
 func moduleFactsFixture(byteBacked bool) *wasm.Module {
 	m := &wasm.Module{
 		Tables:   []wasm.Table{{}, {}},

@@ -115,8 +115,8 @@ func stagedReferencePayloadIsFunc(m *corewasm.Module, typ corewasm.ValType) bool
 
 func stagedTryTableModuleGate(m *corewasm.Module) (boundary, reason string, err error) {
 	for i := uint32(0); i < uint32(m.TagCount()); i++ {
-		ft, ok := stagedTagFuncType(m, i)
-		if !ok {
+		var ft corewasm.CompType
+		if !stagedTagFuncType(m, i, &ft) {
 			return "", "", fmt.Errorf("tag %d type unavailable", i)
 		}
 		for _, typ := range ft.Params {

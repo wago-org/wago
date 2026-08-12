@@ -504,6 +504,86 @@ func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
 	}
 }
 
+var defaultRuntimeConfigAllocationSink *RuntimeConfig
+
+func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
+	configAllocs := testing.AllocsPerRun(1000, func() {
+		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
+	})
+	if configAllocs > 1 {
+		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= 1", configAllocs)
+	}
+
+	module := benchAddOneModule()
+	compileAllocs := testing.AllocsPerRun(50, func() {
+		compiled, err := Compile(nil, module)
+		if err != nil {
+			panic(err)
+		}
+		if err := compiled.Close(); err != nil {
+			panic(err)
+		}
+	})
+	t.Logf("Compile(nil, small module) allocations = %.0f (informational)", compileAllocs)
+}
+
+func TestDefaultRuntimeConfigSnapshotIsolationAndCodeIdentity(t *testing.T) {
+	knobs := OptKnobs()
+	if len(knobs) == 0 {
+		t.Fatal("runtime config has no optimization selection")
+	}
+	name, original := knobs[0].Name, knobs[0].On
+	base := NewRuntimeConfig()
+	if !SetOptKnob(name, !original) {
+		t.Fatalf("SetOptKnob(%q) failed", name)
+	}
+	t.Cleanup(func() { SetOptKnob(name, original) })
+
+	baseInfo := base.OptimizationInfos()
+	if baseInfo[0].On != original {
+		t.Fatalf("existing config changed with process default: %s = %v, want %v", name, baseInfo[0].On, original)
+	}
+	newer := NewRuntimeConfig()
+	if got := newer.OptimizationInfos()[0].On; got != !original {
+		t.Fatalf("new config did not capture changed process default: %s = %v, want %v", name, got, !original)
+	}
+
+	baseCompiled, err := base.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile stale default snapshot: %v", err)
+	}
+	defer baseCompiled.Close()
+	explicitCompiled, err := NewRuntimeConfig().WithOptimization(name, original).Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile explicit captured selection: %v", err)
+	}
+	defer explicitCompiled.Close()
+	if !bytes.Equal(baseCompiled.code, explicitCompiled.code) || !bytes.Equal(intSliceBytes(baseCompiled.Entry), intSliceBytes(explicitCompiled.Entry)) || !bytes.Equal(intSliceBytes(baseCompiled.InternalEntry), intSliceBytes(explicitCompiled.InternalEntry)) {
+		t.Fatal("stale default snapshot and equivalent explicit config emitted different native code")
+	}
+	if got := OptKnobs()[0].On; got != !original {
+		t.Fatalf("stale config compile leaked selection: process default = %v, want %v", got, !original)
+	}
+}
+
+func TestDefaultRuntimeConfigFastPathCodeIdentity(t *testing.T) {
+	base := NewRuntimeConfig()
+	defaultCompiled, err := base.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile default snapshot: %v", err)
+	}
+	defer defaultCompiled.Close()
+	explicit := base.WithOptimizations(map[string]bool{})
+	explicitCompiled, err := explicit.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile equivalent explicit selection: %v", err)
+	}
+	defer explicitCompiled.Close()
+	if !bytes.Equal(defaultCompiled.code, explicitCompiled.code) || !bytes.Equal(intSliceBytes(defaultCompiled.Entry), intSliceBytes(explicitCompiled.Entry)) || !bytes.Equal(intSliceBytes(defaultCompiled.InternalEntry), intSliceBytes(explicitCompiled.InternalEntry)) {
+		t.Fatal("default snapshot fast path and full selection emitted different native code")
+	}
+}
+
 func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	producerCode := MustCompile(benchAddOneModule())
 	defer producerCode.Close()

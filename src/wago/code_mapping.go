@@ -45,6 +45,47 @@ type compiledCodeCache struct {
 	stagedFeatures         CoreFeatures                 // exact admission is compile-only; codec v30 restores generic GC requirements
 }
 
+// compilerCompiledState groups the fixed private state owned for the complete
+// lifetime of a compiler-produced Compiled. Compiled keeps pointers to all
+// three fields, so the owner cannot become unreachable before the module does.
+// Decoded and hand-built Compiled values retain their existing independent,
+// lazy sidecar behavior.
+type compilerCompiledState struct {
+	codeCache    compiledCodeCache
+	validateMemo validateMemo
+	memoryDir    compiledMemoryDirectory
+}
+
+// compilerCompiledOwner keeps the public result and its fixed private state in
+// one allocation. Compiled is first so its pointer is also the allocation base;
+// the existing finalizer and Close paths can install and clear ownership on c.
+type compilerCompiledOwner struct {
+	Compiled
+	state compilerCompiledState
+}
+
+func newCompilerCompiled(initial Compiled) *Compiled {
+	owner := &compilerCompiledOwner{Compiled: initial}
+	owner.Compiled.codeCache = &owner.state.codeCache
+	owner.Compiled.validateMemo = &owner.state.validateMemo
+	owner.Compiled.memoryDir = &owner.state.memoryDir
+	return &owner.Compiled
+}
+
+// installCompilerCompiledFinalizer installs ownership on a freshly allocated
+// compiler result whose zeroed cache and validation memo are already part of
+// compilerCompiledState.
+func installCompilerCompiledFinalizer(c *Compiled) *Compiled {
+	c.ensureCodeCache()
+	if c.validateMemo == nil {
+		c.validateMemo = &validateMemo{}
+	}
+	goruntime.SetFinalizer(c, func(c *Compiled) {
+		_ = c.Close()
+	})
+	return c
+}
+
 func installCompiledFinalizer(c *Compiled) *Compiled {
 	c.ensureCodeCache()
 	// Give this compiler/deserialize-produced module its own validation memo so

@@ -73,3 +73,28 @@ func TestArm64UnsignedI64ToFloatFullRange(t *testing.T) {
 		})
 	}
 }
+
+func TestFloatReadOnlySourceSelectorsArm64(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   wasm.ValType
+		out  wasm.ValType
+		op   byte
+		peep string
+	}{
+		{"i32-to-f64", wasm.I32, wasm.F64, 0xb7, "int-float-read"},
+		{"u64-to-f32", wasm.I64, wasm.F32, 0xb5, "int-float-read"},
+		{"i64-as-f64", wasm.I64, wasm.F64, 0xbf, "reinterpret-read"},
+		{"f64-as-i64", wasm.F64, wasm.I64, 0xbd, "reinterpret-read"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, []wasm.ValType{tc.in}, []wasm.ValType{tc.out}, []byte{
+				0x00, 0x20, 0x00, tc.op, 0x0b, // local.get 0; conversion; end
+			})
+			s := compileWithStats(t, m, false).Funcs[0]
+			if got := s.Peephole[tc.peep]; got != 1 {
+				t.Fatalf("%s = %d, want 1 (all: %v)", tc.peep, got, s.Peephole)
+			}
+		})
+	}
+}

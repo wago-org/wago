@@ -24,9 +24,10 @@ type GlobalHintAccumulator struct {
 
 func (a *GlobalHintAccumulator) Reset(nGlobals int) {
 	if len(a.scores) < nGlobals {
-		a.scores = make([]uint32, nGlobals)
+		words := make([]uint32, 2*nGlobals)
+		a.scores = words[:nGlobals:nGlobals]
+		a.marks = words[nGlobals:]
 		a.eligible = make([]bool, nGlobals)
-		a.marks = make([]uint32, nGlobals)
 	}
 	a.epoch++
 	if a.epoch == 0 {

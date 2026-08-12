@@ -1,11 +1,164 @@
 package wago
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestTypeDescriptorFunctionValuesAreMutationAndAppendIsolated(t *testing.T) {
+	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}},
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.F32}, Results: []wasm.ValType{wasm.F64}}},
+	}}}}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		t.Fatalf("type descriptors: %v", err)
+	}
+	if cap(types[0].Params) != len(types[0].Params) || cap(types[0].Results) != len(types[0].Results) {
+		t.Fatalf("first function capacities = params %d/%d results %d/%d", len(types[0].Params), cap(types[0].Params), len(types[0].Results), cap(types[0].Results))
+	}
+	types[0].Params[0].Kind = ValueTypeV128
+	if got := types[0].Results[0].Kind; got != ValueTypeI64 {
+		t.Fatalf("param mutation changed result to %v", got)
+	}
+	if got := types[1].Params[0].Kind; got != ValueTypeF32 {
+		t.Fatalf("param mutation changed next function to %v", got)
+	}
+	types[0].Params = append(types[0].Params, ValueTypeDescriptor{Kind: ValueTypeReference})
+	if got := types[0].Results[0].Kind; got != ValueTypeI64 {
+		t.Fatalf("param append changed result to %v", got)
+	}
+	if got := types[1].Params[0].Kind; got != ValueTypeF32 {
+		t.Fatalf("param append changed next function to %v", got)
+	}
+}
+
+func TestTypeDescriptorConverterLargeGroupFallback(t *testing.T) {
+	const groups = wasmTypeDescriptorInlineGroups + 1
+	m := &wasm.Module{Types: make([]wasm.RecType, groups)}
+	for i := range m.Types {
+		m.Types[i].SubTypes = []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{
+			wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(i)}), false)),
+		}}}}
+	}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		t.Fatalf("type descriptors: %v", err)
+	}
+	if len(types) != groups {
+		t.Fatalf("types = %d, want %d", len(types), groups)
+	}
+	for i := range types {
+		if got := types[i].Results[0].Ref.Heap.TypeIndex; got != uint32(i) {
+			t.Fatalf("type %d result index = %d", i, got)
+		}
+	}
+}
+
+func TestTypeDescriptorCorpusAllocations(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
+	for _, name := range []string{"tiny.wasm", "branches.wasm", "blake-as.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			src, err := os.ReadFile(filepath.Join("..", "..", "bench", "corpus", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(src)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			var sink []DefinedTypeDescriptor
+			allocs := testing.AllocsPerRun(100, func() {
+				sink, err = typeDescriptorsFromWasm(m)
+				if err != nil {
+					panic(err)
+				}
+			})
+			if len(sink) == 0 {
+				t.Fatal("no type descriptors")
+			}
+			if allocs > 2 {
+				t.Fatalf("type descriptor allocations = %.0f, budget = 2 (descriptor and coalesced value backing)", allocs)
+			}
+			separateValueSlices := 0
+			for gi := range m.Types {
+				for si := range m.Types[gi].SubTypes {
+					comp := &m.Types[gi].SubTypes[si].Comp
+					if comp.Kind == wasm.CompFunc {
+						if len(comp.Params) != 0 {
+							separateValueSlices++
+						}
+						if len(comp.Results) != 0 {
+							separateValueSlices++
+						}
+					}
+				}
+			}
+			// Before coalescing, conversion allocated the descriptor result, one
+			// group-offset slice, and one backing array for every non-empty
+			// Params or Results slice. The two-allocation ceiling therefore keeps
+			// at least separateValueSlices allocations removed.
+			if separateValueSlices < 2 {
+				t.Fatalf("allocation reduction = %d, want at least 2", separateValueSlices)
+			}
+			t.Logf("allocation reduction >= %d", separateValueSlices)
+		})
+	}
+}
+
+func TestResolveTypeFuncCorpusAllocationReduction(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
+	for _, name := range []string{"tiny.wasm", "dispatch.wasm", "blake-as.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			src, err := os.ReadFile(filepath.Join("..", "..", "bench", "corpus", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(src)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			var typeIndexes []uint32
+			var index uint32
+			for gi := range m.Types {
+				for si := range m.Types[gi].SubTypes {
+					if m.Types[gi].SubTypes[si].Comp.Kind == wasm.CompFunc {
+						typeIndexes = append(typeIndexes, index)
+					}
+					index++
+				}
+			}
+			publicAllocs := testing.AllocsPerRun(100, func() {
+				for _, typeIndex := range typeIndexes {
+					if _, ok := m.ResolvedTypeFunc(typeIndex); !ok {
+						panic("public type resolution failed")
+					}
+				}
+			})
+			internalAllocs := testing.AllocsPerRun(100, func() {
+				var dst wasm.CompType
+				for _, typeIndex := range typeIndexes {
+					if !m.ResolveTypeFunc(typeIndex, &dst) {
+						panic("internal type resolution failed")
+					}
+				}
+			})
+			if reduction := publicAllocs - internalAllocs; reduction < 2 {
+				t.Fatalf("allocation reduction = %.0f (%.0f -> %.0f), want at least 2", reduction, publicAllocs, internalAllocs)
+			} else {
+				t.Logf("exact allocation reduction = %.0f (%.0f -> %.0f)", reduction, publicAllocs, internalAllocs)
+			}
+		})
+	}
+}
 
 func TestTypeDescriptorsPreserveRecursiveReferenceStructure(t *testing.T) {
 	recRef := func(index uint32) wasm.ValType {
@@ -156,5 +309,27 @@ func TestWasmTypeDescriptorConverterReusesFlattenedIndex(t *testing.T) {
 	}
 	if allocs > 2 {
 		t.Fatalf("reused converter allocations = %.2f, want at most 2 result slices", allocs)
+	}
+}
+
+func TestWasmTypeDescriptorConverterReusesFlattenedIndexForDescriptors(t *testing.T) {
+	m := &wasm.Module{Types: make([]wasm.RecType, 4096)}
+	for i := range m.Types {
+		m.Types[i].SubTypes = []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}
+	}
+	converter := newWasmTypeDescriptorConverter(m)
+	var sink []DefinedTypeDescriptor
+	allocs := testing.AllocsPerRun(100, func() {
+		var err error
+		sink, err = converter.typeDescriptors()
+		if err != nil {
+			panic(err)
+		}
+	})
+	if len(sink) != len(m.Types) {
+		t.Fatalf("defined types = %d, want %d", len(sink), len(m.Types))
+	}
+	if allocs > 1 {
+		t.Fatalf("reused converter descriptor allocations = %.0f, want one result backing allocation", allocs)
 	}
 }

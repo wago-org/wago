@@ -236,6 +236,7 @@ func (f *fn) preloadV128Consts(code []byte) {
 	if f.usesCalls || f.syncHostCalls || !v128ConstCacheEnabled {
 		return
 	}
+	f.stats.peep("v128-preload-scan")
 	highPressure := f.pinnedV128LocalCount() >= 2
 	var cand [8]struct {
 		lo, hi uint64

@@ -54,15 +54,25 @@ type binding struct {
 	inverted   bool
 }
 
+// Snapshot identifies one process-default selection from one Bindings. Its
+// fields are deliberately private: only the owning Bindings can mint a token
+// eligible for the revision-matched compile fast path.
+type Snapshot struct {
+	bindings *Bindings
+	revision uint64
+}
+
 // Bindings owns the complete, ordered set of bindings for one architecture.
 // NewBindings panics on missing, duplicate, unknown, or nil bindings so an
 // advertised optimization cannot reach execution without an implementation.
 type Bindings struct {
-	mu      sync.Mutex
-	arch    string
-	entries []binding
-	index   map[string]int
-	before  []bool
+	mu       sync.Mutex
+	arch     string
+	entries  []binding
+	index    map[string]int
+	before   []bool
+	changed  []int
+	revision uint64
 }
 
 func NewBindings(arch string, specs ...BindingSpec) *Bindings {
@@ -80,7 +90,14 @@ func NewBindings(arch string, specs ...BindingSpec) *Bindings {
 		byName[spec.Name] = spec
 	}
 	definitions := ForArch(arch)
-	bindings := &Bindings{arch: arch, entries: make([]binding, 0, len(definitions)), index: make(map[string]int, len(definitions)), before: make([]bool, len(definitions))}
+	bindings := &Bindings{
+		arch:     arch,
+		entries:  make([]binding, 0, len(definitions)),
+		index:    make(map[string]int, len(definitions)),
+		before:   make([]bool, len(definitions)),
+		changed:  make([]int, len(definitions)),
+		revision: 1,
+	}
 	for _, definition := range definitions {
 		spec, ok := byName[definition.Name]
 		if !ok {
@@ -98,6 +115,26 @@ func (b *Bindings) Infos() []Info {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.infosLocked()
+}
+
+// Snapshot returns current binding values and the revision that identifies
+// that exact selection. The values and revision are captured under one lock.
+func (b *Bindings) Snapshot() ([]Info, Snapshot) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.infosLocked(), b.snapshotLocked()
+}
+
+// CurrentSnapshot returns an allocation-free token for the current process-
+// default selection.
+func (b *Bindings) CurrentSnapshot() Snapshot {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.snapshotLocked()
+}
+
+func (b *Bindings) snapshotLocked() Snapshot {
+	return Snapshot{bindings: b, revision: b.revision}
 }
 
 func (b *Bindings) infosLocked() []Info {
@@ -125,14 +162,53 @@ func (b *Bindings) Set(name string, on bool) bool {
 	if entry.inverted {
 		on = !on
 	}
-	*entry.value = on
+	if *entry.value != on {
+		*entry.value = on
+		b.revision++
+	}
 	return true
 }
 
 // Apply installs overrides for one compile and returns a function that restores
 // the process defaults and releases the compile lock.
 func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
+	return b.ApplySnapshot(overrides, Snapshot{}, nil)
+}
+
+// ApplySnapshot installs a captured selection for one compile. When revision
+// still names the current process defaults and deltas exactly describe every
+// difference in overrides, only deltas are installed. Otherwise overrides is
+// validated and applied in full. The revision comparison, installation,
+// compilation lease, and restoration all share the same lock, so a concurrent
+// Set cannot invalidate the fast path.
+func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (func(), error) {
 	b.mu.Lock()
+	if overrides == nil {
+		return b.mu.Unlock, nil
+	}
+	if snapshot.bindings == b && snapshot.revision == b.revision && b.deltasMatchLocked(overrides, deltas) {
+		changed := 0
+		for name := range deltas {
+			index := b.index[name]
+			b.changed[changed] = index
+			changed++
+		}
+		for _, index := range b.changed[:changed] {
+			entry := b.entries[index]
+			on := deltas[entry.definition.Name]
+			if entry.inverted {
+				on = !on
+			}
+			b.before[index] = *entry.value
+			*entry.value = on
+		}
+		return func() {
+			for _, index := range b.changed[:changed] {
+				*b.entries[index].value = b.before[index]
+			}
+			b.mu.Unlock()
+		}, nil
+	}
 	for index, entry := range b.entries {
 		b.before[index] = *entry.value
 	}
@@ -159,6 +235,31 @@ func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
 	}, nil
 }
 
+// deltasMatchLocked reports whether deltas are a complete, coherent summary of
+// overrides relative to the current process defaults. Unknown override names
+// deliberately force the full path, which reports the validation error.
+func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
+	changed := 0
+	for name, on := range overrides {
+		index, ok := b.index[name]
+		if !ok {
+			return false
+		}
+		current := *b.entries[index].value
+		if b.entries[index].inverted {
+			current = !current
+		}
+		if on == current {
+			continue
+		}
+		changed++
+		if delta, ok := deltas[name]; !ok || delta != on {
+			return false
+		}
+	}
+	return changed == len(deltas)
+}
+
 var catalog = []Definition{
 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
 	both("st-flags", "Flags results", "keep comparison results in the flags register"),
@@ -183,6 +284,7 @@ var catalog = []Definition{
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
 	amd64("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),
+	amd64("addr-zext-elim", "Memory32 address cleanup", "skip redundant zero-extension of proven-clean memory32 addresses"),
 	both("immutable-table", "Immutable tables", "specialize calls through never-written tables"),
 	both("immutable-table-type", "Immutable table types", "skip redundant immutable-table type checks"),
 	both("inline-callfree", "Call-free inline hints", "prioritize call-free functions for inlining"),
@@ -191,6 +293,7 @@ var catalog = []Definition{
 	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
 	amd64("tee-spill-elide", "Reuse tee spill homes", "reuse a local.tee frame slot when spilling its still-live scalar result"),
 	amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
+	amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
 	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),

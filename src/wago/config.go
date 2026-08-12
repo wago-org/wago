@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
@@ -232,6 +233,9 @@ func (m BoundsCheckMode) String() string {
 type RuntimeConfig struct {
 	features             CoreFeatures
 	optimizations        map[string]bool
+	optimizationSnapshot railshotOptimizationSnapshot
+	optimizationDeltas   map[string]bool
+	trustedOptimizations bool
 	maxMemoryPages       uint32
 	boundsChecks         BoundsCheckMode
 	noDeferBounds        bool // disable skipping of provably-redundant bounds checks (default: enabled)
@@ -241,6 +245,52 @@ type RuntimeConfig struct {
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
+
+var defaultOptimizationCache struct {
+	sync.Mutex
+	snapshot   railshotOptimizationSnapshot
+	values     map[string]bool
+	bmi2Values map[string]bool
+	bmi2Delta  map[string]bool
+}
+
+// defaultOptimizationSnapshot returns an immutable process-default selection.
+// The cache owns the maps: callers only read them, and WithOptimization clones
+// before mutation. A backend revision change rebuilds the snapshot from values
+// captured under the same lock as SetOptKnob.
+func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapshot railshotOptimizationSnapshot, deltas map[string]bool) {
+	defaultOptimizationCache.Lock()
+	defer defaultOptimizationCache.Unlock()
+
+	snapshot = railshotCurrentOptKnobSnapshot()
+	if defaultOptimizationCache.values == nil || defaultOptimizationCache.snapshot != snapshot {
+		infos, capturedSnapshot := railshotOptKnobSnapshot()
+		values = make(map[string]bool, len(infos))
+		for _, info := range infos {
+			values[info.Name] = info.On
+		}
+		defaultOptimizationCache.snapshot = capturedSnapshot
+		defaultOptimizationCache.values = values
+		defaultOptimizationCache.bmi2Values = nil
+		defaultOptimizationCache.bmi2Delta = nil
+		snapshot = capturedSnapshot
+	}
+	values = defaultOptimizationCache.values
+	snapshot = defaultOptimizationCache.snapshot
+	if !forceBMI2 || values["bmi2-rorx"] {
+		return values, snapshot, nil
+	}
+	if defaultOptimizationCache.bmi2Values == nil {
+		bmi2Values := make(map[string]bool, len(values))
+		for name, on := range values {
+			bmi2Values[name] = on
+		}
+		bmi2Values["bmi2-rorx"] = true
+		defaultOptimizationCache.bmi2Values = bmi2Values
+		defaultOptimizationCache.bmi2Delta = map[string]bool{"bmi2-rorx": true}
+	}
+	return defaultOptimizationCache.bmi2Values, snapshot, defaultOptimizationCache.bmi2Delta
+}
 
 // NewRuntimeConfig returns the default configuration: wago's selected feature
 // set for this build, serial function validation/codegen, independent-instance execution, and
@@ -258,18 +308,14 @@ func NewRuntimeConfig() *RuntimeConfig {
 	case "explicit", "inline":
 		bounds = BoundsChecksExplicit
 	}
-	optimizations := make(map[string]bool)
-	for _, info := range OptKnobs() {
-		optimizations[info.Name] = info.On
-	}
-	if runtime.GOARCH == "amd64" && hostSupportsBMI2() && os.Getenv("WAGO_AMD64_NO_BMI2_RORX") != "1" {
-		if _, ok := optimizations["bmi2-rorx"]; ok {
-			optimizations["bmi2-rorx"] = true
-		}
-	}
+	forceBMI2 := runtime.GOARCH == "amd64" && hostSupportsBMI2() && os.Getenv("WAGO_AMD64_NO_BMI2_RORX") != "1"
+	optimizations, optimizationSnapshot, optimizationDeltas := defaultOptimizationSnapshot(forceBMI2)
 	return &RuntimeConfig{
 		features:             defaultCoreFeatures(),
 		optimizations:        optimizations,
+		optimizationSnapshot: optimizationSnapshot,
+		optimizationDeltas:   optimizationDeltas,
+		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,
 		boundsChecks:         bounds,
 		functionWorkers:      1,
@@ -331,6 +377,9 @@ func (c *RuntimeConfig) WithOptimization(name string, enabled bool) *RuntimeConf
 	n := *c
 	n.optimizations = c.optimizationValues()
 	n.optimizations[name] = enabled
+	n.optimizationSnapshot = railshotOptimizationSnapshot{}
+	n.optimizationDeltas = nil
+	n.trustedOptimizations = false
 	return &n
 }
 
@@ -342,6 +391,9 @@ func (c *RuntimeConfig) WithOptimizations(values map[string]bool) *RuntimeConfig
 	for name, enabled := range values {
 		n.optimizations[name] = enabled
 	}
+	n.optimizationSnapshot = railshotOptimizationSnapshot{}
+	n.optimizationDeltas = nil
+	n.trustedOptimizations = false
 	return &n
 }
 
@@ -601,9 +653,11 @@ func (c *RuntimeConfig) Validate() error {
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
-	for name := range c.optimizations {
-		if !optimization.Exists(runtime.GOARCH, name) {
-			return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
+	if !c.trustedOptimizations {
+		for name := range c.optimizations {
+			if !optimization.Exists(runtime.GOARCH, name) {
+				return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
+			}
 		}
 	}
 	if c.optimizations["bmi2-rorx"] && !hostSupportsBMI2() {

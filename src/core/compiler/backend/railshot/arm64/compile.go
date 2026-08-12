@@ -446,7 +446,34 @@ func (f *fn) scratchState() *scratch {
 }
 
 func newScratch() *scratch {
-	return &scratch{stack: newStackWithCap(defaultStackArenaCap), asm: &a64.Asm{}}
+	return newScratchWithStackCap(defaultStackArenaCap)
+}
+
+func newScratchWithStackCap(stackCap int) *scratch {
+	return &scratch{stack: newStackWithCap(stackCap), asm: &a64.Asm{}}
+}
+
+// moduleStackArenaCap chooses the first chunk of the operand-stack scratch that
+// is reused across every function (or every function assigned to one worker).
+// The function pre-scan already counted arena-producing opcodes, so use the
+// largest bounded per-function estimate instead of reserving the legacy 256
+// elems for every module. The legacy cap remains the ceiling: large or
+// incomplete hint sets keep the established growth behavior and memory bound.
+func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
+	if len(hints) != len(m.Code) {
+		return defaultStackArenaCap
+	}
+	capHint := minStackArenaCap
+	for i := range hints {
+		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
+		if fnCap >= defaultStackArenaCap {
+			return defaultStackArenaCap
+		}
+		if fnCap > capHint {
+			capHint = fnCap
+		}
+	}
+	return capHint
 }
 
 func (sc *scratch) reset() {
@@ -598,6 +625,12 @@ type CompileOptions struct {
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool
+	// OptimizationSnapshot identifies Optimizations as a snapshot of the backend
+	// process defaults. OptimizationDeltas contains only public-runtime overrides
+	// layered on that snapshot. A matching revision avoids reinstalling the full
+	// selection while retaining the same compile lock and snapshot semantics.
+	OptimizationSnapshot OptimizationSnapshot
+	OptimizationDeltas   map[string]bool
 
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
@@ -699,7 +732,7 @@ func CompileModule(m *wasm.Module) (*a64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
-	restoreOptimizations, err := optimizationBindings.Apply(opts.Optimizations)
+	restoreOptimizations, err := optimizationBindings.ApplySnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
@@ -709,8 +742,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	boundsFacts := boundsFactsEnabled && !opts.NoBoundsFacts
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
-	entry := make([]int, n)
-	internalEntry := make([]int, n)
+	entry, internalEntry := shared.ModuleEntries(n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
 	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
@@ -771,7 +803,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		sc := newScratch()
+		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
 			return nil, fmt.Errorf("arm64: allocate code image: %w", err)
@@ -849,11 +881,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
+	stackCap := moduleStackArenaCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratch(), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
 	}
 	results := make([]funcResult, n)
 	var next atomic.Int64

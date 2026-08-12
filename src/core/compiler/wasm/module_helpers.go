@@ -254,12 +254,32 @@ func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
 }
 
 func (m *Module) resolvedTypeFunc(idx TypeIdx) (*CompType, bool) {
-	st, recGroup, ok := m.subtypeByTypeIdxWithRecGroup(idx)
-	if !ok || st.Comp.Kind != CompFunc {
+	var ct CompType
+	if !m.resolveTypeFunc(idx, &ct, false) {
 		return nil, false
 	}
-	ct := m.resolveCompTypeRecIndexes(st.Comp, recGroup)
 	return &ct, true
+}
+
+// ResolveTypeFunc writes the function signature at a flattened module type
+// index to dst. Non-recursive parameter and result slices alias immutable
+// module storage; recursive-local indexes are resolved into exact owned slices.
+// Callers must not mutate aliased slices and must not retain them beyond m.
+func (m *Module) ResolveTypeFunc(typeIdx uint32, dst *CompType) bool {
+	return m.resolveTypeFunc(TypeIdx{Index: typeIdx}, dst, true)
+}
+
+func (m *Module) resolveTypeFunc(idx TypeIdx, dst *CompType, aliasNonRecursive bool) bool {
+	st, recGroup, ok := m.subtypeByTypeIdxWithRecGroup(idx)
+	if !ok || st.Comp.Kind != CompFunc || dst == nil {
+		return false
+	}
+	if aliasNonRecursive && !funcTypeHasRecIndexes(&st.Comp) {
+		*dst = st.Comp
+	} else {
+		*dst = m.resolveCompTypeRecIndexes(st.Comp, recGroup)
+	}
+	return true
 }
 
 func funcTypeHasRecIndexes(ct *CompType) bool {

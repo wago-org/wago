@@ -60,6 +60,7 @@
           "type": "object",
           "propertyNames": {
             "enum": [
+              "addr-zext-elim",
               "affine-lea",
               "assoc-tree",
               "bmi2-rorx",
@@ -73,6 +74,7 @@
               "ext-fp-pins",
               "frame-elide",
               "frame-elide-reghomed",
+              "i64-mask32",
               "immutable-poly-fastpath",
               "immutable-table",
               "immutable-table-type",

@@ -48,20 +48,17 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 
 // LowerGCTypeMetadata derives runtime and compiler layout metadata in one pass.
 func LowerGCTypeMetadata(types []wasm.RecType) (GCTypeMetadata, error) {
-	flat := flattenGCTypes(types)
+	flat, hasLayouts := flattenGCTypes(types)
 	descs := make([]gc.TypeDesc, len(flat))
 	var layouts []codegen.GCTypeLayout
-	for i := range flat {
-		if flat[i].Comp.Kind == wasm.CompStruct || flat[i].Comp.Kind == wasm.CompArray {
-			layouts = make([]codegen.GCTypeLayout, len(flat))
-			break
-		}
+	if hasLayouts {
+		layouts = make([]codegen.GCTypeLayout, len(flat))
 	}
 	for i, ft := range flat {
-		st := ft.SubType
+		st := ft.Source
 		id := gc.TypeID(i)
 		resolver := gcTypeResolver{total: len(flat), recBase: ft.RecBase, recLen: ft.RecLen, flat: flat}
-		layout := codegen.GCTypeLayout{Type: ft.Source, RecBase: uint32(ft.RecBase), RecLen: uint32(ft.RecLen), PointerFree: true, DirectCast: st.Final && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray), DirectLen: st.Final && st.Comp.Kind == wasm.CompArray}
+		layout := codegen.GCTypeLayout{Type: st, RecBase: uint32(ft.RecBase), RecLen: uint32(ft.RecLen), PointerFree: true, DirectCast: st.Final && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray), DirectLen: st.Final && st.Comp.Kind == wasm.CompArray}
 		var d gc.TypeDesc
 		var err error
 		switch st.Comp.Kind {
@@ -176,7 +173,7 @@ func gcBarrierClass(needsBarrier bool) codegen.GCBarrierClass {
 	return codegen.GCBarrierNone
 }
 
-func nativeStructAllocEligible(st wasm.SubType, fields []codegen.GCFieldLayout) bool {
+func nativeStructAllocEligible(st *wasm.SubType, fields []codegen.GCFieldLayout) bool {
 	if !st.Final || len(fields) != len(st.Comp.Fields) {
 		return false
 	}
@@ -220,7 +217,6 @@ func gcStorageLayout(kind gc.StorageKind) (align, size uint32) {
 }
 
 type flattenedGCType struct {
-	wasm.SubType
 	Source  *wasm.SubType
 	RecBase int
 	RecLen  int
@@ -246,17 +242,30 @@ func (r gcTypeResolver) resolve(idx wasm.TypeIdx) (uint32, error) {
 	return idx.Index, nil
 }
 
-func flattenGCTypes(types []wasm.RecType) []flattenedGCType {
-	var flat []flattenedGCType
-	for ri := range types {
-		rt := &types[ri]
-		base := len(flat)
-		for si := range rt.SubTypes {
-			st := &rt.SubTypes[si]
-			flat = append(flat, flattenedGCType{SubType: *st, Source: st, RecBase: base, RecLen: len(rt.SubTypes)})
+func flattenGCTypes(types []wasm.RecType) (flat []flattenedGCType, hasLayouts bool) {
+	total := 0
+	for i := range types {
+		total += len(types[i].SubTypes)
+		for j := range types[i].SubTypes {
+			kind := types[i].SubTypes[j].Comp.Kind
+			hasLayouts = hasLayouts || kind == wasm.CompStruct || kind == wasm.CompArray
 		}
 	}
-	return flat
+	if total == 0 {
+		return nil, false
+	}
+	flat = make([]flattenedGCType, total)
+	at := 0
+	for ri := range types {
+		rt := &types[ri]
+		base := at
+		for si := range rt.SubTypes {
+			st := &rt.SubTypes[si]
+			flat[at] = flattenedGCType{Source: st, RecBase: base, RecLen: len(rt.SubTypes)}
+			at++
+		}
+	}
+	return flat, hasLayouts
 }
 
 func lowerGCStorage(st wasm.StorageType, resolver gcTypeResolver) (gc.StorageKind, error) {
@@ -302,7 +311,7 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 			if err != nil {
 				return 0, fmt.Errorf("invalid referenced type index %d", heap.Type().Index)
 			}
-			if int(idx) < len(resolver.flat) && resolver.flat[idx].Comp.Kind == wasm.CompFunc {
+			if int(idx) < len(resolver.flat) && resolver.flat[idx].Source.Comp.Kind == wasm.CompFunc {
 				opaque = gc.StorageFuncRef
 			}
 		} else {

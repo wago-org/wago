@@ -168,6 +168,11 @@ var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 // pin allocator as an A/B and correctness oracle.
 var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
+// memory32AddrZExtElimEnabled avoids a redundant self-move when the storage
+// form feeding a memory32 access already guarantees a zero upper half. Default
+// ON; WAGO_AMD64_NO_ADDR_ZEXT_ELIM=1 disables it for A/B.
+var memory32AddrZExtElimEnabled = os.Getenv("WAGO_AMD64_NO_ADDR_ZEXT_ELIM") != "1"
+
 // bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
 // the low-level backend default and selected by the public runtime only after
 // host CPUID confirms BMI2.
@@ -474,6 +479,10 @@ type deferredMixedArg struct {
 // appended via alignPad[:pad] to avoid allocating a temporary per function.
 var alignPad [16]byte
 
+// preloadScanGatesEnabled skips constant-cache body walks when the existing
+// one-pass hints prove that the relevant instruction family is absent.
+var preloadScanGatesEnabled = true
+
 func align16(n int) int { return (n + 15) &^ 15 }
 
 func asmCapForBody(bodyLen int) int {
@@ -555,7 +564,54 @@ type trapSite struct {
 }
 
 func newScratch() *scratch {
-	return &scratch{stack: newStackWithCap(defaultStackArenaCap), asm: &amd64.Asm{}}
+	return newScratchWithStackCap(defaultStackArenaCap)
+}
+
+func newScratchWithStackCap(stackCap int) *scratch {
+	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
+}
+
+// moduleStackArenaCap chooses the first operand-stack chunk reused across the
+// module. The one-pass function pre-scan already counts arena-producing nodes,
+// so small modules need not reserve the legacy 256-element chunk. Chunk growth
+// remains the conservative overflow path; incomplete hints retain the legacy
+// capacity to avoid predictable growth churn.
+func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
+	if len(hints) != len(m.Code) {
+		return defaultStackArenaCap
+	}
+	capHint := minStackArenaCap
+	for i := range hints {
+		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
+		if fnCap >= defaultStackArenaCap {
+			return defaultStackArenaCap
+		}
+		if fnCap > capHint {
+			capHint = fnCap
+		}
+	}
+	return capHint
+}
+
+const maxHintedControlFrames = 64
+
+// moduleControlFrameCap sizes the reusable control stack from the same one-pass
+// bytecode hints. Zero preserves lazy allocation for straight-line, incomplete,
+// AST-only, or unusually deep modules; append remains the correctness fallback.
+func moduleControlFrameCap(m *wasm.Module, hints []funcHints) int {
+	if len(hints) != len(m.Code) {
+		return 0
+	}
+	maxDepth := 0
+	for i := range hints {
+		if depth := int(hints[i].maxControlDepth); depth > maxDepth {
+			maxDepth = depth
+		}
+	}
+	if maxDepth == 0 || maxDepth >= maxHintedControlFrames {
+		return 0
+	}
+	return maxDepth + 1 // implicit function frame
 }
 
 func (sc *scratch) reset() {
@@ -705,6 +761,12 @@ type CompileOptions struct {
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool
+	// OptimizationSnapshot identifies Optimizations as a snapshot of the backend
+	// process defaults. OptimizationDeltas contains only public-runtime overrides
+	// layered on that snapshot. A matching revision avoids reinstalling the full
+	// selection while retaining the same compile lock and snapshot semantics.
+	OptimizationSnapshot OptimizationSnapshot
+	OptimizationDeltas   map[string]bool
 
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
@@ -839,7 +901,7 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
-	restoreOptimizations, err := optimizationBindings.Apply(opts.Optimizations)
+	restoreOptimizations, err := optimizationBindings.ApplySnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -849,8 +911,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	boundsFacts := boundsFactsEnabled && !opts.NoBoundsFacts
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
-	entry := make([]int, n)
-	internalEntry := make([]int, n)
+	entry, internalEntry := shared.ModuleEntries(n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
 	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers)
@@ -946,7 +1007,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		sc := newScratch()
+		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
+		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
+			sc.ctrl = make([]ctrlFrame, 0, ctrlCap)
+		}
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: allocate code image: %w", err)
@@ -1057,11 +1121,16 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
+	stackCap := moduleStackArenaCap(m, allHints)
+	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratch(), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		if ctrlCap != 0 {
+			states[i].scratch.ctrl = make([]ctrlFrame, 0, ctrlCap)
+		}
 	}
 	results := make([]funcResult, n)
 	var next atomic.Int64
@@ -1276,8 +1345,8 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) ([]funcHints, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
-	localCounts := make([]int, n)
 	totalLocals := 0
+	intervalLocals := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	for i := range m.Code {
@@ -1292,14 +1361,20 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 		if count > int(^uint(0)>>1)-totalLocals {
 			return nil, nil, fmt.Errorf("function hint locals overflow")
 		}
-		localCounts[i] = count
+		allHints[i].nLocals = count
 		totalLocals += count
+		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), count, moduleEH) {
+			if count > int(^uint(0)>>1)-intervalLocals {
+				return nil, nil, fmt.Errorf("function hint interval locals overflow")
+			}
+			intervalLocals += count
+		}
 	}
 	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
 	localScores := make([]uint32, totalLocals)
-	localLastGets := make([]uint32, totalLocals)
+	localLastGets := make([]uint32, intervalLocals)
 	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
 	var globalScores []uint32
 	var globalEligibility []bool
@@ -1324,8 +1399,9 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 		memory64 = mt.Limits.Addr64
 	}
 	localAt := 0
+	intervalAt := 0
 	for i := range m.Code {
-		nLocals := localCounts[i]
+		nLocals := allHints[i].nLocals
 		var h funcHints
 		if denseGlobals {
 			globalAt := i * nGlobals
@@ -1335,7 +1411,10 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
-		h.localLastGet = localLastGets[localAt : localAt+nLocals]
+		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), nLocals, moduleEH) {
+			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
+			intervalAt += nLocals
+		}
 		h.nLocals = nLocals
 		var err error
 		h, err = scanFuncBodyIntoMemory64WithModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts, gcStructHelpers)
@@ -1925,7 +2004,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// state beyond RBX is required. Keep this deliberately leaf-only: a local
 		// callee could itself expect the module memory-size cache to be live.
 		sc.directPrepared = volatilePrepared
-		internalOff, err := f.emitRegABI(c, hostAdapter)
+		internalOff, err := f.emitRegABI(c, hostAdapter, hints.hasFloatConst, hints.hasSIMD)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -1942,8 +2021,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 
 	f.prologue()
-	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
+	if !preloadScanGatesEnabled || hints.hasFloatConst {
+		f.preloadFloatConsts(c.BodyBytes)
+	}
+	if !preloadScanGatesEnabled || hints.hasSIMD {
+		f.preloadV128Consts(c.BodyBytes)
+	}
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -2420,7 +2503,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // the internal entry takes args in GP/XMM registers and returns its single result
 // in RAX or XMM0.
 // Returns the internal entry's offset within the function's code.
-func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
+func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
 
@@ -2519,8 +2602,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 		}
 	}
 	f.zeroDeclaredLocals()
-	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
+	if !preloadScanGatesEnabled || hasFloatConst {
+		f.preloadFloatConsts(c.BodyBytes)
+	}
+	if !preloadScanGatesEnabled || hasSIMD {
+		f.preloadV128Consts(c.BodyBytes)
+	}
 	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err

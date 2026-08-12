@@ -49,6 +49,10 @@ var (
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
 	// commutative x=f(y) op x expressions instead of spilling x first.
 	commuteSelfUpdateEnabled = os.Getenv("WAGO_NO_COMMUTE_SELF_UPDATE") != "1"
+	// i64Mask32Enabled lowers i64.and with the low-32 mask to a 32-bit AND whose
+	// destination write implicitly zero-extends. WAGO_AMD64_NO_I64_MASK32=1 is the
+	// A/B oracle.
+	i64Mask32Enabled = os.Getenv("WAGO_AMD64_NO_I64_MASK32") != "1"
 	// stFlagsEnabled gates the stFlags tee-forward window (R1): a compare stored by
 	// `local.tee $c` and consumed by the next if/br_if/select fuses into the branch,
 	// storing $c with a flag-neutral SETcc after the CMP. WAGO_NO_STFLAGS=1 is the

@@ -12,9 +12,16 @@ type railshotImportBinding = railshot.ImportBinding
 type railshotCompileOptions = railshot.CompileOptions
 type railshotCompiledModule = encoderamd64.CompiledModule
 type railshotKnobInfo = railshot.KnobInfo
+type railshotOptimizationSnapshot = railshot.OptimizationSnapshot
 type railshotModuleStats = railshot.ModuleStats
 
-func railshotOptKnobs() []railshotKnobInfo         { return railshot.OptKnobs() }
+func railshotOptKnobs() []railshotKnobInfo { return railshot.OptKnobs() }
+func railshotOptKnobSnapshot() ([]railshotKnobInfo, railshotOptimizationSnapshot) {
+	return railshot.OptKnobSnapshot()
+}
+func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
+	return railshot.CurrentOptKnobSnapshot()
+}
 func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
 
 func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {

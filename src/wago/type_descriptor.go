@@ -168,19 +168,37 @@ type DefinedTypeDescriptor struct {
 }
 
 type wasmTypeDescriptorConverter struct {
-	m       *wasm.Module
-	groupAt []uint32
+	m             *wasm.Module
+	groupAt       []uint32
+	inlineGroupAt [wasmTypeDescriptorInlineGroups + 1]uint32
+	groupCount    int
 }
+
+const wasmTypeDescriptorInlineGroups = 15
 
 func newWasmTypeDescriptorConverter(m *wasm.Module) wasmTypeDescriptorConverter {
 	c := wasmTypeDescriptorConverter{m: m}
 	if m != nil {
-		c.groupAt = make([]uint32, len(m.Types)+1)
+		c.groupCount = len(m.Types)
+		if len(m.Types) > wasmTypeDescriptorInlineGroups {
+			c.groupAt = make([]uint32, len(m.Types)+1)
+		}
 		for i := range m.Types {
-			c.groupAt[i+1] = c.groupAt[i] + uint32(len(m.Types[i].SubTypes))
+			if c.groupAt != nil {
+				c.groupAt[i+1] = c.groupAt[i] + uint32(len(m.Types[i].SubTypes))
+			} else {
+				c.inlineGroupAt[i+1] = c.inlineGroupAt[i] + uint32(len(m.Types[i].SubTypes))
+			}
 		}
 	}
 	return c
+}
+
+func (c wasmTypeDescriptorConverter) groupOffset(group int) uint32 {
+	if c.groupAt != nil {
+		return c.groupAt[group]
+	}
+	return c.inlineGroupAt[group]
 }
 
 func (c wasmTypeDescriptorConverter) abiType(t wasm.ValType, types []DefinedTypeDescriptor) (ValType, error) {
@@ -222,18 +240,42 @@ func (c wasmTypeDescriptorConverter) abiTypesInto(out []ValType, ts []wasm.ValTy
 }
 
 func typeDescriptorsFromWasm(m *wasm.Module) ([]DefinedTypeDescriptor, error) {
-	if m == nil {
+	return newWasmTypeDescriptorConverter(m).typeDescriptors()
+}
+
+func (c wasmTypeDescriptorConverter) typeDescriptors() ([]DefinedTypeDescriptor, error) {
+	if c.m == nil {
 		return nil, fmt.Errorf("nil wasm module")
 	}
-	c := newWasmTypeDescriptorConverter(m)
-	out := make([]DefinedTypeDescriptor, 0, c.groupAt[len(m.Types)])
+	out := make([]DefinedTypeDescriptor, 0, c.groupOffset(c.groupCount))
+	valueCount := 0
+	for gi := range c.m.Types {
+		for si := range c.m.Types[gi].SubTypes {
+			comp := &c.m.Types[gi].SubTypes[si].Comp
+			if comp.Kind == wasm.CompFunc {
+				valueCount += len(comp.Params) + len(comp.Results)
+			}
+		}
+	}
+	values := make([]ValueTypeDescriptor, valueCount)
+	valueAt := 0
 	descriptorGroup := uint32(0)
-	for gi := range m.Types {
-		if len(m.Types[gi].SubTypes) == 0 {
+	for gi := range c.m.Types {
+		if len(c.m.Types[gi].SubTypes) == 0 {
 			continue
 		}
-		for si := range m.Types[gi].SubTypes {
-			d, err := c.definedType(&m.Types[gi].SubTypes[si], gi, descriptorGroup)
+		for si := range c.m.Types[gi].SubTypes {
+			st := &c.m.Types[gi].SubTypes[si]
+			var params, results []ValueTypeDescriptor
+			if st.Comp.Kind == wasm.CompFunc {
+				end := valueAt + len(st.Comp.Params)
+				params = values[valueAt:end:end]
+				valueAt = end
+				end = valueAt + len(st.Comp.Results)
+				results = values[valueAt:end:end]
+				valueAt = end
+			}
+			d, err := c.definedType(st, gi, descriptorGroup, params, results)
 			if err != nil {
 				return nil, fmt.Errorf("type %d: %w", len(out), err)
 			}
@@ -633,7 +675,7 @@ func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescri
 	return out
 }
 
-func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup int, descriptorGroup uint32) (DefinedTypeDescriptor, error) {
+func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup int, descriptorGroup uint32, params, results []ValueTypeDescriptor) (DefinedTypeDescriptor, error) {
 	d := DefinedTypeDescriptor{RecGroup: descriptorGroup, Final: st.Final}
 	for _, idx := range st.Supers {
 		x, err := c.typeIndex(idx, sourceGroup)
@@ -659,13 +701,12 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 	switch st.Comp.Kind {
 	case wasm.CompFunc:
 		d.Kind = CompositeTypeFunction
-		var err error
-		d.Params, err = c.valueTypes(st.Comp.Params, sourceGroup)
-		if err != nil {
+		d.Params = params
+		if err := c.valueTypesInto(d.Params, st.Comp.Params, sourceGroup); err != nil {
 			return d, fmt.Errorf("params: %w", err)
 		}
-		d.Results, err = c.valueTypes(st.Comp.Results, sourceGroup)
-		if err != nil {
+		d.Results = results
+		if err := c.valueTypesInto(d.Results, st.Comp.Results, sourceGroup); err != nil {
 			return d, fmt.Errorf("results: %w", err)
 		}
 	case wasm.CompStruct:
@@ -715,14 +756,24 @@ func (c wasmTypeDescriptorConverter) fieldType(f wasm.FieldType, group int) (Fie
 
 func (c wasmTypeDescriptorConverter) valueTypes(ts []wasm.ValType, group int) ([]ValueTypeDescriptor, error) {
 	out := make([]ValueTypeDescriptor, len(ts))
+	if err := c.valueTypesInto(out, ts, group); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c wasmTypeDescriptorConverter) valueTypesInto(out []ValueTypeDescriptor, ts []wasm.ValType, group int) error {
+	if len(out) != len(ts) {
+		return fmt.Errorf("value type destination length %d, want %d", len(out), len(ts))
+	}
 	for i := range ts {
 		v, err := c.valueType(ts[i], group)
 		if err != nil {
-			return nil, fmt.Errorf("value %d: %w", i, err)
+			return fmt.Errorf("value %d: %w", i, err)
 		}
 		out[i] = v
 	}
-	return out, nil
+	return nil
 }
 
 func (c wasmTypeDescriptorConverter) valueType(t wasm.ValType, group int) (ValueTypeDescriptor, error) {
@@ -768,11 +819,11 @@ func (c wasmTypeDescriptorConverter) refType(t wasm.RefType, group int) (Referen
 		out.Heap.Defined, out.Heap.TypeIndex = true, x
 	case wasm.HeapDefType:
 		groupIndex, memberIndex, _, valid := heap.Def()
-		if c.m == nil || !valid || int(groupIndex) >= len(c.groupAt)-1 || memberIndex >= uint32(len(c.m.Types[groupIndex].SubTypes)) {
+		if c.m == nil || !valid || int(groupIndex) >= c.groupCount || memberIndex >= uint32(len(c.m.Types[groupIndex].SubTypes)) {
 			return out, fmt.Errorf("unknown defined heap type")
 		}
 		out.Heap.Defined = true
-		out.Heap.TypeIndex = c.groupAt[groupIndex] + memberIndex
+		out.Heap.TypeIndex = c.groupOffset(int(groupIndex)) + memberIndex
 	default:
 		return out, fmt.Errorf("unknown heap type kind %d", heap.Kind())
 	}
@@ -781,15 +832,15 @@ func (c wasmTypeDescriptorConverter) refType(t wasm.RefType, group int) (Referen
 
 func (c wasmTypeDescriptorConverter) typeIndex(idx wasm.TypeIdx, group int) (uint32, error) {
 	if !idx.Rec {
-		if len(c.groupAt) != 0 && idx.Index >= c.groupAt[len(c.groupAt)-1] {
+		if c.m != nil && idx.Index >= c.groupOffset(c.groupCount) {
 			return 0, fmt.Errorf("type index %d out of range", idx.Index)
 		}
 		return idx.Index, nil
 	}
-	if group < 0 || group >= len(c.groupAt)-1 || idx.Index >= uint32(len(c.m.Types[group].SubTypes)) {
+	if c.m == nil || group < 0 || group >= c.groupCount || idx.Index >= uint32(len(c.m.Types[group].SubTypes)) {
 		return 0, fmt.Errorf("recursive type index %d out of range", idx.Index)
 	}
-	return c.groupAt[group] + idx.Index, nil
+	return c.groupOffset(group) + idx.Index, nil
 }
 
 func validateValueTypeDescriptor(context string, t ValueTypeDescriptor, types []DefinedTypeDescriptor) error {

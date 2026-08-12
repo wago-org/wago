@@ -6,9 +6,76 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestModuleStackArenaCapUsesSmallestBoundedHint(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x00, 0x41, 0x2a, 0x0b}}}}
+	hints := []funcHints{{stackArenaNodes: 1}}
+
+	if got := moduleStackArenaCap(m, hints); got != minStackArenaCap {
+		t.Fatalf("module stack arena cap = %d, want %d", got, minStackArenaCap)
+	}
+}
+
+func TestModuleStackArenaCapFallsBackForIncompleteHints(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 2)}
+	if got := moduleStackArenaCap(m, []funcHints{{}}); got != defaultStackArenaCap {
+		t.Fatalf("incomplete-hint cap = %d, want legacy %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestModuleStackArenaCapClampsAtLegacyCapacity(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*2)}}}
+	hints := []funcHints{{stackArenaNodes: defaultStackArenaCap * 2}}
+	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
+		t.Fatalf("large-function cap = %d, want legacy %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestModuleStackArenaCapIsDeterministicAcrossFunctionOrder(t *testing.T) {
+	m1 := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 24)}, {BodyBytes: make([]byte, 80)}}}
+	h1 := []funcHints{{stackArenaNodes: 8}, {stackArenaNodes: 20}}
+	m2 := &wasm.Module{Code: []wasm.Func{m1.Code[1], m1.Code[0]}}
+	h2 := []funcHints{h1[1], h1[0]}
+	if got, want := moduleStackArenaCap(m1, h1), moduleStackArenaCap(m2, h2); got != want {
+		t.Fatalf("cap depends on function order: %d != %d", got, want)
+	}
+}
+
+func TestHintSizedScratchRemovesFixedArenaBacking(t *testing.T) {
+	saved := uintptr(defaultStackArenaCap-minStackArenaCap) * unsafe.Sizeof(elem{})
+	if want := uintptr(24 << 10); saved < want {
+		t.Fatalf("initial arena saving = %d bytes, want at least %d", saved, want)
+	}
+	sc := newScratchWithStackCap(minStackArenaCap)
+	if got := cap(sc.stack.chunks[0]); got != minStackArenaCap {
+		t.Fatalf("scratch first chunk cap = %d, want %d", got, minStackArenaCap)
+	}
+}
+
+func TestModuleControlFrameCapIsExactAndLazy(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 2)}
+	if got := moduleControlFrameCap(m, []funcHints{{}, {}}); got != 0 {
+		t.Fatalf("straight-line control cap = %d, want lazy zero", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 4}}); got != 5 {
+		t.Fatalf("nested control cap = %d, want 5", got)
+	}
+}
+
+func TestModuleControlFrameCapFallsBackConservatively(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{}}}
+	if got := moduleControlFrameCap(m, nil); got != 0 {
+		t.Fatalf("incomplete hints cap = %d, want zero fallback", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: maxHintedControlFrames}}); got != 0 {
+		t.Fatalf("deep control cap = %d, want zero fallback", got)
+	}
+}
 
 func TestAsmCapForBodyClamps(t *testing.T) {
 	for _, tc := range []struct {
