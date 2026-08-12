@@ -560,7 +560,33 @@ type trapSite struct {
 }
 
 func newScratch() *scratch {
-	return &scratch{stack: newStackWithCap(defaultStackArenaCap), asm: &amd64.Asm{}}
+	return newScratchWithStackCap(defaultStackArenaCap)
+}
+
+func newScratchWithStackCap(stackCap int) *scratch {
+	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
+}
+
+// moduleStackArenaCap chooses the first operand-stack chunk reused across the
+// module. The one-pass function pre-scan already counts arena-producing nodes,
+// so small modules need not reserve the legacy 256-element chunk. Chunk growth
+// remains the conservative overflow path; incomplete hints retain the legacy
+// capacity to avoid predictable growth churn.
+func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
+	if len(hints) != len(m.Code) {
+		return defaultStackArenaCap
+	}
+	capHint := minStackArenaCap
+	for i := range hints {
+		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
+		if fnCap >= defaultStackArenaCap {
+			return defaultStackArenaCap
+		}
+		if fnCap > capHint {
+			capHint = fnCap
+		}
+	}
+	return capHint
 }
 
 func (sc *scratch) reset() {
@@ -956,7 +982,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		sc := newScratch()
+		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: allocate code image: %w", err)
@@ -1067,11 +1093,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
+	stackCap := moduleStackArenaCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratch(), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
 	}
 	results := make([]funcResult, n)
 	var next atomic.Int64
