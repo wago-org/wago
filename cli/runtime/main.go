@@ -1,5 +1,5 @@
 // Package runtime implements the executable WebAssembly runtime CLI. It is
-// importable so generated plugin builds can register extensions and call Main.
+// importable so generated plugin builds can assemble providers and call Main.
 package runtime
 
 import (
@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
@@ -96,6 +97,18 @@ func Main(v string) {
 // dependencies, or other native-output inputs change.
 func MainWithArtifactCacheIdentity(v, identity string) {
 	artifactCacheIdentity = identity
+	Main(v)
+}
+
+// MainWithPluginSet runs a generated runtime with its explicit provider catalog
+// and exact reviewed selections. No provider init function mutates global Wago
+// state; the set is handed to each runtime that needs plugins.
+func MainWithPluginSet(v, identity string, set wago.PluginSet) {
+	artifactCacheIdentity = identity
+	runtimeplugin.Configure(set)
+	if err := runtimeplugin.Verify(); err != nil {
+		ui.Fatal("plugins: %v", err)
+	}
 	Main(v)
 }
 

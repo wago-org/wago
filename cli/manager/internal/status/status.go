@@ -73,11 +73,8 @@ func Inspect(dirs wagopaths.Dirs, managerVersion, managerPath string) (Report, e
 		return report, nil
 	}
 	report.LockState = "up to date"
-	for _, requirement := range requirements {
-		if lock.Packages[requirement.ID].Version == "" {
-			report.LockState = "needs update"
-			break
-		}
+	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
+		report.LockState = "needs update"
 	}
 	return report, nil
 }

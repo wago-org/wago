@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -51,6 +52,52 @@ func TestManagedInstancesRequireManifestGrant(t *testing.T) {
 	err := NewRuntime().Use(ext, WithPluginGrants())
 	if err == nil {
 		t.Fatal("strict Use accepted ungranted instance manager")
+	}
+}
+
+func TestManagedInstancesEnforceAggregateMemoryReservation(t *testing.T) {
+	const pageBytes = uint64(65536)
+	rt := NewRuntime()
+	manager := newPendingInstanceManager("example.com/aggregate", AuthorityScope{MaxInstances: 3, MaxMemoryBytes: 2 * pageBytes})
+	manager.activate(rt)
+	mod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})), // memory min=1, max=1
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := manager.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Instantiate(context.Background(), mod); err == nil || !strings.Contains(err.Error(), "aggregate managed memory reservation") {
+		t.Fatalf("third instance error = %v, want aggregate memory rejection", err)
+	}
+	if got := manager.memoryBytes; got != 2*pageBytes {
+		t.Fatalf("reserved memory = %d, want %d", got, 2*pageBytes)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	third, err := manager.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("reservation was not released on close: %v", err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := third.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if manager.live != 0 || manager.memoryBytes != 0 {
+		t.Fatalf("manager retained live=%d memory=%d", manager.live, manager.memoryBytes)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -292,7 +292,8 @@ func TestRuntimeCloseWaitsForPendingManagedInstantiation(t *testing.T) {
 	}
 	p.hostFn = func(caller HostModule, _, _ []uint64) {
 		var err error
-		resolved, err = p.resolver.Resolve(caller)
+		identity, resolveErr := p.resolver.Resolve(caller)
+		resolved, err = identity.value, resolveErr
 		if err != nil {
 			panic(err)
 		}
@@ -467,10 +468,11 @@ func TestFailedImportedStartResolvesAndClosesExactInstance(t *testing.T) {
 		}},
 	}
 	p.hostFn = func(caller HostModule, _, _ []uint64) {
-		in, err := p.resolver.Resolve(caller)
+		identity, err := p.resolver.Resolve(caller)
 		if err != nil {
 			panic(err)
 		}
+		in := identity.value
 		resolved = in
 		mu.Lock()
 		state[in] = true
@@ -517,7 +519,8 @@ func TestFailedLocalStartResolvesAndClosesExactInstance(t *testing.T) {
 	}
 	p.hostFn = func(caller HostModule, _, _ []uint64) {
 		var err error
-		resolved, err = p.resolver.Resolve(caller)
+		identity, resolveErr := p.resolver.Resolve(caller)
+		resolved, err = identity.value, resolveErr
 		if err != nil {
 			panic(err)
 		}
@@ -620,7 +623,8 @@ func TestCallerResolverAuthorityAndExpiry(t *testing.T) {
 	p := &disposalTestPlugin{id: "test.caller.direct", requires: []PluginCapability{PluginHostImports}}
 	p.hostFn = func(caller HostModule, _, _ []uint64) {
 		retained = caller
-		resolved, resolveErr = p.resolver.Resolve(caller)
+		identity, err := p.resolver.Resolve(caller)
+		resolved, resolveErr = identity.value, err
 	}
 	rt := NewRuntime()
 	if err := rt.Use(p, WithPluginGrants(PluginHostImports)); err != nil {
@@ -692,7 +696,8 @@ func TestCallerResolverManagedInstance(t *testing.T) {
 		requires: []PluginCapability{PluginHostImports, PluginManagedInstances},
 	}
 	p.hostFn = func(caller HostModule, _, _ []uint64) {
-		resolved, resolveErr = p.resolver.Resolve(caller)
+		identity, err := p.resolver.Resolve(caller)
+		resolved, resolveErr = identity.value, err
 	}
 	rt := NewRuntime()
 	if err := rt.Use(p, WithPluginGrants(PluginHostImports, PluginManagedInstances)); err != nil {
@@ -727,7 +732,8 @@ func TestManagedFailedStartUsesManagedOriginAndCleansUp(t *testing.T) {
 	}
 	p.hostFn = func(caller HostModule, _, _ []uint64) {
 		var err error
-		resolved, err = p.resolver.Resolve(caller)
+		identity, resolveErr := p.resolver.Resolve(caller)
+		resolved, err = identity.value, resolveErr
 		if err != nil {
 			panic(err)
 		}
@@ -803,8 +809,8 @@ func TestManagedForkLifecycleAndRuntimeOwnership(t *testing.T) {
 	mu.Lock()
 	childClosed, parentClosed := closed[childIn], closed[parent]
 	mu.Unlock()
-	if childClosed != 1 || parentClosed != 0 {
-		t.Fatalf("runtime close child/parent counts = %d/%d, want 1/0", childClosed, parentClosed)
+	if childClosed != 1 || parentClosed != 1 {
+		t.Fatalf("runtime close child/parent counts = %d/%d, want 1/1", childClosed, parentClosed)
 	}
 	if err := parent.Close(); err != nil {
 		t.Fatalf("caller-owned parent Close: %v", err)

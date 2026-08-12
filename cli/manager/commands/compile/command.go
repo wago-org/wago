@@ -3,7 +3,6 @@ package compile
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/wago-org/wago/cli/internal/command"
 	internalparallel "github.com/wago-org/wago/cli/internal/parallel"
@@ -17,7 +16,6 @@ type Options struct {
 	Input, Output, Target, Invoke string
 	Core                          string
 	Parallel                      string
-	Plugins                       string
 	DeferredBoundsChecking        *bool
 	Optimizations                 map[string]bool
 	Global, Local, Bare           bool
@@ -36,8 +34,6 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		internalparallel.Flag(),
-		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable"},
-		{Name: "plugins", Arg: "<names>", Help: "alias for --plugin"},
 		{Name: "global", Short: "g", Bool: true, Help: "include shared user-wide plugins"},
 		{Name: "local", Bool: true, Help: "include this project's plugins"},
 		{Name: "bare", Bool: true, Help: "build without plugins"},
@@ -63,11 +59,10 @@ func Command(environment Environment) *command.Cmd {
 			if len(context.Args) != 1 {
 				ui.Usage("compile: need exactly one <file>")
 			}
-			plugins := joinPluginLists(context.Str("plugin"), context.Str("plugins"))
 			deferred, optimizations := compileKnobOverrides(context)
 			environment.Compile(Options{
 				Input: context.Args[0], Output: context.Str("output"), Target: context.Str("target"), Invoke: context.Str("invoke"),
-				Core: context.Str("core"), Parallel: context.Str("parallel"), Plugins: plugins, DeferredBoundsChecking: deferred, Optimizations: optimizations,
+				Core: context.Str("core"), Parallel: context.Str("parallel"), DeferredBoundsChecking: deferred, Optimizations: optimizations,
 				Global: context.Bool("global"), Local: context.Bool("local"), Bare: context.Bool("bare"),
 				Verbose: context.Bool("verbose"),
 			})
@@ -131,14 +126,4 @@ func pairedOverride(context *command.Ctx, name string) (bool, bool) {
 		return false, true
 	}
 	return false, false
-}
-
-func joinPluginLists(values ...string) string {
-	plugins := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			plugins = append(plugins, value)
-		}
-	}
-	return strings.Join(plugins, ",")
 }

@@ -33,8 +33,9 @@ so scalar-only standalone instances do not allocate a store and tokens from two
 standalone instances are incompatible. Issuing a token retains the producer's
 arena, code mapping, and home instance context. `Instance.Close` becomes a
 logical close for such a producer and physical release is deferred until the
-store releases its tokens: for a runtime store, after `Runtime.Close` and the
-last attached instance closes; for a private store, when its instance closes.
+store releases its tokens: for a runtime store, after `Runtime.Close` has closed
+and drained every attached instance and the last host-owned store object closes;
+for a private store, when its instance closes.
 Tokens are never reused within a store lifetime, so released-store tokens cannot
 resolve through another store.
 
@@ -341,9 +342,10 @@ externref arguments are checked before callback entry, and host results are
 checked before Wasm re-entry, so forged, stale, and incompatible results cannot
 resume native execution.
 
-Externref roots live for the reference-store lifetime. `Runtime.Close` releases
-them immediately when no instance remains attached, or after the last attached
-instance closes; closing a standalone instance releases its private slots.
+Externref roots live for the reference-store lifetime. `Runtime.Close` closes
+and drains every attached runtime instance, then releases roots immediately
+unless a caller-owned runtime table, global, or host-function owner still keeps
+the store alive. Closing a standalone instance releases its private slots.
 Generation mismatch, released-store, forged-token, cross-runtime, and
 cross-private-store tests all fail before native execution. The store is finite
 for a process lifetime because every slot is owned by one runtime/private store
@@ -404,8 +406,8 @@ Duplicate import aliases validate every declaration but attach one lifetime root
 Host global close rejects live importers. A local producer remains physically live
 after logical close until every consumer detaches, preserving funcref code/context
 and externref store identity. A Runtime-owned externref global counts as a bounded
-store owner, so `Runtime.Close` retains roots until the final instance and global
-close. The reference store reuses its existing live-object counter for tables and
+store owner. `Runtime.Close` closes every Runtime instance, but retains roots
+until the final host-owned global closes. The reference store reuses its existing live-object counter for tables and
 globals, keeping `referenceStore` at 88 bytes; `Global` replaces its arena pointer
 with a same-size owner pointer and remains 40 bytes.
 
@@ -497,8 +499,9 @@ pointer to a small owner object containing the arena or producer instance, exact
 element type, compatible store, and importer count. Host table close rejects live
 importers. Local table imports retain the producer's physical resources until the
 consumer detaches, even if the producer is logically closed first. A runtime-owned
-externref table counts as a store owner, so `Runtime.Close` releases roots only
-after the last attached instance and table close; repeated close is idempotent.
+externref table counts as a store owner. `Runtime.Close` closes every Runtime
+instance, but releases roots only after the final host-owned table closes;
+repeated close is idempotent.
 Importer tracking uses four inline pointers before allocating overflow state, so
 the common one- and two-table paths add no Go allocation.
 

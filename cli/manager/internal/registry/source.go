@@ -20,7 +20,15 @@ func UnpackedKB(dir string) int {
 }
 
 func GitOutput(args ...string) string {
-	output, err := exec.Command("git", args...).Output()
+	return gitOutputAt("", args...)
+}
+
+func gitOutputAt(dir string, args ...string) string {
+	command := exec.Command("git", args...)
+	if dir != "" {
+		command.Dir = dir
+	}
+	output, err := command.Output()
 	if err != nil {
 		return ""
 	}

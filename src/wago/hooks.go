@@ -1,114 +1,154 @@
 package wago
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
 )
 
-// HookRegistry collects lifecycle callbacks contributed by extensions: runtime
-// close, compile, instantiate, instance close, and invoke. Hooks fire on the
-// Runtime-aware paths (rt.Compile, rt.Instantiate, Instance.Call, and
-// Instance.Close) — the low-level package-level Compile/Instantiate/Invoke are
-// hook-free.
-type HookRegistry struct {
-	onRuntimeClose       []func(*RuntimeContext)
-	internalRuntimeClose int
-	internalClose        []func() error
-	internalBeforeClose  []func(*Instance)
-	beforeCompile        []func(*CompileContext, []byte) ([]byte, error)
-	afterCompile         []func(*CompileContext, *Module) error
-	beforeInstantiate    []func(*InstantiateContext) error
-	afterInstantiate     []func(*InstantiateContext, *Instance) error
-	onInstantiateError   []func(*InstantiateContext, error)
-	beforeClose          []func(*InstanceContext)
-	afterClose           []func(*InstanceContext)
-	beforeInvoke         []func(*InvokeContext) error
-	afterInvoke          []func(*InvokeContext, []Value, error)
+type hookRegistry struct {
+	onRuntimeClose      []func(RuntimeCloseEvent)
+	internalClose       []func() error
+	internalBeforeClose []func(*Instance)
+	beforeCompile       []func(ModuleSourceContext, []byte) ([]byte, error)
+	afterCompile        []func(ModuleCompiledEvent)
+	onCompileError      []func(ModuleCompileErrorEvent)
+	onModuleClose       []func(ModuleCloseEvent)
+	beforeInstantiate   []func(InstantiationRequest) error
+	afterCreate         []func(InstantiationEvent) error
+	afterInstantiate    []func(InstantiationEvent)
+	onInstantiateError  []func(InstantiationErrorEvent)
+	beforeClose         []func(InstanceCloseEvent)
+	afterClose          []func(InstanceCloseEvent)
+	beforeInvoke        []func(InvocationRequest) error
+	afterInvoke         []func(InvocationEvent)
 }
 
-// BeforeCompile registers ordered source transforms. Returning nil bytes keeps
-// the current source; returning bytes passes that source to the next transform.
-// An error aborts compilation before code generation.
-func (h *HookRegistry) BeforeCompile(fns ...func(*CompileContext, []byte) ([]byte, error)) {
-	h.beforeCompile = append(h.beforeCompile, fns...)
+// InstanceIdentity is an opaque comparable identity. It conveys no invocation,
+// close, memory, export, or management authority.
+type InstanceIdentity struct{ value *Instance }
+
+func (id InstanceIdentity) IsZero() bool                  { return id.value == nil }
+func sameInstance(id InstanceIdentity, in *Instance) bool { return id.value == in }
+
+type compilationIdentityToken struct{ value byte }
+
+// CompilationIdentity correlates one Runtime.Compile or Runtime.Module
+// operation without exposing source, compiled code, or Runtime authority.
+type CompilationIdentity struct{ value *compilationIdentityToken }
+
+func (id CompilationIdentity) IsZero() bool { return id.value == nil }
+
+type moduleIdentityToken struct{ value byte }
+
+// ModuleIdentity is the opaque comparable identity of one runtime-bound
+// module. It grants no access to code, imports, instantiation, or close
+// operations and does not retain the underlying Compiled artifact.
+type ModuleIdentity struct{ value *moduleIdentityToken }
+
+func (id ModuleIdentity) IsZero() bool { return id.value == nil }
+
+// ModuleSourceDigest is an opaque comparable digest of exact Wasm source
+// bytes. Its representation is deliberately unavailable to plugins: source
+// transformers can compare values without a compile observer learning source.
+// The zero value means that no source bytes were available, as for
+// Runtime.Module.
+type ModuleSourceDigest struct {
+	value     [sha256.Size]byte
+	available bool
 }
 
-// OnRuntimeClose registers a callback run when the runtime is closed, in reverse
-// registration order (last registered runs first), so extensions tear down after
-// the ones that depend on them.
-func (h *HookRegistry) OnRuntimeClose(fns ...func(*RuntimeContext)) {
-	h.onRuntimeClose = append(h.onRuntimeClose, fns...)
+// DigestModuleSource returns the opaque digest of source the caller already
+// holds. ModuleSourceDigest values are intended to be compared with == or !=.
+func DigestModuleSource(source []byte) ModuleSourceDigest {
+	return ModuleSourceDigest{value: sha256.Sum256(source), available: true}
 }
 
-// BeforeInstantiate registers a callback run before each Instantiate. Returning
-// an error aborts instantiation.
-func (h *HookRegistry) BeforeInstantiate(fns ...func(*InstantiateContext) error) {
-	h.beforeInstantiate = append(h.beforeInstantiate, fns...)
+func (d ModuleSourceDigest) IsZero() bool { return !d.available }
+
+type ModuleView struct {
+	compiled *Compiled
+	identity ModuleIdentity
+	imports  []ImportSpec
 }
 
-// AfterInstantiate registers a callback run after each successful Instantiate.
-func (h *HookRegistry) AfterInstantiate(fns ...func(*InstantiateContext, *Instance) error) {
-	h.afterInstantiate = append(h.afterInstantiate, fns...)
+func (v ModuleView) Identity() ModuleIdentity { return v.identity }
+
+func (v ModuleView) Imports() []ImportSpec {
+	return cloneImportSpecs(v.imports)
 }
 
-// OnInstantiateError registers a callback run when instantiation fails after its
-// preflight checks have completed. This includes failures from BeforeInstantiate,
-// the low-level instantiator, and AfterInstantiate. Error hooks are observers and
-// cannot replace or suppress the returned error.
-func (h *HookRegistry) OnInstantiateError(fns ...func(*InstantiateContext, error)) {
-	h.onInstantiateError = append(h.onInstantiateError, fns...)
+func moduleView(mod *Module) ModuleView {
+	if mod == nil {
+		return ModuleView{}
+	}
+	return ModuleView{compiled: mod.c, identity: mod.moduleIdentity(), imports: cloneImportSpecs(mod.imports)}
 }
 
-// BeforeClose registers a callback at the start of a Runtime-created instance's
-// logical close, after the invocation-entry gate has been published. Close hooks
-// run in reverse registration order and do not fire for low-level package-level
-// Instantiate instances. Physical code, arena, memory, engine, and retained
-// import release may be deferred until active invocations and reference roots
-// reach zero. Each panic is isolated, reported from Instance.Close, and does not
-// skip later logical-close cleanup.
-func (h *HookRegistry) BeforeClose(fns ...func(*InstanceContext)) {
-	h.beforeClose = append(h.beforeClose, fns...)
+func cloneImportSpecs(in []ImportSpec) []ImportSpec {
+	out := append([]ImportSpec(nil), in...)
+	for i := range out {
+		out[i].Params = append([]ValType(nil), in[i].Params...)
+		out[i].Results = append([]ValType(nil), in[i].Results...)
+		out[i].ParamTypes = append([]ValueTypeDescriptor(nil), in[i].ParamTypes...)
+		out[i].ResultTypes = append([]ValueTypeDescriptor(nil), in[i].ResultTypes...)
+	}
+	return out
 }
 
-// AfterClose registers a callback at the end of a Runtime-created instance's
-// logical close. It shares Metadata with BeforeClose and runs in reverse
-// registration order. AfterClose does not guarantee that code, arena, memory,
-// engine, or retained import attachments have been physically released: active
-// invocations and retained reference roots may defer teardown. Instance.Close is
-// concurrent-safe and idempotent, so these hooks fire once; panics are isolated
-// and returned as close errors.
-func (h *HookRegistry) AfterClose(fns ...func(*InstanceContext)) {
-	h.afterClose = append(h.afterClose, fns...)
+type RuntimeCloseEvent struct{}
+type ModuleSourceContext struct{ Compilation CompilationIdentity }
+type ModuleCompiledEvent struct {
+	Compilation CompilationIdentity
+	Module      ModuleView
+	// SourceDigest identifies the final bytes passed to the compiler after every
+	// source transformer. It is zero for Runtime.Module's precompiled path.
+	SourceDigest ModuleSourceDigest
+}
+type ModuleCompileErrorEvent struct {
+	Compilation CompilationIdentity
+	Err         error
+}
+type ModuleCloseEvent struct{ Module ModuleView }
+type InstantiationRequest struct {
+	Module ModuleView
+	Origin InstantiateOrigin
+}
+type InstantiationEvent struct {
+	Module   ModuleView
+	Instance InstanceIdentity
+	Origin   InstantiateOrigin
+}
+type InstantiationErrorEvent struct {
+	Module ModuleView
+	Origin InstantiateOrigin
+	Err    error
+}
+type InstanceCloseEvent struct {
+	Module   ModuleView
+	Instance InstanceIdentity
+	Origin   InstantiateOrigin
+}
+type operationIdentityToken struct{ value byte }
+type OperationIdentity struct{ value *operationIdentityToken }
+
+type InvocationRequest struct {
+	Operation OperationIdentity
+	Instance  InstanceIdentity
+	Export    string
+	Args      []Value
+	Start     time.Time
+}
+type InvocationEvent struct {
+	Operation OperationIdentity
+	Instance  InstanceIdentity
+	Export    string
+	Results   []Value
+	Err       error
+	Start     time.Time
 }
 
-// AfterCompile registers a callback run after each rt.Compile produces a Module.
-// Returning an error fails the compile.
-func (h *HookRegistry) AfterCompile(fns ...func(*CompileContext, *Module) error) {
-	h.afterCompile = append(h.afterCompile, fns...)
-}
-
-// BeforeInvoke registers a callback run before each Instance.Call. Returning an
-// error aborts the call (the export is not run).
-func (h *HookRegistry) BeforeInvoke(fns ...func(*InvokeContext) error) {
-	h.beforeInvoke = append(h.beforeInvoke, fns...)
-}
-
-// AfterInvoke registers a callback run after each Instance.Call returns, with the
-// results and error. It runs even when the call errored (results is nil then),
-// so it is the place for timing, metrics, and trap reporting.
-func (h *HookRegistry) AfterInvoke(fns ...func(*InvokeContext, []Value, error)) {
-	h.afterInvoke = append(h.afterInvoke, fns...)
-}
-
-// RuntimeContext is passed to runtime-lifecycle hooks.
-type RuntimeContext struct {
-	Runtime *Runtime
-}
-
-// InstantiateOrigin identifies which Runtime-owned path created an instance.
-// Plugins can use it to distinguish direct application instances from neutral
-// plugin-managed instances without inferring from imports.
 type InstantiateOrigin uint8
 
 const (
@@ -116,82 +156,106 @@ const (
 	InstantiateManaged
 )
 
-// InstantiateContext is passed to instantiate hooks. Imports is the fully merged
-// import namespace (extension-provided plus any per-call additions). Metadata is
-// scratch space extensions may use to carry state from Before to After.
-type InstantiateContext struct {
-	Runtime  *Runtime
-	Module   *Module
-	Compiled *Compiled
-	Imports  Imports
-	Origin   InstantiateOrigin
-	Metadata map[string]any
-}
-
-// InstanceContext is passed to instance-close hooks. Instance is the exact
-// Runtime-owned pointer being disposed. Metadata is shared from BeforeClose to
-// AfterClose for that one close operation.
-type InstanceContext struct {
-	Runtime  *Runtime
-	Compiled *Compiled
-	Instance *Instance
-	Origin   InstantiateOrigin
-	Metadata map[string]any
-}
-
-// CompileContext is passed to compile hooks.
-type CompileContext struct {
-	Runtime  *Runtime
-	Metadata map[string]any
-}
-
-// InvokeContext is passed to invoke hooks. Start is set when the Before hooks run,
-// so an After hook can measure the call duration. Metadata carries extension-local
-// state from Before to After (e.g. a metrics start marker).
-type InvokeContext struct {
-	Runtime  *Runtime
-	Instance *Instance
-	Export   string
-	Args     []Value
-	Start    time.Time
-	Metadata map[string]any
-}
-
-// appendFrom commits hooks collected in an extension's scratch Registry. Keeping
-// registration transactional prevents a failed Use from leaking active hooks.
-func (h *HookRegistry) appendFrom(src *HookRegistry) {
+func (h *hookRegistry) appendGated(src *hookRegistry, gate *pluginCallGate) {
 	if src == nil {
 		return
 	}
-	h.onRuntimeClose = append(h.onRuntimeClose, src.onRuntimeClose...)
-	h.internalRuntimeClose += src.internalRuntimeClose
-	h.internalClose = append(h.internalClose, src.internalClose...)
-	h.internalBeforeClose = append(h.internalBeforeClose, src.internalBeforeClose...)
-	h.beforeCompile = append(h.beforeCompile, src.beforeCompile...)
-	h.afterCompile = append(h.afterCompile, src.afterCompile...)
-	h.beforeInstantiate = append(h.beforeInstantiate, src.beforeInstantiate...)
-	h.afterInstantiate = append(h.afterInstantiate, src.afterInstantiate...)
-	h.onInstantiateError = append(h.onInstantiateError, src.onInstantiateError...)
-	h.beforeClose = append(h.beforeClose, src.beforeClose...)
-	h.afterClose = append(h.afterClose, src.afterClose...)
-	h.beforeInvoke = append(h.beforeInvoke, src.beforeInvoke...)
-	h.afterInvoke = append(h.afterInvoke, src.afterInvoke...)
+	for _, fn := range src.onRuntimeClose {
+		fn := fn
+		h.onRuntimeClose = append(h.onRuntimeClose, func(event RuntimeCloseEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.beforeCompile {
+		fn := fn
+		h.beforeCompile = append(h.beforeCompile, func(ctx ModuleSourceContext, source []byte) (out []byte, err error) {
+			err = withPluginHookError(gate, func() error { out, err = fn(ctx, source); return err })
+			return out, err
+		})
+	}
+	for _, fn := range src.afterCompile {
+		fn := fn
+		h.afterCompile = append(h.afterCompile, func(event ModuleCompiledEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.onCompileError {
+		fn := fn
+		h.onCompileError = append(h.onCompileError, func(event ModuleCompileErrorEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.onModuleClose {
+		fn := fn
+		h.onModuleClose = append(h.onModuleClose, func(event ModuleCloseEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.beforeInstantiate {
+		fn := fn
+		h.beforeInstantiate = append(h.beforeInstantiate, func(request InstantiationRequest) error {
+			return withPluginHookError(gate, func() error { return fn(request) })
+		})
+	}
+	for _, fn := range src.afterCreate {
+		fn := fn
+		h.afterCreate = append(h.afterCreate, func(event InstantiationEvent) error {
+			return withPluginHookError(gate, func() error { return fn(event) })
+		})
+	}
+	for _, fn := range src.afterInstantiate {
+		fn := fn
+		h.afterInstantiate = append(h.afterInstantiate, func(event InstantiationEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.onInstantiateError {
+		fn := fn
+		h.onInstantiateError = append(h.onInstantiateError, func(event InstantiationErrorEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.beforeClose {
+		fn := fn
+		h.beforeClose = append(h.beforeClose, func(event InstanceCloseEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.afterClose {
+		fn := fn
+		h.afterClose = append(h.afterClose, func(event InstanceCloseEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+	for _, fn := range src.beforeInvoke {
+		fn := fn
+		h.beforeInvoke = append(h.beforeInvoke, func(request InvocationRequest) error {
+			return withPluginHookError(gate, func() error { return fn(request) })
+		})
+	}
+	for _, fn := range src.afterInvoke {
+		fn := fn
+		h.afterInvoke = append(h.afterInvoke, func(event InvocationEvent) { withPluginHook(gate, func() { fn(event) }) })
+	}
+}
+
+func withPluginHook(gate *pluginCallGate, fn func()) {
+	if err := gate.enter(); err != nil {
+		return
+	}
+	defer gate.release()
+	fn()
+}
+
+func withPluginHookError(gate *pluginCallGate, fn func() error) error {
+	if err := gate.enter(); err != nil {
+		return err
+	}
+	defer gate.release()
+	return fn()
 }
 
 func callHookSafely(phase string, fn func()) (err error) {
+	return callSafely(phase+" hook", fn)
+}
+
+func callSafely(label string, fn func()) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			if panicErr, ok := recovered.(error); ok {
-				err = fmt.Errorf("wago: %s hook panicked: %w", phase, panicErr)
+				err = fmt.Errorf("wago: %s panicked: %w", label, panicErr)
 			} else {
-				err = fmt.Errorf("wago: %s hook panicked: %v", phase, recovered)
+				err = fmt.Errorf("wago: %s panicked: %v", label, recovered)
 			}
 		}
 	}()
 	fn()
 	return nil
 }
-
 func joinPrimary(primary error, additional ...error) error {
 	joined := make([]error, 0, len(additional)+1)
 	if primary != nil {
@@ -210,21 +274,4 @@ func joinPrimary(primary error, additional ...error) error {
 	default:
 		return errors.Join(joined...)
 	}
-}
-
-func (h *HookRegistry) requiredPluginCapabilities() []PluginCapability {
-	var caps []PluginCapability
-	if len(h.onRuntimeClose) > h.internalRuntimeClose {
-		caps = append(caps, PluginRuntimeHooks)
-	}
-	if len(h.beforeCompile)+len(h.afterCompile) != 0 {
-		caps = append(caps, PluginCompileHooks)
-	}
-	if len(h.beforeInstantiate)+len(h.afterInstantiate)+len(h.onInstantiateError)+len(h.beforeClose)+len(h.afterClose) != 0 {
-		caps = append(caps, PluginInstanceHooks)
-	}
-	if len(h.beforeInvoke)+len(h.afterInvoke) != 0 {
-		caps = append(caps, PluginInvokeHooks)
-	}
-	return caps
 }

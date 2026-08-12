@@ -3,71 +3,88 @@
 package plugin
 
 import (
-	"strings"
+	"context"
+	"fmt"
+	"sort"
+	"sync"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
-func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
-	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
-	manifest, err := activePluginConfigs()
-	if err != nil {
-		ui.Fatal("plugins: %v", err)
+var linked struct {
+	sync.RWMutex
+	set wago.PluginSet
+}
+
+// Configure receives the explicit provider catalog and reviewed selections at
+// generated-program entry. It is process input, not provider self-registration.
+func Configure(set wago.PluginSet) {
+	linked.Lock()
+	linked.set = clonePluginSet(set)
+	linked.Unlock()
+}
+
+func PluginSet() wago.PluginSet {
+	linked.RLock()
+	defer linked.RUnlock()
+	return clonePluginSet(linked.set)
+}
+
+func Definitions() []wago.PluginDefinition {
+	set := PluginSet()
+	definitions := make([]wago.PluginDefinition, 0, len(set.Providers))
+	selected := make(map[string]bool, len(set.Selections))
+	for _, selection := range set.Selections {
+		selected[selection.ID] = true
 	}
-	selected := append([]wago.PluginConfig(nil), manifest...)
-	have := make(map[string]bool, len(manifest))
-	for _, item := range manifest {
-		have[strings.TrimPrefix(item.Name, "github.com/")] = true
-	}
-	for _, name := range strings.Split(list, ",") {
-		id := strings.TrimPrefix(strings.TrimSpace(name), "github.com/")
-		if id == "" || have[id] {
-			continue
+	for _, provider := range set.Providers {
+		if selected[provider.Definition.ID] {
+			definitions = append(definitions, provider.Definition)
 		}
-		have[id] = true
-		selected = append(selected, wago.PluginConfig{Name: id})
 	}
-	if len(selected) != 0 {
-		if err := rt.LoadPlugins(selected); err != nil {
+	sort.Slice(definitions, func(i, j int) bool { return definitions[i].ID < definitions[j].ID })
+	return definitions
+}
+
+func Definition(id string) (wago.PluginDefinition, bool) {
+	for _, definition := range Definitions() {
+		if definition.ID == id {
+			return definition, true
+		}
+	}
+	return wago.PluginDefinition{}, false
+}
+
+func loadPluginRuntime(cfg *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg), wago.WithGuestArguments(guestArgs))
+	set := PluginSet()
+	if len(set.Selections) != 0 {
+		if err := rt.LoadPlugins(context.Background(), set); err != nil {
 			ui.Fatal("plugins: %v", err)
 		}
 	}
 	return rt
 }
 
-func activePluginConfigs() ([]wago.PluginConfig, error) {
-	environment, err := resolvePluginEnvironment()
-	if err != nil {
-		return nil, err
+func Inspect() (*wago.PluginPlan, error) {
+	set := PluginSet()
+	if len(set.Selections) == 0 {
+		return &wago.PluginPlan{}, nil
 	}
-	if environment.scope == "bare" || environment.scope == "plain" {
-		return nil, nil
+	return wago.InspectPluginPlan(set)
+}
+
+func Verify() error {
+	if _, err := Inspect(); err != nil {
+		return fmt.Errorf("verify linked PluginSet: %w", err)
 	}
-	intents, err := project.PluginIntents(environment.manifestDir)
-	if err != nil {
-		return nil, err
+	return nil
+}
+
+func clonePluginSet(set wago.PluginSet) wago.PluginSet {
+	return wago.PluginSet{
+		Providers:  append([]wago.PluginProvider(nil), set.Providers...),
+		Selections: append([]wago.PluginSelection(nil), set.Selections...),
 	}
-	configs := make([]wago.PluginConfig, len(intents))
-	for index, intent := range intents {
-		capabilities := make([]wago.PluginCapability, len(intent.Capabilities))
-		for capabilityIndex, capability := range intent.Capabilities {
-			capabilities[capabilityIndex] = wago.PluginCapability(capability)
-		}
-		budgets := make(map[wago.PluginCapability]wago.CapabilityBudget, len(intent.Budgets))
-		for capability, budget := range intent.Budgets {
-			budgets[wago.PluginCapability(capability)] = wago.CapabilityBudget{
-				MaxInstances: budget.MaxInstances, MaxMemoryBytes: budget.MaxMemoryBytes,
-			}
-		}
-		if len(budgets) == 0 {
-			budgets = nil
-		}
-		configs[index] = wago.PluginConfig{
-			Name: intent.Name, Capabilities: capabilities, Budgets: budgets,
-			Before: intent.Before, After: intent.After, Config: intent.Config,
-		}
-	}
-	return configs, nil
 }

@@ -8,13 +8,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/src/core/semver"
 )
 
 var (
-	pluginIDPattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._/-]*$`)
-	versionPattern    = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
-	constraintPattern = regexp.MustCompile(`^(?:\*|[~^]?v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$`)
-	slugPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+	slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 )
 
 func pluginManifest(values answers, existing map[string]any) (map[string]any, int, error) {
@@ -22,21 +22,21 @@ func pluginManifest(values answers, existing map[string]any) (map[string]any, in
 	if values.name == "" || len(values.name) > 100 {
 		return nil, 0, fmt.Errorf("name must contain 1 to 100 characters")
 	}
-	if len(values.description) > 500 {
-		return nil, 0, fmt.Errorf("description must be at most 500 characters")
+	values.description = strings.TrimSpace(values.description)
+	if values.description == "" || len(values.description) > 500 {
+		return nil, 0, fmt.Errorf("description must contain 1 to 500 characters")
 	}
 	plugins, err := parsePlugins(values.plugins, existing["plugins"])
 	if err != nil {
 		return nil, 0, err
 	}
-	fields := map[string]any{"name": values.name, "plugins": plugins}
-	setOptional(fields, "description", values.description)
+	fields := map[string]any{"plugins": plugins}
 	values.module = strings.TrimSpace(values.module)
 	if !validModule(values.module) {
 		return nil, 0, fmt.Errorf("plugin packages need a valid --module such as github.com/acme/wago-plugin")
 	}
 	values.version = strings.TrimSpace(defaultValue(values.version, "0.0.0"))
-	if !versionPattern.MatchString(values.version) {
+	if _, err := semver.Parse(values.version); err != nil {
 		return nil, 0, fmt.Errorf("version %q is not semantic", values.version)
 	}
 	values.license = strings.TrimSpace(values.license)
@@ -51,19 +51,17 @@ func pluginManifest(values answers, existing map[string]any) (map[string]any, in
 	if stability != "experimental" && stability != "stable" && stability != "deprecated" {
 		return nil, 0, fmt.Errorf("stability must be experimental, stable, or deprecated")
 	}
-	fields["module"] = values.module
-	fields["version"] = values.version
-	fields["license"] = values.license
-	fields["repository"] = values.repository
-	fields["private"] = false
-	fields["stability"] = stability
-	fields["engines"] = map[string]any{"wago": "*"}
-	setOptional(fields, "homepage", values.homepage)
+	pkg := map[string]any{
+		"module": values.module, "version": values.version, "name": values.name, "description": values.description,
+		"license": values.license, "repository": values.repository, "stability": stability,
+		"engines": map[string]any{"wago": "*"},
+	}
+	setOptional(pkg, "homepage", values.homepage)
 	if category := strings.ToLower(strings.TrimSpace(values.category)); category != "" {
 		if !slugPattern.MatchString(category) || len(category) > 64 {
 			return nil, 0, fmt.Errorf("category must be a lowercase slug")
 		}
-		fields["category"] = category
+		pkg["category"] = category
 	}
 	if tags := commaList(values.tags); len(tags) > 0 {
 		for _, tag := range tags {
@@ -71,11 +69,14 @@ func pluginManifest(values answers, existing map[string]any) (map[string]any, in
 				return nil, 0, fmt.Errorf("tag %q must be a lowercase slug", tag)
 			}
 		}
-		fields["tags"] = tags
+		pkg["tags"] = tags
 	}
 	if author := strings.TrimSpace(values.author); author != "" {
-		fields["authors"] = []string{author}
+		pkg["authors"] = []any{map[string]any{"name": author}}
+	} else {
+		return nil, 0, fmt.Errorf("plugin packages need at least one author")
 	}
+	fields["package"] = pkg
 	return fields, len(plugins), nil
 }
 
@@ -87,16 +88,16 @@ func parsePlugins(spec string, current any) (map[string]any, error) {
 		}
 	}
 	for _, item := range commaList(spec) {
-		id, constraint := item, "^0.0.0"
+		id, constraint := item, "*"
 		if at := strings.LastIndexByte(item, '@'); at > 0 {
 			id, constraint = item[:at], item[at+1:]
 		}
-		id = strings.TrimPrefix(strings.TrimSpace(id), "github.com/")
+		id = strings.TrimSpace(id)
 		constraint = strings.TrimSpace(constraint)
-		if !pluginIDPattern.MatchString(id) {
-			return nil, fmt.Errorf("plugin %q must be GitHub-relative, such as wago-org/wasi", id)
+		if err := project.ValidatePluginID(id); err != nil {
+			return nil, err
 		}
-		if !constraintPattern.MatchString(constraint) {
+		if err := project.ValidateConstraint(constraint); err != nil {
 			return nil, fmt.Errorf("plugin %q has invalid version constraint %q", id, constraint)
 		}
 		plugins[id] = constraint
@@ -124,8 +125,7 @@ func setOptional(fields map[string]any, key, value string) {
 }
 
 func validModule(module string) bool {
-	parts := strings.Split(module, "/")
-	return len(parts) >= 2 && !strings.ContainsAny(module, " @") && strings.Contains(parts[0], ".")
+	return project.ValidatePluginID(module) == nil
 }
 
 func validHTTPSURL(value string) bool {
@@ -166,11 +166,12 @@ func manifestString(manifest map[string]any, key, fallback string) string {
 	return fallback
 }
 
-func firstString(value any) string {
+func firstAuthor(value any) string {
 	items, _ := value.([]any)
 	if len(items) > 0 {
-		if item, ok := items[0].(string); ok {
-			return item
+		if item, ok := items[0].(map[string]any); ok {
+			name, _ := item["name"].(string)
+			return name
 		}
 	}
 	return ""

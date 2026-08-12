@@ -12,6 +12,8 @@ import (
 	initcmd "github.com/wago-org/wago/cli/manager/commands/init"
 	plugincmd "github.com/wago-org/wago/cli/manager/commands/plugin"
 	pluginadd "github.com/wago-org/wago/cli/manager/commands/plugin/add"
+	plugincatalog "github.com/wago-org/wago/cli/manager/commands/plugin/catalog"
+	pluginconfig "github.com/wago-org/wago/cli/manager/commands/plugin/config"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/deprecate"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/grant"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/outdated"
@@ -70,10 +72,12 @@ func managerPluginCommand(environment commandEnvironment) *command.Cmd {
 		pluginadd.Command(environment),
 		pluginremove.Command(environment),
 		grant.Command(environment),
+		pluginconfig.Command(environment),
 		pluginupdate.Command(environment),
 		outdated.Command(environment),
 		tree.Command(environment),
 		rebuild.Command(environment),
+		plugincatalog.Command(environment),
 		publish.Command(environment),
 		unpublish.Command(environment),
 		deprecate.Command(environment),

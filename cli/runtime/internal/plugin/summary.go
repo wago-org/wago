@@ -3,22 +3,18 @@ package plugin
 import (
 	"sort"
 	"strings"
-
-	"github.com/wago-org/wago"
 )
 
 func compiledPluginSummary() string {
-	names := wago.RegisteredPluginNames()
-	if len(names) == 0 {
+	definitions := Definitions()
+	if len(definitions) == 0 {
 		return "none"
 	}
-	plugins := make([]string, 0, len(names))
-	for _, name := range names {
-		label := name
-		if extension, ok := wago.NewExtension(name); ok {
-			if version := strings.TrimSpace(extension.Info().Version); version != "" {
-				label += "@" + version
-			}
+	plugins := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		label := definition.ID
+		if version := strings.TrimSpace(definition.Version); version != "" {
+			label += "@" + version
 		}
 		plugins = append(plugins, label)
 	}

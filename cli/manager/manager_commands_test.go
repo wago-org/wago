@@ -45,7 +45,7 @@ func TestManagerCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		"status", "compile", "update",
 		"version list", "version current", "version which", "version switch", "version install", "version update", "version uninstall",
 		"auth login", "auth logout", "auth whoami", "init", "add", "rm",
-		"plugin list", "plugin inspect", "plugin add", "plugin remove", "plugin grant", "plugin update", "plugin outdated", "plugin tree", "plugin rebuild", "plugin publish", "plugin unpublish", "plugin deprecate",
+		"plugin list", "plugin inspect", "plugin add", "plugin remove", "plugin grant", "plugin config", "plugin update", "plugin outdated", "plugin tree", "plugin rebuild", "plugin catalog", "plugin publish", "plugin unpublish", "plugin deprecate",
 		"self update", "self uninstall", "cache dir", "cache size", "cache prune", "cache clean",
 		"config list", "config diff", "config get", "config set", "config reset", "config completions",
 		"run", "module imports", "module exports", "module capabilities", "build", "validate",
@@ -104,7 +104,7 @@ func TestManagerCapturesForwardedAutomation(t *testing.T) {
 
 func TestManagerOwnsPluginLifecycleAndDelegatesIntrospection(t *testing.T) {
 	plugins := managerRoot.Child("plugin")
-	for _, name := range []string{"add", "remove", "grant", "update", "outdated", "tree", "rebuild", "publish", "unpublish", "deprecate"} {
+	for _, name := range []string{"add", "remove", "grant", "update", "outdated", "tree", "rebuild", "catalog", "publish", "unpublish", "deprecate"} {
 		if plugins.Child(name) == nil {
 			t.Fatalf("manager plugin group is missing %q", name)
 		}
@@ -114,12 +114,12 @@ func TestManagerOwnsPluginLifecycleAndDelegatesIntrospection(t *testing.T) {
 			t.Fatalf("manager plugin group still exposes removed command %q", name)
 		}
 	}
-	for _, args := range [][]string{{"list"}, {"ls"}, {"inspect", "wago-org/wasi"}} {
+	for _, args := range [][]string{{"list"}, {"ls"}, {"inspect", "github.com/wago-org/wasi"}} {
 		if !handoff.RuntimeOwnsPluginCommand(args) {
 			t.Fatalf("RuntimeOwnsPluginCommand(%v) = false", args)
 		}
 	}
-	for _, args := range [][]string{nil, {"add"}, {"remove"}, {"grant"}, {"update"}, {"publish"}} {
+	for _, args := range [][]string{nil, {"add"}, {"remove"}, {"grant"}, {"update"}, {"catalog"}, {"publish"}} {
 		if handoff.RuntimeOwnsPluginCommand(args) {
 			t.Fatalf("RuntimeOwnsPluginCommand(%v) = true", args)
 		}
@@ -220,10 +220,10 @@ func assertCommandTreeNamesUnique(t *testing.T, parent *command.Cmd, path string
 
 func TestAddCommandAcceptsMultiplePackages(t *testing.T) {
 	command := managerRoot.Child("add")
-	if command.Args != "<module>[@version]..." {
+	if command.Args != "<plugin-id>[@range]..." {
 		t.Fatalf("add args = %q", command.Args)
 	}
-	ctx, err := command.Parse("wago add", []string{"wago-org/wasi", "wago-org/workers@v1.2.3"})
+	ctx, err := command.Parse("wago add", []string{"github.com/wago-org/wasi", "github.com/wago-org/workers@^1.2.3"})
 	if err != nil {
 		t.Fatal(err)
 	}

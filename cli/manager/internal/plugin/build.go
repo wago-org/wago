@@ -1,7 +1,3 @@
-// The consume side of `wago add` / `wago plugin`: declaring version-constrained
-// plugins in wago.json, resolving them with Go modules, and building a custom
-// runtime that has them compiled in.
-
 package plugin
 
 import (
@@ -11,300 +7,311 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
-	"github.com/wago-org/wago/cli/internal/ui"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/cli/manager/internal/registry"
 )
 
-// pkgOpts are the shared flags for the consume-side pkg commands.
 type pkgOpts struct {
-	ctx          context.Context
-	global       bool // operate on the ~/.wago set instead of the project
-	force        bool // ignore the build cache / fetch latest
-	verbose      bool // stream the underlying `go` output
-	capabilities []string
-	grantAll     bool
-	denyAll      bool
+	ctx             context.Context
+	global          bool
+	force           bool
+	verbose         bool
+	authorities     []string
+	grantAll        bool
+	denyAll         bool
+	acceptContracts bool
+	scopes          map[string]map[string]project.AuthorityScope
 }
 
-func pkgAddMany(specs []string, o pkgOpts) {
+func pkgAddMany(specs []string, options pkgOpts) {
 	started := time.Now()
 	progress := managerprogress.NewProgress(os.Stderr)
-	if o.verbose {
+	if options.verbose {
 		progress.DisableAnimation()
 	}
-	title := "Installing packages"
-	if len(specs) == 1 {
-		module, _ := splitModuleVersion(normalizeModuleRef(specs[0]))
-		title = "Installing " + strings.TrimPrefix(module, "github.com/")
+	progress.Title("Installing plugins")
+	progress.Begin("Resolving the complete plugin graph")
+	src, err := depsSource(options.global)
+	if err != nil {
+		progress.Fail("Plugin resolution failed")
+		fatal("add: %v", err)
 	}
-	progress.Title(title)
-	progress.Begin("Resolving packages")
-	packages, err := ResolvePackages(specs, func(name string) (string, error) {
-		return registry.ResolveModuleContext(pluginContext(o.ctx), name)
+	buildDir, err := buildDirFor(options.global)
+	if err != nil {
+		progress.Fail("Plugin resolution failed")
+		fatal("add: %v", err)
+	}
+	err = withPluginMutationLock(pluginContext(options.ctx), src, func() error {
+		manifest, err := project.Read(src)
+		if err != nil {
+			return err
+		}
+		for _, spec := range specs {
+			id, constraint, err := parsePluginSpec(spec)
+			if err != nil {
+				return err
+			}
+			if _, err := project.SetRequirement(manifest, id, constraint); err != nil {
+				return err
+			}
+		}
+		roots, err := project.RequirementsFromManifest(manifest)
+		if err != nil {
+			return err
+		}
+		previous, err := project.ReadLock(src)
+		if err != nil {
+			return err
+		}
+		plan, err := ResolveCatalogGraph(pluginContext(options.ctx), defaultCatalog(), roots, previous)
+		if err != nil {
+			return err
+		}
+		lock, err := reviewResolution(plan, options)
+		if err != nil {
+			return err
+		}
+		return stageAndPublishLockedState(src, buildDir, manifest, lock, options.verbose)
 	})
 	if err != nil {
-		progress.Fail("Package resolution failed")
+		progress.Fail("Plugin install failed")
 		fatal("add: %v", err)
 	}
-
-	buildDir, err := buildDirFor(o.global)
-	if err != nil {
-		progress.Fail("Package resolution failed")
-		fatal("add: %v", err)
-	}
-	if err := pluginbuild.EnsureModule(buildDir); err != nil {
-		progress.Fail("Package resolution failed")
-		fatal("add: %v", err)
-	}
-	progress.Done(fmt.Sprintf("Resolved %d package%s", len(packages), plural(len(packages))))
-
-	progress.Begin("Downloading packages")
-	for _, pkg := range packages {
-		getSpec := pkg.Module
-		if pkg.Requested != "" {
-			getSpec += "@" + pkg.Requested
-		}
-		var getErr error
-		if o.force && pkg.Requested == "" {
-			getErr = pluginbuild.Update(buildDir, pkg.Module, o.verbose)
-		} else {
-			getErr = pluginbuild.Get(buildDir, getSpec, o.verbose)
-		}
-		if getErr != nil {
-			if pluginbuild.IsNotFound(getErr) {
-				progress.Fail("Package not found")
-				if automation.JSON() {
-					fatal("add: package %s was not found", getSpec)
-				}
-				printPackageNotFound(os.Stderr, pkg.Module, registry.ClosestContext(pluginContext(o.ctx), pkg.Module))
-				os.Exit(1)
-			}
-			progress.Fail("Package download failed")
-			if _, haveSrc := pluginbuild.SourceDir(); !haveSrc {
-				fatal("add: fetching %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, getErr)
-			}
-			fatal("add: fetching %s: %v", getSpec, getErr)
-		}
-	}
-	progress.Done(fmt.Sprintf("Downloaded %d package%s", len(packages), plural(len(packages))))
-
-	progress.Begin("Verifying packages")
-	if err := pluginbuild.RunGo(buildDir, o.verbose, "mod", "verify"); err != nil {
-		progress.Fail("Package verification failed")
-		fatal("add: verifying packages: %v", err)
-	}
-	progress.Done("Verified package checksums")
-
-	src, err := depsSource(o.global)
-	if err != nil {
-		progress.Fail("Package setup failed")
-		fatal("add: %v", err)
-	}
-	if o.global {
-		if err := os.MkdirAll(src, 0o755); err != nil {
-			progress.Fail("Package setup failed")
-			fatal("add: %v", err)
-		}
-	}
-	for index := range packages {
-		packages[index].Exact = installedModuleExactVersion(buildDir, packages[index].Module, packages[index].Requested)
-		packages[index].Resolved = DisplayVersion(packages[index].Exact)
-		if _, err := project.AddDependency(src, packages[index].Module, "^"+packages[index].Resolved); err != nil {
-			progress.Fail("Package setup failed")
-			fatal("add: %v", err)
-		}
-	}
-	if !o.global {
+	if !options.global {
 		project.EnsureGitignore(".wago/")
 	}
-	deps, _ := project.Dependencies(src)
-	_ = pluginbuild.WriteMain(buildDir, deps, pluginBuildConfig()) // keep the build module in sync
-
-	// Rebuild the custom binary right away so the package is usable without a
-	// separate build step.
-	progress.Begin("Building packages")
-	bin, cached, err := buildPlugins(buildDir, deps, o)
-	if err != nil {
-		progress.Fail("Package build failed")
-		fatal("build: %v", err)
-	}
-	elapsed := time.Since(started)
-	if cached {
-		progress.Finish(fmt.Sprintf("Reused Wago build with %d package%s", len(packages), plural(len(packages))))
-	} else {
-		progress.Finish(fmt.Sprintf("Built Wago with %d package%s", len(packages), plural(len(packages))))
-	}
-	for _, pkg := range packages {
-		registry.RecordInstallContext(pluginContext(o.ctx), pkg.Module, pkg.Resolved)
-	}
-	// Then review capabilities — on a first install, or when the package's
-	// required capabilities have changed since the lockfile recorded them.
-	for _, pkg := range packages {
-		reviewInstalledCapabilities(src, bin, pkg.Module, pkg.Exact, o)
-	}
-	summary := make([]SummaryPackage, len(packages))
-	for index, pkg := range packages {
-		summary[index] = SummaryPackage{Module: pkg.Module, Version: pkg.Resolved}
-	}
-	PrintSummary(os.Stdout, summary, elapsed)
+	progress.Finish(fmt.Sprintf("Installed %d plugin%s in %s", len(specs), plural(len(specs)), time.Since(started).Round(time.Millisecond)))
 }
 
-func printPackageNotFound(output io.Writer, module, closest string) {
-	fmt.Fprintf(output, "\nWe couldn’t find %s. Check the package name or make sure you have access.\n", module)
-	if closest == "" {
-		return
-	}
-	fmt.Fprintf(output, "\nClosest match: %s\n\n  %s\n", closest, ui.Cyan("wago add "+closest))
-}
-
-// reviewInstalledCapabilities fires the capability review for a just-installed
-// package when it's new or its required capabilities changed since wago-lock.json
-// last recorded them, then persists the grant in wago-lock.json.
-func reviewInstalledCapabilities(src, bin, module, version string, options pkgOpts) {
-	id := strings.TrimPrefix(module, "github.com/")
-	lock, err := project.ReadLock(src)
+func pkgRemove(name string, options pkgOpts) {
+	src, err := depsSource(options.global)
 	if err != nil {
-		fatal("add: reading plugin lock: %v", err)
+		fatal("plugin remove: %v", err)
 	}
-	entry, existed := lock.Packages[id]
-	entry.Version = version
-	lock.Packages[id] = entry
-	required, err := inspectRequiredCapabilities(bin, id)
+	buildDir, err := buildDirFor(options.global)
 	if err != nil {
-		persistLock(src, lock)
-		return // still pin the resolved module when it exposes no inspectable plugin
+		fatal("plugin remove: %v", err)
 	}
-	explicit := options.capabilities != nil || options.grantAll || options.denyAll
-	if existed && !explicit && project.SameStringSet(entry.RequiredCapabilities, required) {
-		entry.Version = version
-		lock.Packages[id] = entry
-		persistLock(src, lock)
-		return // already reviewed this exact capability set
+	id := strings.TrimSpace(name)
+	if err := project.ValidatePluginID(id); err != nil {
+		fatal("plugin remove: %v", err)
 	}
-	if len(required) == 0 {
-		lock.Packages[id] = project.LockEntry{
-			Version:              version,
-			RequiredCapabilities: []string{},
-			Capabilities:         json.RawMessage("[]"),
-			Config:               entry.Config,
+	err = withPluginMutationLock(pluginContext(options.ctx), src, func() error {
+		manifest, err := project.Read(src)
+		if err != nil {
+			return err
 		}
-		persistLock(src, lock)
-		return
-	}
-	chosen, ok := chooseCapabilities(id, required, project.Grants(src, id), options.capabilities, options.grantAll, options.denyAll)
-	if !ok {
-		// Cancelled (esc): don't record, so the next install re-prompts.
-		fmt.Printf("%s capability review skipped — set them anytime: wago plugin grant %s\n", dim("!"), id)
-		return
-	}
-	capabilities, err := json.Marshal(chosen)
+		removed, err := project.DeleteRequirement(manifest, id)
+		if err != nil {
+			return err
+		}
+		if !removed {
+			return fmt.Errorf("%q is not a direct plugin in %s", id, project.DisplayPath(src))
+		}
+		roots, err := project.RequirementsFromManifest(manifest)
+		if err != nil {
+			return err
+		}
+		previous, err := project.ReadLock(src)
+		if err != nil {
+			return err
+		}
+		lock := project.NewLockDocument()
+		if len(roots) != 0 {
+			plan, err := ResolveCatalogGraph(pluginContext(options.ctx), defaultCatalog(), roots, previous)
+			if err != nil {
+				return err
+			}
+			lock, err = reviewRemovalResolution(plan, options)
+			if err != nil {
+				return err
+			}
+		}
+		return stageAndPublishLockedState(src, buildDir, manifest, lock, false)
+	})
 	if err != nil {
-		fatal("add: recording capability grants: %v", err)
+		fatal("plugin remove: %v", err)
 	}
-	lock.Packages[id] = project.LockEntry{
-		Version:              version,
-		RequiredCapabilities: required,
-		Capabilities:         capabilities,
-		Config:               entry.Config,
-	}
-	persistLock(src, lock)
-	if len(chosen) == 0 {
-		fmt.Printf("%s no capabilities granted — %s may not function; grant later: wago plugin grant %s\n", dim("!"), id, id)
-	}
+	fmt.Printf("removed %s\n", dim(id))
 }
 
-func persistLock(src string, lock project.LockDocument) {
-	if err := project.WriteLock(src, lock); err != nil && automation.Locked() {
-		fatal("locked mode: %v", err)
+func reviewRemovalResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocument, error) {
+	if len(plan.Reviews) != 0 {
+		return project.LockDocument{}, fmt.Errorf("removal changes authority requests; run `wago plugin update` to review the new graph")
 	}
+	return reviewResolution(plan, options)
 }
 
-// inspectRequiredCapabilities runs the freshly-built binary to read the package's
-// required capabilities (the current process usually doesn't have the package
-// compiled in). Returns them sorted.
-func inspectRequiredCapabilities(bin, id string) ([]string, error) {
-	command := exec.Command(bin, "plugin", "inspect", id, "--json")
+func pkgUpdate(target string, options pkgOpts) {
+	src, err := depsSource(options.global)
+	if err != nil {
+		fatal("plugin update: %v", err)
+	}
+	buildDir, err := buildDirFor(options.global)
+	if err != nil {
+		fatal("plugin update: %v", err)
+	}
+	err = withPluginMutationLock(pluginContext(options.ctx), src, func() error {
+		manifest, err := project.Read(src)
+		if err != nil {
+			return err
+		}
+		roots, err := project.RequirementsFromManifest(manifest)
+		if err != nil {
+			return err
+		}
+		if target != "" {
+			target = strings.TrimSpace(target)
+			if err := project.ValidatePluginID(target); err != nil {
+				return err
+			}
+			found := false
+			for _, root := range roots {
+				found = found || root.ID == target
+			}
+			if !found {
+				return fmt.Errorf("%q is not a direct plugin", target)
+			}
+		}
+		previous, err := project.ReadLock(src)
+		if err != nil {
+			return err
+		}
+		plan, err := ResolveCatalogGraph(pluginContext(options.ctx), defaultCatalog(), roots, previous)
+		if err != nil {
+			return err
+		}
+		lock, err := reviewResolution(plan, options)
+		if err != nil {
+			return err
+		}
+		return stageAndPublishLockedState(src, buildDir, manifest, lock, options.verbose)
+	})
+	if err != nil {
+		fatal("plugin update: %v", err)
+	}
+	fmt.Printf("%s updated the complete plugin graph\n", cyan("✓"))
+}
+
+func stageAndPublishLockedState(manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool) error {
+	manifestData, err := project.EncodeManifest(manifest)
+	if err != nil {
+		return err
+	}
+	lockData, err := project.EncodeLock(lock)
+	if err != nil {
+		return err
+	}
+	input, err := pluginbuild.InputFromLock(lock)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(buildDir), 0o755); err != nil {
+		return err
+	}
+	staged, err := os.MkdirTemp(filepath.Dir(buildDir), ".wago-plugin-stage-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staged)
+	if err := pluginbuild.EnsureModule(staged); err != nil {
+		return err
+	}
+	if err := pluginbuild.RejectLockedSourceReplacements(staged, input.Sources); err != nil {
+		return err
+	}
+	for _, source := range input.Sources {
+		if err := pluginbuild.Get(staged, source.Module+"@"+source.Version, verbose); err != nil {
+			return fmt.Errorf("fetch %s@%s: %w", source.Module, source.Version, err)
+		}
+	}
+	if err := pluginbuild.RunGo(staged, verbose, "mod", "verify"); err != nil {
+		return fmt.Errorf("verify plugin checksums: %w", err)
+	}
+	if err := verifySourceChecksums(staged, input.Sources); err != nil {
+		return err
+	}
+	bin, _, err := pluginbuild.EnsureBinary(staged, input, true, verbose, pluginBuildConfig())
+	if err != nil {
+		return err
+	}
+	if err := verifyStagedRuntime(bin); err != nil {
+		return err
+	}
+	return publishPluginTransaction(manifestDir, buildDir, staged, manifestData, lockData)
+}
+
+func verifyStagedRuntime(binary string) error {
+	command := exec.Command(binary)
+	command.Env = append(os.Environ(), "WAGO_INTERNAL_VALIDATE_PLUGIN_SET=1")
 	automation.ConfigureCommand(command)
-	out, err := command.Output()
+	output, err := command.CombinedOutput()
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("verify staged plugin runtime: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	var rep struct {
-		RequiresCapabilities []string `json:"requiresCapabilities"`
+	if len(strings.TrimSpace(string(output))) != 0 {
+		return fmt.Errorf("verify staged plugin runtime produced unexpected output: %s", strings.TrimSpace(string(output)))
 	}
-	if err := json.Unmarshal(out, &rep); err != nil {
-		return nil, err
-	}
-	sort.Strings(rep.RequiresCapabilities)
-	return rep.RequiresCapabilities, nil
+	return nil
 }
 
-// pkgRemove drops a dependency from wago.json (a later build's `go mod tidy`
-// prunes it from the build module).
-func pkgRemove(name string, global bool) {
-	src, err := depsSource(global)
+func verifySourceChecksums(buildDir string, sources []project.PluginSource) error {
+	command := exec.Command("go", "list", "-m", "-json", "all")
+	command.Dir = buildDir
+	command.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
+	automation.ConfigureCommand(command)
+	output, err := command.Output()
 	if err != nil {
-		fatal("plugin remove: %v", err)
+		return fmt.Errorf("read selected module checksums: %w", err)
 	}
-	removed, module, err := project.RemoveDependency(src, name)
-	if err != nil {
-		fatal("plugin remove: %v", err)
-	}
-	if !removed {
-		fatal("plugin remove: %q is not enabled in %s", name, project.Path(src))
-	}
-	if buildDir, err := buildDirFor(global); err == nil {
-		if _, statErr := os.Stat(buildDir); statErr == nil {
-			deps, _ := project.Dependencies(src)
-			_ = pluginbuild.WriteMain(buildDir, deps, pluginBuildConfig())
+	decoder := json.NewDecoder(strings.NewReader(string(output)))
+	selected := map[string]project.PluginSource{}
+	for {
+		var module struct{ Path, Version, Sum string }
+		if err := decoder.Decode(&module); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		if module.Path != "" {
+			selected[module.Path] = project.PluginSource{Module: module.Path, Version: module.Version, Checksum: module.Sum}
 		}
 	}
-	fmt.Printf("removed %s\n", dim(module))
-}
-
-// buildPlugins compiles (or reuses) the custom wago binary for deps, printing
-// progress. Shared by pkg build and the auto-rebuild after pkg install.
-func buildPlugins(buildDir string, deps []string, o pkgOpts) (string, bool, error) {
-	if o.verbose {
-		fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d plugin%s:", len(deps), plural(len(deps)))))
-		for _, d := range deps {
-			fmt.Printf("  %s\n", dim(d))
+	for _, source := range sources {
+		// The generated runtime deliberately links the active Wago checkout during
+		// core development. Its complete local tree is part of the build hash; it
+		// is not a downloaded plugin artifact and therefore has no module h1.
+		if source.Module == "github.com/wago-org/wago" {
+			if _, local := pluginbuild.SourceDir(); local {
+				continue
+			}
+		}
+		got, ok := selected[source.Module]
+		if !ok || got.Version != source.Version || got.Checksum != source.Checksum {
+			return fmt.Errorf("locked source %s@%s checksum %s does not match selected module %s@%s checksum %s", source.Module, source.Version, source.Checksum, got.Module, got.Version, got.Checksum)
 		}
 	}
-	bin, cached, err := pluginbuild.EnsureBinary(buildDir, deps, o.force, o.verbose, pluginBuildConfig())
-	if err != nil {
-		return "", false, err
-	}
-	if o.verbose {
-		verb := "built"
-		if cached {
-			verb = "up to date"
+	return nil
+}
+
+func appendEnvironmentValue(environment []string, name, value string) []string {
+	prefix := name + "="
+	result := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
 		}
-		fmt.Printf("%s %s  %s\n", cyan("✓"), verb, bin)
 	}
-	return bin, cached, nil
-}
-
-func installedModuleExactVersion(buildDir, module, requested string) string {
-	if version, ok := currentModuleExactVersion(buildDir, module); ok {
-		return version
-	}
-	if requested != "" {
-		return requested
-	}
-	return "v0.0.0"
-}
-
-func currentModuleExactVersion(buildDir, module string) (string, bool) {
-	return pluginbuild.ModuleVersion(buildDir, module)
+	return append(result, prefix+value)
 }
 
 func syncLockedPluginVersions(buildDir, manifestDir string, verbose bool) (bool, error) {
@@ -316,123 +323,98 @@ func syncLockedPluginVersions(buildDir, manifestDir string, verbose bool) (bool,
 	if err != nil {
 		return false, err
 	}
-	if automation.Locked() {
-		for _, requirement := range requirements {
-			if strings.TrimSpace(lock.Packages[requirement.ID].Version) == "" {
-				return false, fmt.Errorf("locked mode requires %s in %s", requirement.ID, project.LockPath(manifestDir))
-			}
-		}
+	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
+		return false, err
+	}
+	input, err := pluginbuild.InputFromLock(lock)
+	if err != nil {
+		return false, err
+	}
+	// Reject before reconciliation so an existing replacement is reported
+	// instead of being silently removed and treated as an unchanged exact pin.
+	if err := pluginbuild.RejectLockedSourceReplacements(buildDir, input.Sources); err != nil {
+		return false, err
 	}
 	if err := pluginbuild.EnsureModule(buildDir); err != nil {
 		return false, err
 	}
+	if err := pluginbuild.RejectLockedSourceReplacements(buildDir, input.Sources); err != nil {
+		return false, err
+	}
 	changed := false
-	for _, requirement := range requirements {
-		version := strings.TrimSpace(lock.Packages[requirement.ID].Version)
-		if version == "" {
-			if _, ok := currentModuleExactVersion(buildDir, requirement.Module); ok {
-				continue
-			}
-			if _, err := os.Stat(pluginbuild.BinaryPath(buildDir)); err == nil {
-				continue
-			}
-			version = strings.TrimLeft(requirement.Constraint, "^~")
-			if version == "*" {
-				continue
-			}
-		}
-		if !strings.HasPrefix(version, "v") {
-			version = "v" + version
-		}
-		if current, ok := currentModuleExactVersion(buildDir, requirement.Module); ok && current == version {
+	for _, source := range input.Sources {
+		if current, ok := pluginbuild.ModuleVersion(buildDir, source.Module); ok && current == source.Version {
 			continue
 		}
-		if err := pluginbuild.Get(buildDir, requirement.Module+"@"+version, verbose); err != nil {
-			return false, fmt.Errorf("restore %s@%s: %w", requirement.Module, version, err)
+		if err := pluginbuild.Get(buildDir, source.Module+"@"+source.Version, verbose); err != nil {
+			return false, fmt.Errorf("restore %s@%s: %w", source.Module, source.Version, err)
 		}
 		changed = true
+	}
+	// Prove the selected version and h1 on every path, including a binary-cache
+	// hit. Matching go.mod versions alone do not establish the immutable source
+	// identity recorded by the lock.
+	if err := verifySourceChecksums(buildDir, input.Sources); err != nil {
+		return false, err
 	}
 	return changed, nil
 }
 
-// pkgUpdate updates plugins to their latest versions (go get -u) and
-// rebuilds. With a target it updates just that plugin; otherwise all of them.
-func pkgUpdate(target string, o pkgOpts) {
-	buildDir, err := buildDirFor(o.global)
+func pluginRuntimeBinary() (string, bool, error) {
+	environment, err := resolvePluginEnvironment()
 	if err != nil {
-		fatal("plugin update: %v", err)
+		return "", false, err
 	}
-	src, err := depsSource(o.global)
+	if len(environment.dependencies) == 0 {
+		return "", false, nil
+	}
+	lock, err := project.ReadLock(environment.manifestDir)
 	if err != nil {
-		fatal("plugin update: %v", err)
+		return "", false, err
 	}
-	deps, err := project.Dependencies(src)
+	requirements, err := project.Requirements(environment.manifestDir)
 	if err != nil {
-		fatal("plugin update: %v", err)
+		return "", false, err
 	}
-	if len(deps) == 0 {
-		fatal("plugin update: no plugins to update (add one: wago add <module>)")
+	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
+		return "", false, err
 	}
-	lock, err := project.ReadLock(src)
+	input, err := pluginbuild.InputFromLock(lock)
 	if err != nil {
-		fatal("plugin update: %v", err)
+		return "", false, err
 	}
-	targets := deps
-	if target != "" {
-		if !strings.Contains(target, "/") && !strings.Contains(target, ".") {
-			if m, err := registry.ResolveModuleContext(pluginContext(o.ctx), target); err == nil {
-				target = m
-			}
-		} else {
-			target, _ = splitModuleVersion(normalizeModuleRef(target))
-		}
-		targets = []string{target}
-	}
-	pending := make([]string, 0, len(targets))
-	for _, t := range targets {
-		id := strings.TrimPrefix(t, "github.com/")
-		current, haveCurrent := currentModuleExactVersion(buildDir, t)
-		locked := lock.Packages[id].Version
-		if !o.force && haveCurrent && locked != "" {
-			latest, err := latestModuleVersion(t, current)
-			if err != nil {
-				fatal("plugin update: resolve latest %s: %v", t, err)
-			}
-			if !pluginUpdateRequired(current, locked, latest, false) {
-				fmt.Printf("%s %s is already up to date (%s)\n", cyan("✓"), id, shortModuleRevision(latest))
-				continue
-			}
-		}
-		pending = append(pending, t)
-	}
-	if len(pending) == 0 {
-		return
-	}
-	if err := pluginbuild.EnsureModule(buildDir); err != nil {
-		fatal("plugin update: %v", err)
-	}
-	for _, t := range pending {
-		id := strings.TrimPrefix(t, "github.com/")
-		fmt.Printf("%s %s %s\n", dim("→ updating"), t, dim("(latest)"))
-		if err := pluginbuild.Update(buildDir, t, o.verbose); err != nil {
-			fatal("plugin update: %s: %v", t, err)
-		}
-		exact := installedModuleExactVersion(buildDir, t, "")
-		if _, err := project.AddDependency(src, t, "^"+DisplayVersion(exact)); err != nil {
-			fatal("plugin update: recording %s: %v", t, err)
-		}
-		entry := lock.Packages[id]
-		entry.Version = exact
-		lock.Packages[id] = entry
-		if err := project.WriteLock(src, lock); err != nil {
-			fatal("plugin update: %v", err)
-		}
-	}
-	bin, _, err := pluginbuild.EnsureBinary(buildDir, deps, true, o.verbose, pluginBuildConfig()) // force rebuild after update
+	changed, err := syncLockedPluginVersions(environment.buildDir, environment.manifestDir, false)
 	if err != nil {
-		fatal("plugin update: %v", err)
+		return "", false, err
 	}
-	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(pending), plural(len(pending)), bin)
+	bin, _, err := pluginbuild.EnsureBinary(environment.buildDir, input, changed, false, pluginBuildConfig())
+	return bin, err == nil, err
+}
+
+func parsePluginSpec(spec string) (string, string, error) {
+	spec = strings.TrimSpace(spec)
+	id, constraint := splitPluginSpec(spec)
+	if err := project.ValidatePluginID(id); err != nil {
+		return "", "", err
+	}
+	if constraint == "" {
+		constraint = "*"
+	}
+	if err := project.ValidateConstraint(constraint); err != nil {
+		return "", "", fmt.Errorf("plugin %s: %w", id, err)
+	}
+	return id, constraint, nil
+}
+
+func splitPluginSpec(spec string) (id, constraint string) {
+	if index := strings.LastIndexByte(spec, '@'); index > 0 {
+		return spec[:index], spec[index+1:]
+	}
+	return spec, ""
+}
+
+func defaultCatalog() Catalog {
+	return HTTPCatalog{BaseURL: registry.BaseURL()}
 }
 
 func pluginContext(ctx context.Context) context.Context {
@@ -442,68 +424,11 @@ func pluginContext(ctx context.Context) context.Context {
 	return context.Background()
 }
 
-func pluginUpdateRequired(current, locked, latest string, force bool) bool {
-	if force {
-		return true
+func sortedLockIDs(lock project.LockDocument) []string {
+	ids := make([]string, 0, len(lock.Plugins))
+	for id := range lock.Plugins {
+		ids = append(ids, id)
 	}
-	return !sameModuleRevision(current, latest) || !sameModuleRevision(locked, latest)
-}
-
-func sameModuleRevision(left, right string) bool {
-	leftRevision, rightRevision := moduleRevision(left), moduleRevision(right)
-	if leftRevision != "" && rightRevision != "" {
-		return leftRevision == rightRevision
-	}
-	return strings.TrimSpace(left) == strings.TrimSpace(right)
-}
-
-func shortModuleRevision(version string) string {
-	revision := moduleRevision(version)
-	if len(revision) > 7 {
-		return revision[:7]
-	}
-	if revision != "" {
-		return revision
-	}
-	return DisplayVersion(version)
-}
-
-func moduleRevision(version string) string {
-	version = strings.TrimSpace(strings.TrimSuffix(version, "+incompatible"))
-	index := strings.LastIndexByte(version, '-')
-	if index < 0 || index == len(version)-1 {
-		return ""
-	}
-	revision := version[index+1:]
-	if len(revision) < 7 || len(revision) > 40 {
-		return ""
-	}
-	for _, character := range revision {
-		if !strings.ContainsRune("0123456789abcdef", character) {
-			return ""
-		}
-	}
-	return revision
-}
-
-// pluginRuntimeBinary resolves the local or global plugin-aware runtime for the
-// current invocation, building it on a cache miss. The manager calls this before
-// launching a runtime; runtime binaries never build or replace themselves.
-func pluginRuntimeBinary() (string, bool, error) {
-	environment, err := resolvePluginEnvironment()
-	if err != nil {
-		return "", false, err
-	}
-	if len(environment.dependencies) == 0 {
-		return "", false, nil
-	}
-	changed, err := syncLockedPluginVersions(environment.buildDir, environment.manifestDir, false)
-	if err != nil {
-		return "", false, err
-	}
-	bin, _, err := pluginbuild.EnsureBinary(environment.buildDir, environment.dependencies, changed, false, pluginBuildConfig())
-	if err != nil {
-		return "", false, err
-	}
-	return bin, true, nil
+	sort.Strings(ids)
+	return ids
 }

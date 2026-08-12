@@ -12,7 +12,7 @@ import (
 )
 
 // InstanceManager is a plugin-scoped owner for instances created through the
-// instance.manage capability. It lets plugins implement bounded pools, workers,
+// instance.manage authority. It lets plugins implement bounded pools, workers,
 // schedulers, and routers without exposing runtime internals. Runtime.Close
 // closes every still-owned instance in reverse plugin load order.
 type InstanceManager struct {
@@ -22,31 +22,35 @@ type InstanceManager struct {
 	instances    map[*ManagedInstance]struct{}
 	byInstance   map[*Instance]*ManagedInstance
 	closed       bool
-	budget       CapabilityBudget
+	budget       AuthorityScope
 	live         uint32
+	memoryBytes  uint64
 	dispatchMu   sync.Mutex
 	dispatchCode *Compiled
 	dispatchBase uintptr
 	pending      sync.WaitGroup
+	draining     []*Instance
 }
 
 // ManagedInstance is one instance whose lifetime is owned by an
 // InstanceManager. Instance exposes the normal call surface; Close releases the
 // ownership record and closes the instance exactly once.
 type ManagedInstance struct {
-	mu      sync.Mutex
-	manager *InstanceManager
-	value   *Instance
-	closed  bool
-	done    chan struct{}
-	err     error
+	mu          sync.Mutex
+	manager     *InstanceManager
+	value       *Instance
+	closed      bool
+	done        chan struct{}
+	closedValue *Instance
+	err         error
+	memoryBytes uint64
 }
 
 var voidFuncType = wasm.CompType{Kind: wasm.CompFunc}
 
 func voidFuncTypeKey() uint64 { return wasm.StructuralFuncTypeKey(&voidFuncType) }
 
-func newPendingInstanceManager(owner string, budget CapabilityBudget) *InstanceManager {
+func newPendingInstanceManager(owner string, budget AuthorityScope) *InstanceManager {
 	return &InstanceManager{owner: owner, budget: budget, instances: map[*ManagedInstance]struct{}{}, byInstance: map[*Instance]*ManagedInstance{}}
 }
 
@@ -55,9 +59,7 @@ func (m *InstanceManager) activate(rt *Runtime) {
 	rt.managedActive.Store(true)
 }
 
-// Caller resolves an active, synchronous host-call capability to its instance.
-// The returned pointer is identity only; plugins must not invoke it reentrantly.
-func (m *InstanceManager) Caller(caller HostModule) (*Instance, error) {
+func (m *InstanceManager) caller(caller HostModule) (*Instance, error) {
 	h, ok := caller.(instanceHostModule)
 	if !ok || !h.valid() || h.in == nil || h.in.rt != m.rt {
 		return nil, fmt.Errorf("wago: managed operation requires an active caller: %w", ErrPermissionDenied)
@@ -67,7 +69,7 @@ func (m *InstanceManager) Caller(caller HostModule) (*Instance, error) {
 
 // ManagedCaller resolves a caller belonging to an instance owned by this manager.
 func (m *InstanceManager) ManagedCaller(caller HostModule) (*ManagedInstance, error) {
-	in, err := m.Caller(caller)
+	in, err := m.caller(caller)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +80,16 @@ func (m *InstanceManager) ManagedCaller(caller HostModule) (*ManagedInstance, er
 		return nil, fmt.Errorf("wago: caller is not owned by this plugin")
 	}
 	return owned, nil
+}
+
+// CallerIdentity returns only the comparable identity of the active caller.
+// It does not grant invocation, close, export, memory, or management access.
+func (m *InstanceManager) CallerIdentity(caller HostModule) (InstanceIdentity, error) {
+	in, err := m.caller(caller)
+	if err != nil {
+		return InstanceIdentity{}, err
+	}
+	return InstanceIdentity{value: in}, nil
 }
 
 // WatchCaller returns a channel signaled when caller's synchronous authority
@@ -99,6 +111,10 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 	if m == nil {
 		return nil, fmt.Errorf("wago: nil instance manager")
 	}
+	memoryBytes, err := managedMemoryReservation(mod)
+	if err != nil {
+		return nil, fmt.Errorf("wago: plugin %s module memory limits: %v: %w", m.owner, err, ErrPermissionDenied)
+	}
 	m.mu.Lock()
 	if m.closed || m.rt == nil {
 		m.mu.Unlock()
@@ -109,39 +125,40 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 		m.mu.Unlock()
 		return nil, fmt.Errorf("wago: plugin %s managed-instance limit %d reached: %w", m.owner, m.budget.MaxInstances, ErrPermissionDenied)
 	}
-	if m.budget.MaxMemoryBytes != 0 && mod != nil && mod.c != nil && mod.c.memoryCount() != 0 {
-		maxBytes, limitErr := mod.c.declaredMemoryMaxBytes()
-		if limitErr != nil || maxBytes > m.budget.MaxMemoryBytes {
-			m.mu.Unlock()
-			if limitErr != nil {
-				return nil, fmt.Errorf("wago: plugin %s module memory limits: %v: %w", m.owner, limitErr, ErrPermissionDenied)
-			}
-			return nil, fmt.Errorf("wago: plugin %s module memory total %d exceeds managed budget %d: %w", m.owner, maxBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
-		}
+	if m.budget.MaxMemoryBytes != 0 && memoryBytes > m.budget.MaxMemoryBytes-m.memoryBytes {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("wago: plugin %s aggregate managed memory reservation %d + %d exceeds budget %d: %w", m.owner, m.memoryBytes, memoryBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
 	}
 	m.live++
+	m.memoryBytes += memoryBytes
 	m.pending.Add(1)
 	m.mu.Unlock()
 	defer m.pending.Done()
-	in, err := rt.instantiateOrigin(ctx, mod, InstantiateManaged, opts...)
+	in, err := rt.instantiateOrigin(ctx, mod, InstantiateManaged, true, opts...)
 	if err != nil {
 		m.mu.Lock()
 		m.live--
+		m.memoryBytes -= memoryBytes
 		m.mu.Unlock()
 		return nil, err
 	}
-	return m.adopt(in)
+	return m.adopt(in, memoryBytes)
 }
 
-func (m *InstanceManager) adopt(in *Instance) (*ManagedInstance, error) {
-	owned := &ManagedInstance{manager: m, value: in}
+func managedMemoryReservation(mod *Module) (uint64, error) {
+	if mod == nil || mod.c == nil || mod.c.memoryCount() == 0 {
+		return 0, nil
+	}
+	return mod.c.declaredMemoryMaxBytes()
+}
+
+func (m *InstanceManager) adopt(in *Instance, memoryBytes uint64) (*ManagedInstance, error) {
+	owned := &ManagedInstance{manager: m, value: in, memoryBytes: memoryBytes}
+	in.referenceLifetime().afterPhysicalRelease(func() { m.releaseReservation(memoryBytes) })
 	m.mu.Lock()
 	if m.closed {
-		if m.live > 0 {
-			m.live--
-		}
 		m.mu.Unlock()
-		closeErr := in.Close()
+		closeErr := in.closeAndWait()
 		return nil, joinPrimary(fmt.Errorf("wago: instance manager closed during instantiation"), closeErr)
 	}
 	m.instances[owned] = struct{}{}
@@ -154,13 +171,22 @@ func (m *InstanceManager) adopt(in *Instance) (*ManagedInstance, error) {
 // safe host functions, by-value globals, GC configuration, and runtime policy.
 // Borrowed memories, tables, globals, and cross-instance exports are rejected.
 func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*ManagedInstance, error) {
-	parent, err := m.Caller(caller)
+	parent, err := m.caller(caller)
 	if err != nil {
 		return nil, err
 	}
+	end, err := m.rt.beginOperation("managed Fork", true)
+	if err != nil {
+		return nil, err
+	}
+	defer end()
 	imports, err := managedForkImports(parent)
 	if err != nil {
 		return nil, err
+	}
+	memoryBytes, err := managedMemoryReservation(&Module{c: parent.c})
+	if err != nil {
+		return nil, fmt.Errorf("wago: plugin %s module memory limits: %v: %w", m.owner, err, ErrPermissionDenied)
 	}
 	m.mu.Lock()
 	if m.closed || m.rt == nil {
@@ -171,7 +197,12 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 		m.mu.Unlock()
 		return nil, fmt.Errorf("wago: plugin %s managed-instance limit %d reached: %w", m.owner, m.budget.MaxInstances, ErrPermissionDenied)
 	}
+	if m.budget.MaxMemoryBytes != 0 && memoryBytes > m.budget.MaxMemoryBytes-m.memoryBytes {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("wago: plugin %s aggregate managed memory reservation %d + %d exceeds budget %d: %w", m.owner, m.memoryBytes, memoryBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+	}
 	m.live++
+	m.memoryBytes += memoryBytes
 	m.pending.Add(1)
 	rt := m.rt
 	m.mu.Unlock()
@@ -186,10 +217,11 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	if err != nil {
 		m.mu.Lock()
 		m.live--
+		m.memoryBytes -= memoryBytes
 		m.mu.Unlock()
 		return nil, err
 	}
-	return m.adopt(child)
+	return m.adopt(child, memoryBytes)
 }
 
 func managedForkImports(parent *Instance) (Imports, error) {
@@ -358,9 +390,26 @@ func (m *ManagedInstance) Instance() *Instance {
 	return in
 }
 
+// Identity returns the opaque comparable identity of this managed instance.
+// It is zero after the managed instance has been logically closed.
+func (m *ManagedInstance) Identity() InstanceIdentity {
+	return InstanceIdentity{value: m.Instance()}
+}
+
 func (m *ManagedInstance) Close() error {
+	in, err := m.closeLogical()
+	if in != nil {
+		state := in.ensurePluginState().close.Load()
+		if state != nil {
+			<-state.quiesced
+		}
+	}
+	return err
+}
+
+func (m *ManagedInstance) closeLogical() (*Instance, error) {
 	if m == nil {
-		return nil
+		return nil, nil
 	}
 	m.mu.Lock()
 	if m.closed {
@@ -370,14 +419,16 @@ func (m *ManagedInstance) Close() error {
 			<-done
 		}
 		m.mu.Lock()
-		err := m.err
+		in, err := m.closedValue, m.err
 		m.mu.Unlock()
-		return err
+		return in, err
 	}
 	m.closed = true
 	m.done = make(chan struct{})
 	in, manager, done := m.value, m.manager, m.done
+	m.closedValue = in
 	m.value, m.manager = nil, nil
+	m.memoryBytes = 0
 	m.mu.Unlock()
 	var err error
 	if in != nil {
@@ -387,19 +438,32 @@ func (m *ManagedInstance) Close() error {
 		manager.mu.Lock()
 		delete(manager.instances, m)
 		delete(manager.byInstance, in)
-		if manager.live > 0 {
-			manager.live--
-		}
 		manager.mu.Unlock()
 	}
 	m.mu.Lock()
 	m.err = err
 	close(done)
 	m.mu.Unlock()
-	return err
+	return in, err
 }
 
-func (m *InstanceManager) close() error {
+func (m *InstanceManager) releaseReservation(memoryBytes uint64) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.live > 0 {
+		m.live--
+	}
+	if memoryBytes <= m.memoryBytes {
+		m.memoryBytes -= memoryBytes
+	} else {
+		m.memoryBytes = 0
+	}
+	m.mu.Unlock()
+}
+
+func (m *InstanceManager) closeLogical() error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -410,17 +474,46 @@ func (m *InstanceManager) close() error {
 	for owned := range m.instances {
 		list = append(list, owned)
 	}
-	m.instances = nil
 	m.mu.Unlock()
 	// No new creation can increment pending after closed is set under m.mu.
 	// Wait for in-flight creations to either fail or close themselves in adopt.
 	m.pending.Wait()
 	var errs []error
+	draining := make([]*Instance, 0, len(list))
 	for _, owned := range list {
-		if err := owned.Close(); err != nil {
+		in, err := owned.closeLogical()
+		if err != nil {
 			errs = append(errs, err)
 		}
+		if in != nil {
+			draining = append(draining, in)
+		}
 	}
+	m.mu.Lock()
+	m.draining = draining
+	m.instances = nil
+	m.byInstance = nil
+	m.mu.Unlock()
+	return errors.Join(errs...)
+}
+
+func (m *InstanceManager) drain() error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	list := append([]*Instance(nil), m.draining...)
+	m.mu.Unlock()
+	var errs []error
+	for _, in := range list {
+		state := in.ensurePluginState().close.Load()
+		if state != nil {
+			<-state.quiesced
+		}
+	}
+	m.mu.Lock()
+	m.draining = nil
+	m.mu.Unlock()
 	m.dispatchMu.Lock()
 	if m.dispatchCode != nil {
 		if err := m.dispatchCode.Close(); err != nil {
@@ -431,4 +524,8 @@ func (m *InstanceManager) close() error {
 	}
 	m.dispatchMu.Unlock()
 	return errors.Join(errs...)
+}
+
+func (m *InstanceManager) close() error {
+	return errors.Join(m.closeLogical(), m.drain())
 }

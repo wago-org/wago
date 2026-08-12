@@ -15,8 +15,8 @@ import (
 type testEnvironment struct{}
 
 func (testEnvironment) ProfileFlags() []command.Flag { return nil }
-func (testEnvironment) LoadRuntime(config *wago.RuntimeConfig, _ string) *wago.Runtime {
-	return wago.NewRuntime(wago.WithRuntimeConfig(config))
+func (testEnvironment) LoadRuntime(config *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
+	return wago.NewRuntime(wago.WithRuntimeConfig(config), wago.WithGuestArguments(guestArgs))
 }
 
 func TestCommandDryRunDoesNotReadOrWriteArtifact(t *testing.T) {

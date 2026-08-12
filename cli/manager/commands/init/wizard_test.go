@@ -27,29 +27,30 @@ func TestSetupPickerOffersRunOrPlugin(t *testing.T) {
 }
 
 func TestPluginManifestIncludesPublishMetadata(t *testing.T) {
-	existing := map[string]any{"plugins": map[string]any{"wago-org/workers": "^0.0.0"}}
+	existing := map[string]any{"plugins": map[string]any{"github.com/wago-org/workers": "^0.0.0"}}
 	fields, _, err := pluginManifest(answers{
-		name: "Clock", module: "github.com/acme/wago-clock", version: "0.1.0",
+		name: "Clock", description: "Clock imports for guests.", module: "github.com/acme/wago-clock", version: "0.1.0",
 		license: "MIT", repository: "https://github.com/acme/wago-clock", homepage: "https://example.com/clock",
 		category: "utilities", tags: "clock, time", author: "A. Maintainer", stability: "stable",
-		plugins: "wago-org/wasi, acme/clock@^1.2.3",
+		plugins: "github.com/wago-org/wasi, github.com/acme/clock@>=1.2.3 <2.0.0 || ^3.0.0",
 	}, existing)
 	if err != nil {
 		t.Fatal(err)
 	}
+	pkg := fields["package"].(map[string]any)
 	for key, want := range map[string]any{
 		"module": "github.com/acme/wago-clock", "version": "0.1.0", "license": "MIT",
-		"repository": "https://github.com/acme/wago-clock", "stability": "stable", "private": false,
+		"repository": "https://github.com/acme/wago-clock", "stability": "stable",
 	} {
-		if fields[key] != want {
-			t.Errorf("%s = %#v, want %#v", key, fields[key], want)
+		if pkg[key] != want {
+			t.Errorf("%s = %#v, want %#v", key, pkg[key], want)
 		}
 	}
-	if tags := fields["tags"].([]string); strings.Join(tags, ",") != "clock,time" {
+	if tags := pkg["tags"].([]string); strings.Join(tags, ",") != "clock,time" {
 		t.Fatalf("tags = %#v", tags)
 	}
 	plugins := fields["plugins"].(map[string]any)
-	if len(plugins) != 3 || plugins["wago-org/wasi"] != "^0.0.0" || plugins["acme/clock"] != "^1.2.3" || plugins["wago-org/workers"] != "^0.0.0" {
+	if len(plugins) != 3 || plugins["github.com/wago-org/wasi"] != "*" || plugins["github.com/acme/clock"] != ">=1.2.3 <2.0.0 || ^3.0.0" || plugins["github.com/wago-org/workers"] != "^0.0.0" {
 		t.Fatalf("plugins = %#v", plugins)
 	}
 }
@@ -107,7 +108,7 @@ func TestPluginSetupFlagsSelectPluginModeWithoutPrompt(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 
 	ctx := command.NewContext(nil, map[string]string{
-		"name": "Flagged plugin", "module": "github.com/acme/flagged", "license": "MIT",
+		"name": "Flagged plugin", "description": "A useful plugin.", "module": "github.com/acme/flagged", "license": "MIT", "author": "A. Maintainer",
 	}, nil)
 	got, err := run(ctx, strings.NewReader(""), &bytes.Buffer{}, false)
 	if err != nil {
@@ -120,7 +121,30 @@ func TestPluginSetupFlagsSelectPluginModeWithoutPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest["name"] != "Flagged plugin" {
+	pkg, _ := manifest["package"].(map[string]any)
+	if pkg["name"] != "Flagged plugin" {
 		t.Fatalf("manifest = %#v", manifest)
+	}
+	for _, name := range []string{"register.go", "register_test.go"} {
+		if _, err := os.Stat(filepath.Join(dir, "register", name)); err != nil {
+			t.Fatalf("missing scaffold %s: %v", name, err)
+		}
+	}
+	catalog, err := os.ReadFile(filepath.Join(dir, "wago.providers.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(catalog, []byte(`"$schema": "https://wago.sh/v1/providers.schema.json"`)) || !bytes.Contains(catalog, []byte(`"id": "github.com/acme/flagged"`)) {
+		t.Fatalf("provider catalog = %s", catalog)
+	}
+}
+
+func TestPluginManifestRejectsRelativePluginID(t *testing.T) {
+	_, _, err := pluginManifest(answers{
+		name: "Clock", description: "Clock imports.", module: "github.com/acme/clock", version: "1.0.0",
+		license: "MIT", repository: "https://github.com/acme/clock", author: "A. Maintainer", plugins: "acme/wasi@^1.0.0",
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "fully qualified") {
+		t.Fatalf("relative ID error = %v", err)
 	}
 }

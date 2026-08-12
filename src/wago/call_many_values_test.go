@@ -17,7 +17,15 @@ import (
 // value semantics, not from Wago's output.
 func TestManyParamsAndResults(t *testing.T) {
 	mod, params := manyValuesModule()
-	in := instantiateRegressionModule(t, mod)
+	compiled, err := Compile(NewRuntimeConfig(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer in.Close()
 
 	t.Run("many constants", func(t *testing.T) {

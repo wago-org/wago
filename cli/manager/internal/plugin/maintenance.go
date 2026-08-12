@@ -1,9 +1,8 @@
 package plugin
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -22,98 +21,90 @@ func Outdated(request MaintenanceRequest) {
 	dir, _ := maintenanceSource(request)
 	requirements, lock := maintenanceState(dir)
 	type report struct {
-		Plugin  string `json:"plugin"`
-		Current string `json:"current"`
-		Latest  string `json:"latest"`
+		Plugin, Current, Constraint string
 	}
-	var reports []report
-	found := false
+	reports := make([]report, 0, len(requirements))
 	for _, requirement := range requirements {
-		current := strings.TrimPrefix(lock.Packages[requirement.ID].Version, "v")
-		latest, err := latestModuleVersion(requirement.Module, lock.Packages[requirement.ID].Version)
-		if err != nil {
-			fatal("plugin outdated: %s: %v", requirement.ID, err)
+		entry, ok := lock.Plugins[requirement.ID]
+		current := "unresolved"
+		if ok {
+			current = strings.TrimPrefix(entry.Source.Version, "v")
 		}
-		latest = strings.TrimPrefix(latest, "v")
-		if latest == "" || latest == current {
-			continue
-		}
-		found = true
-		reports = append(reports, report{Plugin: requirement.ID, Current: current, Latest: latest})
-		if automation.JSON() {
-			continue
-		}
-		fmt.Printf("%s  %s -> %s\n", requirement.ID, current, latest)
+		reports = append(reports, report{Plugin: requirement.ID, Current: current, Constraint: requirement.Constraint})
 	}
 	if automation.JSON() {
 		ui.PrintJSON(reports)
 		return
 	}
-	if !found {
-		fmt.Println(dim("all plugins are up to date"))
+	for _, report := range reports {
+		fmt.Printf("%s  %s  %s\n", report.Plugin, report.Current, dim(report.Constraint))
 	}
+	fmt.Println(dim("run `wago plugin update` to solve against the current catalog"))
 }
 
 func Tree(request MaintenanceRequest) {
 	dir, global := maintenanceSource(request)
-	requirements, lock := maintenanceState(dir)
+	_, lock := maintenanceState(dir)
 	scope := "local"
 	if global {
 		scope = "global"
 	}
 	type entry struct {
-		Plugin     string `json:"plugin"`
-		Version    string `json:"version"`
-		Constraint string `json:"constraint"`
+		Plugin       string            `json:"plugin"`
+		Version      string            `json:"version"`
+		Direct       bool              `json:"direct"`
+		Dependencies map[string]string `json:"dependencies"`
 	}
-	entries := make([]entry, 0, len(requirements))
-	if !automation.JSON() {
-		fmt.Printf("Plugins (%s)\n", scope)
-	}
-	for _, requirement := range requirements {
-		lockedVersion := strings.TrimSpace(lock.Packages[requirement.ID].Version)
-		version := "unresolved"
-		if lockedVersion != "" {
-			version = DisplayVersion(lockedVersion)
-		}
-		if requirement.Constraint == "" {
-			requirement.Constraint = "latest"
-		}
-		entries = append(entries, entry{Plugin: requirement.ID, Version: version, Constraint: requirement.Constraint})
-		if automation.JSON() {
-			continue
-		}
-		fmt.Printf("  %s@%s  %s\n", requirement.ID, version, dim(requirement.Constraint))
+	entries := make([]entry, 0, len(lock.Plugins))
+	for _, id := range sortedLockIDs(lock) {
+		locked := lock.Plugins[id]
+		entries = append(entries, entry{Plugin: id, Version: locked.Source.Version, Direct: locked.Direct, Dependencies: locked.Dependencies})
 	}
 	if automation.JSON() {
 		ui.PrintJSON(map[string]any{"scope": scope, "plugins": entries})
+		return
+	}
+	fmt.Printf("Plugins (%s)\n", scope)
+	for _, entry := range entries {
+		kind := "transitive"
+		if entry.Direct {
+			kind = "direct"
+		}
+		fmt.Printf("  %s@%s  %s\n", entry.Plugin, strings.TrimPrefix(entry.Version, "v"), dim(kind))
+		for dependency, constraint := range entry.Dependencies {
+			fmt.Printf("    -> %s %s\n", dependency, dim(constraint))
+		}
 	}
 }
 
 func Rebuild(request MaintenanceRequest) {
 	dir, global := maintenanceSource(request)
-	dependencies, err := project.Dependencies(dir)
+	requirements, lock := maintenanceState(dir)
+	if len(requirements) == 0 {
+		fatal("plugin rebuild: no plugins enabled")
+	}
+	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
+		fatal("plugin rebuild: %v", err)
+	}
+	buildDir, err := buildDirFor(global)
 	if err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
-	if len(dependencies) == 0 {
-		fatal("plugin rebuild: no plugins enabled")
-	}
-	buildDir, err := buildDirFor(global)
+	input, err := pluginbuild.InputFromLock(lock)
 	if err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
 	if _, err := syncLockedPluginVersions(buildDir, dir, request.Verbose); err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
-	if err := pluginbuild.WriteMain(buildDir, dependencies, pluginBuildConfig()); err != nil {
-		fatal("plugin rebuild: %v", err)
-	}
-	bin, _, err := pluginbuild.EnsureBinary(buildDir, dependencies, true, request.Verbose, pluginBuildConfig())
+	bin, _, err := pluginbuild.EnsureBinary(buildDir, input, true, request.Verbose, pluginBuildConfig())
 	if err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
-	fmt.Printf("%s rebuilt Wago with %d plugin%s  %s\n", cyan("✓"), len(dependencies), plural(len(dependencies)), bin)
+	if err := verifyStagedRuntime(bin); err != nil {
+		fatal("plugin rebuild: %v", err)
+	}
+	fmt.Printf("%s rebuilt Wago with %d plugin%s  %s\n", cyan("✓"), len(lock.Plugins), plural(len(lock.Plugins)), bin)
 }
 
 func maintenanceSource(request MaintenanceRequest) (string, bool) {
@@ -147,26 +138,18 @@ func maintenanceState(dir string) ([]project.PluginRequirement, project.LockDocu
 	return requirements, lock
 }
 
+// Retained for tests and external callers that reason about update decisions.
+func pluginUpdateRequired(current, locked, latest string, force bool) bool {
+	return force || current != latest || locked != latest
+}
+
 func latestModuleVersion(module, current string) (string, error) {
-	target := module
-	if current != "" {
-		target += "@" + current
+	return "", fmt.Errorf("module-level latest lookup was removed; resolve %s through the plugin catalog", module)
+}
+
+func pluginContextOrBackground(ctx context.Context) context.Context {
+	if ctx != nil {
+		return ctx
 	}
-	command := exec.Command("go", "list", "-m", "-u", "-json", target)
-	automation.ConfigureCommand(command)
-	output, err := command.Output()
-	if err != nil {
-		return "", err
-	}
-	var report struct {
-		Version string
-		Update  *struct{ Version string }
-	}
-	if err := json.Unmarshal(output, &report); err != nil {
-		return "", err
-	}
-	if report.Update != nil {
-		return report.Update.Version, nil
-	}
-	return report.Version, nil
+	return context.Background()
 }

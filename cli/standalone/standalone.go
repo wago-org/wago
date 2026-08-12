@@ -3,7 +3,6 @@ package standalone
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,11 +22,9 @@ type Options struct {
 }
 
 // Run executes source as a command and returns its process exit code. Plugins
-// must already be linked into the executable through their register packages;
-// pluginConfig selects and configures those providers without reading files at
-// runtime.
-func Run(source, pluginConfig []byte, options Options, args []string) int {
-	if err := execute(source, pluginConfig, options, args); err != nil {
+// are handed in as one explicit, reviewed PluginSet.
+func Run(source []byte, plugins wago.PluginSet, options Options, args []string) int {
+	if err := execute(source, plugins, options, args); err != nil {
 		var exit *wago.ExitError
 		if errors.As(err, &exit) {
 			return int(exit.Code)
@@ -42,21 +39,14 @@ func Run(source, pluginConfig []byte, options Options, args []string) int {
 	return 0
 }
 
-func execute(source, pluginConfig []byte, options Options, args []string) error {
-	var plugins []wago.PluginConfig
-	if len(pluginConfig) != 0 {
-		if err := json.Unmarshal(pluginConfig, &plugins); err != nil {
-			return fmt.Errorf("embedded plugin configuration: %w", err)
-		}
-	}
-	wago.SetGuestArgs(args)
+func execute(source []byte, plugins wago.PluginSet, options Options, args []string) error {
 	config, err := runtimeConfig(options)
 	if err != nil {
 		return err
 	}
-	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config), wago.WithGuestArguments(args))
 	defer runtime.Close()
-	if err := runtime.LoadPlugins(plugins); err != nil {
+	if err := runtime.LoadPlugins(context.Background(), plugins); err != nil {
 		return err
 	}
 	module, err := runtime.Compile(source)

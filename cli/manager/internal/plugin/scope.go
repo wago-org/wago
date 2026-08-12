@@ -14,9 +14,6 @@ import (
 // version reads the shared global intent while compiling its own artifact.
 func resolvePluginEnvironment() (pluginEnvironment, error) {
 	dirs := wagopaths.DirsFor(pluginRuntimeVersion())
-	if err := migrateLegacyGlobalPlugins(dirs, pluginRuntimeVersion()); err != nil {
-		return pluginEnvironment{}, err
-	}
 	manifestDir := sharedGlobalPluginDir(dirs)
 	scope, err := project.ResolveScope(".", manifestDir)
 	if err != nil {
@@ -75,8 +72,5 @@ func depsSource(global bool) (string, error) {
 		return ".", nil
 	}
 	dirs := wagopaths.DirsFor(pluginRuntimeVersion())
-	if err := migrateLegacyGlobalPlugins(dirs, pluginRuntimeVersion()); err != nil {
-		return "", err
-	}
 	return sharedGlobalPluginDir(dirs), nil
 }

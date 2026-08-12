@@ -42,12 +42,21 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	const plugin = "github.com/wago-org/wasi"
+	const plugin = "github.com/wago-org/wago"
 	if _, err := project.AddDependency(manifestDir, plugin, "^0.0.0"); err != nil {
 		t.Fatal(err)
 	}
 
-	deps := []string{plugin}
+	lock := project.NewLockDocument()
+	entry := testManagerLockEntry(plugin)
+	lock.Plugins[plugin] = entry
+	if err := project.WriteLock(manifestDir, lock); err != nil {
+		t.Fatal(err)
+	}
+	input, err := pluginbuild.InputFromLock(lock)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bin := pluginbuild.BinaryPath(buildDir)
 	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
 		t.Fatal(err)
@@ -55,10 +64,9 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	if err := os.WriteFile(bin, []byte("cached plugin runtime"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(bin+".hash", []byte(pluginbuild.Hash(deps, pluginBuildConfig())), 0o644); err != nil {
+	if err := os.WriteFile(bin+".hash", []byte(pluginbuild.Hash(input, pluginBuildConfig())), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
 	got, configured, err := pluginRuntimeBinary()
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +95,43 @@ func TestLockedPluginResolutionRequiresPinnedVersionsBeforeBuilding(t *testing.T
 	}
 }
 
+func TestLockedPluginResolutionRejectsPreexistingSourceReplace(t *testing.T) {
+	const plugin = "github.com/acme/plugin"
+	manifestDir := t.TempDir()
+	if _, err := project.AddDependency(manifestDir, plugin, "^1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	lock := project.NewLockDocument()
+	entry := testManagerLockEntry(plugin)
+	entry.Source.Version = "v1.0.0"
+	lock.Plugins[plugin] = entry
+	if err := project.WriteLock(manifestDir, lock); err != nil {
+		t.Fatal(err)
+	}
+
+	buildDir := t.TempDir()
+	local := filepath.Join(buildDir, "local-plugin")
+	if err := os.MkdirAll(local, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "go.mod"), []byte("module "+plugin+"\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goMod := "module wago.local/build\n\ngo 1.22\n\nrequire " + plugin + " v1.0.0\n\nreplace " + plugin + " => ./local-plugin\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := syncLockedPluginVersions(buildDir, manifestDir, false)
+	if err == nil || !strings.Contains(err.Error(), "locked plugin source "+plugin+"@v1.0.0") || !strings.Contains(err.Error(), "go.mod replace") {
+		t.Fatalf("locked replacement = changed %v, err %v", changed, err)
+	}
+	body, readErr := os.ReadFile(filepath.Join(buildDir, "go.mod"))
+	if readErr != nil || !strings.Contains(string(body), "replace "+plugin+" => ./local-plugin") {
+		t.Fatalf("rejected replacement was silently reconciled = %q, %v", body, readErr)
+	}
+}
+
 type testEnvironment struct{}
 
 func (testEnvironment) SelectScope(global, local, bare bool) error {
@@ -108,15 +153,14 @@ func TestRuntimePathForInvocationLeavesMinimalRuntimeAlone(t *testing.T) {
 	}
 }
 
-func TestCapabilityReviewPinsVersionEvenWhenPluginCannotBeInspected(t *testing.T) {
-	dir := t.TempDir()
-	reviewInstalledCapabilities(dir, filepath.Join(dir, "missing-runtime"), "github.com/wago-org/wasi", "v1.2.3", pkgOpts{})
-
-	lock, err := project.ReadLock(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := lock.Packages["wago-org/wasi"].Version; got != "v1.2.3" {
-		t.Fatalf("locked version = %q", got)
+func testManagerLockEntry(id string) project.LockEntry {
+	return project.LockEntry{
+		Direct: true, Source: project.PluginSource{Module: id, Version: "v0.0.0", Checksum: "h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
+		Provider:           project.ProviderSource{ImportPath: id + "/register"},
+		DefinitionDigest:   "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ReleaseFingerprint: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Dependencies:       map[string]string{}, RequestedAuthorities: []project.AuthorityRequest{}, Grants: []project.AuthorityGrant{},
+		Contracts: project.ContractSet{Provides: []project.ContractProvider{}, Requires: []project.ContractRequirement{}},
+		Bindings:  []project.ContractBinding{}, Config: []byte(`{}`),
 	}
 }

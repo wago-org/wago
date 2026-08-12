@@ -34,8 +34,8 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 	releaseAfter := make(chan struct{})
 	closePublished := make(chan struct{})
 	var writer *Instance
-	rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
-		if ctx.Instance != writer {
+	rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx InstanceCloseEvent) {
+		if !sameInstance(ctx.Instance, writer) {
 			return
 		}
 		if got := writer.invocationState.Load(); got&instanceInvocationClosed == 0 {

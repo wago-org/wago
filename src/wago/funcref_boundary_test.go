@@ -149,8 +149,8 @@ func TestRuntimeFuncrefTokenRoundTripsAndRetainsProducer(t *testing.T) {
 	if err := producer.Close(); err != nil {
 		t.Fatalf("Close producer: %v", err)
 	}
-	if got, err := consumer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
-		t.Fatalf("consumer call after producer close = %v, %v; want retained 42", got, err)
+	if _, err := consumer.Call(context.Background(), "call", token); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("consumer call after runtime close = %v; want closed handle", err)
 	}
 }
 

@@ -24,7 +24,7 @@ not wasm authoring.
 | 03 | [host-import](03-host-import) | Defining a `HostFunc` the guest calls back into |
 | 04 | [memory](04-memory) | Reading/writing guest linear memory from the host |
 | 05 | [globals](05-globals) | Reading and setting exported globals, typed |
-| 08 | [custom-plugin](08-custom-plugin) | Writing your own `Extension` |
+| 08 | [custom-plugin](08-custom-plugin) | Writing an explicit `PluginProvider` |
 | 10 | [hooks](10-hooks) | Invoke/compile hooks (tracing, auto-instrumentation) |
 | 14 | [handles](14-handles) | `HandleTable` resource handles with a generation guard |
 | 15 | [config](15-config) | `RuntimeConfig`: features, bounds checks, and function workers |
@@ -52,10 +52,13 @@ binds identically on standard Go and TinyGo — see
 
 ## Writing a plugin
 
-A plugin implements `wago.Extension` (`Info` + `Register`) and declares its host
-imports, capabilities, and optional lifecycle hooks through the `Registry` —
-see [08-custom-plugin](08-custom-plugin) and [10-hooks](10-hooks). Register it on
-a runtime with `rt.Use(myplugin.Ext())`.
+A plugin implements the one-method `wago.Plugin` interface and is paired with an
+immutable `PluginDefinition` and factory in an explicit `PluginProvider`. It
+declares host imports, guest capabilities, lifecycle observation, and exact
+privileged Authorities through a transactional `Registrar`. The host reviews
+those authorities in a `PluginSelection`, then loads the complete `PluginSet`
+atomically with `rt.LoadPlugins` — see [08-custom-plugin](08-custom-plugin) and
+[10-hooks](10-hooks).
 
 ## CLI
 
@@ -66,7 +69,8 @@ Run a module and inspect it:
 ```sh
 wago run add.wasm 2 40                 # compile + execute (typed args)
 wago run -e fib fib.wasm 30            # pick an export
-wago run --plugin github.com/acme/wago-metrics app.wasm
+wago add github.com/acme/wago-metrics  # review and lock the plugin first
+wago run app.wasm
 wago module imports app.wasm           # what a module imports (resolved vs plugins)
 wago module capabilities app.wasm      # capabilities a module requires
 ```
@@ -78,12 +82,13 @@ wago plugin list                       # plugins available in this binary
 wago plugin inspect github.com/acme/wago-metrics
 ```
 
-Declare plugins for a custom build (a `wago-plugins.json` manifest):
+Declare plugins for a custom build (`wago.json` plus `wago-lock.json`):
 
 ```sh
-wago pkg add github.com/acme/wago-metrics                    # a plugin dependency
-wago plugin add github.com/acme/wago-redis --version v0.3.1  # a third-party module
-wago plugin manifest                                         # show the manifest
+wago add github.com/acme/wago-metrics             # a direct plugin requirement
+wago add github.com/acme/wago-redis@0.3.1          # an exact release
+wago plugin tree                                  # direct and transitive graph
+wago plugin list --json                           # linked definitions and plan
 ```
 
 Version management (nvm-style; ships in every build, network install in full builds):

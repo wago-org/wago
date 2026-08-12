@@ -18,19 +18,12 @@ import (
 type testEnvironment struct{}
 
 func (testEnvironment) ProfileFlags() []command.Flag {
-	return []command.Flag{{Name: "plugin", Arg: "<name>"}, {Name: "plugins", Arg: "<names>"}}
+	return []command.Flag{{Name: "local", Bool: true}}
 }
-func (testEnvironment) LoadRuntime(cfg *wago.RuntimeConfig, _ string) *wago.Runtime {
-	return wago.NewRuntime(wago.WithRuntimeConfig(cfg))
+func (testEnvironment) LoadRuntime(cfg *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
+	return wago.NewRuntime(wago.WithRuntimeConfig(cfg), wago.WithGuestArguments(guestArgs))
 }
 func (testEnvironment) ArtifactCache() artifactcache.Cache { return artifactcache.Cache{} }
-
-func TestPluginListAcceptsSingularAndPluralFlags(t *testing.T) {
-	ctx := command.NewContext(nil, map[string]string{"plugin": "wasi", "plugins": "metrics, log"}, nil)
-	if got := PluginList(ctx); got != "wasi,metrics, log" {
-		t.Fatalf("plugin list = %q", got)
-	}
-}
 
 func TestOptimizationFlags(t *testing.T) {
 	knobs := wago.NewRuntimeConfig().OptimizationInfos()
@@ -87,12 +80,12 @@ func TestHelpCollapsesBooleanPairs(t *testing.T) {
 		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
 		t.Fatalf("run help did not document function parallelism:\n%s", text)
 	}
-	pluginIndex := strings.Index(text, "--plugin <name>")
+	profileIndex := strings.Index(text, "--local")
 	helpIndex := strings.Index(text, "--help, -h")
 	deferredIndex := strings.Index(text, "--<no->deferred-bounds-checking")
 	optimizationFlags := OptimizationFlags()
 	lastKnobIndex := strings.Index(text, "--<no->"+optimizationFlags[len(optimizationFlags)-2].Name)
-	if pluginIndex < 0 || helpIndex < pluginIndex || deferredIndex < helpIndex || lastKnobIndex < deferredIndex {
+	if profileIndex < 0 || helpIndex < profileIndex || deferredIndex < helpIndex || lastKnobIndex < deferredIndex {
 		t.Fatalf("optimization knobs are not the trailing flag group:\n%s", text)
 	}
 }
@@ -180,7 +173,6 @@ func TestRunParallelFlagForms(t *testing.T) {
 		wantInvoke     string
 		wantNoDeferred bool
 		wantCore       string
-		wantPlugin     string
 	}{
 		{name: "bare short", args: []string{"-p", "module.wasm"}, wantParallel: "auto"},
 		{name: "joined short", args: []string{"-p8", "module.wasm"}, wantParallel: "8"},
@@ -191,7 +183,6 @@ func TestRunParallelFlagForms(t *testing.T) {
 		{name: "after separated invoke", args: []string{"-e", "add", "-p8", "module.wasm"}, wantParallel: "8", wantInvoke: "add"},
 		{name: "after bounds knob", args: []string{"--no-deferred-bounds-checking", "-p", "module.wasm"}, wantParallel: "auto", wantNoDeferred: true},
 		{name: "after separated core", args: []string{"--core", "3", "-p", "module.wasm"}, wantParallel: "auto", wantCore: "3"},
-		{name: "after separated plugin", args: []string{"--plugin", "wasi", "--parallel=4", "module.wasm"}, wantParallel: "4", wantPlugin: "wasi"},
 		{name: "parallel-looking invoke value", args: []string{"-e", "-p8", "module.wasm"}, wantInvoke: "-p8"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -214,9 +205,6 @@ func TestRunParallelFlagForms(t *testing.T) {
 			}
 			if got := ctx.Str("core"); got != tc.wantCore {
 				t.Fatalf("core = %q, want %q (normalized %v)", got, tc.wantCore, args)
-			}
-			if got := ctx.Str("plugin"); got != tc.wantPlugin {
-				t.Fatalf("plugin = %q, want %q (normalized %v)", got, tc.wantPlugin, args)
 			}
 			if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
 				t.Fatalf("positionals = %v", ctx.Args)

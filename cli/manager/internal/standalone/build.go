@@ -48,7 +48,6 @@ type Request struct {
 	Input, Output          string
 	Invoke                 string
 	Core                   int
-	Plugins                string
 	DeferredBoundsChecking bool
 	FunctionWorkers        int
 	Optimizations          map[string]bool
@@ -115,18 +114,18 @@ func Build(request Request) (Result, error) {
 		return Result{}, err
 	}
 	defer os.RemoveAll(buildDir)
-	inputs, err := managerplugin.PrepareStandalone(buildDir, request.Verbose, request.Plugins)
+	inputs, err := managerplugin.PrepareStandalone(buildDir, request.Verbose)
 	if err != nil {
 		return Result{}, fmt.Errorf("prepare plugins: %w", err)
 	}
-	config, err := json.Marshal(inputs.Plugins)
+	selections, err := json.Marshal(inputs.Build.Selections)
 	if err != nil {
 		return Result{}, fmt.Errorf("encode plugin configuration: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(buildDir, "module.wasm"), source, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Dependencies, config, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -145,20 +144,26 @@ func Build(request Request) (Result, error) {
 	if err := runGo(buildDir, environment, request.Verbose, args...); err != nil {
 		return Result{}, err
 	}
-	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Dependencies)}, nil
+	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
 }
 
-func mainSource(dependencies []string, pluginConfig []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool) []byte {
-	dependencies = append([]string(nil), dependencies...)
-	sort.Strings(dependencies)
+func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool) []byte {
+	providerImports = append([]string(nil), providerImports...)
+	sort.Strings(providerImports)
 	var source bytes.Buffer
-	source.WriteString("package main\n\nimport (\n\t_ \"embed\"\n\t\"os\"\n\n")
+	source.WriteString("package main\n\nimport (\n\t_ \"embed\"\n\t\"encoding/json\"\n\t\"os\"\n\n")
+	source.WriteString("\twago \"github.com/wago-org/wago\"\n")
 	source.WriteString("\t\"github.com/wago-org/wago/cli/standalone\"\n")
-	for _, dependency := range dependencies {
-		fmt.Fprintf(&source, "\t_ %q\n", dependency+"/register")
+	for index, providerImport := range providerImports {
+		fmt.Fprintf(&source, "\tprovider%d %q\n", index, providerImport)
 	}
 	source.WriteString(")\n\n//go:embed module.wasm\nvar module []byte\n\n")
-	fmt.Fprintf(&source, "var pluginConfig = []byte(%q)\n\n", pluginConfig)
+	fmt.Fprintf(&source, "var selectionJSON = []byte(%q)\n\n", selections)
+	source.WriteString("func pluginSet() wago.PluginSet {\n\tvar selections []wago.PluginSelection\n\tif err := json.Unmarshal(selectionJSON, &selections); err != nil { panic(err) }\n\tvar providers []wago.PluginProvider\n")
+	for index := range providerImports {
+		fmt.Fprintf(&source, "\tproviders = append(providers, provider%d.Providers()...)\n", index)
+	}
+	source.WriteString("\treturn wago.PluginSet{Providers: providers, Selections: selections}\n}\n\n")
 	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, Core: %d, DeferBoundsChecks: %t, FunctionWorkers: %d, OptimizationKnobs: map[string]bool{", invoke, core, deferredBoundsChecking, functionWorkers)
 	names := make([]string, 0, len(optimizations))
 	for name := range optimizations {
@@ -169,7 +174,7 @@ func mainSource(dependencies []string, pluginConfig []byte, invoke string, core 
 		fmt.Fprintf(&source, "%q: %t, ", name, optimizations[name])
 	}
 	source.WriteString("}}\n\n")
-	source.WriteString("func main() { os.Exit(standalone.Run(module, pluginConfig, options, os.Args)) }\n")
+	source.WriteString("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }\n")
 	return source.Bytes()
 }
 
