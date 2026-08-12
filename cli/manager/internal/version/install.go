@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,15 +10,23 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func vmInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string) {
-	installVersion(d, ver, profile, build, true, true, use)
+func vmInstallContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string) {
+	installVersionContext(ctx, d, ver, profile, build, true, true, use)
 }
 
 func vmInstallForSwitch(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	installVersion(d, ver, profile, build, false, false, "no")
+	vmInstallForSwitchContext(context.Background(), d, ver, profile, build)
+}
+
+func vmInstallForSwitchContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
+	installVersionContext(ctx, d, ver, profile, build, false, false, "no")
 }
 
 func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool, use string) {
+	installVersionContext(context.Background(), d, ver, profile, build, offer, showLocation, use)
+}
+
+func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool, use string) {
 	installName := canaryCommitVersion(ver)
 	dest := d.RuntimeBinary(installName, string(profile), string(build))
 	if installedPath, _, _, installed := installedRuntime(d, installName, profile, build); installed {
@@ -40,11 +49,11 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 	}
 	progress := managerprogress.NewProgress(os.Stderr)
 	progress.Title("Setting Up")
-	resolved, sourceOnly, err := resolveRunnerVersion(ver, progress)
+	resolved, sourceOnly, err := resolveRunnerVersionContext(ctx, ver, progress)
 	if err != nil {
 		fatal("version install: %v", err)
 	}
-	if err := installRunnerPayload(resolved, profile, build, dest, sourceOnly, progress); err != nil {
+	if err := installRunnerPayloadContext(ctx, resolved, profile, build, dest, sourceOnly, progress); err != nil {
 		fatal("version install: %v", err)
 	}
 	progress.Finish("Installed " + installedWagoLabel(installName, canaryCommitVersion(resolved), profile, build))
@@ -56,7 +65,7 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 	}
 }
 
-func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue, use string) {
+func vmInstallRequestedContext(ctx context.Context, d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue, use string) {
 	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
 		fatal("version install: choose one version or channel")
 	}
@@ -67,7 +76,7 @@ func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary
 		fatal("version install: %v", err)
 	}
 	if len(args) == 0 && !latest && !nightly && !canary {
-		vmBrowse(d, profileValue, buildValue, use)
+		vmBrowseContext(ctx, d, profileValue, buildValue, use)
 		return
 	}
 	profile, build, ok := chooseInstallVariant(profileValue, buildValue)
@@ -75,18 +84,22 @@ func vmInstallRequested(d wagopaths.Dirs, args []string, latest, nightly, canary
 		return
 	}
 	if latest {
-		vmInstall(d, latestRelease(), profile, build, use)
+		release, err := latestStableReleaseContext(ctx)
+		if err != nil {
+			fatal("version latest: %v", err)
+		}
+		vmInstallContext(ctx, d, release, profile, build, use)
 		return
 	}
 	if nightly {
-		vmInstall(d, "nightly", profile, build, use)
+		vmInstallContext(ctx, d, "nightly", profile, build, use)
 		return
 	}
 	if canary {
-		vmInstall(d, "canary", profile, build, use)
+		vmInstallContext(ctx, d, "canary", profile, build, use)
 		return
 	}
-	vmInstall(d, args[0], profile, build, use)
+	vmInstallContext(ctx, d, args[0], profile, build, use)
 }
 
 func requestedProfile(value string) (wagopaths.Profile, error) {

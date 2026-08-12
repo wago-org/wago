@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -8,7 +9,15 @@ import (
 )
 
 type Toolchain struct {
-	Dirs wagopaths.Dirs
+	Dirs    wagopaths.Dirs
+	Context context.Context
+}
+
+func (t Toolchain) context() context.Context {
+	if t.Context != nil {
+		return t.Context
+	}
+	return context.Background()
 }
 
 type InstallRequest struct {
@@ -32,8 +41,8 @@ func (t Toolchain) Which()           { vmWhich(t.Dirs) }
 func (t Toolchain) ChooseInstalled() { vmChooseInstalled(t.Dirs) }
 
 func (t Toolchain) Install(request InstallRequest) {
-	vmInstallRequested(
-		t.Dirs, request.Versions, request.Latest, request.Nightly, request.Canary,
+	vmInstallRequestedContext(
+		t.context(), t.Dirs, request.Versions, request.Latest, request.Nightly, request.Canary,
 		request.Profile, request.Build,
 		request.Use,
 	)
@@ -59,7 +68,7 @@ func (t Toolchain) Switch(name, profileValue, buildValue string) {
 		}
 	}
 	if _, _, _, installed := installedRuntime(t.Dirs, name, profile, build); !installed {
-		vmInstallForSwitch(t.Dirs, name, profile, build)
+		vmInstallForSwitchContext(t.context(), t.Dirs, name, profile, build)
 	}
 	vmSwitchTo(t.Dirs, name, profile, build)
 }
@@ -101,7 +110,7 @@ func (t Toolchain) Update(request UpdateRequest) {
 	if name == "" {
 		fatal("version update: %v", fmt.Errorf("no release channel selected"))
 	}
-	vmUpdate(t.Dirs, name, profile, build, request.Use, request.Force)
+	vmUpdateContext(t.context(), t.Dirs, name, profile, build, request.Use, request.Force)
 }
 
 func (t Toolchain) UninstallAll() {

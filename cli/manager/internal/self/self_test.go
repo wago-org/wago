@@ -24,6 +24,32 @@ func setTestHome(t *testing.T, home string) {
 	}
 }
 
+func TestSelfUpdateStagesAreUniqueAndSameDirectory(t *testing.T) {
+	directory := t.TempDir()
+	executable := filepath.Join(directory, "wago")
+	if err := os.WriteFile(executable, []byte("manager"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first, err := createSelfUpdateStage(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(first)
+	second, err := createSelfUpdateStage(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(second)
+	if first == second {
+		t.Fatalf("self-update stages collided at %q", first)
+	}
+	for _, staged := range []string{first, second} {
+		if filepath.Dir(staged) != directory {
+			t.Fatalf("self-update stage %q is not beside executable", staged)
+		}
+	}
+}
+
 func TestSelfUpdateSkipsMatchingManagerCommit(t *testing.T) {
 	executable := filepath.Join(t.TempDir(), "wago")
 	if err := os.WriteFile(executable, []byte("manager"), 0o755); err != nil {

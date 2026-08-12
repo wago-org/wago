@@ -12,6 +12,14 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/internal/httpclient"
+)
+
+const registryResponseLimit int64 = 4 << 20
+
+var (
+	registryResponseMaximum = registryResponseLimit
+	registryHTTP            = httpclient.NewAPI()
 )
 
 // errUnauthorized marks a 401 from the registry (used to distinguish "not logged
@@ -31,6 +39,10 @@ type meResponse struct {
 // bearer token (when non-empty) and an optional JSON body, returning the status
 // code and raw response bytes.
 func apiRequest(method, path, token string, body any) (int, []byte, error) {
+	return apiRequestContext(context.Background(), method, path, token, body)
+}
+
+func apiRequestContext(ctx context.Context, method, path, token string, body any) (int, []byte, error) {
 	if err := automation.RequireOnline("registry request"); err != nil {
 		return 0, nil, err
 	}
@@ -42,7 +54,7 @@ func apiRequest(method, path, token string, body any) (int, []byte, error) {
 		}
 		reader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, registryBase()+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, registryBase()+path, reader)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -52,22 +64,18 @@ func apiRequest(method, path, token string, body any) (int, []byte, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return resp.StatusCode, nil, err
-	}
-	return resp.StatusCode, data, nil
+	response, err := registryHTTP.Bytes(ctx, req, registryResponseMaximum)
+	return response.StatusCode, response.Body, err
 }
 
 // recordRegistryInstall reports one successfully installed plugin to the public
 // registry. Metrics must never make `wago add` fail, and the short timeout keeps
 // full-module installs usable when the registry is offline.
 func recordRegistryInstall(module, version string) {
+	recordRegistryInstallContext(context.Background(), module, version)
+}
+
+func recordRegistryInstallContext(parent context.Context, module, version string) {
 	if automation.Offline() {
 		return
 	}
@@ -75,7 +83,7 @@ func recordRegistryInstall(module, version string) {
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	path := "/api/packages/" + url.PathEscape(module) + "/installs"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, registryBase()+path, bytes.NewReader(body))
@@ -83,12 +91,7 @@ func recordRegistryInstall(module, version string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return
-	}
-	_, _ = io.Copy(io.Discard, resp.Body)
-	_ = resp.Body.Close()
+	_, _ = registryHTTP.Bytes(ctx, req, 4<<10)
 }
 
 // apiError extracts the {"error":...} message from a response body, falling back
@@ -105,7 +108,11 @@ func apiError(status int, data []byte) string {
 
 // fetchMe calls GET /api/me and returns the user, or errUnauthorized on a 401.
 func fetchMe(token string) (meResponse, error) {
-	status, data, err := apiRequest(http.MethodGet, "/api/me", token, nil)
+	return fetchMeContext(context.Background(), token)
+}
+
+func fetchMeContext(ctx context.Context, token string) (meResponse, error) {
+	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/me", token, nil)
 	if err != nil {
 		return meResponse{}, err
 	}

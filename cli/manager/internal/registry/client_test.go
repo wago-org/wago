@@ -1,11 +1,16 @@
 package registry
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/wago-org/wago/internal/httpclient"
 )
 
 func TestRegistryHTTPHelpers(t *testing.T) {
@@ -50,6 +55,43 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 	}
 	if got := apiError(http.StatusBadRequest, []byte("not json")); got != "server returned status 400" {
 		t.Fatalf("apiError fallback = %q", got)
+	}
+}
+
+func TestRegistryRequestIsBoundedAndCancelable(t *testing.T) {
+	oldMaximum := registryResponseMaximum
+	registryResponseMaximum = 32
+	t.Cleanup(func() { registryResponseMaximum = oldMaximum })
+
+	oversized := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte(strings.Repeat("x", 33)))
+	}))
+	defer oversized.Close()
+	t.Setenv("WAGO_REGISTRY", oversized.URL)
+	if _, _, err := apiRequestContext(context.Background(), http.MethodGet, "/oversized", "", nil); !errors.Is(err, httpclient.ErrBodyTooLarge) {
+		t.Fatalf("oversized registry response = %v", err)
+	}
+
+	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer stalled.Close()
+	t.Setenv("WAGO_REGISTRY", stalled.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := apiRequestContext(ctx, http.MethodGet, "/stalled", "", nil)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled registry response = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled registry request did not return")
 	}
 }
 

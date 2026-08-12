@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,7 +44,14 @@ import (
 
 // commandEnvironment adapts manager-owned domain modules to command packages.
 // Parsing, validation, and command-level orchestration stay in command.go.
-type commandEnvironment struct{}
+type commandEnvironment struct{ ctx context.Context }
+
+func (e commandEnvironment) context() context.Context {
+	if e.ctx != nil {
+		return e.ctx
+	}
+	return context.Background()
+}
 
 func (commandEnvironment) Compile(options compilecmd.Options) {
 	if err := managerplugin.Select(options.Global, options.Local, options.Bare); err != nil {
@@ -308,7 +316,7 @@ func (e commandEnvironment) CachePrune(options cacheprune.Options) {
 	fmt.Printf("Pruned %d old cache %s (%s)\n", result.Removed, noun, managercache.FormatBytes(result.Bytes))
 }
 
-func (commandEnvironment) Login(options authlogin.Options) {
+func (e commandEnvironment) Login(options authlogin.Options) {
 	if automation.DryRun() {
 		method := "interactive"
 		switch {
@@ -324,28 +332,28 @@ func (commandEnvironment) Login(options authlogin.Options) {
 		automation.PrintPlan("log in", map[string]any{"registry": "plugins.wago.sh", "method": method})
 		return
 	}
-	registry.Login(registry.LoginRequest{
+	registry.LoginContext(e.context(), registry.LoginRequest{
 		Link: options.Link, Code: options.Code, WithToken: options.WithToken, Token: options.Token,
 	})
 }
 
-func (commandEnvironment) Logout() {
+func (e commandEnvironment) Logout() {
 	if automation.DryRun() {
 		automation.PrintPlan("log out", map[string]any{"registry": "plugins.wago.sh"})
 		return
 	}
-	registry.Logout()
+	registry.LogoutContext(e.context())
 }
-func (commandEnvironment) Whoami() { registry.Whoami() }
+func (e commandEnvironment) Whoami() { registry.WhoamiContext(e.context()) }
 
-func (commandEnvironment) Add(options pluginadd.Options) {
+func (e commandEnvironment) Add(options pluginadd.Options) {
 	requireUnlocked("add plugins")
 	if automation.DryRun() {
 		automation.PrintPlan("add plugins", map[string]any{"packages": options.Modules, "scope": scopeName(options.Global, options.Local), "force": options.Force})
 		return
 	}
 	managerplugin.Add(managerplugin.AddRequest{
-		Modules: options.Modules, Global: options.Global, Local: options.Local,
+		Context: e.context(), Modules: options.Modules, Global: options.Global, Local: options.Local,
 		Force: options.Force, Verbose: options.Verbose,
 		Capabilities: options.Capabilities, GrantAll: options.GrantAll, DenyAll: options.DenyAll,
 	})
@@ -372,14 +380,14 @@ func (commandEnvironment) Grant(options grant.Options) {
 	})
 }
 
-func (commandEnvironment) UpdatePlugins(options pluginupdate.Options) {
+func (e commandEnvironment) UpdatePlugins(options pluginupdate.Options) {
 	requireUnlocked("update plugins")
 	if automation.DryRun() {
 		automation.PrintPlan("update plugins", map[string]any{"package": options.Module, "scope": scopeName(options.Global, options.Local), "force": options.Force})
 		return
 	}
 	managerplugin.Update(managerplugin.MutationRequest{
-		Name: options.Module, Global: options.Global, Local: options.Local,
+		Context: e.context(), Name: options.Module, Global: options.Global, Local: options.Local,
 		Force: options.Force, Verbose: options.Verbose,
 	})
 }
@@ -401,31 +409,31 @@ func (commandEnvironment) RebuildPlugins(options pluginrebuild.Options) {
 	managerplugin.RebuildRuntime(maintenanceRequest("", options.Global, options.Local, options.Verbose))
 }
 
-func (commandEnvironment) Publish(options publish.Options) {
+func (e commandEnvironment) Publish(options publish.Options) {
 	if automation.DryRun() {
 		automation.PrintPlan("publish plugin", map[string]any{"manifest": options.Manifest, "commit": options.Commit, "category": options.Category, "tags": options.Tags})
 		return
 	}
-	registry.Publish(registry.PublishRequest{
+	registry.PublishContext(e.context(), registry.PublishRequest{
 		Manifest: options.Manifest, Commit: options.Commit, Notes: options.Notes,
 		Category: options.Category, Tags: options.Tags,
 	})
 }
 
-func (commandEnvironment) Unpublish(options unpublish.Options) {
+func (e commandEnvironment) Unpublish(options unpublish.Options) {
 	if automation.DryRun() {
 		automation.PrintPlan("unpublish plugin", map[string]any{"target": options.Target})
 		return
 	}
-	registry.Unpublish(registry.UnpublishRequest{Target: options.Target, Yes: options.Yes})
+	registry.UnpublishContext(e.context(), registry.UnpublishRequest{Target: options.Target, Yes: options.Yes})
 }
 
-func (commandEnvironment) Deprecate(options deprecate.Options) {
+func (e commandEnvironment) Deprecate(options deprecate.Options) {
 	if automation.DryRun() {
 		automation.PrintPlan("change plugin deprecation", map[string]any{"target": options.Target, "message": options.Message, "undo": options.Undo})
 		return
 	}
-	registry.Deprecate(registry.DeprecateRequest{
+	registry.DeprecateContext(e.context(), registry.DeprecateRequest{
 		Target: options.Target, Message: options.Message, Undo: options.Undo,
 	})
 }
@@ -447,7 +455,7 @@ func (commandEnvironment) dirs() wagopaths.Dirs {
 }
 
 func (e commandEnvironment) toolchain() managerversion.Toolchain {
-	return managerversion.Toolchain{Dirs: e.dirs()}
+	return managerversion.Toolchain{Dirs: e.dirs(), Context: e.context()}
 }
 
 func (e commandEnvironment) List()    { e.toolchain().List() }
@@ -495,12 +503,12 @@ func (e commandEnvironment) UninstallAllVersions() {
 	e.toolchain().UninstallAll()
 }
 
-func (commandEnvironment) Update(force bool) {
+func (e commandEnvironment) Update(force bool) {
 	if automation.DryRun() {
 		automation.PrintPlan("update Wago", map[string]any{"component": "manager", "force": force})
 		return
 	}
-	managerself.Update(versionString(), managerself.ExecutablePath(), force)
+	managerself.UpdateContext(e.context(), versionString(), managerself.ExecutablePath(), force)
 }
 
 func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
@@ -513,7 +521,7 @@ func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 	}
 	activeRuntime := managerversion.ActiveVersion(e.dirs())
 	if options.Manager {
-		managerself.Update(versionString(), managerself.ExecutablePath(), options.Force)
+		managerself.UpdateContext(e.context(), versionString(), managerself.ExecutablePath(), options.Force)
 	}
 	if options.Runtime {
 		channel := options.Channel
@@ -544,7 +552,7 @@ func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 		if len(dependencies) == 0 {
 			fmt.Fprintln(os.Stdout, dim("no plugins enabled; skipping plugin update"))
 		} else {
-			managerplugin.Update(managerplugin.MutationRequest{Global: global, Local: local, Verbose: options.Verbose, Force: options.Force})
+			managerplugin.Update(managerplugin.MutationRequest{Context: e.context(), Global: global, Local: local, Verbose: options.Verbose, Force: options.Force})
 		}
 	}
 }

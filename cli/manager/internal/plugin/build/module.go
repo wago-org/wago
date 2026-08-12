@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/automation"
 
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/internal/atomicfile"
 )
 
 // buildModuleName is the generated module's path. It never leaves the machine.
@@ -304,8 +306,16 @@ func ensureBinary(dir string, deps []string, force, verbose bool, config Config)
 	// -buildvcs=false: the generated build module is a local throwaway; VCS
 	// stamping is meaningless and would otherwise fail when .wago sits inside an
 	// unrelated or partial git work tree.
-	staged := bin + ".tmp"
-	_ = os.Remove(staged)
+	temporary, err := atomicfile.CreateTemp(bin)
+	if err != nil {
+		return "", false, fmt.Errorf("prepare plugin build: %w", err)
+	}
+	staged := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(staged)
+		return "", false, fmt.Errorf("prepare plugin build: %w", err)
+	}
+	defer os.Remove(staged)
 	buildStep := []string{"build", "-buildvcs=false"}
 	if tag := config.BuildTag; tag != "" {
 		buildStep = append(buildStep, "-tags", tag)
@@ -323,14 +333,15 @@ func ensureBinary(dir string, deps []string, force, verbose bool, config Config)
 			return "", false, fmt.Errorf("go %s: %w", step[0], err)
 		}
 	}
-	if runtime.GOOS == "windows" {
-		_ = os.Remove(bin)
-	}
-	if err := os.Rename(staged, bin); err != nil {
-		_ = os.Remove(staged)
+	if err := atomicfile.CommitTempFile(staged, bin, atomicfile.Options{Mode: 0o755, Sync: true}); err != nil {
 		return "", false, fmt.Errorf("install plugin build: %w", err)
 	}
-	_ = os.WriteFile(hashFile, []byte(want), 0o644)
+	if err := atomicfile.ReplaceFile(hashFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+		_, err := io.WriteString(writer, want)
+		return err
+	}); err != nil {
+		return "", false, fmt.Errorf("publish plugin build hash: %w", err)
+	}
 	return bin, false, nil
 }
 

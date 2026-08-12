@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,46 +11,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wago-org/wago/cli/internal/automation"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
-func latestRelease() string {
-	release, err := latestStableRelease()
-	if err != nil {
-		fatal("version latest: %v", err)
-	}
-	return release
-}
-
-func latestStableRelease() (string, error) {
-	if err := automation.RequireOnline("release discovery"); err != nil {
-		return "", err
-	}
-	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases/latest")
+func latestStableReleaseContext(ctx context.Context) (string, error) {
+	response, err := getReleaseBytes(ctx, "release discovery", releaseAPI()+"/repos/wago-org/wago/releases/latest", releaseMetadataMaximum)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub returned %s", resp.Status)
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub returned %s", response.Status)
 	}
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil || release.TagName == "" {
+	if err := json.Unmarshal(response.Body, &release); err != nil || release.TagName == "" {
 		return "", errors.New("GitHub returned an invalid latest release")
 	}
 	return release.TagName, nil
 }
 
-func vmBrowse(d wagopaths.Dirs, profileValue, buildValue, use string) {
-	releases, err := fetchReleases()
+func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildValue, use string) {
+	releases, err := fetchReleasesContext(ctx)
 	if err != nil {
 		fatal("version browse: unable to fetch releases: %v", err)
 	}
-	commits, err := fetchMainCommits()
+	commits, err := fetchMainCommitsContext(ctx)
 	if err != nil {
 		fatal("version browse: unable to fetch main commits: %v", err)
 	}
@@ -58,56 +46,68 @@ func vmBrowse(d wagopaths.Dirs, profileValue, buildValue, use string) {
 		return
 	}
 	if choice == "latest" {
-		vmInstall(d, latestRelease(), profile, build, use)
+		release, err := latestStableReleaseContext(ctx)
+		if err != nil {
+			fatal("version latest: %v", err)
+		}
+		vmInstallContext(ctx, d, release, profile, build, use)
 		return
 	}
-	vmInstall(d, choice, profile, build, use)
+	vmInstallContext(ctx, d, choice, profile, build, use)
 }
 
 func fetchReleases() ([]remoteRelease, error) {
-	if err := automation.RequireOnline("release discovery"); err != nil {
-		return nil, err
-	}
+	return fetchReleasesContext(context.Background())
+}
+
+const discoveryPageLimit = 10
+
+func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 	var releases []remoteRelease
-	for page := 1; ; page++ {
-		url := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page)
-		resp, err := http.Get(url)
+	for page := 1; page <= discoveryPageLimit; page++ {
+		address := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page)
+		response, err := getReleaseBytes(ctx, "release discovery", address, releaseMetadataMaximum)
 		if err != nil {
 			return nil, err
 		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, fmt.Errorf("GitHub returned %s", resp.Status)
+		if response.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("GitHub returned %s", response.Status)
 		}
 		var batch []remoteRelease
-		decodeErr := json.NewDecoder(resp.Body).Decode(&batch)
-		resp.Body.Close()
-		if decodeErr != nil {
-			return nil, decodeErr
+		if err := json.Unmarshal(response.Body, &batch); err != nil {
+			return nil, err
+		}
+		if len(batch) > 100 {
+			return nil, fmt.Errorf("GitHub returned too many releases on page %d", page)
 		}
 		releases = append(releases, batch...)
 		if len(batch) < 100 {
 			return releases, nil
 		}
 	}
+	return nil, fmt.Errorf("GitHub release discovery exceeded %d pages", discoveryPageLimit)
 }
 
 // vmUpdate resolves the moving channel before touching the installed runtime.
 // Matching commits are left intact unless force is set; replacements use a
 // sibling temporary file so a failed update preserves the installed binary.
 var (
-	resolveUpdateRunnerVersion = resolveRunnerVersion
-	installUpdateRunnerPayload = installRunnerPayload
+	resolveUpdateRunnerVersionContext = resolveRunnerVersionContext
+	installUpdateRunnerPayloadContext = installRunnerPayloadContext
 )
 
 func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string, force bool) {
+	vmUpdateContext(context.Background(), d, ver, profile, build, use, force)
+}
+
+func vmUpdateContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string, force bool) {
 	dest := d.RuntimeBinary(ver, string(profile), string(build))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
 	}
 	progress := managerprogress.NewProgress(os.Stderr)
 	progress.Title("Updating " + installedWagoLabel(ver, ver, profile, build))
-	resolved, sourceOnly, err := resolveUpdateRunnerVersion(ver, progress)
+	resolved, sourceOnly, err := resolveUpdateRunnerVersionContext(ctx, ver, progress)
 	if err != nil {
 		fatal("version update: %v", err)
 	}
@@ -116,7 +116,7 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 		offerUseUpdated(d, ver, profile, build, use)
 		return
 	}
-	if err := installUpdateRunnerPayload(resolved, profile, build, dest, sourceOnly, progress); err != nil {
+	if err := installUpdateRunnerPayloadContext(ctx, resolved, profile, build, dest, sourceOnly, progress); err != nil {
 		fatal("version update: %v", err)
 	}
 	progress.Finish("Updated " + installedWagoLabel(ver, resolved, profile, build))
@@ -161,11 +161,15 @@ func commitFromVersion(version string) string {
 }
 
 func resolveRunnerVersion(ver string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
+	return resolveRunnerVersionContext(context.Background(), ver, progress)
+}
+
+func resolveRunnerVersionContext(ctx context.Context, ver string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
 	if ver == "canary" {
 		if progress != nil {
 			progress.Begin("resolving main commit")
 		}
-		sha, resolveErr := latestMainCommit()
+		sha, resolveErr := latestMainCommitContext(ctx)
 		if resolveErr != nil {
 			if progress != nil {
 				progress.Fail("could not resolve main commit")
@@ -184,7 +188,7 @@ func resolveRunnerVersion(ver string, progress *managerprogress.Progress) (resol
 	if progress != nil {
 		progress.Begin("resolving release")
 	}
-	resolved, err = latestChannelRelease(ver)
+	resolved, err = latestChannelReleaseContext(ctx, ver)
 	if err == nil {
 		if progress != nil {
 			progress.Done("resolved " + releasePickerLabel(resolved))
@@ -215,8 +219,12 @@ func canonicalReleaseRef(version string) string {
 }
 
 func installRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
+	return installRunnerPayloadContext(context.Background(), ref, profile, build, dest, sourceOnly, progress)
+}
+
+func installRunnerPayloadContext(ctx context.Context, ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
 	if !sourceOnly {
-		err := downloadBinaryWithProgress(releaseBase(), canaryCommitVersion(ref), profile, build, dest, progress)
+		err := downloadBinaryWithProgressContext(ctx, releaseBase(), canaryCommitVersion(ref), profile, build, dest, progress)
 		if err == nil {
 			return nil
 		}
@@ -224,31 +232,39 @@ func installRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths
 			return err
 		}
 	}
-	return buildRunnerSource(ref, profile, build, dest, progress)
+	return buildRunnerSource(ctx, ref, profile, build, dest, progress)
 }
 
 func installManagerUpdate(channel, dest string, progress *managerprogress.Progress) (string, error) {
-	resolved, sourceOnly, err := resolveManagerUpdate(channel, progress)
+	return installManagerUpdateContext(context.Background(), channel, dest, progress)
+}
+
+func installManagerUpdateContext(ctx context.Context, channel, dest string, progress *managerprogress.Progress) (string, error) {
+	resolved, sourceOnly, err := resolveManagerUpdateContext(ctx, channel, progress)
 	if err != nil {
 		return "", err
 	}
-	if err := installManagerPayload(resolved, dest, sourceOnly, progress); err != nil {
+	if err := installManagerPayloadContext(ctx, resolved, dest, sourceOnly, progress); err != nil {
 		return "", err
 	}
 	return resolved, nil
 }
 
 func resolveManagerUpdate(channel string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
+	return resolveManagerUpdateContext(context.Background(), channel, progress)
+}
+
+func resolveManagerUpdateContext(ctx context.Context, channel string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
 	if channel == "latest" {
 		if progress != nil {
 			progress.Begin("resolving latest release")
 		}
-		resolved, err = latestStableRelease()
+		resolved, err = latestStableReleaseContext(ctx)
 		if err == nil && progress != nil {
 			progress.Done("resolved " + releasePickerLabel(resolved))
 		}
 	} else {
-		resolved, sourceOnly, err = resolveRunnerVersion(channel, progress)
+		resolved, sourceOnly, err = resolveRunnerVersionContext(ctx, channel, progress)
 	}
 	if err != nil {
 		return "", false, err
@@ -257,8 +273,13 @@ func resolveManagerUpdate(channel string, progress *managerprogress.Progress) (r
 }
 
 func installManagerPayload(resolved, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
+	return installManagerPayloadContext(context.Background(), resolved, dest, sourceOnly, progress)
+}
+
+func installManagerPayloadContext(ctx context.Context, resolved, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
 	if !sourceOnly {
-		err := downloadReleaseAssetWithProgress(
+		err := downloadReleaseAssetWithProgressContext(
+			ctx,
 			releaseBase(),
 			canaryCommitVersion(resolved),
 			managerAsset(),
@@ -272,26 +293,26 @@ func installManagerPayload(resolved, dest string, sourceOnly bool, progress *man
 			return err
 		}
 	}
-	if err := buildManagerSource(resolved, dest, progress); err != nil {
+	if err := buildManagerSource(ctx, resolved, dest, progress); err != nil {
 		return err
 	}
 	return nil
 }
 
 func latestMainCommit() (string, error) {
-	if err := automation.RequireOnline("main commit discovery"); err != nil {
-		return "", err
-	}
-	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/commits/main")
+	return latestMainCommitContext(context.Background())
+}
+
+func latestMainCommitContext(ctx context.Context) (string, error) {
+	response, err := getReleaseBytes(ctx, "main commit discovery", releaseAPI()+"/repos/wago-org/wago/commits/main", releaseMetadataMaximum)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub returned %s", resp.Status)
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub returned %s", response.Status)
 	}
 	var commit remoteCommit
-	if err := json.NewDecoder(resp.Body).Decode(&commit); err != nil {
+	if err := json.Unmarshal(response.Body, &commit); err != nil {
 		return "", err
 	}
 	if !validCommitSHA(strings.ToLower(commit.SHA)) {
@@ -301,49 +322,51 @@ func latestMainCommit() (string, error) {
 }
 
 func fetchMainCommits() ([]remoteCommit, error) {
-	if err := automation.RequireOnline("main commit discovery"); err != nil {
-		return nil, err
-	}
+	return fetchMainCommitsContext(context.Background())
+}
+
+func fetchMainCommitsContext(ctx context.Context) ([]remoteCommit, error) {
 	var commits []remoteCommit
-	for page := 1; ; page++ {
-		url := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=100&page=%d", releaseAPI(), page)
-		resp, err := http.Get(url)
+	for page := 1; page <= discoveryPageLimit; page++ {
+		address := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=100&page=%d", releaseAPI(), page)
+		response, err := getReleaseBytes(ctx, "main commit discovery", address, releaseMetadataMaximum)
 		if err != nil {
 			return nil, err
 		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, fmt.Errorf("GitHub returned %s", resp.Status)
+		if response.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("GitHub returned %s", response.Status)
 		}
 		var batch []remoteCommit
-		decodeErr := json.NewDecoder(resp.Body).Decode(&batch)
-		resp.Body.Close()
-		if decodeErr != nil {
-			return nil, decodeErr
+		if err := json.Unmarshal(response.Body, &batch); err != nil {
+			return nil, err
+		}
+		if len(batch) > 100 {
+			return nil, fmt.Errorf("GitHub returned too many commits on page %d", page)
 		}
 		commits = append(commits, batch...)
 		if len(batch) < 100 {
 			return commits, nil
 		}
 	}
+	return nil, fmt.Errorf("GitHub commit discovery exceeded %d pages", discoveryPageLimit)
 }
 
 func latestChannelRelease(channel string) (string, error) {
-	if err := automation.RequireOnline("release channel discovery"); err != nil {
-		return "", err
-	}
-	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
+	return latestChannelReleaseContext(context.Background(), channel)
+}
+
+func latestChannelReleaseContext(ctx context.Context, channel string) (string, error) {
+	response, err := getReleaseBytes(ctx, "release channel discovery", releaseAPI()+"/repos/wago-org/wago/releases?per_page=100", releaseMetadataMaximum)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub returned %s", resp.Status)
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub returned %s", response.Status)
 	}
 	var releases []struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+	if err := json.Unmarshal(response.Body, &releases); err != nil {
 		return "", err
 	}
 	prefix := channel + "-"

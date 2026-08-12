@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 )
 
 func registryPublish(options PublishRequest) {
+	registryPublishContext(context.Background(), options)
+}
+
+func registryPublishContext(ctx context.Context, options PublishRequest) {
 	manifestPath := options.Manifest
 	var ver string
 	commit := options.Commit
@@ -80,7 +85,7 @@ func registryPublish(options PublishRequest) {
 		body["unpackedKB"] = kb
 	}
 
-	status, data, err := apiRequest(http.MethodPost, "/api/publish", token, body)
+	status, data, err := apiRequestContext(ctx, http.MethodPost, "/api/publish", token, body)
 	if err != nil {
 		fatal("publish: %v", err)
 	}
@@ -102,6 +107,10 @@ func registryPublish(options PublishRequest) {
 // registryUnpublish removes a whole package, or a single version when the
 // argument carries an @version suffix. It confirms first unless --yes is given.
 func registryUnpublish(options UnpublishRequest) {
+	registryUnpublishContext(context.Background(), options)
+}
+
+func registryUnpublishContext(ctx context.Context, options UnpublishRequest) {
 	yes := options.Yes
 	token := resolveToken()
 	if token == "" {
@@ -121,7 +130,7 @@ func registryUnpublish(options UnpublishRequest) {
 	if ver != "" {
 		path += "/versions/" + url.PathEscape(ver)
 	}
-	status, data, err := apiRequest(http.MethodDelete, path, token, nil)
+	status, data, err := apiRequestContext(ctx, http.MethodDelete, path, token, nil)
 	if err != nil {
 		fatal("unpublish: %v", err)
 	}
@@ -142,6 +151,10 @@ func registryUnpublish(options UnpublishRequest) {
 // registryDeprecate marks a package (or a specific @version) deprecated, or
 // reverses it with --undo. --message sets the deprecation notice.
 func registryDeprecate(options DeprecateRequest) {
+	registryDeprecateContext(context.Background(), options)
+}
+
+func registryDeprecateContext(ctx context.Context, options DeprecateRequest) {
 	undo := options.Undo
 	message := options.Message
 	token := resolveToken()
@@ -156,7 +169,7 @@ func registryDeprecate(options DeprecateRequest) {
 
 	body := map[string]any{"message": message, "version": ver, "undo": undo}
 	path := "/api/packages/" + url.PathEscape(name) + "/deprecate"
-	status, data, err := apiRequest(http.MethodPost, path, token, body)
+	status, data, err := apiRequestContext(ctx, http.MethodPost, path, token, body)
 	if err != nil {
 		fatal("deprecate: %v", err)
 	}

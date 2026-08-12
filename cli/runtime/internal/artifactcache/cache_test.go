@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -52,6 +53,29 @@ func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
 	matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".wago-*"))
 	if err != nil || len(matches) != 0 {
 		t.Fatalf("temporary artifacts remain: %v (err %v)", matches, err)
+	}
+}
+
+func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
+	source := constantModule()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	var reported error
+	cache.ReportError = func(err error) { reported = err }
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+
+	injected := errors.New("injected cache publication failure")
+	oldPublish := publishArtifact
+	publishArtifact = func(string, []byte) error { return injected }
+	t.Cleanup(func() { publishArtifact = oldPublish })
+
+	module, err := cache.LoadOrCompile(source, config, rt)
+	if err != nil || module == nil {
+		t.Fatalf("LoadOrCompile = %v, %v", module, err)
+	}
+	if !errors.Is(reported, injected) {
+		t.Fatalf("reported error = %v", reported)
 	}
 }
 

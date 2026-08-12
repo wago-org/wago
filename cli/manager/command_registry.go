@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"context"
+
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	authcmd "github.com/wago-org/wago/cli/manager/commands/auth"
@@ -26,7 +28,11 @@ import (
 )
 
 func buildCommandRegistry() *command.Cmd {
-	environment := commandEnvironment{}
+	return buildCommandRegistryContext(context.Background())
+}
+
+func buildCommandRegistryContext(ctx context.Context) *command.Cmd {
+	environment := commandEnvironment{ctx: ctx}
 	return &command.Cmd{
 		Name: "wago",
 		Children: []*command.Cmd{

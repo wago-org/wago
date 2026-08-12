@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -53,18 +54,18 @@ func TestVersionUpdateSkipsMatchingInstalledCommitUnlessForced(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("runtime"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	oldResolve, oldInstall, oldOutput := resolveUpdateRunnerVersion, installUpdateRunnerPayload, runtimeVersionOutput
+	oldResolve, oldInstall, oldOutput := resolveUpdateRunnerVersionContext, installUpdateRunnerPayloadContext, runtimeVersionOutput
 	t.Cleanup(func() {
-		resolveUpdateRunnerVersion, installUpdateRunnerPayload, runtimeVersionOutput = oldResolve, oldInstall, oldOutput
+		resolveUpdateRunnerVersionContext, installUpdateRunnerPayloadContext, runtimeVersionOutput = oldResolve, oldInstall, oldOutput
 	})
-	resolveUpdateRunnerVersion = func(string, *managerprogress.Progress) (string, bool, error) {
+	resolveUpdateRunnerVersionContext = func(context.Context, string, *managerprogress.Progress) (string, bool, error) {
 		return "canary@deadbee123456789012345678901234567890123", false, nil
 	}
 	runtimeVersionOutput = func(string) ([]byte, error) {
 		return []byte("Wago\n  release      canary-deadbee\n"), nil
 	}
 	installs := 0
-	installUpdateRunnerPayload = func(string, wagopaths.Profile, wagopaths.Build, string, bool, *managerprogress.Progress) error {
+	installUpdateRunnerPayloadContext = func(context.Context, string, wagopaths.Profile, wagopaths.Build, string, bool, *managerprogress.Progress) error {
 		installs++
 		return nil
 	}

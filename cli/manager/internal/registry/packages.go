@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,7 +12,11 @@ import (
 // closestModule returns the nearest package id in the registry when it is a
 // plausible typo. Suggestions are best-effort and never block installation.
 func closestModule(module string) string {
-	status, data, err := apiRequest(http.MethodGet, "/api/packages", "", nil)
+	return closestModuleContext(context.Background(), module)
+}
+
+func closestModuleContext(ctx context.Context, module string) string {
+	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/packages", "", nil)
 	if err != nil || status != http.StatusOK {
 		return ""
 	}
@@ -61,7 +66,11 @@ func editDistance(a, b string) int {
 }
 
 func resolveRegistryModule(name string) (string, error) {
-	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(name), "", nil)
+	return resolveRegistryModuleContext(context.Background(), name)
+}
+
+func resolveRegistryModuleContext(ctx context.Context, name string) (string, error) {
+	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/packages/"+url.PathEscape(name), "", nil)
 	if err != nil {
 		return "", err
 	}
