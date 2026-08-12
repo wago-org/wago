@@ -206,19 +206,40 @@ func TestSIMDShuffleExtSelectorRejectsNonContiguousArm64(t *testing.T) {
 }
 
 func TestSIMDShuffleExtSelectorSinksToPinnedLocalArm64(t *testing.T) {
-	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01}
-	body = append(body, simdOp(13)...)
-	for lane := byte(0); lane < 16; lane++ {
-		body = append(body, 13+lane)
-	}
-	body = append(body, 0x21, 0x00, 0x20, 0x00, 0x0b) // local.set 0; local.get 0; end
-	m := mod1(t, []wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}, body)
-	s := compileWithStats(t, m, false).Funcs[0]
-	if got := s.Peephole["simd-shuffle-ext"]; got != 1 {
-		t.Fatalf("simd-shuffle-ext = %d, want 1 (all: %v)", got, s.Peephole)
-	}
-	if got := s.Peephole["v128-shuffle-sink"]; got != 1 {
-		t.Fatalf("v128-shuffle-sink = %d, want 1 (all: %v)", got, s.Peephole)
+	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	b := i8x16Bytes(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31)
+	want := i8x16Bytes(13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28)
+	for _, tc := range []struct {
+		name   string
+		target byte
+	}{
+		{name: "destination-aliases-first-source", target: 0},
+		{name: "destination-aliases-second-source", target: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x01, 0x02, 0x7b} // two v128 locals
+			body = append(body, simdConst(a)...)
+			body = append(body, 0x21, 0x00) // local.set 0
+			body = append(body, simdConst(b)...)
+			body = append(body, 0x21, 0x01) // local.set 1
+			body = append(body, 0x20, 0x00, 0x20, 0x01)
+			body = append(body, simdOp(13)...)
+			for lane := byte(0); lane < 16; lane++ {
+				body = append(body, 13+lane)
+			}
+			body = append(body, 0x21, tc.target, 0x20, tc.target, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			s := compileWithStats(t, m, false).Funcs[0]
+			if got := s.Peephole["simd-shuffle-ext"]; got != 1 {
+				t.Fatalf("simd-shuffle-ext = %d, want 1 (all: %v)", got, s.Peephole)
+			}
+			if got := s.Peephole["v128-shuffle-sink"]; got != 1 {
+				t.Fatalf("v128-shuffle-sink = %d, want 1 (all: %v)", got, s.Peephole)
+			}
+			if got := runArm64V128(t, m); got != want {
+				t.Fatalf("sunk EXT = %v, want %v", got, want)
+			}
+		})
 	}
 }
 
