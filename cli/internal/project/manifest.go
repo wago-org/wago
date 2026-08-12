@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/mail"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -347,8 +345,7 @@ func validateManifestAuthors(pkg map[string]any) error {
 		}
 		if rawEmail, ok := author["email"]; ok {
 			email, ok := rawEmail.(string)
-			parsed, parseErr := mail.ParseAddress(email)
-			if !ok || parseErr != nil || parsed.Address != email {
+			if !ok || !validManifestEmail(email) {
 				return fmt.Errorf("%s.email must be an email address", path)
 			}
 		}
@@ -486,12 +483,58 @@ func stringSet(values ...string) map[string]struct{} {
 }
 
 func validManifestURI(value string, httpsOnly bool) bool {
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme == "" {
+	if value == "" || value != strings.TrimSpace(value) || strings.Contains(value, "\\") {
 		return false
 	}
-	if httpsOnly && (parsed.Scheme != "https" || parsed.Host == "") {
+	for _, char := range value {
+		if char <= ' ' || char == 0x7f {
+			return false
+		}
+	}
+	colon := strings.IndexByte(value, ':')
+	if colon <= 0 || !validManifestScheme(value[:colon]) {
 		return false
+	}
+	if !httpsOnly {
+		return true
+	}
+	if value[:colon] != "https" || !strings.HasPrefix(value[colon+1:], "//") {
+		return false
+	}
+	authority := value[colon+3:]
+	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+		authority = authority[:end]
+	}
+	if authority == "" || strings.Contains(authority, "@") {
+		return false
+	}
+	return true
+}
+
+func validManifestScheme(value string) bool {
+	for index, char := range value {
+		if index == 0 && (char < 'A' || char > 'Z') && (char < 'a' || char > 'z') {
+			return false
+		}
+		if (char < 'A' || char > 'Z') && (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '+' && char != '-' && char != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+func validManifestEmail(value string) bool {
+	if value == "" || value != strings.TrimSpace(value) || strings.Count(value, "@") != 1 {
+		return false
+	}
+	local, domain, _ := strings.Cut(value, "@")
+	if local == "" || domain == "" || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+		return false
+	}
+	for _, char := range value {
+		if char <= ' ' || char == 0x7f {
+			return false
+		}
 	}
 	return true
 }

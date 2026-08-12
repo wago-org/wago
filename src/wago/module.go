@@ -239,6 +239,9 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 }
 
 func (h *hookRegistry) needsModuleIdentity() bool {
+	if h == nil {
+		return false
+	}
 	return len(h.afterCompile) != 0 || len(h.onModuleClose) != 0 ||
 		len(h.beforeInstantiate) != 0 || len(h.afterCreate) != 0 ||
 		len(h.afterInstantiate) != 0 || len(h.onInstantiateError) != 0 ||

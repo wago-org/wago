@@ -127,7 +127,7 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 	}
 	if m.budget.MaxMemoryBytes != 0 && memoryBytes > m.budget.MaxMemoryBytes-m.memoryBytes {
 		m.mu.Unlock()
-		return nil, fmt.Errorf("wago: plugin %s aggregate managed memory reservation %d + %d exceeds budget %d: %w", m.owner, m.memoryBytes, memoryBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+		return nil, fmt.Errorf("wago: plugin %s module memory total %d; aggregate managed memory reservation %d + %d exceeds budget %d: %w", m.owner, memoryBytes, m.memoryBytes, memoryBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
 	}
 	m.live++
 	m.memoryBytes += memoryBytes
@@ -199,7 +199,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	}
 	if m.budget.MaxMemoryBytes != 0 && memoryBytes > m.budget.MaxMemoryBytes-m.memoryBytes {
 		m.mu.Unlock()
-		return nil, fmt.Errorf("wago: plugin %s aggregate managed memory reservation %d + %d exceeds budget %d: %w", m.owner, m.memoryBytes, memoryBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+		return nil, fmt.Errorf("wago: plugin %s module memory total %d; aggregate managed memory reservation %d + %d exceeds budget %d: %w", m.owner, memoryBytes, m.memoryBytes, memoryBytes, m.budget.MaxMemoryBytes, ErrPermissionDenied)
 	}
 	m.live++
 	m.memoryBytes += memoryBytes
