@@ -41,8 +41,11 @@ fixed-order configuration values:
 - accepted Core feature bits;
 - bounds-check and deferred-bounds policy;
 - maximum memory pages;
-- function-worker policy; and
 - the ordered compiler-optimization bit set.
+
+Function-worker policy is excluded because it changes transient scheduling, not
+the serialized artifact. Logging and progress settings are excluded for the
+same non-semantic reason.
 
 The binary key format has an explicit version and domain prefix. Changing the
 meaning or order of any encoded field requires incrementing `cacheKeyFormat`.

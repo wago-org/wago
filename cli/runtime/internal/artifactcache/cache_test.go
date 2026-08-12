@@ -112,8 +112,8 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	if basePath == optimizationPath {
 		t.Fatal("optimization selection did not change artifact key")
 	}
-	if basePath == workersPath {
-		t.Fatal("function-worker policy did not change artifact key")
+	if basePath != workersPath {
+		t.Fatal("scheduling-only function-worker policy changed artifact key")
 	}
 	if basePath == boundsPath {
 		t.Fatal("bounds-check mode did not change artifact key")
