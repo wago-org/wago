@@ -239,7 +239,8 @@ func (i *installer) resolveReleaseForTest(version string) (string, string, error
 	previous := i.version
 	i.version = version
 	defer func() { i.version = previous }()
-	return i.resolveRelease()
+	resolved, base, err := i.resolveRelease()
+	return resolved.Tag, base, err
 }
 
 func TestInstallerCanonicalRollingGitFetchUsesExactDetachedCommit(t *testing.T) {

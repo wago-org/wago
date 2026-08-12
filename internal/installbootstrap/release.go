@@ -21,6 +21,14 @@ type Release struct {
 	Draft           bool   `json:"draft"`
 }
 
+// ResolvedRelease preserves the immutable identity selected during discovery.
+// Tag is the exact release asset namespace; SourceRef is the exact Git/archive
+// reference and never degrades to a mutable channel after resolution.
+type ResolvedRelease struct {
+	Tag       string
+	SourceRef string
+}
+
 // Catalog is the release-discovery seam. GitHub HTTP and in-memory tests are
 // the two adapters; release selection itself remains local and deterministic.
 type Catalog interface {
@@ -32,51 +40,79 @@ type Catalog interface {
 // canary, nightly means the newest nightly, latest follows the latest release,
 // and explicit release tags pass through without a catalog request.
 func Resolve(version string, catalog Catalog) (string, error) {
+	resolved, err := ResolveRelease(version, catalog)
+	return resolved.Tag, err
+}
+
+// ResolveRelease selects the exact release and source identity named by
+// version. Once discovery knows a full commit SHA or stable tag, every fallback
+// uses that immutable reference rather than the original mutable channel.
+func ResolveRelease(version string, catalog Catalog) (ResolvedRelease, error) {
 	version = strings.TrimSpace(version)
 	switch {
 	case version == "latest":
 		item, err := catalog.Latest()
 		if err != nil {
-			return "", err
+			return ResolvedRelease{}, err
 		}
-		if item.TagName == "" {
-			return "", errors.New("release response did not contain a tag")
-		}
-		return item.TagName, nil
+		return resolvedRelease(item)
 	case IsReleaseTag(version):
-		return version, nil
+		return ResolvedRelease{Tag: version, SourceRef: version}, nil
 	}
 	if channel, sha, canonical := rollingCommit(version); canonical {
 		releases, err := catalog.Releases()
 		if err != nil {
-			return "", err
+			return ResolvedRelease{}, err
 		}
 		sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
 		for _, item := range releases {
 			if !item.Draft && strings.HasPrefix(item.TagName, channel+"-") && strings.EqualFold(item.TargetCommitish, sha) {
-				return item.TagName, nil
+				return ResolvedRelease{Tag: item.TagName, SourceRef: strings.ToLower(sha)}, nil
 			}
 		}
-		return "", fmt.Errorf("no %s installer release found for commit %s", channel, sha)
+		return ResolvedRelease{}, fmt.Errorf("no %s installer release found for commit %s", channel, sha)
 	}
 	channel := version
 	if version == "main" {
 		channel = "canary"
 	}
 	if channel != "canary" && channel != "nightly" {
-		return "", errors.New("custom source ref requires a source build")
+		return ResolvedRelease{}, errors.New("custom source ref requires a source build")
 	}
 	releases, err := catalog.Releases()
 	if err != nil {
-		return "", err
+		return ResolvedRelease{}, err
 	}
 	sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
 	for _, item := range releases {
 		if !item.Draft && strings.HasPrefix(item.TagName, channel+"-") {
-			return item.TagName, nil
+			return resolvedRelease(item)
 		}
 	}
-	return "", fmt.Errorf("no %s installer release found", channel)
+	return ResolvedRelease{}, fmt.Errorf("no %s installer release found", channel)
+}
+
+func resolvedRelease(item Release) (ResolvedRelease, error) {
+	if item.TagName == "" {
+		return ResolvedRelease{}, errors.New("release response did not contain a tag")
+	}
+	ref := strings.ToLower(strings.TrimSpace(item.TargetCommitish))
+	if !fullCommitSHA(ref) {
+		ref = item.TagName
+	}
+	return ResolvedRelease{Tag: item.TagName, SourceRef: ref}, nil
+}
+
+func fullCommitSHA(value string) bool {
+	if len(value) != 40 {
+		return false
+	}
+	for _, char := range value {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return false
+		}
+	}
+	return true
 }
 
 func IsReleaseTag(version string) bool {

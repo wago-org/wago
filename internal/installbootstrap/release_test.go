@@ -51,6 +51,18 @@ func TestResolveReleaseContract(t *testing.T) {
 	if IsReleaseTag("canary-deadbee@cccccccccccccccccccccccccccccccccccccccc") {
 		t.Fatal("release tag accepted an appended commit identity")
 	}
+	resolved, err := ResolveRelease("canary@"+canarySHA, catalog)
+	if err != nil || resolved.Tag != "canary-new" || resolved.SourceRef != canarySHA {
+		t.Fatalf("ResolveRelease canonical = %+v, %v", resolved, err)
+	}
+	resolved, err = ResolveRelease("main", catalog)
+	if err != nil || resolved.Tag != "canary-new" || resolved.SourceRef != canarySHA {
+		t.Fatalf("ResolveRelease channel = %+v, %v", resolved, err)
+	}
+	resolved, err = ResolveRelease("v9.0.0", catalog)
+	if err != nil || resolved.Tag != "v9.0.0" || resolved.SourceRef != "v9.0.0" {
+		t.Fatalf("ResolveRelease stable = %+v, %v", resolved, err)
+	}
 }
 
 func TestAssetAndChecksumContract(t *testing.T) {
