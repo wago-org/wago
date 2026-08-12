@@ -55,6 +55,8 @@ type funcHints struct {
 	hasLoop        bool
 	hasControlFlow bool
 	moduleEH       bool
+	hasFloatConst  bool // body contains f32.const or f64.const
+	hasSIMD        bool // body contains an 0xfd SIMD instruction
 
 	// immutableTables is derived after the one-pass per-function scans have been
 	// aggregated (computeModuleHints). Each admitted table is local, unexported,
@@ -310,6 +312,12 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
+				h.hasFloatConst = true
+			}
+			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
+				h.hasSIMD = true
+			}
 			switch in.Kind {
 			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
 				h.moduleEH = true
@@ -607,6 +615,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
+		}
+		if op == 0x43 || op == 0x44 {
+			s.h.hasFloatConst = true
+		} else if op == 0xfd {
+			s.h.hasSIMD = true
 		}
 		switch op {
 		case 0x08, 0x0a, 0x1f: // throw, throw_ref, try_table

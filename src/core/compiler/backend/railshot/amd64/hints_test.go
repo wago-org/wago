@@ -18,6 +18,39 @@ func TestFuncHintsSize(t *testing.T) {
 	}
 }
 
+func TestConstantPreloadHints(t *testing.T) {
+	body := []byte{0x43, 0, 0, 0x80, 0x3f, 0xfd, 12,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b}
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.hasFloatConst || !h.hasSIMD {
+		t.Fatalf("byte hints = float:%v SIMD:%v, want both", h.hasFloatConst, h.hasSIMD)
+	}
+	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{
+		{Kind: wasm.InstrF64Const}, {Kind: wasm.InstrV128Const},
+	}}, 0, 0, 0)
+	if !ast.hasFloatConst || !ast.hasSIMD {
+		t.Fatalf("AST hints = float:%v SIMD:%v, want both", ast.hasFloatConst, ast.hasSIMD)
+	}
+	plain, err := scanBodyBytes([]byte{0x41, 0, 0x1a, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.hasFloatConst || plain.hasSIMD {
+		t.Fatalf("integer hints = float:%v SIMD:%v, want neither", plain.hasFloatConst, plain.hasSIMD)
+	}
+}
+
+func TestConstantPreloadHintsKeepMalformedStrict(t *testing.T) {
+	for _, body := range [][]byte{{0x43}, {0xfd}, {0xfd, 12, 0}} {
+		if _, err := scanBodyBytes(body, 0, 0, 0); err == nil {
+			t.Fatalf("malformed body %x accepted", body)
+		}
+	}
+}
+
 func TestScanBodyHints(t *testing.T) {
 	callOnly := wasm.Expr{Instrs: []wasm.Instruction{
 		{Kind: wasm.InstrLocalGet},

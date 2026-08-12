@@ -479,6 +479,10 @@ type deferredMixedArg struct {
 // appended via alignPad[:pad] to avoid allocating a temporary per function.
 var alignPad [16]byte
 
+// preloadScanGatesEnabled skips constant-cache body walks when the existing
+// one-pass hints prove that the relevant instruction family is absent.
+var preloadScanGatesEnabled = true
+
 func align16(n int) int { return (n + 15) &^ 15 }
 
 func asmCapForBody(bodyLen int) int {
@@ -1989,7 +1993,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// state beyond RBX is required. Keep this deliberately leaf-only: a local
 		// callee could itself expect the module memory-size cache to be live.
 		sc.directPrepared = volatilePrepared
-		internalOff, err := f.emitRegABI(c, hostAdapter)
+		internalOff, err := f.emitRegABI(c, hostAdapter, hints.hasFloatConst, hints.hasSIMD)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -2006,8 +2010,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 
 	f.prologue()
-	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
+	if !preloadScanGatesEnabled || hints.hasFloatConst {
+		f.preloadFloatConsts(c.BodyBytes)
+	}
+	if !preloadScanGatesEnabled || hints.hasSIMD {
+		f.preloadV128Consts(c.BodyBytes)
+	}
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -2484,7 +2492,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // the internal entry takes args in GP/XMM registers and returns its single result
 // in RAX or XMM0.
 // Returns the internal entry's offset within the function's code.
-func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
+func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
 
@@ -2583,8 +2591,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 		}
 	}
 	f.zeroDeclaredLocals()
-	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
+	if !preloadScanGatesEnabled || hasFloatConst {
+		f.preloadFloatConsts(c.BodyBytes)
+	}
+	if !preloadScanGatesEnabled || hasSIMD {
+		f.preloadV128Consts(c.BodyBytes)
+	}
 	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err
