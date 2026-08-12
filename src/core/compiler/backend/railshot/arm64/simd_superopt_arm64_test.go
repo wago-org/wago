@@ -121,6 +121,51 @@ func TestSIMDBitmaskNonZeroSuperoptRejectsOtherConstantArm64(t *testing.T) {
 	}
 }
 
+func simdBitmaskPopcntBodyArm64(v [16]byte) []byte {
+	body := []byte{0x00}
+	body = append(body, simdConst(v)...)
+	body = append(body, simdOp(100)...)
+	return append(body, 0x69, 0x0b) // i32.popcnt; end
+}
+
+func TestSIMDBitmaskPopcntSuperoptArm64(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v    [16]byte
+		want uint32
+	}{
+		{"none", i8x16Bytes(0, 1, 2, 127), 0},
+		{"ends", i8x16Bytes(-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -128), 2},
+		{"all", i8x16Bytes(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1), 16},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := simdBitmaskPopcntBodyArm64(tc.v)
+			m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+			on := compileWithStats(t, m, false).Funcs[0]
+			if got := on.Peephole["simd-bitmask-popcnt"]; got != 1 {
+				t.Fatalf("simd-bitmask-popcnt = %d, want 1 (all: %v)", got, on.Peephole)
+			}
+			if got := runArm64I32(t, body); got != tc.want {
+				t.Fatalf("popcnt(bitmask) = %d, want %d", got, tc.want)
+			}
+
+			var off *CodegenStats
+			func() {
+				saved := simdSuperoptEnabled
+				defer func() { simdSuperoptEnabled = saved }()
+				simdSuperoptEnabled = false
+				off = compileWithStats(t, m, false).Funcs[0]
+				if got := runArm64I32(t, body); got != tc.want {
+					t.Fatalf("unfused popcnt(bitmask) = %d, want %d", got, tc.want)
+				}
+			}()
+			if on.CodeBytes >= off.CodeBytes {
+				t.Fatalf("fused code = %d bytes, unfused = %d; want smaller", on.CodeBytes, off.CodeBytes)
+			}
+		})
+	}
+}
+
 func simdExtShuffleBodyArm64(a, b [16]byte, offset byte) []byte {
 	body := []byte{0x00}
 	body = append(body, simdConst(a)...)

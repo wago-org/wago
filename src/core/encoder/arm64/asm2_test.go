@@ -247,6 +247,7 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"bsl v0.16b,v1.16b,v2.16b", func(a *Asm) { a.NeonBsl16b(X0, X1, X2) }, 0x6e621c20},
 		{"cnt v0.16b,v1.16b", func(a *Asm) { a.NeonCntB(X0, X1) }, 0x4e205820},
 		{"umaxv b0,v1.16b", func(a *Asm) { a.NeonUmaxvB(X0, X1) }, 0x6e30a820},
+		{"addv b0,v1.16b", func(a *Asm) { a.NeonAddvB(X0, X1) }, 0x4e31b820},
 		{"abs v0.2d,v1.2d", func(a *Asm) { a.NeonAbsD(X0, X1) }, 0x4ee0b820},
 		{"neg v0.2d,v1.2d", func(a *Asm) { a.NeonNegD(X0, X1) }, 0x6ee0b820},
 		{"cmhi v0.16b,v1.16b,v2.16b", func(a *Asm) { a.NeonCmhiB(X0, X1, X2) }, 0x6e223420},

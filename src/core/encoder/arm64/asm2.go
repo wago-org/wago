@@ -660,6 +660,7 @@ func (a *Asm) NeonMov16b(dst, src Reg) {
 func (a *Asm) Cnt8b(dst, src Reg)      { a.word(0x4E205800 | r(src)<<5 | r(dst)) }
 func (a *Asm) NeonCntB(dst, src Reg)   { a.Cnt8b(dst, src) }
 func (a *Asm) Addv8b(dst, src Reg)     { a.word(0x0E31B800 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonAddvB(dst, src Reg)  { a.word(0x4E31B800 | r(src)<<5 | r(dst)) }
 func (a *Asm) NeonUmaxvB(dst, src Reg) { a.word(0x6E30A800 | r(src)<<5 | r(dst)) }
 
 // Horizontal unsigned-min (UMINV) and full-width add (ADDV) reductions across a

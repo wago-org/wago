@@ -1894,6 +1894,37 @@ func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
 	return true
 }
 
+// tryI8x16BitmaskPopcnt selects `i8x16.bitmask; i32.popcnt`. The population
+// count is the number of byte lanes with their sign bit set, so shift those
+// bits to 0/1 and sum all sixteen lanes directly instead of materializing a
+// scalar bitmask only to feed it back through the scalar popcnt sequence.
+func (f *fn) tryI8x16BitmaskPopcnt(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled {
+		return false
+	}
+	save := r.Offset()
+	op, err := r.Byte()
+	if err != nil || op != 0x69 { // i32.popcnt
+		_ = r.JumpTo(save)
+		return false
+	}
+
+	v := f.popValue()
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	f.a.NeonUshrB(x, src, 7)
+	f.a.NeonAddvB(x, x)
+	result := f.allocReg(0)
+	f.a.NeonUmovB(result, x, 0)
+	f.releaseF(x)
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-bitmask-popcnt")
+	return true
+}
+
 // v128MaskReg materializes a 128-bit constant into a fresh V register without
 // clobbering the caller's live operand(s) named in avoid.
 func (f *fn) v128MaskReg(lo, hi uint64, avoid regMask) Reg {
@@ -2768,6 +2799,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 99: // i8x16.all_true
 		f.i8x16AllTrue()
 	case 100: // i8x16.bitmask
+		if f.tryI8x16BitmaskPopcnt(r) {
+			break
+		}
 		if f.tryI8x16BitmaskNonZero(r) {
 			break
 		}
