@@ -475,6 +475,15 @@ func (c *RuntimeConfig) optimizationValues() map[string]bool {
 	return values
 }
 
+func (c *RuntimeConfig) clone() *RuntimeConfig {
+	if c == nil {
+		return NewRuntimeConfig()
+	}
+	clone := *c
+	clone.optimizations = c.optimizationValues()
+	return &clone
+}
+
 // BoundsChecks reports the configured bounds-check mode.
 func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
 

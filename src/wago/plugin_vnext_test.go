@@ -848,7 +848,7 @@ func TestModuleCompiledEventCarriesOnlyTheFinalTransformedSourceDigest(t *testin
 	}
 }
 
-func TestModuleCloseObserverEmitsOnceWithoutClosingCompiled(t *testing.T) {
+func TestModuleCloseObserverEmitsOnceAndClosesRuntimeCompiled(t *testing.T) {
 	def := testDefinition("example.com/module/lifecycle")
 	def.Authorities = []AuthorityRequest{
 		{Name: AuthorityModuleCompileObserve, Mode: AuthorityRequired, Reason: "correlate the module"},
@@ -922,15 +922,8 @@ func TestModuleCloseObserverEmitsOnceWithoutClosingCompiled(t *testing.T) {
 	if _, err := rt.Instantiate(context.Background(), mod); err == nil || !strings.Contains(err.Error(), "module is closed") {
 		t.Fatalf("Runtime.Instantiate after Module.Close error=%v", err)
 	}
-	instance, err := Instantiate(compiled)
-	if err != nil {
-		t.Fatalf("Module.Close closed caller-owned Compiled: %v", err)
-	}
-	if err := instance.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := compiled.Close(); err != nil {
-		t.Fatal(err)
+	if _, err := Instantiate(compiled); err == nil || !strings.Contains(err.Error(), "compiled module is closed") {
+		t.Fatalf("Runtime.Compile Module.Close retained owned Compiled: %v", err)
 	}
 }
 

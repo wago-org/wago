@@ -17,12 +17,14 @@ type InstantiateOptions struct {
 	GC      GCConfig
 	store   *referenceStore
 
-	runtime        *Runtime
-	origin         InstantiateOrigin
-	pluginGC       *GCConfig
-	forceSyncHost  bool
-	afterCreate    func(*Instance) error
-	moduleIdentity ModuleIdentity
+	runtime              *Runtime
+	origin               InstantiateOrigin
+	pluginGC             *GCConfig
+	forceSyncHost        bool
+	afterCreate          func(*Instance) error
+	moduleIdentity       ModuleIdentity
+	independentInstances bool
+	hasExecutionPolicy   bool
 }
 
 // Instantiable is the set of sources Instantiate accepts. The interface is
@@ -98,10 +100,17 @@ type instanceBuilder struct {
 	tableAttachments    tableImportAttachments
 	globalAttachments   globalImportAttachments
 	tagAttachments      tagImportAttachments
+	moduleUse           *Module
 }
 
 // instantiateCore maps code and applies explicit instance options.
 func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+	return instantiateCoreWithModuleLease(c, opts, nil)
+}
+
+func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
+	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, moduleUse: moduleUse}
+	defer b.releaseModuleUse()
 	if c == nil {
 		return nil, errors.New("wago: instantiate: nil compiled module")
 	}
@@ -114,8 +123,15 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err
 	}
-	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports}
 	return b.instantiate()
+}
+
+func (b *instanceBuilder) releaseModuleUse() {
+	if b.moduleUse == nil {
+		return
+	}
+	b.moduleUse.endUse()
+	b.moduleUse = nil
 }
 
 func (b *instanceBuilder) validateCompiled() error {
@@ -125,8 +141,8 @@ func (b *instanceBuilder) validateCompiled() error {
 	return b.c.validateCached()
 }
 
-func (c *Compiled) allowsIndependentInstanceExecution(imports Imports) bool {
-	if !c.independentInstances {
+func (c *Compiled) allowsIndependentInstanceExecution(imports Imports, enabled bool) bool {
+	if !enabled {
 		return false
 	}
 	if c.memoryImportCount() != 0 || c.tableImportCount() != 0 || len(c.GlobalImports) != 0 {
@@ -536,6 +552,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		closeMem()
 		runtime.ReleaseEngine(eng)
 	}()
+	// The builder now owns a compiled-code reference. Release the Module lease
+	// before lifecycle and start callbacks; Module.Close may close the Compiled
+	// while this reference keeps its native mapping live.
+	b.releaseModuleUse()
 	var hostLog, ctrl []byte
 	var syncHosts []HostFunc
 	if syncMode {
@@ -1288,7 +1308,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		nativeContext:  nativeContextPtr,
 		moduleIdentity: opts.moduleIdentity,
 	}
-	if c.allowsIndependentInstanceExecution(imports) {
+	independentInstances := c.independentInstances
+	if opts.hasExecutionPolicy {
+		independentInstances = opts.independentInstances
+	}
+	if c.allowsIndependentInstanceExecution(imports, independentInstances) {
 		in.executionFlags.Store(executionFlagIndependent)
 	}
 	b.registeredInstance = in

@@ -80,19 +80,21 @@ func (in *Instance) closeOnce() error {
 	}
 	in.lifeMu.Unlock()
 
+	var hooks *hookRegistry
 	if in.rt != nil {
-		for i := len(in.rt.hooks.internalBeforeClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.internalBeforeClose[i]
+		hooks = in.rt.loadHooks()
+		for i := len(hooks.internalBeforeClose) - 1; i >= 0; i-- {
+			fn := hooks.internalBeforeClose[i]
 			appendStep("internal BeforeClose", func() { fn(in) })
 		}
 	}
 
 	var closeEvent *InstanceCloseEvent
-	if in.rt != nil && (len(in.rt.hooks.beforeClose) != 0 || len(in.rt.hooks.afterClose) != 0) {
+	if hooks != nil && (len(hooks.beforeClose) != 0 || len(hooks.afterClose) != 0) {
 		event := InstanceCloseEvent{Module: ModuleView{compiled: in.c, identity: in.moduleIdentity}, Instance: InstanceIdentity{value: in}, Origin: in.instantiateOrigin()}
 		closeEvent = &event
-		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.beforeClose[i]
+		for i := len(hooks.beforeClose) - 1; i >= 0; i-- {
+			fn := hooks.beforeClose[i]
 			appendStep("BeforeClose", func() { fn(*closeEvent) })
 		}
 	}
@@ -109,8 +111,8 @@ func (in *Instance) closeOnce() error {
 	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
 	appendStep("finalize instance resources", in.tryFinalize)
 	if closeEvent != nil {
-		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.afterClose[i]
+		for i := len(hooks.afterClose) - 1; i >= 0; i-- {
+			fn := hooks.afterClose[i]
 			appendStep("AfterClose", func() { fn(*closeEvent) })
 		}
 	}

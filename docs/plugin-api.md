@@ -197,12 +197,27 @@ comparable. A successful `Runtime.Compile` event carries an opaque
 `ModuleSourceDigest` of the final bytes after every transformer. A transformer
 can compare it with `DigestModuleSource` without compile observers receiving the
 source itself. The precompiled `Runtime.Module` path reports a zero digest
-because its original source is unavailable. `Module.Close` emits one close event
-with the final module identity, clears the wrapper identity, and rejects later
-runtime instantiation through that wrapper; it does not close or take ownership
-of `Module.Compiled()`. Plugins can therefore move metadata into module- and
-instance-identity maps and release it deterministically without retaining a
-`Runtime`, `Module`, `Compiled`, or `Instance` through an identity.
+because its original source is unavailable. Artifact integrations use
+`Runtime.PrepareCompile` to retain one admitted transform/observer/import/custom-
+instruction generation across lookup: transforms run exactly once, and warm
+adoption emits compile success under the same immutable generation. A prepared
+compilation must terminate through `Compile`, `Adopt`, or `Close` before runtime
+shutdown can tear down its plugin generation. `PreparedCompile.Source()` is a
+borrowed immutable view: after successful `Compile`, the returned `Module` owns
+source storage retained by decoded metadata, so callers must not mutate that
+backing array until the Module closes.
+
+`Module.Close` emits one close event with the final module identity, clears the
+wrapper identity, and rejects later runtime instantiation through that wrapper.
+Modules returned by `Runtime.Compile` or `Runtime.AdoptModule` own their
+`Compiled` artifact; `Runtime.Module` remains the explicit borrowing path.
+Existing instances retain their executable mapping until they close. A module-
+close observer may call `Module.Close` or `Runtime.Close` reentrantly; those calls
+publish closure without waiting on the active observer, and runtime teardown
+drains the admitted module-close generation before stopping providers. Plugins
+can therefore move metadata into module- and instance-identity maps and release
+it deterministically without retaining a `Runtime`, `Module`, `Compiled`, or
+`Instance` through an identity.
 The instantiate interceptor's `After` phase is fallible and runs after an exact
 instance identity exists but before the Wasm start function and success
 observers. Failure closes the partial instance through normal close observation
@@ -351,10 +366,19 @@ handle's logical close. If another instance retains an exported function, the
 manager's instance and declared-memory reservations remain charged until that
 last importer closes and physical resources are released.
 
-`Runtime.Close` and `Runtime.CloseContext` are synchronous drains. Do not call
-either from a host callback, Contract callback, lifecycle hook, or observer
-currently running on that same Runtime: shutdown waits for the current operation
-to return. Initiate close from the owning goroutine after the callback returns.
+`Runtime.Close` publishes the shutdown gate immediately. When no runtime
+operation is admitted it waits for teardown; from an admitted host callback,
+Contract callback, lifecycle hook, or observer it uses the nonwaiting path so the
+callback can return without self-deadlock. `Runtime.Closed` exposes completion,
+and `Runtime.WaitClosed(ctx)` returns the final joined teardown error. Callbacks
+must not wait on their own runtime's completion before returning.
+
+`Runtime.CloseContext` starts the same single teardown and waits selectably. Its
+context bounds the caller's wait and is passed to plugin `Stop`; teardown still
+publishes one final result for every later `WaitClosed` caller. Once the gate is
+published, new compile, module binding, direct/managed instantiation, and managed
+fork operations fail closed, while already admitted operations finish or unwind
+before their plugin generation is released.
 
 The package-level low-level `Compile`, `Instantiate`, and `Invoke` APIs are
 outside the Runtime plugin lifecycle. Native process crashes and forced

@@ -156,6 +156,29 @@ const (
 	InstantiateManaged
 )
 
+func (h *hookRegistry) clone() *hookRegistry {
+	if h == nil {
+		return &hookRegistry{}
+	}
+	return &hookRegistry{
+		onRuntimeClose:      append([]func(RuntimeCloseEvent){}, h.onRuntimeClose...),
+		internalClose:       append([]func() error{}, h.internalClose...),
+		internalBeforeClose: append([]func(*Instance){}, h.internalBeforeClose...),
+		beforeCompile:       append([]func(ModuleSourceContext, []byte) ([]byte, error){}, h.beforeCompile...),
+		afterCompile:        append([]func(ModuleCompiledEvent){}, h.afterCompile...),
+		onCompileError:      append([]func(ModuleCompileErrorEvent){}, h.onCompileError...),
+		onModuleClose:       append([]func(ModuleCloseEvent){}, h.onModuleClose...),
+		beforeInstantiate:   append([]func(InstantiationRequest) error{}, h.beforeInstantiate...),
+		afterCreate:         append([]func(InstantiationEvent) error{}, h.afterCreate...),
+		afterInstantiate:    append([]func(InstantiationEvent){}, h.afterInstantiate...),
+		onInstantiateError:  append([]func(InstantiationErrorEvent){}, h.onInstantiateError...),
+		beforeClose:         append([]func(InstanceCloseEvent){}, h.beforeClose...),
+		afterClose:          append([]func(InstanceCloseEvent){}, h.afterClose...),
+		beforeInvoke:        append([]func(InvocationRequest) error{}, h.beforeInvoke...),
+		afterInvoke:         append([]func(InvocationEvent){}, h.afterInvoke...),
+	}
+}
+
 func (h *hookRegistry) appendGated(src *hookRegistry, gate *pluginCallGate) {
 	if src == nil {
 		return

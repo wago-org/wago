@@ -274,6 +274,7 @@ const (
 	ErrMissingImport         = pluginErr("wago: missing import")
 	ErrInvalidHandle         = pluginErr("wago: invalid handle")
 	ErrPluginConflict        = pluginErr("wago: plugin conflict")
+	ErrForeignModule         = pluginErr("wago: module belongs to a different runtime")
 )
 
 // DefinitionDigest returns the lowercase SHA-256 of the canonical JSON form of

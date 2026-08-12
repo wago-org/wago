@@ -207,13 +207,17 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	rt := m.rt
 	m.mu.Unlock()
 	defer m.pending.Done()
+	rt.mu.Lock()
+	hooks := rt.loadHooks()
+	bindings := rt.snapshotModuleBindingsLocked(hooks)
+	rt.mu.Unlock()
 	state := parent.pluginState.Load()
 	var gc GCConfig
 	hasGC := state != nil && state.gcConfig != nil
 	if hasGC {
 		gc = *state.gcConfig
 	}
-	child, err := rt.instantiateWithHooksOrigin(rt.buildModule(parent.c), imports, gc, hasGC, false, InstantiateManaged)
+	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, gc, hasGC, false, InstantiateManaged, hooks)
 	if err != nil {
 		m.mu.Lock()
 		m.live--

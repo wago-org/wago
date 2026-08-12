@@ -276,7 +276,7 @@ func TestStartFailureNeverPublishesCommittedPlan(t *testing.T) {
 	}
 }
 
-func TestRuntimeCloseIsJoinableWithSameError(t *testing.T) {
+func TestRuntimeCloseCompletionPublishesSameError(t *testing.T) {
 	stopErr := errors.New("same close result")
 	entered, release := make(chan struct{}), make(chan struct{})
 	def := testDefinition("example.com/close/join")
@@ -296,17 +296,23 @@ func TestRuntimeCloseIsJoinableWithSameError(t *testing.T) {
 	first := make(chan error, 1)
 	go func() { first <- rt.Close() }()
 	<-entered
-	second := make(chan error, 1)
-	go func() { second <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatalf("concurrent Close = %v", err)
+	}
+	done := rt.Closed()
+	if done == nil {
+		t.Fatal("concurrent Close did not expose completion")
+	}
 	select {
-	case err := <-second:
-		t.Fatalf("joined Close returned early: %v", err)
-	case <-time.After(25 * time.Millisecond):
+	case <-done:
+		t.Fatal("shutdown completed before Stop returned")
+	default:
 	}
 	close(release)
-	err1, err2 := <-first, <-second
+	err1 := <-first
+	err2 := rt.WaitClosed(context.Background())
 	if !errors.Is(err1, stopErr) || !errors.Is(err2, stopErr) || err1.Error() != err2.Error() {
-		t.Fatalf("Close results = %v / %v", err1, err2)
+		t.Fatalf("Close/WaitClosed results = %v / %v", err1, err2)
 	}
 }
 
@@ -563,6 +569,87 @@ func TestRuntimeStopCanReleaseBlockedImportedStart(t *testing.T) {
 	}
 	if got := afterInstantiate.Load(); got != 0 {
 		t.Fatalf("AfterInstantiate ran %d time(s) after plugin Stop", got)
+	}
+}
+
+func TestRuntimeCloseDrainsManagedForkBeforeManagerTeardown(t *testing.T) {
+	def := testDefinition("example.com/close/managed-fork")
+	def.Authorities = []AuthorityRequest{
+		{Name: AuthorityHostImportDefine, Mode: AuthorityRequired, Reason: "fork caller", Scope: AuthorityScope{Modules: []string{"env"}}},
+		{Name: AuthorityInstanceManage, Mode: AuthorityRequired, Reason: "own fork", Scope: AuthorityScope{MaxInstances: 1, MaxMemoryBytes: 64 << 10}},
+		{Name: AuthorityInstanceInstantiateIntercept, Mode: AuthorityRequired, Reason: "hold admitted fork"},
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	forkResult := make(chan error, 1)
+	var manager *InstanceManager
+	provider := PluginProvider{Definition: def, New: func() Plugin {
+		return pluginFunc(func(reg *Registrar) error {
+			var err error
+			manager, err = reg.ManagedInstances()
+			if err != nil {
+				return err
+			}
+			hosts, err := reg.HostImports()
+			if err != nil {
+				return err
+			}
+			module, err := hosts.Module("env")
+			if err != nil {
+				return err
+			}
+			module.Func("f", func(caller HostModule, _, _ []uint64) {
+				child, err := manager.Fork(context.Background(), caller)
+				if child != nil {
+					err = errors.Join(err, child.Close())
+				}
+				forkResult <- err
+			})
+			interceptor, err := reg.InstanceInstantiateInterceptor()
+			if err != nil {
+				return err
+			}
+			return interceptor.Before(func(request InstantiationRequest) error {
+				if request.Origin == InstantiateManaged {
+					close(entered)
+					<-release
+				}
+				return nil
+			})
+		})
+	}}
+	rt := NewRuntime()
+	if err := rt.LoadPlugins(context.Background(), testSet(t, provider)); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(voidImportCallModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callDone := make(chan error, 1)
+	go func() { _, err := parent.Call(context.Background(), "call"); callDone <- err }()
+	<-entered
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-rt.Closed():
+		t.Fatal("runtime teardown completed while managed fork was admitted")
+	default:
+	}
+	close(release)
+	if err := <-forkResult; err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("managed fork racing close = %v, want closed failure", err)
+	}
+	<-callDone // interrupted or successful host-call unwind are both valid.
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := mod.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

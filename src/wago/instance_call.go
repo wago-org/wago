@@ -54,7 +54,12 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 	}
 
 	// Fast path: no runtime or no invoke hooks — invoke directly, zero overhead.
-	if in.rt == nil || (len(in.rt.hooks.beforeInvoke) == 0 && len(in.rt.hooks.afterInvoke) == 0) {
+	if in.rt == nil {
+		out, err := in.callInner(export, slots, results, cancel)
+		return out, contextInterruptError(ctx, err)
+	}
+	hooks := in.rt.loadHooks()
+	if len(hooks.beforeInvoke) == 0 && len(hooks.afterInvoke) == 0 {
 		out, err := in.callInner(export, slots, results, cancel)
 		return out, contextInterruptError(ctx, err)
 	}
@@ -62,7 +67,7 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 	request := InvocationRequest{Operation: OperationIdentity{value: &operationIdentityToken{}}, Instance: InstanceIdentity{value: in}, Export: export, Args: append([]Value(nil), args...), Start: time.Now()}
 	emitAfter := func(event InvocationEvent) error {
 		var hookErrs []error
-		for _, fn := range in.rt.hooks.afterInvoke {
+		for _, fn := range hooks.afterInvoke {
 			observer := fn
 			copyEvent := event
 			copyEvent.Results = append([]Value(nil), event.Results...)
@@ -72,7 +77,7 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		}
 		return errors.Join(hookErrs...)
 	}
-	for _, fn := range in.rt.hooks.beforeInvoke {
+	for _, fn := range hooks.beforeInvoke {
 		interceptor := fn
 		copyRequest := request
 		copyRequest.Args = append([]Value(nil), request.Args...)

@@ -319,20 +319,25 @@ func TestRuntimeCloseWaitsForPendingManagedInstantiation(t *testing.T) {
 		instantiateDone <- instantiateResult{managed: managed, err: err}
 	}()
 	<-startEntered
-	runtimeDone := make(chan error, 1)
-	go func() { runtimeDone <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Runtime.Close: %v", err)
+	}
+	done := rt.Closed()
+	if done == nil {
+		t.Fatal("Runtime.Close did not publish completion")
+	}
 	select {
-	case err := <-runtimeDone:
-		t.Fatalf("Runtime.Close returned before pending managed instantiation cleanup: %v", err)
-	case <-time.After(25 * time.Millisecond):
+	case <-done:
+		t.Fatal("runtime teardown completed before pending managed instantiation cleanup")
+	default:
 	}
 	close(releaseStart)
 	result := <-instantiateDone
 	if result.managed != nil || result.err == nil {
 		t.Fatalf("pending Instantiate = %v, %v; want nil, error", result.managed, result.err)
 	}
-	if err := <-runtimeDone; err != nil {
-		t.Fatalf("Runtime.Close: %v", err)
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
 	}
 	if resolved == nil || closed != resolved {
 		t.Fatalf("resolved/closed instances = %p/%p", resolved, closed)
