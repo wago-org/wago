@@ -119,6 +119,22 @@ type ModuleFacts struct {
 	UsesRefFunc    bool
 }
 
+// NewModuleFacts allocates the four indexed fact vectors in one backing store.
+// The vectors remain independently addressable while modules with both tables
+// and memories pay one transient backing allocation instead of four.
+func NewModuleFacts(tableCount, memoryCount int) *ModuleFacts {
+	storage := make([]bool, 2*(tableCount+memoryCount))
+	tableGrowEnd := tableCount
+	tableExportEnd := tableGrowEnd + tableCount
+	memoryGrowEnd := tableExportEnd + memoryCount
+	return &ModuleFacts{
+		TableGrowUsed:  storage[:tableGrowEnd:tableGrowEnd],
+		TableExported:  storage[tableGrowEnd:tableExportEnd:tableExportEnd],
+		MemoryGrowUsed: storage[tableExportEnd:memoryGrowEnd:memoryGrowEnd],
+		MemoryExported: storage[memoryGrowEnd:],
+	}
+}
+
 const (
 	minOnlyTableGrowCapacity          uint64 = 1024
 	minOnlyExternrefTableGrowCapacity uint64 = 1024
@@ -312,12 +328,7 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil module")
 	}
-	facts := &ModuleFacts{
-		TableGrowUsed:  make([]bool, m.TableCount()),
-		TableExported:  make([]bool, m.TableCount()),
-		MemoryGrowUsed: make([]bool, m.MemCount()),
-		MemoryExported: make([]bool, m.MemCount()),
-	}
+	facts := NewModuleFacts(m.TableCount(), m.MemCount())
 	for i := range m.Exports {
 		ex := m.Exports[i].Index
 		switch ex.Kind {
