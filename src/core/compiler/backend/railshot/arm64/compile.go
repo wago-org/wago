@@ -418,9 +418,10 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
-	stack   *stack   // the valent-block operand stack
-	asm     *a64.Asm // the AArch64 encoder byte buffer
-	fnState fn       // per-function compiler state, reused across the module
+	stack          *stack   // the valent-block operand stack
+	asm            *a64.Asm // the AArch64 encoder byte buffer
+	fnState        fn       // per-function compiler state, reused across the module
+	directPrepared bool
 
 	retSites      []int
 	ctrl          []ctrlFrame
@@ -452,6 +453,7 @@ func newScratch() *scratch {
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
+	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
@@ -472,12 +474,21 @@ type workerState struct {
 // identify its owned bytes after the worker pool joins; relocs is independently
 // owned by the fn compiler state (it is not backed by scratch).
 type funcResult struct {
-	worker      int
-	start       int
-	end         int
-	internalOff int
-	relocs      []callReloc
-	err         error
+	worker         int
+	start          int
+	end            int
+	internalOff    int
+	directPrepared bool
+	relocs         []callReloc
+	err            error
+}
+
+func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
+	if bits == nil {
+		bits = make([]uint64, (n+63)/64)
+	}
+	bits[bit>>6] |= uint64(1) << uint(bit&63)
+	return bits
 }
 
 // Frameless layout (WARP-style, SP-relative). X29/FP is only a frame-record anchor
@@ -783,6 +794,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}()
 		pressureDone := false
+		var directPrepared []uint64
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
 			// Align and reserve before lowering so the assembler can emit straight
@@ -813,6 +825,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 			}
 			internalEntry[i] = len(code) + internalOff
+			if sc.directPrepared {
+				directPrepared = markDirectPrepared(directPrepared, n, i)
+			}
 			relocs[i] = rl
 			if !codeBuffer.CommitTail(fnCode) {
 				if err := codeBuffer.Append(fnCode); err != nil {
@@ -832,7 +847,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		keepCodeBuffer = true
-		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry}, nil
+		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, hostAdapters, inlineTargets, calleePreservesPins, ms, guardMode, boundsFacts, importedFuncs)
@@ -880,7 +895,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, relocs: rl}
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -893,6 +908,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 
 	code := make([]byte, 0, codeCap)
+	var directPrepared []uint64
 	for i := range results {
 		r := &results[i]
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
@@ -900,6 +916,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		entry[i] = len(code)
 		internalEntry[i] = len(code) + r.internalOff
+		if r.directPrepared {
+			directPrepared = markDirectPrepared(directPrepared, n, i)
+		}
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
@@ -909,7 +928,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
 }
 
 func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc) error {
@@ -1376,6 +1395,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
+	// A private prepared entry establishes X26 and preserves the full Go
+	// callee-saved set, so small integer functions need not be leaves. Keep host
+	// imports, memory caches, module-pinned globals, and EH state on the adapter.
+	directPrepared := regABIEnabled && preparedDirectIntSig(ft) && !touchesMemory && len(modGlobals) == 0 && !hints.moduleEH &&
+		m.ImportedFuncCount() == 0 && m.MemCount() == 0 && len(c.BodyBytes) <= 96 && nLocals <= 8
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into
@@ -1503,6 +1527,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	var globalScores []uint32
 	var globalElig []bool
 	if regABI {
+		sc.directPrepared = directPrepared
 		globalScores = hints.globalScore
 		if hasCall {
 			globalElig = hints.globalElig
