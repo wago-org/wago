@@ -306,17 +306,14 @@ func TestReferenceGlobalCloseOrderingAliasesAndStoreRoots(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close: %v", err)
 	}
-	if value, ok := rt.ExternRefValue(ref); !ok || value != "rooted-by-global" {
-		t.Fatalf("root after Runtime.Close = %#v, %v", value, ok)
+	if value, ok := rt.ExternRefValue(ref); ok || value != nil {
+		t.Fatalf("closed runtime resolved root = %#v, %v", value, ok)
 	}
 	if err := in.Close(); err != nil {
 		t.Fatalf("Instance.Close: %v", err)
 	}
 	if got := shared.owner.importers; got != 0 {
 		t.Fatalf("importers after close = %d, want 0", got)
-	}
-	if value, ok := rt.ExternRefValue(ref); !ok || value != "rooted-by-global" {
-		t.Fatalf("root before final Global.Close = %#v, %v", value, ok)
 	}
 	if err := shared.Close(); err != nil {
 		t.Fatalf("final Global.Close: %v", err)

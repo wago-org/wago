@@ -163,32 +163,9 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	t.Setenv("WAGO_GLOBAL", "")
 	t.Setenv("WAGO_LOCAL", "")
 	t.Setenv("WAGO_BARE", "")
-	applyTestPluginScope(t, []string{"run", "--plugins", "wasi,metrics", "--global", "module.wasm"})
-	if !projectconfig.Truthy("WAGO_GLOBAL") {
-		t.Fatal("plural plugin flag hid --global")
-	}
-
-	t.Setenv("WAGO_GLOBAL", "")
-	t.Setenv("WAGO_LOCAL", "")
-	t.Setenv("WAGO_BARE", "")
 	applyTestPluginScope(t, []string{"run", "--local", "module.wasm"})
 	if !projectconfig.Truthy("WAGO_LOCAL") || projectconfig.Truthy("WAGO_GLOBAL") || projectconfig.Truthy("WAGO_BARE") {
 		t.Fatal("--local did not select project plugins")
-	}
-}
-
-func TestInstalledStandalonePluginIsNormalizedAndDeduplicated(t *testing.T) {
-	dependencies := []string{"github.com/wago-org/wasi"}
-	intents := []projectconfig.PluginIntent{{Name: "wago-org/wasi"}}
-	gotDependencies, gotIntents, err := addStandalonePlugins("", false, dependencies, intents, "github.com/wago-org/wasi,wago-org/wasi")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(gotDependencies) != 1 || gotDependencies[0] != "github.com/wago-org/wasi" {
-		t.Fatalf("standalone dependencies = %#v", gotDependencies)
-	}
-	if len(gotIntents) != 1 || gotIntents[0].Name != "wago-org/wasi" {
-		t.Fatalf("standalone plugin intents = %#v", gotIntents)
 	}
 }
 
@@ -203,7 +180,7 @@ func TestPluginCommandScopeOverrides(t *testing.T) {
 
 	t.Setenv("WAGO_GLOBAL", "")
 	t.Setenv("WAGO_LOCAL", "")
-	applyTestPluginScope(t, []string{"plugins", "inspect", "wago-org/wasi", "--local"})
+	applyTestPluginScope(t, []string{"plugins", "inspect", "github.com/wago-org/wasi", "--local"})
 	if !projectconfig.Truthy("WAGO_LOCAL") {
 		t.Fatal("plugins inspect --local did not select project plugins")
 	}

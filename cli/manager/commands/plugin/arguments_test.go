@@ -1,54 +1,53 @@
 package plugin
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestArgumentParsing(t *testing.T) {
-	name, version := SplitVersion("example/pkg@v1.2.3")
-	if name != "example/pkg" || version != "v1.2.3" {
-		t.Fatalf("SplitVersion = %q %q", name, version)
-	}
-	name, version = SplitVersion("a@b@v1")
-	if name != "a@b" || version != "v1" {
-		t.Fatalf("SplitVersion scoped = %q %q", name, version)
-	}
 	if got := strings.Join(SplitCommaList(" a, ,b ,, c "), ","); got != "a,b,c" {
 		t.Fatalf("SplitCommaList = %q", got)
 	}
 }
 
-func TestNormalizeModuleRef(t *testing.T) {
-	cases := map[string]string{
-		"wago-org/wasi":                  "github.com/wago-org/wasi",
-		"github.com/wago-org/wasi":       "github.com/wago-org/wasi",
-		"wago-org/wasi@1.2.3":            "github.com/wago-org/wasi@1.2.3",
-		"github.com/wago-org/wasi@1.2.3": "github.com/wago-org/wasi@1.2.3",
-		"gitlab.com/foo/bar":             "gitlab.com/foo/bar",
-		"wasi":                           "wasi",
-		"":                               "",
-		"  wago-org/wasi  ":              "github.com/wago-org/wasi",
-	}
-	for input, want := range cases {
-		if got := NormalizeModuleRef(input); got != want {
-			t.Errorf("NormalizeModuleRef(%q) = %q, want %q", input, got, want)
+func TestParseAuthorityScopeOverrides(t *testing.T) {
+	raw := `{
+		"github.com/acme/plugin": {
+			"host.import.define": {"modules": ["clock", "random"]},
+			"instance.manage": {"maxInstances": 2, "maxMemoryBytes": 65536}
 		}
+	}`
+	want := AuthorityScopeOverrides{
+		"github.com/acme/plugin": {
+			"host.import.define": {Modules: []string{"clock", "random"}},
+			"instance.manage":    {MaxInstances: 2, MaxMemoryBytes: 65536},
+		},
+	}
+	got, err := ParseAuthorityScopeOverrides(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("scope overrides = %#v, want %#v", got, want)
 	}
 }
 
-func TestModuleVersionAndPluralHelpers(t *testing.T) {
-	for _, test := range []struct{ spec, module, version string }{
-		{"example.test/plugin@v1.2.3", "example.test/plugin", "v1.2.3"},
-		{"example.test/plugin", "example.test/plugin", ""},
-		{"@scope/plugin", "@scope/plugin", ""},
-	} {
-		module, version := SplitModuleVersion(test.spec)
-		if module != test.module || version != test.version {
-			t.Fatalf("SplitModuleVersion(%q) = %q, %q", test.spec, module, version)
-		}
+func TestParseAuthorityScopeOverridesRejectsAmbiguousJSON(t *testing.T) {
+	tests := []string{
+		`{}`,
+		`{"github.com/acme/plugin":{}}`,
+		`{"short/plugin":{"host.import.define":{"modules":["env"]}}}`,
+		`{"github.com/acme/plugin":{"host.import.define":{"future":true}}}`,
+		`{"github.com/acme/plugin":{"host.import.define":{"modules":["env"]}}} {}`,
+		`{"github.com/acme/plugin":{"host.import.define":{"modules":["env"]}},"github.com/acme/plugin":{"instance.manage":{"maxInstances":1,"maxMemoryBytes":1}}}`,
+		`{"github.com/acme/plugin":{"host.import.define":{"modules":["env"]},"host.import.define":{"modules":["clock"]}}}`,
+		`{"github.com/acme/plugin":{"instance.manage":{"maxInstances":1,"maxInstances":2,"maxMemoryBytes":1}}}`,
 	}
-	if Plural(1) != "" || Plural(0) != "s" || Plural(2) != "s" {
-		t.Fatal("Plural helper changed")
+	for _, raw := range tests {
+		if _, err := ParseAuthorityScopeOverrides(raw); err == nil {
+			t.Errorf("ParseAuthorityScopeOverrides accepted %s", raw)
+		}
 	}
 }

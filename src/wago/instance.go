@@ -56,6 +56,7 @@ type Instance struct {
 	closed                 bool          // logical close; retained references may defer physical release
 	finalizing             bool          // one goroutine owns quiescent finalization
 	resourcesClosed        bool
+	physicalFinalizer      func()
 	ownsMem                bool                     // false when memory 0 is host-imported (don't close it)
 	memoryDir              *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode               bool                     // true when host imports use the synchronous re-entry protocol
@@ -67,6 +68,10 @@ type Instance struct {
 	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
 	// low-level package-level Instantiate, which stays hook-free.
 	rt *Runtime
+
+	// moduleIdentity is an opaque token, not a Compiled pointer. It lets an
+	// instance finish its own lifecycle after its Module wrapper has closed.
+	moduleIdentity ModuleIdentity
 }
 
 // instanceMemoryDirectory is allocated only after indexed memory execution is

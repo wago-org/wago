@@ -359,7 +359,7 @@ func TestCoreRuntimeAccessActivatesAndRevokesWithRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt := NewRuntime()
-	rt.hooks.appendFrom(reg.hooks)
+	commitLegacyHooks(rt, reg.hooks)
 	for _, activate := range reg.activate {
 		activate(rt)
 	}
@@ -382,15 +382,15 @@ func TestAfterCloseBracketsLogicalCloseBeforePhysicalRelease(t *testing.T) {
 	var before, after int
 	var observedLogical, observedPhysical bool
 	rt := NewRuntime()
-	rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(ctx *InstanceContext) {
+	rt.hooks.beforeClose = append(rt.hooks.beforeClose, func(event InstanceCloseEvent) {
 		before++
-		observedLogical = ctx.Instance.isLogicallyClosed()
+		observedLogical = event.Instance.value.isLogicallyClosed()
 	})
-	rt.hooks.afterClose = append(rt.hooks.afterClose, func(ctx *InstanceContext) {
+	rt.hooks.afterClose = append(rt.hooks.afterClose, func(event InstanceCloseEvent) {
 		after++
-		ctx.Instance.lifeMu.Lock()
-		observedPhysical = ctx.Instance.resourcesClosed
-		ctx.Instance.lifeMu.Unlock()
+		event.Instance.value.lifeMu.Lock()
+		observedPhysical = event.Instance.value.resourcesClosed
+		event.Instance.value.lifeMu.Unlock()
 	})
 	mod, err := rt.Compile(wasmtest.Module())
 	if err != nil {

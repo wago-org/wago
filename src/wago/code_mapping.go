@@ -35,6 +35,7 @@ type compiledCodeCache struct {
 	base                   uintptr
 	refs                   int
 	closed                 bool
+	sealed                 bool                         // guarded by mu; immutable flags remain race-free after publication
 	gcMetadataFlags        compiledGCMetadataFlags      // collector-free markers plus native-GC ABI version
 	gcTypeSubtypingProduct stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
 	gcStructProduct        stagedGCStructProduct        // exact products stay compile-only; codec v30 may restore generic helper admission
@@ -391,11 +392,11 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 		// The original Go-heap backing can now be reclaimed.
 		c.code = mem[:codeLen:codeLen]
 	}
-	if cc.flags&compiledCacheWritableCode != 0 {
+	if cc.flags&compiledCacheWritableCode != 0 && !cc.sealed {
 		if err := coreruntime.SealCode(cc.mem); err != nil {
 			return 0, err
 		}
-		cc.flags &^= compiledCacheWritableCode
+		cc.sealed = true
 	}
 	cc.refs++
 	return cc.base, nil

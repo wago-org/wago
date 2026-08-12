@@ -88,7 +88,7 @@ func TestSatisfies(t *testing.T) {
 }
 
 func TestParseConstraintInvalid(t *testing.T) {
-	for _, in := range []string{"1.2.3.4", ">=", "^1.2.3.4", ">=abc", "1.2.3 - - 2.0.0"} {
+	for _, in := range []string{"1.2.3.4", ">=", "^1.2.3.4", ">=abc", "1.2.3 - - 2.0.0", "1.2.3+", "1.2.3+!", "1.2.3+ok+bad"} {
 		if _, err := ParseConstraint(in); err == nil {
 			t.Errorf("ParseConstraint(%q) = nil error, want error", in)
 		}

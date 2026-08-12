@@ -485,9 +485,16 @@ func TestCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
 	if err := rt2.Use(crossRuntimeImportExt{}); err != nil {
 		t.Fatalf("register runtime 2 import: %v", err)
 	}
-	in, err := rt2.Instantiate(context.Background(), compiled)
+	if _, err := rt2.Instantiate(context.Background(), compiled); err == nil || !strings.Contains(err.Error(), "different runtime") {
+		t.Fatalf("cross-runtime module accepted: %v", err)
+	}
+	bound, err := rt2.Module(compiled.Compiled())
 	if err != nil {
-		t.Fatalf("cross-runtime instantiate with structurally identical import: %v", err)
+		t.Fatalf("bind compiled artifact to runtime 2: %v", err)
+	}
+	in, err := rt2.Instantiate(context.Background(), bound)
+	if err != nil {
+		t.Fatalf("runtime-2 module with structurally identical import: %v", err)
 	}
 	defer in.Close()
 	got, err := in.Invoke("f", I32(37))

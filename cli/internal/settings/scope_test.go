@@ -79,7 +79,7 @@ func TestLocalSettingsOverrideGlobalAndResetToGlobal(t *testing.T) {
 	if _, exists := manifest[localField]; exists {
 		t.Fatalf("reset left empty local settings: %#v", manifest)
 	}
-	if manifest["name"] != "test project" {
+	if manifest["package"].(map[string]any)["name"] != "Test project" {
 		t.Fatalf("reset changed unrelated manifest fields: %#v", manifest)
 	}
 }
@@ -156,7 +156,13 @@ func enterSettingsTestDir(t *testing.T) string {
 
 func writeTestManifest(t *testing.T, dir string) {
 	t.Helper()
-	data, err := json.Marshal(map[string]any{"$schema": project.SchemaURI, "name": "test project", "plugins": map[string]any{}})
+	data, err := json.Marshal(map[string]any{
+		"$schema": project.SchemaURI, "plugins": map[string]any{},
+		"package": map[string]any{
+			"module": "github.com/acme/test-project", "name": "Test project", "description": "Settings test project.",
+			"license": "MIT", "repository": "https://github.com/acme/test-project", "authors": []any{map[string]any{"name": "Test"}},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

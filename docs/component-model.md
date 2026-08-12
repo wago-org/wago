@@ -1,48 +1,55 @@
 # Component Model runtime
 
-The official [`wago-org/component-model`](https://github.com/wago-org/component-model)
+The official
+[`github.com/wago-org/component-model`](https://github.com/wago-org/component-model)
 plugin decodes and instantiates WebAssembly Components on Wago. It supports the
-Preview 2 binary model, canonical ABI lift/lower, typed values, resources, nested
-composition, and typed host imports. The plugin also contains experimental Preview 3
-task, future, and stream machinery without making those features ambient in core Wago.
+Preview 2 binary model, canonical ABI lift/lower, typed values, resources,
+nested composition, and typed host imports. It also contains experimental
+Preview 3 task, future, and stream machinery without putting those features in
+core Wago.
 
-Component execution is an opt-in plugin, not an ambient `Runtime` feature:
+Component execution is an opt-in plugin, not an ambient `Runtime` feature. A
+generated host explicitly links `component-model/register.Providers()` and
+activates the reviewed `github.com/wago-org/component-model` selection.
+Consumers call it through its typed Contract:
 
 ```go
-core := wago.NewRuntime()
-defer core.Close()
-
-components, err := component.Enable(core)
-if err != nil {
-	return err
-}
-instance, err := components.Instantiate(ctx, componentBytes, opts...)
+err := componentsRef.With(func(components component.Service) error {
+    return components.WithInstance(ctx, componentBytes, func(instance *component.Instance) error {
+        // Lift values, call exports, and lower results here. The service closes
+        // the component instance before this callback-scoped operation returns.
+        return nil
+    }, opts...)
+})
 ```
 
-`component.Enable` loads the registered `wago-org/component-model` extension with
-the `core.runtime` plugin capability. Manifest-driven hosts can select the same
-plugin by ID and must explicitly grant that capability. The compatibility
-`component.Instantiate(ctx, core, ...)` entry point resolves the installed plugin
-and fails if it has not been enabled.
+The plugin provides the
+`github.com/wago-org/component-model/runtime` Contract at major version 1.
+WASI and other component-world plugins consume that Contract, so the dependency
+graph links and orders them without giving each consumer core-engine authority.
+Contract calls are leased: shutdown rejects new operations and waits for an
+in-flight component operation before stopping the provider.
 
-The plugin provides `wago-org/component-model/runtime/v1` as a typed service.
-WASI and other component-world plugins require that service, so the plugin plan
-orders them without either consumer receiving core-engine authority.
+There is no global registration, `component.Enable`, or compatibility entry
+point that discovers an ambient plugin.
 
 ## Trust boundary
 
 The component runtime is a linker and execution engine. It does not grant WASI
 authority by itself. Filesystem, network, clock, random, and HTTP policy belongs
-in a host package such as [`wago-org/wasi`](https://github.com/wago-org/wasi).
-Hosts should expose capabilities explicitly and keep them denied by default.
+in a host package such as
+[`github.com/wago-org/wasi`](https://github.com/wago-org/wasi). Hosts should
+expose guest capabilities explicitly and keep them denied by default.
 
-`core.runtime` is deliberately privileged but narrow: it permits a trusted
-execution-model plugin to compile and instantiate embedded core modules and own
-typed host-function references, without exposing plugin registration, policy,
-inspection, or arbitrary runtime lifecycle control.
-Ordinary plugins should use narrower host-import, hook, or managed-instance
-capabilities. The runtime revokes the Component Model plugin's handle during
-shutdown, and later component instantiation fails closed.
+The plugin requests the separate `core.module.compile`,
+`core.instance.instantiate`, and `core.funcref.create` Plugin Authorities. They
+permit a trusted execution-model plugin to compile and instantiate embedded
+core modules and own typed host-function references without exposing plugin
+registration, policy, inspection, or arbitrary runtime lifecycle control.
+Instance ownership remains bounded by its reviewed scope. Ordinary plugins use
+narrower host-import, observation, interception, or managed-instance
+Authorities. Wago revokes the handles during shutdown, and later component work
+fails closed.
 
 Component decoding and canonical ABI operations reject malformed encodings,
 invalid type relationships, out-of-bounds memory access, invalid resource
@@ -66,4 +73,4 @@ whose host functions may be reached only indirectly through a table.
 The external plugin repository includes decoder, canonical ABI, resource,
 composition, async, oracle, and malformed-input tests. A real Rust
 `wasm32-wasip2` `wasi:cli/command` fixture is exercised by the
-[`wago-org/wasi`](https://github.com/wago-org/wasi) host module.
+[`github.com/wago-org/wasi`](https://github.com/wago-org/wasi) host plugin.

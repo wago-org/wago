@@ -63,6 +63,10 @@ func TestPolicyCapabilityAllowDeny(t *testing.T) {
 func TestPolicyMemoryLimit(t *testing.T) {
 	rt := NewRuntime()
 	mod := memoryModule(t, 2, 4) // min 2 pages, max 4 pages -> 256 KiB max
+	mod, err := rt.Module(mod.Compiled())
+	if err != nil {
+		t.Fatal(err)
+	}
 	// 128 KiB limit is below the module's 256 KiB max → denied.
 	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxMemoryBytes: 128 << 10})); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("instantiate over memory limit = %v, want ErrPermissionDenied", err)

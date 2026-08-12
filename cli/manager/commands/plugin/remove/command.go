@@ -7,8 +7,9 @@ import (
 )
 
 type Options struct {
-	Name          string
-	Global, Local bool
+	Name            string
+	Global, Local   bool
+	AcceptContracts bool
 }
 
 type Environment interface {
@@ -18,12 +19,16 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "remove", Aliases: []string{"rm"},
-		Summary: "remove and disable a plugin", Args: "<name>",
+		Summary: "remove and disable a direct plugin", Args: "<plugin-id>",
 		Automation: command.DryRun,
-		Flags:      []command.Flag{plugin.GlobalFlag(), plugin.LocalFlag()},
+		Flags: []command.Flag{
+			plugin.GlobalFlag(), plugin.LocalFlag(),
+			{Name: "accept-contracts", Bool: true, Help: "accept changed exact contract bindings without prompting"},
+		},
 		Run: func(c *command.Ctx) {
 			environment.Remove(Options{
-				Name: c.One("<name>"), Global: c.Bool("global"), Local: c.Bool("local"),
+				Name: c.One("<plugin-id>"), Global: c.Bool("global"), Local: c.Bool("local"),
+				AcceptContracts: c.Bool("accept-contracts"),
 			})
 		},
 	}

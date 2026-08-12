@@ -8,9 +8,45 @@ Wago provides a managed WebAssembly toolchain whose command, installed runtimes,
 A directory whose `wago.json` records plugin intent and other project-owned Wago configuration.
 _Avoid_: Local instance, project config
 
-**Plugin Intent**:
-The plugin constraints recorded in wago.json and the resolved versions, capabilities, and configuration recorded in wago-lock.json for a Wago Project or the shared user scope.
-_Avoid_: Plugin state, dependency list
+**Plugin Requirement**:
+A Plugin ID and compatible version range selected by a Wago Project or the shared user scope.
+_Avoid_: Plugin dependency, package entry
+
+**Plugin Resolution**:
+The exact published Plugin Provider, immutable Plugin Definition, reviewed Authority Grants, and configuration chosen for one Plugin Requirement.
+_Avoid_: Plugin state, lock entry
+
+**Plugin ID**:
+The canonical Go module or package path that names one plugin everywhere it is published, selected, built, and activated.
+_Avoid_: Short name, registry name
+
+**Plugin Definition**:
+An immutable description of a plugin's identity, compatibility, required plugins, requested Authorities, configuration contract, and provided or required Contracts.
+_Avoid_: Extension info, plugin metadata
+
+**Plugin Provider**:
+An explicitly linked factory paired with one Plugin Definition.
+_Avoid_: Extension factory, self-registration
+
+**Plugin Authority**:
+One exact privileged Wago integration power a plugin may request and a host may grant; names are non-inheriting and grant no unnamed future power.
+_Avoid_: Plugin capability, permission group
+
+**Authority Scope**:
+The named resources and core-enforced limits within one Plugin Authority; a grant can equal or narrow a request but cannot widen it.
+_Avoid_: Capability options, budget
+
+**Plugin Contribution**:
+A declarative addition to a runtime plan, such as a host import, lifecycle observation or interception, managed resource owner, compiler feature, or Contract binding.
+_Avoid_: Hook registration, extension behavior
+
+**Plugin Contract**:
+A typed, major-versioned interface through which plugins compose without depending on another plugin's implementation.
+_Avoid_: Service, shared value
+
+**Plugin Plan**:
+The complete deterministic graph of resolved Plugin Providers, Authority Grants, configuration, Contributions, and Contracts that either commits atomically or has no runtime effect.
+_Avoid_: Load order, plugin list
 
 **Runtime Installation**:
 One installed Wago engine identified by release, profile, and build.

@@ -18,8 +18,8 @@ func (commandEnvironment) ProfileFlags() []command.Flag {
 	return runtimeplugin.Flags()
 }
 
-func (commandEnvironment) LoadRuntime(config *wago.RuntimeConfig, plugins string) *wago.Runtime {
-	return runtimeplugin.LoadRuntime(config, plugins)
+func (commandEnvironment) LoadRuntime(config *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
+	return runtimeplugin.LoadRuntime(config, guestArgs)
 }
 
 func (commandEnvironment) ArtifactCache() artifactcache.Cache {

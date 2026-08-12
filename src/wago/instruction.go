@@ -7,9 +7,19 @@ import (
 	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
 
-// CompilerRegistry is the trusted compiler contribution surface exposed during
-// Extension.Register.
-type CompilerRegistry struct{ reg *Registry }
+// CompilerTypeRegistrar declares custom compiler value types under the exact
+// compiler.type.define authority.
+type CompilerTypeRegistrar struct {
+	reg        *Registrar
+	namespaces map[string]struct{}
+}
+
+// CompilerInstructionRegistrar declares and lowers custom Wasm instructions in
+// exact module namespaces granted to compiler.instruction.define.
+type CompilerInstructionRegistrar struct {
+	reg     *Registrar
+	modules map[string]struct{}
+}
 
 type InstructionSpec = coreplugins.InstructionSpec
 type InstructionHandler = coreplugins.InstructionHandler
@@ -49,9 +59,45 @@ type registeredInstruction struct {
 // Type registers a plugin-owned logical value type and returns its opaque
 // identity token. Repeating an identical declaration is idempotent; reusing a
 // name with a different size or carrier is rejected.
-func (r *CompilerRegistry) Type(spec CustomTypeSpec) (CustomType, error) {
+func (r *Registrar) CompilerTypes() (*CompilerTypeRegistrar, error) {
+	grant, err := r.authorize(AuthorityCompilerTypeDefine)
+	if err != nil {
+		return nil, err
+	}
+	namespaces := make(map[string]struct{}, len(grant.Scope.Modules))
+	for _, namespace := range grant.Scope.Modules {
+		namespaces[namespace] = struct{}{}
+	}
+	return &CompilerTypeRegistrar{reg: r, namespaces: namespaces}, nil
+}
+
+func (r *Registrar) CompilerInstructions() (*CompilerInstructionRegistrar, error) {
+	grant, err := r.authorize(AuthorityCompilerInstructionDefine)
+	if err != nil {
+		return nil, err
+	}
+	modules := make(map[string]struct{}, len(grant.Scope.Modules))
+	for _, module := range grant.Scope.Modules {
+		modules[module] = struct{}{}
+	}
+	return &CompilerInstructionRegistrar{reg: r, modules: modules}, nil
+}
+
+// Define registers a plugin-owned logical value type and returns its opaque
+// identity token.
+func (r *CompilerTypeRegistrar) Define(spec CustomTypeSpec) (CustomType, error) {
 	if r == nil || r.reg == nil {
 		return CustomType{}, fmt.Errorf("wago: nil compiler registry")
+	}
+	namespace := spec.Name
+	for i := 0; i < len(namespace); i++ {
+		if namespace[i] == '/' {
+			namespace = namespace[:i]
+			break
+		}
+	}
+	if _, ok := r.namespaces[namespace]; !ok {
+		return CustomType{}, &PluginError{Plugin: r.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityCompilerTypeDefine, Path: "scope.modules", Err: fmt.Errorf("type namespace %q is outside the grant: %w", namespace, ErrPermissionDenied)}
 	}
 	typ, err := coreplugins.PrepareCustomType(spec)
 	if err != nil {
@@ -70,7 +116,7 @@ func (r *CompilerRegistry) Type(spec CustomTypeSpec) (CustomType, error) {
 	return typ, nil
 }
 
-func (r *CompilerRegistry) validateCustomSignature(sig *CustomSignature) error {
+func (r *CompilerInstructionRegistrar) validateCustomSignature(sig *CustomSignature) error {
 	if sig == nil {
 		return nil
 	}
@@ -121,9 +167,12 @@ func resolveInstructionLowerings(m *wasm.Module, registered map[string]*register
 
 // Instruction registers a custom instruction under its ordinary Wasm import
 // module and name.
-func (r *CompilerRegistry) Instruction(spec InstructionSpec) error {
+func (r *CompilerInstructionRegistrar) Define(spec InstructionSpec) error {
 	if r == nil || r.reg == nil {
-		return fmt.Errorf("wago: nil compiler registry")
+		return fmt.Errorf("wago: nil compiler instruction registrar")
+	}
+	if _, ok := r.modules[spec.Module]; !ok {
+		return &PluginError{Plugin: r.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityCompilerInstructionDefine, Path: "scope.modules", Err: fmt.Errorf("module %q is outside the grant: %w", spec.Module, ErrPermissionDenied)}
 	}
 	if err := r.validateCustomSignature(spec.Custom); err != nil {
 		return err

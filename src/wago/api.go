@@ -4343,10 +4343,26 @@ func (in *Instance) replayHostLog() (err error) {
 	if len(in.hostLog) == 0 {
 		return nil
 	}
-	// A replayed host call may panic(HostExit{...}) to end
-	// execution — recover it as an *ExitError, exactly like the synchronous path.
+	// A replayed host call may panic HostExit or HostTrap to end execution;
+	// recover both exactly like the synchronous path.
 	defer func() {
 		if r := recover(); r != nil {
+			switch trap := r.(type) {
+			case HostTrap:
+				if trap.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = trap.Err
+				}
+				return
+			case *HostTrap:
+				if trap == nil || trap.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = trap.Err
+				}
+				return
+			}
 			if ex, ok := r.(HostExit); ok {
 				err = &ExitError{Code: ex.Code}
 				return

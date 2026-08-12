@@ -1,7 +1,13 @@
 package wago
 
+import (
+	"errors"
+	"sync"
+	"sync/atomic"
+)
+
 // Module is the runtime-aware wrapper over a *Compiled: it carries the compiled
-// code plus the extension-derived view of the module (its imports, the
+// code plus the plugin-derived view of the module (its imports, the
 // capabilities it requires, and lightweight metadata). rt.Compile returns one;
 // rt.Instantiate consumes one.
 type Module struct {
@@ -9,6 +15,11 @@ type Module struct {
 	c       *Compiled
 	imports []ImportSpec
 	reqCaps []Capability
+
+	identity  atomic.Pointer[moduleIdentityToken]
+	closed    atomic.Bool
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // ImportKind classifies what a module imports.
@@ -39,7 +50,7 @@ func (k ImportKind) String() string {
 
 // ImportSpec describes one import a module declares, enriched with its exact
 // structural type and, for function imports, capability/docs metadata from the
-// extension providing it. Index is the kind-specific Wasm index. Type/Mutable
+// plugin providing it. Index is the kind-specific Wasm index. Type/Mutable
 // describe globals; Type/Min/Max/HasMax describe tables. Duplicate table/global
 // declarations are preserved in declaration order. Provided reports whether the
 // runtime currently has a binding for the key.
@@ -156,12 +167,15 @@ type ModuleMetadata struct {
 }
 
 // buildModule wraps a freshly compiled module, resolving each import against the
-// runtime's registered extensions to attach signatures, capabilities, and
+// runtime's selected plugins to attach signatures, capabilities, and
 // provided-state.
 func (rt *Runtime) buildModule(c *Compiled) *Module {
 	m := &Module{rt: rt, c: c}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	if rt.hooks.needsModuleIdentity() {
+		m.identity.Store(&moduleIdentityToken{})
+	}
 
 	capSeen := map[Capability]bool{}
 	for i, key := range c.Imports { // function imports, in "module.name" form
@@ -224,13 +238,32 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 	return m
 }
 
+func (h *hookRegistry) needsModuleIdentity() bool {
+	if h == nil {
+		return false
+	}
+	return len(h.afterCompile) != 0 || len(h.onModuleClose) != 0 ||
+		len(h.beforeInstantiate) != 0 || len(h.afterCreate) != 0 ||
+		len(h.afterInstantiate) != 0 || len(h.onInstantiateError) != 0 ||
+		len(h.beforeClose) != 0 || len(h.afterClose) != 0
+}
+
+func (m *Module) moduleIdentity() ModuleIdentity {
+	if m == nil {
+		return ModuleIdentity{}
+	}
+	return ModuleIdentity{value: m.identity.Load()}
+}
+
+func (m *Module) isClosed() bool { return m == nil || m.closed.Load() }
+
 // Compiled returns the underlying low-level compiled module.
 func (m *Module) Compiled() *Compiled { return m.c }
 
 // Exports returns the module's exported function names, sorted.
 func (m *Module) Exports() []string { return m.c.ExportedFunctions() }
 
-// Imports returns the module's declared imports with extension-derived metadata.
+// Imports returns the module's declared imports with plugin-derived metadata.
 func (m *Module) Imports() []ImportSpec { return append([]ImportSpec(nil), m.imports...) }
 
 // RequiredCapabilities returns the capabilities the module's function imports
@@ -352,10 +385,37 @@ func exportsByIndex(exports map[string]int, count int) [][]string {
 	return out
 }
 
-// Close releases module-level resources. The underlying compiled code is
-// reference-counted and reclaimed once its instances close, so this is currently
-// a no-op reserved for future extension-owned module state.
-func (m *Module) Close() error { return nil }
+// Close ends this runtime-bound module's lifecycle and notifies module-close
+// observers exactly once. It prevents new Runtime.Instantiate calls through the
+// wrapper, but does not close or otherwise take ownership of the caller-visible
+// Compiled artifact. Existing instances keep their own execution references.
+func (m *Module) Close() error {
+	if m == nil {
+		return nil
+	}
+	m.closeOnce.Do(func() {
+		m.closed.Store(true)
+		if m.rt != nil {
+			m.rt.moduleCloseMu.RLock()
+			defer m.rt.moduleCloseMu.RUnlock()
+		}
+		if m.rt != nil && m.rt.allowsLifecycleCallbacks() && len(m.rt.hooks.onModuleClose) != 0 {
+			event := ModuleCloseEvent{Module: moduleView(m)}
+			var errs []error
+			for i := len(m.rt.hooks.onModuleClose) - 1; i >= 0; i-- {
+				observer := m.rt.hooks.onModuleClose[i]
+				if err := callHookSafely("ModuleCloseObserver", func() { observer(event) }); err != nil {
+					errs = append(errs, err)
+				}
+			}
+			m.closeErr = errors.Join(errs...)
+		}
+		// A retained ModuleIdentity must not retain Compiled or the Module wrapper.
+		// Clear the wrapper's copy only after observers receive the final identity.
+		m.identity.Store(nil)
+	})
+	return m.closeErr
+}
 
 // splitImportKey splits a "module.name" key at the first dot.
 func splitImportKey(key string) (module, name string) {

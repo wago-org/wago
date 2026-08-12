@@ -86,9 +86,14 @@ func TestRuntimeGCHostFuncRefRejectsUnownedAndForeignDomains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := plainRT.Instantiate(context.Background(), &Module{c: compiled}, WithImports(Imports{"host.echo": plain})); err == nil || !strings.Contains(err.Error(), "NewGCHostFuncRef") {
+	plainMod, err := plainRT.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plainRT.Instantiate(context.Background(), plainMod, WithImports(Imports{"host.echo": plain})); err == nil || !strings.Contains(err.Error(), "NewGCHostFuncRef") {
 		t.Fatalf("plain GC host import error = %v", err)
 	}
+	_ = plainMod.Close()
 	_ = plain.Close()
 	_ = plainRT.Close()
 

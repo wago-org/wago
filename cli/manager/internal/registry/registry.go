@@ -10,7 +10,12 @@ type LoginRequest struct {
 }
 
 type PublishRequest struct {
-	Manifest, Commit, Notes, Category, Tags string
+	Manifest, Notes string
+}
+
+type CatalogRequest struct {
+	Manifest string
+	Check    bool
 }
 
 type UnpublishRequest struct {
@@ -27,6 +32,7 @@ func Login(request LoginRequest)         { registryLogin(request) }
 func Logout()                            { registryLogout() }
 func Whoami()                            { registryWhoami() }
 func Publish(request PublishRequest)     { registryPublish(request) }
+func Catalog(request CatalogRequest)     { registryCatalogContext(context.Background(), request) }
 func Unpublish(request UnpublishRequest) { registryUnpublish(request) }
 func Deprecate(request DeprecateRequest) { registryDeprecate(request) }
 func ResolveModule(name string) (string, error) {
@@ -43,6 +49,9 @@ func LogoutContext(ctx context.Context)                      { registryLogoutCon
 func WhoamiContext(ctx context.Context)                      { registryWhoamiContext(ctx) }
 func PublishContext(ctx context.Context, request PublishRequest) {
 	registryPublishContext(ctx, request)
+}
+func CatalogContext(ctx context.Context, request CatalogRequest) {
+	registryCatalogContext(ctx, request)
 }
 func UnpublishContext(ctx context.Context, request UnpublishRequest) {
 	registryUnpublishContext(ctx, request)

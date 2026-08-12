@@ -59,22 +59,34 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		return out, contextInterruptError(ctx, err)
 	}
 
-	ictx := &InvokeContext{Runtime: in.rt, Instance: in, Export: export, Args: args, Start: time.Now(), Metadata: map[string]any{}}
+	request := InvocationRequest{Operation: OperationIdentity{value: &operationIdentityToken{}}, Instance: InstanceIdentity{value: in}, Export: export, Args: append([]Value(nil), args...), Start: time.Now()}
+	emitAfter := func(event InvocationEvent) error {
+		var hookErrs []error
+		for _, fn := range in.rt.hooks.afterInvoke {
+			observer := fn
+			copyEvent := event
+			copyEvent.Results = append([]Value(nil), event.Results...)
+			if panicErr := callHookSafely("InstanceInvokeObserver", func() { observer(copyEvent) }); panicErr != nil {
+				hookErrs = append(hookErrs, panicErr)
+			}
+		}
+		return errors.Join(hookErrs...)
+	}
 	for _, fn := range in.rt.hooks.beforeInvoke {
-		if err := fn(ictx); err != nil {
+		interceptor := fn
+		copyRequest := request
+		copyRequest.Args = append([]Value(nil), request.Args...)
+		var interceptErr error
+		panicErr := callHookSafely("InstanceInvokeInterceptor", func() { interceptErr = interceptor(copyRequest) })
+		if err := joinPrimary(interceptErr, panicErr); err != nil {
 			// A BeforeInvoke veto aborts the call; report it to AfterInvoke too so
 			// paired hooks can unwind.
-			for _, af := range in.rt.hooks.afterInvoke {
-				af(ictx, nil, err)
-			}
-			return nil, err
+			return nil, joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Err: err, Start: request.Start}))
 		}
 	}
 	out, err := in.callInner(export, slots, results, cancel)
 	err = contextInterruptError(ctx, err)
-	for _, fn := range in.rt.hooks.afterInvoke {
-		fn(ictx, out, err)
-	}
+	err = joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Results: out, Err: err, Start: request.Start}))
 	return out, err
 }
 

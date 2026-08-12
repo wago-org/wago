@@ -19,6 +19,8 @@ import (
 	configcompletions "github.com/wago-org/wago/cli/manager/commands/config/completions"
 	configoptions "github.com/wago-org/wago/cli/manager/commands/config/options"
 	pluginadd "github.com/wago-org/wago/cli/manager/commands/plugin/add"
+	plugincatalog "github.com/wago-org/wago/cli/manager/commands/plugin/catalog"
+	pluginconfig "github.com/wago-org/wago/cli/manager/commands/plugin/config"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/deprecate"
 	"github.com/wago-org/wago/cli/manager/commands/plugin/grant"
 	pluginoutdated "github.com/wago-org/wago/cli/manager/commands/plugin/outdated"
@@ -84,9 +86,6 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 		if options.Invoke != "" {
 			plan["invoke"] = options.Invoke
 		}
-		if options.Plugins != "" {
-			plan["plugins"] = options.Plugins
-		}
 		if len(selection.Optimizations) != 0 {
 			plan["optimizations"] = selection.Optimizations
 		}
@@ -100,7 +99,7 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	progress.Title("Compiling " + filepath.Base(options.Input))
 	progress.Begin("Building " + target.String())
 	result, err := managerstandalone.Build(managerstandalone.Request{
-		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Core: selection.Core, Plugins: options.Plugins, Verbose: options.Verbose,
+		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Core: selection.Core, Verbose: options.Verbose,
 		DeferredBoundsChecking: selection.DeferredBoundsChecking, FunctionWorkers: selection.FunctionWorkers, Optimizations: selection.Optimizations,
 	})
 	if err != nil {
@@ -349,46 +348,72 @@ func (e commandEnvironment) Whoami() { registry.WhoamiContext(e.context()) }
 func (e commandEnvironment) Add(options pluginadd.Options) {
 	requireUnlocked("add plugins")
 	if automation.DryRun() {
-		automation.PrintPlan("add plugins", map[string]any{"packages": options.Modules, "scope": scopeName(options.Global, options.Local), "force": options.Force})
+		automation.PrintPlan("add plugins", map[string]any{"packages": options.Modules, "scope": scopeName(options.Global, options.Local), "force": options.Force, "authorities": options.Authorities, "allowAll": options.GrantAll, "denyAll": options.DenyAll, "grantScopes": options.Scopes, "acceptContracts": options.AcceptContracts})
 		return
 	}
 	managerplugin.Add(managerplugin.AddRequest{
 		Context: e.context(), Modules: options.Modules, Global: options.Global, Local: options.Local,
 		Force: options.Force, Verbose: options.Verbose,
-		Capabilities: options.Capabilities, GrantAll: options.GrantAll, DenyAll: options.DenyAll,
+		Authorities: options.Authorities, GrantAll: options.GrantAll, DenyAll: options.DenyAll,
+		Scopes:          options.Scopes,
+		AcceptContracts: options.AcceptContracts,
 	})
 }
 
 func (commandEnvironment) Remove(options pluginremove.Options) {
 	requireUnlocked("remove a plugin")
 	if automation.DryRun() {
-		automation.PrintPlan("remove plugin", map[string]any{"package": options.Name, "scope": scopeName(options.Global, options.Local)})
+		automation.PrintPlan("remove plugin", map[string]any{
+			"package": options.Name, "scope": scopeName(options.Global, options.Local),
+			"acceptContracts": options.AcceptContracts,
+		})
 		return
 	}
-	managerplugin.Remove(managerplugin.MutationRequest{Name: options.Name, Global: options.Global, Local: options.Local})
+	managerplugin.Remove(managerplugin.MutationRequest{
+		Name: options.Name, Global: options.Global, Local: options.Local,
+		AcceptContracts: options.AcceptContracts,
+	})
 }
 
 func (commandEnvironment) Grant(options grant.Options) {
 	requireUnlocked("change plugin grants")
 	if automation.DryRun() {
-		automation.PrintPlan("change plugin grants", map[string]any{"package": options.Name, "scope": scopeName(options.Global, options.Local), "capabilities": options.Capabilities, "all": options.All, "denyAll": options.DenyAll})
+		automation.PrintPlan("change plugin grants", map[string]any{"plugin": options.Name, "scope": scopeName(options.Global, options.Local), "authorities": options.Authorities, "all": options.All, "denyAll": options.DenyAll, "grantScopes": options.Scopes})
 		return
 	}
 	managerplugin.Grant(managerplugin.MutationRequest{
 		Name: options.Name, Global: options.Global, Local: options.Local,
-		Capabilities: options.Capabilities, GrantAll: options.All, DenyAll: options.DenyAll,
+		Authorities: options.Authorities, GrantAll: options.All, DenyAll: options.DenyAll,
+		Scopes: options.Scopes,
 	})
+}
+
+func (e commandEnvironment) ConfigurePlugin(options pluginconfig.Options) {
+	requireUnlocked("configure a plugin")
+	if automation.DryRun() {
+		automation.PrintPlan("configure plugin", map[string]any{"plugin": options.ID, "scope": scopeName(options.Global, options.Local), "config": string(options.JSON)})
+		return
+	}
+	if err := managerplugin.Configure(managerplugin.ConfigRequest{
+		Context: e.context(), ID: options.ID, Config: options.JSON, Global: options.Global, Local: options.Local,
+	}); err != nil {
+		fatal("plugin config: %v", err)
+	}
+	fmt.Printf("%s configured %s\n", ui.Cyan("✓"), options.ID)
 }
 
 func (e commandEnvironment) UpdatePlugins(options pluginupdate.Options) {
 	requireUnlocked("update plugins")
 	if automation.DryRun() {
-		automation.PrintPlan("update plugins", map[string]any{"package": options.Module, "scope": scopeName(options.Global, options.Local), "force": options.Force})
+		automation.PrintPlan("update plugins", map[string]any{"package": options.Module, "scope": scopeName(options.Global, options.Local), "force": options.Force, "authorities": options.Authorities, "allowAll": options.GrantAll, "denyAll": options.DenyAll, "grantScopes": options.Scopes, "acceptContracts": options.AcceptContracts})
 		return
 	}
 	managerplugin.Update(managerplugin.MutationRequest{
 		Context: e.context(), Name: options.Module, Global: options.Global, Local: options.Local,
 		Force: options.Force, Verbose: options.Verbose,
+		Authorities: options.Authorities, GrantAll: options.GrantAll, DenyAll: options.DenyAll,
+		Scopes:          options.Scopes,
+		AcceptContracts: options.AcceptContracts,
 	})
 }
 
@@ -411,13 +436,20 @@ func (commandEnvironment) RebuildPlugins(options pluginrebuild.Options) {
 
 func (e commandEnvironment) Publish(options publish.Options) {
 	if automation.DryRun() {
-		automation.PrintPlan("publish plugin", map[string]any{"manifest": options.Manifest, "commit": options.Commit, "category": options.Category, "tags": options.Tags})
+		automation.PrintPlan("publish plugin", map[string]any{"manifest": options.Manifest})
 		return
 	}
 	registry.PublishContext(e.context(), registry.PublishRequest{
-		Manifest: options.Manifest, Commit: options.Commit, Notes: options.Notes,
-		Category: options.Category, Tags: options.Tags,
+		Manifest: options.Manifest, Notes: options.Notes,
 	})
+}
+
+func (e commandEnvironment) Catalog(options plugincatalog.Options) {
+	if automation.DryRun() {
+		automation.PrintPlan("generate plugin provider catalog", map[string]any{"manifest": options.Manifest, "check": options.Check})
+		return
+	}
+	registry.CatalogContext(e.context(), registry.CatalogRequest{Manifest: options.Manifest, Check: options.Check})
 }
 
 func (e commandEnvironment) Unpublish(options unpublish.Options) {

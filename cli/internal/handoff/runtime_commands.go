@@ -39,8 +39,6 @@ func RuntimeCommands() []*command.Cmd {
 
 func runtimeProfileFlags() []command.Flag {
 	return []command.Flag{
-		{Name: "plugin", Arg: "<names>", Help: "comma-separated extra plugins to enable, on top of wago.json"},
-		{Name: "plugins", Arg: "<names>", Help: "alias for --plugin"},
 		{Name: "local", Bool: true, Help: "use this project's plugins"},
 		{Name: "global", Short: "g", Bool: true, Help: "use shared user-wide plugins"},
 		{Name: "bare", Bool: true, Help: "run without plugins"},
