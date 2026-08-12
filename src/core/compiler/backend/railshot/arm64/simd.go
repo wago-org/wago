@@ -100,11 +100,29 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	return x
 }
 
-// buildV128Const materializes the 128-bit constant (lo,hi) into V register x via a
-// GP scratch: FMOV Dn,Xt sets the low 64 (and zeroes the high half), then an INS
-// writes the high 64 when non-zero.
+// buildV128Const materializes the 128-bit constant (lo,hi) into V register x.
+// Lane splats use one scalar materialization plus DUP, avoiding the two full
+// 64-bit materializations needed by the generic FMOV+INS path. SIMD kernels use
+// byte/half/word splats heavily for masks and lookup tables, and AArch64's DUP
+// preserves the exact bits without relying on a floating-point immediate form.
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
 	t := f.allocReg(0)
+	if v, laneBytes := v128Splat(lo, hi); laneBytes != 0 {
+		f.a.MovImm64(t, v)
+		switch laneBytes {
+		case 1:
+			f.a.NeonDupGprB(x, t)
+		case 2:
+			f.a.NeonDupGprH(x, t)
+		case 4:
+			f.a.NeonDupGprS(x, t)
+		case 8:
+			f.a.NeonDupGprD(x, t)
+		}
+		f.release(t)
+		f.stats.peep("v128-const-splat")
+		return
+	}
 	f.a.MovImm64(t, lo)
 	f.a.FmovFromGpr(x, t, true) // FMOV Dn,Xt zeroes the high 64 bits.
 	if hi != 0 {
@@ -112,6 +130,29 @@ func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
 		f.a.NeonInsD(x, t, 1)
 	}
 	f.release(t)
+}
+
+// v128Splat returns the scalar lane value and smallest lane width whose
+// replication produces (lo,hi). Smallest-first is intentional: a byte splat
+// uses the cheapest scalar immediate even though it is also a half/word/dword
+// splat.
+func v128Splat(lo, hi uint64) (value uint64, laneBytes int) {
+	b := lo & 0xff
+	if lo == b*0x0101010101010101 && hi == lo {
+		return b, 1
+	}
+	h := lo & 0xffff
+	if lo == h*0x0001000100010001 && hi == lo {
+		return h, 2
+	}
+	w := lo & 0xffffffff
+	if lo == w|w<<32 && hi == lo {
+		return w, 4
+	}
+	if hi == lo {
+		return lo, 8
+	}
+	return 0, 0
 }
 
 // v128ConstReg holds a v128.const value cached in a reserved V register.
