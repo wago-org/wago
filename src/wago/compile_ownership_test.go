@@ -5,7 +5,76 @@ import (
 	"strings"
 	"testing"
 	"unsafe"
+
+	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+var compilerCompiledAllocationSink *Compiled
+
+func TestCompilerCompiledStateUsesOneFixedOwnerAllocation(t *testing.T) {
+	allocs := testing.AllocsPerRun(100, func() {
+		c := &Compiled{}
+		initCompilerCompiledState(c)
+		compilerCompiledAllocationSink = c
+	})
+	if allocs > 2 {
+		t.Fatalf("compiler Compiled state allocations = %.0f, want Compiled plus one fixed-state owner", allocs)
+	}
+
+	c := &Compiled{}
+	initCompilerCompiledState(c)
+	base := uintptr(unsafe.Pointer(c.codeCache))
+	state := compilerCompiledState{}
+	if got, want := uintptr(unsafe.Pointer(c.validateMemo)), base+unsafe.Offsetof(state.validateMemo); got != want {
+		t.Fatalf("validation memo address = %#x, want coallocated address %#x", got, want)
+	}
+	if got, want := uintptr(unsafe.Pointer(c.memoryDir)), base+unsafe.Offsetof(state.memoryDir); got != want {
+		t.Fatalf("memory directory address = %#x, want coallocated address %#x", got, want)
+	}
+}
+
+func TestPublicCompileFixedMetadataPreservesCodeIdentity(t *testing.T) {
+	cfg := NewRuntimeConfig().WithFunctionWorkers(1)
+	first, err := Compile(cfg, benchAddOneModule())
+	if err != nil {
+		t.Fatalf("first Compile: %v", err)
+	}
+	defer first.Close()
+	second, err := Compile(cfg, benchAddOneModule())
+	if err != nil {
+		t.Fatalf("second Compile: %v", err)
+	}
+	defer second.Close()
+
+	if !bytes.Equal(first.code, second.code) || !bytes.Equal(intSliceBytes(first.Entry), intSliceBytes(second.Entry)) || !bytes.Equal(intSliceBytes(first.InternalEntry), intSliceBytes(second.InternalEntry)) {
+		t.Fatal("fixed-state allocation changed repeated public Compile code or entry tables")
+	}
+	if len(first.Entry) == 0 || len(first.Entry) != len(first.InternalEntry) || cap(first.Entry) != len(first.Entry) || cap(first.InternalEntry) != len(first.InternalEntry) {
+		t.Fatalf("entry table shapes = %d/%d and %d/%d", len(first.Entry), cap(first.Entry), len(first.InternalEntry), cap(first.InternalEntry))
+	}
+	if got, want := uintptr(unsafe.Pointer(&first.InternalEntry[0])), uintptr(unsafe.Pointer(&first.Entry[0]))+uintptr(len(first.Entry))*unsafe.Sizeof(first.Entry[0]); got != want {
+		t.Fatalf("internal entry table starts at %#x, want adjacent address %#x", got, want)
+	}
+	if first.Exports == nil || first.GlobalExports == nil {
+		t.Fatal("public export maps changed from writable empty/non-empty maps")
+	}
+	if first.memoryDir == nil || !first.memoryDir.exactExports || first.memoryDir.exports != nil {
+		t.Fatalf("private memory export directory = %+v, want exact lazy empty metadata", first.memoryDir)
+	}
+
+	memoryExportModule := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
+	)
+	withMemoryExport, err := Compile(cfg, memoryExportModule)
+	if err != nil {
+		t.Fatalf("memory-export Compile: %v", err)
+	}
+	defer withMemoryExport.Close()
+	if withMemoryExport.memoryDir == nil || !withMemoryExport.memoryDir.exactExports || len(withMemoryExport.memoryDir.exports) != 1 || withMemoryExport.memoryDir.exports["memory"] != 0 {
+		t.Fatalf("materialized memory export directory = %+v, want memory -> 0", withMemoryExport.memoryDir)
+	}
+}
 
 func TestCompileDoesNotRetainSourceForLinking(t *testing.T) {
 	source := returningImportModule([]byte{0x60, 0x00, 0x01, 0x7f}, []byte{0x00, 0x10, 0x00, 0x0b})

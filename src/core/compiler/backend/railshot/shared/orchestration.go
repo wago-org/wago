@@ -27,6 +27,19 @@ func PressureThreshold(explicit, codeCapacity int) int {
 	return codeCapacity * 7 / 8
 }
 
+// ModuleEntries allocates the public and internal function-entry tables in one
+// exact backing store. Full-slice bounds keep the tables independently
+// appendable: growing either table cannot overwrite the other half.
+func ModuleEntries(functions int) (entry, internal []int) {
+	if functions > int(^uint(0)>>1)/2 {
+		// Preserve the former independent-allocation behavior if a caller somehow
+		// reaches a length that cannot be doubled in one slice header.
+		return make([]int, functions), make([]int, functions)
+	}
+	entries := make([]int, 2*functions)
+	return entries[:functions:functions], entries[functions:]
+}
+
 // FirstErrorIndex returns the first function error in source order. Parallel
 // compilers use it after all workers join so diagnostics never depend on
 // scheduling order.

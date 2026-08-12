@@ -1378,7 +1378,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if genericGCExecution || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := &Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0), stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry}
+	c := &Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry}
+	initCompilerCompiledState(c)
+	c.memoryDir.exactExports = true
+	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
+	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
 	if cfg.gcCodeTelemetry {
 		c.gcCodeTelemetry = railshotGCNativeCodeTelemetry(gcCodeStats)
 		c.gcCodeTelemetry.TotalBytes = uint64(len(code))
@@ -1580,6 +1584,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
+			if c.memoryDir.exports == nil {
+				c.memoryDir.exports = make(map[string]int)
+			}
 			c.memoryDir.exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternTag:
 			if c.memoryDir.ehTagExports == nil {
@@ -1878,7 +1885,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		c.Data = append(c.Data, init)
 	}
-	compiled := installCompiledFinalizer(c)
+	compiled := installCompilerCompiledFinalizer(c)
 	compiled.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
 	if cm.CodeImage != nil {
 		mapping, base, err := cm.CodeImage.Take()

@@ -715,8 +715,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	boundsFacts := boundsFactsEnabled && !opts.NoBoundsFacts
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
-	entry := make([]int, n)
-	internalEntry := make([]int, n)
+	entry, internalEntry := shared.ModuleEntries(n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
 	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
