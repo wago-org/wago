@@ -239,6 +239,10 @@ func loadArtifact(path string) (*wago.Compiled, bool) {
 	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(linked, opened) {
 		return nil, false
 	}
+	return loadOpenedArtifact(path, file, opened)
+}
+
+func loadOpenedArtifact(path string, file *os.File, opened os.FileInfo) (*wago.Compiled, bool) {
 	limits := wago.DefaultArtifactLimits()
 	maximum := limits.MaxCodeBytes + limits.MaxMetadataBytes + 64
 	if opened.Size() < 0 || opened.Size() > maximum {
@@ -246,7 +250,18 @@ func loadArtifact(path string) (*wago.Compiled, bool) {
 	}
 	compiled := &wago.Compiled{}
 	read, err := compiled.ReadFromWithLimits(file, limits)
-	if err != nil || read != opened.Size() {
+	if err != nil {
+		_ = compiled.Close()
+		return nil, false
+	}
+	var trailing [1]byte
+	trailingBytes, trailingErr := file.Read(trailing[:])
+	finalOpened, statErr := file.Stat()
+	finalLinked, linkErr := os.Lstat(path)
+	if read != opened.Size() || trailingBytes != 0 || trailingErr != io.EOF ||
+		statErr != nil || finalOpened.Size() != read || !finalOpened.Mode().IsRegular() ||
+		linkErr != nil || finalLinked.Mode()&os.ModeSymlink != 0 || !finalLinked.Mode().IsRegular() ||
+		!os.SameFile(finalLinked, finalOpened) {
 		_ = compiled.Close()
 		return nil, false
 	}

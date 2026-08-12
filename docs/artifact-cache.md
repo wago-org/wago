@@ -61,8 +61,11 @@ registry order is interpreted under the build identity that owns that registry.
 The final SHA-256 key remains hexadecimal in the filesystem path. Artifact
 loading keeps its existing version, ABI, target, section-size, file-type, and
 malformed-input checks; cache entries are streamed into bounded code/metadata
-sections rather than first buffered as an unbounded whole file. Cache corruption
-remains a safe miss followed by recompilation and atomic replacement. Once an
+sections rather than first buffered as an unbounded whole file. After decoding,
+the loader verifies EOF, the final opened-file size, and that the cache path still
+names the same regular file, so concurrent replacement or growth remains a safe
+miss. Cache corruption remains a safe miss followed by recompilation and atomic
+replacement. Once an
 artifact decodes successfully, runtime binding and `AfterCompile` policy errors
 are returned directly rather than being converted into cache misses; the decoded
 mapping is closed on that failure path.

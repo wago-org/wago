@@ -91,6 +91,63 @@ func TestLoadArtifactRejectsSymlinkAndOversizeEntry(t *testing.T) {
 	}
 }
 
+func TestLoadOpenedArtifactRejectsReplacementAndGrowth(t *testing.T) {
+	source := constantModule()
+	compiled, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiled.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name        string
+		skipWindows bool
+		mutate      func(string, *os.File) error
+	}{
+		{name: "replacement", skipWindows: true, mutate: func(path string, _ *os.File) error {
+			replacement := path + ".replacement"
+			if err := os.WriteFile(replacement, artifact, 0o644); err != nil {
+				return err
+			}
+			return os.Rename(replacement, path)
+		}},
+		{name: "growth", mutate: func(_ string, file *os.File) error {
+			return os.Truncate(file.Name(), int64(len(artifact)+1))
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.skipWindows && runtime.GOOS == "windows" {
+				t.Skip("Windows does not replace an open cache entry by rename")
+			}
+			path := filepath.Join(t.TempDir(), "entry.wago")
+			if err := os.WriteFile(path, artifact, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			opened, err := file.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := test.mutate(path, file); err != nil {
+				t.Fatal(err)
+			}
+			if loaded, hit := loadOpenedArtifact(path, file, opened); hit || loaded != nil {
+				t.Fatalf("mutated cache entry loaded: %v, %v", loaded, hit)
+			}
+		})
+	}
+}
+
 func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	source := constantModule()
 	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
