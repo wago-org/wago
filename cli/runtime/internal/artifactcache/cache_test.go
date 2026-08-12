@@ -57,6 +57,40 @@ func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
 	}
 }
 
+func TestLoadArtifactRejectsSymlinkAndOversizeEntry(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.wago")
+	if err := os.WriteFile(target, []byte("not an artifact"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.wago")
+	if err := os.Symlink(target, link); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	if compiled, hit := loadArtifact(link); hit || compiled != nil {
+		t.Fatalf("symlink cache entry loaded: %v, %v", compiled, hit)
+	}
+
+	oversize := filepath.Join(dir, "oversize.wago")
+	limits := wago.DefaultArtifactLimits()
+	file, err := os.Create(oversize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(oversize, limits.MaxCodeBytes+limits.MaxMetadataBytes+65); err != nil {
+		t.Fatal(err)
+	}
+	if compiled, hit := loadArtifact(oversize); hit || compiled != nil {
+		t.Fatalf("oversize cache entry loaded: %v, %v", compiled, hit)
+	}
+}
+
 func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	source := constantModule()
 	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
@@ -68,7 +102,7 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 
 	injected := errors.New("injected cache publication failure")
 	oldPublish := publishArtifact
-	publishArtifact = func(string, []byte) error { return injected }
+	publishArtifact = func(string, *wago.Compiled) error { return injected }
 	t.Cleanup(func() { publishArtifact = oldPublish })
 
 	module, err := cache.LoadOrCompile(source, config, rt)
@@ -154,6 +188,99 @@ func TestCacheHitPropagatesRuntimeBindingError(t *testing.T) {
 	if _, err := cache.LoadOrCompile(source, config, closedRuntime); err == nil || !strings.Contains(err.Error(), "closed runtime") {
 		t.Fatalf("cache binding error = %v", err)
 	}
+}
+
+func TestLoadOrCompileUsesDestinationRuntimeConfig(t *testing.T) {
+	source := constantModule()
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	runtimeConfig := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	callerConfig := runtimeConfig.WithMemoryLimitPages(runtimeConfig.MemoryLimitPages() - 1)
+	callerPath, ok := cache.path(source, callerConfig)
+	if !ok {
+		t.Fatal("caller cache key unavailable")
+	}
+	runtimePath, ok := cache.path(source, runtimeConfig)
+	if !ok || runtimePath == callerPath {
+		t.Fatalf("runtime cache key = %q, caller key = %q", runtimePath, callerPath)
+	}
+
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(runtimeConfig))
+	module, err := cache.LoadOrCompile(source, callerConfig, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(runtimePath); err != nil {
+		t.Fatalf("runtime-config artifact was not published: %v", err)
+	}
+	if _, err := os.Stat(callerPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("mismatched caller-config artifact exists: %v", err)
+	}
+}
+
+func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
+	source := constantModule()
+	base := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(base))
+	seed, err := cache.LoadOrCompile(source, base, seedRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	telemetry := base.WithGCCodeTelemetry(true)
+	var compileCalls int
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(telemetry))
+	if err := rt.Use(telemetryCountingExtension{calls: &compileCalls}, wago.WithPluginGrants(wago.PluginCompileHooks)); err != nil {
+		t.Fatal(err)
+	}
+	module, err := cache.LoadOrCompile(source, telemetry, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compileCalls != 1 {
+		t.Fatalf("compile-only telemetry used a warm artifact; compile calls = %d", compileCalls)
+	}
+	if _, ok := module.Compiled().GCNativeCodeTelemetry(); !ok {
+		t.Fatal("fresh telemetry compile did not retain requested attribution")
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type telemetryCountingExtension struct {
+	calls *int
+}
+
+func (e telemetryCountingExtension) Info() wago.ExtensionInfo {
+	return wago.ExtensionInfo{ID: "test.telemetry-cache-compile"}
+}
+
+func (e telemetryCountingExtension) Register(reg *wago.Registry) error {
+	hooks, err := reg.ModuleCompiler()
+	if err != nil {
+		return err
+	}
+	hooks.Before(func(*wago.CompileContext, []byte) ([]byte, error) {
+		(*e.calls)++
+		return nil, nil
+	})
+	return nil
 }
 
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {

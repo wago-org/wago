@@ -485,6 +485,10 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 
+// GCCodeTelemetry reports whether fresh compilation should retain code-neutral
+// WasmGC native-byte attribution. Serialized artifacts do not contain it.
+func (c *RuntimeConfig) GCCodeTelemetry() bool { return c.gcCodeTelemetry }
+
 // FunctionWorkers reports the configured function-pipeline worker policy: zero
 // adaptive, one serial, or a positive forced maximum.
 func (c *RuntimeConfig) FunctionWorkers() int { return c.functionWorkers }

@@ -43,17 +43,29 @@ var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 // result. Cache read/write failures never prevent execution; compilation and
 // artifact validation errors retain their normal behavior.
 func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *wago.Runtime) (*wago.Module, error) {
+	if rt == nil {
+		return nil, fmt.Errorf("wago: artifact cache requires a runtime")
+	}
+	if config == nil {
+		return rt.Compile(source)
+	}
+	// Runtime.Compile is authoritative. The explicit config parameter is retained
+	// for source compatibility, but a mismatched caller value must never select an
+	// artifact compiled under policy the destination runtime did not request.
+	config = rt.Config()
+	if config.GCCodeTelemetry() || config.BoundsChecks() == wago.BoundsChecksSignalsBased {
+		// Telemetry is intentionally compile-only and absent from serialized
+		// artifacts. Signals-based native code is also deliberately nonserializable.
+		return rt.Compile(source)
+	}
 	path, cacheable := cache.path(source, config)
 	if cacheable {
-		if blob, err := os.ReadFile(path); err == nil {
-			compiled := &wago.Compiled{}
-			if compiled.UnmarshalBinary(blob) == nil {
-				module, bindErr := rt.AdoptModule(compiled)
-				if bindErr == nil {
-					return module, nil
-				}
-				return nil, bindErr
+		if compiled, hit := loadArtifact(path); hit {
+			module, bindErr := rt.AdoptModule(compiled)
+			if bindErr == nil {
+				return module, nil
 			}
+			return nil, bindErr
 		}
 	}
 
@@ -64,12 +76,7 @@ func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *
 	if !cacheable {
 		return module, nil
 	}
-	artifact, err := module.Compiled().MarshalBinary()
-	if err != nil {
-		// Some valid compilation modes intentionally cannot be serialized.
-		return module, nil
-	}
-	if err := publishArtifact(path, artifact); err != nil {
+	if err := publishArtifact(path, module.Compiled()); err != nil {
 		if cache.ReportError != nil {
 			cache.ReportError(err)
 		} else {
@@ -218,9 +225,37 @@ func writeUint64(h interface{ Write([]byte) (int, error) }, value uint64) {
 
 var publishArtifact = writeAtomic
 
-func writeAtomic(path string, artifact []byte) error {
+func loadArtifact(path string) (*wago.Compiled, bool) {
+	linked, err := os.Lstat(path)
+	if err != nil || linked.Mode()&os.ModeSymlink != 0 || !linked.Mode().IsRegular() {
+		return nil, false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(linked, opened) {
+		return nil, false
+	}
+	limits := wago.DefaultArtifactLimits()
+	maximum := limits.MaxCodeBytes + limits.MaxMetadataBytes + 64
+	if opened.Size() < 0 || opened.Size() > maximum {
+		return nil, false
+	}
+	compiled := &wago.Compiled{}
+	read, err := compiled.ReadFromWithLimits(file, limits)
+	if err != nil || read != opened.Size() {
+		_ = compiled.Close()
+		return nil, false
+	}
+	return compiled, true
+}
+
+func writeAtomic(path string, compiled *wago.Compiled) error {
 	return atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
-		_, err := writer.Write(artifact)
+		_, err := compiled.WriteTo(writer)
 		return err
 	})
 }

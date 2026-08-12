@@ -45,7 +45,13 @@ fixed-order configuration values:
 
 Function-worker policy is intentionally excluded: it controls only bounded
 compiler scheduling, while validation order, generated native code, and
-serialized artifact bytes remain deterministic across worker counts.
+serialized artifact bytes remain deterministic across worker counts. Cache
+lookup always uses the destination runtime's effective configuration—the
+caller's compatibility parameter cannot select code compiled under a different
+runtime policy. The compile-only GC native-code telemetry option bypasses the
+cache entirely because that attribution is deliberately not serialized and a
+warm artifact cannot satisfy the request. Signals-based compilation also
+bypasses the cache because guard-page native code is intentionally nonserializable.
 
 The binary key format has an explicit version and domain prefix. Changing the
 meaning or order of any encoded field requires incrementing `cacheKeyFormat`.
@@ -53,11 +59,13 @@ Optimization names are not serialized into the hot cache-key path; their stable
 registry order is interpreted under the build identity that owns that registry.
 
 The final SHA-256 key remains hexadecimal in the filesystem path. Artifact
-loading keeps its existing version, ABI, target, and malformed-input checks;
-cache corruption remains a safe miss followed by recompilation and atomic
-replacement. Once an artifact decodes successfully, runtime binding and
-`AfterCompile` policy errors are returned directly rather than being converted
-into cache misses; the decoded mapping is closed on that failure path.
+loading keeps its existing version, ABI, target, section-size, file-type, and
+malformed-input checks; cache entries are streamed into bounded code/metadata
+sections rather than first buffered as an unbounded whole file. Cache corruption
+remains a safe miss followed by recompilation and atomic replacement. Once an
+artifact decodes successfully, runtime binding and `AfterCompile` policy errors
+are returned directly rather than being converted into cache misses; the decoded
+mapping is closed on that failure path.
 Publication uses a unique same-directory temporary file and a
 platform-specific replace-existing operation, including `MoveFileExW` on
 Windows. Existing symlink, directory, and non-regular destinations are rejected;
