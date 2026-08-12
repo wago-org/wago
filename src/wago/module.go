@@ -230,8 +230,19 @@ func (m *Module) Compiled() *Compiled { return m.c }
 // Exports returns the module's exported function names, sorted.
 func (m *Module) Exports() []string { return m.c.ExportedFunctions() }
 
-// Imports returns the module's declared imports with extension-derived metadata.
-func (m *Module) Imports() []ImportSpec { return append([]ImportSpec(nil), m.imports...) }
+// Imports returns a caller-owned snapshot of the module's declared imports with
+// extension-derived metadata. Mutating the result never changes module state.
+func (m *Module) Imports() []ImportSpec {
+	imports := make([]ImportSpec, len(m.imports))
+	for i := range m.imports {
+		imports[i] = m.imports[i]
+		imports[i].Params = cloneSlice(m.imports[i].Params)
+		imports[i].Results = cloneSlice(m.imports[i].Results)
+		imports[i].ParamTypes = cloneSlice(m.imports[i].ParamTypes)
+		imports[i].ResultTypes = cloneSlice(m.imports[i].ResultTypes)
+	}
+	return imports
+}
 
 // RequiredCapabilities returns the capabilities the module's function imports
 // require, deduplicated in first-seen order.

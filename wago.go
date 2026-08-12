@@ -210,6 +210,7 @@ const (
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
 	ElemModePassive                            = impl.ElemModePassive
 	ErrExtensionConflict                       = impl.ErrExtensionConflict
+	ErrForeignModule                           = impl.ErrForeignModule
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
 	ErrManagedImportLifetime                   = impl.ErrManagedImportLifetime
 	ErrMissingImport                           = impl.ErrMissingImport

@@ -127,7 +127,7 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 	if ext == nil {
 		return fmt.Errorf("wago: Use: nil extension")
 	}
-	info := ext.Info()
+	info := cloneExtensionInfo(ext.Info())
 	if info.ID == "" {
 		return fmt.Errorf("wago: Use: extension has no ID")
 	}
@@ -273,9 +273,23 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 // as a *Module, resolving its imports against the registered extensions and
 // running any AfterCompile hooks.
 func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
+	rt.mu.Lock()
+	if rt.closed {
+		rt.mu.Unlock()
+		return nil, fmt.Errorf("wago: Compile on a closed runtime")
+	}
+	beforeCompile := append([]func(*CompileContext, []byte) ([]byte, error)(nil), rt.hooks.beforeCompile...)
+	afterCompile := append([]func(*CompileContext, *Module) error(nil), rt.hooks.afterCompile...)
+	instructions := make(map[string]*registeredInstruction, len(rt.instructions))
+	for key, ins := range rt.instructions {
+		instructions[key] = ins
+	}
+	cfg := rt.cfg
+	rt.mu.Unlock()
+
 	ctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
 	source := wasmBytes
-	for _, fn := range rt.hooks.beforeCompile {
+	for _, fn := range beforeCompile {
 		next, err := fn(ctx, source)
 		if err != nil {
 			return nil, err
@@ -284,13 +298,6 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 			source = next
 		}
 	}
-	rt.mu.Lock()
-	instructions := make(map[string]*registeredInstruction, len(rt.instructions))
-	for key, ins := range rt.instructions {
-		instructions[key] = ins
-	}
-	cfg := rt.cfg
-	rt.mu.Unlock()
 	c, err := compileWithConfigAndInstructions(cfg, source, instructions)
 	if err != nil {
 		return nil, err
@@ -312,8 +319,8 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 			funcIndex++
 		}
 	}
-	if len(rt.hooks.afterCompile) > 0 {
-		for _, fn := range rt.hooks.afterCompile {
+	if len(afterCompile) > 0 {
+		for _, fn := range afterCompile {
 			if err := fn(ctx, mod); err != nil {
 				return nil, err
 			}
@@ -413,6 +420,9 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin InstantiateOrigin, opts ...InstantiateOption) (*Instance, error) {
 	if mod == nil {
 		return nil, fmt.Errorf("wago: Instantiate: nil module")
+	}
+	if mod.rt != rt {
+		return nil, fmt.Errorf("wago: Instantiate: %w; rebind it with Runtime.Module", ErrForeignModule)
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -528,11 +538,17 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 	return inst, nil
 }
 
-// Extensions returns the registered extensions in registration order.
+// Extensions returns caller-owned snapshots of the registered extensions in
+// registration order. Mutating nested slices or maps does not affect runtime
+// state.
 func (rt *Runtime) Extensions() []ExtensionInfo {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	return append([]ExtensionInfo(nil), rt.exts...)
+	extensions := make([]ExtensionInfo, len(rt.exts))
+	for i := range rt.exts {
+		extensions[i] = cloneExtensionInfo(rt.exts[i])
+	}
+	return extensions
 }
 
 // Capabilities returns the capabilities declared by registered extensions,
@@ -564,23 +580,29 @@ func (rt *Runtime) CloseContext(ctx context.Context) error {
 	pluginStops := append([]registeredPluginStop(nil), rt.pluginStops...)
 	store := rt.refStore
 	rt.mu.Unlock()
+	defer store.closeRuntime()
 
 	var errs []error
 	for i := len(pluginStops) - 1; i >= 0; i-- {
-		if err := pluginStops[i].stop(ctx); err != nil {
+		var stopErr error
+		panicErr := callHookSafely("plugin Stop", func() { stopErr = pluginStops[i].stop(ctx) })
+		if err := joinPrimary(stopErr, panicErr); err != nil {
 			errs = append(errs, &PluginError{Plugin: pluginStops[i].name, Phase: PluginPhaseStop, Err: err})
 		}
 	}
 	for i := len(internalClose) - 1; i >= 0; i-- {
-		if err := internalClose[i](); err != nil {
+		var closeErr error
+		panicErr := callHookSafely("internal runtime close", func() { closeErr = internalClose[i]() })
+		if err := joinPrimary(closeErr, panicErr); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	rctx := &RuntimeContext{Runtime: rt}
 	for i := len(hooks) - 1; i >= 0; i-- {
-		hooks[i](rctx)
+		if err := callHookSafely("OnRuntimeClose", func() { hooks[i](rctx) }); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	store.closeRuntime()
 	return errors.Join(errs...)
 }
 
