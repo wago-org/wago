@@ -28,6 +28,14 @@ Each commit should carry the documentation needed by future developers or
 agents. If the change affects workflow, tests, benchmarks, review expectations,
 or agent behavior, update a file under `docs/` in the same commit.
 
+## Pre-release Format Versions
+
+Until Wago publishes its first release, codecs, cache keys, snapshots, schemas,
+and native ABI formats use version 1. Incompatible development layouts should be
+consolidated into version 1 rather than incrementing public-looking version
+numbers. After the first release, incompatible persisted or native-visible
+changes must increment the relevant version and document compatibility policy.
+
 ## Measurement Expectations
 
 For hot compiler, runtime, call-boundary, memory, or JIT-generated-code changes,

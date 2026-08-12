@@ -1066,7 +1066,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec v22 writes
+	// imported tables occupy the leading extraTables entries, and codec version 1 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int

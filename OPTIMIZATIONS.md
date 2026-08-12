@@ -367,8 +367,8 @@ payload. The result is modest and host-noisy, but deterministic code/work counte
 show the intended reduction without an allocation regression.
 
 **Trusted native-GC ABI boundaries and bounded resolver reuse (2026-08-10, #307).**
-Collector ABI v6 is now validated against Go structure sizes/offsets at collector
-construction, recorded explicitly in codec v35 generic-GC artifacts, rejected on
+Collector ABI version 1 is now validated against Go structure sizes/offsets at collector
+construction, recorded explicitly in codec version 1 generic-GC artifacts, rejected on
 artifact mismatch, and validated with the immutable instance type-map/collector view
 before basedata publication. AMD64 no longer reloads instance/collector versions,
 local-map counts, or handle stride in every native GC access; mutable handle/backing,

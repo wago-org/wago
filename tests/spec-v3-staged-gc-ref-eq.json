@@ -1,5 +1,5 @@
 {
-  "schema": 2,
+  "schema": 1,
   "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
   "file": "gc/ref_eq",
   "leaders": [

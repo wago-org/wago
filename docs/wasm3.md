@@ -1,8 +1,11 @@
 # WebAssembly 3.0 implementation status
 
-Last updated: 2026-08-10.
+Last updated: 2026-08-12.
 
 This document is the implementation ledger for the WebAssembly Core 3.0 effort.
+Historical iteration entries may name superseded internal development revisions;
+they are not public format versions. The current `.wago`, snapshot, schema, and
+native metadata contracts are all version 1 under [VERSIONING.md](../VERSIONING.md).
 The primary product target is `linux/amd64`. A row is not complete merely because
 `src/core/compiler/wasm` can decode an opcode: wago claims support only when the
 feature is decoded, validated, admitted by configuration, lowered by railshot,
@@ -90,7 +93,7 @@ faulting 4 KiB host page after `memory.grow`; aligning the absolute fault addres
 to 64 KiB could move before a merely host-page-aligned mmap reservation, make
 `mprotect` fail, and refault forever.
 
-The current schema-2 inventory at `tests/spec-v3-baseline.json` is the
+The current schema-1 inventory at `tests/spec-v3-baseline.json` is the
 authoritative source for repeated repository totals. CI qualifies the same pinned
 suite and platform products. The baseline processes all 258 files and reports:
 
@@ -230,7 +233,7 @@ missing official opcode families:
    rollback, codec, close-order, moving-collection, and foreign-Runtime rejection proofs;
 4. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
    conformance mandatory in CI; and
-5. preserve native collector ABI v6, AMD64 checked final-scalar/object-card access,
+5. preserve native collector ABI version 1, AMD64 checked final-scalar/object-card access,
    and transactional batched final struct/array allocation, while extending direct paths
    only where metadata lifetime, collection epochs, roots, and barriers remain exact.
 
@@ -263,7 +266,7 @@ path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-i
 watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context is now
 112 bytes: the original 72-byte pointer prefix, 32 bytes of domain/tail metadata,
 and an eight-byte native GC-view pointer used during shared-memory context switches.
-Native collector ABI v6 retains the same basedata slot and extends the collector view
+Native collector ABI version 1 retains the same basedata slot and collector view
 from 160 to 168 bytes. Byte 124 separates the Eden allocation limit from complete
 young backing; byte 160 publishes the configured nursery-object maximum. The
 160-byte shared allocation ticket retains 32 handles and adds a contiguous handle
@@ -961,7 +964,7 @@ public Core 3 admission:
    focused tests continue to require explicit failures rather than hidden skips.
    Indexed SIMD remains covered by the complete staged opcode fixture while broader
    official safe-family accounting is still completion work.
-2. Snapshot format version 3 stores a bounded memory count followed by one page
+2. Snapshot format version 1 stores a bounded memory count followed by one page
    count and independently zero-tail-trimmed image per memory. Owned local multi-
    memory capture copies every image and grown size plus passive-data drop lengths;
    restore sizes all mappings first, copies each stored prefix into zeroed memory,
@@ -990,8 +993,9 @@ public Core 3 admission:
 No serialized compiled codec version changes: codec v25 already represents exact
 memory/type metadata and public feature gates remain closed. Fixed runtime layouts
 remain `Compiled=712`, `Instance=792`, descriptor=32 bytes, and basedata=256 bytes.
-Snapshot v3 is an independent product-blob version change and versions 1-2 remain
-accepted for their compatible single-memory layouts.
+Snapshot version 1 is the initial public product-blob format. Wago is unreleased,
+so the compatible development layouts were consolidated instead of retained as
+separate public versions.
 
 The official schema-2 inventory remains byte-for-byte unchanged at 144 green/114
 red files, 1,691 passed/535 skipped modules, and 51,765 passed/5 failed/6,268
@@ -1941,7 +1945,7 @@ disabled.
    imported records must precede locals; malformed strings, type indexes, and export maps
    continue through strict metadata validation. Local and imported declaration products
    round-trip exact metadata and recreate alias/re-export identity through normal
-   transactional attachment. Snapshot v3 admits only function-free local declaration tags;
+   transactional attachment. Snapshot version 1 admits only function-free local declaration tags;
    imported tags, throwing functions, active handlers, rooted exception values, and native
    cross-instance bindings remain fail-closed. Codec v26 and older artifacts reject
    explicitly because they lack the tag directory/export map.
@@ -4907,7 +4911,7 @@ Major risks:
   indexed grow, and bulk/data lifecycle through exact directories. Compact import
   groups and the reached official imported grow/size/linking binaries are decoded
   and exercised directly. Restricted tenants serialize fixed basedata images and
-  refresh all entries. Snapshot v3 handles owned local memory sets. Iterations 18-19
+  refresh all entries. Snapshot version 1 handles owned local memory sets. Iterations 18-19
   admit finite imported scalar-global arrays and one bounded imported funcref table,
   retaining each explicit owner through tenant close. Iteration 21 also admits retained
   scalar direct calls whose producers use the exact same memory; stable 256-byte images

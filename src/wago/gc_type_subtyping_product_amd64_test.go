@@ -408,7 +408,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			}
 			blob, err := marshalCompiled(c)
 			if err != nil {
-				t.Fatalf("marshal codec-v27: %v", err)
+				t.Fatalf("marshal codec: %v", err)
 			}
 			wantCode, wantCodec := 0, 0
 			if pin.Class == stagedGCTypeSubtypingNonFlatExport {
@@ -422,7 +422,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			t.Logf("product size: wasm=%d code=%d codec=%d types=%d gcdescs=%d", len(data), len(c.code), len(blob), len(c.Types), len(c.GCTypeDescs))
 			var loaded Compiled
 			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("private codec-v27 reload: %v", err)
+				t.Fatalf("private codec reload: %v", err)
 			}
 			defer loaded.Close()
 			if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {

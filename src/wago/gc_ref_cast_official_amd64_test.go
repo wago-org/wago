@@ -349,7 +349,7 @@ func TestStagedOfficialGCRefCastAccounting(t *testing.T) {
 	for _, name := range gateNames {
 		gates = append(gates, stagedTypedReferenceGateCount{Family: "gc", Reason: name, Count: gateCounts[name]})
 	}
-	delta := stagedGCRefCastDelta{Schema: 2, SuiteRevision: stagedRelease3Revision, File: "gc/ref_cast", Leaders: leaders, Gates: gates, Counts: counts}
+	delta := stagedGCRefCastDelta{Schema: 1, SuiteRevision: stagedRelease3Revision, File: "gc/ref_cast", Leaders: leaders, Gates: gates, Counts: counts}
 	got, err := json.MarshalIndent(delta, "", "  ")
 	if err != nil {
 		t.Fatal(err)

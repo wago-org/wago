@@ -61,7 +61,7 @@ func TestStagedFirstNullReferenceProductExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal staged null-reference product: %v", err)
 	}
-	t.Logf("first null-reference product: wasm=%d codec-v27=%d", len(data), len(blob))
+	t.Logf("first null-reference product: wasm=%d codec=%d", len(data), len(blob))
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 		t.Fatalf("private reload staged null-reference product: %v", err)
@@ -166,7 +166,7 @@ func TestStagedBottomNullReferenceGlobalsExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal bottom-global null product: %v", err)
 	}
-	t.Logf("bottom-global null-reference product: wasm=%d codec-v27=%d", len(data), len(blob))
+	t.Logf("bottom-global null-reference product: wasm=%d codec=%d", len(data), len(blob))
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 		t.Fatalf("private reload bottom-global null product: %v", err)

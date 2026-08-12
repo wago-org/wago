@@ -191,14 +191,14 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 35 {
-		t.Fatalf("compiled codec version = %d, want native-GC ABI contract version 35", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 1 {
+		t.Fatalf("compiled codec version = %d, want initial public version 1", blob[4])
 	}
-	for _, version := range []byte{19, 20, 30, 31} {
-		oldVersion := append([]byte(nil), blob...)
-		oldVersion[4] = version
-		var old Compiled
-		if err := old.UnmarshalBinary(oldVersion); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", version)) {
+	for _, version := range []byte{0, 2, 19, 35} {
+		unsupportedVersion := append([]byte(nil), blob...)
+		unsupportedVersion[4] = version
+		var unsupported Compiled
+		if err := unsupported.UnmarshalBinary(unsupportedVersion); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", version)) {
 			t.Fatalf("version-%d reference blob error = %v, want explicit incompatibility rejection", version, err)
 		}
 	}
@@ -218,7 +218,7 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
+func TestCompiledCodecCarriesIndexedFunctionSignatures(t *testing.T) {
 	indexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
 	stored := indexed
 	stored.Ref.Nullable = true

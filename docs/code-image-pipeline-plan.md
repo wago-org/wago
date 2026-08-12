@@ -162,7 +162,7 @@ final heap slice does not pass the balanced gate.
 Parallel workers will keep independent per-function scratch. Sharing a mutable
 assembler or making output order scheduling-dependent is out of scope.
 
-### Phase 3: sectioned artifact v33
+### Phase 3: sectioned artifact (public version 1)
 
 - [x] Attribute bytes to code, entries, types, imports/exports, names, globals,
   tables, data, memories, tags, feature requirements, and GC roots.
@@ -173,7 +173,7 @@ assembler or making output order scheduling-dependent is out of scope.
 - [x] Add a bounded reader API with explicit code and metadata section limits;
   nested counts and strings remain bounded by their section's remaining bytes.
 - [x] Decode code directly into an RW image and seal it on first execution.
-- [x] Reject v32 rather than retain an unreleased compatibility reader.
+- [x] Reject incompatible development blobs rather than retain an unreleased compatibility reader.
 - [x] Keep malformed structured metadata strict and deterministic.
 
 For the 1,600-function imported-module fixture, five one-second samples put

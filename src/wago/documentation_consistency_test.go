@@ -24,6 +24,13 @@ func TestRepositoryStatusDocuments(t *testing.T) {
 		}
 	}
 
+	versioning := readRepositoryDocument(t, root, "VERSIONING.md")
+	for _, marker := range []string{"Every Wago-owned codec", "uses **version 1**"} {
+		if !strings.Contains(versioning, marker) {
+			t.Errorf("VERSIONING.md missing pre-release format policy marker %q", marker)
+		}
+	}
+
 	roadmap := readRepositoryDocument(t, root, "ROADMAP.md")
 	if marker := "<!-- roadmap:P1 status=done -->"; !strings.Contains(roadmap, marker) {
 		t.Errorf("ROADMAP.md missing landed CodegenStats marker %q", marker)

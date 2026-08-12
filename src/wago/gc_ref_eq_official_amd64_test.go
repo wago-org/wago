@@ -315,7 +315,7 @@ func TestStagedOfficialGCRefEqAccounting(t *testing.T) {
 	for _, name := range gateNames {
 		gates = append(gates, stagedTypedReferenceGateCount{Family: "gc", Reason: name, Count: gateCounts[name]})
 	}
-	delta := stagedGCRefEqDelta{Schema: 2, SuiteRevision: stagedRelease3Revision, File: "gc/ref_eq", Leaders: leaders, Invalids: stagedGCRefEqInvalidPins, Gates: gates, Counts: counts}
+	delta := stagedGCRefEqDelta{Schema: 1, SuiteRevision: stagedRelease3Revision, File: "gc/ref_eq", Leaders: leaders, Invalids: stagedGCRefEqInvalidPins, Gates: gates, Counts: counts}
 	got, err := json.MarshalIndent(delta, "", "  ")
 	if err != nil {
 		t.Fatal(err)
