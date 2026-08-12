@@ -54,6 +54,49 @@ func arr(elem wasm.StorageType) wasm.SubType {
 }
 func fn() wasm.SubType { return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}} }
 
+var flattenedGCTypeSink []flattenedGCType
+
+func TestFlattenGCTypesUsesExactCompactPointerIndex(t *testing.T) {
+	types := []wasm.RecType{
+		{SubTypes: []wasm.SubType{fn(), st(field(val(wasm.I32)))}},
+		{},
+		{SubTypes: []wasm.SubType{arr(val(wasm.I64))}},
+	}
+	flat, hasLayouts := flattenGCTypes(types)
+	if !hasLayouts {
+		t.Fatal("flattened GC types lost struct/array layout presence")
+	}
+	if len(flat) != 3 || cap(flat) != len(flat) {
+		t.Fatalf("flattened shape = len %d cap %d, want 3/3", len(flat), cap(flat))
+	}
+	want := []*wasm.SubType{&types[0].SubTypes[0], &types[0].SubTypes[1], &types[2].SubTypes[0]}
+	for i := range flat {
+		if flat[i].Source != want[i] {
+			t.Fatalf("flat[%d] source = %p, want %p", i, flat[i].Source, want[i])
+		}
+	}
+	if flat[0].RecBase != 0 || flat[0].RecLen != 2 || flat[1].RecBase != 0 || flat[1].RecLen != 2 || flat[2].RecBase != 2 || flat[2].RecLen != 1 {
+		t.Fatalf("recursive group indexes = %#v", flat)
+	}
+	if got, want := unsafe.Sizeof(flattenedGCType{}), unsafe.Sizeof(uintptr(0))+2*unsafe.Sizeof(int(0)); got != want {
+		t.Fatalf("flattened GC type size = %d, want pointer plus two indexes (%d)", got, want)
+	}
+
+	many := make([]wasm.RecType, 256)
+	for i := range many {
+		many[i].SubTypes = []wasm.SubType{fn()}
+	}
+	if _, hasLayouts := flattenGCTypes(many); hasLayouts {
+		t.Fatal("function-only flattened types unexpectedly requested GC layouts")
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		flattenedGCTypeSink, _ = flattenGCTypes(many)
+	})
+	if allocs > 1 {
+		t.Fatalf("flattenGCTypes allocations = %.0f, want one exact backing allocation", allocs)
+	}
+}
+
 func TestLowerGCTypeDescsFlattensRecGroupsAndPreservesIndexes(t *testing.T) {
 	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{fn(), st(field(val(wasm.I32)))}}, {SubTypes: []wasm.SubType{arr(val(wasm.I64))}}})
 	if err != nil {
@@ -338,7 +381,7 @@ func TestLowerGCTypeMetadataPrecomputesCompilerLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(metadata.Layouts) != 3 || metadata.Layouts[1].Type != &types[0].SubTypes[1] {
+	if len(metadata.Layouts) != 3 || metadata.Layouts[0].Type != &types[0].SubTypes[0] || metadata.Layouts[1].Type != &types[0].SubTypes[1] {
 		t.Fatalf("layouts do not preserve flattened type identity: %+v", metadata.Layouts)
 	}
 	structLayout := metadata.Layouts[1]

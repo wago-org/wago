@@ -158,3 +158,25 @@ func TestWasmTypeDescriptorConverterReusesFlattenedIndex(t *testing.T) {
 		t.Fatalf("reused converter allocations = %.2f, want at most 2 result slices", allocs)
 	}
 }
+
+func TestWasmTypeDescriptorConverterReusesFlattenedIndexForDescriptors(t *testing.T) {
+	m := &wasm.Module{Types: make([]wasm.RecType, 4096)}
+	for i := range m.Types {
+		m.Types[i].SubTypes = []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}
+	}
+	converter := newWasmTypeDescriptorConverter(m)
+	var sink []DefinedTypeDescriptor
+	allocs := testing.AllocsPerRun(100, func() {
+		var err error
+		sink, err = converter.typeDescriptors()
+		if err != nil {
+			panic(err)
+		}
+	})
+	if len(sink) != len(m.Types) {
+		t.Fatalf("defined types = %d, want %d", len(sink), len(m.Types))
+	}
+	if allocs > 1 {
+		t.Fatalf("reused converter descriptor allocations = %.0f, want one result backing allocation", allocs)
+	}
+}

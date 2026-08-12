@@ -1369,7 +1369,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 
-	types, err := typeDescriptorsFromWasm(m)
+	typeConverter := newWasmTypeDescriptorConverter(m)
+	types, err := typeConverter.typeDescriptors()
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
@@ -1382,7 +1383,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.gcCodeTelemetry = railshotGCNativeCodeTelemetry(gcCodeStats)
 		c.gcCodeTelemetry.TotalBytes = uint64(len(code))
 	}
-	typeConverter := newWasmTypeDescriptorConverter(m)
 	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
 	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
 		init, err := stagedGCI31TableInitializer(m)

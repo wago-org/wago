@@ -222,18 +222,21 @@ func (c wasmTypeDescriptorConverter) abiTypesInto(out []ValType, ts []wasm.ValTy
 }
 
 func typeDescriptorsFromWasm(m *wasm.Module) ([]DefinedTypeDescriptor, error) {
-	if m == nil {
+	return newWasmTypeDescriptorConverter(m).typeDescriptors()
+}
+
+func (c wasmTypeDescriptorConverter) typeDescriptors() ([]DefinedTypeDescriptor, error) {
+	if c.m == nil {
 		return nil, fmt.Errorf("nil wasm module")
 	}
-	c := newWasmTypeDescriptorConverter(m)
-	out := make([]DefinedTypeDescriptor, 0, c.groupAt[len(m.Types)])
+	out := make([]DefinedTypeDescriptor, 0, c.groupAt[len(c.m.Types)])
 	descriptorGroup := uint32(0)
-	for gi := range m.Types {
-		if len(m.Types[gi].SubTypes) == 0 {
+	for gi := range c.m.Types {
+		if len(c.m.Types[gi].SubTypes) == 0 {
 			continue
 		}
-		for si := range m.Types[gi].SubTypes {
-			d, err := c.definedType(&m.Types[gi].SubTypes[si], gi, descriptorGroup)
+		for si := range c.m.Types[gi].SubTypes {
+			d, err := c.definedType(&c.m.Types[gi].SubTypes[si], gi, descriptorGroup)
 			if err != nil {
 				return nil, fmt.Errorf("type %d: %w", len(out), err)
 			}
