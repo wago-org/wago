@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,6 +40,8 @@ var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	return buildIdentity(info)
 })
 
+var closeDecodedArtifact = func(compiled *wago.Compiled) error { return compiled.Close() }
+
 // LoadOrCompile loads a matching artifact or compiles source and saves the
 // result. Cache read/write failures never prevent execution; compilation and
 // artifact validation errors retain their normal behavior.
@@ -50,6 +53,11 @@ func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *
 			if compiled.UnmarshalBinary(blob) == nil {
 				if module, err := rt.Module(compiled); err == nil {
 					return module, nil
+				} else {
+					if closeErr := closeDecodedArtifact(compiled); closeErr != nil {
+						return nil, errors.Join(err, fmt.Errorf("release rejected cached artifact: %w", closeErr))
+					}
+					return nil, err
 				}
 			}
 		}
