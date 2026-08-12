@@ -19,17 +19,20 @@ func (catalog memoryCatalog) Releases() ([]Release, error) {
 }
 
 func TestResolveReleaseContract(t *testing.T) {
+	const canarySHA = "deadbee123456789012345678901234567890123"
 	catalog := memoryCatalog{
 		latest: Release{TagName: "v1.2.3"},
 		releases: []Release{
-			{TagName: "canary-old", PublishedAt: "2026-08-01T00:00:00Z"},
-			{TagName: "nightly-new", PublishedAt: "2026-08-04T00:00:00Z"},
-			{TagName: "canary-new", PublishedAt: "2026-08-03T00:00:00Z"},
+			{TagName: "canary-draft", TargetCommitish: canarySHA, PublishedAt: "2026-08-05T00:00:00Z", Draft: true},
+			{TagName: "canary-old", TargetCommitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PublishedAt: "2026-08-01T00:00:00Z"},
+			{TagName: "nightly-new", TargetCommitish: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PublishedAt: "2026-08-04T00:00:00Z"},
+			{TagName: "canary-new", TargetCommitish: canarySHA, PublishedAt: "2026-08-03T00:00:00Z"},
 		},
 	}
 	for _, test := range []struct{ version, want string }{
 		{"latest", "v1.2.3"}, {"main", "canary-new"}, {"canary", "canary-new"},
-		{"nightly", "nightly-new"}, {"v9.0.0", "v9.0.0"}, {"canary-pinned", "canary-pinned"},
+		{"canary@" + canarySHA, "canary-new"}, {"nightly", "nightly-new"},
+		{"v9.0.0", "v9.0.0"}, {"canary-pinned", "canary-pinned"},
 	} {
 		got, err := Resolve(test.version, catalog)
 		if err != nil || got != test.want {
@@ -38,6 +41,9 @@ func TestResolveReleaseContract(t *testing.T) {
 	}
 	if _, err := Resolve("feature/ref", catalog); err == nil {
 		t.Fatal("custom source ref resolved as a release")
+	}
+	if _, err := Resolve("nightly@cccccccccccccccccccccccccccccccccccccccc", catalog); err == nil {
+		t.Fatal("unpublished canonical commit resolved as a release")
 	}
 }
 

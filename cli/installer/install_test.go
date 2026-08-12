@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"errors"
@@ -110,6 +111,21 @@ func TestMovePathDoesNotMaskOrdinaryRenameErrors(t *testing.T) {
 	}
 }
 
+func TestInstallerUsesEmbeddedReleaseIdentityByDefault(t *testing.T) {
+	previous := version
+	version = "canary@deadbee123456789012345678901234567890123"
+	t.Cleanup(func() { version = previous })
+	t.Setenv("WAGO_VERSION", "")
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installer.version != version {
+		t.Fatalf("installer version = %q, want embedded %q", installer.version, version)
+	}
+}
+
 func TestInstallerDryRunPresentation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("HOME", filepath.Join(string(os.PathSeparator), "home", "wago"))
@@ -132,6 +148,128 @@ func TestInstallerDryRunPresentation(t *testing.T) {
 		"Dry run · no changes made.\n"
 	if got := output.String(); got != want {
 		t.Fatalf("dry-run output:\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestInstallerDownloadsExactCanonicalRollingManager(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	payload := []byte("exact released manager")
+	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases":
+			_, _ = fmt.Fprintf(w, `[
+  {"tag_name":"canary-draft","target_commitish":%q,"published_at":"2026-08-05T00:00:00Z","draft":true},
+  {"tag_name":"canary-wrong","target_commitish":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","published_at":"2026-08-04T00:00:00Z"},
+  {"tag_name":"canary-exact","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}
+]`, sha, sha)
+		case "/download/canary-exact/" + asset:
+			_, _ = w.Write(payload)
+		case "/download/canary-exact/" + asset + ".sha256":
+			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("WAGO_VERSION", "canary@"+sha)
+	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
+	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	target := filepath.Join(installer.tmpDir, executableName("wago"))
+	if err := installer.downloadManager(target); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(target); err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("manager = %q, %v", got, err)
+	}
+	if installer.managerTag != "canary-exact" || !installer.managerFromRelease {
+		t.Fatalf("manager resolution = %q, %v", installer.managerTag, installer.managerFromRelease)
+	}
+}
+
+func TestInstallerCanonicalRollingGitFetchUsesExactDetachedCommit(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	previous := runInstallerGit
+	var commands [][]string
+	runInstallerGit = func(args ...string) ([]byte, error) {
+		commands = append(commands, append([]string(nil), args...))
+		return nil, nil
+	}
+	t.Cleanup(func() { runInstallerGit = previous })
+
+	target := filepath.Join(t.TempDir(), "src")
+	i := &installer{version: "canary@" + sha, repoURL: "https://example.invalid/wago.git"}
+	if output, err := i.fetchSourceWithGit(target, sha); err != nil || output != nil {
+		t.Fatalf("fetchSourceWithGit = %q, %v", output, err)
+	}
+	want := [][]string{
+		{"-c", "init.defaultBranch=main", "init", target},
+		{"-C", target, "fetch", "--quiet", "--depth", "1", i.repoURL, sha},
+		{"-C", target, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
+	}
+	if fmt.Sprint(commands) != fmt.Sprint(want) {
+		t.Fatalf("git commands = %v, want %v", commands, want)
+	}
+}
+
+func TestInstallerCanonicalRollingArchiveFallbackUsesExactCommit(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	var requested string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = r.URL.Path
+		w.Header().Set("Content-Type", "application/zip")
+		writer := zip.NewWriter(w)
+		entry, err := writer.Create("wago-root/go.mod")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, _ = entry.Write([]byte("module example.invalid/wago\n"))
+		if err := writer.Close(); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+
+	previousGit := runInstallerGit
+	previousArchiveURL := installerSourceArchiveURL
+	runInstallerGit = func(...string) ([]byte, error) { return []byte("git unavailable"), errors.New("git failed") }
+	installerSourceArchiveURL = func(_, ref string) string { return server.URL + "/zipball/" + ref }
+	t.Cleanup(func() {
+		runInstallerGit = previousGit
+		installerSourceArchiveURL = previousArchiveURL
+	})
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+	t.Setenv("WAGO_ARCHIVE_URL", "")
+	i := &installer{
+		out:        &bytes.Buffer{},
+		version:    "nightly@" + sha,
+		repoURL:    "https://example.invalid/wago.git",
+		archiveURL: server.URL + "/wrong-ref",
+		httpClient: server.Client(),
+		tmpDir:     t.TempDir(),
+	}
+	target, err := i.fetchSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requested != "/zipball/"+sha {
+		t.Fatalf("archive request = %q", requested)
+	}
+	if i.sourceMethod != "archive" {
+		t.Fatalf("source method = %q", i.sourceMethod)
+	}
+	if _, err := os.Stat(filepath.Join(target, "go.mod")); err != nil {
+		t.Fatalf("extracted source: %v", err)
 	}
 }
 

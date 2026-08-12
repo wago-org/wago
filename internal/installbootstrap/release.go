@@ -15,8 +15,10 @@ import (
 )
 
 type Release struct {
-	TagName     string `json:"tag_name"`
-	PublishedAt string `json:"published_at"`
+	TagName         string `json:"tag_name"`
+	TargetCommitish string `json:"target_commitish"`
+	PublishedAt     string `json:"published_at"`
+	Draft           bool   `json:"draft"`
 }
 
 // Catalog is the release-discovery seam. GitHub HTTP and in-memory tests are
@@ -43,6 +45,19 @@ func Resolve(version string, catalog Catalog) (string, error) {
 	case IsReleaseTag(version):
 		return version, nil
 	}
+	if channel, sha, canonical := rollingCommit(version); canonical {
+		releases, err := catalog.Releases()
+		if err != nil {
+			return "", err
+		}
+		sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
+		for _, item := range releases {
+			if !item.Draft && strings.HasPrefix(item.TagName, channel+"-") && strings.EqualFold(item.TargetCommitish, sha) {
+				return item.TagName, nil
+			}
+		}
+		return "", fmt.Errorf("no %s installer release found for commit %s", channel, sha)
+	}
 	channel := version
 	if version == "main" {
 		channel = "canary"
@@ -56,7 +71,7 @@ func Resolve(version string, catalog Catalog) (string, error) {
 	}
 	sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
 	for _, item := range releases {
-		if strings.HasPrefix(item.TagName, channel+"-") {
+		if !item.Draft && strings.HasPrefix(item.TagName, channel+"-") {
 			return item.TagName, nil
 		}
 	}
@@ -65,6 +80,19 @@ func Resolve(version string, catalog Catalog) (string, error) {
 
 func IsReleaseTag(version string) bool {
 	return strings.HasPrefix(version, "v") || strings.HasPrefix(version, "canary-") || strings.HasPrefix(version, "nightly-")
+}
+
+func rollingCommit(version string) (channel, sha string, ok bool) {
+	channel, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(version)), "@")
+	if !found || (channel != "canary" && channel != "nightly") || len(sha) != 40 {
+		return "", "", false
+	}
+	for _, char := range sha {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return "", "", false
+		}
+	}
+	return channel, sha, true
 }
 
 func Asset(prefix, goos, goarch string) (string, error) {

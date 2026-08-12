@@ -126,7 +126,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          WAGO_VERSION: ${{ needs.check.outputs.version }}
+          WAGO_VERSION: nightly@${{ needs.check.outputs.sha }}
         run: |
           scripts/build-release-assets.sh
           scripts/verify-channel-assets.sh . "${{ matrix.target }}"

@@ -458,7 +458,7 @@ func TestBuildRunnerFromSourceChecksOutExactCanaryCommit(t *testing.T) {
 		"git -C", "remote add origin",
 		"fetch --quiet --depth 1 origin " + sha,
 		"checkout --quiet --detach FETCH_HEAD",
-		"go build", "-X main.version=canary-deadbee",
+		"go build", "-X main.version=canary@" + sha,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("source commands missing %q:\n%s", want, joined)

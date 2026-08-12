@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,28 +65,81 @@ const discoveryPageLimit = 10
 
 func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 	var releases []remoteRelease
+	err := forEachReleasePage(ctx, "release discovery", func(batch []remoteRelease) bool {
+		releases = append(releases, batch...)
+		return true
+	})
+	return releases, err
+}
+
+func forEachReleasePage(ctx context.Context, operation string, visit func([]remoteRelease) bool) error {
+	address := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=1", releaseAPI())
+	seen := make(map[string]struct{}, discoveryPageLimit)
 	for page := 1; page <= discoveryPageLimit; page++ {
-		address := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page)
-		response, err := getReleaseBytes(ctx, "release discovery", address, releaseMetadataMaximum)
+		if _, duplicate := seen[address]; duplicate {
+			return fmt.Errorf("GitHub release pagination loop at page %d", page)
+		}
+		seen[address] = struct{}{}
+		response, err := getReleaseBytes(ctx, operation, address, releaseMetadataMaximum)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("GitHub returned %s", response.Status)
+			return fmt.Errorf("GitHub returned %s", response.Status)
 		}
 		var batch []remoteRelease
 		if err := json.Unmarshal(response.Body, &batch); err != nil {
-			return nil, err
+			return err
 		}
 		if len(batch) > 100 {
-			return nil, fmt.Errorf("GitHub returned too many releases on page %d", page)
+			return fmt.Errorf("GitHub returned too many releases on page %d", page)
 		}
-		releases = append(releases, batch...)
+		if !visit(batch) {
+			return nil
+		}
+		next, found, err := releaseNextLink(response.Header, address)
+		if err != nil {
+			return err
+		}
+		if found {
+			address = next
+			continue
+		}
 		if len(batch) < 100 {
-			return releases, nil
+			return nil
+		}
+		address = fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page+1)
+	}
+	return fmt.Errorf("GitHub release discovery exceeded %d pages", discoveryPageLimit)
+}
+
+func releaseNextLink(header http.Header, current string) (string, bool, error) {
+	for _, value := range header.Values("Link") {
+		for _, entry := range strings.Split(value, ",") {
+			entry = strings.TrimSpace(entry)
+			left, parameters, found := strings.Cut(entry, ";")
+			if !found || !strings.Contains(parameters, `rel="next"`) {
+				continue
+			}
+			if len(left) < 3 || left[0] != '<' || left[len(left)-1] != '>' {
+				return "", false, fmt.Errorf("GitHub returned a malformed release pagination link")
+			}
+			base, err := url.Parse(current)
+			if err != nil {
+				return "", false, err
+			}
+			reference, err := url.Parse(left[1 : len(left)-1])
+			if err != nil {
+				return "", false, fmt.Errorf("GitHub returned a malformed release pagination link: %w", err)
+			}
+			next := base.ResolveReference(reference)
+			if next.Scheme != base.Scheme || next.Host != base.Host || next.Path != base.Path {
+				return "", false, fmt.Errorf("GitHub returned an invalid release pagination target")
+			}
+			return next.String(), true, nil
 		}
 	}
-	return nil, fmt.Errorf("GitHub release discovery exceeded %d pages", discoveryPageLimit)
+	return "", false, nil
 }
 
 // vmUpdate resolves the moving channel before touching the installed runtime.
@@ -132,32 +186,17 @@ func installedCommitMatches(path, resolved string) bool {
 }
 
 func sameRelease(installed, resolved string) bool {
-	if installed != "" && installed == resolved {
+	lowerInstalled := strings.ToLower(strings.TrimSpace(installed))
+	rollingStamp := strings.HasPrefix(lowerInstalled, "canary@") || strings.HasPrefix(lowerInstalled, "nightly@")
+	if installed != "" && installed == resolved && channelRelease(installed) == "" && !isRollingChannel(installed) && !rollingStamp {
 		return true
 	}
-	installedCommit, resolvedCommit := commitFromVersion(installed), commitFromVersion(resolved)
-	return installedCommit != "" && resolvedCommit != "" &&
-		(strings.HasPrefix(installedCommit, resolvedCommit) || strings.HasPrefix(resolvedCommit, installedCommit))
-}
-
-func commitFromVersion(version string) string {
-	if sha, ok := canaryCommitSHA(version); ok {
-		return sha
-	}
-	if channelRelease(version) == "" {
-		return ""
-	}
-	parts := strings.Split(version, "-")
-	commit := parts[len(parts)-1]
-	if len(commit) < 7 {
-		return ""
-	}
-	for _, character := range strings.ToLower(commit) {
-		if !strings.ContainsRune("0123456789abcdef", character) {
-			return ""
-		}
-	}
-	return strings.ToLower(commit)
+	installedChannel, installedCommit, installedCanonical := rollingCommitSHA(installed)
+	resolvedChannel, resolvedCommit, resolvedCanonical := rollingCommitSHA(resolved)
+	// Only canonical object IDs are safe freshness identities. Legacy abbreviated
+	// stamps are deliberately treated as stale: prefix equality can collide, and
+	// an offline local comparison cannot prove what object an abbreviation named.
+	return installedCanonical && resolvedCanonical && installedChannel == resolvedChannel && installedCommit == resolvedCommit
 }
 
 func resolveRunnerVersion(ver string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
@@ -178,7 +217,7 @@ func resolveRunnerVersionContext(ctx context.Context, ver string, progress *mana
 		}
 		resolved = canaryCommitTarget(sha)
 		if progress != nil {
-			progress.Done("resolved " + canaryCommitVersion(resolved))
+			progress.Done("resolved " + releasePickerLabel(resolved))
 		}
 		return resolved, false, nil
 	}
@@ -196,10 +235,18 @@ func resolveRunnerVersionContext(ctx context.Context, ver string, progress *mana
 		return resolved, false, nil
 	}
 	if errors.Is(err, errNoPublishedRelease) {
-		if progress != nil {
-			progress.Done("no published release; using source")
+		sha, resolveErr := latestMainCommitContext(ctx)
+		if resolveErr != nil {
+			if progress != nil {
+				progress.Fail("could not resolve source commit")
+			}
+			return "", false, resolveErr
 		}
-		return "main", true, nil
+		resolved = ver + "@" + sha
+		if progress != nil {
+			progress.Done("no published release; using " + releasePickerLabel(resolved) + " source")
+		}
+		return resolved, true, nil
 	}
 	if progress != nil {
 		progress.Fail("could not resolve release")
@@ -224,7 +271,7 @@ func installRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths
 
 func installRunnerPayloadContext(ctx context.Context, ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
 	if !sourceOnly {
-		err := downloadBinaryWithProgressContext(ctx, releaseBase(), canaryCommitVersion(ref), profile, build, dest, progress)
+		err := downloadBinaryWithProgressContext(ctx, releaseBase(), releaseAssetVersion(ref), profile, build, dest, progress)
 		if err == nil {
 			return nil
 		}
@@ -281,7 +328,7 @@ func installManagerPayloadContext(ctx context.Context, resolved, dest string, so
 		err := downloadReleaseAssetWithProgressContext(
 			ctx,
 			releaseBase(),
-			canaryCommitVersion(resolved),
+			releaseAssetVersion(resolved),
 			managerAsset(),
 			dest,
 			progress,
@@ -356,26 +403,34 @@ func latestChannelRelease(channel string) (string, error) {
 }
 
 func latestChannelReleaseContext(ctx context.Context, channel string) (string, error) {
-	response, err := getReleaseBytes(ctx, "release channel discovery", releaseAPI()+"/repos/wago-org/wago/releases?per_page=100", releaseMetadataMaximum)
+	prefix := channel + "-"
+	var resolved string
+	var resolveErr error
+	err := forEachReleasePage(ctx, "release channel discovery", func(releases []remoteRelease) bool {
+		for _, release := range releases {
+			if release.Draft || !strings.HasPrefix(release.TagName, prefix) {
+				continue
+			}
+			sha := strings.ToLower(strings.TrimSpace(release.TargetCommitish))
+			if !validCommitSHA(sha) {
+				resolveErr = fmt.Errorf("GitHub release %q has an invalid target commit", release.TagName)
+				return false
+			}
+			resolved = release.TagName + "@" + sha
+			return false
+		}
+		return true
+	})
 	if err != nil {
 		return "", err
 	}
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub returned %s", response.Status)
+	if resolveErr != nil {
+		return "", resolveErr
 	}
-	var releases []struct {
-		TagName string `json:"tag_name"`
+	if resolved == "" {
+		return "", fmt.Errorf("%w: %s", errNoPublishedRelease, channel)
 	}
-	if err := json.Unmarshal(response.Body, &releases); err != nil {
-		return "", err
-	}
-	prefix := channel + "-"
-	for _, release := range releases {
-		if strings.HasPrefix(release.TagName, prefix) {
-			return release.TagName, nil
-		}
-	}
-	return "", fmt.Errorf("%w: %s", errNoPublishedRelease, channel)
+	return resolved, nil
 }
 
 var errNoPublishedRelease = errors.New("no published release")

@@ -310,7 +310,10 @@ func installedWagoLabel(requested, resolved string, profile wagopaths.Profile, b
 	if isRollingChannel(requested) {
 		channel = requested
 	} else {
-		channel = channelRelease(resolved)
+		channel, _, _ = rollingCommitSHA(resolved)
+		if channel == "" {
+			channel = channelRelease(resolved)
+		}
 		if channel == "" {
 			channel = channelRelease(requested)
 		}
@@ -326,6 +329,9 @@ func installedWagoLabel(requested, resolved string, profile wagopaths.Profile, b
 }
 
 func releaseCommit(release string) string {
+	if _, sha, canonical := rollingCommitSHA(release); canonical {
+		return sha[:7]
+	}
 	if channelRelease(release) == "" {
 		return ""
 	}

@@ -8,8 +8,10 @@ func TestDiagnosticChannel(t *testing.T) {
 	}{
 		{"canary", "deadbee", "canary"},
 		{"", "canary-20260729-deadbee", "canary"},
+		{"", "canary@deadbee123456789012345678901234567890123", "canary"},
 		{"nightly", "deadbee", "nightly"},
 		{"", "nightly-20260729-deadbee", "nightly"},
+		{"", "nightly@deadbee123456789012345678901234567890123", "nightly"},
 		{"latest", "v1.0.0", "latest"},
 		{"", "v1.0.0", "stable"},
 		{"local", "deadbee", "local"},

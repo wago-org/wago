@@ -4,9 +4,9 @@ import "strings"
 
 func DiagnosticChannel(activeVersion, release string) string {
 	switch {
-	case activeVersion == "canary", strings.HasPrefix(release, "canary-"):
+	case activeVersion == "canary", strings.HasPrefix(release, "canary-"), strings.HasPrefix(release, "canary@"):
 		return "canary"
-	case activeVersion == "nightly", strings.HasPrefix(release, "nightly-"):
+	case activeVersion == "nightly", strings.HasPrefix(release, "nightly-"), strings.HasPrefix(release, "nightly@"):
 		return "nightly"
 	case activeVersion == "latest":
 		return "latest"

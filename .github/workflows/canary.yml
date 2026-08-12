@@ -47,7 +47,7 @@ jobs:
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=canary-${sha::7}" >> "$GITHUB_OUTPUT"
-          echo "tag=canary-${sha::7}" >> "$GITHUB_OUTPUT"
+          echo "tag=canary-$sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})
@@ -109,7 +109,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          WAGO_VERSION: ${{ needs.prepare.outputs.version }}
+          WAGO_VERSION: canary@${{ needs.prepare.outputs.sha }}
         run: |
           scripts/build-release-assets.sh
           scripts/verify-channel-assets.sh . "${{ matrix.target }}"

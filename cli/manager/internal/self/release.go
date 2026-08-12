@@ -17,7 +17,7 @@ func Channel(current string) string {
 
 func pinnedChannel(version string) string {
 	for _, channel := range []string{"canary", "nightly"} {
-		if strings.HasPrefix(version, channel+"-") {
+		if strings.HasPrefix(version, channel+"-") || strings.HasPrefix(version, channel+"@") {
 			return channel
 		}
 	}
