@@ -11,8 +11,10 @@ import (
 )
 
 type remoteRelease struct {
-	TagName     string `json:"tag_name"`
-	PublishedAt string `json:"published_at"`
+	TagName         string `json:"tag_name"`
+	TargetCommitish string `json:"target_commitish"`
+	PublishedAt     string `json:"published_at"`
+	Draft           bool   `json:"draft"`
 }
 
 type remoteCommit struct {
@@ -78,6 +80,9 @@ func stableReleaseNames(tags []string) []string {
 func releasePickerItems(releases []remoteRelease, channel string, now time.Time) []tui.Item {
 	items := make([]tui.Item, 0, len(releases))
 	for _, release := range releases {
+		if release.Draft {
+			continue
+		}
 		if channel == "" {
 			if release.TagName == "" || isRollingChannel(release.TagName) || channelRelease(release.TagName) != "" {
 				continue
@@ -86,10 +91,18 @@ func releasePickerItems(releases []remoteRelease, channel string, now time.Time)
 			continue
 		}
 		label := releasePickerLabel(release.TagName)
+		value := release.TagName
+		if channel != "" {
+			var canonical bool
+			value, canonical = canonicalRollingRelease(release)
+			if !canonical {
+				continue
+			}
+		}
 		items = append(items, tui.Item{
 			Label:       label,
 			Description: releasePickerDescription(release, now),
-			Value:       release.TagName,
+			Value:       value,
 		})
 	}
 	if channel == "" {
@@ -124,9 +137,31 @@ func canaryCommitTarget(sha string) string {
 	return "canary@" + strings.ToLower(strings.TrimSpace(sha))
 }
 
-func canaryCommitSHA(target string) (string, bool) {
-	sha, found := strings.CutPrefix(target, "canary@")
-	return sha, found && validCommitSHA(sha)
+// rollingCommitSHA extracts the canonical commit identity from either a build
+// stamp such as "nightly@<sha>" or a resolved release such as
+// "nightly-20260812-deadbee@<sha>".
+func rollingCommitSHA(target string) (channel, sha string, found bool) {
+	prefix, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(target)), "@")
+	if !found || strings.Contains(sha, "@") {
+		return "", "", false
+	}
+	channel = prefix
+	if releaseChannel := channelRelease(prefix); releaseChannel != "" {
+		channel = releaseChannel
+	}
+	sha = strings.TrimSpace(sha)
+	return channel, sha, rollingChannels[channel] && validCommitSHA(sha)
+}
+
+func canonicalRollingRelease(release remoteRelease) (string, bool) {
+	if release.Draft || channelRelease(release.TagName) == "" {
+		return "", false
+	}
+	sha := strings.ToLower(strings.TrimSpace(release.TargetCommitish))
+	if !validCommitSHA(sha) {
+		return "", false
+	}
+	return release.TagName + "@" + sha, true
 }
 
 func validCommitSHA(sha string) bool {
@@ -141,23 +176,48 @@ func validCommitSHA(sha string) bool {
 	return true
 }
 
-func canaryCommitVersion(target string) string {
-	if sha, ok := canaryCommitSHA(target); ok {
-		return "canary-" + sha[:7]
+// releaseAssetVersion returns the immutable GitHub release tag used for an
+// asset lookup. Exact commit releases use the full object ID in the tag; a
+// resolved dated rolling release retains the published tag before @SHA.
+func releaseAssetVersion(target string) string {
+	if channel, sha, ok := rollingCommitSHA(target); ok {
+		normalized := strings.ToLower(strings.TrimSpace(target))
+		if tag, _, tagged := strings.Cut(normalized, "@"); tagged && channelRelease(tag) == channel {
+			return tag
+		}
+		return channel + "-" + sha
+	}
+	return target
+}
+
+func rollingVersionStamp(target string) string {
+	if channel, sha, ok := rollingCommitSHA(target); ok {
+		return channel + "@" + sha
 	}
 	return target
 }
 
 func releasePickerLabel(tag string) string {
+	if channel, sha, canonical := rollingCommitSHA(tag); canonical {
+		normalized := strings.ToLower(strings.TrimSpace(tag))
+		if releaseTag, _, tagged := strings.Cut(normalized, "@"); tagged && channelRelease(releaseTag) == channel {
+			tag = releaseTag
+		} else {
+			return channel + "-" + sha[:7]
+		}
+	}
 	if isRollingChannel(tag) || tag == "latest" {
 		return tag
 	}
-	if channelRelease(tag) != "" {
+	if channel := channelRelease(tag); channel != "" {
 		parts := strings.Split(tag, "-")
 		if len(parts) >= 3 && len(parts[1]) == 8 {
 			if _, ok := ParseNumeric(parts[1]); ok {
 				return parts[0] + "-" + strings.Join(parts[2:], "-")
 			}
+		}
+		if commit := parts[len(parts)-1]; validCommitSHA(strings.ToLower(commit)) {
+			return channel + "-" + strings.ToLower(commit[:7])
 		}
 		return tag
 	}

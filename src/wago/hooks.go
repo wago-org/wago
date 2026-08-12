@@ -8,6 +8,7 @@ import (
 )
 
 type hookRegistry struct {
+	operationGates      []*pluginCallGate
 	onRuntimeClose      []func(RuntimeCloseEvent)
 	internalClose       []func() error
 	internalBeforeClose []func(*Instance)
@@ -112,18 +113,21 @@ type ModuleCompileErrorEvent struct {
 }
 type ModuleCloseEvent struct{ Module ModuleView }
 type InstantiationRequest struct {
-	Module ModuleView
-	Origin InstantiateOrigin
+	Module      ModuleView
+	Origin      InstantiateOrigin
+	reservation *pluginOperationReservation
 }
 type InstantiationEvent struct {
-	Module   ModuleView
-	Instance InstanceIdentity
-	Origin   InstantiateOrigin
+	Module      ModuleView
+	Instance    InstanceIdentity
+	Origin      InstantiateOrigin
+	reservation *pluginOperationReservation
 }
 type InstantiationErrorEvent struct {
-	Module ModuleView
-	Origin InstantiateOrigin
-	Err    error
+	Module      ModuleView
+	Origin      InstantiateOrigin
+	Err         error
+	reservation *pluginOperationReservation
 }
 type InstanceCloseEvent struct {
 	Module   ModuleView
@@ -134,19 +138,21 @@ type operationIdentityToken struct{ _ byte }
 type OperationIdentity struct{ value *operationIdentityToken }
 
 type InvocationRequest struct {
-	Operation OperationIdentity
-	Instance  InstanceIdentity
-	Export    string
-	Args      []Value
-	Start     time.Time
+	Operation   OperationIdentity
+	Instance    InstanceIdentity
+	Export      string
+	Args        []Value
+	Start       time.Time
+	reservation *pluginOperationReservation
 }
 type InvocationEvent struct {
-	Operation OperationIdentity
-	Instance  InstanceIdentity
-	Export    string
-	Results   []Value
-	Err       error
-	Start     time.Time
+	Operation   OperationIdentity
+	Instance    InstanceIdentity
+	Export      string
+	Results     []Value
+	Err         error
+	Start       time.Time
+	reservation *pluginOperationReservation
 }
 
 type InstantiateOrigin uint8
@@ -156,10 +162,35 @@ const (
 	InstantiateManaged
 )
 
+func (h *hookRegistry) clone() *hookRegistry {
+	if h == nil {
+		return &hookRegistry{}
+	}
+	return &hookRegistry{
+		operationGates:      append([]*pluginCallGate(nil), h.operationGates...),
+		onRuntimeClose:      append([]func(RuntimeCloseEvent){}, h.onRuntimeClose...),
+		internalClose:       append([]func() error{}, h.internalClose...),
+		internalBeforeClose: append([]func(*Instance){}, h.internalBeforeClose...),
+		beforeCompile:       append([]func(ModuleSourceContext, []byte) ([]byte, error){}, h.beforeCompile...),
+		afterCompile:        append([]func(ModuleCompiledEvent){}, h.afterCompile...),
+		onCompileError:      append([]func(ModuleCompileErrorEvent){}, h.onCompileError...),
+		onModuleClose:       append([]func(ModuleCloseEvent){}, h.onModuleClose...),
+		beforeInstantiate:   append([]func(InstantiationRequest) error{}, h.beforeInstantiate...),
+		afterCreate:         append([]func(InstantiationEvent) error{}, h.afterCreate...),
+		afterInstantiate:    append([]func(InstantiationEvent){}, h.afterInstantiate...),
+		onInstantiateError:  append([]func(InstantiationErrorEvent){}, h.onInstantiateError...),
+		beforeClose:         append([]func(InstanceCloseEvent){}, h.beforeClose...),
+		afterClose:          append([]func(InstanceCloseEvent){}, h.afterClose...),
+		beforeInvoke:        append([]func(InvocationRequest) error{}, h.beforeInvoke...),
+		afterInvoke:         append([]func(InvocationEvent){}, h.afterInvoke...),
+	}
+}
+
 func (h *hookRegistry) appendGated(src *hookRegistry, gate *pluginCallGate) {
 	if src == nil {
 		return
 	}
+	h.operationGates = append(h.operationGates, gate)
 	for _, fn := range src.onRuntimeClose {
 		fn := fn
 		h.onRuntimeClose = append(h.onRuntimeClose, func(event RuntimeCloseEvent) { withPluginHook(gate, func() { fn(event) }) })
@@ -186,22 +217,24 @@ func (h *hookRegistry) appendGated(src *hookRegistry, gate *pluginCallGate) {
 	for _, fn := range src.beforeInstantiate {
 		fn := fn
 		h.beforeInstantiate = append(h.beforeInstantiate, func(request InstantiationRequest) error {
-			return withPluginHookError(gate, func() error { return fn(request) })
+			return withReservedPluginHookError(gate, request.reservation, func() error { return fn(request) })
 		})
 	}
 	for _, fn := range src.afterCreate {
 		fn := fn
 		h.afterCreate = append(h.afterCreate, func(event InstantiationEvent) error {
-			return withPluginHookError(gate, func() error { return fn(event) })
+			return withReservedPluginHookError(gate, event.reservation, func() error { return fn(event) })
 		})
 	}
 	for _, fn := range src.afterInstantiate {
 		fn := fn
-		h.afterInstantiate = append(h.afterInstantiate, func(event InstantiationEvent) { withPluginHook(gate, func() { fn(event) }) })
+		h.afterInstantiate = append(h.afterInstantiate, func(event InstantiationEvent) { withReservedPluginHook(gate, event.reservation, func() { fn(event) }) })
 	}
 	for _, fn := range src.onInstantiateError {
 		fn := fn
-		h.onInstantiateError = append(h.onInstantiateError, func(event InstantiationErrorEvent) { withPluginHook(gate, func() { fn(event) }) })
+		h.onInstantiateError = append(h.onInstantiateError, func(event InstantiationErrorEvent) {
+			withReservedPluginHook(gate, event.reservation, func() { fn(event) })
+		})
 	}
 	for _, fn := range src.beforeClose {
 		fn := fn
@@ -214,12 +247,12 @@ func (h *hookRegistry) appendGated(src *hookRegistry, gate *pluginCallGate) {
 	for _, fn := range src.beforeInvoke {
 		fn := fn
 		h.beforeInvoke = append(h.beforeInvoke, func(request InvocationRequest) error {
-			return withPluginHookError(gate, func() error { return fn(request) })
+			return withReservedPluginHookError(gate, request.reservation, func() error { return fn(request) })
 		})
 	}
 	for _, fn := range src.afterInvoke {
 		fn := fn
-		h.afterInvoke = append(h.afterInvoke, func(event InvocationEvent) { withPluginHook(gate, func() { fn(event) }) })
+		h.afterInvoke = append(h.afterInvoke, func(event InvocationEvent) { withReservedPluginHook(gate, event.reservation, func() { fn(event) }) })
 	}
 }
 
@@ -239,8 +272,33 @@ func withPluginHookError(gate *pluginCallGate, fn func() error) error {
 	return fn()
 }
 
+func withReservedPluginHook(gate *pluginCallGate, reservation *pluginOperationReservation, fn func()) {
+	if reservation != nil && reservation.allows(gate) {
+		fn()
+		return
+	}
+	withPluginHook(gate, fn)
+}
+
+func withReservedPluginHookError(gate *pluginCallGate, reservation *pluginOperationReservation, fn func() error) error {
+	if reservation != nil && reservation.allows(gate) {
+		return fn()
+	}
+	return withPluginHookError(gate, fn)
+}
+
 func callHookSafely(phase string, fn func()) (err error) {
 	return callSafely(phase+" hook", fn)
+}
+
+func callShutdownSafely(label string, fn func()) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = fmt.Errorf("wago: %s: %w", label, ErrCallbackPanic)
+		}
+	}()
+	fn()
+	return nil
 }
 
 func callSafely(label string, fn func()) (err error) {

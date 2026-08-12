@@ -128,6 +128,7 @@ func TestGlobalOverwriteReplacesProducerAndBoundsRepeatedWrites(t *testing.T) {
 	_ = producerB.Close()
 	_ = global.Close()
 	_ = rt.Close()
+	_ = rt.WaitClosed(context.Background())
 	assertRetainedInstanceState(t, "producer A after store teardown", producerA, 0, false)
 	assertRetainedInstanceState(t, "producer B after store teardown", producerB, 0, false)
 }
@@ -174,6 +175,7 @@ func TestGlobalOverwriteRacesCloseWithoutDoubleRelease(t *testing.T) {
 		}
 		_ = producer.Close()
 		_ = rt.Close()
+		_ = rt.WaitClosed(context.Background())
 		assertRetainedInstanceState(t, "racing producer teardown", producer, 0, false)
 	}
 }

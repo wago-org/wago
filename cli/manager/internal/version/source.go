@@ -39,7 +39,7 @@ func sourceArchiveURL(ref string) string {
 	if value := os.Getenv("WAGO_ARCHIVE_URL"); value != "" {
 		return value
 	}
-	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
+	if _, sha, rollingCommit := rollingCommitSHA(ref); rollingCommit {
 		ref = sha
 	}
 	return strings.TrimRight(releaseAPI(), "/") + "/repos/wago-org/wago/zipball/" + url.PathEscape(ref)
@@ -195,8 +195,8 @@ func checkoutWagoSourceInContext(ctx context.Context, parent, ref string, progre
 			return "", "", "", fmt.Errorf("fetch source with Git (%v) or archive: %w", gitErr, archiveErr)
 		}
 	}
-	if _, canaryCommit := canaryCommitSHA(ref); canaryCommit {
-		stamp = canaryCommitVersion(ref)
+	if _, _, rollingCommit := rollingCommitSHA(ref); rollingCommit {
+		stamp = rollingVersionStamp(ref)
 	}
 	if progress != nil {
 		progress.Done("fetched source")
@@ -205,7 +205,7 @@ func checkoutWagoSourceInContext(ctx context.Context, parent, ref string, progre
 }
 
 func checkoutWagoSourceWithGit(ctx context.Context, ref, source string) error {
-	if sha, canaryCommit := canaryCommitSHA(ref); canaryCommit {
+	if _, sha, rollingCommit := rollingCommitSHA(ref); rollingCommit {
 		commands := [][]string{
 			{"init", "--quiet", source},
 			{"-C", source, "remote", "add", "origin", sourceRepository()},

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -217,6 +216,9 @@ func TestExactInstanceLifecycleManagedExplicitAndRuntimeClose(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close: %v", err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
+	}
 	if second.Instance() != nil {
 		t.Fatal("runtime close retained managed instance")
 	}
@@ -256,19 +258,20 @@ func TestRuntimeCloseWaitsForActiveManagedClose(t *testing.T) {
 	managedDone := make(chan error, 1)
 	go func() { managedDone <- managed.Close() }()
 	<-entered
-	runtimeDone := make(chan error, 1)
-	go func() { runtimeDone <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Runtime.Close: %v", err)
+	}
 	select {
-	case err := <-runtimeDone:
-		t.Fatalf("Runtime.Close returned before active managed close: %v", err)
-	case <-time.After(25 * time.Millisecond):
+	case <-rt.Closed():
+		t.Fatal("Runtime teardown completed before active managed close")
+	default:
 	}
 	close(release)
 	if err := <-managedDone; err != nil {
 		t.Fatalf("ManagedInstance.Close: %v", err)
 	}
-	if err := <-runtimeDone; err != nil {
-		t.Fatalf("Runtime.Close: %v", err)
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
 	}
 	if before.Load() != 1 || after.Load() != 1 {
 		t.Fatalf("hook counts = %d/%d, want 1/1", before.Load(), after.Load())
@@ -319,20 +322,25 @@ func TestRuntimeCloseWaitsForPendingManagedInstantiation(t *testing.T) {
 		instantiateDone <- instantiateResult{managed: managed, err: err}
 	}()
 	<-startEntered
-	runtimeDone := make(chan error, 1)
-	go func() { runtimeDone <- rt.Close() }()
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Runtime.Close: %v", err)
+	}
+	done := rt.Closed()
+	if done == nil {
+		t.Fatal("Runtime.Close did not publish completion")
+	}
 	select {
-	case err := <-runtimeDone:
-		t.Fatalf("Runtime.Close returned before pending managed instantiation cleanup: %v", err)
-	case <-time.After(25 * time.Millisecond):
+	case <-done:
+		t.Fatal("runtime teardown completed before pending managed instantiation cleanup")
+	default:
 	}
 	close(releaseStart)
 	result := <-instantiateDone
 	if result.managed != nil || result.err == nil {
 		t.Fatalf("pending Instantiate = %v, %v; want nil, error", result.managed, result.err)
 	}
-	if err := <-runtimeDone; err != nil {
-		t.Fatalf("Runtime.Close: %v", err)
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
 	}
 	if resolved == nil || closed != resolved {
 		t.Fatalf("resolved/closed instances = %p/%p", resolved, closed)
@@ -342,7 +350,6 @@ func TestRuntimeCloseWaitsForPendingManagedInstantiation(t *testing.T) {
 func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	closePanic := errors.New("concurrent close hook panic")
 	var before, after atomic.Int32
 	p := &disposalTestPlugin{
 		id:       "test.lifecycle.concurrent-close",
@@ -351,7 +358,7 @@ func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 			before.Add(1)
 			close(entered)
 			<-release
-			panic(closePanic)
+			panic("concurrent close hook panic")
 		}},
 		afterClose: []func(*InstanceContext){func(*InstanceContext) { after.Add(1) }},
 	}
@@ -375,23 +382,18 @@ func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 	}
 	close(start)
 	<-entered
-	select {
-	case err := <-results:
-		t.Fatalf("Close returned before lifecycle completion: %v", err)
-	case <-time.After(25 * time.Millisecond):
-	}
 	close(release)
-	var first error
+	var panicResults int
 	for i := 0; i < callers; i++ {
 		err := <-results
-		if !errors.Is(err, closePanic) {
-			t.Fatalf("Close[%d] = %v, want close hook panic", i, err)
+		if errors.Is(err, ErrCallbackPanic) {
+			panicResults++
+		} else if err != nil {
+			t.Fatalf("Close[%d] = %v, want nil or ErrCallbackPanic", i, err)
 		}
-		if i == 0 {
-			first = err
-		} else if err != first {
-			t.Fatalf("Close[%d] result identity differs: %v != %v", i, err, first)
-		}
+	}
+	if panicResults == 0 {
+		t.Fatal("close lifecycle owner did not report ErrCallbackPanic")
 	}
 	if before.Load() != 1 || after.Load() != 1 {
 		t.Fatalf("hook counts = %d/%d, want 1/1", before.Load(), after.Load())
@@ -399,7 +401,6 @@ func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 }
 
 func TestPanickingCloseHookDoesNotSkipCleanup(t *testing.T) {
-	panicErr := errors.New("close hook exploded")
 	var mu sync.Mutex
 	var events []string
 	record := func(event string) {
@@ -412,7 +413,7 @@ func TestPanickingCloseHookDoesNotSkipCleanup(t *testing.T) {
 		requires: []PluginCapability{PluginInstanceHooks},
 		beforeClose: []func(*InstanceContext){
 			func(*InstanceContext) { record("before-first") },
-			func(*InstanceContext) { record("before-panic"); panic(panicErr) },
+			func(*InstanceContext) { record("before-panic"); panic("close hook exploded") },
 			func(*InstanceContext) { record("before-last") },
 		},
 		afterClose: []func(*InstanceContext){
@@ -430,8 +431,8 @@ func TestPanickingCloseHookDoesNotSkipCleanup(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	closeErr := in.Close()
-	if !errors.Is(closeErr, panicErr) {
-		t.Fatalf("Close error = %v, want panic error", closeErr)
+	if !errors.Is(closeErr, ErrCallbackPanic) {
+		t.Fatalf("Close error = %v, want ErrCallbackPanic", closeErr)
 	}
 	if second := in.Close(); second != closeErr {
 		t.Fatalf("second Close error identity = %v, want same %v", second, closeErr)
@@ -546,7 +547,6 @@ func TestFailedLocalStartResolvesAndClosesExactInstance(t *testing.T) {
 
 func TestAfterInstantiateFailureClosesAndJoinsCleanupError(t *testing.T) {
 	instantiateErr := errors.New("attach failed")
-	cleanupErr := errors.New("detach panicked")
 	var before, after int
 	var observed error
 	p := &disposalTestPlugin{
@@ -558,7 +558,7 @@ func TestAfterInstantiateFailureClosesAndJoinsCleanupError(t *testing.T) {
 		onInstErr: []func(*InstantiateContext, error){func(_ *InstantiateContext, err error) { observed = err }},
 		beforeClose: []func(*InstanceContext){func(*InstanceContext) {
 			before++
-			panic(cleanupErr)
+			panic("detach panicked")
 		}},
 		afterClose: []func(*InstanceContext){func(*InstanceContext) { after++ }},
 	}
@@ -571,11 +571,11 @@ func TestAfterInstantiateFailureClosesAndJoinsCleanupError(t *testing.T) {
 	if in != nil {
 		t.Fatalf("Instantiate returned failed instance %p", in)
 	}
-	if !errors.Is(err, instantiateErr) || !errors.Is(err, cleanupErr) {
-		t.Fatalf("Instantiate error = %v, want original and cleanup errors", err)
+	if !errors.Is(err, instantiateErr) || !errors.Is(err, ErrCallbackPanic) {
+		t.Fatalf("Instantiate error = %v, want original and callback panic errors", err)
 	}
-	if !errors.Is(observed, instantiateErr) || !errors.Is(observed, cleanupErr) {
-		t.Fatalf("OnInstantiateError = %v, want original and cleanup errors", observed)
+	if !errors.Is(observed, instantiateErr) || !errors.Is(observed, ErrCallbackPanic) {
+		t.Fatalf("OnInstantiateError = %v, want original and callback panic errors", observed)
 	}
 	if before != 1 || after != 1 {
 		t.Fatalf("close hook counts = %d/%d, want 1/1", before, after)
@@ -802,6 +802,9 @@ func TestManagedForkLifecycleAndRuntimeOwnership(t *testing.T) {
 	}
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close: %v", err)
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
 	}
 	if child.Instance() != nil {
 		t.Fatal("runtime close retained forked managed instance")

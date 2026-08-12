@@ -21,10 +21,19 @@ responses use 1 MiB, release checksums use 4 KiB, and non-success response
 capture uses an independent 64 KiB limit. Declared oversized bodies are rejected
 before reading; chunked or dishonest responses are stopped after the configured
 limit. Release/commit browsing is capped at ten 100-item pages so repeated full
-pages cannot accumulate metadata indefinitely. OAuth device-flow lifetimes and
-server-provided polling intervals are also capped.
+pages cannot accumulate metadata indefinitely. Rolling-channel lookup follows
+validated same-origin GitHub `Link` pagination within that budget, skips draft
+releases, and requires the selected release to expose a canonical 40-hex commit
+target. OAuth device-flow lifetimes and server-provided polling intervals are
+also capped.
 
 ## Release downloads
+
+Canary and nightly binaries now stamp `canary@<full-sha>` or
+`nightly@<full-sha>` as their comparison identity; user-facing labels remain
+abbreviated. Canary release tags also use the full commit ID. Legacy abbreviated
+stamps are treated as stale rather than compared by prefix, so a colliding short
+hash cannot suppress an update.
 
 Executable checksums are fetched before assets. The parser accepts exactly one
 64-hexadecimal SHA-256 record naming the expected asset; the checksum tools'

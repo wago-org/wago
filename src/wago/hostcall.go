@@ -31,11 +31,13 @@ type HostModule interface {
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
 	var id invocationID
+	var reservation *pluginOperationReservation
 	switch h := caller.(type) {
 	case instanceHostModule:
 		if h.valid() {
 			active = h.in
 			id = h.invocationID
+			reservation = h.reservation
 		}
 	}
 	if active == nil || id == 0 {
@@ -50,7 +52,7 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
 		cancel = ctx
 	}
-	results, err = in.invokeWithToken(export, args, cancel, id, false)
+	results, err = in.invokeWithToken(export, args, cancel, id, false, false, reservation)
 	return results, contextInterruptError(ctx, err)
 }
 
@@ -153,11 +155,15 @@ type instancePluginState struct {
 }
 
 type instanceCloseState struct {
-	done          chan struct{}
-	quiesced      chan struct{}
-	quiescedOnce  sync.Once
-	result        error
-	interruptStop func()
+	done           chan struct{}
+	quiesced       chan struct{}
+	quiescedOnce   sync.Once
+	result         error
+	interruptStop  func()
+	hooks          *hookRegistry
+	event          *InstanceCloseEvent
+	terminalOnce   sync.Once
+	terminalResult error
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {
@@ -168,10 +174,14 @@ func (in *Instance) instantiateOrigin() InstantiateOrigin {
 }
 
 func (s *hostCallScope) begin(in *Instance) instanceHostModule {
+	return s.beginReserved(in, currentInvocationReservation(in))
+}
+
+func (s *hostCallScope) beginReserved(in *Instance, reservation *pluginOperationReservation) instanceHostModule {
 	parent := s.active.Load()
 	generation := uint64(newInvocationID())
 	s.active.Store(generation)
-	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: in.currentInvocationID()}
+	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: in.currentInvocationID(), reservation: reservation}
 }
 
 func (s *hostCallScope) end(generation, parent uint64) {
@@ -200,7 +210,11 @@ func (in *Instance) ensurePluginState() *instancePluginState {
 }
 
 func (in *Instance) beginHostCallScope() instanceHostModule {
-	return in.ensurePluginState().hostScope.begin(in)
+	return in.beginHostCallScopeReserved(currentInvocationReservation(in))
+}
+
+func (in *Instance) beginHostCallScopeReserved(reservation *pluginOperationReservation) instanceHostModule {
+	return in.ensurePluginState().hostScope.beginReserved(in, reservation)
 }
 
 func (in *Instance) currentInvocationID() invocationID {
@@ -555,6 +569,7 @@ type instanceHostModule struct {
 	generation       uint64
 	parentGeneration uint64
 	invocationID     invocationID
+	reservation      *pluginOperationReservation
 }
 
 func (h instanceHostModule) valid() bool {

@@ -269,7 +269,9 @@ func TestGlobalSynchronizationFuncrefReplacementVersusGuestCall(t *testing.T) {
 	_ = producerA.Close()
 	_ = producerB.Close()
 	_ = global.Close()
-	_ = rt.Close()
+	if err := rt.CloseContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	assertRetainedInstanceState(t, "funcref producer A teardown", producerA, 0, false)
 	assertRetainedInstanceState(t, "funcref producer B teardown", producerB, 0, false)
 }

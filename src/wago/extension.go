@@ -270,10 +270,12 @@ func (e pluginErr) Error() string { return string(e) }
 
 const (
 	ErrPermissionDenied      = pluginErr("wago: permission denied")
+	ErrCallbackPanic         = pluginErr("wago: callback panicked")
 	ErrManagedImportLifetime = pluginErr("wago: managed instance cannot inherit a borrowed import")
 	ErrMissingImport         = pluginErr("wago: missing import")
 	ErrInvalidHandle         = pluginErr("wago: invalid handle")
 	ErrPluginConflict        = pluginErr("wago: plugin conflict")
+	ErrForeignModule         = pluginErr("wago: module belongs to a different runtime")
 )
 
 // DefinitionDigest returns the lowercase SHA-256 of the canonical JSON form of

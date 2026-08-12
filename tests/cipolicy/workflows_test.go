@@ -53,6 +53,36 @@ func TestWorkflowActionsUseImmutableCommits(t *testing.T) {
 	}
 }
 
+func TestRollingReleaseWorkflowsUseImmutableTagsAndTargets(t *testing.T) {
+	for _, path := range []string{"../../.github/workflows/canary.yml", "../../.github/workflows/nightly.yml"} {
+		workflow, err := os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		contents := string(workflow)
+		for _, required := range []string{
+			`target=$(gh api "repos/${{ github.repository }}/releases/tags/`,
+			`has an invalid target commit`,
+			`if [ "$target" != "${{ needs.`,
+		} {
+			if !strings.Contains(contents, required) {
+				t.Errorf("%s is missing immutable existing-release validation %q", filepath.Base(path), required)
+			}
+		}
+	}
+	nightly, err := os.ReadFile(filepath.Clean("../../.github/workflows/nightly.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(nightly)
+	if !strings.Contains(contents, `echo "tag=nightly-$(date -u +%Y%m%d)-$sha"`) {
+		t.Fatal("nightly release tag must contain the full immutable commit SHA")
+	}
+	if strings.Contains(contents, `echo "tag=nightly-$(date -u +%Y%m%d)-${sha::7}"`) {
+		t.Fatal("nightly release tag still uses an abbreviated commit SHA")
+	}
+}
+
 func TestWindowsWABTInstallIsPinnedAndVerified(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
 	if err != nil {

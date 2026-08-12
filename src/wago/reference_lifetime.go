@@ -37,7 +37,7 @@ func (lifetime referenceLifetime) finalize() {
 		return
 	}
 	in.lifeMu.Lock()
-	if !in.closed || in.finalizing || in.resourcesClosed || in.invocationState.Load()&instanceInvocationCount != 0 {
+	if !in.closed || in.finalizing || in.resourcesClosed || in.constructionActive || in.invocationState.Load()&instanceInvocationCount != 0 {
 		in.lifeMu.Unlock()
 		return
 	}
@@ -51,7 +51,7 @@ func (lifetime referenceLifetime) finalize() {
 
 	in.lifeMu.Lock()
 	in.finalizing = false
-	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.constructionActive || in.invocationState.Load()&instanceInvocationCount != 0 {
 		in.lifeMu.Unlock()
 		return
 	}

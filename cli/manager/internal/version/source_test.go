@@ -272,6 +272,42 @@ func TestCanaryCommitMissingReleaseBuildsExactSource(t *testing.T) {
 	}
 }
 
+func TestRollingReleaseMissingAssetsPreserveExactSourceIdentity(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_BASE", server.URL)
+
+	const sha = "deadbee123456789012345678901234567890123"
+	targets := []string{
+		"canary@" + sha,
+		"nightly-20260812-" + sha + "@" + sha,
+	}
+	for _, target := range targets {
+		t.Run(target[:strings.IndexByte(target, '@')], func(t *testing.T) {
+			oldRunner, oldManager := buildRunnerSource, buildManagerSource
+			t.Cleanup(func() { buildRunnerSource, buildManagerSource = oldRunner, oldManager })
+			var runnerRef, managerRef string
+			buildRunnerSource = func(_ context.Context, ref string, _ wagopaths.Profile, _ wagopaths.Build, dest string, _ *managerprogress.Progress) error {
+				runnerRef = ref
+				return os.WriteFile(dest, []byte("source runner"), 0o755)
+			}
+			buildManagerSource = func(_ context.Context, ref, dest string, _ *managerprogress.Progress) error {
+				managerRef = ref
+				return os.WriteFile(dest, []byte("source manager"), 0o755)
+			}
+			if err := installRunnerPayload(target, wagopaths.ProfileStandard, wagopaths.BuildNormal, filepath.Join(t.TempDir(), "runner"), false, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := installManagerPayload(target, filepath.Join(t.TempDir(), "manager"), false, nil); err != nil {
+				t.Fatal(err)
+			}
+			if runnerRef != target || managerRef != target {
+				t.Fatalf("fallback identities = runner %q manager %q, want %q", runnerRef, managerRef, target)
+			}
+		})
+	}
+}
+
 func TestBuildRunnerFromSourceUsesProfileTag(t *testing.T) {
 	old := runSourceCommand
 	t.Cleanup(func() { runSourceCommand = old })
@@ -422,7 +458,7 @@ func TestBuildRunnerFromSourceChecksOutExactCanaryCommit(t *testing.T) {
 		"git -C", "remote add origin",
 		"fetch --quiet --depth 1 origin " + sha,
 		"checkout --quiet --detach FETCH_HEAD",
-		"go build", "-X main.version=canary-deadbee",
+		"go build", "-X main.version=canary@" + sha,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("source commands missing %q:\n%s", want, joined)

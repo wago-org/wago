@@ -45,8 +45,8 @@ func TestFailedInstantiationTerminatesReferenceStoreRegistration(t *testing.T) {
 	}
 	rt.refStore.mu.Unlock()
 
-	if err := rt.Close(); err != nil {
-		t.Fatalf("Runtime.Close: %v", err)
+	if err := rt.CloseContext(context.Background()); err != nil {
+		t.Fatalf("Runtime.CloseContext: %v", err)
 	}
 	rt.refStore.mu.Lock()
 	defer rt.refStore.mu.Unlock()

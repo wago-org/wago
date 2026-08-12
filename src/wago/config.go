@@ -475,6 +475,15 @@ func (c *RuntimeConfig) optimizationValues() map[string]bool {
 	return values
 }
 
+func (c *RuntimeConfig) clone() *RuntimeConfig {
+	if c == nil {
+		return NewRuntimeConfig()
+	}
+	clone := *c
+	clone.optimizations = c.optimizationValues()
+	return &clone
+}
+
 // BoundsChecks reports the configured bounds-check mode.
 func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
 
@@ -484,6 +493,10 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
+
+// GCCodeTelemetry reports whether fresh compilation should retain code-neutral
+// WasmGC native-byte attribution. Serialized artifacts do not contain it.
+func (c *RuntimeConfig) GCCodeTelemetry() bool { return c.gcCodeTelemetry }
 
 // FunctionWorkers reports the configured function-pipeline worker policy: zero
 // adaptive, one serial, or a positive forced maximum.

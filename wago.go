@@ -151,6 +151,7 @@ type (
 	PluginSelection                = impl.PluginSelection
 	PluginSet                      = impl.PluginSet
 	Policy                         = impl.Policy
+	PreparedCompile                = impl.PreparedCompile
 	PreparedFunction               = impl.PreparedFunction
 	ProviderCatalogDocument        = impl.ProviderCatalogDocument
 	ProviderCatalogEntry           = impl.ProviderCatalogEntry
@@ -257,6 +258,8 @@ const (
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
 	ElemModePassive                            = impl.ElemModePassive
+	ErrCallbackPanic                           = impl.ErrCallbackPanic
+	ErrForeignModule                           = impl.ErrForeignModule
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
 	ErrManagedImportLifetime                   = impl.ErrManagedImportLifetime
 	ErrMissingImport                           = impl.ErrMissingImport

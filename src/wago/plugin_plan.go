@@ -141,6 +141,11 @@ func (rt *Runtime) beginFailedPluginRollback() {
 	if rt.state == runtimeLoading {
 		rt.state = runtimeClosing
 	}
+	select {
+	case <-rt.loadingDone:
+	default:
+		close(rt.loadingDone)
+	}
 	rt.stateCond.Broadcast()
 	rt.mu.Unlock()
 }
@@ -162,6 +167,7 @@ func (rt *Runtime) beginPluginLoad() error {
 	}
 	rt.pluginsLoadAttempted = true
 	rt.state = runtimeLoading
+	rt.loadingDone = make(chan struct{})
 	return nil
 }
 
@@ -169,6 +175,11 @@ func (rt *Runtime) finishPluginLoad() {
 	rt.mu.Lock()
 	if rt.state == runtimeLoading {
 		rt.state = runtimeReady
+	}
+	select {
+	case <-rt.loadingDone:
+	default:
+		close(rt.loadingDone)
 	}
 	rt.stateCond.Broadcast()
 	rt.mu.Unlock()
@@ -746,13 +757,15 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 		return err
 	}
 	needsInstructionABI := false
+	hooks := rt.hooks.clone()
 	for _, p := range plan {
 		id := p.provider.Definition.ID
 		needsInstructionABI = needsInstructionABI || len(p.reg.instructions) != 0
 		for _, imp := range p.reg.imports {
-			rt.imports[imp.key()] = p.reg.callGate.wrap(imp.fn)
-			rt.importMeta[imp.key()] = imp
-			rt.importOwner[imp.key()] = id
+			key := imp.key()
+			rt.imports[key] = p.reg.callGate.wrap(imp.fn)
+			rt.importMeta[key] = cloneRegisteredImport(imp)
+			rt.importOwner[key] = id
 			rt.moduleOwner[imp.module] = id
 		}
 		for _, cap := range p.reg.caps {
@@ -772,7 +785,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: err}
 			}
 		}
-		rt.hooks.appendGated(p.reg.hooks, p.reg.callGate)
+		hooks.appendGated(p.reg.hooks, p.reg.callGate)
 		for _, activate := range p.reg.activate {
 			activate(rt)
 		}
@@ -780,13 +793,17 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 	}
 	if needsInstructionABI {
 		for _, imp := range instructionABIImports() {
-			rt.imports[imp.key()] = imp.fn
-			rt.importMeta[imp.key()] = imp
-			rt.importOwner[imp.key()] = "wago:core"
+			key := imp.key()
+			rt.imports[key] = imp.fn
+			rt.importMeta[key] = cloneRegisteredImport(imp)
+			rt.importOwner[key] = "wago:core"
 			rt.moduleOwner[imp.module] = "wago:core"
 		}
 	}
 	rt.pluginRuns = pluginRunsFor(plan)
+	// Publish only after every handle, contract, import, and manager used by the
+	// complete generation has activated.
+	rt.storeHooks(hooks)
 	return nil
 }
 

@@ -201,7 +201,9 @@ func TestPersistentFuncrefGlobalToGlobalRetainsActualProducer(t *testing.T) {
 		t.Fatalf("G2 retained roots after overwrite = %d, want 0", retained)
 	}
 	_ = g2.Close()
-	_ = rt.Close()
+	if err := rt.CloseContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if producer.hasPhysicalResources() || producer.resourceRefs != 0 {
 		t.Fatalf("producer after G2/root token teardown: live=%v roots=%d", producer.hasPhysicalResources(), producer.resourceRefs)
 	}
@@ -461,7 +463,7 @@ func TestPersistentFuncrefPublicIngressAndCrossInstanceResult(t *testing.T) {
 	_ = producer.Close()
 	_ = relay.Close()
 	_ = writer.Close()
-	if err := rt.Close(); err != nil {
+	if err := rt.CloseContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.refStore.byToken) != 0 {

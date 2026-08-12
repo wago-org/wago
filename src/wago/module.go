@@ -2,6 +2,7 @@ package wago
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -16,10 +17,20 @@ type Module struct {
 	imports []ImportSpec
 	reqCaps []Capability
 
-	identity  atomic.Pointer[moduleIdentityToken]
-	closed    atomic.Bool
-	closeOnce sync.Once
-	closeErr  error
+	identity             atomic.Pointer[moduleIdentityToken]
+	ownsCompiled         bool
+	independentInstances bool
+	lifeMu               sync.Mutex
+	closed               atomic.Bool
+	uses                 uint32
+	usesDone             chan struct{}
+	closeState           atomic.Pointer[moduleCloseState]
+	closeCallbacks       atomic.Uint32
+}
+
+type moduleCloseState struct {
+	done   chan struct{}
+	result error
 }
 
 // ImportKind classifies what a module imports.
@@ -166,14 +177,47 @@ type ModuleMetadata struct {
 	Tags                 []TagMetadata
 }
 
-// buildModule wraps a freshly compiled module, resolving each import against the
-// runtime's selected plugins to attach signatures, capabilities, and
-// provided-state.
+type moduleBindings struct {
+	rt                   *Runtime
+	imports              Imports
+	importMeta           map[string]*registeredImport
+	independentInstances bool
+	moduleIdentity       bool
+}
+
+// snapshotModuleBindingsLocked captures one immutable import-policy generation.
+// The caller must hold rt.mu.
+func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindings {
+	cfg := rt.cfg.clone()
+	bindings := moduleBindings{
+		rt:                   rt,
+		imports:              make(Imports, len(rt.imports)),
+		importMeta:           make(map[string]*registeredImport, len(rt.importMeta)),
+		independentInstances: cfg.IndependentInstanceExecution(),
+		moduleIdentity:       hooks.needsModuleIdentity(),
+	}
+	for key, value := range rt.imports {
+		bindings.imports[key] = value
+	}
+	for key, value := range rt.importMeta {
+		bindings.importMeta[key] = cloneRegisteredImport(value)
+	}
+	return bindings
+}
+
+// buildModule wraps a compiled module with the runtime's current binding
+// generation. Callers that already hold rt.mu should snapshot directly instead.
 func (rt *Runtime) buildModule(c *Compiled) *Module {
-	m := &Module{rt: rt, c: c}
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	if rt.hooks.needsModuleIdentity() {
+	hooks := rt.loadHooks()
+	bindings := rt.snapshotModuleBindingsLocked(hooks)
+	rt.mu.Unlock()
+	return buildModule(c, bindings)
+}
+
+func buildModule(c *Compiled, bindings moduleBindings) *Module {
+	m := &Module{rt: bindings.rt, c: c, independentInstances: bindings.independentInstances}
+	if bindings.moduleIdentity {
 		m.identity.Store(&moduleIdentityToken{})
 	}
 
@@ -186,10 +230,10 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 			spec.Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
 			spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 		}
-		if _, ok := rt.imports[key]; ok {
+		if _, ok := bindings.imports[key]; ok {
 			spec.Provided = true
 		}
-		if meta := rt.importMeta[key]; meta != nil {
+		if meta := bindings.importMeta[key]; meta != nil {
 			spec.Capability, spec.HasCapability = meta.cap, meta.hasCap
 			spec.Docs = meta.docs
 			if meta.hasCap && !capSeen[meta.cap] {
@@ -204,7 +248,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		exact, exactErr := exactValueType(gi.Type, gi.HasValueType, gi.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: gi.Module, Name: gi.Name, Kind: ImportGlobal, Index: i,
-			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: rt.imports[key] != nil,
+			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: bindings.imports[key] != nil,
 		})
 	}
 	for i := 0; i < c.memoryImportCount(); i++ {
@@ -213,7 +257,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportMemory, Index: i,
 			MemoryMin: def.Min, MemoryMax: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared,
-			Provided: rt.imports[def.ImportKey] != nil,
+			Provided: bindings.imports[def.ImportKey] != nil,
 		})
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
@@ -223,7 +267,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
 			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64,
-			Provided: rt.imports[def.Key] != nil,
+			Provided: bindings.imports[def.Key] != nil,
 		})
 	}
 	if c.memoryDir != nil {
@@ -232,7 +276,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 			mod, name := splitImportKey(def.ImportKey)
 			sig := c.Types[def.TypeIndex]
 			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
-			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: rt.imports[def.ImportKey] != nil})
+			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: bindings.imports[def.ImportKey] != nil})
 		}
 	}
 	return m
@@ -255,16 +299,15 @@ func (m *Module) moduleIdentity() ModuleIdentity {
 	return ModuleIdentity{value: m.identity.Load()}
 }
 
-func (m *Module) isClosed() bool { return m == nil || m.closed.Load() }
-
 // Compiled returns the underlying low-level compiled module.
 func (m *Module) Compiled() *Compiled { return m.c }
 
 // Exports returns the module's exported function names, sorted.
 func (m *Module) Exports() []string { return m.c.ExportedFunctions() }
 
-// Imports returns the module's declared imports with plugin-derived metadata.
-func (m *Module) Imports() []ImportSpec { return append([]ImportSpec(nil), m.imports...) }
+// Imports returns caller-owned snapshots of the module's declared imports with
+// plugin-derived metadata. Mutating the result does not affect the Module.
+func (m *Module) Imports() []ImportSpec { return cloneImportSpecs(m.imports) }
 
 // RequiredCapabilities returns the capabilities the module's function imports
 // require, deduplicated in first-seen order.
@@ -386,35 +429,110 @@ func exportsByIndex(exports map[string]int, count int) [][]string {
 }
 
 // Close ends this runtime-bound module's lifecycle and notifies module-close
-// observers exactly once. It prevents new Runtime.Instantiate calls through the
-// wrapper, but does not close or otherwise take ownership of the caller-visible
-// Compiled artifact. Existing instances keep their own execution references.
-func (m *Module) Close() error {
+// observers exactly once. Modules returned by Runtime.Compile or AdoptModule own
+// their Compiled value; Runtime.Module wrappers borrow caller-owned code. Existing
+// instances retain executable mappings until they close. Close calls made while
+// module-close observers are active return without self-waiting; callers after
+// observer completion receive the published final result.
+func (m *Module) Close() (err error) {
 	if m == nil {
 		return nil
 	}
-	m.closeOnce.Do(func() {
-		m.closed.Store(true)
-		if m.rt != nil {
-			m.rt.moduleCloseMu.RLock()
-			defer m.rt.moduleCloseMu.RUnlock()
+	state, owner := m.beginClose()
+	if !owner {
+		if m.closeCallbacks.Load() != 0 {
+			return nil
 		}
-		if m.rt != nil && m.rt.allowsLifecycleCallbacks() && len(m.rt.hooks.onModuleClose) != 0 {
+		<-state.done
+		return state.result
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if panicErr, ok := recovered.(error); ok {
+				err = joinPrimary(err, fmt.Errorf("wago: module close panicked: %w", panicErr))
+			} else {
+				err = joinPrimary(err, fmt.Errorf("wago: module close panicked: %v", recovered))
+			}
+		}
+		state.result = err
+		close(state.done)
+	}()
+	return m.closeOwned()
+}
+
+func (m *Module) beginClose() (*moduleCloseState, bool) {
+	if active := m.closeState.Load(); active != nil {
+		return active, false
+	}
+	candidate := &moduleCloseState{done: make(chan struct{})}
+	if m.closeState.CompareAndSwap(nil, candidate) {
+		return candidate, true
+	}
+	return m.closeState.Load(), false
+}
+
+func (m *Module) closeOwned() error {
+	m.lifeMu.Lock()
+	m.closed.Store(true)
+	var usesDone <-chan struct{}
+	if m.uses != 0 {
+		m.usesDone = make(chan struct{})
+		usesDone = m.usesDone
+	}
+	m.lifeMu.Unlock()
+	if usesDone != nil {
+		<-usesDone
+	}
+
+	var errs []error
+	if hooks, end := m.rt.beginModuleCloseCallbacks(); end != nil {
+		defer end()
+		if len(hooks.onModuleClose) != 0 {
 			event := ModuleCloseEvent{Module: moduleView(m)}
-			var errs []error
-			for i := len(m.rt.hooks.onModuleClose) - 1; i >= 0; i-- {
-				observer := m.rt.hooks.onModuleClose[i]
+			m.closeCallbacks.Add(1)
+			for i := len(hooks.onModuleClose) - 1; i >= 0; i-- {
+				observer := hooks.onModuleClose[i]
 				if err := callHookSafely("ModuleCloseObserver", func() { observer(event) }); err != nil {
 					errs = append(errs, err)
 				}
 			}
-			m.closeErr = errors.Join(errs...)
+			m.closeCallbacks.Add(^uint32(0))
 		}
-		// A retained ModuleIdentity must not retain Compiled or the Module wrapper.
-		// Clear the wrapper's copy only after observers receive the final identity.
-		m.identity.Store(nil)
-	})
-	return m.closeErr
+	}
+	m.identity.Store(nil)
+	if m.ownsCompiled && m.c != nil {
+		errs = append(errs, m.c.Close())
+	}
+	return errors.Join(errs...)
+}
+
+// beginUse admits one operation that reads the compiled module. Admission is
+// atomic with Close publishing the module's closed state.
+func (m *Module) beginUse() bool {
+	if m == nil {
+		return false
+	}
+	m.lifeMu.Lock()
+	defer m.lifeMu.Unlock()
+	if m.closed.Load() {
+		return false
+	}
+	m.uses++
+	return true
+}
+
+func (m *Module) endUse() {
+	m.lifeMu.Lock()
+	if m.uses == 0 {
+		m.lifeMu.Unlock()
+		panic("wago: module use lease underflow")
+	}
+	m.uses--
+	if m.uses == 0 && m.usesDone != nil {
+		close(m.usesDone)
+		m.usesDone = nil
+	}
+	m.lifeMu.Unlock()
 }
 
 // splitImportKey splits a "module.name" key at the first dot.

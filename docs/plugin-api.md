@@ -197,12 +197,27 @@ comparable. A successful `Runtime.Compile` event carries an opaque
 `ModuleSourceDigest` of the final bytes after every transformer. A transformer
 can compare it with `DigestModuleSource` without compile observers receiving the
 source itself. The precompiled `Runtime.Module` path reports a zero digest
-because its original source is unavailable. `Module.Close` emits one close event
-with the final module identity, clears the wrapper identity, and rejects later
-runtime instantiation through that wrapper; it does not close or take ownership
-of `Module.Compiled()`. Plugins can therefore move metadata into module- and
-instance-identity maps and release it deterministically without retaining a
-`Runtime`, `Module`, `Compiled`, or `Instance` through an identity.
+because its original source is unavailable. Artifact integrations use
+`Runtime.PrepareCompile` to retain one admitted transform/observer/import/custom-
+instruction generation across lookup: transforms run exactly once, and warm
+adoption emits compile success under the same immutable generation. A prepared
+compilation must terminate through `Compile`, `Adopt`, or `Close` before runtime
+shutdown can tear down its plugin generation. `PreparedCompile.Source()` is a
+read-only view of runtime-owned transformed bytes. Transformer return slices are
+snapshotted after each callback; after successful `Compile`, the returned
+`Module` retains that source storage until it closes.
+
+`Module.Close` emits one close event with the final module identity, clears the
+wrapper identity, and rejects later runtime instantiation through that wrapper.
+Modules returned by `Runtime.Compile` or `Runtime.AdoptModule` own their
+`Compiled` artifact; `Runtime.Module` remains the explicit borrowing path.
+Existing instances retain their executable mapping until they close. A module-
+close observer may call `Module.Close` or `Runtime.Close` reentrantly; those calls
+publish closure without waiting on the active observer, and runtime teardown
+drains the admitted module-close generation before stopping providers. Plugins
+can therefore move metadata into module- and instance-identity maps and release
+it deterministically without retaining a `Runtime`, `Module`, `Compiled`, or
+`Instance` through an identity.
 The instantiate interceptor's `After` phase is fallible and runs after an exact
 instance identity exists but before the Wasm start function and success
 observers. Failure closes the partial instance through normal close observation
@@ -327,34 +342,53 @@ Resource-owning plugins key state by the exact `*wago.Instance`. Attach state in
 an instantiate observer, associate synchronous host calls through the separately
 granted caller resolver, and retire state from the close observer.
 
-`BeforeClose` is the authoritative logical disposal event. The invocation gate
-has already closed, so no new public call can begin. It does not promise that
-native code, arena memory, or retained references have already been physically
-released; active invocations can defer physical teardown. Concurrent close
-calls share one logical close, every hook runs once, and hook failures are
-joined without skipping remaining cleanup.
+`BeforeClose` is the logical close event. The invocation gate has already
+closed, so no new public call can begin. `AfterClose` is the terminal disposal
+observer: it runs only after construction and admitted invocations have
+quiesced, immediately before physical release can proceed. Concurrent close
+calls share one logical close, every hook runs once, and callback panics are
+reported as bounded `ErrCallbackPanic` errors without retaining panic values or
+skipping remaining cleanup. A close callback may reenter `Instance.Close`; the
+reentrant call returns promptly instead of waiting on itself.
 
 A Runtime-owned instance is tracked immediately after construction, before its
 post-create hooks or Wasm start function run. An ordinary invocation trap,
 cancellation, or `HostExit` does not dispose an instance. A start-function
 failure does: instantiation never succeeded, so Wago closes the partial instance
-before returning. `Runtime.Close` logically closes every tracked direct and
-managed instance in reverse creation order before plugin `Stop` callbacks run,
-preventing new calls. It then lets `Stop` cancel admitted work and waits for
-in-flight Runtime operations, callback admission, invocation, and
-managed-instance quiescence before returning.
-A direct caller retains its handle, but only as an idempotent closed handle;
-calling `Close` again is safe.
+through the normal lifecycle before returning. Direct instances are logically
+closed before plugin `Stop`. Managed-instance shutdown is three phase: close
+manager admission, run plugin `Stop` while existing workers and dependent
+contracts remain usable, then close and drain managed instances before revoking
+provider state. A direct caller retains its handle only as an idempotent closed
+handle; calling `Close` again is safe.
 
 Managed-instance limits account for physical ownership, not just the managed
 handle's logical close. If another instance retains an exported function, the
 manager's instance and declared-memory reservations remain charged until that
 last importer closes and physical resources are released.
 
-`Runtime.Close` and `Runtime.CloseContext` are synchronous drains. Do not call
-either from a host callback, Contract callback, lifecycle hook, or observer
-currently running on that same Runtime: shutdown waits for the current operation
-to return. Initiate close from the owning goroutine after the callback returns.
+`Runtime.Close` is always initiation-only: it publishes the shutdown gate and
+returns promptly, including while plugin loading or a callback is active.
+`Runtime.Closed` exposes completion, and `Runtime.WaitClosed(ctx)` returns the
+single final joined teardown error. Callbacks must not wait on their own
+runtime's completion before returning.
+
+`Runtime.CloseContext` starts the same single teardown and waits selectably. Its
+context bounds both plugin-loading waits and final completion, and the initiating
+context is passed to plugin `Stop`; teardown still publishes one final result for
+every later `WaitClosed` caller. Startup rollback is mandatory even if the load
+context is canceled. Once shutdown is published, new compile, module binding,
+direct/managed instantiation, invocation, and managed fork operations fail
+closed. Already-admitted instantiation and invocation generations retain explicit
+plugin-operation reservations, so their terminal observers and host callbacks
+can finish after ordinary callback admission closes; provider teardown waits for
+those reservations to drain.
+
+Shutdown callbacks, including runtime-close observers, plugin `Stop`, manager
+close/drain operations, internal close callbacks, contract/handle revocation, and
+reference-store closure, are panic-contained. Errors match `ErrCallbackPanic`,
+carry bounded phase attribution, and never include the recovered panic value or
+stack.
 
 The package-level low-level `Compile`, `Instantiate`, and `Invoke` APIs are
 outside the Runtime plugin lifecycle. Native process crashes and forced

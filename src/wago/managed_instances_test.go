@@ -42,6 +42,9 @@ func TestManagedInstancesAreRuntimeOwned(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close: %v", err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
+	}
 	if owned.Instance() != nil {
 		t.Fatal("runtime close retained managed instance")
 	}

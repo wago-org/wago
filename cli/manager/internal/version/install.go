@@ -27,7 +27,7 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 }
 
 func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool, use string) {
-	installName := canaryCommitVersion(ver)
+	installName := releaseAssetVersion(ver)
 	dest := d.RuntimeBinary(installName, string(profile), string(build))
 	if installedPath, _, _, installed := installedRuntime(d, installName, profile, build); installed {
 		// A rolling channel (canary/nightly) re-fetches even when present — the
@@ -56,7 +56,7 @@ func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, pr
 	if err := installRunnerPayloadContext(ctx, resolved, profile, build, dest, sourceOnly, progress); err != nil {
 		fatal("version install: %v", err)
 	}
-	progress.Finish("Installed " + installedWagoLabel(installName, canaryCommitVersion(resolved), profile, build))
+	progress.Finish("Installed " + installedWagoLabel(installName, resolved, profile, build))
 	if showLocation {
 		printDetail(progress.Writer(), "location", displayPath(dest))
 	}

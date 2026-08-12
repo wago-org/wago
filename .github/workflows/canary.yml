@@ -47,7 +47,7 @@ jobs:
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=canary-${sha::7}" >> "$GITHUB_OUTPUT"
-          echo "tag=canary-${sha::7}" >> "$GITHUB_OUTPUT"
+          echo "tag=canary-$sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})
@@ -109,7 +109,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          WAGO_VERSION: ${{ needs.prepare.outputs.version }}
+          WAGO_VERSION: canary@${{ needs.prepare.outputs.sha }}
         run: |
           scripts/build-release-assets.sh
           scripts/verify-channel-assets.sh . "${{ matrix.target }}"
@@ -152,6 +152,11 @@ jobs:
           notes=$(printf 'Automated canary build of main at `%s`. All supported Normal targets are required; unsupported Tiny variants are omitted. Unstable — may break without notice.\n\n' \
             '${{ needs.prepare.outputs.sha }}'; sed -n '1,$p' .github/release-asset-naming.md)
           if gh release view "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            target=$(gh api "repos/${{ github.repository }}/releases/tags/${{ needs.prepare.outputs.tag }}" --jq '.target_commitish')
+            if [ "$target" != "${{ needs.prepare.outputs.sha }}" ]; then
+              echo "GitHub release ${{ needs.prepare.outputs.tag }} has an invalid target commit: $target" >&2
+              exit 1
+            fi
             gh release upload "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"
             gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --notes "$notes"
             echo "canary release already exists for ${{ needs.prepare.outputs.sha }}"

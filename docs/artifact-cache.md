@@ -40,9 +40,28 @@ fixed-order configuration values:
 - target GOOS and GOARCH;
 - accepted Core feature bits;
 - bounds-check and deferred-bounds policy;
-- maximum memory pages;
-- function-worker policy; and
+- maximum memory pages; and
 - the ordered compiler-optimization bit set.
+
+Function-worker policy is intentionally excluded: it controls only bounded
+compiler scheduling, while validation order, generated native code, and
+serialized artifact bytes remain deterministic across worker counts. Cache
+lookup validates and uses the destination runtime's effective configuration
+before lookup or bypass decisions—the caller's compatibility parameter cannot
+select code compiled under a different runtime policy, and a warm entry cannot
+admit a configuration that a cold compile rejects.
+
+One `PreparedCompile` owns each lookup. Source transforms run exactly once before
+key selection, and compile observers see the same `CompilationIdentity` on cold
+compilation and warm artifact adoption. Generations with source transforms or
+custom compiler instructions currently bypass serialized reuse because those
+plugin semantics do not yet expose a deterministic fingerprint. Observer-only
+generations remain cacheable and still receive warm-hit events.
+
+The compile-only GC native-code telemetry option bypasses the cache entirely
+because that attribution is deliberately not serialized and a warm artifact
+cannot satisfy the request. Signals-based compilation also bypasses the cache
+because guard-page native code is intentionally nonserializable.
 
 The binary key format has an explicit version and domain prefix. Changing the
 meaning or order of any encoded field requires incrementing `cacheKeyFormat`.
@@ -50,9 +69,17 @@ Optimization names are not serialized into the hot cache-key path; their stable
 registry order is interpreted under the build identity that owns that registry.
 
 The final SHA-256 key remains hexadecimal in the filesystem path. Artifact
-loading keeps its existing version, ABI, target, and malformed-input checks;
-cache corruption remains a safe miss followed by recompilation and atomic
-replacement. Publication uses a unique same-directory temporary file and a
+loading keeps its existing version, ABI, target, section-size, file-type, and
+malformed-input checks; cache entries are streamed into bounded code/metadata
+sections rather than first buffered as an unbounded whole file. After decoding,
+the loader verifies EOF, the final opened-file size, and that the cache path still
+names the same regular file, so concurrent replacement or growth remains a safe
+miss. Cache corruption remains a safe miss followed by recompilation and atomic
+replacement. Once an
+artifact decodes successfully, runtime binding and `AfterCompile` policy errors
+are returned directly rather than being converted into cache misses; the decoded
+mapping is closed on that failure path.
+Publication uses a unique same-directory temporary file and a
 platform-specific replace-existing operation, including `MoveFileExW` on
 Windows. Existing symlink, directory, and non-regular destinations are rejected;
 failed writes leave the prior regular artifact intact and remove the temporary

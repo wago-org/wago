@@ -260,6 +260,9 @@ func TestImportedFunctionReexportIssuesFirstFuncrefAfterProducerClose(t *testing
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Close runtime: %v", err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("WaitClosed runtime: %v", err)
+	}
 	if producer.hasPhysicalResources() || producer.resourceRefs != 0 {
 		t.Fatalf("producer after final token teardown: live=%v roots=%d", producer.hasPhysicalResources(), producer.resourceRefs)
 	}
