@@ -168,6 +168,11 @@ var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 // pin allocator as an A/B and correctness oracle.
 var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
+// memory32AddrZExtElimEnabled avoids a redundant self-move when the storage
+// form feeding a memory32 access already guarantees a zero upper half. Default
+// ON; WAGO_AMD64_NO_ADDR_ZEXT_ELIM=1 disables it for A/B.
+var memory32AddrZExtElimEnabled = os.Getenv("WAGO_AMD64_NO_ADDR_ZEXT_ELIM") != "1"
+
 // bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
 // the low-level backend default and selected by the public runtime only after
 // host CPUID confirms BMI2.

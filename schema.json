@@ -60,6 +60,7 @@
           "type": "object",
           "propertyNames": {
             "enum": [
+              "addr-zext-elim",
               "affine-lea",
               "assoc-tree",
               "bmi2-rorx",

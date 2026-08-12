@@ -262,6 +262,7 @@ var catalog = []Definition{
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
 	amd64("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),
+	amd64("addr-zext-elim", "Memory32 address cleanup", "skip redundant zero-extension of proven-clean memory32 addresses"),
 	both("immutable-table", "Immutable tables", "specialize calls through never-written tables"),
 	both("immutable-table-type", "Immutable table types", "skip redundant immutable-table type checks"),
 	both("inline-callfree", "Call-free inline hints", "prioritize call-free functions for inlining"),
