@@ -600,10 +600,14 @@ func (f *fn) condenseFCompareValue(node *elem, dest Reg) Reg {
 
 // i2f converts a signed integer to float. srcWide selects an i64 source.
 func (f *fn) i2f(f64, srcWide bool) {
-	gpr := f.materialize(f.popValue())
+	gpr, owned := f.materializeRead(f.popValue())
 	xmm := f.allocFReg(0)
 	f.a.Scvtf(xmm, gpr, f64, srcWide)
-	f.release(gpr)
+	if owned {
+		f.release(gpr)
+	} else {
+		f.stats.peep("int-float-read")
+	}
 	f.pushFReg(xmm, mtOf2(f64))
 }
 
@@ -611,10 +615,14 @@ func (f *fn) i2f(f64, srcWide bool) {
 // shorter than the old branch-and-bias sequence, the native instruction handles
 // the full u64 range and IEEE rounding without relying on width-flag conventions.
 func (f *fn) i2fU(f64, srcWide bool) {
-	gpr := f.materialize(f.popValue())
+	gpr, owned := f.materializeRead(f.popValue())
 	xmm := f.allocFReg(0)
 	f.a.Ucvtf(xmm, gpr, f64, srcWide)
-	f.release(gpr)
+	if owned {
+		f.release(gpr)
+	} else {
+		f.stats.peep("int-float-read")
+	}
 	f.pushFReg(xmm, mtOf2(f64))
 }
 
@@ -811,17 +819,25 @@ func (f *fn) fdemote() { // f64 → f32
 }
 
 func (f *fn) reinterpretIntToFloat(wide bool) {
-	gpr := f.materialize(f.popValue())
+	gpr, owned := f.materializeRead(f.popValue())
 	xmm := f.allocFReg(0)
 	f.a.FmovFromGpr(xmm, gpr, wide)
-	f.release(gpr)
+	if owned {
+		f.release(gpr)
+	} else {
+		f.stats.peep("reinterpret-read")
+	}
 	f.pushFReg(xmm, mtOf2(wide))
 }
 func (f *fn) reinterpretFloatToInt(wide bool) {
-	xmm := f.materializeF(f.popValue())
+	xmm, owned := f.operandRegF(f.popValue())
 	gpr := f.allocReg(0)
 	f.a.FmovToGpr(gpr, xmm, wide)
-	f.releaseF(xmm)
+	if owned {
+		f.releaseF(xmm)
+	} else {
+		f.stats.peep("reinterpret-read")
+	}
 	f.pushReg(gpr, mtOfInt(wide))
 }
 
