@@ -90,7 +90,7 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	if err := consumer.Close(); err != nil {
 		t.Fatalf("Close consumer: %v", err)
 	}
-	if err := rt.Close(); err != nil {
+	if err := rt.CloseContext(context.Background()); err != nil {
 		t.Fatalf("Close runtime: %v", err)
 	}
 	if err := owner.Close(); err != nil {

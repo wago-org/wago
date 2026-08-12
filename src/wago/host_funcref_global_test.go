@@ -117,8 +117,8 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err := caller.Close(); err != nil {
 		t.Fatalf("Close caller: %v", err)
 	}
-	if err := rt.Close(); err != nil {
-		t.Fatalf("Runtime.Close: %v", err)
+	if err := rt.CloseContext(context.Background()); err != nil {
+		t.Fatalf("Runtime.CloseContext: %v", err)
 	}
 	if err := owner.Close(); err != nil {
 		t.Fatalf("Close host owner: %v", err)
