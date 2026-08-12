@@ -46,3 +46,26 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 		t.Fatalf("disabled result = %d, want 210", got)
 	}
 }
+
+func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
+	saved := intervalRegionPinsEnabled
+	defer func() { intervalRegionPinsEnabled = saved }()
+	intervalRegionPinsEnabled = true
+
+	m := intervalRegionModule(t)
+	m.FuncTypes = append(m.FuncTypes, m.FuncTypes[0])
+	m.Code = append(m.Code, wasm.Func{
+		Locals:    wasm.Locals{Runs: []wasm.LocalRun{{Count: 100, Type: wasm.I32}}},
+		BodyBytes: []byte{0x0b},
+	})
+	hints, _, err := computeModuleHints(m, 0, 0, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(hints[0].localLastGet); got != 20 {
+		t.Fatalf("candidate last-get storage = %d locals, want 20", got)
+	}
+	if hints[1].localLastGet != nil {
+		t.Fatalf("ineligible function reserved %d last-get entries", len(hints[1].localLastGet))
+	}
+}

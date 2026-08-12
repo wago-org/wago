@@ -1346,6 +1346,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalLocals := 0
+	intervalLocals := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	for i := range m.Code {
@@ -1362,12 +1363,18 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 		}
 		allHints[i].nLocals = count
 		totalLocals += count
+		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), count, moduleEH) {
+			if count > int(^uint(0)>>1)-intervalLocals {
+				return nil, nil, fmt.Errorf("function hint interval locals overflow")
+			}
+			intervalLocals += count
+		}
 	}
 	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
 	localScores := make([]uint32, totalLocals)
-	localLastGets := make([]uint32, totalLocals)
+	localLastGets := make([]uint32, intervalLocals)
 	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
 	var globalScores []uint32
 	var globalEligibility []bool
@@ -1392,6 +1399,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 		memory64 = mt.Limits.Addr64
 	}
 	localAt := 0
+	intervalAt := 0
 	for i := range m.Code {
 		nLocals := allHints[i].nLocals
 		var h funcHints
@@ -1403,7 +1411,10 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
-		h.localLastGet = localLastGets[localAt : localAt+nLocals]
+		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), nLocals, moduleEH) {
+			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
+			intervalAt += nLocals
+		}
 		h.nLocals = nLocals
 		var err error
 		h, err = scanFuncBodyIntoMemory64WithModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts, gcStructHelpers)
