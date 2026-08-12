@@ -29,7 +29,7 @@ type Cache struct {
 	ReportError func(error)
 }
 
-const cacheKeyFormat = 1
+const cacheKeyFormat = 2
 
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
@@ -48,9 +48,11 @@ func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *
 		if blob, err := os.ReadFile(path); err == nil {
 			compiled := &wago.Compiled{}
 			if compiled.UnmarshalBinary(blob) == nil {
-				if module, err := rt.Module(compiled); err == nil {
+				module, bindErr := rt.AdoptModule(compiled)
+				if bindErr == nil {
 					return module, nil
 				}
+				return nil, bindErr
 			}
 		}
 	}
@@ -100,7 +102,6 @@ func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool
 		encoded[len(encoded)-1] = 1
 	}
 	encoded = binary.LittleEndian.AppendUint32(encoded, config.MemoryLimitPages())
-	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(config.FunctionWorkers()))
 
 	knobs := config.OptimizationInfos()
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(len(knobs)))

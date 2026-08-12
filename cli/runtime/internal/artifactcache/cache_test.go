@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
@@ -79,6 +80,82 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	}
 }
 
+type rejectingCompileExtension struct {
+	calls *int
+	err   error
+}
+
+func (e rejectingCompileExtension) Info() wago.ExtensionInfo {
+	return wago.ExtensionInfo{ID: "test.cache-reject"}
+}
+
+func (e rejectingCompileExtension) Register(reg *wago.Registry) error {
+	reg.Hooks().AfterCompile(func(*wago.CompileContext, *wago.Module) error {
+		*e.calls++
+		if *e.calls == 1 {
+			return e.err
+		}
+		return nil
+	})
+	return nil
+}
+
+func TestCacheHitPropagatesAfterCompileErrorExactlyOnce(t *testing.T) {
+	source := constantModule()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	module, err := cache.LoadOrCompile(source, config, seedRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Compiled().Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rejected := errors.New("cached artifact rejected")
+	calls := 0
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+	if err := rt.Use(rejectingCompileExtension{calls: &calls, err: rejected}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cache.LoadOrCompile(source, config, rt); !errors.Is(err, rejected) {
+		t.Fatalf("cache binding error = %v, want %v", err, rejected)
+	}
+	if calls != 1 {
+		t.Fatalf("AfterCompile calls = %d, want 1", calls)
+	}
+}
+
+func TestCacheHitPropagatesRuntimeBindingError(t *testing.T) {
+	source := constantModule()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	module, err := cache.LoadOrCompile(source, config, seedRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	closedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	if err := closedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cache.LoadOrCompile(source, config, closedRuntime); err == nil || !strings.Contains(err.Error(), "closed runtime") {
+		t.Fatalf("cache binding error = %v", err)
+	}
+}
+
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	source := constantModule()
 	dir := t.TempDir()
@@ -112,8 +189,8 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	if basePath == optimizationPath {
 		t.Fatal("optimization selection did not change artifact key")
 	}
-	if basePath == workersPath {
-		t.Fatal("function-worker policy did not change artifact key")
+	if basePath != workersPath {
+		t.Fatal("function-worker scheduling policy changed artifact key")
 	}
 	if basePath == boundsPath {
 		t.Fatal("bounds-check mode did not change artifact key")
