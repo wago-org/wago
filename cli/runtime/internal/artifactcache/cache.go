@@ -42,13 +42,13 @@ var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 // LoadOrCompile loads a matching artifact or compiles source and saves the
 // result. Cache read/write failures never prevent execution; compilation and
 // artifact validation errors retain their normal behavior.
-func (cache Cache) LoadOrCompile(source []byte, config *wago.RuntimeConfig, rt *wago.Runtime) (*wago.Module, error) {
+func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.Runtime) (*wago.Module, error) {
 	if rt == nil {
 		return nil, fmt.Errorf("wago: artifact cache requires a runtime")
 	}
 	// Runtime.Compile is authoritative. The explicit config parameter is retained
 	// for source compatibility, but cannot select code under a different policy.
-	config = rt.Config()
+	config := rt.Config()
 	if config == nil {
 		return nil, fmt.Errorf("wago: artifact cache runtime has no configuration")
 	}

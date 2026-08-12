@@ -299,8 +299,6 @@ func (m *Module) moduleIdentity() ModuleIdentity {
 	return ModuleIdentity{value: m.identity.Load()}
 }
 
-func (m *Module) isClosed() bool { return m == nil || m.closed.Load() }
-
 // Compiled returns the underlying low-level compiled module.
 func (m *Module) Compiled() *Compiled { return m.c }
 
