@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -424,9 +425,31 @@ func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error
 }
 
 func (catalog installerReleaseCatalog) Releases() ([]installbootstrap.Release, error) {
+	const pageLimit = 10
 	var releases []installbootstrap.Release
-	err := catalog.installer.getJSON(catalog.installer.releaseAPI+"?per_page=100", &releases)
-	return releases, err
+	base, err := url.Parse(catalog.installer.releaseAPI)
+	if err != nil {
+		return nil, fmt.Errorf("parse release catalog URL: %w", err)
+	}
+	for page := 1; page <= pageLimit; page++ {
+		var batch []installbootstrap.Release
+		address := *base
+		query := address.Query()
+		query.Set("per_page", "100")
+		query.Set("page", strconv.Itoa(page))
+		address.RawQuery = query.Encode()
+		if err := catalog.installer.getJSON(address.String(), &batch); err != nil {
+			return nil, err
+		}
+		if len(batch) > 100 {
+			return nil, fmt.Errorf("release catalog returned too many releases on page %d", page)
+		}
+		releases = append(releases, batch...)
+		if len(batch) < 100 {
+			return releases, nil
+		}
+	}
+	return nil, fmt.Errorf("release catalog exceeded %d pages", pageLimit)
 }
 
 func (i *installer) getJSON(url string, value any) error {

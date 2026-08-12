@@ -32,6 +32,7 @@ type Catalog interface {
 // canary, nightly means the newest nightly, latest follows the latest release,
 // and explicit release tags pass through without a catalog request.
 func Resolve(version string, catalog Catalog) (string, error) {
+	version = strings.TrimSpace(version)
 	switch {
 	case version == "latest":
 		item, err := catalog.Latest()
@@ -79,7 +80,9 @@ func Resolve(version string, catalog Catalog) (string, error) {
 }
 
 func IsReleaseTag(version string) bool {
-	return strings.HasPrefix(version, "v") || strings.HasPrefix(version, "canary-") || strings.HasPrefix(version, "nightly-")
+	version = strings.TrimSpace(version)
+	return version != "" && !strings.Contains(version, "@") &&
+		(strings.HasPrefix(version, "v") || strings.HasPrefix(version, "canary-") || strings.HasPrefix(version, "nightly-"))
 }
 
 func rollingCommit(version string) (channel, sha string, ok bool) {

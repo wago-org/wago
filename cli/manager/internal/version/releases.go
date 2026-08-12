@@ -141,15 +141,15 @@ func canaryCommitTarget(sha string) string {
 // stamp such as "nightly@<sha>" or a resolved release such as
 // "nightly-20260812-deadbee@<sha>".
 func rollingCommitSHA(target string) (channel, sha string, found bool) {
-	prefix, sha, found := strings.Cut(target, "@")
-	if !found {
+	prefix, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(target)), "@")
+	if !found || strings.Contains(sha, "@") {
 		return "", "", false
 	}
 	channel = prefix
 	if releaseChannel := channelRelease(prefix); releaseChannel != "" {
 		channel = releaseChannel
 	}
-	sha = strings.ToLower(strings.TrimSpace(sha))
+	sha = strings.TrimSpace(sha)
 	return channel, sha, rollingChannels[channel] && validCommitSHA(sha)
 }
 
@@ -181,7 +181,8 @@ func validCommitSHA(sha string) bool {
 // resolved dated rolling release retains the published tag before @SHA.
 func releaseAssetVersion(target string) string {
 	if channel, sha, ok := rollingCommitSHA(target); ok {
-		if tag, _, tagged := strings.Cut(target, "@"); tagged && channelRelease(tag) == channel {
+		normalized := strings.ToLower(strings.TrimSpace(target))
+		if tag, _, tagged := strings.Cut(normalized, "@"); tagged && channelRelease(tag) == channel {
 			return tag
 		}
 		return channel + "-" + sha
@@ -198,7 +199,8 @@ func rollingVersionStamp(target string) string {
 
 func releasePickerLabel(tag string) string {
 	if channel, sha, canonical := rollingCommitSHA(tag); canonical {
-		if releaseTag, _, tagged := strings.Cut(tag, "@"); tagged && channelRelease(releaseTag) == channel {
+		normalized := strings.ToLower(strings.TrimSpace(tag))
+		if releaseTag, _, tagged := strings.Cut(normalized, "@"); tagged && channelRelease(releaseTag) == channel {
 			tag = releaseTag
 		} else {
 			return channel + "-" + sha[:7]

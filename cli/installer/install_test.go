@@ -196,6 +196,52 @@ func TestInstallerDownloadsExactCanonicalRollingManager(t *testing.T) {
 	}
 }
 
+func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("scope") != "installer" || r.URL.Query().Get("per_page") != "100" {
+			t.Fatalf("release query = %q", r.URL.RawQuery)
+		}
+		requests++
+		if r.URL.Query().Get("page") == "1" {
+			for index := 0; index < 100; index++ {
+				if index != 0 {
+					_, _ = fmt.Fprint(w, ",")
+				}
+				if index == 0 {
+					_, _ = fmt.Fprint(w, "[")
+				}
+				_, _ = fmt.Fprintf(w, `{"tag_name":"v1.0.%d"}`, index)
+			}
+			_, _ = fmt.Fprint(w, "]")
+			return
+		}
+		_, _ = fmt.Fprintf(w, `[{"tag_name":"canary-exact","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}]`, sha)
+	}))
+	defer server.Close()
+
+	i := &installer{releaseAPI: server.URL + "/releases?scope=installer&per_page=1&page=99", httpClient: server.Client()}
+	tag, _, err := i.resolveReleaseForTest("canary@" + sha)
+	if err != nil || tag != "canary-exact" {
+		t.Fatalf("resolve canonical manager = %q, %v", tag, err)
+	}
+	if requests != 2 {
+		t.Fatalf("release requests = %d, want 2", requests)
+	}
+}
+
+func (i *installer) resolveReleaseForTest(version string) (string, string, error) {
+	previous := i.version
+	i.version = version
+	defer func() { i.version = previous }()
+	return i.resolveRelease()
+}
+
 func TestInstallerCanonicalRollingGitFetchUsesExactDetachedCommit(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
 	previous := runInstallerGit

@@ -56,6 +56,8 @@ func TestRollingCommitIdentityRequiresCanonicalSHA(t *testing.T) {
 	}{
 		{"canary@deadbee123456789012345678901234567890123", "canary", "deadbee123456789012345678901234567890123", true},
 		{"nightly-20260731-cafef00@cafef00123456789012345678901234567890123", "nightly", "cafef00123456789012345678901234567890123", true},
+		{" CANARY@DEADBEE123456789012345678901234567890123 ", "canary", "deadbee123456789012345678901234567890123", true},
+		{"canary@deadbee123456789012345678901234567890123@junk", "", "", false},
 		{"canary-deadbee", "", "", false},
 		{"nightly-20260731-cafef00", "", "", false},
 		{"v0.2.0", "", "", false},
@@ -64,6 +66,13 @@ func TestRollingCommitIdentityRequiresCanonicalSHA(t *testing.T) {
 		if channel != test.channel || sha != test.sha || canonical != test.canonical {
 			t.Errorf("rollingCommitSHA(%q) = %q, %q, %v", test.version, channel, sha, canonical)
 		}
+	}
+	canonical := " NIGHTLY-20260731-CAFEF00@CAFEF00123456789012345678901234567890123 "
+	if got := releaseAssetVersion(canonical); got != "nightly-20260731-cafef00" {
+		t.Fatalf("releaseAssetVersion(%q) = %q", canonical, got)
+	}
+	if got := releasePickerLabel(canonical); got != "nightly-cafef00" {
+		t.Fatalf("releasePickerLabel(%q) = %q", canonical, got)
 	}
 }
 

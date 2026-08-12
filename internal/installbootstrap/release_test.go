@@ -32,7 +32,7 @@ func TestResolveReleaseContract(t *testing.T) {
 	for _, test := range []struct{ version, want string }{
 		{"latest", "v1.2.3"}, {"main", "canary-new"}, {"canary", "canary-new"},
 		{"canary@" + canarySHA, "canary-new"}, {"nightly", "nightly-new"},
-		{"v9.0.0", "v9.0.0"}, {"canary-pinned", "canary-pinned"},
+		{" v9.0.0 ", "v9.0.0"}, {"canary-pinned", "canary-pinned"},
 	} {
 		got, err := Resolve(test.version, catalog)
 		if err != nil || got != test.want {
@@ -44,6 +44,12 @@ func TestResolveReleaseContract(t *testing.T) {
 	}
 	if _, err := Resolve("nightly@cccccccccccccccccccccccccccccccccccccccc", catalog); err == nil {
 		t.Fatal("unpublished canonical commit resolved as a release")
+	}
+	if _, err := Resolve("nightly-20260812-deadbee@cccccccccccccccccccccccccccccccccccccccc", catalog); err == nil {
+		t.Fatal("tag plus unverified commit suffix bypassed release resolution")
+	}
+	if IsReleaseTag("canary-deadbee@cccccccccccccccccccccccccccccccccccccccc") {
+		t.Fatal("release tag accepted an appended commit identity")
 	}
 }
 
