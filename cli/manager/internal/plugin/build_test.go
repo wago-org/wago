@@ -42,19 +42,24 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	const plugin = "github.com/wago-org/wago"
-	if _, err := project.AddDependency(manifestDir, plugin, "^0.0.0"); err != nil {
+	const plugin = "golang.org/x/sys"
+	if _, err := project.AddDependency(manifestDir, plugin, "^0.30.0"); err != nil {
 		t.Fatal(err)
 	}
 
 	lock := project.NewLockDocument()
 	entry := testManagerLockEntry(plugin)
+	entry.Source.Version = "v0.30.0"
+	entry.Source.Checksum = "h1:QjkSwP/36a20jFYWkSue1YwXzLmsV5Gfq7Eiy72C1uc="
 	lock.Plugins[plugin] = entry
 	if err := project.WriteLock(manifestDir, lock); err != nil {
 		t.Fatal(err)
 	}
 	input, err := pluginbuild.InputFromLock(lock)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pluginbuild.Get(buildDir, plugin+"@v0.30.0", false); err != nil {
 		t.Fatal(err)
 	}
 	bin := pluginbuild.BinaryPath(buildDir)
