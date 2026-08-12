@@ -54,15 +54,25 @@ type binding struct {
 	inverted   bool
 }
 
+// Snapshot identifies one process-default selection from one Bindings. Its
+// fields are deliberately private: only the owning Bindings can mint a token
+// eligible for the revision-matched compile fast path.
+type Snapshot struct {
+	bindings *Bindings
+	revision uint64
+}
+
 // Bindings owns the complete, ordered set of bindings for one architecture.
 // NewBindings panics on missing, duplicate, unknown, or nil bindings so an
 // advertised optimization cannot reach execution without an implementation.
 type Bindings struct {
-	mu      sync.Mutex
-	arch    string
-	entries []binding
-	index   map[string]int
-	before  []bool
+	mu       sync.Mutex
+	arch     string
+	entries  []binding
+	index    map[string]int
+	before   []bool
+	changed  []int
+	revision uint64
 }
 
 func NewBindings(arch string, specs ...BindingSpec) *Bindings {
@@ -80,7 +90,14 @@ func NewBindings(arch string, specs ...BindingSpec) *Bindings {
 		byName[spec.Name] = spec
 	}
 	definitions := ForArch(arch)
-	bindings := &Bindings{arch: arch, entries: make([]binding, 0, len(definitions)), index: make(map[string]int, len(definitions)), before: make([]bool, len(definitions))}
+	bindings := &Bindings{
+		arch:     arch,
+		entries:  make([]binding, 0, len(definitions)),
+		index:    make(map[string]int, len(definitions)),
+		before:   make([]bool, len(definitions)),
+		changed:  make([]int, len(definitions)),
+		revision: 1,
+	}
 	for _, definition := range definitions {
 		spec, ok := byName[definition.Name]
 		if !ok {
@@ -98,6 +115,26 @@ func (b *Bindings) Infos() []Info {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.infosLocked()
+}
+
+// Snapshot returns current binding values and the revision that identifies
+// that exact selection. The values and revision are captured under one lock.
+func (b *Bindings) Snapshot() ([]Info, Snapshot) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.infosLocked(), b.snapshotLocked()
+}
+
+// CurrentSnapshot returns an allocation-free token for the current process-
+// default selection.
+func (b *Bindings) CurrentSnapshot() Snapshot {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.snapshotLocked()
+}
+
+func (b *Bindings) snapshotLocked() Snapshot {
+	return Snapshot{bindings: b, revision: b.revision}
 }
 
 func (b *Bindings) infosLocked() []Info {
@@ -125,14 +162,56 @@ func (b *Bindings) Set(name string, on bool) bool {
 	if entry.inverted {
 		on = !on
 	}
-	*entry.value = on
+	if *entry.value != on {
+		*entry.value = on
+		b.revision++
+	}
 	return true
 }
 
 // Apply installs overrides for one compile and returns a function that restores
 // the process defaults and releases the compile lock.
 func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
+	return b.ApplySnapshot(overrides, Snapshot{}, nil)
+}
+
+// ApplySnapshot installs a captured selection for one compile. When revision
+// still names the current process defaults, only deltas are installed. The
+// revision comparison, delta installation, compilation lease, and restoration
+// all share the same lock, so a concurrent Set cannot invalidate the fast path.
+// If the process defaults changed since capture, overrides is applied in full.
+func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (func(), error) {
 	b.mu.Lock()
+	if overrides == nil {
+		return b.mu.Unlock, nil
+	}
+	if snapshot.bindings == b && snapshot.revision == b.revision {
+		changed := 0
+		for name := range deltas {
+			index, ok := b.index[name]
+			if !ok {
+				b.mu.Unlock()
+				return nil, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+			}
+			b.changed[changed] = index
+			changed++
+		}
+		for _, index := range b.changed[:changed] {
+			entry := b.entries[index]
+			on := deltas[entry.definition.Name]
+			if entry.inverted {
+				on = !on
+			}
+			b.before[index] = *entry.value
+			*entry.value = on
+		}
+		return func() {
+			for _, index := range b.changed[:changed] {
+				*b.entries[index].value = b.before[index]
+			}
+			b.mu.Unlock()
+		}, nil
+	}
 	for index, entry := range b.entries {
 		b.before[index] = *entry.value
 	}

@@ -43,7 +43,12 @@ var optimizationBindings = optimization.NewBindings("amd64",
 )
 
 type KnobInfo = optimization.Info
+type OptimizationSnapshot = optimization.Snapshot
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
+
+func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) { return optimizationBindings.Snapshot() }
+
+func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings.CurrentSnapshot() }
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }

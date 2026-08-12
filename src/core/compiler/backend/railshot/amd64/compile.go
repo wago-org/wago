@@ -705,6 +705,12 @@ type CompileOptions struct {
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool
+	// OptimizationSnapshot identifies Optimizations as a snapshot of the backend
+	// process defaults. OptimizationDeltas contains only public-runtime overrides
+	// layered on that snapshot. A matching revision avoids reinstalling the full
+	// selection while retaining the same compile lock and snapshot semantics.
+	OptimizationSnapshot OptimizationSnapshot
+	OptimizationDeltas   map[string]bool
 
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
@@ -839,7 +845,7 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
-	restoreOptimizations, err := optimizationBindings.Apply(opts.Optimizations)
+	restoreOptimizations, err := optimizationBindings.ApplySnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
