@@ -880,7 +880,8 @@ type funcValidator struct {
 	// opExt is a scratch instruction-immediate payload reused across the streamed
 	// opcodes of one body. decodeDirectOp fills it and stepDirectOp consumes it
 	// immediately without retaining the pointer, so a single buffer avoids a heap
-	// instrExt per memory/br_table/select/ref.null instruction.
+	// instrExt per memory/br_table/select/ref.null or payload-bearing SIMD
+	// instruction.
 	opExt instrExt
 }
 
