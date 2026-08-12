@@ -1065,7 +1065,9 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stConst:
 		// `i64.and x, 0xffffffff` is exactly a zero-extension of x's low
 		// 32 bits. `and r32, -1` performs that operation directly on x86-64 and
-		// preserves the ordinary AND's flag writes. The 64-bit form cannot encode
+		// preserves the zero/parity/carry/overflow flags relevant to current
+		// consumers; unlike the 64-bit masked result, it may set the sign flag.
+		// The 64-bit form cannot encode
 		// this positive mask because its imm32 is sign-extended and would therefore
 		// need a temporary register. Select this only at final emission so tree
 		// scheduling, associative covering, and higher-level SWAR recognition retain
