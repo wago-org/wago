@@ -13,16 +13,14 @@ var compilerCompiledAllocationSink *Compiled
 
 func TestCompilerCompiledStateUsesOneFixedOwnerAllocation(t *testing.T) {
 	allocs := testing.AllocsPerRun(100, func() {
-		c := &Compiled{}
-		initCompilerCompiledState(c)
+		c := newCompilerCompiled(Compiled{})
 		compilerCompiledAllocationSink = c
 	})
-	if allocs > 2 {
-		t.Fatalf("compiler Compiled state allocations = %.0f, want Compiled plus one fixed-state owner", allocs)
+	if allocs != 1 {
+		t.Fatalf("compiler Compiled state allocations = %.0f, want one fixed owner", allocs)
 	}
 
-	c := &Compiled{}
-	initCompilerCompiledState(c)
+	c := newCompilerCompiled(Compiled{})
 	base := uintptr(unsafe.Pointer(c.codeCache))
 	state := compilerCompiledState{}
 	if got, want := uintptr(unsafe.Pointer(c.validateMemo)), base+unsafe.Offsetof(state.validateMemo); got != want {

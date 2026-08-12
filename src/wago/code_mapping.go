@@ -56,11 +56,20 @@ type compilerCompiledState struct {
 	memoryDir    compiledMemoryDirectory
 }
 
-func initCompilerCompiledState(c *Compiled) {
-	state := new(compilerCompiledState)
-	c.codeCache = &state.codeCache
-	c.validateMemo = &state.validateMemo
-	c.memoryDir = &state.memoryDir
+// compilerCompiledOwner keeps the public result and its fixed private state in
+// one allocation. Compiled is first so its pointer is also the allocation base;
+// the existing finalizer and Close paths can install and clear ownership on c.
+type compilerCompiledOwner struct {
+	Compiled
+	state compilerCompiledState
+}
+
+func newCompilerCompiled(initial Compiled) *Compiled {
+	owner := &compilerCompiledOwner{Compiled: initial}
+	owner.Compiled.codeCache = &owner.state.codeCache
+	owner.Compiled.validateMemo = &owner.state.validateMemo
+	owner.Compiled.memoryDir = &owner.state.memoryDir
+	return &owner.Compiled
 }
 
 // installCompilerCompiledFinalizer installs ownership on a freshly allocated
