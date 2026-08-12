@@ -30,6 +30,7 @@ const (
 // package-level Compile/Instantiate remain available as the low-level API.
 type Runtime struct {
 	mu                   sync.Mutex
+	compileOps           sync.WaitGroup
 	cfg                  *RuntimeConfig
 	overridePolicy       ImportOverridePolicy
 	managedActive        atomic.Bool
@@ -273,9 +274,26 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 // as a *Module, resolving its imports against the registered extensions and
 // running any AfterCompile hooks.
 func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
+	rt.mu.Lock()
+	if rt.closed {
+		rt.mu.Unlock()
+		return nil, fmt.Errorf("wago: Compile on a closed runtime")
+	}
+	beforeCompile := append([]func(*CompileContext, []byte) ([]byte, error)(nil), rt.hooks.beforeCompile...)
+	afterCompile := append([]func(*CompileContext, *Module) error(nil), rt.hooks.afterCompile...)
+	bindings := rt.snapshotModuleBindingsLocked()
+	instructions := make(map[string]*registeredInstruction, len(rt.instructions))
+	for key, ins := range rt.instructions {
+		instructions[key] = ins
+	}
+	cfg := rt.cfg
+	rt.compileOps.Add(1)
+	rt.mu.Unlock()
+	defer rt.compileOps.Done()
+
 	ctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
 	source := wasmBytes
-	for _, fn := range rt.hooks.beforeCompile {
+	for _, fn := range beforeCompile {
 		next, err := fn(ctx, source)
 		if err != nil {
 			return nil, err
@@ -284,18 +302,11 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 			source = next
 		}
 	}
-	rt.mu.Lock()
-	instructions := make(map[string]*registeredInstruction, len(rt.instructions))
-	for key, ins := range rt.instructions {
-		instructions[key] = ins
-	}
-	cfg := rt.cfg
-	rt.mu.Unlock()
 	c, err := compileWithConfigAndInstructions(cfg, source, instructions)
 	if err != nil {
 		return nil, err
 	}
-	mod := rt.buildModule(c)
+	mod := buildModule(c, bindings)
 	// The historical Imports key joins module and field with a dot. Both Wasm
 	// names may themselves contain dots, so recover the exact pair from the
 	// validated source for structured metadata and component-model linking.
@@ -312,8 +323,8 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 			funcIndex++
 		}
 	}
-	if len(rt.hooks.afterCompile) > 0 {
-		for _, fn := range rt.hooks.afterCompile {
+	if len(afterCompile) > 0 {
+		for _, fn := range afterCompile {
 			if err := fn(ctx, mod); err != nil {
 				return nil, err
 			}
@@ -338,15 +349,20 @@ func (rt *Runtime) Module(c *Compiled) (*Module, error) {
 		return nil, fmt.Errorf("wago: nil runtime or compiled module")
 	}
 	rt.mu.Lock()
-	closed := rt.closed
-	rt.mu.Unlock()
-	if closed {
+	if rt.closed {
+		rt.mu.Unlock()
 		return nil, fmt.Errorf("wago: Module on a closed runtime")
 	}
-	mod := rt.buildModule(c)
-	if len(rt.hooks.afterCompile) > 0 {
+	bindings := rt.snapshotModuleBindingsLocked()
+	afterCompile := append([]func(*CompileContext, *Module) error(nil), rt.hooks.afterCompile...)
+	rt.compileOps.Add(1)
+	rt.mu.Unlock()
+	defer rt.compileOps.Done()
+
+	mod := buildModule(c, bindings)
+	if len(afterCompile) > 0 {
 		ctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
-		for _, fn := range rt.hooks.afterCompile {
+		for _, fn := range afterCompile {
 			if err := fn(ctx, mod); err != nil {
 				return nil, err
 			}
@@ -551,7 +567,9 @@ func (rt *Runtime) Capabilities() []Capability {
 func (rt *Runtime) Close() error { return rt.CloseContext(context.Background()) }
 
 // CloseContext stops plugins in reverse load order, then closes internal
-// services and runtime hooks. It is idempotent.
+// services and runtime hooks. It is idempotent. It waits for compile operations
+// admitted before shutdown; compile hooks must therefore not call Close or
+// CloseContext synchronously on their own Runtime.
 func (rt *Runtime) CloseContext(ctx context.Context) error {
 	rt.mu.Lock()
 	if rt.closed {
@@ -564,6 +582,11 @@ func (rt *Runtime) CloseContext(ctx context.Context) error {
 	pluginStops := append([]registeredPluginStop(nil), rt.pluginStops...)
 	store := rt.refStore
 	rt.mu.Unlock()
+	// No compile operation can be admitted after closed is published above.
+	// Wait for operations admitted before shutdown before tearing down the plugin
+	// hooks, instruction providers, and internal services they may still use.
+	rt.compileOps.Wait()
+	defer store.closeRuntime()
 
 	var errs []error
 	for i := len(pluginStops) - 1; i >= 0; i-- {
@@ -580,7 +603,6 @@ func (rt *Runtime) CloseContext(ctx context.Context) error {
 	for i := len(hooks) - 1; i >= 0; i-- {
 		hooks[i](rctx)
 	}
-	store.closeRuntime()
 	return errors.Join(errs...)
 }
 

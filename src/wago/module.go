@@ -155,13 +155,41 @@ type ModuleMetadata struct {
 	Tags                 []TagMetadata
 }
 
-// buildModule wraps a freshly compiled module, resolving each import against the
-// runtime's registered extensions to attach signatures, capabilities, and
-// provided-state.
+type moduleBindings struct {
+	rt         *Runtime
+	imports    Imports
+	importMeta map[string]*registeredImport
+}
+
+// snapshotModuleBindingsLocked captures the immutable import-policy generation
+// used to bind one module. The caller must hold rt.mu.
+func (rt *Runtime) snapshotModuleBindingsLocked() moduleBindings {
+	bindings := moduleBindings{
+		rt:         rt,
+		imports:    make(Imports, len(rt.imports)),
+		importMeta: make(map[string]*registeredImport, len(rt.importMeta)),
+	}
+	for key, value := range rt.imports {
+		bindings.imports[key] = value
+	}
+	for key, value := range rt.importMeta {
+		bindings.importMeta[key] = value
+	}
+	return bindings
+}
+
+// buildModule wraps a freshly compiled module using the runtime's current
+// import-policy generation. Compile and Module use a snapshot captured at their
+// admission boundary instead.
 func (rt *Runtime) buildModule(c *Compiled) *Module {
-	m := &Module{rt: rt, c: c}
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
+	bindings := rt.snapshotModuleBindingsLocked()
+	rt.mu.Unlock()
+	return buildModule(c, bindings)
+}
+
+func buildModule(c *Compiled, bindings moduleBindings) *Module {
+	m := &Module{rt: bindings.rt, c: c}
 
 	capSeen := map[Capability]bool{}
 	for i, key := range c.Imports { // function imports, in "module.name" form
@@ -172,10 +200,10 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 			spec.Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
 			spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 		}
-		if _, ok := rt.imports[key]; ok {
+		if _, ok := bindings.imports[key]; ok {
 			spec.Provided = true
 		}
-		if meta := rt.importMeta[key]; meta != nil {
+		if meta := bindings.importMeta[key]; meta != nil {
 			spec.Capability, spec.HasCapability = meta.cap, meta.hasCap
 			spec.Docs = meta.docs
 			if meta.hasCap && !capSeen[meta.cap] {
@@ -190,7 +218,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		exact, exactErr := exactValueType(gi.Type, gi.HasValueType, gi.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: gi.Module, Name: gi.Name, Kind: ImportGlobal, Index: i,
-			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: rt.imports[key] != nil,
+			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: bindings.imports[key] != nil,
 		})
 	}
 	for i := 0; i < c.memoryImportCount(); i++ {
@@ -199,7 +227,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportMemory, Index: i,
 			MemoryMin: def.Min, MemoryMax: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared,
-			Provided: rt.imports[def.ImportKey] != nil,
+			Provided: bindings.imports[def.ImportKey] != nil,
 		})
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
@@ -209,7 +237,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
 			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64,
-			Provided: rt.imports[def.Key] != nil,
+			Provided: bindings.imports[def.Key] != nil,
 		})
 	}
 	if c.memoryDir != nil {
@@ -218,7 +246,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 			mod, name := splitImportKey(def.ImportKey)
 			sig := c.Types[def.TypeIndex]
 			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
-			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: rt.imports[def.ImportKey] != nil})
+			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: bindings.imports[def.ImportKey] != nil})
 		}
 	}
 	return m
