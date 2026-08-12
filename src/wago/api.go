@@ -4002,6 +4002,15 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 }
 
 func (in *Instance) invoke(export string, args []uint64, cancel context.Context) ([]uint64, error) {
+	return in.invokeEntry(export, args, cancel, false)
+}
+
+func (in *Instance) invokeAdmitted(export string, args []uint64, cancel context.Context, reservation *pluginOperationReservation) ([]uint64, error) {
+	state := in.ensurePluginState()
+	return in.invokeWithToken(export, args, cancel, state.invocationID, true, true, reservation)
+}
+
+func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Context, alreadyAdmitted bool) ([]uint64, error) {
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
 	// serialization lock so such a probe cannot deadlock behind the activation
@@ -4018,10 +4027,10 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		state.invocationID = 0
 		state.invokeMu.Unlock()
 	}()
-	return in.invokeWithToken(export, args, cancel, id, true)
+	return in.invokeWithToken(export, args, cancel, id, true, alreadyAdmitted, nil)
 }
 
-func (in *Instance) invokeWithToken(export string, args []uint64, cancel context.Context, id invocationID, gateHeld bool) ([]uint64, error) {
+func (in *Instance) invokeWithToken(export string, args []uint64, cancel context.Context, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
 	reentry := !gateHeld && isNativeActive(in, id)
 	if !reentry && !gateHeld {
 		state := in.ensurePluginState()
@@ -4039,10 +4048,14 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 		}
 		defer restore()
 	}
-	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("invoke %q: %w", export, err)
+	if !alreadyAdmitted {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("invoke %q: %w", export, err)
+		}
+		defer in.endInvocation()
 	}
-	defer in.endInvocation()
+	previousReservation := in.swapInvocationReservation(reservation)
+	defer in.swapInvocationReservation(previousReservation)
 	if threadedMu := in.lockThreadedInstanceState(); threadedMu != nil {
 		defer threadedMu.Unlock()
 	}

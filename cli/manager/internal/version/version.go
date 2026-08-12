@@ -75,7 +75,7 @@ func PromptYesNo(in io.Reader, out io.Writer, prompt string) bool {
 }
 
 func DisplayRelease(ref string) string {
-	return releasePickerLabel(canaryCommitVersion(ref))
+	return releasePickerLabel(ref)
 }
 
 func SameRelease(installed, resolved string) bool {

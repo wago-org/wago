@@ -1,6 +1,7 @@
 package artifactcache
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
@@ -56,6 +58,97 @@ func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
 	}
 }
 
+func TestLoadArtifactRejectsSymlinkAndOversizeEntry(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.wago")
+	if err := os.WriteFile(target, []byte("not an artifact"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.wago")
+	if err := os.Symlink(target, link); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	if compiled, hit := loadArtifact(link); hit || compiled != nil {
+		t.Fatalf("symlink cache entry loaded: %v, %v", compiled, hit)
+	}
+
+	oversize := filepath.Join(dir, "oversize.wago")
+	limits := wago.DefaultArtifactLimits()
+	file, err := os.Create(oversize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(oversize, limits.MaxCodeBytes+limits.MaxMetadataBytes+65); err != nil {
+		t.Fatal(err)
+	}
+	if compiled, hit := loadArtifact(oversize); hit || compiled != nil {
+		t.Fatalf("oversize cache entry loaded: %v, %v", compiled, hit)
+	}
+}
+
+func TestLoadOpenedArtifactRejectsReplacementAndGrowth(t *testing.T) {
+	source := constantModule()
+	compiled, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiled.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name        string
+		skipWindows bool
+		mutate      func(string, *os.File) error
+	}{
+		{name: "replacement", skipWindows: true, mutate: func(path string, _ *os.File) error {
+			replacement := path + ".replacement"
+			if err := os.WriteFile(replacement, artifact, 0o644); err != nil {
+				return err
+			}
+			return os.Rename(replacement, path)
+		}},
+		{name: "growth", mutate: func(_ string, file *os.File) error {
+			return os.Truncate(file.Name(), int64(len(artifact)+1))
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.skipWindows && runtime.GOOS == "windows" {
+				t.Skip("Windows does not replace an open cache entry by rename")
+			}
+			path := filepath.Join(t.TempDir(), "entry.wago")
+			if err := os.WriteFile(path, artifact, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			opened, err := file.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := test.mutate(path, file); err != nil {
+				t.Fatal(err)
+			}
+			if loaded, hit := loadOpenedArtifact(path, file, opened); hit || loaded != nil {
+				t.Fatalf("mutated cache entry loaded: %v, %v", loaded, hit)
+			}
+		})
+	}
+}
+
 func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	source := constantModule()
 	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
@@ -67,7 +160,7 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 
 	injected := errors.New("injected cache publication failure")
 	oldPublish := publishArtifact
-	publishArtifact = func(string, []byte) error { return injected }
+	publishArtifact = func(string, *wago.Compiled) error { return injected }
 	t.Cleanup(func() { publishArtifact = oldPublish })
 
 	module, err := cache.LoadOrCompile(source, config, rt)
@@ -76,6 +169,184 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	}
 	if !errors.Is(reported, injected) {
 		t.Fatalf("reported error = %v", reported)
+	}
+}
+
+type cachePlugin func(*wago.Registrar) error
+
+func (f cachePlugin) Register(reg *wago.Registrar) error { return f(reg) }
+
+func loadCachePlugin(t testing.TB, rt *wago.Runtime, id string, authorities []wago.AuthorityRequest, register cachePlugin) {
+	t.Helper()
+	definition := wago.PluginDefinition{
+		ID: id, Version: "1.0.0",
+		Provenance:  wago.PluginProvenance{Repository: "https://example.com/" + id, License: "MIT"},
+		Authorities: authorities,
+	}
+	digest, err := wago.DefinitionDigest(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := wago.PluginSelection{ID: id, DefinitionDigest: digest, Direct: true, Dependencies: map[string]string{}}
+	for _, authority := range authorities {
+		if authority.Mode == wago.AuthorityRequired {
+			selection.Grants = append(selection.Grants, wago.AuthorityGrant{Name: authority.Name, Scope: authority.Scope})
+		}
+	}
+	if err := rt.LoadPlugins(context.Background(), wago.PluginSet{
+		Providers:  []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { return register }}},
+		Selections: []wago.PluginSelection{selection},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCacheHitPropagatesAfterCompileErrorExactlyOnce(t *testing.T) {
+	source := constantModule()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	module, err := cache.LoadOrCompile(source, config, seedRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rejected := errors.New("cached artifact rejected")
+	calls := 0
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+	loadCachePlugin(t, rt, "example.com/cache/reject", []wago.AuthorityRequest{{
+		Name: wago.AuthorityModuleCompileObserve, Mode: wago.AuthorityRequired, Reason: "reject adopted artifacts",
+	}}, func(reg *wago.Registrar) error {
+		observer, err := reg.ModuleCompileObserver()
+		if err != nil {
+			return err
+		}
+		return observer.Observe(func(wago.ModuleCompiledEvent) {
+			calls++
+			if calls == 1 {
+				panic(rejected)
+			}
+		})
+	})
+	if _, err := cache.LoadOrCompile(source, config, rt); !errors.Is(err, rejected) {
+		t.Fatalf("cache binding error = %v, want %v", err, rejected)
+	}
+	if calls != 1 {
+		t.Fatalf("AfterCompile calls = %d, want 1", calls)
+	}
+}
+
+func TestCacheHitPropagatesRuntimeBindingError(t *testing.T) {
+	source := constantModule()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	module, err := cache.LoadOrCompile(source, config, seedRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	closedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	if err := closedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cache.LoadOrCompile(source, config, closedRuntime); err == nil || !strings.Contains(err.Error(), "closed runtime") {
+		t.Fatalf("cache binding error = %v", err)
+	}
+}
+
+func TestLoadOrCompileUsesDestinationRuntimeConfig(t *testing.T) {
+	source := constantModule()
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	runtimeConfig := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	callerConfig := runtimeConfig.WithMemoryLimitPages(runtimeConfig.MemoryLimitPages() - 1)
+	callerPath, ok := cache.path(source, callerConfig)
+	if !ok {
+		t.Fatal("caller cache key unavailable")
+	}
+	runtimePath, ok := cache.path(source, runtimeConfig)
+	if !ok || runtimePath == callerPath {
+		t.Fatalf("runtime cache key = %q, caller key = %q", runtimePath, callerPath)
+	}
+
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(runtimeConfig))
+	module, err := cache.LoadOrCompile(source, callerConfig, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(runtimePath); err != nil {
+		t.Fatalf("runtime-config artifact was not published: %v", err)
+	}
+	if _, err := os.Stat(callerPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("mismatched caller-config artifact exists: %v", err)
+	}
+}
+
+func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
+	source := constantModule()
+	base := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(base))
+	seed, err := cache.LoadOrCompile(source, base, seedRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	telemetry := base.WithGCCodeTelemetry(true)
+	var compileCalls int
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(telemetry))
+	loadCachePlugin(t, rt, "example.com/cache/telemetry", []wago.AuthorityRequest{{
+		Name: wago.AuthorityModuleSourceTransform, Mode: wago.AuthorityRequired, Reason: "count fresh compiles",
+	}}, func(reg *wago.Registrar) error {
+		transformer, err := reg.ModuleSourceTransformer()
+		if err != nil {
+			return err
+		}
+		return transformer.Transform(func(wago.ModuleSourceContext, []byte) ([]byte, error) {
+			compileCalls++
+			return nil, nil
+		})
+	})
+	module, err := cache.LoadOrCompile(source, telemetry, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compileCalls != 1 {
+		t.Fatalf("compile-only telemetry used a warm artifact; compile calls = %d", compileCalls)
+	}
+	if _, ok := module.Compiled().GCNativeCodeTelemetry(); !ok {
+		t.Fatal("fresh telemetry compile did not retain requested attribution")
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -112,8 +383,8 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	if basePath == optimizationPath {
 		t.Fatal("optimization selection did not change artifact key")
 	}
-	if basePath == workersPath {
-		t.Fatal("function-worker policy did not change artifact key")
+	if basePath != workersPath {
+		t.Fatal("function-worker scheduling policy changed artifact key")
 	}
 	if basePath == boundsPath {
 		t.Fatal("bounds-check mode did not change artifact key")

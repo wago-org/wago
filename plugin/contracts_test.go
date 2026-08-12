@@ -64,6 +64,9 @@ func TestTypedContractRequiredOptionalAndMany(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if err := ref.With(func([]int) error { return nil }); !errors.Is(err, wago.ErrPermissionDenied) {
 		t.Fatalf("after close=%v", err)
 	}

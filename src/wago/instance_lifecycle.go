@@ -24,16 +24,19 @@ func (in *Instance) Close() (err error) {
 	}
 	state, owner := in.beginClose()
 	if !owner {
-		<-state.done
-		return state.result
+		select {
+		case <-state.done:
+			return state.result
+		default:
+			// A callback may reenter Close while the lifecycle owner is still
+			// active. Returning promptly avoids self-deadlock; external callers
+			// that need completion use closeAndWait or Runtime.WaitClosed.
+			return nil
+		}
 	}
 	defer func() {
-		if recovered := recover(); recovered != nil {
-			if panicErr, ok := recovered.(error); ok {
-				err = joinPrimary(err, fmt.Errorf("wago: instance close panicked: %w", panicErr))
-			} else {
-				err = joinPrimary(err, fmt.Errorf("wago: instance close panicked: %v", recovered))
-			}
+		if recover() != nil {
+			err = joinPrimary(err, fmt.Errorf("wago: instance close: %w", ErrCallbackPanic))
 		}
 		state.result = err
 		close(state.done)
@@ -56,7 +59,7 @@ func (in *Instance) beginClose() (*instanceCloseState, bool) {
 func (in *Instance) closeOnce() error {
 	var errs []error
 	appendStep := func(phase string, fn func()) {
-		if err := callHookSafely(phase, fn); err != nil {
+		if err := callShutdownSafely(phase, fn); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -80,27 +83,31 @@ func (in *Instance) closeOnce() error {
 	}
 	in.lifeMu.Unlock()
 
+	var hooks *hookRegistry
 	if in.rt != nil {
-		for i := len(in.rt.hooks.internalBeforeClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.internalBeforeClose[i]
+		hooks = in.rt.loadHooks()
+		for i := len(hooks.internalBeforeClose) - 1; i >= 0; i-- {
+			fn := hooks.internalBeforeClose[i]
 			appendStep("internal BeforeClose", func() { fn(in) })
 		}
 	}
 
 	var closeEvent *InstanceCloseEvent
-	if in.rt != nil && (len(in.rt.hooks.beforeClose) != 0 || len(in.rt.hooks.afterClose) != 0) {
+	if hooks != nil && (len(hooks.beforeClose) != 0 || len(hooks.afterClose) != 0) {
 		event := InstanceCloseEvent{Module: ModuleView{compiled: in.c, identity: in.moduleIdentity}, Instance: InstanceIdentity{value: in}, Origin: in.instantiateOrigin()}
 		closeEvent = &event
-		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.beforeClose[i]
+		closeState := in.ensurePluginState().close.Load()
+		closeState.hooks, closeState.event = hooks, closeEvent
+		for i := len(hooks.beforeClose) - 1; i >= 0; i-- {
+			fn := hooks.beforeClose[i]
 			appendStep("BeforeClose", func() { fn(*closeEvent) })
 		}
 	}
 
 	// An activation parked in host code may have resumed and mutated an imported
-	// table/global while hooks ran. Root transfer is therefore deferred to
-	// tryFinalize after the active count reaches zero. closed enables that final
-	// transition only after BeforeClose is completely finished.
+	// table/global while hooks ran. Mark logical closure now, but defer terminal
+	// disposal observation and physical release until every admitted invocation
+	// and the construction lifecycle have quiesced.
 	in.lifeMu.Lock()
 	in.closed = true
 	store := in.refStore
@@ -108,12 +115,6 @@ func (in *Instance) closeOnce() error {
 
 	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
 	appendStep("finalize instance resources", in.tryFinalize)
-	if closeEvent != nil {
-		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
-			fn := in.rt.hooks.afterClose[i]
-			appendStep("AfterClose", func() { fn(*closeEvent) })
-		}
-	}
 	return errors.Join(errs...)
 }
 
@@ -125,12 +126,15 @@ func (in *Instance) closeAndWait() error {
 	if in == nil {
 		return nil
 	}
-	err := in.Close()
+	if err := in.Close(); err != nil {
+		return err
+	}
 	state := in.ensurePluginState().close.Load()
 	if state != nil {
 		<-state.quiesced
+		return joinPrimary(state.result, state.terminalResult)
 	}
-	return err
+	return nil
 }
 
 func (in *Instance) isLogicallyClosed() bool {
@@ -153,6 +157,25 @@ func (in *Instance) beginInvocation() error {
 	if in == nil {
 		return fmt.Errorf("instance is nil")
 	}
+	if in.rt != nil {
+		in.rt.mu.Lock()
+		if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
+			in.rt.mu.Unlock()
+			return fmt.Errorf("instance runtime is closed")
+		}
+		in.rt.activeOperations++
+		in.rt.mu.Unlock()
+	}
+	admitted := false
+	defer func() {
+		if admitted || in.rt == nil {
+			return
+		}
+		in.rt.mu.Lock()
+		in.rt.activeOperations--
+		in.rt.stateCond.Broadcast()
+		in.rt.mu.Unlock()
+	}()
 	for {
 		state := in.invocationState.Load()
 		if state&instanceInvocationClosed != 0 {
@@ -162,6 +185,7 @@ func (in *Instance) beginInvocation() error {
 			return fmt.Errorf("instance has too many active invocations")
 		}
 		if in.invocationState.CompareAndSwap(state, state+1) {
+			admitted = true
 			return nil
 		}
 	}
@@ -180,6 +204,16 @@ func (in *Instance) endInvocation() {
 		if !in.invocationState.CompareAndSwap(state, next) {
 			continue
 		}
+		if in.rt != nil {
+			in.rt.mu.Lock()
+			if in.rt.activeOperations == 0 {
+				in.rt.mu.Unlock()
+				panic("wago: runtime invocation operation underflow")
+			}
+			in.rt.activeOperations--
+			in.rt.stateCond.Broadcast()
+			in.rt.mu.Unlock()
+		}
 		if next == instanceInvocationClosed {
 			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
 				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
@@ -193,12 +227,74 @@ func (in *Instance) endInvocation() {
 // tryFinalize delegates the reference-lifetime transition. Keeping this small
 // call point lets resource-root and invocation paths remain direct.
 func (in *Instance) tryFinalize() {
-	if in != nil && in.invocationState.Load()&instanceInvocationClosed != 0 && in.invocationState.Load()&instanceInvocationCount == 0 {
-		if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+	if in == nil || in.constructionIsActive() || in.invocationState.Load()&instanceInvocationClosed == 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+		return
+	}
+	if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+		closeState.terminalOnce.Do(func() {
+			if closeState.hooks != nil && closeState.event != nil {
+				var errs []error
+				for i := len(closeState.hooks.afterClose) - 1; i >= 0; i-- {
+					fn := closeState.hooks.afterClose[i]
+					if err := callShutdownSafely("AfterClose", func() { fn(*closeState.event) }); err != nil {
+						errs = append(errs, err)
+					}
+				}
+				closeState.terminalResult = errors.Join(errs...)
+			}
 			closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
-		}
+		})
 	}
 	in.referenceLifetime().finalize()
+}
+
+func (in *Instance) constructionIsActive() bool {
+	if in == nil {
+		return false
+	}
+	in.lifeMu.Lock()
+	active := in.constructionActive
+	in.lifeMu.Unlock()
+	return active
+}
+
+func (in *Instance) beginConstruction(reservation *pluginOperationReservation) {
+	if in == nil {
+		return
+	}
+	in.lifeMu.Lock()
+	if in.constructionActive {
+		in.lifeMu.Unlock()
+		panic("wago: instance construction lifetime already started")
+	}
+	in.constructionActive = true
+	in.constructionReservation = reservation
+	in.lifeMu.Unlock()
+}
+
+func (in *Instance) endConstruction() {
+	if in == nil {
+		return
+	}
+	in.lifeMu.Lock()
+	if !in.constructionActive {
+		in.lifeMu.Unlock()
+		panic("wago: instance construction lifetime is not active")
+	}
+	in.constructionActive = false
+	in.constructionReservation = nil
+	in.lifeMu.Unlock()
+	in.tryFinalize()
+}
+
+func (in *Instance) constructionReservationSnapshot() *pluginOperationReservation {
+	if in == nil {
+		return nil
+	}
+	in.lifeMu.Lock()
+	reservation := in.constructionReservation
+	in.lifeMu.Unlock()
+	return reservation
 }
 
 // releaseResources performs the physical teardown after tryFinalize has claimed

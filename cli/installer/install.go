@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +41,7 @@ type installer struct {
 	httpClient          *http.Client
 	tmpDir              string
 	managerTag          string
+	managerSourceRef    string
 	managerFromRelease  bool
 	sourceMethod        string
 	progressActive      bool
@@ -71,6 +73,10 @@ func runInstaller() error {
 	return err
 }
 
+var installerSourceArchiveURL = func(repo, ref string) string {
+	return "https://api.github.com/repos/" + repo + "/zipball/" + ref
+}
+
 func newInstaller(out io.Writer) (*installer, error) {
 	home, err := os.UserHomeDir()
 	if value := firstEnv("HOME", "USERPROFILE"); value != "" {
@@ -79,7 +85,11 @@ func newInstaller(out io.Writer) (*installer, error) {
 	if err != nil && home == "" {
 		return nil, errors.New("home directory is not available")
 	}
-	version := envOr("WAGO_VERSION", "main")
+	requestedVersion := envOr("WAGO_VERSION", version)
+	if requestedVersion == "" || requestedVersion == "dev" {
+		requestedVersion = "main"
+	}
+	archiveRef := installerSourceRef(requestedVersion)
 	releaseRepo := envOr("WAGO_RELEASE_REPO", "wago-org/wago")
 	binDir := os.Getenv("WAGO_BIN_DIR")
 	binExplicit := binDir != ""
@@ -91,9 +101,9 @@ func newInstaller(out io.Writer) (*installer, error) {
 	i := &installer{
 		out:                 out,
 		home:                home,
-		version:             version,
+		version:             requestedVersion,
 		repoURL:             envOr("WAGO_REPO_URL", "https://github.com/wago-org/wago.git"),
-		archiveURL:          envOr("WAGO_ARCHIVE_URL", "https://api.github.com/repos/wago-org/wago/zipball/"+version),
+		archiveURL:          envOr("WAGO_ARCHIVE_URL", installerSourceArchiveURL(releaseRepo, archiveRef)),
 		releaseAPI:          envOr("WAGO_RELEASES_API_URL", "https://api.github.com/repos/"+releaseRepo+"/releases"),
 		releaseDownloadBase: envOr("WAGO_RELEASE_DOWNLOAD_BASE", "https://github.com/"+releaseRepo+"/releases"),
 		binDir:              filepath.Clean(binDir),
@@ -371,14 +381,16 @@ func reinstallLabel(mode string) string {
 }
 
 func (i *installer) downloadManager(target string) error {
-	tag, base := i.version, ""
+	resolved := installbootstrap.ResolvedRelease{Tag: i.version, SourceRef: installerSourceRef(i.version)}
+	base := ""
 	if os.Getenv("WAGO_MANAGER_URL") == "" {
 		var err error
-		tag, base, err = i.resolveRelease()
+		resolved, base, err = i.resolveRelease()
 		if err != nil {
 			return err
 		}
 	}
+	tag := resolved.Tag
 	asset, err := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return err
@@ -394,17 +406,17 @@ func (i *installer) downloadManager(target string) error {
 	if err := os.Chmod(target, 0o755); err != nil {
 		return err
 	}
-	i.managerTag, i.managerFromRelease = tag, true
+	i.managerTag, i.managerSourceRef, i.managerFromRelease = tag, resolved.SourceRef, true
 	i.done("Downloaded Wago manager " + tag)
 	return nil
 }
 
-func (i *installer) resolveRelease() (string, string, error) {
-	tag, err := installbootstrap.Resolve(i.version, installerReleaseCatalog{i})
+func (i *installer) resolveRelease() (installbootstrap.ResolvedRelease, string, error) {
+	resolved, err := installbootstrap.ResolveRelease(i.version, installerReleaseCatalog{i})
 	if err != nil {
-		return "", "", err
+		return installbootstrap.ResolvedRelease{}, "", err
 	}
-	return tag, i.releaseDownloadBase + "/download/" + tag, nil
+	return resolved, i.releaseDownloadBase + "/download/" + resolved.Tag, nil
 }
 
 type installerReleaseCatalog struct{ installer *installer }
@@ -416,9 +428,31 @@ func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error
 }
 
 func (catalog installerReleaseCatalog) Releases() ([]installbootstrap.Release, error) {
+	const pageLimit = 10
 	var releases []installbootstrap.Release
-	err := catalog.installer.getJSON(catalog.installer.releaseAPI+"?per_page=100", &releases)
-	return releases, err
+	base, err := url.Parse(catalog.installer.releaseAPI)
+	if err != nil {
+		return nil, fmt.Errorf("parse release catalog URL: %w", err)
+	}
+	for page := 1; page <= pageLimit; page++ {
+		var batch []installbootstrap.Release
+		address := *base
+		query := address.Query()
+		query.Set("per_page", "100")
+		query.Set("page", strconv.Itoa(page))
+		address.RawQuery = query.Encode()
+		if err := catalog.installer.getJSON(address.String(), &batch); err != nil {
+			return nil, err
+		}
+		if len(batch) > 100 {
+			return nil, fmt.Errorf("release catalog returned too many releases on page %d", page)
+		}
+		releases = append(releases, batch...)
+		if len(batch) < 100 {
+			return releases, nil
+		}
+	}
+	return nil, fmt.Errorf("release catalog exceeded %d pages", pageLimit)
 }
 
 func (i *installer) getJSON(url string, value any) error {
@@ -483,24 +517,50 @@ func (i *installer) download(url, target string) error {
 	return closeErr
 }
 
+var runInstallerGit = func(args ...string) ([]byte, error) {
+	return exec.Command("git", args...).CombinedOutput()
+}
+
 func (i *installer) fetchSource() (string, error) {
 	target := filepath.Join(i.tmpDir, "src")
-	sourceVersion := i.version
+	sourceVersion := installerSourceRef(i.version)
+	if i.managerFromRelease && i.managerSourceRef != "" {
+		sourceVersion = i.managerSourceRef
+	}
 	archiveURL := i.archiveURL
-	if i.managerFromRelease {
-		sourceVersion = i.managerTag
-		if os.Getenv("WAGO_ARCHIVE_URL") == "" {
-			archiveURL = "https://api.github.com/repos/" + envOr("WAGO_RELEASE_REPO", "wago-org/wago") + "/zipball/" + sourceVersion
-		}
+	if os.Getenv("WAGO_ARCHIVE_URL") == "" {
+		archiveURL = installerSourceArchiveURL(envOr("WAGO_RELEASE_REPO", "wago-org/wago"), sourceVersion)
 	}
 	i.begin("Fetching Wago source")
-	gitLog, gitErr := exec.Command("git", "clone", "--depth", "1", "--branch", sourceVersion, i.repoURL, target).CombinedOutput()
+	gitLog, gitErr := i.fetchSourceWithGit(target, sourceVersion)
 	if gitErr == nil {
 		i.sourceMethod = "git"
 		i.done("Fetched Wago source")
 		return target, nil
 	}
 	_ = os.RemoveAll(target)
+	return i.fetchSourceArchiveAfterGitFailure(target, archiveURL, gitLog, gitErr)
+}
+
+func (i *installer) fetchSourceWithGit(target, sourceVersion string) ([]byte, error) {
+	if fullInstallerCommitSHA(sourceVersion) {
+		sha := sourceVersion
+		commands := [][]string{
+			{"-c", "init.defaultBranch=main", "init", target},
+			{"-C", target, "fetch", "--quiet", "--depth", "1", i.repoURL, sha},
+			{"-C", target, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
+		}
+		for _, args := range commands {
+			if output, err := runInstallerGit(args...); err != nil {
+				return output, err
+			}
+		}
+		return nil, nil
+	}
+	return runInstallerGit("clone", "--depth", "1", "--branch", sourceVersion, i.repoURL, target)
+}
+
+func (i *installer) fetchSourceArchiveAfterGitFailure(target, archiveURL string, gitLog []byte, gitErr error) (string, error) {
 	i.retry("Git fetch failed; trying source archive")
 	archive := filepath.Join(i.tmpDir, "source.zip")
 	if err := i.download(archiveURL, archive); err != nil {
@@ -512,6 +572,38 @@ func (i *installer) fetchSource() (string, error) {
 	i.sourceMethod = "archive"
 	i.done("Fetched Wago source")
 	return target, nil
+}
+
+func installerSourceRef(version string) string {
+	if _, sha, canonical := installerRollingCommit(version); canonical {
+		return sha
+	}
+	return version
+}
+
+func fullInstallerCommitSHA(value string) bool {
+	if len(value) != 40 {
+		return false
+	}
+	for _, char := range strings.ToLower(value) {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return false
+		}
+	}
+	return true
+}
+
+func installerRollingCommit(version string) (channel, sha string, canonical bool) {
+	channel, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(version)), "@")
+	if !found || (channel != "canary" && channel != "nightly") || len(sha) != 40 {
+		return "", "", false
+	}
+	for _, char := range sha {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return "", "", false
+		}
+	}
+	return channel, sha, true
 }
 
 func (i *installer) buildManager(sourceDir, target string) error {

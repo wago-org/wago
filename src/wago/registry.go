@@ -167,6 +167,16 @@ type registeredImport struct {
 
 func (i *registeredImport) key() string { return i.module + "." + i.name }
 
+func cloneRegisteredImport(imp *registeredImport) *registeredImport {
+	if imp == nil {
+		return nil
+	}
+	clone := *imp
+	clone.params = append([]ValType(nil), imp.params...)
+	clone.results = append([]ValType(nil), imp.results...)
+	return &clone
+}
+
 // ImportModuleBuilder scopes declarations to one exact Wasm module.
 type ImportModuleBuilder struct {
 	reg    *Registrar

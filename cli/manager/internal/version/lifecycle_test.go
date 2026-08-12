@@ -434,7 +434,7 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 		t.Fatalf("channelReleaseNames = %v, want %v", got, want)
 	}
 	releases := []remoteRelease{
-		{TagName: "nightly-20260728-7d8c58a", PublishedAt: "2026-07-28T08:31:22Z"},
+		{TagName: "nightly-20260728-7d8c58a", TargetCommitish: "7d8c58a123456789012345678901234567890123", PublishedAt: "2026-07-28T08:31:22Z"},
 		{TagName: "v0.1.4", PublishedAt: "2026-06-30T12:00:00Z"},
 		{TagName: "canary-cafef00", PublishedAt: "2026-07-28T00:48:44Z"},
 		{TagName: "nightly-20260711-abcdef0", PublishedAt: "2026-07-11T08:31:22Z"},
@@ -454,15 +454,15 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 		t.Fatalf("latest picker children = %v, want %v", got, want)
 	}
 	nightly := items[1].Children[1]
-	if nightly.Label != "nightly-7d8c58a" || nightly.Value != "nightly-20260728-7d8c58a" || nightly.Description != "07/28/2026  1d ago" {
+	if nightly.Label != "nightly-7d8c58a" || nightly.Value != "nightly-20260728-7d8c58a@7d8c58a123456789012345678901234567890123" || nightly.Description != "07/28/2026  1d ago" {
 		t.Fatalf("nightly picker item = %#v", nightly)
 	}
 	canary := items[0].Children[1]
 	if canary.Label != "canary-cafef00" || canary.Description != "07/28/2026  1d ago" {
 		t.Fatalf("canary picker item = %#v", canary)
 	}
-	if got := canaryCommitVersion(canary.Value); got != "canary-cafef00" {
-		t.Fatalf("canary commit install name = %q", got)
+	if got := releaseAssetVersion(canary.Value); got != "canary-cafef00123456789012345678901234567890123" {
+		t.Fatalf("canary commit release asset = %q", got)
 	}
 	if got := releasePickerLabel("canary"); got != "canary" {
 		t.Fatalf("releasePickerLabel(canary) = %q", got)

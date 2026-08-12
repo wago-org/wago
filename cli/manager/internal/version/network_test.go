@@ -26,14 +26,190 @@ func TestLatestChannelRelease(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(`[{"tag_name":"nightly-20260712-deadbee"},{"tag_name":"canary-cafef00"}]`))
+		_, _ = w.Write([]byte(`[{"tag_name":"nightly-20260712-deadbee","target_commitish":"deadbee123456789012345678901234567890123"},{"tag_name":"canary-cafef00","target_commitish":"cafef00123456789012345678901234567890123"}]`))
 	}))
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
 	got, err := latestChannelRelease("nightly")
-	if err != nil || got != "nightly-20260712-deadbee" {
+	if err != nil || got != "nightly-20260712-deadbee@deadbee123456789012345678901234567890123" {
 		t.Fatalf("latestChannelRelease(nightly) = %q, %v", got, err)
+	}
+}
+
+func TestLatestChannelReleasePaginates(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/wago-org/wago/releases" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		if r.URL.Query().Get("page") == "1" {
+			releases := make([]remoteRelease, 100)
+			for i := range releases {
+				releases[i].TagName = fmt.Sprintf("v1.0.%d", i)
+			}
+			_ = json.NewEncoder(w).Encode(releases)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-20260812-deadbee", TargetCommitish: "deadbee123456789012345678901234567890123"}})
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	got, err := latestChannelReleaseContext(context.Background(), "nightly")
+	if err != nil || got != "nightly-20260812-deadbee@deadbee123456789012345678901234567890123" {
+		t.Fatalf("latestChannelReleaseContext = %q, %v", got, err)
+	}
+	if requests != 2 {
+		t.Fatalf("release page requests = %d, want 2", requests)
+	}
+}
+
+func TestLatestChannelReleaseUsesLinkPaginationAndSkipsDrafts(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/repos/wago-org/wago/releases?cursor=next>; rel="next"`, "http://"+r.Host))
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-draft", Draft: true, TargetCommitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})
+		case "next":
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-20260812-deadbee", TargetCommitish: "deadbee123456789012345678901234567890123"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	got, err := latestChannelReleaseContext(context.Background(), "nightly")
+	if err != nil || got != "nightly-20260812-deadbee@deadbee123456789012345678901234567890123" {
+		t.Fatalf("latestChannelReleaseContext = %q, %v", got, err)
+	}
+	if requests != 2 {
+		t.Fatalf("release page requests = %d, want 2", requests)
+	}
+}
+
+func TestReleasePaginationRejectsMalformedAndCrossOriginTargets(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		link func(*httptest.Server) string
+		want string
+	}{
+		{name: "malformed", link: func(*httptest.Server) string { return `not-a-url; rel="next"` }, want: "malformed"},
+		{name: "cross origin", link: func(*httptest.Server) string {
+			return `<https://example.invalid/repos/wago-org/wago/releases?page=2>; rel="next"`
+		}, want: "invalid"},
+		{name: "different path", link: func(server *httptest.Server) string {
+			return `<` + server.URL + `/repos/wago-org/other/releases?page=2>; rel="next"`
+		}, want: "invalid"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var server *httptest.Server
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Link", test.link(server))
+				_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v1.0.0"}})
+			}))
+			defer server.Close()
+			t.Setenv("WAGO_RELEASE_API", server.URL)
+			if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("pagination target error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestLatestChannelReleaseRejectsPaginationLoop(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", fmt.Sprintf(`<%s>; rel="next"`, "http://"+r.Host+r.URL.RequestURI()))
+		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v1.0.0"}})
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), "loop") {
+		t.Fatalf("channel pagination loop error = %v", err)
+	}
+}
+
+func TestLatestChannelReleaseRejectsInvalidTargetCommit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-20260812-deadbee", TargetCommitish: "main"}})
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), "invalid target commit") {
+		t.Fatalf("invalid channel target error = %v", err)
+	}
+}
+
+func TestLatestChannelReleaseCancellationBetweenPages(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			w.Header().Set("Link", fmt.Sprintf(`<%s/repos/wago-org/wago/releases?page=2>; rel="next"`, "http://"+r.Host))
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v1.0.0"}})
+			cancel()
+			return
+		}
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if _, err := latestChannelReleaseContext(ctx, "nightly"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled channel pagination = %v", err)
+	}
+	if requests > 2 {
+		t.Fatalf("release page requests = %d, want at most 2", requests)
+	}
+}
+
+func TestRollingChannelWithoutPublishedReleaseUsesCanonicalMainSource(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/wago-org/wago/releases":
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v1.0.0"}})
+		case "/repos/wago-org/wago/commits/main":
+			_ = json.NewEncoder(w).Encode(remoteCommit{SHA: sha})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	resolved, sourceOnly, err := resolveRunnerVersionContext(context.Background(), "nightly", nil)
+	if err != nil || !sourceOnly || resolved != "nightly@"+sha {
+		t.Fatalf("resolveRunnerVersionContext = %q, %v, %v", resolved, sourceOnly, err)
+	}
+}
+
+func TestLatestChannelReleaseBoundsPagination(t *testing.T) {
+	releases := make([]remoteRelease, 100)
+	for i := range releases {
+		releases[i].TagName = fmt.Sprintf("v1.0.%d", i)
+	}
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_ = json.NewEncoder(w).Encode(releases)
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("channel pagination error = %v", err)
+	}
+	if requests != discoveryPageLimit {
+		t.Fatalf("release page requests = %d, want %d", requests, discoveryPageLimit)
 	}
 }
 

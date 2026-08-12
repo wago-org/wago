@@ -158,6 +158,7 @@ func TestFailedInstantiationTransfersImportedGlobalRoots(t *testing.T) {
 		_ = global.Close()
 		_ = producer.Close()
 		_ = rt.Close()
+		_ = rt.WaitClosed(context.Background())
 		if !root.resourcesClosed {
 			t.Fatal("producer remained live after container and token roots were released")
 		}

@@ -63,7 +63,7 @@ func (in *Instance) ExternRefValue(ref ExternRef) (any, bool) {
 	if ref.IsNull() {
 		return nil, true
 	}
-	if in == nil || in.refStore == nil {
+	if in == nil || in.refStore == nil || in.rt != nil && in.rt.isClosed() {
 		return nil, false
 	}
 	return in.refStore.resolveExternref(ref.token)

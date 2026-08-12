@@ -373,6 +373,9 @@ func TestCoreRuntimeAccessActivatesAndRevokesWithRuntime(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := access.Compile(wasmtest.Module()); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("Compile after close = %v, want permission denied", err)
 	}

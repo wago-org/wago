@@ -68,11 +68,12 @@ func TestSelfUpdateSkipsMatchingManagerCommit(t *testing.T) {
 		return os.WriteFile(dest, []byte("updated manager"), 0o755)
 	}
 
-	selfUpdate("canary-2ff00dd", executable, false)
+	current := "canary@2ff00ddd12345678901234567890123456789012"
+	selfUpdate(current, executable, false)
 	if installs != 0 {
 		t.Fatalf("matching manager update installed %d payloads, want 0", installs)
 	}
-	selfUpdate("canary-2ff00dd", executable, true)
+	selfUpdate(current, executable, true)
 	if installs != 1 {
 		t.Fatalf("forced manager update installed %d payloads, want 1", installs)
 	}

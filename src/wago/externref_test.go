@@ -302,6 +302,9 @@ func TestExternrefGenerationAndStoreTeardown(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close: %v", err)
 	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
+	}
 	if len(rt.refStore.externrefs) != 0 || rt.refStore.externKey != 0 {
 		t.Fatalf("closed runtime retained externrefs: slots=%d key=%#x", len(rt.refStore.externrefs), rt.refStore.externKey)
 	}

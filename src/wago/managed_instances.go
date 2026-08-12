@@ -175,7 +175,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	if err != nil {
 		return nil, err
 	}
-	end, err := m.rt.beginOperation("managed Fork", true)
+	hooks, reservation, end, err := m.rt.beginOperationGeneration("managed Fork", true)
 	if err != nil {
 		return nil, err
 	}
@@ -207,13 +207,16 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	rt := m.rt
 	m.mu.Unlock()
 	defer m.pending.Done()
+	rt.mu.Lock()
+	bindings := rt.snapshotModuleBindingsLocked(hooks)
+	rt.mu.Unlock()
 	state := parent.pluginState.Load()
 	var gc GCConfig
 	hasGC := state != nil && state.gcConfig != nil
 	if hasGC {
 		gc = *state.gcConfig
 	}
-	child, err := rt.instantiateWithHooksOrigin(rt.buildModule(parent.c), imports, gc, hasGC, false, InstantiateManaged)
+	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, gc, hasGC, false, InstantiateManaged, hooks, reservation)
 	if err != nil {
 		m.mu.Lock()
 		m.live--
@@ -306,8 +309,12 @@ func validateVoidTableEntry(in *Instance, index uint32) error {
 // InvokeVoidTable invokes a validated () -> () table entry on this managed
 // instance. Calls on one instance must be serialized by the owning plugin.
 func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) error {
-	in := m.Instance()
-	manager := m.manager
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m.mu.Lock()
+	in, manager := m.value, m.manager
+	m.mu.Unlock()
 	if in == nil || manager == nil {
 		return fmt.Errorf("wago: managed instance is closed")
 	}
@@ -464,47 +471,47 @@ func (m *InstanceManager) releaseReservation(memoryBytes uint64) {
 }
 
 func (m *InstanceManager) closeLogical() error {
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
+	if m == nil {
 		return nil
 	}
-	m.closed = true
-	list := make([]*ManagedInstance, 0, len(m.instances))
-	for owned := range m.instances {
-		list = append(list, owned)
-	}
-	m.mu.Unlock()
-	// No new creation can increment pending after closed is set under m.mu.
-	// Wait for in-flight creations to either fail or close themselves in adopt.
-	m.pending.Wait()
-	var errs []error
-	draining := make([]*Instance, 0, len(list))
-	for _, owned := range list {
-		in, err := owned.closeLogical()
-		if err != nil {
-			errs = append(errs, err)
-		}
-		if in != nil {
-			draining = append(draining, in)
-		}
-	}
 	m.mu.Lock()
-	m.draining = draining
-	m.instances = nil
-	m.byInstance = nil
+	m.closed = true
 	m.mu.Unlock()
-	return errors.Join(errs...)
+	// Phase 1 closes only creation/fork admission. Existing managed instances
+	// remain usable by Plugin.Stop; phase 3 closes and drains them afterward.
+	return nil
 }
 
 func (m *InstanceManager) drain() error {
 	if m == nil {
 		return nil
 	}
+	// closed was published under m.mu before this wait, so no later pending.Add
+	// can race the Wait. In-flight creators either fail or close their partial
+	// instance in adopt before signaling Done.
+	m.pending.Wait()
 	m.mu.Lock()
-	list := append([]*Instance(nil), m.draining...)
+	owned := make([]*ManagedInstance, 0, len(m.instances))
+	for instance := range m.instances {
+		owned = append(owned, instance)
+	}
 	m.mu.Unlock()
 	var errs []error
+	list := make([]*Instance, 0, len(owned))
+	for _, managed := range owned {
+		in, err := managed.closeLogical()
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if in != nil {
+			list = append(list, in)
+		}
+	}
+	m.mu.Lock()
+	list = append(list, m.draining...)
+	m.instances = nil
+	m.byInstance = nil
+	m.mu.Unlock()
 	for _, in := range list {
 		state := in.ensurePluginState().close.Load()
 		if state != nil {

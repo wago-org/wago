@@ -21,48 +21,50 @@ func offHeapPtr(addr uintptr) unsafe.Pointer {
 
 // Instance is ready for repeated Invoke calls.
 type Instance struct {
-	c                      *Compiled
-	eng                    *runtime.Engine
-	jm                     *runtime.JobMemory
-	memory                 *Memory // the memory object (owned or host-imported)
-	ar                     *runtime.Arena
-	base                   uintptr
-	hosts                  map[string]HostFunc
-	imports                Imports // the imports as provided to Instantiate
-	hostLog                []byte
-	ctrl                   []byte                              // sync host-call control frame (nil in async mode)
-	syncHosts              []HostFunc                          // per import-func-index host, sync mode only
-	hostCall               runtime.HostCall                    // active instance's bound host imports
-	pluginState            atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
-	globals                []byte                              // pointer table handed to JIT code
-	globalCells            []*Global
-	table                  *Table        // lazily created importer-owned local export-handle chain
-	tableDescPtr           uintptr       // local/imported descriptor address; arena/table ownership keeps it live
-	tableDescLen           int           // descriptor byte length for safe slice reconstruction
-	funcRefDescs           []byte        // canonical funcref descriptor handles for this instance's function index space
-	passiveDataDesc        []byte        // per-instance data-segment descriptors; active slots start dropped
-	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
-	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
-	gcTypeMap              *gcTypeMapping
-	gcNativeView           *gc.NativeInstanceView
-	serArgs, results, trap []byte
-	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
-	ic                     [4]invokeCache // tiny fixed export resolution cache
-	icNext                 uint8          // round-robin replacement cursor
-	refStore               *referenceStore
-	lifeMu                 sync.Mutex
-	resourceRefs           int
-	invocationState        atomic.Uint32 // high bit closes entry; low bits count active public invocations
-	closed                 bool          // logical close; retained references may defer physical release
-	finalizing             bool          // one goroutine owns quiescent finalization
-	resourcesClosed        bool
-	physicalFinalizer      func()
-	ownsMem                bool                     // false when memory 0 is host-imported (don't close it)
-	memoryDir              *instanceMemoryDirectory // allocated only for indexed memory execution
-	syncMode               bool                     // true when host imports use the synchronous re-entry protocol
-	executionFlags         atomic.Uint32            // independent eligibility and cross-instance native-control sharing
-	nativeContext          uintptr                  // arena-backed context bytes rebound before every native entry
-	instructionState       instructionState
+	c                       *Compiled
+	eng                     *runtime.Engine
+	jm                      *runtime.JobMemory
+	memory                  *Memory // the memory object (owned or host-imported)
+	ar                      *runtime.Arena
+	base                    uintptr
+	hosts                   map[string]HostFunc
+	imports                 Imports // the imports as provided to Instantiate
+	hostLog                 []byte
+	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
+	syncHosts               []HostFunc                          // per import-func-index host, sync mode only
+	hostCall                runtime.HostCall                    // active instance's bound host imports
+	pluginState             atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
+	globals                 []byte                              // pointer table handed to JIT code
+	globalCells             []*Global
+	table                   *Table        // lazily created importer-owned local export-handle chain
+	tableDescPtr            uintptr       // local/imported descriptor address; arena/table ownership keeps it live
+	tableDescLen            int           // descriptor byte length for safe slice reconstruction
+	funcRefDescs            []byte        // canonical funcref descriptor handles for this instance's function index space
+	passiveDataDesc         []byte        // per-instance data-segment descriptors; active slots start dropped
+	thunkMem                []byte        // executable mapping for host-func-in-table log thunks (nil if none)
+	gc                      *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
+	gcTypeMap               *gcTypeMapping
+	gcNativeView            *gc.NativeInstanceView
+	serArgs, results, trap  []byte
+	resultVals              []uint64       // reusable Invoke result buffer (valid until the next call)
+	ic                      [4]invokeCache // tiny fixed export resolution cache
+	icNext                  uint8          // round-robin replacement cursor
+	refStore                *referenceStore
+	lifeMu                  sync.Mutex
+	resourceRefs            int
+	invocationState         atomic.Uint32 // high bit closes entry; low bits count active public invocations
+	closed                  bool          // logical close; retained references may defer physical release
+	finalizing              bool          // one goroutine owns quiescent finalization
+	resourcesClosed         bool
+	physicalFinalizer       func()
+	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
+	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
+	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
+	constructionActive      bool                     // registration through terminal instantiation observation
+	constructionReservation *pluginOperationReservation
+	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
+	nativeContext           uintptr       // arena-backed context bytes rebound before every native entry
+	instructionState        instructionState
 
 	// rt is set when the instance is created through Runtime.Instantiate, so
 	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for

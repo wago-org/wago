@@ -76,8 +76,10 @@ CLI builds for both amd64 and arm64, then publish every successful binary with
 its SHA-256 checksum. A push to `main` becomes a canary only after that commit's
 `CI` workflow succeeds; failed or cancelled CI runs do not publish a canary.
 Manual canary runs build the current `main` tip. Nightly and canary use unique
-never-retargeted prerelease tags; the CLI resolves the newest `nightly-*` or
-`canary-*` tag when a channel is installed. Every target publishes a
+never-retargeted prerelease tags; canary tags contain the full 40-hex commit ID,
+and both channels stamp binaries with their canonical full commit identity. The
+CLI resolves the newest `nightly-*` or `canary-*` tag when a channel is
+installed. Every target publishes a
 standard-Go CLI plus Normal builds of the Standard and Minimal runtimes.
 Linux also requires Tiny builds of both profiles; other platforms publish
 each feature-complete Tiny profile supported by their TinyGo port. Normal favors

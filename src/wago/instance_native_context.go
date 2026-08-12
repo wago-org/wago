@@ -17,10 +17,12 @@ import (
 // ordering. Synchronous host dispatch releases the lease while arbitrary Go code
 // runs, then reacquires it and rebinds the exact parked callee before resume.
 var (
-	nativeExecutionMu    sync.Mutex
-	nativeExecutionEpoch uint64 // guarded by nativeExecutionMu; advances on every public native entry
-	nativeActiveMu       sync.Mutex
-	nativeActive         = map[nativeActivation]uint32{}
+	nativeExecutionMu       sync.Mutex
+	nativeExecutionEpoch    uint64 // guarded by nativeExecutionMu; advances on every public native entry
+	nativeActiveMu          sync.Mutex
+	nativeActive            = map[nativeActivation]uint32{}
+	invocationReservationMu sync.Mutex
+	invocationReservations  = map[nativeActivation]*pluginOperationReservation{}
 )
 
 const (
@@ -68,6 +70,39 @@ func isNativeActive(in *Instance, id invocationID) bool {
 	active := id != 0 && nativeActive[nativeActivation{in: in, id: id}] != 0
 	nativeActiveMu.Unlock()
 	return active
+}
+
+func (in *Instance) swapInvocationReservation(next *pluginOperationReservation) *pluginOperationReservation {
+	if in == nil {
+		return nil
+	}
+	activation := nativeActivation{in: in, id: in.currentInvocationID()}
+	if activation.id == 0 {
+		return nil
+	}
+	invocationReservationMu.Lock()
+	previous := invocationReservations[activation]
+	if next == nil {
+		delete(invocationReservations, activation)
+	} else {
+		invocationReservations[activation] = next
+	}
+	invocationReservationMu.Unlock()
+	return previous
+}
+
+func currentInvocationReservation(in *Instance) *pluginOperationReservation {
+	if in == nil {
+		return nil
+	}
+	activation := nativeActivation{in: in, id: in.currentInvocationID()}
+	if activation.id == 0 {
+		return nil
+	}
+	invocationReservationMu.Lock()
+	reservation := invocationReservations[activation]
+	invocationReservationMu.Unlock()
+	return reservation
 }
 
 type executionLease struct{ local *sync.Mutex }
