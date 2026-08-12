@@ -1801,6 +1801,47 @@ func (f *fn) i8x16Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
+// tryI8x16BitmaskNonZero selects the exact adjacent
+// `i8x16.bitmask; i32.const 0; i32.ne` sequence. A full movemask is unnecessary
+// when only its zero-ness is observed: shifting each byte's sign bit into bit 0
+// and reducing with UMAXV produces the final 0/1 boolean directly.
+func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
+	if !simdSuperoptEnabled {
+		return false
+	}
+	save := r.Offset()
+	op, err := r.Byte()
+	if err != nil || op != 0x41 { // i32.const
+		_ = r.JumpTo(save)
+		return false
+	}
+	zero, err := r.I32()
+	if err != nil || zero != 0 {
+		_ = r.JumpTo(save)
+		return false
+	}
+	op, err = r.Byte()
+	if err != nil || op != 0x47 { // i32.ne
+		_ = r.JumpTo(save)
+		return false
+	}
+
+	v := f.popValue()
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	f.a.NeonUshrB(x, src, 7)
+	f.a.NeonUmaxvB(x, x)
+	result := f.allocReg(0)
+	f.a.NeonUmovB(result, x, 0)
+	f.releaseF(x)
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-bitmask-nonzero")
+	return true
+}
+
 // v128MaskReg materializes a 128-bit constant into a fresh V register without
 // clobbering the caller's live operand(s) named in avoid.
 func (f *fn) v128MaskReg(lo, hi uint64, avoid regMask) Reg {
@@ -2675,6 +2716,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 99: // i8x16.all_true
 		f.i8x16AllTrue()
 	case 100: // i8x16.bitmask
+		if f.tryI8x16BitmaskNonZero(r) {
+			break
+		}
 		f.i8x16Bitmask()
 	case 131: // i16x8.all_true
 		f.i16x8AllTrue()

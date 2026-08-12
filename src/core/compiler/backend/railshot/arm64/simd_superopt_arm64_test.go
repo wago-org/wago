@@ -64,6 +64,63 @@ func TestSIMDAndAnyTrueSuperoptRejectsNonAdjacentArm64(t *testing.T) {
 	}
 }
 
+func simdBitmaskNonZeroBodyArm64(v [16]byte, compare int32) []byte {
+	body := []byte{0x00}
+	body = append(body, simdConst(v)...)
+	body = append(body, simdOp(100)...)
+	body = append(body, 0x41, byte(compare), 0x47, 0x0b) // i32.const compare; i32.ne; end
+	return body
+}
+
+func TestSIMDBitmaskNonZeroSuperoptArm64(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v    [16]byte
+		want uint32
+	}{
+		{"none", i8x16Bytes(0, 1, 2, 127), 0},
+		{"low-lane", i8x16Bytes(-1), 1},
+		{"high-lane", i8x16Bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -128), 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := simdBitmaskNonZeroBodyArm64(tc.v, 0)
+			m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+			on := compileWithStats(t, m, false).Funcs[0]
+			if got := on.Peephole["simd-bitmask-nonzero"]; got != 1 {
+				t.Fatalf("simd-bitmask-nonzero = %d, want 1 (all: %v)", got, on.Peephole)
+			}
+			if got := runArm64I32(t, body); got != tc.want {
+				t.Fatalf("bitmask != 0 = %d, want %d", got, tc.want)
+			}
+
+			var off *CodegenStats
+			func() {
+				saved := simdSuperoptEnabled
+				defer func() { simdSuperoptEnabled = saved }()
+				simdSuperoptEnabled = false
+				off = compileWithStats(t, m, false).Funcs[0]
+				if got := runArm64I32(t, body); got != tc.want {
+					t.Fatalf("unfused bitmask != 0 = %d, want %d", got, tc.want)
+				}
+			}()
+			if on.CodeBytes >= off.CodeBytes {
+				t.Fatalf("fused code = %d bytes, unfused = %d; want smaller", on.CodeBytes, off.CodeBytes)
+			}
+		})
+	}
+}
+
+func TestSIMDBitmaskNonZeroSuperoptRejectsOtherConstantArm64(t *testing.T) {
+	body := simdBitmaskNonZeroBodyArm64(i8x16Bytes(-1), 1)
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+	if got := compileWithStats(t, m, false).Funcs[0].Peephole["simd-bitmask-nonzero"]; got != 0 {
+		t.Fatalf("simd-bitmask-nonzero = %d, want 0 for comparison with one", got)
+	}
+	if got := runArm64I32(t, body); got != 0 { // bitmask is exactly one.
+		t.Fatalf("bitmask != 1 = %d, want 0", got)
+	}
+}
+
 func simdNotAndBodyArm64(a, b [16]byte) []byte {
 	body := []byte{0x00}
 	body = append(body, simdConst(a)...)
