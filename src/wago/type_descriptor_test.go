@@ -60,6 +60,9 @@ func TestTypeDescriptorConverterLargeGroupFallback(t *testing.T) {
 }
 
 func TestTypeDescriptorCorpusAllocations(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	for _, name := range []string{"tiny.wasm", "branches.wasm", "blake-as.wasm"} {
 		t.Run(name, func(t *testing.T) {
 			src, err := os.ReadFile(filepath.Join("..", "..", "bench", "corpus", name))
@@ -110,6 +113,9 @@ func TestTypeDescriptorCorpusAllocations(t *testing.T) {
 }
 
 func TestResolveTypeFuncCorpusAllocationReduction(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	for _, name := range []string{"tiny.wasm", "dispatch.wasm", "blake-as.wasm"} {
 		t.Run(name, func(t *testing.T) {
 			src, err := os.ReadFile(filepath.Join("..", "..", "bench", "corpus", name))

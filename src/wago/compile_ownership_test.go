@@ -12,6 +12,9 @@ import (
 var compilerCompiledAllocationSink *Compiled
 
 func TestCompilerCompiledStateUsesOneFixedOwnerAllocation(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	allocs := testing.AllocsPerRun(100, func() {
 		c := newCompilerCompiled(Compiled{})
 		compilerCompiledAllocationSink = c
