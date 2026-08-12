@@ -14,6 +14,10 @@ import (
 
 func TestRuntimeConfigOwnsConstructionSnapshot(t *testing.T) {
 	base := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
+	// Default optimization maps are immutable process snapshots on current main.
+	// Detach this same-package adversarial mutation from that shared cache before
+	// verifying Runtime ingestion ownership.
+	base.optimizations = base.optimizationValues()
 	rt := NewRuntime(WithRuntimeConfig(base))
 	base.optimizations["mutated-after-construction"] = true
 	base.functionWorkers = -1
