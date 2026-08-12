@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -141,15 +140,4 @@ func maintenanceState(dir string) ([]project.PluginRequirement, project.LockDocu
 // Retained for tests and external callers that reason about update decisions.
 func pluginUpdateRequired(current, locked, latest string, force bool) bool {
 	return force || current != latest || locked != latest
-}
-
-func latestModuleVersion(module, current string) (string, error) {
-	return "", fmt.Errorf("module-level latest lookup was removed; resolve %s through the plugin catalog", module)
-}
-
-func pluginContextOrBackground(ctx context.Context) context.Context {
-	if ctx != nil {
-		return ctx
-	}
-	return context.Background()
 }

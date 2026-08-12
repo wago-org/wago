@@ -25,7 +25,8 @@ func TestPluginBuildFileHelpers(t *testing.T) {
 		!strings.Contains(string(body), "provider0.Providers()") || strings.Contains(string(body), "\t_ \"example.com/a/register\"") {
 		t.Fatalf("generated main = %s, %v", body, err)
 	}
-	if pluginbuild.Hash(input, pluginBuildConfig()) != pluginbuild.Hash(input, pluginBuildConfig()) {
+	first := pluginbuild.Hash(input, pluginBuildConfig())
+	if second := pluginbuild.Hash(input, pluginBuildConfig()); first != second {
 		t.Fatal("build helper determinism mismatch")
 	}
 }

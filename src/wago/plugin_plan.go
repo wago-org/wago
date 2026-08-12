@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -854,9 +853,21 @@ func validateOpenSource(def PluginDefinition) error {
 }
 
 func validateProvenanceURL(value string, allowFragment bool) error {
-	u, err := url.Parse(value)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || !allowFragment && u.Fragment != "" {
+	if value != strings.TrimSpace(value) || !strings.HasPrefix(value, "https://") {
 		return fmt.Errorf("invalid HTTPS URL")
+	}
+	rest := strings.TrimPrefix(value, "https://")
+	authority := rest
+	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+		authority = authority[:end]
+	}
+	if authority == "" || strings.Contains(authority, "@") || strings.Contains(value, "\\") || !allowFragment && strings.Contains(value, "#") {
+		return fmt.Errorf("invalid HTTPS URL")
+	}
+	for _, char := range value {
+		if char <= ' ' || char == 0x7f {
+			return fmt.Errorf("invalid HTTPS URL")
+		}
 	}
 	return nil
 }

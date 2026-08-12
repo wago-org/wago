@@ -174,8 +174,11 @@ type ImportModuleBuilder struct {
 }
 
 func (m *ImportModuleBuilder) Func(name string, fn HostFunc) *ImportFuncBuilder {
+	if m == nil {
+		return &ImportFuncBuilder{}
+	}
 	imp := &registeredImport{module: m.module, name: name, fn: fn}
-	if m != nil && m.reg != nil && !m.reg.sealed {
+	if m.reg != nil && !m.reg.sealed {
 		m.reg.imports = append(m.reg.imports, imp)
 	}
 	return &ImportFuncBuilder{imp: imp}

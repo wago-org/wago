@@ -783,20 +783,7 @@ func sameStringSets(left, right []string) bool {
 	return true
 }
 
-func sameCatalogRelease(left, right CatalogRelease) bool {
-	return left.ID == right.ID && left.DefinitionDigest == right.DefinitionDigest && left.ReleaseFingerprint == right.ReleaseFingerprint && left.Source == right.Source && left.Provider == right.Provider
-}
-
 func contractKey(id string, major uint32) string { return fmt.Sprintf("%s@%d", id, major) }
-
-func firstSortedKey(values map[string]bool) string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys[0]
-}
 
 func sortedMapValues(values map[string]string) []string {
 	result := make([]string, 0, len(values))

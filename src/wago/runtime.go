@@ -39,6 +39,7 @@ type Runtime struct {
 	instances            map[*Instance]uint64
 	instanceSequence     uint64
 	moduleCloseMu        sync.RWMutex
+	moduleCloseBarrier   struct{}
 	cfg                  *RuntimeConfig
 	overridePolicy       ImportOverridePolicy
 	managedActive        atomic.Bool
@@ -649,6 +650,7 @@ func (rt *Runtime) CloseContext(ctx context.Context) error {
 	// A Module.Close already inside an observer finishes before teardown. New
 	// module closes see runtimeClosing and suppress callbacks into stopped code.
 	rt.moduleCloseMu.Lock()
+	_ = rt.moduleCloseBarrier
 	rt.moduleCloseMu.Unlock()
 
 	instances := rt.directInstancesSnapshot()
@@ -764,10 +766,6 @@ func importModule(key string) string {
 		}
 	}
 	return key
-}
-
-func (rt *Runtime) scopedHostCalls() bool {
-	return rt != nil && (rt.managedActive.Load() || rt.callerResolverActive.Load())
 }
 
 func isReserved(module string) bool {

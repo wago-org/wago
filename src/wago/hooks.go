@@ -32,7 +32,7 @@ type InstanceIdentity struct{ value *Instance }
 func (id InstanceIdentity) IsZero() bool                  { return id.value == nil }
 func sameInstance(id InstanceIdentity, in *Instance) bool { return id.value == in }
 
-type compilationIdentityToken struct{ value byte }
+type compilationIdentityToken struct{ _ byte }
 
 // CompilationIdentity correlates one Runtime.Compile or Runtime.Module
 // operation without exposing source, compiled code, or Runtime authority.
@@ -40,7 +40,7 @@ type CompilationIdentity struct{ value *compilationIdentityToken }
 
 func (id CompilationIdentity) IsZero() bool { return id.value == nil }
 
-type moduleIdentityToken struct{ value byte }
+type moduleIdentityToken struct{ _ byte }
 
 // ModuleIdentity is the opaque comparable identity of one runtime-bound
 // module. It grants no access to code, imports, instantiation, or close
@@ -130,7 +130,7 @@ type InstanceCloseEvent struct {
 	Instance InstanceIdentity
 	Origin   InstantiateOrigin
 }
-type operationIdentityToken struct{ value byte }
+type operationIdentityToken struct{ _ byte }
 type OperationIdentity struct{ value *operationIdentityToken }
 
 type InvocationRequest struct {

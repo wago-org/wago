@@ -499,21 +499,6 @@ func scopeNarrows(requested, granted AuthorityScope) bool {
 	return len(requested.Modules) == 0 || len(granted.Modules) > 0
 }
 
-func sameAuthorityScope(left, right AuthorityScope) bool {
-	if left.MaxInstances != right.MaxInstances || left.MaxMemoryBytes != right.MaxMemoryBytes || len(left.Modules) != len(right.Modules) {
-		return false
-	}
-	a, b := append([]string(nil), left.Modules...), append([]string(nil), right.Modules...)
-	sort.Strings(a)
-	sort.Strings(b)
-	for index := range a {
-		if a[index] != b[index] {
-			return false
-		}
-	}
-	return true
-}
-
 func validateBindings(contracts ContractSet, bindings []ContractBinding) error {
 	requirements := make(map[string]ContractRequirement, len(contracts.Requires))
 	for _, requirement := range contracts.Requires {

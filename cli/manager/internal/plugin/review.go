@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -244,7 +245,7 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 	if err != nil {
 		fatal("plugin grant: %v", err)
 	}
-	ctx := pluginContext(nil)
+	ctx := context.Background()
 	err = withPluginMutationLock(ctx, src, func() error {
 		manifest, readErr := project.Read(src)
 		if readErr != nil {
