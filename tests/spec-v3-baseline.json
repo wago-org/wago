@@ -161,7 +161,7 @@
     "red_files": 0
   },
   "result": "pass",
-  "schema": 2,
+  "schema": 1,
   "suite": {
     "commit": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
     "repository": "WebAssembly/spec",

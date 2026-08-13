@@ -18,12 +18,12 @@
   imported grow/size and safe `linking0`-`3` modules under bounded staged gates,
   preflights storage bindings, and adds retained cross-instance root
   `return_call_ref`. Iteration 14 introduced the first safe staged multi-memory
-  delta. Iteration 15 replaces it with a complete schema-2 family matrix covering
+  delta. Iteration 15 replaces it with a complete schema-1 family matrix covering
   all 41 pinned multi-memory files plus `simd_memory-multi`. Iteration 17 closes
   its three basedata gates through a finite owner/tenant serializer proof: the
   matrix is now gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid,
   22 unlinkable, and 20 uninstantiable cases, with zero feature rejects or blocked
-  commands. Public execution remains disabled, so the public schema-2
+  commands. Public execution remains disabled, so the public schema-1
   inventory remains byte-for-byte unchanged. All 69
   Release 3 relaxed-SIMD assertions pass after
   honoring official `either` result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
@@ -66,8 +66,8 @@
   totals remain unchanged. Passive memory64 lifecycle, broader table64/direct-tail/
   native-import contexts, and unsupported product/platform paths remain explicit.
   Public typed-reference, multi-memory, compact-import, memory64, table64, and tail-call
-  execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
-  The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
+  execution remain disabled; the schema-1 totals remain byte-for-byte unchanged.
+  The machine-readable schema-1 inventory is `tests/spec-v3-baseline.json`; see
   `docs/wasm3.md` for family grouping and caveats.
 
 ## WebAssembly 1.0 (MVP)

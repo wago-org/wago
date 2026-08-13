@@ -318,7 +318,7 @@ func TestStagedOfficialGCStructAccounting(t *testing.T) {
 		gates = append(gates, stagedTypedReferenceGateCount{Family: "gc", Reason: name, Count: gateCounts[name]})
 	}
 	delta := stagedGCStructDelta{
-		Schema: 2, SuiteRevision: stagedRelease3Revision, File: "gc/struct",
+		Schema: 1, SuiteRevision: stagedRelease3Revision, File: "gc/struct",
 		SourceOnlyMalformed: append([]int(nil), stagedGCStructSourceOnlyMalformed...),
 		Leaders:             leaders, Gates: gates, Counts: counts,
 	}

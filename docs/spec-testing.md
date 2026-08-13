@@ -48,7 +48,7 @@ check.
 
 `make spec3` verifies checksum-pinned WABT 1.0.41 and the official 3.0.0
 reference interpreter built from the exact Release 3 pin. WABT remains primary;
-28 unsupported text files fall back to the strict binary-script converter. The authoritative current schema-2 inventory is
+28 unsupported text files fall back to the strict binary-script converter. The authoritative current schema-1 inventory is
 `tests/spec-v3-baseline.json`: all 258 files are green with zero parser failures,
 2,226 modules passed, and 58,038 assertions passed, with zero failures, skips, or
 gap categories. CI qualifies the same pinned suite. The iteration accounting
@@ -63,7 +63,7 @@ import order/codec reload, unknown-import atomicity, prior segment/start store
 modification, producer growth limits, and explicit executable-owner/function/
 private-basedata failures. The same iteration adds retained root cross-instance
 `return_call_ref` with nested/host/null/wrong-key traps. Iteration 14 introduced
-`tests/spec-v3-staged-multi-memory.json`; iteration 15 upgrades it to a schema-2
+`tests/spec-v3-staged-multi-memory.json`; iteration 15 upgrades it to a schema-1
 complete family matrix over all 41 pinned multi-memory files plus
 `simd/simd_memory-multi`. Iteration 17 closes the former `linking1`, `load1`, and
 `store1` basedata gates through a finite compile-only owner/tenant proof. All 913
@@ -95,7 +95,7 @@ local table64 size/get/set with codec-v26 metadata, and exactly `(i32, f64) -> f
 through the direct cross-tail record. Snapshot-v3 owned-local restore, nested tail
 continuations, bounded local memory64 scalar/SIMD/data/bulk execution, table64 execution,
 and finite imported-owner tenants are supplementary evidence; public memory64/table64/tail/reference gates remain closed, so the public
-schema-2 inventory remains byte-for-byte unchanged.
+schema-1 inventory remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 

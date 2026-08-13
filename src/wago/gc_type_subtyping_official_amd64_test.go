@@ -199,7 +199,7 @@ func stagedGCTypeSubtypingUnlinkableDeltaFor(data []byte, filename string, comma
 
 func replayStagedGCTypeSubtypingScript(t *testing.T, tmp string, script stagedSpecScript) stagedGCTypeSubtypingDelta {
 	t.Helper()
-	delta := stagedGCTypeSubtypingDelta{Schema: 2, SuiteRevision: stagedRelease3Revision, File: "gc/type-subtyping"}
+	delta := stagedGCTypeSubtypingDelta{Schema: 1, SuiteRevision: stagedRelease3Revision, File: "gc/type-subtyping"}
 	gates := map[string]int{}
 	var latest, currentFilename string
 	var latestData []byte

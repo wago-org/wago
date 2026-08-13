@@ -13,6 +13,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/wago-org/wago" alt="License"></a>
 </p>
 
+> Wago is pre-release. Wago-owned codecs and format contracts use version 1; see
+> [VERSIONING.md](VERSIONING.md).
+
 ## Install
 
 ```sh

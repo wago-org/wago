@@ -391,9 +391,9 @@ does not create a goroutine per waiter or memory. Timeout, cancellation,
 notification, instance close, and memory close converge on the same bounded
 removal path.
 
-Compiled artifact format v32 persists the exact Threads requirement and
+Compiled artifact version 1 persists the exact Threads requirement and
 wait-helper admission. Direct-only atomic artifacts do not acquire helper
-admission, and v31 blobs are rejected rather than reinterpreted.
+admission, and every non-version-1 blob is rejected rather than reinterpreted.
 
 ### Verification record
 

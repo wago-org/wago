@@ -55,7 +55,7 @@ length of the RX mapping. The original Go-heap code backing can then be collecte
 removing the previous second live copy while preserving codec/snapshot reads.
 
 Issue #311 extends AMD64 native allocation through bounded array constructors.
-Collector ABI v6 retains the 32-handle baseline and identifies contiguous handle
+Collector ABI version 1 retains the 32-handle baseline and identifies contiguous handle
 runs. Arrays reserve one 4-KiB Eden chunk whose private cursor advances without a
 shared-bump update per object; structs retain their direct bump sequence. Generic
 public calls refill only after nine slow constructors, while products whose batch
@@ -74,9 +74,10 @@ small numeric/reference shapes by 42-49%, executes nine helpers for 33 semantic
 allocations, and leaves rejected larger shapes on byte-identical helper code. A
 batch-depth discriminator keeps one, two, four, and eight constructors within
 measurement noise instead of reserving a batch that the next boundary cancels.
-ABI-v6 cancellation covers every Go allocation, trap, collection, epoch change,
-and close. The `.wago` artifact version is 34 so ABI-v5 generated constructors
-cannot be mixed with the new allocation-ticket layout or helper IDs.
+ABI version 1 cancellation covers every Go allocation, trap, collection, epoch change,
+and close. The `.wago` artifact is also version 1; because Wago is unreleased, the
+incompatible development layouts were consolidated rather than assigned public
+versions. Artifacts from those development layouts are rejected.
 
 ## Compile and invocation measurements
 

@@ -1814,7 +1814,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 			if table64 {
 				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
-				// validated i64 expression so codec v27 and instantiation retain every bit.
+				// validated i64 expression so codec version 1 and instantiation retain every bit.
 				if len(e.Mode.Offset.BodyBytes) != 0 {
 					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
 				} else {
@@ -1867,7 +1867,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if memory64 {
 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
 			// Preserve the already validated i64 program in the existing Expr field so
-			// codec v27 retains the existing expression field while instantiation preserves all 64 address bits.
+			// codec version 1 retains the existing expression field while instantiation preserves all 64 address bits.
 			if len(d.Mode.Offset.BodyBytes) != 0 {
 				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
 			} else {
@@ -3707,20 +3707,11 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 30 added validated per-safepoint native WasmGC frame-root metadata.
-// Version 31 moves generated memory bounds to the u64 byte-size cache and widens
-// indexed-memory directory entries, so older native code must not be loaded by a
-// runtime using the new basedata ABI (or vice versa). Older blobs are rejected.
-// Version 32 added the persisted threads feature and atomic wait-helper product.
-// Version 33 replaces the positional outer stream with strict length-delimited
-// code and metadata sections. Version 34 binds generated constructors to native
-// collector ABI v6 and the static-array helper IDs; older native code is rejected
-// rather than silently mixing allocation ticket layouts. Version 35 records the
-// required native-GC ABI for generic struct/array execution and rejects missing or
-// mismatched contracts before native code can run.
-// The codec never serializes live owners, collector handles, mappings, tokens,
-// active handlers, thunk addresses, or store identity.
-const wagoVersion = 35
+// Version 1 is the initial public compiled-artifact format. Wago is unreleased,
+// so incompatible development layouts were consolidated instead of consuming
+// public version numbers. The codec never serializes live owners, collector
+// handles, mappings, tokens, active handlers, thunk addresses, or store identity.
+const wagoVersion = 1
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

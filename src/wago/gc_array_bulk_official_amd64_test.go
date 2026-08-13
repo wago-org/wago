@@ -381,7 +381,7 @@ func replayStagedGCArrayBulkScript(t *testing.T, base, tmp string, script staged
 
 func TestStagedOfficialGCArrayBulkAccounting(t *testing.T) {
 	bases := []string{"gc/array_fill", "gc/array_copy"}
-	delta := stagedGCArrayBulkDelta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	delta := stagedGCArrayBulkDelta{Schema: 1, SuiteRevision: stagedRelease3Revision}
 	for _, base := range bases {
 		var script stagedSpecScript
 		tmp := stagedOfficialTypedReferenceJSON(t, base, &script)

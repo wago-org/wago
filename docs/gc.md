@@ -66,7 +66,7 @@ call graphs and recursion. Throughput collect-every-allocation/forced-major veri
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec v35 persists and revalidates
+call-sites, and adapter returns fail closed. Codec version 1 persists and revalidates
 safepoint, spill, callsite, frame-size, local-start, and adapter-return metadata;
 repeated offset vectors share immutable storage after compilation and reload.
 It never persists collector handles, liveness work arenas, or live frames.
@@ -101,7 +101,7 @@ product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples o
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
 
 AMD64 final scalar struct/array get/set operations now bypass the parked helper
-through native collector ABI v6. Its 168-byte collector-owned stable view preserves
+through native collector ABI version 1. Its 168-byte collector-owned stable view preserves
 the complete handle/space/generation/object-card prefix and appends allocation-state,
 epoch, nursery-bump, and semantic-counter pointers. Collection and relocating/large-
 space allocation republish the complete view; ordinary helper nursery allocation
@@ -109,7 +109,7 @@ updates only handle metadata and generation, while card append/remove/clear repu
 card metadata. One instance-owned view publishes the immutable local-to-canonical type
 map at basedata offset 280.
 
-The Go/native structure layout is validated when a collector is created. Codec v35
+The Go/native structure layout is validated when a collector is created. Codec version 1
 records the required native-GC ABI for generic struct/array execution and rejects a
 missing or mismatched requirement while loading. Instantiation then validates the
 immutable instance version, collector identity, local-type map pointer/count,
@@ -320,10 +320,10 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec v35 persists generic helper admission, the required native-GC ABI version,
+Codec version 1 persists generic helper admission, the required native-GC ABI version,
 vector layout, and bounded native root maps; compact handles remain process-local.
 
-Numeric host imports may re-enter the same instance: codec-v32 callsites carry
+Numeric host imports may re-enter the same instance: codec version 1 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
 outer frames remain roots during boundary and helper collection. A bounded
@@ -351,7 +351,7 @@ ordinary zero-valued constant expressions. Indexed function-identity lowering is
 selected only for function heap targets; GC struct casts continue through collector
 supertype metadata, including final concrete closure structs cast to non-final bases.
 Arm64 publishes liveness-exact locals and hidden
-spills from parked SP. Codec v32 callsites carry caller frame size, return PC,
+spills from parked SP. Codec version 1 callsites carry caller frame size, return PC,
 stack adjustment, and exact roots; saved-LR walking spans direct/recursive calls,
 suspended direct-host activations (including sync-thunk records), and same-domain
 foreign instances. Mutable local GC globals synchronize checked collector slots,
@@ -532,7 +532,7 @@ immutable decoded subtype declarations and is discarded after code generation; i
 not retained by `Compiled` or serialized. `Compiled.GCTypeDescs` stores the runtime
 descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type
 section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including
-function sentinels used only to preserve indexes. Codec v35 retains the appended
+function sentinels used only to preserve indexes. Codec version 1 retains the appended
 `StorageV128` kind, the 16-byte layout contract, and validated native
 safepoint/callsite root maps; older codec versions are rejected.
 
@@ -544,7 +544,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec v35 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec version 1 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,
@@ -1747,7 +1747,7 @@ Objects promoted into old space are rounded into supported size classes.
 (`32` through `32768` bytes); unsupported values reject rather than round. The
 fixed 64-bit layouts are 20 bytes for `handleEntry`, 72 bytes for `Config`, and
 1,120 bytes for `Collector` in the ordinary build. The 16-byte increase is the
-ABI-v6 native allocation state for contiguous handle runs and nursery chunks.
+ABI version 1 native allocation state for contiguous handle runs and nursery chunks.
 
 Allocation-triggered minor collection treats old-space promotion exhaustion as a
 cold reclamation signal. Because promotion planning has published no move, the
@@ -2288,7 +2288,7 @@ On linux/amd64 (Go 1.24.4, Ryzen 7 8845HS), removing redundant production valida
 
 Array constructors preflight every value and root before allocation, then initialize the compact payload in bulk. Uniform constructors use one doubling fill; fixed constructors use unchecked width-specialized stores after complete validation. Collector-reference arrays perform one post-construction barrier reconciliation rather than one barrier/card operation per element. Tiny scans the final range once to maintain its incremental mark invariant; Throughput records at most one card interval and one remembered membership. Internal value-root sets are traversed directly during mark and verification, avoiding one escaping `RootSlot` interface value per fixed-array element. Allocation-free direct root enumerators return whether the sink accepted the complete walk, allowing composite groups and constructor scratch sets to propagate early termination without allocating an adapter. Classified direct enumerators use the same completion contract, so constant-expression temporary stacks do not continue after an attributed frame or element-root sink stops.
 
-On AMD64, ABI v6 extends the retained 32-handle native struct batch into one
+On AMD64, ABI version 1 exposes the retained 32-handle native struct batch as one
 generic struct/array allocation ticket. A helper reserves a contiguous handle run
 when available. Arrays additionally reserve one bounded 4-KiB Eden chunk and
 advance its private cursor; structs retain the measured direct collector-bump path

@@ -390,7 +390,7 @@ func replayStagedGCArrayInitScript(t *testing.T, base, tmp string, script staged
 
 func TestStagedOfficialGCArrayInitAccounting(t *testing.T) {
 	bases := []string{"gc/array_init_data", "gc/array_init_elem"}
-	delta := stagedGCArrayInitDelta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	delta := stagedGCArrayInitDelta{Schema: 1, SuiteRevision: stagedRelease3Revision}
 	for _, base := range bases {
 		var script stagedSpecScript
 		tmp := stagedOfficialTypedReferenceJSON(t, base, &script)

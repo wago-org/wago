@@ -44,16 +44,16 @@ ordering and covers same-memory, different-memory, and cyclic call graphs.
 Linear-memory size/growth caches remain backing-owned, while trap and stack
 fields remain invocation-owned.
 
-## Native collector metadata ABI v6
+## Native collector metadata ABI version 1
 
 Collector-backed instances install a pointer at `abi.GCNativeViewPtrOffset = 280`.
-It addresses a 32-byte native prefix containing ABI version 6, a pointer to one
+It addresses a 32-byte native prefix containing ABI version 1, a pointer to one
 collector-owned view, and an immutable local-type to canonical-domain `u32` map.
 The Go object retains that map through a typed trailing slice; native code sees
 only the fixed prefix.
 
-The shared collector view is 168 bytes. ABI v6 preserves the v5
-version/20-byte handle stride, current handle pointer/count, five directly indexed
+The shared collector view is 168 bytes. ABI version 1 contains the complete
+20-byte handle stride, current handle pointer/count, five directly indexed
 16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
 object-card pointer/count, Eden limit, and stable allocation pointers. The new
 byte-160 word publishes the configured nursery-object maximum; byte 124 remains
@@ -556,7 +556,7 @@ reused after success or rollback. Throughput Eden now evacuates first survivors 
 two age bits occupy unused high `handleEntry.class` bits, and large young objects age in place. A fixed threshold starts
 at two survivals and adapts between one and three from survivor occupancy, old-space pressure, recent full collections,
 and an optional pause target. Useful object/root cards remain authoritative across survivor movement and clear when no
-young edge remains. The Native collector view is ABI v6 for shared struct/array handle runs, nursery chunks, and the explicit
+young edge remains. The native collector view is ABI version 1 for shared struct/array handle runs, nursery chunks, and the explicit
 nursery-object maximum; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
 `gc.Collector` is 1,120 bytes. Collector
 tests separately prove nullable/non-null storage compatibility, rejected-copy atomicity, sparse/dense card behavior,

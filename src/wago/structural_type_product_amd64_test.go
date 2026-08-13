@@ -49,11 +49,11 @@ func TestStagedStructuralMetadataProducts(t *testing.T) {
 			meta := (&Module{c: c}).Metadata()
 			blob, err := marshalCompiled(c)
 			if err != nil {
-				t.Fatalf("marshal codec-v27: %v", err)
+				t.Fatalf("marshal codec: %v", err)
 			}
 			var loaded Compiled
 			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("private codec-v27 reload: %v", err)
+				t.Fatalf("private codec reload: %v", err)
 			}
 			defer loaded.Close()
 			loadedMeta := (&Module{c: &loaded}).Metadata()

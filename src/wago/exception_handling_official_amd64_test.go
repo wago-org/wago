@@ -909,7 +909,7 @@ func TestStagedOfficialExceptionHandlingFamilyAccounting(t *testing.T) {
 	if _, err := exec.LookPath("wast2json"); err != nil {
 		t.Skip("wast2json (WABT 1.0.41) not on PATH")
 	}
-	delta := stagedExceptionHandlingDelta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	delta := stagedExceptionHandlingDelta{Schema: 1, SuiteRevision: stagedRelease3Revision}
 	totalGates := map[string]int{}
 	for _, base := range stagedExceptionHandlingOfficialFiles {
 		t.Run(strings.ReplaceAll(base, "/", "-"), func(t *testing.T) {

@@ -63,10 +63,12 @@ because that attribution is deliberately not serialized and a warm artifact
 cannot satisfy the request. Signals-based compilation also bypasses the cache
 because guard-page native code is intentionally nonserializable.
 
-The binary key format has an explicit version and domain prefix. Changing the
-meaning or order of any encoded field requires incrementing `cacheKeyFormat`.
-Optimization names are not serialized into the hot cache-key path; their stable
-registry order is interpreted under the build identity that owns that registry.
+The binary key format uses version 1 and a domain prefix. Wago is unreleased, so
+incompatible development encodings are folded into version 1 rather than consuming
+new public format numbers. After the first release, changing the meaning or order
+of any encoded field requires incrementing `cacheKeyFormat`. Optimization names
+are not serialized into the hot cache-key path; their stable registry order is
+interpreted under the build identity that owns that registry.
 
 The final SHA-256 key remains hexadecimal in the filesystem path. Artifact
 loading keeps its existing version, ABI, target, section-size, file-type, and

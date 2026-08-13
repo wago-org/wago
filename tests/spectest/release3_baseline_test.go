@@ -54,7 +54,7 @@ func TestCommittedRelease3BaselineIsPinnedAndComplete(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Schema != 2 || got.Suite.Commit != "9d36019973201a19f9c9ebb0f10828b2fe2374aa" || got.Suite.WastFiles != 258 {
+	if got.Schema != 1 || got.Suite.Commit != "9d36019973201a19f9c9ebb0f10828b2fe2374aa" || got.Suite.WastFiles != 258 {
 		t.Fatalf("baseline pin = schema %d commit %s files %d", got.Schema, got.Suite.Commit, got.Suite.WastFiles)
 	}
 	if got.Tools.Primary.Version != "1.0.41" || got.Tools.Fallback.Version != "3.0.0" || got.Tools.Fallback.Revision != got.Suite.Commit || got.Result != "pass" {

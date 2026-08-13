@@ -297,7 +297,7 @@ func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
 
 	blob, err := marshalCompiled(c)
 	if err != nil {
-		t.Fatalf("marshal codec-v27: %v", err)
+		t.Fatalf("marshal codec: %v", err)
 	}
 	var loaded Compiled
 	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
