@@ -1,6 +1,9 @@
 package wago
 
 import (
+	"context"
+	"encoding/binary"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -135,5 +138,55 @@ func TestCompiledCodecRejectsMalformedImportModuleEnd(t *testing.T) {
 	var decoded Compiled
 	if err := unmarshalCompiledMetadata(&decoded, metadata); err == nil || !strings.Contains(err.Error(), "does not identify the import-key separator") {
 		t.Fatalf("malformed import module-name end error = %v", err)
+	}
+}
+
+func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
+	const flatKey = "a.b.c"
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.imports[flatKey] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.importMeta[flatKey] = &registeredImport{
+		module: "a", name: "b.c",
+		cap: Capability("host.exact"), hasCap: true,
+	}
+
+	moduleBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("a.b"), wasmtest.Name("c")...), 0x00, 0x00))),
+	)
+	module, err := rt.Compile(moduleBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	imports := module.Imports()
+	if len(imports) != 1 || imports[0].Module != "a.b" || imports[0].Name != "c" || imports[0].Provided || imports[0].HasCapability {
+		t.Fatalf("colliding plugin import metadata = %#v", imports)
+	}
+	if _, err := rt.Instantiate(context.Background(), module); !errors.Is(err, ErrMissingImport) {
+		t.Fatalf("colliding plugin binding error = %v, want ErrMissingImport", err)
+	}
+
+	// Explicit flat Imports remain a deliberate compatibility boundary: callers
+	// supplying one directly chose the legacy namespace themselves.
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(Imports{flatKey: HostFunc(func(HostModule, []uint64, []uint64) {})}))
+	if err != nil {
+		t.Fatalf("explicit legacy override: %v", err)
+	}
+	if err := instance.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompiledCodecBoundsDecodedImportDirectoryAllocation(t *testing.T) {
+	const count = 3
+	var prefix [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(prefix[:], uint64(count))
+	encoded := make([]byte, n+2*count)
+	copy(encoded, prefix[:n])
+	r := compiledReader{data: encoded}
+	if _, _, err := r.importDirectoryWithAllocationLimit(1); err == nil || !strings.Contains(err.Error(), "decoded directory allocation limit") {
+		t.Fatalf("oversized import directory error = %v", err)
 	}
 }

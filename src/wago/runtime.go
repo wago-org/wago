@@ -751,6 +751,9 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 			continue
 		}
 		value, provided := rt.imports[key]
+		if provided && spec.Kind == ImportFunc && !registeredImportMatches(rt.importMeta[key], spec.Module, spec.Name) {
+			provided = false
+		}
 		if !provided {
 			if spec.Kind == ImportFunc {
 				return nil, missingImportError(spec)

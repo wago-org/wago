@@ -231,10 +231,11 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 			spec.Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
 			spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 		}
-		if _, ok := bindings.imports[key]; ok {
+		meta := bindings.importMeta[key]
+		if _, ok := bindings.imports[key]; ok && registeredImportMatches(meta, mod, name) {
 			spec.Provided = true
 		}
-		if meta := bindings.importMeta[key]; meta != nil {
+		if meta != nil && registeredImportMatches(meta, mod, name) {
 			spec.Capability, spec.HasCapability = meta.cap, meta.hasCap
 			spec.Docs = meta.docs
 			if meta.hasCap && !capSeen[meta.cap] {
@@ -281,6 +282,14 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		}
 	}
 	return m
+}
+
+// registeredImportMatches prevents the legacy flat binding namespace from
+// crossing an exact Wasm module/name boundary. A nil record identifies an
+// explicitly supplied legacy binding, which has no structured identity to
+// verify and retains the public Imports API's historical behavior.
+func registeredImportMatches(meta *registeredImport, module, name string) bool {
+	return meta == nil || meta.module == module && meta.name == name
 }
 
 func (h *hookRegistry) needsModuleIdentity() bool {

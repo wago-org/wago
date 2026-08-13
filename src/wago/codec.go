@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/bits"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -26,6 +27,11 @@ const (
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
 	compiledGCExecutionMask                      = compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
+
+	// Import names are attacker-controlled artifact metadata. Bound the decoded
+	// string headers plus exact-name sidecar independently of the encoded section
+	// size so compact empty strings cannot amplify into multi-gigabyte allocations.
+	maxImportDirectoryAllocationBytes = 64 << 20
 )
 
 func compiledUvarintLen(v uint64) int {
@@ -836,16 +842,13 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 		return fmt.Errorf("NumImports overflows int")
 	}
 	c.NumImports = int(n)
-	c.Imports, err = r.stringSlice()
+	var functionModuleEnds []uint64
+	c.Imports, functionModuleEnds, err = r.importDirectory()
 	if err != nil {
 		return err
 	}
-	for i, key := range c.Imports {
-		moduleEnd, readErr := r.importModuleEnd(key)
-		if readErr != nil {
-			return fmt.Errorf("function import %d name: %w", i, readErr)
-		}
-		c.appendImportModuleEnd(moduleEnd)
+	if len(functionModuleEnds) != 0 {
+		c.validateMemo = &validateMemo{importModuleEnds: functionModuleEnds}
 	}
 	c.Types, err = r.typeDescriptors()
 	if err != nil {
@@ -1204,6 +1207,40 @@ func (r *compiledReader) stringSlice() ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func (r *compiledReader) importDirectory() ([]string, []uint64, error) {
+	return r.importDirectoryWithAllocationLimit(maxImportDirectoryAllocationBytes)
+}
+
+func (r *compiledReader) importDirectoryWithAllocationLimit(allocationLimit int) ([]string, []uint64, error) {
+	// Each entry needs at least an empty string length and one module-boundary
+	// varint in the remainder. This also rejects an impossible count before any
+	// decoded directory allocation.
+	n, err := r.countElements("function imports", minStringBytes+minVarintBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	const moduleEndBytes = 8
+	decodedBytesPerImport := bits.UintSize/4 + moduleEndBytes // string header + uint64
+	if allocationLimit < 0 || n > allocationLimit/decodedBytesPerImport {
+		return nil, nil, fmt.Errorf("function import count %d exceeds decoded directory allocation limit %d bytes", n, allocationLimit)
+	}
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i], err = r.str()
+		if err != nil {
+			return nil, nil, fmt.Errorf("function import %d key: %w", i, err)
+		}
+	}
+	ends := make([]uint64, n)
+	for i, key := range keys {
+		ends[i], err = r.importModuleEnd(key)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function import %d name: %w", i, err)
+		}
+	}
+	return keys, ends, nil
 }
 func (r *compiledReader) intSlice() ([]int, error) {
 	n, err := r.countElements("int slice", minVarintBytes)
