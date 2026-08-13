@@ -265,26 +265,65 @@ func releasePickerChildren(channel string, versions []tui.Item) []tui.Item {
 	return append(items, versions...)
 }
 
+const (
+	pickerLoadMoreReleases = "\x00wago:load-more-releases"
+	pickerLoadMoreCommits  = "\x00wago:load-more-commits"
+)
+
+func loadMorePickerItem(label, value string) tui.Item {
+	return tui.Item{Label: label, Description: "fetch one more page", Value: value}
+}
+
+func appendLoadMorePickerItem(channel string, items []tui.Item, item tui.Item) []tui.Item {
+	if len(items) == 0 {
+		items = []tui.Item{{Label: "latest", Value: channel}}
+	}
+	return append(items, item)
+}
+
 func versionPickerItemsWithCommits(releases []remoteRelease, commits []remoteCommit, now time.Time) []tui.Item {
+	return paginatedVersionPickerItems(releases, commits, now, false, false)
+}
+
+func paginatedVersionPickerItems(releases []remoteRelease, commits []remoteCommit, now time.Time, moreReleases, moreCommits bool) []tui.Item {
 	canary := canaryCommitItems(commits, now)
 	nightly := releasePickerItems(releases, "nightly", now)
 	stable := releasePickerItems(releases, "", now)
-	items := []tui.Item{
-		{Label: "canary", Value: "canary", Children: releasePickerChildren("canary", canary)},
-		{Label: "nightly", Value: "nightly", Children: releasePickerChildren("nightly", nightly)},
-		{Label: "latest", Value: "latest", Children: releasePickerChildren("latest", stable)},
+	canaryChildren := releasePickerChildren("canary", canary)
+	if moreCommits {
+		canaryChildren = appendLoadMorePickerItem("canary", canaryChildren, loadMorePickerItem("Load older commits…", pickerLoadMoreCommits))
 	}
-	return append(items, stable...)
+	nightlyChildren := releasePickerChildren("nightly", nightly)
+	latestChildren := releasePickerChildren("latest", stable)
+	if moreReleases {
+		loadMore := loadMorePickerItem("Load older releases…", pickerLoadMoreReleases)
+		nightlyChildren = appendLoadMorePickerItem("nightly", nightlyChildren, loadMore)
+		latestChildren = appendLoadMorePickerItem("latest", latestChildren, loadMore)
+	}
+	items := []tui.Item{
+		{Label: "canary", Value: "canary", Children: canaryChildren},
+		{Label: "nightly", Value: "nightly", Children: nightlyChildren},
+		{Label: "latest", Value: "latest", Children: latestChildren},
+	}
+	items = append(items, stable...)
+	if moreReleases {
+		items = append(items, loadMorePickerItem("Load older releases…", pickerLoadMoreReleases))
+	}
+	return items
 }
 
 func installPickerItemsWithCommits(releases []remoteRelease, commits []remoteCommit, now time.Time) []tui.Item {
 	return addProfileChoices(versionPickerItemsWithCommits(releases, commits, now))
 }
 
+func paginatedInstallPickerItems(releases []remoteRelease, commits []remoteCommit, now time.Time, moreReleases, moreCommits bool) []tui.Item {
+	return addProfileChoices(paginatedVersionPickerItems(releases, commits, now, moreReleases, moreCommits))
+}
+
 func addProfileChoices(items []tui.Item) []tui.Item {
 	for i := range items {
 		items[i].Children = addProfileChoices(items[i].Children)
-		if items[i].Value == "" {
+		if items[i].Value == "" || isPickerLoadMore(items[i].Value) {
 			continue
 		}
 		items[i].AcceptTitle = "Choose Wago profile"
@@ -309,19 +348,29 @@ func addProfileChoices(items []tui.Item) []tui.Item {
 	return items
 }
 
-func chooseInstallPicker(releases []remoteRelease, commits []remoteCommit, now time.Time, profileValue, buildValue string) (string, wagopaths.Profile, wagopaths.Build, bool) {
+func isPickerLoadMore(value string) bool {
+	return value == pickerLoadMoreReleases || value == pickerLoadMoreCommits
+}
+
+func chooseInstallPicker(releases []remoteRelease, commits []remoteCommit, now time.Time, profileValue, buildValue string, moreReleases, moreCommits bool) (string, wagopaths.Profile, wagopaths.Build, bool) {
 	if profileValue != "" || buildValue != "" {
-		choice, ok := tui.Choose("Install Wago version", versionPickerItemsWithCommits(releases, commits, now))
+		choice, ok := tui.Choose("Install Wago version", paginatedVersionPickerItems(releases, commits, now, moreReleases, moreCommits))
 		if !ok {
 			return "", "", "", false
+		}
+		if isPickerLoadMore(choice) {
+			return choice, "", "", true
 		}
 		profile, build, ok := chooseInstallVariant(profileValue, buildValue)
 		return choice, profile, build, ok
 	}
-	p := tui.NewPicker("Install Wago version", installPickerItemsWithCommits(releases, commits, now))
+	p := tui.NewPicker("Install Wago version", paginatedInstallPickerItems(releases, commits, now, moreReleases, moreCommits))
 	submitted, cancelled := tui.Run(p)
 	if !submitted || cancelled {
 		return "", "", "", false
+	}
+	if choice := p.Selected(); isPickerLoadMore(choice) {
+		return choice, "", "", true
 	}
 	return parseInstalledSelection(p.Selected())
 }

@@ -505,6 +505,41 @@ func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 	}
 }
 
+func TestPaginatedInstallPickerKeepsChannelsSelectableAndLoadActionsTerminal(t *testing.T) {
+	items := paginatedInstallPickerItems(nil, nil, time.Now(), true, true)
+	if len(items) != 4 {
+		t.Fatalf("root picker items = %d, want 4", len(items))
+	}
+	tests := []struct {
+		name       string
+		item       tui.Item
+		channel    string
+		loadAction string
+	}{
+		{name: "canary", item: items[0], channel: "canary", loadAction: pickerLoadMoreCommits},
+		{name: "nightly", item: items[1], channel: "nightly", loadAction: pickerLoadMoreReleases},
+		{name: "latest", item: items[2], channel: "latest", loadAction: pickerLoadMoreReleases},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if len(test.item.Children) != 2 {
+				t.Fatalf("children = %d, want channel and load action", len(test.item.Children))
+			}
+			if test.item.Children[0].Value != test.channel || len(test.item.Children[0].AcceptItems) == 0 {
+				t.Fatalf("channel child = %#v", test.item.Children[0])
+			}
+			load := test.item.Children[1]
+			if load.Value != test.loadAction || len(load.AcceptItems) != 0 || len(load.Children) != 0 {
+				t.Fatalf("load action = %#v", load)
+			}
+		})
+	}
+	load := items[len(items)-1]
+	if load.Value != pickerLoadMoreReleases || len(load.AcceptItems) != 0 || len(load.Children) != 0 {
+		t.Fatalf("root load action = %#v", load)
+	}
+}
+
 func TestRelativeReleaseAgeUsesCompactElapsedUnits(t *testing.T) {
 	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
 	tests := []struct {

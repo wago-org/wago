@@ -35,27 +35,51 @@ func latestStableReleaseContext(ctx context.Context) (string, error) {
 }
 
 func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildValue, use string) {
-	releases, err := fetchReleasesContext(ctx)
-	if err != nil {
+	discovery := newVersionBrowseDiscovery()
+	if err := discovery.loadReleases(ctx); err != nil {
 		fatal("version browse: unable to fetch releases: %v", err)
 	}
-	commits, err := fetchMainCommitsContext(ctx)
-	if err != nil {
+	if err := discovery.loadCommits(ctx); err != nil {
 		fatal("version browse: unable to fetch main commits: %v", err)
 	}
-	choice, profile, build, ok := chooseInstallPicker(releases, commits, time.Now(), profileValue, buildValue)
-	if !ok {
-		return
-	}
-	if choice == "latest" {
-		release, err := latestStableReleaseContext(ctx)
-		if err != nil {
-			fatal("version latest: %v", err)
+	for {
+		choice, profile, build, ok := chooseInstallPicker(
+			discovery.releases,
+			discovery.commits,
+			time.Now(),
+			profileValue,
+			buildValue,
+			discovery.releasesPager.hasMore(),
+			discovery.commitsPager.hasMore(),
+		)
+		if !ok {
+			return
 		}
-		vmInstallContext(ctx, d, release, profile, build, use)
-		return
+		var err error
+		switch choice {
+		case pickerLoadMoreReleases:
+			err = discovery.loadReleases(ctx)
+		case pickerLoadMoreCommits:
+			err = discovery.loadCommits(ctx)
+		default:
+			if choice == "latest" {
+				release, resolveErr := latestStableReleaseContext(ctx)
+				if resolveErr != nil {
+					fatal("version latest: %v", resolveErr)
+				}
+				vmInstallContext(ctx, d, release, profile, build, use)
+				return
+			}
+			vmInstallContext(ctx, d, choice, profile, build, use)
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "wago: version browse: unable to load older history: %v\n", err)
+		}
 	}
-	vmInstallContext(ctx, d, choice, profile, build, use)
 }
 
 func fetchReleases() ([]remoteRelease, error) {
@@ -64,9 +88,143 @@ func fetchReleases() ([]remoteRelease, error) {
 
 const (
 	discoveryPageLimit        = 10
+	commitDiscoveryPageSize   = 100
 	releaseDiscoveryPageSize  = 20
 	releaseDiscoveryPageLimit = 50
 )
+
+type releaseDiscoveryPager struct {
+	address string
+	seen    map[string]struct{}
+	pages   int
+}
+
+func newReleaseDiscoveryPager() releaseDiscoveryPager {
+	return releaseDiscoveryPager{
+		address: fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=%d&page=1", releaseAPI(), releaseDiscoveryPageSize),
+		seen:    make(map[string]struct{}, releaseDiscoveryPageLimit),
+	}
+}
+
+func (p *releaseDiscoveryPager) hasMore() bool {
+	return p.address != "" && p.pages < releaseDiscoveryPageLimit
+}
+
+func (p *releaseDiscoveryPager) next(ctx context.Context, operation string) ([]remoteRelease, error) {
+	if p.address == "" {
+		return nil, nil
+	}
+	if p.pages >= releaseDiscoveryPageLimit {
+		return nil, fmt.Errorf("GitHub release discovery exceeded %d pages", releaseDiscoveryPageLimit)
+	}
+	address := p.address
+	page := p.pages + 1
+	if _, duplicate := p.seen[address]; duplicate {
+		return nil, fmt.Errorf("GitHub release pagination loop at page %d", page)
+	}
+	response, err := getReleaseBytes(ctx, operation, address, releaseMetadataMaximum)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub returned %s", response.Status)
+	}
+	var batch []remoteRelease
+	if err := json.Unmarshal(response.Body, &batch); err != nil {
+		return nil, err
+	}
+	if len(batch) > releaseDiscoveryPageSize {
+		return nil, fmt.Errorf("GitHub returned too many releases on page %d", page)
+	}
+	next, found, err := releaseNextLink(response.Header, address)
+	if err != nil {
+		return nil, err
+	}
+	if !found && len(batch) == releaseDiscoveryPageSize {
+		next = fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=%d&page=%d", releaseAPI(), releaseDiscoveryPageSize, page+1)
+		found = true
+	}
+	if found {
+		if next == address {
+			return nil, fmt.Errorf("GitHub release pagination loop at page %d", page)
+		}
+		if _, duplicate := p.seen[next]; duplicate {
+			return nil, fmt.Errorf("GitHub release pagination loop at page %d", page)
+		}
+	} else {
+		next = ""
+	}
+	p.seen[address] = struct{}{}
+	p.address = next
+	p.pages = page
+	return batch, nil
+}
+
+type commitDiscoveryPager struct {
+	page int
+	done bool
+}
+
+func (p *commitDiscoveryPager) hasMore() bool {
+	return !p.done && p.page < discoveryPageLimit
+}
+
+func (p *commitDiscoveryPager) next(ctx context.Context) ([]remoteCommit, error) {
+	if p.done {
+		return nil, nil
+	}
+	if p.page >= discoveryPageLimit {
+		return nil, fmt.Errorf("GitHub commit discovery exceeded %d pages", discoveryPageLimit)
+	}
+	page := p.page + 1
+	address := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=%d&page=%d", releaseAPI(), commitDiscoveryPageSize, page)
+	response, err := getReleaseBytes(ctx, "main commit discovery", address, releaseMetadataMaximum)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub returned %s", response.Status)
+	}
+	var batch []remoteCommit
+	if err := json.Unmarshal(response.Body, &batch); err != nil {
+		return nil, err
+	}
+	if len(batch) > commitDiscoveryPageSize {
+		return nil, fmt.Errorf("GitHub returned too many commits on page %d", page)
+	}
+	p.page = page
+	p.done = len(batch) < commitDiscoveryPageSize
+	return batch, nil
+}
+
+type versionBrowseDiscovery struct {
+	releases      []remoteRelease
+	commits       []remoteCommit
+	releasesPager releaseDiscoveryPager
+	commitsPager  commitDiscoveryPager
+}
+
+func newVersionBrowseDiscovery() versionBrowseDiscovery {
+	return versionBrowseDiscovery{releasesPager: newReleaseDiscoveryPager()}
+}
+
+func (d *versionBrowseDiscovery) loadReleases(ctx context.Context) error {
+	batch, err := d.releasesPager.next(ctx, "release discovery")
+	if err != nil {
+		return err
+	}
+	d.releases = append(d.releases, batch...)
+	return nil
+}
+
+func (d *versionBrowseDiscovery) loadCommits(ctx context.Context) error {
+	batch, err := d.commitsPager.next(ctx)
+	if err != nil {
+		return err
+	}
+	d.commits = append(d.commits, batch...)
+	return nil
+}
 
 func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 	var releases []remoteRelease
@@ -78,44 +236,20 @@ func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 }
 
 func forEachReleasePage(ctx context.Context, operation string, visit func([]remoteRelease) bool) error {
-	address := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=%d&page=1", releaseAPI(), releaseDiscoveryPageSize)
-	seen := make(map[string]struct{}, releaseDiscoveryPageLimit)
-	for page := 1; page <= releaseDiscoveryPageLimit; page++ {
-		if _, duplicate := seen[address]; duplicate {
-			return fmt.Errorf("GitHub release pagination loop at page %d", page)
-		}
-		seen[address] = struct{}{}
-		response, err := getReleaseBytes(ctx, operation, address, releaseMetadataMaximum)
+	pager := newReleaseDiscoveryPager()
+	for pager.hasMore() {
+		batch, err := pager.next(ctx, operation)
 		if err != nil {
 			return err
-		}
-		if response.StatusCode != http.StatusOK {
-			return fmt.Errorf("GitHub returned %s", response.Status)
-		}
-		var batch []remoteRelease
-		if err := json.Unmarshal(response.Body, &batch); err != nil {
-			return err
-		}
-		if len(batch) > releaseDiscoveryPageSize {
-			return fmt.Errorf("GitHub returned too many releases on page %d", page)
 		}
 		if !visit(batch) {
 			return nil
 		}
-		next, found, err := releaseNextLink(response.Header, address)
-		if err != nil {
-			return err
-		}
-		if found {
-			address = next
-			continue
-		}
-		if len(batch) < releaseDiscoveryPageSize {
-			return nil
-		}
-		address = fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=%d&page=%d", releaseAPI(), releaseDiscoveryPageSize, page+1)
 	}
-	return fmt.Errorf("GitHub release discovery exceeded %d pages", releaseDiscoveryPageLimit)
+	if pager.address != "" {
+		return fmt.Errorf("GitHub release discovery exceeded %d pages", releaseDiscoveryPageLimit)
+	}
+	return nil
 }
 
 func releaseNextLink(header http.Header, current string) (string, bool, error) {
@@ -392,28 +526,18 @@ func fetchMainCommits() ([]remoteCommit, error) {
 
 func fetchMainCommitsContext(ctx context.Context) ([]remoteCommit, error) {
 	var commits []remoteCommit
-	for page := 1; page <= discoveryPageLimit; page++ {
-		address := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=100&page=%d", releaseAPI(), page)
-		response, err := getReleaseBytes(ctx, "main commit discovery", address, releaseMetadataMaximum)
+	var pager commitDiscoveryPager
+	for pager.hasMore() {
+		batch, err := pager.next(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("GitHub returned %s", response.Status)
-		}
-		var batch []remoteCommit
-		if err := json.Unmarshal(response.Body, &batch); err != nil {
-			return nil, err
-		}
-		if len(batch) > 100 {
-			return nil, fmt.Errorf("GitHub returned too many commits on page %d", page)
-		}
 		commits = append(commits, batch...)
-		if len(batch) < 100 {
-			return commits, nil
-		}
 	}
-	return nil, fmt.Errorf("GitHub commit discovery exceeded %d pages", discoveryPageLimit)
+	if !pager.done {
+		return nil, fmt.Errorf("GitHub commit discovery exceeded %d pages", discoveryPageLimit)
+	}
+	return commits, nil
 }
 
 func latestChannelRelease(channel string) (string, error) {

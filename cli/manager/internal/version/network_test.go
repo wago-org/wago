@@ -308,6 +308,144 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 	}
 }
 
+func TestVersionBrowseDiscoveryFetchesOnePageAtATime(t *testing.T) {
+	releaseRequests, commitRequests := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/wago-org/wago/releases":
+			releaseRequests++
+			count := releaseDiscoveryPageSize
+			if request.URL.Query().Get("page") == "2" {
+				count = 1
+			}
+			releases := make([]remoteRelease, count)
+			for index := range releases {
+				releases[index].TagName = fmt.Sprintf("v1.%d.%d", releaseRequests, index)
+			}
+			_ = json.NewEncoder(writer).Encode(releases)
+		case "/repos/wago-org/wago/commits":
+			commitRequests++
+			count := commitDiscoveryPageSize
+			if request.URL.Query().Get("page") == "2" {
+				count = 1
+			}
+			commits := make([]remoteCommit, count)
+			for index := range commits {
+				commits[index].SHA = fmt.Sprintf("%040x", commitRequests*commitDiscoveryPageSize+index)
+			}
+			_ = json.NewEncoder(writer).Encode(commits)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+
+	discovery := newVersionBrowseDiscovery()
+	if err := discovery.loadReleases(context.Background()); err != nil {
+		t.Fatalf("initial release page: %v", err)
+	}
+	if err := discovery.loadCommits(context.Background()); err != nil {
+		t.Fatalf("initial commit page: %v", err)
+	}
+	if releaseRequests != 1 || commitRequests != 1 {
+		t.Fatalf("initial requests = releases %d, commits %d; want one each", releaseRequests, commitRequests)
+	}
+	if len(discovery.releases) != releaseDiscoveryPageSize || len(discovery.commits) != commitDiscoveryPageSize {
+		t.Fatalf("initial history = releases %d, commits %d", len(discovery.releases), len(discovery.commits))
+	}
+	if !discovery.releasesPager.hasMore() || !discovery.commitsPager.hasMore() {
+		t.Fatal("full initial pages did not advertise older history")
+	}
+
+	if err := discovery.loadReleases(context.Background()); err != nil {
+		t.Fatalf("older release page: %v", err)
+	}
+	if releaseRequests != 2 || commitRequests != 1 {
+		t.Fatalf("release load requests = releases %d, commits %d; want 2, 1", releaseRequests, commitRequests)
+	}
+	if discovery.releasesPager.hasMore() || len(discovery.releases) != releaseDiscoveryPageSize+1 {
+		t.Fatalf("release history after short page = %d, more %v", len(discovery.releases), discovery.releasesPager.hasMore())
+	}
+
+	if err := discovery.loadCommits(context.Background()); err != nil {
+		t.Fatalf("older commit page: %v", err)
+	}
+	if releaseRequests != 2 || commitRequests != 2 {
+		t.Fatalf("commit load requests = releases %d, commits %d; want 2, 2", releaseRequests, commitRequests)
+	}
+	if discovery.commitsPager.hasMore() || len(discovery.commits) != commitDiscoveryPageSize+1 {
+		t.Fatalf("commit history after short page = %d, more %v", len(discovery.commits), discovery.commitsPager.hasMore())
+	}
+}
+
+func TestVersionBrowseDiscoveryLaterFailurePreservesHistoryAndCursor(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/repos/wago-org/wago/releases" {
+			http.NotFound(writer, request)
+			return
+		}
+		requests++
+		if requests == 2 {
+			http.Error(writer, "temporary failure", http.StatusBadGateway)
+			return
+		}
+		count := releaseDiscoveryPageSize
+		if requests == 3 {
+			count = 1
+		}
+		_ = json.NewEncoder(writer).Encode(make([]remoteRelease, count))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+
+	discovery := newVersionBrowseDiscovery()
+	if err := discovery.loadReleases(context.Background()); err != nil {
+		t.Fatalf("initial release page: %v", err)
+	}
+	address, pages := discovery.releasesPager.address, discovery.releasesPager.pages
+	if err := discovery.loadReleases(context.Background()); err == nil || !strings.Contains(err.Error(), "502") {
+		t.Fatalf("later release failure = %v, want 502", err)
+	}
+	if len(discovery.releases) != releaseDiscoveryPageSize || discovery.releasesPager.address != address || discovery.releasesPager.pages != pages {
+		t.Fatalf("failed page mutated history or cursor: releases %d, address %q, pages %d", len(discovery.releases), discovery.releasesPager.address, discovery.releasesPager.pages)
+	}
+	if err := discovery.loadReleases(context.Background()); err != nil {
+		t.Fatalf("retry older release page: %v", err)
+	}
+	if requests != 3 || len(discovery.releases) != releaseDiscoveryPageSize+1 || discovery.releasesPager.hasMore() {
+		t.Fatalf("retried page = requests %d, releases %d, more %v", requests, len(discovery.releases), discovery.releasesPager.hasMore())
+	}
+}
+
+func TestVersionBrowseDiscoveryCancellationPreservesHistoryAndCursor(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		if requests == 1 {
+			_ = json.NewEncoder(writer).Encode(make([]remoteCommit, commitDiscoveryPageSize))
+			return
+		}
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+
+	discovery := newVersionBrowseDiscovery()
+	if err := discovery.loadCommits(context.Background()); err != nil {
+		t.Fatalf("initial commit page: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := discovery.loadCommits(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled older commit page = %v", err)
+	}
+	if len(discovery.commits) != commitDiscoveryPageSize || discovery.commitsPager.page != 1 || !discovery.commitsPager.hasMore() {
+		t.Fatalf("canceled page mutated history or cursor: commits %d, page %d, more %v", len(discovery.commits), discovery.commitsPager.page, discovery.commitsPager.hasMore())
+	}
+}
+
 func TestReleaseDiscoveryBoundsTotalPagination(t *testing.T) {
 	releases := make([]remoteRelease, releaseDiscoveryPageSize)
 	commits := make([]remoteCommit, 100)
