@@ -2,10 +2,11 @@
 # Actions workflow (.github/workflows/ci.yml) calls these same targets, so
 # `make lint` / `make test` reproduce CI exactly. Run `make` to list targets.
 #
-#   make lint   gofmt + go generate sync + go vet + staticcheck   (host, no act)
-#   make test   go build + go test                                (host, no act)
-#   make ci     replay the whole workflow in Docker via act       (scripts/ci-local.sh)
-#   make bench  run the benchmark suite (BENCH=<regex> to filter) (host)
+#   make lint        gofmt + generate sync + vet + staticcheck (host, no act)
+#   make docs-check  local Markdown paths and anchors           (host, no act)
+#   make test        go build + go test                         (host, no act)
+#   make ci          replay the whole workflow in Docker via act
+#   make bench       benchmark suite (BENCH=<regex> to filter)  (host)
 #
 # The bench-* targets run on a stable local machine, never CI: shared runners
 # make benchmark numbers noisy.
@@ -89,6 +90,10 @@ lint-staticcheck:
 .PHONY: lint-website-generator
 lint-website-generator:
 	node --test scripts/update-website-bench.test.mjs
+
+.PHONY: docs-check
+docs-check: ## Validate local paths and anchors in tracked Markdown files
+	go run ./tests/tools/docs-check
 
 .PHONY: test
 test: ## Build and run the test suite (host)

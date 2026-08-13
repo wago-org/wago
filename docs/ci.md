@@ -1,8 +1,8 @@
 # Continuous integration
 
-Pull requests and pushes to `main` run `.github/workflows/ci.yml`. Markdown-only
-changes use the lightweight aggregation gate; every code or build change runs
-the complete native platform matrix:
+Pull requests and pushes to `main` run `.github/workflows/ci.yml`. Documentation
+changes run a lightweight, deterministic local-link and heading-anchor check;
+every code or build change runs the complete native platform matrix:
 
 | Runner | OS | Architecture | Standard suite | Guard pages | Corpus | SIMD |
 |---|---|---|---:|---:|---:|---:|
@@ -71,6 +71,14 @@ uploads their report fragments with the merged coverage profile. The final `CI`
 aggregation job is the stable branch-protection check and fails if any required
 matrix cell or supporting job fails.
 
+The change detector reports documentation and code changes independently. A
+documentation-only pull request runs `make docs-check` without starting the
+native matrix, while a mixed pull request runs both. The documentation checker
+uses only the Go standard library and the tracked repository files: it rejects
+missing relative targets, exact-case path mismatches, and missing Markdown
+heading fragments without contacting external sites. Run the same check locally
+with `make docs-check`.
+
 Nightly, canary, and tagged release workflows require Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with
 its SHA-256 checksum. A push to `main` becomes a canary only after that commit's
@@ -122,6 +130,7 @@ checks tracked Go files only, so toolchains or diagnostics retained under `.git/
 do not contaminate `make lint`.
 
 ```sh
+make docs-check
 make lint
 make test
 make test-guard   # only on a supported guard-page target
