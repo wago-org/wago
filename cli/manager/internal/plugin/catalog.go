@@ -101,14 +101,7 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 			return nil, errors.New("plugin catalog response exceeds 4 MiB")
 		}
 		if response.StatusCode != http.StatusOK {
-			var failure struct {
-				Error string `json:"error"`
-			}
-			_ = json.Unmarshal(data, &failure)
-			if failure.Error == "" {
-				failure.Error = response.Status
-			}
-			return nil, fmt.Errorf("resolve %s: %s", id, failure.Error)
+			return nil, fmt.Errorf("resolve %s: %s", id, registry.ResponseError(response.StatusCode, data))
 		}
 		var envelope struct {
 			Plugins    []CatalogRelease `json:"plugins"`

@@ -116,6 +116,23 @@ func TestRegistryIdentityAndErrorsAreTerminalSafe(t *testing.T) {
 	}
 }
 
+func TestRegistryDisplayBaseIsTerminalSafeAndBounded(t *testing.T) {
+	const valid = "https://registry.example/prefix"
+	if got := registryDisplayBase(valid); got != valid {
+		t.Fatalf("valid registry display = %q", got)
+	}
+	for _, base := range []string{
+		"https://registry.example/failure\nforged",
+		"https://registry.example/failure\x1b[2J",
+		"https://secret@registry.example",
+		"https://registry.example/" + strings.Repeat("x", maximumRegistryDisplayURLLength),
+	} {
+		if got := registryDisplayBase(base); got != "configured registry" {
+			t.Fatalf("unsafe registry display of length %d = %q", len(base), got)
+		}
+	}
+}
+
 func TestRegistryBaseURLSecurityPolicy(t *testing.T) {
 	for _, base := range []string{
 		"https://registry.example",

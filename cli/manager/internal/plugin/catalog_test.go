@@ -626,6 +626,41 @@ func TestHTTPCatalogDefaultClientRefusesRedirects(t *testing.T) {
 	}
 }
 
+func TestHTTPCatalogErrorsAreTerminalSafeAndBounded(t *testing.T) {
+	for _, test := range []struct {
+		name, message string
+		wantMessage   bool
+	}{
+		{name: "ordinary", message: "ordinary failure", wantMessage: true},
+		{name: "newline", message: "failure\nforged"},
+		{name: "escape", message: "failure\x1b[2J"},
+		{name: "oversized", message: strings.Repeat("x", 1025)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(writer).Encode(map[string]string{"error": test.message})
+			}))
+			defer server.Close()
+
+			_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+				context.Background(), "github.com/acme/plugin", []string{"*"})
+			if err == nil {
+				t.Fatal("failed catalog request succeeded")
+			}
+			if test.wantMessage {
+				if !strings.Contains(err.Error(), test.message) {
+					t.Fatalf("ordinary catalog error = %q", err)
+				}
+			} else {
+				if strings.Contains(err.Error(), test.message) || !strings.Contains(err.Error(), "status 400") {
+					t.Fatalf("unsafe catalog error = %q", err)
+				}
+			}
+		})
+	}
+}
+
 func TestCatalogRejectsUnprefixedSourceVersion(t *testing.T) {
 	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
 	release.Source.Version = "1.2.3"

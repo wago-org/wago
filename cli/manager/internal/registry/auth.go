@@ -460,15 +460,16 @@ func registryLogout() {
 
 func registryLogoutContext(ctx context.Context) {
 	base := registryBase()
+	displayBase := registryDisplayBase(base)
 	removed, err := deleteCredentialsResultContext(ctx, base)
 	if err != nil {
 		fatal("logout: %v", err)
 	}
 	if !removed {
-		fmt.Printf("%s Not logged in to %s\n", dim("·"), base)
+		fmt.Printf("%s Not logged in to %s\n", dim("·"), displayBase)
 		return
 	}
-	fmt.Printf("%s Logged out of %s\n", cyan("✓"), base)
+	fmt.Printf("%s Logged out of %s\n", cyan("✓"), displayBase)
 }
 
 // registryWhoami prints the login of the current token, or a friendly hint when

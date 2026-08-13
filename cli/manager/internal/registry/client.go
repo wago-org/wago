@@ -20,8 +20,9 @@ import (
 const registryResponseLimit int64 = 4 << 20
 
 const (
-	registryAuthResponseLimit  int64 = 128 << 10
-	maximumRegistryLoginLength       = 256
+	registryAuthResponseLimit       int64 = 128 << 10
+	maximumRegistryLoginLength            = 256
+	maximumRegistryDisplayURLLength       = 4 << 10
 )
 
 var (
@@ -152,6 +153,12 @@ func recordRegistryInstallContext(parent context.Context, module, version string
 // apiError extracts the {"error":...} message from a response body, falling back
 // to the status code.
 func apiError(status int, data []byte) string {
+	return ResponseError(status, data)
+}
+
+// ResponseError returns a bounded, terminal-safe registry error or a numeric
+// status fallback. It is shared by registry consumers outside this package.
+func ResponseError(status int, data []byte) string {
 	var e struct {
 		Error string `json:"error"`
 	}
@@ -159,6 +166,14 @@ func apiError(status int, data []byte) string {
 		return e.Error
 	}
 	return fmt.Sprintf("server returned status %d", status)
+}
+
+func registryDisplayBase(base string) string {
+	if validateRegistryBaseURL(base) != nil ||
+		validateTerminalTextField("registry URL", base, maximumRegistryDisplayURLLength) != nil {
+		return "configured registry"
+	}
+	return base
 }
 
 func validateTerminalTextField(name, value string, maximum int) error {
