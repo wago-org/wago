@@ -77,6 +77,16 @@ func TestCredentialStoreReadAndWriteAreBounded(t *testing.T) {
 	}
 }
 
+func TestCredentialStoreRejectsNonRegularPath(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	if err := os.MkdirAll(credentialsPath(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadCredentials(); err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("directory credential store = %v", err)
+	}
+}
+
 func TestCredentialMutationRejectsSymlinkDestination(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
 	if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {

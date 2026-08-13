@@ -88,6 +88,12 @@ func apiRequestAtBaseLimitContext(ctx context.Context, base, method, path, token
 		req.Header.Set("Content-Type", "application/json")
 	}
 	response, err := registryHTTP.Bytes(ctx, req, min(responseLimit, registryResponseMaximum))
+	if token != "" && (response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
+		// A credential-bearing endpoint may accidentally reflect the bearer or
+		// request body in an error. Preserve only the status across this trust
+		// boundary so callers cannot render reflected credentials.
+		response.Body = nil
+	}
 	return response.StatusCode, response.Body, err
 }
 
@@ -189,7 +195,7 @@ func fetchMeAtBaseContext(ctx context.Context, base, token string) (meResponse, 
 		return meResponse{}, errUnauthorized
 	}
 	if status != http.StatusOK {
-		return meResponse{}, errors.New(apiError(status, data))
+		return meResponse{}, fmt.Errorf("registry returned status %d", status)
 	}
 	var me meResponse
 	if err := json.Unmarshal(data, &me); err != nil {

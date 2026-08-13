@@ -48,7 +48,7 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 		t.Fatalf("unauthorized fetchMe = %v", err)
 	}
 	status, body = http.StatusInternalServerError, `{"error":"broken"}`
-	if _, err := fetchMe("token"); err == nil || err.Error() != "broken" {
+	if _, err := fetchMe("token"); err == nil || err.Error() != "registry returned status 500" {
 		t.Fatalf("error fetchMe = %v", err)
 	}
 	status, body = http.StatusOK, "not json"
@@ -57,6 +57,31 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 	}
 	if got := apiError(http.StatusBadRequest, []byte("not json")); got != "server returned status 400" {
 		t.Fatalf("apiError fallback = %q", got)
+	}
+}
+
+func TestAuthenticatedRegistryErrorsDiscardReflectedCredentials(t *testing.T) {
+	for _, status := range []int{
+		http.StatusBadRequest,
+		http.StatusInternalServerError,
+		http.StatusTemporaryRedirect,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(status)
+				_, _ = writer.Write([]byte(`{"error":"` + testRegistryToken + `"}`))
+			}))
+			defer server.Close()
+
+			gotStatus, data, err := apiRequestAtBaseContext(context.Background(), server.URL, http.MethodGet,
+				"/api/me", testRegistryToken, nil)
+			if err != nil || gotStatus != status {
+				t.Fatalf("authenticated failure = %d, %v", gotStatus, err)
+			}
+			if len(data) != 0 {
+				t.Fatalf("authenticated failure retained reflected body %q", data)
+			}
+		})
 	}
 }
 

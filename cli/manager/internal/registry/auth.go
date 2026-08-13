@@ -255,8 +255,11 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 		url.Values{"client_id": {cfg.ClientID}, "scope": {cfg.Scope}}, &dc); err != nil {
 		return "", fmt.Errorf("requesting device code from GitHub: %w", err)
 	}
-	if dc.Error == "device_flow_disabled" {
-		return "", errors.New("GitHub device flow is disabled for this OAuth app — enable \"Device Flow\" in its settings")
+	if dc.Error != "" {
+		if dc.Error == "device_flow_disabled" {
+			return "", errors.New("GitHub device flow is disabled for this OAuth app — enable \"Device Flow\" in its settings")
+		}
+		return "", errors.New("GitHub rejected the device authorization request")
 	}
 	if dc.DeviceCode == "" || dc.UserCode == "" {
 		return "", errors.New("GitHub returned an incomplete device authorization response")
@@ -311,6 +314,23 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 		}, &tr); err != nil {
 			return "", fmt.Errorf("polling GitHub for the token: %w", err)
 		}
+		if tr.Error != "" {
+			switch tr.Error {
+			case "authorization_pending":
+				// not authorized yet — keep polling
+			case "slow_down":
+				// RFC 8628 §3.5 asks for a five-second backoff. Keep the
+				// server-controlled interval within the command's bounded policy.
+				pollInterval = min(pollInterval+5*time.Second, maximumDevicePollInterval)
+			case "access_denied":
+				return "", errors.New("authorization was denied on GitHub")
+			case "expired_token":
+				return "", errors.New("the code expired before you authorized it — run `wago auth login --code` again")
+			default:
+				return "", errors.New("GitHub returned an unknown device authorization error")
+			}
+			continue
+		}
 		if tr.AccessToken != "" {
 			if err := validatePrintableASCIIField("GitHub access token", tr.AccessToken, maximumGitHubTokenLength); err != nil {
 				return "", err
@@ -318,20 +338,7 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 			ghToken = tr.AccessToken
 			break
 		}
-		switch tr.Error {
-		case "authorization_pending":
-			// not authorized yet — keep polling
-		case "slow_down":
-			// RFC 8628 §3.5 asks for a five-second backoff. Keep the
-			// server-controlled interval within the command's bounded policy.
-			pollInterval = min(pollInterval+5*time.Second, maximumDevicePollInterval)
-		case "access_denied":
-			return "", errors.New("authorization was denied on GitHub")
-		case "expired_token":
-			return "", errors.New("the code expired before you authorized it — run `wago auth login --code` again")
-		default:
-			return "", errors.New("GitHub returned an unknown device authorization error")
-		}
+		return "", errors.New("GitHub returned an incomplete device token response")
 	}
 	if ghToken == "" {
 		return "", errors.New("timed out waiting for GitHub authorization")
@@ -350,9 +357,13 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	}
 	var xr struct {
 		Token string `json:"token"`
+		Error string `json:"error"`
 	}
 	if err := json.Unmarshal(data, &xr); err != nil {
 		return "", fmt.Errorf("parsing exchange response: %w", err)
+	}
+	if xr.Error != "" {
+		return "", errors.New("registry returned an error during the GitHub exchange")
 	}
 	if xr.Token == "" {
 		return "", errors.New("registry returned no token after the GitHub exchange")

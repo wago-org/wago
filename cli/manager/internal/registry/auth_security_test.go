@@ -152,6 +152,23 @@ func TestDeviceExchangeErrorRedactsCredentials(t *testing.T) {
 	}
 }
 
+func TestDeviceExchangeRejectsContradictoryErrorAndToken(t *testing.T) {
+	server, _ := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`","error":"failed"}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+
+	_, err := githubDeviceTokenUsingContext(context.Background(), server.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "error during the GitHub exchange") {
+		t.Fatalf("contradictory exchange response = %v", err)
+	}
+	for _, secret := range []string{testGitHubToken, testRegistryToken} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("error leaked %q: %v", secret, err)
+		}
+	}
+}
+
 func TestDevicePollingErrorRedactsCredentials(t *testing.T) {
 	server, capture := newDeviceFlowServer(t,
 		`{"error":"`+testDeviceCode+` `+testGitHubToken+` `+testRegistryToken+`"}`,
@@ -170,6 +187,63 @@ func TestDevicePollingErrorRedactsCredentials(t *testing.T) {
 	}
 	if capture.exchangedGitHubToken != "" {
 		t.Fatalf("failed poll exchanged %q", capture.exchangedGitHubToken)
+	}
+}
+
+func TestDeviceAuthorizationRejectsContradictoryErrorAndCodes(t *testing.T) {
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"client_id":"client-id","scope":"read:user"}`))
+	}))
+	defer registry.Close()
+	var oauthRequests atomic.Int32
+	oauth := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		oauthRequests.Add(1)
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"error":       "access_denied",
+			"device_code": testDeviceCode,
+			"user_code":   "short-lived-code",
+		})
+	}))
+	defer oauth.Close()
+
+	hooks := deviceFlowTestHooks(t, oauth.URL, new(string))
+	_, err := githubDeviceTokenUsingContext(context.Background(), registry.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "rejected the device authorization") {
+		t.Fatalf("contradictory authorization response = %v", err)
+	}
+	if got := oauthRequests.Load(); got != 1 {
+		t.Fatalf("contradictory authorization made %d OAuth requests", got)
+	}
+}
+
+func TestDevicePollingRejectsContradictoryErrorAndToken(t *testing.T) {
+	server, capture := newDeviceFlowServer(t,
+		`{"access_token":"`+testGitHubToken+`","error":"access_denied"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+
+	_, err := githubDeviceTokenUsingContext(context.Background(), server.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "authorization was denied") {
+		t.Fatalf("contradictory token response = %v", err)
+	}
+	if capture.exchangedGitHubToken != "" {
+		t.Fatalf("contradictory token response exchanged %q", capture.exchangedGitHubToken)
+	}
+}
+
+func TestDevicePollingRejectsMissingTokenAndError(t *testing.T) {
+	server, capture := newDeviceFlowServer(t, `{}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+
+	_, err := githubDeviceTokenUsingContext(context.Background(), server.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "incomplete device token response") {
+		t.Fatalf("incomplete token response = %v", err)
+	}
+	if capture.exchangedGitHubToken != "" {
+		t.Fatalf("incomplete token response exchanged %q", capture.exchangedGitHubToken)
 	}
 }
 

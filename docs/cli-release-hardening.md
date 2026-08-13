@@ -45,6 +45,9 @@ The registry's advertised GitHub scopes are restricted to `read:user` and
 text, stdin token input, and the local credential store have explicit size and
 printable-text limits. All registry API operations—not only login—reject remote
 plaintext HTTP origins; HTTP remains available for loopback development servers.
+Bodies returned by failed authenticated requests are discarded so reflected
+credentials cannot reach errors or terminal output. Contradictory OAuth
+success/error responses fail closed, and credential stores must be regular files.
 
 ## Release downloads
 
