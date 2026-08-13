@@ -2,7 +2,6 @@ package registry
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -250,9 +249,13 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	var cfg struct {
 		ClientID string `json:"client_id"`
 		Scope    string `json:"scope"`
+		Error    string `json:"error"`
 	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := unmarshalUniqueJSON(data, &cfg); err != nil {
 		return "", fmt.Errorf("parsing GitHub client config: %w", err)
+	}
+	if cfg.Error != "" {
+		return "", errors.New("registry returned an error in the GitHub client configuration")
 	}
 	if cfg.ClientID == "" {
 		return "", errors.New("registry did not advertise a GitHub client id")
@@ -383,7 +386,7 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 		Token string `json:"token"`
 		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(data, &xr); err != nil {
+	if err := unmarshalUniqueJSON(data, &xr); err != nil {
 		return "", fmt.Errorf("parsing exchange response: %w", err)
 	}
 	if xr.Error != "" {

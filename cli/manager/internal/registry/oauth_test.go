@@ -55,3 +55,22 @@ func TestOAuthHelpers(t *testing.T) {
 		t.Fatalf("oversized OAuth response = %v", err)
 	}
 }
+
+func TestOAuthJSONRejectsDuplicateObjectMembers(t *testing.T) {
+	for _, body := range []string{
+		`{"access_token":"trusted","error":"access_denied","error":""}`,
+		`{"access_token":"trusted","error":"access_denied","Error":""}`,
+		`{"scope":"read:user","ſcope":"repo"}`,
+		`{"outer":{"error":"access_denied","error":""}}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		}))
+		var reply map[string]any
+		err := PostForm(server.URL, url.Values{}, &reply)
+		server.Close()
+		if err == nil || !strings.Contains(err.Error(), "duplicate object field") {
+			t.Fatalf("PostForm(%s) = %v", body, err)
+		}
+	}
+}

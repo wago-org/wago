@@ -352,7 +352,7 @@ func validateLockEntry(id string, entry LockEntry) error {
 	if _, err := semver.Parse(entry.Source.Version); err != nil {
 		return fmt.Errorf("source.version must be an exact v-prefixed Go module version: %w", err)
 	}
-	if !validGoChecksum(entry.Source.Checksum) {
+	if !ValidGoChecksum(entry.Source.Checksum) {
 		return errors.New("source.checksum must be a Go h1 checksum")
 	}
 	if id != entry.Source.Module && !strings.HasPrefix(id, entry.Source.Module+"/") {
@@ -399,7 +399,8 @@ func validateLockEntry(id string, entry LockEntry) error {
 	return validateBindings(entry.Contracts, entry.Bindings)
 }
 
-func validGoChecksum(checksum string) bool {
+// ValidGoChecksum reports whether checksum is a canonical Go h1 checksum.
+func ValidGoChecksum(checksum string) bool {
 	if !strings.HasPrefix(checksum, "h1:") {
 		return false
 	}

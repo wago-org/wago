@@ -18,7 +18,7 @@ A parent command cancellation is propagated to active manager requests,
 installer downloads, and Git/TinyGo/Go subprocesses used by source-build
 fallback. In-memory bodies are explicitly bounded: registry and GitHub release
 JSON use a 4 MiB limit, OAuth
-responses use 1 MiB, release checksums use 4 KiB, and non-success response
+responses use 128 KiB, release checksums use 4 KiB, and non-success response
 capture uses an independent 64 KiB limit. Declared oversized bodies are rejected
 before reading; chunked or dishonest responses are stopped after the configured
 limit. Release/commit browsing is capped at ten 100-item pages so repeated full
@@ -48,7 +48,10 @@ catalog lookup and install metrics—reject remote plaintext HTTP origins and
 redirects; HTTP remains available for loopback development servers.
 Bodies returned by failed authenticated requests are discarded so reflected
 credentials cannot reach errors or terminal output. Contradictory OAuth
-success/error responses fail closed, and credential stores must be regular files.
+success/error responses fail closed, duplicate authentication JSON members are
+rejected before decoding, and credential stores must be regular files. Catalog
+source checksums, versions, and digests are validated before use; invalid remote
+metadata is not copied into terminal errors.
 
 ## Release downloads
 

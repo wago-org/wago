@@ -110,13 +110,16 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 			Limit      int              `json:"limit"`
 			NextOffset *int             `json:"nextOffset,omitempty"`
 		}
+		if err := registry.ValidateUniqueJSON(data); err != nil {
+			return nil, fmt.Errorf("resolve %s: catalog returned invalid metadata", id)
+		}
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&envelope); err != nil {
-			return nil, fmt.Errorf("resolve %s: decode catalog metadata: %w", id, err)
+			return nil, fmt.Errorf("resolve %s: catalog returned invalid metadata", id)
 		}
 		if err := requireJSONEOF(decoder); err != nil {
-			return nil, fmt.Errorf("resolve %s: decode catalog metadata: %w", id, err)
+			return nil, fmt.Errorf("resolve %s: catalog returned invalid metadata", id)
 		}
 		if envelope.Total <= 0 || envelope.Offset != offset || envelope.Limit != pageLimit || len(envelope.Plugins) == 0 || len(envelope.Plugins) > pageLimit {
 			return nil, fmt.Errorf("resolve %s: catalog returned invalid page offset=%d limit=%d count=%d total=%d", id, envelope.Offset, envelope.Limit, len(envelope.Plugins), envelope.Total)
@@ -135,7 +138,7 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 			}
 			key := release.ID + "\x00" + release.Version + "\x00" + release.ReleaseFingerprint
 			if seenReleases[key] {
-				return nil, fmt.Errorf("resolve %s: catalog repeated release %s", id, release.Version)
+				return nil, fmt.Errorf("resolve %s: catalog repeated a release", id)
 			}
 			seenReleases[key] = true
 		}
@@ -680,35 +683,42 @@ func sameOrderedStrings(left, right []string) bool {
 
 func validateCatalogRelease(id string, constraints []string, release CatalogRelease) error {
 	if release.ID != id || release.Definition.ID != id {
-		return fmt.Errorf("catalog returned plugin %q with definition %q for requested %q", release.ID, release.Definition.ID, id)
+		return fmt.Errorf("plugin %s catalog identifiers do not match the request", id)
 	}
 	if err := project.ValidatePluginID(release.Source.Module); err != nil {
-		return fmt.Errorf("plugin %s source: %w", id, err)
+		return fmt.Errorf("plugin %s catalog source module is invalid", id)
 	}
 	if err := project.ValidatePluginID(release.Provider.ImportPath); err != nil {
-		return fmt.Errorf("plugin %s provider: %w", id, err)
+		return fmt.Errorf("plugin %s catalog provider import is invalid", id)
 	}
 	if release.Provider.ImportPath != release.Source.Module+"/register" {
-		return fmt.Errorf("plugin %s provider import %q must be the source module's register package", id, release.Provider.ImportPath)
+		return fmt.Errorf("plugin %s catalog provider does not match its source module", id)
 	}
-	if release.Source.Checksum == "" || release.Source.Version == "" {
-		return fmt.Errorf("plugin %s catalog metadata omits exact source version or checksum", id)
+	if !project.ValidGoChecksum(release.Source.Checksum) {
+		return fmt.Errorf("plugin %s catalog source checksum is invalid", id)
 	}
-	if !strings.HasPrefix(release.Source.Version, "v") {
-		return fmt.Errorf("plugin %s catalog source version %q is not an exact v-prefixed Go module version", id, release.Source.Version)
+	const maximumCatalogVersionLength = 200
+	if release.Source.Version == "" || len(release.Source.Version) > maximumCatalogVersionLength || !strings.HasPrefix(release.Source.Version, "v") {
+		return fmt.Errorf("plugin %s catalog source version is not an exact v-prefixed Go module version", id)
 	}
 	if _, err := semver.Parse(release.Source.Version); err != nil {
-		return fmt.Errorf("plugin %s catalog source version %q is invalid: %w", id, release.Source.Version, err)
+		return fmt.Errorf("plugin %s catalog source version is invalid", id)
+	}
+	if release.Version == "" || len(release.Version) > maximumCatalogVersionLength || len(release.Definition.Version) > maximumCatalogVersionLength {
+		return fmt.Errorf("plugin %s catalog version is invalid", id)
 	}
 	if release.Version != release.Definition.Version || strings.TrimPrefix(release.Source.Version, "v") != strings.TrimPrefix(release.Version, "v") {
 		return fmt.Errorf("plugin %s catalog, source, and definition versions disagree", id)
 	}
 	for _, requirement := range release.Definition.Requires {
 		if err := project.ValidatePluginID(requirement.ID); err != nil {
-			return fmt.Errorf("plugin %s requirement: %w", id, err)
+			return fmt.Errorf("plugin %s catalog requirement is invalid", id)
+		}
+		if strings.TrimSpace(requirement.Version) == "" {
+			return fmt.Errorf("plugin %s requirement version constraint is empty", id)
 		}
 		if err := project.ValidateConstraint(requirement.Version); err != nil {
-			return fmt.Errorf("plugin %s requirement %s: %w", id, requirement.ID, err)
+			return fmt.Errorf("plugin %s catalog requirement is invalid", id)
 		}
 	}
 	for _, constraint := range constraints {
@@ -717,12 +727,15 @@ func validateCatalogRelease(id string, constraints []string, release CatalogRele
 			return fmt.Errorf("plugin %s version %s does not satisfy %q", id, release.Version, constraint)
 		}
 	}
+	if !validSHA256(release.DefinitionDigest) {
+		return fmt.Errorf("plugin %s catalog definition digest is invalid", id)
+	}
 	digest, err := corewago.DefinitionDigest(release.Definition)
 	if err != nil {
-		return fmt.Errorf("plugin %s definition: %w", id, err)
+		return fmt.Errorf("plugin %s catalog definition is invalid", id)
 	}
 	if digest != release.DefinitionDigest {
-		return fmt.Errorf("plugin %s definition digest mismatch: catalog has %s, computed %s", id, release.DefinitionDigest, digest)
+		return fmt.Errorf("plugin %s definition digest mismatch", id)
 	}
 	if !validSHA256(release.ReleaseFingerprint) {
 		return fmt.Errorf("plugin %s has invalid release fingerprint", id)

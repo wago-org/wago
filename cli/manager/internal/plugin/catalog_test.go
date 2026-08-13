@@ -591,6 +591,39 @@ func TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(t *testing.T) {
 	}
 }
 
+func TestHTTPCatalogRejectsAmbiguousMetadataWithoutReflection(t *testing.T) {
+	unsafe := "untrusted\x1b[2J" + strings.Repeat("x", 1024)
+	for _, test := range []struct {
+		name string
+		body func(http.ResponseWriter)
+	}{
+		{name: "duplicate field", body: func(writer http.ResponseWriter) {
+			_, _ = writer.Write([]byte(`{"plugins":[],"total":1,"Total":0,"offset":0,"limit":256}`))
+		}},
+		{name: "unknown field", body: func(writer http.ResponseWriter) {
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"plugins": []CatalogRelease{}, "total": 1, "offset": 0, "limit": 256, unsafe: true,
+			})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				test.body(writer)
+			}))
+			defer server.Close()
+
+			_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+				context.Background(), "github.com/acme/plugin", []string{"*"})
+			if err == nil || !strings.Contains(err.Error(), "invalid metadata") {
+				t.Fatalf("ambiguous catalog metadata = %v", err)
+			}
+			if strings.Contains(err.Error(), unsafe) || len(err.Error()) > 512 {
+				t.Fatalf("unsafe catalog metadata error = %q", err)
+			}
+		})
+	}
+}
+
 func TestHTTPCatalogRejectsRemotePlaintextBeforeRequest(t *testing.T) {
 	_, err := (HTTPCatalog{BaseURL: "http://192.0.2.1"}).Candidates(
 		context.Background(), "github.com/acme/plugin", []string{"*"})
@@ -656,6 +689,44 @@ func TestHTTPCatalogErrorsAreTerminalSafeAndBounded(t *testing.T) {
 				if strings.Contains(err.Error(), test.message) || !strings.Contains(err.Error(), "status 400") {
 					t.Fatalf("unsafe catalog error = %q", err)
 				}
+			}
+		})
+	}
+}
+
+func TestCatalogMetadataErrorsAreTerminalSafeAndBounded(t *testing.T) {
+	const id = "github.com/acme/plugin"
+	unsafe := "untrusted\x1b[2J" + strings.Repeat("x", 1024)
+	for _, test := range []struct {
+		name   string
+		mutate func(*CatalogRelease)
+	}{
+		{name: "release id", mutate: func(release *CatalogRelease) { release.ID = unsafe }},
+		{name: "definition id", mutate: func(release *CatalogRelease) { release.Definition.ID = unsafe }},
+		{name: "source module", mutate: func(release *CatalogRelease) { release.Source.Module = unsafe }},
+		{name: "provider import", mutate: func(release *CatalogRelease) { release.Provider.ImportPath = unsafe }},
+		{name: "source checksum", mutate: func(release *CatalogRelease) { release.Source.Checksum = unsafe }},
+		{name: "source version", mutate: func(release *CatalogRelease) { release.Source.Version = "v" + unsafe }},
+		{name: "release version", mutate: func(release *CatalogRelease) { release.Version = unsafe }},
+		{name: "definition version", mutate: func(release *CatalogRelease) { release.Definition.Version = unsafe }},
+		{name: "requirement id", mutate: func(release *CatalogRelease) {
+			release.Definition.Requires = []corewago.PluginRequirement{{ID: unsafe, Version: "*"}}
+		}},
+		{name: "requirement version", mutate: func(release *CatalogRelease) {
+			release.Definition.Requires = []corewago.PluginRequirement{{ID: "github.com/acme/dependency", Version: unsafe}}
+		}},
+		{name: "definition metadata", mutate: func(release *CatalogRelease) { release.Definition.Name = unsafe }},
+		{name: "definition digest", mutate: func(release *CatalogRelease) { release.DefinitionDigest = unsafe }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			release := testCatalogRelease(t, id, "1.2.3")
+			test.mutate(&release)
+			err := validateCatalogRelease(id, []string{"*"}, release)
+			if err == nil {
+				t.Fatal("unsafe catalog metadata succeeded")
+			}
+			if strings.Contains(err.Error(), unsafe) || len(err.Error()) > 512 {
+				t.Fatalf("unsafe catalog error = %q", err)
 			}
 		})
 	}

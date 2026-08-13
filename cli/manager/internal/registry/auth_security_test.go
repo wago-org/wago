@@ -170,6 +170,21 @@ func TestDeviceExchangeRejectsContradictoryErrorAndToken(t *testing.T) {
 	}
 }
 
+func TestDeviceExchangeRejectsDuplicateDecisionFields(t *testing.T) {
+	server, _ := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`","error":"failed","error":""}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+
+	_, err := githubDeviceTokenUsingContext(context.Background(), server.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "duplicate object field") {
+		t.Fatalf("duplicate exchange response = %v", err)
+	}
+	if strings.Contains(err.Error(), testGitHubToken) || strings.Contains(err.Error(), testRegistryToken) {
+		t.Fatalf("duplicate exchange error leaked a credential: %v", err)
+	}
+}
+
 func TestDevicePollingErrorRedactsCredentials(t *testing.T) {
 	server, capture := newDeviceFlowServer(t,
 		`{"error":"`+testDeviceCode+` `+testGitHubToken+` `+testRegistryToken+`"}`,
@@ -230,6 +245,22 @@ func TestDevicePollingRejectsContradictoryErrorAndToken(t *testing.T) {
 	}
 	if capture.exchangedGitHubToken != "" {
 		t.Fatalf("contradictory token response exchanged %q", capture.exchangedGitHubToken)
+	}
+}
+
+func TestDevicePollingRejectsDuplicateDecisionFields(t *testing.T) {
+	server, capture := newDeviceFlowServer(t,
+		`{"access_token":"`+testGitHubToken+`","error":"access_denied","error":""}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+
+	_, err := githubDeviceTokenUsingContext(context.Background(), server.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "duplicate object field") {
+		t.Fatalf("duplicate token response = %v", err)
+	}
+	if capture.exchangedGitHubToken != "" {
+		t.Fatalf("duplicate token response exchanged %q", capture.exchangedGitHubToken)
 	}
 }
 
@@ -321,6 +352,27 @@ func TestDeviceAuthorizationRejectsScopeEscalationBeforeGitHub(t *testing.T) {
 	}
 	if got := githubRequests.Load(); got != 0 {
 		t.Fatalf("scope escalation made %d GitHub requests", got)
+	}
+}
+
+func TestDeviceAuthorizationRejectsClientConfigErrorBeforeGitHub(t *testing.T) {
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"client_id":"client-id","scope":"read:user","error":"failed"}`))
+	}))
+	defer registry.Close()
+	var githubRequests atomic.Int32
+	github := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		githubRequests.Add(1)
+	}))
+	defer github.Close()
+
+	hooks := deviceFlowTestHooks(t, github.URL, new(string))
+	_, err := githubDeviceTokenUsingContext(context.Background(), registry.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "error in the GitHub client configuration") {
+		t.Fatalf("client config error response = %v", err)
+	}
+	if got := githubRequests.Load(); got != 0 {
+		t.Fatalf("client config error made %d GitHub requests", got)
 	}
 }
 
