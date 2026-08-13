@@ -101,6 +101,38 @@ path also dropped one allocation per operation: 380 to 379 for `many_funcs` and
 test interleaves 128 compilations with opposing frame policies and verifies that
 each produces its serial reference bytes without changing process defaults.
 
+### Identity finalization seam
+
+The ARM64 function-completion path now calls a shared zero-copy identity
+finalizer and routes these function-relative offsets through its old-to-new map:
+
+```text
+internal entry
+module direct-call relocation sites
+adapter continuation
+GC adapter continuation
+GC call-return sites
+```
+
+Frame adjustment sites remain explicit compiler fields, while NOP holes proved
+by branch folding and same-register store/load forwarding are retained in reused
+branch-target scratch. `WAGO_FINALIZE=0` bypasses the seam, and
+`WAGO_FINALIZE_VALIDATE=1` enables exhaustive site/label validation for tests
+and debugging. The default path does not allocate or copy a function image.
+
+Paired on/off measurements used the same working tree and the regular p1
+commands below:
+
+| Workload | Finalizer off median | Identity finalizer median | Change | B/op / allocs |
+| --- | ---: | ---: | ---: | ---: |
+| `many_funcs` | 280,221 ns/op | 279,200 ns/op | -0.36% | 195,144 / 379, unchanged |
+| `json-as` | 998,834 ns/op | 1,005,071 ns/op | +0.62% | 351,174 / 1,272, unchanged |
+
+Native output remained byte-identical at 28,984 B and 77,516 B. These deltas are
+treated as noise. Shrinking is still disabled: internal PC-relative branches,
+ADR references, and jump-table edges must become explicitly repatchable before
+the first deletion is allowed.
+
 ### Commands
 
 ```sh

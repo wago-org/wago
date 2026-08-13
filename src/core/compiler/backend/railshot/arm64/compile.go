@@ -1681,6 +1681,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			}
 		}
 		f.finalizePeepholes()
+		internalOff, err = f.finalizeNativeCode(internalOff)
+		if err != nil {
+			return nil, nil, 0, err
+		}
 		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
 	}
@@ -1701,6 +1705,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	f.finalizePeepholes()
+	if _, err := f.finalizeNativeCode(0); err != nil {
+		return nil, nil, 0, err
+	}
 	f.finalizeStats(len(f.a.B))
 	return f.a.B, f.relocs, 0, nil
 }

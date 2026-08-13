@@ -2,7 +2,9 @@
 
 package arm64
 
-import "os"
+import (
+	"os"
+)
 
 // branchFoldEnabled gates the post-assembly double-branch peephole. On by
 // default; WAGO_ARM64_NOBRFOLD=1 disables it for A/B measurement.
@@ -95,6 +97,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 		inv := uint32(cc.Invert())
 		wrWord(b, pc, 0x54000000|(uint32(d)&0x7FFFF)<<5|inv)
 		wrWord(b, mid, nopWord)
+		f.recordDeadHole(mid)
 		f.stats.peep("br-pair-fold")
 		if f.stats != nil {
 			f.stats.NativeSize.BranchFoldHoleBytes += 4
@@ -133,6 +136,7 @@ func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
 		}
 		if rd == rs {
 			wrWord(b, ld, nopWord) // value already in the register
+			f.recordDeadHole(ld)
 			if f.stats != nil {
 				f.stats.NativeSize.StoreLoadNopBytes += 4
 			}
@@ -143,6 +147,16 @@ func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
 		}
 		f.stats.peep("store-load-fwd")
 		pc += 4 // step past the word we just rewrote
+	}
+}
+
+// recordDeadHole retains explicit hole positions in the branch-target map after
+// the target scan is complete. Negative keys cannot be valid function-relative
+// branch targets, so this reuses existing scratch without another allocation or
+// per-function slice. The finalizer decodes these entries before compaction.
+func (f *fn) recordDeadHole(off int) {
+	if nativeFinalizerEnabled {
+		f.scratchState().branchTargets[-off-1] = true
 	}
 }
 
