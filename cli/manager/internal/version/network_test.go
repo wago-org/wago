@@ -483,6 +483,29 @@ func TestReleaseDiscoveryBoundsTotalPagination(t *testing.T) {
 	}
 }
 
+func TestDiscoveryPagersDistinguishExhaustionFromHardLimit(t *testing.T) {
+	releases := newReleaseDiscoveryPager()
+	releases.address = ""
+	releases.pages = 1
+	if releases.hasMore() || releases.limitReached() {
+		t.Fatal("exhausted release pager reported more history or a hard limit")
+	}
+	releases.address = "https://api.github.test/releases?page=51"
+	releases.pages = releaseDiscoveryPageLimit
+	if releases.hasMore() || !releases.limitReached() {
+		t.Fatal("capped release pager did not report its hard limit")
+	}
+
+	commits := commitDiscoveryPager{page: 1, done: true}
+	if commits.hasMore() || commits.limitReached() {
+		t.Fatal("exhausted commit pager reported more history or a hard limit")
+	}
+	commits = commitDiscoveryPager{page: discoveryPageLimit}
+	if commits.hasMore() || !commits.limitReached() {
+		t.Fatal("capped commit pager did not report its hard limit")
+	}
+}
+
 func TestReleaseMetadataIsBoundedAndCancelable(t *testing.T) {
 	oldMaximum := releaseMetadataMaximum
 	releaseMetadataMaximum = 32

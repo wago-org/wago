@@ -56,10 +56,13 @@ func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildV
 			return
 		}
 		var err error
+		history := ""
 		switch choice {
 		case pickerLoadMoreReleases:
+			history = "release"
 			err = discovery.loadReleases(ctx)
 		case pickerLoadMoreCommits:
+			history = "commit"
 			err = discovery.loadCommits(ctx)
 		default:
 			if choice == "latest" {
@@ -77,7 +80,12 @@ func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildV
 			return
 		}
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "wago: version browse: unable to load older history: %v\n", err)
+			fmt.Fprintf(os.Stderr, "wago: version browse: unable to load older %s history: %v\n", history, err)
+			continue
+		}
+		if (choice == pickerLoadMoreReleases && discovery.releasesPager.limitReached()) ||
+			(choice == pickerLoadMoreCommits && discovery.commitsPager.limitReached()) {
+			fmt.Fprintf(os.Stderr, "wago: version browse: %s history page limit reached; install an exact version with `wago version install <version>`\n", history)
 		}
 	}
 }
@@ -108,6 +116,10 @@ func newReleaseDiscoveryPager() releaseDiscoveryPager {
 
 func (p *releaseDiscoveryPager) hasMore() bool {
 	return p.address != "" && p.pages < releaseDiscoveryPageLimit
+}
+
+func (p *releaseDiscoveryPager) limitReached() bool {
+	return p.address != "" && p.pages >= releaseDiscoveryPageLimit
 }
 
 func (p *releaseDiscoveryPager) next(ctx context.Context, operation string) ([]remoteRelease, error) {
@@ -167,6 +179,10 @@ type commitDiscoveryPager struct {
 
 func (p *commitDiscoveryPager) hasMore() bool {
 	return !p.done && p.page < discoveryPageLimit
+}
+
+func (p *commitDiscoveryPager) limitReached() bool {
+	return !p.done && p.page >= discoveryPageLimit
 }
 
 func (p *commitDiscoveryPager) next(ctx context.Context) ([]remoteCommit, error) {
