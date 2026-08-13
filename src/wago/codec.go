@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/bits"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -26,6 +27,11 @@ const (
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
 	compiledGCExecutionMask                      = compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
+
+	// Import names are attacker-controlled artifact metadata. Bound the decoded
+	// string headers plus exact-name sidecar independently of the encoded section
+	// size so compact empty strings cannot amplify into multi-gigabyte allocations.
+	maxImportDirectoryAllocationBytes = 64 << 20
 )
 
 func compiledUvarintLen(v uint64) int {
@@ -268,6 +274,14 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	mark(&sizes.Entries)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
+	funcModuleEnds, _, _, _, exactImportNames := c.importModuleEndSections()
+	for i := range c.Imports {
+		moduleEnd := uint64(0)
+		if exactImportNames {
+			moduleEnd = funcModuleEnds[i]
+		}
+		w.uvar(moduleEnd)
+	}
 	mark(&sizes.Imports)
 	if err := w.typeDescriptors(c.Types); err != nil {
 		return nil, sizes, err
@@ -423,19 +437,31 @@ func (w *compiledWriter) tags(c *Compiled) {
 		w.stringIntMap(nil)
 		return
 	}
+	_, _, _, tagModuleEnds, exactImportNames := c.importModuleEndSections()
 	w.uvar(uint64(len(c.memoryDir.ehTags)))
-	for _, tag := range c.memoryDir.ehTags {
+	for i, tag := range c.memoryDir.ehTags {
 		w.str(tag.ImportKey)
+		moduleEnd := uint64(0)
+		if exactImportNames && tag.ImportKey != "" {
+			moduleEnd = tagModuleEnds[i]
+		}
+		w.uvar(moduleEnd)
 		w.u32(tag.TypeIndex)
 	}
 	w.stringIntMap(c.memoryDir.ehTagExports)
 }
 
 func (w *compiledWriter) memories(c *Compiled) {
+	_, _, memoryModuleEnds, _, exactImportNames := c.importModuleEndSections()
 	w.uvar(uint64(c.memoryCount()))
 	for i := 0; i < c.memoryCount(); i++ {
 		def := c.memoryDef(i)
 		w.str(def.ImportKey)
+		moduleEnd := uint64(0)
+		if exactImportNames && def.ImportKey != "" {
+			moduleEnd = memoryModuleEnds[i]
+		}
+		w.uvar(moduleEnd)
 		w.uvar(def.Min)
 		w.uvar(def.Max)
 		w.bool(def.HasMax)
@@ -681,6 +707,7 @@ func (w *compiledWriter) globals(v []GlobalDef, c *Compiled) error {
 
 func (w *compiledWriter) tables(c *Compiled) error {
 	count := c.tableCount()
+	_, tableModuleEnds, _, _, exactImportNames := c.importModuleEndSections()
 	w.uvar(uint64(count))
 	for i := 0; i < count; i++ {
 		def := c.tableDef(i)
@@ -691,6 +718,11 @@ func (w *compiledWriter) tables(c *Compiled) error {
 		if imp, ok := c.tableImportAt(i); ok {
 			w.u8(1)
 			w.str(imp.Key)
+			moduleEnd := uint64(0)
+			if exactImportNames {
+				moduleEnd = tableModuleEnds[i]
+			}
+			w.uvar(moduleEnd)
 			w.uvar(uint64(imp.Min))
 			w.uvar(uint64(imp.Max))
 			w.bool(imp.HasMax)
@@ -810,9 +842,13 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 		return fmt.Errorf("NumImports overflows int")
 	}
 	c.NumImports = int(n)
-	c.Imports, err = r.stringSlice()
+	var functionModuleEnds []uint64
+	c.Imports, functionModuleEnds, err = r.importDirectory(c.NumImports)
 	if err != nil {
 		return err
+	}
+	if len(functionModuleEnds) != 0 {
+		c.validateMemo = &validateMemo{importModuleEnds: functionModuleEnds}
 	}
 	c.Types, err = r.typeDescriptors()
 	if err != nil {
@@ -971,7 +1007,10 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 		}
 	}
 	if gcFrameRoots != nil {
-		c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots}
+		if c.validateMemo == nil {
+			c.validateMemo = &validateMemo{}
+		}
+		c.validateMemo.gcFrameRoots = gcFrameRoots
 		if err := validateCompiledGCFrameRoots(c, gcFrameRoots); err != nil {
 			return err
 		}
@@ -1026,7 +1065,7 @@ const (
 	minGlobalBytes       = 1 + 1 + 1
 	minTableBytes        = 1 + 1 + minVarintBytes + minVarintBytes + 1
 	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
-	minTagBytes          = minStringBytes + minU32Bytes
+	minTagBytes          = minStringBytes + minVarintBytes + minU32Bytes
 	minGCDescTailBytes   = 20
 	minGCDescBytes       = minU32Bytes + 1 + 1 + minVarintBytes + minGCDescTailBytes
 	minGCFieldBytes      = 1 + minU32Bytes
@@ -1072,6 +1111,17 @@ func (r *compiledReader) uvar() (uint64, error) {
 	}
 	r.data = r.data[n:]
 	return v, nil
+}
+
+func (r *compiledReader) importModuleEnd(key string) (uint64, error) {
+	moduleEnd, err := r.uvar()
+	if err != nil {
+		return 0, err
+	}
+	if err := validateImportModuleEnd(key, moduleEnd); err != nil {
+		return 0, err
+	}
+	return moduleEnd, nil
 }
 func (r *compiledReader) ivar() (int, error) {
 	v, n := binary.Varint(r.data)
@@ -1158,6 +1208,43 @@ func (r *compiledReader) stringSlice() ([]string, error) {
 	}
 	return out, nil
 }
+
+func (r *compiledReader) importDirectory(want int) ([]string, []uint64, error) {
+	return r.importDirectoryWithAllocationLimit(want, maxImportDirectoryAllocationBytes)
+}
+
+func (r *compiledReader) importDirectoryWithAllocationLimit(want, allocationLimit int) ([]string, []uint64, error) {
+	// Each entry needs at least an empty string length and one module-boundary
+	// varint in the remainder. This also rejects an impossible count before any
+	// decoded directory allocation.
+	n, err := r.countElements("function imports", minStringBytes+minVarintBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	if n != want {
+		return nil, nil, fmt.Errorf("function import directory count %d != NumImports %d", n, want)
+	}
+	const moduleEndBytes = 8
+	decodedBytesPerImport := bits.UintSize/4 + moduleEndBytes // string header + uint64
+	if allocationLimit < 0 || n > allocationLimit/decodedBytesPerImport {
+		return nil, nil, fmt.Errorf("function import count %d exceeds decoded directory allocation limit %d bytes", n, allocationLimit)
+	}
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i], err = r.str()
+		if err != nil {
+			return nil, nil, fmt.Errorf("function import %d key: %w", i, err)
+		}
+	}
+	ends := make([]uint64, n)
+	for i, key := range keys {
+		ends[i], err = r.importModuleEnd(key)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function import %d name: %w", i, err)
+		}
+	}
+	return keys, ends, nil
+}
 func (r *compiledReader) intSlice() ([]int, error) {
 	n, err := r.countElements("int slice", minVarintBytes)
 	if err != nil {
@@ -1204,6 +1291,13 @@ func (r *compiledReader) tags(c *Compiled) error {
 		if err != nil {
 			return fmt.Errorf("exception tag %d import: %w", i, err)
 		}
+		moduleEnd, readErr := r.importModuleEnd(tag.ImportKey)
+		if readErr != nil {
+			return fmt.Errorf("exception tag %d import name: %w", i, readErr)
+		}
+		if tag.ImportKey != "" {
+			c.appendImportModuleEnd(moduleEnd)
+		}
 		tag.TypeIndex, err = r.u32()
 		if err != nil {
 			return fmt.Errorf("exception tag %d type: %w", i, err)
@@ -1222,7 +1316,7 @@ func (r *compiledReader) tags(c *Compiled) error {
 }
 
 func (r *compiledReader) memories(c *Compiled) error {
-	n, err := r.countElements("memories", 6)
+	n, err := r.countElements("memories", 7)
 	if err != nil {
 		return err
 	}
@@ -1237,6 +1331,13 @@ func (r *compiledReader) memories(c *Compiled) error {
 		def.ImportKey, err = r.str()
 		if err != nil {
 			return fmt.Errorf("memory %d import: %w", i, err)
+		}
+		moduleEnd, readErr := r.importModuleEnd(def.ImportKey)
+		if readErr != nil {
+			return fmt.Errorf("memory %d import name: %w", i, readErr)
+		}
+		if def.ImportKey != "" {
+			c.appendImportModuleEnd(moduleEnd)
 		}
 		def.Min, err = r.uvar()
 		if err != nil {
@@ -1865,6 +1966,11 @@ func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types [
 			if err != nil {
 				return err
 			}
+			moduleEnd, readErr := r.importModuleEnd(def.ImportKey)
+			if readErr != nil {
+				return fmt.Errorf("table import %d name: %w", i, readErr)
+			}
+			c.appendImportModuleEnd(moduleEnd)
 			min, err := r.uvar()
 			if err != nil {
 				return err

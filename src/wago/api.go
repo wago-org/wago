@@ -1443,16 +1443,26 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	importedTables := m.ImportedTableCount()
+	importedMemories := m.ImportedMemCount()
+	importedTags := m.ImportedTagCount()
+	if importNameCount := importedFuncs + importedTables + importedMemories + importedTags; importNameCount != 0 {
+		c.validateMemo.importModuleEnds = make([]uint64, importNameCount)
+	}
 	var additionalTableImports []tableImportDef
 	if importedTables > 1 {
 		additionalTableImports = make([]tableImportDef, 0, importedTables-1)
 	}
 	tableImportIndex := 0
+	funcImportIndex := 0
+	memoryImportIndex := 0
+	tagImportIndex := 0
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
+			c.validateMemo.importModuleEnds[funcImportIndex] = exactImportModuleEnd(im.Module)
+			funcImportIndex++
 		case wasm.ExternGlobal:
 			exact, err := typeConverter.valueType(im.Type.GlobalType().Type, -1)
 			if err != nil {
@@ -1469,6 +1479,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		case wasm.ExternMem:
 			def := memoryDefFromWasm(im.Type.MemType())
 			def.ImportKey = im.Module + "." + im.Name
+			c.validateMemo.importModuleEnds[importedFuncs+importedTables+memoryImportIndex] = exactImportModuleEnd(im.Module)
+			memoryImportIndex++
 			c.memoryDir.defs = append(c.memoryDir.defs, def)
 			if c.memoryImport == "" {
 				c.memoryImport = def.ImportKey
@@ -1483,6 +1495,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
 			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.TableType().Limits.Addr64}
+			c.validateMemo.importModuleEnds[importedFuncs+tableImportIndex] = exactImportModuleEnd(im.Module)
 			min := im.Type.TableType().Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
@@ -1508,6 +1521,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			tableImportIndex++
 		case wasm.ExternTag:
 			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.TagType().Type.Index})
+			c.validateMemo.importModuleEnds[importedFuncs+importedTables+importedMemories+tagImportIndex] = exactImportModuleEnd(im.Module)
+			tagImportIndex++
 		}
 	}
 	if features.ExceptionHandling {
@@ -2640,6 +2655,9 @@ func (c *Compiled) validate() error {
 	if len(c.importFuncSigs) != c.NumImports {
 		return fmt.Errorf("compiled metadata invalid: importFuncSigs length %d != NumImports %d", len(c.importFuncSigs), c.NumImports)
 	}
+	if err := c.validateImportModuleEnds(); err != nil {
+		return err
+	}
 	if c.dynamicImports != (c.NumImports > 0) {
 		return fmt.Errorf("compiled metadata invalid: dynamic import dispatch=%v with %d function import(s)", c.dynamicImports, c.NumImports)
 	}
@@ -3178,6 +3196,9 @@ func (c *Compiled) validateExactValueMetadata() error {
 }
 
 func (c *Compiled) validateCodecMetadata() error {
+	if err := c.validateImportModuleEnds(); err != nil {
+		return err
+	}
 	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
 		return err
 	}
