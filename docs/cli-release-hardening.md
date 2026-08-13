@@ -34,7 +34,10 @@ the short-lived user code; headless mode leaves that URL for the user to open
 elsewhere. The GitHub access token is sent to the registry in a bounded POST
 body, and the long-lived Wago bearer token is accepted only from that exchange's
 bounded response body. Both registry requests remain pinned to the origin chosen
-at login start. Wago does not run a loopback callback server or place either
+at login start, redirects are not followed, and bearer validation uses that same
+origin. Registry authentication requires HTTPS except for explicit loopback
+development servers. Browser targets must match GitHub's device-verification
+origin and path. Wago does not run a loopback callback server or place either
 credential in a browser-visible URL.
 
 ## Release downloads

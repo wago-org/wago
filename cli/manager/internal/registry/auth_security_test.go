@@ -203,3 +203,83 @@ func TestDeviceAuthorizationPinsRegistryOrigin(t *testing.T) {
 		t.Fatalf("pinned registry did not receive exchange token: %q", capture.exchangedGitHubToken)
 	}
 }
+
+func TestDeviceVerificationURLIsPinnedToProvider(t *testing.T) {
+	const endpoint = "https://github.com/login/device/code"
+	const fallback = "https://github.com/login/device"
+	for _, test := range []struct {
+		name      string
+		candidate string
+		want      string
+	}{
+		{name: "empty", want: fallback},
+		{name: "plain", candidate: fallback, want: fallback},
+		{name: "complete", candidate: fallback + "?user_code=ABCD-EFGH", want: fallback + "?user_code=ABCD-EFGH"},
+		{name: "plaintext", candidate: "http://github.com/login/device", want: fallback},
+		{name: "custom scheme", candidate: "file:///etc/passwd", want: fallback},
+		{name: "userinfo", candidate: "https://github.com@evil.example/login/device", want: fallback},
+		{name: "lookalike", candidate: "https://github.com.evil.example/login/device", want: fallback},
+		{name: "subdomain", candidate: "https://device.github.com/login/device", want: fallback},
+		{name: "port", candidate: "https://github.com:8443/login/device", want: fallback},
+		{name: "wrong path", candidate: "https://github.com/login/oauth/authorize", want: fallback},
+		{name: "fragment", candidate: "https://github.com/login/device#credential", want: fallback},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := trustedDeviceVerificationURL(test.candidate, endpoint); got != test.want {
+				t.Fatalf("trustedDeviceVerificationURL(%q) = %q, want %q", test.candidate, got, test.want)
+			}
+		})
+	}
+}
+
+func TestBrowserDeviceFlowRejectsUntrustedVerificationURL(t *testing.T) {
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/auth/github/client":
+			_, _ = writer.Write([]byte(`{"client_id":"client-id","scope":"read:user"}`))
+		case "/api/auth/github/exchange":
+			_, _ = writer.Write([]byte(`{"token":"` + testRegistryToken + `"}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer registry.Close()
+	oauth := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/login/device/code":
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"device_code":               testDeviceCode,
+				"user_code":                 "short-lived-code",
+				"verification_uri":          "file:///etc/passwd",
+				"verification_uri_complete": "https://evil.example/collect?token=secret",
+				"expires_in":                600,
+				"interval":                  1,
+			})
+		case "/login/oauth/access_token":
+			_, _ = writer.Write([]byte(`{"access_token":"` + testGitHubToken + `"}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer oauth.Close()
+
+	var openedURL string
+	hooks := deviceFlowHooks{
+		deviceCodeEndpoint:  oauth.URL + "/login/device/code",
+		accessTokenEndpoint: oauth.URL + "/login/oauth/access_token",
+		openBrowser: func(target string) error {
+			openedURL = target
+			return nil
+		},
+		wait: func(ctx context.Context, _ time.Duration) error {
+			return ctx.Err()
+		},
+	}
+	_, err := githubDeviceTokenUsingContext(context.Background(), registry.URL, true, hooks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if openedURL != oauth.URL+"/login/device" {
+		t.Fatalf("opened URL = %q", openedURL)
+	}
+}

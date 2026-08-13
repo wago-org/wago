@@ -78,6 +78,44 @@ func TestClientParentCancellation(t *testing.T) {
 	}
 }
 
+func TestAPIClientDoesNotFollowRedirects(t *testing.T) {
+	var sinkRequests atomic.Int32
+	sink := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		sinkRequests.Add(1)
+	}))
+	defer sink.Close()
+
+	for _, status := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			redirector := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Location", sink.URL)
+				writer.WriteHeader(status)
+			}))
+			defer redirector.Close()
+
+			request, err := http.NewRequest(http.MethodPost, redirector.URL, strings.NewReader("credential=secret"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := NewAPI().Bytes(context.Background(), request, 1024)
+			if err != nil {
+				t.Fatalf("redirect response: %v", err)
+			}
+			if response.StatusCode != status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, status)
+			}
+		})
+	}
+	if got := sinkRequests.Load(); got != 0 {
+		t.Fatalf("redirect sink received %d credential-bearing requests", got)
+	}
+}
+
 func TestReadBoundedLimits(t *testing.T) {
 	const limit = int64(8)
 	if got, err := ReadBounded(strings.NewReader("12345678"), -1, limit, "test"); err != nil || string(got) != "12345678" {

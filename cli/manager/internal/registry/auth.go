@@ -50,7 +50,7 @@ func registryLoginContext(ctx context.Context, options LoginRequest) {
 			return
 		}
 	}
-	me, err := fetchMeContext(ctx, token)
+	me, err := fetchMeAtBaseContext(ctx, base, token)
 	if err != nil {
 		if errors.Is(err, errUnauthorized) {
 			fatal("login: the registry rejected that token")
@@ -226,17 +226,14 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	}
 
 	lifetime, pollInterval := deviceFlowTiming(dc.ExpiresIn, dc.Interval)
-	verifyURI := dc.VerificationURI
-	if verifyURI == "" {
-		verifyURI = "https://github.com/login/device"
-	}
+	verifyURI := trustedDeviceVerificationURL(dc.VerificationURI, hooks.deviceCodeEndpoint)
 
 	// Print the one-time code before launching a browser so it remains available
 	// when GitHub does not provide a verification_uri_complete value.
 	fmt.Printf("\n  First, copy your one-time code:\n\n      %s\n\n", bold(dc.UserCode))
 	if openBrowser {
-		browserURL := dc.VerificationURIComplete
-		if browserURL == "" {
+		browserURL := trustedDeviceVerificationURL(dc.VerificationURIComplete, hooks.deviceCodeEndpoint)
+		if dc.VerificationURIComplete == "" || browserURL == "" {
 			browserURL = verifyURI
 		}
 		if err := hooks.openBrowser(browserURL); err != nil {
@@ -315,6 +312,24 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 		return "", errors.New("registry returned no token after the GitHub exchange")
 	}
 	return xr.Token, nil
+}
+
+func trustedDeviceVerificationURL(candidate, deviceCodeEndpoint string) string {
+	provider, err := url.Parse(deviceCodeEndpoint)
+	if err != nil || provider.Scheme == "" || provider.Host == "" || provider.User != nil {
+		return ""
+	}
+	fallback := &url.URL{Scheme: provider.Scheme, Host: provider.Host, Path: "/login/device"}
+	if candidate == "" {
+		return fallback.String()
+	}
+	target, err := url.Parse(candidate)
+	if err != nil || target.Opaque != "" || target.User != nil || target.Fragment != "" ||
+		!strings.EqualFold(target.Scheme, provider.Scheme) || !strings.EqualFold(target.Host, provider.Host) ||
+		target.Path != "/login/device" {
+		return fallback.String()
+	}
+	return target.String()
 }
 
 // registryLogout deletes stored credentials for the current registry.

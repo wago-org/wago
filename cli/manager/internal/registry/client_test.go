@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,6 +56,101 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 	}
 	if got := apiError(http.StatusBadRequest, []byte("not json")); got != "server returned status 400" {
 		t.Fatalf("apiError fallback = %q", got)
+	}
+}
+
+func TestRegistryBaseURLSecurityPolicy(t *testing.T) {
+	for _, base := range []string{
+		"https://registry.example",
+		"https://registry.example:8443/prefix",
+		"http://localhost:8080",
+		"http://api.localhost:8080",
+		"http://127.0.0.1:8080",
+		"http://127.255.255.254:8080",
+		"http://[::1]:8080",
+	} {
+		if err := validateRegistryBaseURL(base); err != nil {
+			t.Errorf("validateRegistryBaseURL(%q) = %v", base, err)
+		}
+	}
+	for _, base := range []string{
+		"http://registry.example",
+		"http://localhost.example",
+		"ftp://registry.example",
+		"registry.example",
+		"https://user:password@registry.example",
+		"https://registry.example?destination=evil",
+		"https://registry.example#fragment",
+	} {
+		if err := validateRegistryBaseURL(base); err == nil {
+			t.Errorf("validateRegistryBaseURL(%q) succeeded", base)
+		}
+	}
+}
+
+func TestRegistryRequestRejectsRemotePlaintextBeforeDial(t *testing.T) {
+	_, _, err := apiRequestAtBaseContext(context.Background(), "http://192.0.2.1", http.MethodPost,
+		"/api/auth/github/exchange", "", map[string]string{"access_token": testGitHubToken})
+	if err == nil || !strings.Contains(err.Error(), "HTTPS is required") {
+		t.Fatalf("remote plaintext registry = %v", err)
+	}
+}
+
+func TestFetchMeUsesPinnedRegistryOrigin(t *testing.T) {
+	var receivedBearer string
+	var unexpectedRequests atomic.Int32
+	pinned := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedBearer = request.Header.Get("Authorization")
+		_, _ = writer.Write([]byte(`{"login":"alice"}`))
+	}))
+	defer pinned.Close()
+
+	unexpected := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		unexpectedRequests.Add(1)
+	}))
+	defer unexpected.Close()
+	t.Setenv("WAGO_REGISTRY", unexpected.URL)
+
+	me, err := fetchMeAtBaseContext(context.Background(), pinned.URL, testRegistryToken)
+	if err != nil || me.Login != "alice" {
+		t.Fatalf("fetchMeAtBaseContext = %+v, %v", me, err)
+	}
+	if receivedBearer != "Bearer "+testRegistryToken {
+		t.Fatalf("pinned registry received Authorization %q", receivedBearer)
+	}
+	if got := unexpectedRequests.Load(); got != 0 {
+		t.Fatalf("mutable registry received %d bearer validation requests", got)
+	}
+}
+
+func TestRegistryExchangeRedirectDoesNotForwardCredential(t *testing.T) {
+	for _, status := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var sinkRequests atomic.Int32
+			sink := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				sinkRequests.Add(1)
+			}))
+			defer sink.Close()
+			registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Location", sink.URL)
+				writer.WriteHeader(status)
+			}))
+			defer registry.Close()
+
+			gotStatus, _, err := apiRequestAtBaseContext(context.Background(), registry.URL, http.MethodPost,
+				"/api/auth/github/exchange", testRegistryToken, map[string]string{"access_token": testGitHubToken})
+			if err != nil || gotStatus != status {
+				t.Fatalf("redirect response = %d, %v", gotStatus, err)
+			}
+			if got := sinkRequests.Load(); got != 0 {
+				t.Fatalf("redirect sink received %d credential-bearing requests", got)
+			}
+		})
 	}
 }
 

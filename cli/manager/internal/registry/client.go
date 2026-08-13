@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -50,6 +52,9 @@ func apiRequestAtBaseContext(ctx context.Context, base, method, path, token stri
 	if err := automation.RequireOnline("registry request"); err != nil {
 		return 0, nil, err
 	}
+	if err := validateRegistryBaseURL(base); err != nil {
+		return 0, nil, err
+	}
 	var reader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -70,6 +75,36 @@ func apiRequestAtBaseContext(ctx context.Context, base, method, path, token stri
 	}
 	response, err := registryHTTP.Bytes(ctx, req, registryResponseMaximum)
 	return response.StatusCode, response.Body, err
+}
+
+func validateRegistryBaseURL(base string) error {
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return fmt.Errorf("invalid registry URL: %w", err)
+	}
+	if parsed.Opaque != "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("invalid registry URL: expected an HTTP(S) base URL without credentials, query, or fragment")
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(parsed.Hostname()) {
+			return nil
+		}
+		return errors.New("insecure registry URL: HTTPS is required except for loopback development servers")
+	default:
+		return errors.New("invalid registry URL: expected HTTPS or loopback HTTP")
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	address := net.ParseIP(host)
+	return address != nil && address.IsLoopback()
 }
 
 // recordRegistryInstall reports one successfully installed plugin to the public
@@ -116,7 +151,11 @@ func fetchMe(token string) (meResponse, error) {
 }
 
 func fetchMeContext(ctx context.Context, token string) (meResponse, error) {
-	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/me", token, nil)
+	return fetchMeAtBaseContext(ctx, registryBase(), token)
+}
+
+func fetchMeAtBaseContext(ctx context.Context, base, token string) (meResponse, error) {
+	status, data, err := apiRequestAtBaseContext(ctx, base, http.MethodGet, "/api/me", token, nil)
 	if err != nil {
 		return meResponse{}, err
 	}
