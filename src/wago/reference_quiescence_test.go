@@ -56,7 +56,7 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeDone := make(chan error, 1)
-	go func() { closeDone <- rt.Close() }()
+	go func() { closeDone <- rt.CloseContext(context.Background()) }()
 
 	var closeAccounted, quiesced, resourcesReleased bool
 	var tokens int
