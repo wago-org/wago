@@ -142,7 +142,7 @@ func loadCredentials() (_ map[string]credential, resultErr error) {
 	// Registry URLs are map keys and therefore case-sensitive, while fields in
 	// each credential object follow encoding/json's case-insensitive struct
 	// matching. Apply the matching rule appropriate to each layer.
-	if err := validateUniqueJSON(data, false); err != nil {
+	if err := ValidateUniqueJSON(data); err != nil {
 		return nil, errors.New("credential store contains invalid JSON")
 	}
 	var entries map[string]json.RawMessage

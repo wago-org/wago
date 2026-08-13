@@ -48,7 +48,7 @@ func PostFormContext(ctx context.Context, endpoint string, form url.Values, outp
 // responses contain security decisions whose meaning must not depend on whether
 // a decoder keeps the first or last spelling of a repeated field.
 func unmarshalUniqueJSON(data []byte, output any) error {
-	if err := ValidateUniqueJSON(data); err != nil {
+	if err := ValidateUniqueFoldedJSON(data); err != nil {
 		return err
 	}
 	if err := json.Unmarshal(data, output); err != nil {
@@ -57,13 +57,27 @@ func unmarshalUniqueJSON(data []byte, output any) error {
 	return nil
 }
 
-// ValidateUniqueJSON validates one JSON value and rejects object members whose
-// names repeat under the case-insensitive matching used by encoding/json.
+// ValidateUniqueJSON validates one JSON value and rejects exactly repeated
+// object members. JSON map keys remain case-sensitive.
 func ValidateUniqueJSON(data []byte) error {
-	return validateUniqueJSON(data, true)
+	return validateUniqueJSON(data, false, nil)
 }
 
-func validateUniqueJSON(data []byte, foldNames bool) error {
+// ValidateUniqueFoldedJSON additionally treats case-folded object member names
+// as duplicates, matching encoding/json's struct-field lookup. Values of fields
+// in exactSubtrees use ordinary case-sensitive JSON object semantics.
+func ValidateUniqueFoldedJSON(data []byte, exactSubtrees ...string) error {
+	var exact map[string]struct{}
+	if len(exactSubtrees) > 0 {
+		exact = make(map[string]struct{}, len(exactSubtrees))
+	}
+	for _, field := range exactSubtrees {
+		exact[foldJSONName(field)] = struct{}{}
+	}
+	return validateUniqueJSON(data, true, exact)
+}
+
+func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]struct{}) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	var frames []uniqueJSONFrame
@@ -90,7 +104,14 @@ func validateUniqueJSON(data []byte, foldNames bool) error {
 				if err := beginUniqueJSONValue(frames, &rootStarted); err != nil {
 					return err
 				}
-				frames = append(frames, uniqueJSONFrame{object: delimiter == '{', wantKey: delimiter == '{'})
+				childFoldNames := foldNames
+				if len(frames) > 0 {
+					childFoldNames = frames[len(frames)-1].valueFoldNames
+				}
+				frames = append(frames, uniqueJSONFrame{
+					object: delimiter == '{', wantKey: delimiter == '{',
+					foldNames: childFoldNames, valueFoldNames: childFoldNames,
+				})
 			case '}', ']':
 				if len(frames) == 0 {
 					return errors.New("JSON response contains an unexpected closing delimiter")
@@ -117,13 +138,17 @@ func validateUniqueJSON(data []byte, foldNames bool) error {
 				frame.members = map[string]struct{}{}
 			}
 			canonicalKey := key
-			if foldNames {
+			if frame.foldNames {
 				canonicalKey = foldJSONName(key)
 			}
 			if _, exists := frame.members[canonicalKey]; exists {
 				return errors.New("JSON response contains a duplicate object field")
 			}
 			frame.members[canonicalKey] = struct{}{}
+			frame.valueFoldNames = frame.foldNames
+			if _, exact := exactSubtrees[foldJSONName(key)]; exact {
+				frame.valueFoldNames = false
+			}
 			frame.wantKey = false
 			continue
 		}
@@ -136,9 +161,11 @@ func validateUniqueJSON(data []byte, foldNames bool) error {
 }
 
 type uniqueJSONFrame struct {
-	object  bool
-	wantKey bool
-	members map[string]struct{}
+	object         bool
+	wantKey        bool
+	foldNames      bool
+	valueFoldNames bool
+	members        map[string]struct{}
 }
 
 func beginUniqueJSONValue(frames []uniqueJSONFrame, rootStarted *bool) error {

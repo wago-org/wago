@@ -50,9 +50,12 @@ Bodies returned by failed authenticated requests are discarded so reflected
 credentials cannot reach errors or terminal output. Contradictory OAuth
 success/error responses fail closed, duplicate authentication JSON members are
 rejected before decoding, and credential stores must be regular files containing
-unambiguous JSON entries. Catalog
-source checksums, versions, and digests are validated before use; invalid remote
-metadata is not copied into terminal errors.
+unambiguous JSON entries. Catalog source checksums, versions, and digests are
+validated before use; invalid remote metadata is not copied into terminal errors.
+Catalog pages are preflighted before
+materializing release structs, so the 256-release page bound also bounds retained
+decode memory. Duplicate catalog struct fields fail closed while case-sensitive
+property names inside embedded configuration JSON Schema remain distinct.
 
 ## Release downloads
 

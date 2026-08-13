@@ -35,6 +35,14 @@ type CatalogRelease struct {
 	ReleaseFingerprint string                    `json:"releaseFingerprint"`
 }
 
+type catalogEnvelope struct {
+	Plugins    []CatalogRelease `json:"plugins"`
+	Total      int              `json:"total"`
+	Offset     int              `json:"offset"`
+	Limit      int              `json:"limit"`
+	NextOffset *int             `json:"nextOffset,omitempty"`
+}
+
 type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
@@ -103,16 +111,15 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		if response.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("resolve %s: %s", id, registry.ResponseError(response.StatusCode, data))
 		}
-		var envelope struct {
-			Plugins    []CatalogRelease `json:"plugins"`
-			Total      int              `json:"total"`
-			Offset     int              `json:"offset"`
-			Limit      int              `json:"limit"`
-			NextOffset *int             `json:"nextOffset,omitempty"`
-		}
-		if err := registry.ValidateUniqueJSON(data); err != nil {
+		if err := preflightCatalogPage(data, pageLimit); err != nil {
 			return nil, fmt.Errorf("resolve %s: catalog returned invalid metadata", id)
 		}
+		// configSchema is arbitrary JSON whose property names are case-sensitive;
+		// the surrounding catalog structs use encoding/json's folded field lookup.
+		if err := registry.ValidateUniqueFoldedJSON(data, "configSchema"); err != nil {
+			return nil, fmt.Errorf("resolve %s: catalog returned invalid metadata", id)
+		}
+		var envelope catalogEnvelope
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&envelope); err != nil {
@@ -156,6 +163,84 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 	}
 	sortCatalogReleases(releases)
 	return releases, nil
+}
+
+func preflightCatalogPage(data []byte, maximumPlugins int) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		return errors.New("catalog page must be a JSON object")
+	}
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return errors.New("catalog page contains a non-string key")
+		}
+		if !strings.EqualFold(key, "plugins") {
+			if err := skipJSONValue(decoder); err != nil {
+				return err
+			}
+			continue
+		}
+		array, err := decoder.Token()
+		if err != nil || array != json.Delim('[') {
+			return errors.New("catalog plugins must be an array")
+		}
+		count := 0
+		for decoder.More() {
+			count++
+			if count > maximumPlugins {
+				return errors.New("catalog plugins exceed the page limit")
+			}
+			if err := skipJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim(']') {
+			return errors.New("catalog plugins array is incomplete")
+		}
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		return errors.New("catalog page object is incomplete")
+	}
+	return requireJSONEOF(decoder)
+}
+
+func skipJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	if delimiter != '{' && delimiter != '[' {
+		return errors.New("unexpected closing JSON delimiter")
+	}
+	depth := 1
+	for depth > 0 {
+		token, err = decoder.Token()
+		if err != nil {
+			return err
+		}
+		if delimiter, ok = token.(json.Delim); ok {
+			switch delimiter {
+			case '{', '[':
+				depth++
+			case '}', ']':
+				depth--
+			}
+		}
+	}
+	return nil
 }
 
 // MemoryCatalog is a deterministic in-memory adapter used by resolver tests.

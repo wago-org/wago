@@ -591,6 +591,83 @@ func TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(t *testing.T) {
 	}
 }
 
+func TestHTTPCatalogPreservesCaseSensitiveConfigSchemaProperties(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	release.Definition.ConfigSchema = json.RawMessage(`{
+		"type":"object",
+		"properties":{"Foo":{"type":"string"},"foo":{"type":"string"}},
+		"additionalProperties":false
+	}`)
+	release = resignRelease(t, release)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins": []CatalogRelease{release}, "total": 1, "offset": 0, "limit": 256,
+		})
+	}))
+	defer server.Close()
+
+	got, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), release.ID, []string{"*"})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("case-sensitive config schema catalog = %#v, %v", got, err)
+	}
+}
+
+func TestHTTPCatalogRejectsExactDuplicateConfigSchemaProperties(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	release.Definition.ConfigSchema = json.RawMessage(`{
+		"type":"object",
+		"properties":{"mode":{"type":"string"},"mode":{"type":"number"}},
+		"additionalProperties":false
+	}`)
+	release = resignRelease(t, release)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins": []CatalogRelease{release}, "total": 1, "offset": 0, "limit": 256,
+		})
+	}))
+	defer server.Close()
+
+	_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), release.ID, []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "invalid metadata") {
+		t.Fatalf("duplicate config schema property = %v", err)
+	}
+}
+
+func TestCatalogPreflightRejectsOversizedPageBeforeMaterialization(t *testing.T) {
+	data := oversizedCatalogPage(100_000)
+	if err := preflightCatalogPage(data, 256); err == nil || !strings.Contains(err.Error(), "page limit") {
+		t.Fatalf("oversized catalog preflight = %v", err)
+	}
+}
+
+func BenchmarkCatalogPreflightOversizedPage(b *testing.B) {
+	data := oversizedCatalogPage(100_000)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for range b.N {
+		if err := preflightCatalogPage(data, 256); err == nil {
+			b.Fatal("oversized catalog page succeeded")
+		}
+	}
+}
+
+func oversizedCatalogPage(entries int) []byte {
+	var body strings.Builder
+	body.Grow(len(`{"plugins":[],"total":1,"offset":0,"limit":256}`) + entries*3)
+	body.WriteString(`{"plugins":[`)
+	for index := range entries {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.WriteString(`{}`)
+	}
+	body.WriteString(`],"total":1,"offset":0,"limit":256}`)
+	return []byte(body.String())
+}
+
 func TestHTTPCatalogRejectsAmbiguousMetadataWithoutReflection(t *testing.T) {
 	unsafe := "untrusted\x1b[2J" + strings.Repeat("x", 1024)
 	for _, test := range []struct {
