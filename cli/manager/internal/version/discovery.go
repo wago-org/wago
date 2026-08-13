@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,7 +62,11 @@ func fetchReleases() ([]remoteRelease, error) {
 	return fetchReleasesContext(context.Background())
 }
 
-const discoveryPageLimit = 10
+const (
+	discoveryPageLimit        = 10
+	releaseDiscoveryPageSize  = 20
+	releaseDiscoveryPageLimit = 50
+)
 
 func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 	var releases []remoteRelease
@@ -73,9 +78,9 @@ func fetchReleasesContext(ctx context.Context) ([]remoteRelease, error) {
 }
 
 func forEachReleasePage(ctx context.Context, operation string, visit func([]remoteRelease) bool) error {
-	address := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=1", releaseAPI())
-	seen := make(map[string]struct{}, discoveryPageLimit)
-	for page := 1; page <= discoveryPageLimit; page++ {
+	address := fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=%d&page=1", releaseAPI(), releaseDiscoveryPageSize)
+	seen := make(map[string]struct{}, releaseDiscoveryPageLimit)
+	for page := 1; page <= releaseDiscoveryPageLimit; page++ {
 		if _, duplicate := seen[address]; duplicate {
 			return fmt.Errorf("GitHub release pagination loop at page %d", page)
 		}
@@ -91,7 +96,7 @@ func forEachReleasePage(ctx context.Context, operation string, visit func([]remo
 		if err := json.Unmarshal(response.Body, &batch); err != nil {
 			return err
 		}
-		if len(batch) > 100 {
+		if len(batch) > releaseDiscoveryPageSize {
 			return fmt.Errorf("GitHub returned too many releases on page %d", page)
 		}
 		if !visit(batch) {
@@ -105,12 +110,12 @@ func forEachReleasePage(ctx context.Context, operation string, visit func([]remo
 			address = next
 			continue
 		}
-		if len(batch) < 100 {
+		if len(batch) < releaseDiscoveryPageSize {
 			return nil
 		}
-		address = fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=100&page=%d", releaseAPI(), page+1)
+		address = fmt.Sprintf("%s/repos/wago-org/wago/releases?per_page=%d&page=%d", releaseAPI(), releaseDiscoveryPageSize, page+1)
 	}
-	return fmt.Errorf("GitHub release discovery exceeded %d pages", discoveryPageLimit)
+	return fmt.Errorf("GitHub release discovery exceeded %d pages", releaseDiscoveryPageLimit)
 }
 
 func releaseNextLink(header http.Header, current string) (string, bool, error) {
@@ -133,13 +138,26 @@ func releaseNextLink(header http.Header, current string) (string, bool, error) {
 				return "", false, fmt.Errorf("GitHub returned a malformed release pagination link: %w", err)
 			}
 			next := base.ResolveReference(reference)
-			if next.Scheme != base.Scheme || next.Host != base.Host || next.Path != base.Path {
+			if next.Scheme != base.Scheme || next.Host != base.Host || !validReleasePaginationPath(base.Path, next.Path) {
 				return "", false, fmt.Errorf("GitHub returned an invalid release pagination target")
 			}
 			return next.String(), true, nil
 		}
 	}
 	return "", false, nil
+}
+
+func validReleasePaginationPath(current, next string) bool {
+	if next == current {
+		return true
+	}
+	const prefix, suffix = "/repositories/", "/releases"
+	if !strings.HasPrefix(next, prefix) || !strings.HasSuffix(next, suffix) {
+		return false
+	}
+	repositoryID := strings.TrimSuffix(strings.TrimPrefix(next, prefix), suffix)
+	id, err := strconv.ParseUint(repositoryID, 10, 64)
+	return err == nil && id != 0
 }
 
 // vmUpdate resolves the moving channel before touching the installed runtime.
