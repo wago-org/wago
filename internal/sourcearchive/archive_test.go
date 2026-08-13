@@ -52,8 +52,12 @@ func TestExtractPreflightRejectsUnsafeOrUnboundedArchives(t *testing.T) {
 		{name: "path depth", entries: []zipEntry{{name: "root/a/b/go.mod"}}, limits: withPathDepth(base, 2), want: "depth limit"},
 		{name: "component bytes", entries: []zipEntry{{name: "root/long/go.mod"}}, limits: withComponentBytes(base, 3), want: "component exceeds 3-byte"},
 		{name: "nonportable component", entries: []zipEntry{{name: "root/CON/go.mod"}}, limits: base, want: "not portable"},
+		{name: "console device base trailing space", entries: []zipEntry{{name: "root/CON .txt/go.mod"}}, limits: base, want: "not portable"},
+		{name: "printer device base trailing space", entries: []zipEntry{{name: "root/LPT1 .log/go.mod"}}, limits: base, want: "not portable"},
 		{name: "console input device", entries: []zipEntry{{name: "root/CONIN$/go.mod"}}, limits: base, want: "not portable"},
+		{name: "console input device base trailing space", entries: []zipEntry{{name: "root/CONIN$ .txt/go.mod"}}, limits: base, want: "not portable"},
 		{name: "console output device extension", entries: []zipEntry{{name: "root/CONOUT$.txt/go.mod"}}, limits: base, want: "not portable"},
+		{name: "console output device base trailing space", entries: []zipEntry{{name: "root/CONOUT$ .txt/go.mod"}}, limits: base, want: "not portable"},
 		{name: "non-ASCII component", entries: []zipEntry{{name: "root/café/go.mod"}}, limits: base, want: "not portable"},
 		{name: "invalid UTF-8 component", entries: []zipEntry{{name: "root/\xff/go.mod", nonUTF8: true}}, limits: base, want: "not portable"},
 		{name: "file size", entries: []zipEntry{{name: "root/go.mod", data: strings.Repeat("x", 33)}}, limits: base, want: "file \"go.mod\" exceeds 32-byte"},
@@ -413,7 +417,12 @@ func TestExtractRejectsStrictMetadataBeforeFilesystemMutation(t *testing.T) {
 			mutateZipEntry(t, archive, "root/bad", func(data []byte, _, local, _ int) {
 				binary.LittleEndian.PutUint32(data[local+18:], 2)
 			})
-		}, want: "local file header sizes"},
+		}, want: "must be zero when using a data descriptor"},
+		{name: "populated descriptor local fields", bad: zipEntry{name: "root/bad", data: "x", store: true}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, central, local, _ int) {
+				copy(data[local+14:local+26], data[central+16:central+28])
+			})
+		}, want: "must be zero when using a data descriptor"},
 		{name: "malformed local header", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
 			mutateZipEntry(t, archive, "root/bad", func(data []byte, _, local, _ int) {
 				binary.LittleEndian.PutUint32(data[local:], 0)
@@ -465,6 +474,24 @@ func TestExtractAcceptsDeflateOptionFlags(t *testing.T) {
 		binary.LittleEndian.PutUint16(data[central+8:], binary.LittleEndian.Uint16(data[central+8:])|zipDeflateOptionFlags)
 		binary.LittleEndian.PutUint16(data[local+6:], binary.LittleEndian.Uint16(data[local+6:])|zipDeflateOptionFlags)
 	})
+	target := filepath.Join(t.TempDir(), "out")
+	if err := Extract(archive, target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExtractAcceptsZIPVersion10ForGitHubCompatibility(t *testing.T) {
+	const githubZIPVersion = 10
+	archive := writeArchive(t, []zipEntry{
+		{name: "root/", dir: true},
+		{name: "root/go.mod", data: "module example.com/test\n"},
+	})
+	for _, name := range []string{"root/", "root/go.mod"} {
+		mutateZipEntry(t, archive, name, func(data []byte, central, local, _ int) {
+			binary.LittleEndian.PutUint16(data[central+6:], githubZIPVersion)
+			binary.LittleEndian.PutUint16(data[local+4:], githubZIPVersion)
+		})
+	}
 	target := filepath.Join(t.TempDir(), "out")
 	if err := Extract(archive, target); err != nil {
 		t.Fatal(err)

@@ -60,10 +60,14 @@ components, 255 bytes per component, 1,024 path bytes, 128 MiB per file, or 512
 MiB expanded content. Directories must have trailing slashes and zero declared
 content. Stored files must have equal compressed and uncompressed sizes. The
 stripped archive root must contain an exactly spelled regular `go.mod` file.
+GitHub zipballs currently label ordinary directory and Deflate entries as ZIP
+version 1.0, so supported Store/Deflate entries retain that compatibility while
+versions above 2.0 and their unsupported features remain rejected independently.
 
 Path components are restricted to portable printable ASCII, including rejection
-of Windows DOS device aliases such as `CON`, `CONIN$`, and `CONOUT$`. A single
-byte scan validates each path, each complete relative path is canonicalized at most once,
+of Windows DOS device aliases such as `CON`, `CONIN$`, and `CONOUT$`, even when
+spaces precede an extension. A single byte scan validates each path, each complete
+relative path is canonicalized at most once,
 and parent nodes are derived by slicing at slash offsets. The preflight therefore
 scales linearly with accepted path metadata rather than repeatedly allocating
 and joining every parent prefix. On Go 1.26.5/linux-amd64 on a Ryzen 7 7800X3D,

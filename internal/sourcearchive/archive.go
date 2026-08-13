@@ -455,6 +455,9 @@ func portablePathComponent(component string) bool {
 	if dot := strings.IndexByte(base, '.'); dot >= 0 {
 		base = base[:dot]
 	}
+	for len(base) > 0 && base[len(base)-1] == ' ' {
+		base = base[:len(base)-1]
+	}
 	if len(base) == 3 && (equalFoldASCII(base, "CON") || equalFoldASCII(base, "PRN") ||
 		equalFoldASCII(base, "AUX") || equalFoldASCII(base, "NUL")) {
 		return false
@@ -603,10 +606,8 @@ func validateZipEntryMetadata(file *zip.File, nameEndsInSlash bool, readerAt io.
 			return false, 0, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
 		}
 	} else {
-		allZero := localCRC == 0 && localCompressed == 0 && localUncompressed == 0
-		allCentral := localCRC == file.CRC32 && uint64(localCompressed) == file.CompressedSize64 && uint64(localUncompressed) == file.UncompressedSize64
-		if !allZero && !allCentral {
-			return false, 0, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
+		if localCRC != 0 || localCompressed != 0 || localUncompressed != 0 {
+			return false, 0, fmt.Errorf("source archive path %q local file header sizes and checksum must be zero when using a data descriptor", file.Name)
 		}
 	}
 	if dataOffset < 0 || directoryOffset < 0 || dataOffset > directoryOffset ||
