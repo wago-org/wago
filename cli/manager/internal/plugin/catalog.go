@@ -61,8 +61,13 @@ func (client defaultCatalogHTTPClient) Do(request *http.Request) (*http.Response
 var registryCatalogHTTP = defaultCatalogHTTPClient{client: httpclient.NewAPI()}
 
 const (
-	catalogPageLimit     = 256
-	maxCatalogCandidates = 1024
+	catalogPageLimit                 = 256
+	catalogResponseLimit       int64 = 4 << 20
+	maxCatalogPages                  = 4
+	maxCatalogBytes                  = maxCatalogPages * catalogResponseLimit
+	maxCatalogCandidates             = 1024
+	maxCatalogNestedCollection       = 128
+	maxCatalogStructureDepth         = 32
 )
 
 func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraints []string) ([]CatalogRelease, error) {
@@ -83,7 +88,13 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 	var releases []CatalogRelease
 	seenReleases := map[string]bool{}
 	wantTotal := -1
+	pages := 0
+	var catalogBytes int64
 	for offset := 0; ; {
+		if pages >= maxCatalogPages {
+			return nil, fmt.Errorf("resolve %s: catalog pagination exceeds %d-page bound", id, maxCatalogPages)
+		}
+		pages++
 		endpoint := *baseEndpoint
 		query := endpoint.Query()
 		query.Set("id", id)
@@ -101,7 +112,7 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		if err != nil {
 			return nil, err
 		}
-		data, readErr := io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))
+		data, readErr := io.ReadAll(io.LimitReader(response.Body, catalogResponseLimit+1))
 		closeErr := response.Body.Close()
 		if readErr != nil {
 			return nil, readErr
@@ -109,9 +120,14 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		if closeErr != nil {
 			return nil, closeErr
 		}
-		if len(data) > 4<<20 {
+		pageBytes := int64(len(data))
+		if pageBytes > catalogResponseLimit {
 			return nil, errors.New("plugin catalog response exceeds 4 MiB")
 		}
+		if pageBytes > maxCatalogBytes-catalogBytes {
+			return nil, fmt.Errorf("resolve %s: catalog metadata exceeds %d MiB cumulative bound", id, maxCatalogBytes>>20)
+		}
+		catalogBytes += pageBytes
 		if response.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("resolve %s: %s", id, registry.ResponseError(response.StatusCode, data))
 		}
@@ -176,7 +192,12 @@ func preflightCatalogPage(data []byte, maximumPlugins int) error {
 	if err != nil || opening != json.Delim('{') {
 		return errors.New("catalog page must be a JSON object")
 	}
+	members := 0
 	for decoder.More() {
+		members++
+		if members > maxCatalogNestedCollection {
+			return errors.New("catalog object exceeds the nested collection limit")
+		}
 		keyToken, err := decoder.Token()
 		if err != nil {
 			return err
@@ -186,7 +207,7 @@ func preflightCatalogPage(data []byte, maximumPlugins int) error {
 			return errors.New("catalog page contains a non-string key")
 		}
 		if !strings.EqualFold(key, "plugins") {
-			if err := skipJSONValue(decoder); err != nil {
+			if err := preflightCatalogValue(decoder, 1, strings.EqualFold(key, "configSchema")); err != nil {
 				return err
 			}
 			continue
@@ -201,7 +222,7 @@ func preflightCatalogPage(data []byte, maximumPlugins int) error {
 			if count > maximumPlugins {
 				return errors.New("catalog plugins exceed the page limit")
 			}
-			if err := skipJSONValue(decoder); err != nil {
+			if err := preflightCatalogValue(decoder, 1, false); err != nil {
 				return err
 			}
 		}
@@ -215,6 +236,56 @@ func preflightCatalogPage(data []byte, maximumPlugins int) error {
 		return errors.New("catalog page object is incomplete")
 	}
 	return requireJSONEOF(decoder)
+}
+
+func preflightCatalogValue(decoder *json.Decoder, depth int, exactSchema bool) error {
+	if exactSchema {
+		return skipJSONValue(decoder)
+	}
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	if delimiter != '{' && delimiter != '[' {
+		return errors.New("unexpected closing JSON delimiter")
+	}
+	if depth > maxCatalogStructureDepth {
+		return errors.New("catalog metadata exceeds the structure depth limit")
+	}
+	items := 0
+	for decoder.More() {
+		items++
+		if items > maxCatalogNestedCollection {
+			return errors.New("catalog metadata exceeds the nested collection limit")
+		}
+		exactChild := false
+		if delimiter == '{' {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("catalog metadata contains a non-string object key")
+			}
+			exactChild = strings.EqualFold(key, "configSchema")
+		}
+		if err := preflightCatalogValue(decoder, depth+1, exactChild); err != nil {
+			return err
+		}
+	}
+	closing, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delimiter == '{' && closing != json.Delim('}') || delimiter == '[' && closing != json.Delim(']') {
+		return errors.New("catalog metadata contains a mismatched closing delimiter")
+	}
+	return nil
 }
 
 func skipJSONValue(decoder *json.Decoder) error {
@@ -318,9 +389,12 @@ type ContractReview struct {
 }
 
 const (
-	maxResolvedPlugins = 1024
-	maxResolverSteps   = 100000
+	maxResolvedPlugins        = 1024
+	maxResolverSteps          = 100000
+	maxResolverCatalogQueries = 2048
 )
+
+var errCatalogQueryBudget = errors.New("plugin dependency resolution exceeded the catalog query budget")
 
 // ResolveCatalogGraph performs a deterministic, bounded global solve. Candidate
 // releases are tried newest-first, but a later transitive constraint can unwind
@@ -359,6 +433,7 @@ type catalogSolver struct {
 	direct   map[string]bool
 	previous project.LockDocument
 	steps    int
+	queries  int
 	lastErr  error
 }
 
@@ -383,6 +458,10 @@ func (solver *catalogSolver) solve(selected map[string]CatalogRelease, constrain
 		return plan, nil
 	}
 	ranges := sortedMapValues(constraints[id])
+	if solver.queries >= maxResolverCatalogQueries {
+		return ResolutionPlan{}, fmt.Errorf("%w of %d requests", errCatalogQueryBudget, maxResolverCatalogQueries)
+	}
+	solver.queries++
 	candidates, err := solver.catalog.Candidates(solver.ctx, id, ranges)
 	if err != nil {
 		solver.lastErr = err
@@ -425,7 +504,7 @@ func (solver *catalogSolver) solve(selected map[string]CatalogRelease, constrain
 		if err == nil {
 			return plan, nil
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || solver.steps > maxResolverSteps {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errCatalogQueryBudget) || solver.steps > maxResolverSteps {
 			return ResolutionPlan{}, err
 		}
 	}
@@ -808,6 +887,11 @@ func validateCatalogRelease(id string, constraints []string, release CatalogRele
 		}
 		if err := project.ValidateConstraint(requirement.Version); err != nil {
 			return fmt.Errorf("plugin %s catalog requirement is invalid", id)
+		}
+	}
+	for _, constraint := range release.Definition.Compatibility.Engines {
+		if err := project.ValidateConstraint(constraint); err != nil {
+			return fmt.Errorf("plugin %s catalog engine compatibility is invalid", id)
 		}
 	}
 	for _, constraint := range constraints {

@@ -3,9 +3,11 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -565,6 +567,39 @@ func TestResolveCatalogGraphPreservesNarrowRequiredGrant(t *testing.T) {
 	}
 }
 
+func TestResolveCatalogGraphBoundsCatalogQueriesDuringBacktracking(t *testing.T) {
+	rootID := "github.com/acme/root"
+	childID := "github.com/acme/child"
+	candidates := make([]CatalogRelease, maxResolverCatalogQueries)
+	for index := range candidates {
+		candidates[index] = CatalogRelease{
+			ID:      rootID,
+			Version: "1.0.0",
+			Definition: corewago.PluginDefinition{
+				ID:       rootID,
+				Requires: []corewago.PluginRequirement{{ID: childID, Version: "*"}},
+			},
+		}
+	}
+	calls := 0
+	catalog := catalogFunc(func(_ context.Context, id string, _ []string) ([]CatalogRelease, error) {
+		calls++
+		if id == rootID {
+			return candidates, nil
+		}
+		return nil, errors.New("no matching child")
+	})
+
+	_, err := ResolveCatalogGraph(context.Background(), catalog,
+		[]project.PluginRequirement{{ID: rootID, Constraint: "*"}}, project.NewLockDocument())
+	if !errors.Is(err, errCatalogQueryBudget) {
+		t.Fatalf("catalog query budget error = %v", err)
+	}
+	if calls != maxResolverCatalogQueries {
+		t.Fatalf("catalog calls = %d, want %d", calls, maxResolverCatalogQueries)
+	}
+}
+
 func TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(t *testing.T) {
 	newest := testCatalogRelease(t, "github.com/acme/plugin", "1.3.0")
 	oldest := testCatalogRelease(t, "github.com/acme/plugin", "1.2.0")
@@ -614,6 +649,39 @@ func TestHTTPCatalogRejectsExcessiveTotalBeforePagination(t *testing.T) {
 	}
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("catalog requests = %d, want 1", got)
+	}
+}
+
+func TestHTTPCatalogRejectsSparsePaginationAtPageBudget(t *testing.T) {
+	releases := make([]CatalogRelease, maxCatalogPages)
+	for index := range releases {
+		releases[index] = testCatalogRelease(t, "github.com/acme/plugin", "1.2."+strconv.Itoa(index))
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		index := int(requests.Add(1) - 1)
+		if index >= len(releases) {
+			t.Errorf("unexpected catalog request %d", index+1)
+			http.Error(response, "unexpected request", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins":    []CatalogRelease{releases[index]},
+			"total":      maxCatalogCandidates,
+			"offset":     index,
+			"limit":      catalogPageLimit,
+			"nextOffset": index + 1,
+		})
+	}))
+	defer server.Close()
+
+	_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), releases[0].ID, []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "exceeds 4-page bound") {
+		t.Fatalf("sparse catalog pagination = %v", err)
+	}
+	if got := requests.Load(); got != maxCatalogPages {
+		t.Fatalf("catalog requests = %d, want %d", got, maxCatalogPages)
 	}
 }
 
@@ -668,6 +736,20 @@ func TestCatalogPreflightRejectsOversizedPageBeforeMaterialization(t *testing.T)
 	}
 }
 
+func TestCatalogPreflightRejectsOversizedNestedCollectionBeforeMaterialization(t *testing.T) {
+	data := oversizedCatalogNestedCollection(100_000)
+	if err := preflightCatalogPage(data, 256); err == nil || !strings.Contains(err.Error(), "nested collection limit") {
+		t.Fatalf("oversized nested catalog preflight = %v", err)
+	}
+}
+
+func TestCatalogPreflightPreservesArbitraryConfigSchemaCollections(t *testing.T) {
+	data := catalogConfigSchemaCollection(maxCatalogNestedCollection + 1)
+	if err := preflightCatalogPage(data, 256); err != nil {
+		t.Fatalf("config schema collection preflight = %v", err)
+	}
+}
+
 func BenchmarkCatalogPreflightOversizedPage(b *testing.B) {
 	data := oversizedCatalogPage(100_000)
 	b.ReportAllocs()
@@ -676,6 +758,15 @@ func BenchmarkCatalogPreflightOversizedPage(b *testing.B) {
 		if err := preflightCatalogPage(data, 256); err == nil {
 			b.Fatal("oversized catalog page succeeded")
 		}
+	}
+}
+
+func BenchmarkCatalogPreflightOversizedNestedCollection(b *testing.B) {
+	data := oversizedCatalogNestedCollection(100_000)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		_ = preflightCatalogPage(data, 256)
 	}
 }
 
@@ -690,6 +781,34 @@ func oversizedCatalogPage(entries int) []byte {
 		body.WriteString(`{}`)
 	}
 	body.WriteString(`],"total":1,"offset":0,"limit":256}`)
+	return []byte(body.String())
+}
+
+func oversizedCatalogNestedCollection(entries int) []byte {
+	var body strings.Builder
+	body.Grow(len(`{"plugins":[{"definition":{"authorities":[]}}],"total":1,"offset":0,"limit":256}`) + entries*3)
+	body.WriteString(`{"plugins":[{"definition":{"authorities":[`)
+	for index := range entries {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.WriteString(`{}`)
+	}
+	body.WriteString(`]}}],"total":1,"offset":0,"limit":256}`)
+	return []byte(body.String())
+}
+
+func catalogConfigSchemaCollection(entries int) []byte {
+	var body strings.Builder
+	body.Grow(len(`{"plugins":[{"definition":{"configSchema":{"examples":[]}}}],"total":1,"offset":0,"limit":256}`) + entries*3)
+	body.WriteString(`{"plugins":[{"definition":{"configSchema":{"examples":[`)
+	for index := range entries {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.WriteString(`{}`)
+	}
+	body.WriteString(`]}}}],"total":1,"offset":0,"limit":256}`)
 	return []byte(body.String())
 }
 
@@ -845,6 +964,15 @@ func TestCatalogRejectsUnprefixedSourceVersion(t *testing.T) {
 	}
 }
 
+func TestCatalogRejectsOversizedEngineConstraintBeforeDigestingDefinition(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	release.Definition.Compatibility.Engines["wago"] = strings.Repeat("*||", 100) + "*"
+	err := validateCatalogRelease(release.ID, []string{"*"}, release)
+	if err == nil || !strings.Contains(err.Error(), "engine compatibility") {
+		t.Fatalf("oversized engine constraint = %v", err)
+	}
+}
+
 func testCatalogRelease(t *testing.T, id, version string) CatalogRelease {
 	t.Helper()
 	release := CatalogRelease{
@@ -880,4 +1008,10 @@ func resignRelease(t *testing.T, release CatalogRelease) CatalogRelease {
 	}
 	release.DefinitionDigest = digest
 	return release
+}
+
+type catalogFunc func(context.Context, string, []string) ([]CatalogRelease, error)
+
+func (function catalogFunc) Candidates(ctx context.Context, id string, constraints []string) ([]CatalogRelease, error) {
+	return function(ctx, id, constraints)
 }

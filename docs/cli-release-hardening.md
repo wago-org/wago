@@ -54,9 +54,12 @@ unambiguous JSON entries. Catalog source checksums, versions, and digests are
 validated before use; invalid remote metadata is not copied into terminal errors.
 Catalog pages are preflighted before materializing release structs, and each
 requested plugin is limited to 1,024 candidates across at most four 256-release
-pages. These bounds limit both per-response decode memory and cumulative retained
-catalog metadata. Duplicate catalog struct fields fail closed while case-sensitive
-property names inside embedded configuration JSON Schema remain distinct.
+pages and 16 MiB of cumulative response metadata. Non-schema catalog objects,
+arrays, and nesting are structurally bounded to 128 members and 32 levels before
+decoding; case-sensitive property names and collections inside embedded
+configuration JSON Schema remain distinct and retain their schema semantics.
+Duplicate catalog struct fields fail closed, and dependency backtracking stops
+after 2,048 catalog queries independently of the solver's CPU-step ceiling.
 
 ## Release downloads
 
