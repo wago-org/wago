@@ -81,8 +81,8 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 	if err != nil {
 		return err
 	}
-	if invoke != "_start" {
-		fmt.Println(wasmcall.Format(invoke, values, result, params, results))
+	if invoke != "_start" && len(result) != 0 {
+		fmt.Println(wasmcall.FormatResults(result, results))
 	}
 	return nil
 }

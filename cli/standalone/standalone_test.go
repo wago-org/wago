@@ -41,7 +41,7 @@ func TestExecuteInvokesExportWithTypedArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(output[:n]); got != "add(20, 22) = 42\n" {
+	if got := string(output[:n]); got != "42\n" {
 		t.Fatalf("output = %q", got)
 	}
 }
@@ -52,7 +52,7 @@ func TestExecuteSelectsSoleExportWithTypedArgs(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if output != "add(20, 22) = 42\n" {
+	if output != "42\n" {
 		t.Fatalf("output = %q", output)
 	}
 }
@@ -63,7 +63,7 @@ func TestExecuteSelectsMainBeforeOtherExports(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if output != "main() = 7\n" {
+	if output != "7\n" {
 		t.Fatalf("output = %q", output)
 	}
 }
