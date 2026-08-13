@@ -23,6 +23,12 @@ const (
 	zipDataDescriptorSignature     = 0x08074b50
 	zipDataDescriptorBytes         = 16
 	zipDataDescriptorUnsignedBytes = 12
+	zipVersion20                   = 20
+	zipEncryptedFlag               = 1 << 0
+	zipDeflateOptionFlags          = 1<<1 | 1<<2
+	zipPatchedDataFlag             = 1 << 5
+	zipStrongEncryptionFlag        = 1 << 6
+	zipUTF8Flag                    = 1 << 11
 )
 
 type zipDirectory struct {
@@ -121,7 +127,8 @@ func (cursor *zipDirectoryCursor) next(file *zip.File, nameBuffer []byte) (int64
 	if recordBytes > cursor.remaining || nameBytes != uint64(len(file.Name)) || nameBytes > uint64(len(nameBuffer)) {
 		return 0, errors.New("source archive central directory changed during preflight")
 	}
-	if binary.LittleEndian.Uint16(cursor.header[8:10]) != file.Flags ||
+	if binary.LittleEndian.Uint16(cursor.header[6:8]) != file.ReaderVersion ||
+		binary.LittleEndian.Uint16(cursor.header[8:10]) != file.Flags ||
 		binary.LittleEndian.Uint16(cursor.header[10:12]) != file.Method ||
 		binary.LittleEndian.Uint32(cursor.header[16:20]) != file.CRC32 ||
 		uint64(binary.LittleEndian.Uint32(cursor.header[20:24])) != file.CompressedSize64 ||

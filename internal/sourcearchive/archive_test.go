@@ -52,6 +52,8 @@ func TestExtractPreflightRejectsUnsafeOrUnboundedArchives(t *testing.T) {
 		{name: "path depth", entries: []zipEntry{{name: "root/a/b/go.mod"}}, limits: withPathDepth(base, 2), want: "depth limit"},
 		{name: "component bytes", entries: []zipEntry{{name: "root/long/go.mod"}}, limits: withComponentBytes(base, 3), want: "component exceeds 3-byte"},
 		{name: "nonportable component", entries: []zipEntry{{name: "root/CON/go.mod"}}, limits: base, want: "not portable"},
+		{name: "console input device", entries: []zipEntry{{name: "root/CONIN$/go.mod"}}, limits: base, want: "not portable"},
+		{name: "console output device extension", entries: []zipEntry{{name: "root/CONOUT$.txt/go.mod"}}, limits: base, want: "not portable"},
 		{name: "non-ASCII component", entries: []zipEntry{{name: "root/café/go.mod"}}, limits: base, want: "not portable"},
 		{name: "invalid UTF-8 component", entries: []zipEntry{{name: "root/\xff/go.mod", nonUTF8: true}}, limits: base, want: "not portable"},
 		{name: "file size", entries: []zipEntry{{name: "root/go.mod", data: strings.Repeat("x", 33)}}, limits: base, want: "file \"go.mod\" exceeds 32-byte"},
@@ -375,6 +377,23 @@ func TestExtractRejectsStrictMetadataBeforeFilesystemMutation(t *testing.T) {
 				binary.LittleEndian.PutUint16(data[local+6:], binary.LittleEndian.Uint16(data[local+6:])|1)
 			})
 		}, want: "is encrypted"},
+		{name: "patched data flag", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, central, local, _ int) {
+				binary.LittleEndian.PutUint16(data[central+8:], binary.LittleEndian.Uint16(data[central+8:])|zipPatchedDataFlag)
+				binary.LittleEndian.PutUint16(data[local+6:], binary.LittleEndian.Uint16(data[local+6:])|zipPatchedDataFlag)
+			})
+		}, want: "unsupported general-purpose flags"},
+		{name: "unsupported ZIP version", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, central, local, _ int) {
+				binary.LittleEndian.PutUint16(data[central+6:], 45)
+				binary.LittleEndian.PutUint16(data[local+4:], 45)
+			})
+		}, want: "unsupported ZIP version"},
+		{name: "local ZIP version mismatch", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, _, local, _ int) {
+				binary.LittleEndian.PutUint16(data[local+4:], 10)
+			})
+		}, want: "local file header ZIP version"},
 		{name: "local encrypted flag mismatch", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
 			mutateZipEntry(t, archive, "root/bad", func(data []byte, _, local, _ int) {
 				binary.LittleEndian.PutUint16(data[local+6:], binary.LittleEndian.Uint16(data[local+6:])|1)
@@ -437,6 +456,18 @@ func TestExtractRejectsStrictMetadataBeforeFilesystemMutation(t *testing.T) {
 			}
 			assertPreflightFailureBeforeMutation(t, archive, test.want)
 		})
+	}
+}
+
+func TestExtractAcceptsDeflateOptionFlags(t *testing.T) {
+	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module example.com/test\n"}})
+	mutateZipEntry(t, archive, "root/go.mod", func(data []byte, central, local, _ int) {
+		binary.LittleEndian.PutUint16(data[central+8:], binary.LittleEndian.Uint16(data[central+8:])|zipDeflateOptionFlags)
+		binary.LittleEndian.PutUint16(data[local+6:], binary.LittleEndian.Uint16(data[local+6:])|zipDeflateOptionFlags)
+	})
+	target := filepath.Join(t.TempDir(), "out")
+	if err := Extract(archive, target); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -535,10 +566,84 @@ func TestValidateZipDataDescriptorAcceptsSignedAndUnsignedForms(t *testing.T) {
 			binary.LittleEndian.PutUint32(descriptor[valueOffset:valueOffset+4], checksum)
 			binary.LittleEndian.PutUint32(descriptor[valueOffset+4:valueOffset+8], compressedBytes)
 			binary.LittleEndian.PutUint32(descriptor[valueOffset+8:valueOffset+12], uncompressedBytes)
-			if err := validateZipDataDescriptor(bytes.NewReader(descriptor), 0, int64(len(descriptor)), file, make([]byte, zipDataDescriptorBytes)); err != nil {
+			end, err := validateZipDataDescriptor(bytes.NewReader(descriptor), 0, int64(len(descriptor)), file, make([]byte, zipDataDescriptorBytes))
+			if err != nil {
 				t.Fatal(err)
 			}
+			if end != int64(descriptorBytes) {
+				t.Fatalf("descriptor end = %d, want %d", end, descriptorBytes)
+			}
 		})
+	}
+}
+
+func TestExtractRejectsZIP64WidthDescriptorBeforeFilesystemMutation(t *testing.T) {
+	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", store: true}})
+	data, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	central := bytes.Index(data, []byte("PK\x01\x02"))
+	end := bytes.LastIndex(data, []byte("PK\x05\x06"))
+	if central < 0 || end < 0 {
+		t.Fatal("ZIP central directory records not found")
+	}
+	local := int(binary.LittleEndian.Uint32(data[central+42:]))
+	nameBytes := int(binary.LittleEndian.Uint16(data[local+26:]))
+	extraBytes := int(binary.LittleEndian.Uint16(data[local+28:]))
+	compressedBytes := int(binary.LittleEndian.Uint32(data[central+20:]))
+	descriptor := local + zipFileHeaderBytes + nameBytes + extraBytes + compressedBytes
+	if binary.LittleEndian.Uint32(data[descriptor:]) != zipDataDescriptorSignature {
+		t.Fatal("test ZIP data descriptor has no signature")
+	}
+	mutated := make([]byte, 0, len(data)+8)
+	mutated = append(mutated, data[:descriptor+12]...)
+	mutated = append(mutated, 0, 0, 0, 0)
+	mutated = append(mutated, data[descriptor+12:descriptor+16]...)
+	mutated = append(mutated, 0, 0, 0, 0)
+	mutated = append(mutated, data[descriptor+16:]...)
+	newEnd := end + 8
+	directoryOffset := binary.LittleEndian.Uint32(mutated[newEnd+16:])
+	binary.LittleEndian.PutUint32(mutated[newEnd+16:], directoryOffset+8)
+	if err := os.WriteFile(archive, mutated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertPreflightFailureBeforeMutation(t, archive, "gaps, overlaps, or unsupported records")
+}
+
+func TestExtractAcceptsUnsignedDataDescriptor(t *testing.T) {
+	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module example.com/test\n", store: true}})
+	data, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	central := bytes.Index(data, []byte("PK\x01\x02"))
+	end := bytes.LastIndex(data, []byte("PK\x05\x06"))
+	if central < 0 || end < 0 {
+		t.Fatal("ZIP central directory records not found")
+	}
+	local := int(binary.LittleEndian.Uint32(data[central+42:]))
+	nameBytes := int(binary.LittleEndian.Uint16(data[local+26:]))
+	extraBytes := int(binary.LittleEndian.Uint16(data[local+28:]))
+	compressedBytes := int(binary.LittleEndian.Uint32(data[central+20:]))
+	descriptor := local + zipFileHeaderBytes + nameBytes + extraBytes + compressedBytes
+	if binary.LittleEndian.Uint32(data[descriptor:]) != zipDataDescriptorSignature {
+		t.Fatal("test ZIP data descriptor has no signature")
+	}
+	mutated := append([]byte(nil), data[:descriptor]...)
+	mutated = append(mutated, data[descriptor+4:]...)
+	newEnd := end - 4
+	directoryOffset := binary.LittleEndian.Uint32(mutated[newEnd+16:])
+	binary.LittleEndian.PutUint32(mutated[newEnd+16:], directoryOffset-4)
+	if err := os.WriteFile(archive, mutated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "out")
+	if err := Extract(archive, target); err != nil {
+		t.Fatal(err)
+	}
+	if contents, err := os.ReadFile(filepath.Join(target, "go.mod")); err != nil || string(contents) != "module example.com/test\n" {
+		t.Fatalf("go.mod = %q, error %v", contents, err)
 	}
 }
 

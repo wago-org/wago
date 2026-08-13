@@ -262,6 +262,7 @@ func preflight(ctx context.Context, readerAt io.ReaderAt, files []*zip.File, dir
 	nameBuffer := make([]byte, limits.pathBytes+1)
 	localRecordBuffer := make([]byte, zipFileHeaderBytes+limits.pathBytes+1)
 	descriptorBuffer := make([]byte, zipDataDescriptorBytes)
+	localRecordEnds := make(map[int64]int64, len(files))
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -275,10 +276,14 @@ func preflight(ctx context.Context, readerAt io.ReaderAt, files []*zip.File, dir
 			return nil, err
 		}
 		nameEndsInSlash := strings.HasSuffix(file.Name, "/")
-		dir, err := validateZipEntryMetadata(file, nameEndsInSlash, readerAt, localOffset, directory.offset, localRecordBuffer, descriptorBuffer)
+		dir, localEnd, err := validateZipEntryMetadata(file, nameEndsInSlash, readerAt, localOffset, directory.offset, localRecordBuffer, descriptorBuffer)
 		if err != nil {
 			return nil, err
 		}
+		if _, exists := localRecordEnds[localOffset]; exists {
+			return nil, fmt.Errorf("source archive path %q reuses a local file record", file.Name)
+		}
+		localRecordEnds[localOffset] = localEnd
 		if root == "" {
 			root = path.root
 		} else if root != path.root {
@@ -373,6 +378,9 @@ func preflight(ctx context.Context, readerAt io.ReaderAt, files []*zip.File, dir
 	if central.remaining != 0 {
 		return nil, errors.New("source archive central directory changed during preflight")
 	}
+	if err := validateLocalRecordCoverage(localRecordEnds, directory.offset); err != nil {
+		return nil, err
+	}
 	if !rootGoMod {
 		return nil, errors.New("source archive does not contain a regular go.mod file at the exact root path")
 	}
@@ -455,6 +463,9 @@ func portablePathComponent(component string) bool {
 		(equalFoldASCII(base[:3], "COM") || equalFoldASCII(base[:3], "LPT")) {
 		return false
 	}
+	if equalFoldASCII(base, "CONIN$") || equalFoldASCII(base, "CONOUT$") {
+		return false
+	}
 	return true
 }
 
@@ -498,133 +509,165 @@ func canonicalPortablePath(path string) string {
 	return canonical.String()
 }
 
-func validateZipEntryMetadata(file *zip.File, nameEndsInSlash bool, readerAt io.ReaderAt, localOffset, directoryOffset int64, localRecordBuffer, descriptorBuffer []byte) (bool, error) {
+func validateZipEntryMetadata(file *zip.File, nameEndsInSlash bool, readerAt io.ReaderAt, localOffset, directoryOffset int64, localRecordBuffer, descriptorBuffer []byte) (bool, int64, error) {
 	mode := file.Mode()
 	kind := mode.Type()
 	if nameEndsInSlash {
 		if kind != fs.ModeDir {
-			return false, fmt.Errorf("source archive directory %q has unsupported file type %s", file.Name, kind)
+			return false, 0, fmt.Errorf("source archive directory %q has unsupported file type %s", file.Name, kind)
 		}
 		if file.UncompressedSize64 != 0 {
-			return false, fmt.Errorf("source archive directory %q declares nonzero content", file.Name)
+			return false, 0, fmt.Errorf("source archive directory %q declares nonzero content", file.Name)
 		}
 	} else {
 		if kind&fs.ModeDir != 0 {
-			return false, fmt.Errorf("source archive directory %q must end in a slash", file.Name)
+			return false, 0, fmt.Errorf("source archive directory %q must end in a slash", file.Name)
 		}
 		if !mode.IsRegular() {
-			return false, fmt.Errorf("source archive path %q has unsupported file type %s", file.Name, kind)
+			return false, 0, fmt.Errorf("source archive path %q has unsupported file type %s", file.Name, kind)
 		}
 	}
-	if file.Flags&(1|1<<6) != 0 {
-		return false, fmt.Errorf("source archive path %q is encrypted", file.Name)
+	if file.Flags&(zipEncryptedFlag|zipStrongEncryptionFlag) != 0 {
+		return false, 0, fmt.Errorf("source archive path %q is encrypted", file.Name)
 	}
 	if file.Method != zip.Store && file.Method != zip.Deflate {
-		return false, fmt.Errorf("source archive path %q uses unsupported compression method %d", file.Name, file.Method)
+		return false, 0, fmt.Errorf("source archive path %q uses unsupported compression method %d", file.Name, file.Method)
+	}
+	allowedFlags := uint16(zipDataDescriptorFlag | zipUTF8Flag)
+	if file.Method == zip.Deflate {
+		allowedFlags |= zipDeflateOptionFlags
+	}
+	if unsupported := file.Flags &^ allowedFlags; unsupported != 0 {
+		return false, 0, fmt.Errorf("source archive path %q uses unsupported general-purpose flags %#x", file.Name, unsupported)
+	}
+	if file.ReaderVersion > zipVersion20 {
+		return false, 0, fmt.Errorf("source archive path %q requires unsupported ZIP version %d.%d", file.Name, file.ReaderVersion/10, file.ReaderVersion%10)
 	}
 	if file.Method == zip.Store && file.CompressedSize64 != file.UncompressedSize64 {
-		return false, fmt.Errorf("source archive stored path %q has mismatched compressed and uncompressed sizes", file.Name)
+		return false, 0, fmt.Errorf("source archive stored path %q has mismatched compressed and uncompressed sizes", file.Name)
 	}
 	dataOffset, err := file.DataOffset()
 	if err != nil {
-		return false, fmt.Errorf("source archive path %q has a malformed local file header: %w", file.Name, err)
+		return false, 0, fmt.Errorf("source archive path %q has a malformed local file header: %w", file.Name, err)
 	}
 	localRecordBytes := zipFileHeaderBytes + len(file.Name)
 	if localRecordBytes > len(localRecordBuffer) {
-		return false, fmt.Errorf("source archive path %q exceeds the local metadata buffer", file.Name)
+		return false, 0, fmt.Errorf("source archive path %q exceeds the local metadata buffer", file.Name)
 	}
 	localRecord := localRecordBuffer[:localRecordBytes]
 	localHeader := localRecord[:zipFileHeaderBytes]
 	if localOffset < 0 || directoryOffset < localOffset || int64(len(localRecord)) > directoryOffset-localOffset {
-		return false, fmt.Errorf("source archive path %q has a local file header outside the file-data region", file.Name)
+		return false, 0, fmt.Errorf("source archive path %q has a local file header outside the file-data region", file.Name)
 	}
 	if err := readZipMetadataAt(readerAt, localRecord, localOffset); err != nil {
-		return false, fmt.Errorf("read source archive path %q local file header: %w", file.Name, err)
+		return false, 0, fmt.Errorf("read source archive path %q local file header: %w", file.Name, err)
 	}
 	if binary.LittleEndian.Uint32(localHeader[0:4]) != zipFileHeaderSignature {
-		return false, fmt.Errorf("source archive path %q has a malformed local file header", file.Name)
+		return false, 0, fmt.Errorf("source archive path %q has a malformed local file header", file.Name)
+	}
+	if binary.LittleEndian.Uint16(localHeader[4:6]) != file.ReaderVersion {
+		return false, 0, fmt.Errorf("source archive path %q local file header ZIP version does not match the central directory", file.Name)
 	}
 	localFlags := binary.LittleEndian.Uint16(localHeader[6:8])
 	if localFlags != file.Flags {
-		return false, fmt.Errorf("source archive path %q local file header flags do not match the central directory", file.Name)
+		return false, 0, fmt.Errorf("source archive path %q local file header flags do not match the central directory", file.Name)
 	}
 	if binary.LittleEndian.Uint16(localHeader[8:10]) != file.Method {
-		return false, fmt.Errorf("source archive path %q local file header compression method does not match the central directory", file.Name)
+		return false, 0, fmt.Errorf("source archive path %q local file header compression method does not match the central directory", file.Name)
 	}
 	localCompressed := binary.LittleEndian.Uint32(localHeader[18:22])
 	localUncompressed := binary.LittleEndian.Uint32(localHeader[22:26])
 	if localCompressed == ^uint32(0) || localUncompressed == ^uint32(0) {
-		return false, errors.New("source archive uses unsupported ZIP64 entry metadata")
+		return false, 0, errors.New("source archive uses unsupported ZIP64 entry metadata")
 	}
 	nameBytes := int64(binary.LittleEndian.Uint16(localHeader[26:28]))
 	extraBytes := int64(binary.LittleEndian.Uint16(localHeader[28:30]))
 	wantDataOffset := localOffset + int64(len(localHeader)) + nameBytes + extraBytes
 	if wantDataOffset < localOffset || wantDataOffset != dataOffset || nameBytes != int64(len(file.Name)) {
-		return false, fmt.Errorf("source archive path %q local file header name or extra metadata is inconsistent", file.Name)
+		return false, 0, fmt.Errorf("source archive path %q local file header name or extra metadata is inconsistent", file.Name)
 	}
 	for index := range file.Name {
 		if localRecord[zipFileHeaderBytes+index] != file.Name[index] {
-			return false, fmt.Errorf("source archive path %q local file header name does not match the central directory", file.Name)
+			return false, 0, fmt.Errorf("source archive path %q local file header name does not match the central directory", file.Name)
 		}
 	}
 	if extraBytes != 0 {
 		localExtra := io.NewSectionReader(readerAt, localOffset+int64(len(localHeader))+nameBytes, extraBytes)
 		if err := validateZipExtraFields(localExtra, uint64(extraBytes), "local file header"); err != nil {
-			return false, err
+			return false, 0, err
 		}
 	}
 	localCRC := binary.LittleEndian.Uint32(localHeader[14:18])
 	if localFlags&zipDataDescriptorFlag == 0 {
 		if localCRC != file.CRC32 || uint64(localCompressed) != file.CompressedSize64 || uint64(localUncompressed) != file.UncompressedSize64 {
-			return false, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
+			return false, 0, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
 		}
 	} else {
 		allZero := localCRC == 0 && localCompressed == 0 && localUncompressed == 0
 		allCentral := localCRC == file.CRC32 && uint64(localCompressed) == file.CompressedSize64 && uint64(localUncompressed) == file.UncompressedSize64
 		if !allZero && !allCentral {
-			return false, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
+			return false, 0, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
 		}
 	}
 	if dataOffset < 0 || directoryOffset < 0 || dataOffset > directoryOffset ||
 		file.CompressedSize64 > uint64(directoryOffset-dataOffset) {
-		return false, fmt.Errorf("source archive path %q has compressed data outside the file-data region", file.Name)
+		return false, 0, fmt.Errorf("source archive path %q has compressed data outside the file-data region", file.Name)
 	}
 	dataEnd := dataOffset + int64(file.CompressedSize64)
 	if localFlags&zipDataDescriptorFlag != 0 {
-		if err := validateZipDataDescriptor(readerAt, dataEnd, directoryOffset, file, descriptorBuffer); err != nil {
-			return false, err
+		descriptorEnd, err := validateZipDataDescriptor(readerAt, dataEnd, directoryOffset, file, descriptorBuffer)
+		if err != nil {
+			return false, 0, err
 		}
+		dataEnd = descriptorEnd
 	}
-	return nameEndsInSlash, nil
+	return nameEndsInSlash, dataEnd, nil
 }
 
-func validateZipDataDescriptor(readerAt io.ReaderAt, offset, directoryOffset int64, file *zip.File, descriptorBuffer []byte) error {
+func validateZipDataDescriptor(readerAt io.ReaderAt, offset, directoryOffset int64, file *zip.File, descriptorBuffer []byte) (int64, error) {
 	if len(descriptorBuffer) < zipDataDescriptorBytes {
-		return errors.New("source archive data descriptor buffer is too small")
+		return 0, errors.New("source archive data descriptor buffer is too small")
 	}
 	descriptor := descriptorBuffer[:zipDataDescriptorBytes]
 	if offset < 0 || directoryOffset < offset || zipDataDescriptorUnsignedBytes > directoryOffset-offset {
-		return fmt.Errorf("source archive path %q has a data descriptor outside the file-data region", file.Name)
+		return 0, fmt.Errorf("source archive path %q has a data descriptor outside the file-data region", file.Name)
 	}
 	readBytes := zipDataDescriptorBytes
 	if int64(readBytes) > directoryOffset-offset {
 		readBytes = zipDataDescriptorUnsignedBytes
 	}
 	if err := readZipMetadataAt(readerAt, descriptor[:readBytes], offset); err != nil {
-		return fmt.Errorf("read source archive path %q data descriptor: %w", file.Name, err)
+		return 0, fmt.Errorf("read source archive path %q data descriptor: %w", file.Name, err)
 	}
 	signed := binary.LittleEndian.Uint32(descriptor[0:4]) == zipDataDescriptorSignature
 	valueOffset := 0
 	if signed {
 		if readBytes != zipDataDescriptorBytes {
-			return fmt.Errorf("source archive path %q has a truncated data descriptor", file.Name)
+			return 0, fmt.Errorf("source archive path %q has a truncated data descriptor", file.Name)
 		}
 		valueOffset = 4
 	}
 	if binary.LittleEndian.Uint32(descriptor[valueOffset:valueOffset+4]) != file.CRC32 ||
 		uint64(binary.LittleEndian.Uint32(descriptor[valueOffset+4:valueOffset+8])) != file.CompressedSize64 ||
 		uint64(binary.LittleEndian.Uint32(descriptor[valueOffset+8:valueOffset+12])) != file.UncompressedSize64 {
-		return fmt.Errorf("source archive path %q data descriptor does not match the central directory", file.Name)
+		return 0, fmt.Errorf("source archive path %q data descriptor does not match the central directory", file.Name)
+	}
+	return offset + int64(valueOffset+zipDataDescriptorUnsignedBytes), nil
+}
+
+func validateLocalRecordCoverage(recordEnds map[int64]int64, directoryOffset int64) error {
+	offset := int64(0)
+	visited := 0
+	for offset < directoryOffset {
+		end, ok := recordEnds[offset]
+		if !ok || end <= offset || end > directoryOffset {
+			return errors.New("source archive file-data region contains gaps, overlaps, or unsupported records")
+		}
+		offset = end
+		visited++
+	}
+	if offset != directoryOffset || visited != len(recordEnds) {
+		return errors.New("source archive file-data region contains gaps, overlaps, or unsupported records")
 	}
 	return nil
 }

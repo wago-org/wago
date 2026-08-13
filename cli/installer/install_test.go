@@ -373,6 +373,36 @@ func TestInstallerArchiveCancellationCleansTemporaryTree(t *testing.T) {
 	}
 }
 
+func TestInstallerArchiveDownloadCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		cancel()
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	t.Cleanup(cancel)
+
+	temporary := t.TempDir()
+	target := filepath.Join(temporary, "src")
+	i := &installer{
+		out:        &bytes.Buffer{},
+		httpClient: server.Client(),
+		tmpDir:     temporary,
+		ctx:        ctx,
+	}
+	_, err := i.fetchSourceArchiveAfterGitFailure(target, server.URL, []byte("git unavailable"), errors.New("git failed"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("archive fallback error = %v, want context canceled", err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("canceled archive target remains: %v", err)
+	}
+}
+
 type cancelWhenStagingExists struct {
 	context.Context
 	cancel context.CancelFunc

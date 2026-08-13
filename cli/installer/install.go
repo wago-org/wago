@@ -498,7 +498,11 @@ func (i *installer) downloadChecked(url, target string) error {
 }
 
 func (i *installer) download(url, target string) error {
-	response, err := i.httpClient.Get(url)
+	request, err := http.NewRequestWithContext(i.installContext(), http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	response, err := i.httpClient.Do(request)
 	if err != nil {
 		return err
 	}

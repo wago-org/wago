@@ -14,9 +14,10 @@ limits instead of the process default client:
 - dial, TLS-handshake, response-header, idle-connection, and
   `Expect: 100-continue` waits have independent transport timeouts.
 
-A parent command cancellation is propagated to active manager requests and to
-Git/TinyGo/Go subprocesses used by source-build fallback. In-memory bodies are
-explicitly bounded: registry and GitHub release JSON use a 4 MiB limit, OAuth
+A parent command cancellation is propagated to active manager requests,
+installer downloads, and Git/TinyGo/Go subprocesses used by source-build
+fallback. In-memory bodies are explicitly bounded: registry and GitHub release
+JSON use a 4 MiB limit, OAuth
 responses use 1 MiB, release checksums use 4 KiB, and non-success response
 capture uses an independent 64 KiB limit. Declared oversized bodies are rejected
 before reading; chunked or dishonest responses are stopped after the configured
@@ -50,8 +51,9 @@ Downloaded source ZIPs are preflighted completely before filesystem mutation.
 Extraction permits one top-level directory and strict regular files/directories
 only. It rejects traversal, duplicate and case-colliding paths,
 file/directory conflicts, non-portable names, encrypted entries, mixed or special
-file modes, unsupported compression, mismatched local headers or data
-descriptors, ZIP64 metadata, data ranges that reach the central directory, and
+file modes, unsupported ZIP versions, compression, or general-purpose flags,
+mismatched local headers or data descriptors, ZIP64 metadata, and local-record
+gaps, overlaps, prefixes, or data ranges that reach the central directory, and
 archives beyond 20,000 entries, 16,000 files,
 4,000 unique directories, 16 MiB of central-directory metadata, 64 relative path
 components, 255 bytes per component, 1,024 path bytes, 128 MiB per file, or 512
@@ -59,15 +61,17 @@ MiB expanded content. Directories must have trailing slashes and zero declared
 content. Stored files must have equal compressed and uncompressed sizes. The
 stripped archive root must contain an exactly spelled regular `go.mod` file.
 
-Path components are restricted to portable printable ASCII. A single byte scan
-validates each path, each complete relative path is canonicalized at most once,
+Path components are restricted to portable printable ASCII, including rejection
+of Windows DOS device aliases such as `CON`, `CONIN$`, and `CONOUT$`. A single
+byte scan validates each path, each complete relative path is canonicalized at most once,
 and parent nodes are derived by slicing at slash offsets. The preflight therefore
 scales linearly with accepted path metadata rather than repeatedly allocating
 and joining every parent prefix. On Go 1.26.5/linux-amd64 on a Ryzen 7 7800X3D,
 the 16,000-file, 63-shared-directory production-shaped benchmark improved from
 1.103 seconds, 1,078,897,384 bytes, and 2,048,079 allocations per operation to
-138 milliseconds, 19,593,424 bytes, and 64,135 allocations per operation after
-strict central/local metadata agreement and data-descriptor preflight.
+150 milliseconds, 20,184,512 bytes, and 64,200 allocations per operation after
+strict central/local metadata agreement, exact local-record coverage, and
+data-descriptor preflight.
 
 The fixed-memory central-directory scanner and Go ZIP reader share one opened
 regular-file descriptor, preventing pathname replacement between validation and
