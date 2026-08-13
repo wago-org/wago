@@ -71,13 +71,14 @@ uploads their report fragments with the merged coverage profile. The final `CI`
 aggregation job is the stable branch-protection check and fails if any required
 matrix cell or supporting job fails.
 
-The change detector reports documentation and code changes independently. A
-documentation-only pull request runs `make docs-check` without starting the
-native matrix, while a mixed pull request runs both. The documentation checker
-uses only the Go standard library and the tracked repository files: it rejects
-missing relative targets, exact-case path mismatches, and missing Markdown
-heading fragments without contacting external sites. Run the same check locally
-with `make docs-check`.
+The change detector reports documentation and code changes independently. Every
+change runs `make docs-check`, because a code-only refactor can remove a source
+path referenced by unchanged documentation. Documentation-only pull requests do
+not start the native matrix, while mixed pull requests run both checks. The
+documentation checker uses only the Go standard library and the tracked
+repository files: it rejects missing relative targets, exact-case path
+mismatches, and missing Markdown heading fragments without contacting external
+sites. Run the same check locally with `make docs-check`.
 
 Nightly, canary, and tagged release workflows require Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with

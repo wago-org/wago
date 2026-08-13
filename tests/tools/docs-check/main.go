@@ -2,7 +2,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
@@ -177,12 +176,11 @@ func exactPath(root, relative string) error {
 
 func extractLinks(markdown string) []link {
 	var links []link
-	scanner := bufio.NewScanner(strings.NewReader(markdown))
 	inFence := false
 	fenceChar := byte(0)
 	fenceLen := 0
-	for lineNo := 1; scanner.Scan(); lineNo++ {
-		lineText := scanner.Text()
+	for index, lineText := range strings.Split(markdown, "\n") {
+		lineNo := index + 1
 		trimmed := strings.TrimLeft(lineText, " \t")
 		if char, length, ok := fence(trimmed); ok {
 			if !inFence {
@@ -269,16 +267,33 @@ func inlineDestinations(line string) []string {
 			}
 		}
 		end := start
+		depth := 0
 		escaped := false
+	scanDestination:
 		for end < len(line) {
 			char := line[end]
-			if !escaped && (char == ')' || char == ' ' || char == '\t') {
-				break
-			}
-			if char == '\\' && !escaped {
-				escaped = true
-			} else {
+			if escaped {
 				escaped = false
+				end++
+				continue
+			}
+			if char == '\\' {
+				escaped = true
+				end++
+				continue
+			}
+			switch char {
+			case '(':
+				depth++
+			case ')':
+				if depth == 0 {
+					break scanDestination
+				}
+				depth--
+			case ' ', '\t':
+				if depth == 0 {
+					break scanDestination
+				}
 			}
 			end++
 		}
@@ -314,12 +329,10 @@ func referenceDestination(line string) (string, bool) {
 func markdownAnchors(markdown string) map[string]struct{} {
 	anchors := make(map[string]struct{})
 	counts := make(map[string]int)
-	scanner := bufio.NewScanner(strings.NewReader(markdown))
 	inFence := false
 	fenceChar := byte(0)
 	fenceLen := 0
-	for scanner.Scan() {
-		line := scanner.Text()
+	for _, line := range strings.Split(markdown, "\n") {
 		trimmed := strings.TrimLeft(line, " \t")
 		if char, length, ok := fence(trimmed); ok {
 			if !inFence {

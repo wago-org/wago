@@ -122,7 +122,7 @@ func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 	contents := string(workflow)
 	for _, required := range []string{
 		`docs: ${{ steps.derive.outputs.docs }}`,
-		`if: needs.changes.outputs.docs == 'true'`,
+		`if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true'`,
 		`run: make docs-check`,
 		`needs: [changes, docs, lint, regression-corpus`,
 	} {

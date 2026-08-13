@@ -14,10 +14,12 @@ func TestCheckFilesAcceptsValidLocalLinks(t *testing.T) {
 		"[guide](docs/guide.md#details)",
 		"[same](#home)",
 		"[source](src/example.go)",
+		"[parentheses](docs/guide_(v2).md)",
 		"[reference]: docs/guide.md#details",
 		`<a href="LICENSE">license</a>`,
 	}, "\n"))
 	writeFile(t, root, "docs/guide.md", "# Details\n")
+	writeFile(t, root, "docs/guide_(v2).md", "# Version 2\n")
 	writeFile(t, root, "src/example.go", "package example\n")
 	writeFile(t, root, "LICENSE", "test\n")
 
