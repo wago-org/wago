@@ -4,6 +4,7 @@ package sourcearchive
 import (
 	"archive/zip"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -151,7 +152,7 @@ func extractWithOperations(ctx context.Context, archive, target string, limits e
 		return err
 	}
 
-	entries, err := preflight(ctx, reader.File, directory.offset, limits)
+	entries, err := preflight(ctx, archiveFile, reader.File, directory, limits)
 	if err != nil {
 		return err
 	}
@@ -222,6 +223,9 @@ func extractWithOperations(ctx context.Context, archive, target string, limits e
 	if err := closeArchive(); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := publishDirectoryNoReplace(staging, target); err != nil {
 		return fmt.Errorf("publish source archive: %w", err)
 	}
@@ -238,7 +242,7 @@ func validateLimits(limits extractionLimits) error {
 	return nil
 }
 
-func preflight(ctx context.Context, files []*zip.File, directoryOffset int64, limits extractionLimits) ([]archiveEntry, error) {
+func preflight(ctx context.Context, readerAt io.ReaderAt, files []*zip.File, directory zipDirectory, limits extractionLimits) ([]archiveEntry, error) {
 	if len(files) == 0 {
 		return nil, errors.New("source archive is empty")
 	}
@@ -254,6 +258,10 @@ func preflight(ctx context.Context, files []*zip.File, directoryOffset int64, li
 	rootGoMod := false
 	regularFiles := 0
 	var declared uint64
+	central := newZipDirectoryCursor(readerAt, directory)
+	nameBuffer := make([]byte, limits.pathBytes+1)
+	localRecordBuffer := make([]byte, zipFileHeaderBytes+limits.pathBytes+1)
+	descriptorBuffer := make([]byte, zipDataDescriptorBytes)
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -262,8 +270,12 @@ func preflight(ctx context.Context, files []*zip.File, directoryOffset int64, li
 		if err != nil {
 			return nil, err
 		}
+		localOffset, err := central.next(file, nameBuffer)
+		if err != nil {
+			return nil, err
+		}
 		nameEndsInSlash := strings.HasSuffix(file.Name, "/")
-		dir, err := validateZipEntryMetadata(file, nameEndsInSlash, directoryOffset)
+		dir, err := validateZipEntryMetadata(file, nameEndsInSlash, readerAt, localOffset, directory.offset, localRecordBuffer, descriptorBuffer)
 		if err != nil {
 			return nil, err
 		}
@@ -357,6 +369,9 @@ func preflight(ctx context.Context, files []*zip.File, directoryOffset int64, li
 	}
 	if root == "" {
 		return nil, errors.New("source archive is empty")
+	}
+	if central.remaining != 0 {
+		return nil, errors.New("source archive central directory changed during preflight")
 	}
 	if !rootGoMod {
 		return nil, errors.New("source archive does not contain a regular go.mod file at the exact root path")
@@ -483,7 +498,7 @@ func canonicalPortablePath(path string) string {
 	return canonical.String()
 }
 
-func validateZipEntryMetadata(file *zip.File, nameEndsInSlash bool, directoryOffset int64) (bool, error) {
+func validateZipEntryMetadata(file *zip.File, nameEndsInSlash bool, readerAt io.ReaderAt, localOffset, directoryOffset int64, localRecordBuffer, descriptorBuffer []byte) (bool, error) {
 	mode := file.Mode()
 	kind := mode.Type()
 	if nameEndsInSlash {
@@ -514,11 +529,115 @@ func validateZipEntryMetadata(file *zip.File, nameEndsInSlash bool, directoryOff
 	if err != nil {
 		return false, fmt.Errorf("source archive path %q has a malformed local file header: %w", file.Name, err)
 	}
+	localRecordBytes := zipFileHeaderBytes + len(file.Name)
+	if localRecordBytes > len(localRecordBuffer) {
+		return false, fmt.Errorf("source archive path %q exceeds the local metadata buffer", file.Name)
+	}
+	localRecord := localRecordBuffer[:localRecordBytes]
+	localHeader := localRecord[:zipFileHeaderBytes]
+	if localOffset < 0 || directoryOffset < localOffset || int64(len(localRecord)) > directoryOffset-localOffset {
+		return false, fmt.Errorf("source archive path %q has a local file header outside the file-data region", file.Name)
+	}
+	if err := readZipMetadataAt(readerAt, localRecord, localOffset); err != nil {
+		return false, fmt.Errorf("read source archive path %q local file header: %w", file.Name, err)
+	}
+	if binary.LittleEndian.Uint32(localHeader[0:4]) != zipFileHeaderSignature {
+		return false, fmt.Errorf("source archive path %q has a malformed local file header", file.Name)
+	}
+	localFlags := binary.LittleEndian.Uint16(localHeader[6:8])
+	if localFlags != file.Flags {
+		return false, fmt.Errorf("source archive path %q local file header flags do not match the central directory", file.Name)
+	}
+	if binary.LittleEndian.Uint16(localHeader[8:10]) != file.Method {
+		return false, fmt.Errorf("source archive path %q local file header compression method does not match the central directory", file.Name)
+	}
+	localCompressed := binary.LittleEndian.Uint32(localHeader[18:22])
+	localUncompressed := binary.LittleEndian.Uint32(localHeader[22:26])
+	if localCompressed == ^uint32(0) || localUncompressed == ^uint32(0) {
+		return false, errors.New("source archive uses unsupported ZIP64 entry metadata")
+	}
+	nameBytes := int64(binary.LittleEndian.Uint16(localHeader[26:28]))
+	extraBytes := int64(binary.LittleEndian.Uint16(localHeader[28:30]))
+	wantDataOffset := localOffset + int64(len(localHeader)) + nameBytes + extraBytes
+	if wantDataOffset < localOffset || wantDataOffset != dataOffset || nameBytes != int64(len(file.Name)) {
+		return false, fmt.Errorf("source archive path %q local file header name or extra metadata is inconsistent", file.Name)
+	}
+	for index := range file.Name {
+		if localRecord[zipFileHeaderBytes+index] != file.Name[index] {
+			return false, fmt.Errorf("source archive path %q local file header name does not match the central directory", file.Name)
+		}
+	}
+	if extraBytes != 0 {
+		localExtra := io.NewSectionReader(readerAt, localOffset+int64(len(localHeader))+nameBytes, extraBytes)
+		if err := validateZipExtraFields(localExtra, uint64(extraBytes), "local file header"); err != nil {
+			return false, err
+		}
+	}
+	localCRC := binary.LittleEndian.Uint32(localHeader[14:18])
+	if localFlags&zipDataDescriptorFlag == 0 {
+		if localCRC != file.CRC32 || uint64(localCompressed) != file.CompressedSize64 || uint64(localUncompressed) != file.UncompressedSize64 {
+			return false, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
+		}
+	} else {
+		allZero := localCRC == 0 && localCompressed == 0 && localUncompressed == 0
+		allCentral := localCRC == file.CRC32 && uint64(localCompressed) == file.CompressedSize64 && uint64(localUncompressed) == file.UncompressedSize64
+		if !allZero && !allCentral {
+			return false, fmt.Errorf("source archive path %q local file header sizes or checksum do not match the central directory", file.Name)
+		}
+	}
 	if dataOffset < 0 || directoryOffset < 0 || dataOffset > directoryOffset ||
 		file.CompressedSize64 > uint64(directoryOffset-dataOffset) {
 		return false, fmt.Errorf("source archive path %q has compressed data outside the file-data region", file.Name)
 	}
+	dataEnd := dataOffset + int64(file.CompressedSize64)
+	if localFlags&zipDataDescriptorFlag != 0 {
+		if err := validateZipDataDescriptor(readerAt, dataEnd, directoryOffset, file, descriptorBuffer); err != nil {
+			return false, err
+		}
+	}
 	return nameEndsInSlash, nil
+}
+
+func validateZipDataDescriptor(readerAt io.ReaderAt, offset, directoryOffset int64, file *zip.File, descriptorBuffer []byte) error {
+	if len(descriptorBuffer) < zipDataDescriptorBytes {
+		return errors.New("source archive data descriptor buffer is too small")
+	}
+	descriptor := descriptorBuffer[:zipDataDescriptorBytes]
+	if offset < 0 || directoryOffset < offset || zipDataDescriptorUnsignedBytes > directoryOffset-offset {
+		return fmt.Errorf("source archive path %q has a data descriptor outside the file-data region", file.Name)
+	}
+	readBytes := zipDataDescriptorBytes
+	if int64(readBytes) > directoryOffset-offset {
+		readBytes = zipDataDescriptorUnsignedBytes
+	}
+	if err := readZipMetadataAt(readerAt, descriptor[:readBytes], offset); err != nil {
+		return fmt.Errorf("read source archive path %q data descriptor: %w", file.Name, err)
+	}
+	signed := binary.LittleEndian.Uint32(descriptor[0:4]) == zipDataDescriptorSignature
+	valueOffset := 0
+	if signed {
+		if readBytes != zipDataDescriptorBytes {
+			return fmt.Errorf("source archive path %q has a truncated data descriptor", file.Name)
+		}
+		valueOffset = 4
+	}
+	if binary.LittleEndian.Uint32(descriptor[valueOffset:valueOffset+4]) != file.CRC32 ||
+		uint64(binary.LittleEndian.Uint32(descriptor[valueOffset+4:valueOffset+8])) != file.CompressedSize64 ||
+		uint64(binary.LittleEndian.Uint32(descriptor[valueOffset+8:valueOffset+12])) != file.UncompressedSize64 {
+		return fmt.Errorf("source archive path %q data descriptor does not match the central directory", file.Name)
+	}
+	return nil
+}
+
+func readZipMetadataAt(readerAt io.ReaderAt, destination []byte, offset int64) error {
+	read, err := readerAt.ReadAt(destination, offset)
+	if err != nil {
+		return err
+	}
+	if read != len(destination) {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
 }
 
 func containedDestination(root, relative string) (string, error) {

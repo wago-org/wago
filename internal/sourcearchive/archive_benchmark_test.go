@@ -34,7 +34,7 @@ func BenchmarkPreflightDeepPathsProduction(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		entries, err := preflight(context.Background(), reader.File, directory.offset, limits)
+		entries, err := preflight(context.Background(), file, reader.File, directory, limits)
 		if err != nil {
 			b.Fatal(err)
 		}
