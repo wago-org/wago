@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 )
 
 const (
@@ -26,61 +25,52 @@ type zipDirectory struct {
 
 // inspectZipDirectory bounds central-directory parsing before archive/zip
 // constructs one zip.File and its variable metadata for every entry.
-func inspectZipDirectory(ctx context.Context, archive string, limits extractionLimits) error {
-	file, err := os.Open(archive)
+func inspectZipDirectory(ctx context.Context, readerAt io.ReaderAt, size int64, limits extractionLimits) (zipDirectory, error) {
+	directory, err := locateZipDirectory(readerAt, size, limits)
 	if err != nil {
-		return err
+		return zipDirectory{}, err
 	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return err
-	}
-	directory, err := locateZipDirectory(file, info.Size(), limits)
-	if err != nil {
-		return err
-	}
-	section := io.NewSectionReader(file, directory.offset, int64(directory.size))
+	section := io.NewSectionReader(readerAt, directory.offset, int64(directory.size))
 	reader := bufio.NewReaderSize(section, 32<<10)
 	remaining := directory.size
 	var records uint64
 	var header [zipDirectoryHeaderBytes]byte
 	for remaining != 0 {
 		if err := ctx.Err(); err != nil {
-			return err
+			return zipDirectory{}, err
 		}
 		if records >= uint64(limits.entries) {
-			return fmt.Errorf("source archive contains more than %d entries", limits.entries)
+			return zipDirectory{}, fmt.Errorf("source archive contains more than %d entries", limits.entries)
 		}
 		if remaining < zipDirectoryHeaderBytes {
-			return errors.New("source archive has a malformed central directory")
+			return zipDirectory{}, errors.New("source archive has a malformed central directory")
 		}
 		if _, err := io.ReadFull(reader, header[:]); err != nil {
-			return fmt.Errorf("read source archive central directory: %w", err)
+			return zipDirectory{}, fmt.Errorf("read source archive central directory: %w", err)
 		}
 		if binary.LittleEndian.Uint32(header[:4]) != zipDirectoryHeaderSignature {
-			return errors.New("source archive has a malformed central directory header")
+			return zipDirectory{}, errors.New("source archive has a malformed central directory header")
 		}
 		variable := uint64(binary.LittleEndian.Uint16(header[28:30])) +
 			uint64(binary.LittleEndian.Uint16(header[30:32])) +
 			uint64(binary.LittleEndian.Uint16(header[32:34]))
 		recordBytes := uint64(zipDirectoryHeaderBytes) + variable
 		if recordBytes > remaining {
-			return errors.New("source archive has truncated central directory metadata")
+			return zipDirectory{}, errors.New("source archive has truncated central directory metadata")
 		}
 		if _, err := io.CopyN(io.Discard, reader, int64(variable)); err != nil {
-			return fmt.Errorf("read source archive central directory metadata: %w", err)
+			return zipDirectory{}, fmt.Errorf("read source archive central directory metadata: %w", err)
 		}
 		remaining -= recordBytes
 		records++
 	}
 	if records != directory.records {
-		return fmt.Errorf("source archive central directory declares %d entries but contains %d", directory.records, records)
+		return zipDirectory{}, fmt.Errorf("source archive central directory declares %d entries but contains %d", directory.records, records)
 	}
-	return nil
+	return directory, nil
 }
 
-func locateZipDirectory(file *os.File, size int64, limits extractionLimits) (zipDirectory, error) {
+func locateZipDirectory(readerAt io.ReaderAt, size int64, limits extractionLimits) (zipDirectory, error) {
 	if size < zipDirectoryEndBytes {
 		return zipDirectory{}, errors.New("source archive has no central directory")
 	}
@@ -89,7 +79,7 @@ func locateZipDirectory(file *os.File, size int64, limits extractionLimits) (zip
 		tailBytes = size
 	}
 	tail := make([]byte, int(tailBytes))
-	if _, err := file.ReadAt(tail, size-tailBytes); err != nil {
+	if _, err := readerAt.ReadAt(tail, size-tailBytes); err != nil {
 		return zipDirectory{}, err
 	}
 	end := -1

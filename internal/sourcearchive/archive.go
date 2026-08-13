@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,36 @@ type archiveEntry struct {
 	file     *zip.File
 	relative string
 	dir      bool
+}
+
+type archiveReadCloser interface {
+	io.ReaderAt
+	Stat() (fs.FileInfo, error)
+	Close() error
+}
+
+type extractionOperations struct {
+	openArchive func(string) (archiveReadCloser, error)
+	removeAll   func(string) error
+}
+
+type pathNodeKey struct {
+	parent    int
+	component string
+}
+
+type pathNode struct {
+	id        int
+	component string
+	spelling  string
+	directory bool
+	explicit  bool
+}
+
+type validatedArchivePath struct {
+	name     string
+	root     string
+	relative string
 }
 
 // Extract expands archive into target while removing the archive's single
@@ -60,8 +91,22 @@ func productionExtractionLimits() extractionLimits {
 }
 
 func extractWithLimits(ctx context.Context, archive, target string, limits extractionLimits) error {
+	return extractWithOperations(ctx, archive, target, limits, defaultExtractionOperations())
+}
+
+func defaultExtractionOperations() extractionOperations {
+	return extractionOperations{
+		openArchive: func(path string) (archiveReadCloser, error) { return os.Open(path) },
+		removeAll:   os.RemoveAll,
+	}
+}
+
+func extractWithOperations(ctx context.Context, archive, target string, limits extractionLimits, operations extractionOperations) (returnErr error) {
 	if ctx == nil {
 		return errors.New("source archive extraction requires a context")
+	}
+	if operations.openArchive == nil || operations.removeAll == nil {
+		return errors.New("source archive extraction operations must be configured")
 	}
 	if err := validateLimits(limits); err != nil {
 		return err
@@ -69,16 +114,44 @@ func extractWithLimits(ctx context.Context, archive, target string, limits extra
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := inspectZipDirectory(ctx, archive, limits); err != nil {
-		return err
-	}
-	reader, err := zip.OpenReader(archive)
+	archiveFile, err := operations.openArchive(archive)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	archiveOpen := true
+	closeArchive := func() error {
+		if !archiveOpen {
+			return nil
+		}
+		archiveOpen = false
+		if err := archiveFile.Close(); err != nil {
+			return fmt.Errorf("close source archive: %w", err)
+		}
+		return nil
+	}
+	defer func() {
+		if archiveOpen {
+			returnErr = errors.Join(returnErr, closeArchive())
+		}
+	}()
 
-	entries, err := preflight(ctx, reader.File, limits)
+	info, err := archiveFile.Stat()
+	if err != nil {
+		return fmt.Errorf("stat source archive: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("source archive must be a regular file")
+	}
+	directory, err := inspectZipDirectory(ctx, archiveFile, info.Size(), limits)
+	if err != nil {
+		return err
+	}
+	reader, err := zip.NewReader(archiveFile, info.Size())
+	if err != nil {
+		return err
+	}
+
+	entries, err := preflight(ctx, reader.File, directory.offset, limits)
 	if err != nil {
 		return err
 	}
@@ -99,10 +172,12 @@ func extractWithLimits(ctx context.Context, archive, target string, limits extra
 	if err != nil {
 		return err
 	}
-	publish := false
+	published := false
 	defer func() {
-		if !publish {
-			_ = os.RemoveAll(staging)
+		if !published {
+			if cleanupErr := operations.removeAll(staging); cleanupErr != nil {
+				returnErr = errors.Join(returnErr, fmt.Errorf("clean source archive staging: %w", cleanupErr))
+			}
 		}
 	}()
 
@@ -137,14 +212,20 @@ func extractWithLimits(ctx context.Context, archive, target string, limits extra
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	info, err := os.Stat(filepath.Join(staging, "go.mod"))
-	if err != nil || !info.Mode().IsRegular() {
+	info, err = os.Lstat(filepath.Join(staging, "go.mod"))
+	if err != nil {
+		return fmt.Errorf("verify extracted root go.mod: %w", err)
+	}
+	if !info.Mode().IsRegular() {
 		return errors.New("source archive does not contain a regular go.mod file")
+	}
+	if err := closeArchive(); err != nil {
+		return err
 	}
 	if err := publishDirectoryNoReplace(staging, target); err != nil {
 		return fmt.Errorf("publish source archive: %w", err)
 	}
-	publish = true
+	published = true
 	return nil
 }
 
@@ -157,7 +238,7 @@ func validateLimits(limits extractionLimits) error {
 	return nil
 }
 
-func preflight(ctx context.Context, files []*zip.File, limits extractionLimits) ([]archiveEntry, error) {
+func preflight(ctx context.Context, files []*zip.File, directoryOffset int64, limits extractionLimits) ([]archiveEntry, error) {
 	if len(files) == 0 {
 		return nil, errors.New("source archive is empty")
 	}
@@ -165,32 +246,33 @@ func preflight(ctx context.Context, files []*zip.File, limits extractionLimits) 
 		return nil, fmt.Errorf("source archive contains more than %d entries", limits.entries)
 	}
 	entries := make([]archiveEntry, 0, len(files))
-	entryPaths := make(map[string]string, len(files))
-	treeKinds := make(map[string]bool, len(files)) // true means directory.
-	treePaths := make(map[string]string, len(files))
-	directories := make(map[string]struct{})
+	nodes := make(map[pathNodeKey]*pathNode, len(files)+limits.directories)
+	nextNodeID := 1
+	directories := 0
 	root := ""
 	rootEntry := false
+	rootGoMod := false
 	regularFiles := 0
 	var declared uint64
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		name, components, err := validateArchivePath(file.Name, limits)
+		path, err := validateArchivePath(file.Name, limits)
+		if err != nil {
+			return nil, err
+		}
+		nameEndsInSlash := strings.HasSuffix(file.Name, "/")
+		dir, err := validateZipEntryMetadata(file, nameEndsInSlash, directoryOffset)
 		if err != nil {
 			return nil, err
 		}
 		if root == "" {
-			root = components[0]
-		} else if root != components[0] {
+			root = path.root
+		} else if root != path.root {
 			return nil, errors.New("source archive contains multiple roots")
 		}
-		dir := file.FileInfo().IsDir()
-		if !dir && !file.Mode().IsRegular() {
-			return nil, fmt.Errorf("source archive path %q has unsupported file type %s", name, file.Mode().Type())
-		}
-		if len(components) == 1 {
+		if path.relative == "" {
 			if !dir {
 				return nil, errors.New("source archive root must be a directory")
 			}
@@ -200,40 +282,58 @@ func preflight(ctx context.Context, files []*zip.File, limits extractionLimits) 
 			rootEntry = true
 			continue
 		}
-		relative := strings.Join(components[1:], "/")
-		folded := strings.ToLower(relative)
-		if previous, ok := entryPaths[folded]; ok {
-			if previous == relative {
-				return nil, fmt.Errorf("source archive contains duplicate path %q", relative)
+		relative := path.relative
+		canonical := canonicalPortablePath(relative)
+		parentID := 0
+		componentStart := 0
+		for {
+			slash := strings.IndexByte(canonical[componentStart:], '/')
+			componentEnd := len(canonical)
+			final := true
+			if slash >= 0 {
+				componentEnd = componentStart + slash
+				final = false
 			}
-			return nil, fmt.Errorf("source archive contains case-colliding paths %q and %q", previous, relative)
+			key := pathNodeKey{parent: parentID, component: canonical[componentStart:componentEnd]}
+			component := relative[componentStart:componentEnd]
+			spelling := relative[:componentEnd]
+			node, found := nodes[key]
+			if found && node.component != component {
+				return nil, fmt.Errorf("source archive contains case-colliding paths %q and %q", node.spelling, spelling)
+			}
+			wantDirectory := !final || dir
+			if found {
+				if !final && !node.directory {
+					return nil, fmt.Errorf("source archive path %q is nested below a file", relative)
+				}
+				if final {
+					if node.explicit {
+						return nil, fmt.Errorf("source archive contains duplicate path %q", relative)
+					}
+					if node.directory != wantDirectory {
+						return nil, fmt.Errorf("source archive path %q is both a file and directory", relative)
+					}
+					node.explicit = true
+				}
+			} else {
+				node = &pathNode{id: nextNodeID, component: component, spelling: spelling, directory: wantDirectory, explicit: final}
+				nextNodeID++
+				nodes[key] = node
+				if wantDirectory {
+					directories++
+				}
+			}
+			parentID = node.id
+			if final {
+				break
+			}
+			componentStart = componentEnd + 1
 		}
-		entryPaths[folded] = relative
 
-		parents := components[1 : len(components)-1]
-		for index := range parents {
-			parent := strings.Join(parents[:index+1], "/")
-			key := strings.ToLower(parent)
-			if previous, ok := treePaths[key]; ok && previous != parent {
-				return nil, fmt.Errorf("source archive contains case-colliding paths %q and %q", previous, parent)
-			}
-			if kind, ok := treeKinds[key]; ok && !kind {
-				return nil, fmt.Errorf("source archive path %q is nested below a file", relative)
-			}
-			treePaths[key] = parent
-			treeKinds[key] = true
-			directories[key] = struct{}{}
-		}
-		if previous, ok := treePaths[folded]; ok && previous != relative {
-			return nil, fmt.Errorf("source archive contains case-colliding paths %q and %q", previous, relative)
-		}
-		if kind, ok := treeKinds[folded]; ok && kind != dir {
-			return nil, fmt.Errorf("source archive path %q is both a file and directory", relative)
-		}
-		treePaths[folded] = relative
-		treeKinds[folded] = dir
 		if dir {
-			directories[folded] = struct{}{}
+			if relative == "go.mod" {
+				return nil, errors.New("source archive root go.mod must be a regular file")
+			}
 		} else {
 			regularFiles++
 			if regularFiles > limits.files {
@@ -246,8 +346,11 @@ func preflight(ctx context.Context, files []*zip.File, limits extractionLimits) 
 				return nil, fmt.Errorf("source archive expands beyond %s limit", byteLimit(limits.expandedBytes))
 			}
 			declared += file.UncompressedSize64
+			if relative == "go.mod" {
+				rootGoMod = true
+			}
 		}
-		if len(directories) > limits.directories {
+		if directories > limits.directories {
 			return nil, fmt.Errorf("source archive contains more than %d directories", limits.directories)
 		}
 		entries = append(entries, archiveEntry{file: file, relative: relative, dir: dir})
@@ -255,40 +358,72 @@ func preflight(ctx context.Context, files []*zip.File, limits extractionLimits) 
 	if root == "" {
 		return nil, errors.New("source archive is empty")
 	}
+	if !rootGoMod {
+		return nil, errors.New("source archive does not contain a regular go.mod file at the exact root path")
+	}
 	return entries, nil
 }
 
-func validateArchivePath(raw string, limits extractionLimits) (string, []string, error) {
-	if raw == "" || strings.ContainsRune(raw, 0) || strings.Contains(raw, "\\") || strings.HasPrefix(raw, "/") {
-		return "", nil, errors.New("source archive contains an invalid path")
+func validateArchivePath(raw string, limits extractionLimits) (validatedArchivePath, error) {
+	if raw == "" {
+		return validatedArchivePath{}, errors.New("source archive contains an invalid path")
 	}
-	name := strings.TrimSuffix(raw, "/")
+	name := raw
+	if name[len(name)-1] == '/' {
+		name = name[:len(name)-1]
+	}
 	if len(name) > limits.pathBytes {
-		return "", nil, fmt.Errorf("source archive path exceeds %d-byte limit", limits.pathBytes)
+		return validatedArchivePath{}, fmt.Errorf("source archive path exceeds %d-byte limit", limits.pathBytes)
 	}
-	components := strings.Split(name, "/")
-	if len(components) > limits.pathDepth+1 { // Include the stripped archive root.
-		return "", nil, fmt.Errorf("source archive path exceeds %d-component depth limit", limits.pathDepth)
-	}
-	for _, component := range components {
-		if component == "" || component == "." || component == ".." {
-			return "", nil, errors.New("source archive contains an invalid path component")
+	componentStart := 0
+	components := 0
+	rootEnd := -1
+	for index := 0; index <= len(name); index++ {
+		if index != len(name) {
+			if name[index] == 0 || name[index] == '\\' {
+				return validatedArchivePath{}, errors.New("source archive contains an invalid path")
+			}
+			if name[index] != '/' {
+				continue
+			}
+		}
+		if componentStart == index {
+			return validatedArchivePath{}, errors.New("source archive contains an invalid path component")
+		}
+		component := name[componentStart:index]
+		if component == "." || component == ".." {
+			return validatedArchivePath{}, errors.New("source archive contains an invalid path component")
 		}
 		if len(component) > limits.componentBytes {
-			return "", nil, fmt.Errorf("source archive path component exceeds %d-byte limit", limits.componentBytes)
+			return validatedArchivePath{}, fmt.Errorf("source archive path component exceeds %d-byte limit", limits.componentBytes)
 		}
 		if !portablePathComponent(component) {
-			return "", nil, fmt.Errorf("source archive path component %q is not portable", component)
+			return validatedArchivePath{}, fmt.Errorf("source archive path component %q is not portable", component)
 		}
+		components++
+		if components > limits.pathDepth+1 { // Include the stripped archive root.
+			return validatedArchivePath{}, fmt.Errorf("source archive path exceeds %d-component depth limit", limits.pathDepth)
+		}
+		if rootEnd < 0 && index < len(name) {
+			rootEnd = index
+		}
+		componentStart = index + 1
 	}
-	return name, components, nil
+	if rootEnd < 0 {
+		return validatedArchivePath{name: name, root: name}, nil
+	}
+	return validatedArchivePath{name: name, root: name[:rootEnd], relative: name[rootEnd+1:]}, nil
 }
 
 func portablePathComponent(component string) bool {
-	if strings.HasSuffix(component, ".") || strings.HasSuffix(component, " ") || strings.ContainsAny(component, `<>:"|?*`) {
+	if component == "." || component == ".." || component[len(component)-1] == '.' || component[len(component)-1] == ' ' {
 		return false
 	}
 	for index := 0; index < len(component); index++ {
+		switch component[index] {
+		case '<', '>', ':', '"', '|', '?', '*':
+			return false
+		}
 		if component[index] < 0x20 || component[index] > 0x7e {
 			return false
 		}
@@ -297,13 +432,93 @@ func portablePathComponent(component string) bool {
 	if dot := strings.IndexByte(base, '.'); dot >= 0 {
 		base = base[:dot]
 	}
-	switch strings.ToUpper(base) {
-	case "CON", "PRN", "AUX", "NUL",
-		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+	if len(base) == 3 && (equalFoldASCII(base, "CON") || equalFoldASCII(base, "PRN") ||
+		equalFoldASCII(base, "AUX") || equalFoldASCII(base, "NUL")) {
+		return false
+	}
+	if len(base) == 4 && base[3] >= '1' && base[3] <= '9' &&
+		(equalFoldASCII(base[:3], "COM") || equalFoldASCII(base[:3], "LPT")) {
 		return false
 	}
 	return true
+}
+
+func equalFoldASCII(left, right string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		value := left[index]
+		if value >= 'a' && value <= 'z' {
+			value -= 'a' - 'A'
+		}
+		if value != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func canonicalPortablePath(path string) string {
+	firstUpper := -1
+	for index := range path {
+		if path[index] >= 'A' && path[index] <= 'Z' {
+			firstUpper = index
+			break
+		}
+	}
+	if firstUpper < 0 {
+		return path
+	}
+	var canonical strings.Builder
+	canonical.Grow(len(path))
+	canonical.WriteString(path[:firstUpper])
+	for index := firstUpper; index < len(path); index++ {
+		value := path[index]
+		if value >= 'A' && value <= 'Z' {
+			value += 'a' - 'A'
+		}
+		canonical.WriteByte(value)
+	}
+	return canonical.String()
+}
+
+func validateZipEntryMetadata(file *zip.File, nameEndsInSlash bool, directoryOffset int64) (bool, error) {
+	mode := file.Mode()
+	kind := mode.Type()
+	if nameEndsInSlash {
+		if kind != fs.ModeDir {
+			return false, fmt.Errorf("source archive directory %q has unsupported file type %s", file.Name, kind)
+		}
+		if file.UncompressedSize64 != 0 {
+			return false, fmt.Errorf("source archive directory %q declares nonzero content", file.Name)
+		}
+	} else {
+		if kind&fs.ModeDir != 0 {
+			return false, fmt.Errorf("source archive directory %q must end in a slash", file.Name)
+		}
+		if !mode.IsRegular() {
+			return false, fmt.Errorf("source archive path %q has unsupported file type %s", file.Name, kind)
+		}
+	}
+	if file.Flags&(1|1<<6) != 0 {
+		return false, fmt.Errorf("source archive path %q is encrypted", file.Name)
+	}
+	if file.Method != zip.Store && file.Method != zip.Deflate {
+		return false, fmt.Errorf("source archive path %q uses unsupported compression method %d", file.Name, file.Method)
+	}
+	if file.Method == zip.Store && file.CompressedSize64 != file.UncompressedSize64 {
+		return false, fmt.Errorf("source archive stored path %q has mismatched compressed and uncompressed sizes", file.Name)
+	}
+	dataOffset, err := file.DataOffset()
+	if err != nil {
+		return false, fmt.Errorf("source archive path %q has a malformed local file header: %w", file.Name, err)
+	}
+	if dataOffset < 0 || directoryOffset < 0 || dataOffset > directoryOffset ||
+		file.CompressedSize64 > uint64(directoryOffset-dataOffset) {
+		return false, fmt.Errorf("source archive path %q has compressed data outside the file-data region", file.Name)
+	}
+	return nameEndsInSlash, nil
 }
 
 func containedDestination(root, relative string) (string, error) {
@@ -360,13 +575,7 @@ func extractFile(ctx context.Context, entry *zip.File, destination string, buffe
 }
 
 func closeExtractedFile(destination *os.File, source io.Closer, extractionErr error) error {
-	if err := destination.Close(); extractionErr == nil {
-		extractionErr = err
-	}
-	if err := source.Close(); extractionErr == nil {
-		extractionErr = err
-	}
-	return extractionErr
+	return errors.Join(extractionErr, destination.Close(), source.Close())
 }
 
 func byteLimit(value uint64) string {
