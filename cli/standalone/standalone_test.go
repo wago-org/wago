@@ -14,9 +14,9 @@ func TestRunEmptyStartModule(t *testing.T) {
 	}
 }
 
-func TestExecuteRequiresStartExport(t *testing.T) {
+func TestExecuteRejectsModuleWithoutFunctionExports(t *testing.T) {
 	empty := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}
-	if err := execute(empty, wago.PluginSet{}, Options{DeferBoundsChecks: true}, nil); err == nil || err.Error() != "module does not export _start" {
+	if err := execute(empty, wago.PluginSet{}, Options{DeferBoundsChecks: true}, nil); err == nil || err.Error() != "module exports no functions" {
 		t.Fatalf("execute error = %v", err)
 	}
 }
@@ -43,6 +43,28 @@ func TestExecuteInvokesExportWithTypedArgs(t *testing.T) {
 	}
 	if got := string(output[:n]); got != "add(20, 22) = 42\n" {
 		t.Fatalf("output = %q", got)
+	}
+}
+
+func TestExecuteSelectsSoleExportWithTypedArgs(t *testing.T) {
+	output := captureStdout(t, func() {
+		if err := execute(addModule(), wago.PluginSet{}, Options{DeferBoundsChecks: true}, []string{"add", "20", "22"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if output != "add(20, 22) = 42\n" {
+		t.Fatalf("output = %q", output)
+	}
+}
+
+func TestExecuteSelectsMainBeforeOtherExports(t *testing.T) {
+	output := captureStdout(t, func() {
+		if err := execute(mainAndOtherModule(), wago.PluginSet{}, Options{DeferBoundsChecks: true}, []string{"program"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if output != "main() = 7\n" {
+		t.Fatalf("output = %q", output)
 	}
 }
 
@@ -115,6 +137,37 @@ func addModule() []byte {
 		7, 7, 1, 3, 'a', 'd', 'd', 0, 0,
 		10, 9, 1, 7, 0, 0x20, 0, 0x20, 1, 0x6a, 0x0b,
 	}
+}
+
+func mainAndOtherModule() []byte {
+	return []byte{
+		'\x00', 'a', 's', 'm', 1, 0, 0, 0,
+		1, 5, 1, 0x60, 0, 1, 0x7f,
+		3, 2, 1, 0,
+		7, 16, 2, 4, 'm', 'a', 'i', 'n', 0, 0, 5, 'o', 't', 'h', 'e', 'r', 0, 0,
+		10, 6, 1, 4, 0, 0x41, 7, 0x0b,
+	}
+}
+
+func captureStdout(t *testing.T, run func()) string {
+	t.Helper()
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stdout
+	os.Stdout = write
+	t.Cleanup(func() { os.Stdout = original })
+	run()
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output := make([]byte, 256)
+	n, err := read.Read(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output[:n])
 }
 
 func tailCallStartModule() []byte {
