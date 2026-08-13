@@ -830,7 +830,12 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
-	return f.emitPluginARM64(pluginARM64Lowering(custom), custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
+	start := f.a.Len()
+	err := f.emitPluginARM64(pluginARM64Lowering(custom), custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
+	if err == nil {
+		f.recordOpaquePlugin(start, f.a.Len())
+	}
+	return err
 }
 
 // inCallSiteLoop reports whether the current call site is nested in a Wasm loop.

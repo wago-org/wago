@@ -133,6 +133,65 @@ treated as noise. Shrinking is still disabled: internal PC-relative branches,
 ADR references, and jump-table edges must become explicitly repatchable before
 the first deletion is allowed.
 
+### Opt-in ARM64 compaction checkpoint
+
+The ARM64 finalizer can now compact already-proved dead ranges in place with
+`WAGO_COMPACT=1`. It removes the unused words in the three-instruction frame
+reservation, removes retained branch-fold holes, remaps function metadata, and
+re-encodes every recognized PC-relative branch, ADR reference, and jump-table
+entry. Explicit jump-table and plugin fragments prevent instruction scanning
+through embedded or opaque bytes. The fixed deletion budget is eight ranges per
+function; a function that exceeds it or contains opaque plugin output retains
+the old size-preserving path.
+
+Compaction is deliberately not the default yet. Frame deletion changes final
+body and loop offsets after the current emission-time alignment decisions. A
+paired execution check found a repeatable scalar `json-as` serialize regression
+above 1% while the SIMD variant improved substantially. Final-layout-aware,
+objective-owned alignment is therefore the next gate before default enablement.
+
+#### Native bytes and compile cost
+
+These medians compare `WAGO_COMPACT=1` with `WAGO_COMPACT=0` on the same working
+tree, using five 500 ms p1 samples:
+
+| Workload | Compaction off | Compaction on | Native change | Compile p1 off | Compile p1 on | Compile change | B/op / allocs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `many_funcs` | 28,984 B | 24,168 B | -16.62% | 549,387 ns/op | 534,399 ns/op | -2.73% | 195,145 / 379, unchanged |
+| `json-as` | 77,516 B | 76,780 B | -0.95% | 2,053,737 ns/op | 1,948,710 ns/op | -5.11% | 351,179 / 1,272, unchanged |
+
+The compile-time improvement is not claimed as a durable speedup: on macOS the
+public p1 benchmark is dominated by executable-buffer mapping syscalls and
+varies materially between runs. A CPU profile attributed about 7 microseconds
+per `many_funcs` compile to finalization. The allocation gate is conclusive:
+compaction adds neither bytes nor allocations per compile. A temporary
+slice-backed offset map failed this gate and was replaced by fixed-capacity
+storage before this checkpoint.
+
+The 4,816-byte `many_funcs` reduction is smaller than its 7,216-byte frame-hole
+opportunity because each compacted tiny function is still aligned to 16 bytes;
+inter-function padding grows by about 2,400 bytes. This directly motivates the
+alignment phase.
+
+#### Paired execution check
+
+The following medians use strictly alternating one-second compact/off runs.
+Every benchmark remained at zero B/op and zero allocs/op.
+
+| Workload | Compaction off | Compaction on | Change |
+| --- | ---: | ---: | ---: |
+| `many_funcs.run` | 17.24 ns/op | 17.38 ns/op | +0.84% |
+| `json-as.serializeN` | 18,635 ns/op | 18,856 ns/op | +1.19% |
+| `json-as.deserializeN` | 38,751 ns/op | 39,097 ns/op | +0.89% |
+| `json-as-simd.serializeN` | 23,640 ns/op | 22,388 ns/op | -5.30% |
+| `json-as-simd.deserializeN` | 48,884 ns/op | 49,357 ns/op | +0.97% |
+
+Adversarial unit coverage includes B/BL, conditional, compare-and-branch,
+test-and-branch, ADR, deletion-boundary fragment transitions, and jump-table
+delta remapping. The ARM64 package passes normal, inventory-validation, and race
+test modes. Targeted runtime corpus and fuzz-regression execution also pass with
+both compaction and exhaustive validation enabled.
+
 ### Commands
 
 ```sh
@@ -163,4 +222,7 @@ WAGO_EXPLAIN=size go test -run '^$' \
 go test -run '^$' \
   -bench '^BenchmarkCompileMultiModuleThroughput$/^(many_funcs|json-as)$/^p1$' \
   -benchmem -benchtime=500ms -count=5 -cpu=8 .
+
+WAGO_COMPACT=1 WAGO_FINALIZE_VALIDATE=1 go test -count=1 \
+  ./src/wago -run '^(TestCorpusExecution|TestFuzzRegressionCorpus)$'
 ```

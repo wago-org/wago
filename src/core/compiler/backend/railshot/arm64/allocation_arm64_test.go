@@ -196,6 +196,15 @@ func brTableComputedIndexArm64(t *testing.T) *wasm.Module {
 // dispatch to the correct arm. It also asserts the jump-table lowering actually
 // fired (not an if-chain fallback).
 func TestExecBrTableComputedIndexArm64(t *testing.T) {
+	beforeFinalizer := nativeFinalizerEnabled
+	beforeCompact := nativeCompactionEnabled
+	nativeFinalizerEnabled = true
+	nativeCompactionEnabled = true
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = beforeFinalizer
+		nativeCompactionEnabled = beforeCompact
+	})
+
 	m := brTableComputedIndexArm64(t)
 
 	var ms ModuleStats

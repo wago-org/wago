@@ -10,6 +10,15 @@ import (
 )
 
 func TestNativeSizeReportAccountsModuleAndFunctionBytesArm64(t *testing.T) {
+	beforeFinalizer := nativeFinalizerEnabled
+	beforeCompact := nativeCompactionEnabled
+	nativeFinalizerEnabled = true
+	nativeCompactionEnabled = true
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = beforeFinalizer
+		nativeCompactionEnabled = beforeCompact
+	})
+
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x10, 0x01, 0x0b}},
@@ -63,8 +72,8 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesArm64(t *testing.T) {
 	if got := stats.Funcs[1].NativeSize.AdapterToInternalPaddingBytes; got != 0 {
 		t.Fatalf("direct-only callee internal padding = %d, want 0", got)
 	}
-	if stats.Funcs[0].NativeSize.FrameAdjustmentBytes == 0 || stats.Funcs[0].NativeSize.DeadFrameReservationBytes == 0 {
-		t.Fatalf("caller frame attribution = %#v, want physical and dead bytes", stats.Funcs[0].NativeSize)
+	if stats.Funcs[0].NativeSize.FrameAdjustmentBytes == 0 || stats.Funcs[0].NativeSize.DeadFrameReservationBytes != 0 {
+		t.Fatalf("caller frame attribution = %#v, want compact physical bytes and no retained dead bytes", stats.Funcs[0].NativeSize)
 	}
 
 	report := stats.String()

@@ -61,3 +61,46 @@ func TestFinalizeIdentityRejectsInvalidRecords(t *testing.T) {
 		})
 	}
 }
+
+func TestOffsetMapAppliesSortedDeletions(t *testing.T) {
+	deletions := []DeletedRange{{Off: 4, Len: 4}, {Off: 12, Len: 8}}
+	offsets, err := NewOffsetMap(24, deletions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if offsets.FinalLen() != 12 {
+		t.Fatalf("final length = %d, want 12", offsets.FinalLen())
+	}
+	for _, test := range []struct {
+		off  int
+		want int
+		ok   bool
+	}{
+		{0, 0, true},
+		{4, 4, true},
+		{6, 0, false},
+		{8, 4, true},
+		{12, 8, true},
+		{16, 0, false},
+		{20, 8, true},
+		{24, 12, true},
+	} {
+		got, ok := offsets.Map(test.off)
+		if got != test.want || ok != test.ok {
+			t.Errorf("map(%d) = %d, %v; want %d, %v", test.off, got, ok, test.want, test.ok)
+		}
+	}
+}
+
+func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
+	for _, deletions := range [][]DeletedRange{
+		{{Off: 4}},
+		{{Off: 7, Len: 2}},
+		{{Off: 4, Len: 4}, {Off: 6, Len: 2}},
+		{{Off: 8, Len: 2}, {Off: 4, Len: 2}},
+	} {
+		if _, err := NewOffsetMap(8, deletions); err == nil {
+			t.Fatalf("invalid deletions accepted: %#v", deletions)
+		}
+	}
+}

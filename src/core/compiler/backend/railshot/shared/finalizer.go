@@ -67,14 +67,70 @@ type CodeMark struct {
 // intentionally stores only the old length; later compacting forms can add a
 // bounded deletion/prefix-delta representation without changing callers.
 type OffsetMap struct {
-	oldLen uint32
+	oldLen    uint32
+	finalLen  uint32
+	deletionN uint8
+	deletions [MaxOffsetMapDeletions]DeletedRange
 }
 
-func (m OffsetMap) Map(off int) (int, bool) {
+// MaxOffsetMapDeletions is the fixed per-function deletion budget. A backend
+// that discovers more sites leaves that function uncompressed; correctness
+// never depends on maximizing relaxation.
+const MaxOffsetMapDeletions = 8
+
+func (m *OffsetMap) Map(off int) (int, bool) {
 	if off < 0 || uint64(off) > uint64(m.oldLen) {
 		return 0, false
 	}
-	return off, true
+	delta := 0
+	for _, deletion := range m.deletions[:m.deletionN] {
+		start := int(deletion.Off)
+		end := start + int(deletion.Len)
+		if off < start {
+			break
+		}
+		if off > start && off < end {
+			return 0, false
+		}
+		if off >= end {
+			delta += int(deletion.Len)
+		}
+	}
+	return off - delta, true
+}
+
+func (m *OffsetMap) FinalLen() int { return int(m.finalLen) }
+
+// DeletedRange is one half-open maximal-encoding byte range removed by
+// compaction. Ranges passed to NewOffsetMap must be sorted and non-overlapping.
+type DeletedRange struct {
+	Off uint32
+	Len uint32
+}
+
+// NewOffsetMap validates a monotonic shrink plan and returns its old-to-new
+// mapping. The fixed-capacity result owns a copy of the deletion records.
+func NewOffsetMap(oldLen int, deletions []DeletedRange) (OffsetMap, error) {
+	if oldLen < 0 || uint64(oldLen) > uint64(^uint32(0)) {
+		return OffsetMap{}, fmt.Errorf("finalizer: invalid %d-byte function length", oldLen)
+	}
+	if len(deletions) > MaxOffsetMapDeletions {
+		return OffsetMap{}, fmt.Errorf("finalizer: %d deletions exceed fixed budget %d", len(deletions), MaxOffsetMapDeletions)
+	}
+	previousEnd := uint64(0)
+	deleted := uint64(0)
+	for i, deletion := range deletions {
+		start := uint64(deletion.Off)
+		end := start + uint64(deletion.Len)
+		if deletion.Len == 0 || end > uint64(oldLen) || i != 0 && start < previousEnd {
+			return OffsetMap{}, fmt.Errorf("finalizer: invalid deletion %d at %d+%d for %d-byte function", i, deletion.Off, deletion.Len, oldLen)
+		}
+		previousEnd = end
+		deleted += uint64(deletion.Len)
+	}
+	result := OffsetMap{oldLen: uint32(oldLen), finalLen: uint32(uint64(oldLen) - deleted), deletionN: uint8(len(deletions))}
+	copy(result.deletions[:], deletions)
+	return result, nil
 }
 
 type FinalizeResult struct {
@@ -106,7 +162,11 @@ func FinalizeIdentity(code []byte, sites []RelaxSite, labels []CodeLabel, marks 
 			return FinalizeResult{}, fmt.Errorf("finalizer: mark %d at %d exceeds %d-byte function", i, mark.Off, len(code))
 		}
 	}
-	return FinalizeResult{Code: code, Offsets: OffsetMap{oldLen: uint32(len(code))}}, nil
+	offsets, err := NewOffsetMap(len(code), nil)
+	if err != nil {
+		return FinalizeResult{}, err
+	}
+	return FinalizeResult{Code: code, Offsets: offsets}, nil
 }
 
 // ValidateRelaxSite validates one record without requiring callers to allocate

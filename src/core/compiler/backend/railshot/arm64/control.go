@@ -1842,6 +1842,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		for range labels {
 			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
 		}
+		f.recordJumpTableData(tablePos, f.a.Len())
 		if brTableSmallLabelsUnique(labels) {
 			defIdx := -1
 			for i, lbl := range labels {
