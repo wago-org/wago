@@ -66,15 +66,17 @@ func downloadReleaseAssetWithProgressContext(ctx context.Context, baseURL, ver, 
 	if progress != nil {
 		progress.Begin("fetching checksum")
 	}
-	checksumResponse, err := getReleaseBytes(ctx, "release checksum download", address+".sha256", checksumBodyMaximum)
+	checksumAddress := address + ".sha256"
+	checksumResponse, err := openReleaseMetadata(ctx, "release checksum download", checksumAddress)
 	if err != nil {
 		if progress != nil {
 			progress.Fail("checksum download failed")
 		}
 		return fmt.Errorf("fetch checksum: %w", err)
 	}
+	defer checksumResponse.Body.Close()
 	if checksumResponse.StatusCode != http.StatusOK {
-		err := &httpStatusError{url: address + ".sha256", code: checksumResponse.StatusCode, status: checksumResponse.Status}
+		err := &httpStatusError{url: checksumAddress, code: checksumResponse.StatusCode, status: checksumResponse.Status}
 		if progress != nil {
 			if releaseAssetUnavailable(err) {
 				progress.Done("checksum unavailable; using source")
@@ -84,7 +86,14 @@ func downloadReleaseAssetWithProgressContext(ctx context.Context, baseURL, ver, 
 		}
 		return fmt.Errorf("fetch checksum: %w", err)
 	}
-	want, err := parseReleaseChecksum(checksumResponse.Body, asset)
+	checksum, err := httpclient.ReadBounded(checksumResponse.Body, checksumResponse.ContentLength, checksumBodyMaximum, checksumAddress)
+	if err != nil {
+		if progress != nil {
+			progress.Fail("checksum download failed")
+		}
+		return fmt.Errorf("fetch checksum: %w", err)
+	}
+	want, err := parseReleaseChecksum(checksum, asset)
 	if err != nil {
 		if progress != nil {
 			progress.Fail("invalid checksum")
