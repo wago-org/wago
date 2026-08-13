@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -150,6 +151,276 @@ func TestExtractMissingGoModCleansStaging(t *testing.T) {
 	assertNoStaging(t, target)
 }
 
+func TestPreflightDeepPathsHasBoundedAllocations(t *testing.T) {
+	limits := productionExtractionLimits()
+	archive := writeProductionPathArchive(t, 256)
+	file, err := os.Open(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := locateZipDirectory(file, info.Size(), limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocations := testing.AllocsPerRun(3, func() {
+		entries, err := preflight(context.Background(), reader.File, directory.offset, limits)
+		if err != nil {
+			panic(err)
+		}
+		if len(entries) != 256 {
+			panic("wrong preflight entry count")
+		}
+	})
+	if allocations >= 5_000 {
+		t.Fatalf("preflight allocations = %.0f, want fewer than 5000", allocations)
+	}
+}
+
+func TestExtractOpensArchiveOnce(t *testing.T) {
+	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module example.com/test\n"}})
+	target := filepath.Join(t.TempDir(), "out")
+	operations := defaultExtractionOperations()
+	openArchive := operations.openArchive
+	openCount := 0
+	cleanupCount := 0
+	operations.openArchive = func(path string) (archiveReadCloser, error) {
+		openCount++
+		return openArchive(path)
+	}
+	operations.removeAll = func(path string) error {
+		cleanupCount++
+		return os.RemoveAll(path)
+	}
+	if err := extractWithOperations(context.Background(), archive, target, productionExtractionLimits(), operations); err != nil {
+		t.Fatal(err)
+	}
+	if openCount != 1 {
+		t.Fatalf("archive open count = %d, want 1", openCount)
+	}
+	if cleanupCount != 0 {
+		t.Fatalf("cleanup count after publication = %d, want 0", cleanupCount)
+	}
+}
+
+func TestExtractUsesOpenedArchiveAfterPathReplacement(t *testing.T) {
+	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module original.example/test\n"}})
+	replacement := writeArchive(t, []zipEntry{{name: "replacement/README.md", data: "wrong archive\n"}})
+	target := filepath.Join(t.TempDir(), "out")
+	operations := defaultExtractionOperations()
+	operations.openArchive = func(path string) (archiveReadCloser, error) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		original := path + ".opened"
+		if err := os.Rename(path, original); err != nil {
+			_ = file.Close()
+			return nil, err
+		}
+		if err := os.Rename(replacement, path); err != nil {
+			_ = file.Close()
+			return nil, err
+		}
+		return file, nil
+	}
+	if err := extractWithOperations(context.Background(), archive, target, productionExtractionLimits(), operations); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(target, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "module original.example/test\n" {
+		t.Fatalf("extracted go.mod = %q", data)
+	}
+}
+
+func TestZipInsecurePathErrorClosesOpenedArchive(t *testing.T) {
+	t.Setenv("GODEBUG", "zipinsecurepath=0")
+	archive := writeArchive(t, []zipEntry{
+		{name: "root/go.mod", data: "module example.com/test\n"},
+		{name: `root\bad`, data: "bad"},
+	})
+	target := filepath.Join(t.TempDir(), "out")
+	operations := defaultExtractionOperations()
+	var closed atomic.Bool
+	operations.openArchive = func(path string) (archiveReadCloser, error) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		return &trackedArchive{File: file, closed: &closed}, nil
+	}
+	err := extractWithOperations(context.Background(), archive, target, productionExtractionLimits(), operations)
+	if !errors.Is(err, zip.ErrInsecurePath) {
+		t.Fatalf("Extract error = %v, want zip.ErrInsecurePath", err)
+	}
+	if !closed.Load() {
+		t.Fatal("archive was not closed after zip.ErrInsecurePath")
+	}
+	assertAbsent(t, target)
+}
+
+type trackedArchive struct {
+	*os.File
+	closed *atomic.Bool
+}
+
+type closeErrorArchive struct {
+	*os.File
+	err        error
+	closeCount *atomic.Int32
+}
+
+func (archive *closeErrorArchive) Close() error {
+	archive.closeCount.Add(1)
+	return errors.Join(archive.File.Close(), archive.err)
+}
+
+func TestArchiveCloseFailurePreventsPublicationAndCleansStaging(t *testing.T) {
+	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module example.com/test\n"}})
+	target := filepath.Join(t.TempDir(), "out")
+	closeFailure := errors.New("injected archive close failure")
+	var closeCount atomic.Int32
+	operations := defaultExtractionOperations()
+	operations.openArchive = func(path string) (archiveReadCloser, error) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		return &closeErrorArchive{File: file, err: closeFailure, closeCount: &closeCount}, nil
+	}
+	err := extractWithOperations(context.Background(), archive, target, productionExtractionLimits(), operations)
+	if !errors.Is(err, closeFailure) {
+		t.Fatalf("Extract error = %v, want close failure", err)
+	}
+	if closeCount.Load() != 1 {
+		t.Fatalf("archive close count = %d, want 1", closeCount.Load())
+	}
+	assertAbsent(t, target)
+	assertNoStaging(t, target)
+}
+
+func (archive *trackedArchive) Close() error {
+	archive.closed.Store(true)
+	return archive.File.Close()
+}
+
+func TestExtractRejectsStrictMetadataBeforeFilesystemMutation(t *testing.T) {
+	tests := []struct {
+		name   string
+		bad    zipEntry
+		mutate func(*testing.T, string)
+		want   string
+	}{
+		{name: "trailing slash symlink", bad: zipEntry{name: "root/bad/", mode: os.ModeSymlink | 0o777}, want: "unsupported file type"},
+		{name: "trailing slash device", bad: zipEntry{name: "root/bad/", mode: os.ModeDevice | 0o600}, want: "unsupported file type"},
+		{name: "trailing slash named pipe", bad: zipEntry{name: "root/bad/", mode: os.ModeNamedPipe | 0o600}, want: "unsupported file type"},
+		{name: "trailing slash socket", bad: zipEntry{name: "root/bad/", mode: os.ModeSocket | 0o600}, want: "unsupported file type"},
+		{name: "mode directory without slash", bad: zipEntry{name: "root/bad", mode: os.ModeDir | 0o755}, want: "must end in a slash"},
+		{name: "directory with content", bad: zipEntry{name: "root/bad/", dir: true}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad/", func(data []byte, central, _, _ int) {
+				binary.LittleEndian.PutUint32(data[central+24:], 1)
+			})
+		}, want: "declares nonzero content"},
+		{name: "unsupported compression", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, central, local, _ int) {
+				binary.LittleEndian.PutUint16(data[central+10:], 99)
+				binary.LittleEndian.PutUint16(data[local+8:], 99)
+			})
+		}, want: "unsupported compression method"},
+		{name: "encrypted", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, central, local, _ int) {
+				binary.LittleEndian.PutUint16(data[central+8:], binary.LittleEndian.Uint16(data[central+8:])|1)
+				binary.LittleEndian.PutUint16(data[local+6:], binary.LittleEndian.Uint16(data[local+6:])|1)
+			})
+		}, want: "is encrypted"},
+		{name: "malformed local header", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, _, local, _ int) {
+				binary.LittleEndian.PutUint32(data[local:], 0)
+			})
+		}, want: "malformed local file header"},
+		{name: "compressed range enters directory", bad: zipEntry{name: "root/bad", data: "x"}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, central, local, directory int) {
+				nameBytes := int(binary.LittleEndian.Uint16(data[local+26:]))
+				extraBytes := int(binary.LittleEndian.Uint16(data[local+28:]))
+				dataOffset := local + 30 + nameBytes + extraBytes
+				binary.LittleEndian.PutUint32(data[central+20:], uint32(directory-dataOffset+1))
+			})
+		}, want: "compressed data outside"},
+		{name: "stored size mismatch", bad: zipEntry{name: "root/bad", data: "x", store: true}, mutate: func(t *testing.T, archive string) {
+			mutateZipEntry(t, archive, "root/bad", func(data []byte, central, _, _ int) {
+				binary.LittleEndian.PutUint32(data[central+20:], 2)
+			})
+		}, want: "mismatched compressed and uncompressed sizes"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			archive := writeArchive(t, []zipEntry{
+				{name: "root/go.mod", data: "module example.com/test\n"},
+				test.bad,
+			})
+			if test.mutate != nil {
+				test.mutate(t, archive)
+			}
+			assertPreflightFailureBeforeMutation(t, archive, test.want)
+		})
+	}
+}
+
+func TestExtractRequiresExactRootGoModBeforeFilesystemMutation(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []zipEntry
+		want    string
+	}{
+		{name: "missing", entries: []zipEntry{{name: "root/README.md"}}, want: "regular go.mod file at the exact root path"},
+		{name: "uppercase", entries: []zipEntry{{name: "root/GO.MOD"}}, want: "regular go.mod file at the exact root path"},
+		{name: "mixed case", entries: []zipEntry{{name: "root/Go.Mod"}}, want: "regular go.mod file at the exact root path"},
+		{name: "directory", entries: []zipEntry{{name: "root/go.mod/", dir: true}}, want: "root go.mod must be a regular file"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			archive := writeArchive(t, test.entries)
+			assertPreflightFailureBeforeMutation(t, archive, test.want)
+		})
+	}
+}
+
+func TestCleanupFailureIsJoinedWithExtractionFailure(t *testing.T) {
+	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module example.com/test\n", store: true}})
+	mutateZipEntry(t, archive, "root/go.mod", func(data []byte, _, local, _ int) {
+		nameBytes := int(binary.LittleEndian.Uint16(data[local+26:]))
+		extraBytes := int(binary.LittleEndian.Uint16(data[local+28:]))
+		data[local+30+nameBytes+extraBytes] ^= 0xff
+	})
+	target := filepath.Join(t.TempDir(), "parent", "out")
+	cleanupFailure := errors.New("injected cleanup failure")
+	operations := defaultExtractionOperations()
+	operations.removeAll = func(path string) error {
+		err := os.RemoveAll(path)
+		return errors.Join(err, cleanupFailure)
+	}
+	err := extractWithOperations(context.Background(), archive, target, productionExtractionLimits(), operations)
+	if !errors.Is(err, zip.ErrChecksum) {
+		t.Fatalf("Extract error = %v, want zip.ErrChecksum", err)
+	}
+	if !errors.Is(err, cleanupFailure) {
+		t.Fatalf("Extract error = %v, want cleanup failure", err)
+	}
+	assertAbsent(t, target)
+	assertNoStaging(t, target)
+}
+
 func TestExtractCancellationLeavesNoTargetOrStaging(t *testing.T) {
 	archive := writeArchive(t, []zipEntry{
 		{name: "root/go.mod", data: "module example.com/test\n"},
@@ -222,6 +493,7 @@ type zipEntry struct {
 	data    string
 	dir     bool
 	mode    os.FileMode
+	store   bool
 	nonUTF8 bool
 }
 
@@ -234,7 +506,11 @@ func writeArchive(t *testing.T, entries []zipEntry) string {
 	}
 	writer := zip.NewWriter(file)
 	for _, entry := range entries {
-		header := &zip.FileHeader{Name: entry.name, Method: zip.Deflate, NonUTF8: entry.nonUTF8}
+		method := uint16(zip.Deflate)
+		if entry.store {
+			method = zip.Store
+		}
+		header := &zip.FileHeader{Name: entry.name, Method: method, NonUTF8: entry.nonUTF8}
 		if entry.dir {
 			header.Name = strings.TrimSuffix(header.Name, "/") + "/"
 			header.SetMode(os.ModeDir | 0o755)
@@ -258,6 +534,47 @@ func writeArchive(t *testing.T, entries []zipEntry) string {
 		t.Fatal(err)
 	}
 	return archive
+}
+
+func mutateZipEntry(t *testing.T, archive, name string, mutate func(data []byte, central, local, directory int)) {
+	t.Helper()
+	data, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := bytes.Index(data, []byte("PK\x01\x02"))
+	if directory < 0 {
+		t.Fatal("ZIP central directory not found")
+	}
+	for central := directory; central+46 <= len(data) && binary.LittleEndian.Uint32(data[central:]) == zipDirectoryHeaderSignature; {
+		nameBytes := int(binary.LittleEndian.Uint16(data[central+28:]))
+		extraBytes := int(binary.LittleEndian.Uint16(data[central+30:]))
+		commentBytes := int(binary.LittleEndian.Uint16(data[central+32:]))
+		if central+46+nameBytes > len(data) {
+			t.Fatal("truncated test ZIP central directory")
+		}
+		if string(data[central+46:central+46+nameBytes]) == name {
+			local := int(binary.LittleEndian.Uint32(data[central+42:]))
+			mutate(data, central, local, directory)
+			if err := os.WriteFile(archive, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		central += 46 + nameBytes + extraBytes + commentBytes
+	}
+	t.Fatalf("ZIP entry %q not found", name)
+}
+
+func assertPreflightFailureBeforeMutation(t *testing.T, archive, want string) {
+	t.Helper()
+	parent := filepath.Join(t.TempDir(), "must-not-exist")
+	target := filepath.Join(parent, "out")
+	err := Extract(archive, target)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("Extract error = %v, want containing %q", err, want)
+	}
+	assertAbsent(t, parent)
 }
 
 func assertAbsent(t *testing.T, path string) {
