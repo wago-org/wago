@@ -49,7 +49,7 @@ func moduleImportIdentities(module *Module) []importIdentity {
 }
 
 func TestRuntimeCompilePreservesExactImportIdentitiesAcrossArtifact(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
 
