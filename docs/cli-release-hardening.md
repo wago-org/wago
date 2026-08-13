@@ -46,6 +46,22 @@ which leaves substantial headroom over current stripped Wago binaries without
 allowing an endpoint to consume unbounded disk or memory. Source archives use a
 separate 256 MiB streaming limit.
 
+Downloaded source ZIPs are preflighted completely before filesystem mutation.
+Extraction permits one top-level directory and regular files/directories only;
+it rejects traversal, duplicate and case-colliding paths, file/directory
+conflicts, non-portable names, and archives beyond 20,000 entries, 16,000 files,
+4,000 unique directories, 64 relative path components, 255 bytes per component,
+1,024 path bytes, 128 MiB per file, or 512 MiB expanded content. Decompressed
+bytes are counted against the declared and aggregate limits instead of trusting
+ZIP metadata. Extraction occurs in a private sibling staging directory, observes
+command cancellation, and publishes the complete tree by rename only after a
+regular `go.mod` is present; every failure removes the staging tree.
+
+The August 2026 limit check used 3,521 tracked files, 441 unique directories,
+52,815,053 total bytes, a 16,243,226-byte largest file, 100 path bytes, and eight
+path components on `main`; each extraction ceiling therefore retains substantial
+headroom over the source tree it protects.
+
 The destination is published only after the complete stream has the expected
 length and digest, the executable mode is set, the file is synced, and it is
 closed. Cancellation, malformed checksums, network interruption, oversized
