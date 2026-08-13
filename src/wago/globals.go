@@ -406,11 +406,11 @@ func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, err
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
-	end, err := rt.beginOperation("NewFuncRefGlobal", false)
+	operation, err := rt.beginOperation("NewFuncRefGlobal", false)
 	if err != nil {
 		return nil, err
 	}
-	defer end()
+	defer operation.end()
 	descriptor := uint64(0)
 	if initial.token != 0 {
 		var ok bool
@@ -439,11 +439,11 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
-	end, err := rt.beginOperation("NewExternRefGlobal", false)
+	operation, err := rt.beginOperation("NewExternRefGlobal", false)
 	if err != nil {
 		return nil, err
 	}
-	defer end()
+	defer operation.end()
 	if initial.token != 0 {
 		if _, ok := rt.refStore.resolveExternref(initial.token); !ok {
 			return nil, fmt.Errorf("wago: invalid externref token for global initializer")
