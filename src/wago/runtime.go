@@ -8,7 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -509,7 +508,6 @@ func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 
 func (p *PreparedCompile) finishCompile(c *Compiled) (*Module, error) {
 	mod := buildModule(c, p.bindings)
-	p.rt.restoreStructuredImportNames(mod, p.source)
 	if len(p.hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: p.compilation, Module: moduleView(mod), SourceDigest: DigestModuleSource(p.source)}
 		for _, fn := range p.hooks.afterCompile {
@@ -550,23 +548,6 @@ func emitCompileError(hooks *hookRegistry, compilation CompilationIdentity, orig
 		}
 	}
 	return joinPrimary(original, hookErrs...)
-}
-
-func (rt *Runtime) restoreStructuredImportNames(mod *Module, source []byte) {
-	// The historical Imports key joins module and field with a dot. Both Wasm
-	// names may contain dots, so recover the exact pair from validated source.
-	if decoded, err := wasm.DecodeModule(source); err == nil {
-		funcIndex := 0
-		for i := range decoded.Imports {
-			im := &decoded.Imports[i]
-			if im.Type.Kind != wasm.ExternFunc || funcIndex >= len(mod.imports) {
-				continue
-			}
-			mod.imports[funcIndex].Module = im.Module
-			mod.imports[funcIndex].Name = im.Name
-			funcIndex++
-		}
-	}
 }
 
 func (rt *Runtime) compile(wasmBytes []byte, allowLoading bool) (*Module, error) {
@@ -770,6 +751,9 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 			continue
 		}
 		value, provided := rt.imports[key]
+		if provided && spec.Kind == ImportFunc && !registeredImportMatches(rt.importMeta[key], spec.Module, spec.Name) {
+			provided = false
+		}
 		if !provided {
 			if spec.Kind == ImportFunc {
 				return nil, missingImportError(spec)
