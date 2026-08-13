@@ -5,6 +5,7 @@
 #   make lint        gofmt + generate sync + vet + staticcheck (host, no act)
 #   make docs-check  local Markdown paths and anchors           (host, no act)
 #   make test        go build + go test                         (host, no act)
+#   make test-concurrency  seeded runtime concurrency harness   (host, no act)
 #   make ci          replay the whole workflow in Docker via act
 #   make bench       benchmark suite (BENCH=<regex> to filter)  (host)
 #
@@ -102,6 +103,10 @@ test: ## Build and run the test suite (host)
 	go test -count=1 ./...
 	go test -count=1 -tags wago_runtime ./cli/...
 	tests/scripts/build-release-assets.sh
+
+.PHONY: test-concurrency
+test-concurrency: ## Run the deterministic runtime concurrency harness (WAGO_CONCURRENCY_SEED=...)
+	go test -count=1 -run '^TestRuntimeConcurrency' ./tests/runtimeconcurrency
 
 .PHONY: install-local
 install-local: ## Run the installer from this checkout

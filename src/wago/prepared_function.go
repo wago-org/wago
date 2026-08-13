@@ -145,6 +145,25 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	return fn.invokeGeneral(args)
 }
 
+type preparedInvocationLease struct {
+	state *instancePluginState
+	gc    gcInvocationLease
+}
+
+func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	id := newInvocationID()
+	state.invocationID = id
+	return preparedInvocationLease{state: state, gc: in.lockGCInvocation(id)}
+}
+
+func (l preparedInvocationLease) unlock() {
+	l.gc.unlock()
+	l.state.invocationID = 0
+	l.state.invokeMu.Unlock()
+}
+
 func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 	if fn == nil || fn.in == nil {
 		return nil, fmt.Errorf("wago: invoke closed prepared function")
@@ -154,6 +173,12 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
 	}
 	defer in.endInvocation()
+	// Prepared calls share the same instance buffers and Runtime GC domain as
+	// Invoke. Publish an invocation identity under the instance gate so host
+	// callbacks can suspend the domain lease, and retain that lease through public
+	// reference-result tokenization.
+	preparedLease := in.lockPreparedInvocation()
+	defer preparedLease.unlock()
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
@@ -227,6 +252,8 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
 		}
 		defer in.endInvocation()
+		preparedLease := in.lockPreparedInvocation()
+		defer preparedLease.unlock()
 	}
 	put := func(slot int) {
 		bits := args[slot]

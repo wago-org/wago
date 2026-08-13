@@ -2219,6 +2219,11 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
+	privateWaitGC := store != nil && !store.private && c.usesGenericGCExecution() && c.usesAtomicWaitHelpers()
+	dynamicFuncrefReachability := compiledHasDynamicFuncrefReachability(c)
+	if privateWaitGC && dynamicFuncrefReachability {
+		return fmt.Errorf("dynamic funcref reachability is unsupported for modules with atomic wait helpers")
+	}
 	moduleTransfersGC := false
 	for i := range c.Imports {
 		if i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref)) {
@@ -2231,6 +2236,9 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 	gcSubtypeLinkProvider := gcSubtypeLinkProduct.linkProviderProduct()
 	for i, key := range c.Imports {
 		sigHasGCRefs := i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref))
+		if privateWaitGC && sigHasGCRefs {
+			return fmt.Errorf("collector-reference import %q is unsupported for modules with atomic wait helpers", key)
+		}
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
 			if sigHasGCRefs {
@@ -2253,6 +2261,18 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		}
 		if ex == nil || ex.inst == nil {
 			return fmt.Errorf("cross-instance import %q is nil", key)
+		}
+		if ex.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 && ex.inst.refStore != store {
+			return fmt.Errorf("cross-instance import %q from a dynamic funcref producer requires the same Runtime", key)
+		}
+		if dynamicFuncrefReachability && ex.inst.refStore != store && (ex.inst.gc != nil || ex.inst.executionFlags.Load()&executionFlagImportedGCDomain != 0) {
+			return fmt.Errorf("dynamic funcref import %q from a GC-domain producer requires the same Runtime", key)
+		}
+		if dynamicFuncrefReachability && ex.inst.reachesPrivateGCInvocationDomain() {
+			return fmt.Errorf("dynamic funcref import %q cannot reach a private GC invocation domain", key)
+		}
+		if privateWaitGC && (ex.inst.gc != nil || ex.inst.executionFlags.Load()&executionFlagImportedGCDomain != 0) {
+			return fmt.Errorf("Runtime GC-domain import %q is unsupported for modules with atomic wait helpers", key)
 		}
 		if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 			return fmt.Errorf("cross-instance import %q references an unavailable function", key)
@@ -4024,6 +4044,9 @@ func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Con
 func (in *Instance) invokeWithToken(export string, args []uint64, cancel context.Context, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
 	reentry := !gateHeld && isNativeActive(in, id)
 	if !reentry && !gateHeld {
+		// Acquire the target instance gate before the shared collector lease. A
+		// parked same-domain callback must be able to reacquire the collector and
+		// finish releasing this gate while a second callback waits to enter.
 		state := in.ensurePluginState()
 		state.invokeMu.Lock()
 		state.invocationID = id
@@ -4032,18 +4055,29 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 			state.invokeMu.Unlock()
 		}()
 	}
+	if !alreadyAdmitted {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("invoke %q: %w", export, err)
+		}
+		defer in.endInvocation()
+	}
+	gcLease := in.lockGCInvocation(id)
+	var reconcileAttached *Instance
+	defer func() {
+		gcLease.unlock()
+		if in.importsFuncrefStorage() || in.table != nil {
+			in.reconcileFuncrefRoots()
+		}
+		if reconcileAttached != nil && (reconcileAttached.importsFuncrefStorage() || reconcileAttached.table != nil) {
+			reconcileAttached.reconcileFuncrefRoots()
+		}
+	}()
 	if reentry {
 		restore, err := in.prepareHostReentryState()
 		if err != nil {
 			return nil, err
 		}
 		defer restore()
-	}
-	if !alreadyAdmitted {
-		if err := in.beginInvocation(); err != nil {
-			return nil, fmt.Errorf("invoke %q: %w", export, err)
-		}
-		defer in.endInvocation()
 	}
 	previousReservation := in.swapInvocationReservation(reservation)
 	defer in.swapInvocationReservation(previousReservation)
@@ -4065,13 +4099,14 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
 		}
 		if ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+			reconcileAttached = ex.inst
 			// Native cross-instance calls carry only the caller's invocation lease and
 			// trap cell; the import attachment retains the producer's physical resources.
 			// Keep this Go-level re-export path identical so producer Close neither owns
 			// nor strands an invocation initiated through the relay.
 			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
 		}
-		return in.invokeReexportedHost(export, importIdx, args)
+		return in.invokeReexportedHost(export, importIdx, args, id)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -4101,9 +4136,6 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	if in.importsFuncrefStorage() || in.table != nil {
-		defer in.reconcileFuncrefRoots()
-	}
 	if cancel != nil {
 		stopCancel := in.startCancellationWatch(cancel, in.trap)
 		defer stopCancel()
@@ -4178,6 +4210,13 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
 	defer in.endInvocation()
+	gcLease := in.lockGCInvocation(in.currentInvocationID())
+	defer func() {
+		gcLease.unlock()
+		if in.importsFuncrefStorage() || in.table != nil {
+			in.reconcileFuncrefRoots()
+		}
+	}()
 	return in.invokeAttachedLocalContext(li, args, cancel, activeTrap, false)
 }
 
@@ -4228,9 +4267,6 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	entry := in.base + uintptr(in.c.Entry[li])
 	if len(activeTrap) < 4 {
 		activeTrap = in.trap
-	}
-	if in.importsFuncrefStorage() || in.table != nil {
-		defer in.reconcileFuncrefRoots()
 	}
 	stopCancel := noOpCancellationWatch
 	if cancel != nil {
@@ -4401,7 +4437,7 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
-func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64) (results []uint64, err error) {
+func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID) (results []uint64, err error) {
 	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
@@ -4460,6 +4496,13 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 			}
 		}
 	}()
+	// This direct Go-level path does not pass through dispatchSynchronousHostCall,
+	// but the imported function is still arbitrary host code. Release the shared
+	// collector lease after scalar-only validation so same-domain InvokeFromHost
+	// and CollectGC calls can proceed, then restore it before returning results to
+	// the public invocation boundary.
+	resumeGCInvocation := in.suspendGCInvocation(id)
+	defer resumeGCInvocation()
 	fn := in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)

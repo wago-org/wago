@@ -16,6 +16,51 @@ import (
 // import namespace and HostModule rather than the public root's.
 var hostControlInstances sync.Map // map[uintptr]*Instance
 
+// hostInvocationContexts carries the public root's callback identity across a
+// native cross-instance transfer. The control-frame address is unique to the
+// parked activation and lets the producer's bound host dispatcher construct a
+// HostModule authorized by the invocation that actually owns the GC lease.
+type hostInvocationContext struct {
+	id          invocationID
+	reservation *pluginOperationReservation
+}
+
+var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
+
+func currentHostInvocationContext(ctrl uintptr, in *Instance) hostInvocationContext {
+	if value, ok := hostInvocationContexts.Load(ctrl); ok {
+		return value.(hostInvocationContext)
+	}
+	if in != nil {
+		if id := in.currentInvocationID(); id != 0 {
+			return hostInvocationContext{id: id, reservation: currentInvocationReservation(in)}
+		}
+	}
+	return hostInvocationContext{}
+}
+
+func activeHostInvocationContext(in *Instance) hostInvocationContext {
+	if in == nil {
+		return hostInvocationContext{}
+	}
+	return currentHostInvocationContext(offHeapSlicePtr(in.ctrl), in)
+}
+
+func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() {
+	if ctrl == 0 || next.id == 0 {
+		return func() {}
+	}
+	previous, loaded := hostInvocationContexts.Load(ctrl)
+	hostInvocationContexts.Store(ctrl, next)
+	return func() {
+		if loaded {
+			hostInvocationContexts.Store(ctrl, previous)
+		} else {
+			hostInvocationContexts.Delete(ctrl)
+		}
+	}
+}
+
 func registerHostControl(in *Instance) error {
 	if in == nil || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
 		return fmt.Errorf("invalid synchronous host control frame")
@@ -94,12 +139,35 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// lease. The deferred reacquire covers normal return, HostExit, validation
 	// panics, and arbitrary host panics. Rebind the exact parked callee because a
 	// nested wasm entry may have replaced its shared basedata context.
-	activation := active.pushGCHostActivation(ctrl, importIdx)
+	stackTop := active.eng.StackTop()
+	if root != nil && root.eng != nil {
+		// Cross-instance native calls remain on the public root's foreign stack
+		// even though the parked control frame and callsite map belong to active.
+		stackTop = root.eng.StackTop()
+	}
+	activation := active.pushGCHostActivation(ctrl, importIdx, stackTop)
 	if err := active.rootGCHostArguments(activation, importIdx, args); err != nil {
 		active.clearGCHostResultRoots(activation)
 		active.popGCHostActivation(activation)
 		panic(invalidHostReference{err: err})
 	}
+	// Cross-instance native dispatch parks the producer while the public root still
+	// owns the invocation identity and collector lease. Carry that identity into
+	// the producer's HostModule instead of reading its zero local invocation ID.
+	invocation := activeHostInvocationContext(root)
+	if invocation.id == 0 {
+		invocation = activeHostInvocationContext(active)
+	}
+	id := invocation.id
+	// Exact parked native roots and translated GC host arguments are now
+	// published. Release every collector lease owned by the public native root
+	// while arbitrary host code runs. A non-GC relay may have pre-acquired more
+	// imported GC domains than the active producer whose frame parked here.
+	leaseOwner := active
+	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
+		leaseOwner = root
+	}
+	resumeGCInvocation := leaseOwner.suspendGCInvocation(id)
 	var localMu *sync.Mutex
 	epoch := nativeExecutionEpoch
 	if active.usesIndependentExecution() {
@@ -114,6 +182,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
+		resumeGCInvocation()
 		if localMu != nil {
 			localMu.Lock()
 		} else {
@@ -142,8 +211,12 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// Only arbitrary host code can synchronously re-enter this instance. The
 	// active marker includes the callback-scoped invocation identity, so another
 	// call chain cannot masquerade as this parked activation.
-	markNativeActive(active)
-	defer unmarkNativeActive(active)
+	markNativeActiveID(active, id)
+	defer unmarkNativeActiveID(active, id)
+	if active != root {
+		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
+		defer restoreInvocationContext()
+	}
 	active.hostCall(ctrl, importIdx, args, results)
 }
 
@@ -153,13 +226,17 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 // is parked. Reusing any of those buffers corrupts the parked frame and can turn
 // an ordinary guest trap into a process fault.
 func (in *Instance) prepareHostReentryState() (func(), error) {
+	in.lifeMu.Lock()
+	invocation := activeHostInvocationContext(in)
 	eng, err := coreruntime.AcquireEngine()
 	if err != nil {
+		in.lifeMu.Unlock()
 		return nil, fmt.Errorf("acquire host re-entry engine: %w", err)
 	}
 	ctrl := make([]byte, coreruntime.HostCtrlFrameBytes)
 	if err := coreruntime.InitHostCtrlFrame(ctrl); err != nil {
 		_ = coreruntime.ReleaseEngine(eng)
+		in.lifeMu.Unlock()
 		return nil, err
 	}
 
@@ -184,8 +261,10 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
 		in.instructionState = outerInstructionState
 		_ = coreruntime.ReleaseEngine(eng)
+		in.lifeMu.Unlock()
 		return nil, err
 	}
+	restoreInvocationContext := bindHostInvocationContext(offHeapSlicePtr(ctrl), invocation)
 	// Cross-instance and imported-host dispatch descriptors restore their target
 	// from this stable context image. Publish the activation's private control
 	// frame there as well as in basedata, otherwise a nested import switches back
@@ -193,9 +272,12 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 	nativeCtx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), coreruntime.InstanceContextBytes)
 	outerCustomCtx := binary.LittleEndian.Uint64(nativeCtx)
 	binary.LittleEndian.PutUint64(nativeCtx, uint64(offHeapSlicePtr(ctrl)))
+	in.lifeMu.Unlock()
 
 	return func() {
+		in.lifeMu.Lock()
 		binary.LittleEndian.PutUint64(nativeCtx, outerCustomCtx)
+		restoreInvocationContext()
 		unregisterHostControl(in)
 		in.eng, in.ctrl = outerEngine, outerCtrl
 		in.serArgs, in.results, in.trap = outerArgs, outerResults, outerTrap
@@ -203,7 +285,9 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
 		in.instructionState = outerInstructionState
 		if err := coreruntime.ReleaseEngine(eng); err != nil {
+			in.lifeMu.Unlock()
 			panic(invalidHostReference{err: fmt.Errorf("release host re-entry engine: %w", err)})
 		}
+		in.lifeMu.Unlock()
 	}, nil
 }

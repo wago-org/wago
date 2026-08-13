@@ -141,11 +141,38 @@ jobs:
             -wast2json "$PWD/.tmp/wabt/build/wast2json" \
             -fetch
 
+  runtime-concurrency:
+    name: Runtime concurrency / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64
+            runner: ubuntu-24.04
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Run bounded seeded runtime concurrency harness
+        env:
+          WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081
+          WAGO_CONCURRENCY_ROUNDS: 24
+        run: make test-concurrency
+
   race:
     name: Race detector / Linux amd64
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
@@ -158,7 +185,7 @@ jobs:
       - name: Initialize Release 3 suite
         run: git submodule update --init --depth=1 tests/spec-v3
       - name: Run focused runtime race suites
-        run: go test -race -count=1 ./src/wago ./src/core/runtime
+        run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/runtimeconcurrency
 
   platform-test:
     name: ${{ matrix.name }}
@@ -579,7 +606,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, docs, lint, regression-corpus, race, platform-test, core-v2, tinygo, coverage, size]
+    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
