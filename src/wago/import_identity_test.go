@@ -18,25 +18,45 @@ type importIdentity struct {
 	kind   ImportKind
 }
 
-func exactImportIdentityModule() []byte {
+func exactImportIdentityModule(includeTag bool) []byte {
 	entry := func(module, name string, tail ...byte) []byte {
 		out := append(wasmtest.Name(module), wasmtest.Name(name)...)
 		return append(out, tail...)
 	}
+	imports := [][]byte{
+		entry("a.b", "c", 0x00, 0x00), // function, type 0
+		entry("a", "b.c", 0x00, 0x00), // same legacy key, distinct identity
+		entry("", "empty.module", 0x00, 0x00),
+		entry("empty.name", "", 0x00, 0x00),
+		entry("nul\x00.mod", "field\x00.name", 0x00, 0x00),
+		entry("table.mod", "table.名", 0x01, 0x70, 0x00, 0x00),
+		entry("memory.mod", "memory.名", 0x02, 0x00, 0x00),
+		wasmtest.GlobalImportEntry("global.mod", "global.名", wasm.I32, false),
+	}
+	if includeTag {
+		imports = append(imports, entry("tag.mod", "tag.名", 0x04, 0x00, 0x00)) // tag attribute 0, type 0
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(2, wasmtest.Vec(
-			entry("a.b", "c", 0x00, 0x00), // function, type 0
-			entry("a", "b.c", 0x00, 0x00), // same legacy key, distinct identity
-			entry("", "empty.module", 0x00, 0x00),
-			entry("empty.name", "", 0x00, 0x00),
-			entry("nul\x00.mod", "field\x00.name", 0x00, 0x00),
-			entry("table.mod", "table.名", 0x01, 0x70, 0x00, 0x00),
-			entry("memory.mod", "memory.名", 0x02, 0x00, 0x00),
-			wasmtest.GlobalImportEntry("global.mod", "global.名", wasm.I32, false),
-			entry("tag.mod", "tag.名", 0x04, 0x00, 0x00), // tag attribute 0, type 0
-		)),
+		wasmtest.Section(2, wasmtest.Vec(imports...)),
 	)
+}
+
+func exactImportIdentities(includeTag bool) []importIdentity {
+	identities := []importIdentity{
+		{module: "a.b", name: "c", kind: ImportFunc},
+		{module: "a", name: "b.c", kind: ImportFunc},
+		{module: "", name: "empty.module", kind: ImportFunc},
+		{module: "empty.name", name: "", kind: ImportFunc},
+		{module: "nul\x00.mod", name: "field\x00.name", kind: ImportFunc},
+		{module: "global.mod", name: "global.名", kind: ImportGlobal},
+		{module: "memory.mod", name: "memory.名", kind: ImportMemory},
+		{module: "table.mod", name: "table.名", kind: ImportTable},
+	}
+	if includeTag {
+		identities = append(identities, importIdentity{module: "tag.mod", name: "tag.名", kind: ImportTag})
+	}
+	return identities
 }
 
 func moduleImportIdentities(module *Module) []importIdentity {
@@ -49,25 +69,17 @@ func moduleImportIdentities(module *Module) []importIdentity {
 }
 
 func TestRuntimeCompilePreservesExactImportIdentitiesAcrossArtifact(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
+	features := CoreFeaturesV3 & SupportedFeatures()
+	includeTag := features.IsEnabled(CoreFeatureExceptionHandling)
+	cfg := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit)
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
 
-	module, err := rt.Compile(exactImportIdentityModule())
+	module, err := rt.Compile(exactImportIdentityModule(includeTag))
 	if err != nil {
 		t.Fatalf("Runtime.Compile: %v", err)
 	}
-	want := []importIdentity{
-		{module: "a.b", name: "c", kind: ImportFunc},
-		{module: "a", name: "b.c", kind: ImportFunc},
-		{module: "", name: "empty.module", kind: ImportFunc},
-		{module: "empty.name", name: "", kind: ImportFunc},
-		{module: "nul\x00.mod", name: "field\x00.name", kind: ImportFunc},
-		{module: "global.mod", name: "global.名", kind: ImportGlobal},
-		{module: "memory.mod", name: "memory.名", kind: ImportMemory},
-		{module: "table.mod", name: "table.名", kind: ImportTable},
-		{module: "tag.mod", name: "tag.名", kind: ImportTag},
-	}
+	want := exactImportIdentities(includeTag)
 	if got := moduleImportIdentities(module); !reflect.DeepEqual(got, want) {
 		t.Fatalf("source import identities = %#v, want %#v", got, want)
 	}
@@ -81,8 +93,10 @@ func TestRuntimeCompilePreservesExactImportIdentitiesAcrossArtifact(t *testing.T
 		importIdentity{module: metadata.Globals[0].ImportModule, name: metadata.Globals[0].ImportName, kind: ImportGlobal},
 		importIdentity{module: metadata.Memories[0].ImportModule, name: metadata.Memories[0].ImportName, kind: ImportMemory},
 		importIdentity{module: metadata.Tables[0].ImportModule, name: metadata.Tables[0].ImportName, kind: ImportTable},
-		importIdentity{module: metadata.Tags[0].ImportModule, name: metadata.Tags[0].ImportName, kind: ImportTag},
 	)
+	if includeTag {
+		gotMetadata = append(gotMetadata, importIdentity{module: metadata.Tags[0].ImportModule, name: metadata.Tags[0].ImportName, kind: ImportTag})
+	}
 	if !reflect.DeepEqual(gotMetadata, want) {
 		t.Fatalf("source metadata identities = %#v, want %#v", gotMetadata, want)
 	}
@@ -109,7 +123,7 @@ func TestRuntimeCompilePreservesExactImportIdentitiesAcrossArtifact(t *testing.T
 }
 
 func TestCompiledCodecRejectsMalformedImportModuleEnd(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), exactImportIdentityModule())
+	compiled, err := Compile(NewRuntimeConfig(), exactImportIdentityModule(false))
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
