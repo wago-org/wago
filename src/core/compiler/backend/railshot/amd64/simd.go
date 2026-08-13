@@ -892,11 +892,8 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 	f.pushVReg(xa)
 }
 
-// TODO(simd): Vectorize signed packed trunc_sat with SSE/AVX where practical;
-// keep unsigned and saturating scalar fallback as the correctness baseline.
-// v128I32x4TruncSat lowers the saturating float->i32 conversions. The f32x4
-// forms use a fully vectorized branchless sequence; the
-// f64x2 *_zero forms still use the per-lane scalar fallback below.
+// v128I32x4TruncSat lowers every saturating float->i32 conversion with a
+// branchless packed sequence, including the f64x2 *_zero forms.
 func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	switch {
 	case !f64src:

@@ -131,6 +131,34 @@ func TestGoldenFloatMemoryOperand(t *testing.T) {
 	}
 }
 
+func TestGoldenTruncSatF64x2UsesPackedLowering(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sub  uint32
+		want []string
+	}{
+		{name: "signed", sub: 252, want: []string{"vminpd", "vcvttpd2dq"}},
+		{name: "unsigned", sub: 253, want: []string{"vmaxpd", "vminpd", "vroundpd", "vaddpd", "vshufps"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00, 0x20, 0x00}
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			d := disasm(t, compileCode(t, mod1(t, []wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}, body), false))
+			for _, instruction := range tc.want {
+				if !strings.Contains(d, instruction) {
+					t.Fatalf("packed trunc_sat lowering missing %s:\n%s", instruction, d)
+				}
+			}
+			// Constants may be materialized with PINSRQ before the actual lowering.
+			// PEXTR would prove that input lanes were scalarized.
+			if strings.Contains(d, "pextr") {
+				t.Fatalf("packed trunc_sat lowering extracts input lanes:\n%s", d)
+			}
+		})
+	}
+}
+
 func TestGoldenFloatConstPreloadBeforeLoop(t *testing.T) {
 	// acc = 1; loop { acc *= 1.0000001; n-- }; return acc. The multiplier
 	// constant should be materialized before the loop header, not on every trip.
