@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -318,6 +319,105 @@ func TestInstallerCanonicalRollingArchiveFallbackUsesExactCommit(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(target, "go.mod")); err != nil {
 		t.Fatalf("extracted source: %v", err)
 	}
+}
+
+func TestInstallerArchiveCancellationCleansTemporaryTree(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writer := zip.NewWriter(w)
+		for _, entry := range []struct {
+			name string
+			data string
+		}{
+			{name: "wago-root/go.mod", data: "module example.invalid/wago\n"},
+			{name: "wago-root/large", data: strings.Repeat("x", 1<<20)},
+		} {
+			destination, err := writer.Create(entry.name)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if _, err := destination.Write([]byte(entry.data)); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+		if err := writer.Close(); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+
+	temporary := t.TempDir()
+	target := filepath.Join(temporary, "src")
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	i := &installer{
+		out:        &bytes.Buffer{},
+		httpClient: server.Client(),
+		tmpDir:     temporary,
+		ctx:        &cancelWhenStagingExists{Context: ctx, cancel: cancel, target: target},
+	}
+	_, err := i.fetchSourceArchiveAfterGitFailure(target, server.URL, []byte("git unavailable"), errors.New("git failed"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("archive fallback error = %v, want context canceled", err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("canceled archive target remains: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(temporary, ".src-extract-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("canceled archive staging paths remain: %v", matches)
+	}
+}
+
+func TestInstallerArchiveDownloadCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		cancel()
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	t.Cleanup(cancel)
+
+	temporary := t.TempDir()
+	target := filepath.Join(temporary, "src")
+	i := &installer{
+		out:        &bytes.Buffer{},
+		httpClient: server.Client(),
+		tmpDir:     temporary,
+		ctx:        ctx,
+	}
+	_, err := i.fetchSourceArchiveAfterGitFailure(target, server.URL, []byte("git unavailable"), errors.New("git failed"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("archive fallback error = %v, want context canceled", err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("canceled archive target remains: %v", err)
+	}
+}
+
+type cancelWhenStagingExists struct {
+	context.Context
+	cancel context.CancelFunc
+	target string
+}
+
+func (ctx *cancelWhenStagingExists) Err() error {
+	if err := ctx.Context.Err(); err != nil {
+		return err
+	}
+	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(ctx.target), "."+filepath.Base(ctx.target)+"-extract-*"))
+	if len(matches) != 0 {
+		ctx.cancel()
+	}
+	return ctx.Context.Err()
 }
 
 func TestInstallerDownloadsNewestChannelManager(t *testing.T) {
