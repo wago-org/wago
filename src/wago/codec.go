@@ -843,7 +843,7 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	}
 	c.NumImports = int(n)
 	var functionModuleEnds []uint64
-	c.Imports, functionModuleEnds, err = r.importDirectory()
+	c.Imports, functionModuleEnds, err = r.importDirectory(c.NumImports)
 	if err != nil {
 		return err
 	}
@@ -1209,17 +1209,20 @@ func (r *compiledReader) stringSlice() ([]string, error) {
 	return out, nil
 }
 
-func (r *compiledReader) importDirectory() ([]string, []uint64, error) {
-	return r.importDirectoryWithAllocationLimit(maxImportDirectoryAllocationBytes)
+func (r *compiledReader) importDirectory(want int) ([]string, []uint64, error) {
+	return r.importDirectoryWithAllocationLimit(want, maxImportDirectoryAllocationBytes)
 }
 
-func (r *compiledReader) importDirectoryWithAllocationLimit(allocationLimit int) ([]string, []uint64, error) {
+func (r *compiledReader) importDirectoryWithAllocationLimit(want, allocationLimit int) ([]string, []uint64, error) {
 	// Each entry needs at least an empty string length and one module-boundary
 	// varint in the remainder. This also rejects an impossible count before any
 	// decoded directory allocation.
 	n, err := r.countElements("function imports", minStringBytes+minVarintBytes)
 	if err != nil {
 		return nil, nil, err
+	}
+	if n != want {
+		return nil, nil, fmt.Errorf("function import directory count %d != NumImports %d", n, want)
 	}
 	const moduleEndBytes = 8
 	decodedBytesPerImport := bits.UintSize/4 + moduleEndBytes // string header + uint64

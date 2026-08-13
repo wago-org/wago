@@ -186,7 +186,19 @@ func TestCompiledCodecBoundsDecodedImportDirectoryAllocation(t *testing.T) {
 	encoded := make([]byte, n+2*count)
 	copy(encoded, prefix[:n])
 	r := compiledReader{data: encoded}
-	if _, _, err := r.importDirectoryWithAllocationLimit(1); err == nil || !strings.Contains(err.Error(), "decoded directory allocation limit") {
+	if _, _, err := r.importDirectoryWithAllocationLimit(count, 1); err == nil || !strings.Contains(err.Error(), "decoded directory allocation limit") {
 		t.Fatalf("oversized import directory error = %v", err)
+	}
+}
+
+func TestCompiledCodecRejectsImportCountMismatchBeforeAllocation(t *testing.T) {
+	const encodedCount = 3
+	var prefix [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(prefix[:], encodedCount)
+	encoded := make([]byte, n+2*encodedCount)
+	copy(encoded, prefix[:n])
+	r := compiledReader{data: encoded}
+	if _, _, err := r.importDirectoryWithAllocationLimit(0, maxImportDirectoryAllocationBytes); err == nil || !strings.Contains(err.Error(), "directory count 3 != NumImports 0") {
+		t.Fatalf("mismatched import count error = %v", err)
 	}
 }
