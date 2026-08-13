@@ -717,37 +717,9 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		return nil, err
 	}
 
-	rt.mu.Lock()
-	// Merge plugin imports first, then per-call imports on top. Hooks, imports,
-	// and execution policy come from one admitted immutable generation.
-	var merged Imports
-	if n := len(rt.imports) + len(cfg.imports); n != 0 {
-		merged = make(Imports, n)
-		for k, v := range rt.imports {
-			merged[k] = v
-		}
-	}
-	policy := rt.overridePolicy
-	rt.mu.Unlock()
-
-	for k, v := range cfg.imports {
-		if module := importModule(k); isReserved(module) && policy != AllowTestOverrides {
-			if _, provided := merged[k]; provided {
-				return nil, fmt.Errorf("wago: import %q may not override reserved module %q", k, module)
-			}
-		}
-		merged[k] = v
-	}
-
-	// Surface an unsatisfied function import as a clear, actionable error before
-	// the low-level binder fails on it.
-	for _, spec := range mod.imports {
-		if spec.Kind != ImportFunc {
-			continue
-		}
-		if _, ok := merged[spec.Key()]; !ok {
-			return nil, missingImportError(spec)
-		}
+	imports, err := rt.resolveInstanceImports(mod.imports, cfg.imports)
+	if err != nil {
+		return nil, err
 	}
 
 	// Lifecycle callbacks may close their Module. End the inspection lease before
@@ -755,12 +727,61 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	// retained code ownership before start-time host callbacks.
 	mod.endUse()
 	usingModule = false
-	in, err := rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, reservation)
+	in, err := rt.instantiateWithHooksOrigin(mod, imports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, reservation)
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
 	}
 	return in, err
+}
+
+// resolveInstanceImports captures one instance-owned binding set without
+// cloning runtime imports the module cannot use. Explicit per-call imports are
+// retained even when undeclared, preserving the low-level Imports inspection
+// behavior. Runtime imports are only retained for declared module keys.
+func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports) (Imports, error) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	for key := range overrides {
+		module := importModule(key)
+		if !isReserved(module) || rt.overridePolicy == AllowTestOverrides {
+			continue
+		}
+		if _, provided := rt.imports[key]; provided {
+			return nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
+		}
+	}
+
+	capacity := len(overrides) + len(specs)
+	if available := len(overrides) + len(rt.imports); available < capacity {
+		capacity = available
+	}
+	var resolved Imports
+	if len(overrides) != 0 {
+		resolved = make(Imports, capacity)
+		for key, value := range overrides {
+			resolved[key] = value
+		}
+	}
+	for _, spec := range specs {
+		key := spec.Key()
+		if _, provided := overrides[key]; provided {
+			continue
+		}
+		value, provided := rt.imports[key]
+		if !provided {
+			if spec.Kind == ImportFunc {
+				return nil, missingImportError(spec)
+			}
+			continue
+		}
+		if resolved == nil {
+			resolved = make(Imports, capacity)
+		}
+		resolved[key] = value
+	}
+	return resolved, nil
 }
 
 func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {

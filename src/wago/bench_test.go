@@ -1431,6 +1431,42 @@ func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 	}
 }
 
+func BenchmarkRuntimeInstantiateUnrelatedImports(b *testing.B) {
+	for _, namespaceSize := range []int{0, 10, 1_000, 10_000} {
+		b.Run(fmt.Sprintf("Namespace=%d", namespaceSize), func(b *testing.B) {
+			rt := NewRuntime()
+			fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+			for i := 0; i < namespaceSize; i++ {
+				rt.imports[fmt.Sprintf("unused.%d", i)] = fn
+			}
+			mod, err := rt.Compile(benchAddOneModule())
+			if err != nil {
+				b.Fatalf("Compile: %v", err)
+			}
+			warm, err := rt.Instantiate(context.Background(), mod)
+			if err != nil {
+				b.Fatalf("warm Instantiate: %v", err)
+			}
+			_ = warm.Close()
+			b.Cleanup(func() {
+				_ = mod.Close()
+				_ = rt.Close()
+			})
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				in, err := rt.Instantiate(context.Background(), mod)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := in.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkRuntimeInstantiateFuncrefIngressCaller(b *testing.B) {
 	rt := NewRuntime()
 	mod, err := rt.Compile(funcrefCallableConsumerModule())
