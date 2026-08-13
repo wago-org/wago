@@ -139,11 +139,22 @@ func loadCredentials() (_ map[string]credential, resultErr error) {
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return creds, nil
 	}
-	if err := json.Unmarshal(data, &creds); err != nil {
-		return nil, err
+	// Registry URLs are map keys and therefore case-sensitive, while fields in
+	// each credential object follow encoding/json's case-insensitive struct
+	// matching. Apply the matching rule appropriate to each layer.
+	if err := validateUniqueJSON(data, false); err != nil {
+		return nil, errors.New("credential store contains invalid JSON")
 	}
-	if creds == nil {
+	var entries map[string]json.RawMessage
+	if err := json.Unmarshal(data, &entries); err != nil || entries == nil {
 		return nil, errors.New("credential store must be a JSON object")
+	}
+	for base, raw := range entries {
+		var item credential
+		if err := unmarshalUniqueJSON(raw, &item); err != nil {
+			return nil, errors.New("credential store contains an invalid credential entry")
+		}
+		creds[base] = item
 	}
 	return creds, nil
 }

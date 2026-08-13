@@ -74,3 +74,22 @@ func TestOAuthJSONRejectsDuplicateObjectMembers(t *testing.T) {
 		}
 	}
 }
+
+func TestOAuthJSONErrorsDoNotReflectRemoteValues(t *testing.T) {
+	remote := strings.Repeat("9", 32<<10)
+	for _, body := range []string{
+		`{"expires_in":` + remote + `}`,
+		`{"expires_in":1e` + remote + `}`,
+	} {
+		var reply struct {
+			ExpiresIn int `json:"expires_in"`
+		}
+		err := unmarshalUniqueJSON([]byte(body), &reply)
+		if err == nil {
+			t.Fatal("malformed remote number succeeded")
+		}
+		if strings.Contains(err.Error(), remote[:1024]) || len(err.Error()) > 256 {
+			t.Fatalf("remote JSON error was not bounded: %d bytes", len(err.Error()))
+		}
+	}
+}

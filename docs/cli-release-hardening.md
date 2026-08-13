@@ -49,7 +49,8 @@ redirects; HTTP remains available for loopback development servers.
 Bodies returned by failed authenticated requests are discarded so reflected
 credentials cannot reach errors or terminal output. Contradictory OAuth
 success/error responses fail closed, duplicate authentication JSON members are
-rejected before decoding, and credential stores must be regular files. Catalog
+rejected before decoding, and credential stores must be regular files containing
+unambiguous JSON entries. Catalog
 source checksums, versions, and digests are validated before use; invalid remote
 metadata is not copied into terminal errors.
 

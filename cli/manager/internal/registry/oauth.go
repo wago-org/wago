@@ -51,13 +51,21 @@ func unmarshalUniqueJSON(data []byte, output any) error {
 	if err := ValidateUniqueJSON(data); err != nil {
 		return err
 	}
-	return json.Unmarshal(data, output)
+	if err := json.Unmarshal(data, output); err != nil {
+		return errors.New("JSON response does not match the expected schema")
+	}
+	return nil
 }
 
 // ValidateUniqueJSON validates one JSON value and rejects object members whose
 // names repeat under the case-insensitive matching used by encoding/json.
 func ValidateUniqueJSON(data []byte) error {
+	return validateUniqueJSON(data, true)
+}
+
+func validateUniqueJSON(data []byte, foldNames bool) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
 	var frames []uniqueJSONFrame
 	rootStarted := false
 	rootComplete := false
@@ -65,12 +73,12 @@ func ValidateUniqueJSON(data []byte) error {
 		token, err := decoder.Token()
 		if errors.Is(err, io.EOF) {
 			if !rootComplete {
-				return io.EOF
+				return errors.New("JSON response is incomplete")
 			}
 			return nil
 		}
 		if err != nil {
-			return err
+			return errors.New("JSON response is invalid")
 		}
 		if rootComplete {
 			return errors.New("JSON response contains multiple values")
@@ -108,7 +116,10 @@ func ValidateUniqueJSON(data []byte) error {
 			if frame.members == nil {
 				frame.members = map[string]struct{}{}
 			}
-			canonicalKey := foldJSONName(key)
+			canonicalKey := key
+			if foldNames {
+				canonicalKey = foldJSONName(key)
+			}
 			if _, exists := frame.members[canonicalKey]; exists {
 				return errors.New("JSON response contains a duplicate object field")
 			}

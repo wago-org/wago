@@ -401,10 +401,11 @@ func validateLockEntry(id string, entry LockEntry) error {
 
 // ValidGoChecksum reports whether checksum is a canonical Go h1 checksum.
 func ValidGoChecksum(checksum string) bool {
-	if !strings.HasPrefix(checksum, "h1:") {
+	const encodedSHA256Length = 44
+	if len(checksum) != len("h1:")+encodedSHA256Length || !strings.HasPrefix(checksum, "h1:") {
 		return false
 	}
-	digest, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(checksum, "h1:"))
+	digest, err := base64.StdEncoding.Strict().DecodeString(strings.TrimPrefix(checksum, "h1:"))
 	return err == nil && len(digest) == 32
 }
 

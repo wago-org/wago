@@ -49,6 +49,41 @@ func TestCredentialMutationRejectsNullStoreWithoutOverwritingIt(t *testing.T) {
 	assertNoCredentialTemps(t)
 }
 
+func TestCredentialStoreRejectsDuplicateMembers(t *testing.T) {
+	for _, data := range []string{
+		`{"https://one.test":{"token":"one","login":"alice"},"https://one.test":{"token":"two","login":"mallory"}}`,
+		`{"https://one.test":{"token":"one","Token":"two","login":"alice"}}`,
+	} {
+		t.Run(data[:min(len(data), 40)], func(t *testing.T) {
+			t.Setenv("WAGO_HOME", t.TempDir())
+			if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(credentialsPath(), []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadCredentials(); err == nil {
+				t.Fatal("credential store with duplicate members succeeded")
+			}
+		})
+	}
+}
+
+func TestCredentialStorePreservesCaseSensitiveRegistryPaths(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := `{"https://one.test/A":{"token":"one","login":"alice"},"https://one.test/a":{"token":"two","login":"bob"}}`
+	if err := os.WriteFile(credentialsPath(), []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	creds, err := loadCredentials()
+	if err != nil || len(creds) != 2 || creds["https://one.test/A"].Token != "one" || creds["https://one.test/a"].Token != "two" {
+		t.Fatalf("case-sensitive credential keys = %#v, %v", creds, err)
+	}
+}
+
 func TestCredentialStoreReadAndWriteAreBounded(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
 	if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {

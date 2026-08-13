@@ -116,6 +116,26 @@ func TestRegistryIdentityAndErrorsAreTerminalSafe(t *testing.T) {
 	}
 }
 
+func TestRegistryIdentityRejectsAmbiguousAndReflectedJSON(t *testing.T) {
+	remote := strings.Repeat("9", 32<<10)
+	for _, body := range []string{
+		`{"login":"alice","Login":"mallory"}`,
+		`{"login":` + remote + `}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = writer.Write([]byte(body))
+		}))
+		_, err := fetchMeAtBaseContext(context.Background(), server.URL, testRegistryToken)
+		server.Close()
+		if err == nil {
+			t.Fatalf("ambiguous registry identity succeeded: %.80s", body)
+		}
+		if strings.Contains(err.Error(), remote[:1024]) || len(err.Error()) > 256 {
+			t.Fatalf("registry identity error was not bounded: %d bytes", len(err.Error()))
+		}
+	}
+}
+
 func TestRegistryDisplayBaseIsTerminalSafeAndBounded(t *testing.T) {
 	const valid = "https://registry.example/prefix"
 	if got := registryDisplayBase(valid); got != valid {

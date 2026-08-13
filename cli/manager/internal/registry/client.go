@@ -209,8 +209,8 @@ func fetchMeAtBaseContext(ctx context.Context, base, token string) (meResponse, 
 		return meResponse{}, fmt.Errorf("registry returned status %d", status)
 	}
 	var me meResponse
-	if err := json.Unmarshal(data, &me); err != nil {
-		return meResponse{}, err
+	if err := unmarshalUniqueJSON(data, &me); err != nil {
+		return meResponse{}, fmt.Errorf("parsing registry identity: %w", err)
 	}
 	if me.Login == "" {
 		return meResponse{}, errors.New("registry returned no login")
