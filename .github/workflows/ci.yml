@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.derive.outputs.code }}
+      docs: ${{ steps.derive.outputs.docs }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050
@@ -49,8 +50,26 @@ jobs:
         id: derive
         run: |
           code='${{ steps.filter.outputs.code }}'
+          docs='${{ steps.filter.outputs.docs }}'
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "gate: code=$code"
+          echo "docs=$docs" >> "$GITHUB_OUTPUT"
+          echo "gate: code=$code docs=$docs"
+
+  docs:
+    name: Documentation
+    needs: changes
+    # Code-only changes can delete or rename a path referenced by unchanged
+    # documentation, so validate both documentation and executable changes.
+    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Validate documentation
+        run: make docs-check
 
   lint:
     name: Lint & format
@@ -560,7 +579,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, regression-corpus, race, platform-test, core-v2, tinygo, coverage, size]
+    needs: [changes, docs, lint, regression-corpus, race, platform-test, core-v2, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
