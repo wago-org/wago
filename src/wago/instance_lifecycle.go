@@ -206,6 +206,16 @@ func (in *Instance) endInvocation() {
 		if !in.invocationState.CompareAndSwap(state, next) {
 			continue
 		}
+		if next == instanceInvocationClosed {
+			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+			}
+			in.tryFinalize()
+		}
+		// Keep the Runtime operation admitted through terminal instance
+		// finalization. Runtime shutdown uses this count as its barrier, so
+		// publishing it earlier could let WaitClosed return before reference
+		// tokens and store membership were released.
 		if in.rt != nil {
 			in.rt.mu.Lock()
 			if in.rt.activeOperations == 0 {
@@ -215,12 +225,6 @@ func (in *Instance) endInvocation() {
 			in.rt.activeOperations--
 			in.rt.stateCond.Broadcast()
 			in.rt.mu.Unlock()
-		}
-		if next == instanceInvocationClosed {
-			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
-				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
-			}
-			in.tryFinalize()
 		}
 		return
 	}
