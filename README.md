@@ -322,8 +322,13 @@ is the primary performance target. Selected Core 3 families default on for
 linux/amd64, linux/arm64, and darwin/arm64; the complete set is available there
 with `--core 3`.
 
-Wago is JIT-only. Unsupported or disabled features fail during decode or
-validation.
+Wago has no interpreter tier: supported modules execute as native machine code.
+Source modules can be compiled in the running process, serialized as native
+`.wago` artifacts for later loading, or embedded in standalone native
+executables. Standalone executables compile their embedded Wasm at startup;
+`.wago` artifacts instead load previously generated code for the target
+architecture and runtime configuration. Unsupported or disabled features fail
+during decode or validation.
 
 Read the [Wago documentation](https://docs.wago.sh) for guides and reference
 material. The repository also keeps the detailed [feature matrix](FEATURES.md),
