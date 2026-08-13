@@ -63,18 +63,23 @@ try_tinygo_build wago_runtime "$standard_tiny" ./cli/wago
 try_tinygo_build wago_runtime,wago_lean,wago_minimal "$minimal_tiny" ./cli/wago
 
 # TinyGo's no-debug Linux binaries do not use DWARF unwind tables for panic
-# reporting or Wago's native trap path. Removing them saves file and mapped
-# read-only data without weakening diagnostics. Other object formats retain
-# their platform-native metadata.
-if [[ "$GOOS" == "linux" ]]; then
-  for asset in "$standard_tiny" "$minimal_tiny"; do
-    if [[ -s "$asset" ]]; then
-      strip -s --strip-section-headers \
-        --remove-section=.eh_frame --remove-section=.eh_frame_hdr \
-        --remove-section=.comment "$asset"
-    fi
-  done
-fi
+# reporting or Wago's native trap path. Darwin's linker still retains a large
+# local symbol/string table after -no-debug; Apple strip -x removes it while
+# preserving the external symbols and valid ad-hoc signature needed to run.
+for asset in "$standard_tiny" "$minimal_tiny"; do
+  if [[ -s "$asset" ]]; then
+    case "$GOOS" in
+      darwin)
+        strip -x "$asset"
+        ;;
+      linux)
+        strip -s --strip-section-headers \
+          --remove-section=.eh_frame --remove-section=.eh_frame_hdr \
+          --remove-section=.comment "$asset"
+        ;;
+    esac
+  fi
+done
 
 for asset in \
   "$manager" "$installer" \

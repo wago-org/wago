@@ -89,8 +89,9 @@ CLI and runtime artifacts independently). `make build-engine` is now a diagnosti
 alias for the current run-only Minimal/Tiny profile, not a separate authoritative
 product. Current Linux release packaging also removes TinyGo's unused
 `.eh_frame`, `.eh_frame_hdr`, and `.comment` sections and the now-unneeded ELF
-section header table from each Tiny runtime asset after linking; manager and
-Normal runtime artifacts are unchanged:
+section header table from each Tiny runtime asset after linking. Darwin release
+packaging removes TinyGo's retained local Mach-O symbol and string tables with
+Apple `strip -x`; manager and Normal runtime artifacts are unchanged:
 
 | build | size |
 |---|---:|
