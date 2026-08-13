@@ -72,6 +72,15 @@ runs were 1.57% and 2.68% lower respectively; this is treated as noise/evidence
 against regression, not as a speedup claim. Execution was not rerun for this
 stats-only change because codegen-neutrality tests compare every emitted byte.
 
+### Immutable policy foundation
+
+The next checkpoint adds an immutable, at-most-64-bit optimization selection
+and the `Speed`, `Balanced`, `Size`, and `Embedded` policy vocabulary. Resolving
+an override no longer requires installing it into package globals; concurrent
+readers retain independent selections. ARM64 still consumes the legacy bindings
+until the following checkpoint threads this policy through every lowering
+decision, so this foundation alone does not claim that issue #399 is complete.
+
 ### Commands
 
 ```sh

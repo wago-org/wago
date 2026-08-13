@@ -2,7 +2,10 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/optimization"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/optimization"
+)
 
 // The binding inventory is checked against the arm64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
@@ -45,6 +48,15 @@ var optimizationBindings = optimization.NewBindings("arm64",
 
 type KnobInfo = optimization.Info
 type OptimizationSnapshot = optimization.Snapshot
+type OptimizationObjective = shared.OptimizationObjective
+type CodegenPolicy = shared.CodegenPolicy
+
+const (
+	OptimizeSpeed    = shared.OptimizeSpeed
+	OptimizeBalanced = shared.OptimizeBalanced
+	OptimizeSize     = shared.OptimizeSize
+	OptimizeEmbedded = shared.OptimizeEmbedded
+)
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
 

@@ -62,6 +62,25 @@ type Snapshot struct {
 	revision uint64
 }
 
+// Selection is one immutable, architecture-specific optimization selection.
+// The bit index follows the owning Bindings' stable catalog order. It is safe to
+// copy into a compilation policy and read concurrently for the compilation's
+// lifetime.
+type Selection struct {
+	bindings *Bindings
+	bits     uint64
+}
+
+// Enabled reports whether name is enabled in this selection. Unknown names and
+// selections from another architecture report false.
+func (s Selection) Enabled(name string) bool {
+	if s.bindings == nil {
+		return false
+	}
+	index, ok := s.bindings.index[name]
+	return ok && s.bits&(uint64(1)<<index) != 0
+}
+
 // Bindings owns the complete, ordered set of bindings for one architecture.
 // NewBindings panics on missing, duplicate, unknown, or nil bindings so an
 // advertised optimization cannot reach execution without an implementation.
@@ -131,6 +150,43 @@ func (b *Bindings) CurrentSnapshot() Snapshot {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.snapshotLocked()
+}
+
+// ResolveSnapshot validates and captures one immutable selection without
+// installing it into package globals or retaining the Bindings lock. overrides
+// is expressed in public sense (on means enabled). A nil map captures current
+// process defaults. Snapshot and deltas are accepted for API compatibility; the
+// complete overrides map remains authoritative and makes resolution bounded by
+// the small optimization catalog.
+func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[string]bool) (Selection, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.entries) > 64 {
+		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 64", b.arch, len(b.entries))
+	}
+	var bits uint64
+	for index, entry := range b.entries {
+		on := *entry.value
+		if entry.inverted {
+			on = !on
+		}
+		if on {
+			bits |= uint64(1) << index
+		}
+	}
+	for name, on := range overrides {
+		index, ok := b.index[name]
+		if !ok {
+			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+		}
+		mask := uint64(1) << index
+		if on {
+			bits |= mask
+		} else {
+			bits &^= mask
+		}
+	}
+	return Selection{bindings: b, bits: bits}, nil
 }
 
 func (b *Bindings) snapshotLocked() Snapshot {
