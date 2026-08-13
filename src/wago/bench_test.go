@@ -98,6 +98,18 @@ func benchImportedModule(funcs, adds int) []byte {
 	)
 }
 
+func benchImportMetadataModule(imports int) []byte {
+	entries := make([][]byte, imports)
+	for i := range entries {
+		entry := append(wasmtest.Name("mod.with.dot"), wasmtest.Name(fmt.Sprintf("field.%d", i))...)
+		entries[i] = append(entry, 0x00, 0x00) // function import, type 0
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(entries...)),
+	)
+}
+
 func benchTableReturningImportModule() []byte {
 	return tableHostImportModule(returningI32Sig(), []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}) // local.get 0; i32.const 0; call_indirect type 0 table 0; end
 }
@@ -338,6 +350,41 @@ func BenchmarkCompileImportedWorkers(b *testing.B) {
 				}
 			}
 			b.ReportMetric(float64(codeBytes), "code-B")
+		})
+	}
+}
+
+func BenchmarkCompileImportMetadata(b *testing.B) {
+	for _, imports := range []int{0, 10, 1000, 10000} {
+		mod := benchImportMetadataModule(imports)
+		b.Run(fmt.Sprintf("imports=%d/low-level", imports), func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(mod)))
+			for i := 0; i < b.N; i++ {
+				compiled, err := Compile(nil, mod)
+				if err != nil {
+					b.Fatal(err)
+				}
+				benchCompiledSink = compiled
+				if err := compiled.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run(fmt.Sprintf("imports=%d/runtime", imports), func(b *testing.B) {
+			rt := NewRuntime()
+			defer rt.Close()
+			b.ReportAllocs()
+			b.SetBytes(int64(len(mod)))
+			for i := 0; i < b.N; i++ {
+				module, err := rt.Compile(mod)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := module.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
 		})
 	}
 }

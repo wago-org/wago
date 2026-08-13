@@ -21,7 +21,10 @@ Unknown, duplicate, reordered, truncated, over-limit, and non-canonical section
 encodings fail closed. `Compiled.WriteTo` streams code without constructing a
 second full image; `Compiled.ReadFromWithLimits` reads code directly into an RW
 mapping, bounds code and metadata independently, validates all metadata, and
-seals that same mapping RX on first use. Wago is unreleased, so incompatible
+seals that same mapping RX on first use. Non-global imports retain their legacy
+flat lookup key plus a validated module-name boundary, so source compilation and
+artifact loading expose the same exact module/name pair without decoding source
+again. Wago is unreleased, so incompatible
 development layouts were consolidated into version 1 instead of consuming public
 version numbers. Any artifact version other than 1 is rejected; there is no
 compatibility decoder or dual-format ambiguity.

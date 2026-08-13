@@ -221,9 +221,10 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		m.identity.Store(&moduleIdentityToken{})
 	}
 
+	funcModuleEnds, tableModuleEnds, memoryModuleEnds, tagModuleEnds, _ := c.importModuleEndSections()
 	capSeen := map[Capability]bool{}
 	for i, key := range c.Imports { // function imports, in "module.name" form
-		mod, name := splitImportKey(key)
+		mod, name := splitImportKeyAt(key, importModuleEndAt(funcModuleEnds, i))
 		spec := ImportSpec{Module: mod, Name: name, Kind: ImportFunc, Index: i}
 		if i < len(c.importFuncSigs) {
 			spec.Params = append([]ValType(nil), c.importFuncSigs[i].Params...)
@@ -253,7 +254,7 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 	}
 	for i := 0; i < c.memoryImportCount(); i++ {
 		def, _ := c.memoryImportAt(i)
-		mod, name := splitImportKey(def.ImportKey)
+		mod, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(memoryModuleEnds, i))
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportMemory, Index: i,
 			MemoryMin: def.Min, MemoryMax: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared,
@@ -262,7 +263,7 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
 		def, _ := c.tableImportAt(i)
-		mod, name := splitImportKey(def.Key)
+		mod, name := splitImportKeyAt(def.Key, importModuleEndAt(tableModuleEnds, i))
 		exact, exactErr := exactValueType(def.Type, def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
@@ -273,7 +274,7 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 	if c.memoryDir != nil {
 		for i := 0; i < c.tagImportCount(); i++ {
 			def := c.memoryDir.ehTags[i]
-			mod, name := splitImportKey(def.ImportKey)
+			mod, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(tagModuleEnds, i))
 			sig := c.Types[def.TypeIndex]
 			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
 			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: bindings.imports[def.ImportKey] != nil})
@@ -321,6 +322,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		return ModuleMetadata{}
 	}
 	c := m.c
+	funcModuleEnds, tableModuleEnds, memoryModuleEnds, tagModuleEnds, _ := c.importModuleEndSections()
 	functionExports := exportsByIndex(c.Exports, c.NumImports+len(c.Funcs))
 	functions := make([]FunctionMetadata, c.NumImports+len(c.Funcs))
 	for i := range functions {
@@ -333,7 +335,7 @@ func (m *Module) Metadata() ModuleMetadata {
 				functions[i].ParamTypes, functions[i].ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 			}
 			if i < len(c.Imports) {
-				functions[i].ImportModule, functions[i].ImportName = splitImportKey(c.Imports[i])
+				functions[i].ImportModule, functions[i].ImportName = splitImportKeyAt(c.Imports[i], importModuleEndAt(funcModuleEnds, i))
 			}
 			continue
 		}
@@ -361,7 +363,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		exact, exactErr := exactValueType(c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
 		tables[i] = TableMetadata{Index: i, Type: c.tableElementType(i), ValueType: exact, HasValueType: exactErr == nil, Addr64: def.Addr64, Exports: tableExports[i]}
 		if imp, ok := c.tableImportAt(i); ok {
-			tables[i].ImportModule, tables[i].ImportName = splitImportKey(imp.Key)
+			tables[i].ImportModule, tables[i].ImportName = splitImportKeyAt(imp.Key, importModuleEndAt(tableModuleEnds, i))
 			tables[i].Min, tables[i].Max, tables[i].HasMax = imp.Min, imp.Max, imp.HasMax
 			continue
 		}
@@ -378,7 +380,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		def := c.memoryDef(i)
 		memories[i] = MemoryMetadata{Index: i, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared, Exports: memoryExports[i]}
 		if def.ImportKey != "" {
-			memories[i].ImportModule, memories[i].ImportName = splitImportKey(def.ImportKey)
+			memories[i].ImportModule, memories[i].ImportName = splitImportKeyAt(def.ImportKey, importModuleEndAt(memoryModuleEnds, i))
 		}
 	}
 
@@ -389,7 +391,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		for i, tag := range c.memoryDir.ehTags {
 			tags[i] = TagMetadata{Index: i, TypeIndex: tag.TypeIndex, Exports: tagExports[i]}
 			if tag.ImportKey != "" {
-				tags[i].ImportModule, tags[i].ImportName = splitImportKey(tag.ImportKey)
+				tags[i].ImportModule, tags[i].ImportName = splitImportKeyAt(tag.ImportKey, importModuleEndAt(tagModuleEnds, i))
 			}
 			if int(tag.TypeIndex) < len(c.Types) && c.Types[tag.TypeIndex].Kind == CompositeTypeFunction {
 				tags[i].Params, _ = valTypesFromDescriptors(c.Types[tag.TypeIndex].Params, c.Types)
@@ -543,4 +545,106 @@ func splitImportKey(key string) (module, name string) {
 		}
 	}
 	return key, ""
+}
+
+// exactImportModuleEnd encodes one plus the module-name byte length so zero can
+// retain the legacy first-dot interpretation for hand-built Compiled values.
+func exactImportModuleEnd(module string) uint64 { return uint64(len(module)) + 1 }
+
+func importModuleEndAt(ends []uint64, index int) uint64 {
+	if index < 0 || index >= len(ends) {
+		return 0
+	}
+	return ends[index]
+}
+
+func splitImportKeyAt(key string, moduleEnd uint64) (module, name string) {
+	if validateImportModuleEnd(key, moduleEnd) == nil && moduleEnd != 0 {
+		i := int(moduleEnd - 1)
+		return key[:i], key[i+1:]
+	}
+	return splitImportKey(key)
+}
+
+func validateImportModuleEnd(key string, moduleEnd uint64) error {
+	if moduleEnd == 0 { // Legacy hand-built Compiled metadata.
+		return nil
+	}
+	separator := moduleEnd - 1
+	if separator >= uint64(len(key)) || key[separator] != '.' {
+		return fmt.Errorf("module-name end %d does not identify the import-key separator", moduleEnd)
+	}
+	return nil
+}
+
+// importModuleEndSections returns exact-name sidecars in their persisted order.
+// A false result identifies a legacy hand-built Compiled value or malformed
+// private metadata; callers retain the historical first-dot fallback in either
+// case, while validation rejects malformed non-empty sidecars.
+func (c *Compiled) importModuleEndSections() (functions, tables, memories, tags []uint64, exact bool) {
+	if c == nil {
+		return nil, nil, nil, nil, false
+	}
+	var ends []uint64
+	if c.validateMemo != nil {
+		ends = c.validateMemo.importModuleEnds
+	}
+	functionCount := len(c.Imports)
+	tableCount := c.tableImportCount()
+	memoryCount := c.memoryImportCount()
+	tagCount := c.tagImportCount()
+	total := functionCount + tableCount + memoryCount + tagCount
+	if total == 0 {
+		return nil, nil, nil, nil, len(ends) == 0
+	}
+	if len(ends) != total {
+		return nil, nil, nil, nil, false
+	}
+	tableStart := functionCount
+	memoryStart := tableStart + tableCount
+	tagStart := memoryStart + memoryCount
+	return ends[:tableStart], ends[tableStart:memoryStart], ends[memoryStart:tagStart], ends[tagStart:], true
+}
+
+func (c *Compiled) appendImportModuleEnd(moduleEnd uint64) {
+	if c.validateMemo == nil {
+		c.validateMemo = &validateMemo{}
+	}
+	c.validateMemo.importModuleEnds = append(c.validateMemo.importModuleEnds, moduleEnd)
+}
+
+func (c *Compiled) validateImportModuleEnds() error {
+	if c == nil || c.validateMemo == nil || len(c.validateMemo.importModuleEnds) == 0 {
+		return nil
+	}
+	functionEnds, tableEnds, memoryEnds, tagEnds, exact := c.importModuleEndSections()
+	if !exact {
+		want := len(c.Imports) + c.tableImportCount() + c.memoryImportCount() + c.tagImportCount()
+		return fmt.Errorf("compiled metadata invalid: import module-name ends length %d != non-global import count %d", len(c.validateMemo.importModuleEnds), want)
+	}
+	for i, key := range c.Imports {
+		if err := validateImportModuleEnd(key, functionEnds[i]); err != nil {
+			return fmt.Errorf("compiled metadata invalid: function import %d: %w", i, err)
+		}
+	}
+	for i := range tableEnds {
+		def, _ := c.tableImportAt(i)
+		if err := validateImportModuleEnd(def.Key, tableEnds[i]); err != nil {
+			return fmt.Errorf("compiled metadata invalid: table import %d: %w", i, err)
+		}
+	}
+	for i := range memoryEnds {
+		def, _ := c.memoryImportAt(i)
+		if err := validateImportModuleEnd(def.ImportKey, memoryEnds[i]); err != nil {
+			return fmt.Errorf("compiled metadata invalid: memory import %d: %w", i, err)
+		}
+	}
+	if c.memoryDir != nil {
+		for i := range tagEnds {
+			if err := validateImportModuleEnd(c.memoryDir.ehTags[i].ImportKey, tagEnds[i]); err != nil {
+				return fmt.Errorf("compiled metadata invalid: tag import %d: %w", i, err)
+			}
+		}
+	}
+	return nil
 }
