@@ -453,7 +453,7 @@ func replayStagedGCBrOnCastScript(t *testing.T, base, tmp string, script stagedS
 
 func TestStagedOfficialGCBrOnCastAccounting(t *testing.T) {
 	bases := []string{"gc/br_on_cast", "gc/br_on_cast_fail"}
-	delta := stagedGCBrOnCastDelta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	delta := stagedGCBrOnCastDelta{Schema: 1, SuiteRevision: stagedRelease3Revision}
 	for _, base := range bases {
 		var script stagedSpecScript
 		tmp := stagedOfficialTypedReferenceJSON(t, base, &script)

@@ -38,11 +38,11 @@ type compiledCodeCache struct {
 	sealed                 bool                         // guarded by mu; immutable flags remain race-free after publication
 	gcMetadataFlags        compiledGCMetadataFlags      // collector-free markers plus native-GC ABI version
 	gcTypeSubtypingProduct stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
-	gcStructProduct        stagedGCStructProduct        // exact products stay compile-only; codec v30 may restore generic helper admission
-	gcArrayProduct         stagedGCArrayProduct         // exact products stay compile-only; codec v30 may restore generic helper admission
+	gcStructProduct        stagedGCStructProduct        // exact products stay compile-only; codec reload may restore generic helper admission
+	gcArrayProduct         stagedGCArrayProduct         // exact products stay compile-only; codec reload may restore generic helper admission
 	gcI31Product           stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
 	flags                  compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
-	stagedFeatures         CoreFeatures                 // exact admission is compile-only; codec v30 restores generic GC requirements
+	stagedFeatures         CoreFeatures                 // exact admission is compile-only; codec reload restores generic GC requirements
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -243,7 +243,7 @@ func (c *compiledCodeCache) setNativeGCABIVersion(version uint32) {
 		compiledGCMetadataFlags(version<<compiledGCMetadataNativeABIShift)
 }
 
-// compiledGCFrameRoots is the immutable codec-v33 admission sidecar for bounded
+// compiledGCFrameRoots is the immutable codec admission sidecar for bounded
 // per-site roots, local call graphs, and suspended host activations. Generic modules without
 // it remain collection-disabled during native execution.
 type compiledGCFrameSafepoint struct {

@@ -351,6 +351,9 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 }
 
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
+	if cacheKeyFormat != 1 {
+		t.Fatalf("cache key format = %d, want initial public version 1", cacheKeyFormat)
+	}
 	source := constantModule()
 	dir := t.TempDir()
 	base := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)

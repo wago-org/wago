@@ -487,10 +487,12 @@ func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
 	}
 }
 
-func TestCompiledOldVersionRejected(t *testing.T) {
-	old := []byte{'W', 'A', 'G', 'O', wagoVersion - 1}
-	if _, err := Load(old); err == nil {
-		t.Fatal("Load old compiled version succeeded, want error")
+func TestCompiledUnsupportedVersionsRejected(t *testing.T) {
+	for _, version := range []byte{0, wagoVersion + 1} {
+		blob := []byte{'W', 'A', 'G', 'O', version}
+		if _, err := Load(blob); err == nil {
+			t.Fatalf("Load compiled version %d succeeded, want error", version)
+		}
 	}
 }
 

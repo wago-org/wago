@@ -328,7 +328,7 @@ func TestStagedOfficialMemory64FamilyAccounting(t *testing.T) {
 	if _, err := exec.LookPath("wast2json"); err != nil {
 		t.Skip("wast2json (WABT 1.0.41) not on PATH")
 	}
-	delta := stagedMemory64Delta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	delta := stagedMemory64Delta{Schema: 1, SuiteRevision: stagedRelease3Revision}
 	totalGates := map[string]int{}
 	for _, base := range stagedMemory64OfficialFiles {
 		t.Run(base, func(t *testing.T) {

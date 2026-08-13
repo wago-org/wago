@@ -955,7 +955,7 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 
 	blob, err := chain.middle.c.MarshalBinary()
 	if err != nil {
-		t.Fatalf("codec v27 structural same-memory module: %v", err)
+		t.Fatalf("codec structural same-memory module: %v", err)
 	}
 	var loaded Compiled
 	if err := loaded.UnmarshalBinary(blob); err != nil {

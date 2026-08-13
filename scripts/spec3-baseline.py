@@ -119,7 +119,7 @@ def main():
             add_counts(group, entry)
 
     document = {
-        "schema": 2,
+        "schema": 1,
         "suite": {
             "repository": "WebAssembly/spec", "tag": "wg-3.0",
             "commit": "9d36019973201a19f9c9ebb0f10828b2fe2374aa", "wast_files": 258,

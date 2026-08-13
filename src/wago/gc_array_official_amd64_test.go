@@ -383,7 +383,7 @@ func TestStagedOfficialGCArrayAccounting(t *testing.T) {
 	for _, name := range gateNames {
 		gates = append(gates, stagedTypedReferenceGateCount{Family: "gc", Reason: name, Count: gateCounts[name]})
 	}
-	delta := stagedGCArrayDelta{Schema: 2, SuiteRevision: stagedRelease3Revision, File: "gc/array", Leaders: leaders, InvalidLines: stagedGCArrayInvalidSourceLines, Gates: gates, Counts: counts}
+	delta := stagedGCArrayDelta{Schema: 1, SuiteRevision: stagedRelease3Revision, File: "gc/array", Leaders: leaders, InvalidLines: stagedGCArrayInvalidSourceLines, Gates: gates, Counts: counts}
 	got, err := json.MarshalIndent(delta, "", "  ")
 	if err != nil {
 		t.Fatal(err)

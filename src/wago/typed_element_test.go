@@ -236,7 +236,7 @@ func TestActiveExternrefElementsPreserveDeclarationOrderOnFailedInstantiation(t 
 	}
 }
 
-func TestTypedElementMetadataStaysBoundedAndRoundTripsCodecV21(t *testing.T) {
+func TestTypedElementMetadataStaysBoundedAndRoundTripsCodec(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	baseline, err := Compile(nil, watToWasm(t, `(module (table 3 3 externref))`))
 	if err != nil {

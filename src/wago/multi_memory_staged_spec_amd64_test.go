@@ -422,7 +422,7 @@ func TestStagedOfficialMultiMemoryFamilyMatrix(t *testing.T) {
 		}
 		return files[i].Name < files[j].Name
 	})
-	delta := stagedMultiMemoryDelta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	delta := stagedMultiMemoryDelta{Schema: 1, SuiteRevision: stagedRelease3Revision}
 	for _, file := range files {
 		family := file.Family
 		if family == "" {

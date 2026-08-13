@@ -117,14 +117,13 @@ current optimization priorities. The Core 3.0 implementation ledger is
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
   records, local starts, and same-Runtime cross-instance calls. One-/two-word and
-  bounded flat masks cover up to 1,024 roots; codec v35 validates the native maps
-  and the required native-GC ABI version.
-- [x] Add snapshot v4 stable-ID heap graphs for objects reachable from owned local
-  GC globals, preserving cycles and sharing without serializing compact handles.
-- [x] Add snapshot v5 roots for one owned local collector-reference table, then
-  snapshot v6 roots for multiple heterogeneous local tables, including persisted
-  growth state, cross-table cycles/sharing, strict structural subtype validation,
-  malformed-input rejection, and native ARM64 execution.
+  bounded flat masks cover up to 1,024 roots; codec version 1 validates the native
+  maps and the required native-GC ABI version.
+- [x] Add snapshot version 1 stable-ID heap graphs for objects reachable from owned
+  local GC globals and one or more heterogeneous local collector-reference tables,
+  preserving cycles, sharing, growth state, strict structural subtype validation,
+  malformed-input rejection, and native ARM64 execution without serializing compact
+  handles.
 - [x] Lower struct, array, i31, cast/test, and conversion helpers on linux/darwin
   arm64 through the synchronous parked-host ABI.
 - 🚧 **Iteration 82 — hardening the new ownership and persistence boundaries:** add
@@ -181,7 +180,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   explicit checks. Native Linux/ARM64 and Darwin/ARM64 `spec3-signals` are mandatory
   CI cells alongside their explicit-bounds cells.
 - [x] **Versioned native GC metadata and checked scalar hot paths:** collectors
-  publish one stable ABI-v1 view whose handle/heap pointers, lengths, and generation
+  publish one stable ABI version 1 view whose handle/heap pointers, lengths, and generation
   refresh after every allocation and collection; each instance adds an immutable
   local-to-domain type view at basedata offset 280. AMD64 final scalar struct/array
   get/set lowering validates ABI version, handle kind/range, space range, object
@@ -286,7 +285,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   one site for that trap class. Shared multi-site stubs still report the
   function without guessing a PC. Full caller-chain unwind metadata remains a
   follow-up.
-- [x] WebAssembly 2.0 product closeout: `.wago` codec v27 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec version 1 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table/memory-limit forms, indexed memory imports/exports, and required-feature
   bits without serializing live runtime identity.
@@ -324,7 +323,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   host, cross-instance, indirect, typed-reference, trap, and validation paths.
   Broader platform and bounds-mode parity is tracked above.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
-  globals, active offsets, strict validation, and codec-v29 persistence.
+  globals, active offsets, strict validation, and codec version 1 persistence.
 - [x] Typed function references — recursive structural typing, typed tables,
   elements and globals, `call_ref`, casts/tests, null branches, linking, ownership,
   codec metadata, and official invalid/unlinkable behavior are complete for the
@@ -343,7 +342,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec-v27 structural metadata,
+  local/imported tables, exact exports/re-exports, codec version 1 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - [x] Native Linux, macOS, and Windows runtime paths on amd64 and arm64, with
@@ -431,7 +430,7 @@ Direct numeric local calls record native return PCs, caller frame sizes, and the
 roots live at each callsite. The runtime walks cross-function and recursive
 frames from parked RSP until a validated adapter return, preserving caller
 objects while the deepest frame performs 1,000 allocations under Throughput and
-Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec v30
+Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec version 1
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
@@ -444,7 +443,7 @@ Numeric host imports now record dynamic-wrapper stack adjustments and preserve
 up to eight suspended activations. Each nested callback borrows a separate
 foreign execution stack, while the outer control header and exact native roots
 remain parked. Boundary and allocating-helper collections scan every suspended
-activation. Codec v30 persists and validates the new callsite shape. Throughput
+activation. Codec version 1 persists and validates the new callsite shape. Throughput
 forced-major and Tiny collect-every-allocation stress preserve an outer struct
 across 1,000 allocations in a re-entered function, including codec reload.
 
@@ -549,7 +548,7 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   arrays up to 256 object bytes use checked native default, uniform, and fixed
   constructors. Dynamic, large, data/element-segment, and unsupported reference
   shapes remain exact rooted helpers after measurements rejected broader native
-  admission. ABI v6 keeps the established direct struct bump, delays generic
+  admission. ABI version 1 keeps the established direct struct bump, delays generic
   array refill until nine slow constructors, cancels unused handles/chunks on every
   Go allocation, trap, collection, epoch change, and close, and reconciles exact GC
   globals after successful helper-free invocation sequences.
