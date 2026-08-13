@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -50,6 +51,7 @@ type installer struct {
 	pathAdded           bool
 	pathRefresh         bool
 	pathInitiallyReady  bool
+	ctx                 context.Context
 }
 
 type pathTarget struct {
@@ -62,10 +64,13 @@ type pathTarget struct {
 
 func runInstaller() error {
 	clearPipedCmdHeader()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 	i, err := newInstaller(os.Stderr)
 	if err != nil {
 		return err
 	}
+	i.ctx = ctx
 	err = i.run()
 	if i.progressActive {
 		i.stopProgress()
@@ -566,12 +571,19 @@ func (i *installer) fetchSourceArchiveAfterGitFailure(target, archiveURL string,
 	if err := i.download(archiveURL, archive); err != nil {
 		return "", fmt.Errorf("fetch source with Git (%v: %s) or archive: %w", gitErr, strings.TrimSpace(string(gitLog)), err)
 	}
-	if err := sourcearchive.Extract(archive, target); err != nil {
+	if err := sourcearchive.ExtractContext(i.installContext(), archive, target); err != nil {
 		return "", fmt.Errorf("unpack source archive: %w", err)
 	}
 	i.sourceMethod = "archive"
 	i.done("Fetched Wago source")
 	return target, nil
+}
+
+func (i *installer) installContext() context.Context {
+	if i.ctx == nil {
+		return context.Background()
+	}
+	return i.ctx
 }
 
 func installerSourceRef(version string) string {

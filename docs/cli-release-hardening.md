@@ -47,19 +47,35 @@ allowing an endpoint to consume unbounded disk or memory. Source archives use a
 separate 256 MiB streaming limit.
 
 Downloaded source ZIPs are preflighted completely before filesystem mutation.
-Extraction permits one top-level directory and regular files/directories only;
-it rejects traversal, duplicate and case-colliding paths, file/directory
-conflicts, non-portable names, and archives beyond 20,000 entries, 16,000 files,
+Extraction permits one top-level directory and strict regular files/directories
+only. It rejects traversal, duplicate and case-colliding paths,
+file/directory conflicts, non-portable names, encrypted entries, mixed or special
+file modes, unsupported compression, malformed local headers, data ranges that
+reach the central directory, and archives beyond 20,000 entries, 16,000 files,
 4,000 unique directories, 16 MiB of central-directory metadata, 64 relative path
 components, 255 bytes per component, 1,024 path bytes, 128 MiB per file, or 512
-MiB expanded content. Path components are restricted to portable printable
-ASCII. Decompressed bytes are counted against the declared and aggregate limits
-instead of trusting ZIP metadata. Extraction occurs in a private sibling staging
-directory, observes command cancellation, and publishes the complete tree with
-an atomic no-replace rename only after a regular `go.mod` is present; every
-failure removes the staging tree. ZIP entry and metadata limits are checked with
-a fixed-memory central-directory scan before Go's ZIP reader allocates per-entry
-objects.
+MiB expanded content. Directories must have trailing slashes and zero declared
+content. Stored files must have equal compressed and uncompressed sizes. The
+stripped archive root must contain an exactly spelled regular `go.mod` file.
+
+Path components are restricted to portable printable ASCII. A single byte scan
+validates each path, each complete relative path is canonicalized at most once,
+and parent nodes are derived by slicing at slash offsets. The preflight therefore
+scales linearly with accepted path metadata rather than repeatedly allocating
+and joining every parent prefix. On Go 1.26.5/linux-amd64 on a Ryzen 7 7800X3D,
+the 16,000-file, 63-shared-directory production-shaped benchmark improved from
+1.103 seconds, 1,078,897,384 bytes, and 2,048,079 allocations per operation to
+102 milliseconds, 19,494,096 bytes, and 48,128 allocations per operation.
+
+The fixed-memory central-directory scanner and Go ZIP reader share one opened
+regular-file descriptor, preventing pathname replacement between validation and
+extraction. The descriptor is closed before publication. Decompressed bytes are
+counted against the declared and aggregate limits instead of trusting ZIP
+metadata. Extraction occurs in a private sibling staging directory, observes
+manager and installer command cancellation, and publishes the complete tree with
+an atomic no-replace rename. Every failure removes the staging tree, and cleanup
+or close failures are surfaced rather than discarded. ZIP entry and metadata
+limits remain checked before Go's ZIP reader allocates per-entry objects.
 
 The August 2026 limit check used 3,521 tracked files, 441 unique directories,
 467,141 central-directory bytes, 52,815,053 total bytes, a 16,243,226-byte
