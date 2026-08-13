@@ -49,6 +49,34 @@ func TestCredentialMutationRejectsNullStoreWithoutOverwritingIt(t *testing.T) {
 	assertNoCredentialTemps(t)
 }
 
+func TestCredentialStoreReadAndWriteAreBounded(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oversized := strings.Repeat("x", int(maximumCredentialStoreSize)+1)
+	if err := os.WriteFile(credentialsPath(), []byte(oversized), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadCredentials(); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized credential read = %v", err)
+	}
+
+	if err := os.WriteFile(credentialsPath(), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	creds := map[string]credential{
+		"https://oversized.test": {Token: oversized, Login: "alice"},
+	}
+	if err := writeCredentials(creds); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized credential write = %v", err)
+	}
+	data, err := os.ReadFile(credentialsPath())
+	if err != nil || string(data) != "{}\n" {
+		t.Fatalf("oversized write changed store to %q: %v", data, err)
+	}
+}
+
 func TestCredentialMutationRejectsSymlinkDestination(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
 	if err := os.MkdirAll(filepath.Dir(credentialsPath()), 0o700); err != nil {
@@ -297,7 +325,7 @@ func TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON(t *testing.T)
 		}
 	}()
 	for index := range 50 {
-		if err := saveCredentials("https://one.test", strings.Repeat("x", 1024)+string(rune(index)), "one"); err != nil {
+		if err := saveCredentials("https://one.test", strings.Repeat("x", 1024)+string(rune('A'+index%26)), "one"); err != nil {
 			close(stop)
 			t.Fatal(err)
 		}

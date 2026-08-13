@@ -31,13 +31,10 @@ func registryLoginContext(ctx context.Context, options LoginRequest) {
 	case token != "":
 		// use the provided token directly
 	case withToken:
-		b, err := io.ReadAll(os.Stdin)
+		var err error
+		token, err = readRegistryToken(os.Stdin)
 		if err != nil {
 			fatal("login: reading token from stdin: %v", err)
-		}
-		token = strings.TrimSpace(string(b))
-		if token == "" {
-			fatal("login: no token on stdin")
 		}
 	case code:
 		token = githubDeviceLoginContext(ctx, base)
@@ -50,6 +47,9 @@ func registryLoginContext(ctx context.Context, options LoginRequest) {
 			return
 		}
 	}
+	if err := validateRegistryToken(token); err != nil {
+		fatal("login: %v", err)
+	}
 	me, err := fetchMeAtBaseContext(ctx, base, token)
 	if err != nil {
 		if errors.Is(err, errUnauthorized) {
@@ -61,6 +61,31 @@ func registryLoginContext(ctx context.Context, options LoginRequest) {
 		fatal("login: saving credentials: %v", err)
 	}
 	fmt.Printf("%s Logged in as %s\n", cyan("✓"), bold(me.Login))
+}
+
+func readRegistryToken(reader io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maximumRegistryInputLength+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maximumRegistryInputLength {
+		return "", fmt.Errorf("registry token exceeds %d-byte limit", maximumRegistryTokenLength)
+	}
+	token := strings.TrimSpace(string(data))
+	if token == "" {
+		return "", errors.New("no token on stdin")
+	}
+	if err := validateRegistryToken(token); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func validateRegistryToken(token string) error {
+	if token == "" {
+		return errors.New("registry token is empty")
+	}
+	return validatePrintableASCIIField("registry token", token, maximumRegistryTokenLength)
 }
 
 func loginMethodPicker() *tui.Picker {
@@ -106,10 +131,18 @@ func browserLoginContext(ctx context.Context, base string) string {
 }
 
 const (
-	defaultDeviceFlowLifetime = 15 * time.Minute
-	maximumDeviceFlowLifetime = 20 * time.Minute
-	defaultDevicePollInterval = 5 * time.Second
-	maximumDevicePollInterval = 60 * time.Second
+	defaultDeviceFlowLifetime  = 15 * time.Minute
+	maximumDeviceFlowLifetime  = 20 * time.Minute
+	defaultDevicePollInterval  = 5 * time.Second
+	maximumDevicePollInterval  = 60 * time.Second
+	maximumOAuthClientIDLength = 256
+	maximumOAuthScopeLength    = 128
+	maximumDeviceCodeLength    = 1024
+	maximumUserCodeLength      = 128
+	maximumGitHubTokenLength   = 16 << 10
+	maximumRegistryTokenLength = 64 << 10
+	maximumRegistryInputLength = maximumRegistryTokenLength + 2 // optional CRLF
+	maximumVerificationURLSize = 4 << 10
 )
 
 func deviceFlowTiming(expiresIn, interval int) (lifetime, pollInterval time.Duration) {
@@ -183,7 +216,7 @@ func githubDeviceTokenContext(ctx context.Context, base string, openBrowser bool
 
 func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser bool, hooks deviceFlowHooks) (string, error) {
 	// 1. Ask the registry which GitHub OAuth app to authenticate against.
-	status, data, err := apiRequestAtBaseContext(ctx, base, http.MethodGet, "/api/auth/github/client", "", nil)
+	status, data, err := apiRequestAtBaseLimitContext(ctx, base, http.MethodGet, "/api/auth/github/client", "", nil, registryAuthResponseLimit)
 	if err != nil {
 		return "", fmt.Errorf("fetching GitHub client config: %w", err)
 	}
@@ -199,6 +232,13 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	}
 	if cfg.ClientID == "" {
 		return "", errors.New("registry did not advertise a GitHub client id")
+	}
+	if err := validatePrintableASCIIField("GitHub client id", cfg.ClientID, maximumOAuthClientIDLength); err != nil {
+		return "", err
+	}
+	cfg.Scope, err = allowedGitHubScopes(cfg.Scope)
+	if err != nil {
+		return "", err
 	}
 
 	// 2. Ask GitHub for a device + user code.
@@ -219,10 +259,13 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 		return "", errors.New("GitHub device flow is disabled for this OAuth app — enable \"Device Flow\" in its settings")
 	}
 	if dc.DeviceCode == "" || dc.UserCode == "" {
-		if dc.Error != "" {
-			return "", fmt.Errorf("GitHub: %s", dc.Error)
-		}
 		return "", errors.New("GitHub returned an incomplete device authorization response")
+	}
+	if err := validatePrintableASCIIField("GitHub device code", dc.DeviceCode, maximumDeviceCodeLength); err != nil {
+		return "", err
+	}
+	if err := validatePrintableASCIIField("GitHub user code", dc.UserCode, maximumUserCodeLength); err != nil {
+		return "", err
 	}
 
 	lifetime, pollInterval := deviceFlowTiming(dc.ExpiresIn, dc.Interval)
@@ -269,6 +312,9 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 			return "", fmt.Errorf("polling GitHub for the token: %w", err)
 		}
 		if tr.AccessToken != "" {
+			if err := validatePrintableASCIIField("GitHub access token", tr.AccessToken, maximumGitHubTokenLength); err != nil {
+				return "", err
+			}
 			ghToken = tr.AccessToken
 			break
 		}
@@ -292,8 +338,8 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	}
 
 	// 4. Exchange the GitHub token for a wago API token.
-	status, data, err = apiRequestAtBaseContext(ctx, base, http.MethodPost, "/api/auth/github/exchange", "",
-		map[string]string{"access_token": ghToken})
+	status, data, err = apiRequestAtBaseLimitContext(ctx, base, http.MethodPost, "/api/auth/github/exchange", "",
+		map[string]string{"access_token": ghToken}, registryAuthResponseLimit)
 	if err != nil {
 		return "", fmt.Errorf("exchanging GitHub token: %w", err)
 	}
@@ -311,7 +357,44 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	if xr.Token == "" {
 		return "", errors.New("registry returned no token after the GitHub exchange")
 	}
+	if err := validateRegistryToken(xr.Token); err != nil {
+		return "", err
+	}
 	return xr.Token, nil
+}
+
+func allowedGitHubScopes(scope string) (string, error) {
+	if err := validateTerminalTextField("registry GitHub scope", scope, maximumOAuthScopeLength); err != nil {
+		return "", err
+	}
+	requested := make(map[string]bool, 2)
+	for _, item := range strings.Fields(scope) {
+		switch item {
+		case "read:user", "user:email":
+			requested[item] = true
+		default:
+			return "", errors.New("registry requested an unsupported GitHub OAuth scope")
+		}
+	}
+	ordered := make([]string, 0, len(requested))
+	for _, item := range []string{"read:user", "user:email"} {
+		if requested[item] {
+			ordered = append(ordered, item)
+		}
+	}
+	return strings.Join(ordered, " "), nil
+}
+
+func validatePrintableASCIIField(name, value string, maximum int) error {
+	if len(value) > maximum {
+		return fmt.Errorf("%s exceeds %d-byte limit", name, maximum)
+	}
+	for index := range len(value) {
+		if value[index] < 0x21 || value[index] > 0x7e {
+			return fmt.Errorf("%s contains non-printable characters", name)
+		}
+	}
+	return nil
 }
 
 func trustedDeviceVerificationURL(candidate, deviceCodeEndpoint string) string {
@@ -321,6 +404,9 @@ func trustedDeviceVerificationURL(candidate, deviceCodeEndpoint string) string {
 	}
 	fallback := &url.URL{Scheme: provider.Scheme, Host: provider.Host, Path: "/login/device"}
 	if candidate == "" {
+		return fallback.String()
+	}
+	if len(candidate) > maximumVerificationURLSize {
 		return fallback.String()
 	}
 	target, err := url.Parse(candidate)

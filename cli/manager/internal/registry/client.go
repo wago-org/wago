@@ -19,6 +19,11 @@ import (
 
 const registryResponseLimit int64 = 4 << 20
 
+const (
+	registryAuthResponseLimit  int64 = 128 << 10
+	maximumRegistryLoginLength       = 256
+)
+
 var (
 	registryResponseMaximum = registryResponseLimit
 	registryHTTP            = httpclient.NewAPI()
@@ -49,11 +54,20 @@ func apiRequestContext(ctx context.Context, method, path, token string, body any
 }
 
 func apiRequestAtBaseContext(ctx context.Context, base, method, path, token string, body any) (int, []byte, error) {
+	return apiRequestAtBaseLimitContext(ctx, base, method, path, token, body, registryResponseMaximum)
+}
+
+func apiRequestAtBaseLimitContext(ctx context.Context, base, method, path, token string, body any, responseLimit int64) (int, []byte, error) {
 	if err := automation.RequireOnline("registry request"); err != nil {
 		return 0, nil, err
 	}
 	if err := validateRegistryBaseURL(base); err != nil {
 		return 0, nil, err
+	}
+	if token != "" {
+		if err := validateRegistryToken(token); err != nil {
+			return 0, nil, err
+		}
 	}
 	var reader io.Reader
 	if body != nil {
@@ -73,7 +87,7 @@ func apiRequestAtBaseContext(ctx context.Context, base, method, path, token stri
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	response, err := registryHTTP.Bytes(ctx, req, registryResponseMaximum)
+	response, err := registryHTTP.Bytes(ctx, req, min(responseLimit, registryResponseMaximum))
 	return response.StatusCode, response.Body, err
 }
 
@@ -139,10 +153,22 @@ func apiError(status int, data []byte) string {
 	var e struct {
 		Error string `json:"error"`
 	}
-	if json.Unmarshal(data, &e) == nil && e.Error != "" {
+	if json.Unmarshal(data, &e) == nil && e.Error != "" && validateTerminalTextField("registry error", e.Error, 1024) == nil {
 		return e.Error
 	}
 	return fmt.Sprintf("server returned status %d", status)
+}
+
+func validateTerminalTextField(name, value string, maximum int) error {
+	if len(value) > maximum {
+		return fmt.Errorf("%s exceeds %d-byte limit", name, maximum)
+	}
+	for index := range len(value) {
+		if value[index] < 0x20 || value[index] > 0x7e {
+			return fmt.Errorf("%s contains non-printable characters", name)
+		}
+	}
+	return nil
 }
 
 // fetchMe calls GET /api/me and returns the user, or errUnauthorized on a 401.
@@ -155,7 +181,7 @@ func fetchMeContext(ctx context.Context, token string) (meResponse, error) {
 }
 
 func fetchMeAtBaseContext(ctx context.Context, base, token string) (meResponse, error) {
-	status, data, err := apiRequestAtBaseContext(ctx, base, http.MethodGet, "/api/me", token, nil)
+	status, data, err := apiRequestAtBaseLimitContext(ctx, base, http.MethodGet, "/api/me", token, nil, registryAuthResponseLimit)
 	if err != nil {
 		return meResponse{}, err
 	}
@@ -167,6 +193,12 @@ func fetchMeAtBaseContext(ctx context.Context, base, token string) (meResponse, 
 	}
 	var me meResponse
 	if err := json.Unmarshal(data, &me); err != nil {
+		return meResponse{}, err
+	}
+	if me.Login == "" {
+		return meResponse{}, errors.New("registry returned no login")
+	}
+	if err := validatePrintableASCIIField("registry login", me.Login, maximumRegistryLoginLength); err != nil {
 		return meResponse{}, err
 	}
 	return me, nil

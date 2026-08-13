@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -204,6 +205,90 @@ func TestDeviceAuthorizationPinsRegistryOrigin(t *testing.T) {
 	}
 }
 
+func TestGitHubOAuthScopeAllowlist(t *testing.T) {
+	for _, test := range []struct {
+		name, scope, want string
+		wantError         bool
+	}{
+		{name: "none"},
+		{name: "identity", scope: "read:user", want: "read:user"},
+		{name: "email and identity", scope: "user:email read:user", want: "read:user user:email"},
+		{name: "duplicates", scope: "read:user  read:user", want: "read:user"},
+		{name: "repository", scope: "read:user repo", wantError: true},
+		{name: "workflow", scope: "workflow", wantError: true},
+		{name: "control", scope: "read:user\nuser:email", wantError: true},
+		{name: "oversized", scope: strings.Repeat("x", maximumOAuthScopeLength+1), wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := allowedGitHubScopes(test.scope)
+			if (err != nil) != test.wantError || got != test.want {
+				t.Fatalf("allowedGitHubScopes(%q) = %q, %v", test.scope, got, err)
+			}
+		})
+	}
+}
+
+func TestDeviceAuthorizationRejectsScopeEscalationBeforeGitHub(t *testing.T) {
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"client_id":"client-id","scope":"read:user repo"}`))
+	}))
+	defer registry.Close()
+	var githubRequests atomic.Int32
+	github := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		githubRequests.Add(1)
+	}))
+	defer github.Close()
+
+	hooks := deviceFlowTestHooks(t, github.URL, new(string))
+	_, err := githubDeviceTokenUsingContext(context.Background(), registry.URL, false, hooks)
+	if err == nil || !strings.Contains(err.Error(), "unsupported GitHub OAuth scope") {
+		t.Fatalf("scope escalation = %v", err)
+	}
+	if got := githubRequests.Load(); got != 0 {
+		t.Fatalf("scope escalation made %d GitHub requests", got)
+	}
+}
+
+func TestAuthenticationFieldsAreBoundedAndPrintable(t *testing.T) {
+	for _, test := range []struct {
+		name, field string
+		maximum     int
+	}{
+		{name: "client id", field: "GitHub client id", maximum: maximumOAuthClientIDLength},
+		{name: "device code", field: "GitHub device code", maximum: maximumDeviceCodeLength},
+		{name: "user code", field: "GitHub user code", maximum: maximumUserCodeLength},
+		{name: "GitHub token", field: "GitHub access token", maximum: maximumGitHubTokenLength},
+		{name: "registry token", field: "registry token", maximum: maximumRegistryTokenLength},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validatePrintableASCIIField(test.field, strings.Repeat("x", test.maximum), test.maximum); err != nil {
+				t.Fatalf("exact limit: %v", err)
+			}
+			for _, value := range []string{"value\x1b[2J", "value\nforged", strings.Repeat("x", test.maximum+1)} {
+				if err := validatePrintableASCIIField(test.field, value, test.maximum); err == nil {
+					t.Fatalf("accepted unsafe value of length %d", len(value))
+				}
+			}
+		})
+	}
+}
+
+func TestRegistryTokenInputIsBounded(t *testing.T) {
+	valid := strings.Repeat("x", maximumRegistryTokenLength)
+	if got, err := readRegistryToken(strings.NewReader(valid + "\r\n")); err != nil || got != valid {
+		t.Fatalf("exact token input = %d bytes, %v", len(got), err)
+	}
+	for _, input := range []string{
+		"token\x1b[2J",
+		strings.Repeat("x", maximumRegistryInputLength+1),
+		" \r\n",
+	} {
+		if _, err := readRegistryToken(strings.NewReader(input)); err == nil {
+			t.Fatalf("accepted unsafe token input of length %d", len(input))
+		}
+	}
+}
+
 func TestDeviceVerificationURLIsPinnedToProvider(t *testing.T) {
 	const endpoint = "https://github.com/login/device/code"
 	const fallback = "https://github.com/login/device"
@@ -223,6 +308,7 @@ func TestDeviceVerificationURLIsPinnedToProvider(t *testing.T) {
 		{name: "port", candidate: "https://github.com:8443/login/device", want: fallback},
 		{name: "wrong path", candidate: "https://github.com/login/oauth/authorize", want: fallback},
 		{name: "fragment", candidate: "https://github.com/login/device#credential", want: fallback},
+		{name: "oversized", candidate: "https://github.com/login/device?" + strings.Repeat("x", maximumVerificationURLSize), want: fallback},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := trustedDeviceVerificationURL(test.candidate, endpoint); got != test.want {

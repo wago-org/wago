@@ -40,6 +40,12 @@ development servers. Browser targets must match GitHub's device-verification
 origin and path. Wago does not run a loopback callback server or place either
 credential in a browser-visible URL.
 
+The registry's advertised GitHub scopes are restricted to `read:user` and
+`user:email`. Authentication identifiers, codes, tokens, displayed registry
+text, stdin token input, and the local credential store have explicit size and
+printable-text limits. All registry API operations—not only login—reject remote
+plaintext HTTP origins; HTTP remains available for loopback development servers.
+
 ## Release downloads
 
 Canary and nightly binaries now stamp `canary@<full-sha>` or

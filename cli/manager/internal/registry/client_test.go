@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -59,6 +60,37 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 	}
 }
 
+func TestRegistryIdentityAndErrorsAreTerminalSafe(t *testing.T) {
+	for _, body := range []string{
+		`{"login":"alice\u001b[2J"}`,
+		`{"login":"alice\nforged"}`,
+		`{"login":"` + strings.Repeat("x", maximumRegistryLoginLength+1) + `"}`,
+		`{"login":""}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = writer.Write([]byte(body))
+		}))
+		_, err := fetchMeAtBaseContext(context.Background(), server.URL, testRegistryToken)
+		server.Close()
+		if err == nil {
+			t.Fatalf("accepted unsafe identity %s", body)
+		}
+	}
+
+	for _, data := range []string{
+		`{"error":"broken\u001b[2J"}`,
+		`{"error":"broken\nforged"}`,
+		`{"error":"` + strings.Repeat("x", 1025) + `"}`,
+	} {
+		if got := apiError(http.StatusBadRequest, []byte(data)); got != "server returned status 400" {
+			t.Fatalf("unsafe registry error rendered as %q", got)
+		}
+	}
+	if got := apiError(http.StatusBadRequest, []byte(`{"error":"ordinary failure"}`)); got != "ordinary failure" {
+		t.Fatalf("safe registry error = %q", got)
+	}
+}
+
 func TestRegistryBaseURLSecurityPolicy(t *testing.T) {
 	for _, base := range []string{
 		"https://registry.example",
@@ -93,6 +125,31 @@ func TestRegistryRequestRejectsRemotePlaintextBeforeDial(t *testing.T) {
 		"/api/auth/github/exchange", "", map[string]string{"access_token": testGitHubToken})
 	if err == nil || !strings.Contains(err.Error(), "HTTPS is required") {
 		t.Fatalf("remote plaintext registry = %v", err)
+	}
+}
+
+func TestRegistryRequestRejectsUnsafeBearerBeforeDial(t *testing.T) {
+	for _, token := range []string{
+		"token\nforged",
+		"token\x1b[2J",
+		strings.Repeat("x", maximumRegistryTokenLength+1),
+	} {
+		_, _, err := apiRequestAtBaseContext(context.Background(), "https://192.0.2.1", http.MethodGet, "/api/me", token, nil)
+		if err == nil {
+			t.Fatalf("unsafe bearer of length %d reached request path", len(token))
+		}
+	}
+}
+
+func TestRegistryAuthenticationResponsesUseSmallerLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Length", strconv.FormatInt(registryAuthResponseLimit+1, 10))
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	if _, err := fetchMeAtBaseContext(context.Background(), server.URL, testRegistryToken); !errors.Is(err, httpclient.ErrBodyTooLarge) {
+		t.Fatalf("oversized auth response = %v", err)
 	}
 }
 

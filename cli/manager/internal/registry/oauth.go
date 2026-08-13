@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/automation"
 )
 
-var oauthResponseMaximum int64 = 1 << 20
+var oauthResponseMaximum int64 = 128 << 10
 
 // PostForm sends a GitHub OAuth form request and decodes its bounded JSON response.
 func PostForm(endpoint string, form url.Values, output any) error {
@@ -35,7 +35,7 @@ func PostFormContext(ctx context.Context, endpoint string, form url.Values, outp
 		return err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("OAuth endpoint returned %s", response.Status)
+		return fmt.Errorf("OAuth endpoint returned status %d", response.StatusCode)
 	}
 	return json.Unmarshal(response.Body, output)
 }
