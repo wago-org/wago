@@ -3,15 +3,97 @@ package registry
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestEditDistance(t *testing.T) {
-	if got := editDistance("wago-org/asi", "wago-org/wasi"); got != 1 {
+	var previous, current [maximumSuggestionIDLength + 1]int
+	if got, ok := editDistanceWithin("wago-org/asi", "wago-org/wasi", 3, previous[:], current[:]); !ok || got != 1 {
 		t.Fatalf("edit distance = %d, want 1", got)
 	}
-	if got := editDistance("wasi", "wasi"); got != 0 {
+	if got, ok := editDistanceWithin("wasi", "wasi", 3, previous[:], current[:]); !ok || got != 0 {
 		t.Fatalf("identical edit distance = %d, want 0", got)
+	}
+	if _, ok := editDistanceWithin("short", strings.Repeat("x", 20), 3, previous[:], current[:]); ok {
+		t.Fatal("out-of-band edit distance succeeded")
+	}
+}
+
+func TestEditDistanceWithinMatchesExactDistance(t *testing.T) {
+	values := []string{""}
+	for length := 1; length <= 4; length++ {
+		for bits := 0; bits < 1<<length; bits++ {
+			var value strings.Builder
+			for index := range length {
+				if bits&(1<<index) == 0 {
+					value.WriteByte('a')
+				} else {
+					value.WriteByte('b')
+				}
+			}
+			values = append(values, value.String())
+		}
+	}
+	var previous, current [maximumSuggestionIDLength + 1]int
+	for _, left := range values {
+		for _, right := range values {
+			want := exactEditDistance(left, right)
+			for limit := 0; limit <= 3; limit++ {
+				got, ok := editDistanceWithin(left, right, limit, previous[:], current[:])
+				if ok != (want <= limit) || ok && got != want {
+					t.Fatalf("distance(%q, %q, %d) = %d, %t; want %d", left, right, limit, got, ok, want)
+				}
+			}
+		}
+	}
+}
+
+func exactEditDistance(left, right string) int {
+	previous := make([]int, len(right)+1)
+	for index := range previous {
+		previous[index] = index
+	}
+	for i := 1; i <= len(left); i++ {
+		current := make([]int, len(right)+1)
+		current[0] = i
+		for j := 1; j <= len(right); j++ {
+			cost := 1
+			if left[i-1] == right[j-1] {
+				cost = 0
+			}
+			current[j] = min(current[j-1]+1, previous[j]+1, previous[j-1]+cost)
+		}
+		previous = current
+	}
+	return previous[len(right)]
+}
+
+func BenchmarkClosestModuleAdversarialID(b *testing.B) {
+	target := strings.Repeat("a", 300)
+	candidates := []packageSuggestion{{ID: strings.Repeat("b", 10_000)}}
+	b.ReportAllocs()
+	for range b.N {
+		_ = closestModuleID(target, candidates)
+	}
+}
+
+func TestClosestModuleRejectsOversizedMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(output http.ResponseWriter, _ *http.Request) {
+		_, _ = output.Write([]byte(`{"packages":[` + strings.Repeat(`{"id":"x"},`, maximumRegistrySuggestions) + `{"id":"x"}]}`))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	if got := closestModule("github.com/wago-org/asi"); got != "" {
+		t.Fatalf("oversized package suggestions = %q", got)
+	}
+}
+
+func TestClosestModuleIgnoresInvalidCandidateID(t *testing.T) {
+	candidates := []packageSuggestion{{ID: "wago-org/asi\x1b[2J"}, {ID: strings.Repeat("x", maximumSuggestionIDLength+1)}}
+	if got := closestModuleID("wago-org/asj", candidates); got != "" {
+		t.Fatalf("invalid package suggestion = %q", got)
 	}
 }
 

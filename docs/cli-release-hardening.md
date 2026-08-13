@@ -18,7 +18,7 @@ A parent command cancellation is propagated to active manager requests,
 installer downloads, and Git/TinyGo/Go subprocesses used by source-build
 fallback. In-memory bodies are explicitly bounded: registry and GitHub release
 JSON use a 4 MiB limit, OAuth
-responses use 1 MiB, release checksums use 4 KiB, and non-success response
+responses use 128 KiB, release checksums use 4 KiB, and non-success response
 capture uses an independent 64 KiB limit. Declared oversized bodies are rejected
 before reading; chunked or dishonest responses are stopped after the configured
 limit. Release/commit browsing is capped at ten 100-item pages so repeated full
@@ -27,6 +27,44 @@ validated same-origin GitHub `Link` pagination within that budget, skips draft
 releases, and requires the selected release to expose a canonical 40-hex commit
 target. OAuth device-flow lifetimes and server-provided polling intervals are
 also capped.
+
+Browser and headless registry login both use GitHub's one-time device
+authorization. Browser mode opens only GitHub's verification URL after printing
+the short-lived user code; headless mode leaves that URL for the user to open
+elsewhere. The GitHub access token is sent to the registry in a bounded POST
+body, and the long-lived Wago bearer token is accepted only from that exchange's
+bounded response body. Both registry requests remain pinned to the origin chosen
+at login start, redirects are not followed, and bearer validation uses that same
+origin. Registry authentication requires HTTPS except for explicit loopback
+development servers. Browser targets must match GitHub's device-verification
+origin and path. Wago does not run a loopback callback server or place either
+credential in a browser-visible URL.
+
+The registry's advertised GitHub scopes are restricted to `read:user` and
+`user:email`. Authentication identifiers, codes, tokens, displayed registry
+text, stdin token input, and the local credential store have explicit size and
+printable-text limits. All registry network operations—including dependency
+catalog lookup and install metrics—reject remote plaintext HTTP origins and
+redirects; HTTP remains available for loopback development servers.
+Bodies returned by failed authenticated requests are discarded so reflected
+credentials cannot reach errors or terminal output. Contradictory OAuth
+success/error responses fail closed, duplicate authentication JSON members are
+rejected before decoding, and credential stores must be regular files containing
+unambiguous JSON entries. Catalog source checksums, versions, and digests are
+validated before use; invalid remote metadata is not copied into terminal errors.
+Catalog pages are preflighted before materializing release structs, and each
+requested plugin is limited to 1,024 candidates across at most four 256-release
+pages and 16 MiB of cumulative response metadata. Non-schema catalog objects,
+arrays, and nesting are structurally bounded to 128 members and 32 levels before
+decoding; case-sensitive property names and collections inside embedded
+configuration JSON Schema remain distinct and retain their schema semantics.
+Duplicate catalog struct fields fail closed, and dependency backtracking stops
+after 2,048 unique catalog queries and 64 MiB of aggregate response metadata,
+independently of the solver's CPU-step ceiling. Exact plugin/constraint queries
+are pinned and reused throughout one solve, preventing repeated downloads and
+mid-resolution result changes. Registry error and package-resolution JSON also
+rejects ambiguous fields; resolved module paths are canonical, and typo
+suggestions are limited to 1,024 bounded identifiers with banded edit distance.
 
 ## Release downloads
 

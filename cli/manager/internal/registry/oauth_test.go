@@ -33,10 +33,6 @@ func TestDeviceFlowTimingIsBounded(t *testing.T) {
 }
 
 func TestOAuthHelpers(t *testing.T) {
-	state, err := RandomState()
-	if err != nil || len(state) != 32 {
-		t.Fatalf("RandomState = %q, %v", state, err)
-	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
@@ -58,7 +54,42 @@ func TestOAuthHelpers(t *testing.T) {
 	if err := PostForm(oversized.URL, url.Values{}, &reply); !errors.Is(err, httpclient.ErrBodyTooLarge) {
 		t.Fatalf("oversized OAuth response = %v", err)
 	}
-	if !strings.Contains(SuccessHTML, "logged in") {
-		t.Fatal("login success HTML missing confirmation")
+}
+
+func TestOAuthJSONRejectsDuplicateObjectMembers(t *testing.T) {
+	for _, body := range []string{
+		`{"access_token":"trusted","error":"access_denied","error":""}`,
+		`{"access_token":"trusted","error":"access_denied","Error":""}`,
+		`{"scope":"read:user","ſcope":"repo"}`,
+		`{"outer":{"error":"access_denied","error":""}}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		}))
+		var reply map[string]any
+		err := PostForm(server.URL, url.Values{}, &reply)
+		server.Close()
+		if err == nil || !strings.Contains(err.Error(), "duplicate object field") {
+			t.Fatalf("PostForm(%s) = %v", body, err)
+		}
+	}
+}
+
+func TestOAuthJSONErrorsDoNotReflectRemoteValues(t *testing.T) {
+	remote := strings.Repeat("9", 32<<10)
+	for _, body := range []string{
+		`{"expires_in":` + remote + `}`,
+		`{"expires_in":1e` + remote + `}`,
+	} {
+		var reply struct {
+			ExpiresIn int `json:"expires_in"`
+		}
+		err := unmarshalUniqueJSON([]byte(body), &reply)
+		if err == nil {
+			t.Fatal("malformed remote number succeeded")
+		}
+		if strings.Contains(err.Error(), remote[:1024]) || len(err.Error()) > 256 {
+			t.Fatalf("remote JSON error was not bounded: %d bytes", len(err.Error()))
+		}
 	}
 }

@@ -3,10 +3,13 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -564,6 +567,70 @@ func TestResolveCatalogGraphPreservesNarrowRequiredGrant(t *testing.T) {
 	}
 }
 
+func TestResolveCatalogGraphBoundsCatalogQueriesDuringBacktracking(t *testing.T) {
+	rootID := "github.com/acme/root"
+	childID := "github.com/acme/child"
+	candidates := make([]CatalogRelease, maxResolverCatalogQueries)
+	for index := range candidates {
+		candidates[index] = CatalogRelease{
+			ID:      rootID,
+			Version: "1.0.0",
+			Definition: corewago.PluginDefinition{
+				ID:       rootID,
+				Requires: []corewago.PluginRequirement{{ID: childID, Version: "=1.0." + strconv.Itoa(index)}},
+			},
+		}
+	}
+	calls := 0
+	catalog := catalogFunc(func(_ context.Context, id string, _ []string) ([]CatalogRelease, error) {
+		calls++
+		if id == rootID {
+			return candidates, nil
+		}
+		return nil, errors.New("no matching child")
+	})
+
+	_, err := ResolveCatalogGraph(context.Background(), catalog,
+		[]project.PluginRequirement{{ID: rootID, Constraint: "*"}}, project.NewLockDocument())
+	if !errors.Is(err, errCatalogQueryBudget) {
+		t.Fatalf("catalog query budget error = %v", err)
+	}
+	if calls != maxResolverCatalogQueries {
+		t.Fatalf("catalog calls = %d, want %d", calls, maxResolverCatalogQueries)
+	}
+}
+
+func TestResolveCatalogGraphCachesExactQueriesDuringBacktracking(t *testing.T) {
+	rootID := "github.com/acme/root"
+	childID := "github.com/acme/child"
+	candidates := make([]CatalogRelease, 8)
+	for index := range candidates {
+		candidates[index] = CatalogRelease{
+			ID: rootID, Version: "1.0.0",
+			Definition: corewago.PluginDefinition{
+				ID: rootID, Requires: []corewago.PluginRequirement{{ID: childID, Version: "*"}},
+			},
+		}
+	}
+	calls := 0
+	catalog := catalogFunc(func(_ context.Context, id string, _ []string) ([]CatalogRelease, error) {
+		calls++
+		if id == rootID {
+			return candidates, nil
+		}
+		return nil, errors.New("no matching child")
+	})
+
+	_, err := ResolveCatalogGraph(context.Background(), catalog,
+		[]project.PluginRequirement{{ID: rootID, Constraint: "*"}}, project.NewLockDocument())
+	if err == nil || !strings.Contains(err.Error(), "no matching child") {
+		t.Fatalf("cached catalog error = %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("catalog calls = %d, want one root and one cached child query", calls)
+	}
+}
+
 func TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(t *testing.T) {
 	newest := testCatalogRelease(t, "github.com/acme/plugin", "1.3.0")
 	oldest := testCatalogRelease(t, "github.com/acme/plugin", "1.2.0")
@@ -591,6 +658,359 @@ func TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(t *testing.T) {
 	}
 }
 
+func TestHTTPCatalogRejectsExcessiveTotalBeforePagination(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins":    []CatalogRelease{release},
+			"total":      maxCatalogCandidates + 1,
+			"offset":     0,
+			"limit":      catalogPageLimit,
+			"nextOffset": 1,
+		})
+	}))
+	defer server.Close()
+
+	_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), release.ID, []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "exceeding catalog bound 1024") {
+		t.Fatalf("excessive catalog total = %v", err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("catalog requests = %d, want 1", got)
+	}
+}
+
+func TestHTTPCatalogRejectsSparsePaginationAtPageBudget(t *testing.T) {
+	releases := make([]CatalogRelease, maxCatalogPages)
+	for index := range releases {
+		releases[index] = testCatalogRelease(t, "github.com/acme/plugin", "1.2."+strconv.Itoa(index))
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		index := int(requests.Add(1) - 1)
+		if index >= len(releases) {
+			t.Errorf("unexpected catalog request %d", index+1)
+			http.Error(response, "unexpected request", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins":    []CatalogRelease{releases[index]},
+			"total":      maxCatalogCandidates,
+			"offset":     index,
+			"limit":      catalogPageLimit,
+			"nextOffset": index + 1,
+		})
+	}))
+	defer server.Close()
+
+	_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), releases[0].ID, []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "exceeds 4-page bound") {
+		t.Fatalf("sparse catalog pagination = %v", err)
+	}
+	if got := requests.Load(); got != maxCatalogPages {
+		t.Fatalf("catalog requests = %d, want %d", got, maxCatalogPages)
+	}
+}
+
+func TestHTTPCatalogSharesResolutionByteBudgetAcrossQueries(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	body, err := json.Marshal(map[string]any{
+		"plugins": []CatalogRelease{release}, "total": 1, "offset": 0, "limit": catalogPageLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = response.Write(body)
+	}))
+	defer server.Close()
+	catalog := HTTPCatalog{BaseURL: server.URL, Client: server.Client()}
+	ctx := withCatalogByteBudget(context.Background(), int64(len(body)+len(body)/2))
+	if _, err := catalog.Candidates(ctx, release.ID, []string{"*"}); err != nil {
+		t.Fatalf("first catalog query = %v", err)
+	}
+	if _, err := catalog.Candidates(ctx, release.ID, []string{"*"}); err == nil || !strings.Contains(err.Error(), "resolution bound") {
+		t.Fatalf("cumulative catalog metadata = %v", err)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("catalog requests = %d, want 2", got)
+	}
+}
+
+func TestHTTPCatalogPreservesCaseSensitiveConfigSchemaProperties(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	release.Definition.ConfigSchema = json.RawMessage(`{
+		"type":"object",
+		"properties":{"Foo":{"type":"string"},"foo":{"type":"string"}},
+		"additionalProperties":false
+	}`)
+	release = resignRelease(t, release)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins": []CatalogRelease{release}, "total": 1, "offset": 0, "limit": 256,
+		})
+	}))
+	defer server.Close()
+
+	got, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), release.ID, []string{"*"})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("case-sensitive config schema catalog = %#v, %v", got, err)
+	}
+}
+
+func TestHTTPCatalogRejectsExactDuplicateConfigSchemaProperties(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	release.Definition.ConfigSchema = json.RawMessage(`{
+		"type":"object",
+		"properties":{"mode":{"type":"string"},"mode":{"type":"number"}},
+		"additionalProperties":false
+	}`)
+	release = resignRelease(t, release)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins": []CatalogRelease{release}, "total": 1, "offset": 0, "limit": 256,
+		})
+	}))
+	defer server.Close()
+
+	_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), release.ID, []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "invalid metadata") {
+		t.Fatalf("duplicate config schema property = %v", err)
+	}
+}
+
+func TestCatalogPreflightRejectsOversizedPageBeforeMaterialization(t *testing.T) {
+	data := oversizedCatalogPage(100_000)
+	if err := preflightCatalogPage(data, 256); err == nil || !strings.Contains(err.Error(), "page limit") {
+		t.Fatalf("oversized catalog preflight = %v", err)
+	}
+}
+
+func TestCatalogPreflightRejectsOversizedNestedCollectionBeforeMaterialization(t *testing.T) {
+	data := oversizedCatalogNestedCollection(100_000)
+	if err := preflightCatalogPage(data, 256); err == nil || !strings.Contains(err.Error(), "nested collection limit") {
+		t.Fatalf("oversized nested catalog preflight = %v", err)
+	}
+}
+
+func TestCatalogPreflightPreservesArbitraryConfigSchemaCollections(t *testing.T) {
+	data := catalogConfigSchemaCollection(maxCatalogNestedCollection + 1)
+	if err := preflightCatalogPage(data, 256); err != nil {
+		t.Fatalf("config schema collection preflight = %v", err)
+	}
+}
+
+func BenchmarkCatalogPreflightOversizedPage(b *testing.B) {
+	data := oversizedCatalogPage(100_000)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if err := preflightCatalogPage(data, 256); err == nil {
+			b.Fatal("oversized catalog page succeeded")
+		}
+	}
+}
+
+func BenchmarkCatalogPreflightOversizedNestedCollection(b *testing.B) {
+	data := oversizedCatalogNestedCollection(100_000)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		_ = preflightCatalogPage(data, 256)
+	}
+}
+
+func oversizedCatalogPage(entries int) []byte {
+	var body strings.Builder
+	body.Grow(len(`{"plugins":[],"total":1,"offset":0,"limit":256}`) + entries*3)
+	body.WriteString(`{"plugins":[`)
+	for index := range entries {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.WriteString(`{}`)
+	}
+	body.WriteString(`],"total":1,"offset":0,"limit":256}`)
+	return []byte(body.String())
+}
+
+func oversizedCatalogNestedCollection(entries int) []byte {
+	var body strings.Builder
+	body.Grow(len(`{"plugins":[{"definition":{"authorities":[]}}],"total":1,"offset":0,"limit":256}`) + entries*3)
+	body.WriteString(`{"plugins":[{"definition":{"authorities":[`)
+	for index := range entries {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.WriteString(`{}`)
+	}
+	body.WriteString(`]}}],"total":1,"offset":0,"limit":256}`)
+	return []byte(body.String())
+}
+
+func catalogConfigSchemaCollection(entries int) []byte {
+	var body strings.Builder
+	body.Grow(len(`{"plugins":[{"definition":{"configSchema":{"examples":[]}}}],"total":1,"offset":0,"limit":256}`) + entries*3)
+	body.WriteString(`{"plugins":[{"definition":{"configSchema":{"examples":[`)
+	for index := range entries {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.WriteString(`{}`)
+	}
+	body.WriteString(`]}}}],"total":1,"offset":0,"limit":256}`)
+	return []byte(body.String())
+}
+
+func TestHTTPCatalogRejectsAmbiguousMetadataWithoutReflection(t *testing.T) {
+	unsafe := "untrusted\x1b[2J" + strings.Repeat("x", 1024)
+	for _, test := range []struct {
+		name string
+		body func(http.ResponseWriter)
+	}{
+		{name: "duplicate field", body: func(writer http.ResponseWriter) {
+			_, _ = writer.Write([]byte(`{"plugins":[],"total":1,"Total":0,"offset":0,"limit":256}`))
+		}},
+		{name: "unknown field", body: func(writer http.ResponseWriter) {
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"plugins": []CatalogRelease{}, "total": 1, "offset": 0, "limit": 256, unsafe: true,
+			})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				test.body(writer)
+			}))
+			defer server.Close()
+
+			_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+				context.Background(), "github.com/acme/plugin", []string{"*"})
+			if err == nil || !strings.Contains(err.Error(), "invalid metadata") {
+				t.Fatalf("ambiguous catalog metadata = %v", err)
+			}
+			if strings.Contains(err.Error(), unsafe) || len(err.Error()) > 512 {
+				t.Fatalf("unsafe catalog metadata error = %q", err)
+			}
+		})
+	}
+}
+
+func TestHTTPCatalogRejectsRemotePlaintextBeforeRequest(t *testing.T) {
+	_, err := (HTTPCatalog{BaseURL: "http://192.0.2.1"}).Candidates(
+		context.Background(), "github.com/acme/plugin", []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "HTTPS is required") {
+		t.Fatalf("remote plaintext catalog = %v", err)
+	}
+}
+
+func TestHTTPCatalogDefaultClientRefusesRedirects(t *testing.T) {
+	redirected := make(chan struct{}, 1)
+	sink := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirected <- struct{}{}
+	}))
+	defer sink.Close()
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Location", sink.URL)
+		writer.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	defer registry.Close()
+
+	_, err := (HTTPCatalog{BaseURL: registry.URL}).Candidates(
+		context.Background(), "github.com/acme/plugin", []string{"*"})
+	if err == nil {
+		t.Fatal("redirecting catalog succeeded")
+	}
+	select {
+	case <-redirected:
+		t.Fatal("catalog client followed redirect")
+	default:
+	}
+	if !strings.Contains(err.Error(), "307") {
+		t.Fatalf("redirecting catalog error = %v", err)
+	}
+}
+
+func TestHTTPCatalogErrorsAreTerminalSafeAndBounded(t *testing.T) {
+	for _, test := range []struct {
+		name, message string
+		wantMessage   bool
+	}{
+		{name: "ordinary", message: "ordinary failure", wantMessage: true},
+		{name: "newline", message: "failure\nforged"},
+		{name: "escape", message: "failure\x1b[2J"},
+		{name: "oversized", message: strings.Repeat("x", 1025)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(writer).Encode(map[string]string{"error": test.message})
+			}))
+			defer server.Close()
+
+			_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+				context.Background(), "github.com/acme/plugin", []string{"*"})
+			if err == nil {
+				t.Fatal("failed catalog request succeeded")
+			}
+			if test.wantMessage {
+				if !strings.Contains(err.Error(), test.message) {
+					t.Fatalf("ordinary catalog error = %q", err)
+				}
+			} else {
+				if strings.Contains(err.Error(), test.message) || !strings.Contains(err.Error(), "status 400") {
+					t.Fatalf("unsafe catalog error = %q", err)
+				}
+			}
+		})
+	}
+}
+
+func TestCatalogMetadataErrorsAreTerminalSafeAndBounded(t *testing.T) {
+	const id = "github.com/acme/plugin"
+	unsafe := "untrusted\x1b[2J" + strings.Repeat("x", 1024)
+	for _, test := range []struct {
+		name   string
+		mutate func(*CatalogRelease)
+	}{
+		{name: "release id", mutate: func(release *CatalogRelease) { release.ID = unsafe }},
+		{name: "definition id", mutate: func(release *CatalogRelease) { release.Definition.ID = unsafe }},
+		{name: "source module", mutate: func(release *CatalogRelease) { release.Source.Module = unsafe }},
+		{name: "provider import", mutate: func(release *CatalogRelease) { release.Provider.ImportPath = unsafe }},
+		{name: "source checksum", mutate: func(release *CatalogRelease) { release.Source.Checksum = unsafe }},
+		{name: "source version", mutate: func(release *CatalogRelease) { release.Source.Version = "v" + unsafe }},
+		{name: "release version", mutate: func(release *CatalogRelease) { release.Version = unsafe }},
+		{name: "definition version", mutate: func(release *CatalogRelease) { release.Definition.Version = unsafe }},
+		{name: "requirement id", mutate: func(release *CatalogRelease) {
+			release.Definition.Requires = []corewago.PluginRequirement{{ID: unsafe, Version: "*"}}
+		}},
+		{name: "requirement version", mutate: func(release *CatalogRelease) {
+			release.Definition.Requires = []corewago.PluginRequirement{{ID: "github.com/acme/dependency", Version: unsafe}}
+		}},
+		{name: "definition metadata", mutate: func(release *CatalogRelease) { release.Definition.Name = unsafe }},
+		{name: "definition digest", mutate: func(release *CatalogRelease) { release.DefinitionDigest = unsafe }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			release := testCatalogRelease(t, id, "1.2.3")
+			test.mutate(&release)
+			err := validateCatalogRelease(id, []string{"*"}, release)
+			if err == nil {
+				t.Fatal("unsafe catalog metadata succeeded")
+			}
+			if strings.Contains(err.Error(), unsafe) || len(err.Error()) > 512 {
+				t.Fatalf("unsafe catalog error = %q", err)
+			}
+		})
+	}
+}
+
 func TestCatalogRejectsUnprefixedSourceVersion(t *testing.T) {
 	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
 	release.Source.Version = "1.2.3"
@@ -599,6 +1019,15 @@ func TestCatalogRejectsUnprefixedSourceVersion(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "v-prefixed") {
 		t.Fatalf("unprefixed source version error = %v", err)
+	}
+}
+
+func TestCatalogRejectsOversizedEngineConstraintBeforeDigestingDefinition(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	release.Definition.Compatibility.Engines["wago"] = strings.Repeat("*||", 100) + "*"
+	err := validateCatalogRelease(release.ID, []string{"*"}, release)
+	if err == nil || !strings.Contains(err.Error(), "engine compatibility") {
+		t.Fatalf("oversized engine constraint = %v", err)
 	}
 }
 
@@ -637,4 +1066,10 @@ func resignRelease(t *testing.T, release CatalogRelease) CatalogRelease {
 	}
 	release.DefinitionDigest = digest
 	return release
+}
+
+type catalogFunc func(context.Context, string, []string) ([]CatalogRelease, error)
+
+func (function catalogFunc) Candidates(ctx context.Context, id string, constraints []string) ([]CatalogRelease, error) {
+	return function(ctx, id, constraints)
 }

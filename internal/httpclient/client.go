@@ -99,7 +99,11 @@ func New(config Config) *Client {
 
 // NewAPI returns the policy for small registry/API/OAuth JSON operations.
 func NewAPI() *Client {
-	return New(Config{Timeout: 30 * time.Second, ResponseHeaderTimeout: 15 * time.Second})
+	client := New(Config{Timeout: 30 * time.Second, ResponseHeaderTimeout: 15 * time.Second})
+	httpClient := *client.httpClient
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client.httpClient = &httpClient
+	return client
 }
 
 // NewMetadata returns the policy for release metadata and checksums.

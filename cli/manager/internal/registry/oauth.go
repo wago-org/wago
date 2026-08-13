@@ -1,27 +1,23 @@
 package registry
 
 import (
+	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os/exec"
 	"runtime"
 	"strings"
+	"unicode"
 
 	"github.com/wago-org/wago/cli/internal/automation"
 )
 
-var oauthResponseMaximum int64 = 1 << 20
-
-const SuccessHTML = `<!doctype html><html><head><meta charset="utf-8">` +
-	`<title>wago — logged in</title></head>` +
-	`<body style="font-family:system-ui,sans-serif;text-align:center;padding:4rem">` +
-	`<h1>You're logged in ✓</h1><p>You can close this tab and return to your terminal.</p>` +
-	`</body></html>`
+var oauthResponseMaximum int64 = 128 << 10
 
 // PostForm sends a GitHub OAuth form request and decodes its bounded JSON response.
 func PostForm(endpoint string, form url.Values, output any) error {
@@ -43,9 +39,170 @@ func PostFormContext(ctx context.Context, endpoint string, form url.Values, outp
 		return err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("OAuth endpoint returned %s", response.Status)
+		return fmt.Errorf("OAuth endpoint returned status %d", response.StatusCode)
 	}
-	return json.Unmarshal(response.Body, output)
+	return unmarshalUniqueJSON(response.Body, output)
+}
+
+// unmarshalUniqueJSON rejects duplicate object members before decoding. OAuth
+// responses contain security decisions whose meaning must not depend on whether
+// a decoder keeps the first or last spelling of a repeated field.
+func unmarshalUniqueJSON(data []byte, output any) error {
+	if err := ValidateUniqueFoldedJSON(data); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, output); err != nil {
+		return errors.New("JSON response does not match the expected schema")
+	}
+	return nil
+}
+
+// ValidateUniqueJSON validates one JSON value and rejects exactly repeated
+// object members. JSON map keys remain case-sensitive.
+func ValidateUniqueJSON(data []byte) error {
+	return validateUniqueJSON(data, false, nil)
+}
+
+// ValidateUniqueFoldedJSON additionally treats case-folded object member names
+// as duplicates, matching encoding/json's struct-field lookup. Values of fields
+// in exactSubtrees use ordinary case-sensitive JSON object semantics.
+func ValidateUniqueFoldedJSON(data []byte, exactSubtrees ...string) error {
+	var exact map[string]struct{}
+	if len(exactSubtrees) > 0 {
+		exact = make(map[string]struct{}, len(exactSubtrees))
+	}
+	for _, field := range exactSubtrees {
+		exact[foldJSONName(field)] = struct{}{}
+	}
+	return validateUniqueJSON(data, true, exact)
+}
+
+func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]struct{}) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var frames []uniqueJSONFrame
+	rootStarted := false
+	rootComplete := false
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			if !rootComplete {
+				return errors.New("JSON response is incomplete")
+			}
+			return nil
+		}
+		if err != nil {
+			return errors.New("JSON response is invalid")
+		}
+		if rootComplete {
+			return errors.New("JSON response contains multiple values")
+		}
+
+		if delimiter, ok := token.(json.Delim); ok {
+			switch delimiter {
+			case '{', '[':
+				if err := beginUniqueJSONValue(frames, &rootStarted); err != nil {
+					return err
+				}
+				childFoldNames := foldNames
+				if len(frames) > 0 {
+					childFoldNames = frames[len(frames)-1].valueFoldNames
+				}
+				frames = append(frames, uniqueJSONFrame{
+					object: delimiter == '{', wantKey: delimiter == '{',
+					foldNames: childFoldNames, valueFoldNames: childFoldNames,
+				})
+			case '}', ']':
+				if len(frames) == 0 {
+					return errors.New("JSON response contains an unexpected closing delimiter")
+				}
+				frame := frames[len(frames)-1]
+				if frame.object != (delimiter == '}') || frame.object && !frame.wantKey {
+					return errors.New("JSON response contains an invalid closing delimiter")
+				}
+				frames = frames[:len(frames)-1]
+				completeUniqueJSONValue(frames, &rootComplete)
+			default:
+				return errors.New("JSON response contains an unexpected delimiter")
+			}
+			continue
+		}
+
+		if len(frames) > 0 && frames[len(frames)-1].object && frames[len(frames)-1].wantKey {
+			key, ok := token.(string)
+			if !ok {
+				return errors.New("JSON response contains a non-string object key")
+			}
+			frame := &frames[len(frames)-1]
+			if frame.members == nil {
+				frame.members = map[string]struct{}{}
+			}
+			canonicalKey := key
+			if frame.foldNames {
+				canonicalKey = foldJSONName(key)
+			}
+			if _, exists := frame.members[canonicalKey]; exists {
+				return errors.New("JSON response contains a duplicate object field")
+			}
+			frame.members[canonicalKey] = struct{}{}
+			frame.valueFoldNames = frame.foldNames
+			if _, exact := exactSubtrees[foldJSONName(key)]; exact {
+				frame.valueFoldNames = false
+			}
+			frame.wantKey = false
+			continue
+		}
+
+		if err := beginUniqueJSONValue(frames, &rootStarted); err != nil {
+			return err
+		}
+		completeUniqueJSONValue(frames, &rootComplete)
+	}
+}
+
+type uniqueJSONFrame struct {
+	object         bool
+	wantKey        bool
+	foldNames      bool
+	valueFoldNames bool
+	members        map[string]struct{}
+}
+
+func beginUniqueJSONValue(frames []uniqueJSONFrame, rootStarted *bool) error {
+	if len(frames) == 0 {
+		if *rootStarted {
+			return errors.New("JSON response contains multiple values")
+		}
+		*rootStarted = true
+		return nil
+	}
+	if frame := frames[len(frames)-1]; frame.object && frame.wantKey {
+		return errors.New("JSON response contains an object value without a key")
+	}
+	return nil
+}
+
+func completeUniqueJSONValue(frames []uniqueJSONFrame, rootComplete *bool) {
+	if len(frames) == 0 {
+		*rootComplete = true
+		return
+	}
+	frame := &frames[len(frames)-1]
+	if frame.object {
+		frame.wantKey = true
+	}
+}
+
+func foldJSONName(name string) string {
+	return strings.Map(func(character rune) rune {
+		for {
+			next := unicode.SimpleFold(character)
+			if next <= character {
+				return next
+			}
+			character = next
+		}
+	}, name)
 }
 
 func OpenBrowser(target string) error {
@@ -62,12 +219,4 @@ func OpenBrowser(target string) error {
 		command = exec.Command("xdg-open", target)
 	}
 	return command.Start()
-}
-
-func RandomState() (string, error) {
-	data := make([]byte, 16)
-	if _, err := rand.Read(data); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(data), nil
 }
