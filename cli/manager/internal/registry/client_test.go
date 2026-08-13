@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -46,7 +48,7 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 		t.Fatalf("unauthorized fetchMe = %v", err)
 	}
 	status, body = http.StatusInternalServerError, `{"error":"broken"}`
-	if _, err := fetchMe("token"); err == nil || err.Error() != "broken" {
+	if _, err := fetchMe("token"); err == nil || err.Error() != "registry returned status 500" {
 		t.Fatalf("error fetchMe = %v", err)
 	}
 	status, body = http.StatusOK, "not json"
@@ -55,6 +57,220 @@ func TestRegistryHTTPHelpers(t *testing.T) {
 	}
 	if got := apiError(http.StatusBadRequest, []byte("not json")); got != "server returned status 400" {
 		t.Fatalf("apiError fallback = %q", got)
+	}
+}
+
+func TestAuthenticatedRegistryErrorsDiscardReflectedCredentials(t *testing.T) {
+	for _, status := range []int{
+		http.StatusBadRequest,
+		http.StatusInternalServerError,
+		http.StatusTemporaryRedirect,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(status)
+				_, _ = writer.Write([]byte(`{"error":"` + testRegistryToken + `"}`))
+			}))
+			defer server.Close()
+
+			gotStatus, data, err := apiRequestAtBaseContext(context.Background(), server.URL, http.MethodGet,
+				"/api/me", testRegistryToken, nil)
+			if err != nil || gotStatus != status {
+				t.Fatalf("authenticated failure = %d, %v", gotStatus, err)
+			}
+			if len(data) != 0 {
+				t.Fatalf("authenticated failure retained reflected body %q", data)
+			}
+		})
+	}
+}
+
+func TestRegistryIdentityAndErrorsAreTerminalSafe(t *testing.T) {
+	for _, body := range []string{
+		`{"login":"alice\u001b[2J"}`,
+		`{"login":"alice\nforged"}`,
+		`{"login":"` + strings.Repeat("x", maximumRegistryLoginLength+1) + `"}`,
+		`{"login":""}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = writer.Write([]byte(body))
+		}))
+		_, err := fetchMeAtBaseContext(context.Background(), server.URL, testRegistryToken)
+		server.Close()
+		if err == nil {
+			t.Fatalf("accepted unsafe identity %s", body)
+		}
+	}
+
+	for _, data := range []string{
+		`{"error":"broken\u001b[2J"}`,
+		`{"error":"broken\nforged"}`,
+		`{"error":"` + strings.Repeat("x", 1025) + `"}`,
+		`{"error":"one","Error":"two"}`,
+	} {
+		if got := apiError(http.StatusBadRequest, []byte(data)); got != "server returned status 400" {
+			t.Fatalf("unsafe registry error rendered as %q", got)
+		}
+	}
+	if got := apiError(http.StatusBadRequest, []byte(`{"error":"ordinary failure"}`)); got != "ordinary failure" {
+		t.Fatalf("safe registry error = %q", got)
+	}
+}
+
+func TestRegistryIdentityRejectsAmbiguousAndReflectedJSON(t *testing.T) {
+	remote := strings.Repeat("9", 32<<10)
+	for _, body := range []string{
+		`{"login":"alice","Login":"mallory"}`,
+		`{"login":` + remote + `}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = writer.Write([]byte(body))
+		}))
+		_, err := fetchMeAtBaseContext(context.Background(), server.URL, testRegistryToken)
+		server.Close()
+		if err == nil {
+			t.Fatalf("ambiguous registry identity succeeded: %.80s", body)
+		}
+		if strings.Contains(err.Error(), remote[:1024]) || len(err.Error()) > 256 {
+			t.Fatalf("registry identity error was not bounded: %d bytes", len(err.Error()))
+		}
+	}
+}
+
+func TestRegistryDisplayBaseIsTerminalSafeAndBounded(t *testing.T) {
+	const valid = "https://registry.example/prefix"
+	if got := registryDisplayBase(valid); got != valid {
+		t.Fatalf("valid registry display = %q", got)
+	}
+	for _, base := range []string{
+		"https://registry.example/failure\nforged",
+		"https://registry.example/failure\x1b[2J",
+		"https://secret@registry.example",
+		"https://registry.example/" + strings.Repeat("x", maximumRegistryDisplayURLLength),
+	} {
+		if got := registryDisplayBase(base); got != "configured registry" {
+			t.Fatalf("unsafe registry display of length %d = %q", len(base), got)
+		}
+	}
+}
+
+func TestRegistryBaseURLSecurityPolicy(t *testing.T) {
+	for _, base := range []string{
+		"https://registry.example",
+		"https://registry.example:8443/prefix",
+		"http://localhost:8080",
+		"http://api.localhost:8080",
+		"http://127.0.0.1:8080",
+		"http://127.255.255.254:8080",
+		"http://[::1]:8080",
+	} {
+		if err := validateRegistryBaseURL(base); err != nil {
+			t.Errorf("validateRegistryBaseURL(%q) = %v", base, err)
+		}
+	}
+	for _, base := range []string{
+		"http://registry.example",
+		"http://localhost.example",
+		"ftp://registry.example",
+		"registry.example",
+		"https://user:password@registry.example",
+		"https://registry.example?destination=evil",
+		"https://registry.example#fragment",
+	} {
+		if err := validateRegistryBaseURL(base); err == nil {
+			t.Errorf("validateRegistryBaseURL(%q) succeeded", base)
+		}
+	}
+}
+
+func TestRegistryRequestRejectsRemotePlaintextBeforeDial(t *testing.T) {
+	_, _, err := apiRequestAtBaseContext(context.Background(), "http://192.0.2.1", http.MethodPost,
+		"/api/auth/github/exchange", "", map[string]string{"access_token": testGitHubToken})
+	if err == nil || !strings.Contains(err.Error(), "HTTPS is required") {
+		t.Fatalf("remote plaintext registry = %v", err)
+	}
+}
+
+func TestRegistryRequestRejectsUnsafeBearerBeforeDial(t *testing.T) {
+	for _, token := range []string{
+		"token\nforged",
+		"token\x1b[2J",
+		strings.Repeat("x", maximumRegistryTokenLength+1),
+	} {
+		_, _, err := apiRequestAtBaseContext(context.Background(), "https://192.0.2.1", http.MethodGet, "/api/me", token, nil)
+		if err == nil {
+			t.Fatalf("unsafe bearer of length %d reached request path", len(token))
+		}
+	}
+}
+
+func TestRegistryAuthenticationResponsesUseSmallerLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Length", strconv.FormatInt(registryAuthResponseLimit+1, 10))
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	if _, err := fetchMeAtBaseContext(context.Background(), server.URL, testRegistryToken); !errors.Is(err, httpclient.ErrBodyTooLarge) {
+		t.Fatalf("oversized auth response = %v", err)
+	}
+}
+
+func TestFetchMeUsesPinnedRegistryOrigin(t *testing.T) {
+	var receivedBearer string
+	var unexpectedRequests atomic.Int32
+	pinned := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedBearer = request.Header.Get("Authorization")
+		_, _ = writer.Write([]byte(`{"login":"alice"}`))
+	}))
+	defer pinned.Close()
+
+	unexpected := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		unexpectedRequests.Add(1)
+	}))
+	defer unexpected.Close()
+	t.Setenv("WAGO_REGISTRY", unexpected.URL)
+
+	me, err := fetchMeAtBaseContext(context.Background(), pinned.URL, testRegistryToken)
+	if err != nil || me.Login != "alice" {
+		t.Fatalf("fetchMeAtBaseContext = %+v, %v", me, err)
+	}
+	if receivedBearer != "Bearer "+testRegistryToken {
+		t.Fatalf("pinned registry received Authorization %q", receivedBearer)
+	}
+	if got := unexpectedRequests.Load(); got != 0 {
+		t.Fatalf("mutable registry received %d bearer validation requests", got)
+	}
+}
+
+func TestRegistryExchangeRedirectDoesNotForwardCredential(t *testing.T) {
+	for _, status := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var sinkRequests atomic.Int32
+			sink := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				sinkRequests.Add(1)
+			}))
+			defer sink.Close()
+			registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Location", sink.URL)
+				writer.WriteHeader(status)
+			}))
+			defer registry.Close()
+
+			gotStatus, _, err := apiRequestAtBaseContext(context.Background(), registry.URL, http.MethodPost,
+				"/api/auth/github/exchange", testRegistryToken, map[string]string{"access_token": testGitHubToken})
+			if err != nil || gotStatus != status {
+				t.Fatalf("redirect response = %d, %v", gotStatus, err)
+			}
+			if got := sinkRequests.Load(); got != 0 {
+				t.Fatalf("redirect sink received %d credential-bearing requests", got)
+			}
+		})
 	}
 }
 
@@ -120,6 +336,28 @@ func TestRecordRegistryInstall(t *testing.T) {
 	}
 }
 
+func TestRecordRegistryInstallRejectsRemotePlaintextBeforeDial(t *testing.T) {
+	oldClient := registryHTTP
+	var requests atomic.Int32
+	registryHTTP = httpclient.New(httpclient.Config{HTTPClient: &http.Client{Transport: registryRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return nil, errors.New("unexpected request")
+	})}})
+	t.Cleanup(func() { registryHTTP = oldClient })
+	t.Setenv("WAGO_REGISTRY", "http://192.0.2.1")
+
+	recordRegistryInstall("github.com/acme/plugin", "v1.2.3")
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("remote plaintext install metric made %d requests", got)
+	}
+}
+
+type registryRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function registryRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
+}
+
 // ioReadAll makes the handler's read error irrelevant to the request assertions.
 func ioReadAll(r *http.Request) ([]byte, error) { return io.ReadAll(r.Body) }
 
@@ -146,6 +384,14 @@ func TestRegistryModuleResolution(t *testing.T) {
 	status, body = http.StatusOK, `{}`
 	if _, err := resolveRegistryModule("empty"); err == nil || !strings.Contains(err.Error(), "no module path") {
 		t.Fatalf("empty module path = %v", err)
+	}
+	status, body = http.StatusOK, `{"name":"../../malicious"}`
+	if _, err := resolveRegistryModule("invalid-name"); err == nil || !strings.Contains(err.Error(), "invalid module path") {
+		t.Fatalf("invalid module path = %v", err)
+	}
+	status, body = http.StatusOK, `{"name":"github.com/acme/one","Name":"github.com/acme/two"}`
+	if _, err := resolveRegistryModule("ambiguous-name"); err == nil || !strings.Contains(err.Error(), "invalid package metadata") {
+		t.Fatalf("ambiguous module path = %v", err)
 	}
 }
 
@@ -192,7 +438,7 @@ func TestLoginMethodPickerDefaultsToLinkAndAcceptsRightArrow(t *testing.T) {
 	frame := p.Frame()
 	for _, want := range []string{
 		"Choose login method",
-		"Link", "Open a browser link on this machine",
+		"Link", "Open one-time authorization in a browser",
 		"Code", "Use a one-time code on another device",
 		"◉", "○", "enter/→ select", "esc cancel",
 	} {

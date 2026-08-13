@@ -285,6 +285,22 @@ func TestLockRejectsConflictingSharedSourceReleases(t *testing.T) {
 	}
 }
 
+func TestValidGoChecksumRequiresCanonicalBase64(t *testing.T) {
+	canonical := "h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	nonCanonical := canonical[:len(canonical)-2] + "B="
+	if !ValidGoChecksum(canonical) {
+		t.Fatal("canonical Go checksum was rejected")
+	}
+	if ValidGoChecksum(nonCanonical) {
+		t.Fatal("Go checksum with nonzero Base64 padding bits was accepted")
+	}
+	for _, checksum := range []string{canonical + "A", strings.TrimSuffix(canonical, "=")} {
+		if ValidGoChecksum(checksum) {
+			t.Fatalf("wrong-length Go checksum %q was accepted", checksum)
+		}
+	}
+}
+
 func testLockEntry(direct bool, id string, dependencies map[string]string) LockEntry {
 	return LockEntry{
 		Direct:               direct,

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,6 +23,8 @@ import (
 	"github.com/wago-org/wago/internal/filelock"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
+
+const maximumCredentialStoreSize int64 = 1 << 20
 
 // defaultRegistry is the public registry API base used when WAGO_REGISTRY is unset.
 const defaultRegistry = "https://api.plugins.wago.sh"
@@ -108,23 +111,50 @@ func credentialsPath() string {
 
 // loadCredentials reads the registry->credential map. A missing file yields an
 // empty map (not an error); a malformed file yields an error.
-func loadCredentials() (map[string]credential, error) {
-	data, err := os.ReadFile(credentialsPath())
+func loadCredentials() (_ map[string]credential, resultErr error) {
+	path := credentialsPath()
+	file, err := openCredentialFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]credential{}, nil
 		}
 		return nil, err
 	}
+	defer func() { resultErr = errors.Join(resultErr, file.Close()) }()
+	if info, err := file.Stat(); err != nil {
+		return nil, err
+	} else if !info.Mode().IsRegular() {
+		return nil, errors.New("credential store must be a regular file")
+	} else if info.Size() > maximumCredentialStoreSize {
+		return nil, fmt.Errorf("credential store exceeds %d-byte limit", maximumCredentialStoreSize)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maximumCredentialStoreSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maximumCredentialStoreSize {
+		return nil, fmt.Errorf("credential store exceeds %d-byte limit", maximumCredentialStoreSize)
+	}
 	creds := map[string]credential{}
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return creds, nil
 	}
-	if err := json.Unmarshal(data, &creds); err != nil {
-		return nil, err
+	// Registry URLs are map keys and therefore case-sensitive, while fields in
+	// each credential object follow encoding/json's case-insensitive struct
+	// matching. Apply the matching rule appropriate to each layer.
+	if err := ValidateUniqueJSON(data); err != nil {
+		return nil, errors.New("credential store contains invalid JSON")
 	}
-	if creds == nil {
+	var entries map[string]json.RawMessage
+	if err := json.Unmarshal(data, &entries); err != nil || entries == nil {
 		return nil, errors.New("credential store must be a JSON object")
+	}
+	for base, raw := range entries {
+		var item credential
+		if err := unmarshalUniqueJSON(raw, &item); err != nil {
+			return nil, errors.New("credential store contains an invalid credential entry")
+		}
+		creds[base] = item
 	}
 	return creds, nil
 }
@@ -136,6 +166,15 @@ func saveCredentials(base, token, login string) error {
 }
 
 func saveCredentialsContext(ctx context.Context, base, token, login string) error {
+	if err := validateRegistryToken(token); err != nil {
+		return err
+	}
+	if login == "" {
+		return errors.New("registry login is empty")
+	}
+	if err := validatePrintableASCIIField("registry login", login, maximumRegistryLoginLength); err != nil {
+		return err
+	}
 	_, err := mutateCredentials(ctx, func(creds map[string]credential) bool {
 		creds[base] = credential{Token: token, Login: login}
 		return true
@@ -222,6 +261,9 @@ func writeCredentialsLocked(path string, creds map[string]credential) error {
 		return err
 	}
 	data = append(data, '\n')
+	if int64(len(data)) > maximumCredentialStoreSize {
+		return fmt.Errorf("credential store exceeds %d-byte limit", maximumCredentialStoreSize)
+	}
 	return replaceCredentialFile(path, atomicfile.Options{Mode: 0o600, Sync: true, Hooks: credentialAtomicHooks}, func(writer io.Writer) error {
 		_, err := writer.Write(data)
 		return err
