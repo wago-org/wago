@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ func TestLatestChannelReleasePaginates(t *testing.T) {
 		}
 		requests++
 		if r.URL.Query().Get("page") == "1" {
-			releases := make([]remoteRelease, 100)
+			releases := make([]remoteRelease, releaseDiscoveryPageSize)
 			for i := range releases {
 				releases[i].TagName = fmt.Sprintf("v1.0.%d", i)
 			}
@@ -67,13 +68,60 @@ func TestLatestChannelReleasePaginates(t *testing.T) {
 	}
 }
 
+func TestReleaseDiscoveryKeepsLargePagesWithinMetadataLimit(t *testing.T) {
+	const releaseCount = 100
+	requests := 0
+	maximumPageSize := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		pageSize, err := strconv.Atoi(r.URL.Query().Get("per_page"))
+		if err != nil || pageSize <= 0 {
+			t.Errorf("release page size = %q, want a positive integer", r.URL.Query().Get("per_page"))
+			http.Error(w, "invalid page size", http.StatusBadRequest)
+			return
+		}
+		if pageSize > maximumPageSize {
+			maximumPageSize = pageSize
+		}
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil || page <= 0 {
+			t.Errorf("release page = %q, want a positive integer", r.URL.Query().Get("page"))
+			http.Error(w, "invalid page", http.StatusBadRequest)
+			return
+		}
+		first := (page - 1) * pageSize
+		last := min(first+pageSize, releaseCount)
+		releases := make([]map[string]any, 0, max(last-first, 0))
+		for index := first; index < last; index++ {
+			releases = append(releases, map[string]any{
+				"tag_name": fmt.Sprintf("v1.0.%d", index),
+				"body":     strings.Repeat("x", 48<<10),
+			})
+		}
+		_ = json.NewEncoder(w).Encode(releases)
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	releases, err := fetchReleasesContext(context.Background())
+	if err != nil || len(releases) != releaseCount {
+		t.Fatalf("fetchReleasesContext = %d releases, %v", len(releases), err)
+	}
+	if maximumPageSize > 20 {
+		t.Fatalf("release page size = %d, want at most 20", maximumPageSize)
+	}
+	if requests < 2 {
+		t.Fatalf("release page requests = %d, want pagination", requests)
+	}
+}
+
 func TestLatestChannelReleaseUsesLinkPaginationAndSkipsDrafts(t *testing.T) {
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		switch r.URL.Query().Get("cursor") {
 		case "":
-			w.Header().Set("Link", fmt.Sprintf(`<%s/repos/wago-org/wago/releases?cursor=next>; rel="next"`, "http://"+r.Host))
+			w.Header().Set("Link", fmt.Sprintf(`<%s/repositories/1277210043/releases?cursor=next>; rel="next"`, "http://"+r.Host))
 			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-draft", Draft: true, TargetCommitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})
 		case "next":
 			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-20260812-deadbee", TargetCommitish: "deadbee123456789012345678901234567890123"}})
@@ -193,7 +241,7 @@ func TestRollingChannelWithoutPublishedReleaseUsesCanonicalMainSource(t *testing
 }
 
 func TestLatestChannelReleaseBoundsPagination(t *testing.T) {
-	releases := make([]remoteRelease, 100)
+	releases := make([]remoteRelease, releaseDiscoveryPageSize)
 	for i := range releases {
 		releases[i].TagName = fmt.Sprintf("v1.0.%d", i)
 	}
@@ -208,8 +256,8 @@ func TestLatestChannelReleaseBoundsPagination(t *testing.T) {
 	if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), "exceeded") {
 		t.Fatalf("channel pagination error = %v", err)
 	}
-	if requests != discoveryPageLimit {
-		t.Fatalf("release page requests = %d, want %d", requests, discoveryPageLimit)
+	if requests != releaseDiscoveryPageLimit {
+		t.Fatalf("release page requests = %d, want %d", requests, releaseDiscoveryPageLimit)
 	}
 }
 
@@ -233,7 +281,7 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 		case "/repos/wago-org/wago/releases":
 			count := 1
 			if r.URL.Query().Get("page") == "1" {
-				count = 100
+				count = releaseDiscoveryPageSize
 			}
 			releases := make([]remoteRelease, count)
 			for i := range releases {
@@ -255,13 +303,13 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 		t.Fatalf("fetchMainCommits = %d commits, %v", len(commits), err)
 	}
 	releases, err := fetchReleases()
-	if err != nil || len(releases) != 101 {
+	if err != nil || len(releases) != releaseDiscoveryPageSize+1 {
 		t.Fatalf("fetchReleases = %d releases, %v", len(releases), err)
 	}
 }
 
 func TestReleaseDiscoveryBoundsTotalPagination(t *testing.T) {
-	releases := make([]remoteRelease, 100)
+	releases := make([]remoteRelease, releaseDiscoveryPageSize)
 	commits := make([]remoteCommit, 100)
 	for index := range releases {
 		releases[index].TagName = fmt.Sprintf("v%d.0.0", index)
@@ -286,8 +334,8 @@ func TestReleaseDiscoveryBoundsTotalPagination(t *testing.T) {
 	if _, err := fetchReleasesContext(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded") {
 		t.Fatalf("unbounded release pagination error = %v", err)
 	}
-	if releaseRequests != discoveryPageLimit {
-		t.Fatalf("release page requests = %d, want %d", releaseRequests, discoveryPageLimit)
+	if releaseRequests != releaseDiscoveryPageLimit {
+		t.Fatalf("release page requests = %d, want %d", releaseRequests, releaseDiscoveryPageLimit)
 	}
 	if _, err := fetchMainCommitsContext(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded") {
 		t.Fatalf("unbounded commit pagination error = %v", err)
