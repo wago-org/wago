@@ -96,6 +96,9 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 		wrWord(b, pc, 0x54000000|(uint32(d)&0x7FFFF)<<5|inv)
 		wrWord(b, mid, nopWord)
 		f.stats.peep("br-pair-fold")
+		if f.stats != nil {
+			f.stats.NativeSize.BranchFoldHoleBytes += 4
+		}
 		pc += 4 // step past the NOP we just wrote
 	}
 }
@@ -130,6 +133,9 @@ func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
 		}
 		if rd == rs {
 			wrWord(b, ld, nopWord) // value already in the register
+			if f.stats != nil {
+				f.stats.NativeSize.StoreLoadNopBytes += 4
+			}
 		} else if w64 {
 			wrWord(b, ld, 0xAA0003E0|uint32(rs)<<16|uint32(rd)) // MOV Xd,Xs (ORR Xd,XZR,Xs)
 		} else {

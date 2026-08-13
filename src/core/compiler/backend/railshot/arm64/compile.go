@@ -602,6 +602,17 @@ func (f *fn) allLocalsRegisterHomed() bool {
 func (f *fn) patchFrameAdjusts() {
 	size := f.frameSize()
 	addSites := append(f.tailFrameSites, f.addRspAt)
+	if f.stats != nil {
+		sites := len(addSites) + 1
+		f.stats.NativeSize.FrameAdjustmentBytes += 12 * sites
+		if smallFrameAdjustEnabled && size <= 4095 {
+			deadPerSite := 8
+			if size == 0 {
+				deadPerSite = 12
+			}
+			f.stats.NativeSize.DeadFrameReservationBytes += deadPerSite * sites
+		}
+	}
 	if smallFrameAdjustEnabled && size <= 4095 {
 		const nop = 0xD503201F
 		if size == 0 {
@@ -872,6 +883,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}
 		code := codeBuffer.Bytes()
+		finalizeModuleNativeSize(ms, len(code))
 		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 			return nil, err
 		}
@@ -958,6 +970,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 		return nil, err
 	}
+	finalizeModuleNativeSize(ms, len(code))
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
@@ -983,6 +996,25 @@ func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callRel
 
 func firstFuncError(results []funcResult) (int, error) {
 	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
+}
+
+func finalizeModuleNativeSize(ms *ModuleStats, codeLen int) {
+	if ms == nil {
+		return
+	}
+	var native shared.NativeSizeReport
+	native.TotalBytes = codeLen
+	for _, fn := range ms.Funcs {
+		if fn != nil {
+			native.AddFunction(fn.NativeSize)
+		}
+	}
+	native.FunctionAlignmentBytes = codeLen - native.FunctionBytes
+	if native.FunctionAlignmentBytes < 0 {
+		native.ModuleOtherBytes = native.FunctionAlignmentBytes
+		native.FunctionAlignmentBytes = 0
+	}
+	ms.NativeSize = native
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the
@@ -1682,6 +1714,8 @@ func (f *fn) finalizeStats(codeLen int) {
 		return
 	}
 	s.CodeBytes = codeLen
+	s.NativeSize.TotalBytes = codeLen
+	s.NativeSize.InternalFunctionBytes = codeLen - s.NativeSize.HostAdapterBytes - s.NativeSize.AdapterToInternalPaddingBytes
 	s.GCCodeBytes.Total = codeLen
 	s.FrameBytes = f.frameSize()
 	s.MaxSpillSlots = f.maxSpill
@@ -2244,6 +2278,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			f.st64(X3, 8, X1)
 		}
 		a.Ret()
+		if f.stats != nil {
+			f.stats.NativeSize.HostAdapterBytes = a.Len()
+		}
 	}
 
 	// Internal entry (frameless): linMemReg (linMem) is inherited from the caller —
@@ -2251,7 +2288,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	// Go boundary — and the trap cell pointer lives in basedata, so the entry
 	// carries no environment setup at all (WARP's model). Args in GP/V regs.
 	if hostAdapter {
+		beforeAlign := a.Len()
 		a.Align16() // internal entries are hot call targets; align like function starts
+		if f.stats != nil {
+			f.stats.NativeSize.AdapterToInternalPaddingBytes = a.Len() - beforeAlign
+		}
 	}
 	internalOff := a.Len()
 	if f.usesCalls {

@@ -8,6 +8,9 @@ Measurement status: source-level audit only; no new corpus measurements were
 produced for this plan. Percentage targets are proposed acceptance goals, not
 measured predictions.
 
+Implementation measurements are recorded separately in the
+[generated native-code size results ledger](generated-native-code-size-results.md).
+
 This plan complements the broader
 [single-pass optimization research](singlepass-optimization-research-and-issues-2026-08.md),
 the [code-image pipeline plan](code-image-pipeline-plan.md), and Wago's current

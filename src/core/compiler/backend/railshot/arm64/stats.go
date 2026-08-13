@@ -28,8 +28,10 @@ import (
 // Explain/debug knobs, parsed once. Kept here next to the stats they drive.
 var (
 	// explainEnabled prints a per-module CodegenStats dump to stderr after every
-	// compile. Independent of the programmatic CompileOptions.Stats sink.
-	explainEnabled = os.Getenv("WAGO_EXPLAIN") == "1"
+	// compile. "size" retains the full report and highlights its native byte
+	// ledger; "1" remains the backward-compatible spelling.
+	explainMode    = os.Getenv("WAGO_EXPLAIN")
+	explainEnabled = explainMode == "1" || explainMode == "size"
 	// debugModGlobals prints the module-pinned-global choices (the #90-era temp
 	// print, now first-class).
 	debugModGlobals = os.Getenv("WAGO_DEBUG_MODGLOBALS") == "1"
@@ -114,6 +116,7 @@ type CodegenStats struct {
 	FrameBytes    int                      // stack frame size (sub sp, N)
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
+	NativeSize    shared.NativeFunctionSizeReport
 
 	// Register allocator / condense engine traffic.
 	Flushes              int // full operand-stack flushes (control boundaries + calls)
@@ -350,7 +353,14 @@ type ModuleStats struct {
 	Funcs            []*CodegenStats
 	ModuleGlobalPins []ModuleGlobalPinInfo
 	Inline           *InlineReport // inline-candidate detection (nil if not analyzed)
+	NativeSize       shared.NativeSizeReport
 }
+
+// NativeFunctionSizeReport and NativeSizeReport are shared by both Railshot
+// targets. The aliases keep this architecture package's structured stats API
+// self-contained for callers such as bench/cmd/explain.
+type NativeFunctionSizeReport = shared.NativeFunctionSizeReport
+type NativeSizeReport = shared.NativeSizeReport
 
 // String renders the explain dump: a module summary line, the module-pinned
 // globals, then one block per function.
@@ -360,6 +370,15 @@ func (ms *ModuleStats) String() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
+	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
+		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
+		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())
+	fmt.Fprintf(&b, "native-regions: adapters=%d internal-pad=%d internal=%d\n",
+		ms.NativeSize.HostAdapterBytes, ms.NativeSize.AdapterToInternalPaddingBytes,
+		ms.NativeSize.InternalFunctionBytes)
+	fmt.Fprintf(&b, "native-reservations: frame-physical=%d frame-dead=%d branch-holes=%d store-load-nops=%d\n",
+		ms.NativeSize.FrameAdjustmentBytes, ms.NativeSize.DeadFrameReservationBytes,
+		ms.NativeSize.BranchFoldHoleBytes, ms.NativeSize.StoreLoadNopBytes)
 	if len(ms.ModuleGlobalPins) == 0 {
 		fmt.Fprintf(&b, "module-pinned globals: none (K=0)\n")
 	} else {
@@ -393,6 +412,10 @@ func (s *CodegenStats) report() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "fn#%d %q: code=%dB frame=%dB spill_hi=%d\n",
 		s.FuncIdx, name, s.CodeBytes, s.FrameBytes, s.MaxSpillSlots)
+	fmt.Fprintf(&b, "    native: adapter=%d internal-pad=%d internal=%d frame-adjust=%d dead-reserved=%d\n",
+		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
+		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
+		s.NativeSize.DeadReservationBytes())
 	fmt.Fprintf(&b, "    alloc: flushes=%d roots=%d deferred=%d flushBelow=%d roots=%d deferred=%d callFlush=%d localSetDeferred=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
