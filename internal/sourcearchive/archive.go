@@ -16,6 +16,7 @@ type extractionLimits struct {
 	entries        int
 	files          int
 	directories    int
+	metadataBytes  uint64
 	pathBytes      int
 	pathDepth      int
 	componentBytes int
@@ -49,6 +50,7 @@ func productionExtractionLimits() extractionLimits {
 		entries:        20_000,
 		files:          16_000,
 		directories:    4_000,
+		metadataBytes:  16 << 20,
 		pathBytes:      1_024,
 		pathDepth:      64,
 		componentBytes: 255,
@@ -65,6 +67,9 @@ func extractWithLimits(ctx context.Context, archive, target string, limits extra
 		return err
 	}
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := inspectZipDirectory(ctx, archive, limits); err != nil {
 		return err
 	}
 	reader, err := zip.OpenReader(archive)
@@ -136,7 +141,7 @@ func extractWithLimits(ctx context.Context, archive, target string, limits extra
 	if err != nil || !info.Mode().IsRegular() {
 		return errors.New("source archive does not contain a regular go.mod file")
 	}
-	if err := os.Rename(staging, target); err != nil {
+	if err := publishDirectoryNoReplace(staging, target); err != nil {
 		return fmt.Errorf("publish source archive: %w", err)
 	}
 	publish = true
@@ -144,7 +149,7 @@ func extractWithLimits(ctx context.Context, archive, target string, limits extra
 }
 
 func validateLimits(limits extractionLimits) error {
-	if limits.entries <= 0 || limits.files <= 0 || limits.directories <= 0 ||
+	if limits.entries <= 0 || limits.files <= 0 || limits.directories <= 0 || limits.metadataBytes == 0 ||
 		limits.pathBytes <= 0 || limits.pathDepth <= 0 || limits.componentBytes <= 0 ||
 		limits.fileBytes == 0 || limits.expandedBytes == 0 {
 		return errors.New("source archive extraction limits must be positive")
@@ -283,8 +288,8 @@ func portablePathComponent(component string) bool {
 	if strings.HasSuffix(component, ".") || strings.HasSuffix(component, " ") || strings.ContainsAny(component, `<>:"|?*`) {
 		return false
 	}
-	for _, char := range component {
-		if char < 0x20 {
+	for index := 0; index < len(component); index++ {
+		if component[index] < 0x20 || component[index] > 0x7e {
 			return false
 		}
 	}
