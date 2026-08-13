@@ -215,7 +215,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// the destination's local lifetime begins immediately afterwards.  Restrict
 	// it to concrete RHS values so we never change deferred evaluation order or
 	// register-pressure behavior.
-	if threeOperandSinkEnabled && dest != regNone && left.kind == ekValue &&
+	if f.opt(optThreeOpSink) && dest != regNone && left.kind == ekValue &&
 		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) &&
 		(right.kind == ekValue || (right.isDeferred() && (isUnary(right.op) || isConvert(right.op)))) {
 		if f.tryThreeOperandLocalSink(node, dest, left, right, w) {
@@ -254,7 +254,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// overwrite it. Protecting x from allocation while the LHS condenses avoids
 	// both the store and reload without a scratch copy. This shape is pervasive in
 	// the unrolled BLAKE compression round.
-	if oldDestRHSSinkEnabled && dest != regNone && right.kind == ekValue &&
+	if f.opt(optOldDestRHSSink) && dest != regNone && right.kind == ekValue &&
 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
 		right.st.reg == dest {
 		f.pinned = f.pinned.add(dest)
@@ -508,7 +508,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 // register under pressure (the same hazard tryLeaScaledAdd guards against). Only
 // the 64-bit add matches (extend_i32_u produces i64).
 func (f *fn) tryUxtwAdd(node, left, right *elem, dest Reg) Reg {
-	if !uxtwAddEnabled || !node.typ.is64() {
+	if !f.opt(optUXTWAdd) || !node.typ.is64() {
 		return regNone
 	}
 	ext, other := right, left

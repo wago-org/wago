@@ -27,6 +27,25 @@ func TestResolveSnapshotIsImmutableAndDoesNotInstallOverrides(t *testing.T) {
 	}
 }
 
+func TestResolvedOptionUsesOwnedBitWithoutNameLookup(t *testing.T) {
+	a, b := true, false
+	bindings := selectionTestBindings(t, &a, &b)
+	selection, err := bindings.ResolveSnapshot(map[string]bool{"a": false, "b": true}, Snapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.EnabledOption(bindings.Option("a")) || !selection.EnabledOption(bindings.Option("b")) {
+		t.Fatal("pre-resolved option disagrees with selection")
+	}
+
+	otherA, otherB := true, false
+	other := selectionTestBindings(t, &otherA, &otherB)
+	if selection.EnabledOption(other.Option("b")) {
+		t.Fatal("selection accepted option owned by another binding catalog")
+	}
+	assertPanics(t, func() { bindings.Option("missing") })
+}
+
 func TestResolvedSelectionsAreIndependentAcrossConcurrentReaders(t *testing.T) {
 	a, b := true, false
 	bindings := selectionTestBindings(t, &a, &b)

@@ -31,6 +31,10 @@ type CodegenPolicy struct {
 }
 
 func (p CodegenPolicy) Enabled(name string) bool { return p.Selection.Enabled(name) }
+func (p CodegenPolicy) EnabledOption(option optimization.Option) bool {
+	return p.Selection.EnabledOption(option)
+}
+func (p CodegenPolicy) Valid() bool { return p.Selection.Valid() }
 
 // DefaultCodegenPolicy preserves current Balanced behavior. Objective-specific
 // layout decisions are introduced by later measured changes.

@@ -120,7 +120,7 @@ type loopPin struct {
 // two caller-saved registers only for a simple call-free loop; slots remain the
 // canonical representation outside the loop.
 func (f *fn) activateLoopPins(fr *ctrlFrame) {
-	if !loopRegionPinsEnabled || fr.kind != cfLoop || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
+	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
 		return
 	}
 	for _, r := range []Reg{X12, X13} {
@@ -794,7 +794,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
-		if loopPrecheckEnabled && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
+		if f.opt(optLoopPrecheck) && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			if cands, elidable, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
 					return nil
@@ -1627,7 +1627,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if f.a.Len() == mark {
 		// Empty edge: one conditional branch straight to the target (taken when the
 		// condition holds, != 0), with no skip branch and no padding NOP.
-		if branchFoldEnabled && f.condBranchJump(fr, condNE) {
+		if f.opt(optBranchFold) && f.condBranchJump(fr, condNE) {
 			return nil
 		}
 		// Fold disabled / unsupported target / out of range: guarded form (edge empty).

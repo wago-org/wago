@@ -23,7 +23,7 @@ const (
 // targets), and each rewrite must not disturb a word another branch targets. So
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes() {
-	if !branchFoldEnabled && !storeLoadFwdEnabled {
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) {
 		return
 	}
 	b := f.a.B
@@ -46,10 +46,10 @@ func (f *fn) finalizePeepholes() {
 			targets[t] = true
 		}
 	}
-	if branchFoldEnabled {
+	if f.opt(optBranchFold) {
 		f.foldBranchPairs(b, n, targets)
 	}
-	if storeLoadFwdEnabled {
+	if f.opt(optStoreLoadFwd) {
 		f.forwardStoreLoads(b, n, targets)
 	}
 }

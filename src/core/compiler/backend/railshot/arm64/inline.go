@@ -97,6 +97,10 @@ type InlineReport struct {
 // local functions and returns the report. It is pure analysis (no compilation)
 // so it is safe to call independently — e.g. from tooling or tests.
 func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
+	return analyzeInlineCandidates(m, currentCodegenPolicy())
+}
+
+func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineReport, error) {
 	importedFuncs := m.ImportedFuncCount()
 	n := len(m.Code)
 	facts := make([]inlineFacts, n)
@@ -131,7 +135,7 @@ func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
 			Results:   facts[i].results,
 			CallSites: callSites[globalIdx],
 		}
-		info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx])
+		info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx], policy)
 		if info.Candidate {
 			rep.NumCandidates++
 			rep.TotalInlinableCallSites += info.CallSites
@@ -147,7 +151,7 @@ func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
 // (independent of how often it is called) and returns the verdict plus a one-line
 // reason. This is what the Phase-2 transform keys off: a call to a class member
 // can be spliced wherever it appears.
-func inlineClass(f inlineFacts) (bool, string) {
+func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
@@ -160,7 +164,7 @@ func inlineClass(f inlineFacts) (bool, string) {
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
-	case f.hasLoop && !inlineLoopCallees:
+	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
 		// A leaf callee that contains a LOOP is a net-negative to splice: its loop
 		// body lands inside the caller's hot region and adds register pressure /
 		// code that outweighs the call it removes. Measured: excluding these speeds
@@ -177,11 +181,11 @@ func inlineClass(f inlineFacts) (bool, string) {
 	}
 }
 
-func inlineOK(f inlineFacts) bool {
+func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
 	case f.hasControlCall, f.calleeCount > 0, !f.regABIIntOnly:
 		return false
-	case f.hasLoop && !inlineLoopCallees:
+	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
 		return false
 	case f.bodyBytes > inlineMaxBytes:
 		return false
@@ -192,8 +196,8 @@ func inlineOK(f inlineFacts) bool {
 
 // inlineDecision layers the call-site gate on inlineClass for the report (a
 // class member with no call sites is unused, not inlinable).
-func inlineDecision(f inlineFacts, callSites int) (bool, string) {
-	if ok, reason := inlineClass(f); !ok {
+func inlineDecision(f inlineFacts, callSites int, policy CodegenPolicy) (bool, string) {
+	if ok, reason := inlineClass(f, policy); !ok {
 		return false, reason
 	}
 	if callSites == 0 {
@@ -421,8 +425,8 @@ func (ts inlineTargetTable) empty() bool { return len(ts.targets) == 0 }
 // GLOBAL function index, or an empty table when inlining is disabled. Candidacy
 // here is a property of the callee alone (the call-site count only mattered for the report),
 // so a call to one of these can be spliced wherever it appears.
-func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable {
-	if !inlineEnabled {
+func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy) inlineTargetTable {
+	if !policy.EnabledOption(optInline) {
 		return inlineTargetTable{}
 	}
 	hasCall := false
@@ -475,7 +479,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 		// stands in for its function boundary (its `return`/`end` merge there), so
 		// the existing block/br/convergence machinery lowers it. A straight-line
 		// callee skips the frame entirely (the cheaper fast path).
-		if !inlineOK(facts) {
+		if !inlineOK(facts, policy) {
 			continue
 		}
 		if targets.empty() {
@@ -601,7 +605,7 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 // the current inline plan will splice. This lets frame/register planning treat
 // such a caller as truly call-free: no BL remains to clobber LR or local pins.
 // Calls in loops honor the same regression guard as callOp.
-func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable) bool {
+func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, policy CodegenPolicy) bool {
 	if targets.empty() || len(caller.BodyBytes) == 0 {
 		return false
 	}
@@ -636,7 +640,7 @@ func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable) bool {
 		case wasm.InstrCall:
 			sawCall = true
 			t := targets.target(int(imm.Index))
-			if t == nil || (loopDepth != 0 && t.inlineInLoopIsRegressive() && !inlineLoopCallees) {
+			if t == nil || (loopDepth != 0 && t.inlineInLoopIsRegressive() && !policy.EnabledOption(optInlineLoopCallees)) {
 				return false
 			}
 		case wasm.InstrReturnCall, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:

@@ -135,7 +135,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// missed-fusion on branch-dense code (esbuild ~20k `relop;eqz;br` sites). Gated by
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
-	if stFlagsEnabled {
+	if f.opt(optSTFlags) {
 		for node.op == opEqz && isFusableCompare(node.arg0) {
 			inner := node.arg0
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
@@ -298,7 +298,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	if f.a.Len() == mark {
 		// Empty edge: branch straight to the target when the compare holds — one
 		// instruction, no skip branch, no padding NOP in the loop body.
-		if branchFoldEnabled && f.condBranchJump(fr, cc) {
+		if f.opt(optBranchFold) && f.condBranchJump(fr, cc) {
 			return nil
 		}
 		over := f.a.Bcond(invertCond(cc))

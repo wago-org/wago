@@ -200,7 +200,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// int result feeds a pinned local moves X0 straight into the local's
 	// register — no intermediate result register, no separate set lowering.
 	hint := -1
-	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) && len(ft.Results) == 1 {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) && sigIsIntOnly(ft) && len(ft.Results) == 1 {
 		r2 := *r // peek past the call without committing
 		if b, err := r2.Byte(); err == nil && b == 0x21 {
 			if x, err := r2.U32(); err == nil {
@@ -259,7 +259,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	f.stats.call("tail-direct")
 	target := int(idx) - imported
-	if regABIEnabled && sigFitsRegABI(ft) {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) {
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.Branch()
 			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
@@ -598,7 +598,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	f.release(targetContext)
 	f.release(kind)
 
-	registerTail := regABIEnabled && sigFitsRegABI(ft)
+	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
 	if registerTail {
 		f.cmpImm(X13, uint32(abi.FuncRefInternalTagValue), true)
 		wrapper := f.a.Bcond(condNE)
@@ -680,7 +680,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	// original result destination from the frame header and tail-enter the target
 	// wrapper directly. Register-ABI callers still need the run-time adapter/direct
 	// distinction below because only adapter entry carries an outer X3 record.
-	if !regABIEnabled || !sigFitsRegABI(f.ft) {
+	if !f.opt(optRegABI) || !sigFitsRegABI(f.ft) {
 		f.ld64(X3, SP, frResultsOff)
 		f.emitTailFrameRelease()
 		transfer()
@@ -800,7 +800,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.stripDescriptorHomeTags(home)
 	f.cmpRR(home, linMemReg, true)
 	f.trapIf(condNE, trapTailUnsupported)
-	registerTail := regABIEnabled && sigFitsRegABI(ft)
+	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
 	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
 	if registerTail {
 		wantKind = uint32(abi.FuncRefInternalTagValue)
@@ -1381,7 +1381,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
-	if regABIEnabled && sigFitsRegABI(ft) {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			preservesPins := f.directCalleePreservesPins(localIdx)
@@ -2022,7 +2022,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// callee's offset-0 entry with the correct per-execution control words
 	// (including the stack fence). Verified: spec1 passes and spec2/3 no longer
 	// crash. Re-enable only with an entry pointer that preserves the fence.
-	if immutableLocalPolyFastPath && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if f.opt(optImmutablePolyFastPath) && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		home := f.allocReg(maskOf(idxReg, code))
 		f.ld64(home, idxReg, 24)
 		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))

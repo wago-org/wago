@@ -762,7 +762,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 // B.cond directly. This is deliberately one-deep and only covers a pinned i32
 // local, so the existing local and branch paths remain the fallback oracle.
 func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
-	if !stFlagsEnabled || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
+	if !f.opt(optSTFlags) || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
 		return false, nil
 	}
 	pr, isFloat, ok := f.pinReg(x)
@@ -1138,8 +1138,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
 	var skipFrom *elem
 	if e != nil && e.isDeferred() {
-		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || teeLocalSinkEnabled)
-		unarySink := (isUnary(e.op) || isConvert(e.op)) && unaryLocalSinkEnabled && (!tee || teeLocalSinkEnabled)
+		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || f.opt(optTeeSink))
+		unarySink := (isUnary(e.op) || isConvert(e.op)) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
 			skipFrom = baseOfValentBlock(e)
 		}

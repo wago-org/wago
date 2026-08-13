@@ -74,12 +74,32 @@ stats-only change because codegen-neutrality tests compare every emitted byte.
 
 ### Immutable policy foundation
 
-The next checkpoint adds an immutable, at-most-64-bit optimization selection
-and the `Speed`, `Balanced`, `Size`, and `Embedded` policy vocabulary. Resolving
-an override no longer requires installing it into package globals; concurrent
-readers retain independent selections. ARM64 still consumes the legacy bindings
-until the following checkpoint threads this policy through every lowering
-decision, so this foundation alone does not claim that issue #399 is complete.
+The first checkpoint added an immutable, at-most-64-bit optimization selection
+and the `Speed`, `Balanced`, `Size`, and `Embedded` policy vocabulary. The next
+checkpoint threaded that selection through every catalogued ARM64 lowering
+decision. Independent module compilations no longer install temporary values in
+package globals or hold the optimization-binding lock for the duration of
+codegen. Hot lowering sites use pre-resolved option tokens: an initial
+string/map implementation failed the serial compile-time gate and was replaced
+before commit.
+
+The paired comparison below uses the policy-foundation commit `2ee02836` as the
+before point and the policy-threaded working tree as the after point. Both were
+measured on the same host with Go 1.26.5, 500 ms samples, count 5. The concurrent
+benchmark fixes `-cpu=8`; each module itself uses one function worker.
+
+| Workload | Metric | Before median | After median | Change |
+| --- | --- | ---: | ---: | ---: |
+| `many_funcs` | CompileFull p1 | 275,854 ns/op | 270,053 ns/op | -2.10% |
+| `json-as` | CompileFull p1 | 999,261 ns/op | 990,215 ns/op | -0.91% |
+| `many_funcs` | 8-way module throughput | 230,746 ns/op | 43,036 ns/op | -81.35% (5.36x throughput) |
+| `json-as` | 8-way module throughput | 653,767 ns/op | 148,473 ns/op | -77.29% (4.40x throughput) |
+
+Native output stayed byte-identical at 28,984 B and 77,516 B. The public compile
+path also dropped one allocation per operation: 380 to 379 for `many_funcs` and
+1,273 to 1,272 for `json-as`, with a small corresponding B/op reduction. A race
+test interleaves 128 compilations with opposing frame policies and verifies that
+each produces its serial reference bytes without changing process defaults.
 
 ### Commands
 
@@ -107,4 +127,8 @@ WAGO_EXPLAIN=size go test -run '^$' \
 WAGO_EXPLAIN=size go test -run '^$' \
   -bench '^BenchmarkCompileFullWorkers$/^json-as$/^p1$' \
   -benchtime=1x -count=1 .
+
+go test -run '^$' \
+  -bench '^BenchmarkCompileMultiModuleThroughput$/^(many_funcs|json-as)$/^p1$' \
+  -benchmem -benchtime=500ms -count=5 -cpu=8 .
 ```

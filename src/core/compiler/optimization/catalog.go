@@ -71,6 +71,14 @@ type Selection struct {
 	bits     uint64
 }
 
+// Option is a pre-resolved flag owned by one architecture's Bindings. Backends
+// resolve these once during package initialization so hot lowering decisions
+// need only a pointer comparison and bit test, never a string/map lookup.
+type Option struct {
+	bindings *Bindings
+	mask     uint64
+}
+
 // Enabled reports whether name is enabled in this selection. Unknown names and
 // selections from another architecture report false.
 func (s Selection) Enabled(name string) bool {
@@ -79,6 +87,26 @@ func (s Selection) Enabled(name string) bool {
 	}
 	index, ok := s.bindings.index[name]
 	return ok && s.bits&(uint64(1)<<index) != 0
+}
+
+// EnabledOption reports whether a pre-resolved option is enabled. An option
+// from another architecture is rejected just like an unknown string name.
+func (s Selection) EnabledOption(option Option) bool {
+	return s.bindings != nil && s.bindings == option.bindings && s.bits&option.mask != 0
+}
+
+// Valid reports whether the selection was resolved by a Bindings owner.
+func (s Selection) Valid() bool { return s.bindings != nil }
+
+// Option resolves name once for use on a backend's hot compile path. It panics
+// for an unknown name because backend option inventories are initialization
+// invariants already checked by NewBindings.
+func (b *Bindings) Option(name string) Option {
+	index, ok := b.index[name]
+	if !ok {
+		panic(fmt.Sprintf("unknown %s optimization %q", b.arch, name))
+	}
+	return Option{bindings: b, mask: uint64(1) << index}
 }
 
 // Bindings owns the complete, ordered set of bindings for one architecture.

@@ -46,6 +46,43 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.BindInverted("stack-reg", &noStackReg),
 )
 
+var (
+	optBoundsFacts           = optimizationBindings.Option("bounds-facts")
+	optSTFlags               = optimizationBindings.Option("st-flags")
+	optRegMerge              = optimizationBindings.Option("reg-merge")
+	optTeeSink               = optimizationBindings.Option("tee-sink")
+	optUnarySink             = optimizationBindings.Option("unary-sink")
+	optThreeOpSink           = optimizationBindings.Option("three-op-sink")
+	optOldDestRHSSink        = optimizationBindings.Option("olddest-rhs-sink")
+	optBranchFold            = optimizationBindings.Option("branch-fold")
+	optStoreLoadFwd          = optimizationBindings.Option("store-load-fwd")
+	optUXTWAdd               = optimizationBindings.Option("uxtw-add")
+	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
+	optX8Pin                 = optimizationBindings.Option("x8-pin")
+	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")
+	optExtendedFPPins        = optimizationBindings.Option("ext-fp-pins")
+	optLeafScratchPins       = optimizationBindings.Option("leaf-scratch-pins")
+	optImmutableTable        = optimizationBindings.Option("immutable-table")
+	optImmutableTableType    = optimizationBindings.Option("immutable-table-type")
+	optInlineCallFree        = optimizationBindings.Option("inline-callfree")
+	optStoreForward          = optimizationBindings.Option("store-forward")
+	optFrameElideRegHomed    = optimizationBindings.Option("frame-elide-reghomed")
+	optSmallFrame            = optimizationBindings.Option("small-frame")
+	optV128ConstCache        = optimizationBindings.Option("v128-const-cache")
+	optV128Pins              = optimizationBindings.Option("v128-pins")
+	optV128Sink              = optimizationBindings.Option("v128-sink")
+	optRegABI                = optimizationBindings.Option("reg-abi")
+	optInline                = optimizationBindings.Option("inline")
+	optInlineLoopCallees     = optimizationBindings.Option("inline-loop-callees")
+	optLoopPrecheck          = optimizationBindings.Option("loop-precheck")
+	optLoopRegionPins        = optimizationBindings.Option("loop-region-pins")
+	optImmutablePolyFastPath = optimizationBindings.Option("immutable-poly-fastpath")
+	optLegacyFPPins          = optimizationBindings.Option("legacy-fp-pins")
+	optLegacyGPPins          = optimizationBindings.Option("legacy-gp-pins")
+	optStackFence            = optimizationBindings.Option("stack-fence")
+	optStackReg              = optimizationBindings.Option("stack-reg")
+)
+
 type KnobInfo = optimization.Info
 type OptimizationSnapshot = optimization.Snapshot
 type OptimizationObjective = shared.OptimizationObjective
@@ -65,3 +102,11 @@ func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) { return optimizationB
 func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings.CurrentSnapshot() }
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }
+
+func currentCodegenPolicy() CodegenPolicy {
+	selection, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
+	if err != nil {
+		panic(err)
+	}
+	return shared.DefaultCodegenPolicy(selection)
+}
