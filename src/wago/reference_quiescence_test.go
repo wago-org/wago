@@ -58,15 +58,20 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 	closeDone := make(chan error, 1)
 	go func() { closeDone <- rt.Close() }()
 
-	var writerState *referenceStoreInstance
+	var closeAccounted, quiesced, resourcesReleased bool
 	var tokens int
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		rt.refStore.mu.Lock()
-		writerState = rt.refStore.instances[writer]
+		writerState := rt.refStore.instances[writer]
+		if writerState != nil {
+			closeAccounted = writerState.closeAccounted
+			quiesced = writerState.quiesced
+			resourcesReleased = writerState.resourcesReleased
+		}
 		tokens = len(rt.refStore.byToken)
 		rt.refStore.mu.Unlock()
-		if writerState != nil && writerState.closeAccounted {
+		if closeAccounted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -74,8 +79,8 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if writerState == nil || !writerState.closeAccounted || writerState.quiesced || writerState.resourcesReleased {
-		t.Fatalf("writer store state before resume = %+v", writerState)
+	if !closeAccounted || quiesced || resourcesReleased {
+		t.Fatalf("writer store state before resume: closed=%v quiesced=%v released=%v", closeAccounted, quiesced, resourcesReleased)
 	}
 	if tokens != 1 {
 		t.Fatalf("token entries before quiescence = %d, want 1", tokens)
