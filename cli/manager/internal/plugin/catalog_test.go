@@ -577,7 +577,7 @@ func TestResolveCatalogGraphBoundsCatalogQueriesDuringBacktracking(t *testing.T)
 			Version: "1.0.0",
 			Definition: corewago.PluginDefinition{
 				ID:       rootID,
-				Requires: []corewago.PluginRequirement{{ID: childID, Version: "*"}},
+				Requires: []corewago.PluginRequirement{{ID: childID, Version: "=1.0." + strconv.Itoa(index)}},
 			},
 		}
 	}
@@ -597,6 +597,37 @@ func TestResolveCatalogGraphBoundsCatalogQueriesDuringBacktracking(t *testing.T)
 	}
 	if calls != maxResolverCatalogQueries {
 		t.Fatalf("catalog calls = %d, want %d", calls, maxResolverCatalogQueries)
+	}
+}
+
+func TestResolveCatalogGraphCachesExactQueriesDuringBacktracking(t *testing.T) {
+	rootID := "github.com/acme/root"
+	childID := "github.com/acme/child"
+	candidates := make([]CatalogRelease, 8)
+	for index := range candidates {
+		candidates[index] = CatalogRelease{
+			ID: rootID, Version: "1.0.0",
+			Definition: corewago.PluginDefinition{
+				ID: rootID, Requires: []corewago.PluginRequirement{{ID: childID, Version: "*"}},
+			},
+		}
+	}
+	calls := 0
+	catalog := catalogFunc(func(_ context.Context, id string, _ []string) ([]CatalogRelease, error) {
+		calls++
+		if id == rootID {
+			return candidates, nil
+		}
+		return nil, errors.New("no matching child")
+	})
+
+	_, err := ResolveCatalogGraph(context.Background(), catalog,
+		[]project.PluginRequirement{{ID: rootID, Constraint: "*"}}, project.NewLockDocument())
+	if err == nil || !strings.Contains(err.Error(), "no matching child") {
+		t.Fatalf("cached catalog error = %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("catalog calls = %d, want one root and one cached child query", calls)
 	}
 }
 
@@ -682,6 +713,33 @@ func TestHTTPCatalogRejectsSparsePaginationAtPageBudget(t *testing.T) {
 	}
 	if got := requests.Load(); got != maxCatalogPages {
 		t.Fatalf("catalog requests = %d, want %d", got, maxCatalogPages)
+	}
+}
+
+func TestHTTPCatalogSharesResolutionByteBudgetAcrossQueries(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	body, err := json.Marshal(map[string]any{
+		"plugins": []CatalogRelease{release}, "total": 1, "offset": 0, "limit": catalogPageLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = response.Write(body)
+	}))
+	defer server.Close()
+	catalog := HTTPCatalog{BaseURL: server.URL, Client: server.Client()}
+	ctx := withCatalogByteBudget(context.Background(), int64(len(body)+len(body)/2))
+	if _, err := catalog.Candidates(ctx, release.ID, []string{"*"}); err != nil {
+		t.Fatalf("first catalog query = %v", err)
+	}
+	if _, err := catalog.Candidates(ctx, release.ID, []string{"*"}); err == nil || !strings.Contains(err.Error(), "resolution bound") {
+		t.Fatalf("cumulative catalog metadata = %v", err)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("catalog requests = %d, want 2", got)
 	}
 }
 

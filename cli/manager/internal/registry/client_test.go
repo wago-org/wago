@@ -106,6 +106,7 @@ func TestRegistryIdentityAndErrorsAreTerminalSafe(t *testing.T) {
 		`{"error":"broken\u001b[2J"}`,
 		`{"error":"broken\nforged"}`,
 		`{"error":"` + strings.Repeat("x", 1025) + `"}`,
+		`{"error":"one","Error":"two"}`,
 	} {
 		if got := apiError(http.StatusBadRequest, []byte(data)); got != "server returned status 400" {
 			t.Fatalf("unsafe registry error rendered as %q", got)
@@ -383,6 +384,14 @@ func TestRegistryModuleResolution(t *testing.T) {
 	status, body = http.StatusOK, `{}`
 	if _, err := resolveRegistryModule("empty"); err == nil || !strings.Contains(err.Error(), "no module path") {
 		t.Fatalf("empty module path = %v", err)
+	}
+	status, body = http.StatusOK, `{"name":"../../malicious"}`
+	if _, err := resolveRegistryModule("invalid-name"); err == nil || !strings.Contains(err.Error(), "invalid module path") {
+		t.Fatalf("invalid module path = %v", err)
+	}
+	status, body = http.StatusOK, `{"name":"github.com/acme/one","Name":"github.com/acme/two"}`
+	if _, err := resolveRegistryModule("ambiguous-name"); err == nil || !strings.Contains(err.Error(), "invalid package metadata") {
+		t.Fatalf("ambiguous module path = %v", err)
 	}
 }
 

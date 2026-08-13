@@ -59,7 +59,12 @@ arrays, and nesting are structurally bounded to 128 members and 32 levels before
 decoding; case-sensitive property names and collections inside embedded
 configuration JSON Schema remain distinct and retain their schema semantics.
 Duplicate catalog struct fields fail closed, and dependency backtracking stops
-after 2,048 catalog queries independently of the solver's CPU-step ceiling.
+after 2,048 unique catalog queries and 64 MiB of aggregate response metadata,
+independently of the solver's CPU-step ceiling. Exact plugin/constraint queries
+are pinned and reused throughout one solve, preventing repeated downloads and
+mid-resolution result changes. Registry error and package-resolution JSON also
+rejects ambiguous fields; resolved module paths are canonical, and typo
+suggestions are limited to 1,024 bounded identifiers with banded edit distance.
 
 ## Release downloads
 

@@ -68,7 +68,21 @@ const (
 	maxCatalogCandidates             = 1024
 	maxCatalogNestedCollection       = 128
 	maxCatalogStructureDepth         = 32
+	maxResolverCatalogBytes    int64 = 64 << 20
 )
+
+type catalogBudgetContextKey struct{}
+
+type catalogByteBudget struct{ remaining int64 }
+
+func withCatalogByteBudget(ctx context.Context, maximum int64) context.Context {
+	return context.WithValue(ctx, catalogBudgetContextKey{}, &catalogByteBudget{remaining: maximum})
+}
+
+func catalogByteBudgetFromContext(ctx context.Context) *catalogByteBudget {
+	budget, _ := ctx.Value(catalogBudgetContextKey{}).(*catalogByteBudget)
+	return budget
+}
 
 func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraints []string) ([]CatalogRelease, error) {
 	if err := automation.RequireOnline("plugin catalog resolution"); err != nil {
@@ -112,7 +126,12 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		if err != nil {
 			return nil, err
 		}
-		data, readErr := io.ReadAll(io.LimitReader(response.Body, catalogResponseLimit+1))
+		readLimit := catalogResponseLimit
+		resolutionBudget := catalogByteBudgetFromContext(ctx)
+		if resolutionBudget != nil {
+			readLimit = min(readLimit, resolutionBudget.remaining)
+		}
+		data, readErr := io.ReadAll(io.LimitReader(response.Body, readLimit+1))
 		closeErr := response.Body.Close()
 		if readErr != nil {
 			return nil, readErr
@@ -121,8 +140,14 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 			return nil, closeErr
 		}
 		pageBytes := int64(len(data))
+		if pageBytes > readLimit && readLimit < catalogResponseLimit {
+			return nil, fmt.Errorf("resolve %s: catalog metadata exceeds %d MiB resolution bound", id, maxResolverCatalogBytes>>20)
+		}
 		if pageBytes > catalogResponseLimit {
 			return nil, errors.New("plugin catalog response exceeds 4 MiB")
+		}
+		if resolutionBudget != nil {
+			resolutionBudget.remaining -= pageBytes
 		}
 		if pageBytes > maxCatalogBytes-catalogBytes {
 			return nil, fmt.Errorf("resolve %s: catalog metadata exceeds %d MiB cumulative bound", id, maxCatalogBytes>>20)
@@ -419,7 +444,10 @@ func ResolveCatalogGraph(ctx context.Context, catalog Catalog, roots []project.P
 		contributions[root.ID]["@manifest"] = root.Constraint
 		direct[root.ID] = true
 	}
-	solver := catalogSolver{ctx: ctx, catalog: catalog, direct: direct, previous: previous}
+	solver := catalogSolver{
+		ctx: withCatalogByteBudget(ctx, maxResolverCatalogBytes), catalog: catalog,
+		direct: direct, previous: previous, cache: map[catalogQueryKey]catalogQueryResult{},
+	}
 	plan, err := solver.solve(map[string]CatalogRelease{}, contributions)
 	if err != nil {
 		return ResolutionPlan{}, err
@@ -435,6 +463,14 @@ type catalogSolver struct {
 	steps    int
 	queries  int
 	lastErr  error
+	cache    map[catalogQueryKey]catalogQueryResult
+}
+
+type catalogQueryKey struct{ id, constraints string }
+
+type catalogQueryResult struct {
+	candidates []CatalogRelease
+	err        error
 }
 
 func (solver *catalogSolver) solve(selected map[string]CatalogRelease, constraints map[string]map[string]string) (ResolutionPlan, error) {
@@ -458,15 +494,28 @@ func (solver *catalogSolver) solve(selected map[string]CatalogRelease, constrain
 		return plan, nil
 	}
 	ranges := sortedMapValues(constraints[id])
+	queryKey := catalogQueryKey{id: id, constraints: strings.Join(ranges, "\x00")}
+	if cached, ok := solver.cache[queryKey]; ok {
+		if cached.err != nil {
+			solver.lastErr = cached.err
+			return ResolutionPlan{}, cached.err
+		}
+		return solver.tryCandidates(id, cached.candidates, selected, constraints)
+	}
 	if solver.queries >= maxResolverCatalogQueries {
 		return ResolutionPlan{}, fmt.Errorf("%w of %d requests", errCatalogQueryBudget, maxResolverCatalogQueries)
 	}
 	solver.queries++
 	candidates, err := solver.catalog.Candidates(solver.ctx, id, ranges)
+	solver.cache[queryKey] = catalogQueryResult{candidates: candidates, err: err}
 	if err != nil {
 		solver.lastErr = err
 		return ResolutionPlan{}, err
 	}
+	return solver.tryCandidates(id, candidates, selected, constraints)
+}
+
+func (solver *catalogSolver) tryCandidates(id string, candidates []CatalogRelease, selected map[string]CatalogRelease, constraints map[string]map[string]string) (ResolutionPlan, error) {
 	for _, candidate := range candidates {
 		if err := sharedSourceReleaseConflict(selected, candidate); err != nil {
 			solver.lastErr = err

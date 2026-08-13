@@ -162,7 +162,7 @@ func ResponseError(status int, data []byte) string {
 	var e struct {
 		Error string `json:"error"`
 	}
-	if json.Unmarshal(data, &e) == nil && e.Error != "" && validateTerminalTextField("registry error", e.Error, 1024) == nil {
+	if unmarshalUniqueJSON(data, &e) == nil && e.Error != "" && validateTerminalTextField("registry error", e.Error, 1024) == nil {
 		return e.Error
 	}
 	return fmt.Sprintf("server returned status %d", status)
