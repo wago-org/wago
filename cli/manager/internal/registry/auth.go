@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -68,7 +67,7 @@ func loginMethodPicker() *tui.Picker {
 	return tui.NewPicker("Choose login method", []tui.Item{
 		{
 			Label:       "Link",
-			Description: "Open a browser link on this machine",
+			Description: "Open one-time authorization in a browser",
 			Value:       "link",
 		},
 		{
@@ -99,66 +98,11 @@ func chooseLoginMethodContext(ctx context.Context, base string) (string, bool) {
 	}
 }
 
-// browserLoginContext runs the loopback OAuth flow: it listens on a free
-// localhost port, opens the browser to the registry's CLI-login endpoint, and
-// waits for the /callback redirect carrying the plaintext token. It fatals on
-// error or timeout.
+// browserLoginContext uses the same one-time device authorization as headless
+// login, but opens GitHub's verification URL after displaying the short-lived
+// user code. Long-lived credentials therefore never pass through a loopback URL.
 func browserLoginContext(ctx context.Context, base string) string {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		fatal("login: cannot open a loopback listener: %v", err)
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	state, err := RandomState()
-	if err != nil {
-		fatal("login: %v", err)
-	}
-
-	type result struct {
-		token string
-		err   error
-	}
-	resCh := make(chan result, 1)
-	mux := http.NewServeMux()
-	srv := &http.Server{Handler: mux}
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		if q.Get("state") != state {
-			http.Error(w, "state mismatch — login aborted", http.StatusBadRequest)
-			resCh <- result{err: errors.New("state mismatch — login aborted (possible CSRF)")}
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, SuccessHTML)
-		resCh <- result{token: q.Get("token")}
-	})
-	go srv.Serve(ln)
-	defer srv.Close()
-
-	loginURL := fmt.Sprintf("%s/auth/cli/login?port=%d&state=%s", base, port, url.QueryEscape(state))
-	if err := OpenBrowser(loginURL); err != nil {
-		fmt.Printf("Open this URL in your browser to log in:\n\n  %s\n\n", cyan(loginURL))
-	} else {
-		fmt.Printf("%s Opening your browser to log in…\n", dim("→"))
-		fmt.Printf("  %s\n  %s\n", dim("if it doesn't open, visit:"), cyan(loginURL))
-	}
-
-	select {
-	case res := <-resCh:
-		if res.err != nil {
-			fatal("login: %v", res.err)
-		}
-		if res.token == "" {
-			fatal("login: no token received from the registry")
-		}
-		return res.token
-	case <-ctx.Done():
-		fatal("login: %v", ctx.Err())
-		return ""
-	case <-time.After(2 * time.Minute):
-		fatal("login: timed out waiting for the browser callback")
-		return ""
-	}
+	return githubDeviceLoginContextUsing(ctx, base, true)
 }
 
 const (
@@ -189,9 +133,9 @@ func deviceFlowTiming(expiresIn, interval int) (lifetime, pollInterval time.Dura
 }
 
 // githubDeviceLoginContext runs GitHub's OAuth device flow (RFC 8628) and
-// exchanges the resulting GitHub token for a wago API token. It's the login path
-// for headless/remote machines: the user enters a code at github.com/login/device
-// instead of relying on a localhost redirect.
+// exchanges the resulting GitHub token for a wago API token. Browser and
+// headless modes both enter a code at github.com/login/device instead of relying
+// on a localhost redirect; browser mode merely opens the verification URL.
 //
 // The registry advertises its GitHub OAuth client_id (GET /api/auth/github/client)
 // so a self-hosted registry with its own OAuth app works without recompiling the
@@ -199,46 +143,86 @@ func deviceFlowTiming(expiresIn, interval int) (lifetime, pollInterval time.Dura
 // the GitHub token to the registry (POST /api/auth/github/exchange), which
 // verifies the token belongs to its app and returns a wago token.
 func githubDeviceLoginContext(ctx context.Context, base string) string {
-	// 1. Ask the registry which GitHub OAuth app to authenticate against.
-	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/auth/github/client", "", nil)
+	return githubDeviceLoginContextUsing(ctx, base, false)
+}
+
+func githubDeviceLoginContextUsing(ctx context.Context, base string, openBrowser bool) string {
+	token, err := githubDeviceTokenContext(ctx, base, openBrowser)
 	if err != nil {
-		fatal("login: fetching GitHub client config: %v", err)
+		fatal("login: %v", err)
+	}
+	return token
+}
+
+type deviceFlowHooks struct {
+	deviceCodeEndpoint  string
+	accessTokenEndpoint string
+	openBrowser         func(string) error
+	wait                func(context.Context, time.Duration) error
+}
+
+func waitDevicePollContext(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func githubDeviceTokenContext(ctx context.Context, base string, openBrowser bool) (string, error) {
+	return githubDeviceTokenUsingContext(ctx, base, openBrowser, deviceFlowHooks{
+		deviceCodeEndpoint:  "https://github.com/login/device/code",
+		accessTokenEndpoint: "https://github.com/login/oauth/access_token",
+		openBrowser:         OpenBrowser,
+		wait:                waitDevicePollContext,
+	})
+}
+
+func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser bool, hooks deviceFlowHooks) (string, error) {
+	// 1. Ask the registry which GitHub OAuth app to authenticate against.
+	status, data, err := apiRequestAtBaseContext(ctx, base, http.MethodGet, "/api/auth/github/client", "", nil)
+	if err != nil {
+		return "", fmt.Errorf("fetching GitHub client config: %w", err)
 	}
 	if status != http.StatusOK {
-		fatal("login: fetching GitHub client config: %s", apiError(status, data))
+		return "", fmt.Errorf("fetching GitHub client config: %s", apiError(status, data))
 	}
 	var cfg struct {
 		ClientID string `json:"client_id"`
 		Scope    string `json:"scope"`
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		fatal("login: parsing GitHub client config: %v", err)
+		return "", fmt.Errorf("parsing GitHub client config: %w", err)
 	}
 	if cfg.ClientID == "" {
-		fatal("login: registry did not advertise a GitHub client id")
+		return "", errors.New("registry did not advertise a GitHub client id")
 	}
 
 	// 2. Ask GitHub for a device + user code.
 	var dc struct {
-		DeviceCode      string `json:"device_code"`
-		UserCode        string `json:"user_code"`
-		VerificationURI string `json:"verification_uri"`
-		ExpiresIn       int    `json:"expires_in"`
-		Interval        int    `json:"interval"`
-		Error           string `json:"error"`
+		DeviceCode              string `json:"device_code"`
+		UserCode                string `json:"user_code"`
+		VerificationURI         string `json:"verification_uri"`
+		VerificationURIComplete string `json:"verification_uri_complete"`
+		ExpiresIn               int    `json:"expires_in"`
+		Interval                int    `json:"interval"`
+		Error                   string `json:"error"`
 	}
-	if err := PostFormContext(ctx, "https://github.com/login/device/code",
+	if err := PostFormContext(ctx, hooks.deviceCodeEndpoint,
 		url.Values{"client_id": {cfg.ClientID}, "scope": {cfg.Scope}}, &dc); err != nil {
-		fatal("login: requesting device code from GitHub: %v", err)
+		return "", fmt.Errorf("requesting device code from GitHub: %w", err)
 	}
 	if dc.Error == "device_flow_disabled" {
-		fatal("login: GitHub device flow is disabled for this OAuth app — enable \"Device Flow\" in its settings")
+		return "", errors.New("GitHub device flow is disabled for this OAuth app — enable \"Device Flow\" in its settings")
 	}
 	if dc.DeviceCode == "" || dc.UserCode == "" {
 		if dc.Error != "" {
-			fatal("login: GitHub: %s", dc.Error)
+			return "", fmt.Errorf("GitHub: %s", dc.Error)
 		}
-		fatal("login: GitHub returned an incomplete device authorization response")
+		return "", errors.New("GitHub returned an incomplete device authorization response")
 	}
 
 	lifetime, pollInterval := deviceFlowTiming(dc.ExpiresIn, dc.Interval)
@@ -247,10 +231,22 @@ func githubDeviceLoginContext(ctx context.Context, base string) string {
 		verifyURI = "https://github.com/login/device"
 	}
 
-	// Keep the terminal still so the code can be copied before the user opens a
-	// browser. Unlike Link login, the device flow never launches one itself.
+	// Print the one-time code before launching a browser so it remains available
+	// when GitHub does not provide a verification_uri_complete value.
 	fmt.Printf("\n  First, copy your one-time code:\n\n      %s\n\n", bold(dc.UserCode))
-	fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))
+	if openBrowser {
+		browserURL := dc.VerificationURIComplete
+		if browserURL == "" {
+			browserURL = verifyURI
+		}
+		if err := hooks.openBrowser(browserURL); err != nil {
+			fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))
+		} else {
+			fmt.Printf("%s Opened %s in your browser.\n", dim("→"), cyan(browserURL))
+		}
+	} else {
+		fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))
+	}
 	fmt.Printf("\n%s Waiting for you to authorize on GitHub…\n", dim("→"))
 
 	// 3. Poll GitHub for the access token until the user authorizes or it expires.
@@ -258,12 +254,8 @@ func githubDeviceLoginContext(ctx context.Context, base string) string {
 	deadline := time.Now().Add(lifetime)
 	for time.Now().Before(deadline) {
 		wait := min(pollInterval, time.Until(deadline))
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			fatal("login: %v", ctx.Err())
-		case <-timer.C:
+		if err := hooks.wait(ctx, wait); err != nil {
+			return "", err
 		}
 		if !time.Now().Before(deadline) {
 			break
@@ -272,12 +264,12 @@ func githubDeviceLoginContext(ctx context.Context, base string) string {
 			AccessToken string `json:"access_token"`
 			Error       string `json:"error"`
 		}
-		if err := PostFormContext(ctx, "https://github.com/login/oauth/access_token", url.Values{
+		if err := PostFormContext(ctx, hooks.accessTokenEndpoint, url.Values{
 			"client_id":   {cfg.ClientID},
 			"device_code": {dc.DeviceCode},
 			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
 		}, &tr); err != nil {
-			fatal("login: polling GitHub for the token: %v", err)
+			return "", fmt.Errorf("polling GitHub for the token: %w", err)
 		}
 		if tr.AccessToken != "" {
 			ghToken = tr.AccessToken
@@ -291,36 +283,38 @@ func githubDeviceLoginContext(ctx context.Context, base string) string {
 			// server-controlled interval within the command's bounded policy.
 			pollInterval = min(pollInterval+5*time.Second, maximumDevicePollInterval)
 		case "access_denied":
-			fatal("login: authorization was denied on GitHub")
+			return "", errors.New("authorization was denied on GitHub")
 		case "expired_token":
-			fatal("login: the code expired before you authorized it — run `wago auth login --code` again")
+			return "", errors.New("the code expired before you authorized it — run `wago auth login --code` again")
 		default:
-			fatal("login: GitHub: %s", tr.Error)
+			return "", errors.New("GitHub returned an unknown device authorization error")
 		}
 	}
 	if ghToken == "" {
-		fatal("login: timed out waiting for GitHub authorization")
+		return "", errors.New("timed out waiting for GitHub authorization")
 	}
 
 	// 4. Exchange the GitHub token for a wago API token.
-	status, data, err = apiRequestContext(ctx, http.MethodPost, "/api/auth/github/exchange", "",
+	status, data, err = apiRequestAtBaseContext(ctx, base, http.MethodPost, "/api/auth/github/exchange", "",
 		map[string]string{"access_token": ghToken})
 	if err != nil {
-		fatal("login: exchanging GitHub token: %v", err)
+		return "", fmt.Errorf("exchanging GitHub token: %w", err)
 	}
 	if status != http.StatusOK {
-		fatal("login: exchanging GitHub token: %s", apiError(status, data))
+		// The exchange endpoint has received the GitHub access token. Do not include
+		// its response body in an error in case a faulty registry reflects secrets.
+		return "", fmt.Errorf("exchanging GitHub token: registry returned status %d", status)
 	}
 	var xr struct {
 		Token string `json:"token"`
 	}
 	if err := json.Unmarshal(data, &xr); err != nil {
-		fatal("login: parsing exchange response: %v", err)
+		return "", fmt.Errorf("parsing exchange response: %w", err)
 	}
 	if xr.Token == "" {
-		fatal("login: registry returned no token after the GitHub exchange")
+		return "", errors.New("registry returned no token after the GitHub exchange")
 	}
-	return xr.Token
+	return xr.Token, nil
 }
 
 // registryLogout deletes stored credentials for the current registry.

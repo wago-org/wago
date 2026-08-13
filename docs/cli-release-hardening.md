@@ -28,6 +28,15 @@ releases, and requires the selected release to expose a canonical 40-hex commit
 target. OAuth device-flow lifetimes and server-provided polling intervals are
 also capped.
 
+Browser and headless registry login both use GitHub's one-time device
+authorization. Browser mode opens only GitHub's verification URL after printing
+the short-lived user code; headless mode leaves that URL for the user to open
+elsewhere. The GitHub access token is sent to the registry in a bounded POST
+body, and the long-lived Wago bearer token is accepted only from that exchange's
+bounded response body. Both registry requests remain pinned to the origin chosen
+at login start. Wago does not run a loopback callback server or place either
+credential in a browser-visible URL.
+
 ## Release downloads
 
 Canary and nightly binaries now stamp `canary@<full-sha>` or

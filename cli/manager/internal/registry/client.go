@@ -43,6 +43,10 @@ func apiRequest(method, path, token string, body any) (int, []byte, error) {
 }
 
 func apiRequestContext(ctx context.Context, method, path, token string, body any) (int, []byte, error) {
+	return apiRequestAtBaseContext(ctx, registryBase(), method, path, token, body)
+}
+
+func apiRequestAtBaseContext(ctx context.Context, base, method, path, token string, body any) (int, []byte, error) {
 	if err := automation.RequireOnline("registry request"); err != nil {
 		return 0, nil, err
 	}
@@ -54,7 +58,7 @@ func apiRequestContext(ctx context.Context, method, path, token string, body any
 		}
 		reader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, registryBase()+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, base+path, reader)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -130,7 +134,7 @@ func fetchMeContext(ctx context.Context, token string) (meResponse, error) {
 }
 
 // registryLogin obtains an API token and stores it for the current registry.
-// Interactively it asks whether to log in with a browser link (loopback flow) or
-// a one-time code (device flow, for headless/remote machines); --link and --code
-// pick one without prompting. --token <t> uses a token directly and --with-token
-// reads one from stdin (for CI).
+// Interactively it asks whether to open the device-authorization link in a
+// browser or leave it for a headless/remote browser; --link and --code pick one
+// without prompting. --token <t> uses a token directly and --with-token reads
+// one from stdin (for CI).

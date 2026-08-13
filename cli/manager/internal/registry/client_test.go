@@ -192,7 +192,7 @@ func TestLoginMethodPickerDefaultsToLinkAndAcceptsRightArrow(t *testing.T) {
 	frame := p.Frame()
 	for _, want := range []string{
 		"Choose login method",
-		"Link", "Open a browser link on this machine",
+		"Link", "Open one-time authorization in a browser",
 		"Code", "Use a one-time code on another device",
 		"◉", "○", "enter/→ select", "esc cancel",
 	} {

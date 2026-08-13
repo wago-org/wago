@@ -33,10 +33,6 @@ func TestDeviceFlowTimingIsBounded(t *testing.T) {
 }
 
 func TestOAuthHelpers(t *testing.T) {
-	state, err := RandomState()
-	if err != nil || len(state) != 32 {
-		t.Fatalf("RandomState = %q, %v", state, err)
-	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
@@ -57,8 +53,5 @@ func TestOAuthHelpers(t *testing.T) {
 	defer oversized.Close()
 	if err := PostForm(oversized.URL, url.Values{}, &reply); !errors.Is(err, httpclient.ErrBodyTooLarge) {
 		t.Fatalf("oversized OAuth response = %v", err)
-	}
-	if !strings.Contains(SuccessHTML, "logged in") {
-		t.Fatal("login success HTML missing confirmation")
 	}
 }
