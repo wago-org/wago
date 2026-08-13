@@ -52,9 +52,10 @@ success/error responses fail closed, duplicate authentication JSON members are
 rejected before decoding, and credential stores must be regular files containing
 unambiguous JSON entries. Catalog source checksums, versions, and digests are
 validated before use; invalid remote metadata is not copied into terminal errors.
-Catalog pages are preflighted before
-materializing release structs, so the 256-release page bound also bounds retained
-decode memory. Duplicate catalog struct fields fail closed while case-sensitive
+Catalog pages are preflighted before materializing release structs, and each
+requested plugin is limited to 1,024 candidates across at most four 256-release
+pages. These bounds limit both per-response decode memory and cumulative retained
+catalog metadata. Duplicate catalog struct fields fail closed while case-sensitive
 property names inside embedded configuration JSON Schema remain distinct.
 
 ## Release downloads

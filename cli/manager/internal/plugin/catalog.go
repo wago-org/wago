@@ -60,6 +60,11 @@ func (client defaultCatalogHTTPClient) Do(request *http.Request) (*http.Response
 
 var registryCatalogHTTP = defaultCatalogHTTPClient{client: httpclient.NewAPI()}
 
+const (
+	catalogPageLimit     = 256
+	maxCatalogCandidates = 1024
+)
+
 func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraints []string) ([]CatalogRelease, error) {
 	if err := automation.RequireOnline("plugin catalog resolution"); err != nil {
 		return nil, err
@@ -74,7 +79,6 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 	if err != nil {
 		return nil, err
 	}
-	const pageLimit = 256
 	constraints = sortedUnique(constraints)
 	var releases []CatalogRelease
 	seenReleases := map[string]bool{}
@@ -83,7 +87,7 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		endpoint := *baseEndpoint
 		query := endpoint.Query()
 		query.Set("id", id)
-		query.Set("limit", fmt.Sprint(pageLimit))
+		query.Set("limit", fmt.Sprint(catalogPageLimit))
 		query.Set("offset", fmt.Sprint(offset))
 		for _, constraint := range constraints {
 			query.Add("range", constraint)
@@ -111,7 +115,7 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		if response.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("resolve %s: %s", id, registry.ResponseError(response.StatusCode, data))
 		}
-		if err := preflightCatalogPage(data, pageLimit); err != nil {
+		if err := preflightCatalogPage(data, catalogPageLimit); err != nil {
 			return nil, fmt.Errorf("resolve %s: catalog returned invalid metadata", id)
 		}
 		// configSchema is arbitrary JSON whose property names are case-sensitive;
@@ -128,7 +132,7 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		if err := requireJSONEOF(decoder); err != nil {
 			return nil, fmt.Errorf("resolve %s: catalog returned invalid metadata", id)
 		}
-		if envelope.Total <= 0 || envelope.Offset != offset || envelope.Limit != pageLimit || len(envelope.Plugins) == 0 || len(envelope.Plugins) > pageLimit {
+		if envelope.Total <= 0 || envelope.Offset != offset || envelope.Limit != catalogPageLimit || len(envelope.Plugins) == 0 || len(envelope.Plugins) > catalogPageLimit {
 			return nil, fmt.Errorf("resolve %s: catalog returned invalid page offset=%d limit=%d count=%d total=%d", id, envelope.Offset, envelope.Limit, len(envelope.Plugins), envelope.Total)
 		}
 		if wantTotal < 0 {
@@ -136,8 +140,8 @@ func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraint
 		} else if envelope.Total != wantTotal {
 			return nil, fmt.Errorf("resolve %s: catalog total changed during pagination (%d to %d)", id, wantTotal, envelope.Total)
 		}
-		if envelope.Total > maxResolverSteps {
-			return nil, fmt.Errorf("resolve %s: catalog exposes %d candidates, exceeding resolver bound %d", id, envelope.Total, maxResolverSteps)
+		if envelope.Total > maxCatalogCandidates {
+			return nil, fmt.Errorf("resolve %s: catalog exposes %d candidates, exceeding catalog bound %d", id, envelope.Total, maxCatalogCandidates)
 		}
 		for _, release := range envelope.Plugins {
 			if err := validateCatalogRelease(id, constraints, release); err != nil {

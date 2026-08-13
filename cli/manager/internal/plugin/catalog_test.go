@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -591,6 +592,31 @@ func TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(t *testing.T) {
 	}
 }
 
+func TestHTTPCatalogRejectsExcessiveTotalBeforePagination(t *testing.T) {
+	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"plugins":    []CatalogRelease{release},
+			"total":      maxCatalogCandidates + 1,
+			"offset":     0,
+			"limit":      catalogPageLimit,
+			"nextOffset": 1,
+		})
+	}))
+	defer server.Close()
+
+	_, err := (HTTPCatalog{BaseURL: server.URL, Client: server.Client()}).Candidates(
+		context.Background(), release.ID, []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "exceeding catalog bound 1024") {
+		t.Fatalf("excessive catalog total = %v", err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("catalog requests = %d, want 1", got)
+	}
+}
+
 func TestHTTPCatalogPreservesCaseSensitiveConfigSchemaProperties(t *testing.T) {
 	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
 	release.Definition.ConfigSchema = json.RawMessage(`{
@@ -645,7 +671,6 @@ func TestCatalogPreflightRejectsOversizedPageBeforeMaterialization(t *testing.T)
 func BenchmarkCatalogPreflightOversizedPage(b *testing.B) {
 	data := oversizedCatalogPage(100_000)
 	b.ReportAllocs()
-	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for range b.N {
 		if err := preflightCatalogPage(data, 256); err == nil {
