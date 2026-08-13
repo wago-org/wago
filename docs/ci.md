@@ -57,6 +57,9 @@ reproducible `-trimpath -buildvcs=false` outputs. The TinyGo profile additionall
 uses the same Linux section stripping as release assets. Budgets describe the
 current products rather than conflating them with the future artifact-only
 loader; update a ceiling only with a measured release-profile rationale.
+Darwin TinyGo release assets run Apple `strip -x` before checksums are written,
+removing TinyGo's retained local Mach-O symbol and string tables while preserving
+the external symbols and valid ad-hoc signature required to execute the binary.
 TinyGo mirrors the native matrix: Linux/amd64 and
 Linux/arm64 build, test, and smoke-run the CLI; Darwin/arm64 runs the runtime and
 public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
