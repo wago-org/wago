@@ -164,6 +164,49 @@ func (l preparedInvocationLease) unlock() {
 	l.state.invokeMu.Unlock()
 }
 
+// Invoke0 calls a prepared export with no argument slots. Unlike the variadic
+// Invoke, fixed-arity calls do not require TinyGo to allocate an argument slice.
+func (fn *PreparedFunction) Invoke0() ([]uint64, error) {
+	return fn.invokeFixed(0, 0, 0, 0, 0)
+}
+
+// Invoke1 calls a prepared export with one argument slot.
+func (fn *PreparedFunction) Invoke1(a0 uint64) ([]uint64, error) {
+	return fn.invokeFixed(1, a0, 0, 0, 0)
+}
+
+// Invoke2 calls a prepared export with two argument slots.
+func (fn *PreparedFunction) Invoke2(a0, a1 uint64) ([]uint64, error) {
+	return fn.invokeFixed(2, a0, a1, 0, 0)
+}
+
+// Invoke3 calls a prepared export with three argument slots.
+func (fn *PreparedFunction) Invoke3(a0, a1, a2 uint64) ([]uint64, error) {
+	return fn.invokeFixed(3, a0, a1, a2, 0)
+}
+
+// Invoke4 calls a prepared export with four argument slots.
+func (fn *PreparedFunction) Invoke4(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	return fn.invokeFixed(4, a0, a1, a2, a3)
+}
+
+func (fn *PreparedFunction) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint64, error) {
+	if fn == nil || fn.in == nil {
+		return nil, fmt.Errorf("wago: invoke closed prepared function")
+	}
+	if count != fn.paramSlots {
+		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
+	}
+	if fn.directIntFast {
+		return fn.invokeDirectIntFixed(a0, a1, a2, a3)
+	}
+	args := [4]uint64{a0, a1, a2, a3}
+	if fn.scalarFast {
+		return fn.invokeScalar(args[:count])
+	}
+	return fn.invokeGeneral(args[:count])
+}
+
 func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 	if fn == nil || fn.in == nil {
 		return nil, fmt.Errorf("wago: invoke closed prepared function")
