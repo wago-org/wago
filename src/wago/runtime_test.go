@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -72,6 +73,107 @@ func TestRuntimeUseAndInvoke(t *testing.T) {
 	}
 	if AsI32(res[0]) != 21 {
 		t.Fatalf("g(7) = %d, want 21", AsI32(res[0]))
+	}
+}
+
+func TestRuntimeInstantiateRetainsOnlyEffectiveImports(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.imports["env.f"] = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })
+	for i := 0; i < 256; i++ {
+		rt.imports["unused."+strconv.Itoa(i)] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	}
+
+	mod := callsEnvF(t, rt)
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+
+	imports := in.Imports()
+	if len(imports) != 1 || imports["env.f"] == nil {
+		t.Fatalf("Imports = %#v, want only env.f", imports)
+	}
+	imports["env.f"] = "caller mutation"
+	if got := in.Imports()["env.f"]; got == "caller mutation" {
+		t.Fatal("Imports exposed the instance's internal binding map")
+	}
+
+	result, err := in.Invoke("g", I32(7))
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if got := AsI32(result[0]); got != 21 {
+		t.Fatalf("g(7) = %d, want 21", got)
+	}
+}
+
+func TestRuntimeInstantiateRetainsExplicitUnusedOverrides(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.imports["env.f"] = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })
+	rt.imports["unused.runtime"] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	mod := callsEnvF(t, rt)
+
+	marker := new(int)
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
+		"env.f":           HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) + 1) }),
+		"unused.explicit": marker,
+	}))
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+
+	imports := in.Imports()
+	if len(imports) != 2 || imports["unused.explicit"] != marker {
+		t.Fatalf("Imports = %#v, want effective env.f and explicit unused override", imports)
+	}
+	if _, ok := imports["unused.runtime"]; ok {
+		t.Fatal("Imports retained an unrelated runtime binding")
+	}
+	result, err := in.Invoke("g", I32(7))
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if got := AsI32(result[0]); got != 8 {
+		t.Fatalf("g(7) = %d, want override result 8", got)
+	}
+}
+
+func TestResolveInstanceImportsDoesNotAllocateForUnrelatedNamespace(t *testing.T) {
+	rt := NewRuntime()
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	for i := 0; i < 10_000; i++ {
+		rt.imports["unused."+strconv.Itoa(i)] = fn
+	}
+
+	allocs := testing.AllocsPerRun(100, func() {
+		imports, err := rt.resolveInstanceImports(nil, nil)
+		if err != nil || imports != nil {
+			t.Fatalf("resolveInstanceImports = %#v, %v, want nil, nil", imports, err)
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("resolveInstanceImports allocations = %v, want 0", allocs)
+	}
+}
+
+func TestRuntimeReservedUnusedOverrideRejected(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.imports["wago_timer.now"] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	mod, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	defer mod.Close()
+
+	if _, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
+		"wago_timer.now": HostFunc(func(HostModule, []uint64, []uint64) {}),
+	})); err == nil {
+		t.Fatal("unused reserved-module override was accepted")
 	}
 }
 

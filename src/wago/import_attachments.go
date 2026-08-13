@@ -515,7 +515,16 @@ func (in *Instance) tableDescriptor(index int) []byte {
 	return unsafe.Slice((*byte)(offHeapPtr(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
 }
 
-// Imports returns the imports map this instance was created with, for retrieving
-// imported objects (e.g. a *Memory or *Global) by "module.name" key. The map is
-// the one passed to Instantiate; do not mutate it.
-func (in *Instance) Imports() Imports { return in.imports }
+// Imports returns a caller-owned snapshot of the imports this instance was
+// created with, for retrieving imported objects (e.g. a *Memory or *Global) by
+// "module.name" key. Mutating the map does not affect the instance.
+func (in *Instance) Imports() Imports {
+	if in.imports == nil {
+		return nil
+	}
+	imports := make(Imports, len(in.imports))
+	for key, value := range in.imports {
+		imports[key] = value
+	}
+	return imports
+}
