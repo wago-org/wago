@@ -14,9 +14,10 @@ limits instead of the process default client:
 - dial, TLS-handshake, response-header, idle-connection, and
   `Expect: 100-continue` waits have independent transport timeouts.
 
-A parent command cancellation is propagated to active manager requests and to
-Git/TinyGo/Go subprocesses used by source-build fallback. In-memory bodies are
-explicitly bounded: registry and GitHub release JSON use a 4 MiB limit, OAuth
+A parent command cancellation is propagated to active manager requests,
+installer downloads, and Git/TinyGo/Go subprocesses used by source-build
+fallback. In-memory bodies are explicitly bounded: registry and GitHub release
+JSON use a 4 MiB limit, OAuth
 responses use 1 MiB, release checksums use 4 KiB, and non-success response
 capture uses an independent 64 KiB limit. Declared oversized bodies are rejected
 before reading; chunked or dishonest responses are stopped after the configured
@@ -45,6 +46,56 @@ file while SHA-256 and progress are updated. Executables are limited to 512 MiB,
 which leaves substantial headroom over current stripped Wago binaries without
 allowing an endpoint to consume unbounded disk or memory. Source archives use a
 separate 256 MiB streaming limit.
+
+Downloaded source ZIPs are preflighted completely before filesystem mutation.
+Extraction permits one top-level directory and strict regular files/directories
+only. It rejects traversal, duplicate and case-colliding paths,
+file/directory conflicts, non-portable names, encrypted entries, mixed or special
+file modes, unsupported ZIP versions, compression, or general-purpose flags,
+mismatched local headers or data descriptors, ZIP64 metadata, and local-record
+gaps, overlaps, prefixes, or data ranges that reach the central directory, and
+archives beyond 20,000 entries, 16,000 files,
+4,000 unique directories, 16 MiB of central-directory metadata, 64 relative path
+components, 255 bytes per component, 1,024 path bytes, 128 MiB per file, or 512
+MiB expanded content. Directories must have trailing slashes and zero declared
+content. Stored files must have equal compressed and uncompressed sizes. The
+stripped archive root must contain an exactly spelled regular `go.mod` file.
+GitHub zipballs currently label ordinary directory and Deflate entries as ZIP
+version 1.0, so supported Store/Deflate entries retain that compatibility while
+versions above 2.0 and their unsupported features remain rejected independently.
+
+Path components are restricted to portable printable ASCII, including rejection
+of Windows DOS device aliases such as `CON`, `CONIN$`, and `CONOUT$`, even when
+spaces precede an extension. A single byte scan validates each path, each complete
+relative path is canonicalized at most once,
+and parent nodes are derived by slicing at slash offsets. The preflight therefore
+scales linearly with accepted path metadata rather than repeatedly allocating
+and joining every parent prefix. On Go 1.26.5/linux-amd64 on a Ryzen 7 7800X3D,
+the 16,000-file, 63-shared-directory production-shaped benchmark improved from
+1.103 seconds, 1,078,897,384 bytes, and 2,048,079 allocations per operation to
+150 milliseconds, 20,184,512 bytes, and 64,200 allocations per operation after
+strict central/local metadata agreement, exact local-record coverage, and
+data-descriptor preflight.
+
+The fixed-memory central-directory scanner and Go ZIP reader share one opened
+regular-file descriptor, preventing pathname replacement between validation and
+extraction. The descriptor is closed before publication. Decompressed bytes are
+counted against the declared and aggregate limits instead of trusting ZIP
+metadata. Extraction occurs in a private sibling staging directory, observes
+manager and installer command cancellation, and publishes the complete tree with
+an atomic no-replace rename. Every failure attempts to remove the staging tree,
+and cleanup or close failures are surfaced rather than discarded. ZIP entry and
+metadata limits remain checked before Go's ZIP reader allocates per-entry objects.
+
+The August 2026 limit check used 3,521 tracked files, 441 unique directories,
+467,141 central-directory bytes, 52,815,053 total bytes, a 16,243,226-byte
+largest file, 100 path bytes, and eight path components on `main`; each
+extraction ceiling therefore retains substantial headroom over the source tree
+it protects.
+
+The platform no-replace helpers remain no-cgo. On linux/amd64, the stripped,
+trimmed standard manager measured 9,052,322 bytes before these follow-up guards
+and 9,064,610 bytes after them, a 12,288-byte increase.
 
 The destination is published only after the complete stream has the expected
 length and digest, the executable mode is set, the file is synced, and it is

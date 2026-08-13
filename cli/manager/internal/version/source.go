@@ -228,7 +228,7 @@ func checkoutWagoSourceArchiveContext(ctx context.Context, ref, temp, source str
 	if err := downloadSourceArchiveContext(ctx, sourceArchiveURL(ref), archive); err != nil {
 		return err
 	}
-	return sourcearchive.Extract(archive, source)
+	return sourcearchive.ExtractContext(ctx, archive, source)
 }
 
 func downloadSourceArchiveContext(ctx context.Context, address, target string) error {
