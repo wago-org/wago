@@ -86,9 +86,14 @@ func Format(export string, args, results []uint64, paramTypes, resultTypes []wag
 	if len(results) == 0 {
 		return call + " = ()"
 	}
+	return fmt.Sprintf("%s = %s", call, FormatResults(results, resultTypes))
+}
+
+// FormatResults renders raw function results without a call-expression prefix.
+func FormatResults(results []uint64, resultTypes []wago.ValType) string {
 	formatted := make([]string, len(results))
 	for index, value := range results {
 		formatted[index] = FormatValue(value, resultTypes[index])
 	}
-	return fmt.Sprintf("%s = %s", call, strings.Join(formatted, ", "))
+	return strings.Join(formatted, ", ")
 }

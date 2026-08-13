@@ -53,24 +53,16 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 	if err != nil {
 		return err
 	}
-	invoke := options.Invoke
-	explicitInvoke := invoke != ""
-	if !explicitInvoke {
-		invoke = "_start"
-	}
-	if invoke == "_start" {
-		if _, ok := module.Compiled().Exports[invoke]; !ok {
-			return errors.New("module does not export _start")
-		}
-	} else if _, ok := module.Compiled().Exports[invoke]; !ok {
-		return fmt.Errorf("no exported function %q", invoke)
+	invoke, err := wasmcall.ResolveExport(module.Compiled(), options.Invoke)
+	if err != nil {
+		return err
 	}
 	params, results, err := module.Compiled().Signature(invoke)
 	if err != nil {
 		return err
 	}
 	values := []uint64(nil)
-	if explicitInvoke {
+	if invoke != "_start" {
 		callArgs := args
 		if len(callArgs) != 0 {
 			callArgs = callArgs[1:]
@@ -89,8 +81,8 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 	if err != nil {
 		return err
 	}
-	if explicitInvoke {
-		fmt.Println(wasmcall.Format(invoke, values, result, params, results))
+	if invoke != "_start" && len(result) != 0 {
+		fmt.Println(wasmcall.FormatResults(result, results))
 	}
 	return nil
 }
