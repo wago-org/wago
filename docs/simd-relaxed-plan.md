@@ -35,11 +35,13 @@ Keep `src/core/encoder/amd64` as an x86-64 instruction encoder only:
 
 ## CPU baseline policy
 
-The linux/amd64 backend's practical baseline is modern x86-64 with SSSE3/SSE4.1
-plus AVX/VEX.128 XMM encodings. This resolves the previous conflict where the docs
-said SSE4.1 while scalar float lowering already emitted VEX/AVX forms
-unconditionally. SIMD encoder helpers may therefore use VEX.128 for
-non-destructive XMM operations without adding per-instruction CPUID gates. SSE4.1-era support assumes the required earlier SIMD extensions, including SSSE3 operations such as `pshufb`, packed abs, horizontal add, and `pmulhrsw`-style helpers.
+The linux/amd64 backend's practical baseline is modern x86-64 with
+SSSE3/SSE4.1/SSE4.2 plus AVX/VEX.128 XMM encodings. This resolves the previous
+conflict where the docs said SSE4.1 while scalar float lowering already emitted
+VEX/AVX forms unconditionally. SIMD encoder helpers may therefore use VEX.128
+for non-destructive XMM operations without adding per-instruction CPUID gates.
+The baseline includes SSSE3 operations such as `pshufb`, packed abs, horizontal
+add, and `pmulhrsw`-style helpers plus SSE4.2 `pcmpgtq`.
 
 Do not silently require AVX2, FMA, VNNI, or wider YMM/ZMM vector forms for core or
 relaxed SIMD. Use those only after an explicit baseline update or a documented
@@ -50,16 +52,16 @@ feature-gated fast path with conservative fallback lowering.
 - Encoder: VEX.128 XMM register/memory helpers, movemask helpers, packed integer
   abs/multiply/signed-and-unsigned-minmax helpers, packed float min/max and
   float-to-dword truncation helpers, packed round helpers, scalar f32/f64
-  conversion helpers, and SSE/SSE4.1 lane shuffle/insert/extract helpers have
+  conversion helpers, and SSSE3/SSE4.1/SSE4.2 lane helpers have
   golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
   spills, function results, control-flow frame slots/branches, memory traffic,
   and the complete decoded core+relaxed SIMD instruction opcode table through
   `0xfd 275`. `TestSIMDFrontendAdmittedShapesCompile` compiles a valid stack
   shape for every validator-admitted SIMD opcode and catches missing railshot
-  lowerings. `i64x2.shr_s` and signed ordered `i64x2` comparisons use
-  baseline-safe scalarized qword-lane sequences with count masking for shifts
-  instead of relying on SSE4.2/AVX2.
+  lowerings. `i64x2.shr_s` uses a baseline-safe scalarized qword-lane sequence
+  with count masking; signed ordered `i64x2` comparisons and abs use baseline
+  SSE4.2 `pcmpgtq`.
 - Frontend/config: `0xfd` is no longer blanket-rejected. The public
   `CoreFeatureSIMD` flag enables the implemented SIMD opcode set by default;
   disabling it rejects `0xfd` with `simd disabled`. `TestDecodedSIMDOpcodeCoverage`
@@ -93,21 +95,20 @@ feature-gated fast path with conservative fallback lowering.
    - f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div and comparisons (landed;
      focused tests include signed-zero unary lanes, non-NaN arithmetic lanes, plus
      NaN comparison masks);
-   - f32x4/f64x2 packed min/max/pmin/pmax (landed; min/max scalarize through the
-     shared Wasm-correct scalar lane sequence for NaN and signed-zero behavior,
-     while pmin/pmax use swapped native packed min/max so the first operand wins
-     equal and NaN-second lanes);
+   - f32x4/f64x2 packed min/max/pmin/pmax (landed; min/max use a branchless
+     packed Wasm-correct sequence for NaN and signed-zero behavior, while
+     pmin/pmax use swapped native packed min/max so the first operand wins equal
+     and NaN-second lanes);
    - f32x4/f64x2 packed ceil/floor/trunc/nearest (landed with SSE4.1
      VROUNDPS/VROUNDPD under the existing VEX.128 baseline; focused tests cover
      negative fractions, signed zero, nearest-even ties, and NaN predicates);
    - `v128.any_true` and all_true/bitmask for i8x16/i16x8/i32x4/i64x2 (landed);
-   - packed float/int conversions opcodes 248-255 (landed; trunc_sat forms reuse
-     scalar saturating lane helpers, f64x2-zero forms clear high lanes, and
-     signed/unsigned integer-to-float conversions scalarize per lane before any
-     packed fast path);
+   - packed float/int conversions opcodes 248-255 (landed with branchless packed
+     truncation/saturation plus exact signed and unsigned integer-to-float
+     sequences; f64x2-zero forms clear the high lanes);
    - `f32x4.demote_f64x2_zero` and `f64x2.promote_low_f32x4` opcodes 94-95
-     (landed; scalarized per low lane through CVTSD2SS/CVTSS2SD, with demote
-     high f32 lanes zeroed and promote high f32 lanes ignored);
+     (landed as VCVTPD2PS/VCVTPS2PD, with demote high f32 lanes zeroed and
+     promote high f32 lanes ignored);
    - no i8x16.mul tranche exists in the core SIMD spec: opcode 117 is f64x2.floor
      in the current decoder table, and byte-lane arithmetic jumps from sub_sat_u
      to min/max/avgr_u;
@@ -137,11 +138,9 @@ Initial relaxed SIMD lowerings should be deterministic and easy to audit:
 - `f32x4/f64x2.relaxed_madd/nmadd`: use deterministic packed `mul + add` for
   madd and `c - (a * b)` for nmadd, without FMA (landed). Add FMA only behind an
   explicit baseline decision or feature gate.
-- relaxed truncations: use a conservative saturating policy (landed) by extracting
-  lanes and reusing scalar saturating truncation helpers: NaN and negative
-  unsigned lanes become zero, overflows clamp, and f64x2-zero forms clear high
-  lanes. Native packed conversion helpers remain available for future fast paths
-  only after every relaxed result case is proven acceptable.
+- relaxed truncations: use the conservative saturating packed lowerings (landed):
+  NaN and negative unsigned lanes become zero, overflows clamp, and f64x2-zero
+  forms clear high lanes.
 - `i16x8.relaxed_q15mulr_s`: use `pmulhrsw` under the documented baseline (landed; min*min keeps raw PMULHRSW `-32768`, unlike core q15mulr_sat_s).
 - relaxed dot products: use a deterministic signed interpretation for both byte
   operands, signed saturating i16 pair sums, and wrapping i32 addend accumulation

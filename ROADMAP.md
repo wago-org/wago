@@ -3,7 +3,7 @@
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
 of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
 on amd64 and arm64 are supported. The amd64 backend uses a modern CPU baseline
-of SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
+of SSSE3/SSE4.1/SSE4.2 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
 outside the baseline and require explicit feature gates. This file tracks what
 works and what's next at a glance.
 
@@ -310,7 +310,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
 
 ## Bigger bets
 
-- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
+- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1/SSE4.2 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [x] [Threads & atomics](docs/threads-atomics-plan.md) — bounded experimental
   product on Linux/macOS amd64/arm64 with explicit bounds, one exact-max imported
   shared memory32, true distinct-instance native overlap, the full classic atomic
@@ -351,7 +351,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
 
 ## Non-goals (for now)
 
-- An interpreter tier (wago is single-pass JIT only)
+- An interpreter tier (supported modules execute as native code)
 - **An SSA / IR execution tier** — decided against 2026-07-03; railshot is the one and
   only backend, and the ceiling is attacked incrementally instead
   (see [docs/no-ir-plan.md](docs/no-ir-plan.md) §0)
