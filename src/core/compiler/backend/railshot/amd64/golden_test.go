@@ -151,9 +151,12 @@ func TestGoldenTruncSatF64x2UsesPackedLowering(t *testing.T) {
 				}
 			}
 			// Constants may be materialized with PINSRQ before the actual lowering.
-			// PEXTR would prove that input lanes were scalarized.
-			if strings.Contains(d, "pextr") {
-				t.Fatalf("packed trunc_sat lowering extracts input lanes:\n%s", d)
+			// PEXTR, calls, or jumps would prove the input was scalarized or that the
+			// supposedly branchless lowering gained an out-of-line/conditional path.
+			for _, forbidden := range []string{"pextr", "\tcall", "\tj"} {
+				if strings.Contains(d, forbidden) {
+					t.Fatalf("packed trunc_sat lowering contains %q:\n%s", forbidden, d)
+				}
 			}
 		})
 	}

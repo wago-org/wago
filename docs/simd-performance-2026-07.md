@@ -11,7 +11,7 @@ Host:
 
 All benchmark rows below are from one local run with Go's default benchmark
 harness. SIMD microbenchmarks are intended to catch slow scalarized paths in the
-current linux/amd64 baseline (SSSE3/SSE4.1 + AVX/VEX.128, no AVX2/FMA/VNNI).
+current linux/amd64 baseline (SSSE3/SSE4.1/SSE4.2 + AVX/VEX.128, no AVX2/FMA/VNNI).
 
 ## SIMD microbenchmarks
 
