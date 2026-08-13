@@ -118,6 +118,10 @@ func validateRegistryBaseURL(base string) error {
 	}
 }
 
+// ValidateBaseURL applies the registry transport policy to consumers that use
+// the configured registry outside the JSON API helper, such as catalog lookup.
+func ValidateBaseURL(base string) error { return validateRegistryBaseURL(base) }
+
 func isLoopbackHost(host string) bool {
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
@@ -138,19 +142,11 @@ func recordRegistryInstallContext(parent context.Context, module, version string
 	if automation.Offline() {
 		return
 	}
-	body, err := json.Marshal(map[string]string{"version": version})
-	if err != nil {
-		return
-	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	path := "/api/packages/" + url.PathEscape(module) + "/installs"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, registryBase()+path, bytes.NewReader(body))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	_, _ = registryHTTP.Bytes(ctx, req, 4<<10)
+	_, _, _ = apiRequestAtBaseLimitContext(ctx, registryBase(), http.MethodPost, path, "",
+		map[string]string{"version": version}, 4<<10)
 }
 
 // apiError extracts the {"error":...} message from a response body, falling back

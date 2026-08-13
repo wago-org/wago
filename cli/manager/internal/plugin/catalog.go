@@ -14,6 +14,8 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/manager/internal/registry"
+	"github.com/wago-org/wago/internal/httpclient"
 	"github.com/wago-org/wago/src/core/semver"
 	corewago "github.com/wago-org/wago/src/wago"
 )
@@ -42,12 +44,23 @@ type HTTPCatalog struct {
 	Client  HTTPDoer
 }
 
+type defaultCatalogHTTPClient struct{ client *httpclient.Client }
+
+func (client defaultCatalogHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	return client.client.Open(request.Context(), request)
+}
+
+var registryCatalogHTTP = defaultCatalogHTTPClient{client: httpclient.NewAPI()}
+
 func (catalog HTTPCatalog) Candidates(ctx context.Context, id string, constraints []string) ([]CatalogRelease, error) {
 	if err := automation.RequireOnline("plugin catalog resolution"); err != nil {
 		return nil, err
 	}
+	if err := registry.ValidateBaseURL(catalog.BaseURL); err != nil {
+		return nil, err
+	}
 	if catalog.Client == nil {
-		catalog.Client = http.DefaultClient
+		catalog.Client = registryCatalogHTTP
 	}
 	baseEndpoint, err := url.Parse(strings.TrimRight(catalog.BaseURL, "/") + "/api/v1/plugins/candidates")
 	if err != nil {

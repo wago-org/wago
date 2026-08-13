@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -361,6 +362,47 @@ func TestRegistryTokenInputIsBounded(t *testing.T) {
 			t.Fatalf("accepted unsafe token input of length %d", len(input))
 		}
 	}
+}
+
+func TestRegistryTokenInputHonorsCancellation(t *testing.T) {
+	reader := &blockingTokenReader{started: make(chan struct{}), closed: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := readRegistryTokenContext(ctx, reader)
+		done <- err
+	}()
+	<-reader.started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled token input = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled token input did not return")
+	}
+	select {
+	case <-reader.closed:
+	default:
+		t.Fatal("canceled token input left its reader open")
+	}
+}
+
+type blockingTokenReader struct {
+	started chan struct{}
+	closed  chan struct{}
+}
+
+func (reader *blockingTokenReader) Read([]byte) (int, error) {
+	close(reader.started)
+	<-reader.closed
+	return 0, os.ErrClosed
+}
+
+func (reader *blockingTokenReader) Close() error {
+	close(reader.closed)
+	return nil
 }
 
 func TestDeviceVerificationURLIsPinnedToProvider(t *testing.T) {

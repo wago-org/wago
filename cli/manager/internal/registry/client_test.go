@@ -298,6 +298,28 @@ func TestRecordRegistryInstall(t *testing.T) {
 	}
 }
 
+func TestRecordRegistryInstallRejectsRemotePlaintextBeforeDial(t *testing.T) {
+	oldClient := registryHTTP
+	var requests atomic.Int32
+	registryHTTP = httpclient.New(httpclient.Config{HTTPClient: &http.Client{Transport: registryRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return nil, errors.New("unexpected request")
+	})}})
+	t.Cleanup(func() { registryHTTP = oldClient })
+	t.Setenv("WAGO_REGISTRY", "http://192.0.2.1")
+
+	recordRegistryInstall("github.com/acme/plugin", "v1.2.3")
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("remote plaintext install metric made %d requests", got)
+	}
+}
+
+type registryRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function registryRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
+}
+
 // ioReadAll makes the handler's read error irrelevant to the request assertions.
 func ioReadAll(r *http.Request) ([]byte, error) { return io.ReadAll(r.Body) }
 

@@ -32,7 +32,7 @@ func registryLoginContext(ctx context.Context, options LoginRequest) {
 		// use the provided token directly
 	case withToken:
 		var err error
-		token, err = readRegistryToken(os.Stdin)
+		token, err = readRegistryTokenContext(ctx, os.Stdin)
 		if err != nil {
 			fatal("login: reading token from stdin: %v", err)
 		}
@@ -79,6 +79,30 @@ func readRegistryToken(reader io.Reader) (string, error) {
 		return "", err
 	}
 	return token, nil
+}
+
+func readRegistryTokenContext(ctx context.Context, reader io.ReadCloser) (string, error) {
+	if ctx == nil {
+		return "", errors.New("nil registry token context")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	type result struct {
+		token string
+		err   error
+	}
+	resultChannel := make(chan result, 1)
+	go func() {
+		token, err := readRegistryToken(reader)
+		resultChannel <- result{token: token, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return "", errors.Join(ctx.Err(), reader.Close())
+	case result := <-resultChannel:
+		return result.token, result.err
+	}
 }
 
 func validateRegistryToken(token string) error {

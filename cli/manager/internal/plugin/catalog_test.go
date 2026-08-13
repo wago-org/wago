@@ -591,6 +591,41 @@ func TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(t *testing.T) {
 	}
 }
 
+func TestHTTPCatalogRejectsRemotePlaintextBeforeRequest(t *testing.T) {
+	_, err := (HTTPCatalog{BaseURL: "http://192.0.2.1"}).Candidates(
+		context.Background(), "github.com/acme/plugin", []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "HTTPS is required") {
+		t.Fatalf("remote plaintext catalog = %v", err)
+	}
+}
+
+func TestHTTPCatalogDefaultClientRefusesRedirects(t *testing.T) {
+	redirected := make(chan struct{}, 1)
+	sink := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirected <- struct{}{}
+	}))
+	defer sink.Close()
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Location", sink.URL)
+		writer.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	defer registry.Close()
+
+	_, err := (HTTPCatalog{BaseURL: registry.URL}).Candidates(
+		context.Background(), "github.com/acme/plugin", []string{"*"})
+	if err == nil {
+		t.Fatal("redirecting catalog succeeded")
+	}
+	select {
+	case <-redirected:
+		t.Fatal("catalog client followed redirect")
+	default:
+	}
+	if !strings.Contains(err.Error(), "307") {
+		t.Fatalf("redirecting catalog error = %v", err)
+	}
+}
+
 func TestCatalogRejectsUnprefixedSourceVersion(t *testing.T) {
 	release := testCatalogRelease(t, "github.com/acme/plugin", "1.2.3")
 	release.Source.Version = "1.2.3"

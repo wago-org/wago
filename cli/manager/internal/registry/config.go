@@ -113,25 +113,18 @@ func credentialsPath() string {
 // empty map (not an error); a malformed file yields an error.
 func loadCredentials() (_ map[string]credential, resultErr error) {
 	path := credentialsPath()
-	pathInfo, err := os.Lstat(path)
+	file, err := openCredentialFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]credential{}, nil
 		}
 		return nil, err
 	}
-	if !pathInfo.Mode().IsRegular() {
-		return nil, errors.New("credential store must be a regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
 	defer func() { resultErr = errors.Join(resultErr, file.Close()) }()
 	if info, err := file.Stat(); err != nil {
 		return nil, err
-	} else if !info.Mode().IsRegular() || !os.SameFile(pathInfo, info) {
-		return nil, errors.New("credential store changed while opening it")
+	} else if !info.Mode().IsRegular() {
+		return nil, errors.New("credential store must be a regular file")
 	} else if info.Size() > maximumCredentialStoreSize {
 		return nil, fmt.Errorf("credential store exceeds %d-byte limit", maximumCredentialStoreSize)
 	}
