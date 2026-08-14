@@ -1121,3 +1121,43 @@ Focused crossover and trap-frame tests, the AMD64 encoder/backend and race
 suites, compact/fuzz execution, and the complete Size execution corpus pass.
 The broader hub checkout still lacks its pinned spec-v3 submodule and retains
 the previously recorded unrelated plugin-build fixture failure.
+
+## Implementation result: ARM64 shared cold trap bodies
+
+ARM64 now applies the same complete-body principle with its own register and
+branch model. The rollback corpus has 71,056 trap stubs/groups and 5,080,020
+trap-stub bytes, or 71.5 bytes per group. Size and Embedded functions with at
+least two groups use X17, X10, and X11 for PC, source function, and trap code,
+then branch to one complete terminal body. That body writes module globals,
+updates the trap cell, restores SP and LR, and returns to the trampoline.
+
+The common body is emitted before the group stubs, so every transfer is a
+backward `B`. A pathological out-of-range transfer fails closed by retaining a
+complete local body for that group. Speed, Balanced, one-group functions, and
+`WAGO_ARM64_NO_SHARED_TRAP_BODY=1` retain the former per-group record plus
+shared-unwind layout.
+
+Measured on the checked-in ARM64 Size corpus:
+
+```text
+rollback native bytes:  75,022,456
+candidate native bytes: 72,813,164
+net reduction:           2,209,292 (2.944%)
+shared functions:           22,883
+
+Ruby compile median:   613,217,333 -> 605,482,500 ns/op (-1.26%)
+esbuild compile median:340,689,375 -> 338,177,125 ns/op (-0.74%)
+compile allocation movement: noise-level
+
+JSON serialize median:   18,725 -> 18,311 ns/op (-2.21%)
+JSON deserialize median: 38,493 -> 37,791 ns/op (-1.82%)
+runtime allocations: zero in both configurations
+```
+
+SQLite contributes 1,490,860 bytes, Ruby 502,536, Lua 81,976, raytrace
+53,396, regexmatch 53,044, utf-as-simd 19,656, swar-pack-parse 4,168, wasm3
+2,968, and the remaining modules 624 bytes; no module grows.
+
+Focused two-arm native trap execution and crossover tests, the ARM64 backend
+and race suites, compact/fuzz and trap-frame execution, the complete Size
+execution corpus, and the full repository suite pass.
