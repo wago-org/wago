@@ -2110,6 +2110,31 @@ from 964,667,608 to 969,038,879 ns/op (+0.45%) and esbuild from 502,108,488 to
 502,350,849 ns/op (+0.05%). B/op and allocation counts remain noise-level, and
 both results are inside the compile-time gate.
 
+### AMD64 symbolic local-slot packing enabled for Size
+
+The shrink-only local-home swap is now enabled by default for Size and Embedded;
+`WAGO_LOCAL_SLOT_ORDER=0` is the rollback oracle. It remains disabled by policy
+for Speed and Balanced. The optimization is no longer cataloged as experimental:
+every rewritten reference changes monotonically from `disp32` to `disp8` or
+`disp0`, while the equal-type donor home has no emitted references and therefore
+cannot grow code.
+
+Remeasured against the final accepted compiler, the exact 36-module AMD64 Size
+suite moves from 63,912,186 to 63,910,167 native bytes (-2,019). Ruby contributes
+1,242 bytes, scalar BLAKE 378, SIMD BLAKE 258, and nbody 141; no module grows.
+Five serialized compile samples remain inside the Size gate:
+
+| Workload | Rollback median | Default median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| Ruby | 1,010,984,158 ns/op | 1,022,655,630 ns/op | +1.15% | noise-level |
+| esbuild | 549,526,232 ns/op | 550,719,768 ns/op | +0.22% | noise-level |
+
+Five one-second execution samples cover every changed executable workload.
+nbody moves from 267,370 to 265,466 ns/op (-0.71%), scalar BLAKE from 662,632
+to 663,990 ns/op (+0.20%), and SIMD BLAKE from 533,294 to 534,355 ns/op
+(+0.20%). All remain allocation-free. The native backend, race suite, default
+Size execution corpus, and exact corpus ledger pass.
+
 ## AMD64 compact 64-bit immediate materialization
 
 The encoder formerly used ten-byte `movabs r64,imm64` for every `MovImm64`

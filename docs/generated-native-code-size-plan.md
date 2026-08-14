@@ -1425,3 +1425,29 @@ The current AMD64 consumers already obtain their useful upper-zero facts from
 did not unlock another compact encoding in the corpus. The prototype and knob
 were removed. Per the Phase 0 gate, a zero-byte transform did not proceed to
 compile-time benchmarking.
+
+## Implementation result: AMD64 shrink-only local-slot packing enabled
+
+The symbolic local-home finalizer is now part of the default Size and Embedded
+policies. It swaps only equal-type homes when the compact donor has no emitted
+references and the referenced destination uses `disp32`; all recorded machine
+references therefore shrink to `disp8` or `disp0`, and no instruction can
+expand. Speed and Balanced retain declaration layout. The independent rollback
+is `WAGO_LOCAL_SLOT_ORDER=0`.
+
+On the final accepted AMD64 compiler, the exact 36-module Size corpus moves:
+
+```text
+rollback native bytes:  63,912,186
+candidate native bytes: 63,910,167
+net reduction:               2,019 (0.0032%)
+
+Ruby compile median:    1,010,984,158 -> 1,022,655,630 ns/op (+1.15%)
+esbuild compile median:   549,526,232 ->   550,719,768 ns/op (+0.22%)
+compile allocation movement: noise-level
+```
+
+Ruby contributes 1,242 bytes, scalar BLAKE 378, SIMD BLAKE 258, and nbody 141;
+no module grows. Five-sample affected-workload execution medians range from
+-0.71% to +0.20%, with zero allocations. The native AMD64 backend, race suite,
+complete Size execution corpus, and exact corpus ledger pass.
