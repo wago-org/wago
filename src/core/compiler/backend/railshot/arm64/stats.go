@@ -388,6 +388,7 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native-reservations: frame-physical=%d frame-dead=%d branch-holes=%d store-load-nops=%d\n",
 		ms.NativeSize.FrameAdjustmentBytes, ms.NativeSize.DeadFrameReservationBytes,
 		ms.NativeSize.BranchFoldHoleBytes, ms.NativeSize.StoreLoadNopBytes)
+	fmt.Fprintf(&b, "native-data: literals=%d\n", ms.NativeSize.LiteralPoolBytes)
 	if len(ms.ModuleGlobalPins) == 0 {
 		fmt.Fprintf(&b, "module-pinned globals: none (K=0)\n")
 	} else {
@@ -421,10 +422,10 @@ func (s *CodegenStats) report() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "fn#%d %q: code=%dB frame=%dB spill_hi=%d\n",
 		s.FuncIdx, name, s.CodeBytes, s.FrameBytes, s.MaxSpillSlots)
-	fmt.Fprintf(&b, "    native: adapter=%d internal-pad=%d internal=%d frame-adjust=%d dead-reserved=%d\n",
+	fmt.Fprintf(&b, "    native: adapter=%d internal-pad=%d internal=%d frame-adjust=%d dead-reserved=%d literals=%d\n",
 		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
 		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
-		s.NativeSize.DeadReservationBytes())
+		s.NativeSize.DeadReservationBytes(), s.NativeSize.LiteralPoolBytes)
 	fmt.Fprintf(&b, "    alloc: flushes=%d roots=%d deferred=%d flushBelow=%d roots=%d deferred=%d callFlush=%d localSetDeferred=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",

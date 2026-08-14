@@ -181,6 +181,7 @@ func (f *fn) emitV128ConstPool() {
 	if len(f.v128Pool) == 0 {
 		return
 	}
+	poolStart := f.a.Len()
 	var raw [16]byte
 	for _, c := range f.v128Pool {
 		off := f.a.Len()
@@ -195,6 +196,9 @@ func (f *fn) emitV128ConstPool() {
 	}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
+	if f.stats != nil {
+		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
+	}
 }
 
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {

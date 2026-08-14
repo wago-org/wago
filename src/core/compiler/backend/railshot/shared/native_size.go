@@ -18,6 +18,7 @@ type NativeFunctionSizeReport struct {
 	DeadFrameReservationBytes int `json:"dead_frame_reservation_bytes"`
 	BranchFoldHoleBytes       int `json:"branch_fold_hole_bytes"`
 	StoreLoadNopBytes         int `json:"store_load_nop_bytes"`
+	LiteralPoolBytes          int `json:"literal_pool_bytes"`
 }
 
 // DeadReservationBytes returns the exact subset of emitted function bytes that
@@ -45,6 +46,7 @@ type NativeSizeReport struct {
 	DeadFrameReservationBytes     int `json:"dead_frame_reservation_bytes"`
 	BranchFoldHoleBytes           int `json:"branch_fold_hole_bytes"`
 	StoreLoadNopBytes             int `json:"store_load_nop_bytes"`
+	LiteralPoolBytes              int `json:"literal_pool_bytes"`
 }
 
 // AccountedBytes returns the exhaustive top-level byte classes. Subset fields
@@ -72,4 +74,5 @@ func (r *NativeSizeReport) AddFunction(f NativeFunctionSizeReport) {
 	r.DeadFrameReservationBytes += f.DeadFrameReservationBytes
 	r.BranchFoldHoleBytes += f.BranchFoldHoleBytes
 	r.StoreLoadNopBytes += f.StoreLoadNopBytes
+	r.LiteralPoolBytes += f.LiteralPoolBytes
 }

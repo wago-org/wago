@@ -2,7 +2,11 @@
 
 package amd64
 
-import "testing"
+import (
+	"testing"
+
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
+)
 
 func TestConstPoolUsesFlatReusableStorageAMD64(t *testing.T) {
 	f := fn{
@@ -37,5 +41,17 @@ func TestConstPoolUsesFlatReusableStorageAMD64(t *testing.T) {
 	older := f.poolSites[latest.next-1]
 	if latest.off != 33 || older.off != 11 || older.next != 0 {
 		t.Fatalf("site chain = %#v -> %#v, want 33 -> 11", latest, older)
+	}
+}
+
+func TestConstPoolAttributesLiteralBytesAMD64(t *testing.T) {
+	f := fn{a: &encoderamd64.Asm{B: make([]byte, 4)}, stats: &CodegenStats{}}
+	f.recordConst([]byte{1, 2, 3, 4}, 0)
+	f.emitV128ConstPool()
+	if got := f.stats.NativeSize.LiteralPoolBytes; got != 4 {
+		t.Fatalf("literal bytes = %d, want 4", got)
+	}
+	if got := len(f.a.B); got != 8 {
+		t.Fatalf("code plus pool bytes = %d, want 8", got)
 	}
 }
