@@ -39,7 +39,7 @@ type adapterTailGroup struct {
 	sharedOff   int
 }
 
-func shareAdapterTailsCodeBufferAMD64(codeBuffer *coreruntime.CodeBuffer, entry, internalEntry []int, relocs [][]callReloc, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) (int, error) {
+func shareAdapterTailsCodeBufferAMD64(codeBuffer *coreruntime.CodeBuffer, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) (int, error) {
 	oldLen := len(codeBuffer.Bytes())
 	groups, infos, sharedBytes := planSharedAdapterTailsAMD64(codeBuffer.Bytes(), entry, infos)
 	if sharedBytes == 0 || !adapterTailIslandInRangeAMD64(oldLen, sharedBytes) {
@@ -49,7 +49,7 @@ func shareAdapterTailsCodeBufferAMD64(codeBuffer *coreruntime.CodeBuffer, entry,
 		return 0, fmt.Errorf("amd64: grow shared adapter tail island: %w", err)
 	}
 	code := codeBuffer.Bytes()
-	newLen, err := compactSharedAdapterTailsAMD64(code, oldLen, entry, internalEntry, relocs, roots, ms, groups, infos, sharedBytes)
+	newLen, err := compactSharedAdapterTailsAMD64(code, oldLen, entry, internalEntry, relocs, literalWords, literalOffsets, roots, ms, groups, infos, sharedBytes)
 	if err != nil {
 		return 0, err
 	}
@@ -59,14 +59,14 @@ func shareAdapterTailsCodeBufferAMD64(codeBuffer *coreruntime.CodeBuffer, entry,
 	return sharedBytes, nil
 }
 
-func shareAdapterTailsAMD64(code []byte, entry, internalEntry []int, relocs [][]callReloc, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) ([]byte, int, error) {
+func shareAdapterTailsAMD64(code []byte, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) ([]byte, int, error) {
 	oldLen := len(code)
 	groups, infos, sharedBytes := planSharedAdapterTailsAMD64(code, entry, infos)
 	if sharedBytes == 0 || !adapterTailIslandInRangeAMD64(oldLen, sharedBytes) {
 		return code, 0, nil
 	}
 	code = append(code, make([]byte, sharedBytes)...)
-	newLen, err := compactSharedAdapterTailsAMD64(code, oldLen, entry, internalEntry, relocs, roots, ms, groups, infos, sharedBytes)
+	newLen, err := compactSharedAdapterTailsAMD64(code, oldLen, entry, internalEntry, relocs, literalWords, literalOffsets, roots, ms, groups, infos, sharedBytes)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -136,7 +136,7 @@ func planSharedAdapterTailsAMD64(code []byte, entry []int, infos []adapterTailIn
 	return groups, admittedInfos, sharedBytes
 }
 
-func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []adapterTailGroup, infos []adapterTailInfo, sharedBytes int) (int, error) {
+func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []adapterTailGroup, infos []adapterTailInfo, sharedBytes int) (int, error) {
 	for i := range groups {
 		g := &groups[i]
 		if g.count*g.length <= g.count*sharedAdapterTailJumpBytesAMD64+g.length {
@@ -169,6 +169,7 @@ func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntr
 					relocs[i][j].at -= deleted
 				}
 			}
+			remapModuleLiteralPlanAMD64(literalWords, literalOffsets, i, int(info.endOff), deleted)
 			if roots != nil {
 				if plan := roots.Function(i); plan != nil {
 					for j := range plan.Callsites {

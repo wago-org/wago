@@ -65,6 +65,11 @@ var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "
 // for differential qualification and low-site-count crossover measurement.
 var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
 
+// sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
+// host adapters with twelve-byte function-local target thunks plus one cold
+// module copy. WAGO_AMD64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
+var sharedAdaptersEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_ADAPTERS") != "1"
+
 // gcResolveReuseEnabled retains one resolved object address only across a
 // compiler-proven straight-line, safepoint-free region. The compact local remains
 // the root and stable identity. WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 disables reuse.
@@ -742,6 +747,7 @@ type funcResult struct {
 	layoutFlags    uint8
 	directPrepared bool
 	adapterTail    adapterTailInfo
+	adapter        sharedAdapterInfo
 	relocs         []callReloc
 	literalStart   int
 	literalEnd     int
@@ -1141,8 +1147,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared []uint64
 		var adapterTails []adapterTailInfo
+		var adapters []sharedAdapterInfo
 		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-			adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
+			if sharedAdaptersEnabled {
+				adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
+			} else {
+				adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
+			}
 		}
 		for i := range m.Code {
 			// Align and reserve before lowering so the assembler can emit straight
@@ -1191,6 +1202,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 					adapterTails = append(adapterTails, info)
 				}
 			}
+			if adapters != nil {
+				if info := sc.fnState.sharedAdapterInfo(); info.endOff != 0 {
+					info.function = uint32(i)
+					adapters = append(adapters, info)
+				}
+			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
@@ -1212,14 +1229,19 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				opts.MemoryPressure()
 			}
 		}
-		sharedAdapterTailBytes := 0
-		if adapterTails != nil {
-			sharedAdapterTailBytes, err = shareAdapterTailsCodeBufferAMD64(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+		sharedAdapterBytes := 0
+		if adapters != nil {
+			sharedAdapterBytes, err = shareAdaptersCodeBufferAMD64(codeBuffer, entry, internalEntry, relocs, literalWords, literalOffsets, adapters, opts.GCFrameRoots, ms)
+			if err != nil {
+				return nil, err
+			}
+		} else if adapterTails != nil {
+			sharedAdapterBytes, err = shareAdapterTailsCodeBufferAMD64(codeBuffer, entry, internalEntry, relocs, literalWords, literalOffsets, adapterTails, opts.GCFrameRoots, ms)
 			if err != nil {
 				return nil, err
 			}
 		}
-		functionsEnd := len(codeBuffer.Bytes()) - sharedAdapterTailBytes
+		functionsEnd := len(codeBuffer.Bytes()) - sharedAdapterBytes
 		literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
 		literalBase := -1
 		if len(literalCode) != 0 {
@@ -1333,7 +1355,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalStart: literalStart, literalEnd: len(ws.literals)}
 				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-					result.adapterTail = ws.scratch.fnState.adapterTailInfo()
+					if sharedAdaptersEnabled {
+						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
+					} else {
+						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
+					}
 				}
 				results[i] = result
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
@@ -1355,8 +1381,13 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var literalWords []uint64
 	var directPrepared []uint64
 	var adapterTails []adapterTailInfo
+	var adapters []sharedAdapterInfo
 	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-		adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
+		if sharedAdaptersEnabled {
+			adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
+		} else {
+			adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
+		}
 	}
 	for i := range results {
 		r := &results[i]
@@ -1373,6 +1404,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			r.adapterTail.function = uint32(i)
 			adapterTails = append(adapterTails, r.adapterTail)
 		}
+		if adapters != nil && r.adapter.endOff != 0 {
+			r.adapter.function = uint32(i)
+			adapters = append(adapters, r.adapter)
+		}
 		if literalOffsets != nil {
 			literalWords = append(literalWords, states[r.worker].literals[r.literalStart:r.literalEnd]...)
 			if uint64(len(literalWords)) > math.MaxUint32 {
@@ -1382,15 +1417,21 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
-	sharedAdapterTailBytes := 0
-	if adapterTails != nil {
+	sharedAdapterBytes := 0
+	if adapters != nil {
 		var err error
-		code, sharedAdapterTailBytes, err = shareAdapterTailsAMD64(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+		code, sharedAdapterBytes, err = shareAdaptersAMD64(code, entry, internalEntry, relocs, literalWords, literalOffsets, adapters, opts.GCFrameRoots, ms)
+		if err != nil {
+			return nil, err
+		}
+	} else if adapterTails != nil {
+		var err error
+		code, sharedAdapterBytes, err = shareAdapterTailsAMD64(code, entry, internalEntry, relocs, literalWords, literalOffsets, adapterTails, opts.GCFrameRoots, ms)
 		if err != nil {
 			return nil, err
 		}
 	}
-	functionsEnd := len(code) - sharedAdapterTailBytes
+	functionsEnd := len(code) - sharedAdapterBytes
 	literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
 	literalBase := -1
 	if len(literalCode) != 0 {

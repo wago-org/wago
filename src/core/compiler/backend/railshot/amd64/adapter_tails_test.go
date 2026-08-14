@@ -30,8 +30,10 @@ func TestShareAdapterTailsRemapsModuleOffsetsAMD64(t *testing.T) {
 		{Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 15}}},
 		{Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 15}}},
 	}}
+	literalWords := []uint64{0, uint64(15) << 32, 0, uint64(15) << 32, 0, uint64(15) << 32}
+	literalOffsets := []uint32{0, 2, 4, 6}
 
-	got, islandBytes, err := shareAdapterTailsAMD64(code, entry, internal, relocs, infos, roots, nil)
+	got, islandBytes, err := shareAdapterTailsAMD64(code, entry, internal, relocs, literalWords, literalOffsets, infos, roots, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +49,9 @@ func TestShareAdapterTailsRemapsModuleOffsetsAMD64(t *testing.T) {
 	for i := range relocs {
 		if relocs[i][0].at != 11 || roots.Function(i).Callsites[0].ReturnOffset != 11 {
 			t.Fatalf("function %d offsets: reloc=%d callsite=%d, want 11,11", i, relocs[i][0].at, roots.Function(i).Callsites[0].ReturnOffset)
+		}
+		if site := uint32(literalWords[2*i+1] >> 32); site != 11 {
+			t.Fatalf("function %d literal site = %d, want 11", i, site)
 		}
 		if callDisp := int32(binary.LittleEndian.Uint32(got[entry[i]+1:])); callDisp != 5 {
 			t.Fatalf("function %d adapter call displacement = %d, want 5", i, callDisp)

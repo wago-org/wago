@@ -55,6 +55,9 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
 }
 
 func TestSizeObjectiveSharesAdapterTailsAMD64(t *testing.T) {
+	before := sharedAdaptersEnabled
+	sharedAdaptersEnabled = false
+	t.Cleanup(func() { sharedAdaptersEnabled = before })
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	m := modFuncs(t,
 		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x01, 0x41, 0x0b, 0x0b}},
@@ -88,5 +91,48 @@ func TestSizeObjectiveSharesAdapterTailsAMD64(t *testing.T) {
 		if fn.NativeSize.HostAdapterTailBytes != sharedAdapterTailJumpBytesAMD64 {
 			t.Fatalf("function %d adapter tail = %d, want jump size %d", i, fn.NativeSize.HostAdapterTailBytes, sharedAdapterTailJumpBytesAMD64)
 		}
+	}
+}
+
+func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
+	before := sharedAdaptersEnabled
+	t.Cleanup(func() { sharedAdaptersEnabled = before })
+	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
+	m := modFuncs(t,
+		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x01, 0x41, 0x0b, 0x0b}},
+		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x02, 0x41, 0x0c, 0x0b}},
+		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x03, 0x41, 0x0d, 0x0b}},
+	)
+	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
+	m.Exports = append(m.Exports, wasm.Export{Name: "h", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}})
+	size := OptimizeSize
+
+	sharedAdaptersEnabled = true
+	var stats ModuleStats
+	shared, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, fn := range stats.Funcs {
+		if got := fn.NativeSize.HostAdapterBytes; got != sharedAdapterThunkBytesAMD64 {
+			t.Fatalf("function %d adapter thunk = %d bytes, want %d", i, got, sharedAdapterThunkBytesAMD64)
+		}
+	}
+	if stats.NativeSize.AccountedBytes() != len(shared.Code) || stats.NativeSize.ModuleOtherBytes == 0 {
+		t.Fatalf("shared adapter accounting = %#v, code=%d", stats.NativeSize, len(shared.Code))
+	}
+	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &size, Workers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(parallel.Code, shared.Code) {
+		t.Fatal("serial and parallel shared-adapter layouts differ")
+	}
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runCompiledAmd64u(t, cm); got != 1 {
+		t.Fatalf("shared adapter execution = %d, want 1", got)
 	}
 }
