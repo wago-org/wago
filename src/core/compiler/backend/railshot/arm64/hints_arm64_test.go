@@ -137,12 +137,32 @@ func TestScanInlineFactsAST(t *testing.T) {
 		{Kind: wasm.InstrCall, Index: 3},
 		{Kind: wasm.InstrCallIndirect},
 		{Kind: wasm.InstrBrIf},
+		{Kind: wasm.InstrBrOnNull},
+		{Kind: wasm.InstrBrOnCast},
+		{Kind: wasm.InstrTryTable},
 		{Kind: wasm.InstrGlobalGet},
 		{Kind: wasm.InstrI32Load},
 	}, &facts)
 	if facts.calleeCount != 1 || len(facts.callees) != 1 || facts.callees[0] != 3 ||
-		!facts.hasControlCall || !facts.hasControlFlow || !facts.touchesGlobal || !facts.touchesMem {
+		!facts.hasControlCall || !facts.hasControlFlow || !facts.moduleEH || !facts.touchesGlobal || !facts.touchesMem {
 		t.Fatalf("inline facts = %#v", facts)
+	}
+}
+
+func TestInlineBoundaryParityBytesArm64(t *testing.T) {
+	for _, op := range []byte{0xd5, 0xd6} {
+		body := []byte{op, 0x00, 0x0b}
+		h, err := scanBodyBytes(body, 0, 0, 0)
+		if err != nil {
+			t.Fatalf("production scan opcode %#x: %v", op, err)
+		}
+		var facts inlineFacts
+		if err := scanInlineFactsBytes(body, &facts); err != nil {
+			t.Fatalf("inline scan opcode %#x: %v", op, err)
+		}
+		if !h.hasControlFlow || !facts.hasControlFlow {
+			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
+		}
 	}
 }
 
