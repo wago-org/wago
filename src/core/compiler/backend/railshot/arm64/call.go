@@ -1549,7 +1549,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.remove(m.src)
 	}
 	// AArch64 has no XCHG: a register swap goes through the backend scratch X16.
-	resolveRegMoves(moves,
+	resolveRegMovesWindow(moves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
@@ -1726,7 +1726,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
-	resolveRegMoves(gpMoves,
+	resolveRegMovesWindow(gpMoves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
@@ -1737,7 +1737,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.fpinned = f.fpinned.remove(m.src)
 	}
 	fpSwapSlot := -1
-	resolveRegMoves(fpMoves,
+	resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {

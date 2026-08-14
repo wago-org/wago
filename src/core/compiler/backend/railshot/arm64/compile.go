@@ -2464,7 +2464,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			gp++
 		}
 	}
-	resolveRegMoves(moves,
+	resolveRegMovesWindow(moves,
 		func(dst, src Reg) { a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			a.MovReg64(X16, x)
