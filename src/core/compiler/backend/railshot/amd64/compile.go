@@ -660,6 +660,9 @@ type scratch struct {
 	localRefTailBound bool // localRefs uses caller-owned compiler-arena tail scratch
 	policy            CodegenPolicy
 	fnState           fn // per-function compiler state, reused across the module
+	// immutableIntGlobals is module-owned read-only summary state. Keeping its
+	// slice header here avoids inflating every compact funcHints entry.
+	immutableIntGlobals []shared.ImmutableIntGlobal
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
@@ -1151,6 +1154,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
+	immutableIntGlobals := shared.ImmutableIntGlobals(m)
 	resolverSites := 0
 	for i := range allHints {
 		resolverSites += allHints[i].gcResolverSites
@@ -1242,6 +1246,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
 		sc.policy = policy
+		sc.immutableIntGlobals = immutableIntGlobals
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.ctrl = make([]ctrlFrame, 0, ctrlCap)
 		}
@@ -1417,12 +1422,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, modGlobals, hostAdapters, inlineTargets, immutableIntGlobals, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, immutableIntGlobals []shared.ImmutableIntGlobal, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
@@ -1445,6 +1450,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.policy = policy
+		states[i].scratch.immutableIntGlobals = immutableIntGlobals
 		if ctrlCap != 0 {
 			states[i].scratch.ctrl = make([]ctrlFrame, 0, ctrlCap)
 		}

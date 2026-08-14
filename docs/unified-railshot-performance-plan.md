@@ -91,6 +91,32 @@ versus 247,394 ns/op (+0.11%), with 343 allocs/op unchanged. Exact low-bit
 widths, nonzero/alignment facts, structured local-fact joins, and additional
 target consumers remain follow-up #438 work.
 
+### 2026-08-14 — immutable integer globals as constants
+
+Defined immutable i32/i64 globals whose initializer is exactly one literal are
+now summarized once per module and lowered as ordinary Valent constants on both
+backends. The summary is sparse and its single slice header lives in serial or
+worker-owned compiler scratch rather than in every `funcHints`; the ARM64
+`funcHints` size therefore remains 200 bytes. Modules with no admitted globals
+allocate no summary storage. Imported globals, mutable globals, references,
+floats, type-mismatched initializers, and extended constant expressions remain
+conservative near misses.
+
+The repository corpus records 28 `immutable-global-fold` hits across 16 of
+1,333 checked-in Wasm modules. Every hit module shrinks on Darwin/ARM64: 404
+native bytes in total, with individual module reductions from 4 to 52 bytes.
+Positive i32/i64 cases execute through the native ARM64 harness, and a mutable
+global is a tested codegen near miss. A serialized three-sample, two-second
+`many_funcs` compile benchmark measured a 249,793 ns/op median versus 252,596
+ns/op at the preceding commit (-1.11%, treated as noise), with 343 allocs/op
+unchanged and B/op effectively unchanged near 138.9 KiB.
+
+The accompanying rematerialization audit found that Railshot already retains
+constants, deferred local/global reads, and deferred addresses symbolically
+until their first sink. A new general recipe layer is therefore deferred until
+spill attribution identifies a value that is currently materialized and stored
+despite being cheaper and semantically safe to reconstruct.
+
 ---
 
 # 1. North-star architecture

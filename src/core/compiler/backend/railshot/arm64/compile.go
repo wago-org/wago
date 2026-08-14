@@ -523,6 +523,9 @@ type scratch struct {
 	asm            *a64.Asm // the AArch64 encoder byte buffer
 	fnState        fn       // per-function compiler state, reused across the module
 	directPrepared bool
+	// immutableIntGlobals is module-owned read-only summary state. Keeping its
+	// slice header here avoids inflating every compact funcHints entry.
+	immutableIntGlobals []shared.ImmutableIntGlobal
 
 	retSites         []int
 	ctrl             []ctrlFrame
@@ -976,6 +979,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
+	immutableIntGlobals := shared.ImmutableIntGlobals(m)
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	hostAdapters, err := shared.HostAdapterSet(m)
 	if err != nil {
@@ -1031,6 +1035,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
+		sc.immutableIntGlobals = immutableIntGlobals
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
 			return nil, fmt.Errorf("arm64: allocate code image: %w", err)
@@ -1151,12 +1156,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, hostAdapters, inlineTargets, calleePreservesPins, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, modGlobals, hostAdapters, inlineTargets, calleePreservesPins, immutableIntGlobals, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, calleePreservesPins []bool, immutableIntGlobals []shared.ImmutableIntGlobal, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
 	n := len(m.Code)
 	if ms != nil {
 		for i := range m.Code {
@@ -1171,6 +1176,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i].scratch.immutableIntGlobals = immutableIntGlobals
 	}
 	results := make([]funcResult, n)
 	var next atomic.Int64

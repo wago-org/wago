@@ -5,6 +5,7 @@ package arm64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -66,6 +67,19 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		return fmt.Errorf("arm64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
+	var immutableIntGlobals []shared.ImmutableIntGlobal
+	if f.sc != nil {
+		immutableIntGlobals = f.sc.immutableIntGlobals
+	}
+	if c, ok := shared.FindImmutableIntGlobal(immutableIntGlobals, x); ok {
+		typ := mtI64
+		if c.I32 {
+			typ = mtI32
+		}
+		f.pushValue(storage{kind: stConst, typ: typ, cval: c.Bits})
+		f.stats.peep("immutable-global-fold")
+		return nil
+	}
 	// Value-pinned (int) global: the current value already lives in a register.
 	// Push a borrowed reference (WARP liftToRegInPlace) — no copy, no memory access
 	// at all — kept sound by realize-on-set (realizeGlobalRefs) and by flush/
