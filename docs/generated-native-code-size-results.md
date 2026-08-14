@@ -5,6 +5,59 @@ This is the measurement ledger for
 records raw native bytes separately from compile latency, allocations, and
 execution. Results from different architectures or commits are not combined.
 
+## AMD64 baseline: 2026-08-13
+
+Environment:
+
+```text
+host: hub
+cpu: AMD Ryzen 7 7800X3D (8 physical cores)
+os/arch: Linux/amd64
+Go: go1.22.2
+code: 8db8ee2b plus AMD64 ledger commit 230c3b2d
+bounds: explicit
+function workers: p1
+benchtime: 500ms compile; 1s execution
+samples: 5
+```
+
+### Baseline medians
+
+| Workload | Native code | CompileFull p1 | Compile B/op | Allocs/op | Execution |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `many_funcs` | 9,704 B | 362,341 ns/op | 218,265 | 683 | 7.954 ns/op |
+| `json-as` | 66,131 B | 1,786,363 ns/op | 350,581 | 2,147 | serialize 23,807 ns/op; deserialize 42,679 ns/op |
+
+Execution remained at zero B/op and zero allocs/op. The baseline commands ran
+one timed workload at a time on the native AMD64 host.
+
+### Native-ledger opportunity snapshot
+
+| Byte class | `many_funcs` | `json-as` |
+| --- | ---: | ---: |
+| Total native bytes | 9,704 | 66,131 |
+| Function-owned bytes | 7,817 | 65,835 |
+| Inter-function alignment | 1,887 | 296 |
+| Module-owned islands/padding | 0 | 0 |
+| Host adapters | 17 | 778 |
+| Adapter-to-internal padding | 15 | 54 |
+| Internal function bytes | 7,785 | 65,003 |
+| Physical frame-adjustment reservations | 4,214 | 602 |
+| Dead frame-reservation bytes | 4,206 | 234 |
+| Retained branch-fold holes | 0 | 320 |
+| Total proved-dead reservation bytes | 4,206 | 554 |
+
+The already-proved dead subset is 43.34% of `many_funcs` and 0.84% of
+`json-as`. Unconditional function alignment adds another 19.45% to
+`many_funcs`. These categories are subsets or ownership classes, not additive
+predictions: compaction changes every following function offset and its padding.
+
+Stats-off output and allocation counts remained exact: 9,704/66,131 code bytes,
+218,265/350,581 B/op, and 683/2,147 allocs/op. A second five-sample run put
+`json-as` compile time within noise of baseline; `many_funcs` was 2.7% slower in
+that short run, with no generated-byte or allocation change, so no latency claim
+is made for the opt-in ledger.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
