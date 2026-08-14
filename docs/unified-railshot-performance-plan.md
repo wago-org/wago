@@ -454,6 +454,26 @@ compile samples measured 558.0 us/op enabled versus 561.1 us/op disabled
 (-0.55%, treated as noise), with 362 allocations/op unchanged and effectively
 unchanged B/op near 309.9 KiB.
 
+### 2026-08-14 — bounded mixed-bank prepared results
+
+The fixed mixed-bank prepared trampoline now carries exactly one GP and one FP
+result back to Go in either declared order. Admission remains finite: at most
+four scalar parameters, at most two parameters per register bank, and exactly
+one result per bank for the two-result form. It reuses the existing static
+trampoline, compiler register ABI, result storage, and `prepared-fp-entry` /
+`WAGO_PREPARED_DIRECT_FP=0` rollback; no dynamic trampoline, signature cache,
+allocation, or additional native entry code is introduced.
+
+Tests cover GP-first and FP-first results, pure and mixed parameter banks,
+no-argument admission, 32-bit upper-bit cleanup, same-bank and nonnumeric near
+misses, compiler and runtime rollback, division traps, and post-trap recovery.
+The focused suite passes natively on ARM64 and through Darwin's AMD64 execution
+path. Three two-second Apple M4 Max samples improved the prepared pass-through
+median from 82.29 to 19.30 ns/op (-76.5%), with zero B/op and allocations. Five
+one-second `many_funcs` full-compile samples measured 391.1 us/op enabled versus
+391.8 us/op disabled (-0.17%, treated as noise), with 381 allocations/op,
+approximately 200.3 KiB/op, and 28,968 generated code bytes unchanged.
+
 ---
 
 # 1. North-star architecture

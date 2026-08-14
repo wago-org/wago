@@ -189,8 +189,10 @@ func preparedDirectFPSig(ft *wasm.CompType) bool {
 	return true
 }
 
+// preparedDirectMixedSig admits the one static mixed-bank trampoline: either
+// the parameters use both banks, or two results use exactly one bank each.
 func preparedDirectMixedSig(ft *wasm.CompType) bool {
-	if len(ft.Params) == 0 || len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
 		return false
 	}
 	gp, fp := 0, 0
@@ -204,10 +206,24 @@ func preparedDirectMixedSig(ft *wasm.CompType) bool {
 			return false
 		}
 	}
-	if gp == 0 || fp == 0 || gp > 2 || fp > 2 {
+	if gp > 2 || fp > 2 {
 		return false
 	}
-	return len(ft.Results) == 0 || isIntValType(ft.Results[0]) || isFloatValType(ft.Results[0])
+	resultGP, resultFP := 0, 0
+	for _, typ := range ft.Results {
+		switch {
+		case isIntValType(typ):
+			resultGP++
+		case isFloatValType(typ):
+			resultFP++
+		default:
+			return false
+		}
+	}
+	if resultGP > 1 || resultFP > 1 || len(ft.Results) == 2 && (resultGP != 1 || resultFP != 1) {
+		return false
+	}
+	return gp != 0 && fp != 0 || len(ft.Results) == 2
 }
 
 // sigFitsReferenceResultRegABI is the staged typed-tail extension of the native

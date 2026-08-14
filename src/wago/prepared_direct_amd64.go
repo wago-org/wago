@@ -122,17 +122,5 @@ func (fn *PreparedFunction) invokeDirectMixed(args []uint64) ([]uint64, error) {
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
-	out := in.resultVals[:fn.resultSlots]
-	if fn.resultSlots == 1 {
-		result := gpResult
-		if fn.directMixedResultFP {
-			result = fpResult
-		}
-		if fn.scalarResultWide {
-			out[0] = result
-		} else {
-			out[0] = uint64(uint32(result))
-		}
-	}
-	return out, nil
+	return fn.unpackDirectMixedResults(gpResult, fpResult), nil
 }

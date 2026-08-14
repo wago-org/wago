@@ -74,8 +74,10 @@ func preparedDirectFPSignature(sig FuncSig) bool {
 	return true
 }
 
+// preparedDirectMixedSignature mirrors the backend's finite mixed-bank entry:
+// mixed parameters and/or one GP plus one FP result, never two per result bank.
 func preparedDirectMixedSignature(sig FuncSig) (resultFP bool, ok bool) {
-	if len(sig.Params) == 0 || len(sig.Params) > 4 || len(sig.Results) > 1 {
+	if len(sig.Params) > 4 || len(sig.Results) > 2 {
 		return false, false
 	}
 	gp, fp := 0, 0
@@ -89,20 +91,29 @@ func preparedDirectMixedSignature(sig FuncSig) (resultFP bool, ok bool) {
 			return false, false
 		}
 	}
-	if gp == 0 || fp == 0 || gp > 2 || fp > 2 {
+	if gp > 2 || fp > 2 {
 		return false, false
 	}
-	if len(sig.Results) == 0 {
-		return false, true
+	resultGP, resultFPCount := 0, 0
+	for _, typ := range sig.Results {
+		switch typ {
+		case ValI32, ValI64:
+			resultGP++
+		case ValF32, ValF64:
+			resultFPCount++
+		default:
+			return false, false
+		}
 	}
-	switch sig.Results[0] {
-	case ValI32, ValI64:
-		return false, true
-	case ValF32, ValF64:
-		return true, true
-	default:
+	if resultGP > 1 || resultFPCount > 1 || len(sig.Results) == 2 && (resultGP != 1 || resultFPCount != 1) {
 		return false, false
 	}
+	if gp == 0 || fp == 0 {
+		if len(sig.Results) != 2 {
+			return false, false
+		}
+	}
+	return len(sig.Results) != 0 && (sig.Results[0] == ValF32 || sig.Results[0] == ValF64), true
 }
 
 func (fn *PreparedFunction) packDirectMixedArgs(args []uint64) (g0, g1, f0, f1 uint64) {
@@ -130,6 +141,36 @@ func (fn *PreparedFunction) packDirectMixedArgs(args []uint64) (g0, g1, f0, f1 u
 		}
 	}
 	return
+}
+
+func (fn *PreparedFunction) unpackDirectMixedResults(gp, fp uint64) []uint64 {
+	out := fn.in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 0 {
+		return out
+	}
+	if fn.resultSlots == 1 {
+		result := gp
+		if fn.directMixedResultFP {
+			result = fp
+		}
+		if !fn.scalarResultWide {
+			result = uint64(uint32(result))
+		}
+		out[0] = result
+		return out
+	}
+	first, second := gp, fp
+	if fn.directMixedResultFP {
+		first, second = fp, gp
+	}
+	if typ := fn.resultTypes[0]; typ == ValI32 || typ == ValF32 {
+		first = uint64(uint32(first))
+	}
+	if typ := fn.resultTypes[1]; typ == ValI32 || typ == ValF32 {
+		second = uint64(uint32(second))
+	}
+	out[0], out[1] = first, second
+	return out
 }
 
 // PrepareFunction resolves a locally-defined function export once. The returned
@@ -166,6 +207,10 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		!hasReferenceValType(sig.Results) &&
 		ic.paramSlots <= 4 &&
 		ic.resultSlots <= 1
+	directFastCandidate := !hasReferenceValType(sig.Params) &&
+		!hasReferenceValType(sig.Results) &&
+		ic.paramSlots <= 4 &&
+		ic.resultSlots <= 2
 	var scalarWideMask uint8
 	if scalarFast {
 		slot := 0
@@ -198,7 +243,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
-	if scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
+	if (scalarFast || directFastCandidate) && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
 		fn.privateFast = true
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if in.c.directPreparedAt(ic.li) {

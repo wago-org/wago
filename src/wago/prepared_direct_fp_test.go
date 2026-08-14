@@ -44,6 +44,27 @@ func preparedMixedModule() []byte {
 	)
 }
 
+func preparedMixedResultModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.F64}, []wasm.ValType{wasm.I64, wasm.F64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.F32, wasm.I32}, []wasm.ValType{wasm.F32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.F64}, []wasm.ValType{wasm.I32, wasm.F64}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("gp-first", 0, 0),
+			wasmtest.ExportEntry("fp-first", 0, 1),
+			wasmtest.ExportEntry("trap-two", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6d, 0x20, 0x02, 0x0b}),
+		)),
+	)
+}
+
 func TestPreparedDirectFP(t *testing.T) {
 	if !preparedDirectFPSupported {
 		t.Skip("architecture does not support direct prepared FP entry")
@@ -179,6 +200,15 @@ func TestPreparedDirectMixedSignatureBounds(t *testing.T) {
 		t.Fatalf("valid mixed signature = resultFP %v, ok %v", resultFP, ok)
 	}
 	for _, sig := range []FuncSig{
+		{Params: []ValType{ValI64, ValF64}, Results: []ValType{ValI64, ValF64}},
+		{Params: []ValType{ValI32}, Results: []ValType{ValF32, ValI32}},
+		{Results: []ValType{ValI64, ValF64}},
+	} {
+		if _, ok := preparedDirectMixedSignature(sig); !ok {
+			t.Fatalf("mixed-result signature rejected: %+v", sig)
+		}
+	}
+	for _, sig := range []FuncSig{
 		{Params: []ValType{ValI64, ValI64, ValI64, ValF64}},
 		{Params: []ValType{ValI64, ValI32}},
 		{Params: []ValType{ValF64, ValF32}},
@@ -188,6 +218,116 @@ func TestPreparedDirectMixedSignatureBounds(t *testing.T) {
 		if _, ok := preparedDirectMixedSignature(sig); ok {
 			t.Fatalf("near-miss mixed signature admitted: %+v", sig)
 		}
+	}
+}
+
+func TestPreparedDirectMixedResults(t *testing.T) {
+	if !preparedDirectFPSupported {
+		t.Skip("architecture does not support direct prepared mixed entry")
+	}
+	compiled := MustCompile(preparedMixedResultModule())
+	for i := range 3 {
+		if !compiled.directPreparedAt(i) {
+			t.Fatalf("function %d did not retain direct prepared metadata", i)
+		}
+	}
+	disabled, err := Compile(NewRuntimeConfig().WithOptimizations(map[string]bool{"prepared-fp-entry": false}), preparedMixedResultModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disabled.directPreparedAt(0) || disabled.directPreparedAt(1) || disabled.directPreparedAt(2) {
+		t.Fatal("disabled compiler policy retained mixed-result direct metadata")
+	}
+	if len(compiled.code) != len(disabled.code) {
+		t.Fatalf("mixed-result admission changed generated code size: enabled=%d disabled=%d", len(compiled.code), len(disabled.code))
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	gpFirst, err := in.PrepareFunction("gp-first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gpFirst.directMixedFast || gpFirst.scalarFast {
+		t.Fatalf("gp-first direct/scalar = %v/%v, want true/false", gpFirst.directMixedFast, gpFirst.scalarFast)
+	}
+	got, err := gpFirst.Invoke(I64(1<<50|7), F64(-3.25))
+	if err != nil || len(got) != 2 || AsI64(got[0]) != (1<<50|7) || math.Float64bits(AsF64(got[1])) != math.Float64bits(-3.25) {
+		t.Fatalf("gp-first = %v, %v", got, err)
+	}
+
+	fpFirst, err := in.PrepareFunction("fp-first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = fpFirst.Invoke(F32(1.5), uint64(0xffffffff00000000)|19)
+	if err != nil || len(got) != 2 || math.Float32bits(AsF32(got[0])) != math.Float32bits(1.5) || got[1] != 19 {
+		t.Fatalf("fp-first = %v, %v", got, err)
+	}
+
+	trapTwo, err := in.PrepareFunction("trap-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := trapTwo.Invoke(I32(8), I32(0), F64(1.25)); err == nil {
+		t.Fatal("two-result division by zero did not trap")
+	}
+	got, err = trapTwo.Invoke(I32(8), I32(2), F64(1.25))
+	if err != nil || len(got) != 2 || AsI32(got[0]) != 4 || math.Float64bits(AsF64(got[1])) != math.Float64bits(1.25) {
+		t.Fatalf("two-result call after trap = %v, %v", got, err)
+	}
+
+	saved := preparedDirectFPEnabled
+	preparedDirectFPEnabled = false
+	t.Cleanup(func() { preparedDirectFPEnabled = saved })
+	fallback, err := in.PrepareFunction("gp-first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fallback.directMixedFast {
+		t.Fatal("disabled direct mixed option retained two-result fast path")
+	}
+	got, err = fallback.Invoke(I64(99), F64(2.75))
+	if err != nil || len(got) != 2 || AsI64(got[0]) != 99 || math.Float64bits(AsF64(got[1])) != math.Float64bits(2.75) {
+		t.Fatalf("fallback = %v, %v", got, err)
+	}
+}
+
+func BenchmarkPreparedDirectMixedResults(b *testing.B) {
+	if !preparedDirectFPSupported {
+		b.Skip("architecture does not support direct prepared mixed entry")
+	}
+	compiled := MustCompile(preparedMixedResultModule())
+	for _, direct := range []bool{false, true} {
+		name := "general"
+		if direct {
+			name = "direct"
+		}
+		b.Run(name, func(b *testing.B) {
+			saved := preparedDirectFPEnabled
+			preparedDirectFPEnabled = direct
+			defer func() { preparedDirectFPEnabled = saved }()
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.PrepareFunction("gp-first")
+			if err != nil {
+				b.Fatal(err)
+			}
+			args := []uint64{I64(1<<50 | 7), F64(-3.25)}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := fn.Invoke(args...); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
