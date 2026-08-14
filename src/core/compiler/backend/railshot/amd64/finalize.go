@@ -218,8 +218,16 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	// dead holes. Each admitted site changes only long -> short; reconsidering
 	// rejected sites after every round finds cascades while bounding work by the
 	// eight-range offset map.
+	rel32Target := func(site encoderamd64.Rel32Site) (int, bool) {
+		at := site.At()
+		if at < 0 || at+4 > len(f.a.B) {
+			return 0, false
+		}
+		target := at + 4 + int(int32(binary.LittleEndian.Uint32(f.a.B[at:])))
+		return target, target >= 0 && target <= len(f.a.B)
+	}
 	branchForm := func(site encoderamd64.Rel32Site) (start, shortLen int, deletion shared.DeletedRange, ok bool) {
-		at := int(site.At)
+		at := site.At()
 		switch site.Kind() {
 		case encoderamd64.Rel32Jmp:
 			if at < 1 || at+4 > len(f.a.B) || f.a.B[at-1] != 0xe9 {
@@ -246,8 +254,12 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			if !ok {
 				continue
 			}
+			target, okTarget := rel32Target(*site)
+			if !okTarget {
+				continue
+			}
 			mappedStart, okStart := mapWithExtra(start, deletion)
-			mappedTarget, okTarget := mapWithExtra(site.Target(), deletion)
+			mappedTarget, okTarget := mapWithExtra(target, deletion)
 			disp := mappedTarget - (mappedStart + shortLen)
 			if !okStart || !okTarget || disp < -128 || disp > 127 {
 				continue
@@ -262,24 +274,46 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			break
 		}
 	}
-	for _, site := range f.a.Rel32Sites {
-		if !site.Short() {
-			continue
-		}
-		start := int(site.At) - 1
-		if site.Kind() == encoderamd64.Rel32Jcc {
-			start = int(site.At) - 2
-		}
-		if site.Kind() == encoderamd64.Rel32Jmp {
-			f.a.B[start] = 0xeb
-		} else {
-			f.a.B[start] = 0x70 | (f.a.B[start+1] & 0x0f)
-		}
-	}
-
 	offsets, err := shared.NewOffsetMap(len(f.a.B), deletions)
 	if err != nil {
 		return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
+	}
+	// Patch maximal-encoding source fields with their final displacements before
+	// the left-to-right copy. Exact recorded fields supply their old targets; no
+	// finalized instruction stream is decoded.
+	for _, site := range f.a.Rel32Sites {
+		targetOld, okTargetOld := rel32Target(site)
+		if !okTargetOld {
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 target at %d", site.At())
+		}
+		target, okTarget := offsets.Map(targetOld)
+		if site.Short() {
+			start, shortLen := site.At()-1, 2
+			if site.Kind() == encoderamd64.Rel32Jcc {
+				start = site.At() - 2
+			}
+			at, okAt := offsets.Map(start)
+			if !okAt || !okTarget || at < 0 || at+shortLen > offsets.FinalLen() || target < 0 || target > offsets.FinalLen() {
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At(), targetOld)
+			}
+			disp := target - (at + shortLen)
+			if disp < -128 || disp > 127 {
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: rel8 overflow %d -> %d", site.At(), targetOld)
+			}
+			if site.Kind() == encoderamd64.Rel32Jmp {
+				f.a.B[start] = 0xeb
+			} else {
+				f.a.B[start] = 0x70 | (f.a.B[start+1] & 0x0f)
+			}
+			f.a.B[start+1] = byte(int8(disp))
+			continue
+		}
+		atOld := site.At()
+		at, okAt := offsets.Map(atOld)
+		if !okAt || !okTarget || at < 0 || at+4 > offsets.FinalLen() || target < 0 || target > offsets.FinalLen() {
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", atOld, targetOld)
+		}
+		binary.LittleEndian.PutUint32(f.a.B[atOld:], uint32(int32(target-(at+4))))
 	}
 	src, dst := 0, 0
 	for _, deletion := range deletions {
@@ -290,31 +324,6 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	}
 	copy(f.a.B[dst:], f.a.B[src:])
 	code := f.a.B[:offsets.FinalLen()]
-	for _, site := range f.a.Rel32Sites {
-		if site.Short() {
-			start, shortLen := int(site.At)-1, 2
-			if site.Kind() == encoderamd64.Rel32Jcc {
-				start = int(site.At) - 2
-			}
-			at, okAt := offsets.Map(start)
-			target, okTarget := offsets.Map(site.Target())
-			if !okAt || !okTarget || at < 0 || at+shortLen > len(code) || target < 0 || target > len(code) {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At, site.Target())
-			}
-			disp := target - (at + shortLen)
-			if disp < -128 || disp > 127 {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: rel8 overflow %d -> %d", site.At, site.Target())
-			}
-			code[at+1] = byte(int8(disp))
-			continue
-		}
-		at, okAt := offsets.Map(int(site.At))
-		target, okTarget := offsets.Map(site.Target())
-		if !okAt || !okTarget || at < 0 || at+4 > len(code) || target < 0 || target > len(code) {
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", site.At, site.Target())
-		}
-		binary.LittleEndian.PutUint32(code[at:], uint32(int32(target-(at+4))))
-	}
 	return shared.FinalizeResult{Code: code, Offsets: offsets}, frameDeleted, holeDeleted, nil
 }
 

@@ -2,6 +2,7 @@ package amd64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 	"unsafe"
 )
@@ -171,10 +172,10 @@ func TestRel32SiteCounting(t *testing.T) {
 	if !a.Rel32Overflow {
 		t.Fatal("bounded rel32 recorder did not report overflow")
 	}
-	if got := a.Rel32Sites[0]; int(got.At) != first || got.Target() != 5 || got.Kind() != Rel32Jmp {
+	if got := a.Rel32Sites[0]; got.At() != first || got.Kind() != Rel32Jmp {
 		t.Fatalf("first rel32 site = %+v, want at=%d target=5", got, first)
 	}
-	if got, want := unsafe.Sizeof(Rel32Site{}), uintptr(8); got != want {
+	if got, want := unsafe.Sizeof(Rel32Site{}), uintptr(4); got != want {
 		t.Fatalf("rel32 site size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(Asm{}), uintptr(80); got != want {
@@ -188,17 +189,21 @@ func TestRel32SiteRewrite(t *testing.T) {
 	a.PatchRel32(one, 20)
 	two := a.JmpPlaceholder()
 	a.PatchRel32(two, 30)
-	a.RetargetRel32(one, 40)
+	a.PatchU32(one, uint32(int32(40-(one+4))))
 	a.ForgetRel32(two)
-	if got := a.Rel32Sites; len(got) != 1 || int(got[0].At) != one || got[0].Target() != 40 || got[0].Kind() != Rel32Jmp {
+	if got := a.Rel32Sites; len(got) != 1 || got[0].At() != one || got[0].Kind() != Rel32Jmp {
 		t.Fatalf("rewritten sites = %+v", got)
 	}
 	a.Rel32Sites[0].SetShort(true)
-	if !a.Rel32Sites[0].Short() || a.Rel32Sites[0].Target() != 40 || a.Rel32Sites[0].Kind() != Rel32Jmp {
+	if !a.Rel32Sites[0].Short() || a.Rel32Sites[0].At() != one || a.Rel32Sites[0].Kind() != Rel32Jmp {
 		t.Fatalf("short choice corrupted packed site: %+v", a.Rel32Sites[0])
 	}
-	a.RetargetRel32(one, int(rel32TargetMask)+1)
-	if !a.Rel32Overflow {
+	if target := one + 4 + int(int32(binary.LittleEndian.Uint32(a.B[one:]))); target != 40 {
+		t.Fatalf("rewritten encoded target = %d, want 40", target)
+	}
+	overflow := Asm{B: []byte{0xe9, 0, 0, 0, 0}, Rel32SiteLimit: 1}
+	overflow.PatchRel32(1, int(rel32OffsetMask)+1)
+	if !overflow.Rel32Overflow {
 		t.Fatal("out-of-range packed target did not force identity fallback")
 	}
 }
@@ -208,7 +213,7 @@ func TestBindRel32TailSeparatesCodeAndScratch(t *testing.T) {
 	if !a.BindRel32Tail(2) {
 		t.Fatal("bind rel32 tail failed")
 	}
-	if got, want := cap(a.B), 48; got != want {
+	if got, want := cap(a.B), 56; got != want {
 		t.Fatalf("code capacity = %d, want %d", got, want)
 	}
 	if got, want := cap(a.Rel32Sites), 2; got != want {
@@ -227,7 +232,7 @@ func TestBindRel32TailSeparatesCodeAndScratch(t *testing.T) {
 func TestResetRel32RecorderUsesInlineFallback(t *testing.T) {
 	a := Asm{}
 	a.ResetRel32Recorder(4)
-	if got, want := cap(a.Rel32Sites), 1; got != want {
+	if got, want := cap(a.Rel32Sites), 2; got != want {
 		t.Fatalf("inline site capacity = %d, want %d", got, want)
 	}
 	a.B = append(a.B, 0xe9)
