@@ -835,12 +835,12 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	for _, move := range gpMoves[:gpN] {
 		f.pinned = f.pinned.remove(move.src)
 	}
-	resolveRegMoves(gpMoves[:gpN], func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	resolveRegMovesWindow(gpMoves[:gpN], func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
 	for _, move := range fpMoves[:fpN] {
 		f.fpinned = f.fpinned.remove(move.src)
 	}
 	fpSwapSlot := -1
-	resolveRegMoves(fpMoves[:fpN],
+	resolveRegMovesWindow(fpMoves[:fpN],
 		func(dst, src Reg) { f.a.FMov(dst, src, true) },
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
@@ -1710,7 +1710,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	for _, m := range moves {
 		f.pinned = f.pinned.remove(m.src)
 	}
-	resolveRegMoves(moves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	resolveRegMovesWindow(moves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
 		switch da.root.st.kind {
@@ -1891,12 +1891,12 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
-	resolveRegMoves(gpMoves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	resolveRegMovesWindow(gpMoves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
 	for _, m := range fpMoves {
 		f.fpinned = f.fpinned.remove(m.src)
 	}
 	fpSwapSlot := -1
-	resolveRegMoves(fpMoves,
+	resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) { f.a.FMov(dst, src, true) },
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
