@@ -333,6 +333,27 @@ v2. This is therefore a measured signature-specific win, not a current broad-
 corpus claim; the opt-in causality counter `regabi-v2-result` will expose future
 producer uptake without adding normal-compilation overhead.
 
+### 2026-08-14 — generated ARM64 machine-rule foundation
+
+The existing fixed 24-operation ARM64 call-shuffle window now selects its
+three-register swap-chain rewrite through generated plain Go rather than a
+handwritten matcher. A checked-in declarative rule is the source of truth; its
+generator validates the admitted shape and emits the rule ID, captures, decision
+predicate, and explain name. Parsing, formatting, and schema validation exist
+only in the generator, so production compilation retains no maps, reflection,
+parser, heap-backed matcher state, or general machine IR. Target emission remains
+inside ARM64.
+
+The first rule has exhaustive register-state equivalence coverage over its
+bounded input domain, individual near misses for operation kind, producer link,
+and distinct-output requirements, and a source hash that fails tests when the
+generated matcher is stale. Capacity-exhaustion identity coverage remains in
+place. An eight-sample same-binary microbenchmark measured a 0.769 ns/op median
+for the generated matcher versus 0.770 ns/op for the equivalent direct condition;
+both report zero B/op and allocations. This is infrastructure with preserved
+code generation, not a new execution-speed claim. Further rule families remain
+gated on provenance, effects, physical constraints, corpus hits, and A/B results.
+
 ---
 
 # 1. North-star architecture

@@ -4,6 +4,8 @@ package arm64
 
 import "math/bits"
 
+//go:generate go run ../internal/genmachinerules -in machine_rules.rules -out machine_rules_gen.go -package arm64
+
 // Parallel register-move resolution (WARP's RegisterCopyResolver): placing N
 // values, each already live in some register, into their target registers is a
 // *parallel* move — a target may still hold a value another move needs — and the
@@ -53,9 +55,9 @@ func (w *machineWindow) flush() {
 	for i := uint8(0); i < w.n; {
 		op := w.ops[i]
 		if w.swapChain != nil && i+1 < w.n {
-			next := w.ops[i+1]
-			if op.kind == machineSwap && next.kind == machineSwap && op.src == next.dst && op.dst != next.src {
-				w.swapChain(op.dst, op.src, next.src)
+			match := matchMachinePair(op, w.ops[i+1])
+			if match.id == machineRuleSwapChain3 {
+				w.swapChain(match.a, match.b, match.c)
 				w.rewrites++
 				i += 2
 				continue
