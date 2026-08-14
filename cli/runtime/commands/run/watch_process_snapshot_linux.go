@@ -35,32 +35,27 @@ func startWatchedProcessTracking(*watchedProcessTracker) error {
 func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
 	deadline := time.Now().Add(100 * time.Millisecond)
 	for {
-		for {
-			var status syscall.WaitStatus
-			pid, _ := syscall.Wait4(-1, &status, syscall.WNOHANG, nil)
-			if pid <= 0 {
-				break
-			}
+		reapWatchedLinuxProcesses()
+		_ = tracker.signal(syscall.SIGKILL)
+		if tracker.processCount() == 0 {
+			reapWatchedLinuxProcesses()
+			return
 		}
-		if !trackedLinuxProcessRemains(tracker) || time.Now().After(deadline) {
+		if time.Now().After(deadline) {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
 }
 
-func trackedLinuxProcessRemains(tracker *watchedProcessTracker) bool {
-	if tracker == nil {
-		return false
-	}
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	for pid, started := range tracker.processes {
-		if process, ok := watchedProcess(pid); ok && started == process.started {
-			return true
+func reapWatchedLinuxProcesses() {
+	for {
+		var status syscall.WaitStatus
+		pid, _ := syscall.Wait4(-1, &status, syscall.WNOHANG, nil)
+		if pid <= 0 {
+			return
 		}
 	}
-	return false
 }
 
 func watchedProcessDescendants(owner, root int, tracked map[int]uint64, limit int) ([]watchedProcessInfo, error) {
