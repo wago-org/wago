@@ -61,6 +61,7 @@
           "propertyNames": {
             "enum": [
               "abi-classes",
+              "abi-leaf-fp",
               "accumulator-immediate",
               "addr-zext-elim",
               "affine-lea",
@@ -92,8 +93,10 @@
               "loop-region-pins",
               "multi-bounds-cert",
               "olddest-rhs-sink",
+              "prepared-fp-entry",
               "reg-abi",
               "reg-merge",
+              "shuffle-half-zip",
               "small-frame",
               "st-flags",
               "stack-fence",
