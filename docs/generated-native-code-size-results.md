@@ -1608,6 +1608,28 @@ to 787,410,792 ns/op (-1.22%) and esbuild at 507,781,541 to 507,610,791 ns/op
 execution, the full ARM64 backend and race suites, and compacted corpus execution
 with finalizer validation pass.
 
+## AMD64 register-ABI frame-header elision
+
+AMD64 applies the same wrapper-header ownership rule, with an additional
+conservative exclusion for any function containing a tail call because its
+wrapper-transfer paths still consume `frResultsOff`. EH and GC-frame functions
+also retain the fixed header. `WAGO_AMD64_NO_COMPACT_REGABI_FRAME=1` is the exact
+rollback oracle.
+
+Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
+from 2,351,952 to 1,947,072 bytes (-404,880, -17.21%). More importantly for the
+variable-length ISA, shifting local and spill slots down by 16 bytes turns many
+`disp32` references into `disp8` references and moves frames across the compact
+immediate boundary. Raw native bytes fall from 69,132,646 to 68,509,167
+(-623,479, -0.90%). Ruby saves 373,633 bytes, esbuild 164,720, SQLite 30,257,
+regexmatch 25,355, wasm3 17,281, and Lua 10,157.
+
+Five serialized rollback-versus-enabled compile samples put Ruby at 1,181,331,911
+to 1,176,438,278 ns/op (-0.41%) and esbuild at 753,040,074 to 754,994,914 ns/op
+(+0.26%). Median allocation movement is noise-level. Focused native execution,
+the full AMD64 backend and race suites, and compacted corpus execution with
+finalizer validation pass on the Ryzen 7 7800X3D host.
+
 ### Commands
 
 ```sh

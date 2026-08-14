@@ -47,6 +47,12 @@ var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
 
 var frameElideVoid = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE_VOID") != "1"
 
+// compactRegABIFrameHeader removes the wrapper-only spare/results-pointer
+// header from ordinary register-ABI internal frames. Tail-call lowering still
+// has wrapper-transfer paths that consume the header, so it remains excluded.
+// Keep the switch for corpus A/B and immediate rollback.
+var compactRegABIFrameHeader = os.Getenv("WAGO_AMD64_NO_COMPACT_REGABI_FRAME") != "1"
+
 // gcLoadForwardingEnabled keeps the bounded result-local array.len and immutable
 // struct.get cache independently A/B-testable from the semantic fact engine.
 var gcLoadForwardingEnabled = os.Getenv("WAGO_AMD64_NO_GC_LOAD_FORWARDING") != "1"
@@ -437,6 +443,7 @@ type fn struct {
 	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
 	gcFrameRoots           *shared.GCFrameRootPlan
 	gcCallsiteIndex        int
+	compactFrameHeader     bool   // register ABI: no wrapper results-pointer header
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
 	nativeArrayAlloc       gcArrayAllocStubSite
 
@@ -791,7 +798,14 @@ const (
 	frResultsOff  = 8                            // results buffer pointer
 )
 
-func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + f.localSlot[i]) }
+func (f *fn) frameHeaderBytes() int {
+	if f.compactFrameHeader {
+		return 0
+	}
+	return frameHdrBytes
+}
+
+func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
 		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
@@ -799,13 +813,13 @@ func (f *fn) ehFrameBytes() int {
 	return 0
 }
 func (f *fn) ehRecordOff(index int) int32 {
-	return int32(frameHdrBytes + 8*f.nLocalSlots + index*ehRecordSlots*8)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + index*ehRecordSlots*8)
 }
 func (f *fn) ehRootOff(index int) int32 {
-	return int32(frameHdrBytes + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
 }
 func (f *fn) spillOff(k int) int32 {
-	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
 }
 
 func (f *fn) immutableTable(tableIdx uint32) (immutableTableHint, bool) {
@@ -823,7 +837,7 @@ func (f *fn) frameSize() int {
 	if f.frameElided {
 		return 0 // frame never touched (all locals register-homed, no spills, no calls)
 	}
-	return align16(frameHdrBytes+8*f.nLocalSlots+f.ehFrameBytes()+8*f.maxSpill) + 8
+	return align16(f.frameHeaderBytes()+8*f.nLocalSlots+f.ehFrameBytes()+8*f.maxSpill) + 8
 }
 
 // elideRegisterOnlyFrame drops the whole frame for a register-homed call-free
@@ -2280,6 +2294,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.peep("all-calls-inlined")
 	}
 	regABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
+	// Ordinary register-ABI bodies never consume frResultsOff: adapters preserve
+	// RCX below the internal frame and direct calls return in registers. Retain the
+	// established header for tail transfer, EH, and GC-frame paths whose auxiliary
+	// offset protocols still refer to that fixed layout.
+	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !hints.hasTailCall && !moduleEH && gcFrameRoots == nil
+	if f.compactFrameHeader {
+		f.stats.peep("frame-header-elide")
+	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
 	// Tiny prepared integer leaves can use a slimmer host trampoline when their
