@@ -55,7 +55,7 @@ func TestFileStampDetectsSameSizeRewriteWithRestoredModTime(t *testing.T) {
 	}
 }
 
-func TestWatchSupervisorRestartsLongRunningChildWithNewestContent(t *testing.T) {
+func TestWatchSupervisorRestartsLongRunningChildWithDetachedDescendant(t *testing.T) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "module.wasm")
 	logPath := filepath.Join(dir, "starts.log")
@@ -273,7 +273,7 @@ func watchTestOptions(modulePath, logPath, address string, exit bool) watchOptio
 		environment = append(environment, "WAGO_WATCH_EXIT=1")
 	}
 	if address != "" {
-		environment = append(environment, "WAGO_WATCH_TREE=1")
+		environment = append(environment, "WAGO_WATCH_TREE=1", "WAGO_WATCH_DETACH=1")
 	}
 	return watchOptions{
 		path:        modulePath,
@@ -316,6 +316,9 @@ func TestWatchHelperProcess(t *testing.T) {
 		command := exec.Command(os.Args[0], "-test.run=^TestWatchHelperProcess$", "-test.count=1")
 		command.Env = append(os.Environ(), "WAGO_WATCH_LEAF=1")
 		command.Stdout, command.Stderr = io.Discard, io.Discard
+		if os.Getenv("WAGO_WATCH_DETACH") == "1" {
+			detachWatchHelperProcess(command)
+		}
 		if err := command.Start(); err != nil {
 			t.Fatal(err)
 		}

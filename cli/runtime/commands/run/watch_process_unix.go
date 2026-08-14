@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
+	"sync"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -17,6 +19,20 @@ import (
 type watchedChildPlatform struct {
 	terminalFD int
 	foreground int
+	processes  *watchedProcessTracker
+}
+
+const maxWatchedDescendants = 4096
+
+type watchedProcessInfo struct {
+	pid, parent int
+	started     uint64
+}
+
+type watchedProcessTracker struct {
+	mu        sync.Mutex
+	root      int
+	processes map[int]uint64
 }
 
 func prepareWatchedCommand(command *exec.Cmd) {
@@ -37,29 +53,32 @@ func abortWatchedCommand(command *exec.Cmd) {
 }
 
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
+	tracker := &watchedProcessTracker{root: command.Process.Pid, processes: make(map[int]uint64)}
+	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
 	if command.SysProcAttr == nil || !command.SysProcAttr.Foreground {
-		return watchedChildPlatform{terminalFD: -1}, nil
+		return platform, tracker.refresh()
 	}
-	return watchedChildPlatform{terminalFD: command.SysProcAttr.Ctty, foreground: syscall.Getpgrp()}, nil
+	platform.terminalFD, platform.foreground = command.SysProcAttr.Ctty, syscall.Getpgrp()
+	return platform, tracker.refresh()
 }
 
-func interruptWatchedProcess(_ watchedChildPlatform, command *exec.Cmd, interrupt os.Signal) error {
+func interruptWatchedProcess(platform watchedChildPlatform, command *exec.Cmd, interrupt os.Signal) error {
 	sig := syscall.SIGTERM
 	if value, ok := interrupt.(syscall.Signal); ok && (value == syscall.SIGINT || value == syscall.SIGQUIT || value == syscall.SIGTERM) {
 		sig = value
 	}
-	return signalWatchedProcessGroup(command, sig)
+	return signalWatchedProcessTree(platform, command, sig)
 }
 
-func killWatchedProcess(_ watchedChildPlatform, command *exec.Cmd) error {
-	return signalWatchedProcessGroup(command, syscall.SIGKILL)
+func killWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error {
+	return signalWatchedProcessTree(platform, command, syscall.SIGKILL)
 }
 
 func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 	if platform.terminalFD >= 0 {
 		_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
 	}
-	_ = signalWatchedProcessGroup(command, syscall.SIGKILL)
+	_ = signalWatchedProcessTree(platform, command, syscall.SIGKILL)
 	_ = command.Process.Release()
 }
 
@@ -92,7 +111,7 @@ func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watche
 		if status.Stopped() {
 			if err := mirrorWatchedProcessStop(platform, command); err != nil {
 				monitorErr = err
-				_ = signalWatchedProcessGroup(command, syscall.SIGKILL)
+				_ = signalWatchedProcessTree(platform, command, syscall.SIGKILL)
 			}
 			continue
 		}
@@ -126,6 +145,9 @@ func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) 
 	if platform.terminalFD < 0 {
 		return nil
 	}
+	if err := signalWatchedDescendants(platform, syscall.SIGSTOP); err != nil {
+		return err
+	}
 	if err := syscall.Kill(-platform.foreground, syscall.SIGSTOP); err != nil {
 		return err
 	}
@@ -135,7 +157,7 @@ func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) 
 			return err
 		}
 	}
-	return signalWatchedProcessGroup(command, syscall.SIGCONT)
+	return signalWatchedProcessTree(platform, command, syscall.SIGCONT)
 }
 
 func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {
@@ -167,4 +189,85 @@ func signalWatchedProcessGroup(command *exec.Cmd, signal syscall.Signal) error {
 		return os.ErrProcessDone
 	}
 	return err
+}
+
+func signalWatchedProcessTree(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal) error {
+	descendantErr := signalWatchedDescendants(platform, value)
+	groupErr := signalWatchedProcessGroup(command, value)
+	if errors.Is(groupErr, os.ErrProcessDone) {
+		groupErr = nil
+	}
+	return errors.Join(groupErr, descendantErr)
+}
+
+func signalWatchedDescendants(platform watchedChildPlatform, value syscall.Signal) error {
+	if platform.processes == nil {
+		return nil
+	}
+	return platform.processes.signal(value)
+}
+
+func (tracker *watchedProcessTracker) refresh() error {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	return tracker.refreshLocked()
+}
+
+func (tracker *watchedProcessTracker) signal(value syscall.Signal) error {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	refreshErr := tracker.refreshLocked()
+	pids := make([]int, 0, len(tracker.processes))
+	for pid := range tracker.processes {
+		pids = append(pids, pid)
+	}
+	slices.Sort(pids)
+	var signalErr error
+	for _, pid := range pids {
+		if err := syscall.Kill(pid, value); err != nil && !errors.Is(err, syscall.ESRCH) {
+			signalErr = errors.Join(signalErr, err)
+		}
+	}
+	return errors.Join(refreshErr, signalErr)
+}
+
+func (tracker *watchedProcessTracker) refreshLocked() error {
+	snapshot, err := watchedProcessSnapshot()
+	if err != nil {
+		return err
+	}
+	byPID := make(map[int]watchedProcessInfo, len(snapshot))
+	children := make(map[int][]watchedProcessInfo)
+	for _, process := range snapshot {
+		byPID[process.pid] = process
+		children[process.parent] = append(children[process.parent], process)
+	}
+	active := make(map[int]uint64, len(tracker.processes))
+	queue := []int{tracker.root}
+	seen := map[int]bool{tracker.root: true}
+	for pid, started := range tracker.processes {
+		if process, ok := byPID[pid]; ok && process.started == started {
+			active[pid] = started
+			seen[pid] = true
+			queue = append(queue, pid)
+		}
+	}
+	for len(queue) != 0 {
+		parent := queue[0]
+		queue = queue[1:]
+		for _, child := range children[parent] {
+			if child.pid == tracker.root || seen[child.pid] {
+				continue
+			}
+			if len(active) >= maxWatchedDescendants {
+				tracker.processes = active
+				return fmt.Errorf("watched process tree exceeds %d descendants", maxWatchedDescendants)
+			}
+			seen[child.pid] = true
+			active[child.pid] = child.started
+			queue = append(queue, child.pid)
+		}
+	}
+	tracker.processes = active
+	return nil
 }

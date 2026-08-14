@@ -251,6 +251,7 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	platform, err := attachWatchedProcess(command)
 	if err != nil {
 		abortWatchedCommand(command)
+		_ = killWatchedProcess(platform, command)
 		_ = command.Process.Kill()
 		_ = command.Wait()
 		return nil, err
