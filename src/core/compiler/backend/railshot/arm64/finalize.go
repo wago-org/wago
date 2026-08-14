@@ -21,8 +21,10 @@ var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 // WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
+var loopCompactionEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
 
 const maxFinalizerDeletions = shared.MaxOffsetMapDeletions
+const maxLoopCompactionBytes = 16 << 10
 
 type finalizerMarker uint8
 
@@ -245,10 +247,11 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 }
 
 func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.DeletedRange, int, bool) {
-	// Any deletion before a loop would move its body away from alignment chosen
-	// against maximal offsets. Preserve the size-stable path until loop padding
-	// itself is an explicit relaxable fragment.
-	if f.hasLoop {
+	// Any deletion before an optionally aligned loop would move its body away
+	// from the emission-time alignment. Size and Embedded clamp loop alignment
+	// to ARM64's mandatory four-byte instruction alignment, which every deletion
+	// preserves, so their loop-bearing functions are safe to compact.
+	if f.hasLoop && (!loopCompactionEnabled || f.policy.LoopAlignLog2 > 2 || len(f.a.B) > maxLoopCompactionBytes) {
 		return nil, 0, false
 	}
 	add := func(off, length int) bool {

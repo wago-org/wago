@@ -1395,6 +1395,27 @@ respectively, with allocation-count movement in either direction at noise
 level. Both workloads remain comfortably inside the proposed 5% Size
 compile-time gate.
 
+## ARM64 bounded loop-function compaction
+
+Size and Embedded now compact loop-bearing functions when their loop alignment
+is only ARM64's mandatory four-byte instruction alignment. Speed/Balanced keep
+the previous exclusion whenever optional loop alignment is present.
+`WAGO_ARM64_NO_LOOP_COMPACTION=1` is the exact rollback oracle.
+
+An unrestricted prototype reduced the 36-module Size suite by 160,108 bytes but
+made esbuild compilation 7.4% slower. Per-function attribution showed that
+esbuild functions above 16 KiB contributed only 5,136 of 54,040 loop-compaction
+bytes. The accepted path therefore uses a fixed 16 KiB function bound: it keeps
+151,160 corpus bytes (94.4% of the unrestricted win) while bounding the extra
+machine-word scan. Default Size falls from 77,198,532 to 77,047,372 bytes; Ruby
+alone falls by 68,748 bytes to 39,084,348.
+
+Five serialized rollback-versus-enabled samples put Ruby at 569,009,042 to
+586,905,041 ns/op (+3.15%) and esbuild at 308,260,416 to 313,123,708 ns/op
+(+1.58%). Median B/op and allocation counts are unchanged. Native execution,
+serial/parallel identity, and the fixed-size admission bound have dedicated
+tests.
+
 ### Commands
 
 ```sh

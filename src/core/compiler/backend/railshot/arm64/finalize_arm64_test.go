@@ -190,6 +190,75 @@ func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
 	}
 }
 
+func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
+	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
+	beforeLoops := loopCompactionEnabled
+	nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = false, false, true
+	t.Cleanup(func() {
+		nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled
+		loopCompactionEnabled = beforeLoops
+	})
+
+	m := modFuncs(t, funcDef{nil, nil, []byte{0x00, 0x03, 0x40, 0x0b, 0x0b}})
+	objective := OptimizeSize
+	stats := &ModuleStats{}
+	compact, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stats.NativeSize.DeadFrameReservationBytes; got != 0 {
+		t.Fatalf("Size loop dead frame bytes = %d, want 0", got)
+	}
+
+	loopCompactionEnabled = false
+	reservedStats := &ModuleStats{}
+	reserved, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: reservedStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reservedStats.NativeSize.DeadFrameReservationBytes; got == 0 {
+		t.Fatal("rollback loop retained no dead frame reservation; test cannot detect compaction")
+	}
+	if len(compact.Code) >= len(reserved.Code) {
+		t.Fatalf("compacted loop code = %d bytes, rollback = %d", len(compact.Code), len(reserved.Code))
+	}
+	loopCompactionEnabled = true
+	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(compact.Code, parallel.Code) || !slices.Equal(compact.Entry, parallel.Entry) || !slices.Equal(compact.InternalEntry, parallel.InternalEntry) {
+		t.Fatal("serial and parallel loop compaction differ")
+	}
+
+	execModule := modFuncs(t, funcDef{nil, []wasm.ValType{wasm.I64}, []byte{
+		0x00,       // locals
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x0c, 0x01, // br 1: leave block
+		0x0b,       // end loop
+		0x0b,       // end block
+		0x42, 0x2a, // i64.const 42
+		0x0b,
+	}})
+	if got, err := runArm64WrapperWithOptions(t, execModule, CompileOptions{Objective: &objective}); err != nil || got != 42 {
+		t.Fatalf("compacted loop execution = %d, %v; want 42", got, err)
+	}
+}
+
+func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
+	f := fn{
+		a:       &a64.Asm{B: make([]byte, maxLoopCompactionBytes+4)},
+		sc:      &scratch{},
+		hasLoop: true,
+		policy:  shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
+	}
+	var storage [maxFinalizerDeletions]shared.DeletedRange
+	if _, _, ok := f.buildCompactionPlan(storage[:0]); ok {
+		t.Fatal("oversized loop function unexpectedly admitted to compaction")
+	}
+}
+
 func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 	t.Run("branch", func(t *testing.T) {
 		code := make([]byte, 24)
