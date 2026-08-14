@@ -217,9 +217,10 @@ guest stay in the shell's foreground job group, so both receive terminal
 interrupts. The watcher restores terminal ownership if a guest descendant
 creates a separate foreground group. It also records bounded process identities
 and checks each identity again before signaling it. Linux subreaper ownership
-and macOS kernel fork events keep double-forked children tracked; on macOS, an
-inherited pipe holds the child at runtime entry until event tracking is active.
-Cleanup therefore reaches descendants that
+and macOS kernel fork events keep double-forked children tracked. On macOS, a
+trusted shell trampoline waits on an inherited pipe until event tracking is
+active, then replaces itself with the runtime in the same process. Cleanup
+therefore reaches descendants that
 create a new session or process group. The watcher mirrors terminal stop and
 continue events, and its status output remains safe when background terminal
 writes are disabled. It can find the controlling terminal through stdin,

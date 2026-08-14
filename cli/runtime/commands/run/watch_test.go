@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wago-org/wago/cli/internal/watchstart"
 )
 
 func TestWithoutWatchFlagsPreservesGuestArguments(t *testing.T) {
@@ -315,7 +314,6 @@ func waitForWatchLog(t *testing.T, path string, count int) []string {
 }
 
 func TestWatchHelperProcess(t *testing.T) {
-	watchstart.Await()
 	if os.Getenv("WAGO_WATCH_HELPER") != "1" {
 		return
 	}

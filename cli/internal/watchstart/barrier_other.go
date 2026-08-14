@@ -11,5 +11,3 @@ func Started(*exec.Cmd) error { return nil }
 func Release(*exec.Cmd) error { return nil }
 
 func Abort(*exec.Cmd) {}
-
-func Await() {}
