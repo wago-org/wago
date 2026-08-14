@@ -594,6 +594,14 @@ func asmCapForBody(bodyLen int) int {
 	return capHint
 }
 
+func moduleCodeCapacityAMD64(bodyBytes, functions int, policy CodegenPolicy) int {
+	largeExpansionEighths := 37
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		largeExpansionEighths = 25
+	}
+	return shared.TaperedModuleCodeCapacity(bodyBytes, functions, 40, largeExpansionEighths, 1<<20)
+}
+
 // scratch bundles the per-function compile buffers reused across all functions in
 // one module compile. Every field is pure scratch that never outlives a
 // function's compile — the emitted code is copied into the module buffer before
@@ -1184,7 +1192,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
 	}
-	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 40, 37, 1<<20)
+	codeCap := moduleCodeCapacityAMD64(totalBody, n, policy)
 	workers := shared.ResolveWorkers(opts.Workers, n, runtime.GOMAXPROCS(0))
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,

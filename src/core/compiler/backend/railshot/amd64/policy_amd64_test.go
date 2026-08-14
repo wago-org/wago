@@ -203,3 +203,18 @@ func TestCompileModuleRejectsInvalidObjectiveAMD64(t *testing.T) {
 		t.Fatal("invalid optimization objective was accepted")
 	}
 }
+
+func TestModuleCodeCapacityIsObjectiveAwareAMD64(t *testing.T) {
+	selection := currentCodegenPolicy().Selection
+	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
+	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
+	const bodyBytes = 8 << 20
+	balancedCap := moduleCodeCapacityAMD64(bodyBytes, 1000, balanced)
+	sizeCap := moduleCodeCapacityAMD64(bodyBytes, 1000, size)
+	if sizeCap >= balancedCap {
+		t.Fatalf("Size module capacity = %d, want less than Balanced %d", sizeCap, balancedCap)
+	}
+	if got, want := moduleCodeCapacityAMD64(100, 3, size), moduleCodeCapacityAMD64(100, 3, balanced); got != want {
+		t.Fatalf("small-module Size capacity = %d, want Balanced %d", got, want)
+	}
+}
