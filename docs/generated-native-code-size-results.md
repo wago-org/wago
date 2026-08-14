@@ -446,6 +446,16 @@ Both are inside the compile-time gate. The next estimator expansion should cost
 multi-site parameter binding and caller-frame effects directly; simply raising
 the body ceiling is contradicted by the earlier Ruby and esbuild measurements.
 
+An ARM64 caller-amortization trial tested that next boundary without landing it.
+Allowing a tiny multi-use target when the same caller contained at least two
+sites recovered 704 bytes across nine modules but added 3,768 bytes to `ruby`,
+for a net 3,064-byte regression versus the single-use proof class. Restricting
+the experiment to the AMD64 `isa_call` signature (two parameters, one result)
+had no ARM64 corpus effect because those calls remain under the backend's
+existing loop-site exclusion. The rule was removed and not ported to AMD64.
+Multi-site admission therefore still requires a caller-specific frame/binding
+cost, not merely a repeated-site count.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
