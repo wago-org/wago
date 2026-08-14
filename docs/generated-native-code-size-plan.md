@@ -1389,3 +1389,13 @@ existing bound does not saturate on this corpus, so the experiment was removed
 without spending compile benchmarks or doubling that compiler state. The same
 AMD64 trial also left its full Size corpus exactly unchanged at 63,912,186
 bytes, confirming the eight-shape bound on both backends.
+
+### Rejected AMD64 caller-saved whole-function pins
+
+A Size/Embedded prototype added RDI and RSI to the call-free straight-line pin
+pool, ranked RDI/RSI/RBP before the high bank, and truncated back to the exact
+original pin count. Although `many_funcs` shrank by 591 bytes and several small
+modules also improved, Ruby grew by 2,858 bytes. The complete AMD64 Size corpus
+grew from 63,912,186 to 63,914,238 bytes (+2,052). Different scratch and move
+interactions outweighed the REX-prefix savings, so the prototype and its knob
+were removed without timed benchmarks.
