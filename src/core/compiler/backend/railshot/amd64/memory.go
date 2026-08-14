@@ -643,17 +643,25 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		f.a.LoadIdx(out, base, ea, disp, size, signed, wide)
 		f.release(base)
 		f.release(ea)
+		var e *elem
 		if wide {
-			f.pushReg(out, mtI64)
+			e = f.pushReg(out, mtI64)
 		} else {
-			f.pushReg(out, mtI32)
+			e = f.pushReg(out, mtI32)
+		}
+		if f.opt(optValueFacts) && !wide {
+			e.st.facts = factUpper32Zero
 		}
 		return nil
 	}
 	if f.memoryAddr64(0) {
 		f.invalidateStoreForward()
 		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
-		e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow))
+		st := memRefStorage(ea, disp, size, signed, wide, borrow)
+		if f.opt(optValueFacts) && !wide {
+			st.facts = factUpper32Zero
+		}
+		e := f.pushValue(st)
 		if eaOwned {
 			f.regUser[ea] = e
 		}
@@ -683,7 +691,13 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	ea, eaOwned, borrow, disp := f.memAddr(off32, size, true, rangeExtent)
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
-	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow))
+	st := memRefStorage(ea, disp, size, signed, wide, borrow)
+	if f.opt(optValueFacts) && !wide {
+		// Every i32 load writes a 32-bit destination, including sign-extending
+		// byte/word forms, so the physical register upper half is known zero.
+		st.facts = factUpper32Zero
+	}
+	e := f.pushValue(st)
 	if eaOwned {
 		f.regUser[ea] = e // an owned address register belongs to the deferred load
 	}
