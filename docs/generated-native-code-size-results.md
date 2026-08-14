@@ -1552,6 +1552,23 @@ retention, residual-relocation rejection, the full AMD64 backend and race
 suites, and compacted corpus execution with finalizer validation all pass on
 the Ryzen 7 7800X3D host.
 
+## ARM64 call-free void frame elision
+
+ARM64 frame elision previously required exactly one register result even though
+a call-free void register-ABI leaf has the same proof: with no spills, EH state,
+inlined-local extension, v128 frame traffic, or unpinned scalar local, no frame
+address is observed. The proof now admits void leaves under
+`WAGO_ARM64_NO_FRAME_ELIDE_VOID=1` rollback while retaining every existing
+exclusion. Host adapters keep their independent LR/results-pointer record.
+
+The 36-module Size suite falls from 77,027,052 to 77,023,468 bytes. Exactly 448
+void functions elide one small ARM64 frame reservation, saving 3,584 bytes.
+Five serialized rollback-versus-enabled samples put Ruby at 576,977,292 to
+582,354,292 ns/op (+0.93%) and esbuild at 310,847,542 to 315,111,542 ns/op
+(+1.37%); median allocations are unchanged. A focused native execution test,
+the full ARM64 backend and race suites, and compacted corpus execution with
+finalizer validation pass.
+
 ### Commands
 
 ```sh

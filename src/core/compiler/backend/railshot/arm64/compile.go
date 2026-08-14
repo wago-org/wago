@@ -65,6 +65,7 @@ var smallFrameAdjustEnabled = os.Getenv("WAGO_ARM64_NOSMALLFRAME") != "1"
 // never touched, so the SUB/ADD SP pair is dead. Off restores the old
 // preserveCallerPins-only gate for A/B and rollback checks.
 var frameElideRegHomed = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_REGHOMED") != "1"
+var frameElideVoid = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_VOID") != "1"
 
 // inlineCallFreeHintsEnabled lets frame/register planning use the post-inline
 // fact that no native call remains. Disable only for A/B and rollback checks.
@@ -687,7 +688,9 @@ func (f *fn) frameSize() int {
 }
 
 func (f *fn) elideRegisterOnlyFrame() bool {
-	if f.moduleEH || !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	voidResult := len(f.ft.Results) == 0
+	registerResult := f.singleRegResult || frameElideVoid && voidResult
+	if f.moduleEH || !registerResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	// The frame reserves slots for locals and operand spills. A call-free leaf with
@@ -704,6 +707,9 @@ func (f *fn) elideRegisterOnlyFrame() bool {
 	}
 	f.frameElided = true
 	f.stats.peep("frame-adjust-elide")
+	if voidResult {
+		f.stats.peep("frame-adjust-elide-void")
+	}
 	return true
 }
 
