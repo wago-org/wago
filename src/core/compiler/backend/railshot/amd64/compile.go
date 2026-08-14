@@ -174,6 +174,10 @@ var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 // ON; WAGO_AMD64_NO_ADDR_ZEXT_ELIM=1 disables it for A/B.
 var memory32AddrZExtElimEnabled = os.Getenv("WAGO_AMD64_NO_ADDR_ZEXT_ELIM") != "1"
 
+// valueFactsEnabled carries bounded upper-zero and boolean provenance on Valent
+// nodes. WAGO_AMD64_NOPROVENANCE=1 retains the pre-facts path for A/B checks.
+var valueFactsEnabled = os.Getenv("WAGO_AMD64_NOPROVENANCE") != "1"
+
 // bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
 // the low-level backend default and selected by the public runtime only after
 // host CPUID confirms BMI2.

@@ -88,32 +88,13 @@ func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
 // extend). Each reads the source register and writes the converted value; the
 // source register can be reused when there is no target hint.
-// producesCleanI32 reports whether an i32-typed deferred op materializes into a
-// register whose upper 32 bits are guaranteed zero. All of these lower to 32-bit
-// instructions (ALU/shift/mul/div, bit counts) or a 0/1 setcc, and a 32-bit write
-// clears the upper half on x86-64. Loads and local/global reads are excluded:
-// they can surface dirty upper bits (garbage-padded params, sign-extending loads).
-func producesCleanI32(op wOp) bool {
-	switch op {
-	case opAdd, opSub, opAnd, opOr, opXor,
-		opShl, opShrU, opShrS, opRotl, opRotr,
-		opMul, opDivU, opDivS, opRemU, opRemS,
-		opClz, opCtz, opPopcnt,
-		opEq, opNe, opLtS, opLtU, opGtS, opGtU, opLeS, opLeU, opGeS, opGeU, opEqz,
-		opWrap, opZExt32:
-		return true
-	}
-	return false
-}
-
 func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// Redundant zero-extend elimination: i64.extend_i32_u of a value already in
 	// clean zero-upper form (an i32 produced by a 32-bit instruction, which zeroes
-	// the upper 32 bits on x86-64) is a no-op. Captured before materialize consumes
-	// the deferred node. NOT applied to i32 locals/params or sign-extending loads,
-	// which can carry dirty upper bits — hence the producer-op whitelist.
-	cleanZExt := node.op == opZExt32 && node.arg0.kind == ekDeferred &&
-		node.arg0.typ == mtI32 && producesCleanI32(node.arg0.op)
+	// the upper 32 bits on x86-64) is a no-op. The semantic fact survives bounded
+	// Valent materialization and spills, but local/global reads and signed loads
+	// begin unknown and therefore cannot trigger this consumer.
+	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
 	src, srcOwned := f.materializeRead(node.arg0)
 	result := dest
 	if result == regNone {

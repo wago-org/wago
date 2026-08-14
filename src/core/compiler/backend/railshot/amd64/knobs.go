@@ -27,6 +27,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
+	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("immutable-table", &immutableLocalTableEnabled),
 	optimization.Bind("immutable-table-type", &immutableTableTypeEnabled),
 	optimization.Bind("inline-callfree", &inlineCallFreeHintsEnabled),
@@ -66,6 +67,7 @@ var (
 	optVEXFloatMem        = optimizationBindings.Option("vex-float-mem")
 	optMultiBoundsCert    = optimizationBindings.Option("multi-bounds-cert")
 	optAddrZExtElim       = optimizationBindings.Option("addr-zext-elim")
+	optValueFacts         = optimizationBindings.Option("value-facts")
 	optImmutableTable     = optimizationBindings.Option("immutable-table")
 	optImmutableTableType = optimizationBindings.Option("immutable-table-type")
 	optInlineCallFree     = optimizationBindings.Option("inline-callfree")
