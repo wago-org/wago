@@ -347,9 +347,6 @@ func TestWatchHelperProcess(t *testing.T) {
 		return
 	}
 	if os.Getenv("WAGO_WATCH_TREE") == "1" && os.Getenv("WAGO_WATCH_LEAF") != "1" {
-		// Give the watcher time to attach the new process to its platform process
-		// group before this child creates a descendant.
-		time.Sleep(100 * time.Millisecond)
 		command := exec.Command(os.Args[0], "-test.run=^TestWatchHelperProcess$", "-test.count=1")
 		command.Env = append(os.Environ(), "WAGO_WATCH_LEAF=1")
 		command.Stdout, command.Stderr = io.Discard, io.Discard

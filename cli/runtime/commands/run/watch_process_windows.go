@@ -3,6 +3,7 @@
 package run
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -18,7 +19,7 @@ type watchedChildPlatform struct {
 func proxyWatchedInput() bool { return false }
 
 func prepareWatchedCommand(command *exec.Cmd) {
-	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED}
 }
 
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
@@ -43,7 +44,43 @@ func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 		windows.CloseHandle(job)
 		return watchedChildPlatform{}, err
 	}
+	if err := resumeWatchedProcess(command); err != nil {
+		windows.CloseHandle(job)
+		return watchedChildPlatform{}, err
+	}
 	return watchedChildPlatform{job: job}, nil
+}
+
+func resumeWatchedProcess(command *exec.Cmd) error {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, 0)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(snapshot)
+	entry := windows.ThreadEntry32{Size: uint32(unsafe.Sizeof(windows.ThreadEntry32{}))}
+	if err := windows.Thread32First(snapshot, &entry); err != nil {
+		return err
+	}
+	for {
+		if entry.OwnerProcessID == uint32(command.Process.Pid) {
+			thread, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, entry.ThreadID)
+			if err != nil {
+				return err
+			}
+			count, resumeErr := windows.ResumeThread(thread)
+			windows.CloseHandle(thread)
+			if resumeErr != nil {
+				return resumeErr
+			}
+			if count != 1 {
+				return fmt.Errorf("watched process thread had suspend count %d, want 1", count)
+			}
+			return nil
+		}
+		if err := windows.Thread32Next(snapshot, &entry); err != nil {
+			return fmt.Errorf("find watched process thread: %w", err)
+		}
+	}
 }
 
 func interruptWatchedProcess(_ watchedChildPlatform, command *exec.Cmd, _ os.Signal) error {
