@@ -753,7 +753,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 		for i := t.params; i < t.nLocals; i++ {
 			local := base + i
 			for s := 0; s < t.localTypes[i].stackSlots(); s++ {
-				f.a.Store64(RSP, f.localOff(local)+int32(8*s), z)
+				f.a.Store64(RSP, f.localAddr(local)+int32(8*s), z)
 			}
 			f.locals[local].state = lsMem
 			f.invalidateGCLoadFactsForLocal(local)

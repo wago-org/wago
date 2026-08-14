@@ -76,6 +76,19 @@ func TestEncodingStatsDisplacementForms(t *testing.T) {
 	}
 }
 
+func TestEncodingStatsLocalFrameDisplacementForms(t *testing.T) {
+	var stats EncodingStats
+	stats.RecordLocalFrameAddress(0)
+	stats.RecordLocalFrameAddress(127)
+	stats.RecordLocalFrameAddress(128)
+	if stats.LocalDisp0 != 1 || stats.LocalDisp8 != 1 || stats.LocalDisp32 != 1 {
+		t.Fatalf("local frame displacement stats = %#v, want one of each form", stats)
+	}
+	if got, want := stats.LocalFrameDisplacementBytes(), uint64(5); got != want {
+		t.Fatalf("local frame displacement bytes = %d, want %d", got, want)
+	}
+}
+
 func TestEncodingStatsRexPrefixes(t *testing.T) {
 	var stats EncodingStats
 	a := Asm{EncodingStats: &stats}

@@ -59,7 +59,14 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
 	if got := stats.Encoding.MemoryDisp0 + stats.Encoding.MemoryDisp8 + stats.Encoding.MemoryDisp32; got == 0 || got != encodingSum {
 		t.Fatalf("module encoding operands = %d, per-function sum = %d", got, encodingSum)
 	}
-	if report := stats.String(); !strings.Contains(report, "native: total=") || !strings.Contains(report, "dead-reserved=") || !strings.Contains(report, "amd64-encoding:") {
+	localOperands := stats.Encoding.LocalDisp0 + stats.Encoding.LocalDisp8 + stats.Encoding.LocalDisp32
+	if localOperands == 0 {
+		t.Fatal("module local-frame encoding ledger is empty")
+	}
+	if stats.Encoding.LocalDisp0 > stats.Encoding.FrameDisp0 || stats.Encoding.LocalDisp8 > stats.Encoding.FrameDisp8 || stats.Encoding.LocalDisp32 > stats.Encoding.FrameDisp32 {
+		t.Fatalf("local-frame encoding is not a subset of frame encoding: local=%#v frame=%#v", stats.Encoding, stats.Encoding)
+	}
+	if report := stats.String(); !strings.Contains(report, "native: total=") || !strings.Contains(report, "dead-reserved=") || !strings.Contains(report, "amd64-encoding:") || !strings.Contains(report, "amd64-local-encoding:") {
 		t.Fatalf("explain output lacks native ledger:\n%s", report)
 	}
 }

@@ -1103,7 +1103,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		xmm := f.materializeV128(e)
 		elideStore := tee && f.v128TeeOverwritten(reader, x)
 		if !elideStore {
-			f.a.VMovdquStoreDisp(RSP, f.localOff(x), xmm)
+			f.a.VMovdquStoreDisp(RSP, f.localAddr(x), xmm)
 		} else {
 			f.stats.peep("simd-tee-store-elide")
 		}
@@ -1121,7 +1121,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	}
 	if f.localType[x].isFloat() {
 		xmm := f.materializeF(e)
-		f.a.FStoreDisp(RSP, f.localOff(x), xmm, f.localType[x] == mtF64)
+		f.a.FStoreDisp(RSP, f.localAddr(x), xmm, f.localType[x] == mtF64)
 		f.locals[x].state = lsMem
 		if !tee {
 			f.erase(e)
@@ -1133,7 +1133,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.condense(e, regNone)
 	}
 	r := f.materialize(e)
-	f.storeFrameInt(f.localOff(x), r, f.localType[x])
+	f.storeFrameInt(f.localAddr(x), r, f.localType[x])
 	f.locals[x].state = lsMem
 	if !tee {
 		f.erase(e)

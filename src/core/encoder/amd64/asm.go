@@ -52,6 +52,9 @@ type EncodingStats struct {
 	FrameDisp0   uint64 `json:"frame_disp0"`
 	FrameDisp8   uint64 `json:"frame_disp8"`
 	FrameDisp32  uint64 `json:"frame_disp32"`
+	LocalDisp0   uint64 `json:"local_disp0"`
+	LocalDisp8   uint64 `json:"local_disp8"`
+	LocalDisp32  uint64 `json:"local_disp32"`
 	RexPrefixes  uint64 `json:"rex_prefixes"`
 	RexWPrefixes uint64 `json:"rex_w_prefixes"`
 	RexBare      uint64 `json:"rex_bare_prefixes"`
@@ -79,6 +82,9 @@ func (s *EncodingStats) Add(other EncodingStats) {
 	s.FrameDisp0 += other.FrameDisp0
 	s.FrameDisp8 += other.FrameDisp8
 	s.FrameDisp32 += other.FrameDisp32
+	s.LocalDisp0 += other.LocalDisp0
+	s.LocalDisp8 += other.LocalDisp8
+	s.LocalDisp32 += other.LocalDisp32
 	s.RexPrefixes += other.RexPrefixes
 	s.RexWPrefixes += other.RexWPrefixes
 	s.RexBare += other.RexBare
@@ -103,6 +109,23 @@ func (s EncodingStats) MemoryDisplacementBytes() uint64 {
 
 func (s EncodingStats) FrameDisplacementBytes() uint64 {
 	return s.FrameDisp8 + 4*s.FrameDisp32
+}
+
+// RecordLocalFrameAddress attributes one emitted RSP-relative memory operand
+// to a reorderable Wasm local home. The backend calls this at the semantic
+// local seam; frame headers, EH records, and spill slots remain excluded.
+func (s *EncodingStats) RecordLocalFrameAddress(disp int32) {
+	if disp == 0 {
+		s.LocalDisp0++
+	} else if disp >= -128 && disp <= 127 {
+		s.LocalDisp8++
+	} else {
+		s.LocalDisp32++
+	}
+}
+
+func (s EncodingStats) LocalFrameDisplacementBytes() uint64 {
+	return s.LocalDisp8 + 4*s.LocalDisp32
 }
 
 // RexNonWExtensionPrefixes is the upper bound of prefixes removable solely by

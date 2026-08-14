@@ -435,6 +435,9 @@ func (ms *ModuleStats) String() string {
 		ms.Encoding.MemoryDisp0, ms.Encoding.MemoryDisp8, ms.Encoding.MemoryDisp32,
 		ms.Encoding.MemoryDisplacementBytes(), ms.Encoding.FrameDisp0, ms.Encoding.FrameDisp8,
 		ms.Encoding.FrameDisp32, ms.Encoding.FrameDisplacementBytes())
+	fmt.Fprintf(&b, "amd64-local-encoding: disp0=%d disp8=%d disp32=%d displacement-bytes=%d disp32-shortening-ceiling=%d\n",
+		ms.Encoding.LocalDisp0, ms.Encoding.LocalDisp8, ms.Encoding.LocalDisp32,
+		ms.Encoding.LocalFrameDisplacementBytes(), 3*ms.Encoding.LocalDisp32)
 	fmt.Fprintf(&b, "amd64-prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
 		ms.Encoding.RexPrefixes, ms.Encoding.RexWPrefixes, ms.Encoding.RexBare,
 		ms.Encoding.RexNonWExtensionPrefixes())
@@ -491,6 +494,9 @@ func (s *CodegenStats) report() string {
 		s.Encoding.MemoryDisp0, s.Encoding.MemoryDisp8, s.Encoding.MemoryDisp32,
 		s.Encoding.MemoryDisplacementBytes(), s.Encoding.FrameDisp0, s.Encoding.FrameDisp8,
 		s.Encoding.FrameDisp32, s.Encoding.FrameDisplacementBytes())
+	fmt.Fprintf(&b, "    local-encoding: disp0=%d disp8=%d disp32=%d displacement-bytes=%d disp32-shortening-ceiling=%d\n",
+		s.Encoding.LocalDisp0, s.Encoding.LocalDisp8, s.Encoding.LocalDisp32,
+		s.Encoding.LocalFrameDisplacementBytes(), 3*s.Encoding.LocalDisp32)
 	fmt.Fprintf(&b, "    prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
 		s.Encoding.RexPrefixes, s.Encoding.RexWPrefixes, s.Encoding.RexBare,
 		s.Encoding.RexNonWExtensionPrefixes())

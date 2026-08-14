@@ -781,9 +781,9 @@ type tailDeferredArg struct {
 // full-machine-word staging sequence as its exact code-shape oracle.
 func (f *fn) loadCallLocalInt(dst Reg, st storage) {
 	if compactI32CallsEnabled {
-		f.loadFrameInt(dst, f.localOff(st.idx), st.typ)
+		f.loadFrameInt(dst, f.localAddr(st.idx), st.typ)
 	} else {
-		f.a.Load64(dst, RSP, f.localOff(st.idx))
+		f.a.Load64(dst, RSP, f.localAddr(st.idx))
 	}
 }
 
@@ -876,7 +876,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stSlot:
 				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slot), arg.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(arg.target, RSP, f.localOff(arg.root.st.idx), arg.root.st.typ == mtF64)
+				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.idx), arg.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -1932,7 +1932,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stSlot:
 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slot), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(da.target, RSP, f.localOff(da.root.st.idx), da.root.st.typ == mtF64)
+				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.idx), da.root.st.typ == mtF64)
 			}
 			continue
 		}

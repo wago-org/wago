@@ -2016,9 +2016,23 @@ Esbuild emits 550,874 / 1,294,815 / 237,289 memory displacement forms,
 occupying 2,243,971 bytes. Its frame subset is 138,205 / 479,423 / 6,558 and
 occupies 505,655 bytes, putting the corresponding absolute upper bound at
 19,674 bytes. Most esbuild `disp32` operands are therefore not frame slots.
-This evidence narrows the next frame-layout step: record symbolic local/slot
-identity at the emitted RSP sites rather than re-enabling the rejected
-source-score ordering globally.
+
+The backend now marks each actual memory operand that semantically addresses a
+Wasm local home, excluding the frame header, EH records, and spill slots. Ruby's
+local subset is 196,148 / 1,309,984 / 10,271, occupying 1,351,068 displacement
+bytes. Its exact `disp32`-to-`disp8` ceiling is therefore only 30,813 bytes, not
+the all-frame 80,772-byte bound. Esbuild's local subset is 138,205 / 450,381 /
+2,984, occupying 462,317 bytes, for an 8,952-byte ceiling rather than 19,674.
+This evidence narrows the next layout step further: retain local identity and
+exact emitted reference counts so ordering can target the small set of costly
+homes rather than re-enabling the rejected source-score heuristic globally.
+
+The semantic marker allocates nothing and is inactive when stats are absent
+apart from one nil check at a local-frame emission site. Five serialized
+nil-stats Size samples move Ruby from a 975,728,289 to 980,513,950 ns/op median
+(+0.49%) and esbuild from 509,458,866 to 511,832,136 ns/op (+0.47%). B/op and
+allocation counts remain noise-level, and both compile-time results are inside
+the gate.
 
 The same encoder ledger now counts every REX prefix, including prefixes embedded
 after another instruction in a combined emission. Ruby emits 4,730,474 total:

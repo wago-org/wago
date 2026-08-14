@@ -239,7 +239,7 @@ func (f *fn) materialize(e *elem) Reg {
 			panic("amd64: v128 local requires XMM materialization")
 		}
 		r := f.allocReg(0)
-		f.loadFrameInt(r, f.localOff(e.st.idx), e.st.typ)
+		f.loadFrameInt(r, f.localAddr(e.st.idx), e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stLocalReg:

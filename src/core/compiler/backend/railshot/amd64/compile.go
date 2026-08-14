@@ -853,6 +853,13 @@ func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
 }
 
 func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + f.localSlot[i]) }
+func (f *fn) localAddr(i int) int32 {
+	off := f.localOff(i)
+	if f.stats != nil {
+		f.stats.Encoding.RecordLocalFrameAddress(off)
+	}
+	return off
+}
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
 		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
@@ -3020,7 +3027,7 @@ func (f *fn) prologue() {
 				a.VMovdquLoadDisp(pr, RDI, paramOff) // pinned v128 param → its XMM register
 			} else {
 				a.VMovdquLoadDisp(0, RDI, paramOff)
-				a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
+				a.VMovdquStoreDisp(RSP, f.localAddr(i), 0)
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -3039,7 +3046,7 @@ func (f *fn) prologue() {
 				a.FLoadDisp(pr, RDI, paramOff, f.localType[i] == mtF64) // pinned float param → XMM
 			} else {
 				a.Load64(RAX, RDI, paramOff)
-				f.storeFrameInt(f.localOff(i), RAX, f.localType[i])
+				f.storeFrameInt(f.localAddr(i), RAX, f.localType[i])
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -3072,10 +3079,10 @@ func (f *fn) zeroDeclaredLocals() {
 			} else if ok && isFloat {
 				a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr -> 0.0
 			} else if f.localType[i] == mtV128 {
-				a.Store64(RSP, f.localOff(i), RAX)
-				a.Store64(RSP, f.localOff(i)+8, RAX)
+				a.Store64(RSP, f.localAddr(i), RAX)
+				a.Store64(RSP, f.localAddr(i)+8, RAX)
 			} else {
-				f.storeFrameInt(f.localOff(i), RAX, f.localType[i])
+				f.storeFrameInt(f.localAddr(i), RAX, f.localType[i])
 			}
 		}
 		return
@@ -3184,7 +3191,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 				fp++
 				continue
 			}
-			f.storeFrameInt(f.localOff(i), intArgRegs[gp], mt)
+			f.storeFrameInt(f.localAddr(i), intArgRegs[gp], mt)
 			gp++
 		}
 		gp, fp = 0, 0
@@ -3196,7 +3203,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 			if pr, isFloat, ok := f.pinReg(i); ok && isFloat {
 				a.FMov(pr, src, mt == mtF64)
 			} else {
-				a.FStoreDisp(RSP, f.localOff(i), src, mt == mtF64)
+				a.FStoreDisp(RSP, f.localAddr(i), src, mt == mtF64)
 			}
 			fp++
 		} else if len(f.intervalReg) != 0 {
@@ -3204,7 +3211,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			f.moveInt(pr, intArgRegs[gp], mt)
 		} else {
-			f.storeFrameInt(f.localOff(i), intArgRegs[gp], mt)
+			f.storeFrameInt(f.localAddr(i), intArgRegs[gp], mt)
 		}
 		if !mt.isFloat() {
 			gp++
