@@ -55,6 +55,7 @@ type projectJournal struct {
 type journalFile struct {
 	Data   []byte `json:"data"`
 	SHA256 string `json:"sha256"`
+	Mode   uint32 `json:"mode"`
 }
 
 func projectLockPath(dir string) string {
@@ -63,6 +64,22 @@ func projectLockPath(dir string) string {
 
 func projectJournalPath(dir string) string {
 	return filepath.Join(dir, projectDirectory, projectJournalFile)
+}
+
+// withMetadataRead avoids creating project state for ordinary read-only
+// access. Once a writer has created the shared lock, readers join that lock and
+// recover any committed journal before inspecting metadata.
+func withMetadataRead(dir string, fn func(*Mutation) error) error {
+	for _, path := range []string{projectJournalPath(dir), projectLockPath(dir)} {
+		if _, err := os.Lstat(path); err == nil {
+			return WithMutation(context.Background(), dir, fn)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	mutation := &Mutation{dir: dir, active: true}
+	defer func() { mutation.active = false }()
+	return fn(mutation)
 }
 
 // WithMutation serializes project metadata access across processes, recovers
@@ -175,12 +192,19 @@ func (mutation *Mutation) publish(manifestData, lockData *[]byte) error {
 	if automation.Locked() {
 		return fmt.Errorf("locked mode prevents changing project metadata")
 	}
+	var err error
 	journal := projectJournal{FormatVersion: projectTransactionFormat}
 	if manifestData != nil {
-		journal.Manifest = newJournalFile(*manifestData)
+		journal.Manifest, err = newJournalFile(Path(mutation.dir), *manifestData)
+		if err != nil {
+			return err
+		}
 	}
 	if lockData != nil {
-		journal.Lock = newJournalFile(*lockData)
+		journal.Lock, err = newJournalFile(LockPath(mutation.dir), *lockData)
+		if err != nil {
+			return err
+		}
 	}
 	if journal.Manifest == nil && journal.Lock == nil {
 		return errors.New("project transaction has no files")
@@ -246,12 +270,12 @@ func (mutation *Mutation) recover() error {
 
 func (mutation *Mutation) applyJournal(journal projectJournal) error {
 	if journal.Manifest != nil {
-		if err := writeJournalFile(Path(mutation.dir), 0o644, journal.Manifest); err != nil {
+		if err := writeJournalFile(Path(mutation.dir), journal.Manifest); err != nil {
 			return fmt.Errorf("recover %s: %w", File, err)
 		}
 	}
 	if journal.Lock != nil {
-		if err := writeJournalFile(LockPath(mutation.dir), 0o644, journal.Lock); err != nil {
+		if err := writeJournalFile(LockPath(mutation.dir), journal.Lock); err != nil {
 			return fmt.Errorf("recover %s: %w", LockFile, err)
 		}
 	}
@@ -268,16 +292,29 @@ func (mutation *Mutation) applyJournal(journal projectJournal) error {
 	return nil
 }
 
-func writeJournalFile(path string, mode os.FileMode, file *journalFile) error {
-	return replaceProjectFile(path, atomicfile.Options{Mode: mode, Sync: true}, func(writer io.Writer) error {
+func writeJournalFile(path string, file *journalFile) error {
+	return replaceProjectFile(path, atomicfile.Options{Mode: os.FileMode(file.Mode), Sync: true}, func(writer io.Writer) error {
 		_, err := writer.Write(file.Data)
 		return err
 	})
 }
 
-func newJournalFile(data []byte) *journalFile {
+func newJournalFile(path string, data []byte) (*journalFile, error) {
+	mode := os.FileMode(0o644)
+	info, err := os.Lstat(path)
+	if err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("project metadata target %s is not a regular file", path)
+		}
+		mode = info.Mode().Perm()
+		if mode == 0 {
+			return nil, fmt.Errorf("project metadata target %s has unsupported mode 0000", path)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
 	sum := sha256.Sum256(data)
-	return &journalFile{Data: append([]byte(nil), data...), SHA256: hex.EncodeToString(sum[:])}
+	return &journalFile{Data: append([]byte(nil), data...), SHA256: hex.EncodeToString(sum[:]), Mode: uint32(mode)}, nil
 }
 
 func validateJournal(journal projectJournal) error {
@@ -294,6 +331,9 @@ func validateJournal(journal projectJournal) error {
 		sum := sha256.Sum256(file.Data)
 		if file.SHA256 != hex.EncodeToString(sum[:]) {
 			return fmt.Errorf("project transaction journal has invalid %s checksum", name)
+		}
+		if file.Mode == 0 || file.Mode > 0o777 {
+			return fmt.Errorf("project transaction journal has invalid %s mode %04o", name, file.Mode)
 		}
 	}
 	var manifest map[string]any

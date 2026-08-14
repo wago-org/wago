@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -80,6 +82,67 @@ func TestMetadataTransactionRejectsInconsistentPairBeforeCommit(t *testing.T) {
 	}
 	if _, statErr := os.Stat(Path(dir)); !os.IsNotExist(statErr) {
 		t.Fatalf("inconsistent transaction wrote manifest: %v", statErr)
+	}
+}
+
+func TestMetadataReadDoesNotRequireOrCreateProjectState(t *testing.T) {
+	dir := t.TempDir()
+	manifest := map[string]any{"$schema": SchemaURI, "plugins": map[string]any{}}
+	data, err := EncodeManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(dir), data, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, manifest) {
+		t.Fatalf("read-only manifest = %#v, want %#v", got, manifest)
+	}
+	if _, err := os.Stat(filepath.Join(dir, projectDirectory)); !os.IsNotExist(err) {
+		t.Fatalf("metadata read created project state: %v", err)
+	}
+}
+
+func TestMetadataTransactionPreservesExistingFileModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix permission bits")
+	}
+	dir := t.TempDir()
+	id := "github.com/acme/pool"
+	manifest := map[string]any{"$schema": SchemaURI, "plugins": map[string]any{id: "^1.0.0"}}
+	lock := NewLockDocument()
+	lock.Plugins[id] = testLockEntry(true, id, map[string]string{})
+	initialManifest, err := EncodeManifest(map[string]any{"$schema": SchemaURI, "plugins": map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialLock, err := EncodeLock(NewLockDocument())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(dir), initialManifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(LockPath(dir), initialLock, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+		return mutation.PublishMetadata(manifest, lock)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]os.FileMode{Path(dir): 0o600, LockPath(dir): 0o640} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("%s mode = %04o, want %04o", path, got, want)
+		}
 	}
 }
 

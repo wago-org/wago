@@ -129,7 +129,7 @@ func LockPath(dir string) string { return filepath.Join(dir, LockFile) }
 
 func ReadLock(dir string) (LockDocument, error) {
 	var document LockDocument
-	err := WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+	err := withMetadataRead(dir, func(mutation *Mutation) error {
 		var err error
 		document, err = mutation.ReadLock()
 		return err

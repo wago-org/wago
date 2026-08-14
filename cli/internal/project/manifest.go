@@ -46,7 +46,7 @@ func DisplayPath(dir string) string {
 // publishers and future schema versions.
 func Read(dir string) (map[string]any, error) {
 	var manifest map[string]any
-	err := WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+	err := withMetadataRead(dir, func(mutation *Mutation) error {
 		var err error
 		manifest, err = mutation.ReadManifest()
 		return err
