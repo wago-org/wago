@@ -1709,6 +1709,21 @@ maps, artifact round trips, the full ARM64 backend and `src/wago` suites, race
 tests, and compacted corpus execution all pass. This layout-relative metadata
 seam is also the prerequisite for the variable-length AMD64 implementation.
 
+## AMD64 GC-frame header remapping
+
+AMD64 applies the same allocation-free local-identity remap while retaining its
+existing tail-call, EH-fixed-root, and malformed-plan exclusions. Across the
+135 modules compiled by the `TestGC*` suite (245 generated functions), native
+bytes fall from 183,441 to 183,033 (-408) and aggregate frame reservation falls
+from 53,536 to 51,216 bytes (-2,320). The variable-length win comes from shorter
+frame adjustments and local/spill displacements after the 16-byte shift.
+
+Exact-root collection, recursive and cross-instance frame walking, call_ref and
+indirect calls, host re-entry, codec rejection/round trips, the full AMD64
+backend, focused GC race suite, and compacted corpus execution pass on the Ryzen
+host. The host lacks the optional pinned spec-v3 product corpus, so the two
+product tests that require that checkout were not included in this gate.
+
 ### Commands
 
 ```sh

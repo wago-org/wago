@@ -2,7 +2,11 @@
 
 package amd64
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+)
 
 func TestRegisterABIElidesWrapperFrameHeaderAMD64(t *testing.T) {
 	// Fourteen i64 locals put the old frame at 136 bytes and the compact frame at
@@ -50,4 +54,32 @@ func TestRegisterABIElidesWrapperFrameHeaderAMD64(t *testing.T) {
 		defer cm.CodeImage.Close()
 	}
 	_ = runCompiledAmd64u(t, cm)
+}
+
+func TestRegisterABICompactHeaderRemapsGCFrameLocalsAMD64(t *testing.T) {
+	plan := &shared.GCFrameRootPlan{
+		Candidate:    true,
+		LocalIndexes: []uint32{1},
+		LocalOffsets: []uint32{24},
+	}
+	f := fn{
+		nLocals:            2,
+		localSlot:          []int{0, 8},
+		localType:          []machineType{mtI32, mtI64},
+		compactFrameHeader: true,
+	}
+	if !f.prepareCompactGCFrameHeader(plan) {
+		t.Fatal("valid collector-local plan rejected")
+	}
+	if got := plan.LocalOffsets[0]; got != 8 {
+		t.Fatalf("remapped root offset = %d, want 8", got)
+	}
+	bad := &shared.GCFrameRootPlan{Candidate: true, LocalIndexes: []uint32{2}, LocalOffsets: []uint32{32}}
+	if f.prepareCompactGCFrameHeader(bad) {
+		t.Fatal("out-of-range collector-local plan admitted")
+	}
+	withFixed := &shared.GCFrameRootPlan{Candidate: true, FixedOffsets: []uint32{16}}
+	if f.prepareCompactGCFrameHeader(withFixed) {
+		t.Fatal("fixed-root plan admitted")
+	}
 }

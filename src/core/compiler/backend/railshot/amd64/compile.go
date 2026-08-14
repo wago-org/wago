@@ -805,6 +805,27 @@ func (f *fn) frameHeaderBytes() int {
 	return frameHdrBytes
 }
 
+// prepareCompactGCFrameHeader remaps the frontend's collector-local identities
+// through the final local-slot layout without allocating another table. EH fixed
+// roots and malformed plans retain the established wrapper header.
+func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
+	if plan == nil {
+		return true
+	}
+	if !plan.Candidate || len(plan.FixedOffsets) != 0 || len(plan.LocalIndexes) != len(plan.LocalOffsets) {
+		return false
+	}
+	for _, index := range plan.LocalIndexes {
+		if int(index) >= f.nLocals {
+			return false
+		}
+	}
+	for i, index := range plan.LocalIndexes {
+		plan.LocalOffsets[i] = uint32(f.localOff(int(index)))
+	}
+	return true
+}
+
 func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
@@ -2301,7 +2322,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// RCX below the internal frame and direct calls return in registers. Retain the
 	// established header for tail transfer, EH, and GC-frame paths whose auxiliary
 	// offset protocols still refer to that fixed layout.
-	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !hints.hasTailCall && !moduleEH && gcFrameRoots == nil
+	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !hints.hasTailCall && !moduleEH
+	if f.compactFrameHeader && !f.prepareCompactGCFrameHeader(gcFrameRoots) {
+		f.compactFrameHeader = false
+	}
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}
