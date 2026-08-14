@@ -44,9 +44,9 @@ type funcHints struct {
 	// modules populate it during the existing one-pass hint scan. The byte uses
 	// existing alignment padding; 255 is a saturated fallback sentinel.
 	maxControlDepth  uint8
-	inlineCallSites  uint16 // saturated direct call sites targeting this local function
-	gcResolverSites  int    // conservative direct scalar/length resolver site count
-	gcSharedResolver bool   // module decision: shared island beats one-site inline crossover
+	inlineCallSites  uint8 // saturated direct call sites targeting this local function
+	gcResolverSites  int   // conservative direct scalar/length resolver site count
+	gcSharedResolver bool  // module decision: shared island beats one-site inline crossover
 
 	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
 	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set
@@ -858,7 +858,7 @@ func (s *byteBodyScanner) noteInlineCallSite(globalIdx uint32) {
 	if local < 0 || local >= len(s.moduleHints) {
 		return
 	}
-	if s.moduleHints[local].inlineCallSites != ^uint16(0) {
+	if s.moduleHints[local].inlineCallSites != ^uint8(0) {
 		s.moduleHints[local].inlineCallSites++
 	}
 }
