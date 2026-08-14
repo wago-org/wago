@@ -7,11 +7,17 @@ package runtime
 // the optional scalar result.
 func enterNativeInt(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 func enterNativeFP(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
+func enterNativeMixed(code, linMem, g0, g1, f0, f1, foreignStackTop uintptr) (uintptr, uintptr)
 
 // EnterPreparedInt performs only the native transition. Callers must inspect
 // PreparedIntTrapCode immediately afterward and consume any non-zero trap.
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return uint64(enterNativeInt(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
+}
+
+func (e *Engine) EnterPreparedMixed(code, linMemBase uintptr, g0, g1, f0, f1 uint64) (uint64, uint64) {
+	gp, fp := enterNativeMixed(code, linMemBase, uintptr(g0), uintptr(g1), uintptr(f0), uintptr(f1), e.stackTop)
+	return uint64(gp), uint64(fp)
 }
 
 // EnterPreparedFP enters an FP-only register-ABI function. Arguments and the

@@ -60,9 +60,9 @@ var abiClassesEnabled = os.Getenv("WAGO_ARM64_NO_ABI_CLASSES") != "1"
 // switch. The immutable compilation policy snapshots this value.
 var abiLeafFPEnabled = os.Getenv("WAGO_ARM64_NO_ABI_LEAF_FP") != "1"
 
-// preparedFPEntryEnabled marks bounded FP-only signatures for the fixed native
-// prepared trampoline. It changes metadata only; ordinary wrapper/internal
-// entry code remains identical.
+// preparedFPEntryEnabled marks bounded FP and mixed-bank signatures for fixed
+// native prepared trampolines. It changes metadata only; ordinary
+// wrapper/internal entry code remains identical.
 var preparedFPEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_FP_ENTRY") != "1"
 
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
@@ -1956,7 +1956,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// A private prepared entry establishes X26 and preserves the full Go
 	// callee-saved set, so small scalar functions need not be leaves. Keep host
 	// imports, memory caches, module-pinned globals, and EH state on the adapter.
-	directPreparedSig := preparedDirectIntSig(ft) || (f.opt(optPreparedFPEntry) && preparedDirectFPSig(ft))
+	directPreparedSig := preparedDirectIntSig(ft) || (f.opt(optPreparedFPEntry) && (preparedDirectFPSig(ft) || preparedDirectMixedSig(ft)))
 	directPrepared := policy.EnabledOption(optRegABI) && directPreparedSig && !touchesMemory && len(modGlobals) == 0 && !hints.moduleEH &&
 		m.ImportedFuncCount() == 0 && m.MemCount() == 0 && len(c.BodyBytes) <= 96 && nLocals <= 8
 	// Auto-inlining: collect the callees this caller will splice (before the pin

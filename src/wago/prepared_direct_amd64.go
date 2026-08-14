@@ -106,3 +106,33 @@ func (fn *PreparedFunction) invokeDirectFP(args []uint64) ([]uint64, error) {
 	}
 	return out, nil
 }
+
+func (fn *PreparedFunction) invokeDirectMixed(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	}
+	if !fn.isolatedFast {
+		return nil, fmt.Errorf("wago: direct prepared mixed entry requires an isolated instance")
+	}
+	g0, g1, f0, f1 := fn.packDirectMixedArgs(args)
+	gpResult, fpResult := in.eng.EnterPreparedMixed(fn.directEntry, in.jm.LinMemBase(), g0, g1, f0, f1)
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 1 {
+		result := gpResult
+		if fn.directMixedResultFP {
+			result = fpResult
+		}
+		if fn.scalarResultWide {
+			out[0] = result
+		} else {
+			out[0] = uint64(uint32(result))
+		}
+	}
+	return out, nil
+}

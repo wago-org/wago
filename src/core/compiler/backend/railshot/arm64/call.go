@@ -105,6 +105,27 @@ func preparedDirectFPSig(ft *wasm.CompType) bool {
 	return true
 }
 
+func preparedDirectMixedSig(ft *wasm.CompType) bool {
+	if len(ft.Params) == 0 || len(ft.Params) > 4 || len(ft.Results) > 1 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Params {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp == 0 || fp == 0 || gp > 2 || fp > 2 {
+		return false
+	}
+	return len(ft.Results) == 0 || isIntValType(ft.Results[0]) || isFloatValType(ft.Results[0])
+}
+
 func isFloatValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.F32) || wasm.EqualValType(t, wasm.F64)
 }

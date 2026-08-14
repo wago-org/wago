@@ -32,6 +32,8 @@ type PreparedFunction struct {
 	isolatedFast        bool
 	directIntFast       bool
 	directFPFast        bool
+	directMixedFast     bool
+	directMixedResultFP bool
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
@@ -70,6 +72,64 @@ func preparedDirectFPSignature(sig FuncSig) bool {
 		}
 	}
 	return true
+}
+
+func preparedDirectMixedSignature(sig FuncSig) (resultFP bool, ok bool) {
+	if len(sig.Params) == 0 || len(sig.Params) > 4 || len(sig.Results) > 1 {
+		return false, false
+	}
+	gp, fp := 0, 0
+	for _, typ := range sig.Params {
+		switch typ {
+		case ValI32, ValI64:
+			gp++
+		case ValF32, ValF64:
+			fp++
+		default:
+			return false, false
+		}
+	}
+	if gp == 0 || fp == 0 || gp > 2 || fp > 2 {
+		return false, false
+	}
+	if len(sig.Results) == 0 {
+		return false, true
+	}
+	switch sig.Results[0] {
+	case ValI32, ValI64:
+		return false, true
+	case ValF32, ValF64:
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+func (fn *PreparedFunction) packDirectMixedArgs(args []uint64) (g0, g1, f0, f1 uint64) {
+	gp, fp := 0, 0
+	for i, typ := range fn.paramTypes {
+		bits := args[i]
+		if typ == ValI32 || typ == ValF32 {
+			bits = uint64(uint32(bits))
+		}
+		switch typ {
+		case ValI32, ValI64:
+			if gp == 0 {
+				g0 = bits
+			} else {
+				g1 = bits
+			}
+			gp++
+		case ValF32, ValF64:
+			if fp == 0 {
+				f0 = bits
+			} else {
+				f1 = bits
+			}
+			fp++
+		}
+	}
+	return
 }
 
 // PrepareFunction resolves a locally-defined function export once. The returned
@@ -142,12 +202,17 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		fn.privateFast = true
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if in.c.directPreparedAt(ic.li) {
+			mixedResultFP, mixed := preparedDirectMixedSignature(sig)
 			switch {
 			case (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig):
 				fn.directIntFast = true
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			case fn.isolatedFast && preparedDirectFPSupported && preparedDirectFPEnabled && preparedDirectFPSignature(sig):
 				fn.directFPFast = true
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+			case fn.isolatedFast && preparedDirectFPSupported && preparedDirectFPEnabled && mixed:
+				fn.directMixedFast = true
+				fn.directMixedResultFP = mixedResultFP
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			}
 		}
@@ -164,6 +229,9 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 		}
 		if fn.directFPFast {
 			return fn.invokeDirectFP(args)
+		}
+		if fn.directMixedFast {
+			return fn.invokeDirectMixed(args)
 		}
 		if fn.scalarFast {
 			return fn.invokeScalar(args)

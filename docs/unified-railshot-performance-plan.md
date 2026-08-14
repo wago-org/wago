@@ -412,6 +412,28 @@ and from 17.32 to 17.41 us/op (+0.5%) on AMD64. Compile storage rose by 16 bytes
 direct-entry bitset. Generated function bytes are unchanged because the compiler
 change is metadata-only.
 
+### 2026-08-14 — fixed mixed-bank prepared entry family
+
+The same prepared-entry policy now admits one mixed numeric family capped at two
+GP plus two FP arguments, four total, and at most one scalar result. Public raw
+slots are compacted into the two physical argument banks with a fixed unrolled
+upper bound. One static trampoline per architecture returns both physical result
+banks; the prepared signature selects the declared bank in Go. No dynamic
+trampoline, signature cache, heap allocation, or native result-kind branch is
+introduced. Pure GP and pure FP signatures retain their smaller trampolines.
+
+Mixed `f32`/`f64` and `i32`/`i64` ordering, dirty upper-bit cleanup, both result
+banks, division traps, post-trap recovery, cap exhaustion, nonnumeric types, and
+multi-result fallback are covered. The family remains isolated-instance-only and
+shares `prepared-fp-entry` / `WAGO_PREPARED_DIRECT_FP=0` rollback with the FP
+family.
+
+Five-sample medians for a four-argument mixed function improved from 32.13 to
+20.88 ns/op (-35.0%) on an Apple M4 Max and from 18.03 to 10.67 ns/op (-40.8%)
+on an AMD Ryzen 7 7800X3D. Every path remains at zero B/op and allocations.
+Compile storage and generated function bytes are unchanged beyond the already
+measured direct-entry metadata bitset.
+
 ---
 
 # 1. North-star architecture

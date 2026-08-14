@@ -77,8 +77,8 @@ var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "
 // for differential qualification and low-site-count crossover measurement.
 var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
 
-// preparedFPEntryEnabled marks bounded FP-only signatures for the fixed native
-// prepared trampoline. It changes metadata only.
+// preparedFPEntryEnabled marks bounded FP and mixed-bank signatures for fixed
+// native prepared trampolines. It changes metadata only.
 var preparedFPEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_FP_ENTRY") != "1"
 
 // sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
@@ -2495,7 +2495,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// generated code is constrained to caller-saved GPRs. Reserve every Go
 	// callee-saved allocatable register up front; RBX remains the explicit linMem
 	// input. The body/local bounds keep any spill tradeoff away from larger code.
-	preparedSig := preparedDirectIntSig(ft) || (f.opt(optPreparedFPEntry) && preparedDirectFPSig(ft))
+	preparedSig := preparedDirectIntSig(ft) || (f.opt(optPreparedFPEntry) && (preparedDirectFPSig(ft) || preparedDirectMixedSig(ft)))
 	volatilePrepared := regABI && preparedSig && !hasCall && !touchesMemory && len(modGlobals) == 0 && !moduleEH &&
 		len(c.BodyBytes) <= 96 && nLocals <= 8
 	if volatilePrepared {
