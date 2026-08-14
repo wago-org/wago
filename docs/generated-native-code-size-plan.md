@@ -1062,3 +1062,21 @@ full Size execution corpus with finalizer validation passed.
 AMD64 needs no corresponding selector: its existing add, subtract, compare,
 and address-displacement forms already encode signed 32-bit immediates directly,
 including the ARM64-shifted range, without a separate constant materialization.
+
+### Rejected ARM64 wide multiply-shift cover
+
+A bounded prototype extended ARM64's existing `x * {3,5,9}` one-word cover to
+every `x * (2^k + 1)` shifted `ADD` and `x * (1 - 2^k)` shifted `SUB`, including
+`x * -1`. Exact native execution and encoder tests passed, but the full Size
+corpus contained only 24 selected sites:
+
+```text
+rollback native bytes:  75,022,456
+candidate native bytes: 75,022,392
+net reduction:                 64 (0.00009%)
+selected sites:                24
+```
+
+That result does not justify another permanent selector, environment switch,
+and test surface. The prototype was removed. ARM64 retains the common
+`{3,5,9}` forms; AMD64 has no wider single-instruction scale to investigate.
