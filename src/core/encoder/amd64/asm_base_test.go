@@ -62,6 +62,8 @@ func TestEncodingStatsDisplacementForms(t *testing.T) {
 		FrameDisp0:   1,
 		FrameDisp8:   1,
 		FrameDisp32:  1,
+		RexPrefixes:  7,
+		RexWPrefixes: 7,
 	}
 	if stats != want {
 		t.Fatalf("encoding stats = %#v, want %#v", stats, want)
@@ -71,6 +73,28 @@ func TestEncodingStatsDisplacementForms(t *testing.T) {
 	}
 	if got, wantBytes := stats.FrameDisplacementBytes(), uint64(5); got != wantBytes {
 		t.Fatalf("frame displacement bytes = %d, want %d", got, wantBytes)
+	}
+}
+
+func TestEncodingStatsRexPrefixes(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.MovReg64(RAX, RCX)     // REX.W.
+	a.MovRegReg32(R8, RAX)   // Non-W register extension.
+	a.AluRR8(0x30, RSP, RAX) // Bare REX selects SPL rather than AH.
+	a.Prologue()             // Embedded REX.W after PUSH.
+
+	if got, want := stats.RexPrefixes, uint64(4); got != want {
+		t.Fatalf("REX prefixes = %d, want %d", got, want)
+	}
+	if got, want := stats.RexWPrefixes, uint64(2); got != want {
+		t.Fatalf("REX.W prefixes = %d, want %d", got, want)
+	}
+	if got, want := stats.RexBare, uint64(1); got != want {
+		t.Fatalf("bare REX prefixes = %d, want %d", got, want)
+	}
+	if got, want := stats.RexNonWExtensionPrefixes(), uint64(1); got != want {
+		t.Fatalf("non-W extension REX prefixes = %d, want %d", got, want)
 	}
 }
 

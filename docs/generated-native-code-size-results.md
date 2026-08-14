@@ -2020,11 +2020,28 @@ This evidence narrows the next frame-layout step: record symbolic local/slot
 identity at the emitted RSP sites rather than re-enabling the rejected
 source-score ordering globally.
 
+The same encoder ledger now counts every REX prefix, including prefixes embedded
+after another instruction in a combined emission. Ruby emits 4,730,474 total:
+1,910,061 carry mandatory 64-bit width, 268,216 are bare prefixes required to
+select the low-byte register names, and 2,552,197 are non-width register-bank
+extensions. Esbuild emits 3,556,504 total, split into 2,315,507 width, 39,912
+bare, and 1,201,085 non-width extension prefixes. The last category is an
+absolute one-byte-per-site ceiling for low-register reassignment, not a
+prediction: Wago already tries RDI/RSI/RBP before the high temporary bank, and
+many high registers have fixed address, ABI, pin, or pressure roles. Any further
+allocator experiment must report the reduction in this exact counter together
+with moves, spills, frame growth, and runtime.
+
 Five serialized nil-stats Size samples show no compile-time regression. Ruby
 moves from a 978,144,868 ns/op median to 967,852,684 ns/op (-1.05%) and esbuild
 from 516,282,388 to 505,353,448 ns/op (-2.12%); these favorable shifts are
 treated as noise, not as a speed claim. B/op and allocation counts remain
 noise-level.
+
+Adding REX attribution to the same opt-in object moves the nil-stats Ruby median
+from 964,667,608 to 969,038,879 ns/op (+0.45%) and esbuild from 502,108,488 to
+502,350,849 ns/op (+0.05%). B/op and allocation counts remain noise-level, and
+both results are inside the compile-time gate.
 
 ### Commands
 

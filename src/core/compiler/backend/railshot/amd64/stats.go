@@ -432,6 +432,9 @@ func (ms *ModuleStats) String() string {
 		ms.Encoding.MemoryDisp0, ms.Encoding.MemoryDisp8, ms.Encoding.MemoryDisp32,
 		ms.Encoding.MemoryDisplacementBytes(), ms.Encoding.FrameDisp0, ms.Encoding.FrameDisp8,
 		ms.Encoding.FrameDisp32, ms.Encoding.FrameDisplacementBytes())
+	fmt.Fprintf(&b, "amd64-prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
+		ms.Encoding.RexPrefixes, ms.Encoding.RexWPrefixes, ms.Encoding.RexBare,
+		ms.Encoding.RexNonWExtensionPrefixes())
 	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
 		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
 	}
@@ -476,6 +479,9 @@ func (s *CodegenStats) report() string {
 		s.Encoding.MemoryDisp0, s.Encoding.MemoryDisp8, s.Encoding.MemoryDisp32,
 		s.Encoding.MemoryDisplacementBytes(), s.Encoding.FrameDisp0, s.Encoding.FrameDisp8,
 		s.Encoding.FrameDisp32, s.Encoding.FrameDisplacementBytes())
+	fmt.Fprintf(&b, "    prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
+		s.Encoding.RexPrefixes, s.Encoding.RexWPrefixes, s.Encoding.RexBare,
+		s.Encoding.RexNonWExtensionPrefixes())
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",

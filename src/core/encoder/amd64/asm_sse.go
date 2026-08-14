@@ -14,7 +14,7 @@ func (a *Asm) sseRR(prefix, op byte, reg, rm Reg, w bool) {
 		a.emit(prefix)
 	}
 	if w || reg >= 8 || rm >= 8 {
-		a.emit(rex(w, reg >= 8, false, rm >= 8))
+		a.emit(a.rex(w, reg >= 8, false, rm >= 8))
 	}
 	a.emit(0x0F, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
 }
@@ -24,7 +24,7 @@ func (a *Asm) sseRRI(prefix byte, op []byte, reg, rm Reg, w bool, imm byte) {
 		a.emit(prefix)
 	}
 	if w || reg >= 8 || rm >= 8 {
-		a.emit(rex(w, reg >= 8, false, rm >= 8))
+		a.emit(a.rex(w, reg >= 8, false, rm >= 8))
 	}
 	a.emit(op...)
 	a.emit(0xC0|((byte(reg)&7)<<3)|byte(rm&7), imm)
@@ -649,7 +649,7 @@ func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
 func (a *Asm) Round(dst, src Reg, f64 bool, mode byte) {
 	a.emit(0x66)
 	if dst >= 8 || src >= 8 {
-		a.emit(rex(false, dst >= 8, false, src >= 8))
+		a.emit(a.rex(false, dst >= 8, false, src >= 8))
 	}
 	op := byte(0x0A) // roundss
 	if f64 {
@@ -680,7 +680,7 @@ func (a *Asm) MovXmmToGpr(gpr, xmm Reg, w bool) { a.sseRR(0x66, 0x7E, xmm, gpr, 
 func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
 	a.emit(sdPrefix(f64))
 	if xmm >= 8 || base >= 8 {
-		a.emit(rex(false, xmm >= 8, false, base >= 8))
+		a.emit(a.rex(false, xmm >= 8, false, base >= 8))
 	}
 	a.emit(0x0F, op)
 	a.baseAddr(byte(xmm), base, disp)
@@ -694,7 +694,7 @@ func (a *Asm) FStoreDisp(base Reg, disp int32, xmm Reg, f64 bool) {
 func (a *Asm) fmemIdx(op byte, xmm, base, index Reg, disp int32, f64 bool) {
 	a.emit(sdPrefix(f64))
 	if xmm >= 8 || index >= 8 || base >= 8 {
-		a.emit(rex(false, xmm >= 8, index >= 8, base >= 8))
+		a.emit(a.rex(false, xmm >= 8, index >= 8, base >= 8))
 	}
 	a.emit(0x0F, op)
 	a.sibAddr(xmm, base, index, disp)
@@ -715,7 +715,7 @@ func (a *Asm) SseIdx(prefix, op byte, xmm, base, index Reg, disp int32) {
 		a.emit(prefix)
 	}
 	if xmm >= 8 || index >= 8 || base >= 8 {
-		a.emit(rex(false, xmm >= 8, index >= 8, base >= 8))
+		a.emit(a.rex(false, xmm >= 8, index >= 8, base >= 8))
 	}
 	a.emit(0x0F, op)
 	a.sibAddr(xmm, base, index, disp)
