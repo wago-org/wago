@@ -100,17 +100,22 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 		t.Fatal("serial and parallel loop compaction differ")
 	}
 
-	f := fn{
-		a:       &amd64enc.Asm{B: make([]byte, maxAMD64LoopCompactionBytes+1)},
-		hasLoop: true,
-		policy:  shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
+	oldLimit := loopCompactionByteLimitOverride
+	t.Cleanup(func() { loopCompactionByteLimitOverride = oldLimit })
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	loopCompactionByteLimitOverride = 16 << 10
+	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, 16<<10)}, hasLoop: true, policy: policy}); !f.loopCompactionAdmitted() {
+		t.Fatal("loop function at rollback bound rejected")
 	}
-	result, _, _, err := f.finalizeFrameAdjustments()
-	if err != nil {
-		t.Fatal(err)
+	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, 16<<10+1)}, hasLoop: true, policy: policy}); f.loopCompactionAdmitted() {
+		t.Fatal("loop function above rollback bound admitted")
 	}
-	if len(result.Code) != len(f.a.B) {
-		t.Fatal("oversized loop function unexpectedly compacted")
+	loopCompactionByteLimitOverride = 0
+	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, maxAMD64LoopCompactionBytes)}, hasLoop: true, policy: policy}); !f.loopCompactionAdmitted() {
+		t.Fatal("loop function at widened bound rejected")
+	}
+	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, maxAMD64LoopCompactionBytes+1)}, hasLoop: true, policy: policy}); f.loopCompactionAdmitted() {
+		t.Fatal("loop function above widened bound admitted")
 	}
 }
 

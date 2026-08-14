@@ -23,6 +23,18 @@ var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
+var loopCompactionByteLimitOverride = func() int {
+	if os.Getenv("WAGO_AMD64_LOOP_COMPACTION_LIMIT") == "16K" {
+		return 16 << 10
+	}
+	return 0
+}()
+var finalizerRel32SiteLimitOverride = func() int {
+	if os.Getenv("WAGO_AMD64_FINALIZER_REL32_SITES") == "256" {
+		return 256
+	}
+	return 0
+}()
 var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
 
 // WAGO_FINALIZER_DELETIONS selects an older bounded Size/Embedded policy for
@@ -61,8 +73,34 @@ func (f *fn) finalizerDeletionLimit() int {
 	return min(limit, shared.MaxOffsetMapDeletions)
 }
 
-const maxAMD64FinalizerRel32Sites = 256
-const maxAMD64LoopCompactionBytes = 16 << 10
+const maxAMD64FinalizerRel32Sites = 1024
+const maxAMD64LoopCompactionBytes = 64 << 10
+
+func finalizerRel32Limit(policy CodegenPolicy) int {
+	limit := int(policy.MaxRel32Sites)
+	if limit == 0 {
+		limit = 256
+	}
+	if finalizerRel32SiteLimitOverride != 0 && limit > finalizerRel32SiteLimitOverride {
+		limit = finalizerRel32SiteLimitOverride
+	}
+	return min(limit, maxAMD64FinalizerRel32Sites)
+}
+
+func loopCompactionLimit(policy CodegenPolicy) int {
+	limit := int(policy.MaxLoopCompactionBytes)
+	if limit == 0 {
+		limit = 16 << 10
+	}
+	if loopCompactionByteLimitOverride != 0 && limit > loopCompactionByteLimitOverride {
+		limit = loopCompactionByteLimitOverride
+	}
+	return min(limit, maxAMD64LoopCompactionBytes)
+}
+
+func (f *fn) loopCompactionAdmitted() bool {
+	return !f.hasLoop || loopCompactionEnabled && len(f.a.B) <= loopCompactionLimit(f.policy)
+}
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
@@ -144,7 +182,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 		return result, 0, 0, nil
 	}
-	if !f.compactNative() || f.hasLoop && (!loopCompactionEnabled || len(f.a.B) > maxAMD64LoopCompactionBytes) || f.hasJumpTableData ||
+	if !f.compactNative() || !f.loopCompactionAdmitted() || f.hasJumpTableData ||
 		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
 		return identity()
 	}

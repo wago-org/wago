@@ -26,10 +26,12 @@ type CodegenPolicy struct {
 	InternalAlignLog2 uint8
 	LoopAlignLog2     uint8
 
-	InlineGrowthBudget    int32
-	MaxMachineWindow      uint8
-	MaxRelaxIterations    uint8
-	MaxFinalizerDeletions uint8
+	InlineGrowthBudget     int32
+	MaxMachineWindow       uint8
+	MaxRelaxIterations     uint8
+	MaxFinalizerDeletions  uint8
+	MaxRel32Sites          uint16
+	MaxLoopCompactionBytes uint32
 }
 
 func (p CodegenPolicy) Enabled(name string) bool { return p.Selection.Enabled(name) }
@@ -50,22 +52,28 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 	functionAlign, internalAlign, loopAlign := uint8(4), uint8(4), uint8(4)
 	compactNative := false
 	maxFinalizerDeletions := uint8(8)
+	maxRel32Sites := uint16(256)
+	maxLoopCompactionBytes := uint32(16 << 10)
 	if objective == OptimizeSize || objective == OptimizeEmbedded {
 		// Zero requests the target's minimum legal code alignment. Backends clamp
 		// it to their instruction/data requirements.
 		functionAlign, internalAlign, loopAlign = 0, 0, 0
 		compactNative = true
 		maxFinalizerDeletions = MaxOffsetMapDeletions
+		maxRel32Sites = 1024
+		maxLoopCompactionBytes = 64 << 10
 	}
 	return CodegenPolicy{
-		Objective:             objective,
-		Selection:             selection,
-		CompactNative:         compactNative,
-		FunctionAlignLog2:     functionAlign,
-		InternalAlignLog2:     internalAlign,
-		LoopAlignLog2:         loopAlign,
-		MaxMachineWindow:      24,
-		MaxRelaxIterations:    8,
-		MaxFinalizerDeletions: maxFinalizerDeletions,
+		Objective:              objective,
+		Selection:              selection,
+		CompactNative:          compactNative,
+		FunctionAlignLog2:      functionAlign,
+		InternalAlignLog2:      internalAlign,
+		LoopAlignLog2:          loopAlign,
+		MaxMachineWindow:       24,
+		MaxRelaxIterations:     8,
+		MaxFinalizerDeletions:  maxFinalizerDeletions,
+		MaxRel32Sites:          maxRel32Sites,
+		MaxLoopCompactionBytes: maxLoopCompactionBytes,
 	}
 }

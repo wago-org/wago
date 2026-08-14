@@ -85,10 +85,14 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLimitOverride := finalizerDeletionLimitOverride
+	beforeRel32Override := finalizerRel32SiteLimitOverride
+	beforeLoopOverride := loopCompactionByteLimitOverride
 	nativeCompactionEnabled, nativeCompactionDisabled = false, false
 	t.Cleanup(func() {
 		nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled
 		finalizerDeletionLimitOverride = beforeLimitOverride
+		finalizerRel32SiteLimitOverride = beforeRel32Override
+		loopCompactionByteLimitOverride = beforeLoopOverride
 	})
 
 	selection := currentCodegenPolicy().Selection
@@ -109,6 +113,20 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 		t.Fatalf("finalizer deletion limit override = %d, want 64", got)
 	}
 	finalizerDeletionLimitOverride = 0
+	if got := finalizerRel32Limit(size); got != 1024 {
+		t.Fatalf("Size rel32 site limit = %d, want 1024", got)
+	}
+	if got := loopCompactionLimit(size); got != 64<<10 {
+		t.Fatalf("Size loop compaction limit = %d, want 64 KiB", got)
+	}
+	finalizerRel32SiteLimitOverride = 256
+	loopCompactionByteLimitOverride = 16 << 10
+	if got := finalizerRel32Limit(size); got != 256 {
+		t.Fatalf("rel32 rollback limit = %d, want 256", got)
+	}
+	if got := loopCompactionLimit(size); got != 16<<10 {
+		t.Fatalf("loop rollback limit = %d, want 16 KiB", got)
+	}
 
 	nativeCompactionEnabled = true
 	if !compactNativePolicy(balanced) {

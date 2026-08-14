@@ -1829,6 +1829,41 @@ and knob were removed without spending compile benchmarks on a zero-byte
 candidate. Further work here must expand explicit symbolic fragment/relocation
 coverage rather than weakening the existing work bound in isolation.
 
+## AMD64 1,024-site rel32 inventory and coupled 64 KiB loops
+
+Size and Embedded now carry a 1,024-site packed rel32 inventory and admit loop
+functions up to 64 KiB. Speed and Balanced retain 256 sites and the 16 KiB work
+bound. Both limits are immutable `CodegenPolicy` fields; the exact Size rollback
+uses `WAGO_AMD64_FINALIZER_REL32_SITES=256` together with
+`WAGO_AMD64_LOOP_COMPACTION_LIMIT=16K`.
+
+Each rel32 record is four bytes. The wider Size inventory therefore reserves an
+additional 3 KiB of pointer-free, uncommitted tail scratch per active compiler
+worker; it is never copied into executable code. Existing overflow behavior
+remains fail closed, and the 64 KiB scan bound remains independent of the
+128-range deletion-map bound.
+
+The complete 36-module AMD64 Size image falls from 67,553,398 to 67,342,942
+bytes (-210,456, -0.31%). Raising the rel32 inventory alone reaches 67,356,242
+(-197,156); the coupled loop bound contributes the remaining 13,300 bytes and
+has no effect with the old 256-site inventory. Module deltas are Ruby -191,183,
+`regexmatch` -14,228, SQLite -1,461, Lua -1,296, wasm3 -1,233, fannkuch -562,
+and `json-as` -493.
+
+Five serialized full rollback-versus-enabled samples of the final immutable
+policy put Ruby at 914,598,835 to 925,962,961 ns/op (+1.24%) and esbuild at
+478,320,094 to 478,726,342 ns/op (+0.08%). Allocation movement is noise-level.
+With the 1,024-site inventory
+already enabled, widening only the loop bound moves Ruby from 928,452,152 to
+923,224,334 ns/op (-0.56%) and esbuild from 480,700,197 to 480,309,178 ns/op
+(-0.08%).
+
+Boundary and rollback-policy tests, the complete AMD64 backend and race suites,
+compacted runtime/fuzz corpus execution, and normal staged product goldens pass.
+The broader host run has only the previously recorded missing spec-v3 and old
+`wat2wasm` table64 failures. ARM64 remains at its measured 16 KiB bound and has
+no rel32 inventory.
+
 ### Commands
 
 ```sh
