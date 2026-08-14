@@ -90,6 +90,9 @@ var (
 	// swarMaskTestEnabled gates direct packed-word mask-test fusion.
 	// WAGO_NO_SWAR_MASK_TEST=1 is the A/B oracle.
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"
+	// singleBitMaskTestEnabled selects BT for one-bit mask predicates in
+	// Size/Embedded. WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST=1 is the A/B oracle.
+	singleBitMaskTestEnabled = os.Getenv("WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST") != "1"
 	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
 	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
 	swarIdiomsEnabled = os.Getenv("WAGO_NO_SWAR_IDIOMS") != "1"

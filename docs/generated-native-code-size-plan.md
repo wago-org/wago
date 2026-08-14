@@ -891,3 +891,37 @@ The candidate produced 8,332 bytes of direct instruction shrinkage; downstream
 fragment layout made the exact corpus result 8,000 bytes. The full test suite,
 ARM64 backend race tests, compact corpus/fuzz run, and complete Size execution
 corpus passed.
+
+## Implementation result: AMD64 single-bit mask tests
+
+AMD64 has a smaller architecture-specific counterpart to the ARM64 single-bit
+branch fold. For a proved one-bit mask, Size and Embedded now emit
+`BT r,imm8` and consume CF directly instead of emitting `TEST r,imm32` and
+consuming ZF. This is an instruction-selection choice rather than a finalizer
+rewrite: the bit index and register width are known during forward lowering,
+and `BT` has no target-range constraint. The previous `TEST` path remains under
+`WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST=1` as the exact rollback oracle.
+
+Measured on the checked-in AMD64 Size corpus on `hub`:
+
+```text
+rollback native bytes:  66,055,508
+candidate native bytes: 66,040,168
+net reduction:             15,340 (0.0232%)
+selected sites:             7,186
+
+Ruby compile median:   1,014,338,527 -> 1,020,912,107 ns/op (+0.65%)
+esbuild compile median:  547,613,019 ->   550,339,312 ns/op (+0.50%)
+compile allocation movement: noise-level
+
+JSON serialize median:       22,488 -> 22,545 ns/op (+0.25%)
+JSON deserialize median:     40,520 -> 40,498 ns/op (-0.05%)
+SIMD JSON serialize median:  27,076 -> 26,996 ns/op (-0.30%)
+SIMD JSON deserialize median:51,709 -> 51,586 ns/op (-0.24%)
+runtime allocations: zero in both configurations
+```
+
+Ruby contributed 11,039 bytes, regexmatch 1,329, SQLite 1,311, esbuild
+1,234, and the remaining modules 427 bytes; no module grew. Exact encoder tests,
+the full AMD64 backend, its race suite, the compact/fuzz corpus, and the complete
+Size execution corpus with finalizer validation passed.

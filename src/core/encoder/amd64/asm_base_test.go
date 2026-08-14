@@ -465,6 +465,7 @@ func TestRemainingIntegerInstructionForms(t *testing.T) {
 		{"dec64 extended", func(a *Asm) { a.Dec(R9, true) }, []byte{0x49, 0xff, 0xc9}},
 		{"test reg", func(a *Asm) { a.TestReg(R8, R9, true) }, []byte{0x4d, 0x85, 0xc8}},
 		{"test imm", func(a *Asm) { a.TestImm(R8, 0x80808080, false) }, []byte{0x41, 0xf7, 0xc0, 0x80, 0x80, 0x80, 0x80}},
+		{"bt imm", func(a *Asm) { a.BtImm(R8, 63, true) }, []byte{0x49, 0x0f, 0xba, 0xe0, 0x3f}},
 		{"return", func(a *Asm) { a.Ret() }, []byte{0xc3}},
 		{"sub rsp", func(a *Asm) { a.SubRsp(16) }, []byte{0x48, 0x81, 0xec, 16, 0, 0, 0}},
 		{"alu rr", func(a *Asm) { a.AluRR(0x01, R8, R9, true) }, []byte{0x4d, 0x01, 0xc8}},

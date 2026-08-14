@@ -679,6 +679,17 @@ func (a *Asm) TestImm(r Reg, imm uint32, w bool) {
 	a.imm32(int32(imm))
 }
 
+// BtImm copies the selected register bit into CF. Unlike TEST r,imm32, its
+// immediate is a bit index rather than a sign-extended mask.
+func (a *Asm) BtImm(r Reg, bit uint8, w bool) {
+	if w || r >= 8 {
+		a.emit(a.rex(w, false, false, r >= 8))
+	}
+	a.emit(0x0f, 0xba)
+	a.emit(0xe0 | byte(r&7)) // /4
+	a.emit(bit)
+}
+
 type Cond byte
 
 const (
