@@ -1724,21 +1724,21 @@ backend, focused GC race suite, and compacted corpus execution pass on the Ryzen
 host. The host lacks the optional pinned spec-v3 product corpus, so the two
 product tests that require that checkout were not included in this gate.
 
-## Forty-eight-range bounded finalization
+## Sixty-four-range bounded finalization
 
-The fixed per-function offset-map budget now admits forty-eight deleted ranges
+The fixed per-function offset-map budget now admits sixty-four deleted ranges
 for Size and Embedded, while Speed and Balanced remain at eight.
-`WAGO_FINALIZER_DELETIONS=32` is the exact policy rollback oracle. The offset
+`WAGO_FINALIZER_DELETIONS=48` is the exact policy rollback oracle. The offset
 map and backend deletion inventories remain fixed-capacity value storage: this
 adds no per-site or per-function heap allocation, and correctness still leaves
 all candidates beyond the bound in their maximal-safe form.
 
 The capacity was selected by measurement rather than rounding to the next power
-of two. A 64-range prototype reduced the 36-module AMD64 Size image from
+of two. The first 64-range prototype reduced the 36-module AMD64 Size image from
 67,956,633 to 67,666,606 bytes (-290,027, -0.43%), but raised Ruby Size compile
 time from 890,865,278 to 972,001,705 ns/op (+9.11%). Esbuild was neutral at
--0.12%. That prototype exceeded the proposed Size compile-time gate and was
-rejected.
+-0.12%. Its linear relaxation-planning lookup exceeded the proposed Size
+compile-time gate and was rejected.
 
 At forty-eight ranges, the AMD64 image falls to 67,764,506 bytes (-192,127,
 -0.28% versus thirty-two). Ruby supplies 176,698 bytes of the reduction;
@@ -1754,8 +1754,27 @@ sixty-four-range trials reduce the same two modules and no others. The
 `regexmatch` and 56 in Ruby. Five serialized forty-eight-range samples put Ruby
 at 577,392,125 to 570,395,834 ns/op (-1.21%) and esbuild at 316,543,458 to
 312,064,959 ns/op (-1.42%). Allocation movement is noise-level. The shared
-forty-eight-range representation is therefore justified by AMD64; ARM64 simply
-retains its later unused capacity without taking extra compile work.
+forty-eight-range checkpoint was therefore justified by AMD64; ARM64 exhausted
+its useful candidates at that bound.
+
+The accepted follow-up gives AMD64's relaxation planner the same bounded
+prefix-count and binary-search shape as the final `OffsetMap`. Candidate lookups
+become logarithmic; insertion rebuilds at most the fixed suffix. The map itself
+stores offsets, one-byte deletion lengths, and prefix counts in separate arrays,
+so its 64-range representation remains exactly 588 bytes: the same size as the
+former 48-range `DeletedRange` representation.
+
+With that planner, sixty-four ranges retain the full AMD64 reduction to
+67,666,606 bytes, another 97,900 bytes (-0.14%) beyond forty-eight. Five
+serialized exact-rollback samples put Ruby at 901,539,760 to 911,988,962 ns/op
+(+1.16%) and esbuild at 486,309,655 to 485,791,566 ns/op (-0.11%). Median
+allocation movement is noise-level and favorable for Ruby. This is inside the
+Size compile gate, unlike the linear prototype.
+
+ARM64 remains exactly 77,022,908 bytes at both forty-eight and sixty-four
+ranges, proving that no additional candidates are processed. Five serialized
+samples put Ruby at 588,056,292 to 580,307,292 ns/op (-1.32%) and esbuild at
+321,263,083 to 312,182,958 ns/op (-2.83%); allocation movement is noise-level.
 
 Policy, maximum-capacity deletion, exhaustive offset-map boundary, backend,
 race, and compacted corpus-execution tests pass on both architectures. Two

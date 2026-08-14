@@ -35,6 +35,8 @@ var finalizerDeletionLimitOverride = func() int {
 		return 16
 	case "32":
 		return 32
+	case "48":
+		return 48
 	default:
 		return 0
 	}
@@ -226,19 +228,43 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 	}
 	sortDeletions(deletions)
+	var deletionPrefix [shared.MaxOffsetMapDeletions]uint32
+	rebuildDeletionPrefix := func(start int) {
+		deleted := uint32(0)
+		if start > 0 {
+			deleted = deletionPrefix[start-1]
+		}
+		for i := start; i < len(deletions); i++ {
+			deleted += deletions[i].Len
+			deletionPrefix[i] = deleted
+		}
+	}
+	rebuildDeletionPrefix(0)
 	mapCurrent := func(off int) (int, bool) {
-		delta := 0
-		for _, deletion := range deletions {
-			start := int(deletion.Off)
-			end := start + int(deletion.Len)
-			if off > start && off < end {
-				return 0, false
-			}
-			if off >= end {
-				delta += int(deletion.Len)
+		lo, hi := 0, len(deletions)
+		for lo < hi {
+			mid := int(uint(lo+hi) >> 1)
+			if int(deletions[mid].Off) <= off {
+				lo = mid + 1
+			} else {
+				hi = mid
 			}
 		}
-		return off - delta, true
+		i := lo - 1
+		if i < 0 {
+			return off, true
+		}
+		deletion := deletions[i]
+		start := int(deletion.Off)
+		end := start + int(deletion.Len)
+		if off > start && off < end {
+			return 0, false
+		}
+		deleted := deletionPrefix[i]
+		if off == start {
+			deleted -= deletion.Len
+		}
+		return off - int(deleted), true
 	}
 	mapWithExtra := func(off int, extra shared.DeletedRange) (int, bool) {
 		mapped, ok := mapCurrent(off)
@@ -279,6 +305,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		deletions = append(deletions, shared.DeletedRange{})
 		copy(deletions[at+1:], deletions[at:])
 		deletions[at] = deletion
+		rebuildDeletionPrefix(at)
 		return true
 	}
 

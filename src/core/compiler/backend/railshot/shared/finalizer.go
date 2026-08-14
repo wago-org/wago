@@ -67,17 +67,18 @@ type CodeMark struct {
 // intentionally stores only the old length; later compacting forms can add a
 // bounded deletion/prefix-delta representation without changing callers.
 type OffsetMap struct {
-	oldLen    uint32
-	finalLen  uint32
-	deletionN uint8
-	deletions [MaxOffsetMapDeletions]DeletedRange
-	deleted   [MaxOffsetMapDeletions]uint32
+	oldLen      uint32
+	finalLen    uint32
+	deletionN   uint8
+	deletionOff [MaxOffsetMapDeletions]uint32
+	deletionLen [MaxOffsetMapDeletions]uint8
+	deleted     [MaxOffsetMapDeletions]uint32
 }
 
 // MaxOffsetMapDeletions is the fixed per-function deletion budget. Backends may
 // retain later candidates in their maximal-safe form; correctness never depends
 // on maximizing relaxation.
-const MaxOffsetMapDeletions = 48
+const MaxOffsetMapDeletions = 64
 
 func (m *OffsetMap) Map(off int) (int, bool) {
 	if off < 0 || uint64(off) > uint64(m.oldLen) {
@@ -90,7 +91,7 @@ func (m *OffsetMap) Map(off int) (int, bool) {
 	lo, hi := 0, int(m.deletionN)
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
-		if int(m.deletions[mid].Off) <= off {
+		if int(m.deletionOff[mid]) <= off {
 			lo = mid + 1
 		} else {
 			hi = mid
@@ -100,15 +101,15 @@ func (m *OffsetMap) Map(off int) (int, bool) {
 	if i < 0 {
 		return off, true
 	}
-	deletion := m.deletions[i]
-	start := int(deletion.Off)
-	end := start + int(deletion.Len)
+	start := int(m.deletionOff[i])
+	length := uint32(m.deletionLen[i])
+	end := start + int(length)
 	if off > start && off < end {
 		return 0, false
 	}
 	delta := m.deleted[i]
 	if off == start {
-		delta -= deletion.Len
+		delta -= length
 	}
 	return off - int(delta), true
 }
@@ -143,9 +144,13 @@ func NewOffsetMap(oldLen int, deletions []DeletedRange) (OffsetMap, error) {
 		deleted += uint64(deletion.Len)
 	}
 	result := OffsetMap{oldLen: uint32(oldLen), finalLen: uint32(uint64(oldLen) - deleted), deletionN: uint8(len(deletions))}
-	copy(result.deletions[:], deletions)
 	deleted = 0
 	for i, deletion := range deletions {
+		if deletion.Len > 255 {
+			return OffsetMap{}, fmt.Errorf("finalizer: deletion %d length %d exceeds compact map", i, deletion.Len)
+		}
+		result.deletionOff[i] = deletion.Off
+		result.deletionLen[i] = uint8(deletion.Len)
 		deleted += uint64(deletion.Len)
 		result.deleted[i] = uint32(deleted)
 	}

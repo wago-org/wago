@@ -3,9 +3,18 @@ package shared
 import (
 	"bytes"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
+
+func TestOffsetMapCapacityGrowthDoesNotGrowTheMap(t *testing.T) {
+	// Split offset/length storage keeps the 64-range map the same size as the
+	// former 48-range DeletedRange representation.
+	if got, want := unsafe.Sizeof(OffsetMap{}), uintptr(588); got != want {
+		t.Fatalf("OffsetMap size = %d, want %d", got, want)
+	}
+}
 
 func TestFinalizeIdentityPreservesCodeAndMapsEveryOffset(t *testing.T) {
 	code := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
