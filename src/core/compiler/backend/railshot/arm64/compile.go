@@ -40,6 +40,10 @@ var loopRegionPinsEnabled = os.Getenv("WAGO_ARM64_LOOP_PINS") == "1"
 // A/B measurement.
 var uxtwAddEnabled = os.Getenv("WAGO_ARM64_NOUXTW") != "1"
 
+// valueFactsEnabled carries bounded upper-zero and boolean provenance on Valent
+// nodes. WAGO_ARM64_NOPROVENANCE=1 retains the pre-facts path for A/B checks.
+var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
+
 // smallFrameAdjustEnabled replaces the fixed MOVZ+MOVK+SUB/ADD frame sequences
 // with one immediate SP adjustment for the overwhelmingly common <=4095-byte
 // frames. The reserved trailing words become NOPs so code offsets stay stable.

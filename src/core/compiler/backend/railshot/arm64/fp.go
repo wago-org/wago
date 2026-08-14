@@ -591,6 +591,9 @@ func (f *fn) pushFCompare(op wOp, f64 bool) {
 	left := baseOfValentBlock(right).prev
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
+	if f.opt(optValueFacts) {
+		node.st.facts = deferredResultFacts(op, typ)
+	}
 	node.arg0, node.arg1 = left, right
 	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
 	f.s.push(node)

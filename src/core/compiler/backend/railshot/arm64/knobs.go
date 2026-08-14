@@ -20,6 +20,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("branch-fold", &branchFoldEnabled),
 	optimization.Bind("store-load-fwd", &storeLoadFwdEnabled),
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
+	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
 	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
@@ -57,6 +58,7 @@ var (
 	optBranchFold            = optimizationBindings.Option("branch-fold")
 	optStoreLoadFwd          = optimizationBindings.Option("store-load-fwd")
 	optUXTWAdd               = optimizationBindings.Option("uxtw-add")
+	optValueFacts            = optimizationBindings.Option("value-facts")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
 	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")
