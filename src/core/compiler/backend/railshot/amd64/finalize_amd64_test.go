@@ -159,3 +159,83 @@ func TestFinalizerDeletesBranchFoldHole(t *testing.T) {
 		t.Fatalf("compacted length = %d, want <= %d", got, wantMax)
 	}
 }
+
+func TestFinalizerRelaxesShortBranches(t *testing.T) {
+	oldEnabled := nativeFinalizerEnabled
+	oldCompact := nativeCompactionEnabled
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = oldEnabled
+		nativeCompactionEnabled = oldCompact
+	})
+	nativeFinalizerEnabled = true
+	nativeCompactionEnabled = true
+
+	finalize := func(t *testing.T, emit func(*amd64enc.Asm)) []byte {
+		t.Helper()
+		a := &amd64enc.Asm{Rel32SiteLimit: maxAMD64FinalizerRel32Sites}
+		subSite := a.Len() + 3
+		a.SubRsp(0)
+		emit(a)
+		addSite := a.Len() + 3
+		a.AddRsp(0)
+		f := fn{a: a, sc: &scratch{}, subRspAt: subSite, addRspAt: addSite, frameElided: true}
+		if _, err := f.finalizeNativeCode(0); err != nil {
+			t.Fatal(err)
+		}
+		return f.a.B
+	}
+
+	t.Run("rel8 boundaries", func(t *testing.T) {
+		for _, test := range []struct {
+			name        string
+			conditional bool
+			distance    int
+			short       bool
+		}{
+			{"jmp +127", false, 127, true},
+			{"jmp +128", false, 128, false},
+			{"jcc +127", true, 127, true},
+			{"jcc +128", true, 128, false},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				code := finalize(t, func(a *amd64enc.Asm) {
+					var site int
+					if test.conditional {
+						site = a.JccPlaceholder(amd64enc.CondE)
+					} else {
+						site = a.JmpPlaceholder()
+					}
+					a.B = append(a.B, make([]byte, test.distance)...)
+					a.PatchRel32(site, a.Len())
+				})
+				if test.short {
+					wantOpcode := byte(0xeb)
+					if test.conditional {
+						wantOpcode = 0x74
+					}
+					if code[0] != wantOpcode || code[1] != 127 {
+						t.Fatalf("short branch = %x %d, want %x 127", code[0], code[1], wantOpcode)
+					}
+				} else if test.conditional && !bytes.Equal(code[:2], []byte{0x0f, 0x84}) {
+					t.Fatalf("long jcc prefix = %x, want 0f84", code[:2])
+				} else if !test.conditional && code[0] != 0xe9 {
+					t.Fatalf("long jmp opcode = %x, want e9", code[0])
+				}
+			})
+		}
+	})
+
+	t.Run("cascading", func(t *testing.T) {
+		code := finalize(t, func(a *amd64enc.Asm) {
+			outer := a.JmpPlaceholder()
+			inner := a.JmpPlaceholder()
+			a.B = append(a.B, make([]byte, 125)...)
+			target := a.Len()
+			a.PatchRel32(outer, target)
+			a.PatchRel32(inner, target)
+		})
+		if len(code) != 2+2+125 || !bytes.Equal(code[:4], []byte{0xeb, 127, 0xeb, 125}) {
+			t.Fatalf("cascading branches = %x len=%d", code[:4], len(code))
+		}
+	})
+}

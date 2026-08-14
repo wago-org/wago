@@ -42,7 +42,20 @@ type Asm struct {
 type Rel32Site struct {
 	At     int
 	Target int
+	Kind   Rel32Kind
+	Short  bool
 }
+
+// Rel32Kind identifies the explicitly emitted sites whose maximal branch form
+// may be shortened by a bounded finalizer. Other rel32 users, including calls
+// and RIP-relative addresses, remain relocatable but retain their width.
+type Rel32Kind uint8
+
+const (
+	Rel32Other Rel32Kind = iota
+	Rel32Jmp
+	Rel32Jcc
+)
 
 // Grow ensures B has capacity for at least n bytes, reusing the existing backing
 // array when it is already large enough. Used to pre-size a reused encoder buffer
@@ -725,7 +738,13 @@ func (a *Asm) recordRel32(at, target int) {
 		a.Rel32Overflow = true
 		return
 	}
-	a.Rel32Sites = append(a.Rel32Sites, Rel32Site{At: at, Target: target})
+	kind := Rel32Other
+	if at >= 1 && a.B[at-1] == 0xe9 {
+		kind = Rel32Jmp
+	} else if at >= 2 && a.B[at-2] == 0x0f && a.B[at-1]&0xf0 == 0x80 {
+		kind = Rel32Jcc
+	}
+	a.Rel32Sites = append(a.Rel32Sites, Rel32Site{At: at, Target: target, Kind: kind})
 }
 
 // RetargetRel32 updates the symbolic target of every retained record for at.

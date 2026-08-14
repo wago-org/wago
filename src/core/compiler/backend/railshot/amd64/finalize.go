@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // WAGO_FINALIZE=0 retains the pre-finalizer path as a rollout oracle. The
@@ -96,6 +97,9 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	if frameSize > 127 {
 		return identity()
 	}
+	for i := range f.a.Rel32Sites {
+		f.a.Rel32Sites[i].Short = false
+	}
 
 	var storage [shared.MaxOffsetMapDeletions]shared.DeletedRange
 	deletions := storage[:0]
@@ -111,6 +115,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		return identity()
 	}
 	holeDeleted := 0
+	frameDeleted := 0
 	for _, over := range f.sc.brFoldSites {
 		if over >= 0 && over+9 <= len(f.a.B) &&
 			bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
@@ -126,12 +131,14 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 		if frameSize == 0 {
 			deletions = append(deletions, shared.DeletedRange{Off: uint32(site - 3), Len: 7})
+			frameDeleted += 7
 			return nil
 		}
 		// 48 81 /digit imm32 -> 48 83 /digit imm8. The low immediate byte is
 		// already correct; delete only the trailing three bytes.
 		f.a.B[site-2] = 0x83
 		deletions = append(deletions, shared.DeletedRange{Off: uint32(site + 1), Len: 3})
+		frameDeleted += 3
 		return nil
 	}
 	if err := addFrameSite(f.subRspAt, 0xec); err != nil {
@@ -146,20 +153,93 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		return shared.FinalizeResult{}, 0, 0, err
 	}
 
-	for i := 1; i < len(deletions); i++ {
-		value := deletions[i]
-		j := i
-		for j > 0 && deletions[j-1].Off > value.Off {
-			deletions[j] = deletions[j-1]
-			j--
+	sortDeletions := func(ranges []shared.DeletedRange) {
+		for i := 1; i < len(ranges); i++ {
+			value := ranges[i]
+			j := i
+			for j > 0 && ranges[j-1].Off > value.Off {
+				ranges[j] = ranges[j-1]
+				j--
+			}
+			ranges[j] = value
 		}
-		deletions[j] = value
 	}
+	sortDeletions(deletions)
+
+	// Branch relaxation consumes the same fixed deletion budget as frames and
+	// dead holes. Each admitted site changes only long -> short; reconsidering
+	// rejected sites after every round finds cascades while bounding work by the
+	// eight-range offset map.
+	branchForm := func(site encoderamd64.Rel32Site) (start, shortLen int, deletion shared.DeletedRange, ok bool) {
+		switch site.Kind {
+		case encoderamd64.Rel32Jmp:
+			if site.At < 1 || site.At+4 > len(f.a.B) || f.a.B[site.At-1] != 0xe9 {
+				return 0, 0, shared.DeletedRange{}, false
+			}
+			return site.At - 1, 2, shared.DeletedRange{Off: uint32(site.At + 1), Len: 3}, true
+		case encoderamd64.Rel32Jcc:
+			if site.At < 2 || site.At+4 > len(f.a.B) || f.a.B[site.At-2] != 0x0f || f.a.B[site.At-1]&0xf0 != 0x80 {
+				return 0, 0, shared.DeletedRange{}, false
+			}
+			return site.At - 2, 2, shared.DeletedRange{Off: uint32(site.At), Len: 4}, true
+		default:
+			return 0, 0, shared.DeletedRange{}, false
+		}
+	}
+	for round := 0; round < shared.MaxOffsetMapDeletions && len(deletions) < cap(deletions); round++ {
+		changed := false
+		for i := range f.a.Rel32Sites {
+			site := &f.a.Rel32Sites[i]
+			if site.Short || len(deletions) == cap(deletions) {
+				continue
+			}
+			start, shortLen, deletion, ok := branchForm(*site)
+			if !ok {
+				continue
+			}
+			var candidateStorage [shared.MaxOffsetMapDeletions]shared.DeletedRange
+			candidate := candidateStorage[:len(deletions)+1]
+			copy(candidate, deletions)
+			candidate[len(deletions)] = deletion
+			sortDeletions(candidate)
+			offsets, err := shared.NewOffsetMap(len(f.a.B), candidate)
+			if err != nil {
+				continue
+			}
+			mappedStart, okStart := offsets.Map(start)
+			mappedTarget, okTarget := offsets.Map(site.Target)
+			disp := mappedTarget - (mappedStart + shortLen)
+			if !okStart || !okTarget || disp < -128 || disp > 127 {
+				continue
+			}
+			deletions = deletions[:len(candidate)]
+			copy(deletions, candidate)
+			site.Short = true
+			changed = true
+		}
+		if !changed {
+			break
+		}
+	}
+	for _, site := range f.a.Rel32Sites {
+		if !site.Short {
+			continue
+		}
+		start := site.At - 1
+		if site.Kind == encoderamd64.Rel32Jcc {
+			start = site.At - 2
+		}
+		if site.Kind == encoderamd64.Rel32Jmp {
+			f.a.B[start] = 0xeb
+		} else {
+			f.a.B[start] = 0x70 | (f.a.B[start+1] & 0x0f)
+		}
+	}
+
 	offsets, err := shared.NewOffsetMap(len(f.a.B), deletions)
 	if err != nil {
 		return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 	}
-	oldLen := len(f.a.B)
 	src, dst := 0, 0
 	for _, deletion := range deletions {
 		off := int(deletion.Off)
@@ -170,6 +250,23 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	copy(f.a.B[dst:], f.a.B[src:])
 	code := f.a.B[:offsets.FinalLen()]
 	for _, site := range f.a.Rel32Sites {
+		if site.Short {
+			start, shortLen := site.At-1, 2
+			if site.Kind == encoderamd64.Rel32Jcc {
+				start = site.At - 2
+			}
+			at, okAt := offsets.Map(start)
+			target, okTarget := offsets.Map(site.Target)
+			if !okAt || !okTarget || at < 0 || at+shortLen > len(code) || target < 0 || target > len(code) {
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At, site.Target)
+			}
+			disp := target - (at + shortLen)
+			if disp < -128 || disp > 127 {
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: rel8 overflow %d -> %d", site.At, site.Target)
+			}
+			code[at+1] = byte(int8(disp))
+			continue
+		}
 		at, okAt := offsets.Map(site.At)
 		target, okTarget := offsets.Map(site.Target)
 		if !okAt || !okTarget || at < 0 || at+4 > len(code) || target < 0 || target > len(code) {
@@ -177,7 +274,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 		binary.LittleEndian.PutUint32(code[at:], uint32(int32(target-(at+4))))
 	}
-	return shared.FinalizeResult{Code: code, Offsets: offsets}, oldLen - len(code) - holeDeleted, holeDeleted, nil
+	return shared.FinalizeResult{Code: code, Offsets: offsets}, frameDeleted, holeDeleted, nil
 }
 
 func mapAMD64FinalOffset(offsets *shared.OffsetMap, old, codeLen int, kind string) (int, error) {

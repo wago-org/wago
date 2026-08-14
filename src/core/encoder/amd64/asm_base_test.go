@@ -171,7 +171,7 @@ func TestRel32SiteCounting(t *testing.T) {
 	if !a.Rel32Overflow {
 		t.Fatal("bounded rel32 recorder did not report overflow")
 	}
-	if got := a.Rel32Sites[0]; got.At != first || got.Target != 5 {
+	if got := a.Rel32Sites[0]; got.At != first || got.Target != 5 || got.Kind != Rel32Jmp {
 		t.Fatalf("first rel32 site = %+v, want at=%d target=5", got, first)
 	}
 }
@@ -184,7 +184,7 @@ func TestRel32SiteRewrite(t *testing.T) {
 	a.PatchRel32(two, 30)
 	a.RetargetRel32(one, 40)
 	a.ForgetRel32(two)
-	if got, want := a.Rel32Sites, []Rel32Site{{At: one, Target: 40}}; !reflect.DeepEqual(got, want) {
+	if got, want := a.Rel32Sites, []Rel32Site{{At: one, Target: 40, Kind: Rel32Jmp}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("rewritten sites = %+v, want %+v", got, want)
 	}
 }
