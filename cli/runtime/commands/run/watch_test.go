@@ -316,15 +316,22 @@ func TestWatchHelperProcess(t *testing.T) {
 	if os.Getenv("WAGO_WATCH_HELPER") != "1" {
 		return
 	}
-	if os.Getenv("WAGO_WATCH_TREE") == "1" && os.Getenv("WAGO_WATCH_LEAF") != "1" {
+	if os.Getenv("WAGO_WATCH_TREE") == "1" && os.Getenv("WAGO_WATCH_LEAF") != "final" {
 		command := exec.Command(os.Args[0], "-test.run=^TestWatchHelperProcess$", "-test.count=1")
-		command.Env = append(os.Environ(), "WAGO_WATCH_LEAF=1")
+		next := "final"
+		if os.Getenv("WAGO_WATCH_LEAF") == "" {
+			next = "intermediate"
+		}
+		command.Env = append(os.Environ(), "WAGO_WATCH_LEAF="+next)
 		command.Stdout, command.Stderr = io.Discard, io.Discard
-		if os.Getenv("WAGO_WATCH_DETACH") == "1" {
+		if next == "intermediate" && os.Getenv("WAGO_WATCH_DETACH") == "1" {
 			detachWatchHelperProcess(command)
 		}
 		if err := command.Start(); err != nil {
 			t.Fatal(err)
+		}
+		if next == "final" {
+			return
 		}
 		select {}
 	}

@@ -6,7 +6,17 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
+
+func prepareWatchedProcessTracking() error {
+	return unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
+}
+
+func startWatchedProcessTracking(*watchedProcessTracker) error {
+	return nil
+}
 
 func watchedProcessSnapshot() ([]watchedProcessInfo, error) {
 	entries, err := os.ReadDir("/proc")

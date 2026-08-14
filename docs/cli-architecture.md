@@ -214,12 +214,13 @@ by the manager handoff. The runtime supervises one child process tree at a time,
 keeps file polling active while the guest runs, and waits for stable content
 before a restart. On Linux and macOS, the active child process group owns the
 real foreground terminal and the watcher restores terminal ownership after it
-stops. The watcher also records bounded process identities, so cleanup reaches
-descendants that create a new session or process group. It mirrors terminal
-stop and continue events, and its status output remains safe when background
-terminal writes are disabled. Hangup, interrupt, quit, and termination signals
-stop the child tree before the watcher exits. Content hashing detects same-size
-rewrites even when file timestamps do not change.
+stops. The watcher also records bounded process identities. Linux subreaper
+ownership and macOS kernel fork events keep double-forked children tracked, so
+cleanup reaches descendants that create a new session or process group. The
+watcher mirrors terminal stop and continue events, and its status output remains
+safe when background terminal writes are disabled. Hangup, interrupt, quit, and
+termination signals stop the child tree before the watcher exits. Content
+hashing detects same-size rewrites even when file timestamps do not change.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

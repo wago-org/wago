@@ -31,11 +31,17 @@ type watchedProcessInfo struct {
 
 type watchedProcessTracker struct {
 	mu        sync.Mutex
+	owner     int
 	root      int
 	processes map[int]uint64
+	stop      func()
+	eventErr  error
 }
 
-func prepareWatchedCommand(command *exec.Cmd) {
+func prepareWatchedCommand(command *exec.Cmd) error {
+	if err := prepareWatchedProcessTracking(); err != nil {
+		return err
+	}
 	attributes := &syscall.SysProcAttr{Setpgid: true}
 	if terminal, ok := command.Stdin.(*os.File); ok {
 		fd := int(terminal.Fd())
@@ -46,6 +52,7 @@ func prepareWatchedCommand(command *exec.Cmd) {
 		}
 	}
 	command.SysProcAttr = attributes
+	return nil
 }
 
 func abortWatchedCommand(command *exec.Cmd) {
@@ -53,13 +60,19 @@ func abortWatchedCommand(command *exec.Cmd) {
 }
 
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
-	tracker := &watchedProcessTracker{root: command.Process.Pid, processes: make(map[int]uint64)}
+	tracker := &watchedProcessTracker{owner: os.Getpid(), root: command.Process.Pid, processes: make(map[int]uint64)}
 	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
 	if command.SysProcAttr == nil || !command.SysProcAttr.Foreground {
-		return platform, tracker.refresh()
+		if err := tracker.refresh(); err != nil {
+			return platform, err
+		}
+		return platform, startWatchedProcessTracking(tracker)
 	}
 	platform.terminalFD, platform.foreground = command.SysProcAttr.Ctty, syscall.Getpgrp()
-	return platform, tracker.refresh()
+	if err := tracker.refresh(); err != nil {
+		return platform, err
+	}
+	return platform, startWatchedProcessTracking(tracker)
 }
 
 func interruptWatchedProcess(platform watchedChildPlatform, command *exec.Cmd, interrupt os.Signal) error {
@@ -79,6 +92,7 @@ func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 		_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
 	}
 	_ = signalWatchedProcessTree(platform, command, syscall.SIGKILL)
+	platform.processes.close()
 	_ = command.Process.Release()
 }
 
@@ -216,7 +230,7 @@ func (tracker *watchedProcessTracker) refresh() error {
 func (tracker *watchedProcessTracker) signal(value syscall.Signal) error {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
-	refreshErr := tracker.refreshLocked()
+	refreshErr := errors.Join(tracker.eventErr, tracker.refreshLocked())
 	pids := make([]int, 0, len(tracker.processes))
 	for pid := range tracker.processes {
 		pids = append(pids, pid)
@@ -243,8 +257,8 @@ func (tracker *watchedProcessTracker) refreshLocked() error {
 		children[process.parent] = append(children[process.parent], process)
 	}
 	active := make(map[int]uint64, len(tracker.processes))
-	queue := []int{tracker.root}
-	seen := map[int]bool{tracker.root: true}
+	queue := []int{tracker.owner, tracker.root}
+	seen := map[int]bool{tracker.owner: true, tracker.root: true}
 	for pid, started := range tracker.processes {
 		if process, ok := byPID[pid]; ok && process.started == started {
 			active[pid] = started
@@ -270,4 +284,36 @@ func (tracker *watchedProcessTracker) refreshLocked() error {
 	}
 	tracker.processes = active
 	return nil
+}
+
+func (tracker *watchedProcessTracker) record(process watchedProcessInfo) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if process.pid == tracker.root || process.pid == tracker.owner {
+		return
+	}
+	if len(tracker.processes) >= maxWatchedDescendants {
+		tracker.eventErr = fmt.Errorf("watched process tree exceeds %d descendants", maxWatchedDescendants)
+		return
+	}
+	tracker.processes[process.pid] = process.started
+}
+
+func (tracker *watchedProcessTracker) fail(err error) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	tracker.eventErr = errors.Join(tracker.eventErr, err)
+}
+
+func (tracker *watchedProcessTracker) close() {
+	if tracker == nil {
+		return
+	}
+	tracker.mu.Lock()
+	stop := tracker.stop
+	tracker.stop = nil
+	tracker.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
 }

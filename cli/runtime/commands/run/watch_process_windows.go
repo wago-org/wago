@@ -17,8 +17,9 @@ type watchedChildPlatform struct {
 	job windows.Handle
 }
 
-func prepareWatchedCommand(command *exec.Cmd) {
+func prepareWatchedCommand(command *exec.Cmd) error {
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED}
+	return nil
 }
 
 func abortWatchedCommand(*exec.Cmd) {}

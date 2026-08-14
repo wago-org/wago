@@ -243,7 +243,9 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	if options.environment != nil {
 		command.Env = options.environment
 	}
-	prepareWatchedCommand(command)
+	if err := prepareWatchedCommand(command); err != nil {
+		return nil, err
+	}
 	if err := command.Start(); err != nil {
 		abortWatchedCommand(command)
 		return nil, err
