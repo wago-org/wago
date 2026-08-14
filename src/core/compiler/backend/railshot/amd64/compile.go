@@ -1894,7 +1894,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	if nativeCompactionEnabled {
-		if hints.hasLoop || len(custom) != 0 {
+		if hints.hasLoop || hints.hasJumpTableData || len(custom) != 0 {
 			// These are finalizer exclusions known before emission. Avoid
 			// recording sites only to take identity.
 			sc.asm.ResetRel32Recorder(0)

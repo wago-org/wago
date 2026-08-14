@@ -52,11 +52,12 @@ type funcHints struct {
 	// exactly (unreachable/block/loop/if/else/br*/return, NOT try_table); hasLoop is
 	// the loop subset. calleeCount>0/hasControlCall from inlineOK both reduce to
 	// hasCall (an inline candidate is leaf), so no separate call-kind split is kept.
-	hasLoop        bool
-	hasControlFlow bool
-	moduleEH       bool
-	hasFloatConst  bool // body contains f32.const or f64.const
-	hasSIMD        bool // body contains an 0xfd SIMD instruction
+	hasLoop          bool
+	hasJumpTableData bool
+	hasControlFlow   bool
+	moduleEH         bool
+	hasFloatConst    bool // body contains f32.const or f64.const
+	hasSIMD          bool // body contains an 0xfd SIMD instruction
 
 	// immutableTables is derived after the one-pass per-function scans have been
 	// aggregated (computeModuleHints). Each admitted table is local, unexported,
@@ -332,6 +333,8 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
 					h.hasLoop = true
+				} else if in.Kind == wasm.InstrBrTable && len(in.Indices()) >= brTableJumpMin {
+					h.hasJumpTableData = true
 				}
 			}
 			switch in.Kind {
@@ -646,6 +649,22 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return subHasCall, op, nil
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+		case 0x0e: // br_table: exact jump-table-data admission hint
+			n, err := s.r.U32()
+			if err != nil {
+				return true, 0, err
+			}
+			if n >= brTableJumpMin {
+				s.h.hasJumpTableData = true
+			}
+			for i := uint32(0); i < n; i++ {
+				if _, err := s.r.U32(); err != nil {
+					return true, 0, err
+				}
+			}
+			if _, err := s.r.U32(); err != nil { // default label
+				return true, 0, err
+			}
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			s.h.noteControlDepth(depth + 1)
