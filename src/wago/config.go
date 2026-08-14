@@ -234,12 +234,17 @@ func (m BoundsCheckMode) String() string {
 type OptimizationObjective uint8
 
 const (
+	// OptimizeSpeed preserves performance-oriented layout and selection policy.
 	OptimizeSpeed OptimizationObjective = iota
+	// OptimizeBalanced is the default objective for general-purpose compilation.
 	OptimizeBalanced
+	// OptimizeSize trades bounded compile time and selected runtime heuristics for smaller native code.
 	OptimizeSize
+	// OptimizeEmbedded applies the Size policy for restricted embedded deployments.
 	OptimizeEmbedded
 )
 
+// String returns the stable configuration name for o.
 func (o OptimizationObjective) String() string {
 	switch o {
 	case OptimizeSpeed:
