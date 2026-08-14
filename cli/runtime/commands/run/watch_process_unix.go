@@ -64,7 +64,7 @@ func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 
 func interruptWatchedProcess(platform watchedChildPlatform, command *exec.Cmd, interrupt os.Signal) error {
 	sig := syscall.SIGTERM
-	if value, ok := interrupt.(syscall.Signal); ok && (value == syscall.SIGINT || value == syscall.SIGQUIT || value == syscall.SIGTERM) {
+	if value, ok := interrupt.(syscall.Signal); ok && (value == syscall.SIGHUP || value == syscall.SIGINT || value == syscall.SIGQUIT || value == syscall.SIGTERM) {
 		sig = value
 	}
 	return signalWatchedProcessTree(platform, command, sig)

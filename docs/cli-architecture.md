@@ -217,9 +217,9 @@ real foreground terminal and the watcher restores terminal ownership after it
 stops. The watcher also records bounded process identities, so cleanup reaches
 descendants that create a new session or process group. It mirrors terminal
 stop and continue events, and its status output remains safe when background
-terminal writes are disabled. Interrupt, quit, and termination signals stop the
-child tree before the watcher exits. Content hashing detects same-size rewrites
-even when file timestamps do not change.
+terminal writes are disabled. Hangup, interrupt, quit, and termination signals
+stop the child tree before the watcher exits. Content hashing detects same-size
+rewrites even when file timestamps do not change.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

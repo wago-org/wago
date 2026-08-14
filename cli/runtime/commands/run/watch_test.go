@@ -213,7 +213,11 @@ func TestWatchSupervisorForwardsInterrupt(t *testing.T) {
 		name   string
 		signal os.Signal
 		want   string
-	}{{name: "interrupt", signal: os.Interrupt, want: "interrupt"}, {name: "quit", signal: syscall.SIGQUIT, want: "quit"}} {
+	}{
+		{name: "hangup", signal: syscall.SIGHUP, want: "hangup"},
+		{name: "interrupt", signal: os.Interrupt, want: "interrupt"},
+		{name: "quit", signal: syscall.SIGQUIT, want: "quit"},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			modulePath := filepath.Join(dir, "module.wasm")
