@@ -2,6 +2,8 @@
 
 package arm64
 
+import "math/bits"
+
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP and branch on its NZCV flags, skipping the
 // Cset + materialize + CMP that a standalone boolean would need. This is the
@@ -33,6 +35,7 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	f.pinned = f.pinned.add(x)
 	wide := inner.typ.is64()
 	c := uint64(inner.arg1.st.cval)
+	testOff := f.a.Len()
 	emitted := false
 	if wide {
 		emitted = f.a.TstImm64(x, c)
@@ -44,6 +47,8 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 		f.loadConst(t, storage{kind: stConst, typ: inner.typ, cval: int64(c)})
 		f.a.TstReg(x, t, !wide)
 		f.release(t)
+	} else if c&(c-1) == 0 {
+		f.recordSingleBitTest(testOff, x, uint8(bits.TrailingZeros64(c)))
 	}
 	f.pinned = f.pinned.remove(x)
 	if owned {

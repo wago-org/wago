@@ -852,3 +852,42 @@ The decisive rule is:
 A small amount of explicit symbolic finalization should unlock most of the code
 size benefits normally associated with a larger compiler pipeline while
 retaining Railshot's low-memory, fast-compilation character.
+
+## Implementation result: ARM64 single-bit test branches
+
+The ARM64 finalizer now recognizes an explicitly recorded, bounded subset of
+single-bit mask tests followed immediately by `B.EQ` or `B.NE`. In Size and
+Embedded objectives it rewrites the pair to `TBZ` or `TBNZ`, deletes the now
+dead conditional-branch word, and lets the existing offset remapper compact and
+repatch the function. The candidate list is fixed-capacity function scratch;
+ordinary instructions are not represented as machine nodes, and arbitrary code
+bytes are never decoded. `WAGO_ARM64_NO_SINGLE_BIT_BRANCH=1` is the independent
+rollback switch.
+
+This is intentionally a narrow finalizer seam: the producer records only
+single-bit `TST` instructions that it emitted, while the consumer proves
+adjacency, condition, branch range, target safety, and deletion capacity. That
+keeps the interface deeper than a generic peephole scanner and preserves opaque
+plugin and embedded-data boundaries.
+
+Measured on the checked-in ARM64 Size corpus:
+
+```text
+rollback native bytes:  75,241,428
+candidate native bytes: 75,233,428
+net reduction:              8,000 (0.0106%)
+selected sites:             2,083
+
+Ruby compile median:   607,949,666 -> 601,127,500 ns/op (-1.12%)
+esbuild compile median:330,125,042 -> 331,809,166 ns/op (+0.51%)
+compile allocation class: unchanged
+
+JSON serialize median: 18,598 -> 18,514 ns/op (-0.45%)
+JSON deserialize median:37,615 -> 37,176 ns/op (-1.17%)
+runtime allocations: zero in both configurations
+```
+
+The candidate produced 8,332 bytes of direct instruction shrinkage; downstream
+fragment layout made the exact corpus result 8,000 bytes. The full test suite,
+ARM64 backend race tests, compact corpus/fuzz run, and complete Size execution
+corpus passed.

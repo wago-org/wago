@@ -530,8 +530,10 @@ type scratch struct {
 	finalFragments   []finalizerFragment
 	deadHoleSites    [maxFinalizerDeletions]int
 	branchNextSites  [maxFinalizerDeletions]int
+	singleBitTests   [maxFinalizerDeletions]singleBitTestSite
 	deadHoleN        uint8
 	branchNextN      uint8
+	singleBitTestN   uint8
 	deadHoleOverflow bool
 	transient
 }
@@ -595,6 +597,7 @@ func (sc *scratch) reset() {
 	sc.finalFragments = sc.finalFragments[:0]
 	sc.deadHoleN = 0
 	sc.branchNextN = 0
+	sc.singleBitTestN = 0
 	sc.deadHoleOverflow = false
 }
 

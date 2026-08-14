@@ -66,10 +66,72 @@ func (f *fn) finalizePeepholes() {
 		}
 	}
 	if f.opt(optBranchFold) {
+		f.foldSingleBitBranches(b, n, targets)
 		f.foldBranchPairs(b, n, targets)
 	}
 	if f.opt(optStoreLoadFwd) {
 		f.forwardStoreLoads(b, n, targets)
+	}
+}
+
+type singleBitTestSite struct {
+	off int
+	reg Reg
+	bit uint8
+}
+
+func (f *fn) recordSingleBitTest(off int, reg Reg, bit uint8) {
+	if !singleBitBranchEnabled || !nativeFinalizerEnabled || !f.compactNative() {
+		return
+	}
+	sc := f.scratchState()
+	if int(sc.singleBitTestN) == len(sc.singleBitTests) {
+		return
+	}
+	sc.singleBitTests[sc.singleBitTestN] = singleBitTestSite{off: off, reg: reg, bit: bit}
+	sc.singleBitTestN++
+}
+
+// foldSingleBitBranches consumes only candidates explicitly recorded by the
+// masked-eqz lowering. The final target is now known, so an adjacent TST plus
+// EQ/NE branch can become TBZ/TBNZ when the tighter imm14 range permits it.
+func (f *fn) foldSingleBitBranches(b []byte, n int, targets map[int]bool) {
+	sc := f.scratchState()
+	for _, site := range sc.singleBitTests[:sc.singleBitTestN] {
+		test, branch := site.off, site.off+4
+		if test < 0 || branch+4 > n || targets[branch] || int(sc.deadHoleN) == len(sc.deadHoleSites) {
+			continue
+		}
+		w := rdWord(b, branch)
+		if w&0xFF000010 != 0x54000000 {
+			continue
+		}
+		cc := Cond(w & 0xF)
+		if cc != condE && cc != condNE {
+			continue
+		}
+		target, ok := branchTarget(branch, w)
+		if !ok {
+			continue
+		}
+		delta := target - test
+		if delta&3 != 0 {
+			continue
+		}
+		words := delta / 4
+		if words < -(1<<13) || words >= 1<<13 {
+			continue
+		}
+		base := uint32(0x36000000) // TBZ
+		if cc == condNE {
+			base |= 0x01000000 // TBNZ
+		}
+		word := base | uint32(site.bit>>5)<<31 | uint32(site.bit&31)<<19 |
+			(uint32(words)&0x3FFF)<<5 | uint32(site.reg&31)
+		wrWord(b, test, word)
+		wrWord(b, branch, nopWord)
+		f.recordDeadHole(branch)
+		f.stats.peep("single-bit-test-branch")
 	}
 }
 
