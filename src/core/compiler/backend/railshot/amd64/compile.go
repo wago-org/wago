@@ -288,20 +288,22 @@ type fn struct {
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
-	spillFloor       int
-	subRspAt         int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt         int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	adapterReturnOff int    // offset immediately after this function's root adapter CALL
-	guardMode        bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts      bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible    bool   // emit context-cancellation polls at entries and loop headers
-	lazyZero         bool   // defer declared-local zeroing for small call+memory functions
-	entryInitialized uint64 // locals proven assigned before first entry-prefix read
-	skipFence        bool   // call-free leaf with a provably small frame: no stack-fence check
-	frameElided      bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
-	threadedMemory0  bool   // route shared memory zero through the private instance directory
-	hasLoop          bool   // retain loop alignment until it becomes a relaxable fragment
-	hasJumpTableData bool   // embedded table deltas require explicit fragment remapping
+	spillFloor              int
+	subRspAt                int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt                int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	adapterReturnOff        int    // offset immediately after this function's root adapter CALL
+	adapterEndOff           int    // end of the wrapper before internal-entry alignment
+	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
+	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible           bool   // emit context-cancellation polls at entries and loop headers
+	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
+	entryInitialized        uint64 // locals proven assigned before first entry-prefix read
+	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
+	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	threadedMemory0         bool   // route shared memory zero through the private instance directory
+	hasLoop                 bool   // retain loop alignment until it becomes a relaxable fragment
+	hasJumpTableData        bool   // embedded table deltas require explicit fragment remapping
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -739,6 +741,7 @@ type funcResult struct {
 	bodyBytes      int
 	layoutFlags    uint8
 	directPrepared bool
+	adapterTail    adapterTailInfo
 	relocs         []callReloc
 	literalStart   int
 	literalEnd     int
@@ -751,6 +754,16 @@ func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
 	}
 	bits[bit>>6] |= uint64(1) << uint(bit&63)
 	return bits
+}
+
+func countHostAdaptersAMD64(adapters []bool) int {
+	n := 0
+	for _, adapter := range adapters {
+		if adapter {
+			n++
+		}
+	}
+	return n
 }
 
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
@@ -1127,6 +1140,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared []uint64
+		var adapterTails []adapterTailInfo
+		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+			adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
+		}
 		for i := range m.Code {
 			// Align and reserve before lowering so the assembler can emit straight
 			// into the module-owned image. If an unusually large function outgrows
@@ -1168,6 +1185,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
 			internalEntry[i] = len(code) + internalOff
+			if adapterTails != nil && sc.fnState.adapterReturnOff != 0 {
+				if info := sc.fnState.adapterTailInfo(); info.returnOff != 0 {
+					info.function = uint32(i)
+					adapterTails = append(adapterTails, info)
+				}
+			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
@@ -1189,7 +1212,14 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				opts.MemoryPressure()
 			}
 		}
-		functionsEnd := len(codeBuffer.Bytes())
+		sharedAdapterTailBytes := 0
+		if adapterTails != nil {
+			sharedAdapterTailBytes, err = shareAdapterTailsCodeBufferAMD64(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+			if err != nil {
+				return nil, err
+			}
+		}
+		functionsEnd := len(codeBuffer.Bytes()) - sharedAdapterTailBytes
 		literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
 		literalBase := -1
 		if len(literalCode) != 0 {
@@ -1301,7 +1331,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
 				literalStart := len(ws.literals)
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalStart: literalStart, literalEnd: len(ws.literals)}
+				result := funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalStart: literalStart, literalEnd: len(ws.literals)}
+				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+					result.adapterTail = ws.scratch.fnState.adapterTailInfo()
+				}
+				results[i] = result
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -1320,6 +1354,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	code := make([]byte, 0, codeCap)
 	var literalWords []uint64
 	var directPrepared []uint64
+	var adapterTails []adapterTailInfo
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
+	}
 	for i := range results {
 		r := &results[i]
 		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
@@ -1331,6 +1369,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
 		relocs[i] = r.relocs
+		if adapterTails != nil && r.adapterTail.returnOff != 0 {
+			r.adapterTail.function = uint32(i)
+			adapterTails = append(adapterTails, r.adapterTail)
+		}
 		if literalOffsets != nil {
 			literalWords = append(literalWords, states[r.worker].literals[r.literalStart:r.literalEnd]...)
 			if uint64(len(literalWords)) > math.MaxUint32 {
@@ -1340,7 +1382,15 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
-	functionsEnd := len(code)
+	sharedAdapterTailBytes := 0
+	if adapterTails != nil {
+		var err error
+		code, sharedAdapterTailBytes, err = shareAdapterTailsAMD64(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+		if err != nil {
+			return nil, err
+		}
+	}
+	functionsEnd := len(code) - sharedAdapterTailBytes
 	literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
 	literalBase := -1
 	if len(literalCode) != 0 {
@@ -2906,6 +2956,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 			}
 		}
 		a.Ret()
+		f.adapterEndOff = a.Len()
 		if f.stats != nil {
 			f.stats.NativeSize.HostAdapterBytes = a.Len()
 		}

@@ -71,7 +71,7 @@ type funcDef struct {
 
 // modFuncs builds a module of several local functions (func 0 exported as "f",
 // each function using its own type index), for exercising internal calls.
-func modFuncs(t *testing.T, fns ...funcDef) *wasm.Module {
+func modFuncs(t testing.TB, fns ...funcDef) *wasm.Module {
 	t.Helper()
 	var types, funcs, codes [][]byte
 	for i, fn := range fns {
