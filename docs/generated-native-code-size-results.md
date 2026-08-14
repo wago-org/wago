@@ -741,6 +741,35 @@ Five one-second JSON execution samples remained neutral: serialize moved from
 (-0.21%), with zero allocations. The backend package, exhaustive finalizer
 validation, runtime/fuzz corpus, and race suite all pass.
 
+### AMD64 branch-to-next deletion checkpoint
+
+The same transform uses the existing bounded `Rel32Sites` inventory on AMD64.
+Only exact `JMP` and `Jcc` fallthrough sites are admitted; calls are recorded as
+a different kind and retain their return-address side effect. Removed-site
+choices occupy a fixed 32-byte bitset during finalization, and the patch loop
+skips them without allocating or decoding the final instruction stream.
+
+Against detached pre-change remote commit `81fcabc`, the complete 64-module
+native-AMD64 corpus on `hub@hub` with `WAGO_COMPACT=1` changed as follows:
+
+| Pre-change bytes | Current bytes | Saving | Wins / losses / ties |
+| ---: | ---: | ---: | ---: |
+| 82,686,448 | 82,662,330 | -24,118 (-0.03%) | 20 / 0 / 44 |
+
+The largest reductions were `ruby` (-15,216), `sqlite3` (-3,088), `script`
+(-1,952), and `esbuild` (-768). Serialized native compile measurements remained
+inside the Balanced gate:
+
+| Workload | Pre-change median | Current median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 326,769 ns/op | 323,221 ns/op | -1.09% | 147,209 B/op / 340 allocs, unchanged |
+| `json-as` | 1,248,707 ns/op | 1,249,569 ns/op | +0.07% | 291,659 B/op / 1,858 allocs, unchanged |
+
+Five one-second JSON execution samples remained neutral: serialize moved from
+114.3 to 113.9 ns/op (-0.35%), and deserialize from 204.5 to 204.9 ns/op
+(+0.20%), with zero allocations. The native backend, compacted runtime/fuzz
+corpus, and race suite all pass.
+
 ### Commands
 
 ```sh
