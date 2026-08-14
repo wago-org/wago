@@ -10,6 +10,9 @@ import (
 )
 
 func TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64(t *testing.T) {
+	before := stackDeltaAdapterThunkEnabled
+	stackDeltaAdapterThunkEnabled = true
+	t.Cleanup(func() { stackDeltaAdapterThunkEnabled = before })
 	build := func(target int) []byte {
 		a := &encoder.Asm{}
 		for i := 0; i < 8; i++ {
@@ -69,7 +72,7 @@ func TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64(t *testing.T)
 		t.Fatalf("shared call bytes = % x, want ff d5", got[58:60])
 	}
 	for i := range stats.Funcs {
-		if stats.Funcs[i].NativeSize.HostAdapterBytes != sharedAdapterThunkBytesAMD64 || stats.Funcs[i].CodeBytes != 17 {
+		if stats.Funcs[i].NativeSize.HostAdapterBytes != legacySharedAdapterThunkBytesAMD64 || stats.Funcs[i].CodeBytes != 17 {
 			t.Fatalf("function %d stats = %#v", i, stats.Funcs[i])
 		}
 	}

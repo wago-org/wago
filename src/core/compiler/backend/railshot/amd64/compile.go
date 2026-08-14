@@ -74,9 +74,15 @@ var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "
 var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
 
 // sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
-// host adapters with twelve-byte function-local target thunks plus one cold
+// host adapters with compact function-local target thunks plus one cold
 // module copy. WAGO_AMD64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
 var sharedAdaptersEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_ADAPTERS") != "1"
+
+// stackDeltaAdapterThunkEnabled pushes an internal-entry delta before jumping
+// to the shared adapter. Its fixed prefix consumes that delta and restores the
+// original host stack before running the existing adapter body.
+// The kill switch restores the former LEA/JMP thunk byte for byte.
+var stackDeltaAdapterThunkEnabled = os.Getenv("WAGO_AMD64_NO_STACK_DELTA_ADAPTER_THUNK") != "1"
 
 // gcResolveReuseEnabled retains one resolved object address only across a
 // compiler-proven straight-line, safepoint-free region. The compact local remains

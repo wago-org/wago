@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"strings"
 	"testing"
 
@@ -113,18 +114,29 @@ func TestSizeObjectiveSharesAdapterTailsAMD64(t *testing.T) {
 
 func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
 	before := sharedAdaptersEnabled
-	t.Cleanup(func() { sharedAdaptersEnabled = before })
+	beforeStackDelta := stackDeltaAdapterThunkEnabled
+	t.Cleanup(func() {
+		sharedAdaptersEnabled = before
+		stackDeltaAdapterThunkEnabled = beforeStackDelta
+	})
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	m := modFuncs(t,
 		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x01, 0x41, 0x0b, 0x0b}},
 		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x02, 0x41, 0x0c, 0x0b}},
 		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x03, 0x41, 0x0d, 0x0b}},
+		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x04, 0x41, 0x0e, 0x0b}},
+		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x05, 0x41, 0x0f, 0x0b}},
+		funcDef{nil, i32x2, []byte{0x00, 0x41, 0x06, 0x41, 0x10, 0x0b}},
 	)
 	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
 	m.Exports = append(m.Exports, wasm.Export{Name: "h", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}})
+	m.Exports = append(m.Exports, wasm.Export{Name: "i", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 3}})
+	m.Exports = append(m.Exports, wasm.Export{Name: "j", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 4}})
+	m.Exports = append(m.Exports, wasm.Export{Name: "k", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 5}})
 	size := OptimizeSize
 
 	sharedAdaptersEnabled = true
+	stackDeltaAdapterThunkEnabled = true
 	var stats ModuleStats
 	shared, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
 	if err != nil {
@@ -134,6 +146,18 @@ func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
 		if got := fn.NativeSize.HostAdapterBytes; got != sharedAdapterThunkBytesAMD64 {
 			t.Fatalf("function %d adapter thunk = %d bytes, want %d", i, got, sharedAdapterThunkBytesAMD64)
 		}
+	}
+	thunk := shared.Entry[0]
+	if shared.Code[thunk] != 0x68 || shared.Code[thunk+5] != 0xe9 {
+		t.Fatalf("stack-delta thunk opcodes = %#x/%#x, want PUSH/JMP", shared.Code[thunk], shared.Code[thunk+5])
+	}
+	sharedAt := thunk + 10 + int(int32(binary.LittleEndian.Uint32(shared.Code[thunk+6:thunk+10])))
+	resolvedInternal := sharedAt + 8 + int(int32(binary.LittleEndian.Uint32(shared.Code[thunk+1:thunk+5])))
+	if resolvedInternal != shared.InternalEntry[0] {
+		t.Fatalf("stack-delta internal entry = %d, want %d", resolvedInternal, shared.InternalEntry[0])
+	}
+	if want := []byte{0x5d, 0x48, 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x01, 0xc5}; !bytes.Equal(shared.Code[sharedAt:sharedAt+len(want)], want) {
+		t.Fatalf("stack-delta prefix = % x, want % x", shared.Code[sharedAt:sharedAt+len(want)], want)
 	}
 	if stats.NativeSize.AccountedBytes() != len(shared.Code) || stats.NativeSize.ModuleOtherBytes == 0 {
 		t.Fatalf("shared adapter accounting = %#v, code=%d", stats.NativeSize, len(shared.Code))
@@ -151,5 +175,23 @@ func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
 	}
 	if got := runCompiledAmd64u(t, cm); got != 1 {
 		t.Fatalf("shared adapter execution = %d, want 1", got)
+	}
+
+	stackDeltaAdapterThunkEnabled = false
+	var legacyStats ModuleStats
+	legacy, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &legacyStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, fn := range legacyStats.Funcs {
+		if got := fn.NativeSize.HostAdapterBytes; got != legacySharedAdapterThunkBytesAMD64 {
+			t.Fatalf("legacy function %d adapter thunk = %d bytes, want %d", i, got, legacySharedAdapterThunkBytesAMD64)
+		}
+	}
+	if len(legacy.Code) <= len(shared.Code) {
+		t.Fatalf("legacy stack-delta rollback code = %d bytes, want more than %d", len(legacy.Code), len(shared.Code))
+	}
+	if got := runCompiledAmd64u(t, legacy); got != 1 {
+		t.Fatalf("legacy shared adapter execution = %d, want 1", got)
 	}
 }

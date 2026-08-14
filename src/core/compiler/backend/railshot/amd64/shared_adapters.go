@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -12,8 +13,10 @@ import (
 )
 
 const (
-	sharedAdapterThunkBytesAMD64 = 12
-	sharedAdapterCallShrinkAMD64 = 3 // CALL rel32 (5) -> CALL RBP (2)
+	sharedAdapterThunkBytesAMD64       = 10
+	legacySharedAdapterThunkBytesAMD64 = 12
+	sharedAdapterStackDeltaPrefixAMD64 = 11
+	sharedAdapterCallShrinkAMD64       = 3 // CALL rel32 (5) -> CALL RBP (2)
 )
 
 type sharedAdapterInfo struct {
@@ -42,6 +45,25 @@ type sharedAdapterGroup struct {
 	dispOff     int
 	count       int
 	sharedOff   int
+	stackDelta  bool
+}
+
+func (g *sharedAdapterGroup) thunkBytes() int {
+	if g.stackDelta {
+		return sharedAdapterThunkBytesAMD64
+	}
+	return legacySharedAdapterThunkBytesAMD64
+}
+
+func (g *sharedAdapterGroup) prefixBytes() int {
+	if g.stackDelta {
+		return sharedAdapterStackDeltaPrefixAMD64
+	}
+	return 0
+}
+
+func (g *sharedAdapterGroup) sharedLength() int {
+	return g.prefixBytes() + g.length - sharedAdapterCallShrinkAMD64
 }
 
 func shareAdaptersCodeBufferAMD64(codeBuffer *coreruntime.CodeBuffer, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, infos []sharedAdapterInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) (int, error) {
@@ -86,7 +108,7 @@ func planSharedAdaptersAMD64(code []byte, entry []int, infos []sharedAdapterInfo
 		info.group = ^uint32(0)
 		i := int(info.function)
 		dispOff := int(info.dispOff)
-		if info.endOff <= sharedAdapterThunkBytesAMD64 || dispOff < 1 || dispOff+4 > int(info.endOff) || i >= len(entry) {
+		if info.endOff <= legacySharedAdapterThunkBytesAMD64 || dispOff < 1 || dispOff+4 > int(info.endOff) || i >= len(entry) {
 			continue
 		}
 		start, end := entry[i], entry[i]+int(info.endOff)
@@ -116,10 +138,14 @@ func planSharedAdaptersAMD64(code []byte, entry []int, infos []sharedAdapterInfo
 	admitted := make([]bool, len(groups))
 	for i := range groups {
 		g := &groups[i]
-		sharedLength := g.length - sharedAdapterCallShrinkAMD64
-		if g.count*g.length <= g.count*sharedAdapterThunkBytesAMD64+sharedLength {
+		legacyLength := g.length - sharedAdapterCallShrinkAMD64
+		if g.count*g.length <= g.count*legacySharedAdapterThunkBytesAMD64+legacyLength {
 			continue
 		}
+		// The prefix costs eleven bytes while each thunk saves two, so six
+		// thunks are the first exact crossover against the legacy LEA/JMP form.
+		g.stackDelta = stackDeltaAdapterThunkEnabled && g.count >= 6
+		sharedLength := g.sharedLength()
 		admitted[i] = true
 		g.sharedOff = sharedBytes
 		sharedBytes += sharedLength
@@ -150,14 +176,27 @@ func copySharedAdapterAMD64(dst, src []byte, dispOff int) {
 	copy(dst[opcode+2:], src[dispOff+4:])
 }
 
+func copyStackDeltaSharedAdapterAMD64(dst, src []byte, dispOff int) {
+	// POP consumes the sign-extended delta pushed by the thunk. LEA obtains a
+	// fixed address in this shared prefix, and ADD recovers the internal entry.
+	copy(dst, []byte{0x5d, 0x48, 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x01, 0xc5})
+	copySharedAdapterAMD64(dst[sharedAdapterStackDeltaPrefixAMD64:], src, dispOff)
+}
+
 func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []sharedAdapterGroup, infos []sharedAdapterInfo, sharedBytes int) (int, error) {
 	for i := range groups {
 		g := &groups[i]
-		sharedLength := g.length - sharedAdapterCallShrinkAMD64
-		if g.count*g.length <= g.count*sharedAdapterThunkBytesAMD64+sharedLength {
+		legacyLength := g.length - sharedAdapterCallShrinkAMD64
+		if g.count*g.length <= g.count*legacySharedAdapterThunkBytesAMD64+legacyLength {
 			continue
 		}
-		copySharedAdapterAMD64(code[oldLen+g.sharedOff:oldLen+g.sharedOff+sharedLength], code[g.templateOff:g.templateOff+g.length], g.dispOff)
+		sharedLength := g.sharedLength()
+		dst := code[oldLen+g.sharedOff : oldLen+g.sharedOff+sharedLength]
+		if g.stackDelta {
+			copyStackDeltaSharedAdapterAMD64(dst, code[g.templateOff:g.templateOff+g.length], g.dispOff)
+		} else {
+			copySharedAdapterAMD64(dst, code[g.templateOff:g.templateOff+g.length], g.dispOff)
+		}
 	}
 
 	src, dst, removed := 0, 0, 0
@@ -171,14 +210,16 @@ func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []
 			infoIndex++
 		}
 		if info != nil {
+			g := &groups[info.group]
+			thunkBytes := g.thunkBytes()
 			copy(code[dst:], code[src:oldEntry])
 			dst += oldEntry - src
-			for j := 0; j < sharedAdapterThunkBytesAMD64; j++ {
+			for j := 0; j < thunkBytes; j++ {
 				code[dst+j] = 0
 			}
-			dst += sharedAdapterThunkBytesAMD64
+			dst += thunkBytes
 			src = oldEntry + int(info.endOff)
-			deleted := int(info.endOff) - sharedAdapterThunkBytesAMD64
+			deleted := int(info.endOff) - thunkBytes
 			removed += deleted
 			for j := range relocs[i] {
 				if relocs[i][j].at >= int(info.endOff) {
@@ -198,7 +239,7 @@ func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []
 			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 				native := &ms.Funcs[i].NativeSize
 				native.TotalBytes -= deleted
-				native.HostAdapterBytes = sharedAdapterThunkBytesAMD64
+				native.HostAdapterBytes = thunkBytes
 				native.HostAdapterTailBytes = 0
 				ms.Funcs[i].CodeBytes -= deleted
 				ms.Funcs[i].GCCodeBytes.Total -= deleted
@@ -216,10 +257,22 @@ func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []
 		i := int(info.function)
 		g := &groups[info.group]
 		thunk, sharedAt := entry[i], dst+g.sharedOff
-		copy(code[thunk:thunk+sharedAdapterThunkBytesAMD64], []byte{0x48, 0x8d, 0x2d, 0, 0, 0, 0, 0xe9, 0, 0, 0, 0})
-		asm.PatchRel32(thunk+3, internalEntry[i])
-		asm.PatchRel32(thunk+8, sharedAt)
-		sharedReturn := sharedAt + (g.dispOff - 1) + 2
+		if g.stackDelta {
+			code[thunk] = 0x68 // PUSH sign-extended internal-entry delta.
+			anchor := sharedAt + 8
+			delta := int64(internalEntry[i]) - int64(anchor)
+			if delta < -1<<31 || delta > 1<<31-1 {
+				return 0, fmt.Errorf("amd64: shared adapter stack delta out of range: %d", delta)
+			}
+			binary.LittleEndian.PutUint32(code[thunk+1:thunk+5], uint32(int32(delta)))
+			code[thunk+5] = 0xe9 // JMP shared adapter; do not perturb the RSB.
+			asm.PatchRel32(thunk+6, sharedAt)
+		} else {
+			copy(code[thunk:thunk+legacySharedAdapterThunkBytesAMD64], []byte{0x48, 0x8d, 0x2d, 0, 0, 0, 0, 0xe9, 0, 0, 0, 0})
+			asm.PatchRel32(thunk+3, internalEntry[i])
+			asm.PatchRel32(thunk+8, sharedAt)
+		}
+		sharedReturn := sharedAt + g.prefixBytes() + (g.dispOff - 1) + 2
 		if roots != nil {
 			if plan := roots.Function(i); plan != nil && plan.AdapterReturnOffset != 0 {
 				plan.AdapterReturnOffset = uint32(sharedReturn - entry[i])
@@ -227,7 +280,12 @@ func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []
 		}
 		if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 			native := &ms.Funcs[i].NativeSize
-			native.HostAdapterShapeHash = shared.AdapterShapeHash(code[thunk:thunk+sharedAdapterThunkBytesAMD64], 3, 9)
+			thunkBytes := g.thunkBytes()
+			if g.stackDelta {
+				native.HostAdapterShapeHash = shared.AdapterShapeHash(code[thunk:thunk+thunkBytes], 1, 9)
+			} else {
+				native.HostAdapterShapeHash = shared.AdapterShapeHash(code[thunk:thunk+thunkBytes], 3, 9)
+			}
 			native.HostAdapterTailShapeHash = 0
 		}
 	}
