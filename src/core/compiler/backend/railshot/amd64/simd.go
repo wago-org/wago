@@ -3,7 +3,6 @@
 package amd64
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -134,11 +133,18 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	return x
 }
 
-// poolConst is one constant (4, 8, or 16 bytes) in the function's trailing pool
-// and the disp32 field offsets of every rip-relative load that references it.
+// poolConst is one fixed-width constant in the function's trailing pool. Sites
+// form an intrusive list in transient.poolSites, avoiding a byte allocation and
+// a site-slice allocation for every distinct constant.
 type poolConst struct {
-	data  []byte
-	sites []int
+	lo, hi uint64
+	head   uint32 // poolSites index + 1; zero ends the list
+	size   uint8
+}
+
+type poolSite struct {
+	off  uint32
+	next uint32
 }
 
 // recordV128Const registers a MOVDQU rip-load site for the 128-bit constant.
@@ -149,17 +155,23 @@ func (f *fn) recordV128Const(lo, hi uint64, site int) {
 	f.recordConst(b[:], site)
 }
 
-// recordConst registers a rip-load site for a constant, deduplicating by bytes so
-// each distinct constant occupies the pool once. The data is copied (callers pass
-// a reused scratch buffer).
+// recordConst registers a rip-load site for a constant, deduplicating by a fixed
+// comparable key. Callers pass 4, 8, or 16 bytes; no input storage is retained.
 func (f *fn) recordConst(data []byte, site int) {
+	var raw [16]byte
+	copy(raw[:], data)
+	lo := binary.LittleEndian.Uint64(raw[:8])
+	hi := binary.LittleEndian.Uint64(raw[8:])
+	size := uint8(len(data))
 	for i := range f.v128Pool {
-		if bytes.Equal(f.v128Pool[i].data, data) {
-			f.v128Pool[i].sites = append(f.v128Pool[i].sites, site)
+		if c := &f.v128Pool[i]; c.lo == lo && c.hi == hi && c.size == size {
+			f.poolSites = append(f.poolSites, poolSite{off: uint32(site), next: c.head})
+			c.head = uint32(len(f.poolSites))
 			return
 		}
 	}
-	f.v128Pool = append(f.v128Pool, poolConst{data: append([]byte(nil), data...), sites: []int{site}})
+	f.poolSites = append(f.poolSites, poolSite{off: uint32(site)})
+	f.v128Pool = append(f.v128Pool, poolConst{lo: lo, hi: hi, head: uint32(len(f.poolSites)), size: size})
 }
 
 // emitV128ConstPool lays the collected constants after the function code (never
@@ -169,14 +181,20 @@ func (f *fn) emitV128ConstPool() {
 	if len(f.v128Pool) == 0 {
 		return
 	}
+	var raw [16]byte
 	for _, c := range f.v128Pool {
 		off := f.a.Len()
-		f.a.EmitBytes(c.data)
-		for _, s := range c.sites {
-			f.a.PatchRel32(s, off)
+		binary.LittleEndian.PutUint64(raw[:8], c.lo)
+		binary.LittleEndian.PutUint64(raw[8:], c.hi)
+		f.a.EmitBytes(raw[:c.size])
+		for head := c.head; head != 0; {
+			s := f.poolSites[head-1]
+			f.a.PatchRel32(int(s.off), off)
+			head = s.next
 		}
 	}
 	f.v128Pool = f.v128Pool[:0]
+	f.poolSites = f.poolSites[:0]
 }
 
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {

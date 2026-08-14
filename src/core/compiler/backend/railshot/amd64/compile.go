@@ -284,7 +284,6 @@ type fn struct {
 	fpinned  regMask
 	fconsts  []floatConstReg
 	vconsts  []v128ConstReg // repeated v128.const values cached in reserved XMM regs
-	v128Pool []poolConst    // 4/8/16-byte constants materialized via a trailing rip-relative pool
 
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
@@ -467,6 +466,8 @@ type transient struct {
 	tmpGpCand      []gpCand
 	tmpInts        []int
 	tmpIntervalReg []Reg
+	v128Pool       []poolConst // reusable 4/8/16-byte trailing rip-relative constants
+	poolSites      []poolSite  // flat intrusive site lists; no per-constant allocation
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -1924,6 +1925,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, localGCRefFacts, locals := f.localType, f.localSlot, f.localGCRefFacts, f.locals
 	mt0, _ := m.MemoryType(0)
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver}
+	f.v128Pool = f.v128Pool[:0]
+	f.poolSites = f.poolSites[:0]
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
