@@ -1279,3 +1279,13 @@ and esbuild 1 byte. None of the changed macro modules exposes a manifest
 execution entry, so no workload-specific runtime claim is made. The complete
 Size execution corpus remains allocation-free. Focused ordering and native-code
 shrink tests plus the AMD64 backend and race suites pass on `hub`.
+
+### Rejected AMD64 interval-cache low-register order
+
+A follow-up prototype reordered the existing nine-register, call-free interval
+local cache to try RDI and RBP before its high-register members. It preserved
+the exact cache capacity and register set, but the full Size corpus contained
+only 122 affected activations and shrank by 507 bytes (0.0008%). That ceiling
+does not justify another production rule, environment switch, and test surface,
+so the prototype was removed. The accepted whole-function hot-local tie-break
+above remains the only encoded-size register preference.
