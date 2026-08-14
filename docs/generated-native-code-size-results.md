@@ -1118,6 +1118,54 @@ while moving only byte-identical result-store/module-global/return sequences to
 a cold module island. Full signature-adapter sharing remains a later step after
 the metadata and target-materialization ABI are explicit.
 
+### Module-shared cold adapter tails
+
+Size and Embedded now replace profitable byte-identical post-call adapter tails
+with one direct branch to a module-owned cold copy. Speed and Balanced remain
+byte-for-byte unchanged. Each adapter retains its direct internal call and
+function-specific return PC; only the result-store, module-global writeback, and
+return sequence moves. Hashes select candidates, but exact byte comparison is
+the correctness decision.
+
+The module compactor remaps function and internal entries, function-relative
+call relocations, and GC callsite return offsets before ordinary module
+relocations are applied. Shared tails are attributed as module-other bytes.
+Serial compilation compacts the writable code image in place and truncates its
+logical length; parallel compilation performs the same leftward compaction in
+its joined byte arena. ARM64 rejects tails containing any PC-relative or literal
+load instruction, and both backends retain local tails when internal tail-call
+code embeds the adapter return PC. Conservative branch-range checks fall back to
+local tails rather than rejecting a valid module.
+
+Across the 54 corpus modules present on the ARM64 machine, raw Size code falls
+from 79,673,888 to 79,062,348 bytes (-611,540), with 34 wins, no losses, and 20
+ties. Compacted Size code removes the same 611,540 bytes (79,220,904 to
+78,609,364). The largest reductions are Ruby (-382,200), esbuild (-182,400),
+SQLite (-17,688), wasm3 (-12,156), regexmatch (-7,872), and Lua (-6,628).
+
+Serialized ARM64 Size compile medians were 550,874,583 to 532,573,833 ns/op for
+Ruby (-3.32%) and 310,756,458 to 303,902,458 ns/op for esbuild (-2.21%). Heap
+bytes rose by 149,560 (+0.49%) and 75,720 (+0.33%), respectively; allocation
+counts rose by seven and six fixed module-planning allocations. A ten-sample
+native wrapper benchmark measured 12.33 ns/op Balanced versus 12.42 ns/op Size
+(+0.77%), both with zero allocations.
+
+On the 54 matching AMD64 modules on the Ryzen 7 7800X3D host, raw Size code
+falls from 71,807,269 to 71,374,850 bytes (-432,419), with 13 wins, no losses,
+and 41 ties. Compacted Size code removes the same 432,419 bytes (71,423,657 to
+70,991,238). The largest reductions are Ruby (-277,649), esbuild (-132,650),
+SQLite (-8,613), wasm3 (-6,075), regexmatch (-3,795), and Lua (-3,243).
+
+Serialized AMD64 Size compile medians were 884,891,012 to 880,969,821 ns/op for
+Ruby (-0.44%) and 510,623,853 to 509,263,592 ns/op for esbuild (-0.27%). Heap
+bytes rose by 148,208 (+0.42%) and 74,904 (+0.29%); allocation counts were
+noise-level. Ten native wrapper samples measured 10.19 ns/op Balanced versus
+10.16 ns/op Size (-0.25%), both with zero allocations.
+
+ARM64 and AMD64 serial/parallel byte identity, shared-tail native execution,
+synthetic offset/relocation/GC remapping, compact finalizer validation, backend
+race suites, runtime packages, and the available `src/wago` corpus tests pass.
+
 ### Commands
 
 ```sh
