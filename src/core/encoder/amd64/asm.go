@@ -40,8 +40,8 @@ type Asm struct {
 // displacements. Initial frame compaction admits only functions with none; a
 // later bounded site inventory can retain their exact offsets for relaxation.
 type Rel32Site struct {
-	At     int
-	Target int
+	At     uint32
+	Target uint32
 	Kind   Rel32Kind
 	Short  bool
 }
@@ -738,13 +738,17 @@ func (a *Asm) recordRel32(at, target int) {
 		a.Rel32Overflow = true
 		return
 	}
+	if at < 0 || target < 0 || uint64(at) > uint64(^uint32(0)) || uint64(target) > uint64(^uint32(0)) {
+		a.Rel32Overflow = true
+		return
+	}
 	kind := Rel32Other
 	if at >= 1 && a.B[at-1] == 0xe9 {
 		kind = Rel32Jmp
 	} else if at >= 2 && a.B[at-2] == 0x0f && a.B[at-1]&0xf0 == 0x80 {
 		kind = Rel32Jcc
 	}
-	a.Rel32Sites = append(a.Rel32Sites, Rel32Site{At: at, Target: target, Kind: kind})
+	a.Rel32Sites = append(a.Rel32Sites, Rel32Site{At: uint32(at), Target: uint32(target), Kind: kind})
 }
 
 // RetargetRel32 updates the symbolic target of every retained record for at.
@@ -752,8 +756,8 @@ func (a *Asm) recordRel32(at, target int) {
 // original displacement was patched.
 func (a *Asm) RetargetRel32(at, target int) {
 	for i := range a.Rel32Sites {
-		if a.Rel32Sites[i].At == at {
-			a.Rel32Sites[i].Target = target
+		if int(a.Rel32Sites[i].At) == at {
+			a.Rel32Sites[i].Target = uint32(target)
 		}
 	}
 }
@@ -763,7 +767,7 @@ func (a *Asm) RetargetRel32(at, target int) {
 func (a *Asm) ForgetRel32(at int) {
 	out := a.Rel32Sites[:0]
 	for _, site := range a.Rel32Sites {
-		if site.At != at {
+		if int(site.At) != at {
 			out = append(out, site)
 		}
 	}

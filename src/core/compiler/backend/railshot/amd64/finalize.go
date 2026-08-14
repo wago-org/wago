@@ -171,17 +171,18 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	// rejected sites after every round finds cascades while bounding work by the
 	// eight-range offset map.
 	branchForm := func(site encoderamd64.Rel32Site) (start, shortLen int, deletion shared.DeletedRange, ok bool) {
+		at := int(site.At)
 		switch site.Kind {
 		case encoderamd64.Rel32Jmp:
-			if site.At < 1 || site.At+4 > len(f.a.B) || f.a.B[site.At-1] != 0xe9 {
+			if at < 1 || at+4 > len(f.a.B) || f.a.B[at-1] != 0xe9 {
 				return 0, 0, shared.DeletedRange{}, false
 			}
-			return site.At - 1, 2, shared.DeletedRange{Off: uint32(site.At + 1), Len: 3}, true
+			return at - 1, 2, shared.DeletedRange{Off: uint32(at + 1), Len: 3}, true
 		case encoderamd64.Rel32Jcc:
-			if site.At < 2 || site.At+4 > len(f.a.B) || f.a.B[site.At-2] != 0x0f || f.a.B[site.At-1]&0xf0 != 0x80 {
+			if at < 2 || at+4 > len(f.a.B) || f.a.B[at-2] != 0x0f || f.a.B[at-1]&0xf0 != 0x80 {
 				return 0, 0, shared.DeletedRange{}, false
 			}
-			return site.At - 2, 2, shared.DeletedRange{Off: uint32(site.At), Len: 4}, true
+			return at - 2, 2, shared.DeletedRange{Off: uint32(at), Len: 4}, true
 		default:
 			return 0, 0, shared.DeletedRange{}, false
 		}
@@ -207,7 +208,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 				continue
 			}
 			mappedStart, okStart := offsets.Map(start)
-			mappedTarget, okTarget := offsets.Map(site.Target)
+			mappedTarget, okTarget := offsets.Map(int(site.Target))
 			disp := mappedTarget - (mappedStart + shortLen)
 			if !okStart || !okTarget || disp < -128 || disp > 127 {
 				continue
@@ -225,9 +226,9 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		if !site.Short {
 			continue
 		}
-		start := site.At - 1
+		start := int(site.At) - 1
 		if site.Kind == encoderamd64.Rel32Jcc {
-			start = site.At - 2
+			start = int(site.At) - 2
 		}
 		if site.Kind == encoderamd64.Rel32Jmp {
 			f.a.B[start] = 0xeb
@@ -251,12 +252,12 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	code := f.a.B[:offsets.FinalLen()]
 	for _, site := range f.a.Rel32Sites {
 		if site.Short {
-			start, shortLen := site.At-1, 2
+			start, shortLen := int(site.At)-1, 2
 			if site.Kind == encoderamd64.Rel32Jcc {
-				start = site.At - 2
+				start = int(site.At) - 2
 			}
 			at, okAt := offsets.Map(start)
-			target, okTarget := offsets.Map(site.Target)
+			target, okTarget := offsets.Map(int(site.Target))
 			if !okAt || !okTarget || at < 0 || at+shortLen > len(code) || target < 0 || target > len(code) {
 				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At, site.Target)
 			}
@@ -267,8 +268,8 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			code[at+1] = byte(int8(disp))
 			continue
 		}
-		at, okAt := offsets.Map(site.At)
-		target, okTarget := offsets.Map(site.Target)
+		at, okAt := offsets.Map(int(site.At))
+		target, okTarget := offsets.Map(int(site.Target))
 		if !okAt || !okTarget || at < 0 || at+4 > len(code) || target < 0 || target > len(code) {
 			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", site.At, site.Target)
 		}
