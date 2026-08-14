@@ -19,7 +19,11 @@ import (
 )
 
 func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
-	if os.Getenv("WAGO_WATCH_JOB_CONTROL_HELPER") == "1" {
+	switch os.Getenv("WAGO_WATCH_JOB_CONTROL_HELPER") {
+	case "wrapper":
+		runWatchJobControlWrapper(t)
+		return
+	case "watcher":
 		runWatchJobControlHelper(t)
 		return
 	}
@@ -41,7 +45,7 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 	}
 	command := exec.Command(os.Args[0], "-test.run=^TestWatchSupervisorMirrorsTerminalJobControl$", "-test.count=1")
 	command.Env = append(os.Environ(),
-		"WAGO_WATCH_JOB_CONTROL_HELPER=1",
+		"WAGO_WATCH_JOB_CONTROL_HELPER=wrapper",
 		"WAGO_WATCH_MODULE="+modulePath,
 		"WAGO_WATCH_LOG="+logPath,
 	)
@@ -63,7 +67,7 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 		if foreground > 0 {
 			_ = syscall.Kill(-foreground, syscall.SIGKILL)
 		}
-		_ = command.Process.Kill()
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
 		_, _ = command.Process.Wait()
 	})
 	output := watchPTYOutput(master)
@@ -82,7 +86,7 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForWatchedProcessStop(t, command.Process.Pid)
-	if err := syscall.Kill(command.Process.Pid, syscall.SIGCONT); err != nil {
+	if err := syscall.Kill(-command.Process.Pid, syscall.SIGCONT); err != nil {
 		t.Fatal(err)
 	}
 	waitForWatchForegroundGroup(t, master, command.Process.Pid)
@@ -93,6 +97,15 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 		t.Fatalf("job-control helper: %v", err)
 	}
 	finished = true
+}
+
+func runWatchJobControlWrapper(t *testing.T) {
+	command := exec.Command(os.Args[0], "-test.run=^TestWatchSupervisorMirrorsTerminalJobControl$", "-test.count=1")
+	command.Env = append(os.Environ(), "WAGO_WATCH_JOB_CONTROL_HELPER=watcher")
+	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("watcher helper: %v", err)
+	}
 }
 
 func runWatchJobControlHelper(t *testing.T) {

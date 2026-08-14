@@ -121,7 +121,7 @@ func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) 
 	if err := setWatchedTerminalForeground(platform.terminalFD, platform.foreground); err != nil {
 		return err
 	}
-	if err := syscall.Kill(syscall.Getpid(), syscall.SIGSTOP); err != nil {
+	if err := syscall.Kill(-platform.foreground, syscall.SIGSTOP); err != nil {
 		return err
 	}
 	foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
