@@ -1334,3 +1334,49 @@ rejected. Its shared prefix popped the synthetic return address and recovered
 the target, but the non-returning call broke normal CALL/RET predictor pairing:
 the direct host-entry median rose from 9.74 to 22.58 ns/op, a 132% regression.
 The accepted PUSH/JMP form preserves the established branch shape.
+
+## Implementation result: host-boundary trap-body seeds
+
+The bounded cross-function trap catalog still resets at every host adapter, but
+the boundary function's own complete terminal body now becomes the first
+retained shape in the new cluster. Later internal functions can branch back to
+that body instead of retaining another copy. This is relocation-safe without a
+module deletion map: whole-adapter compaction removes bytes before both the
+boundary seed and every later source, so their relative displacement is
+unchanged. The catalog remains fixed at eight shapes and adds no per-function
+storage or heap allocation.
+
+On ARM64, the checked-in Size corpus moves:
+
+```text
+rollback native bytes:  72,278,560
+candidate native bytes: 72,198,152
+net reduction:              80,408 (0.1113%)
+
+Ruby compile median:   659,106,917 -> 650,904,500 ns/op (-1.24%)
+esbuild compile median:364,038,333 -> 367,716,792 ns/op (+1.01%)
+compile allocation class: unchanged
+```
+
+Ruby contributes 66,752 bytes, SQLite 7,920, regexmatch 3,120, Lua 1,400,
+wasm3 880, JSON and SIMD JSON 128 each, SIMD BLAKE 52, and scalar BLAKE 28.
+No module grows. Five-sample affected-workload medians range from -0.89% to
++0.59%; all remain allocation-free. The ARM64 backend and race suites plus the
+complete Size execution corpus pass.
+
+On AMD64, the already compacted Size corpus moves:
+
+```text
+rollback native bytes:  63,945,048
+candidate native bytes: 63,912,186
+net reduction:              32,862 (0.0514%)
+
+Ruby compile median:   1,046,418,012 -> 1,024,654,495 ns/op (-2.08%)
+esbuild compile median:  553,680,257 ->   548,543,843 ns/op (-0.93%)
+compile allocation class: unchanged
+```
+
+Ruby contributes 30,888 bytes, regexmatch 1,276, SQLite 418, scalar and SIMD
+JSON 96 each, wasm3 44, and Lua 44. No module grows. Affected JSON execution
+medians range from -0.14% to +0.72%, with zero allocations. The AMD64 backend
+and race suites plus the complete Size execution corpus pass on `hub`.
