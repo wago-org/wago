@@ -2247,8 +2247,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	// Call-free integer kernels benefit from a denser frame: two i32
 	// locals share one 8-byte slot. Besides halving their footprint, this keeps
-	// more RSP-relative accesses in x86's compact disp8 encoding. Other functions
-	// retain the longstanding 8-byte-word layout, keeping call/EH/GC frame maps
+	// more RSP-relative accesses in x86's compact disp8 encoding. Structured
+	// control flow uses the same typed local load/store helpers and is safe to
+	// admit. Call-making functions retain the word layout because some argument
+	// staging intentionally uses full-width local loads; EH/GC layouts also remain
 	// deliberately boring. Tiny functions stay on the old layout because their
 	// locals are normally register-homed and do not repay a second layout mode.
 	i32Locals := 0
@@ -2257,7 +2259,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i32Locals++
 		}
 	}
-	compactI32Frame := f.opt(optCompactI32Frame) && !hints.hasCall && !hints.hasControlFlow && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
+	compactI32Frame := f.opt(optCompactI32Frame) && !hints.hasCall && (!hints.hasControlFlow || compactI32ControlFlowEnabled) && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
 	if compactI32Frame {
 		f.stats.peep("compact-i32-frame")
 	}

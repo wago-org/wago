@@ -1630,6 +1630,28 @@ to 1,176,438,278 ns/op (-0.41%) and esbuild at 753,040,074 to 754,994,914 ns/op
 the full AMD64 backend and race suites, and compacted corpus execution with
 finalizer validation pass on the Ryzen 7 7800X3D host.
 
+## AMD64 compact i32 frames through structured control
+
+The packed i32 local layout now admits call-free functions with structured
+control flow. Control joins and ordinary local traffic already use typed
+32-bit loads and stores, so the physical four-byte slots remain exact across
+branches and loops. Call-making functions stay excluded: several argument-
+staging paths deliberately load a full machine word from a local home. EH and
+GC-frame layouts remain excluded as before.
+`WAGO_AMD64_NO_COMPACT_I32_CONTROL=1` restores the previous straight-line-only
+admission rule.
+
+Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
+from 1,947,072 to 1,926,848 bytes (-20,224). Raw native bytes fall from 68,509,167
+to 68,497,022 (-12,145). Ruby saves 11,299 bytes; utf-as-simd, matmul,
+spectralnorm, SHA-256, fannkuch, nbody, and regexmatch account for the remainder.
+
+Five serialized rollback-versus-enabled compile samples put Ruby at 1,172,097,463
+to 1,177,527,201 ns/op (+0.46%) and esbuild at 748,516,787 to 754,334,848 ns/op
+(+0.78%). Median allocation movement is noise-level. Focused native execution,
+the full AMD64 backend and race suites, and compacted corpus execution with
+finalizer validation pass on the Ryzen host.
+
 ### Commands
 
 ```sh
