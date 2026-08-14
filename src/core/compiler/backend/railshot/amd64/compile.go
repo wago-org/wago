@@ -682,7 +682,17 @@ type scratch struct {
 	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
 	jumpTableFragments      []jumpTableFragment
 	localRefs               amd64.LocalRefRecorder
+	offsetMap               shared.WideOffsetMap
 	transient
+}
+
+// scratchState keeps low-level backend tests able to exercise an isolated fn.
+// Production compilation always installs the module-owned scratch explicitly.
+func (f *fn) scratchState() *scratch {
+	if f.sc == nil {
+		f.sc = &scratch{}
+	}
+	return f.sc
 }
 
 type trapSite struct {

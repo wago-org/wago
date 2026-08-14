@@ -154,22 +154,44 @@ type DeletedRange struct {
 // NewOffsetMap validates a monotonic shrink plan and returns its old-to-new
 // mapping. The fixed-capacity result owns a copy of the deletion records.
 func NewOffsetMap(oldLen int, deletions []DeletedRange) (OffsetMap, error) {
-	if err := validateOffsetMap(oldLen, deletions, MaxOffsetMapDeletions); err != nil {
+	var result OffsetMap
+	if err := result.Reset(oldLen, deletions); err != nil {
 		return OffsetMap{}, err
 	}
-	result := OffsetMap{oldLen: uint32(oldLen), deletionN: uint8(len(deletions))}
-	result.finalLen = fillOffsetMap(oldLen, deletions, result.deletionOff[:], result.deleted[:])
 	return result, nil
+}
+
+// Reset replaces m with the bounded mapping for oldLen and deletions. Backends
+// use this form with reusable worker scratch so large fixed maps are neither
+// allocated nor returned by value for every compiled function.
+func (m *OffsetMap) Reset(oldLen int, deletions []DeletedRange) error {
+	if err := validateOffsetMap(oldLen, deletions, MaxOffsetMapDeletions); err != nil {
+		return err
+	}
+	m.oldLen = uint32(oldLen)
+	m.deletionN = uint8(len(deletions))
+	m.finalLen = fillOffsetMap(oldLen, deletions, m.deletionOff[:], m.deleted[:])
+	return nil
 }
 
 // NewWideOffsetMap constructs the AMD64-only wider bounded mapping.
 func NewWideOffsetMap(oldLen int, deletions []DeletedRange) (WideOffsetMap, error) {
-	if err := validateOffsetMap(oldLen, deletions, MaxWideOffsetMapDeletions); err != nil {
+	var result WideOffsetMap
+	if err := result.Reset(oldLen, deletions); err != nil {
 		return WideOffsetMap{}, err
 	}
-	result := WideOffsetMap{oldLen: uint32(oldLen), deletionN: uint8(len(deletions))}
-	result.finalLen = fillOffsetMap(oldLen, deletions, result.deletionOff[:], result.deleted[:])
 	return result, nil
+}
+
+// Reset is the reusable-storage form of NewWideOffsetMap.
+func (m *WideOffsetMap) Reset(oldLen int, deletions []DeletedRange) error {
+	if err := validateOffsetMap(oldLen, deletions, MaxWideOffsetMapDeletions); err != nil {
+		return err
+	}
+	m.oldLen = uint32(oldLen)
+	m.deletionN = uint8(len(deletions))
+	m.finalLen = fillOffsetMap(oldLen, deletions, m.deletionOff[:], m.deleted[:])
+	return nil
 }
 
 func validateOffsetMap(oldLen int, deletions []DeletedRange, maxDeletions int) error {

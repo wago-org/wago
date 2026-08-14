@@ -225,64 +225,59 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 	}
 	oldLen := len(f.a.B)
-	var result shared.FinalizeResult
+	code := f.a.B
+	offsets := &f.scratchState().offsetMap
 	frameDeleted := 0
 	if f.compactNative() {
 		var storage [maxFinalizerDeletions]shared.DeletedRange
 		deletions, deletedFrames, ok := f.buildCompactionPlan(storage[:0:f.finalizerDeletionLimit()])
 		if ok {
-			offsets, err := shared.NewOffsetMap(oldLen, deletions)
-			if err != nil {
+			if err := offsets.Reset(oldLen, deletions); err != nil {
 				return 0, fmt.Errorf("arm64 finalizer: %w", err)
 			}
-			code, err := f.compactNativeCode(&offsets, deletions)
+			var err error
+			code, err = f.compactNativeCode(offsets, deletions)
 			if err != nil {
 				return 0, err
 			}
-			result.Code = code
-			result.Offsets = offsets
 			frameDeleted = deletedFrames
 		} else {
-			offsets, err := shared.NewOffsetMap(oldLen, nil)
-			if err != nil {
+			if err := offsets.Reset(oldLen, nil); err != nil {
 				return 0, fmt.Errorf("arm64 finalizer: %w", err)
 			}
-			result = shared.FinalizeResult{Code: f.a.B, Offsets: offsets}
 		}
 	} else {
-		var err error
-		result, err = shared.FinalizeIdentity(f.a.B, nil, nil, nil)
-		if err != nil {
+		if err := offsets.Reset(oldLen, nil); err != nil {
 			return 0, fmt.Errorf("arm64 finalizer: %w", err)
 		}
 	}
-	f.a.B = result.Code
+	f.a.B = code
 
-	mappedInternal, err := mapFinalOffset(&result.Offsets, internalOff, len(result.Code), "internal entry")
+	mappedInternal, err := mapFinalOffset(offsets, internalOff, len(code), "internal entry")
 	if err != nil {
 		return 0, err
 	}
 	internalOff = mappedInternal
 	for i := range f.relocs {
-		mapped, err := mapFinalOffset(&result.Offsets, f.relocs[i].at, len(result.Code), "call relocation")
+		mapped, err := mapFinalOffset(offsets, f.relocs[i].at, len(code), "call relocation")
 		if err != nil {
 			return 0, err
 		}
 		f.relocs[i].at = mapped
 	}
 	if f.adapterReturnOff != 0 {
-		mapped, err := mapFinalOffset(&result.Offsets, f.adapterReturnOff, len(result.Code), "adapter return")
+		mapped, err := mapFinalOffset(offsets, f.adapterReturnOff, len(code), "adapter return")
 		if err != nil {
 			return 0, err
 		}
 		f.adapterReturnOff = mapped
 	}
 	if f.trapBodyEnd > f.trapBodyOff {
-		mappedOff, err := mapFinalOffset(&result.Offsets, f.trapBodyOff, len(result.Code), "trap body start")
+		mappedOff, err := mapFinalOffset(offsets, f.trapBodyOff, len(code), "trap body start")
 		if err != nil {
 			return 0, err
 		}
-		mappedEnd, err := mapFinalOffset(&result.Offsets, f.trapBodyEnd, len(result.Code), "trap body end")
+		mappedEnd, err := mapFinalOffset(offsets, f.trapBodyEnd, len(code), "trap body end")
 		if err != nil {
 			return 0, err
 		}
@@ -290,22 +285,22 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	}
 	if plan := f.gcFrameRoots; plan != nil {
 		if plan.AdapterReturnOffset != 0 {
-			mapped, err := mapFinalOffset(&result.Offsets, int(plan.AdapterReturnOffset), len(result.Code), "GC adapter return")
+			mapped, err := mapFinalOffset(offsets, int(plan.AdapterReturnOffset), len(code), "GC adapter return")
 			if err != nil {
 				return 0, err
 			}
 			plan.AdapterReturnOffset = uint32(mapped)
 		}
 		for i := range plan.Callsites {
-			mapped, err := mapFinalOffset(&result.Offsets, int(plan.Callsites[i].ReturnOffset), len(result.Code), "GC call return")
+			mapped, err := mapFinalOffset(offsets, int(plan.Callsites[i].ReturnOffset), len(code), "GC call return")
 			if err != nil {
 				return 0, err
 			}
 			plan.Callsites[i].ReturnOffset = uint32(mapped)
 		}
 	}
-	if len(result.Code) != oldLen {
-		f.remapNativeSizeStats(&result.Offsets, internalOff, frameDeleted)
+	if len(code) != oldLen {
+		f.remapNativeSizeStats(offsets, internalOff, frameDeleted)
 	}
 	return internalOff, nil
 }

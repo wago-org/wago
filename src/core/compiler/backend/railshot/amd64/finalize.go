@@ -187,12 +187,12 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return 0, nil
 	}
 
-	internalOff, err = mapAMD64FinalOffset(&result.Offsets, internalOff, len(result.Code), "internal entry")
+	internalOff, err = mapAMD64FinalOffset(result.Offsets, internalOff, len(result.Code), "internal entry")
 	if err != nil {
 		return 0, err
 	}
 	for i := range f.relocs {
-		mapped, err := mapAMD64FinalOffset(&result.Offsets, f.relocs[i].at, len(result.Code), "call relocation")
+		mapped, err := mapAMD64FinalOffset(result.Offsets, f.relocs[i].at, len(result.Code), "call relocation")
 		if err != nil {
 			return 0, err
 		}
@@ -202,7 +202,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		keyCount := int(f.literalWords[0])
 		for i := 1 + 3*keyCount; i < len(f.literalWords); i++ {
 			encoded := f.literalWords[i]
-			mapped, err := mapAMD64FinalOffset(&result.Offsets, int(uint32(encoded>>32)), len(result.Code), "literal relocation")
+			mapped, err := mapAMD64FinalOffset(result.Offsets, int(uint32(encoded>>32)), len(result.Code), "literal relocation")
 			if err != nil {
 				return 0, err
 			}
@@ -210,18 +210,18 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 	}
 	if f.adapterReturnOff != 0 {
-		mapped, err := mapAMD64FinalOffset(&result.Offsets, f.adapterReturnOff, len(result.Code), "adapter return")
+		mapped, err := mapAMD64FinalOffset(result.Offsets, f.adapterReturnOff, len(result.Code), "adapter return")
 		if err != nil {
 			return 0, err
 		}
 		f.adapterReturnOff = mapped
 	}
 	if f.trapBodyEnd > f.trapBodyOff {
-		mappedOff, err := mapAMD64FinalOffset(&result.Offsets, f.trapBodyOff, len(result.Code), "trap body start")
+		mappedOff, err := mapAMD64FinalOffset(result.Offsets, f.trapBodyOff, len(result.Code), "trap body start")
 		if err != nil {
 			return 0, err
 		}
-		mappedEnd, err := mapAMD64FinalOffset(&result.Offsets, f.trapBodyEnd, len(result.Code), "trap body end")
+		mappedEnd, err := mapAMD64FinalOffset(result.Offsets, f.trapBodyEnd, len(result.Code), "trap body end")
 		if err != nil {
 			return 0, err
 		}
@@ -229,14 +229,14 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	}
 	if plan := f.gcFrameRoots; plan != nil {
 		if plan.AdapterReturnOffset != 0 {
-			mapped, err := mapAMD64FinalOffset(&result.Offsets, int(plan.AdapterReturnOffset), len(result.Code), "GC adapter return")
+			mapped, err := mapAMD64FinalOffset(result.Offsets, int(plan.AdapterReturnOffset), len(result.Code), "GC adapter return")
 			if err != nil {
 				return 0, err
 			}
 			plan.AdapterReturnOffset = uint32(mapped)
 		}
 		for i := range plan.Callsites {
-			mapped, err := mapAMD64FinalOffset(&result.Offsets, int(plan.Callsites[i].ReturnOffset), len(result.Code), "GC call return")
+			mapped, err := mapAMD64FinalOffset(result.Offsets, int(plan.Callsites[i].ReturnOffset), len(result.Code), "GC call return")
 			if err != nil {
 				return 0, err
 			}
@@ -255,7 +255,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 
 type amd64FinalizeResult struct {
 	Code    []byte
-	Offsets shared.WideOffsetMap
+	Offsets *shared.WideOffsetMap
 }
 
 func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
@@ -263,8 +263,8 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 		if reason != "" {
 			f.stats.setFinalizerFallback(reason)
 		}
-		offsets, err := shared.NewWideOffsetMap(len(f.a.B), nil)
-		if err != nil {
+		offsets := &f.scratchState().offsetMap
+		if err := offsets.Reset(len(f.a.B), nil); err != nil {
 			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 		}
 		return amd64FinalizeResult{Code: f.a.B, Offsets: offsets}, 0, 0, nil
@@ -592,8 +592,8 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 			}
 		}
 	}
-	offsets, err := shared.NewWideOffsetMap(len(f.a.B), deletions)
-	if err != nil {
+	offsets := &f.scratchState().offsetMap
+	if err := offsets.Reset(len(f.a.B), deletions); err != nil {
 		return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 	}
 	// Jump-table data has an explicit fragment owner. Compact target-ID bytes are
