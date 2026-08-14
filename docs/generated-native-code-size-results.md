@@ -148,6 +148,51 @@ This measures eight independent module compilations, each retaining its serial
 function compiler. It isolates removal of the package-global policy lease from
 the separate per-module function-worker path.
 
+### Objective-aware AMD64 alignment checkpoint
+
+AMD64 function-start and addressable internal-entry alignment is now owned by
+the immutable compilation policy. Speed retains 16-byte alignment. Size and
+Embedded pack functions at byte granularity and add no optional internal-entry
+padding. Balanced keeps addressable function entries aligned, while optional
+internal-function alignment is admitted only for statically hot/large bodies
+within an exact Wasm-body byte budget. Tiny internal leaves are packed.
+
+Serial and parallel compilation use the same retained layout flags and have
+byte-identical output for every objective. Native package tests, race tests, and
+targeted runtime/fuzz execution pass. With compaction disabled, default Balanced
+changes:
+
+| Workload | Before | Adaptive Balanced | Change |
+| --- | ---: | ---: | ---: |
+| `many_funcs` native bytes | 9,704 | 7,817 | -19.45% |
+| `json-as` native bytes | 66,131 | 66,003 | -0.19% |
+
+With opt-in safe frame compaction, `many_funcs` reaches 3,609 bytes, a 62.81%
+reduction from the original 9,704-byte AMD64 baseline. `json-as` remains 66,003
+bytes until exact local-rel32 remapping admits its branch-bearing functions.
+
+A detached `8a37af48` worktree supplied the pre-alignment comparison. Six
+alternating 500 ms compile samples produced:
+
+| Workload | Before median | Adaptive median | Change | Allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| `many_funcs` | 450,168 ns/op | 442,234 ns/op | -1.76% | 682, unchanged |
+| `json-as` | 1,967,595 ns/op | 1,972,505 ns/op | +0.25% | 2,146, unchanged |
+
+Six one-second `many_funcs` samples and five scalar/SIMD JSON samples produced:
+
+| Workload | Before median | Adaptive median | Change |
+| --- | ---: | ---: | ---: |
+| `many_funcs.run` | 8.242 ns/op | 8.224 ns/op | -0.22% |
+| `json-as.serializeN` | 24,212 ns/op | 24,295 ns/op | +0.34% |
+| `json-as.deserializeN` | 43,308 ns/op | 43,501 ns/op | +0.45% |
+| `json-as-simd.serializeN` | 29,294 ns/op | 28,902 ns/op | -1.34% |
+| `json-as-simd.deserializeN` | 56,617 ns/op | 55,910 ns/op | -1.25% |
+
+Every execution benchmark remained at zero B/op and zero allocs/op. No workload
+crossed the 1.5% individual investigation gate, so adaptive Balanced alignment
+remains enabled by default.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
