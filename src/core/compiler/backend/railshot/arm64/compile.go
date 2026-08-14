@@ -49,6 +49,11 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // checks and the Speed/Balanced layouts are unchanged.
 var sharedTrapUnwindEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_UNWIND") != "1"
 
+// sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
+// host adapters with eight-byte function-local target thunks plus one cold
+// module copy. WAGO_ARM64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
+var sharedAdaptersEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_ADAPTERS") != "1"
+
 // smallFrameAdjustEnabled replaces the fixed MOVZ+MOVK+SUB/ADD frame sequences
 // with one immediate SP adjustment for the overwhelmingly common <=4095-byte
 // frames. The reserved trailing words become NOPs so code offsets stay stable.
@@ -595,6 +600,7 @@ type funcResult struct {
 	internalOff    int
 	directPrepared bool
 	adapterTail    adapterTailInfo
+	adapter        sharedAdapterInfo
 	relocs         []callReloc
 	err            error
 }
@@ -964,8 +970,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		pressureDone := false
 		var directPrepared []uint64
 		var adapterTails []adapterTailInfo
+		var adapters []sharedAdapterInfo
 		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-			adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
+			if sharedAdaptersEnabled {
+				adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
+			} else {
+				adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
+			}
 		}
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
@@ -1003,6 +1014,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 					adapterTails = append(adapterTails, info)
 				}
 			}
+			if adapters != nil {
+				if info := sc.fnState.sharedAdapterInfo(); info.endOff != 0 {
+					info.function = uint32(i)
+					adapters = append(adapters, info)
+				}
+			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
@@ -1018,7 +1035,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}
 		moduleOther := 0
-		if adapterTails != nil {
+		if adapters != nil {
+			moduleOther, err = shareAdaptersCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+			if err != nil {
+				return nil, err
+			}
+		} else if adapterTails != nil {
 			moduleOther, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
 			if err != nil {
 				return nil, err
@@ -1085,7 +1107,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.arena = append(ws.arena, fnCode...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-					result.adapterTail = ws.scratch.fnState.adapterTailInfo()
+					if sharedAdaptersEnabled {
+						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
+					} else {
+						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
+					}
 				}
 				results[i] = result
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
@@ -1102,8 +1128,13 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	code := make([]byte, 0, codeCap)
 	var directPrepared []uint64
 	var adapterTails []adapterTailInfo
+	var adapters []sharedAdapterInfo
 	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-		adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
+		if sharedAdaptersEnabled {
+			adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
+		} else {
+			adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
+		}
 	}
 	for i := range results {
 		r := &results[i]
@@ -1120,10 +1151,20 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			r.adapterTail.function = uint32(i)
 			adapterTails = append(adapterTails, r.adapterTail)
 		}
+		if adapters != nil && r.adapter.endOff != 0 {
+			r.adapter.function = uint32(i)
+			adapters = append(adapters, r.adapter)
+		}
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
 	moduleOther := 0
-	if adapterTails != nil {
+	if adapters != nil {
+		var err error
+		code, moduleOther, err = shareAdapters(code, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+		if err != nil {
+			return nil, err
+		}
+	} else if adapterTails != nil {
 		var err error
 		code, moduleOther, err = shareAdapterTails(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
 		if err != nil {
