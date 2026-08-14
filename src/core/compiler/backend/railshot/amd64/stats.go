@@ -150,7 +150,10 @@ type CodegenStats struct {
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
 	Encoding      encoderamd64.EncodingStats
-	literalKeys   []literalKey // stats-only keys for module-level duplicate accounting
+	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
+	// its maximal-safe encoding instead of applying an available compaction plan.
+	FinalizerFallback string       `json:"finalizer_fallback,omitempty"`
+	literalKeys       []literalKey // stats-only keys for module-level duplicate accounting
 	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
 	// inline sites. Caller frame growth and shared cold tails are outside it.
 	InlineSiteBytes int
@@ -203,6 +206,12 @@ func resetFuncStats(s *CodegenStats) {
 func (s *CodegenStats) setUnpinnedRetry() {
 	if s != nil {
 		s.UnpinnedRetry = true
+	}
+}
+
+func (s *CodegenStats) setFinalizerFallback(reason string) {
+	if s != nil {
+		s.FinalizerFallback = reason
 	}
 }
 
@@ -432,6 +441,30 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native-data: literals=%d module-unique-literals=%d cross-function-duplicates=%d\n",
 		ms.NativeSize.LiteralPoolBytes, ms.NativeSize.LiteralPoolUniqueBytes,
 		ms.NativeSize.LiteralPoolDuplicateBytes)
+	type fallbackTotal struct{ count, bytes int }
+	fallbacks := make(map[string]fallbackTotal)
+	for _, s := range ms.Funcs {
+		if s == nil || s.FinalizerFallback == "" {
+			continue
+		}
+		total := fallbacks[s.FinalizerFallback]
+		total.count++
+		total.bytes += s.NativeSize.DeadReservationBytes()
+		fallbacks[s.FinalizerFallback] = total
+	}
+	if len(fallbacks) != 0 {
+		keys := make([]string, 0, len(fallbacks))
+		for reason := range fallbacks {
+			keys = append(keys, reason)
+		}
+		sort.Strings(keys)
+		b.WriteString("native-finalizer-fallbacks:")
+		for _, reason := range keys {
+			total := fallbacks[reason]
+			fmt.Fprintf(&b, " %s=%d/%dB", reason, total.count, total.bytes)
+		}
+		b.WriteByte('\n')
+	}
 	fmt.Fprintf(&b, "amd64-encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
 		ms.Encoding.MemoryDisp0, ms.Encoding.MemoryDisp8, ms.Encoding.MemoryDisp32,
 		ms.Encoding.MemoryDisplacementBytes(), ms.Encoding.FrameDisp0, ms.Encoding.FrameDisp8,
@@ -491,6 +524,9 @@ func (s *CodegenStats) report() string {
 		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
 		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
 		s.NativeSize.DeadReservationBytes(), s.NativeSize.LiteralPoolBytes)
+	if s.FinalizerFallback != "" {
+		fmt.Fprintf(&b, "    finalizer-fallback: %s\n", s.FinalizerFallback)
+	}
 	fmt.Fprintf(&b, "    encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
 		s.Encoding.MemoryDisp0, s.Encoding.MemoryDisp8, s.Encoding.MemoryDisp32,
 		s.Encoding.MemoryDisplacementBytes(), s.Encoding.FrameDisp0, s.Encoding.FrameDisp8,

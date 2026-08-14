@@ -2276,3 +2276,30 @@ json-as-simd serialization +0.87%, and json-as-simd deserialization +0.48%.
 The initial json-as deserialization sample was near the investigation threshold,
 so a separate ten-sample run was taken; its median moved from 37,731.5 to
 37,698.5 ns/op (-0.09%). Every execution result remains allocation-free.
+
+## AMD64 finalizer fallback ledger
+
+The AMD64 structured size report now attributes every fail-closed or partial
+finalization result by reason. `native-finalizer-fallbacks` reports affected
+function count and retained proved-dead bytes; the per-function report carries
+the same reason. Collection remains stats-only, and the nil-stats path retains
+the existing nil-safe counter behavior.
+
+Across the exact 36-module AMD64 Size suite, the current native image remains
+66,593,838 bytes and retains 399,026 proved-dead bytes. The ledger attributes
+all of them: 71 loop functions above the 64 KiB work bound retain 223,661 bytes,
+204 functions that overflow the 1,024-site rel32 inventory retain 175,355
+bytes, and one SQLite function retains 10 bytes after the fixed deletion budget
+admits a bounded subset of its branch-fold holes. The latter is reported as
+`dead-hole-budget-partial` rather than being left unattributed.
+
+This evidence does not justify raising the existing limits. The previously
+measured 4,096-site/512 KiB experiment reclaimed only another 7,632 bytes while
+adding 12 KiB of pointer-free scratch per active Size worker. The next AMD64
+campaign should therefore target a different byte class or a more compact
+symbolic inventory, not simply weaken both bounds.
+
+Five serialized native stats-off samples against the exact parent keep the
+telemetry change inside the compile gate. Ruby moves from a 995,165,319 to
+1,003,266,044 ns/op median (+0.81%), and esbuild moves from 513,917,431 to
+518,787,402 ns/op (+0.95%). B/op and allocation movement is noise-level.

@@ -115,8 +115,20 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, maxAMD64LoopCompactionBytes)}, hasLoop: true, policy: policy}); !f.loopCompactionAdmitted() {
 		t.Fatal("loop function at widened bound rejected")
 	}
-	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, maxAMD64LoopCompactionBytes+1)}, hasLoop: true, policy: policy}); f.loopCompactionAdmitted() {
+	fallbackStats := &CodegenStats{}
+	f := &fn{a: &amd64enc.Asm{B: make([]byte, maxAMD64LoopCompactionBytes+1)}, hasLoop: true, policy: policy, stats: fallbackStats}
+	if f.loopCompactionAdmitted() {
 		t.Fatal("loop function above widened bound admitted")
+	}
+	result, _, _, err := f.finalizeFrameAdjustments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(result.Code); got != maxAMD64LoopCompactionBytes+1 {
+		t.Fatalf("fallback code length = %d, want %d", got, maxAMD64LoopCompactionBytes+1)
+	}
+	if got := fallbackStats.FinalizerFallback; got != "loop-function-size" {
+		t.Fatalf("fallback = %q, want loop-function-size", got)
 	}
 }
 
@@ -205,12 +217,14 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 	}
 	addSite := a.Len() + 3
 	a.AddRsp(24)
+	stats := &CodegenStats{NativeSize: NativeFunctionSizeReport{BranchFoldHoleBytes: (shared.MaxWideOffsetMapDeletions + 4) * 5}}
 	f := fn{
 		a:        a,
 		sc:       sc,
 		policy:   shared.CodegenPolicyForObjective(optimization.Selection{}, shared.OptimizeSize),
 		subRspAt: subSite,
 		addRspAt: addSite,
+		stats:    stats,
 	}
 	oldLen := len(a.B)
 	if _, err := f.finalizeNativeCode(0); err != nil {
@@ -220,6 +234,12 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 	const admittedHoleBytes = (shared.MaxWideOffsetMapDeletions - 2) * 5
 	if got, want := len(f.a.B), oldLen-frameBytes-admittedHoleBytes; got != want {
 		t.Fatalf("partially compacted code = %d bytes, want %d", got, want)
+	}
+	if got := stats.FinalizerFallback; got != "dead-hole-budget-partial" {
+		t.Fatalf("partial fallback = %q, want dead-hole-budget-partial", got)
+	}
+	if got, want := stats.NativeSize.BranchFoldHoleBytes, 6*5; got != want {
+		t.Fatalf("retained branch holes = %d bytes, want %d", got, want)
 	}
 
 	partialHoleCompactionEnabled = false

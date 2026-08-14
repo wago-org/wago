@@ -192,16 +192,33 @@ type amd64FinalizeResult struct {
 }
 
 func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
-	identity := func() (amd64FinalizeResult, int, int, error) {
+	identity := func(reason string) (amd64FinalizeResult, int, int, error) {
+		if reason != "" {
+			f.stats.setFinalizerFallback(reason)
+		}
 		offsets, err := shared.NewWideOffsetMap(len(f.a.B), nil)
 		if err != nil {
 			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 		}
 		return amd64FinalizeResult{Code: f.a.B, Offsets: offsets}, 0, 0, nil
 	}
-	if !f.compactNative() || !f.loopCompactionAdmitted() || f.hasJumpTableData && !jumpTableCompactionEnabled ||
-		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
-		return identity()
+	if !f.compactNative() {
+		return identity("")
+	}
+	if f.hasLoop && !loopCompactionEnabled {
+		return identity("loop-disabled")
+	}
+	if f.hasLoop && len(f.a.B) > loopCompactionLimit(f.policy) {
+		return identity("loop-function-size")
+	}
+	if f.hasJumpTableData && !jumpTableCompactionEnabled {
+		return identity("jump-table-disabled")
+	}
+	if len(f.customInstructions) != 0 {
+		return identity("plugin-fragment")
+	}
+	if f.a.Rel32Overflow {
+		return identity("rel32-overflow")
 	}
 	frameSize := f.frameSize()
 	compactFrame := frameSize <= 127
@@ -216,20 +233,18 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 		frameSites = len(f.sc.tailFrameSites) + 2
 	}
 	if frameSites > cap(deletions) {
-		return identity()
+		return identity("frame-site-budget")
 	}
 	holeBudget := cap(deletions) - frameSites
-	if !partialHoleCompactionEnabled {
-		holeSites := 0
-		for _, over := range f.sc.brFoldSites {
-			if over >= 0 && over+9 <= len(f.a.B) &&
-				bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
-				holeSites++
-			}
+	holeSites := 0
+	for _, over := range f.sc.brFoldSites {
+		if over >= 0 && over+9 <= len(f.a.B) &&
+			bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
+			holeSites++
 		}
-		if holeSites > holeBudget {
-			return identity()
-		}
+	}
+	if !partialHoleCompactionEnabled && holeSites > holeBudget {
+		return identity("dead-hole-budget")
 	}
 	holeDeleted := 0
 	frameDeleted := 0
@@ -590,6 +605,9 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 	}
 	copy(f.a.B[dst:], f.a.B[src:])
 	code := f.a.B[:offsets.FinalLen()]
+	if holeDeleted < holeSites*5 {
+		f.stats.setFinalizerFallback("dead-hole-budget-partial")
+	}
 	return amd64FinalizeResult{Code: code, Offsets: offsets}, frameDeleted, holeDeleted, nil
 }
 
