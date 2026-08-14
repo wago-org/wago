@@ -175,6 +175,27 @@ ns/op versus 396,693 ns/op (+0.11%) and blake-as-simd at 413,469 ns/op versus
 `many_funcs` compile median was 248,779 ns/op versus 249,127 ns/op (-0.14%),
 with 343 allocs/op and B/op unchanged.
 
+### 2026-08-14 — bounded ARM64 loop-summary ownership
+
+ARM64 loop residency and bounds-hoist admission no longer allocate one map or
+scan an unbounded body at every reachable loop header. Exact set-local facts now
+occupy a 64-entry, 256-byte arena owned by the serial compiler or parallel
+worker; nested frames hold only range descriptors and rewind the arena when they
+close. The copied reader has independent 1,024-operation and 16 KiB limits, and
+large immediate vectors are capped separately. Exhaustion, malformed input, or
+structured EH discards partial facts, marks every loop effect conservatively,
+and disables both residency and invariance proofs for that loop.
+
+Cap tests cover operation fuel and local-arena exhaustion, reader restoration,
+partial-fact removal, and conservative flags. Existing admitted `fib_iter` and
+`sieve` functions produce byte-for-byte equivalent code and identical explain
+counters. Five-sample Darwin/ARM64 compile medians measured `fib_iter` at 7,405
+ns/op versus 7,334 ns/op (+0.97%), while allocations fell from 37 to 35 and B/op
+fell from 17,375 to 17,240. `sieve` measured 12,834 ns/op versus 13,651 ns/op
+(-5.98%), with allocations falling from 52 to 44 and B/op from 31,568 to 31,056.
+A rejected 256-entry version was not retained because its 1 KiB fixed arena
+raised small-module compile B/op by roughly 6.6%.
+
 ---
 
 # 1. North-star architecture

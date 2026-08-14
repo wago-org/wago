@@ -148,7 +148,9 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 		},
 		nLocals: 4,
 	}
-	fr := &ctrlFrame{kind: cfLoop, loopSetLocals: map[uint32]bool{0: true, 1: true, 2: true, 3: true}}
+	f.sc = &scratch{}
+	f.sc.loopSetLocals = [maxLoopSetLocals]uint32{0, 1, 2, 3}
+	fr := &ctrlFrame{kind: cfLoop, loopScanExact: true, loopSetCount: 4}
 	f.activateLoopPins(fr)
 	if len(fr.loopPins) != 2 || fr.loopPins[0].local != 0 || fr.loopPins[1].local != 1 ||
 		!f.pinnedLocalMask.has(X12) || !f.pinnedLocalMask.has(X13) || len(f.a.B) == 0 {
@@ -168,7 +170,7 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 		t.Fatalf("released loop pins left mask/state = %#v, %v, %v", f.pinnedLocalMask, f.locals[0].state, f.locals[1].state)
 	}
 
-	blocked := &ctrlFrame{kind: cfLoop, loopHasCall: true, loopSetLocals: map[uint32]bool{0: true}}
+	blocked := &ctrlFrame{kind: cfLoop, loopScanExact: true, loopHasCall: true, loopSetCount: 1}
 	f.activateLoopPins(blocked)
 	if len(blocked.loopPins) != 0 {
 		t.Fatal("call-containing loop received region pins")

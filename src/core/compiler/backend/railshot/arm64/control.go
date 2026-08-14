@@ -62,11 +62,12 @@ type ctrlFrame struct {
 	paramGCRoots    []bool
 	resultGCRoots   []bool
 
-	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
-	// whether the body grows memory — from a scan-ahead at the loop header. A local
-	// base NOT in loopSetLocals is loop-invariant (a callee cannot touch a caller
-	// local), so its bounds check is hoistable. nil for non-loops / unreachable.
-	loopSetLocals map[uint32]bool
+	// cfLoop only (P6.2 foundation): the fixed scratch-arena range containing
+	// locals set anywhere in the loop body. loopScanExact is required before using
+	// absence from that range as proof of invariance.
+	loopSetStart  uint16
+	loopSetCount  uint16
+	loopScanExact bool
 	loopHasGrow   bool
 	// Loop-region allocation eligibility is collected in the same bounded scan
 	// used by bounds hoisting. Promotion is enabled only once every exit edge is
@@ -120,13 +121,13 @@ type loopPin struct {
 // two caller-saved registers only for a simple call-free loop; slots remain the
 // canonical representation outside the loop.
 func (f *fn) activateLoopPins(fr *ctrlFrame) {
-	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
+	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || !fr.loopScanExact || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
 		return
 	}
 	for _, r := range []Reg{X12, X13} {
 		best := -1
 		for x := 0; x < f.nLocals; x++ {
-			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !fr.loopSetLocals[uint32(x)] {
+			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !f.loopSetsLocal(fr, uint32(x)) {
 				continue
 			}
 			already := false
@@ -748,17 +749,42 @@ func (f *fn) alignLoopHeader() {
 
 // --- control opcodes ---
 
+const (
+	maxLoopSetLocals = 64
+	maxLoopScanOps   = 1024
+	maxLoopScanBytes = 16 << 10
+)
+
+type loopScan struct {
+	start, count                                 uint16
+	exact, hasGrow, hasCall, hasNested, hasTable bool
+}
+
+func (f *fn) loopSetSlice(fr *ctrlFrame) []uint32 {
+	return f.scratchState().loopSetLocals[int(fr.loopSetStart):int(fr.loopSetStart+fr.loopSetCount)]
+}
+
+func (f *fn) loopSetsLocal(fr *ctrlFrame, idx uint32) bool {
+	for _, set := range f.loopSetSlice(fr) {
+		if set == idx {
+			return true
+		}
+	}
+	return false
+}
+
 // scanLoopBody scans a loop body ahead from the reader's current position (the
 // body start, just past the blocktype) to the matching `end`, recording the
-// locals it sets and whether it grows memory, then restores the reader. Reuses
-// skipImmediates for operand skipping; br_table (not covered there) is handled
-// inline. Post-validation, so a decode error just ends the scan.
-func scanLoopBody(r *wasm.Reader, memory64 bool) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
+// locals it sets and whether it grows memory, then restores the reader. Facts
+// live in one fixed worker-owned arena. Fuel, byte, immediate-vector, or arena
+// exhaustion makes the result conservative rather than growing storage.
+func (f *fn) scanLoopBody(r *wasm.Reader, memory64 bool) (out loopScan) {
 	start := r.Offset()
-	setLocals = map[uint32]bool{}
+	out.start = f.loopSetN
 	depth := 0
+	ok := false
 scan:
-	for {
+	for fuel := 0; fuel < maxLoopScanOps && r.Offset()-start <= maxLoopScanBytes; fuel++ {
 		op, err := r.Byte()
 		if err != nil {
 			break
@@ -769,16 +795,27 @@ scan:
 				break scan
 			}
 			if op == 0x03 {
-				hasNested = true
+				out.hasNested = true
 			}
 			depth++
-		case 0x10, 0x11: // call / call_indirect
-			hasCall = true
-			if err := skipImmediatesWithMemory64(r, op, memory64); err != nil {
+		case 0x06, 0x1f: // legacy try / try_table: structured EH needs a richer scanner
+			break scan
+		case 0x10, 0x12, 0x14, 0x15: // call / return_call / call_ref / return_call_ref
+			out.hasCall = true
+			if _, err := r.U32(); err != nil {
+				break scan
+			}
+		case 0x11, 0x13: // call_indirect / return_call_indirect
+			out.hasCall = true
+			if _, err := r.U32(); err != nil {
+				break scan
+			}
+			if _, err := r.U32(); err != nil {
 				break scan
 			}
 		case 0x0b: // end
 			if depth == 0 {
+				ok = true
 				break scan
 			}
 			depth--
@@ -787,19 +824,34 @@ scan:
 			if err != nil {
 				break scan
 			}
-			setLocals[idx] = true
+			seen := false
+			for _, set := range f.scratchState().loopSetLocals[int(out.start):int(out.start+out.count)] {
+				seen = seen || set == idx
+			}
+			if !seen {
+				if int(f.loopSetN)+int(out.count) >= maxLoopSetLocals {
+					break scan
+				}
+				f.scratchState().loopSetLocals[int(out.start+out.count)] = idx
+				out.count++
+			}
 		case 0x40: // memory.grow
 			if _, err := r.U32(); err != nil {
 				break scan
 			}
-			hasGrow = true
+			out.hasGrow = true
 		case 0x0e: // br_table: vec(labelidx) + default labelidx
-			hasTable = true
+			out.hasTable = true
 			n, err := r.U32()
-			if err != nil {
+			if err != nil || n >= maxLoopScanOps {
 				break scan
 			}
 			if err := r.SkipU32N(n + 1); err != nil {
+				break scan
+			}
+		case 0x1c: // typed select: bounded result type vector
+			n, err := r.U32()
+			if err != nil || n >= maxLoopScanOps || r.Step(int(n)) != nil {
 				break scan
 			}
 		default:
@@ -809,6 +861,15 @@ scan:
 		}
 	}
 	r.JumpTo(start)
+	if ok {
+		out.exact = true
+		f.loopSetN += out.count
+		return out
+	}
+	// No absence fact is safe after a bounded fallback. Make every eligibility
+	// flag conservative as well, so callers cannot accidentally admit the loop.
+	out.count = 0
+	out.hasGrow, out.hasCall, out.hasNested, out.hasTable = true, true, true, true
 	return
 }
 
@@ -841,7 +902,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
-		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r, f.memoryAddr64(0)) // P6.2 + region-pin foundation (reader restored)
+		scan := f.scanLoopBody(r, f.memoryAddr64(0)) // P6.2 + region-pin foundation (reader restored)
+		fr.loopSetStart, fr.loopSetCount, fr.loopScanExact = scan.start, scan.count, scan.exact
+		fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scan.hasGrow, scan.hasCall, scan.hasNested, scan.hasTable
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
@@ -1450,6 +1513,9 @@ func (f *fn) opEnd() error {
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
 	f.ctrl[last] = ctrlFrame{}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
+	if fr.kind == cfLoop {
+		f.loopSetN = fr.loopSetStart
+	}
 	if len(fr.loopPins) != 0 {
 		f.activeLoopPins = nil // this frame's pins leave scope with the pop
 	}
