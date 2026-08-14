@@ -40,10 +40,8 @@ type Asm struct {
 // displacements. Initial frame compaction admits only functions with none; a
 // later bounded site inventory can retain their exact offsets for relaxation.
 type Rel32Site struct {
-	At     uint32
-	Target uint32
-	Kind   Rel32Kind
-	Short  bool
+	At             uint32
+	targetAndFlags uint32
 }
 
 // Rel32Kind identifies the explicitly emitted sites whose maximal branch form
@@ -56,6 +54,28 @@ const (
 	Rel32Jmp
 	Rel32Jcc
 )
+
+const (
+	rel32TargetBits = 29
+	rel32TargetMask = uint32(1<<rel32TargetBits - 1)
+	rel32ShortFlag  = uint32(1 << rel32TargetBits)
+	rel32KindShift  = rel32TargetBits + 1
+)
+
+func (s Rel32Site) Target() int     { return int(s.targetAndFlags & rel32TargetMask) }
+func (s Rel32Site) Kind() Rel32Kind { return Rel32Kind(s.targetAndFlags >> rel32KindShift) }
+func (s Rel32Site) Short() bool     { return s.targetAndFlags&rel32ShortFlag != 0 }
+func (s *Rel32Site) SetShort(short bool) {
+	if short {
+		s.targetAndFlags |= rel32ShortFlag
+	} else {
+		s.targetAndFlags &^= rel32ShortFlag
+	}
+}
+
+func (s *Rel32Site) setTarget(target int) {
+	s.targetAndFlags = s.targetAndFlags&^rel32TargetMask | uint32(target)
+}
 
 // Grow ensures B has capacity for at least n bytes, reusing the existing backing
 // array when it is already large enough. Used to pre-size a reused encoder buffer
@@ -738,7 +758,10 @@ func (a *Asm) recordRel32(at, target int) {
 		a.Rel32Overflow = true
 		return
 	}
-	if at < 0 || target < 0 || uint64(at) > uint64(^uint32(0)) || uint64(target) > uint64(^uint32(0)) {
+	// Packing both offsets and finalizer flags into eight bytes bounds the
+	// symbolic path to 512 MiB functions. Larger functions retain their emitted
+	// near forms through Rel32Overflow rather than allocating wider records.
+	if at < 0 || target < 0 || uint64(at) > uint64(rel32TargetMask) || uint64(target) > uint64(rel32TargetMask) {
 		a.Rel32Overflow = true
 		return
 	}
@@ -748,16 +771,23 @@ func (a *Asm) recordRel32(at, target int) {
 	} else if at >= 2 && a.B[at-2] == 0x0f && a.B[at-1]&0xf0 == 0x80 {
 		kind = Rel32Jcc
 	}
-	a.Rel32Sites = append(a.Rel32Sites, Rel32Site{At: uint32(at), Target: uint32(target), Kind: kind})
+	a.Rel32Sites = append(a.Rel32Sites, Rel32Site{
+		At:             uint32(at),
+		targetAndFlags: uint32(target) | uint32(kind)<<rel32KindShift,
+	})
 }
 
 // RetargetRel32 updates the symbolic target of every retained record for at.
 // It is used by size-preserving peepholes that change branch semantics after the
 // original displacement was patched.
 func (a *Asm) RetargetRel32(at, target int) {
+	if target < 0 || uint64(target) > uint64(rel32TargetMask) {
+		a.Rel32Overflow = true
+		return
+	}
 	for i := range a.Rel32Sites {
 		if int(a.Rel32Sites[i].At) == at {
-			a.Rel32Sites[i].Target = uint32(target)
+			a.Rel32Sites[i].setTarget(target)
 		}
 	}
 }

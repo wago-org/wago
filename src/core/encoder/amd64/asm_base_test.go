@@ -2,8 +2,8 @@ package amd64
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
+	"unsafe"
 )
 
 func TestScalarAndFrameEncodings(t *testing.T) {
@@ -171,8 +171,11 @@ func TestRel32SiteCounting(t *testing.T) {
 	if !a.Rel32Overflow {
 		t.Fatal("bounded rel32 recorder did not report overflow")
 	}
-	if got := a.Rel32Sites[0]; int(got.At) != first || got.Target != 5 || got.Kind != Rel32Jmp {
+	if got := a.Rel32Sites[0]; int(got.At) != first || got.Target() != 5 || got.Kind() != Rel32Jmp {
 		t.Fatalf("first rel32 site = %+v, want at=%d target=5", got, first)
+	}
+	if got, want := unsafe.Sizeof(Rel32Site{}), uintptr(8); got != want {
+		t.Fatalf("rel32 site size = %d, want %d", got, want)
 	}
 }
 
@@ -184,8 +187,16 @@ func TestRel32SiteRewrite(t *testing.T) {
 	a.PatchRel32(two, 30)
 	a.RetargetRel32(one, 40)
 	a.ForgetRel32(two)
-	if got, want := a.Rel32Sites, []Rel32Site{{At: uint32(one), Target: 40, Kind: Rel32Jmp}}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("rewritten sites = %+v, want %+v", got, want)
+	if got := a.Rel32Sites; len(got) != 1 || int(got[0].At) != one || got[0].Target() != 40 || got[0].Kind() != Rel32Jmp {
+		t.Fatalf("rewritten sites = %+v", got)
+	}
+	a.Rel32Sites[0].SetShort(true)
+	if !a.Rel32Sites[0].Short() || a.Rel32Sites[0].Target() != 40 || a.Rel32Sites[0].Kind() != Rel32Jmp {
+		t.Fatalf("short choice corrupted packed site: %+v", a.Rel32Sites[0])
+	}
+	a.RetargetRel32(one, int(rel32TargetMask)+1)
+	if !a.Rel32Overflow {
+		t.Fatal("out-of-range packed target did not force identity fallback")
 	}
 }
 

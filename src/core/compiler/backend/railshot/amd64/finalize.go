@@ -98,7 +98,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		return identity()
 	}
 	for i := range f.a.Rel32Sites {
-		f.a.Rel32Sites[i].Short = false
+		f.a.Rel32Sites[i].SetShort(false)
 	}
 
 	var storage [shared.MaxOffsetMapDeletions]shared.DeletedRange
@@ -172,7 +172,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	// eight-range offset map.
 	branchForm := func(site encoderamd64.Rel32Site) (start, shortLen int, deletion shared.DeletedRange, ok bool) {
 		at := int(site.At)
-		switch site.Kind {
+		switch site.Kind() {
 		case encoderamd64.Rel32Jmp:
 			if at < 1 || at+4 > len(f.a.B) || f.a.B[at-1] != 0xe9 {
 				return 0, 0, shared.DeletedRange{}, false
@@ -191,7 +191,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		changed := false
 		for i := range f.a.Rel32Sites {
 			site := &f.a.Rel32Sites[i]
-			if site.Short || len(deletions) == cap(deletions) {
+			if site.Short() || len(deletions) == cap(deletions) {
 				continue
 			}
 			start, shortLen, deletion, ok := branchForm(*site)
@@ -208,14 +208,14 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 				continue
 			}
 			mappedStart, okStart := offsets.Map(start)
-			mappedTarget, okTarget := offsets.Map(int(site.Target))
+			mappedTarget, okTarget := offsets.Map(site.Target())
 			disp := mappedTarget - (mappedStart + shortLen)
 			if !okStart || !okTarget || disp < -128 || disp > 127 {
 				continue
 			}
 			deletions = deletions[:len(candidate)]
 			copy(deletions, candidate)
-			site.Short = true
+			site.SetShort(true)
 			changed = true
 		}
 		if !changed {
@@ -223,14 +223,14 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 	}
 	for _, site := range f.a.Rel32Sites {
-		if !site.Short {
+		if !site.Short() {
 			continue
 		}
 		start := int(site.At) - 1
-		if site.Kind == encoderamd64.Rel32Jcc {
+		if site.Kind() == encoderamd64.Rel32Jcc {
 			start = int(site.At) - 2
 		}
-		if site.Kind == encoderamd64.Rel32Jmp {
+		if site.Kind() == encoderamd64.Rel32Jmp {
 			f.a.B[start] = 0xeb
 		} else {
 			f.a.B[start] = 0x70 | (f.a.B[start+1] & 0x0f)
@@ -251,27 +251,27 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	copy(f.a.B[dst:], f.a.B[src:])
 	code := f.a.B[:offsets.FinalLen()]
 	for _, site := range f.a.Rel32Sites {
-		if site.Short {
+		if site.Short() {
 			start, shortLen := int(site.At)-1, 2
-			if site.Kind == encoderamd64.Rel32Jcc {
+			if site.Kind() == encoderamd64.Rel32Jcc {
 				start = int(site.At) - 2
 			}
 			at, okAt := offsets.Map(start)
-			target, okTarget := offsets.Map(int(site.Target))
+			target, okTarget := offsets.Map(site.Target())
 			if !okAt || !okTarget || at < 0 || at+shortLen > len(code) || target < 0 || target > len(code) {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At, site.Target)
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At, site.Target())
 			}
 			disp := target - (at + shortLen)
 			if disp < -128 || disp > 127 {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: rel8 overflow %d -> %d", site.At, site.Target)
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: rel8 overflow %d -> %d", site.At, site.Target())
 			}
 			code[at+1] = byte(int8(disp))
 			continue
 		}
 		at, okAt := offsets.Map(int(site.At))
-		target, okTarget := offsets.Map(int(site.Target))
+		target, okTarget := offsets.Map(site.Target())
 		if !okAt || !okTarget || at < 0 || at+4 > len(code) || target < 0 || target > len(code) {
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", site.At, site.Target)
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", site.At, site.Target())
 		}
 		binary.LittleEndian.PutUint32(code[at:], uint32(int32(target-(at+4))))
 	}
