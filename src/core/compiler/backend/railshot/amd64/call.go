@@ -569,10 +569,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -661,10 +658,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -740,10 +734,7 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -2068,13 +2059,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		// A tagged descriptor points at a same-instance internal entry. Untagged
 		// descriptors name wrapper entries and retain their real home linMem.
 		roots := f.rootsBottomToTop()
-		types := make([]machineType, len(roots))
-		for i, root := range roots {
-			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
-			}
-		}
+		types := f.snapshotCallTypes(roots)
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)
@@ -2225,10 +2210,7 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 	f.release(targetContext)
 
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	savedLocals := append([]localDef(nil), f.locals...)
 	// Both descriptor branches need the same canonical argument image. Flush once
 	// before the runtime tag fork so a wrapper branch never inherits slot-only
@@ -2286,10 +2268,7 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -2327,10 +2306,7 @@ func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
 func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -2676,13 +2652,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		// wrapper/cross-instance lowering; treating the tagged value as a real
 		// linMem pointer faults as soon as the cross-instance path dereferences it.
 		roots := f.rootsBottomToTop()
-		types := make([]machineType, len(roots))
-		for i, root := range roots {
-			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
-			}
-		}
+		types := f.snapshotCallTypes(roots)
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)

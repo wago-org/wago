@@ -533,6 +533,8 @@ type scratch struct {
 	deadHoleSites    [maxFinalizerDeletions]int
 	branchNextSites  [maxFinalizerDeletions]int
 	singleBitTests   [maxFinalizerDeletions]singleBitTestSite
+	callTypesInline  [64]machineType
+	tmpCallTypes     []machineType // wide operand types retained across flush at call boundaries
 	deadHoleN        uint8
 	branchNextN      uint8
 	singleBitTestN   uint8
@@ -586,6 +588,11 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	return capHint
 }
 
+// A machineType is one byte. Retain enough call-layout scratch for very wide
+// but still practical signatures without pinning pathological operand stacks to
+// every later function compiled by the same owner.
+const maxRetainedCallTypes = 4 << 10
+
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
@@ -596,6 +603,11 @@ func (sc *scratch) reset() {
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
+	}
+	if cap(sc.tmpCallTypes) > maxRetainedCallTypes {
+		sc.tmpCallTypes = nil
+	} else {
+		sc.tmpCallTypes = sc.tmpCallTypes[:0]
 	}
 	clear(sc.branchTargets)
 	sc.finalFragments = sc.finalFragments[:0]

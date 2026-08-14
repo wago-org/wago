@@ -682,6 +682,8 @@ type scratch struct {
 	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
 	jumpTableFragments      []jumpTableFragment
 	localRefs               amd64.LocalRefRecorder
+	callTypesInline         [64]machineType
+	tmpCallTypes            []machineType // wide operand types retained across flush at call boundaries
 	transient
 }
 
@@ -722,6 +724,11 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 }
 
 const maxHintedControlFrames = 64
+
+// A machineType is one byte. Retain enough call-layout scratch for very wide
+// but still practical signatures without pinning pathological operand stacks to
+// every later function compiled by the same owner.
+const maxRetainedCallTypes = 4 << 10
 
 // moduleControlFrameCap sizes the reusable control stack from the same one-pass
 // bytecode hints. Zero preserves lazy allocation for straight-line, incomplete,
@@ -768,6 +775,11 @@ func (sc *scratch) reset() {
 	sc.ctrl = sc.ctrl[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
+	}
+	if cap(sc.tmpCallTypes) > maxRetainedCallTypes {
+		sc.tmpCallTypes = nil
+	} else {
+		sc.tmpCallTypes = sc.tmpCallTypes[:0]
 	}
 }
 

@@ -301,10 +301,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	if len(roots) < p {
 		panic("arm64 tail call operand underflow")
 	}
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
@@ -331,10 +328,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	if len(roots) < p {
 		panic("arm64 tail wrapper operand underflow")
 	}
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
@@ -372,10 +366,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	if len(roots) < p {
 		panic("arm64 cross-tail operand underflow")
 	}
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
@@ -578,11 +569,8 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	f.release(ref)
 
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
+	types := f.snapshotCallTypes(roots)
 	gcRoots := gcRootFlags(roots)
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
 	f.pinned = f.pinned.add(code).add(home).add(targetContext)
 	f.flush()
 	savedLocals := append([]localDef(nil), f.locals...)
@@ -635,10 +623,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	types := f.snapshotCallTypes(roots)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
@@ -1900,13 +1885,10 @@ func (f *fn) callRef(r *wasm.Reader) error {
 
 	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		roots := f.rootsBottomToTop()
-		types := make([]machineType, len(roots))
+		types := f.snapshotCallTypes(roots)
 		var gcRoots []bool
 		if f.tracksGCFrameRoots() {
 			gcRoots = gcRootFlags(roots)
-		}
-		for i, root := range roots {
-			types[i] = rootMachineType(root)
 		}
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
@@ -2092,13 +2074,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		// state. The compiler state for locals is restored before producing the
 		// wrapper path; at run time only one branch executes.
 		roots := f.rootsBottomToTop()
-		types := make([]machineType, len(roots))
-		for i, root := range roots {
-			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
-			}
-		}
+		types := f.snapshotCallTypes(roots)
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
 		f.flush()
 		savedLocals := append([]localDef(nil), f.locals...)

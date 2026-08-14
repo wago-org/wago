@@ -182,6 +182,32 @@ func rootMachineType(root *elem) machineType {
 	return typ
 }
 
+// snapshotCallTypes retains the logical operand layout while flush rewrites the
+// stack into canonical slots. The dedicated buffer cannot alias tmpTypes or
+// tmpFlushTypes, both of which flush itself may reuse.
+func (f *fn) snapshotCallTypes(roots []*elem) []machineType {
+	if len(roots) > len(f.sc.callTypesInline) {
+		return f.snapshotWideCallTypes(roots)
+	}
+	types := f.sc.callTypesInline[:len(roots)]
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	return types
+}
+
+func (f *fn) snapshotWideCallTypes(roots []*elem) []machineType {
+	if cap(f.sc.tmpCallTypes) < len(roots) {
+		f.sc.tmpCallTypes = make([]machineType, len(roots))
+	} else {
+		f.sc.tmpCallTypes = f.sc.tmpCallTypes[:len(roots)]
+	}
+	for i, root := range roots {
+		f.sc.tmpCallTypes[i] = rootMachineType(root)
+	}
+	return f.sc.tmpCallTypes
+}
+
 func slotsOfTypes(types []machineType) int {
 	n := 0
 	for _, typ := range types {

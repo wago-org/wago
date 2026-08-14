@@ -54,6 +54,23 @@ slice establishes the baseline for definite assignment, lazy parameter homing,
 regional residency, and call-effect work; argument/result moves, directory
 derivations, branch counts, and register-bank transfers remain to be attributed.
 
+### 2026-08-14 — reusable call-layout scratch, first #316 slice
+
+AMD64 and ARM64 call-boundary lowering now retain the logical operand layout in
+owner-local compiler scratch while `flush` canonicalizes the stack. The common
+case uses 64 inline one-byte entries per serial compiler or parallel worker, so
+small modules add no heap allocation. Wider stacks share one typed overflow
+buffer across functions; capacities above 4 KiB are dropped at the next reset
+so one pathological function cannot pin its maximum for the rest of a module.
+
+On a focused Darwin/ARM64 module with eight wide tail-call boundaries, a
+serialized three-sample, two-second benchmark reduced compile allocations from
+95 to 88 per module and B/op from 60,584 to 59,912. Median compile time was
+77,086 ns/op versus 76,458 ns/op (+0.82%). The ordinary small tail-call fixture
+remained at 41 allocs/op and did not regress. This is the first deliberately
+narrow extraction from #316; local/fact tables, effect summaries, matcher
+scratch, and relocation ownership remain separate follow-up slices.
+
 ---
 
 # 1. North-star architecture
