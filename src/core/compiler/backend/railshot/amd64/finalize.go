@@ -165,6 +165,54 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 	}
 	sortDeletions(deletions)
+	mapWithExtra := func(off int, extra shared.DeletedRange) (int, bool) {
+		delta := 0
+		for _, deletion := range deletions {
+			start := int(deletion.Off)
+			end := start + int(deletion.Len)
+			if off > start && off < end {
+				return 0, false
+			}
+			if off >= end {
+				delta += int(deletion.Len)
+			}
+		}
+		start := int(extra.Off)
+		end := start + int(extra.Len)
+		if off > start && off < end {
+			return 0, false
+		}
+		if off >= end {
+			delta += int(extra.Len)
+		}
+		return off - delta, true
+	}
+	insertDeletion := func(deletion shared.DeletedRange) bool {
+		if len(deletions) == cap(deletions) {
+			return false
+		}
+		at := len(deletions)
+		for i, existing := range deletions {
+			if deletion.Off < existing.Off {
+				at = i
+				break
+			}
+		}
+		end := deletion.Off + deletion.Len
+		if at > 0 {
+			previous := deletions[at-1]
+			if previous.Off+previous.Len > deletion.Off {
+				return false
+			}
+		}
+		if at < len(deletions) && end > deletions[at].Off {
+			return false
+		}
+		deletions = append(deletions, shared.DeletedRange{})
+		copy(deletions[at+1:], deletions[at:])
+		deletions[at] = deletion
+		return true
+	}
 
 	// Branch relaxation consumes the same fixed deletion budget as frames and
 	// dead holes. Each admitted site changes only long -> short; reconsidering
@@ -198,23 +246,15 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			if !ok {
 				continue
 			}
-			var candidateStorage [shared.MaxOffsetMapDeletions]shared.DeletedRange
-			candidate := candidateStorage[:len(deletions)+1]
-			copy(candidate, deletions)
-			candidate[len(deletions)] = deletion
-			sortDeletions(candidate)
-			offsets, err := shared.NewOffsetMap(len(f.a.B), candidate)
-			if err != nil {
-				continue
-			}
-			mappedStart, okStart := offsets.Map(start)
-			mappedTarget, okTarget := offsets.Map(site.Target())
+			mappedStart, okStart := mapWithExtra(start, deletion)
+			mappedTarget, okTarget := mapWithExtra(site.Target(), deletion)
 			disp := mappedTarget - (mappedStart + shortLen)
 			if !okStart || !okTarget || disp < -128 || disp > 127 {
 				continue
 			}
-			deletions = deletions[:len(candidate)]
-			copy(deletions, candidate)
+			if !insertDeletion(deletion) {
+				continue
+			}
 			site.SetShort(true)
 			changed = true
 		}
