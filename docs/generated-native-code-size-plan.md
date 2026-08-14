@@ -1209,3 +1209,41 @@ modules 448 bytes. No module grows.
 Exact-body and PC-relative rejection tests, serial and parallel native trap
 execution, the backend race suite, the complete repository suite, and the full
 Size execution corpus pass.
+
+## Implementation result: AMD64 cross-function trap-body sharing
+
+AMD64 uses the same fixed eight-shape catalog and adapter-bounded cluster seam.
+The first exact body stays in its function's cold tail; each later internal
+function uses a five-byte `jmp rel32`. Functions with a trailing SIMD literal
+pool fail closed because their trap body is not the final fragment. The module
+literal and GC-stub islands remain separate and unchanged. The two-gigabyte
+near-jump range is checked before admission, and
+`WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY=1` restores the exact preceding layout.
+
+Measured on the checked-in AMD64 Size corpus on `hub`:
+
+```text
+rollback native bytes:  64,189,444
+candidate native bytes: 63,980,210
+net reduction:             209,234 (0.3260%)
+shared later functions:      5,056
+
+Ruby compile median:   1,016,510,970 -> 1,010,431,911 ns/op (-0.60%)
+esbuild compile median:  550,017,531 ->   547,757,945 ns/op (-0.41%)
+compile allocation class: unchanged
+
+selected Size runtime medians:
+  raytrace render:       -0.12%
+  JSON serialize:        -1.35%
+  JSON deserialize:      +1.48%
+  SIMD UTF-8 convert:    -0.09%
+  SIMD UTF-8 validate:   -9.91%
+runtime allocations: zero in both configurations
+```
+
+Ruby contributes 194,392 bytes, regexmatch 7,172, SQLite 3,718, Lua 1,980,
+json-as-simd 1,008, wasm3 484, and json-as 480 bytes. No module grows.
+
+Exact-body and literal-tail rejection tests, serial and parallel native
+three-trap execution, the AMD64 backend and race suites, and the full Size
+execution corpus pass on `hub`.
