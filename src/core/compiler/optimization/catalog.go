@@ -68,7 +68,7 @@ type Snapshot struct {
 // lifetime.
 type Selection struct {
 	bindings *Bindings
-	bits     uint64
+	bits     [2]uint64
 }
 
 // Option is a pre-resolved flag owned by one architecture's Bindings. Backends
@@ -76,6 +76,7 @@ type Selection struct {
 // need only a pointer comparison and bit test, never a string/map lookup.
 type Option struct {
 	bindings *Bindings
+	word     uint8
 	mask     uint64
 }
 
@@ -86,13 +87,13 @@ func (s Selection) Enabled(name string) bool {
 		return false
 	}
 	index, ok := s.bindings.index[name]
-	return ok && s.bits&(uint64(1)<<index) != 0
+	return ok && s.bits[index/64]&(uint64(1)<<uint(index%64)) != 0
 }
 
 // EnabledOption reports whether a pre-resolved option is enabled. An option
 // from another architecture is rejected just like an unknown string name.
 func (s Selection) EnabledOption(option Option) bool {
-	return s.bindings != nil && s.bindings == option.bindings && s.bits&option.mask != 0
+	return s.bindings != nil && s.bindings == option.bindings && s.bits[option.word]&option.mask != 0
 }
 
 // Valid reports whether the selection was resolved by a Bindings owner.
@@ -106,7 +107,7 @@ func (b *Bindings) Option(name string) Option {
 	if !ok {
 		panic(fmt.Sprintf("unknown %s optimization %q", b.arch, name))
 	}
-	return Option{bindings: b, mask: uint64(1) << index}
+	return Option{bindings: b, word: uint8(index / 64), mask: uint64(1) << uint(index%64)}
 }
 
 // Bindings owns the complete, ordered set of bindings for one architecture.
@@ -117,8 +118,6 @@ type Bindings struct {
 	arch     string
 	entries  []binding
 	index    map[string]int
-	before   []bool
-	changed  []int
 	revision uint64
 }
 
@@ -137,12 +136,13 @@ func NewBindings(arch string, specs ...BindingSpec) *Bindings {
 		byName[spec.Name] = spec
 	}
 	definitions := ForArch(arch)
+	if len(definitions) > 128 {
+		panic(fmt.Sprintf("%s optimization catalog has %d entries, maximum is 128", arch, len(definitions)))
+	}
 	bindings := &Bindings{
 		arch:     arch,
 		entries:  make([]binding, 0, len(definitions)),
 		index:    make(map[string]int, len(definitions)),
-		before:   make([]bool, len(definitions)),
-		changed:  make([]int, len(definitions)),
 		revision: 1,
 	}
 	for _, definition := range definitions {
@@ -180,26 +180,21 @@ func (b *Bindings) CurrentSnapshot() Snapshot {
 	return b.snapshotLocked()
 }
 
-// ResolveSnapshot validates and captures one immutable selection without
-// installing it into package globals or retaining the Bindings lock. overrides
-// is expressed in public sense (on means enabled). A nil map captures current
-// process defaults. Snapshot and deltas are accepted for API compatibility; the
-// complete overrides map remains authoritative and makes resolution bounded by
-// the small optimization catalog.
-func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[string]bool) (Selection, error) {
+// Resolve validates and captures one immutable selection without installing it
+// into package globals or retaining the Bindings lock. overrides is expressed
+// in public sense (on means enabled). A nil map captures current process
+// defaults.
+func (b *Bindings) Resolve(overrides map[string]bool) (Selection, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if len(b.entries) > 64 {
-		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 64", b.arch, len(b.entries))
-	}
-	var bits uint64
+	var bits [2]uint64
 	for index, entry := range b.entries {
 		on := *entry.value
 		if entry.inverted {
 			on = !on
 		}
 		if on {
-			bits |= uint64(1) << index
+			bits[index/64] |= uint64(1) << uint(index%64)
 		}
 	}
 	for name, on := range overrides {
@@ -207,11 +202,12 @@ func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[
 		if !ok {
 			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
 		}
-		mask := uint64(1) << index
+		word := index / 64
+		mask := uint64(1) << uint(index%64)
 		if on {
-			bits |= mask
+			bits[word] |= mask
 		} else {
-			bits &^= mask
+			bits[word] &^= mask
 		}
 	}
 	return Selection{bindings: b, bits: bits}, nil
@@ -251,115 +247,6 @@ func (b *Bindings) Set(name string, on bool) bool {
 		b.revision++
 	}
 	return true
-}
-
-// Lease holds one installed optimization selection and its compile lock. It is
-// deliberately a value rather than a restore closure: that keeps compiler
-// inputs out of closure boxes under TinyGo's conservative collector.
-type Lease struct {
-	bindings *Bindings
-	changed  int // -1 restores the complete selection
-	active   bool
-}
-
-// Restore restores the process defaults and releases the compile lock.
-func (l *Lease) Restore() {
-	if l == nil || !l.active {
-		return
-	}
-	l.active = false
-	b := l.bindings
-	if l.changed < 0 {
-		for index, entry := range b.entries {
-			*entry.value = b.before[index]
-		}
-	} else {
-		for _, index := range b.changed[:l.changed] {
-			*b.entries[index].value = b.before[index]
-		}
-	}
-	b.mu.Unlock()
-}
-
-// Apply installs overrides for one compile and returns an explicit lease that
-// restores the process defaults and releases the compile lock.
-func (b *Bindings) Apply(overrides map[string]bool) (Lease, error) {
-	return b.ApplySnapshot(overrides, Snapshot{}, nil)
-}
-
-// ApplySnapshot installs a captured selection for one compile. When revision
-// still names the current process defaults and deltas exactly describe every
-// difference in overrides, only deltas are installed. Otherwise overrides is
-// validated and applied in full. The revision comparison, installation,
-// compilation lease, and restoration all share the same lock, so a concurrent
-// Set cannot invalidate the fast path.
-func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (Lease, error) {
-	b.mu.Lock()
-	if overrides == nil {
-		return Lease{bindings: b, active: true}, nil
-	}
-	if snapshot.bindings == b && snapshot.revision == b.revision && b.deltasMatchLocked(overrides, deltas) {
-		changed := 0
-		for name := range deltas {
-			index := b.index[name]
-			b.changed[changed] = index
-			changed++
-		}
-		for _, index := range b.changed[:changed] {
-			entry := b.entries[index]
-			on := deltas[entry.definition.Name]
-			if entry.inverted {
-				on = !on
-			}
-			b.before[index] = *entry.value
-			*entry.value = on
-		}
-		return Lease{bindings: b, changed: changed, active: true}, nil
-	}
-	for index, entry := range b.entries {
-		b.before[index] = *entry.value
-	}
-	for name, on := range overrides {
-		index, ok := b.index[name]
-		if !ok {
-			for index, entry := range b.entries {
-				*entry.value = b.before[index]
-			}
-			b.mu.Unlock()
-			return Lease{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
-		}
-		entry := b.entries[index]
-		if entry.inverted {
-			on = !on
-		}
-		*entry.value = on
-	}
-	return Lease{bindings: b, changed: -1, active: true}, nil
-}
-
-// deltasMatchLocked reports whether deltas are a complete, coherent summary of
-// overrides relative to the current process defaults. Unknown override names
-// deliberately force the full path, which reports the validation error.
-func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
-	changed := 0
-	for name, on := range overrides {
-		index, ok := b.index[name]
-		if !ok {
-			return false
-		}
-		current := *b.entries[index].value
-		if b.entries[index].inverted {
-			current = !current
-		}
-		if on == current {
-			continue
-		}
-		changed++
-		if delta, ok := deltas[name]; !ok || delta != on {
-			return false
-		}
-	}
-	return changed == len(deltas)
 }
 
 var catalog = []Definition{

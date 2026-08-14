@@ -682,17 +682,7 @@ type scratch struct {
 	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
 	jumpTableFragments      []jumpTableFragment
 	localRefs               amd64.LocalRefRecorder
-	offsetMap               shared.WideOffsetMap
 	transient
-}
-
-// scratchState keeps low-level backend tests able to exercise an isolated fn.
-// Production compilation always installs the module-owned scratch explicitly.
-func (f *fn) scratchState() *scratch {
-	if f.sc == nil {
-		f.sc = &scratch{}
-	}
-	return f.sc
 }
 
 type trapSite struct {
@@ -938,7 +928,7 @@ func (f *fn) frameSize() int {
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || frameElideVoid && voidResult
-	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if !f.opt(optFrameElide) || !registerResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	if !f.allLocalsRegisterHomed() {
@@ -976,12 +966,6 @@ type CompileOptions struct {
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool
-	// OptimizationSnapshot identifies Optimizations as a snapshot of the backend
-	// process defaults. OptimizationDeltas contains only public-runtime overrides
-	// layered on that snapshot. A matching revision avoids reinstalling the full
-	// selection while retaining the same compile lock and snapshot semantics.
-	OptimizationSnapshot OptimizationSnapshot
-	OptimizationDeltas   map[string]bool
 	// Objective selects the coherent speed/size tradeoff for this compilation.
 	// nil preserves the public Balanced default.
 	Objective *OptimizationObjective
@@ -1126,7 +1110,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 }
 
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
-	selection, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
+	selection, err := optimizationBindings.Resolve(opts.Optimizations)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}

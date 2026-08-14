@@ -126,10 +126,11 @@ stale artifact, so registration cannot silently outrun editor validation.
 An Optimization Selection is immutable runtime compilation configuration.
 `RuntimeConfig.WithOptimization` and `WithOptimizations` return copies; run,
 build, standalone execution, and artifact-cache identity consume that selection
-instead of mutating process-global knobs. Railshot currently adapts a selection
-to its legacy booleans under one compile-scoped lock. Those booleans are an
-implementation detail and can move into compiler-owned state without changing
-callers.
+instead of mutating process-global knobs. Railshot resolves the complete
+selection into a bounded two-word policy before compilation. Both backends carry
+that policy through module summaries, worker-local function state, lowering, and
+finalization; independent same-architecture compiles do not hold a shared lease
+or install temporary backend-global values.
 
 ## Commands
 

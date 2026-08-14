@@ -537,7 +537,6 @@ type scratch struct {
 	branchNextN      uint8
 	singleBitTestN   uint8
 	deadHoleOverflow bool
-	offsetMap        shared.OffsetMap
 	transient
 }
 
@@ -821,12 +820,6 @@ type CompileOptions struct {
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool
-	// OptimizationSnapshot identifies Optimizations as a snapshot of the backend
-	// process defaults. OptimizationDeltas contains only public-runtime overrides
-	// layered on that snapshot. A matching revision avoids reinstalling the full
-	// selection while retaining the same compile lock and snapshot semantics.
-	OptimizationSnapshot OptimizationSnapshot
-	OptimizationDeltas   map[string]bool
 	// Objective selects the coherent speed/size tradeoff for this compilation.
 	// nil preserves the public Balanced default.
 	Objective *OptimizationObjective
@@ -938,7 +931,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 }
 
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
-	selection, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
+	selection, err := optimizationBindings.Resolve(opts.Optimizations)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}

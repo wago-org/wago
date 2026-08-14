@@ -14,6 +14,30 @@ The completed finalizer remains useful as the last stage of the performance pipe
 
 It should **not** grow into a semantic optimizer. Semantic and machine-local optimization should happen before finalization.
 
+## Implementation progress
+
+### 2026-08-14 — immutable optimization selection
+
+The issue #399 compiler lease has been removed from production compilation.
+Railshot resolves each architecture's complete optimization selection into an
+immutable, bounded `[2]uint64` policy before module work begins. AMD64 and ARM64
+carry pre-resolved option tokens through module summaries, worker-owned function
+state, lowering, and finalization. The obsolete `Apply`/`ApplySnapshot` path that
+temporarily installed selections into backend globals has been deleted.
+
+The acceptance evidence includes opposing-policy concurrent compilation tests
+on both architectures, race coverage, deterministic generated-byte comparisons,
+and the earlier serial/concurrent benchmarks recorded in
+`docs/generated-native-code-size-results.md`. Selection resolution itself remains
+zero-allocation. Process-default mutation remains only as a compatibility and
+low-level test adapter; it affects subsequently resolved policies and is never
+installed for the lifetime of a compilation.
+
+A serialized five-sample Darwin/ARM64 `many_funcs` compile check against the
+pre-completion commit measured 262,356 ns/op versus 259,674 ns/op (+1.03%), with
+allocations unchanged at 342 allocs/op and B/op effectively unchanged at 138.8
+KiB. This remains inside the ordinary local-work compile-time gate.
+
 ---
 
 # 1. North-star architecture

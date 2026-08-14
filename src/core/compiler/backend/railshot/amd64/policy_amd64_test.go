@@ -225,7 +225,7 @@ func TestAccumulatorImmediateObjectiveAndRollbackAMD64(t *testing.T) {
 	if !compactAccumulatorImmediatePolicy(size) || !compactAccumulatorImmediatePolicy(embedded) {
 		t.Fatal("Size/Embedded did not enable accumulator immediates")
 	}
-	disabled, err := optimizationBindings.ResolveSnapshot(map[string]bool{"accumulator-immediate": false}, OptimizationSnapshot{}, nil)
+	disabled, err := optimizationBindings.Resolve(map[string]bool{"accumulator-immediate": false})
 	if err != nil {
 		t.Fatal(err)
 	}

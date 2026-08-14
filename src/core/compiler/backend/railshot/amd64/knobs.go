@@ -112,7 +112,7 @@ func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }
 
 func currentCodegenPolicy() CodegenPolicy {
-	selection, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
+	selection, err := optimizationBindings.Resolve(nil)
 	if err != nil {
 		panic(err)
 	}

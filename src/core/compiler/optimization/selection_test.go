@@ -1,15 +1,16 @@
 package optimization
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 )
 
-func TestResolveSnapshotIsImmutableAndDoesNotInstallOverrides(t *testing.T) {
+func TestResolveIsImmutableAndDoesNotInstallOverrides(t *testing.T) {
 	a, b := true, false
 	bindings := selectionTestBindings(t, &a, &b)
 
-	selection, err := bindings.ResolveSnapshot(map[string]bool{"a": false, "b": true}, Snapshot{}, nil)
+	selection, err := bindings.Resolve(map[string]bool{"a": false, "b": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestResolveSnapshotIsImmutableAndDoesNotInstallOverrides(t *testing.T) {
 func TestResolvedOptionUsesOwnedBitWithoutNameLookup(t *testing.T) {
 	a, b := true, false
 	bindings := selectionTestBindings(t, &a, &b)
-	selection, err := bindings.ResolveSnapshot(map[string]bool{"a": false, "b": true}, Snapshot{}, nil)
+	selection, err := bindings.Resolve(map[string]bool{"a": false, "b": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,11 +50,11 @@ func TestResolvedOptionUsesOwnedBitWithoutNameLookup(t *testing.T) {
 func TestResolvedSelectionsAreIndependentAcrossConcurrentReaders(t *testing.T) {
 	a, b := true, false
 	bindings := selectionTestBindings(t, &a, &b)
-	one, err := bindings.ResolveSnapshot(map[string]bool{"a": true, "b": false}, Snapshot{}, nil)
+	one, err := bindings.Resolve(map[string]bool{"a": true, "b": false})
 	if err != nil {
 		t.Fatal(err)
 	}
-	two, err := bindings.ResolveSnapshot(map[string]bool{"a": false, "b": true}, Snapshot{}, nil)
+	two, err := bindings.Resolve(map[string]bool{"a": false, "b": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +82,67 @@ func TestResolvedSelectionsAreIndependentAcrossConcurrentReaders(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestSelectionUsesBothBoundedWords(t *testing.T) {
+	old := catalog
+	values := make([]bool, 65)
+	specs := make([]BindingSpec, len(values))
+	catalog = make([]Definition, len(values))
+	for index := range values {
+		name := fmt.Sprintf("option-%d", index)
+		catalog[index] = Definition{Name: name, Architectures: []string{"wide"}}
+		specs[index] = Bind(name, &values[index])
+	}
+	t.Cleanup(func() { catalog = old })
+
+	bindings := NewBindings("wide", specs...)
+	selection, err := bindings.Resolve(map[string]bool{
+		"option-0":  true,
+		"option-63": true,
+		"option-64": true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []int{0, 63, 64} {
+		name := fmt.Sprintf("option-%d", index)
+		if !selection.Enabled(name) || !selection.EnabledOption(bindings.Option(name)) {
+			t.Fatalf("%s is disabled", name)
+		}
+	}
+	if selection.Enabled("option-62") {
+		t.Fatal("unset option in the first word is enabled")
+	}
+}
+
+func TestBindingsRejectSelectionBeyondBoundedWords(t *testing.T) {
+	old := catalog
+	values := make([]bool, 129)
+	specs := make([]BindingSpec, len(values))
+	catalog = make([]Definition, len(values))
+	for index := range values {
+		name := fmt.Sprintf("option-%d", index)
+		catalog[index] = Definition{Name: name, Architectures: []string{"too-wide"}}
+		specs[index] = Bind(name, &values[index])
+	}
+	t.Cleanup(func() { catalog = old })
+	assertPanics(t, func() { NewBindings("too-wide", specs...) })
+}
+
+func TestResolveAllocationBudget(t *testing.T) {
+	a, b := true, false
+	bindings := selectionTestBindings(t, &a, &b)
+	overrides := map[string]bool{"a": false, "b": true}
+	allocs := testing.AllocsPerRun(1000, func() {
+		selection, err := bindings.Resolve(overrides)
+		if err != nil || selection.Enabled("a") || !selection.Enabled("b") {
+			panic("invalid selection")
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("Resolve allocations = %.0f, want 0", allocs)
+	}
 }
 
 func selectionTestBindings(t *testing.T, a, b *bool) *Bindings {
