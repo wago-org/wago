@@ -1035,31 +1035,36 @@ whole-function compilation.
 ### ARM64 compact duplicate-target tables
 
 Size and Embedded now encode profitable duplicate-heavy jump tables as a byte
-target-ID array followed by one i32 target delta per unique label. The chooser
-charges the exact padded ID bytes, vector bytes, and two additional dispatch
-instructions, and retains the dense i32 table unless the compact form is
-strictly smaller. The ID count is capped at 256 and the table offset at the
+target-ID array followed by one direct `B` instruction per unique label. The
+indirect dispatch lands on the selected branch-vector entry, which then jumps
+to the existing target stub. The chooser charges the exact padded ID and vector
+bytes and retains the dense i32 table unless the compact form is strictly
+smaller. The ID count is capped at 256 and the table offset at the
 single-instruction immediate range. Existing control-depth scratch supplies
 both IDs and final stub positions without a new slice or allocation.
 
-The finalizer now distinguishes padded opaque data from relocation-bearing jump
-vectors. Opaque ID words are copied unchanged, while vector deltas and the ADR
-base are remapped after compaction. This removes the previous ambiguity between
-embedded data and ARM64 instructions without disabling dead-range deletion.
+The finalizer now distinguishes padded opaque data from executable branch
+vectors. Opaque ID words are copied unchanged, while ordinary vector branches
+and the ADR base are remapped after compaction. This removes the previous
+ambiguity between embedded data and ARM64 instructions without disabling
+dead-range deletion.
 
-Across all 64 local ARM64 modules, the compact representation removes 184,740
-Size bytes: 90,258,480 to 90,073,740, with 13 wins, no losses, and 51 ties. The
-same 184,740-byte reduction survives compaction (89,747,376 to 89,562,636).
-Largest wins are Ruby (-77,752), esbuild (-68,604), script (-20,136), Lua
-(-7,364), markdown (-5,088), and regexmatch (-2,608). The size ledger reports
-4,177 admitted sites across 2,531 compilation records; retry compilation can
+Across all 64 local ARM64 modules, the compact representation removes 224,796
+Size bytes: 90,258,480 to 90,033,684, with 13 wins, no losses, and 51 ties.
+Compaction removes 224,860 bytes (89,747,376 to 89,522,516). Largest wins are
+Ruby (-89,640), esbuild (-84,008), script (-29,764), Lua (-8,788), markdown
+(-5,588), and regexmatch (-3,188). The size ledger reports 5,380 admitted sites
+across 3,410 compilation records; retry compilation can
 count a source site more than once, so bytes remain the authoritative result.
 
-Against the preceding commit, serialized Size medians were 549,243,125 to
-534,508,750 ns/op (-2.68%) for Ruby and 309,887,938 to 305,812,438 ns/op
-(-1.32%) for esbuild. B/op and allocation counts are unchanged. Native compact
-table execution, identity inventory validation, the ARM64 backend race suite,
-compacted runtime packages, and compacted `src/wago` tests all pass.
+Against the pre-table baseline in a serialized rerun, Size medians were
+553,293,291 to 550,745,917 ns/op (-0.46%) for Ruby and 311,191,896 to
+317,286,980 ns/op (+1.96%) for esbuild. B/op and allocation counts are
+unchanged. A 10-sample native dispatch microbenchmark measured 13.905 ns/op for
+the dense Balanced table and 14.000 ns/op for the compact Size table (+0.68%),
+with zero allocations. Native compact-table execution, identity inventory
+validation, the ARM64 backend race suite, compacted runtime packages, and
+compacted `src/wago` tests all pass.
 
 ### Commands
 
