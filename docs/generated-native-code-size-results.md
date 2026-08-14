@@ -914,6 +914,15 @@ lower allocation and neutral-or-better time on every constant-heavy workload:
 A zero-allocation retained-storage unit test, the native AMD64 backend, native
 race suite, and compacted runtime/fuzz corpus pass.
 
+The native byte ledger now attributes physical trailing literal bytes separately
+without changing the exhaustive top-level totals. ARM64 reports zero because it
+has no trailing pool. Across the same 36-module native AMD64 corpus, 14 modules
+contain 24,808 literal bytes. The largest owners are Ruby (12,448), SQLite
+(4,016), esbuild (3,168), Lua (2,084), and wasm3 (1,484); together they account
+for 93.2% of the measured pool. Module-island work should first measure duplicate
+keys and displacement reach in those modules, and count only bytes beyond the
+existing per-function deduplication as potential savings.
+
 ### Commands
 
 ```sh
