@@ -27,7 +27,7 @@ var buildEnvironmentKeys = []string{
 	"GOMIPS", "GOMIPS64", "GOOS", "GOPPC64", "GORISCV64", "GOROOT", "GOTOOLCHAIN", "GOVERSION", "GOWASM", "PKG_CONFIG",
 }
 
-var externalInputBuildFlags = []string{"-modfile", "-overlay", "-pkgdir", "-toolexec"}
+var externalInputBuildFlags = []string{"-modfile", "-overlay", "-pgo", "-pkgdir", "-toolexec"}
 
 type resolvedModuleIdentity struct {
 	Path      string                  `json:"path"`
@@ -90,6 +90,13 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 			cacheable = false
 			fmt.Fprintf(h, "external-goflag\x00%s\x00", flag)
 		}
+	}
+	if _, statErr := os.Lstat(filepath.Join(dir, "default.pgo")); statErr == nil {
+		cacheable = false
+		fmt.Fprint(h, "default-pgo\x00present\x00")
+	} else if !os.IsNotExist(statErr) {
+		cacheable = false
+		fmt.Fprintf(h, "default-pgo\x00stat-error\x00%v\x00", statErr)
 	}
 
 	modules, err := selectedModules(dir)
