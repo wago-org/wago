@@ -69,3 +69,33 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 		t.Fatalf("ineligible function reserved %d last-get entries", len(hints[1].localLastGet))
 	}
 }
+
+func TestIntervalOverwriteBeforeReadAMD64(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want bool
+	}{
+		{name: "overwrite", body: []byte{0x41, 0x00, 0x21, 0x03, 0x0b}, want: true},
+		{name: "read", body: []byte{0x20, 0x03, 0x1a, 0x21, 0x03, 0x0b}},
+		{name: "control-boundary", body: []byte{0x02, 0x40, 0x21, 0x03, 0x0b, 0x0b}},
+		{name: "fuel-cap", body: append(append(make([]byte, maxIntervalNextUseOps), 0x21, 0x03), 0x0b)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for i := range tc.body {
+				if tc.name == "fuel-cap" && i < maxIntervalNextUseOps {
+					tc.body[i] = 0x01 // nop
+				}
+			}
+			r := wasm.ReaderFrom(tc.body)
+			f := fn{bodyReader: r}
+			for i := range f.intervalOwner {
+				f.intervalOwner[i] = -1
+			}
+			f.intervalOwner[R12] = 3
+			if got := f.intervalOverwriteBeforeRead().has(R12); got != tc.want {
+				t.Fatalf("overwrite proof = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

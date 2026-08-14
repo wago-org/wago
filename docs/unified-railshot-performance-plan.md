@@ -153,6 +153,28 @@ is 5,792 bytes in `bench/corpus/script.wasm`. A serialized three-sample,
 two-second `many_funcs` compile benchmark measured a 249,592 ns/op median versus
 251,990 ns/op (-0.95%), with 343 allocs/op and B/op unchanged.
 
+### 2026-08-14 — bounded overwrite-aware regional eviction
+
+Regional integer residency now copies the active forward Wasm reader and scans
+at most 64 operations when it must release a register. If an active local's next
+access is an overwrite rather than a read, that local is preferred and its dirty
+old value is not stored to the frame. Any structured-control boundary, malformed
+immediate, exhausted fuel, pending memory-address borrow, or pending Valent read
+falls back to the existing score-based store-and-evict path. The active reader is
+stored inline in reusable function state; a rejected pointer-based prototype was
+not retained because escape analysis raised `many_funcs` from 343 to 644
+allocations/op.
+
+The repository corpus records 159 `interval-region-dead-evict` hits across
+`ruby.wasm`, `blake3sum.wasm`, `blake-as.wasm`, and `blake-as-simd.wasm`.
+Darwin/ARM64 native code shrinks by 336 bytes total (320 in Ruby and 16 in
+blake3sum); the other module totals are alignment-neutral, and spill high-water
+marks are unchanged. Five-second execution medians measured blake-as at 397,135
+ns/op versus 396,693 ns/op (+0.11%) and blake-as-simd at 413,469 ns/op versus
+415,788 ns/op (-0.56%), both with zero B/op and allocations. The standard
+`many_funcs` compile median was 248,779 ns/op versus 249,127 ns/op (-0.14%),
+with 343 allocs/op and B/op unchanged.
+
 ---
 
 # 1. North-star architecture

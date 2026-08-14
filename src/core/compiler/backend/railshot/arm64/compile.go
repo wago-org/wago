@@ -155,6 +155,7 @@ type fn struct {
 	traceFuncIdx       uint32
 	tracePCBase        uint32
 	wasmPC             uint32
+	bodyReader         wasm.Reader // active forward reader; bounded lookahead copies it
 	customInstructions map[uint32]railcore.CustomInstruction
 
 	nParams     int

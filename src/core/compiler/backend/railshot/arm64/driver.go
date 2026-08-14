@@ -14,8 +14,8 @@ import (
 // Frontend.cpp parseCodeSection opcode switch. Phase 0 covers the integer const/
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
-	r := wasm.ReaderFrom(code)
-	return f.bodyLoop(&r, 0)
+	f.bodyReader = wasm.ReaderFrom(code)
+	return f.bodyLoop(&f.bodyReader, 0)
 }
 
 // bodyLoop drives the opcode switch until the control stack shrinks to minCtrl.
