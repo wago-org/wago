@@ -193,6 +193,54 @@ Every execution benchmark remained at zero B/op and zero allocs/op. No workload
 crossed the 1.5% individual investigation gate, so adaptive Balanced alignment
 remains enabled by default.
 
+### Bounded AMD64 rel32 and branch-hole checkpoint
+
+Opt-in compaction now records local `rel32` sites explicitly while they are
+emitted and repatches them after shrinkage. The inventory is fixed at 256 sites
+per function; overflow, loops, jump tables, and opaque plugin output retain the
+identity path. No finalized instruction stream is disassembled. The recorder is
+disabled when `WAGO_COMPACT` is off, so default compilation retains no site
+storage or growth cost.
+
+Branch-pair folding now updates that symbolic inventory when it changes a
+conditional branch target and forgets the discarded near jump. This prevents a
+stale relocation from patching the retained NOP bytes. The finalizer can then
+delete exact five-byte branch-fold holes within the shared eight-deletion
+budget. A focused regression test covers the folded `jcc`/`jmp` sequence and
+asserts that execution remains correct after the hole disappears.
+
+With adaptive Balanced alignment and compaction enabled, native output is now:
+
+| Workload | Original baseline | Current | Change | Decomposition |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 9,704 B | 3,603 B | -62.87% | alignment and zero-frame compaction |
+| `json-as` | 66,131 B | 65,811 B | -0.48% | 128 B alignment, 112 B frame, 80 B branch holes |
+
+The remaining 240 reported branch-hole bytes are in functions deliberately
+outside this first bounded admission class. Short `rel8` encodings are not yet
+selected; all admitted branches retain their original near width and are only
+repatched after compaction.
+
+Six alternating 500 ms samples compared compaction on and off in the same
+adaptive-alignment tree:
+
+| Workload | Off median | On median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 420,704 ns/op | 423,334 ns/op | +0.63% | 682 -> 683 allocs/op; about +20 B/op |
+| `json-as` | 1,887,094 ns/op | 1,916,804 ns/op | +1.57% | 2,146 -> 2,155 allocs/op; about +8.2 KiB/op |
+
+The compile-time cost remains inside the proposed 3% Balanced gate, but the
+site slice growth violates the no-allocation goal. Compaction therefore remains
+opt-in. Reusing preallocated rel32 storage is required before this inventory can
+be considered for default enablement.
+
+The native AMD64 compiler package and targeted execution/fuzz corpus pass with
+compaction enabled. A full `go test ./...` on the isolated hub worktree reached
+and passed the compiler package but could not complete the staged product tests:
+that worktree lacks the pinned `tests/spec-v3` checkout, and its installed
+`wat2wasm` predates table64 syntax. These are recorded as environment gaps, not
+passing coverage.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
