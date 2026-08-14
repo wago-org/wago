@@ -1000,6 +1000,38 @@ backend race suites and the compacted runtime packages pass. The broader staged
 AMD64 product tests were unavailable on `hub` because that checkout does not
 contain the pinned `tests/spec-v3` corpus.
 
+### Objective-aware `br_table` dispatch: ARM64 first
+
+ARM64 Size and Embedded now compare the fixed 28-byte indirect-dispatch
+sequence plus four-byte table entries against the eight-byte compare/branch
+sequence for each linear case. The bounded chooser also credits only the
+minimum four-byte branch tail eliminated by a duplicate target. Speed and
+Balanced retain the existing five-label O(1) threshold. Tables with seven or
+more labels settle without inspecting the label vector; only the ambiguous
+five- and six-label cases perform a bounded duplicate scan.
+
+Across all 64 locally available ARM64 corpus modules, Size code falls from
+90,259,408 to 90,258,480 bytes (-928), with 8 wins, no losses, and 56 ties.
+Compaction increases the reduction slightly: 89,748,328 to 89,747,376 bytes
+(-952). The wins are esbuild (-356 raw), Ruby (-360), script (-96), regexmatch
+(-64), SQLite (-32), both binary-tree variants (-8 each), and Lua (-4).
+
+The permanent `BenchmarkCompileSize` suite now measures serialized Size
+codegen separately from the default Balanced history. ARM64 esbuild medians
+were 300,167,000 to 298,366,604 ns/op (-0.60%), and Ruby was 530,704,917 to
+530,469,958 ns/op (-0.04%); allocation counts were unchanged apart from normal
+per-run reporting noise. Native execution of both dispatch choices, backend
+race tests, compacted runtime packages, and the compacted `src/wago` suite pass.
+
+The same initial model was prototyped natively on AMD64, where six modules
+shrunk by 185 bytes but regexmatch grew by 24 bytes, for a net 161-byte corpus
+reduction. The growth came from replacing two five-label tables inside one
+function; fixed dispatch bytes alone did not capture their emitted edge-code
+interaction. That AMD64 change was rejected and reverted. The existing
+five-label threshold remains in place until the finalizer owns explicit case
+fragments and can compare their actual encoded lengths without speculative
+whole-function compilation.
+
 ### Commands
 
 ```sh
