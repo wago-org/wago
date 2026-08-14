@@ -177,6 +177,9 @@ func TestRel32SiteCounting(t *testing.T) {
 	if got, want := unsafe.Sizeof(Rel32Site{}), uintptr(8); got != want {
 		t.Fatalf("rel32 site size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(Asm{}), uintptr(80); got != want {
+		t.Fatalf("asm size = %d, want %d", got, want)
+	}
 }
 
 func TestRel32SiteRewrite(t *testing.T) {
@@ -218,6 +221,25 @@ func TestBindRel32TailSeparatesCodeAndScratch(t *testing.T) {
 	a.B = append(a.B, make([]byte, cap(a.B)-len(a.B))...)
 	if got := a.Rel32Sites; len(got) != 2 || got[0].Kind() != Rel32Jmp || got[1].Kind() != Rel32Jcc {
 		t.Fatalf("tail-backed sites corrupted by code writes: %+v", got)
+	}
+}
+
+func TestResetRel32RecorderUsesInlineFallback(t *testing.T) {
+	a := Asm{}
+	a.ResetRel32Recorder(4)
+	if got, want := cap(a.Rel32Sites), 1; got != want {
+		t.Fatalf("inline site capacity = %d, want %d", got, want)
+	}
+	a.B = append(a.B, 0xe9)
+	site := a.Len()
+	a.B = append(a.B, 0, 0, 0, 0)
+	a.PatchRel32(site, a.Len())
+	if got := len(a.Rel32Sites); got != 1 {
+		t.Fatalf("inline site count = %d, want 1", got)
+	}
+	a.ResetRel32Recorder(0)
+	if a.Rel32Sites != nil {
+		t.Fatalf("disabled recorder retained inline storage")
 	}
 }
 

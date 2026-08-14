@@ -689,15 +689,11 @@ func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
-	sc.asm.Rel32Count = 0
 	if nativeCompactionEnabled {
-		sc.asm.Rel32Sites = sc.asm.Rel32Sites[:0]
-		sc.asm.Rel32SiteLimit = maxAMD64FinalizerRel32Sites
+		sc.asm.ResetRel32Recorder(maxAMD64FinalizerRel32Sites)
 	} else {
-		sc.asm.Rel32Sites = nil
-		sc.asm.Rel32SiteLimit = 0
+		sc.asm.ResetRel32Recorder(0)
 	}
-	sc.asm.Rel32Overflow = false
 	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.tailFrameSites = sc.tailFrameSites[:0]
@@ -1250,6 +1246,14 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				var st *CodegenStats
 				if ms != nil {
 					st = ms.Funcs[i]
+				}
+				if nativeCompactionEnabled {
+					ws.scratch.asm.Rel32Sites = nil
+					ws.scratch.rel32TailBound = false
+					arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
+					if ws.scratch.asm.BindRel32Storage(arenaTail, maxAMD64FinalizerRel32Sites) {
+						ws.scratch.rel32TailBound = true
+					}
 				}
 				hints := allHints[i]
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)

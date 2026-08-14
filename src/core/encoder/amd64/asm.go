@@ -32,10 +32,11 @@ const (
 
 type Asm struct {
 	B              []byte
-	UsesBMI2       bool
-	Rel32Count     int
 	Rel32Sites     []Rel32Site
+	Rel32Count     int
 	Rel32SiteLimit int
+	rel32Inline    [1]Rel32Site
+	UsesBMI2       bool
 	Rel32Overflow  bool
 }
 
@@ -84,6 +85,39 @@ func (s *Rel32Site) setTarget(target int) {
 // records at any byte-slice alignment. The alignment slop is never committed as
 // code.
 func Rel32ScratchSize(capacity int) int { return capacity*int(unsafe.Sizeof(Rel32Site{})) + 7 }
+
+// ResetRel32Recorder retains external/tail storage when present and otherwise
+// uses one record from padding already available in Asm. The inline fallback
+// covers the common tiny function without a heap allocation.
+func (a *Asm) ResetRel32Recorder(limit int) {
+	a.Rel32Count = 0
+	a.Rel32SiteLimit = limit
+	a.Rel32Overflow = false
+	if limit == 0 {
+		a.Rel32Sites = nil
+	} else if cap(a.Rel32Sites) > len(a.rel32Inline) {
+		a.Rel32Sites = a.Rel32Sites[:0]
+	} else {
+		a.Rel32Sites = a.rel32Inline[:0]
+	}
+}
+
+// BindRel32Storage binds records to caller-owned, pointer-free scratch. The
+// caller keeps storage alive and does not overwrite it until finalization.
+func (a *Asm) BindRel32Storage(storage []byte, capacity int) bool {
+	if capacity <= 0 || len(storage) == 0 {
+		return false
+	}
+	bytes := capacity * int(unsafe.Sizeof(Rel32Site{}))
+	address := uintptr(unsafe.Pointer(&storage[0]))
+	start := int(-address & 7)
+	if start+bytes > len(storage) {
+		return false
+	}
+	records := unsafe.Slice((*Rel32Site)(unsafe.Pointer(&storage[start])), capacity)
+	a.Rel32Sites = records[:0]
+	return true
+}
 
 // BindRel32Tail uses the uncommitted end of B as bounded compiler scratch and
 // caps B before that region, so subsequent instruction appends cannot overwrite
