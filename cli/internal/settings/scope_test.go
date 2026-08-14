@@ -119,6 +119,33 @@ func TestLocalRuntimeOverrideIsSparse(t *testing.T) {
 	}
 }
 
+func TestLocalSettingsSavePreservesConcurrentManifestUpdate(t *testing.T) {
+	dir := enterSettingsTestDir(t)
+	t.Setenv("WAGO_CONFIG", filepath.Join(t.TempDir(), "settings.json"))
+	writeTestManifest(t, dir)
+	target, err := Open(false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Set("simd", "off", false); err != nil {
+		t.Fatal(err)
+	}
+	id := "github.com/acme/logger"
+	if added, err := project.AddDependency(dir, id, "^1.0.0"); err != nil || !added {
+		t.Fatalf("AddDependency = %v, %v", added, err)
+	}
+	if err := target.Save(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := project.Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest["plugins"].(map[string]any)[id] != "^1.0.0" {
+		t.Fatalf("settings save lost concurrent plugin update: %#v", manifest)
+	}
+}
+
 func TestGlobalTargetIgnoresLocalManifest(t *testing.T) {
 	dir := enterSettingsTestDir(t)
 	t.Setenv("WAGO_CONFIG", filepath.Join(t.TempDir(), "settings.json"))

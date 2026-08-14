@@ -2,6 +2,7 @@ package project
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -127,6 +128,16 @@ func NewLockDocument() LockDocument {
 func LockPath(dir string) string { return filepath.Join(dir, LockFile) }
 
 func ReadLock(dir string) (LockDocument, error) {
+	var document LockDocument
+	err := withMetadataRead(dir, func(mutation *Mutation) error {
+		var err error
+		document, err = mutation.ReadLock()
+		return err
+	})
+	return document, err
+}
+
+func readLock(dir string) (LockDocument, error) {
 	data, err := os.ReadFile(LockPath(dir))
 	if os.IsNotExist(err) {
 		return NewLockDocument(), nil
@@ -178,11 +189,9 @@ func WriteLock(dir string, document LockDocument) error {
 	if automation.Locked() {
 		return fmt.Errorf("locked mode prevents changing %s", displayFilePath(LockPath(dir)))
 	}
-	data, err := EncodeLock(document)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(LockPath(dir), data, 0o644)
+	return WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+		return mutation.PublishLock(document)
+	})
 }
 
 func ValidateLock(document LockDocument) error {

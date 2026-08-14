@@ -49,8 +49,8 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		progress.Fail("Plugin resolution failed")
 		fatal("add: %v", err)
 	}
-	err = withPluginMutationLock(pluginContext(options.ctx), src, func() error {
-		manifest, err := project.Read(src)
+	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
+		manifest, err := mutation.ReadManifest()
 		if err != nil {
 			return err
 		}
@@ -67,7 +67,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		if err != nil {
 			return err
 		}
-		previous, err := project.ReadLock(src)
+		previous, err := mutation.ReadLock()
 		if err != nil {
 			return err
 		}
@@ -79,7 +79,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		if err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(src, buildDir, manifest, lock, options.verbose)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, options.verbose)
 	})
 	if err != nil {
 		progress.Fail("Plugin install failed")
@@ -104,8 +104,8 @@ func pkgRemove(name string, options pkgOpts) {
 	if err := project.ValidatePluginID(id); err != nil {
 		fatal("plugin remove: %v", err)
 	}
-	err = withPluginMutationLock(pluginContext(options.ctx), src, func() error {
-		manifest, err := project.Read(src)
+	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
+		manifest, err := mutation.ReadManifest()
 		if err != nil {
 			return err
 		}
@@ -120,7 +120,7 @@ func pkgRemove(name string, options pkgOpts) {
 		if err != nil {
 			return err
 		}
-		previous, err := project.ReadLock(src)
+		previous, err := mutation.ReadLock()
 		if err != nil {
 			return err
 		}
@@ -135,7 +135,7 @@ func pkgRemove(name string, options pkgOpts) {
 				return err
 			}
 		}
-		return stageAndPublishLockedState(src, buildDir, manifest, lock, false)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
 	})
 	if err != nil {
 		fatal("plugin remove: %v", err)
@@ -159,8 +159,8 @@ func pkgUpdate(target string, options pkgOpts) {
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
-	err = withPluginMutationLock(pluginContext(options.ctx), src, func() error {
-		manifest, err := project.Read(src)
+	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
+		manifest, err := mutation.ReadManifest()
 		if err != nil {
 			return err
 		}
@@ -181,7 +181,7 @@ func pkgUpdate(target string, options pkgOpts) {
 				return fmt.Errorf("%q is not a direct plugin", target)
 			}
 		}
-		previous, err := project.ReadLock(src)
+		previous, err := mutation.ReadLock()
 		if err != nil {
 			return err
 		}
@@ -193,7 +193,7 @@ func pkgUpdate(target string, options pkgOpts) {
 		if err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(src, buildDir, manifest, lock, options.verbose)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, options.verbose)
 	})
 	if err != nil {
 		fatal("plugin update: %v", err)
@@ -201,7 +201,7 @@ func pkgUpdate(target string, options pkgOpts) {
 	fmt.Printf("%s updated the complete plugin graph\n", cyan("✓"))
 }
 
-func stageAndPublishLockedState(manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool) error {
+func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool) error {
 	manifestData, err := project.EncodeManifest(manifest)
 	if err != nil {
 		return err
@@ -246,7 +246,7 @@ func stageAndPublishLockedState(manifestDir, buildDir string, manifest map[strin
 	if err := verifyStagedRuntime(bin); err != nil {
 		return err
 	}
-	return publishPluginTransaction(manifestDir, buildDir, staged, manifestData, lockData)
+	return publishPluginTransaction(mutation, buildDir, staged, manifestData, lockData)
 }
 
 func verifyStagedRuntime(binary string) error {

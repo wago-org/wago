@@ -1,17 +1,16 @@
 package plugin
 
 import (
+	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/wago-org/wago/cli/internal/project"
-	"github.com/wago-org/wago/internal/atomicfile"
 )
 
-func TestPublishPluginTransactionRollsBackManifestLockAndArtifact(t *testing.T) {
+func TestPublishPluginTransactionRollsBackBuildBeforeMetadataCommit(t *testing.T) {
 	root := t.TempDir()
 	manifestDir := filepath.Join(root, "project")
 	buildDir := filepath.Join(root, "build")
@@ -34,16 +33,15 @@ func TestPublishPluginTransactionRollsBackManifestLockAndArtifact(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(stagedDir, "artifact"), []byte("new artifact"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	previous := replacePluginFile
-	replacePluginFile = func(destination string, options atomicfile.Options, write func(io.Writer) error) error {
-		if destination == project.LockPath(manifestDir) {
-			return errors.New("injected lock publication failure")
-		}
-		return atomicfile.ReplaceFile(destination, options, write)
+	previous := publishProjectMetadata
+	publishProjectMetadata = func(*project.Mutation, []byte, []byte) error {
+		return errors.New("injected metadata publication failure")
 	}
-	t.Cleanup(func() { replacePluginFile = previous })
+	t.Cleanup(func() { publishProjectMetadata = previous })
 
-	err := publishPluginTransaction(manifestDir, buildDir, stagedDir, []byte("new manifest\n"), []byte("new lock\n"))
+	err := project.WithMutation(context.Background(), manifestDir, func(mutation *project.Mutation) error {
+		return publishPluginTransaction(mutation, buildDir, stagedDir, []byte("new manifest\n"), []byte("new lock\n"))
+	})
 	if err == nil {
 		t.Fatal("publication failure was ignored")
 	}
@@ -65,11 +63,21 @@ func TestPublishPluginTransactionPublishesCompleteStagedState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stagedDir, "artifact"), []byte("new artifact"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := publishPluginTransaction(manifestDir, buildDir, stagedDir, []byte("new manifest\n"), []byte("new lock\n")); err != nil {
+	manifestData, err := project.EncodeManifest(map[string]any{"$schema": project.SchemaURI, "plugins": map[string]any{}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	assertFileBytes(t, project.Path(manifestDir), []byte("new manifest\n"))
-	assertFileBytes(t, project.LockPath(manifestDir), []byte("new lock\n"))
+	lockData, err := project.EncodeLock(project.NewLockDocument())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := project.WithMutation(context.Background(), manifestDir, func(mutation *project.Mutation) error {
+		return publishPluginTransaction(mutation, buildDir, stagedDir, manifestData, lockData)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertFileBytes(t, project.Path(manifestDir), manifestData)
+	assertFileBytes(t, project.LockPath(manifestDir), lockData)
 	assertFileBytes(t, filepath.Join(buildDir, "artifact"), []byte("new artifact"))
 }
 
