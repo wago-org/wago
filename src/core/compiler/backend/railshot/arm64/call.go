@@ -1645,10 +1645,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 // directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
 func (f *fn) directCalleePreservesPins(localIdx int) bool {
-	if localIdx < 0 || localIdx >= len(f.calleePreservesPins) {
+	if localIdx < 0 || localIdx >= len(f.calleeABIClasses) {
 		return false
 	}
-	return f.calleePreservesPins[localIdx]
+	return f.calleeABIClasses[localIdx].preservesCallerPins()
 }
 
 func (f *fn) directCalleeEffects(localIdx int) shared.FuncEffects {
@@ -1659,7 +1659,7 @@ func (f *fn) directCalleeEffects(localIdx int) shared.FuncEffects {
 }
 
 func (f *fn) directCallPreservesBoundsCert(localIdx, resHint int) bool {
-	if f.bcKind == 0 || localIdx < 0 {
+	if !f.opt(optCallEffectBounds) || f.bcKind == 0 || localIdx < 0 {
 		return false
 	}
 	effects := f.directCalleeEffects(localIdx)

@@ -191,7 +191,7 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 }
 
 func TestDirectCallBoundsEffectGate(t *testing.T) {
-	f := fn{bcKind: 2, bcIdx: 3, calleeEffects: []shared.FuncEffects{0, shared.EffectWritesGlobals, shared.EffectGrowsMemory}}
+	f := fn{bcKind: 2, bcIdx: 3, calleeEffects: []shared.FuncEffects{0, shared.EffectWritesGlobals, shared.EffectGrowsMemory}, policy: currentCodegenPolicy()}
 	if !f.directCallPreservesBoundsCert(0, -1) {
 		t.Fatal("effect-free direct call did not preserve global-source certificate")
 	}
@@ -204,6 +204,29 @@ func TestDirectCallBoundsEffectGate(t *testing.T) {
 	}
 	if f.directCallPreservesBoundsCert(1, 4) {
 		t.Fatal("call result overwriting the source local preserved its certificate")
+	}
+}
+
+func TestInternalABIClassEffectGate(t *testing.T) {
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
+	h := funcHints{nLocals: 1, touchesMemory: true}
+	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiLeafScalar {
+		t.Fatalf("effect-safe memory leaf class = %d, want LeafScalar", got)
+	}
+	if got := classifyInternalABI(ft, 1, h, 0, false); got != abiGeneral {
+		t.Fatalf("disabled memory leaf class = %d, want General", got)
+	}
+	if got := classifyInternalABI(ft, 1, h, shared.EffectGrowsMemory, true); got != abiGeneral {
+		t.Fatalf("growing memory leaf class = %d, want General", got)
+	}
+	h.sparseGlobals = []shared.GlobalHint{{Index: 7, Score: 1}}
+	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+		t.Fatalf("sparse-global memory leaf class = %d, want General", got)
+	}
+	h.sparseGlobals = nil
+	h.hasCall = true
+	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+		t.Fatalf("call-making memory leaf class = %d, want General", got)
 	}
 }
 

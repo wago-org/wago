@@ -252,6 +252,29 @@ raytrace execution measured 259.8 us/op enabled versus 259.4 us/op disabled
 (+0.15%), and the measured JSON/JSON-SIMD rows remained within approximately
 1.3%; all retained zero execution allocations.
 
+### 2026-08-14 — finite ARM64 internal ABI classes, first slice
+
+ARM64 direct-call metadata now stores a one-byte finite class rather than a
+free-standing preservation boolean. The first two contracts are `General` and
+`LeafScalar`. The established call-free integer leaf class remains intact, and
+effect-safe memory-touching leaves may now join it when they have no declared
+locals, global access, nested calls, or `memory.grow`. The callee reserves the
+caller's pin bank and keeps parameters in incoming registers, so the caller can
+avoid pinned-local/global preservation and post-call reload work. Every rejected
+shape uses `General`; `WAGO_ARM64_NO_ABI_CLASSES=1` and the immutable
+per-compilation `abi-classes` option restore the narrower admission policy.
+
+Focused codegen tests prove the memory-leaf class removes the caller's
+preservation store/reload pair, and native execution tests compare enabled and
+disabled code through the real ARM64 wrapper. The corpus contains 1,544 admitted
+memory leaves across 14 modules. Thirteen module images shrink, by 11,184 native
+bytes in total, and none grows. A serialized five-sample benchmark with sixteen
+calls to one admitted leaf measured 21.68 ns/op versus 22.19 ns/op (-2.3%), with
+zero B/op and allocations. `many_funcs` compile B/op and allocations remain
+unchanged; median time moved from 248,205 to 248,999 ns/op (+0.32%). SQLite also
+kept identical B/op and allocations, with median backend time moving from 51.14
+to 50.94 ms (-0.39%).
+
 ---
 
 # 1. North-star architecture

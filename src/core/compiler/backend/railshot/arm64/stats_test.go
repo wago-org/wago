@@ -260,6 +260,45 @@ func TestBoundsCertificateAcrossEffectSafeDirectCallArm64(t *testing.T) {
 	}
 }
 
+func TestMemoryLeafScalarABIAvoidsCallPreservationArm64(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	caller := []byte{0x20, 0x00, 0x41, 0x02, 0x6a, 0x21, 0x00, 0x20, 0x00, 0x10, 0x01, 0x1a, 0x20, 0x00, 0x0b}
+	callee := []byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
+	raw := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(i32, i32))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(caller), wasmtest.Code(callee))),
+	)
+	m, err := wasm.DecodeModule(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compile := func(abiClasses bool) ModuleStats {
+		var stats ModuleStats
+		if _, compileErr := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"abi-classes": abiClasses, "inline": false}}); compileErr != nil {
+			t.Fatal(compileErr)
+		}
+		return stats
+	}
+	on, off := compile(true), compile(false)
+	if traffic := on.Funcs[0].LocalTraffic; traffic.CallPreservationStores != 0 || traffic.CallPreservationReloads != 0 {
+		t.Fatalf("LeafScalar call traffic = %+v, want no preservation", traffic)
+	}
+	if traffic := off.Funcs[0].LocalTraffic; traffic.CallPreservationStores == 0 || traffic.CallPreservationReloads == 0 {
+		t.Fatalf("General call traffic = %+v, want store and reload", traffic)
+	}
+	if got := on.Funcs[1].Peephole["abi-leaf-scalar-memory"]; got != 1 {
+		t.Fatalf("memory callee class count = %d, want 1", got)
+	}
+	for _, abiClasses := range []bool{false, true} {
+		got, runErr := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"abi-classes": abiClasses, "inline": false}}, 7)
+		if runErr != nil || got != 9 {
+			t.Fatalf("execute abi-classes=%t: got=%d err=%v, want 9", abiClasses, got, runErr)
+		}
+	}
+}
+
 func TestAliasAwarePendingLoadsArm64(t *testing.T) {
 	// Keep load [p+0,p+4) deferred across a disjoint store [p+4,p+8).
 	disjoint := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},

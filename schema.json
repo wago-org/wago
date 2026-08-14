@@ -60,6 +60,7 @@
           "type": "object",
           "propertyNames": {
             "enum": [
+              "abi-classes",
               "accumulator-immediate",
               "addr-zext-elim",
               "affine-lea",
