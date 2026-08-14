@@ -2091,6 +2091,24 @@ B/op and allocations remain noise-level. D1 executes the same operation with
 the same flags while removing one fetched byte, so no runtime tradeoff is
 introduced.
 
+## Rejected: AMD64 accumulator imm32 encodings
+
+An encoder experiment selected the ModRM-free accumulator opcodes for ALU
+`RAX/EAX,imm32` and TEST `RAX/EAX,imm32`. The forms are semantically exact and
+saved 3,588 bytes across the 36-module Size suite (66,802,423 to 66,798,835).
+Ruby contributed 2,066 bytes, esbuild 1,009, SQLite 173, and `many_funcs` 170
+(3,563 to 3,393). Five-sample compile medians stayed inside the gate: Ruby
+moved -0.55% and esbuild +0.92%, with noise-level allocation movement.
+
+The dense `many_funcs` execution workload rejected the change. A first five
+sample run suggested a noisy +0.9% regression; ten serialized one-second
+samples then moved the median from approximately 7.567 to 9.159 ns/op
+(+21.0%), with zero allocations in both cases. Each of its 170 tiny functions
+lost one byte, shifting the packed call-chain layout enough to overwhelm the
+small byte saving. The accumulator selection and its counters were removed.
+Any future attempt must be objective/layout-aware and pass Size-profile runtime
+measurement; semantic equivalence alone is not a sufficient performance proof.
+
 ### Commands
 
 ```sh
