@@ -24,12 +24,17 @@ var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
 var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
+
+// WAGO_FINALIZER_DELETIONS selects an older bounded Size/Embedded policy for
+// exact rollout comparisons. It can only lower the immutable policy limit.
 var finalizerDeletionLimitOverride = func() int {
 	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
 	case "8":
 		return 8
 	case "16":
 		return 16
+	case "32":
+		return 32
 	default:
 		return 0
 	}

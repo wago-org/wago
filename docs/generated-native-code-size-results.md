@@ -1724,6 +1724,47 @@ backend, focused GC race suite, and compacted corpus execution pass on the Ryzen
 host. The host lacks the optional pinned spec-v3 product corpus, so the two
 product tests that require that checkout were not included in this gate.
 
+## Forty-eight-range bounded finalization
+
+The fixed per-function offset-map budget now admits forty-eight deleted ranges
+for Size and Embedded, while Speed and Balanced remain at eight.
+`WAGO_FINALIZER_DELETIONS=32` is the exact policy rollback oracle. The offset
+map and backend deletion inventories remain fixed-capacity value storage: this
+adds no per-site or per-function heap allocation, and correctness still leaves
+all candidates beyond the bound in their maximal-safe form.
+
+The capacity was selected by measurement rather than rounding to the next power
+of two. A 64-range prototype reduced the 36-module AMD64 Size image from
+67,956,633 to 67,666,606 bytes (-290,027, -0.43%), but raised Ruby Size compile
+time from 890,865,278 to 972,001,705 ns/op (+9.11%). Esbuild was neutral at
+-0.12%. That prototype exceeded the proposed Size compile-time gate and was
+rejected.
+
+At forty-eight ranges, the AMD64 image falls to 67,764,506 bytes (-192,127,
+-0.28% versus thirty-two). Ruby supplies 176,698 bytes of the reduction;
+`regexmatch` contributes 6,481, SQLite 3,059, wasm3 1,975, Lua 1,717, and
+esbuild 1,203. Five serialized samples put Ruby at 890,414,173 to 907,452,169
+ns/op (+1.91%) and esbuild at 482,208,769 to 483,749,583 ns/op (+0.32%). Median
+allocation movement is noise-level (+1,208 B and 19 allocations for Ruby;
++1,376 B and 46 allocations for esbuild).
+
+ARM64 exhausts its useful candidates sooner: both the forty-eight- and
+sixty-four-range trials reduce the same two modules and no others. The
+36-module image moves from 77,023,124 to 77,022,908 bytes (-216): 160 bytes in
+`regexmatch` and 56 in Ruby. Five serialized forty-eight-range samples put Ruby
+at 577,392,125 to 570,395,834 ns/op (-1.21%) and esbuild at 316,543,458 to
+312,064,959 ns/op (-1.42%). Allocation movement is noise-level. The shared
+forty-eight-range representation is therefore justified by AMD64; ARM64 simply
+retains its later unused capacity without taking extra compile work.
+
+Policy, maximum-capacity deletion, exhaustive offset-map boundary, backend,
+race, and compacted corpus-execution tests pass on both architectures. Two
+AMD64 staged GC product goldens shrink with the admitted branch encodings (by
+2 and 1 native bytes, with matching codec deltas) and were updated after their
+execution and codec round trips passed. The host's remaining broad `src/wago`
+failures require its absent optional spec-v3 checkout or a newer `wat2wasm` for
+table64 syntax; focused corpus and product gates pass.
+
 ### Commands
 
 ```sh

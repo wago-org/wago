@@ -104,9 +104,9 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 	if got := f.finalizerDeletionLimit(); got != shared.MaxOffsetMapDeletions {
 		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, shared.MaxOffsetMapDeletions)
 	}
-	finalizerDeletionLimitOverride = 16
-	if got := f.finalizerDeletionLimit(); got != 16 {
-		t.Fatalf("finalizer deletion limit override = %d, want 16", got)
+	finalizerDeletionLimitOverride = 32
+	if got := f.finalizerDeletionLimit(); got != 32 {
+		t.Fatalf("finalizer deletion limit override = %d, want 32", got)
 	}
 	finalizerDeletionLimitOverride = 0
 
