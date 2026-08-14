@@ -964,3 +964,17 @@ guardrail, instead of being treated as performance-neutral compaction.
 Focused encoder and objective-policy tests, the ARM64 backend and race suite,
 the compact/fuzz corpus, and the complete Size execution corpus with finalizer
 validation passed.
+
+### AMD64 constant-materialization follow-through
+
+AMD64 already selects the complete set of useful register-immediate move forms:
+zero-extending imm32, sign-extending imm32, and `movabs` only when neither
+narrow form is legal. It has no logical-immediate equivalent to ARM64.
+
+An additional prototype audited eight compiler-authored `mov r32,0` sites whose
+flags are dead and replaced them with `xor r32,r32`. The focused encoding saved
+three bytes, but the exact 36-module AMD64 Size ledger reported zero emitted
+sites and no byte change (66,040,168 bytes in both configurations). Those sites
+belong to optional native-GC helper shapes absent from the checked-in corpus.
+The prototype was removed under the corpus-hit acceptance rule; the general
+constant loader and its flag-preserving behavior remain unchanged.
