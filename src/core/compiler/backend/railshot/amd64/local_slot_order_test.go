@@ -58,6 +58,22 @@ func TestLocalSlotOrderShrinksHotUnpinnedFrameRefs(t *testing.T) {
 	}
 }
 
+func TestLocalSlotOrderDefaultsOnForSize(t *testing.T) {
+	m := localSlotOrderModule(t)
+	size := OptimizeSize
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if got := stats.Funcs[0].Peephole["local-slot-order"]; got != 1 {
+		t.Fatalf("default Size local-slot-order hits = %d, want 1", got)
+	}
+}
+
 func TestLocalSlotOrderDoesNotGrowMixedCompactFrame(t *testing.T) {
 	// Declaration order packs the two i32s after one i64 into 16 bytes. Putting
 	// hot local 1 first would introduce an alignment gap and grow it to 24 bytes.

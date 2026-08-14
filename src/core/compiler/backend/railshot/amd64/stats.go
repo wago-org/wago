@@ -76,9 +76,8 @@ var (
 	compactLowPinEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_LOW_PIN") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
-	// low homes during finalization. It remains opt-in while broader shrink-only
-	// layouts are admitted and prove a material corpus-level reduction.
-	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") == "1"
+	// low homes during finalization. WAGO_LOCAL_SLOT_ORDER=0 is the rollback.
+	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") != "0"
 	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
 	// slot when its still-live result must be evicted from a register.
 	teeSpillElideEnabled = os.Getenv("WAGO_NO_TEE_SPILL_ELIDE") != "1"
