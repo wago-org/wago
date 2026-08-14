@@ -12,6 +12,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/cli/internal/watchstart"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 	"github.com/wago-org/wago/cli/runtime/internal/profile"
 	runtimeversion "github.com/wago-org/wago/cli/runtime/internal/version"
@@ -35,6 +36,7 @@ var root = buildCommandRegistry()
 
 // Main runs the runtime command matching os.Args.
 func Main(v string) {
+	watchstart.Await()
 	version = v
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {

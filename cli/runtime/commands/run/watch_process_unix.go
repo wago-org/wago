@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/wago-org/wago/cli/internal/watchstart"
 	"golang.org/x/sys/unix"
 )
 
@@ -50,10 +51,11 @@ func prepareWatchedCommand(command *exec.Cmd) error {
 		attributes.Setpgid = false
 	}
 	command.SysProcAttr = attributes
-	return nil
+	return watchstart.Prepare(command)
 }
 
 func abortWatchedCommand(command *exec.Cmd) {
+	watchstart.Abort(command)
 	restoreWatchedTerminal(command)
 }
 

@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"runtime"
 	"syscall"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/watchstart"
 	"golang.org/x/sys/unix"
 )
 
@@ -17,35 +17,16 @@ func prepareWatchedProcessTracking() error {
 	return nil
 }
 
-func configureWatchedCommandStart(attributes *syscall.SysProcAttr) {
-	attributes.Ptrace = true
-}
+func configureWatchedCommandStart(*syscall.SysProcAttr) {}
 
-func lockWatchedCommandStart() func() {
-	runtime.LockOSThread()
-	return runtime.UnlockOSThread
-}
+func lockWatchedCommandStart() func() { return func() {} }
 
 func waitWatchedCommandStart(command *exec.Cmd) error {
-	var status syscall.WaitStatus
-	for {
-		_, err := syscall.Wait4(command.Process.Pid, &status, syscall.WUNTRACED, nil)
-		if errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		break
-	}
-	if !status.Stopped() {
-		return fmt.Errorf("watched process did not stop before tracking: %v", status)
-	}
-	return nil
+	return watchstart.Started(command)
 }
 
 func resumeWatchedCommand(command *exec.Cmd) error {
-	return unix.PtraceDetach(command.Process.Pid)
+	return watchstart.Release(command)
 }
 
 func finishWatchedProcessTracking(tracker *watchedProcessTracker) {

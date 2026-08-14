@@ -33,6 +33,7 @@ func startWatchedProcessTracking(*watchedProcessTracker) error {
 }
 
 func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
+	_ = tracker.drainEvents()
 	deadline := time.Now().Add(100 * time.Millisecond)
 	for {
 		reapWatchedLinuxProcesses()
