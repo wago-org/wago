@@ -17,6 +17,23 @@ func TestFuncHintsSizeArm64(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesUnobservableInitialLocalsARM64(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x1a, // local.get 0; drop: initial value is observable
+		0x41, 0x01, 0x21, 0x01, // local 1 first set in entry prefix
+		0x02, 0x40, // block
+		0x41, 0x02, 0x21, 0x02, // local 2 set under control, but never read
+		0x0b, 0x0b,
+	}
+	h, err := scanBodyBytes(body, 3, 0, 0)
+	if err != nil {
+		t.Fatalf("scanBodyBytes: %v", err)
+	}
+	if got, want := h.entryInitialized, uint64(1)<<1|uint64(1)<<2; got != want {
+		t.Fatalf("entryInitialized = %#x, want %#x", got, want)
+	}
+}
+
 func TestTableMutationHints(t *testing.T) {
 	body := []byte{
 		0x41, 0x00, // i32.const 0

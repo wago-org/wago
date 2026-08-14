@@ -76,9 +76,9 @@ type funcHints struct {
 	// local.get. It is filled by the production byte scanner and lets bounded
 	// regional allocation release a cache register without another body walk.
 	localLastGet []uint32
-	// entryInitialized marks locals (up to 64) whose first access in the
-	// function's straight-line entry prefix is local.set/tee. Their Wasm zero
-	// value cannot be observed, so the prologue may skip initializing them.
+	// entryInitialized marks locals (up to 64) whose initial value is unobservable:
+	// either their first entry-prefix access is local.set/tee or they are never read.
+	// The prologue may skip initializing or homing those locals.
 	entryInitialized uint64
 
 	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
@@ -597,6 +597,7 @@ func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals
 	if term != 0x0b || s.r.has() {
 		return s.h, s.r.err(wasm.ErrInvalidInstruction, s.r.off())
 	}
+	s.noteNeverReadLocals()
 	return s.h, nil
 }
 
@@ -610,12 +611,17 @@ type byteBodyScanner struct {
 
 	entryPrefix     bool
 	entrySeen       uint64
+	localRead       uint64
 	memory64        bool
 	m               *wasm.Module
 	gcTypeLayouts   []codegen.GCTypeLayout
 	gcStructHelpers bool
 	moduleHints     []funcHints
 	importedFuncs   int
+}
+
+func (s *byteBodyScanner) noteNeverReadLocals() {
+	s.h.entryInitialized |= shared.UnreadLocalMask(s.nLocals, s.localRead)
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -754,6 +760,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
 			if int(idx) < s.nLocals {
+				if op == 0x20 && idx < 64 {
+					s.localRead |= uint64(1) << idx
+				}
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
 					if s.entrySeen&bit == 0 {

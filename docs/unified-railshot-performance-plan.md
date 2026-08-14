@@ -135,6 +135,24 @@ three-sample, two-second `many_funcs` compile benchmark measured a 252,713 ns/op
 median versus 252,897 ns/op at the preceding commit (-0.07%, treated as noise),
 with 343 allocs/op and approximately 138.9 KiB/op unchanged.
 
+### 2026-08-14 — never-read local initialization
+
+The same one-pass local-access scan now records a temporary 64-bit `local.get`
+mask. At the end of the scan, locals with no reads are marked as having an
+unobservable initial value. This removes parameter-home stores and declared-local
+zeroing even when no entry-prefix write exists. The mask lives only in the stack
+scanner, so `funcHints` remains 200 bytes on ARM64 and ordinary compilation adds
+no allocation. AST-only functions and locals beyond index 63 keep the established
+eager fallback; EH and exact GC-root plans continue to clear the optimization.
+
+Across 1,333 checked-in Wasm modules, the broader proof records 2,440 parameter
+home eliminations in 24 modules, up from 22 at the preceding commit, plus 170
+additional declared-local initialization eliminations. Every affected module
+shrinks on Darwin/ARM64, by 11,256 native bytes in total; the largest reduction
+is 5,792 bytes in `bench/corpus/script.wasm`. A serialized three-sample,
+two-second `many_funcs` compile benchmark measured a 249,592 ns/op median versus
+251,990 ns/op (-0.95%), with 343 allocs/op and B/op unchanged.
+
 ---
 
 # 1. North-star architecture

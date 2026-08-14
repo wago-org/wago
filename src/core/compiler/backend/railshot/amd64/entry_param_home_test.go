@@ -12,13 +12,15 @@ func TestEntryOverwrittenParameterSkipsHomeAMD64(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		readFirst bool
+		unused    bool
 		wantElide int
 	}{
 		{name: "overwritten", wantElide: 1},
 		{name: "read-near-miss", readFirst: true},
+		{name: "unused", unused: true, wantElide: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := entryOverwrittenParamModuleAMD64(t, tc.readFirst)
+			m := entryOverwrittenParamModuleAMD64(t, tc.readFirst, tc.unused)
 			var stats ModuleStats
 			if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
 				t.Fatalf("compile: %v", err)
@@ -33,7 +35,7 @@ func TestEntryOverwrittenParameterSkipsHomeAMD64(t *testing.T) {
 	}
 }
 
-func entryOverwrittenParamModuleAMD64(t testing.TB, readFirst bool) *wasm.Module {
+func entryOverwrittenParamModuleAMD64(t testing.TB, readFirst, unused bool) *wasm.Module {
 	t.Helper()
 	params := make([]wasm.ValType, 16)
 	for i := range params {
@@ -50,9 +52,13 @@ func entryOverwrittenParamModuleAMD64(t testing.TB, readFirst bool) *wasm.Module
 	if readFirst {
 		body = append(body, 0x20, 0x0f, 0x1a)
 	}
-	body = append(body,
-		0x41, 0x07, 0x21, 0x0f, // i32.const 7; local.set 15
-		0x20, 0x0f, // local.get 15
-		0x0b)
+	if unused {
+		body = append(body, 0x41, 0x07, 0x0b) // i32.const 7; end
+	} else {
+		body = append(body,
+			0x41, 0x07, 0x21, 0x0f, // i32.const 7; local.set 15
+			0x20, 0x0f, // local.get 15
+			0x0b)
+	}
 	return mod1(t, params, []wasm.ValType{wasm.I32}, body)
 }

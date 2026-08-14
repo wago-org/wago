@@ -72,8 +72,9 @@ type funcHints struct {
 	// local.get. It lets the bounded regional cache return a register as soon as
 	// that local's lifetime ends without rescanning the body during compilation.
 	localLastGet []uint32
-	// entryInitialized marks locals whose first access in the straight-line entry
-	// prefix is local.set/tee, making their declared zero unobservable.
+	// entryInitialized marks locals (up to 64) whose initial value is unobservable:
+	// either their first entry-prefix access is local.set/tee or they are never read.
+	// The prologue may skip initializing or homing those locals.
 	entryInitialized uint64
 
 	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
@@ -503,6 +504,7 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 	if term != 0x0b || s.r.has() {
 		return s.h, s.r.err(wasm.ErrInvalidInstruction, s.r.off())
 	}
+	s.noteNeverReadLocals()
 	return s.h, nil
 }
 
@@ -520,6 +522,11 @@ type byteBodyScanner struct {
 	importedFuncs  int
 	entryPrefix    bool
 	entrySeen      uint64
+	localRead      uint64
+}
+
+func (s *byteBodyScanner) noteNeverReadLocals() {
+	s.h.entryInitialized |= shared.UnreadLocalMask(s.nLocals, s.localRead)
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
@@ -637,6 +644,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
 			if int(idx) < s.nLocals {
+				if op == 0x20 && idx < 64 {
+					s.localRead |= uint64(1) << idx
+				}
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
 					if s.entrySeen&bit == 0 {

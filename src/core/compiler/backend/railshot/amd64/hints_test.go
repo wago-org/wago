@@ -611,8 +611,8 @@ func TestScanBodyBytesMalformedImmediateReturnsError(t *testing.T) {
 func TestScanBodyBytesEntryInitializedLocals(t *testing.T) {
 	// local 0 is read before its set and must retain Wasm's zero initialization.
 	// Local 1's first access is a set in the straight-line entry prefix, so its
-	// prologue zero is dead. Local 2 is first set inside a block and stays
-	// conservative because that structured region can have alternate edges.
+	// prologue zero is dead. Local 2 is first set inside a block, but is never
+	// read at all, so its initial value is independently unobservable.
 	body := []byte{
 		0x20, 0x00, 0x1a, // local.get 0; drop
 		0x41, 0x01, 0x21, 0x01, // i32.const 1; local.set 1
@@ -626,7 +626,7 @@ func TestScanBodyBytesEntryInitializedLocals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
-	if got, want := h.entryInitialized, uint64(1)<<1; got != want {
+	if got, want := h.entryInitialized, uint64(1)<<1|uint64(1)<<2; got != want {
 		t.Fatalf("entryInitialized = %#x, want %#x", got, want)
 	}
 }
