@@ -16,6 +16,8 @@ import (
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 
+const maxAMD64FinalizerRel32Sites = 256
+
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
@@ -83,7 +85,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
 		return result, 0, nil
 	}
 	if !nativeCompactionEnabled || f.hasLoop || f.hasJumpTableData ||
-		len(f.customInstructions) != 0 || f.a.Rel32Count != 0 {
+		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
 		return identity()
 	}
 	frameSize := f.frameSize()
@@ -147,6 +149,14 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
 	}
 	copy(f.a.B[dst:], f.a.B[src:])
 	code := f.a.B[:offsets.FinalLen()]
+	for _, site := range f.a.Rel32Sites {
+		at, okAt := offsets.Map(site.At)
+		target, okTarget := offsets.Map(site.Target)
+		if !okAt || !okTarget || at < 0 || at+4 > len(code) || target < 0 || target > len(code) {
+			return shared.FinalizeResult{}, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", site.At, site.Target)
+		}
+		binary.LittleEndian.PutUint32(code[at:], uint32(int32(target-(at+4))))
+	}
 	return shared.FinalizeResult{Code: code, Offsets: offsets}, len(f.a.B) - len(code), nil
 }
 

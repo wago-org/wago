@@ -689,6 +689,14 @@ func (sc *scratch) reset() {
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
 	sc.asm.Rel32Count = 0
+	if nativeCompactionEnabled {
+		sc.asm.Rel32Sites = sc.asm.Rel32Sites[:0]
+		sc.asm.Rel32SiteLimit = maxAMD64FinalizerRel32Sites
+	} else {
+		sc.asm.Rel32Sites = nil
+		sc.asm.Rel32SiteLimit = 0
+	}
+	sc.asm.Rel32Overflow = false
 	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.tailFrameSites = sc.tailFrameSites[:0]

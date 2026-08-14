@@ -2,6 +2,7 @@ package amd64
 
 import (
 	"bytes"
+	"reflect"
 	"testing"
 )
 
@@ -157,12 +158,34 @@ func TestAssemblerPatchingAndAlignment(t *testing.T) {
 }
 
 func TestRel32SiteCounting(t *testing.T) {
-	var a Asm
+	a := Asm{Rel32SiteLimit: 1}
 	first := a.JmpPlaceholder()
 	a.PatchRel32(first, a.Len())
 	a.JmpBack(0)
 	if got, want := a.Rel32Count, 2; got != want {
 		t.Fatalf("rel32 site count = %d, want %d", got, want)
+	}
+	if got, want := len(a.Rel32Sites), 1; got != want {
+		t.Fatalf("retained rel32 sites = %d, want %d", got, want)
+	}
+	if !a.Rel32Overflow {
+		t.Fatal("bounded rel32 recorder did not report overflow")
+	}
+	if got := a.Rel32Sites[0]; got.At != first || got.Target != 5 {
+		t.Fatalf("first rel32 site = %+v, want at=%d target=5", got, first)
+	}
+}
+
+func TestRel32SiteRewrite(t *testing.T) {
+	a := Asm{Rel32SiteLimit: 4}
+	one := a.JmpPlaceholder()
+	a.PatchRel32(one, 20)
+	two := a.JmpPlaceholder()
+	a.PatchRel32(two, 30)
+	a.RetargetRel32(one, 40)
+	a.ForgetRel32(two)
+	if got, want := a.Rel32Sites, []Rel32Site{{At: one, Target: 40}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rewritten sites = %+v, want %+v", got, want)
 	}
 }
 

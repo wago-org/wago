@@ -10,6 +10,9 @@ import (
 )
 
 func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
+	oldCompact := nativeCompactionEnabled
+	nativeCompactionEnabled = false
+	t.Cleanup(func() { nativeCompactionEnabled = oldCompact })
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x10, 0x01, 0x0b}},

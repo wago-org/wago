@@ -28,14 +28,21 @@ const (
 )
 
 type Asm struct {
-	B          []byte
-	UsesBMI2   bool
-	Rel32Count int
+	B              []byte
+	UsesBMI2       bool
+	Rel32Count     int
+	Rel32Sites     []Rel32Site
+	Rel32SiteLimit int
+	Rel32Overflow  bool
 }
 
 // Rel32Count records explicitly emitted function-local PC-relative
 // displacements. Initial frame compaction admits only functions with none; a
 // later bounded site inventory can retain their exact offsets for relaxation.
+type Rel32Site struct {
+	At     int
+	Target int
+}
 
 // Grow ensures B has capacity for at least n bytes, reusing the existing backing
 // array when it is already large enough. Used to pre-size a reused encoder buffer
@@ -709,8 +716,39 @@ func (a *Asm) JmpBack(target int) {
 	a.imm32(int32(target - (off + 4)))
 }
 
-func (a *Asm) recordRel32(_, _ int) {
+func (a *Asm) recordRel32(at, target int) {
 	a.Rel32Count++
+	if a.Rel32SiteLimit == 0 {
+		return
+	}
+	if len(a.Rel32Sites) >= a.Rel32SiteLimit {
+		a.Rel32Overflow = true
+		return
+	}
+	a.Rel32Sites = append(a.Rel32Sites, Rel32Site{At: at, Target: target})
+}
+
+// RetargetRel32 updates the symbolic target of every retained record for at.
+// It is used by size-preserving peepholes that change branch semantics after the
+// original displacement was patched.
+func (a *Asm) RetargetRel32(at, target int) {
+	for i := range a.Rel32Sites {
+		if a.Rel32Sites[i].At == at {
+			a.Rel32Sites[i].Target = target
+		}
+	}
+}
+
+// ForgetRel32 removes retained records for a displacement field eliminated by
+// a later rewrite. The underlying scratch is retained for the next function.
+func (a *Asm) ForgetRel32(at int) {
+	out := a.Rel32Sites[:0]
+	for _, site := range a.Rel32Sites {
+		if site.At != at {
+			out = append(out, site)
+		}
+	}
+	a.Rel32Sites = out
 }
 
 func (a *Asm) Cmovcc(cc Cond, dst, src Reg, w bool) {
