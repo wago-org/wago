@@ -32,21 +32,21 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals         int
-	inlineCallSites uint32 // direct call sites targeting this local function
-	hasCall         bool   // any direct or indirect call
-	hasTailCall     bool   // any return_call/return_call_indirect/return_call_ref
-	callsSelf       bool   // a direct call to the function's own index
-	touchesMemory   bool   // any linear-memory op
-	usesBulkMem     bool   // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
-	mutatesTable    bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	nLocals       int
+	hasCall       bool // any direct or indirect call
+	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
+	callsSelf     bool // a direct call to the function's own index
+	touchesMemory bool // any linear-memory op
+	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
+	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
 	// maxControlDepth is the greatest simultaneously open structured-control
 	// depth, excluding the implicit function frame. Byte-backed production
 	// modules populate it during the existing one-pass hint scan. The byte uses
 	// existing alignment padding; 255 is a saturated fallback sentinel.
 	maxControlDepth  uint8
-	gcResolverSites  int  // conservative direct scalar/length resolver site count
-	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
+	inlineCallSites  uint16 // saturated direct call sites targeting this local function
+	gcResolverSites  int    // conservative direct scalar/length resolver site count
+	gcSharedResolver bool   // module decision: shared island beats one-site inline crossover
 
 	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
 	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set
@@ -858,7 +858,7 @@ func (s *byteBodyScanner) noteInlineCallSite(globalIdx uint32) {
 	if local < 0 || local >= len(s.moduleHints) {
 		return
 	}
-	if s.moduleHints[local].inlineCallSites != ^uint32(0) {
+	if s.moduleHints[local].inlineCallSites != ^uint16(0) {
 		s.moduleHints[local].inlineCallSites++
 	}
 }
