@@ -77,7 +77,7 @@ const offPassiveDataPtr = abi.PassiveDataPtrOffset
 // per-call "load *trap; test; branch" check — a trap never returns through an
 // intermediate frame. Terminal, so it may freely clobber the call scratch (and SP
 // last).
-func (f *fn) emitTrap(code, function uint32) {
+func (f *fn) emitTrapRecord(code, function uint32) {
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr)) // X9 = &trapCell
 	f.a.MovImm64(X16, uint64(function+1))
 	f.st32(X9, 16, X16)
@@ -88,6 +88,9 @@ func (f *fn) emitTrap(code, function uint32) {
 		f.a.MovImm64(X16, uint64(uint32(code)))
 		f.st32(X9, 0, X16) // *trapCell = code
 	}
+}
+
+func (f *fn) emitTrapUnwind() {
 	// AArch64 has no return address on the stack: BL wrote it into LR, which a
 	// trap deep in the wasm call tree may have clobbered. The trampoline records
 	// both the foreign-stack save-area SP and the continuation PC in basedata, so
@@ -145,6 +148,35 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	shareUnwind := false
+	if sharedTrapUnwindEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		groups := 0
+		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+			sites := f.scratchState().trapSites[code]
+			if len(sites) == 0 {
+				continue
+			}
+			sortTrapSitesByFunction(sites)
+			groups++
+			for i := 1; i < len(sites); i++ {
+				if sites[i].function != sites[i-1].function {
+					groups++
+				}
+			}
+		}
+		// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail
+		// cost 24, and the extra branch is confined to a terminal cold path.
+		shareUnwind = groups >= 2
+	}
+	sharedUnwind := -1
+	sharedTails := 0
+	if shareUnwind {
+		// The epilogue precedes this cold region, so normal execution cannot fall
+		// through into the island. Emit it first and patch each later B backward;
+		// this needs no per-function branch-site allocation.
+		sharedUnwind = f.a.Len()
+		f.emitTrapUnwind()
+	}
 	for code := uint32(1); code <= trapAtomicUnaligned; code++ { // deterministic order
 		sites := f.scratchState().trapSites[code]
 		if len(sites) == 0 {
@@ -185,12 +217,28 @@ func (f *fn) emitTrapStubs() {
 				}
 			}
 			f.storeModuleGlobals(X9)
-			f.emitTrap(code, first.function)
+			f.emitTrapRecord(code, first.function)
+			if shareUnwind {
+				site := f.a.Branch()
+				if !f.a.PatchBranch26(site, sharedUnwind) {
+					// A pathological >128 MiB function remains correct: discard the
+					// just-emitted B and retain this group's local unwind.
+					f.a.B = f.a.B[:site]
+					f.emitTrapUnwind()
+				} else {
+					sharedTails++
+				}
+			} else {
+				f.emitTrapUnwind()
+			}
 			if commonJump >= 0 {
 				f.a.PatchBranch26(commonJump, common)
 			}
 			start = end
 		}
+	}
+	if sharedTails != 0 {
+		f.stats.peepN("cold-trap-unwind-share", sharedTails-1)
 	}
 }
 

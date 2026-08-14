@@ -44,6 +44,11 @@ var uxtwAddEnabled = os.Getenv("WAGO_ARM64_NOUXTW") != "1"
 // nodes. WAGO_ARM64_NOPROVENANCE=1 retains the pre-facts path for A/B checks.
 var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 
+// sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
+// terminal trap-unwind tails with one function-local cold tail. The hot trap
+// checks and the Speed/Balanced layouts are unchanged.
+var sharedTrapUnwindEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_UNWIND") != "1"
+
 // smallFrameAdjustEnabled replaces the fixed MOVZ+MOVK+SUB/ADD frame sequences
 // with one immediate SP adjustment for the overwhelmingly common <=4095-byte
 // frames. The reserved trailing words become NOPs so code offsets stay stable.
