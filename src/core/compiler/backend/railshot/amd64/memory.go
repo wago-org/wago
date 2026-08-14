@@ -181,6 +181,7 @@ func (f *fn) emitTrapStubs() {
 				end++
 			}
 			group := sites[start:end]
+			f.stats.addTrapGroup()
 			first := group[0]
 			commonJump := -1
 			if len(group) == 1 {
