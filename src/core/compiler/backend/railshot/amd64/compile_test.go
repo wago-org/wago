@@ -57,6 +57,30 @@ func TestHintSizedScratchRemovesFixedArenaBacking(t *testing.T) {
 	}
 }
 
+func TestModuleRel32SiteCapIsOptInAndSkipsSmallModules(t *testing.T) {
+	old := nativeCompactionEnabled
+	t.Cleanup(func() { nativeCompactionEnabled = old })
+
+	small := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, maxAMD64FinalizerRel32Sites-1)}}}
+	large := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, maxAMD64FinalizerRel32Sites)}}}
+	nativeCompactionEnabled = false
+	if got := moduleRel32SiteCap(large); got != 0 {
+		t.Fatalf("disabled rel32 cap = %d, want 0", got)
+	}
+	nativeCompactionEnabled = true
+	if got := moduleRel32SiteCap(small); got != 0 {
+		t.Fatalf("small-module rel32 cap = %d, want 0", got)
+	}
+	if got := moduleRel32SiteCap(large); got != maxAMD64FinalizerRel32Sites {
+		t.Fatalf("large-module rel32 cap = %d, want %d", got, maxAMD64FinalizerRel32Sites)
+	}
+	sc := newScratchWithStackCap(minStackArenaCap)
+	sc.reserveRel32Sites(maxAMD64FinalizerRel32Sites)
+	if got := cap(sc.asm.Rel32Sites); got != maxAMD64FinalizerRel32Sites {
+		t.Fatalf("reserved rel32 cap = %d, want %d", got, maxAMD64FinalizerRel32Sites)
+	}
+}
+
 func TestModuleControlFrameCapIsExactAndLazy(t *testing.T) {
 	m := &wasm.Module{Code: make([]wasm.Func, 2)}
 	if got := moduleControlFrameCap(m, []funcHints{{}, {}}); got != 0 {

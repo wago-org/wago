@@ -641,6 +641,28 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
 }
 
+func (sc *scratch) reserveRel32Sites(capacity int) {
+	if capacity != 0 && cap(sc.asm.Rel32Sites) < capacity {
+		sc.asm.Rel32Sites = make([]amd64.Rel32Site, 0, capacity)
+	}
+}
+
+// moduleRel32SiteCap pays one bounded allocation for modules large enough to
+// otherwise grow the opt-in recorder repeatedly. Small-function modules retain
+// lazy storage: most contain no local branch site, so reserving the full budget
+// would cost more memory than it saves.
+func moduleRel32SiteCap(m *wasm.Module) int {
+	if !nativeCompactionEnabled {
+		return 0
+	}
+	for i := range m.Code {
+		if len(m.Code[i].BodyBytes) >= maxAMD64FinalizerRel32Sites {
+			return maxAMD64FinalizerRel32Sites
+		}
+	}
+	return 0
+}
+
 // moduleStackArenaCap chooses the first operand-stack chunk reused across the
 // module. The one-pass function pre-scan already counts arena-producing nodes,
 // so small modules need not reserve the legacy 256-element chunk. Chunk growth
@@ -1099,6 +1121,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
+		sc.reserveRel32Sites(moduleRel32SiteCap(m))
 		sc.policy = policy
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.ctrl = make([]ctrlFrame, 0, ctrlCap)
@@ -1217,11 +1240,13 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	arenaCap := (codeCap + workers - 1) / workers
 	stackCap := moduleStackArenaCap(m, allHints)
 	ctrlCap := moduleControlFrameCap(m, allHints)
+	rel32Cap := moduleRel32SiteCap(m)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i].scratch.reserveRel32Sites(rel32Cap)
 		states[i].scratch.policy = policy
 		if ctrlCap != 0 {
 			states[i].scratch.ctrl = make([]ctrlFrame, 0, ctrlCap)
