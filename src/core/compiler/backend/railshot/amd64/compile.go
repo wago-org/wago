@@ -45,6 +45,8 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
 	os.Getenv("WAGO_AMD64_NO_EXACT_GC_REF_FACTS") != "1"
 
+var frameElideVoid = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE_VOID") != "1"
+
 // gcLoadForwardingEnabled keeps the bounded result-local array.len and immutable
 // struct.get cache independently A/B-testable from the semantic fact engine.
 var gcLoadForwardingEnabled = os.Getenv("WAGO_AMD64_NO_GC_LOAD_FORWARDING") != "1"
@@ -833,7 +835,9 @@ func (f *fn) frameSize() int {
 // is moot, so frameSize can go to 0 and the pair becomes `sub/add rsp,0`. Called
 // after the body (maxSpill final); returns whether it elided.
 func (f *fn) elideRegisterOnlyFrame() bool {
-	if !f.opt(optFrameElide) || !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	voidResult := len(f.ft.Results) == 0
+	registerResult := f.singleRegResult || frameElideVoid && voidResult
+	if !f.opt(optFrameElide) || !registerResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	if !f.allLocalsRegisterHomed() {
@@ -841,6 +845,9 @@ func (f *fn) elideRegisterOnlyFrame() bool {
 	}
 	f.frameElided = true
 	f.stats.peep("frame-adjust-elide")
+	if voidResult {
+		f.stats.peep("frame-adjust-elide-void")
+	}
 	return true
 }
 

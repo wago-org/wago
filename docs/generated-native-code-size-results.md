@@ -1569,6 +1569,22 @@ Five serialized rollback-versus-enabled samples put Ruby at 576,977,292 to
 the full ARM64 backend and race suites, and compacted corpus execution with
 finalizer validation pass.
 
+## AMD64 call-free void frame elision
+
+AMD64 applies the same register-only void-leaf proof under
+`WAGO_AMD64_NO_FRAME_ELIDE_VOID=1` rollback. Its existing finalizer deletes the
+zero-sized seven-byte frame adjustments and may unlock adjacent branch
+shortening; all call, spill, EH, v128, extended-inline-local, and unpinned-local
+exclusions remain unchanged.
+
+The 36-module AMD64 Size suite falls from 69,135,610 to 69,132,646 bytes.
+Exactly 366 functions take the new proof, saving 2,964 bytes. Five serialized
+rollback-versus-enabled samples put Ruby at 875,676,468 to 879,143,029 ns/op
+(+0.40%) and esbuild at 479,757,870 to 479,518,043 ns/op (-0.05%); median
+allocation movement is noise-level. Focused native execution, the full AMD64
+backend and race suites, and compacted corpus execution with finalizer
+validation pass on the Ryzen host.
+
 ### Commands
 
 ```sh
