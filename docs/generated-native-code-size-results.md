@@ -1864,6 +1864,22 @@ The broader host run has only the previously recorded missing spec-v3 and old
 `wat2wasm` table64 failures. ARM64 remains at its measured 16 KiB bound and has
 no rel32 inventory.
 
+## Rejected: AMD64 4,096-site rel32 inventory
+
+A final capacity experiment raised the Size/Embedded rel32 inventory from 1,024
+to 4,096 sites and the coupled loop-function bound from 64 KiB to 512 KiB. On
+the exact 36-module AMD64 corpus, native bytes moved from 67,342,942 to
+67,335,310 (-7,632, -0.011%): Ruby contributed 6,360 bytes, `regexmatch` 636,
+and SQLite 636.
+
+The larger inventory requires another 12 KiB of pointer-free scratch per active
+Size compiler worker. The accepted 1,024-site/64 KiB policy already captures
+96.5% of the total reduction available from these two capacity tiers, so the
+remaining footprint crossover is poor. The experiment was rejected without
+spending timed compile benchmarks on it; its source and extra rollback variants
+were removed. Further savings should come from a different byte class, not a
+larger per-function inventory.
+
 ### Commands
 
 ```sh
