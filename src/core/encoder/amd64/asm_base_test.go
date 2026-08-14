@@ -120,6 +120,35 @@ func TestEncodingStatsShiftImmediateForms(t *testing.T) {
 	}
 }
 
+func TestCompactAccumulatorImmediateEncodings(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats, CompactAccumulatorImmediates: true}
+	a.AluRI(0, RAX, 0x1234, false)
+	a.TestImm(RAX, 0x80808080, false)
+	a.AluRI(5, RAX, 0x1234, true)
+	a.TestImm(RAX, 0x80808080, true)
+	if got, want := a.B, []byte{
+		0x05, 0x34, 0x12, 0, 0,
+		0xa9, 0x80, 0x80, 0x80, 0x80,
+		0x48, 0x2d, 0x34, 0x12, 0, 0,
+		0x48, 0xa9, 0x80, 0x80, 0x80, 0x80,
+	}; !bytes.Equal(got, want) {
+		t.Fatalf("compact accumulator encodings = %x, want %x", got, want)
+	}
+	if stats.AluImm32Acc != 2 || stats.TestImm32Acc != 2 {
+		t.Fatalf("compact accumulator stats = %#v, want two ALU and two TEST", stats)
+	}
+}
+
+func TestAccumulatorImmediateEncodingsRemainOptIn(t *testing.T) {
+	var a Asm
+	a.AluRI(0, RAX, 0x1234, false)
+	a.TestImm(RAX, 0x80808080, false)
+	if got, want := a.B, []byte{0x81, 0xc0, 0x34, 0x12, 0, 0, 0xf7, 0xc0, 0x80, 0x80, 0x80, 0x80}; !bytes.Equal(got, want) {
+		t.Fatalf("default accumulator encodings = %x, want %x", got, want)
+	}
+}
+
 func TestScalarFloatEncodings(t *testing.T) {
 	cases := []struct {
 		name string

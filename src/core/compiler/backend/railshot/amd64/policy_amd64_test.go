@@ -204,6 +204,27 @@ func TestCompileModuleRejectsInvalidObjectiveAMD64(t *testing.T) {
 	}
 }
 
+func TestAccumulatorImmediateObjectiveAndRollbackAMD64(t *testing.T) {
+	selection := currentCodegenPolicy().Selection
+	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
+	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
+	embedded := shared.CodegenPolicyForObjective(selection, OptimizeEmbedded)
+	if compactAccumulatorImmediatePolicy(balanced) {
+		t.Fatal("Balanced unexpectedly enabled accumulator immediates")
+	}
+	if !compactAccumulatorImmediatePolicy(size) || !compactAccumulatorImmediatePolicy(embedded) {
+		t.Fatal("Size/Embedded did not enable accumulator immediates")
+	}
+	disabled, err := optimizationBindings.ResolveSnapshot(map[string]bool{"accumulator-immediate": false}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizeDisabled := shared.CodegenPolicyForObjective(disabled, OptimizeSize)
+	if compactAccumulatorImmediatePolicy(sizeDisabled) {
+		t.Fatal("per-compilation rollback did not disable accumulator immediates")
+	}
+}
+
 func TestModuleCodeCapacityIsObjectiveAwareAMD64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
 	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)

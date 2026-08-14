@@ -2091,23 +2091,30 @@ B/op and allocations remain noise-level. D1 executes the same operation with
 the same flags while removing one fetched byte, so no runtime tradeoff is
 introduced.
 
-## Rejected: AMD64 accumulator imm32 encodings
+## AMD64 Size-only accumulator imm32 encodings
 
-An encoder experiment selected the ModRM-free accumulator opcodes for ALU
-`RAX/EAX,imm32` and TEST `RAX/EAX,imm32`. The forms are semantically exact and
-saved 3,588 bytes across the 36-module Size suite (66,802,423 to 66,798,835).
-Ruby contributed 2,066 bytes, esbuild 1,009, SQLite 173, and `many_funcs` 170
-(3,563 to 3,393). Five-sample compile medians stayed inside the gate: Ruby
-moved -0.55% and esbuild +0.92%, with noise-level allocation movement.
+An initial encoder experiment selected the ModRM-free accumulator opcodes for
+ALU `RAX/EAX,imm32` and TEST `RAX/EAX,imm32` in every objective. The forms are
+semantically exact and saved 3,588 bytes across the 36-module Size suite
+(66,802,423 to 66,798,835). Ruby contributes 2,066 bytes, esbuild 1,009,
+SQLite 173, and `many_funcs` 170 (3,563 to 3,393).
 
-The dense `many_funcs` execution workload rejected the change. A first five
-sample run suggested a noisy +0.9% regression; ten serialized one-second
-samples then moved the median from approximately 7.567 to 9.159 ns/op
-(+21.0%), with zero allocations in both cases. Each of its 170 tiny functions
-lost one byte, shifting the packed call-chain layout enough to overwhelm the
-small byte saving. The accumulator selection and its counters were removed.
-Any future attempt must be objective/layout-aware and pass Size-profile runtime
-measurement; semantic equivalence alone is not a sufficient performance proof.
+The global experiment was rejected because ten serialized one-second Balanced
+`many_funcs` samples moved the median from approximately 7.567 to 9.159 ns/op
+(+21.0%). Each of its 170 tiny functions lost one byte, shifting the packed
+call-chain layout enough to overwhelm the byte saving. Balanced and Speed
+therefore retain their original encodings byte for byte.
+
+After the public immutable objective reached the execution benchmark, the same
+selection was reintroduced only for Size and Embedded. Ten serialized
+one-second Size samples move the `many_funcs` median from 7.507 to 7.496 ns/op
+(-0.15%), with all samples tightly clustered and zero allocations. Five
+serialized Size compile samples move Ruby from 973,515,507 to 969,724,743
+ns/op (-0.39%) and esbuild from 507,374,600 to 506,480,126 ns/op (-0.18%);
+B/op and allocation variation remains noise-level. A catalog optimization and
+`WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE=1` provide per-compilation and process
+rollback respectively. The full Size execution suite, AMD64 race suite, and
+compacted runtime corpus pass.
 
 ## Public immutable objectives and Size execution benchmark
 

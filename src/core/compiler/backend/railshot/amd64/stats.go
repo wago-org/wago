@@ -52,6 +52,9 @@ var (
 	// compactI32CallsEnabled admits call-making functions after every deferred
 	// local argument load has selected its width from the local's machine type.
 	compactI32CallsEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CALLS") != "1"
+	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings only
+	// under Size/Embedded. Balanced retains its measured layout exactly.
+	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
 	// localSlotOrderEnabled experiments with giving hot unpinned locals compact
 	// RSP-relative offsets. Loop-weighted pin scores are not a native-byte cost:
 	// WAGO_LOCAL_SLOT_ORDER=1 is therefore opt-in until exact ref counts drive it.
@@ -441,6 +444,9 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "amd64-shifts: zero-elided=%d count-one=%d imm8=%d bytes-saved=%d\n",
 		ms.Encoding.ShiftImmZero, ms.Encoding.ShiftImmOne, ms.Encoding.ShiftImm8,
 		ms.Encoding.ShiftSaved)
+	fmt.Fprintf(&b, "amd64-accumulator-immediates: alu=%d test=%d bytes-saved=%d\n",
+		ms.Encoding.AluImm32Acc, ms.Encoding.TestImm32Acc,
+		ms.Encoding.AluImm32Acc+ms.Encoding.TestImm32Acc)
 	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
 		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
 	}
@@ -494,6 +500,9 @@ func (s *CodegenStats) report() string {
 	fmt.Fprintf(&b, "    shifts: zero-elided=%d count-one=%d imm8=%d bytes-saved=%d\n",
 		s.Encoding.ShiftImmZero, s.Encoding.ShiftImmOne, s.Encoding.ShiftImm8,
 		s.Encoding.ShiftSaved)
+	fmt.Fprintf(&b, "    accumulator-immediates: alu=%d test=%d bytes-saved=%d\n",
+		s.Encoding.AluImm32Acc, s.Encoding.TestImm32Acc,
+		s.Encoding.AluImm32Acc+s.Encoding.TestImm32Acc)
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",

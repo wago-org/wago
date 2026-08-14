@@ -31,14 +31,15 @@ const (
 )
 
 type Asm struct {
-	B              []byte
-	EncodingStats  *EncodingStats
-	Rel32Sites     []Rel32Site
-	Rel32SiteLimit int
-	Rel32Count     uint32
-	UsesBMI2       bool
-	Rel32Overflow  bool
-	rel32Inline    [2]Rel32Site
+	B                            []byte
+	EncodingStats                *EncodingStats
+	Rel32Sites                   []Rel32Site
+	Rel32SiteLimit               int
+	Rel32Count                   uint32
+	UsesBMI2                     bool
+	Rel32Overflow                bool
+	CompactAccumulatorImmediates bool
+	rel32Inline                  [2]Rel32Site
 }
 
 // EncodingStats records exact memory-displacement choices made by the encoder.
@@ -63,6 +64,8 @@ type EncodingStats struct {
 	ShiftImmOne  uint64 `json:"shift_imm_one"`
 	ShiftImm8    uint64 `json:"shift_imm8"`
 	ShiftSaved   uint64 `json:"shift_imm_bytes_saved"`
+	AluImm32Acc  uint64 `json:"alu_imm32_accumulator"`
+	TestImm32Acc uint64 `json:"test_imm32_accumulator"`
 }
 
 // Add accumulates another encoder histogram.
@@ -88,6 +91,8 @@ func (s *EncodingStats) Add(other EncodingStats) {
 	s.ShiftImmOne += other.ShiftImmOne
 	s.ShiftImm8 += other.ShiftImm8
 	s.ShiftSaved += other.ShiftSaved
+	s.AluImm32Acc += other.AluImm32Acc
+	s.TestImm32Acc += other.TestImm32Acc
 }
 
 // MemoryDisplacementBytes returns the exact bytes occupied by recorded disp8
@@ -505,6 +510,14 @@ func (a *Asm) TestImm(r Reg, imm uint32, w bool) {
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
+	if a.CompactAccumulatorImmediates && r == RAX {
+		if a.EncodingStats != nil {
+			a.EncodingStats.TestImm32Acc++
+		}
+		a.emit(0xA9)
+		a.imm32(int32(imm))
+		return
+	}
 	a.emit(0xF7)
 	a.emit(0xC0 | byte(r&7)) // /0
 	a.imm32(int32(imm))
@@ -582,6 +595,14 @@ func (a *Asm) AluRI(digit byte, dst Reg, imm int32, w bool) {
 	if imm >= -128 && imm <= 127 {
 		a.emit(0x83, 0xC0|(digit<<3)|byte(dst&7), byte(imm))
 	} else {
+		if a.CompactAccumulatorImmediates && dst == RAX {
+			if a.EncodingStats != nil {
+				a.EncodingStats.AluImm32Acc++
+			}
+			a.emit(0x05 + digit<<3)
+			a.imm32(imm)
+			return
+		}
 		a.emit(0x81, 0xC0|(digit<<3)|byte(dst&7))
 		a.imm32(imm)
 	}
