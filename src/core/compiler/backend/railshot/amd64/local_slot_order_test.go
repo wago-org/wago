@@ -51,3 +51,26 @@ func TestLocalSlotOrderShrinksHotUnpinnedFrameRefs(t *testing.T) {
 		t.Fatalf("local-slot-order hits = %d, want 1", on.Peephole["local-slot-order"])
 	}
 }
+
+func TestLocalSlotOrderDoesNotGrowMixedCompactFrame(t *testing.T) {
+	saved := localSlotOrderEnabled
+	defer func() { localSlotOrderEnabled = saved }()
+
+	// Declaration order packs the two i32s after one i64 into 16 bytes. Putting
+	// hot local 1 first would introduce an alignment gap and grow it to 24 bytes.
+	body := []byte{0x02, 0x01, 0x7e, 0x02, 0x7f,
+		0x41, 0x01, 0x21, 0x01,
+		0x20, 0x01, 0x0b}
+	m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+
+	localSlotOrderEnabled = false
+	off := compileWithStats(t, m, false).Funcs[0]
+	localSlotOrderEnabled = true
+	on := compileWithStats(t, m, false).Funcs[0]
+	if on.FrameBytes != off.FrameBytes || on.CodeBytes != off.CodeBytes {
+		t.Fatalf("ordered mixed frame/code = %d/%d, declaration = %d/%d", on.FrameBytes, on.CodeBytes, off.FrameBytes, off.CodeBytes)
+	}
+	if on.Peephole["local-slot-order"] != 0 {
+		t.Fatalf("local-slot-order hits = %d, want rollback", on.Peephole["local-slot-order"])
+	}
+}

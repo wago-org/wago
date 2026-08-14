@@ -2265,8 +2265,24 @@ func (f *fn) orderLocalSlots(scores []uint32, compactI32 bool) {
 	for i := range f.localSlot {
 		f.localSlot[i] = int(uint64(f.localSlot[i]) >> 32)
 	}
-	if got := (localBytes + 7) / 8; got != f.nLocalSlots {
-		panic("amd64: local slot ordering changed frame size")
+	if got := (localBytes + 7) / 8; got <= f.nLocalSlots {
+		f.nLocalSlots = got
+	} else {
+		// Mixing packed i32s with naturally aligned homes can move a four-byte
+		// padding gap. Never enlarge the frame to improve displacement order;
+		// restore the original deterministic declaration layout instead.
+		localBytes = 0
+		for i, mt := range f.localType[:f.nLocals] {
+			if compactI32 && mt == mtI32 {
+				f.localSlot[i] = localBytes
+				localBytes += 4
+				continue
+			}
+			localBytes = (localBytes + 7) &^ 7
+			f.localSlot[i] = localBytes
+			localBytes += 8 * mt.stackSlots()
+		}
+		changed = false
 	}
 	if changed {
 		f.stats.peep("local-slot-order")
