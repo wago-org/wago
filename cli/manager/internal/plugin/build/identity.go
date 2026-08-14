@@ -99,11 +99,9 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 		fmt.Fprintf(h, "default-pgo\x00stat-error\x00%v\x00", statErr)
 	}
 
-	vendorModulesPath := filepath.Join(dir, "vendor", "modules.txt")
-	_, vendorStatErr := os.Lstat(vendorModulesPath)
-	vendorMode := vendorStatErr == nil
-	if vendorStatErr != nil && !os.IsNotExist(vendorStatErr) {
-		return "", false, fmt.Errorf("inspect vendor modules: %w", vendorStatErr)
+	vendorModulesPath, vendorMode, err := inspectVendorModules(dir)
+	if err != nil {
+		return "", false, err
 	}
 	if vendorMode {
 		// `go list -m all` is unavailable in vendor mode. The selected package
@@ -221,6 +219,16 @@ func selectedBuildEnvironment(dir string) (map[string]string, error) {
 		}
 	}
 	return selected, nil
+}
+
+func inspectVendorModules(dir string) (path string, present bool, err error) {
+	path = filepath.Join(dir, "vendor", "modules.txt")
+	if _, err := os.Lstat(path); err == nil {
+		return path, true, nil
+	} else if !os.IsNotExist(err) {
+		return path, false, fmt.Errorf("inspect vendor modules: %w", err)
+	}
+	return path, false, nil
 }
 
 func selectedModules(dir string) ([]resolvedModuleIdentity, error) {

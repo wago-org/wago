@@ -316,6 +316,23 @@ func TestResolvedBuildHashSupportsVendorMode(t *testing.T) {
 	}
 }
 
+func TestTidyBuildModuleSkipsVendorMode(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("not a valid go.mod\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vendorDir := filepath.Join(dir, "vendor")
+	if err := os.Mkdir(vendorDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendorDir, "modules.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := tidyBuildModule(dir, false); err != nil {
+		t.Fatalf("vendored build ran module tidy: %v", err)
+	}
+}
+
 func TestResolvedBuildHashIgnoresGeneratedMainThroughDirectorySymlink(t *testing.T) {
 	root := t.TempDir()
 	physical := filepath.Join(root, "physical")

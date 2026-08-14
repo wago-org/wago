@@ -487,10 +487,7 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 	if err := writeMain(dir, input, config, "pending-"+Hash(input, config)); err != nil {
 		return "", false, err
 	}
-	if verbose {
-		fmt.Fprintf(os.Stderr, "%s go mod tidy\n", ui.Dim("→"))
-	}
-	if err := runGo(dir, verbose, "mod", "tidy"); err != nil {
+	if err := tidyBuildModule(dir, verbose); err != nil {
 		_, haveSrc := SourceDir()
 		if !haveSrc {
 			return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet — set WAGO_SRC to a wago checkout to build from source)", err)
@@ -564,6 +561,20 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 		return "", false, fmt.Errorf("publish plugin build hash: %w", err)
 	}
 	return bin, false, nil
+}
+
+func tidyBuildModule(dir string, verbose bool) error {
+	_, vendorMode, err := inspectVendorModules(dir)
+	if err != nil {
+		return err
+	}
+	if vendorMode {
+		return nil
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "%s go mod tidy\n", ui.Dim("→"))
+	}
+	return runGo(dir, verbose, "mod", "tidy")
 }
 
 func rejectChangedBuildInputs(want, after string) error {
