@@ -2032,6 +2032,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			return nil, nil, 0, err
 		}
 		f.emitV128ConstPool()
+		internalOff, err = f.finalizeNativeCode(internalOff)
+		if err != nil {
+			return nil, nil, 0, err
+		}
 		f.finalizeStats(len(f.a.B))
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
 			gcFrameRoots.FrameBytes = uint32(f.frameSize())
@@ -2059,6 +2063,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.finalizeBranchFolds()
 	f.patchFrameSize()
 	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)
+	if _, err := f.finalizeNativeCode(0); err != nil {
+		return nil, nil, 0, err
+	}
 	f.finalizeStats(len(f.a.B))
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		gcFrameRoots.FrameBytes = uint32(f.frameSize())
