@@ -7,7 +7,12 @@ import "testing"
 func TestFrameElidesRegisterOnlyVoidLeafArm64(t *testing.T) {
 	m := modFuncs(t, funcDef{body: []byte{0x00, 0x0b}})
 	before := frameElideVoid
-	t.Cleanup(func() { frameElideVoid = before })
+	beforeCompactHeader := compactRegABIFrameHeader
+	t.Cleanup(func() {
+		frameElideVoid = before
+		compactRegABIFrameHeader = beforeCompactHeader
+	})
+	compactRegABIFrameHeader = false
 	compile := func(enabled bool) (*ModuleStats, int) {
 		frameElideVoid = enabled
 		var stats ModuleStats

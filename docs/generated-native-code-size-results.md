@@ -1585,6 +1585,29 @@ allocation movement is noise-level. Focused native execution, the full AMD64
 backend and race suites, and compacted corpus execution with finalizer
 validation pass on the Ryzen host.
 
+## ARM64 register-ABI frame-header elision
+
+Register-ABI internal entries no longer reserve the wrapper ABI's spare word and
+results-pointer word. Host adapters already preserve their result destination in
+their independent LR/X3 record, while direct internal calls return in registers.
+Wrapper-ABI functions retain the established header. EH functions and functions
+with a GC frame plan are conservatively excluded until their separately generated
+offset tables become explicitly header-relative.
+`WAGO_ARM64_NO_COMPACT_REGABI_FRAME=1` is the exact rollback oracle.
+
+Across the 36-module ARM64 Size suite, aggregate function-frame reservation falls
+from 2,183,536 to 1,778,416 bytes (-405,120, -18.55%). Raw native bytes fall from
+77,023,468 to 77,023,124 (-344): most nonzero ARM64 frames keep the same one-word
+adjustment encoding, while 43 functions reach a zero frame and delete their
+SUB/ADD pair. Ruby saves 168 native bytes, regexmatch 88, SQLite 32, wasm3 16,
+and five other modules eight bytes each.
+
+Five serialized rollback-versus-enabled compile samples put Ruby at 797,155,084
+to 787,410,792 ns/op (-1.22%) and esbuild at 507,781,541 to 507,610,791 ns/op
+(-0.03%). Median allocation volume and counts are unchanged. Focused native
+execution, the full ARM64 backend and race suites, and compacted corpus execution
+with finalizer validation pass.
+
 ### Commands
 
 ```sh

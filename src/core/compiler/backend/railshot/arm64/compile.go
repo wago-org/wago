@@ -67,6 +67,12 @@ var smallFrameAdjustEnabled = os.Getenv("WAGO_ARM64_NOSMALLFRAME") != "1"
 var frameElideRegHomed = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_REGHOMED") != "1"
 var frameElideVoid = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_VOID") != "1"
 
+// compactRegABIFrameHeader removes the wrapper-only spare/results-pointer
+// header from register-ABI internal frames. The host adapter preserves its
+// results pointer in its own LR/X3 record; wrapper-ABI functions retain the
+// header. Keep the switch for corpus A/B and immediate rollback.
+var compactRegABIFrameHeader = os.Getenv("WAGO_ARM64_NO_COMPACT_REGABI_FRAME") != "1"
+
 // inlineCallFreeHintsEnabled lets frame/register planning use the post-inline
 // fact that no native call remains. Disable only for A/B and rollback checks.
 var inlineCallFreeHintsEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_CALLFREE") != "1"
@@ -350,6 +356,7 @@ type fn struct {
 	gcFrameRoots           *shared.GCFrameRootPlan
 	gcCallsiteIndex        int
 	moduleEH               bool // reserve the handler register and fixed EH frame area
+	compactFrameHeader     bool // register ABI: no wrapper results-pointer header
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -658,7 +665,14 @@ const (
 	frResultsOff  = 8  // results buffer pointer
 )
 
-func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
+func (f *fn) frameHeaderBytes() int {
+	if f.compactFrameHeader {
+		return 0
+	}
+	return frameHdrBytes
+}
+
+func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + 8*f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
 		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
@@ -666,13 +680,13 @@ func (f *fn) ehFrameBytes() int {
 	return 0
 }
 func (f *fn) ehRecordOff(index int) int32 {
-	return int32(frameHdrBytes + 8*f.nLocalSlots + index*ehRecordSlots*8)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + index*ehRecordSlots*8)
 }
 func (f *fn) ehRootOff(index int) int32 {
-	return int32(frameHdrBytes + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
 }
 func (f *fn) spillOff(k int) int32 {
-	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
 }
 
 // frameSize is a multiple of 16: AArch64 requires SP 16-byte aligned at all times.
@@ -684,7 +698,7 @@ func (f *fn) frameSize() int {
 	if f.frameElided {
 		return 0
 	}
-	return align16(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*f.maxSpill)
+	return align16(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*f.maxSpill)
 }
 
 func (f *fn) elideRegisterOnlyFrame() bool {
@@ -1820,6 +1834,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	regABI := policy.EnabledOption(optRegABI) && sigFitsRegABI(ft)
+	// Only wrapper-ABI code reads frResultsOff. Register-ABI adapters preserve X3
+	// below the internal frame, while direct internal and tail paths return in
+	// registers. EH and GC frame plans retain the established fixed layout until
+	// their independently generated offset tables become header-relative.
+	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !f.moduleEH && gcFrameRoots == nil
+	if f.compactFrameHeader {
+		f.stats.peep("frame-header-elide")
+	}
 	var gpPoolStorage [24]Reg
 	gpPool := gpPinPoolWithPolicy(gpPoolStorage[:0], regABI, f.nParams, !hasCall, policy)
 	if f.moduleEH {
