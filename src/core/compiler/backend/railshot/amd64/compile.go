@@ -1073,6 +1073,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				opts.MemoryPressure()
 			}
 		}
+		functionsEnd := len(codeBuffer.Bytes())
 		// Append one module-owned cold leaf island after every function, then patch
 		// ordinary calls and shared-stub calls in one deterministic pass.
 		stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
@@ -1094,6 +1095,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 		}
 		code := codeBuffer.Bytes()
+		finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd)
 		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
 			return nil, err
 		}
@@ -1189,6 +1191,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		relocs[i] = r.relocs
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
+	functionsEnd := len(code)
 	stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
 	stubBase := -1
 	if len(stubCode) != 0 {
@@ -1206,6 +1209,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
 		return nil, err
 	}
+	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd)
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
@@ -1283,6 +1287,25 @@ func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callR
 
 func firstFuncError(results []funcResult) (int, error) {
 	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
+}
+
+func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd int) {
+	if ms == nil {
+		return
+	}
+	var native shared.NativeSizeReport
+	native.TotalBytes = codeLen
+	for _, fn := range ms.Funcs {
+		if fn != nil {
+			native.AddFunction(fn.NativeSize)
+		}
+	}
+	native.FunctionAlignmentBytes = functionsEnd - native.FunctionBytes
+	if native.FunctionAlignmentBytes < 0 {
+		native.FunctionAlignmentBytes = 0
+	}
+	native.ModuleOtherBytes = codeLen - functionsEnd
+	ms.NativeSize = native
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the
@@ -2056,6 +2079,8 @@ func (f *fn) finalizeStats(codeLen int) {
 		return
 	}
 	s.CodeBytes = codeLen
+	s.NativeSize.TotalBytes = codeLen
+	s.NativeSize.InternalFunctionBytes = codeLen - s.NativeSize.HostAdapterBytes - s.NativeSize.AdapterToInternalPaddingBytes
 	s.GCCodeBytes.Total = codeLen
 	s.FrameBytes = f.frameSize()
 	s.MaxSpillSlots = f.maxSpill
@@ -2551,6 +2576,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 			}
 		}
 		a.Ret()
+		if f.stats != nil {
+			f.stats.NativeSize.HostAdapterBytes = a.Len()
+		}
 	}
 
 	// Internal entry (frameless): RBX (linMem) is inherited from the caller —
@@ -2558,7 +2586,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 	// Go boundary — and the trap cell pointer lives in basedata, so the entry
 	// carries no environment setup at all (WARP's model). Args in GP/XMM regs.
 	if hostAdapter {
+		beforeAlign := a.Len()
 		a.Align16() // internal entries are hot call targets; align like function starts
+		if f.stats != nil {
+			f.stats.NativeSize.AdapterToInternalPaddingBytes = a.Len() - beforeAlign
+		}
 	}
 	internalOff := a.Len()
 	f.subRspAt = a.Len() + 3
@@ -2647,6 +2679,17 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 
 func (f *fn) patchFrameSize() {
 	size := uint32(f.frameSize())
+	if f.stats != nil {
+		sites := len(f.sc.tailFrameSites) + 2
+		f.stats.NativeSize.FrameAdjustmentBytes += 7 * sites
+		deadPerSite := 0
+		if size == 0 {
+			deadPerSite = 7
+		} else if size <= 127 {
+			deadPerSite = 3
+		}
+		f.stats.NativeSize.DeadFrameReservationBytes += deadPerSite * sites
+	}
 	f.a.PatchU32(f.subRspAt, size)
 	f.a.PatchU32(f.addRspAt, size)
 	for _, site := range f.sc.tailFrameSites {

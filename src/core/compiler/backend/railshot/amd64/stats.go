@@ -27,8 +27,9 @@ import (
 // Explain/debug knobs, parsed once. Kept here next to the stats they drive.
 var (
 	// explainEnabled prints a per-module CodegenStats dump to stderr after every
-	// compile. Independent of the programmatic CompileOptions.Stats sink.
-	explainEnabled = os.Getenv("WAGO_EXPLAIN") == "1"
+	// compile. "size" highlights the native-byte ledger; "1" remains compatible.
+	explainMode    = os.Getenv("WAGO_EXPLAIN")
+	explainEnabled = explainMode == "1" || explainMode == "size"
 	// debugModGlobals prints the module-pinned-global choices (the #90-era temp
 	// print, now first-class).
 	debugModGlobals = os.Getenv("WAGO_DEBUG_MODGLOBALS") == "1"
@@ -131,6 +132,7 @@ type CodegenStats struct {
 	FrameBytes    int                      // stack frame size (sub rsp, N)
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
+	NativeSize    shared.NativeFunctionSizeReport
 
 	// Register allocator / condense engine traffic.
 	Flushes              int // full operand-stack flushes (control boundaries + calls)
@@ -364,7 +366,11 @@ type ModuleStats struct {
 	GCSharedStubBytes     int
 	GCSharedStubs         int
 	GCSharedStubCallSites int
+	NativeSize            shared.NativeSizeReport
 }
+
+type NativeFunctionSizeReport = shared.NativeFunctionSizeReport
+type NativeSizeReport = shared.NativeSizeReport
 
 // String renders the explain dump: a module summary line, the module-pinned
 // globals, then one block per function.
@@ -374,6 +380,14 @@ func (ms *ModuleStats) String() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
+	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
+		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
+		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())
+	fmt.Fprintf(&b, "native-regions: adapters=%d internal-pad=%d internal=%d\n",
+		ms.NativeSize.HostAdapterBytes, ms.NativeSize.AdapterToInternalPaddingBytes, ms.NativeSize.InternalFunctionBytes)
+	fmt.Fprintf(&b, "native-reservations: frame-physical=%d frame-dead=%d branch-holes=%d store-load-nops=%d\n",
+		ms.NativeSize.FrameAdjustmentBytes, ms.NativeSize.DeadFrameReservationBytes,
+		ms.NativeSize.BranchFoldHoleBytes, ms.NativeSize.StoreLoadNopBytes)
 	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
 		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
 	}
@@ -410,6 +424,10 @@ func (s *CodegenStats) report() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "fn#%d %q: code=%dB frame=%dB spill_hi=%d\n",
 		s.FuncIdx, name, s.CodeBytes, s.FrameBytes, s.MaxSpillSlots)
+	fmt.Fprintf(&b, "    native: adapter=%d internal-pad=%d internal=%d frame-adjust=%d dead-reserved=%d\n",
+		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
+		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
+		s.NativeSize.DeadReservationBytes())
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",

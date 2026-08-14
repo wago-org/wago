@@ -61,5 +61,8 @@ func (f *fn) finalizeBranchFolds() {
 		binary.LittleEndian.PutUint32(b[over:], uint32(int32(jmpTarget-(over+4))))
 		copy(b[over+4:over+9], []byte{0x0F, 0x1F, 0x44, 0x00, 0x00}) // 5-byte NOP
 		f.stats.peep("br-pair-fold")
+		if f.stats != nil {
+			f.stats.NativeSize.BranchFoldHoleBytes += 5
+		}
 	}
 }
