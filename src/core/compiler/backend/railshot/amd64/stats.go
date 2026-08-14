@@ -58,6 +58,9 @@ var (
 	// incDecEnabled selects compact INC/DEC for Size/Embedded Wasm add/sub by
 	// one when CF is not a compiler value. The kill switch is the A/B oracle.
 	incDecEnabled = os.Getenv("WAGO_AMD64_NO_INCDEC") != "1"
+	// directIncDecEnabled extends the same encoding choice to compiler-authored
+	// counters whose next flag consumer is ZF or whose flags are dead.
+	directIncDecEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_INCDEC") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. It remains opt-in while broader shrink-only

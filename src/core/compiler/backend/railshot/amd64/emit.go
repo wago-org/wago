@@ -15,6 +15,27 @@ type aluEnc struct {
 	comm          bool
 }
 
+// unitAdjust emits a one-step register adjustment. INC/DEC preserve every flag
+// these direct backend sites consume (ZF, or no flags at all), while saving one
+// byte over ADD/SUB r,1. Keep the choice Size/Embedded-only so Balanced retains
+// its measured flag-writing and front-end behavior.
+func (f *fn) unitAdjust(reg Reg, w, increment bool) {
+	if incDecEnabled && directIncDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		if increment {
+			f.a.Inc(reg, w)
+		} else {
+			f.a.Dec(reg, w)
+		}
+		f.stats.peep("inc-dec-direct")
+		return
+	}
+	digit := byte(5)
+	if increment {
+		digit = 0
+	}
+	f.a.AluRI(digit, reg, 1, w)
+}
+
 var aluTable = [...]aluEnc{
 	opAdd: {0x01, 0x03, 0, true},
 	opSub: {0x29, 0x2B, 5, false},

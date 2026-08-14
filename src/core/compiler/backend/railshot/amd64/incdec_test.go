@@ -3,8 +3,10 @@
 package amd64
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
@@ -57,5 +59,64 @@ func TestSizeIncDecImmediateForms(t *testing.T) {
 				t.Fatalf("result = %#x, want %#x (long code %d bytes)", got, test.want, len(long.Code))
 			}
 		})
+	}
+}
+
+func TestSizeIncDecDirectAdjustments(t *testing.T) {
+	before := incDecEnabled
+	directBefore := directIncDecEnabled
+	t.Cleanup(func() {
+		incDecEnabled = before
+		directIncDecEnabled = directBefore
+	})
+	incDecEnabled = true
+	directIncDecEnabled = true
+
+	tests := []struct {
+		name      string
+		objective OptimizationObjective
+		increment bool
+		want      []byte
+		wantHits  int
+	}{
+		{"size increment", OptimizeSize, true, []byte{0xff, 0xc1}, 1},
+		{"embedded decrement", OptimizeEmbedded, false, []byte{0xff, 0xc9}, 1},
+		{"balanced add", OptimizeBalanced, true, []byte{0x83, 0xc1, 0x01}, 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stats := &CodegenStats{}
+			f := fn{
+				a:      &encoderamd64.Asm{},
+				policy: shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, test.objective),
+				stats:  stats,
+			}
+			f.unitAdjust(RCX, false, test.increment)
+			if got := f.a.B; !bytes.Equal(got, test.want) {
+				t.Fatalf("code = % x, want % x", got, test.want)
+			}
+			if got := stats.Peephole["inc-dec-direct"]; got != test.wantHits {
+				t.Fatalf("inc-dec-direct hits = %d, want %d", got, test.wantHits)
+			}
+		})
+	}
+}
+
+func TestSizeIncDecDirectRollback(t *testing.T) {
+	before := directIncDecEnabled
+	t.Cleanup(func() { directIncDecEnabled = before })
+	directIncDecEnabled = false
+	stats := &CodegenStats{}
+	f := fn{
+		a:      &encoderamd64.Asm{},
+		policy: shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
+		stats:  stats,
+	}
+	f.unitAdjust(RCX, false, false)
+	if want := []byte{0x83, 0xe9, 0x01}; !bytes.Equal(f.a.B, want) {
+		t.Fatalf("code = % x, want % x", f.a.B, want)
+	}
+	if got := stats.Peephole["inc-dec-direct"]; got != 0 {
+		t.Fatalf("inc-dec-direct hits = %d, want 0", got)
 	}
 }

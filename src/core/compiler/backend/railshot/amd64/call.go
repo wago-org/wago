@@ -921,7 +921,7 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.a.LeaScaled(RDX, R8, RCX, 3, 8)  // entry = log + count*8 + 8
 	f.a.StoreImm32Mem(RDX, 0, int32(importIdx))
 	f.a.Store32(RDX, 4, RAX)
-	f.a.AluRI(0, RCX, 1, false) // count++ (digit 0 = add)
+	f.unitAdjust(RCX, false, true) // count++
 	f.a.Store32(R8, 0, RCX)
 	f.setDepth(d - p)
 	return nil

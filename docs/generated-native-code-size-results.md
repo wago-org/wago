@@ -2533,3 +2533,36 @@ serialization -0.28% and deserialization +0.77%, with zero allocations.
 
 The complete Size execution suite, ARM64 backend and race suites, focused
 zero/nonzero/high-bit tests, and compacted runtime corpus/fuzz suite pass.
+
+## AMD64 Size-only direct counter INC/DEC
+
+The accepted AMD64 `INC`/`DEC` selection now also covers seven explicit backend
+counter sites whose carry flag is proved dead: the byte tails of dynamic
+`memory.copy` and `memory.fill`, two table-fill loops, and the asynchronous host
+call log counter. Loop sites consume only ZF in the following `JNE`; the host-log
+site stores the result before any later flag consumer. Speed and Balanced retain
+`ADD/SUB r,1`. `WAGO_AMD64_NO_DIRECT_INCDEC=1` restores this slice without
+disabling the earlier Wasm arithmetic selection, while
+`WAGO_AMD64_NO_INCDEC=1` remains the broad rollback.
+
+The exact 36-module AMD64 Size suite selects 7,710 direct sites and falls from
+66,090,445 to 66,082,735 native bytes (-7,710, -0.0117%). Esbuild contributes
+5,836 bytes, regexmatch 1,531, Lua 146, json-as/json-as-simd 146, and the
+remaining affected modules 51. Every selected instruction saves exactly one
+byte; no secondary layout delta occurs in this slice.
+
+Five serialized compile samples move regexmatch from a 67,015,035 ns/op rollback
+median to 67,197,550 (+0.27%) and esbuild from 549,694,362 to 550,689,081
+(+0.18%). Allocation movement is noise-level. Ten one-second Size execution
+samples move fannkuch from a 1,047,376 ns/op median to 1,070,496 (+2.21%),
+json-as serialization from 22,804 to 22,474 (-1.45%), and deserialization from
+40,242 to 40,228 (-0.03%). All remain allocation-free. The fannkuch result is
+order-sensitive but remains inside the Size objective's 5% individual-workload
+gate; the selection therefore remains Size/Embedded-only.
+
+The AMD64 encoder/backend suites, backend race suite, exact product-size
+lifecycle tests, compacted runtime corpus/fuzz suite, and complete Size execution
+suite pass. A full `go test ./...` was also attempted on hub; packages independent
+of external fixtures passed, while the checkout's pre-existing missing
+`tests/spec-v3` corpus, older WABT table64 syntax support, and one plugin-build
+fixture prevented an all-package green result.
