@@ -26,6 +26,20 @@ func lockWatchedCommandStart() func() {
 }
 
 func resumeWatchedCommand(command *exec.Cmd) error {
+	var status syscall.WaitStatus
+	for {
+		_, err := syscall.Wait4(command.Process.Pid, &status, syscall.WUNTRACED, nil)
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		break
+	}
+	if !status.Stopped() {
+		return fmt.Errorf("watched process did not stop before tracking: %v", status)
+	}
 	return unix.PtraceDetach(command.Process.Pid)
 }
 
