@@ -209,7 +209,7 @@ func TestDirectCallBoundsEffectGate(t *testing.T) {
 
 func TestInternalABIClassEffectGate(t *testing.T) {
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
-	h := funcHints{nLocals: 1, touchesMemory: true}
+	h := funcHints{nLocals: 1, touchesMemory: true, inlineCallSites: 1}
 	if got := classifyInternalABI(ft, 1, h, 0, true, true); got != abiLeafScalar {
 		t.Fatalf("effect-safe memory leaf class = %d, want LeafScalar", got)
 	}
@@ -229,13 +229,18 @@ func TestInternalABIClassEffectGate(t *testing.T) {
 		t.Fatalf("call-making memory leaf class = %d, want General", got)
 	}
 	fp := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.F64}, Results: []wasm.ValType{wasm.F64}}
-	fpHints := funcHints{nLocals: 1, stackArenaNodes: 8}
+	fpHints := funcHints{nLocals: 1, stackArenaNodes: 8, inlineCallSites: 1}
 	if got := classifyInternalABI(fp, 1, fpHints, 0, true, true); got != abiLeafFP {
 		t.Fatalf("tiny FP leaf class = %d, want LeafFP", got)
 	}
 	if got := classifyInternalABI(fp, 1, fpHints, 0, true, false); got != abiGeneral {
 		t.Fatalf("disabled FP leaf class = %d, want General", got)
 	}
+	fpHints.inlineCallSites = 0
+	if got := classifyInternalABI(fp, 1, fpHints, 0, true, true); got != abiGeneral {
+		t.Fatalf("uncalled FP leaf class = %d, want General", got)
+	}
+	fpHints.inlineCallSites = 1
 	fpHints.stackArenaNodes = 13
 	if got := classifyInternalABI(fp, 1, fpHints, 0, true, true); got != abiGeneral {
 		t.Fatalf("high-pressure FP leaf class = %d, want General", got)

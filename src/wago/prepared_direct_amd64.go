@@ -11,6 +11,7 @@ import (
 
 const preparedDirectIntSupported = true
 const preparedDirectIntPrivateSupported = false
+const preparedDirectFPSupported = false
 
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	var a0, a1, a2, a3 uint64
@@ -65,4 +66,8 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 		}
 	}
 	return out, nil
+}
+
+func (fn *PreparedFunction) invokeDirectFP([]uint64) ([]uint64, error) {
+	return nil, fmt.Errorf("wago: direct prepared FP entry is unavailable on this architecture")
 }

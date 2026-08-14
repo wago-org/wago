@@ -31,6 +31,7 @@ type PreparedFunction struct {
 	privateFast         bool
 	isolatedFast        bool
 	directIntFast       bool
+	directFPFast        bool
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
@@ -48,6 +49,23 @@ func preparedDirectIntSignature(sig FuncSig) bool {
 	}
 	for _, typ := range sig.Results {
 		if typ != ValI32 && typ != ValI64 {
+			return false
+		}
+	}
+	return true
+}
+
+func preparedDirectFPSignature(sig FuncSig) bool {
+	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+		return false
+	}
+	for _, typ := range sig.Params {
+		if typ != ValF32 && typ != ValF64 {
+			return false
+		}
+	}
+	for _, typ := range sig.Results {
+		if typ != ValF32 && typ != ValF64 {
 			return false
 		}
 	}
@@ -123,9 +141,15 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	if scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
 		fn.privateFast = true
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
-		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
-			fn.directIntFast = true
-			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+		if in.c.directPreparedAt(ic.li) {
+			switch {
+			case (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig):
+				fn.directIntFast = true
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+			case fn.isolatedFast && preparedDirectFPSupported && preparedDirectFPEnabled && preparedDirectFPSignature(sig):
+				fn.directFPFast = true
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+			}
 		}
 	}
 	return fn, nil
@@ -137,6 +161,9 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
 		if fn.directIntFast {
 			return fn.invokeDirectInt(args)
+		}
+		if fn.directFPFast {
+			return fn.invokeDirectFP(args)
 		}
 		if fn.scalarFast {
 			return fn.invokeScalar(args)

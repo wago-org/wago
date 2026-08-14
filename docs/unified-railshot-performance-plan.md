@@ -359,7 +359,10 @@ gated on provenance, effects, physical constraints, corpus hits, and A/B results
 ARM64's finite internal ABI classes now include `LeafFP` for scalar signatures
 that use either register bank. Admission remains deliberately narrow: the callee
 must fit the register ABI, have no declared locals, calls, globals, or control
-flow, and have at most 12 estimated operand-stack nodes. Memory-touching leaves
+flow, have at least one direct local callsite, and have at most 12 estimated
+operand-stack nodes. The callsite requirement prevents exports and otherwise
+uncalled private functions from reserving pin banks without removing any caller
+traffic. Memory-touching leaves
 still require the existing effect proof and may not grow memory. Every rejected
 shape uses `General`, and `abi-leaf-fp` is an independent immutable policy bit
 with `WAGO_ARM64_NO_ABI_LEAF_FP=1` as its exact A/B switch.
@@ -372,14 +375,37 @@ them. A pressure test initially found the wider 32-node proposal could exhaust
 the restricted V-register set; the production cap was reduced to 12 and that
 shape now falls back conservatively.
 
-The 64-module corpus admits 27 LeafFP functions across Lua, Ruby, Script,
-SQLite, and wasm3. All five affected module images shrink, by 640 native bytes
-in total, and no module grows. A four-live-FP-local benchmark making 64 direct
+The 64-module corpus admits 17 LeafFP functions across Ruby, Script, and SQLite.
+All three affected module images shrink, by 576 native bytes in total, and no
+module grows. A four-live-FP-local benchmark making 64 direct
 calls measured 50.46 ns/op versus 51.76 ns/op for `General` (-2.5%), with zero
 B/op and allocations; native code fell from 2,552 to 1,516 bytes. Seven-sample
 focused compile medians improved from 38.85 to 36.20 us/op with 49 allocations
 unchanged. Five-sample SQLite backend medians were neutral (52.72 ms enabled
 versus 52.68 ms disabled), with 25,132 allocations unchanged and B/op noise-only.
+
+### 2026-08-14 — fixed ARM64 prepared FP entry family
+
+Prepared invocation now has one finite ARM64 FP-only entry family for up to four
+`f32`/`f64` parameters and at most one FP result. One static foreign-stack
+trampoline transfers raw IEEE-754 bits between Go argument slots and `V0..V3`,
+enters the existing register-ABI internal entry, and returns `V0` without a
+serialized argument/result buffer round trip. It is admitted only for isolated
+private instances and the compiler's existing bounded direct-entry functions;
+mixed signatures, references, vectors, wider arities, shared execution control,
+and every unsupported architecture retain the ordinary prepared path.
+
+`prepared-fp-entry` is an immutable ARM64 compiler policy bit with
+`WAGO_ARM64_NO_PREPARED_FP_ENTRY=1` as its metadata rollback. Runtime selection
+has an independent `WAGO_PREPARED_DIRECT_FP=0` fallback. Both `f32` and `f64`
+bit-preserving execution and both fallback layers are covered by tests.
+
+On an Apple M4 Max, five-sample medians for a prepared `f64.add` improved from
+30.53 ns/op to 18.77 ns/op (-38.5%), with zero B/op and allocations on both
+paths. Focused compile medians moved from 9.93 us/op to 10.05 us/op (+1.2%);
+compile storage rose by 16 bytes (0.10%) and one allocation for the persistent
+per-module direct-entry bitset. Generated function bytes are unchanged because
+the compiler change is metadata-only.
 
 ---
 
