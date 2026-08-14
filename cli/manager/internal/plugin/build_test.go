@@ -27,6 +27,33 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(wd) })
+	source := t.TempDir()
+	for path, body := range map[string]string{
+		"go.mod": "module github.com/wago-org/wago\n\ngo 1.22\n",
+		"wago.go": `package wago
+type PluginSelection struct{}
+type PluginProvider struct{}
+type PluginSet struct { Providers []PluginProvider; Selections []PluginSelection }
+func ValidatePluginSet(PluginSet) error { return nil }
+`,
+		"cli/runtime/runtime.go": `package runtime
+import wago "github.com/wago-org/wago"
+func MainWithPluginSet(string, string, wago.PluginSet) {}
+`,
+		"register/register.go": `package register
+import wago "github.com/wago-org/wago"
+func Providers() []wago.PluginProvider { return nil }
+`,
+	} {
+		fullPath := filepath.Join(source, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("WAGO_SRC", source)
 
 	buildDir, err := buildDirFor(true)
 	if err != nil {
@@ -42,42 +69,23 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	const plugin = "golang.org/x/sys"
-	if _, err := project.AddDependency(manifestDir, plugin, "^0.30.0"); err != nil {
+	const plugin = "github.com/wago-org/wago"
+	if _, err := project.AddDependency(manifestDir, plugin, "^0.0.0"); err != nil {
 		t.Fatal(err)
 	}
 
 	lock := project.NewLockDocument()
 	entry := testManagerLockEntry(plugin)
-	entry.Source.Version = "v0.30.0"
-	entry.Source.Checksum = "h1:QjkSwP/36a20jFYWkSue1YwXzLmsV5Gfq7Eiy72C1uc="
 	lock.Plugins[plugin] = entry
 	if err := project.WriteLock(manifestDir, lock); err != nil {
-		t.Fatal(err)
-	}
-	input, err := pluginbuild.InputFromLock(lock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := pluginbuild.Get(buildDir, plugin+"@v0.30.0", false); err != nil {
-		t.Fatal(err)
-	}
-	bin := pluginbuild.BinaryPath(buildDir)
-	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(bin, []byte("cached plugin runtime"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(bin+".hash", []byte(pluginbuild.Hash(input, pluginBuildConfig())), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, configured, err := pluginRuntimeBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !configured || got != bin {
-		t.Fatalf("plugin runtime = %q, %v; want %q, true", got, configured, bin)
+	if !configured || got != pluginbuild.BinaryPath(buildDir) {
+		t.Fatalf("plugin runtime = %q, %v; want %q, true", got, configured, pluginbuild.BinaryPath(buildDir))
 	}
 }
 
