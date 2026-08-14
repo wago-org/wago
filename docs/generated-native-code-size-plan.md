@@ -1018,3 +1018,47 @@ finalizer validation passed.
 AMD64 needs no corresponding change: its `MovImm32` is already the native
 one-instruction zero-extending form, and `MovImm64` already selects it whenever
 the value fits.
+
+## Implementation result: ARM64 shifted add/sub immediates
+
+ARM64 Size and Embedded now use the architectural `imm12, LSL #12` form for
+add, subtract, compare, and constant address-displacement operations. Multiples
+of 4096 through `0xfff000` therefore remain one instruction instead of
+materializing the constant in a register before the operation. Balanced and
+Speed preserve their prior selection, and
+`WAGO_ARM64_NO_SHIFTED_ADD_SUB_IMMEDIATE=1` restores the exact rollback path.
+The encoder exposes separate shifted methods rather than changing the generic
+unshifted helper, keeping unrelated callers' existing range contracts intact.
+
+Measured on the checked-in ARM64 Size corpus:
+
+```text
+rollback native bytes:  75,026,240
+candidate native bytes: 75,022,456
+net reduction:              3,784 (0.0050%)
+shorter selections:           935
+
+Ruby compile median:   635,972,542 -> 635,400,708 ns/op (-0.09%)
+esbuild compile median:359,094,166 -> 355,902,459 ns/op (-0.89%)
+compile allocation class: unchanged
+
+JSON serialize median:   18,638 -> 18,653 ns/op (+0.08%)
+JSON deserialize median: 38,307 -> 38,495 ns/op (+0.49%)
+runtime allocations: zero in both configurations
+```
+
+SQLite contributed 2,408 bytes, Ruby 536, raytrace 228, regexmatch 180, Lua
+100, fannkuch 80, blake-as-simd 72, utf-as-simd 68, nbody 52, blake-as 24,
+quicksort 12, json-as-simd 12, matmul 8, and crc32 4 bytes; no module grew.
+The 935 selected instructions directly remove 3,740 bytes, while downstream
+fragment alignment accounts for the additional 44-byte final-image reduction.
+The initially noisy non-interleaved Ruby compile result was retested with five
+alternating rollback/candidate pairs and did not reproduce.
+
+Focused add and compare execution tests, exact encoder tests, the ARM64 backend
+and race suite, compact/fuzz seeds, the complete repository test suite, and the
+full Size execution corpus with finalizer validation passed.
+
+AMD64 needs no corresponding selector: its existing add, subtract, compare,
+and address-displacement forms already encode signed 32-bit immediates directly,
+including the ARM64-shifted range, without a separate constant materialization.

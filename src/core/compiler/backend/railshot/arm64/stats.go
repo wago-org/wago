@@ -87,6 +87,9 @@ var (
 	// compactMoveImmediate32Enabled selects true W-register MOVZ/MOVN/MOVK
 	// sequences instead of constructing every i32 as a zero-extended i64.
 	compactMoveImmediate32Enabled = os.Getenv("WAGO_ARM64_NO_COMPACT_MOVE_IMMEDIATE32") != "1"
+	// shiftedAddSubImmediateEnabled selects the legal imm12 LSL #12 form for
+	// Size/Embedded add, sub, compare, and address displacement operations.
+	shiftedAddSubImmediateEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ADD_SUB_IMMEDIATE") != "1"
 	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
 	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
 	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"

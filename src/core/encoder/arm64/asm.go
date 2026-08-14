@@ -145,9 +145,13 @@ func (a *Asm) CmpReg32(rn, rm Reg) { a.addSubReg(0x6B000000, XZR, rn, rm) }
 
 // --- Add/sub (immediate, 0..4095, optional LSL #12) ---
 
-// addSubImm encodes an unshifted 12-bit immediate. imm must be in [0,4095].
+// addSubImm encodes an unshifted 12-bit immediate. Callers gate the range.
 func (a *Asm) addSubImm(base uint32, rd, rn Reg, imm uint32) {
 	a.word(base | (imm&0xFFF)<<10 | r(rn)<<5 | r(rd))
+}
+
+func (a *Asm) addSubImmLSL12(base uint32, rd, rn Reg, imm uint32) {
+	a.word(base | 1<<22 | ((imm>>12)&0xfff)<<10 | r(rn)<<5 | r(rd))
 }
 
 func (a *Asm) AddImm64(rd, rn Reg, imm uint32)  { a.addSubImm(0x91000000, rd, rn, imm) }
@@ -159,6 +163,15 @@ func (a *Asm) SubsImm64(rd, rn Reg, imm uint32) { a.addSubImm(0xF1000000, rd, rn
 // CmpImm64 is SUBS XZR, Rn, #imm12.
 func (a *Asm) CmpImm64(rn Reg, imm uint32) { a.addSubImm(0xF1000000, XZR, rn, imm) }
 func (a *Asm) CmpImm32(rn Reg, imm uint32) { a.addSubImm(0x71000000, XZR, rn, imm) }
+
+func (a *Asm) AddImm64LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0x91000000, rd, rn, imm) }
+func (a *Asm) AddImm32LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0x11000000, rd, rn, imm) }
+func (a *Asm) SubImm64LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0xD1000000, rd, rn, imm) }
+func (a *Asm) SubImm32LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0x51000000, rd, rn, imm) }
+func (a *Asm) CmpImm64LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0xF1000000, XZR, rn, imm) }
+func (a *Asm) CmpImm32LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0x71000000, XZR, rn, imm) }
+func (a *Asm) CmnImm64LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0xB1000000, XZR, rn, imm) }
+func (a *Asm) CmnImm32LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0x31000000, XZR, rn, imm) }
 
 // SubSP64 / AddSP64 adjust the stack pointer (Rn/Rd = 31 means SP here).
 func (a *Asm) SubSP64(imm uint32) { a.addSubImm(0xD1000000, SP, SP, imm) }

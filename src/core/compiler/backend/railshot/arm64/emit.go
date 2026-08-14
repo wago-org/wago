@@ -637,6 +637,25 @@ func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
 // the magnitude fits, else materializing the displacement in the backend scratch
 // X16 and using the register form.
 func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
+	if f.shiftedAddSubImmediate(int64(disp)) {
+		magnitude := int64(disp)
+		if magnitude < 0 {
+			magnitude = -magnitude
+		}
+		if disp >= 0 {
+			if w {
+				f.a.AddImm64LSL12(dst, base, uint32(magnitude))
+			} else {
+				f.a.AddImm32LSL12(dst, base, uint32(magnitude))
+			}
+		} else if w {
+			f.a.SubImm64LSL12(dst, base, uint32(magnitude))
+		} else {
+			f.a.SubImm32LSL12(dst, base, uint32(magnitude))
+		}
+		f.stats.peep("shifted-add-sub-immediate")
+		return
+	}
 	switch {
 	case disp >= 0 && disp <= 0xFFF:
 		if w {
@@ -855,7 +874,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		}
 		switch right.st.kind {
 		case stConst:
-			if fitsAddSubImm12(right.st.cval) {
+			if f.fitsAddSubImmediate(right.st.cval) {
 				f.cmpImmS(L, right.st.cval, w)
 			} else {
 				t := f.allocReg(maskOf(L))
@@ -1374,6 +1393,25 @@ func (f *fn) addFoldImm(dest Reg, v int64, w bool) bool {
 // addFoldImm3 emits `dest = base + v` when v fits AArch64's add/sub-immediate
 // encoding. The in-place addFoldImm wrapper retains existing callers.
 func (f *fn) addFoldImm3(dest, base Reg, v int64, w bool) bool {
+	if f.shiftedAddSubImmediate(v) {
+		magnitude := v
+		if magnitude < 0 {
+			magnitude = -magnitude
+		}
+		if v >= 0 {
+			if w {
+				f.a.AddImm64LSL12(dest, base, uint32(magnitude))
+			} else {
+				f.a.AddImm32LSL12(dest, base, uint32(magnitude))
+			}
+		} else if w {
+			f.a.SubImm64LSL12(dest, base, uint32(magnitude))
+		} else {
+			f.a.SubImm32LSL12(dest, base, uint32(magnitude))
+		}
+		f.stats.peep("shifted-add-sub-immediate")
+		return true
+	}
 	switch {
 	case v >= 0 && v <= 0xFFF:
 		if w {
@@ -1463,8 +1501,27 @@ func (f *fn) cmpImm(x Reg, imm uint32, w bool) {
 
 // cmpImmS emits a compare against a signed 12-bit immediate: a negative value uses
 // CMN (compare-negative, ADDS XZR,x,#|v|) so the flags match `cmp x,#v`. The caller
-// must have gated on fitsAddSubImm12.
+// must have gated on fitsAddSubImmediate.
 func (f *fn) cmpImmS(x Reg, cval int64, w bool) {
+	if f.shiftedAddSubImmediate(cval) {
+		magnitude := cval
+		if magnitude < 0 {
+			magnitude = -magnitude
+		}
+		if cval < 0 {
+			if w {
+				f.a.CmnImm64LSL12(x, uint32(magnitude))
+			} else {
+				f.a.CmnImm32LSL12(x, uint32(magnitude))
+			}
+		} else if w {
+			f.a.CmpImm64LSL12(x, uint32(magnitude))
+		} else {
+			f.a.CmpImm32LSL12(x, uint32(magnitude))
+		}
+		f.stats.peep("shifted-add-sub-immediate")
+		return
+	}
 	if cval < 0 {
 		if w {
 			f.a.CmnImm64(x, uint32(-cval))
@@ -1479,6 +1536,27 @@ func (f *fn) cmpImmS(x Reg, cval int64, w bool) {
 // fitsAddSubImm12 reports whether v fits the 12-bit add/sub (compare) immediate in
 // either sign — the AArch64 replacement for the amd64 fitsImm32 compare gate.
 func fitsAddSubImm12(v int64) bool { return v >= -0xFFF && v <= 0xFFF }
+
+func fitsShiftedAddSubImmediate(v int64) bool {
+	if v < 0 {
+		if v == -1<<63 {
+			return false
+		}
+		v = -v
+	}
+	u := uint64(v)
+	return u > 0xfff && u&0xfff == 0 && u>>12 <= 0xfff
+}
+
+func (f *fn) shiftedAddSubImmediate(v int64) bool {
+	return shiftedAddSubImmediateEnabled &&
+		(f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
+		fitsShiftedAddSubImmediate(v)
+}
+
+func (f *fn) fitsAddSubImmediate(v int64) bool {
+	return fitsAddSubImm12(v) || f.shiftedAddSubImmediate(v)
+}
 
 // consumeBlockBelow unlinks every physical stack element of node's valent block
 // that sits below node (its operand sub-trees), leaving node as the top.
