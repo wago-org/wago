@@ -2674,11 +2674,15 @@ Final retained proved-dead reservations are 3,472 bytes on ARM64 and 285,275
 bytes on AMD64. ARM64's remainder is behind the rejected larger loop scan.
 AMD64's remainder is fully attributed to the coupled loop-size and rel32
 inventory bounds whose larger variants were measured and rejected for their
-scratch/compile crossover. No unattributed physical-compaction opportunity
-remains in either ledger.
+scratch/compile crossover. No unattributed opportunity remains within the
+tracked proved-dead reservation classes.
 
-The native-code campaign therefore closes with all enabled transforms showing
-corpus-level reduction and all accepted policies inside their compile-time,
-allocation, memory, and affected-runtime gates. Embedded ABI/AOT work and
-serialized `.wago` compaction remain separate metrics and separately versioned
-product tracks.
+The native-code campaign therefore closes with every enabled transform showing
+a corpus-level reduction and its individual admission experiment inside the
+recorded allocation, memory, and affected-runtime gates. The complete opt-in
+Size policy does not meet the plan's initial proposed 5% compile-time goal when
+compared with Balanced: five-sample geomeans are +1.92% on ARM64 and +18.36% on
+AMD64 (+9.83% combined). That measured tradeoff is reported explicitly rather
+than attributed to the default Balanced policy, which keeps physical compaction
+disabled. Embedded ABI/AOT work, the finer-grained ledger, the full native-cost
+inliner, and serialized `.wago` compaction remain separate follow-up tracks.

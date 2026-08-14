@@ -11,6 +11,17 @@ measured predictions.
 Implementation measurements are recorded separately in the
 [generated native-code size results ledger](generated-native-code-size-results.md).
 
+Implementation status for PR #452: this document remains the broader roadmap,
+not a claim that every phase ships in one change. The desktop campaign delivers
+exact total/module ownership accounting plus the byte classes needed to measure
+its retained transforms; the finer per-instruction ledger, top-N reporting, and
+offline cost-model extensions remain follow-up work. Physical compaction is
+enabled only for the opt-in Size and Embedded objectives because measured
+default-path variants missed Balanced's compile-allocation or latency gates.
+Speed and Balanced retain their established physical layout. Size inlining uses
+a bounded proved-tiny, single-use, call-free class with dead-body removal rather
+than the complete native net-cost model described for the later roadmap phase.
+
 This plan complements the broader
 [single-pass optimization research](singlepass-optimization-research-and-issues-2026-08.md),
 the [code-image pipeline plan](code-image-pipeline-plan.md), and Wago's current
