@@ -46,7 +46,7 @@ func TestTableCloseVersusAttachValidation(t *testing.T) {
 		close(start)
 		wg.Wait()
 		if <-attached {
-			table.detachImporter()
+			table.detachImporter(nil)
 		}
 		if err := table.Close(); err != nil {
 			t.Fatal(err)

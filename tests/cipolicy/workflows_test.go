@@ -114,6 +114,30 @@ func TestWindowsWABTInstallIsPinnedAndVerified(t *testing.T) {
 	}
 }
 
+func TestRuntimeConcurrencyHarnessRunsOnLinuxAMD64AndARM64(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(workflow)
+	for _, required := range []string{
+		`runtime-concurrency:`,
+		`name: Runtime concurrency / ${{ matrix.name }}`,
+		`runner: ubuntu-24.04`,
+		`runner: ubuntu-24.04-arm`,
+		`WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081`,
+		`run: make test-concurrency`,
+		`name: Race detector / Linux amd64`,
+		`timeout-minutes: 15`,
+		`go test -race -count=1 ./src/wago ./src/core/runtime ./tests/runtimeconcurrency`,
+		`needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race`,
+	} {
+		if !strings.Contains(contents, required) {
+			t.Errorf("CI workflow is missing runtime-concurrency policy %q", required)
+		}
+	}
+}
+
 func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
 	if err != nil {

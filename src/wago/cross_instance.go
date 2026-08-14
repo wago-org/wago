@@ -106,6 +106,11 @@ type tableOwner struct {
 	// with no declared maximum cannot satisfy an import that requires one.
 	declaredHasMax bool
 	addr64         bool // exact table index/address form; host tables are table32
+	// Host funcref tables may be shared by scalar-only stores. Once any
+	// participating store owns a Runtime GC domain, the table is pinned to that
+	// store; creating a domain or adding an importer rejects a mixed-store graph.
+	funcrefStores  map[*referenceStore]uint32
+	funcrefGCStore *referenceStore
 	importers      int
 	closed         bool
 }
@@ -244,6 +249,55 @@ func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, t
 	return t.validateImportWithCollector(elementType, exact, types, store, nil, addr64)
 }
 
+func (o *tableOwner) hasForeignFuncrefStoreLocked(store *referenceStore) bool {
+	for candidate, refs := range o.funcrefStores {
+		if refs != 0 && candidate != store {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *Table) hasIncompatibleGCProducer(store *referenceStore) bool {
+	for _, producer := range t.funcrefProducerRoots() {
+		if producer == nil {
+			continue
+		}
+		domains, topology := producer.gcInvocationDomainsForInspection()
+		incompatible := false
+		for i := 0; i < domains.len(); i++ {
+			domain := domains.at(i)
+			if domain.private || store == nil || producer.refStore != store {
+				incompatible = true
+				break
+			}
+		}
+		if topology != nil {
+			topology.RUnlock()
+		}
+		if incompatible {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *tableOwner) validateFuncrefStoreLocked(store *referenceStore) error {
+	if o.elementType != ValFuncRef {
+		return nil
+	}
+	if o.instance != nil {
+		if o.store != store {
+			return fmt.Errorf("instance-owned funcref table requires its producer and importer in the same reference store")
+		}
+		return nil
+	}
+	if o.funcrefGCStore != nil && o.funcrefGCStore != store {
+		return fmt.Errorf("host funcref table is bound to a different Runtime GC reference store")
+	}
+	return nil
+}
+
 func (t *Table) validateImportWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
 	if t == nil || t.owner == nil {
 		return fmt.Errorf("table descriptor is invalid")
@@ -280,6 +334,9 @@ func (t *Table) validateImportWithCollector(elementType ValType, exact ValueType
 	}
 	if o.elementType != elementType {
 		return fmt.Errorf("table element type %s is incompatible with required %s", o.elementType, elementType)
+	}
+	if err := o.validateFuncrefStoreLocked(store); err != nil {
+		return err
 	}
 	actual := o.valueType
 	actualTypes := o.types
@@ -338,10 +395,63 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 		return err
 	}
 	o := t.owner
+	if o.elementType == ValFuncRef && o.instance == nil {
+		if t.hasIncompatibleGCProducer(store) {
+			return fmt.Errorf("funcref table contains a producer from an incompatible GC invocation domain")
+		}
+		var topology *gcDomainTopology
+		if store != nil {
+			topology = store.ensureGCTopology()
+			topology.funcrefMu.Lock()
+			defer topology.funcrefMu.Unlock()
+		}
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		if o.closed {
+			return fmt.Errorf("table owner is closed")
+		}
+		if err := o.validateFuncrefStoreLocked(store); err != nil {
+			return err
+		}
+		if store == nil {
+			if o.hasForeignFuncrefStoreLocked(nil) {
+				return fmt.Errorf("standalone and Runtime instances cannot concurrently share a mutable funcref table")
+			}
+		} else if o.funcrefStores[nil] != 0 {
+			return fmt.Errorf("standalone and Runtime instances cannot concurrently share a mutable funcref table")
+		}
+		if topology != nil && topology.funcrefGCActive {
+			if o.hasForeignFuncrefStoreLocked(store) {
+				return fmt.Errorf("Runtime GC domains cannot share a mutable funcref table across reference stores")
+			}
+			o.funcrefGCStore = store
+		}
+		if o.funcrefStores[store] == ^uint32(0) {
+			return fmt.Errorf("funcref table has too many importers in one reference store")
+		}
+		if topology != nil && topology.funcrefTables[t] == ^uint32(0) {
+			return fmt.Errorf("funcref table has too many importers in one Runtime")
+		}
+		if o.funcrefStores == nil {
+			o.funcrefStores = make(map[*referenceStore]uint32)
+		}
+		o.funcrefStores[store]++
+		if topology != nil {
+			if topology.funcrefTables == nil {
+				topology.funcrefTables = make(map[*Table]uint32)
+			}
+			topology.funcrefTables[t]++
+		}
+		o.importers++
+		return nil
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.closed {
 		return fmt.Errorf("table owner is closed")
+	}
+	if err := o.validateFuncrefStoreLocked(store); err != nil {
+		return err
 	}
 	if o.instance != nil && !o.instance.retainResourceRoot() {
 		return fmt.Errorf("table owner instance is closed")
@@ -350,11 +460,41 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	return nil
 }
 
-func (t *Table) detachImporter() {
+func (t *Table) detachImporter(store *referenceStore) {
 	if t == nil || t.owner == nil {
 		return
 	}
 	o := t.owner
+	if o.elementType == ValFuncRef && o.instance == nil {
+		var topology *gcDomainTopology
+		if store != nil {
+			store.mu.Lock()
+			topology = store.gcDomains
+			store.mu.Unlock()
+			if topology != nil {
+				topology.funcrefMu.Lock()
+				defer topology.funcrefMu.Unlock()
+			}
+		}
+		o.mu.Lock()
+		if o.importers > 0 {
+			o.importers--
+			if refs := o.funcrefStores[store]; refs <= 1 {
+				delete(o.funcrefStores, store)
+			} else {
+				o.funcrefStores[store] = refs - 1
+			}
+			if topology != nil {
+				if refs := topology.funcrefTables[t]; refs <= 1 {
+					delete(topology.funcrefTables, t)
+				} else {
+					topology.funcrefTables[t] = refs - 1
+				}
+			}
+		}
+		o.mu.Unlock()
+		return
+	}
 	var instance *Instance
 	o.mu.Lock()
 	if o.importers > 0 {

@@ -17,7 +17,7 @@ type gcHostActivationToken struct {
 	index uint8
 }
 
-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostActivationToken {
+func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop uintptr) gcHostActivationToken {
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
@@ -58,7 +58,6 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostAc
 		// above the host stub. Scan only the fixed wrapper envelope and accept a
 		// candidate solely when it equals a validated logical callsite return PC.
 		const wrapperScanBytes = uintptr(512)
-		stackTop := in.eng.StackTop()
 		if stackTop <= savedRSP+8 {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation saved RSP %#x is outside the foreign stack", savedRSP)})
 		}
