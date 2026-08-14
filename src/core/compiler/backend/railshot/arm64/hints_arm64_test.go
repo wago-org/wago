@@ -4,10 +4,18 @@ package arm64
 
 import (
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestFuncHintsSizeArm64(t *testing.T) {
+	const want = 200
+	if got := unsafe.Sizeof(funcHints{}); got != want {
+		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
 
 func TestTableMutationHints(t *testing.T) {
 	body := []byte{

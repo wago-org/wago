@@ -41,11 +41,11 @@ func weightedBranchPath(weight int64) int64 {
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
 	nLocals         int
-	inlineCallSites uint32 // direct call sites targeting this local function
 	hasCall         bool   // any direct or indirect call
 	callsSelf       bool   // a direct call to the function's own index
 	hasLoop         bool   // structured loop (X12/X13 may be borrowed by loop promotion)
 	touchesMemory   bool   // any linear-memory op
+	inlineCallSites uint16 // saturated direct call sites targeting this local function
 	memOps          int    // scalar/vector/bulk linear-memory instructions
 	usesBulkMem     bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
 	mutatesTable    bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
@@ -744,7 +744,7 @@ func (s *byteBodyScanner) noteInlineCallSite(globalIdx uint32) {
 	if local < 0 || local >= len(s.moduleHints) {
 		return
 	}
-	if s.moduleHints[local].inlineCallSites != ^uint32(0) {
+	if s.moduleHints[local].inlineCallSites != ^uint16(0) {
 		s.moduleHints[local].inlineCallSites++
 	}
 }
