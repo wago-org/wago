@@ -22,7 +22,16 @@ var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
-var legacyFinalizerDeletionLimit = os.Getenv("WAGO_FINALIZER_DELETIONS") == "8"
+var finalizerDeletionLimitOverride = func() int {
+	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
+	case "8":
+		return 8
+	case "16":
+		return 16
+	default:
+		return 0
+	}
+}()
 
 const maxFinalizerDeletions = shared.MaxOffsetMapDeletions
 const maxLoopCompactionBytes = 16 << 10
@@ -168,8 +177,8 @@ func (f *fn) finalizerDeletionLimit() int {
 	if limit == 0 {
 		limit = 8
 	}
-	if legacyFinalizerDeletionLimit && limit > 8 {
-		limit = 8
+	if finalizerDeletionLimitOverride != 0 && limit > finalizerDeletionLimitOverride {
+		limit = finalizerDeletionLimitOverride
 	}
 	return min(limit, maxFinalizerDeletions)
 }

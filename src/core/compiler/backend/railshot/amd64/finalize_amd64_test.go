@@ -192,7 +192,7 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 	subSite := a.Len() + 3
 	a.SubRsp(24)
 	sc := &scratch{}
-	for range 20 {
+	for range shared.MaxOffsetMapDeletions + 4 {
 		over := a.Len()
 		a.B = append(a.B, 0x90, 0x90, 0x90, 0x90, 0x0f, 0x1f, 0x44, 0x00, 0x00)
 		sc.brFoldSites = append(sc.brFoldSites, over)

@@ -24,7 +24,16 @@ var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
 var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
-var legacyFinalizerDeletionLimit = os.Getenv("WAGO_FINALIZER_DELETIONS") == "8"
+var finalizerDeletionLimitOverride = func() int {
+	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
+	case "8":
+		return 8
+	case "16":
+		return 16
+	default:
+		return 0
+	}
+}()
 
 func compactNativePolicy(policy CodegenPolicy) bool {
 	return !nativeCompactionDisabled && (nativeCompactionEnabled || policy.CompactNative)
@@ -37,8 +46,8 @@ func (f *fn) finalizerDeletionLimit() int {
 	if limit == 0 {
 		limit = 8
 	}
-	if legacyFinalizerDeletionLimit && limit > 8 {
-		limit = 8
+	if finalizerDeletionLimitOverride != 0 && limit > finalizerDeletionLimitOverride {
+		limit = finalizerDeletionLimitOverride
 	}
 	return min(limit, shared.MaxOffsetMapDeletions)
 }

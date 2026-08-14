@@ -71,32 +71,46 @@ type OffsetMap struct {
 	finalLen  uint32
 	deletionN uint8
 	deletions [MaxOffsetMapDeletions]DeletedRange
+	deleted   [MaxOffsetMapDeletions]uint32
 }
 
 // MaxOffsetMapDeletions is the fixed per-function deletion budget. Backends may
 // retain later candidates in their maximal-safe form; correctness never depends
 // on maximizing relaxation.
-const MaxOffsetMapDeletions = 16
+const MaxOffsetMapDeletions = 32
 
 func (m *OffsetMap) Map(off int) (int, bool) {
 	if off < 0 || uint64(off) > uint64(m.oldLen) {
 		return 0, false
 	}
-	delta := 0
-	for _, deletion := range m.deletions[:m.deletionN] {
-		start := int(deletion.Off)
-		end := start + int(deletion.Len)
-		if off < start {
-			break
-		}
-		if off > start && off < end {
-			return 0, false
-		}
-		if off >= end {
-			delta += int(deletion.Len)
+	// Find the last deletion whose start is at or before off. The inventory is
+	// small and fixed-capacity, but branch-heavy functions map enough labels and
+	// relocation sites that a linear walk here becomes the finalizer's dominant
+	// cost as the deletion budget grows.
+	lo, hi := 0, int(m.deletionN)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if int(m.deletions[mid].Off) <= off {
+			lo = mid + 1
+		} else {
+			hi = mid
 		}
 	}
-	return off - delta, true
+	i := lo - 1
+	if i < 0 {
+		return off, true
+	}
+	deletion := m.deletions[i]
+	start := int(deletion.Off)
+	end := start + int(deletion.Len)
+	if off > start && off < end {
+		return 0, false
+	}
+	delta := m.deleted[i]
+	if off == start {
+		delta -= deletion.Len
+	}
+	return off - int(delta), true
 }
 
 func (m *OffsetMap) FinalLen() int { return int(m.finalLen) }
@@ -130,6 +144,11 @@ func NewOffsetMap(oldLen int, deletions []DeletedRange) (OffsetMap, error) {
 	}
 	result := OffsetMap{oldLen: uint32(oldLen), finalLen: uint32(uint64(oldLen) - deleted), deletionN: uint8(len(deletions))}
 	copy(result.deletions[:], deletions)
+	deleted = 0
+	for i, deletion := range deletions {
+		deleted += uint64(deletion.Len)
+		result.deleted[i] = uint32(deleted)
+	}
 	return result, nil
 }
 

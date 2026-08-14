@@ -94,6 +94,41 @@ func TestOffsetMapAppliesSortedDeletions(t *testing.T) {
 	}
 }
 
+func TestOffsetMapBinaryLookupMatchesLinearReference(t *testing.T) {
+	deletions := []DeletedRange{
+		{Off: 0, Len: 2},
+		{Off: 5, Len: 3},
+		{Off: 11, Len: 1},
+		{Off: 17, Len: 5},
+		{Off: 29, Len: 2},
+	}
+	offsets, err := NewOffsetMap(40, deletions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for off := 0; off <= 40; off++ {
+		delta := 0
+		wantOK := true
+		for _, deletion := range deletions {
+			start, end := int(deletion.Off), int(deletion.Off+deletion.Len)
+			if off < start {
+				break
+			}
+			if off > start && off < end {
+				wantOK = false
+				break
+			}
+			if off >= end {
+				delta += int(deletion.Len)
+			}
+		}
+		got, gotOK := offsets.Map(off)
+		if want := off - delta; gotOK != wantOK || wantOK && got != want {
+			t.Errorf("map(%d) = %d, %v; want %d, %v", off, got, gotOK, want, wantOK)
+		}
+	}
+}
+
 func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
 	for _, deletions := range [][]DeletedRange{
 		{{Off: 4}},
