@@ -53,6 +53,38 @@ func TestCompileWorkersLowestIndexError(t *testing.T) {
 	}
 }
 
+func BenchmarkCompileModuleCompactionAMD64(b *testing.B) {
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	for _, name := range []string{"many_funcs.wasm", "json-as.wasm"} {
+		m := readParallelTestModule(b, filepath.Join(corpus, name))
+		b.Run(name, func(b *testing.B) {
+			for _, compact := range []bool{false, true} {
+				label := "off"
+				if compact {
+					label = "on"
+				}
+				b.Run(label, func(b *testing.B) {
+					before := nativeCompactionEnabled
+					nativeCompactionEnabled = compact
+					b.Cleanup(func() { nativeCompactionEnabled = before })
+					b.ReportAllocs()
+					for b.Loop() {
+						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1})
+						if err != nil {
+							b.Fatal(err)
+						}
+						if cm.CodeImage != nil {
+							if err := cm.CodeImage.Close(); err != nil {
+								b.Fatal(err)
+							}
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestCompileWorkersCorpusParity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping whole-corpus compiler parity in short mode")
