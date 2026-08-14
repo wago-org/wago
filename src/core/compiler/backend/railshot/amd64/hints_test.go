@@ -97,6 +97,20 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	}
 }
 
+func TestBrTableHintsMarkOpaqueTableData(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0x0e, 0x00, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.hasBrTable || !h.hasControlFlow {
+		t.Fatalf("byte br_table hints = table:%v control:%v, want both", h.hasBrTable, h.hasControlFlow)
+	}
+	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrBrTable}}}, 0, 0, 0)
+	if !ast.hasBrTable || !ast.hasControlFlow {
+		t.Fatalf("AST br_table hints = table:%v control:%v, want both", ast.hasBrTable, ast.hasControlFlow)
+	}
+}
+
 func TestScanBodyExceptionHandlingHint(t *testing.T) {
 	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrThrow}}}, 0, 0, 0)
 	if !ast.moduleEH {

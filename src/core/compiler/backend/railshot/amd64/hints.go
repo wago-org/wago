@@ -53,6 +53,7 @@ type funcHints struct {
 	// the loop subset. calleeCount>0/hasControlCall from inlineOK both reduce to
 	// hasCall (an inline candidate is leaf), so no separate call-kind split is kept.
 	hasLoop        bool
+	hasBrTable     bool
 	hasControlFlow bool
 	moduleEH       bool
 	hasFloatConst  bool // body contains f32.const or f64.const
@@ -332,6 +333,8 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
 					h.hasLoop = true
+				} else if in.Kind == wasm.InstrBrTable {
+					h.hasBrTable = true
 				}
 			}
 			switch in.Kind {
@@ -634,6 +637,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.entryPrefix = false
 			if op == 0x03 {
 				s.h.hasLoop = true
+			} else if op == 0x0e {
+				s.h.hasBrTable = true
 			}
 		}
 		switch op {
