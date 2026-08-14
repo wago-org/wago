@@ -115,7 +115,8 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// the upper 32 bits on x86-64) is a no-op. The semantic fact survives bounded
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
-	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
+	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.Has(factUpper32Zero)
+	redundantSExt := redundantSignExtension(node.op, node.typ, rootMachineType(node.arg0), node.arg0.st.facts)
 	src, srcOwned := f.materializeRead(node.arg0)
 	result := dest
 	if result == regNone {
@@ -135,10 +136,25 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opWrap:
 		f.a.MovRegReg32(result, src)
 	case opSExt32:
+		if redundantSExt && result == src {
+			f.stats.peep("ext-elim")
+			f.stats.peep("sign-ext-elim")
+			break
+		}
 		f.a.Movsxd(result, src)
 	case opSExt8:
+		if redundantSExt && result == src {
+			f.stats.peep("ext-elim")
+			f.stats.peep("sign-ext-elim")
+			break
+		}
 		f.a.Movsx8(result, src, node.typ.is64())
 	case opSExt16:
+		if redundantSExt && result == src {
+			f.stats.peep("ext-elim")
+			f.stats.peep("sign-ext-elim")
+			break
+		}
 		f.a.Movsx16(result, src, node.typ.is64())
 	}
 	if srcOwned && result != src {

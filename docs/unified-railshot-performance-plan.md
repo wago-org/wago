@@ -71,6 +71,26 @@ remained at 41 allocs/op and did not regress. This is the first deliberately
 narrow extraction from #316; local/fact tables, effect summaries, matcher
 scratch, and relocation ownership remain separate follow-up slices.
 
+### 2026-08-14 — shared sign-extension provenance, first #438 slice
+
+The AMD64 and ARM64 Valent backends now use one shared one-byte `ValueFacts`
+vocabulary. Existing upper-zero and boolean facts are joined by explicit
+sign-extension facts for 8-, 16-, and 32-bit producers. Signed loads and Wasm
+sign-extension operations establish those facts; target emitters consume them
+only for a same-machine-type extension, so an i32-to-i64 extension remains a
+tested near miss. Facts survive ordinary materialization and spills without a
+side table, and the existing 64-byte storage and 112-byte Valent-node size gates
+remain unchanged.
+
+The repository corpus records five `sign-ext-elim` hits across
+`tests/regressions/fuzzcases/1797c.wasm` and `1797d.wasm`. Their affected
+function bodies shrink by 12 and 8 native bytes respectively on Darwin/ARM64;
+module alignment absorbs the first module's total-size reduction. A serialized
+three-sample, two-second `many_funcs` compile benchmark measured 247,678 ns/op
+versus 247,394 ns/op (+0.11%), with 343 allocs/op unchanged. Exact low-bit
+widths, nonzero/alignment facts, structured local-fact joins, and additional
+target consumers remain follow-up #438 work.
+
 ---
 
 # 1. North-star architecture

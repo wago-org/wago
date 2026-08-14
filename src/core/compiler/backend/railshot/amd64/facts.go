@@ -2,18 +2,17 @@
 
 package amd64
 
-// valueFacts is bounded semantic provenance carried directly by a Valent node.
-// It occupies existing padding in storage, so facts neither allocate nor enlarge
-// the operand-stack arena. Facts describe the value, not its current register or
-// slot, and therefore survive materialization and spills.
-type valueFacts uint8
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+
+type valueFacts = shared.ValueFacts
 
 const (
-	factUpper32Zero valueFacts = 1 << iota
-	factBoolean
+	factUpper32Zero = shared.ValueFactUpper32Zero
+	factBoolean     = shared.ValueFactBoolean
+	factSignExt8    = shared.ValueFactSignExt8
+	factSignExt16   = shared.ValueFactSignExt16
+	factSignExt32   = shared.ValueFactSignExt32
 )
-
-func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
 
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
 	if isCompare(op) || op == opEqz {
@@ -21,6 +20,22 @@ func deferredResultFacts(op wOp, typ machineType) valueFacts {
 	}
 	if op == opWrap || op == opZExt32 {
 		return factUpper32Zero
+	}
+	switch op {
+	case opSExt8:
+		facts := factSignExt8 | factSignExt16
+		if typ == mtI64 {
+			facts |= factSignExt32
+		}
+		return facts
+	case opSExt16:
+		facts := valueFacts(factSignExt16)
+		if typ == mtI64 {
+			facts |= factSignExt32
+		}
+		return facts
+	case opSExt32:
+		return factSignExt32
 	}
 	if typ != mtI32 {
 		return 0
@@ -33,4 +48,19 @@ func deferredResultFacts(op wOp, typ machineType) valueFacts {
 		return factUpper32Zero
 	}
 	return 0
+}
+
+func redundantSignExtension(op wOp, resultType, inputType machineType, facts valueFacts) bool {
+	if resultType != inputType {
+		return false
+	}
+	switch op {
+	case opSExt8:
+		return facts.Has(factSignExt8)
+	case opSExt16:
+		return facts.Has(factSignExt16)
+	case opSExt32:
+		return facts.Has(factSignExt32)
+	}
+	return false
 }

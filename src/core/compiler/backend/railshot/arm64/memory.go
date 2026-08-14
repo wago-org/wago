@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -698,10 +699,14 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		f.a.LoadIdx(out, base, ea, disp, size, signed, wide)
 		f.release(base)
 		f.release(ea)
+		var e *elem
 		if wide {
-			f.pushReg(out, mtI64)
+			e = f.pushReg(out, mtI64)
 		} else {
-			f.pushReg(out, mtI32)
+			e = f.pushReg(out, mtI32)
+		}
+		if f.opt(optValueFacts) {
+			e.st.facts = shared.ValueFactsForIntLoad(size, signed, wide)
 		}
 		return nil
 	}
@@ -724,10 +729,8 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// so unlike x86 there is no r/m consumer, but deferring still lets the consumer
 	// pick the destination register and elide dead loads).
 	st := memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal)
-	if f.opt(optValueFacts) && !wide {
-		// Every i32 load writes a W register, including sign-extending byte/word
-		// forms, so its physical X-register upper half is known zero.
-		st.facts = factUpper32Zero
+	if f.opt(optValueFacts) {
+		st.facts = shared.ValueFactsForIntLoad(size, signed, wide)
 	}
 	e := f.pushValue(st)
 	if eaOwned {

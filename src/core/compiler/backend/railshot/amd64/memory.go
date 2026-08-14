@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -766,8 +767,8 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		} else {
 			e = f.pushReg(out, mtI32)
 		}
-		if f.opt(optValueFacts) && !wide {
-			e.st.facts = factUpper32Zero
+		if f.opt(optValueFacts) {
+			e.st.facts = shared.ValueFactsForIntLoad(size, signed, wide)
 		}
 		return nil
 	}
@@ -775,8 +776,8 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		f.invalidateStoreForward()
 		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
 		st := memRefStorage(ea, disp, size, signed, wide, borrow)
-		if f.opt(optValueFacts) && !wide {
-			st.facts = factUpper32Zero
+		if f.opt(optValueFacts) {
+			st.facts = shared.ValueFactsForIntLoad(size, signed, wide)
 		}
 		e := f.pushValue(st)
 		if eaOwned {
@@ -809,10 +810,8 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
 	st := memRefStorage(ea, disp, size, signed, wide, borrow)
-	if f.opt(optValueFacts) && !wide {
-		// Every i32 load writes a 32-bit destination, including sign-extending
-		// byte/word forms, so the physical register upper half is known zero.
-		st.facts = factUpper32Zero
+	if f.opt(optValueFacts) {
+		st.facts = shared.ValueFactsForIntLoad(size, signed, wide)
 	}
 	e := f.pushValue(st)
 	if eaOwned {

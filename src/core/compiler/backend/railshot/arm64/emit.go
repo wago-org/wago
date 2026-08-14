@@ -123,7 +123,8 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// the upper 32 bits on AArch64) is a no-op. The semantic fact survives bounded
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
-	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
+	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.Has(factUpper32Zero)
+	redundantSExt := redundantSignExtension(node.op, node.typ, rootMachineType(node.arg0), node.arg0.st.facts)
 	src := f.materialize(node.arg0)
 	result := src
 	if dest != regNone && dest != src {
@@ -139,12 +140,27 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opWrap:
 		f.a.MovReg32(result, src)
 	case opSExt32:
+		if redundantSExt && result == src {
+			f.stats.peep("ext-elim")
+			f.stats.peep("sign-ext-elim")
+			break
+		}
 		f.a.Sxtw(result, src) // SBFM Xd,Xn,#0,#31 — sign-extend 32→64
 	case opSExt8:
+		if redundantSExt && result == src {
+			f.stats.peep("ext-elim")
+			f.stats.peep("sign-ext-elim")
+			break
+		}
 		// Encoder width selectors use true for W (32-bit) and false for X
 		// (64-bit), the inverse of machineType.is64().
 		f.a.Sxtb(result, src, !node.typ.is64())
 	case opSExt16:
+		if redundantSExt && result == src {
+			f.stats.peep("ext-elim")
+			f.stats.peep("sign-ext-elim")
+			break
+		}
 		f.a.Sxth(result, src, !node.typ.is64())
 	}
 	if result != src {
