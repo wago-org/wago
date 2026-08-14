@@ -1,6 +1,7 @@
 package project
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -49,6 +50,55 @@ func TestDependencyUpdatePreservesPackageField(t *testing.T) {
 	plugins := manifest["plugins"].(map[string]any)
 	if plugins["github.com/acme/wago-timer"] != "^1.0.0" {
 		t.Fatalf("full plugin requirement not recorded: %v", plugins)
+	}
+}
+
+func TestRemoveDependencyPublishesPrunedCoherentMetadata(t *testing.T) {
+	dir := t.TempDir()
+	removedID := "github.com/acme/pool"
+	retainedID := "github.com/acme/logger"
+	transitiveID := "github.com/acme/workers"
+	manifest := map[string]any{
+		"$schema": SchemaURI,
+		"plugins": map[string]any{removedID: "^1.0.0", retainedID: "^1.0.0"},
+	}
+	lock := NewLockDocument()
+	lock.Plugins[removedID] = testLockEntry(true, removedID, map[string]string{transitiveID: "^1.0.0"})
+	lock.Plugins[retainedID] = testLockEntry(true, retainedID, map[string]string{})
+	lock.Plugins[transitiveID] = testLockEntry(false, transitiveID, map[string]string{})
+	if err := WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+		return mutation.PublishMetadata(manifest, lock)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, id, err := RemoveDependency(dir, removedID)
+	if err != nil || !removed || id != removedID {
+		t.Fatalf("RemoveDependency = %v, %q, %v", removed, id, err)
+	}
+	gotManifest, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotLock, err := ReadLock(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requirements, err := RequirementsFromManifest(gotManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateLockedResolution(requirements, gotLock); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := gotLock.Plugins[removedID]; ok {
+		t.Fatalf("removed direct plugin remains in lock: %#v", gotLock.Plugins)
+	}
+	if _, ok := gotLock.Plugins[transitiveID]; ok {
+		t.Fatalf("unreachable transitive plugin remains in lock: %#v", gotLock.Plugins)
+	}
+	if _, ok := gotLock.Plugins[retainedID]; !ok {
+		t.Fatalf("unrelated direct plugin was pruned: %#v", gotLock.Plugins)
 	}
 }
 

@@ -1,7 +1,9 @@
 package project
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -101,50 +103,106 @@ func AddDependency(dir, id, constraint string) (bool, error) {
 	if err := ValidateConstraint(constraint); err != nil {
 		return false, fmt.Errorf("plugin %q has invalid version constraint %q", id, constraint)
 	}
-	manifest, err := Read(dir)
-	if err != nil {
-		return false, err
-	}
-	changed, err := SetRequirement(manifest, id, constraint)
-	if err != nil || !changed {
-		return changed, err
-	}
-	return true, Write(dir, manifest)
+	var changed bool
+	err := WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+		manifest, err := mutation.ReadManifest()
+		if err != nil {
+			return err
+		}
+		changed, err = SetRequirement(manifest, id, constraint)
+		if err != nil || !changed {
+			return err
+		}
+		return mutation.PublishManifest(manifest)
+	})
+	return changed, err
 }
 
 func RemoveDependency(dir, name string) (removed bool, module string, err error) {
-	manifest, err := Read(dir)
-	if err != nil {
-		return false, "", err
-	}
-	requirements, err := requirementsFromMap(manifest, dir)
-	if err != nil {
-		return false, "", err
-	}
 	id := strings.TrimSpace(name)
-	var matchedID string
-	for _, requirement := range requirements {
-		if requirement.ID == id {
-			matchedID = requirement.ID
-			break
+	err = WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+		manifest, readErr := mutation.ReadManifest()
+		if readErr != nil {
+			return readErr
+		}
+		requirements, readErr := requirementsFromMap(manifest, dir)
+		if readErr != nil {
+			return readErr
+		}
+		for _, requirement := range requirements {
+			if requirement.ID == id {
+				module = requirement.ID
+				break
+			}
+		}
+		if module == "" {
+			return nil
+		}
+		_, lockStatErr := os.Stat(LockPath(dir))
+		if lockStatErr != nil && !os.IsNotExist(lockStatErr) {
+			return lockStatErr
+		}
+		if os.IsNotExist(lockStatErr) {
+			delete(manifest["plugins"].(map[string]any), id)
+			if publishErr := mutation.PublishManifest(manifest); publishErr != nil {
+				return publishErr
+			}
+			removed = true
+			return nil
+		}
+		lock, readErr := mutation.ReadLock()
+		if readErr != nil {
+			return readErr
+		}
+		delete(manifest["plugins"].(map[string]any), id)
+		if entry, ok := lock.Plugins[id]; ok {
+			entry.Direct = false
+			lock.Plugins[id] = entry
+		}
+		pruneLock(&lock)
+		if publishErr := mutation.PublishMetadata(manifest, lock); publishErr != nil {
+			return publishErr
+		}
+		removed = true
+		return nil
+	})
+	if err != nil {
+		return false, "", err
+	}
+	return removed, module, nil
+}
+
+func pruneLock(document *LockDocument) {
+	reachable := make(map[string]bool, len(document.Plugins))
+	var visit func(string)
+	visit = func(id string) {
+		if reachable[id] {
+			return
+		}
+		entry, ok := document.Plugins[id]
+		if !ok {
+			return
+		}
+		reachable[id] = true
+		for dependency := range entry.Dependencies {
+			visit(dependency)
+		}
+		for _, binding := range entry.Bindings {
+			for _, provider := range binding.Providers {
+				visit(provider)
+			}
 		}
 	}
-	if matchedID == "" {
-		return false, "", nil
+	for id, entry := range document.Plugins {
+		if entry.Direct {
+			visit(id)
+		}
 	}
-	delete(manifest["plugins"].(map[string]any), id)
-	if err := Write(dir, manifest); err != nil {
-		return false, "", err
+	for id := range document.Plugins {
+		if !reachable[id] {
+			delete(document.Plugins, id)
+		}
 	}
-	lock, err := ReadLock(dir)
-	if err != nil {
-		return false, "", err
-	}
-	delete(lock.Plugins, id)
-	if err := WriteLock(dir, lock); err != nil {
-		return false, "", err
-	}
-	return true, matchedID, nil
 }
 
 func requirementsFromMap(manifest map[string]any, dir string) ([]PluginRequirement, error) {
