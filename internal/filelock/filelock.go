@@ -33,6 +33,10 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateLockFile(file, path); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
 	if err := file.Chmod(0o600); err != nil {
 		_ = file.Close()
 		return nil, err
@@ -61,6 +65,21 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 		case <-timer.C:
 		}
 	}
+}
+
+func validateLockFile(file *os.File, path string) error {
+	opened, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	linked, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !opened.Mode().IsRegular() || linked.Mode()&os.ModeSymlink != 0 || !linked.Mode().IsRegular() || !os.SameFile(opened, linked) {
+		return fmt.Errorf("lock file %s is not a stable regular file", path)
+	}
+	return nil
 }
 
 // Close releases the lock and closes its file descriptor.

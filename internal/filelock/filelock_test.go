@@ -45,3 +45,13 @@ func TestLockSerializesAndHonorsCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLockRejectsNonRegularPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lock")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Acquire(context.Background(), path); err == nil {
+		t.Fatal("Acquire accepted a directory as a lock file")
+	}
+}

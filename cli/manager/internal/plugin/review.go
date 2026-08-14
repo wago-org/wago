@@ -246,12 +246,12 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 		fatal("plugin grant: %v", err)
 	}
 	ctx := context.Background()
-	err = withPluginMutationLock(ctx, src, func() error {
-		manifest, readErr := project.Read(src)
+	err = withPluginMutationLock(ctx, src, func(mutation *project.Mutation) error {
+		manifest, readErr := mutation.ReadManifest()
 		if readErr != nil {
 			return readErr
 		}
-		lock, readErr := project.ReadLock(src)
+		lock, readErr := mutation.ReadLock()
 		if readErr != nil {
 			return readErr
 		}
@@ -267,7 +267,7 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 		if err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(src, buildDir, manifest, lock, false)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
 	})
 	if err != nil {
 		fatal("plugin grant: %v", err)

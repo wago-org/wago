@@ -2,6 +2,7 @@ package project
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -44,6 +45,16 @@ func DisplayPath(dir string) string {
 // Read loads wago.json as a generic map so updates preserve fields owned by
 // publishers and future schema versions.
 func Read(dir string) (map[string]any, error) {
+	var manifest map[string]any
+	err := withMetadataRead(dir, func(mutation *Mutation) error {
+		var err error
+		manifest, err = mutation.ReadManifest()
+		return err
+	})
+	return manifest, err
+}
+
+func readManifest(dir string) (map[string]any, error) {
 	data, err := os.ReadFile(Path(dir))
 	if os.IsNotExist(err) {
 		return map[string]any{}, nil
@@ -51,6 +62,10 @@ func Read(dir string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return decodeManifest(data, dir)
+}
+
+func decodeManifest(data []byte, dir string) (map[string]any, error) {
 	manifest := map[string]any{}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := decoder.Decode(&manifest); err != nil {
@@ -69,11 +84,9 @@ func Write(dir string, manifest map[string]any) error {
 	if automation.Locked() {
 		return fmt.Errorf("locked mode prevents changing %s", DisplayPath(dir))
 	}
-	data, err := EncodeManifest(manifest)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(Path(dir), data, 0o644)
+	return WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+		return mutation.PublishManifest(manifest)
+	})
 }
 
 func EncodeManifest(manifest map[string]any) ([]byte, error) {
@@ -557,20 +570,27 @@ func Initialize(dir string) (bool, error) {
 // InitializeWith creates or updates a manifest while preserving fields that
 // are not owned by the caller. Values replace fields with the same key.
 func InitializeWith(dir string, values map[string]any) (bool, error) {
-	_, statErr := os.Stat(Path(dir))
-	created := os.IsNotExist(statErr)
-	manifest, err := Read(dir)
-	if err != nil {
-		return false, err
-	}
-	EnsureMetadata(manifest)
-	if _, ok := manifest["plugins"]; !ok {
-		manifest["plugins"] = map[string]any{}
-	}
-	for key, value := range values {
-		manifest[key] = value
-	}
-	return created, Write(dir, manifest)
+	var created bool
+	err := WithMutation(context.Background(), dir, func(mutation *Mutation) error {
+		_, statErr := os.Stat(Path(dir))
+		created = os.IsNotExist(statErr)
+		if statErr != nil && !created {
+			return statErr
+		}
+		manifest, err := mutation.ReadManifest()
+		if err != nil {
+			return err
+		}
+		EnsureMetadata(manifest)
+		if _, ok := manifest["plugins"]; !ok {
+			manifest["plugins"] = map[string]any{}
+		}
+		for key, value := range values {
+			manifest[key] = value
+		}
+		return mutation.PublishManifest(manifest)
+	})
+	return created, err
 }
 
 func EnsureMetadata(manifest map[string]any) {
