@@ -1166,6 +1166,31 @@ ARM64 and AMD64 serial/parallel byte identity, shared-tail native execution,
 synthetic offset/relocation/GC remapping, compact finalizer validation, backend
 race suites, runtime packages, and the available `src/wago` corpus tests pass.
 
+### First bounded machine-window rewrite
+
+The ARM64 machine window now fuses the adjacent swap pair produced by a
+three-register parallel-copy cycle. Two ARM64 swaps previously expanded through
+X16 as six `MOV` instructions; the window preserves the same permutation with
+one four-`MOV` scratch chain. Integer call shuffles, mixed-call shuffles,
+floating shuffles, and register-ABI entry shuffles all use the bounded rule;
+the floating form reuses the existing single spill slot. The window still
+flushes at its fixed 24-operation capacity and at the existing call/body
+boundary.
+
+The current 54-module ARM64 corpus contains one hit, in Ruby. It removes eight
+bytes: raw Size code falls from 79,062,348 to 79,062,340, and compacted Size from
+78,609,364 to 78,609,356. A serialized Ruby compile sample moved from a
+553,917,542 ns/op median to 554,890,083 ns/op (+0.18%), with identical median
+B/op and allocation counts. The semantic unit test executes the old parallel
+copy and fused chain over concrete register values; backend, race, compact
+finalizer, runtime, and `src/wago` tests pass.
+
+The same rewrite is intentionally rejected on AMD64. Its resolver already uses
+two three-byte `XCHG` instructions for the cycle (six bytes total), while the
+four-`MOV` expansion is twelve bytes even with low registers. A permanent
+encoder-backed test locks down that cost comparison; AMD64 keeps the existing
+compact swap chain.
+
 ### Commands
 
 ```sh
