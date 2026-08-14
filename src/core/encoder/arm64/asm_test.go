@@ -251,6 +251,21 @@ func TestMovImm64(t *testing.T) {
 	}
 }
 
+func TestMovImmLogicalImmediate(t *testing.T) {
+	var a Asm
+	a.MovImm64(X7, 0x00ff00ff00ff00ff)
+	if len(a.B) != 4 || a.LogicalMoveImmediates != 1 {
+		t.Fatalf("logical MOV = % x, hits=%d; want one instruction", a.B, a.LogicalMoveImmediates)
+	}
+
+	var rollback Asm
+	rollback.DisableLogicalMoveImmediate = true
+	rollback.MovImm64(X7, 0x00ff00ff00ff00ff)
+	if len(rollback.B) <= len(a.B) || rollback.LogicalMoveImmediates != 0 {
+		t.Fatalf("rollback MOV = % x, hits=%d; want longer MOVZ/MOVK sequence", rollback.B, rollback.LogicalMoveImmediates)
+	}
+}
+
 func TestCompatibilityLoadStoreAndLayoutWrappers(t *testing.T) {
 	var a Asm
 	a.CvtI2F(X0, X1, false, false)

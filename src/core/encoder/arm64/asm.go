@@ -93,8 +93,10 @@ func (c Cond) Invert() Cond { return c ^ 1 }
 // Asm accumulates encoded instruction words as little-endian bytes. Its zero
 // value is ready to use. Mirrors amd64.Asm{ B []byte }.
 type Asm struct {
-	B            []byte
-	DenseIdxDisp bool // prefer ADD base,index + immediate-offset load/store
+	B                           []byte
+	DenseIdxDisp                bool // prefer ADD base,index + immediate-offset load/store
+	DisableLogicalMoveImmediate bool
+	LogicalMoveImmediates       int
 }
 
 // word appends one 32-bit instruction little-endian.
@@ -272,6 +274,17 @@ func (a *Asm) MovImm64(rd Reg, val uint64) {
 		} else if h == 0xFFFF {
 			ones++
 		}
+	}
+	wideWords := 4 - zeros
+	if ones > zeros {
+		wideWords = 4 - ones
+	}
+	if wideWords == 0 {
+		wideWords = 1
+	}
+	if wideWords > 1 && !a.DisableLogicalMoveImmediate && a.OrrImm64(rd, XZR, val) {
+		a.LogicalMoveImmediates++
+		return
 	}
 	if ones > zeros {
 		// MOVN base: inverse of the first non-0xFFFF halfword, then MOVK the rest.

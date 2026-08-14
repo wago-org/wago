@@ -925,3 +925,42 @@ Ruby contributed 11,039 bytes, regexmatch 1,329, SQLite 1,311, esbuild
 1,234, and the remaining modules 427 bytes; no module grew. Exact encoder tests,
 the full AMD64 backend, its race suite, the compact/fuzz corpus, and the complete
 Size execution corpus with finalizer validation passed.
+
+## Implementation result: ARM64 logical-immediate constant moves
+
+ARM64 Size and Embedded now materialize a constant with the one-word
+`ORR Rd,ZR,#imm` move alias when the architectural logical-immediate encoding is
+available and the existing shortest `MOVZ/MOVN` plus `MOVK` sequence would take
+more than one word. Equal-size one-word constants retain their former encoding,
+so every selection is an exact byte win. Balanced and Speed retain their prior
+bytes. `WAGO_ARM64_NO_LOGICAL_MOVE_IMMEDIATE=1` is the rollback oracle, stored
+on each assembler rather than consulted as mutable state during emission.
+
+Measured on the checked-in ARM64 Size corpus:
+
+```text
+rollback native bytes:  75,233,428
+candidate native bytes: 75,036,220
+net reduction:            197,208 (0.2621%)
+shorter selections:        47,114
+
+Ruby compile median:   601,595,666 -> 611,807,709 ns/op (+1.70%)
+esbuild compile median:333,273,896 -> 340,449,271 ns/op (+2.15%)
+compile allocations: unchanged
+```
+
+Ruby contributed 117,024 bytes, esbuild 34,800, SQLite 15,808, regexmatch
+11,948, wasm3 8,396, Lua 7,240, and the rest of the corpus 1,992 bytes.
+
+The first five-sample execution pass measured scalar JSON serialization at
++0.83%, scalar deserialization at +2.40%, SIMD serialization at -1.08%, and
+SIMD deserialization at -1.04%, all allocation-free. Because scalar
+deserialization crossed the Balanced investigation threshold, a serialized
+alternating ten-pair rerun was taken and confirmed the effect (rollback median
+37,671 ns/op; candidate median 38,553 ns/op, +2.34%). The transform is therefore
+restricted to Size/Embedded, where it remains below the 5% important-workload
+guardrail, instead of being treated as performance-neutral compaction.
+
+Focused encoder and objective-policy tests, the ARM64 backend and race suite,
+the compact/fuzz corpus, and the complete Size execution corpus with finalizer
+validation passed.

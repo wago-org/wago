@@ -587,6 +587,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
+	sc.asm.LogicalMoveImmediates = 0
 	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.ctrl = sc.ctrl[:0]
@@ -1779,6 +1780,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
+	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
+		(policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded)
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
 	f := &sc.fnState
@@ -2101,6 +2104,7 @@ func (f *fn) finalizeStats(codeLen int) {
 	s.NativeSize.TotalBytes = codeLen
 	s.NativeSize.InternalFunctionBytes = codeLen - s.NativeSize.HostAdapterBytes - s.NativeSize.AdapterToInternalPaddingBytes
 	s.GCCodeBytes.Total = codeLen
+	s.peepN("logical-move-immediate", f.a.LogicalMoveImmediates)
 	s.FrameBytes = f.frameSize()
 	s.MaxSpillSlots = f.maxSpill
 }

@@ -1050,4 +1050,19 @@ func (a *Asm) StrF(base Reg, disp int32, rt Reg, f64 bool) {
 }
 
 // MovImm32 materializes a 32-bit constant into the low half of rd (upper zero).
-func (a *Asm) MovImm32(rd Reg, val int32) { a.MovImm64(rd, uint64(uint32(val))) }
+func (a *Asm) MovImm32(rd Reg, val int32) {
+	u := uint32(val)
+	lo, hi := uint16(u), uint16(u>>16)
+	wideWords := 0
+	if lo != 0 {
+		wideWords++
+	}
+	if hi != 0 {
+		wideWords++
+	}
+	if wideWords > 1 && !a.DisableLogicalMoveImmediate && a.OrrImm32(rd, XZR, u) {
+		a.LogicalMoveImmediates++
+		return
+	}
+	a.MovImm64(rd, uint64(u))
+}

@@ -81,6 +81,9 @@ var (
 	emptyZeroBranchEnabled  = os.Getenv("WAGO_ARM64_NO_EMPTY_ZERO_BRANCH") != "1"
 	eqzZeroBranchEnabled    = os.Getenv("WAGO_ARM64_NO_EQZ_ZERO_BRANCH") != "1"
 	directZeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_ZERO_BRANCH") != "1"
+	// logicalMoveImmediateEnabled lets constant materialization use the one-word
+	// ORR-from-zero-register alias when the value is a logical immediate.
+	logicalMoveImmediateEnabled = os.Getenv("WAGO_ARM64_NO_LOGICAL_MOVE_IMMEDIATE") != "1"
 	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
 	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
 	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"
