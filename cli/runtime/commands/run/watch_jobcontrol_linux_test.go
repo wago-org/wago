@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -20,9 +21,6 @@ import (
 
 func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 	switch os.Getenv("WAGO_WATCH_JOB_CONTROL_HELPER") {
-	case "wrapper":
-		runWatchJobControlWrapper(t)
-		return
 	case "watcher":
 		runWatchJobControlHelper(t)
 		return
@@ -45,7 +43,7 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 	}
 	command := exec.Command(os.Args[0], "-test.run=^TestWatchSupervisorMirrorsTerminalJobControl$", "-test.count=1")
 	command.Env = append(os.Environ(),
-		"WAGO_WATCH_JOB_CONTROL_HELPER=wrapper",
+		"WAGO_WATCH_JOB_CONTROL_HELPER=watcher",
 		"WAGO_WATCH_MODULE="+modulePath,
 		"WAGO_WATCH_LOG="+logPath,
 	)
@@ -97,21 +95,21 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 		t.Fatalf("job-control helper: %v", err)
 	}
 	finished = true
-}
-
-func runWatchJobControlWrapper(t *testing.T) {
-	command := exec.Command(os.Args[0], "-test.run=^TestWatchSupervisorMirrorsTerminalJobControl$", "-test.count=1")
-	command.Env = append(os.Environ(), "WAGO_WATCH_JOB_CONTROL_HELPER=watcher")
-	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := command.Run(); err != nil {
-		t.Fatalf("watcher helper: %v", err)
+	if got, want := waitForWatchLog(t, logPath, 2), []string{"first", "interrupt"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("helper log = %#v, want %#v", got, want)
 	}
 }
 
 func runWatchJobControlHelper(t *testing.T) {
 	signal.Reset(syscall.SIGTSTP, syscall.SIGTTIN, syscall.SIGTTOU)
 	options := watchTestOptions(os.Getenv("WAGO_WATCH_MODULE"), os.Getenv("WAGO_WATCH_LOG"), "", false)
+	options.environment = append(options.environment, "WAGO_WATCH_SIGNAL=1")
 	options.stdin, options.stdout, options.stderr = strings.NewReader(""), os.Stdout, os.Stderr
+	signals := watchedSignals()
+	interrupts := make(chan os.Signal, len(signals))
+	signal.Notify(interrupts, signals...)
+	defer signal.Stop(interrupts)
+	options.interrupts = interrupts
 	err := superviseWatch(context.Background(), options)
 	var interrupted *watchInterruptedError
 	if !errors.As(err, &interrupted) || interrupted.signal != os.Interrupt {
@@ -199,7 +197,7 @@ func waitForWatchedProcessStop(t *testing.T, pid int) {
 	t.Fatal("watcher did not mirror the child stop")
 }
 
-func waitForWatchForegroundGroup(t *testing.T, master *os.File, watcher int) {
+func waitForWatchForegroundGroup(t *testing.T, master *os.File, want int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	lastForeground := -1
@@ -208,11 +206,11 @@ func waitForWatchForegroundGroup(t *testing.T, master *os.File, watcher int) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if foreground != watcher {
+		if foreground == want {
 			return
 		}
 		lastForeground = foreground
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("watched child did not regain the foreground terminal: foreground=%d watcher=%d", lastForeground, watcher)
+	t.Fatalf("watch job did not regain the foreground terminal: foreground=%d want=%d", lastForeground, want)
 }

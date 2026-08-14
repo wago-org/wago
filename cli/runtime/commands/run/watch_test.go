@@ -360,9 +360,14 @@ func TestWatchHelperProcess(t *testing.T) {
 		return
 	}
 	if interrupts != nil {
-		received := <-interrupts
-		appendWatchLog(t, received.String())
-		return
+		for {
+			received := <-interrupts
+			if watchedContinueSignal(received) {
+				continue
+			}
+			appendWatchLog(t, received.String())
+			return
+		}
 	}
 	select {}
 }

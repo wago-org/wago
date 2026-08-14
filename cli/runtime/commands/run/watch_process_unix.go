@@ -46,9 +46,8 @@ func prepareWatchedCommand(command *exec.Cmd) error {
 	}
 	attributes := &syscall.SysProcAttr{Setpgid: true}
 	configureWatchedCommandStart(attributes)
-	if fd, foreground, ok := watchedCommandTerminal(command); ok {
-		attributes.Ctty = fd
-		attributes.Foreground = foreground == syscall.Getpgrp()
+	if _, _, ok := watchedCommandTerminal(command); ok {
+		attributes.Setpgid = false
 	}
 	command.SysProcAttr = attributes
 	return nil
@@ -164,6 +163,13 @@ func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) 
 	if platform.terminalFD < 0 {
 		return nil
 	}
+	group, err := syscall.Getpgid(command.Process.Pid)
+	if err == nil && group == platform.foreground {
+		return nil
+	}
+	if err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
 	if err := signalWatchedDescendants(platform, syscall.SIGSTOP); err != nil {
 		return err
 	}
@@ -177,8 +183,14 @@ func continueWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) er
 	if platform.terminalFD >= 0 {
 		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
 		if err == nil && foreground == platform.foreground {
-			if err := setWatchedTerminalForeground(platform.terminalFD, command.Process.Pid); err != nil {
-				return err
+			group, groupErr := syscall.Getpgid(command.Process.Pid)
+			if groupErr != nil && !errors.Is(groupErr, syscall.ESRCH) {
+				return groupErr
+			}
+			if groupErr == nil && group != platform.foreground {
+				if err := setWatchedTerminalForeground(platform.terminalFD, group); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -225,7 +237,18 @@ func signalWatchedProcessGroup(command *exec.Cmd, signal syscall.Signal) error {
 	if command.Process == nil {
 		return os.ErrProcessDone
 	}
-	err := syscall.Kill(-command.Process.Pid, signal)
+	group, err := syscall.Getpgid(command.Process.Pid)
+	if errors.Is(err, syscall.ESRCH) {
+		return os.ErrProcessDone
+	}
+	if err != nil {
+		return err
+	}
+	target := -group
+	if group == syscall.Getpgrp() {
+		target = command.Process.Pid
+	}
+	err = syscall.Kill(target, signal)
 	if errors.Is(err, syscall.ESRCH) {
 		return os.ErrProcessDone
 	}

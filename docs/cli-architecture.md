@@ -212,10 +212,11 @@ packages; it does not become a third CLI role.
 the input module changes, preserving guest arguments and plugin selection made
 by the manager handoff. The runtime supervises one child process tree at a time,
 keeps file polling active while the guest runs, and waits for stable content
-before a restart. On Linux and macOS, the active child process group owns the
-real foreground terminal and the watcher restores terminal ownership after it
-stops. The watcher also records bounded process identities and checks each
-identity again before signaling it. Linux subreaper ownership and macOS kernel
+before a restart. On Linux and macOS, a terminal-backed watcher and its direct
+guest stay in the shell's foreground job group, so both receive terminal
+interrupts. The watcher restores terminal ownership if a guest descendant
+creates a separate foreground group. It also records bounded process identities
+and checks each identity again before signaling it. Linux subreaper ownership and macOS kernel
 fork events keep double-forked children tracked; macOS starts the guest stopped
 until event tracking is active. Cleanup therefore reaches descendants that
 create a new session or process group. The watcher mirrors terminal stop and

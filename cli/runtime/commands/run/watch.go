@@ -27,8 +27,9 @@ func watchModule(path, intervalValue string) {
 		}
 		interval = parsed
 	}
-	interrupts := make(chan os.Signal, 1)
-	signal.Notify(interrupts, watchedSignals()...)
+	signals := watchedSignals()
+	interrupts := make(chan os.Signal, len(signals))
+	signal.Notify(interrupts, signals...)
 	defer signal.Stop(interrupts)
 	err := superviseWatch(context.Background(), watchOptions{
 		path:       path,
