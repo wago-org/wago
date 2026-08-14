@@ -1916,6 +1916,12 @@ ns/op (+10.45%), beyond the Size gate; Ruby moved from 942,276,242 to
 964,615,247 ns/op (+2.37%). That variant was rejected. Restoring it requires a
 different finalizer cost structure, not a wider work bound.
 
+The relaxation solver now consumes the immutable policy's existing
+`MaxRelaxIterations` bound (eight by default) instead of accidentally using the
+128-range deletion budget as its loop cap. The aggressive jump-table experiment
+still produced the exact same 74,697,180-byte image and remained about 10% slower
+on esbuild, proving that excessive fixed-point rounds were not the cause.
+
 ### Commands
 
 ```sh

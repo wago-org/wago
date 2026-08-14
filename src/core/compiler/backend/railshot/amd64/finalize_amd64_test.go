@@ -435,3 +435,19 @@ func TestFinalizerRemapsJumpTableData(t *testing.T) {
 		t.Fatalf("jump-table target byte = %#x, want NOP", got)
 	}
 }
+
+func TestFinalizerRelaxIterationLimit(t *testing.T) {
+	for _, test := range []struct {
+		configured uint8
+		want       int
+	}{
+		{0, 8},
+		{3, 3},
+		{255, shared.MaxOffsetMapDeletions},
+	} {
+		f := fn{policy: CodegenPolicy{MaxRelaxIterations: test.configured}}
+		if got := f.finalizerRelaxIterationLimit(); got != test.want {
+			t.Fatalf("MaxRelaxIterations=%d: got %d, want %d", test.configured, got, test.want)
+		}
+	}
+}

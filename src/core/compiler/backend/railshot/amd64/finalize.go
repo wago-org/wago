@@ -74,6 +74,14 @@ func (f *fn) finalizerDeletionLimit() int {
 	return min(limit, shared.MaxOffsetMapDeletions)
 }
 
+func (f *fn) finalizerRelaxIterationLimit() int {
+	limit := int(f.policy.MaxRelaxIterations)
+	if limit == 0 {
+		limit = 8
+	}
+	return min(limit, shared.MaxOffsetMapDeletions)
+}
+
 const maxAMD64FinalizerRel32Sites = 1024
 const maxAMD64LoopCompactionBytes = 64 << 10
 
@@ -403,7 +411,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			}
 			deletedBranches[i>>6] |= uint64(1) << uint(i&63)
 		}
-		for round := 0; round < shared.MaxOffsetMapDeletions && len(deletions) < cap(deletions); round++ {
+		for round := 0; round < f.finalizerRelaxIterationLimit() && len(deletions) < cap(deletions); round++ {
 			changed := false
 			for i := range f.a.Rel32Sites {
 				site := &f.a.Rel32Sites[i]
