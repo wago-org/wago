@@ -1089,6 +1089,35 @@ on the Ryzen 7 7800X3D measured 9.9765 ns/op for dense Balanced and 9.7595 ns/op
 for compact Size (-2.18%), both at zero allocations. Native execution, the
 AMD64 backend race suite, and compacted runtime packages pass.
 
+### Adapter shape and tail ledger
+
+The opt-in native-size report now fingerprints every host adapter after
+normalizing only its function-specific internal-call relocation. It separately
+fingerprints the exact post-call tail beginning at the adapter return PC. The
+hash is never used alone for a correctness decision; a future sharing pass must
+also compare the candidate bytes. Ordinary compilation does not collect or
+aggregate these shapes.
+
+Across the 64-module ARM64 corpus, 17,386 adapters occupy 1,706,108 bytes but
+collapse to 216 exact full-adapter shapes and 12,328 unique bytes. The duplicate
+ceiling is 1,693,780 bytes. Charging a conservative 12-byte target thunk for
+every adapter leaves a 1,485,148-byte theoretical full-sharing saving. Exact
+post-call tails collapse to 90 shapes and 1,492 unique bytes; replacing every
+tail with a four-byte branch to one retained tail per shape leaves a 638,632-byte
+ceiling.
+
+On AMD64, 17,378 adapters contain 1,416,959 duplicate bytes across 214 exact
+full shapes and 10,221 unique bytes. A conservative 12-byte target thunk leaves
+a 1,208,423-byte full-sharing ceiling. Post-call tails collapse to 90 shapes and
+1,029 unique bytes; charging a five-byte `jmp rel32` per adapter leaves a
+445,979-byte tail-sharing ceiling.
+
+The safer implementation target is tail sharing first. It preserves each
+adapter's direct call, per-function return PC, argument setup, and GC metadata,
+while moving only byte-identical result-store/module-global/return sequences to
+a cold module island. Full signature-adapter sharing remains a later step after
+the metadata and target-materialization ABI are explicit.
+
 ### Commands
 
 ```sh
