@@ -238,4 +238,22 @@ func TestFinalizerRelaxesShortBranches(t *testing.T) {
 			t.Fatalf("cascading branches = %x len=%d", code[:4], len(code))
 		}
 	})
+
+	t.Run("branch to next", func(t *testing.T) {
+		for _, conditional := range []bool{false, true} {
+			code := finalize(t, func(a *amd64enc.Asm) {
+				var site int
+				if conditional {
+					site = a.JccPlaceholder(amd64enc.CondE)
+				} else {
+					site = a.JmpPlaceholder()
+				}
+				a.PatchRel32(site, a.Len())
+				a.B = append(a.B, 0x90)
+			})
+			if !bytes.Equal(code, []byte{0x90}) {
+				t.Fatalf("conditional=%v: compacted bytes = %x, want 90", conditional, code)
+			}
+		}
+	})
 }

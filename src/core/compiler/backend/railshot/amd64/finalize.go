@@ -168,7 +168,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 	}
 	sortDeletions(deletions)
-	mapWithExtra := func(off int, extra shared.DeletedRange) (int, bool) {
+	mapCurrent := func(off int) (int, bool) {
 		delta := 0
 		for _, deletion := range deletions {
 			start := int(deletion.Off)
@@ -180,15 +180,22 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 				delta += int(deletion.Len)
 			}
 		}
+		return off - delta, true
+	}
+	mapWithExtra := func(off int, extra shared.DeletedRange) (int, bool) {
+		mapped, ok := mapCurrent(off)
+		if !ok {
+			return 0, false
+		}
 		start := int(extra.Off)
 		end := start + int(extra.Len)
 		if off > start && off < end {
 			return 0, false
 		}
 		if off >= end {
-			delta += int(extra.Len)
+			mapped -= int(extra.Len)
 		}
-		return off - delta, true
+		return mapped, true
 	}
 	insertDeletion := func(deletion shared.DeletedRange) bool {
 		if len(deletions) == cap(deletions) {
@@ -246,11 +253,29 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			return 0, 0, shared.DeletedRange{}, false
 		}
 	}
+	// Exact recorded JMP/Jcc sites need no disassembly pass. Calls are Rel32Other
+	// and retain their return-address side effect.
+	var deletedBranches [(maxAMD64FinalizerRel32Sites + 63) / 64]uint64
+	for i, site := range f.a.Rel32Sites {
+		start, _, _, ok := branchForm(site)
+		if !ok {
+			continue
+		}
+		target, okTarget := rel32Target(site)
+		longLen := site.At() + 4 - start
+		if !okTarget || target != site.At()+4 {
+			continue
+		}
+		if !insertDeletion(shared.DeletedRange{Off: uint32(start), Len: uint32(longLen)}) {
+			continue
+		}
+		deletedBranches[i>>6] |= uint64(1) << uint(i&63)
+	}
 	for round := 0; round < shared.MaxOffsetMapDeletions && len(deletions) < cap(deletions); round++ {
 		changed := false
 		for i := range f.a.Rel32Sites {
 			site := &f.a.Rel32Sites[i]
-			if site.Short() || len(deletions) == cap(deletions) {
+			if deletedBranches[i>>6]&(uint64(1)<<uint(i&63)) != 0 || site.Short() || len(deletions) == cap(deletions) {
 				continue
 			}
 			start, shortLen, deletion, ok := branchForm(*site)
@@ -284,7 +309,10 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	// Patch maximal-encoding source fields with their final displacements before
 	// the left-to-right copy. Exact recorded fields supply their old targets; no
 	// finalized instruction stream is decoded.
-	for _, site := range f.a.Rel32Sites {
+	for i, site := range f.a.Rel32Sites {
+		if deletedBranches[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
+			continue
+		}
 		targetOld, okTargetOld := rel32Target(site)
 		if !okTargetOld {
 			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 target at %d", site.At())
