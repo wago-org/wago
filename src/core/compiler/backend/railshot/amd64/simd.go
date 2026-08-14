@@ -6,9 +6,18 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+// moduleLiteralIslandEnabled defers Size/Embedded function pools to one module
+// island. WAGO_AMD64_NOMODULELITERALS=1 is the byte/performance rollback oracle.
+var moduleLiteralIslandEnabled = os.Getenv("WAGO_AMD64_NOMODULELITERALS") != "1"
+
+func moduleLiteralIsland(policy CodegenPolicy) bool {
+	return moduleLiteralIslandEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded)
+}
 
 func (f *fn) materializeV128(e *elem) Reg {
 	if e.isDeferred() {
@@ -202,7 +211,7 @@ func (f *fn) emitV128ConstPool() {
 			f.stats.literalKeys = append(f.stats.literalKeys, literalKey{lo: c.lo, hi: c.hi, size: c.size})
 		}
 	}
-	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+	if moduleLiteralIsland(f.policy) {
 		for _, c := range f.v128Pool {
 			key := literalKey{lo: c.lo, hi: c.hi, size: c.size}
 			for head := c.head; head != 0; {

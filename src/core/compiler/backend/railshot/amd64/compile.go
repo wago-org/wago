@@ -1010,7 +1010,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
 	var literalRelocs [][]literalReloc
-	if objective == OptimizeSize || objective == OptimizeEmbedded {
+	if moduleLiteralIsland(policy) {
 		literalRelocs = make([][]literalReloc, n)
 	}
 	entry, internalEntry := shared.ModuleEntries(n)

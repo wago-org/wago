@@ -100,6 +100,21 @@ func TestSizeObjectiveSharesModuleLiteralsAMD64(t *testing.T) {
 	}
 
 	objective := OptimizeSize
+	beforeIsland := moduleLiteralIslandEnabled
+	moduleLiteralIslandEnabled = false
+	t.Cleanup(func() { moduleLiteralIslandEnabled = beforeIsland })
+	var rollbackStats ModuleStats
+	rollback, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: &rollbackStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollback.CodeImage != nil {
+		defer rollback.CodeImage.Close()
+	}
+	if got := rollbackStats.NativeSize.LiteralPoolBytes; got != 32 {
+		t.Fatalf("Size rollback literal bytes = %d, want 32", got)
+	}
+	moduleLiteralIslandEnabled = true
 	var sizeStats ModuleStats
 	sizeSerial, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: &sizeStats})
 	if err != nil {
