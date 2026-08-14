@@ -74,6 +74,25 @@ func watchedProcess(pid int) (watchedProcessInfo, bool) {
 	}, true
 }
 
+func (tracker *watchedProcessTracker) record(process watchedProcessInfo) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if process.pid == tracker.root || process.pid == tracker.owner {
+		return
+	}
+	if len(tracker.processes) >= maxWatchedDescendants {
+		tracker.eventErr = fmt.Errorf("watched process tree exceeds %d descendants", maxWatchedDescendants)
+		return
+	}
+	tracker.processes[process.pid] = process.started
+}
+
+func (tracker *watchedProcessTracker) fail(err error) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	tracker.eventErr = errors.Join(tracker.eventErr, err)
+}
+
 func watchedProcessSnapshot() ([]watchedProcessInfo, error) {
 	entries, err := unix.SysctlKinfoProcSlice("kern.proc.all")
 	if err != nil {
