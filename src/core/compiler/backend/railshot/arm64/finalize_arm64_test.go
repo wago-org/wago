@@ -250,15 +250,50 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 }
 
 func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
+	beforeLimit := arm64LoopCompactionLimit
+	arm64LoopCompactionLimit = 16 << 10
+	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
+	stats := &CodegenStats{}
 	f := fn{
-		a:       &a64.Asm{B: make([]byte, maxLoopCompactionBytes+4)},
+		a:       &a64.Asm{B: make([]byte, arm64LoopCompactionLimit+4)},
 		sc:      &scratch{},
 		hasLoop: true,
 		policy:  shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
+		stats:   stats,
 	}
 	var storage [maxFinalizerDeletions]shared.DeletedRange
 	if _, _, ok := f.buildCompactionPlan(storage[:0]); ok {
 		t.Fatal("oversized loop function unexpectedly admitted to compaction")
+	}
+	if got, want := stats.FinalizerFallback, "loop-function-size"; got != want {
+		t.Fatalf("finalizer fallback = %q, want %q", got, want)
+	}
+}
+
+func TestLoopCompactionLimitRespectsArchitectureAndPolicyBoundsArm64(t *testing.T) {
+	beforeLimit := arm64LoopCompactionLimit
+	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	f := fn{
+		a:       &a64.Asm{B: make([]byte, 20<<10)},
+		sc:      &scratch{},
+		hasLoop: true,
+		policy:  policy,
+		stats:   &CodegenStats{},
+	}
+	var storage [maxFinalizerDeletions]shared.DeletedRange
+	arm64LoopCompactionLimit = 16 << 10
+	if _, _, ok := f.buildCompactionPlan(storage[:0]); ok {
+		t.Fatal("16 KiB architecture bound admitted 20 KiB function")
+	}
+	arm64LoopCompactionLimit = 32 << 10
+	f.stats.FinalizerFallback = ""
+	if _, _, ok := f.buildCompactionPlan(storage[:0]); !ok {
+		t.Fatalf("32 KiB architecture bound rejected 20 KiB function: %s", f.stats.FinalizerFallback)
+	}
+	f.policy.MaxLoopCompactionBytes = 16 << 10
+	if _, _, ok := f.buildCompactionPlan(storage[:0]); ok {
+		t.Fatal("16 KiB immutable policy bound admitted 20 KiB function")
 	}
 }
 

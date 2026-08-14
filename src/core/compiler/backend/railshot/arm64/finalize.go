@@ -23,6 +23,22 @@ var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
 
+// WAGO_ARM64_LOOP_COMPACTION_LIMIT selects the measured rollback/experiment
+// bounds around the 32 KiB default. The immutable per-compilation policy remains
+// the upper bound.
+var arm64LoopCompactionLimit = func() int {
+	switch os.Getenv("WAGO_ARM64_LOOP_COMPACTION_LIMIT") {
+	case "16K":
+		return 16 << 10
+	case "24K":
+		return 24 << 10
+	case "64K":
+		return 64 << 10
+	default:
+		return 32 << 10
+	}
+}()
+
 // WAGO_FINALIZER_DELETIONS selects an older bounded Size/Embedded policy for
 // exact rollout comparisons. It can only lower the immutable policy limit.
 var finalizerDeletionLimitOverride = func() int {
@@ -43,7 +59,6 @@ var finalizerDeletionLimitOverride = func() int {
 }()
 
 const maxFinalizerDeletions = shared.MaxOffsetMapDeletions
-const maxLoopCompactionBytes = 16 << 10
 
 type finalizerMarker uint8
 
@@ -192,6 +207,14 @@ func (f *fn) finalizerDeletionLimit() int {
 	return min(limit, maxFinalizerDeletions)
 }
 
+func loopCompactionLimitArm64(policy CodegenPolicy) int {
+	limit := int(policy.MaxLoopCompactionBytes)
+	if limit == 0 {
+		limit = 16 << 10
+	}
+	return min(arm64LoopCompactionLimit, limit)
+}
+
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
@@ -281,8 +304,15 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 	// from the emission-time alignment. Size and Embedded clamp loop alignment
 	// to ARM64's mandatory four-byte instruction alignment, which every deletion
 	// preserves, so their loop-bearing functions are safe to compact.
-	if f.hasLoop && (!loopCompactionEnabled || f.policy.LoopAlignLog2 > 2 || len(f.a.B) > maxLoopCompactionBytes) {
-		return nil, 0, false
+	if f.hasLoop && !loopCompactionEnabled {
+		return f.rejectCompaction("loop-disabled")
+	}
+	if f.hasLoop && f.policy.LoopAlignLog2 > 2 {
+		return f.rejectCompaction("loop-alignment")
+	}
+	loopLimit := loopCompactionLimitArm64(f.policy)
+	if f.hasLoop && len(f.a.B) > loopLimit {
+		return f.rejectCompaction("loop-function-size")
 	}
 	add := func(off, length int) bool {
 		if len(deletions) == cap(deletions) {
@@ -298,15 +328,15 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 			continue
 		}
 		if marker == markerPluginStart || marker == markerPluginEnd {
-			return nil, 0, false
+			return f.rejectCompaction("plugin-fragment")
 		}
 	}
 	if sc.deadHoleOverflow {
-		return nil, 0, false
+		return f.rejectCompaction("dead-hole-overflow")
 	}
 	for _, off := range sc.deadHoleSites[:sc.deadHoleN] {
 		if !add(off, 4) {
-			return nil, 0, false
+			return f.rejectCompaction("dead-hole-budget")
 		}
 	}
 
@@ -324,17 +354,17 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 	frameDeleted := 0
 	if frameDeleteLen != 0 {
 		if !add(f.subRspAt+frameDeleteDelta, frameDeleteLen) {
-			return nil, 0, false
+			return f.rejectCompaction("frame-site-budget")
 		}
 		frameDeleted += frameDeleteLen
 		for _, off := range f.tailFrameSites {
 			if !add(off+frameDeleteDelta, frameDeleteLen) {
-				return nil, 0, false
+				return f.rejectCompaction("frame-site-budget")
 			}
 			frameDeleted += frameDeleteLen
 		}
 		if !add(f.addRspAt+frameDeleteDelta, frameDeleteLen) {
-			return nil, 0, false
+			return f.rejectCompaction("frame-site-budget")
 		}
 		frameDeleted += frameDeleteLen
 	}
@@ -391,13 +421,18 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 				continue
 			}
 			if deletion.Off < previous.Off+previous.Len {
-				return nil, 0, false
+				return f.rejectCompaction("deletion-overlap")
 			}
 		}
 		unique = append(unique, deletion)
 	}
 	deletions = unique
 	return deletions, frameDeleted, true
+}
+
+func (f *fn) rejectCompaction(reason string) ([]shared.DeletedRange, int, bool) {
+	f.stats.setFinalizerFallback(reason)
+	return nil, 0, false
 }
 
 func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.DeletedRange) ([]byte, error) {
@@ -539,6 +574,7 @@ func (f *fn) remapNativeSizeStats(offsets *shared.OffsetMap, newInternalOff, fra
 	s.FrameAdjustmentBytes -= frameDeleted
 	s.DeadFrameReservationBytes = 0
 	s.BranchFoldHoleBytes = 0
+	s.StoreLoadNopBytes = 0
 }
 
 func (f *fn) validateFinalizerInventory(internalOff int) error {

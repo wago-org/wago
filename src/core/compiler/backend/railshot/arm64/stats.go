@@ -117,6 +117,9 @@ type CodegenStats struct {
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
+	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
+	// its maximal-safe encoding instead of applying an available compaction plan.
+	FinalizerFallback string `json:"finalizer_fallback,omitempty"`
 	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
 	// inline sites. Caller frame growth and shared cold tails are outside it.
 	InlineSiteBytes int
@@ -173,6 +176,12 @@ func resetFuncStats(s *CodegenStats) {
 func (s *CodegenStats) setUnpinnedRetry() {
 	if s != nil {
 		s.UnpinnedRetry = true
+	}
+}
+
+func (s *CodegenStats) setFinalizerFallback(reason string) {
+	if s != nil {
+		s.FinalizerFallback = reason
 	}
 }
 
@@ -410,6 +419,30 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native-data: literals=%d module-unique-literals=%d cross-function-duplicates=%d\n",
 		ms.NativeSize.LiteralPoolBytes, ms.NativeSize.LiteralPoolUniqueBytes,
 		ms.NativeSize.LiteralPoolDuplicateBytes)
+	type fallbackTotal struct{ count, bytes int }
+	fallbacks := make(map[string]fallbackTotal)
+	for _, s := range ms.Funcs {
+		if s == nil || s.FinalizerFallback == "" {
+			continue
+		}
+		total := fallbacks[s.FinalizerFallback]
+		total.count++
+		total.bytes += s.NativeSize.DeadReservationBytes()
+		fallbacks[s.FinalizerFallback] = total
+	}
+	if len(fallbacks) != 0 {
+		keys := make([]string, 0, len(fallbacks))
+		for reason := range fallbacks {
+			keys = append(keys, reason)
+		}
+		sort.Strings(keys)
+		b.WriteString("native-finalizer-fallbacks:")
+		for _, reason := range keys {
+			total := fallbacks[reason]
+			fmt.Fprintf(&b, " %s=%d/%dB", reason, total.count, total.bytes)
+		}
+		b.WriteByte('\n')
+	}
 	if len(ms.ModuleGlobalPins) == 0 {
 		fmt.Fprintf(&b, "module-pinned globals: none (K=0)\n")
 	} else {
@@ -447,6 +480,9 @@ func (s *CodegenStats) report() string {
 		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
 		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
 		s.NativeSize.DeadReservationBytes(), s.NativeSize.LiteralPoolBytes)
+	if s.FinalizerFallback != "" {
+		fmt.Fprintf(&b, "    finalizer-fallback: %s\n", s.FinalizerFallback)
+	}
 	fmt.Fprintf(&b, "    alloc: flushes=%d roots=%d deferred=%d flushBelow=%d roots=%d deferred=%d callFlush=%d localSetDeferred=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",

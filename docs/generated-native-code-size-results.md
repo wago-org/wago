@@ -2240,3 +2240,39 @@ go test -run '^$' -bench '^BenchmarkCompileModuleCompactionArm64$' \
   -benchmem -benchtime=500ms -count=5 \
   ./src/core/compiler/backend/railshot/arm64
 ```
+
+## ARM64 finalizer fallback ledger and 32 KiB loop bound
+
+The structured ARM64 size report now attributes fail-closed finalization by
+reason. `native-finalizer-fallbacks` reports both function count and retained
+proved-dead bytes, and each affected function records its exact reason. The
+stats-off path retains a nil receiver and performs no allocation.
+
+That attribution exposed a stale ledger field: successful compaction cleared
+frame and branch-hole reservations but left deleted same-register store/load
+NOPs in `StoreLoadNopBytes`. A minimized same-register regression test now
+proves the field is cleared with the other physically deleted reservations.
+The corrected 36-module ARM64 baseline remains 77,022,908 native bytes, but its
+real retained dead total is 10,880 rather than 14,060 bytes. All 539 affected
+functions report `loop-function-size`; there are no unattributed fallback bytes.
+
+The ARM64 Size/Embedded loop-compaction bound increases from 16 KiB to 32 KiB.
+`WAGO_ARM64_LOOP_COMPACTION_LIMIT=16K` is the exact rollback, while `24K` and
+`64K` retain the measured alternatives. The immutable policy remains an
+independent upper bound. The exact suite falls to 77,015,260 bytes (-7,648,
+-0.010%): Ruby contributes 3,580 bytes, esbuild 2,960, regexmatch 788, SQLite
+188, Lua 104, and wasm3 28. The widened bound leaves 3,732 proved-dead bytes in
+217 functions.
+
+Five serialized compile samples put Ruby at 584,556,000 ns/op with the 16 KiB
+rollback and 596,713,041 at 32 KiB (+2.08%). Esbuild moves from 314,552,334 to
+321,445,938 ns/op (+2.19%). Median B/op and allocations remain unchanged within
+noise. A 64 KiB trial reaches 77,012,708 bytes, only another 2,552-byte saving,
+while esbuild reaches +4.76%; it is rejected as too close to the 5% Size gate.
+
+Five one-second execution samples for every affected executable module remain
+inside the runtime gate: many_funcs -2.88%, json-as serialization +0.90%,
+json-as-simd serialization +0.87%, and json-as-simd deserialization +0.48%.
+The initial json-as deserialization sample was near the investigation threshold,
+so a separate ten-sample run was taken; its median moved from 37,731.5 to
+37,698.5 ns/op (-0.09%). Every execution result remains allocation-free.
