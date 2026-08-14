@@ -20,6 +20,8 @@ type NativeFunctionSizeReport struct {
 	StoreLoadNopBytes         int    `json:"store_load_nop_bytes"`
 	LiteralPoolBytes          int    `json:"literal_pool_bytes"`
 	HostAdapterShapeHash      uint64 `json:"host_adapter_shape_hash,omitempty"`
+	HostAdapterTailBytes      int    `json:"host_adapter_tail_bytes,omitempty"`
+	HostAdapterTailShapeHash  uint64 `json:"host_adapter_tail_shape_hash,omitempty"`
 }
 
 // DeadReservationBytes returns the exact subset of emitted function bytes that
@@ -54,6 +56,9 @@ type NativeSizeReport struct {
 	HostAdapterCount              int `json:"host_adapter_count"`
 	HostAdapterUniqueBytes        int `json:"host_adapter_unique_bytes"`
 	HostAdapterDuplicateBytes     int `json:"host_adapter_duplicate_bytes"`
+	HostAdapterTailShapeCount     int `json:"host_adapter_tail_shape_count"`
+	HostAdapterTailUniqueBytes    int `json:"host_adapter_tail_unique_bytes"`
+	HostAdapterTailDuplicateBytes int `json:"host_adapter_tail_duplicate_bytes"`
 }
 
 // AdapterShapeHash fingerprints an adapter while replacing its one

@@ -402,6 +402,9 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native-adapters: count=%d shapes=%d unique=%d duplicates=%d\n",
 		ms.NativeSize.HostAdapterCount, ms.NativeSize.HostAdapterShapeCount, ms.NativeSize.HostAdapterUniqueBytes,
 		ms.NativeSize.HostAdapterDuplicateBytes)
+	fmt.Fprintf(&b, "native-adapter-tails: shapes=%d unique=%d duplicates=%d\n",
+		ms.NativeSize.HostAdapterTailShapeCount, ms.NativeSize.HostAdapterTailUniqueBytes,
+		ms.NativeSize.HostAdapterTailDuplicateBytes)
 	fmt.Fprintf(&b, "native-reservations: frame-physical=%d frame-dead=%d branch-holes=%d store-load-nops=%d\n",
 		ms.NativeSize.FrameAdjustmentBytes, ms.NativeSize.DeadFrameReservationBytes,
 		ms.NativeSize.BranchFoldHoleBytes, ms.NativeSize.StoreLoadNopBytes)

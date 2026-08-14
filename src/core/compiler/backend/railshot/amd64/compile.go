@@ -1477,6 +1477,22 @@ func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, modul
 	}
 	native.HostAdapterShapeCount = len(shapes)
 	native.HostAdapterDuplicateBytes = native.HostAdapterBytes - native.HostAdapterUniqueBytes
+	tailShapes := make(map[adapterShape]struct{}) // stats-only
+	tailBytes := 0
+	for _, fn := range ms.Funcs {
+		if fn == nil || fn.NativeSize.HostAdapterTailBytes == 0 {
+			continue
+		}
+		tailBytes += fn.NativeSize.HostAdapterTailBytes
+		shape := adapterShape{fn.NativeSize.HostAdapterTailShapeHash, fn.NativeSize.HostAdapterTailBytes}
+		if _, ok := tailShapes[shape]; ok {
+			continue
+		}
+		tailShapes[shape] = struct{}{}
+		native.HostAdapterTailUniqueBytes += shape.bytes
+	}
+	native.HostAdapterTailShapeCount = len(tailShapes)
+	native.HostAdapterTailDuplicateBytes = tailBytes - native.HostAdapterTailUniqueBytes
 	if native.LiteralPoolBytes != 0 {
 		keys := make(map[literalKey]struct{}) // stats-only; ordinary compilation has nil ms
 		for _, fn := range ms.Funcs {
@@ -2991,6 +3007,8 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 		a.PatchRel32(adapterCall, internalOff)
 		if f.stats != nil {
 			f.stats.NativeSize.HostAdapterShapeHash = shared.AdapterShapeHash(f.a.B[:f.stats.NativeSize.HostAdapterBytes], adapterCall, 4)
+			f.stats.NativeSize.HostAdapterTailBytes = f.stats.NativeSize.HostAdapterBytes - f.adapterReturnOff
+			f.stats.NativeSize.HostAdapterTailShapeHash = shared.AdapterShapeHash(f.a.B[f.adapterReturnOff:f.stats.NativeSize.HostAdapterBytes], -1, 0)
 		}
 	}
 	return internalOff, nil
