@@ -1843,14 +1843,13 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		if compactIDs {
 			f.stats.peep("br-table-compact")
 			f.a.LoadIdx(X17, X16, ireg, 0, 1, false, true) // X17 = target ID
-			f.a.LslImm(X17, X17, 2, false)                 // ID *= 4
 			f.a.AddImm64(X16, X16, uint32(align4(len(labels))))
-			f.a.LoadIdx(X17, X16, X17, 0, 4, true, true) // X17 = vector-relative target
+			f.a.AddShifted(X17, X16, X17, 2, false) // X17 = &branchVector[ID]
 		} else {
 			f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
 			f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
+			f.a.Add64(X17, X16, X17)                      // target = table base + entry
 		}
-		f.a.Add64(X17, X16, X17) // target = table base + entry
 		f.a.Br(X17)
 		tablePos := f.a.Len()
 		f.a.PatchAdr(adrSite, tablePos)
@@ -1864,9 +1863,8 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			vectorPos := f.a.Len()
 			f.recordOpaqueData(tablePos, vectorPos)
 			for range uniqueN {
-				f.a.B = append(f.a.B, 0, 0, 0, 0)
+				f.a.Branch()
 			}
-			f.recordJumpTableData(vectorPos, f.a.Len())
 			for _, lbl := range labels {
 				encodedID := compactStubAt[lbl]
 				if encodedID <= 0 {
@@ -1875,7 +1873,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 				i := encodedID - 1
 				p := f.a.Len()
 				compactStubAt[lbl] = -p - 1
-				f.a.PatchU32(vectorPos+4*i, uint32(p-vectorPos))
+				f.a.PatchBranch26(vectorPos+4*i, p)
 				emitCase(lbl)
 			}
 			if encoded := compactStubAt[def]; encoded < 0 {
@@ -2077,9 +2075,9 @@ const brTableJumpMin = 5
 func align4(n int) int { return (n + 3) &^ 3 }
 
 // brTableCompactPlan returns a byte target-ID table plus a vector of unique
-// i32 target deltas only when its exact data bytes and two extra dispatch
-// instructions beat the dense i32 table. It is intentionally Size/Embedded
-// only: the compact form adds one dependent load on the selected path.
+// direct-branch vector only when its exact bytes beat the dense i32 table. It is
+// intentionally Size/Embedded only: the compact form adds one predictable
+// direct branch after the indirect dispatch.
 func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
 	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || len(labels) > 4095 {
 		return false, 0, nil
@@ -2096,7 +2094,7 @@ func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) 
 			uniqueN++
 		}
 	}
-	compactBytes := 8 + align4(len(labels)) + 4*uniqueN
+	compactBytes := align4(len(labels)) + 4*uniqueN
 	if compactBytes >= 4*len(labels) {
 		return false, 0, nil
 	}

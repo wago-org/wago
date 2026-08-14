@@ -163,7 +163,7 @@ func brTableComputedIndexArm64(t *testing.T) *wasm.Module {
 	return brTableComputedLabelsArm64(t, []uint32{0, 1, 2, 3, 4}, 5)
 }
 
-func brTableComputedLabelsArm64(t *testing.T, labels []uint32, def uint32) *wasm.Module {
+func brTableComputedLabelsArm64(t testing.TB, labels []uint32, def uint32) *wasm.Module {
 	t.Helper()
 	params := []wasm.ValType{wasm.I32, wasm.I32}
 	body := []byte{0x00} // no locals
