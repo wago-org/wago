@@ -923,6 +923,17 @@ for 93.2% of the measured pool. Module-island work should first measure duplicat
 keys and displacement reach in those modules, and count only bytes beyond the
 existing per-function deduplication as potential savings.
 
+Stats-only key unioning now measures that exact upper bound without changing
+ordinary compilation state. Of the 24,808 physical bytes, 8,912 are unique at
+module scope and 15,896 (64.1%) duplicate a key already emitted by another
+function. Duplicate bytes are concentrated in Ruby (9,260), SQLite (2,152),
+esbuild (1,944), wasm3 (1,236), and Lua (968). This is a ceiling rather than a
+promised saving: a shared-island implementation must still subtract island
+alignment, retained local constants, relocation metadata, and any veneer cost.
+AMD64 `rel32` reach is sufficient for the measured module sizes, but the design
+must preserve serial direct-buffer emission and parallel worker-local
+finalization before it is eligible for Size or Embedded mode.
+
 ### Commands
 
 ```sh
