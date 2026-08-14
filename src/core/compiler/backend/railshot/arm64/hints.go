@@ -40,16 +40,19 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals        int
-	hasCall        bool // any direct or indirect call
-	callsSelf      bool // a direct call to the function's own index
-	hasLoop        bool // structured loop (X12/X13 may be borrowed by loop promotion)
-	touchesMemory  bool // any linear-memory op
-	memOps         int  // scalar/vector/bulk linear-memory instructions
-	usesBulkMem    bool // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
-	mutatesTable   bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
-	hasControlFlow bool // control opcode relevant to inline splice framing
-	moduleEH       bool // module-wide: reserve the active exception-handler register
+	nLocals           int
+	hasCall           bool   // any direct or indirect call
+	callsSelf         bool   // a direct call to the function's own index
+	hasLoop           bool   // structured loop (X12/X13 may be borrowed by loop promotion)
+	touchesMemory     bool   // any linear-memory op
+	inlineCallSites   uint16 // saturated ordinary direct call sites targeting this local function
+	directCallRefs    uint8  // saturated call + return_call references targeting this local function
+	hasInlineLoopCall bool   // an ordinary direct call site is nested in a loop
+	memOps            int    // scalar/vector/bulk linear-memory instructions
+	usesBulkMem       bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
+	mutatesTable      bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	hasControlFlow    bool   // control opcode relevant to inline splice framing
+	moduleEH          bool   // module-wide: reserve the active exception-handler register
 
 	// immutableLocalTable is derived after the one-pass per-function scans have
 	// been aggregated. The table must also be private (an exported table can be
@@ -203,8 +206,12 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHin
 }
 
 func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
+	return scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0)
+}
+
+func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesInto(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m)
+		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, moduleHints, importedFuncs)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
@@ -482,9 +489,13 @@ func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGl
 }
 
 func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
+	return scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0)
+}
+
+func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, entryPrefix: true}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, moduleHints: moduleHints, importedFuncs: importedFuncs, entryPrefix: true}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
@@ -508,6 +519,8 @@ type byteBodyScanner struct {
 	branchHints    []wasm.BranchHint
 	elig           *globalEligibilityTracker
 	m              *wasm.Module
+	moduleHints    []funcHints
+	importedFuncs  int
 	entryPrefix    bool
 	entrySeen      uint64
 }
@@ -610,6 +623,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
+			s.noteDirectCallRef(imm.Index, op == 0x10, loopDepth != 0)
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -722,6 +736,23 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		}
+	}
+}
+
+func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop bool) {
+	local := int(globalIdx) - s.importedFuncs
+	if local < 0 || local >= len(s.moduleHints) {
+		return
+	}
+	target := &s.moduleHints[local]
+	if target.directCallRefs != ^uint8(0) {
+		target.directCallRefs++
+	}
+	if inline && target.inlineCallSites != ^uint16(0) {
+		target.inlineCallSites++
+	}
+	if inline && inLoop {
+		target.hasInlineLoopCall = true
 	}
 }
 

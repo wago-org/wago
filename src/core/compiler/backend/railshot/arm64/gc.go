@@ -146,11 +146,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			nullable := sub == 23
 			var done int
 			if nullable {
-				f.cmpImm(ref, 0, true)
-				done = f.a.Bcond(condE)
+				done = f.zeroBranch(ref, true, true)
 			} else {
-				f.cmpImm(ref, 0, true)
-				f.trapIf(condE, trapCastFailure)
+				f.trapIfZero(ref, true, true, trapCastFailure)
 			}
 			switch heap {
 			case -20, -19, -18: // i31, eq, any
@@ -206,13 +204,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 			f.pushReg(value, mtI64).st.gcRoot = f.tracksGCFrameRoots()
 		case 29: // i31.get_s
-			f.cmpImm(value, 0, false)
-			f.trapIf(condE, trapNullReference)
+			f.trapIfZero(value, false, true, trapNullReference)
 			f.a.AsrImm(value, value, 1, true)
 			f.pushReg(value, mtI32)
 		case 30: // i31.get_u
-			f.cmpImm(value, 0, false)
-			f.trapIf(condE, trapNullReference)
+			f.trapIfZero(value, false, true, trapNullReference)
 			f.a.LsrImm(value, value, 1, true)
 			f.pushReg(value, mtI32)
 		}
@@ -612,8 +608,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	}
 	value := f.allocReg(0)
 	f.ld64(value, SP, f.spillOff(valueElem.st.slot))
-	f.cmpImm(value, 0, true)
-	nullSite := f.a.Bcond(condE)
+	nullSite := f.zeroBranch(value, true, true)
 	base := f.allocReg(maskOf(value))
 	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))
 	f.cmpRR(value, base, true)
@@ -629,12 +624,10 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	f.a.Udiv64(quotient, value, end)
 	remainder := f.allocReg(maskOf(value, base, end, quotient))
 	f.a.Msub64(remainder, quotient, end, value)
-	f.cmpImm(remainder, 0, true)
-	unknownSites = append(unknownSites, f.a.Bcond(condNE))
+	unknownSites = append(unknownSites, f.zeroBranch(remainder, true, false))
 	f.a.SubImm64(quotient, quotient, 1)
 	f.ld64(base, base, runtime.TableEntryCodePtrOffset)
-	f.cmpImm(base, 0, true)
-	unknownSites = append(unknownSites, f.a.Bcond(condE))
+	unknownSites = append(unknownSites, f.zeroBranch(base, true, true))
 	f.a.LslImm64(end, quotient, 2)
 	f.a.Add64(end, base, end)
 	f.ld32(quotient, end, 0)
@@ -726,8 +719,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32, nullable, exactTarget bool, trapCode uint32) {
 	success := make([]int, 0, f.m.ImportedFuncCount()+len(f.m.FuncTypes)+1)
 	if nullable {
-		f.cmpImm(value, 0, true)
-		success = append(success, f.a.Bcond(condE))
+		success = append(success, f.zeroBranch(value, true, true))
 	}
 	base := f.allocReg(maskOf(value))
 	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))

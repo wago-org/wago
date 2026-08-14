@@ -15,6 +15,27 @@ type aluEnc struct {
 	comm          bool
 }
 
+// unitAdjust emits a one-step register adjustment. INC/DEC preserve every flag
+// these direct backend sites consume (ZF, or no flags at all), while saving one
+// byte over ADD/SUB r,1. Keep the choice Size/Embedded-only so Balanced retains
+// its measured flag-writing and front-end behavior.
+func (f *fn) unitAdjust(reg Reg, w, increment bool) {
+	if incDecEnabled && directIncDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		if increment {
+			f.a.Inc(reg, w)
+		} else {
+			f.a.Dec(reg, w)
+		}
+		f.stats.peep("inc-dec-direct")
+		return
+	}
+	digit := byte(5)
+	if increment {
+		digit = 0
+	}
+	f.a.AluRI(digit, reg, 1, w)
+}
+
 var aluTable = [...]aluEnc{
 	opAdd: {0x01, 0x03, 0, true},
 	opSub: {0x29, 0x2B, 5, false},
@@ -88,32 +109,13 @@ func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
 // extend). Each reads the source register and writes the converted value; the
 // source register can be reused when there is no target hint.
-// producesCleanI32 reports whether an i32-typed deferred op materializes into a
-// register whose upper 32 bits are guaranteed zero. All of these lower to 32-bit
-// instructions (ALU/shift/mul/div, bit counts) or a 0/1 setcc, and a 32-bit write
-// clears the upper half on x86-64. Loads and local/global reads are excluded:
-// they can surface dirty upper bits (garbage-padded params, sign-extending loads).
-func producesCleanI32(op wOp) bool {
-	switch op {
-	case opAdd, opSub, opAnd, opOr, opXor,
-		opShl, opShrU, opShrS, opRotl, opRotr,
-		opMul, opDivU, opDivS, opRemU, opRemS,
-		opClz, opCtz, opPopcnt,
-		opEq, opNe, opLtS, opLtU, opGtS, opGtU, opLeS, opLeU, opGeS, opGeU, opEqz,
-		opWrap, opZExt32:
-		return true
-	}
-	return false
-}
-
 func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// Redundant zero-extend elimination: i64.extend_i32_u of a value already in
 	// clean zero-upper form (an i32 produced by a 32-bit instruction, which zeroes
-	// the upper 32 bits on x86-64) is a no-op. Captured before materialize consumes
-	// the deferred node. NOT applied to i32 locals/params or sign-extending loads,
-	// which can carry dirty upper bits — hence the producer-op whitelist.
-	cleanZExt := node.op == opZExt32 && node.arg0.kind == ekDeferred &&
-		node.arg0.typ == mtI32 && producesCleanI32(node.arg0.op)
+	// the upper 32 bits on x86-64) is a no-op. The semantic fact survives bounded
+	// Valent materialization and spills, but local/global reads and signed loads
+	// begin unknown and therefore cannot trigger this consumer.
+	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
 	src, srcOwned := f.materializeRead(node.arg0)
 	result := dest
 	if result == regNone {
@@ -172,7 +174,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		treeRegisterNeed(left) > treeRegisterNeed(right) &&
 		treeReorderSafe(left) && treeReorderSafe(right) {
 		f.stats.peep("tree-order-candidate")
-		if treeOrderEnabled {
+		if f.opt(optTreeOrder) {
 			left, right = right, left
 			f.stats.peep("tree-order")
 		}
@@ -239,7 +241,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 			f.stats.peep("commute-self-update-candidate")
 		}
 	}
-	if commuteSelfUpdateEnabled && commuteSelfUpdate && f.commuteSelfUpdates > 1 {
+	if f.opt(optCommuteSelfUpdate) && commuteSelfUpdate && f.commuteSelfUpdates > 1 {
 		left, right = right, left
 		if f.stats != nil {
 			f.stats.peep("commute-self-update")
@@ -525,7 +527,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	deferredCover := false
 	// Keep the affine extension to the measured index needle. Main's broader LEA
 	// cover remains the fallback for every other safe nested expression.
-	if affineLeaEnabled && other.kind == ekValue && shl.arg0.kind != ekValue {
+	if f.opt(optAffineLEA) && other.kind == ekValue && shl.arg0.kind != ekValue {
 		base, baseDisp, baseOK := leaAffineValue(other, 1)
 		indexScale := int64(1 << k)
 		index, indexDisp, indexOK := leaAffineValue(shl.arg0, indexScale)
@@ -666,7 +668,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	right := node.arg1
 
 	if right.kind == ekValue && right.st.kind == stConst {
-		if bmi2RorxEnabled && (node.op == opRotr || node.op == opRotl) {
+		if f.opt(optBMI2Rorx) && (node.op == opRotr || node.op == opRotl) {
 			mask := int64(31)
 			if w {
 				mask = 63
@@ -815,7 +817,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stSlot:
 			f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
 		case stLocalRef:
-			f.a.AluRM(cmpRMcode, L, RSP, f.localOff(right.st.idx), w)
+			f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.idx), w)
 		case stMemRef:
 			if memRefFoldable(right.st, w) {
 				f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
@@ -1047,7 +1049,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stSlot:
 		f.a.Load64(dest, RSP, f.spillOff(e.st.slot))
 	case stLocalRef:
-		f.loadFrameInt(dest, f.localOff(e.st.idx), e.st.typ)
+		f.loadFrameInt(dest, f.localAddr(e.st.idx), e.st.typ)
 	case stLocalReg, stGlobReg:
 		if e.st.reg != dest {
 			f.moveInt(dest, e.st.reg, e.st.typ) // copy from the pinned local/global; never release it
@@ -1072,7 +1074,16 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		// need a temporary register. Select this only at final emission so tree
 		// scheduling, associative covering, and higher-level SWAR recognition retain
 		// their original shapes.
-		if i64Mask32Enabled && w && enc == aluTable[opAnd] && isI64Mask32(right) {
+		if incDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
+			(enc == aluTable[opAdd] || enc == aluTable[opSub]) && (right.st.cval == 1 || right.st.cval == -1) {
+			increment := enc == aluTable[opAdd] && right.st.cval == 1 || enc == aluTable[opSub] && right.st.cval == -1
+			if increment {
+				f.a.Inc(dest, w)
+			} else {
+				f.a.Dec(dest, w)
+			}
+			f.stats.peep("inc-dec")
+		} else if f.opt(optI64Mask32) && w && enc == aluTable[opAnd] && isI64Mask32(right) {
 			f.a.AluRI(enc.digit, dest, -1, false)
 			f.stats.peep("i64-mask32")
 		} else if fitsImm32(right.st.cval) {
@@ -1091,7 +1102,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stSlot:
 		f.a.AluRM(enc.rm, dest, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
-		f.a.AluRM(enc.rm, dest, RSP, f.localOff(right.st.idx), w)
+		f.a.AluRM(enc.rm, dest, RSP, f.localAddr(right.st.idx), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
@@ -1166,7 +1177,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stSlot:
 		f.a.ImulRM(dest, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
-		f.a.ImulRM(dest, RSP, f.localOff(right.st.idx), w)
+		f.a.ImulRM(dest, RSP, f.localAddr(right.st.idx), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)

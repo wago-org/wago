@@ -154,7 +154,7 @@ func (f *fn) spill(e *elem) {
 	// identical copy to a temporary spill slot. idx is otherwise unused for an
 	// owned stReg and stores local+1; local.set clears the annotation before it
 	// changes the canonical slot.
-	if teeSpillElideEnabled && e.st.kind == stReg && !e.st.gcRoot && e.st.idx > 0 &&
+	if f.opt(optTeeSpillElide) && e.st.kind == stReg && !e.st.gcRoot && e.st.idx > 0 &&
 		(e.st.typ == mtI32 || e.st.typ == mtI64) {
 		r := e.st.reg
 		local := e.st.idx - 1
@@ -239,7 +239,7 @@ func (f *fn) materialize(e *elem) Reg {
 			panic("amd64: v128 local requires XMM materialization")
 		}
 		r := f.allocReg(0)
-		f.loadFrameInt(r, f.localOff(e.st.idx), e.st.typ)
+		f.loadFrameInt(r, f.localAddr(e.st.idx), e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stLocalReg:

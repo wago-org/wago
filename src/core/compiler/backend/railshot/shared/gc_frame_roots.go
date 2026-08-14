@@ -63,17 +63,19 @@ type GCFrameCallsitePlan struct {
 // callsites, and final frame size. It remains compile-only until flattened into
 // the validated codec metadata.
 type GCFrameRootPlan struct {
-	Candidate           bool
-	Exact               bool
-	FrameBytes          uint32
-	LocalIndexes        []uint32
-	LocalOffsets        []uint32
-	FixedOffsets        []uint32 // conservative always-live roots such as EH payload records
-	LiveLocalMasks      []uint64 // low word per reachable allocating site
-	LiveCallLocalMasks  []uint64 // low word per reachable native call
-	LiveMaskExtraWords  []uint64 // flat remaining words: allocations, then calls
-	Safepoints          []GCFrameSafepointPlan
-	Callsites           []GCFrameCallsitePlan
+	Candidate          bool
+	Exact              bool
+	FrameBytes         uint32
+	LocalIndexes       []uint32
+	LocalOffsets       []uint32
+	FixedOffsets       []uint32 // conservative always-live roots such as EH payload records
+	LiveLocalMasks     []uint64 // low word per reachable allocating site
+	LiveCallLocalMasks []uint64 // low word per reachable native call
+	LiveMaskExtraWords []uint64 // flat remaining words: allocations, then calls
+	Safepoints         []GCFrameSafepointPlan
+	Callsites          []GCFrameCallsitePlan
+	// AdapterReturnOffset is relative to the function's public Entry. It may
+	// point beyond the function-owned bytes into a module-level adapter island.
 	AdapterReturnOffset uint32
 	SafepointBase       uint32
 }

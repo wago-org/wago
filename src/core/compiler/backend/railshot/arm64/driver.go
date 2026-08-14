@@ -164,6 +164,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
 			value.st.gcRoot = f.gcFrameLocal(int(x))
+			f.applyFactsForLocal(value, int(x))
 			break
 		}
 		if f.localConstZero(int(x)) {
@@ -180,12 +181,16 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
 		}
 		value.st.gcRoot = f.gcFrameLocal(int(x))
+		f.applyFactsForLocal(value, int(x))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
 			return err
 		}
 		if op == 0x22 {
+			// Specialized tee rewrites bypass setLocal. Invalidate first; a failed
+			// match falls through and installs the exact source fact below.
+			f.setFactsForLocal(int(x)+f.localBase, 0)
 			if done, err := f.tryMulHighU(r, int(x)+f.localBase); done || err != nil {
 				return err
 			}
@@ -762,7 +767,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 // B.cond directly. This is deliberately one-deep and only covers a pinned i32
 // local, so the existing local and branch paths remain the fallback oracle.
 func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
-	if !stFlagsEnabled || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
+	if !f.opt(optSTFlags) || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
 		return false, nil
 	}
 	pr, isFloat, ok := f.pinReg(x)
@@ -1133,13 +1138,16 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if e != nil && e.isDeferred() {
 		f.stats.addLocalSetDeferred()
 	}
+	// Capture the semantic result before condensing or moving it. Every assignment
+	// replaces the current straight-line version of the local.
+	f.setFactsForLocal(x, e.st.facts)
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
 	var skipFrom *elem
 	if e != nil && e.isDeferred() {
-		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || teeLocalSinkEnabled)
-		unarySink := (isUnary(e.op) || isConvert(e.op)) && unaryLocalSinkEnabled && (!tee || teeLocalSinkEnabled)
+		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || f.opt(optTeeSink))
+		unarySink := (isUnary(e.op) || isConvert(e.op)) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
 			skipFrom = baseOfValentBlock(e)
 		}

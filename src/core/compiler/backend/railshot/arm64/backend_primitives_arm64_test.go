@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -1194,22 +1195,24 @@ func TestOptimizationKnobAndABIHelpers(t *testing.T) {
 
 func TestCodegenStatsFormattingAndRegisterNames(t *testing.T) {
 	stats := &CodegenStats{
-		FuncIdx:       2,
-		Name:          "work",
-		CodeBytes:     44,
-		FrameBytes:    16,
-		MaxSpillSlots: 3,
-		Calls:         map[string]int{"host": 2, "regabi": 1},
-		Peephole:      map[string]int{"fold": 3, "sink": 1},
+		FuncIdx:           2,
+		Name:              "work",
+		CodeBytes:         44,
+		FrameBytes:        16,
+		MaxSpillSlots:     3,
+		FinalizerFallback: "loop-function-size",
+		NativeSize:        shared.NativeFunctionSizeReport{DeadFrameReservationBytes: 8},
+		Calls:             map[string]int{"host": 2, "regabi": 1},
+		Peephole:          map[string]int{"fold": 3, "sink": 1},
 	}
 	if got := fmtCountMap(map[string]int{"b": 2, "a": 1}); got != "a=1 b=2" {
 		t.Fatalf("count map = %q", got)
 	}
-	if got := stats.report(); !strings.Contains(got, `fn#2 "work": code=44B`) || !strings.Contains(got, "calls: host=2 regabi=1") || !strings.Contains(got, "peep:  fold=3 sink=1") {
+	if got := stats.report(); !strings.Contains(got, `fn#2 "work": code=44B`) || !strings.Contains(got, "finalizer-fallback: loop-function-size") || !strings.Contains(got, "calls: host=2 regabi=1") || !strings.Contains(got, "peep:  fold=3 sink=1") {
 		t.Fatalf("function report = %q", got)
 	}
 	ms := &ModuleStats{Funcs: []*CodegenStats{stats, nil}, ModuleGlobalPins: []ModuleGlobalPinInfo{{Global: 4, Reg: "x19"}}}
-	if got := ms.String(); !strings.Contains(got, "=== codegen explain: 2 function(s) ===") || !strings.Contains(got, "g4") || !strings.Contains(got, "x19") {
+	if got := ms.String(); !strings.Contains(got, "=== codegen explain: 2 function(s) ===") || !strings.Contains(got, "native-finalizer-fallbacks: loop-function-size=1/8B") || !strings.Contains(got, "g4") || !strings.Contains(got, "x19") {
 		t.Fatalf("module report = %q", got)
 	}
 	if (&ModuleStats{}).String() == "" || (*ModuleStats)(nil).String() != "" || (*CodegenStats)(nil).report() != "" {

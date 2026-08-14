@@ -11,6 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -70,7 +71,7 @@ type funcDef struct {
 
 // modFuncs builds a module of several local functions (func 0 exported as "f",
 // each function using its own type index), for exercising internal calls.
-func modFuncs(t *testing.T, fns ...funcDef) *wasm.Module {
+func modFuncs(t testing.TB, fns ...funcDef) *wasm.Module {
 	t.Helper()
 	var types, funcs, codes [][]byte
 	for i, fn := range fns {
@@ -156,8 +157,12 @@ func modMem(t *testing.T, pages uint32, params, results []wasm.ValType, funcBody
 // returns the raw 64-bit result word, a copy of post-run linear memory, and any
 // trap error from the call.
 func runMemAmd64(t *testing.T, m *wasm.Module, setup func([]byte), args ...uint64) (uint64, []byte, error) {
+	return runMemAmd64WithOptions(t, m, CompileOptions{}, setup, args...)
+}
+
+func runMemAmd64WithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, setup func([]byte), args ...uint64) (uint64, []byte, error) {
 	t.Helper()
-	cm, err := CompileModule(m)
+	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
@@ -203,6 +208,11 @@ func runAmd64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
+	return runCompiledAmd64u(t, cm, args...)
+}
+
+func runCompiledAmd64u(t *testing.T, cm *encoderamd64.CompiledModule, args ...uint64) uint64 {
+	t.Helper()
 	eng, err := runtime.NewEngine()
 	if err != nil {
 		t.Fatal(err)
