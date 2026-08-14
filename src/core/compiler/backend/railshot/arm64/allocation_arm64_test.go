@@ -160,16 +160,31 @@ func TestMemRefSpillKeepsLoadArm64(t *testing.T) {
 // labels + a default (≥ brTableJumpMin, so the jump-table form fires); each arm
 // returns 1000+label. Mirrors amd64's brTableIndexInRAX.
 func brTableComputedIndexArm64(t *testing.T) *wasm.Module {
+	return brTableComputedLabelsArm64(t, []uint32{0, 1, 2, 3, 4}, 5)
+}
+
+func brTableComputedLabelsArm64(t *testing.T, labels []uint32, def uint32) *wasm.Module {
 	t.Helper()
 	params := []wasm.ValType{wasm.I32, wasm.I32}
 	body := []byte{0x00} // no locals
-	for i := 0; i < 6; i++ {
+	maxLabel := def
+	for _, lbl := range labels {
+		if lbl > maxLabel {
+			maxLabel = lbl
+		}
+	}
+	blockN := int(maxLabel) + 1
+	for i := 0; i < blockN; i++ {
 		body = append(body, 0x02, 0x40) // block (void)
 	}
 	body = append(body, 0x20, 0x00, 0x20, 0x01, 0x6e) // local.get 0; local.get 1; i32.div_u
-	// br_table with 5 case labels [0..4] + default 5 (count 5 >= brTableJumpMin).
-	body = append(body, 0x0e, 0x05, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05)
-	for i := 0; i < 6; i++ {
+	body = append(body, 0x0e)
+	body = append(body, wasmtest.ULEB(uint32(len(labels)))...)
+	for _, lbl := range labels {
+		body = append(body, wasmtest.ULEB(lbl)...)
+	}
+	body = append(body, wasmtest.ULEB(def)...)
+	for i := 0; i < blockN; i++ {
 		body = append(body, 0x0b) // end block i
 		body = append(body, 0x41) // i32.const
 		body = append(body, wasmtest.SLEB32(int32(1000+i))...)
@@ -189,6 +204,30 @@ func brTableComputedIndexArm64(t *testing.T) *wasm.Module {
 		t.Fatalf("decode: %v", err)
 	}
 	return m
+}
+
+func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
+	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
+	m := brTableComputedLabelsArm64(t, labels, 4)
+	size := OptimizeSize
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats}); err != nil {
+		t.Fatalf("compile size: %v", err)
+	}
+	if stats.Funcs[0].Peephole["br-table-compact"] == 0 {
+		t.Fatalf("duplicate table did not use compact target IDs: %v", stats.Funcs[0].Peephole)
+	}
+	for _, c := range []struct{ index, want uint64 }{
+		{0, 1000}, {2, 1000}, {3, 1001}, {8, 1002}, {11, 1003}, {12, 1004},
+	} {
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}, c.index, 1)
+		if err != nil {
+			t.Fatalf("f(%d,1): %v", c.index, err)
+		}
+		if got != c.want {
+			t.Fatalf("f(%d,1) = %d, want %d", c.index, got, c.want)
+		}
+	}
 }
 
 // TestExecBrTableComputedIndexArm64 is the br_table jump-table register-allocation

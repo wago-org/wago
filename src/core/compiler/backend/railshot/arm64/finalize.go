@@ -33,10 +33,12 @@ const (
 	markerPluginEnd
 	markerPCRelative
 	markerBranchNext
+	markerOpaqueDataStart
+	markerOpaqueDataEnd
 )
 
 func finalizerMarkerKey(off int, marker finalizerMarker) int {
-	return -((off << 3) | int(marker)) - 1
+	return -((off << 4) | int(marker)) - 1
 }
 
 func decodeFinalizerMarker(key int) (off int, marker finalizerMarker, ok bool) {
@@ -44,7 +46,7 @@ func decodeFinalizerMarker(key int) (off int, marker finalizerMarker, ok bool) {
 		return 0, 0, false
 	}
 	value := -key - 1
-	return value >> 3, finalizerMarker(value & 7), true
+	return value >> 4, finalizerMarker(value & 15), true
 }
 
 func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
@@ -62,6 +64,14 @@ func (f *fn) recordJumpTableData(start, end int) {
 	f.opaqueFragments = true
 	f.recordFinalizerMarker(start, markerJumpDataStart)
 	f.recordFinalizerMarker(end, markerJumpDataEnd)
+}
+
+func (f *fn) recordOpaqueData(start, end int) {
+	if end > start {
+		f.opaqueFragments = true
+		f.recordFinalizerMarker(start, markerOpaqueDataStart)
+		f.recordFinalizerMarker(end, markerOpaqueDataEnd)
+	}
 }
 
 func (f *fn) recordOpaquePlugin(start, end int) {
@@ -298,6 +308,7 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 	deletionIndex := 0
 	dst := 0
 	jumpData := false
+	opaqueData := false
 	jumpBase := 0
 	for src := 0; src < len(code); src += 4 {
 		if markers[finalizerMarkerKey(src, markerJumpDataEnd)] {
@@ -307,6 +318,12 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 			jumpData = true
 			jumpBase = src
 		}
+		if markers[finalizerMarkerKey(src, markerOpaqueDataEnd)] {
+			opaqueData = false
+		}
+		if markers[finalizerMarkerKey(src, markerOpaqueDataStart)] {
+			opaqueData = true
+		}
 		if deletionIndex < len(deletions) && src == int(deletions[deletionIndex].Off) {
 			src += int(deletions[deletionIndex].Len) - 4
 			deletionIndex++
@@ -314,7 +331,9 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 		}
 		word := rdWord(code, src)
 		var err error
-		if jumpData {
+		if opaqueData {
+			// Compact target-ID bytes are data, not instructions or relocations.
+		} else if jumpData {
 			word, err = remapJumpTableWord(word, jumpBase, offsets)
 		} else if isPCRelativeWord(word) {
 			word, err = remapPCRelativeWord(word, src, dst, offsets)
@@ -340,7 +359,7 @@ func (f *fn) compactionNeedsReencode() bool {
 			return true
 		}
 		_, marker, ok := decodeFinalizerMarker(key)
-		if ok && (marker == markerJumpDataStart || marker == markerJumpDataEnd || marker == markerPCRelative) {
+		if ok && (marker == markerJumpDataStart || marker == markerJumpDataEnd || marker == markerOpaqueDataStart || marker == markerOpaqueDataEnd || marker == markerPCRelative) {
 			return true
 		}
 	}
@@ -458,7 +477,7 @@ func (f *fn) validateFinalizerInventory(internalOff int) error {
 	if err := validateSite(f.addRspAt, shared.RelaxFrameAdd, shortFrameLen); err != nil {
 		return fmt.Errorf("arm64 identity finalizer: %w", err)
 	}
-	var jumpStarts, jumpEnds, pluginStarts, pluginEnds int
+	var jumpStarts, jumpEnds, pluginStarts, pluginEnds, dataStarts, dataEnds int
 	for encoded := range sc.branchTargets {
 		off, marker, ok := decodeFinalizerMarker(encoded)
 		if !ok {
@@ -484,11 +503,15 @@ func (f *fn) validateFinalizerInventory(internalOff int) error {
 				pluginStarts++
 			case markerPluginEnd:
 				pluginEnds++
+			case markerOpaqueDataStart:
+				dataStarts++
+			case markerOpaqueDataEnd:
+				dataEnds++
 			}
 		}
 	}
-	if jumpStarts != jumpEnds || pluginStarts != pluginEnds {
-		return fmt.Errorf("arm64 identity finalizer: unbalanced fragments: jump data %d/%d, plugin %d/%d", jumpStarts, jumpEnds, pluginStarts, pluginEnds)
+	if jumpStarts != jumpEnds || pluginStarts != pluginEnds || dataStarts != dataEnds {
+		return fmt.Errorf("arm64 identity finalizer: unbalanced fragments: jump data %d/%d, opaque data %d/%d, plugin %d/%d", jumpStarts, jumpEnds, dataStarts, dataEnds, pluginStarts, pluginEnds)
 	}
 	if err := f.validatePCRelativeInventory(); err != nil {
 		return err

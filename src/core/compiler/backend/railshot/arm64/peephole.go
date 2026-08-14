@@ -171,10 +171,10 @@ func (f *fn) forwardStoreLoadAt(b []byte, n, pc int, targets map[int]bool, recor
 }
 
 func finalizerOpaqueAt(markers map[int]bool, pc int, opaque *bool) bool {
-	if markers[finalizerMarkerKey(pc, markerJumpDataEnd)] || markers[finalizerMarkerKey(pc, markerPluginEnd)] {
+	if markers[finalizerMarkerKey(pc, markerJumpDataEnd)] || markers[finalizerMarkerKey(pc, markerOpaqueDataEnd)] || markers[finalizerMarkerKey(pc, markerPluginEnd)] {
 		*opaque = false
 	}
-	if markers[finalizerMarkerKey(pc, markerJumpDataStart)] || markers[finalizerMarkerKey(pc, markerPluginStart)] {
+	if markers[finalizerMarkerKey(pc, markerJumpDataStart)] || markers[finalizerMarkerKey(pc, markerOpaqueDataStart)] || markers[finalizerMarkerKey(pc, markerPluginStart)] {
 		*opaque = true
 	}
 	return *opaque

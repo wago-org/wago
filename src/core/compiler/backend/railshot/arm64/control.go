@@ -1821,6 +1821,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.branchJump(fr)
 	}
 	if brTableUseJump(labels, def, f.policy) {
+		compactIDs, uniqueN, compactStubAt := f.brTableCompactPlan(labels, def)
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
 		// The table base and target live in the backend scratch registers X16/X17
@@ -1839,12 +1840,53 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		defSite := f.a.Bcond(condAE) // idx >= n → default (B.cond, imm19)
 		adrSite := f.a.Adr(X16)      // X16 = &table (PC-relative ADR, patched)
 		f.recordPCRelative(adrSite)
-		f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
-		f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
-		f.a.Add64(X17, X16, X17)                      // target = table base + entry
+		if compactIDs {
+			f.stats.peep("br-table-compact")
+			f.a.LoadIdx(X17, X16, ireg, 0, 1, false, true) // X17 = target ID
+			f.a.LslImm(X17, X17, 2, false)                 // ID *= 4
+			f.a.AddImm64(X16, X16, uint32(align4(len(labels))))
+			f.a.LoadIdx(X17, X16, X17, 0, 4, true, true) // X17 = vector-relative target
+		} else {
+			f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
+			f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
+		}
+		f.a.Add64(X17, X16, X17) // target = table base + entry
 		f.a.Br(X17)
 		tablePos := f.a.Len()
 		f.a.PatchAdr(adrSite, tablePos)
+		if compactIDs {
+			for _, lbl := range labels {
+				f.a.B = append(f.a.B, byte(compactStubAt[lbl]-1))
+			}
+			for len(f.a.B)&3 != 0 {
+				f.a.B = append(f.a.B, 0)
+			}
+			vectorPos := f.a.Len()
+			f.recordOpaqueData(tablePos, vectorPos)
+			for range uniqueN {
+				f.a.B = append(f.a.B, 0, 0, 0, 0)
+			}
+			f.recordJumpTableData(vectorPos, f.a.Len())
+			for _, lbl := range labels {
+				encodedID := compactStubAt[lbl]
+				if encodedID <= 0 {
+					continue
+				}
+				i := encodedID - 1
+				p := f.a.Len()
+				compactStubAt[lbl] = -p - 1
+				f.a.PatchU32(vectorPos+4*i, uint32(p-vectorPos))
+				emitCase(lbl)
+			}
+			if encoded := compactStubAt[def]; encoded < 0 {
+				f.a.PatchBranch19(defSite, -encoded-1)
+			} else {
+				f.a.PatchBranch19(defSite, f.a.Len())
+				emitCase(def)
+			}
+			f.unreachable = true
+			return nil
+		}
 		for range labels {
 			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
 		}
@@ -2031,6 +2073,55 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 // brTableJumpMin is the label count at which br_table switches from a linear
 // cmp/jne chain to an indirect jump table.
 const brTableJumpMin = 5
+
+func align4(n int) int { return (n + 3) &^ 3 }
+
+// brTableCompactPlan returns a byte target-ID table plus a vector of unique
+// i32 target deltas only when its exact data bytes and two extra dispatch
+// instructions beat the dense i32 table. It is intentionally Size/Embedded
+// only: the compact form adds one dependent load on the selected path.
+func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
+	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || len(labels) > 4095 {
+		return false, 0, nil
+	}
+	var seen [4]uint64
+	uniqueN := 0
+	for _, lbl := range labels {
+		if lbl >= 256 {
+			return false, 0, nil
+		}
+		word, bit := lbl>>6, uint64(1)<<(lbl&63)
+		if seen[word]&bit == 0 {
+			seen[word] |= bit
+			uniqueN++
+		}
+	}
+	compactBytes := 8 + align4(len(labels)) + 4*uniqueN
+	if compactBytes >= 4*len(labels) {
+		return false, 0, nil
+	}
+	sc := f.scratchState()
+	stubAt := sc.brTableStubAt
+	if cap(stubAt) < len(f.ctrl) {
+		stubAt = make([]int, len(f.ctrl))
+	} else {
+		stubAt = stubAt[:len(f.ctrl)]
+	}
+	sc.brTableStubAt = stubAt
+	for _, lbl := range labels {
+		stubAt[lbl] = 0
+	}
+	stubAt[def] = 0
+	nextID := 0
+	for _, lbl := range labels {
+		if stubAt[lbl] != 0 {
+			continue
+		}
+		nextID++
+		stubAt[lbl] = nextID // ID + 1, reserving zero for unseen.
+	}
+	return true, uniqueN, stubAt
+}
 
 // brTableUseJump keeps the O(1) dispatch threshold for Speed and Balanced, but
 // makes Size and Embedded account for the exact fixed dispatch bytes and the
