@@ -777,31 +777,33 @@ func (a *Asm) recordRel32(at, target int) {
 	})
 }
 
-// RetargetRel32 updates the symbolic target of every retained record for at.
+// RetargetRel32 updates the symbolic target of the retained record for at.
 // It is used by size-preserving peepholes that change branch semantics after the
-// original displacement was patched.
+// original displacement was patched. Rewrites target recently emitted sites, so
+// search backward and stop at the unique displacement field.
 func (a *Asm) RetargetRel32(at, target int) {
 	if target < 0 || uint64(target) > uint64(rel32TargetMask) {
 		a.Rel32Overflow = true
 		return
 	}
-	for i := range a.Rel32Sites {
+	for i := len(a.Rel32Sites) - 1; i >= 0; i-- {
 		if int(a.Rel32Sites[i].At) == at {
 			a.Rel32Sites[i].setTarget(target)
+			return
 		}
 	}
 }
 
-// ForgetRel32 removes retained records for a displacement field eliminated by
-// a later rewrite. The underlying scratch is retained for the next function.
+// ForgetRel32 removes the retained record for a displacement field eliminated
+// by a later rewrite. The underlying scratch is retained for the next function.
 func (a *Asm) ForgetRel32(at int) {
-	out := a.Rel32Sites[:0]
-	for _, site := range a.Rel32Sites {
-		if int(site.At) != at {
-			out = append(out, site)
+	for i := len(a.Rel32Sites) - 1; i >= 0; i-- {
+		if int(a.Rel32Sites[i].At) == at {
+			copy(a.Rel32Sites[i:], a.Rel32Sites[i+1:])
+			a.Rel32Sites = a.Rel32Sites[:len(a.Rel32Sites)-1]
+			return
 		}
 	}
-	a.Rel32Sites = out
 }
 
 func (a *Asm) Cmovcc(cc Cond, dst, src Reg, w bool) {
