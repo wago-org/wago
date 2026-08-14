@@ -1053,7 +1053,16 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		// need a temporary register. Select this only at final emission so tree
 		// scheduling, associative covering, and higher-level SWAR recognition retain
 		// their original shapes.
-		if f.opt(optI64Mask32) && w && enc == aluTable[opAnd] && isI64Mask32(right) {
+		if incDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
+			(enc == aluTable[opAdd] || enc == aluTable[opSub]) && (right.st.cval == 1 || right.st.cval == -1) {
+			increment := enc == aluTable[opAdd] && right.st.cval == 1 || enc == aluTable[opSub] && right.st.cval == -1
+			if increment {
+				f.a.Inc(dest, w)
+			} else {
+				f.a.Dec(dest, w)
+			}
+			f.stats.peep("inc-dec")
+		} else if f.opt(optI64Mask32) && w && enc == aluTable[opAnd] && isI64Mask32(right) {
 			f.a.AluRI(enc.digit, dest, -1, false)
 			f.stats.peep("i64-mask32")
 		} else if fitsImm32(right.st.cval) {

@@ -613,6 +613,22 @@ func (a *Asm) Or32(dst, src Reg)  { a.alu(0x09, dst, src, false) }
 func (a *Asm) Xor32(dst, src Reg) { a.alu(0x31, dst, src, false) }
 func (a *Asm) Cmp32(dst, src Reg) { a.alu(0x39, dst, src, false) }
 
+// Inc/Dec emit the compact r/m register forms. They preserve the arithmetic
+// result and every status flag except CF; callers must prove CF dead.
+func (a *Asm) Inc(r Reg, w bool) {
+	if w || r >= 8 {
+		a.emit(a.rex(w, false, false, r >= 8))
+	}
+	a.emit(0xFF, 0xC0|byte(r&7))
+}
+
+func (a *Asm) Dec(r Reg, w bool) {
+	if w || r >= 8 {
+		a.emit(a.rex(w, false, false, r >= 8))
+	}
+	a.emit(0xFF, 0xC8|byte(r&7))
+}
+
 func (a *Asm) IMul(dst, src Reg, w bool) {
 	if w || dst >= 8 || src >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))

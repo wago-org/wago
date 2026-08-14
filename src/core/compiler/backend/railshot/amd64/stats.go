@@ -55,6 +55,9 @@ var (
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings only
 	// under Size/Embedded. Balanced retains its measured layout exactly.
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
+	// incDecEnabled selects compact INC/DEC for Size/Embedded Wasm add/sub by
+	// one when CF is not a compiler value. The kill switch is the A/B oracle.
+	incDecEnabled = os.Getenv("WAGO_AMD64_NO_INCDEC") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. It remains opt-in while broader shrink-only

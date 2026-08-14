@@ -2441,3 +2441,39 @@ The complete Size execution suite, ARM64 encoder/backend suites, backend race
 suite, and compacted runtime corpus/fuzz regression suite pass. Focused tests
 cover the exact four-byte lowering delta and zero, nonzero, and high-bit i32
 conditions.
+
+## AMD64 Size-only INC/DEC immediates
+
+Size and Embedded now lower Wasm integer add/sub by positive or negative one
+to the compact register `INC`/`DEC` forms. These instructions produce the same
+wrapped i32/i64 result and the same status flags except CF; the selection is
+restricted to ordinary Wasm arithmetic, where carry is not compiler state.
+Speed and Balanced retain `ADD/SUB imm8`. `WAGO_AMD64_NO_INCDEC=1` restores the
+former Size encoding exactly.
+
+The exact 36-module AMD64 Size suite selects 33,368 sites and falls from
+66,123,590 to 66,090,445 native bytes (-33,145, -0.050%). Ruby contributes
+17,518 bytes, esbuild 7,185, SQLite 3,688, regexmatch 2,634, Lua 1,363, wasm3
+534, and the remaining modules 223. Recomputed layout and shared fragments make
+the net image reduction 223 bytes smaller than the one-byte-per-site direct
+instruction saving.
+
+Five serialized compile samples move Ruby from a 1,014,875,483 ns/op rollback
+median to 1,012,303,232 (-0.25%) and esbuild from 545,994,479 to 547,530,361
+(+0.28%). Median allocation movement remains noise-level. Five one-second Size
+execution samples move fannkuch -0.62%, SHA-256 +0.02%, json-as serialization
+-1.31%, and json-as deserialization -1.52%; every sample remains allocation-free.
+
+The full Size execution suite, AMD64 encoder/backend suites, backend race suite,
+and compacted runtime corpus/fuzz regression suite pass. Focused execution tests
+cover i32 and i64 wraparound for add/sub by both positive and negative one.
+
+### Rejected: implicit JECXZ recognition
+
+An initial finalizer experiment recognized any adjacent `TEST ECX,ECX; JZ`
+pair and shortened it to `JECXZ`. It saved 1,992 corpus bytes but hung the JSON
+execution benchmark because the implicit pattern included sequences whose
+fallthrough still consumed TEST's flags; `JECXZ` does not set them. Restricting
+the annotation to proved flag-dead ordinary `if` and guarded `br_if` edges
+produced zero sites in the 36-module corpus. The experiment was removed rather
+than retaining unsafe generic recognition or a zero-hit special path.
