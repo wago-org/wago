@@ -1880,6 +1880,42 @@ spending timed compile benchmarks on it; its source and extra rollback variants
 were removed. Further savings should come from a different byte class, not a
 larger per-function inventory.
 
+## AMD64 explicit jump-table fragments
+
+AMD64 jump-table functions now remain eligible for bounded Size/Embedded
+compaction. Emission records the embedded target-ID or signed-i32-delta range as
+a typed, scratch-reused fragment. The finalizer copies compact ID bytes as opaque
+data and remaps every delta from its symbolic table base and code target; it
+never disassembles either form as machine instructions. The dispatch LEA and all
+branch fields continue through the exact rel32 inventory.
+
+Compact target-ID tables index a vector of five-byte `jmp rel32` instructions.
+Those vector entries are explicitly marked fixed-width: they move and are
+repatched, but are never relaxed. More generally, branches in a function with
+jump-table data retain their emitted widths. Frame adjustments and proved dead
+holes can still disappear around them. The exact rollback is
+`WAGO_AMD64_NO_JUMP_TABLE_COMPACTION=1`.
+
+On the current 64-module AMD64 Size corpus, the rollback image is 75,485,833
+bytes and the admitted fragment path is 75,126,901 (-358,932, -0.475%). Major
+deltas are esbuild -165,257, Ruby -129,621, `script` -39,548, `regexmatch`
+-8,299, Lua -4,687, `markdown` -3,863, SQLite -3,650, `jsonproc` -1,925, and
+wasm3 -966.
+
+Five serialized 500 ms samples put the Ruby median at 930,278,140 to
+946,715,021 ns/op (+1.77%) and esbuild at 488,264,718 to 502,475,194 ns/op
+(+2.91%). B/op and allocations are noise-level. The backend and encoder suites,
+the AMD64 race suite, compacted runtime/fuzz corpus execution, and the available
+product tests pass. The broader product selection still fails only because the
+remote checkout lacks `tests/spec-v3`, as recorded above.
+
+A more aggressive experiment also relaxed ordinary branches in these newly
+admitted large functions. It reached 74,697,180 bytes (-788,653, -1.045%), but
+esbuild compile time moved from a 488,264,718 ns/op median to 539,272,502
+ns/op (+10.45%), beyond the Size gate; Ruby moved from 942,276,242 to
+964,615,247 ns/op (+2.37%). That variant was rejected. Restoring it requires a
+different finalizer cost structure, not a wider work bound.
+
 ### Commands
 
 ```sh

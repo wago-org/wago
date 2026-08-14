@@ -844,6 +844,18 @@ func (a *Asm) ForgetRel32(at int) {
 	}
 }
 
+// KeepRel32Long retains the recorded displacement for remapping but prevents
+// branch relaxation. This is required when surrounding data addresses a fixed
+// width instruction vector by byte stride.
+func (a *Asm) KeepRel32Long(at int) {
+	for i := len(a.Rel32Sites) - 1; i >= 0; i-- {
+		if a.Rel32Sites[i].At() == at {
+			a.Rel32Sites[i].atAndFlags &^= uint32(3) << rel32KindShift
+			return
+		}
+	}
+}
+
 func (a *Asm) Cmovcc(cc Cond, dst, src Reg, w bool) {
 	if w || dst >= 8 || src >= 8 {
 		a.emit(rex(w, dst >= 8, false, src >= 8))

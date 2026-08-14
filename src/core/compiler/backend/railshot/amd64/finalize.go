@@ -23,6 +23,7 @@ var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
+var jumpTableCompactionEnabled = os.Getenv("WAGO_AMD64_NO_JUMP_TABLE_COMPACTION") != "1"
 var loopCompactionByteLimitOverride = func() int {
 	if os.Getenv("WAGO_AMD64_LOOP_COMPACTION_LIMIT") == "16K" {
 		return 16 << 10
@@ -182,7 +183,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 		return result, 0, 0, nil
 	}
-	if !f.compactNative() || !f.loopCompactionAdmitted() || f.hasJumpTableData ||
+	if !f.compactNative() || !f.loopCompactionAdmitted() || f.hasJumpTableData && !jumpTableCompactionEnabled ||
 		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
 		return identity()
 	}
@@ -381,55 +382,104 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	// Exact recorded JMP/Jcc sites need no disassembly pass. Calls are Rel32Other
 	// and retain their return-address side effect.
 	var deletedBranches [(maxAMD64FinalizerRel32Sites + 63) / 64]uint64
-	for i, site := range f.a.Rel32Sites {
-		start, _, _, ok := branchForm(site)
-		if !ok {
-			continue
-		}
-		target, okTarget := rel32Target(site)
-		longLen := site.At() + 4 - start
-		if !okTarget || target != site.At()+4 {
-			continue
-		}
-		if !insertDeletion(shared.DeletedRange{Off: uint32(start), Len: uint32(longLen)}) {
-			continue
-		}
-		deletedBranches[i>>6] |= uint64(1) << uint(i&63)
-	}
-	for round := 0; round < shared.MaxOffsetMapDeletions && len(deletions) < cap(deletions); round++ {
-		changed := false
-		for i := range f.a.Rel32Sites {
-			site := &f.a.Rel32Sites[i]
-			if deletedBranches[i>>6]&(uint64(1)<<uint(i&63)) != 0 || site.Short() || len(deletions) == cap(deletions) {
-				continue
-			}
-			start, shortLen, deletion, ok := branchForm(*site)
+	// Compact target-ID tables address a fixed-width rel32 jump vector, and the
+	// large switch functions admitted by explicit fragments made full branch
+	// relaxation exceed the Size compile-time gate. Keep every branch in a jump-
+	// table function at its emitted width while still remapping it around frame
+	// and dead-hole deletions.
+	if !f.hasJumpTableData {
+		for i, site := range f.a.Rel32Sites {
+			start, _, _, ok := branchForm(site)
 			if !ok {
 				continue
 			}
-			target, okTarget := rel32Target(*site)
-			if !okTarget {
+			target, okTarget := rel32Target(site)
+			longLen := site.At() + 4 - start
+			if !okTarget || target != site.At()+4 {
 				continue
 			}
-			mappedStart, okStart := mapWithExtra(start, deletion)
-			mappedTarget, okTarget := mapWithExtra(target, deletion)
-			disp := mappedTarget - (mappedStart + shortLen)
-			if !okStart || !okTarget || disp < -128 || disp > 127 {
+			if !insertDeletion(shared.DeletedRange{Off: uint32(start), Len: uint32(longLen)}) {
 				continue
 			}
-			if !insertDeletion(deletion) {
-				continue
-			}
-			site.SetShort(true)
-			changed = true
+			deletedBranches[i>>6] |= uint64(1) << uint(i&63)
 		}
-		if !changed {
-			break
+		for round := 0; round < shared.MaxOffsetMapDeletions && len(deletions) < cap(deletions); round++ {
+			changed := false
+			for i := range f.a.Rel32Sites {
+				site := &f.a.Rel32Sites[i]
+				if deletedBranches[i>>6]&(uint64(1)<<uint(i&63)) != 0 || site.Short() || len(deletions) == cap(deletions) {
+					continue
+				}
+				start, shortLen, deletion, ok := branchForm(*site)
+				if !ok {
+					continue
+				}
+				target, okTarget := rel32Target(*site)
+				if !okTarget {
+					continue
+				}
+				mappedStart, okStart := mapWithExtra(start, deletion)
+				mappedTarget, okTarget := mapWithExtra(target, deletion)
+				disp := mappedTarget - (mappedStart + shortLen)
+				if !okStart || !okTarget || disp < -128 || disp > 127 {
+					continue
+				}
+				if !insertDeletion(deletion) {
+					continue
+				}
+				site.SetShort(true)
+				changed = true
+			}
+			if !changed {
+				break
+			}
 		}
 	}
 	offsets, err := shared.NewOffsetMap(len(f.a.B), deletions)
 	if err != nil {
 		return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
+	}
+	// Jump-table data has an explicit fragment owner. Compact target-ID bytes are
+	// opaque and move unchanged; signed i32 entries are relative to the table
+	// base and must follow both the base and their code targets.
+	for _, fragment := range f.sc.jumpTableFragments {
+		if fragment.start < 0 || fragment.end < fragment.start || fragment.end > len(f.a.B) {
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid jump-table fragment [%d,%d)", fragment.start, fragment.end)
+		}
+		for _, deletion := range deletions {
+			deletionStart := int(deletion.Off)
+			deletionEnd := deletionStart + int(deletion.Len)
+			if deletionStart < fragment.end && fragment.start < deletionEnd {
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: deletion [%d,%d) intersects jump-table fragment [%d,%d)", deletionStart, deletionEnd, fragment.start, fragment.end)
+			}
+		}
+		newBase, baseOK := offsets.Map(fragment.start)
+		newEnd, endOK := offsets.Map(fragment.end)
+		if !baseOK || !endOK || newEnd-newBase != fragment.end-fragment.start {
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table fragment [%d,%d) does not map intact", fragment.start, fragment.end)
+		}
+		switch fragment.kind {
+		case jumpTableFragmentIDs:
+			continue
+		case jumpTableFragmentDeltas:
+			if (fragment.end-fragment.start)&3 != 0 {
+				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: unaligned jump-table fragment [%d,%d)", fragment.start, fragment.end)
+			}
+			for at := fragment.start; at < fragment.end; at += 4 {
+				oldTarget := fragment.start + int(int32(binary.LittleEndian.Uint32(f.a.B[at:])))
+				newTarget, targetOK := offsets.Map(oldTarget)
+				if !targetOK {
+					return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table target %d intersects deleted code", oldTarget)
+				}
+				delta := int64(newTarget - newBase)
+				if delta < -(1<<31) || delta >= 1<<31 {
+					return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table delta %d exceeds i32", delta)
+				}
+				binary.LittleEndian.PutUint32(f.a.B[at:], uint32(int32(delta)))
+			}
+		default:
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: unknown jump-table fragment kind %d", fragment.kind)
+		}
 	}
 	// Patch maximal-encoding source fields with their final displacements before
 	// the left-to-right copy. Exact recorded fields supply their old targets; no

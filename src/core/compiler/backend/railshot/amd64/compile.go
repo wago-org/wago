@@ -316,7 +316,7 @@ type fn struct {
 	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 	threadedMemory0         bool   // route shared memory zero through the private instance directory
 	hasLoop                 bool   // retain loop alignment until it becomes a relaxable fragment
-	hasJumpTableData        bool   // embedded table deltas require explicit fragment remapping
+	hasJumpTableData        bool   // typed embedded data is remapped, but branches retain fixed widths
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -620,6 +620,22 @@ type gcArrayAllocStubSite struct {
 	mode      gcArrayAllocMode
 }
 
+type jumpTableFragmentKind uint8
+
+const (
+	jumpTableFragmentIDs jumpTableFragmentKind = iota + 1
+	jumpTableFragmentDeltas
+)
+
+// jumpTableFragment classifies the data bytes embedded between dispatch code
+// and case stubs. The finalizer never decodes them as instructions; delta
+// tables are explicitly remapped when surrounding code shrinks.
+type jumpTableFragment struct {
+	start int
+	end   int
+	kind  jumpTableFragmentKind
+}
+
 type scratch struct {
 	stack          *stack     // the valent-block operand stack
 	asm            *amd64.Asm // the x86-64 encoder byte buffer
@@ -647,6 +663,7 @@ type scratch struct {
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
 	pinnedLocals            []int       // pinned-local index backing; reused across functions
 	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
+	jumpTableFragments      []jumpTableFragment
 	transient
 }
 
@@ -720,6 +737,7 @@ func (sc *scratch) reset() {
 	sc.retSites = sc.retSites[:0]
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
+	sc.jumpTableFragments = sc.jumpTableFragments[:0]
 	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
@@ -2192,7 +2210,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	if compactNativePolicy(sc.policy) {
-		if hints.hasLoop && !loopCompactionEnabled || hints.hasJumpTableData || len(custom) != 0 {
+		if hints.hasLoop && !loopCompactionEnabled || hints.hasJumpTableData && !jumpTableCompactionEnabled || len(custom) != 0 {
 			// These are finalizer exclusions known before emission. Avoid
 			// recording sites only to take identity.
 			sc.asm.ResetRel32Recorder(0)

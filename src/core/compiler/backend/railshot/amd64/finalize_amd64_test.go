@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"reflect"
 	"testing"
 
@@ -384,4 +385,53 @@ func TestFinalizerRelaxesShortBranches(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestFinalizerRemapsJumpTableData(t *testing.T) {
+	oldEnabled := nativeFinalizerEnabled
+	oldCompact := nativeCompactionEnabled
+	oldJumpTables := jumpTableCompactionEnabled
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = oldEnabled
+		nativeCompactionEnabled = oldCompact
+		jumpTableCompactionEnabled = oldJumpTables
+	})
+	nativeFinalizerEnabled = true
+	nativeCompactionEnabled = true
+	jumpTableCompactionEnabled = true
+
+	a := &amd64enc.Asm{Rel32SiteLimit: maxAMD64FinalizerRel32Sites}
+	subSite := a.Len() + 3
+	a.SubRsp(0)
+	leaSite := a.LeaRipPlaceholder(amd64enc.RAX)
+	tablePos := a.Len()
+	a.PatchRel32(leaSite, tablePos)
+	a.B = append(a.B, 0, 0, 0, 0)
+	over := a.Len()
+	a.B = append(a.B, 0x90, 0x90, 0x90, 0x90, 0x0f, 0x1f, 0x44, 0x00, 0x00)
+	target := a.Len()
+	a.PatchU32(tablePos, uint32(target-tablePos))
+	a.B = append(a.B, 0x90)
+	addSite := a.Len() + 3
+	a.AddRsp(0)
+
+	sc := &scratch{
+		brFoldSites: []int{over},
+		jumpTableFragments: []jumpTableFragment{{
+			start: tablePos, end: tablePos + 4, kind: jumpTableFragmentDeltas,
+		}},
+	}
+	f := fn{a: a, sc: sc, subRspAt: subSite, addRspAt: addSite, frameElided: true, hasJumpTableData: true}
+	if _, err := f.finalizeNativeCode(0); err != nil {
+		t.Fatal(err)
+	}
+
+	newLeaSite := leaSite - 7 // zero-sized prologue was deleted
+	newTable := newLeaSite + 4 + int(int32(binary.LittleEndian.Uint32(f.a.B[newLeaSite:])))
+	if got := int(int32(binary.LittleEndian.Uint32(f.a.B[newTable:]))); got != 8 {
+		t.Fatalf("jump-table delta = %d, want 8", got)
+	}
+	if got := f.a.B[newTable+8]; got != 0x90 {
+		t.Fatalf("jump-table target byte = %#x, want NOP", got)
+	}
 }

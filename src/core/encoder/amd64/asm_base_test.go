@@ -191,11 +191,12 @@ func TestRel32SiteRewrite(t *testing.T) {
 	a.PatchRel32(two, 30)
 	a.PatchU32(one, uint32(int32(40-(one+4))))
 	a.ForgetRel32(two)
-	if got := a.Rel32Sites; len(got) != 1 || got[0].At() != one || got[0].Kind() != Rel32Jmp {
+	a.KeepRel32Long(one)
+	if got := a.Rel32Sites; len(got) != 1 || got[0].At() != one || got[0].Kind() != Rel32Other {
 		t.Fatalf("rewritten sites = %+v", got)
 	}
 	a.Rel32Sites[0].SetShort(true)
-	if !a.Rel32Sites[0].Short() || a.Rel32Sites[0].At() != one || a.Rel32Sites[0].Kind() != Rel32Jmp {
+	if !a.Rel32Sites[0].Short() || a.Rel32Sites[0].At() != one || a.Rel32Sites[0].Kind() != Rel32Other {
 		t.Fatalf("short choice corrupted packed site: %+v", a.Rel32Sites[0])
 	}
 	if target := one + 4 + int(int32(binary.LittleEndian.Uint32(a.B[one:]))); target != 40 {
