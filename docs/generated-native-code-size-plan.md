@@ -1465,10 +1465,11 @@ complete Size execution corpus, and exact corpus ledger pass.
 
 ## Campaign closure audit
 
-The desktop generated-native-code campaign is complete. Every P0-P2
-workstream has either an accepted bounded implementation or a measured
-rejection recorded in this plan and the companion results ledger. The final
-36-module objective comparison is:
+This PR's bounded desktop generated-native-code campaign is complete. It
+implements or measures the P0-P2 workstreams selected for this campaign; the
+finer attribution ledger, full native-cost inliner, and default-objective
+physical compaction described above remain follow-up work. The final 36-module
+objective comparison is:
 
 | Architecture | Balanced native bytes | Size native bytes | Size reduction |
 | --- | ---: | ---: | ---: |
@@ -1489,8 +1490,9 @@ at the start of the plan.
 
 ### Accepted foundations and transformations
 
-- Exact byte, encoding, mapping-page, arena, fallback, adapter, trap, inline,
-  pool, and fragment attribution with structured and human-readable output.
+- Exact total/module ownership accounting plus targeted encoding, mapping-page,
+  arena, fallback, adapter, trap, inline, pool, and fragment attribution with
+  structured and human-readable output.
 - Immutable per-compilation Speed/Balanced/Size/Embedded policy and public
   objective selection.
 - Bounded identity finalization, monotonic offset maps, metadata remapping,
@@ -1501,8 +1503,8 @@ at the start of the plan.
   elision, compact i32 frames where proved, GC-frame remapping, and shrink-only
   AMD64 local-home packing.
 - Bounded value provenance, costed tree/cover/immediate/branch selection,
-  native-byte-aware single-use inlining with dead-body removal, the fixed
-  24-operation machine-window seam, and its profitable ARM64 swap-chain rule.
+  proved-tiny single-use inlining with dead-body removal, the fixed 24-operation
+  machine-window seam, and its profitable ARM64 swap-chain rule.
 - Objective-aware and compact duplicate-target `br_table` forms, allocation-free
   AMD64 function pools, the measured module literal island, right-sized code
   arenas, and explicit executable mapping accounting.
