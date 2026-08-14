@@ -2071,15 +2071,18 @@ The recorder is capped at the finalizer's 255 deletion sites. Exact per-local
 counts occupy the unused high half of the existing `localSlot` words, and a
 candidate is admitted only when all its sites fit in the bounded inventory.
 `WAGO_LOCAL_SLOT_ORDER=1` enables the experiment for Size/Embedded; the default
-remains off while the remaining site storage is moved into compiler-arena tail
-scratch and broader shrink-only swaps are developed.
+remains off while broader shrink-only swaps are developed. The 255-site
+inventory is now bound to uncommitted compiler-arena tail storage in both the
+serial and parallel paths, so the experiment adds no dedicated site allocation.
 
 On top of large-frame finalization, the exact 36-module Size suite falls from
 66,593,838 to 66,591,819 bytes (-2,019, -0.003%). Ruby contributes 1,242 bytes,
-blake-as 378, blake-as-simd 258, and nbody 141. Five serialized compile samples
-put the enabled-versus-disabled median at +0.48% for Ruby and +0.17% for
-esbuild; the bounded site slice adds roughly 4 KiB of reusable compiler scratch.
-Five one-second execution samples move nbody -0.39%, blake-as -0.31%, and
+blake-as 378, blake-as-simd 258, and nbody 141. After moving the recorder into
+arena-tail scratch, five serialized compile samples put Ruby at 996,209,095
+ns/op disabled versus 997,659,192 enabled (+0.15%), and esbuild at 516,283,299
+versus 518,796,515 ns/op (+0.49%). Median B/op is 360 bytes lower for Ruby and
+800 bytes lower for esbuild, both noise-level rather than a claimed allocation
+win. Five one-second execution samples move nbody -0.39%, blake-as -0.31%, and
 blake-as-simd -0.07%, all with zero allocations. The small present corpus win
 does not justify enabling it by default, but the implementation establishes the
 recorded `RelaxStackRef` seam required for later arbitrary shrink-only packing.

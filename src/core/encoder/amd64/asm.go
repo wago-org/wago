@@ -65,17 +65,64 @@ type LocalRefRecorder struct {
 	Overflow bool
 }
 
-func (r *LocalRefRecorder) Reset(nLocals, limit int) {
-	if cap(r.Sites) < limit {
-		r.Sites = make([]LocalRefSite, 0, limit)
-	} else {
-		r.Sites = r.Sites[:0]
+// LocalRefScratchSize is the caller-owned storage required for capacity records
+// at any byte-slice alignment. The alignment slop is compiler scratch only.
+func LocalRefScratchSize(capacity int) int { return capacity*int(unsafe.Sizeof(LocalRefSite{})) + 7 }
+
+// BindStorage binds the recorder to pointer-free caller-owned scratch. The
+// caller keeps storage alive and does not overwrite it until finalization.
+func (r *LocalRefRecorder) BindStorage(storage []byte, capacity int) bool {
+	if capacity <= 0 || len(storage) == 0 {
+		return false
 	}
+	bytes := capacity * int(unsafe.Sizeof(LocalRefSite{}))
+	address := uintptr(unsafe.Pointer(&storage[0]))
+	start := int(-address & 7)
+	if start+bytes > len(storage) {
+		return false
+	}
+	records := unsafe.Slice((*LocalRefSite)(unsafe.Pointer(&storage[start])), capacity)
+	r.Sites = records[:0]
+	return true
+}
+
+// BindLocalRefTail reserves the uncommitted end of B for local-reference
+// records. It mirrors BindRel32Tail so serial codegen can share its executable
+// arena with both bounded finalizer inventories without a heap allocation.
+func (a *Asm) BindLocalRefTail(r *LocalRefRecorder, capacity int) bool {
+	if capacity <= 0 {
+		return false
+	}
+	bytes := capacity * int(unsafe.Sizeof(LocalRefSite{}))
+	start := (cap(a.B) - bytes) &^ 7
+	if start < len(a.B) || start < 0 {
+		return false
+	}
+	full := a.B[:cap(a.B)]
+	records := unsafe.Slice((*LocalRefSite)(unsafe.Pointer(&full[start])), capacity)
+	a.B = a.B[:len(a.B):start]
+	r.Sites = records[:0]
+	return true
+}
+
+// Reset prepares already-bound storage for one function. It never allocates.
+func (r *LocalRefRecorder) Reset(nLocals, limit int) bool {
+	if limit <= 0 || cap(r.Sites) < limit {
+		r.Sites = r.Sites[:0]
+		r.Limit = 0
+		r.Locals = 0
+		r.Next = 0
+		r.Pending = false
+		r.Overflow = false
+		return false
+	}
+	r.Sites = r.Sites[:0]
 	r.Limit = limit
 	r.Locals = uint32(nLocals)
 	r.Next = 0
 	r.Pending = false
 	r.Overflow = false
+	return true
 }
 
 func (r *LocalRefRecorder) Mark(local uint32) {

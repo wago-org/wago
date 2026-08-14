@@ -645,12 +645,13 @@ type jumpTableFragment struct {
 }
 
 type scratch struct {
-	stack          *stack     // the valent-block operand stack
-	asm            *amd64.Asm // the x86-64 encoder byte buffer
-	directPrepared bool
-	rel32TailBound bool // Rel32Sites uses the current function buffer's uncommitted tail
-	policy         CodegenPolicy
-	fnState        fn // per-function compiler state, reused across the module
+	stack             *stack     // the valent-block operand stack
+	asm               *amd64.Asm // the x86-64 encoder byte buffer
+	directPrepared    bool
+	rel32TailBound    bool // Rel32Sites uses the current function buffer's uncommitted tail
+	localRefTailBound bool // localRefs uses caller-owned compiler-arena tail scratch
+	policy            CodegenPolicy
+	fnState           fn // per-function compiler state, reused across the module
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
@@ -1273,6 +1274,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if compactNativePolicy(policy) {
 				tailCap += amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
 			}
+			if symbolicLocalSlotPackingPolicy(policy) {
+				tailCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+			}
 			tail, err := codeBuffer.AppendTail(tailCap)
 			if err != nil {
 				return nil, fmt.Errorf("amd64: grow code image: %w", err)
@@ -1280,6 +1284,8 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			sc.asm.B = tail
 			sc.asm.Rel32Sites = nil
 			sc.rel32TailBound = false
+			sc.localRefs.Sites = nil
+			sc.localRefTailBound = false
 			hints := allHints[i]
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
 			if err == nil && deferSingleFuncGCResolverDecision && sc.fnState.gcHandleResolutions >= 2 {
@@ -1402,6 +1408,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
+	if symbolicLocalSlotPackingPolicy(policy) {
+		arenaCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+	}
 	stackCap := moduleStackArenaCap(m, allHints)
 	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
@@ -1437,12 +1446,22 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					results[i] = funcResult{omitted: true}
 					continue
 				}
+				arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
+				ws.scratch.rel32TailBound = false
+				ws.scratch.localRefTailBound = false
 				if compactNativePolicy(policy) {
 					ws.scratch.asm.Rel32Sites = nil
-					ws.scratch.rel32TailBound = false
-					arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
-					if ws.scratch.asm.BindRel32Storage(arenaTail, finalizerRel32Limit(policy)) {
+					n := amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
+					if len(arenaTail) >= n && ws.scratch.asm.BindRel32Storage(arenaTail[:n], finalizerRel32Limit(policy)) {
 						ws.scratch.rel32TailBound = true
+						arenaTail = arenaTail[n:]
+					}
+				}
+				if symbolicLocalSlotPackingPolicy(policy) {
+					ws.scratch.localRefs.Sites = nil
+					n := amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+					if len(arenaTail) >= n && ws.scratch.localRefs.BindStorage(arenaTail[:n], maxAMD64LocalRefSites) {
+						ws.scratch.localRefTailBound = true
 					}
 				}
 				hints := allHints[i]
@@ -2255,6 +2274,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			sc.rel32TailBound = true
 		}
 	}
+	if symbolicLocalSlotPackingPolicy(sc.policy) && !sc.localRefTailBound && sc.asm.BindLocalRefTail(&sc.localRefs, maxAMD64LocalRefSites) {
+		sc.localRefTailBound = true
+	}
 	globalIdx := m.ImportedFuncCount() + funcIdx
 	entryInitialized := hints.entryInitialized
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
@@ -2520,9 +2542,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
-	if f.opt(optLocalSlotOrder) && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
-		compactNativePolicy(policy) && !moduleEH && gcFrameRoots == nil && len(inlinedCallees) == 0 {
-		sc.localRefs.Reset(f.nLocals, maxAMD64LocalRefSites)
+	if symbolicLocalSlotPackingPolicy(policy) && sc.localRefTailBound && !moduleEH && gcFrameRoots == nil &&
+		len(inlinedCallees) == 0 && sc.localRefs.Reset(f.nLocals, maxAMD64LocalRefSites) {
 		sc.asm.LocalRefs = &sc.localRefs
 	}
 
@@ -2583,6 +2604,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 func compactAccumulatorImmediatePolicy(policy CodegenPolicy) bool {
 	return (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && policy.EnabledOption(optAccumulatorImmediate)
+}
+
+func symbolicLocalSlotPackingPolicy(policy CodegenPolicy) bool {
+	return compactNativePolicy(policy) && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && policy.EnabledOption(optLocalSlotOrder)
 }
 
 // packLocalSlots uses exact emitted local-home references after the forward

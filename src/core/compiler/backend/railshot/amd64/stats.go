@@ -57,8 +57,8 @@ var (
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
-	// low homes during finalization. It remains opt-in while its site scratch is
-	// moved into the compiler arena and broader shrink-only layouts are admitted.
+	// low homes during finalization. It remains opt-in while broader shrink-only
+	// layouts are admitted and prove a material corpus-level reduction.
 	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") == "1"
 	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
 	// slot when its still-live result must be evicted from a register.

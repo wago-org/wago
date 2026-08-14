@@ -91,7 +91,10 @@ func TestEncodingStatsLocalFrameDisplacementForms(t *testing.T) {
 
 func TestLocalRefRecorderTracksExactLocalAndDisp32Site(t *testing.T) {
 	var refs LocalRefRecorder
-	refs.Reset(2, 1)
+	storage := make([]byte, LocalRefScratchSize(1))
+	if !refs.BindStorage(storage, 1) || !refs.Reset(2, 1) {
+		t.Fatal("bind/reset local recorder failed")
+	}
 	a := Asm{LocalRefs: &refs}
 	refs.Mark(0)
 	a.Load64(RAX, RSP, 128)
@@ -111,7 +114,10 @@ func TestLocalRefRecorderTracksExactLocalAndDisp32Site(t *testing.T) {
 
 func TestLocalRefRecorderRetainsBoundedPrefix(t *testing.T) {
 	var refs LocalRefRecorder
-	refs.Reset(1, 1)
+	storage := make([]byte, LocalRefScratchSize(1))
+	if !refs.BindStorage(storage, 1) || !refs.Reset(1, 1) {
+		t.Fatal("bind/reset local recorder failed")
+	}
 	a := Asm{LocalRefs: &refs}
 	for range 2 {
 		refs.Mark(0)
@@ -119,6 +125,24 @@ func TestLocalRefRecorderRetainsBoundedPrefix(t *testing.T) {
 	}
 	if refs.Overflow || refs.Pending || len(refs.Sites) != 1 || cap(refs.Sites) != 1 {
 		t.Fatalf("bounded local recorder = sites:%d/%d overflow:%v pending:%v", len(refs.Sites), cap(refs.Sites), refs.Overflow, refs.Pending)
+	}
+}
+
+func TestBindLocalRefTailSeparatesCodeAndScratch(t *testing.T) {
+	var refs LocalRefRecorder
+	a := Asm{B: make([]byte, 0, 64)}
+	if !a.BindLocalRefTail(&refs, 1) || !refs.Reset(1, 1) {
+		t.Fatal("bind local-reference tail failed")
+	}
+	a.LocalRefs = &refs
+	if got, want := cap(a.B), 48; got != want {
+		t.Fatalf("code capacity = %d, want %d", got, want)
+	}
+	refs.Mark(0)
+	a.Load64(RAX, RSP, 128)
+	a.B = append(a.B, make([]byte, cap(a.B)-len(a.B))...)
+	if got := refs.Sites; len(got) != 1 || got[0].Local != 0 || got[0].OldDisp != 128 {
+		t.Fatalf("tail-backed local sites corrupted by code writes: %+v", got)
 	}
 }
 
