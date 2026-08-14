@@ -44,6 +44,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
+	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
@@ -86,6 +87,7 @@ var (
 	optV128Pins             = optimizationBindings.Option("v128-pins")
 	optV128Sink             = optimizationBindings.Option("v128-sink")
 	optRegABI               = optimizationBindings.Option("reg-abi")
+	optPreparedFPEntry      = optimizationBindings.Option("prepared-fp-entry")
 	optInline               = optimizationBindings.Option("inline")
 	optInlineLoopCallees    = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck         = optimizationBindings.Option("loop-precheck")

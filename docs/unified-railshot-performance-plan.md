@@ -384,28 +384,33 @@ focused compile medians improved from 38.85 to 36.20 us/op with 49 allocations
 unchanged. Five-sample SQLite backend medians were neutral (52.72 ms enabled
 versus 52.68 ms disabled), with 25,132 allocations unchanged and B/op noise-only.
 
-### 2026-08-14 — fixed ARM64 prepared FP entry family
+### 2026-08-14 — fixed AMD64/ARM64 prepared FP entry family
 
-Prepared invocation now has one finite ARM64 FP-only entry family for up to four
+Prepared invocation now has one finite FP-only entry family for up to four
 `f32`/`f64` parameters and at most one FP result. One static foreign-stack
-trampoline transfers raw IEEE-754 bits between Go argument slots and `V0..V3`,
-enters the existing register-ABI internal entry, and returns `V0` without a
-serialized argument/result buffer round trip. It is admitted only for isolated
-private instances and the compiler's existing bounded direct-entry functions;
-mixed signatures, references, vectors, wider arities, shared execution control,
-and every unsupported architecture retain the ordinary prepared path.
+trampoline per supported architecture transfers raw IEEE-754 bits between Go
+argument slots and `XMM0..XMM3` or `V0..V3`, enters the existing register-ABI
+internal entry, and returns `XMM0`/`V0` without a serialized argument/result
+buffer round trip. It is admitted only for isolated private instances and the
+compiler's existing bounded direct-entry functions; mixed signatures,
+references, vectors, wider arities, shared execution control, and every
+unsupported architecture retain the ordinary prepared path.
 
-`prepared-fp-entry` is an immutable ARM64 compiler policy bit with
-`WAGO_ARM64_NO_PREPARED_FP_ENTRY=1` as its metadata rollback. Runtime selection
-has an independent `WAGO_PREPARED_DIRECT_FP=0` fallback. Both `f32` and `f64`
-bit-preserving execution and both fallback layers are covered by tests.
+`prepared-fp-entry` is an immutable compiler policy bit with
+`WAGO_AMD64_NO_PREPARED_FP_ENTRY=1` and
+`WAGO_ARM64_NO_PREPARED_FP_ENTRY=1` as metadata rollbacks. Runtime selection has
+an independent `WAGO_PREPARED_DIRECT_FP=0` fallback. Both `f32` and `f64`
+bit-preserving execution and both fallback layers are covered natively on both
+architectures.
 
-On an Apple M4 Max, five-sample medians for a prepared `f64.add` improved from
-30.53 ns/op to 18.77 ns/op (-38.5%), with zero B/op and allocations on both
-paths. Focused compile medians moved from 9.93 us/op to 10.05 us/op (+1.2%);
-compile storage rose by 16 bytes (0.10%) and one allocation for the persistent
-per-module direct-entry bitset. Generated function bytes are unchanged because
-the compiler change is metadata-only.
+Five-sample medians for a prepared `f64.add` improved from 30.53 ns/op to
+18.77 ns/op (-38.5%) on an Apple M4 Max and from 15.59 ns/op to 7.44 ns/op
+(-52.3%) on an AMD Ryzen 7 7800X3D, with zero B/op and allocations on every
+path. Focused compile medians moved from 9.93 to 10.05 us/op (+1.2%) on ARM64
+and from 17.32 to 17.41 us/op (+0.5%) on AMD64. Compile storage rose by 16 bytes
+(0.10% ARM64, 0.13% AMD64) and one allocation for the persistent per-module
+direct-entry bitset. Generated function bytes are unchanged because the compiler
+change is metadata-only.
 
 ---
 

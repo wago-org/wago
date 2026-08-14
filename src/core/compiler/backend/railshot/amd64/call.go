@@ -172,6 +172,23 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 	return true
 }
 
+func preparedDirectFPSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
 // sigFitsReferenceResultRegABI is the staged typed-tail extension of the native
 // register ABI. It admits one funcref result in RAX with numeric parameters only.
 // The descriptor pointer remains owned by the instance's bounded descriptor arena;
