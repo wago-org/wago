@@ -1289,3 +1289,48 @@ only 122 affected activations and shrank by 507 bytes (0.0008%). That ceiling
 does not justify another production rule, environment switch, and test surface,
 so the prototype was removed. The accepted whole-function hot-local tie-break
 above remains the only encoded-size register preference.
+
+## Implementation result: AMD64 compact shared-adapter thunks
+
+Large whole-adapter sharing groups now replace the former twelve-byte
+function-local `LEA RBP,[RIP+internal]; JMP shared` thunk with a ten-byte
+`PUSH imm32; JMP shared` form. The pushed value is the signed delta from a
+fixed address in the shared adapter to that function's internal entry. An
+eleven-byte shared prefix pops the delta into RBP, obtains its own address with
+RIP-relative `LEA`, and adds the two before entering the established shared
+adapter body. The push/pop pair leaves the host stack unchanged and the jump
+does not disturb the return-stack predictor.
+
+The exact crossover is six thunks: each thunk saves two bytes and each shared
+shape spends eleven. Smaller groups retain the prior representation, making
+the decision shrink-only. Speed and Balanced are unchanged because whole
+adapter sharing remains Size/Embedded-only.
+`WAGO_AMD64_NO_STACK_DELTA_ADAPTER_THUNK=1` restores the former thunk byte for
+byte.
+
+Measured on the checked-in AMD64 Size corpus on `hub`:
+
+```text
+rollback native bytes:  63,974,878
+candidate native bytes: 63,945,048
+net reduction:              29,830 (0.0466%)
+
+Ruby compile median:   1,031,280,919 -> 1,037,619,439 ns/op (+0.61%)
+esbuild compile median:  557,735,551 ->   550,807,539 ns/op (-1.24%)
+compile allocation class: unchanged
+
+direct host-entry median: 9.796 -> 9.811 ns/op (+0.15%)
+runtime allocations: zero in both configurations
+```
+
+Ruby contributes 17,378 bytes, esbuild 8,259, SQLite 1,708, wasm3 1,170,
+regexmatch 743, and Lua 572 bytes. No module grows. None of the affected macro
+modules has a manifest execution entry, so the direct shared-adapter benchmark
+is the runtime comparison; the complete Size execution corpus also passes with
+zero allocations.
+
+An initially smaller nine-byte `CALL shared; dd internal-delta` prototype was
+rejected. Its shared prefix popped the synthetic return address and recovered
+the target, but the non-returning call broke normal CALL/RET predictor pairing:
+the direct host-entry median rose from 9.74 to 22.58 ns/op, a 132% regression.
+The accepted PUSH/JMP form preserves the established branch shape.
