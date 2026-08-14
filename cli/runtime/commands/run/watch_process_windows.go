@@ -4,6 +4,7 @@ package run
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -98,4 +99,10 @@ func releaseWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) {
 	windows.CloseHandle(platform.job)
 }
 
-func watchedProcessExitSignal(watchedChildPlatform, error) os.Signal { return nil }
+func waitWatchedProcess(_ watchedChildPlatform, command *exec.Cmd) watchedProcessResult {
+	return watchedProcessResult{err: command.Wait()}
+}
+
+func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {
+	_, _ = fmt.Fprintf(writer, format, arguments...)
+}

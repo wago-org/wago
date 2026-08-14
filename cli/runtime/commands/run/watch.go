@@ -79,6 +79,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 	if err != nil {
 		return err
 	}
+	writeWatchedOutput(options.stderr, "%s watching %s\n", ui.Dim("→"), options.path)
 	child, err := startWatchedChild(options)
 	if err != nil {
 		return err
@@ -88,7 +89,6 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 			_ = child.stop(options.stopGrace, nil)
 		}
 	}()
-	fmt.Fprintf(options.stderr, "%s watching %s\n", ui.Dim("→"), options.path)
 	ticker := time.NewTicker(options.interval)
 	defer ticker.Stop()
 	var candidate watchedStamp
@@ -97,7 +97,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 	var restartPending bool
 	var lastFileError string
 	for {
-		var childDone <-chan error
+		var childDone <-chan watchedProcessResult
 		if child != nil {
 			childDone = child.done
 		}
@@ -114,15 +114,14 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				child = nil
 			}
 			return &watchInterruptedError{signal: interrupted}
-		case childErr := <-childDone:
-			exitSignal := watchedProcessExitSignal(child.platform, childErr)
+		case result := <-childDone:
 			child.releasePlatform()
 			child = nil
-			if exitSignal != nil {
-				return &watchInterruptedError{signal: exitSignal}
+			if result.signal != nil {
+				return &watchInterruptedError{signal: result.signal}
 			}
-			if childErr != nil {
-				fmt.Fprintf(options.stderr, "%s %v\n", ui.Red("wago:"), childErr)
+			if result.err != nil {
+				writeWatchedOutput(options.stderr, "%s %v\n", ui.Red("wago:"), result.err)
 			}
 		case now := <-ticker.C:
 			next, stampErr := fileStamp(options.path)
@@ -130,7 +129,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				candidateValid = false
 				message := stampErr.Error()
 				if message != lastFileError {
-					fmt.Fprintf(options.stderr, "%s watch: %v\n", ui.Red("wago:"), stampErr)
+					writeWatchedOutput(options.stderr, "%s watch: %v\n", ui.Red("wago:"), stampErr)
 					lastFileError = message
 				}
 				continue
@@ -163,7 +162,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				candidate, candidateSince, candidateValid = latest, time.Now(), true
 				continue
 			}
-			fmt.Fprintf(options.stderr, "%s changed %s\n", ui.Dim("→"), options.path)
+			writeWatchedOutput(options.stderr, "%s changed %s\n", ui.Dim("→"), options.path)
 			child, err = startWatchedChild(options)
 			if err != nil {
 				return err
@@ -229,8 +228,13 @@ func fileStamp(path string) (watchedStamp, error) {
 type watchedChild struct {
 	command  *exec.Cmd
 	platform watchedChildPlatform
-	done     chan error
+	done     chan watchedProcessResult
 	release  sync.Once
+}
+
+type watchedProcessResult struct {
+	err    error
+	signal os.Signal
 }
 
 func startWatchedChild(options watchOptions) (*watchedChild, error) {
@@ -251,10 +255,9 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 		_ = command.Wait()
 		return nil, err
 	}
-	child := &watchedChild{command: command, platform: platform, done: make(chan error, 1)}
+	child := &watchedChild{command: command, platform: platform, done: make(chan watchedProcessResult, 1)}
 	go func() {
-		err := command.Wait()
-		child.done <- err
+		child.done <- waitWatchedProcess(platform, command)
 		close(child.done)
 	}()
 	return child, nil

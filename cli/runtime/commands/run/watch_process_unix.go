@@ -4,6 +4,8 @@ package run
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -58,6 +60,7 @@ func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 		_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
 	}
 	_ = signalWatchedProcessGroup(command, syscall.SIGKILL)
+	_ = command.Process.Release()
 }
 
 func restoreWatchedTerminal(command *exec.Cmd) {
@@ -67,25 +70,87 @@ func restoreWatchedTerminal(command *exec.Cmd) {
 }
 
 func setWatchedTerminalForeground(fd, group int) error {
+	wasIgnored := watchedSignalWasIgnored(syscall.SIGTTOU)
 	signal.Ignore(syscall.SIGTTOU)
-	defer signal.Reset(syscall.SIGTTOU)
+	if !wasIgnored {
+		defer signal.Reset(syscall.SIGTTOU)
+	}
 	return unix.IoctlSetPointerInt(fd, unix.TIOCSPGRP, group)
 }
 
-func watchedProcessExitSignal(_ watchedChildPlatform, err error) os.Signal {
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
+func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watchedProcessResult {
+	for {
+		var status syscall.WaitStatus
+		_, err := syscall.Wait4(command.Process.Pid, &status, syscall.WUNTRACED|syscall.WCONTINUED, nil)
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
+		if err != nil {
+			return watchedProcessResult{err: err}
+		}
+		if status.Stopped() {
+			if err := mirrorWatchedProcessStop(platform, command); err != nil {
+				return watchedProcessResult{err: err}
+			}
+			continue
+		}
+		if status.Continued() {
+			continue
+		}
+		if status.Exited() {
+			if code := status.ExitStatus(); code != 0 {
+				return watchedProcessResult{err: fmt.Errorf("exit status %d", code)}
+			}
+			return watchedProcessResult{}
+		}
+		if status.Signaled() {
+			exitSignal := status.Signal()
+			result := watchedProcessResult{err: fmt.Errorf("signal: %s", exitSignal)}
+			if exitSignal == syscall.SIGINT || exitSignal == syscall.SIGQUIT {
+				result.signal = exitSignal
+			}
+			return result
+		}
+	}
+}
+
+func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) error {
+	if platform.terminalFD < 0 {
 		return nil
 	}
-	status, ok := exit.Sys().(syscall.WaitStatus)
-	if !ok || !status.Signaled() {
-		return nil
+	if err := setWatchedTerminalForeground(platform.terminalFD, platform.foreground); err != nil {
+		return err
 	}
-	signal := status.Signal()
-	if signal == syscall.SIGINT || signal == syscall.SIGQUIT {
-		return signal
+	if err := syscall.Kill(syscall.Getpid(), syscall.SIGSTOP); err != nil {
+		return err
 	}
-	return nil
+	foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
+	if err == nil && foreground == platform.foreground {
+		if err := setWatchedTerminalForeground(platform.terminalFD, command.Process.Pid); err != nil {
+			return err
+		}
+	}
+	return signalWatchedProcessGroup(command, syscall.SIGCONT)
+}
+
+func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {
+	terminal, ok := writer.(*os.File)
+	if !ok {
+		_, _ = fmt.Fprintf(writer, format, arguments...)
+		return
+	}
+	fd := int(terminal.Fd())
+	foreground, err := unix.IoctlGetInt(fd, unix.TIOCGPGRP)
+	if err != nil || foreground == syscall.Getpgrp() {
+		_, _ = fmt.Fprintf(writer, format, arguments...)
+		return
+	}
+	wasIgnored := watchedSignalWasIgnored(syscall.SIGTTOU)
+	signal.Ignore(syscall.SIGTTOU)
+	_, _ = fmt.Fprintf(writer, format, arguments...)
+	if !wasIgnored {
+		signal.Reset(syscall.SIGTTOU)
+	}
 }
 
 func signalWatchedProcessGroup(command *exec.Cmd, signal syscall.Signal) error {
