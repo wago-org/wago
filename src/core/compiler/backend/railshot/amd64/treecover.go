@@ -44,7 +44,7 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 		repeatedAlias = count > 1
 	}
 	f.stats.peep("assoc-tree-candidate")
-	if !associativeTreeEnabled {
+	if !f.opt(optAssocTree) {
 		return regNone
 	}
 	aliasCopy := regNone

@@ -1050,4 +1050,53 @@ func (a *Asm) StrF(base Reg, disp int32, rt Reg, f64 bool) {
 }
 
 // MovImm32 materializes a 32-bit constant into the low half of rd (upper zero).
-func (a *Asm) MovImm32(rd Reg, val int32) { a.MovImm64(rd, uint64(uint32(val))) }
+func (a *Asm) MovImm32(rd Reg, val int32) {
+	u := uint32(val)
+	if a.DisableCompactMoveImmediate32 {
+		a.MovImm64(rd, uint64(u))
+		return
+	}
+	lo, hi := uint16(u), uint16(u>>16)
+	zeros, ones := 0, 0
+	for _, h := range [...]uint16{lo, hi} {
+		if h == 0 {
+			zeros++
+		} else if h == 0xffff {
+			ones++
+		}
+	}
+	zWords, nWords := 2-zeros, 2-ones
+	if zWords == 0 {
+		zWords = 1
+	}
+	if nWords == 0 {
+		nWords = 1
+	}
+	wideWords := min(zWords, nWords)
+	if wideWords > 1 && !a.DisableLogicalMoveImmediate && a.OrrImm32(rd, XZR, u) {
+		a.LogicalMoveImmediates++
+		return
+	}
+	if nWords < zWords {
+		if lo != 0xffff {
+			a.Movn32(rd, ^lo, 0)
+			if hi != 0xffff {
+				a.Movk32(rd, hi, 1)
+			}
+		} else if hi != 0xffff {
+			a.Movn32(rd, ^hi, 1)
+		} else {
+			a.Movn32(rd, 0, 0)
+		}
+		a.CompactMoveImmediates32++
+	} else {
+		if lo != 0 {
+			a.Movz32(rd, lo, 0)
+			if hi != 0 {
+				a.Movk32(rd, hi, 1)
+			}
+		} else {
+			a.Movz32(rd, hi, 1)
+		}
+	}
+}

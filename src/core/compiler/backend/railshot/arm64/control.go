@@ -120,7 +120,7 @@ type loopPin struct {
 // two caller-saved registers only for a simple call-free loop; slots remain the
 // canonical representation outside the loop.
 func (f *fn) activateLoopPins(fr *ctrlFrame) {
-	if !loopRegionPinsEnabled || fr.kind != cfLoop || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
+	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
 		return
 	}
 	for _, r := range []Reg{X12, X13} {
@@ -679,6 +679,27 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	return false // cfFunc: the guarded form carries the singleRegResult load
 }
 
+// zeroBranchJump is condBranchJump for a materialized i32 condition whose
+// branch is taken when nonzero. It is used only after proving the edge emitted
+// no reconciliation code, so the condition register still holds the tested
+// value and no flags window is required.
+func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
+	switch fr.kind {
+	case cfLoop:
+		site := f.a.Cbnz32(condition)
+		if !f.a.PatchBranch19(site, fr.loopStart) {
+			f.a.B = f.a.B[:site]
+			return false
+		}
+		return true
+	case cfBlock, cfIf:
+		f.appendEndSite(&fr.condEnds, f.a.Cbnz32(condition))
+		fr.endReachable = true
+		return true
+	}
+	return false
+}
+
 const pollFreeLoopPhaseMaxLocals = 16
 
 // alignLoopHeader keeps poll-free loop bodies in the same half of a 32-byte
@@ -687,8 +708,12 @@ const pollFreeLoopPhaseMaxLocals = 16
 // a backedge. Large, loop-dense functions skip it: their extra code footprint
 // costs more than preserving the fetch phase.
 func (f *fn) alignLoopHeader() {
-	f.a.Align16()
-	if !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
+	loopAlign := f.policy.LoopAlignLog2
+	if loopAlign == 0 {
+		loopAlign = 4
+	}
+	f.alignCode(loopAlign)
+	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
 		for range 4 {
 			f.a.Nop()
 		}
@@ -794,7 +819,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
-		if loopPrecheckEnabled && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
+		if f.opt(optLoopPrecheck) && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			if cands, elidable, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
 					return nil
@@ -811,6 +836,24 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
+			if zeroBranchEnabled && eqzZeroBranchEnabled {
+				if creg, cOwned, wide, ok := f.condenseSimpleEqzOperand(cond); ok {
+					fr.height = f.depth() - pN
+					fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+					f.captureGCFrameShape(&fr)
+					if wide {
+						fr.elseSite = f.a.Cbnz64(creg)
+					} else {
+						fr.elseSite = f.a.Cbnz32(creg)
+					}
+					if cOwned {
+						f.release(creg)
+					}
+					f.stats.peep("zero-branch")
+					f.ctrl = append(f.ctrl, fr)
+					return nil
+				}
+			}
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
 			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -824,11 +867,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 		f.captureGCFrameShape(&fr)
 		f.flush()
-		f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
+		if zeroBranchEnabled {
+			fr.elseSite = f.a.Cbz32(creg) // false edge; flags are dead at this control edge
+			f.stats.peep("zero-branch")
+		} else {
+			f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
+			fr.elseSite = f.a.Bcond(condE)
+		}
 		if cOwned {
 			f.release(creg)
 		}
-		fr.elseSite = f.a.Bcond(condE) // B.EQ else/end (branch when condition is zero)
 	} else {
 		fr.height = f.depth() - pN
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -949,11 +997,17 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	}
 	f.realizeLocalRefs(x, baseOfValentBlock(cond))
 	creg, cOwned := f.materializeRead(f.popValue())
-	f.a.CmpImm32(creg, 0)
+	var toElse int
+	if zeroBranchEnabled {
+		toElse = f.a.Cbz32(creg)
+		f.stats.peep("zero-branch")
+	} else {
+		f.a.CmpImm32(creg, 0)
+		toElse = f.a.Bcond(condE)
+	}
 	if cOwned {
 		f.release(creg)
 	}
-	toElse := f.a.Bcond(condE)
 	if !f.aluImm3(thenArm.op, dest, dest, thenArm.imm, false) {
 		panic("arm64: prechecked if arm immediate became unencodable")
 	}
@@ -1127,6 +1181,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	f.a.AddImm64(X17, SP, 0)
 	f.st64(X16, ehSavedSPOff, X17)
 	fr.ehTargetSite = f.a.Adr(X17)
+	f.recordPCRelative(fr.ehTargetSite)
 	f.st64(X16, ehTargetOff, X17)
 	f.st64(X16, ehSavedLinMemOff, linMemReg)
 	f.a.MovReg64(ehReg, X16)
@@ -1153,8 +1208,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	}
 	f.reconcileLocals()
 	f.flush()
-	f.cmpImm(ehReg, 0, true)
-	noHandler := f.a.Bcond(condE)
+	noHandler := f.zeroBranch(ehReg, true, true)
 	f.ld64(X16, linMemReg, -int32(offEHTagDirPtr))
 	f.ld64(X16, X16, int32(tag*8))
 	f.st64(ehReg, ehTagOff, X16)
@@ -1187,10 +1241,8 @@ func (f *fn) opThrowRef() error {
 	f.reconcileLocals()
 	f.flush()
 	f.ld64(X16, SP, f.spillOff(refSlot))
-	f.cmpImm(X16, 0, true)
-	f.trapIf(condE, trapNullReference)
-	f.cmpImm(ehReg, 0, true)
-	noHandler := f.a.Bcond(condE)
+	f.trapIfZero(X16, true, true, trapNullReference)
+	noHandler := f.zeroBranch(ehReg, true, true)
 	for _, off := range [...]int32{0, 8, 16} {
 		f.ld64(X17, X16, off)
 		f.st64(ehReg, ehTagOff+off, X17)
@@ -1300,8 +1352,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 
 	f.leaDisp(X16, SP, recordOff, true)
 	f.ld64(X17, X16, ehPrevOff)
-	f.cmpImm(X17, 0, true)
-	noPrevious := f.a.Bcond(condE)
+	noPrevious := f.zeroBranch(X17, true, true)
 	for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
 		f.ld64(X9, X16, off)
 		f.st64(X17, off, X9)
@@ -1610,7 +1661,8 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
-	f.a.CmpImm32(creg, 0) // CMP creg, #0
+	testAt := f.a.Len()
+	f.a.CmpImm32(creg, 0) // retained for non-empty edges, which may rewrite creg
 	if cOwned {
 		f.release(creg)
 	}
@@ -1625,9 +1677,21 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.moveBranchValues(fr, d, a)
 	}
 	if f.a.Len() == mark {
+		if zeroBranchEnabled && emptyZeroBranchEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+			f.a.B = f.a.B[:testAt]
+			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
+				f.stats.peep("zero-branch")
+				return nil
+			}
+			over := f.a.Cbz32(creg)
+			f.branchJump(fr)
+			f.a.PatchBranch19(over, f.a.Len())
+			f.stats.peep("zero-branch")
+			return nil
+		}
 		// Empty edge: one conditional branch straight to the target (taken when the
 		// condition holds, != 0), with no skip branch and no padding NOP.
-		if branchFoldEnabled && f.condBranchJump(fr, condNE) {
+		if f.opt(optBranchFold) && f.condBranchJump(fr, condNE) {
 			return nil
 		}
 		// Fold disabled / unsupported target / out of range: guarded form (edge empty).
@@ -1675,9 +1739,8 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	f.flush()
 	refSlot := f.allocSpillSlot()
 	f.st64(SP, f.spillOff(refSlot), ref)
-	f.cmpImm(ref, 0, true)
 	f.release(ref)
-	over := f.a.Bcond(condNE)
+	over := f.zeroBranch(ref, true, false)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1712,9 +1775,8 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	f.flush()
 	condition := f.allocReg(0)
 	f.ld64(condition, SP, f.spillOff(refSlot))
-	f.cmpImm(condition, 0, true)
 	f.release(condition)
-	over := f.a.Bcond(condE)
+	over := f.zeroBranch(condition, true, true)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1742,7 +1804,6 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	f.convergeBranchLocals(fr)
 	d := f.depth()
 	f.flush()
-	f.cmpImm(matched, 0, false)
 	if owned {
 		f.release(matched)
 	}
@@ -1750,7 +1811,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	if !branchOnMatch {
 		skipCond = condNE
 	}
-	over := f.a.Bcond(skipCond)
+	over := f.zeroBranch(matched, false, skipCond == condE)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1815,7 +1876,8 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		f.branchJump(fr)
 	}
-	if len(labels) >= brTableJumpMin {
+	if brTableUseJump(labels, def, f.policy) {
+		compactIDs, uniqueN, compactStubAt := f.brTableCompactPlan(labels, def)
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
 		// The table base and target live in the backend scratch registers X16/X17
@@ -1831,17 +1893,58 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			f.a.MovImm64(X16, uint64(uint32(len(labels)))) // X16 is reused as the table base below, after this compare
 			f.a.CmpReg32(ireg, X16)
 		}
-		defSite := f.a.Bcond(condAE)                  // idx >= n → default (B.cond, imm19)
-		adrSite := f.a.Adr(X16)                       // X16 = &table (PC-relative ADR, patched)
-		f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
-		f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
-		f.a.Add64(X17, X16, X17)                      // target = table base + entry
+		defSite := f.a.Bcond(condAE) // idx >= n → default (B.cond, imm19)
+		adrSite := f.a.Adr(X16)      // X16 = &table (PC-relative ADR, patched)
+		f.recordPCRelative(adrSite)
+		if compactIDs {
+			f.stats.peep("br-table-compact")
+			f.a.LoadIdx(X17, X16, ireg, 0, 1, false, true) // X17 = target ID
+			f.a.AddImm64(X16, X16, uint32(align4(len(labels))))
+			f.a.AddShifted(X17, X16, X17, 2, false) // X17 = &branchVector[ID]
+		} else {
+			f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
+			f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
+			f.a.Add64(X17, X16, X17)                      // target = table base + entry
+		}
 		f.a.Br(X17)
 		tablePos := f.a.Len()
 		f.a.PatchAdr(adrSite, tablePos)
+		if compactIDs {
+			for _, lbl := range labels {
+				f.a.B = append(f.a.B, byte(compactStubAt[lbl]-1))
+			}
+			for len(f.a.B)&3 != 0 {
+				f.a.B = append(f.a.B, 0)
+			}
+			vectorPos := f.a.Len()
+			f.recordOpaqueData(tablePos, vectorPos)
+			for range uniqueN {
+				f.a.Branch()
+			}
+			for _, lbl := range labels {
+				encodedID := compactStubAt[lbl]
+				if encodedID <= 0 {
+					continue
+				}
+				i := encodedID - 1
+				p := f.a.Len()
+				compactStubAt[lbl] = -p - 1
+				f.a.PatchBranch26(vectorPos+4*i, p)
+				emitCase(lbl)
+			}
+			if encoded := compactStubAt[def]; encoded < 0 {
+				f.a.PatchBranch19(defSite, -encoded-1)
+			} else {
+				f.a.PatchBranch19(defSite, f.a.Len())
+				emitCase(def)
+			}
+			f.unreachable = true
+			return nil
+		}
 		for range labels {
 			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
 		}
+		f.recordJumpTableData(tablePos, f.a.Len())
 		if brTableSmallLabelsUnique(labels) {
 			defIdx := -1
 			for i, lbl := range labels {
@@ -2024,6 +2127,107 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 // brTableJumpMin is the label count at which br_table switches from a linear
 // cmp/jne chain to an indirect jump table.
 const brTableJumpMin = 5
+
+func align4(n int) int { return (n + 3) &^ 3 }
+
+// brTableCompactPlan returns a byte target-ID table plus a vector of unique
+// direct-branch vector only when its exact bytes beat the dense i32 table. It is
+// intentionally Size/Embedded only: the compact form adds one predictable
+// direct branch after the indirect dispatch.
+func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
+	// The aligned target-ID table precedes the branch vector and is added with
+	// an unshifted 12-bit immediate, so its offset must not exceed 4095.
+	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || align4(len(labels)) > 4095 {
+		return false, 0, nil
+	}
+	var seen [4]uint64
+	uniqueN := 0
+	for _, lbl := range labels {
+		if lbl >= 256 {
+			return false, 0, nil
+		}
+		word, bit := lbl>>6, uint64(1)<<(lbl&63)
+		if seen[word]&bit == 0 {
+			seen[word] |= bit
+			uniqueN++
+		}
+	}
+	compactBytes := align4(len(labels)) + 4*uniqueN
+	if compactBytes >= 4*len(labels) {
+		return false, 0, nil
+	}
+	sc := f.scratchState()
+	stubAt := sc.brTableStubAt
+	if cap(stubAt) < len(f.ctrl) {
+		stubAt = make([]int, len(f.ctrl))
+	} else {
+		stubAt = stubAt[:len(f.ctrl)]
+	}
+	sc.brTableStubAt = stubAt
+	for _, lbl := range labels {
+		stubAt[lbl] = 0
+	}
+	stubAt[def] = 0
+	nextID := 0
+	for _, lbl := range labels {
+		if stubAt[lbl] != 0 {
+			continue
+		}
+		nextID++
+		stubAt[lbl] = nextID // ID + 1, reserving zero for unseen.
+	}
+	return true, uniqueN, stubAt
+}
+
+// brTableUseJump keeps the O(1) dispatch threshold for Speed and Balanced, but
+// makes Size and Embedded account for the exact fixed dispatch bytes and the
+// minimum four-byte branch tail eliminated for every duplicate target. Case
+// setup can only make sharing more profitable, so this bounded calculation
+// never chooses a jump table that is larger than the linear form.
+func brTableUseJump(labels []uint32, def uint32, policy CodegenPolicy) bool {
+	if len(labels) < brTableJumpMin {
+		return false
+	}
+	if policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded {
+		return true
+	}
+	// At seven labels the fixed dispatch and table bytes break even with the
+	// linear compares before any shared target tails are counted. Avoid scanning
+	// the labels of larger tables: their decision is unconditional.
+	if len(labels) >= 7 {
+		return true
+	}
+	const jumpFixedBytes = 7 * 4 // cmp, b.cond, adr, lsl, ldr, add, br
+	linearBytes := len(labels) * 2 * 4
+	jumpBytes := jumpFixedBytes + len(labels)*4
+
+	unique := 0
+	for i, lbl := range labels {
+		seen := false
+		for _, prev := range labels[:i] {
+			if prev == lbl {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			unique++
+		}
+	}
+	defSeen := false
+	for _, lbl := range labels {
+		if lbl == def {
+			defSeen = true
+			break
+		}
+	}
+	if !defSeen {
+		unique++
+	}
+	duplicateTargets := len(labels) + 1 - unique
+	jumpBytes -= duplicateTargets * 4 // every shared case has at least its branch tail
+	return jumpBytes <= linearBytes
+}
 
 func brTableSmallLabelsUnique(labels []uint32) bool {
 	// Keep the duplicate check bounded: larger tables use the map-backed path,

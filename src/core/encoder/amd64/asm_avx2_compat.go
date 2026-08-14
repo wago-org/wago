@@ -25,9 +25,10 @@ func (a *Asm) Vcvtpd2ps(dst, src Reg) {
 func (a *Asm) MovdquRipPlaceholder(dst Reg) int {
 	a.emit(0xF3)
 	if dst >= 8 {
-		a.emit(0x44)
+		a.emit(a.rexPrefix(0x44))
 	}
 	a.emit(0x0F, 0x6F, 0x05|byte(dst&7)<<3)
+	a.recordRipAddress()
 	off := a.Len()
 	a.imm32(0)
 	return off
@@ -42,9 +43,10 @@ func (a *Asm) MovsRipPlaceholder(dst Reg, f64 bool) int {
 		a.emit(0xF3)
 	}
 	if dst >= 8 {
-		a.emit(0x44)
+		a.emit(a.rexPrefix(0x44))
 	}
 	a.emit(0x0F, 0x10, 0x05|byte(dst&7)<<3)
+	a.recordRipAddress()
 	off := a.Len()
 	a.imm32(0)
 	return off

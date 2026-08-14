@@ -14,6 +14,72 @@ import "math/bits"
 // regMove requests dst = src. dst == src is a no-op.
 type regMove struct{ dst, src Reg }
 
+const maxMachineWindow = 24
+
+type machineOpKind uint8
+
+const (
+	machineMove machineOpKind = iota
+	machineSwap
+)
+
+type machineOp struct {
+	kind     machineOpKind
+	dst, src Reg
+}
+
+// machineWindow is the first fixed-capacity symbolic machine-operation seam.
+// It currently covers resolved ABI/entry register shuffles, whose end is an
+// explicit call or body boundary. Capacity exhaustion flushes in program order;
+// no correctness or compile work depends on retaining the whole shuffle.
+type machineWindow struct {
+	ops       [maxMachineWindow]machineOp
+	n         uint8
+	move      func(dst, src Reg)
+	swap      func(a, b Reg)
+	swapChain func(a, b, c Reg)
+	rewrites  int
+}
+
+func (w *machineWindow) append(op machineOp) {
+	if int(w.n) == len(w.ops) {
+		w.flush()
+	}
+	w.ops[w.n] = op
+	w.n++
+}
+
+func (w *machineWindow) flush() {
+	for i := uint8(0); i < w.n; {
+		op := w.ops[i]
+		if w.swapChain != nil && i+1 < w.n {
+			next := w.ops[i+1]
+			if op.kind == machineSwap && next.kind == machineSwap && op.src == next.dst && op.dst != next.src {
+				w.swapChain(op.dst, op.src, next.src)
+				w.rewrites++
+				i += 2
+				continue
+			}
+		}
+		if op.kind == machineSwap {
+			w.swap(op.dst, op.src)
+		} else {
+			w.move(op.dst, op.src)
+		}
+		i++
+	}
+	w.n = 0
+}
+
+func resolveRegMovesWindow(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg), emitSwapChain func(a, b, c Reg)) int {
+	w := machineWindow{move: emitMove, swap: emitSwap, swapChain: emitSwapChain}
+	resolveRegMoves(moves,
+		func(dst, src Reg) { w.append(machineOp{kind: machineMove, dst: dst, src: src}) },
+		func(a, b Reg) { w.append(machineOp{kind: machineSwap, dst: a, src: b}) })
+	w.flush()
+	return w.rewrites
+}
+
 // resolveRegMoves emits the moves in a safe order via emitMove (dst = src) and
 // emitSwap (exchange). The move set must be a function from dst to src (each
 // register written at most once), which holds for ABI argument placement.

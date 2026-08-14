@@ -36,6 +36,7 @@ func TestEncodings(t *testing.T) {
 		// moves
 		{"mov x9,x10", func(a *Asm) { a.MovReg64(X9, X10) }, 0xaa0a03e9},
 		{"mov w9,w10", func(a *Asm) { a.MovReg32(X9, X10) }, 0x2a0a03e9},
+		{"add x9,x10,#0x123000", func(a *Asm) { a.AddImm64LSL12(X9, X10, 0x123000) }, 0x91448d49},
 		{"ldaxr w5,[x6]", func(a *Asm) { a.Ldaxr32(X5, X6) }, 0x885ffcc5},
 		{"stlxr w7,w5,[x6]", func(a *Asm) { a.Stlxr32(X7, X5, X6) }, 0x8807fcc5},
 		{"ldar w5,[x6]", func(a *Asm) { a.Ldar(X5, X6, 4) }, 0x88dffcc5},
@@ -95,6 +96,8 @@ func TestEncodings(t *testing.T) {
 		{"b.eq #0", func(a *Asm) { a.Bcond(CondEQ) }, 0x54000000},
 		{"cbz x0,#0", func(a *Asm) { a.Cbz64(X0) }, 0xb4000000},
 		{"cbnz x1,#0", func(a *Asm) { a.Cbnz64(X1) }, 0xb5000001},
+		{"cbz w2,#0", func(a *Asm) { a.Cbz32(X2) }, 0x34000002},
+		{"cbnz w3,#0", func(a *Asm) { a.Cbnz32(X3) }, 0x35000003},
 		// logical immediate (bitmask)
 		{"and x0,x1,#0xff", func(a *Asm) {
 			if !a.AndImm64(X0, X1, 0xff) {
@@ -246,6 +249,41 @@ func TestMovImm64(t *testing.T) {
 		if n := len(a.B) / 4; n != c.words {
 			t.Errorf("val %#x: emitted %d instructions, want %d", c.val, n, c.words)
 		}
+	}
+}
+
+func TestMovImmLogicalImmediate(t *testing.T) {
+	var a Asm
+	a.MovImm64(X7, 0x00ff00ff00ff00ff)
+	if len(a.B) != 4 || a.LogicalMoveImmediates != 1 {
+		t.Fatalf("logical MOV = % x, hits=%d; want one instruction", a.B, a.LogicalMoveImmediates)
+	}
+
+	var rollback Asm
+	rollback.DisableLogicalMoveImmediate = true
+	rollback.MovImm64(X7, 0x00ff00ff00ff00ff)
+	if len(rollback.B) <= len(a.B) || rollback.LogicalMoveImmediates != 0 {
+		t.Fatalf("rollback MOV = % x, hits=%d; want longer MOVZ/MOVK sequence", rollback.B, rollback.LogicalMoveImmediates)
+	}
+}
+
+func TestMovImm32UsesWMoveWide(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		val  int32
+		want uint32
+	}{
+		{"minus one", -1, 0x12800007},
+		{"negative low bits", -2, 0x12800027},
+		{"high ones", -60876, 0x129db967},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var a Asm
+			a.MovImm32(X7, test.val)
+			if len(a.B) != 4 || a.wordAt(0) != test.want || a.CompactMoveImmediates32 != 1 {
+				t.Fatalf("MOV32(%#x) = % x hits=%d, want word %#08x", uint32(test.val), a.B, a.CompactMoveImmediates32, test.want)
+			}
+		})
 	}
 }
 

@@ -93,8 +93,12 @@ func (c Cond) Invert() Cond { return c ^ 1 }
 // Asm accumulates encoded instruction words as little-endian bytes. Its zero
 // value is ready to use. Mirrors amd64.Asm{ B []byte }.
 type Asm struct {
-	B            []byte
-	DenseIdxDisp bool // prefer ADD base,index + immediate-offset load/store
+	B                             []byte
+	DenseIdxDisp                  bool // prefer ADD base,index + immediate-offset load/store
+	DisableLogicalMoveImmediate   bool
+	DisableCompactMoveImmediate32 bool
+	LogicalMoveImmediates         int
+	CompactMoveImmediates32       int
 }
 
 // word appends one 32-bit instruction little-endian.
@@ -141,9 +145,13 @@ func (a *Asm) CmpReg32(rn, rm Reg) { a.addSubReg(0x6B000000, XZR, rn, rm) }
 
 // --- Add/sub (immediate, 0..4095, optional LSL #12) ---
 
-// addSubImm encodes an unshifted 12-bit immediate. imm must be in [0,4095].
+// addSubImm encodes an unshifted 12-bit immediate. Callers gate the range.
 func (a *Asm) addSubImm(base uint32, rd, rn Reg, imm uint32) {
 	a.word(base | (imm&0xFFF)<<10 | r(rn)<<5 | r(rd))
+}
+
+func (a *Asm) addSubImmLSL12(base uint32, rd, rn Reg, imm uint32) {
+	a.word(base | 1<<22 | ((imm>>12)&0xfff)<<10 | r(rn)<<5 | r(rd))
 }
 
 func (a *Asm) AddImm64(rd, rn Reg, imm uint32)  { a.addSubImm(0x91000000, rd, rn, imm) }
@@ -155,6 +163,15 @@ func (a *Asm) SubsImm64(rd, rn Reg, imm uint32) { a.addSubImm(0xF1000000, rd, rn
 // CmpImm64 is SUBS XZR, Rn, #imm12.
 func (a *Asm) CmpImm64(rn Reg, imm uint32) { a.addSubImm(0xF1000000, XZR, rn, imm) }
 func (a *Asm) CmpImm32(rn Reg, imm uint32) { a.addSubImm(0x71000000, XZR, rn, imm) }
+
+func (a *Asm) AddImm64LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0x91000000, rd, rn, imm) }
+func (a *Asm) AddImm32LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0x11000000, rd, rn, imm) }
+func (a *Asm) SubImm64LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0xD1000000, rd, rn, imm) }
+func (a *Asm) SubImm32LSL12(rd, rn Reg, imm uint32) { a.addSubImmLSL12(0x51000000, rd, rn, imm) }
+func (a *Asm) CmpImm64LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0xF1000000, XZR, rn, imm) }
+func (a *Asm) CmpImm32LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0x71000000, XZR, rn, imm) }
+func (a *Asm) CmnImm64LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0xB1000000, XZR, rn, imm) }
+func (a *Asm) CmnImm32LSL12(rn Reg, imm uint32)     { a.addSubImmLSL12(0x31000000, XZR, rn, imm) }
 
 // SubSP64 / AddSP64 adjust the stack pointer (Rn/Rd = 31 means SP here).
 func (a *Asm) SubSP64(imm uint32) { a.addSubImm(0xD1000000, SP, SP, imm) }
@@ -258,6 +275,9 @@ func (a *Asm) movWide(base uint32, rd Reg, imm16 uint16, hw uint32) {
 func (a *Asm) Movz64(rd Reg, imm16 uint16, hw uint32) { a.movWide(0xD2800000, rd, imm16, hw) }
 func (a *Asm) Movk64(rd Reg, imm16 uint16, hw uint32) { a.movWide(0xF2800000, rd, imm16, hw) }
 func (a *Asm) Movn64(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x92800000, rd, imm16, hw) }
+func (a *Asm) Movz32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x52800000, rd, imm16, hw) }
+func (a *Asm) Movk32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x72800000, rd, imm16, hw) }
+func (a *Asm) Movn32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x12800000, rd, imm16, hw) }
 
 // MovImm64 materializes an arbitrary 64-bit constant into rd using the shortest
 // MOVZ/MOVN + MOVK sequence (1..4 instructions), mirroring the amd64 encoder's
@@ -272,6 +292,17 @@ func (a *Asm) MovImm64(rd Reg, val uint64) {
 		} else if h == 0xFFFF {
 			ones++
 		}
+	}
+	wideWords := 4 - zeros
+	if ones > zeros {
+		wideWords = 4 - ones
+	}
+	if wideWords == 0 {
+		wideWords = 1
+	}
+	if wideWords > 1 && !a.DisableLogicalMoveImmediate && a.OrrImm64(rd, XZR, val) {
+		a.LogicalMoveImmediates++
+		return
 	}
 	if ones > zeros {
 		// MOVN base: inverse of the first non-0xFFFF halfword, then MOVK the rest.
@@ -508,6 +539,8 @@ func (a *Asm) Bcond(c Cond) int { at := a.Len(); a.word(0x54000000 | uint32(c));
 
 // Cbz / Cbnz emit a compare-and-branch on Rt==0 / Rt!=0 with a zero displacement;
 // patch with PatchBranch19.
+func (a *Asm) Cbz32(rt Reg) int  { at := a.Len(); a.word(0x34000000 | r(rt)); return at }
+func (a *Asm) Cbnz32(rt Reg) int { at := a.Len(); a.word(0x35000000 | r(rt)); return at }
 func (a *Asm) Cbz64(rt Reg) int  { at := a.Len(); a.word(0xB4000000 | r(rt)); return at }
 func (a *Asm) Cbnz64(rt Reg) int { at := a.Len(); a.word(0xB5000000 | r(rt)); return at }
 

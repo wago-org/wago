@@ -1,0 +1,63 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+	"encoding/binary"
+	"testing"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+)
+
+func BenchmarkExecBrTableCompactTargetIDsArm64(b *testing.B) {
+	m := brTableComputedLabelsArm64(b, []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, 4)
+	for _, tc := range []struct {
+		name      string
+		objective OptimizationObjective
+	}{
+		{"balanced", OptimizeBalanced},
+		{"size", OptimizeSize},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			cm, err := CompileModuleWith(m, CompileOptions{Objective: &tc.objective})
+			if err != nil {
+				b.Fatal(err)
+			}
+			eng, err := coreruntime.NewEngine()
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer eng.Close()
+			jm, err := coreruntime.NewJobMemory(65536)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer jm.Close()
+			arena, err := coreruntime.NewArena(4096)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer arena.Close()
+			code, entry, err := coreruntime.MapCode(cm.Code)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer coreruntime.Unmap(code)
+
+			args, results, trap := arena.Alloc(16), arena.Alloc(8), arena.Alloc(8)
+			binary.LittleEndian.PutUint64(args, 7)
+			binary.LittleEndian.PutUint64(args[8:], 1)
+			b.ReportMetric(float64(len(cm.Code)), "code-B")
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.StopTimer()
+			if got := binary.LittleEndian.Uint64(results); got != 1002 {
+				b.Fatalf("result = %d, want 1002", got)
+			}
+		})
+	}
+}

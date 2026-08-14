@@ -43,7 +43,10 @@ type funcHints struct {
 	// depth, excluding the implicit function frame. Byte-backed production
 	// modules populate it during the existing one-pass hint scan. The byte uses
 	// existing alignment padding; 255 is a saturated fallback sentinel.
-	maxControlDepth  uint8
+	maxControlDepth uint8
+	// inlineCallSites packs a saturated 7-bit ordinary-call count plus a high
+	// bit recording any return_call reference to this local function.
+	inlineCallSites  uint8
 	gcResolverSites  int  // conservative direct scalar/length resolver site count
 	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
 
@@ -52,11 +55,12 @@ type funcHints struct {
 	// exactly (unreachable/block/loop/if/else/br*/return, NOT try_table); hasLoop is
 	// the loop subset. calleeCount>0/hasControlCall from inlineOK both reduce to
 	// hasCall (an inline candidate is leaf), so no separate call-kind split is kept.
-	hasLoop        bool
-	hasControlFlow bool
-	moduleEH       bool
-	hasFloatConst  bool // body contains f32.const or f64.const
-	hasSIMD        bool // body contains an 0xfd SIMD instruction
+	hasLoop          bool
+	hasJumpTableData bool
+	hasControlFlow   bool
+	moduleEH         bool
+	hasFloatConst    bool // body contains f32.const or f64.const
+	hasSIMD          bool // body contains an 0xfd SIMD instruction
 
 	// immutableTables is derived after the one-pass per-function scans have been
 	// aggregated (computeModuleHints). Each admitted table is local, unexported,
@@ -230,8 +234,12 @@ func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint3
 }
 
 func scanFuncBodyIntoMemory64WithModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
+	return scanFuncBodyIntoMemory64WithModuleCalls(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+}
+
+func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoMemory64WithModule(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers)
+		return scanBodyBytesIntoMemory64WithModuleCalls(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, moduleHints, importedFuncs)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers), nil
 }
@@ -332,6 +340,8 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
 					h.hasLoop = true
+				} else if in.Kind == wasm.InstrBrTable && len(in.Indices()) >= brTableJumpMin {
+					h.hasJumpTableData = true
 				}
 			}
 			switch in.Kind {
@@ -574,9 +584,13 @@ func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx u
 }
 
 func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
+	return scanBodyBytesIntoMemory64WithModuleCalls(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+}
+
+func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -604,6 +618,8 @@ type byteBodyScanner struct {
 	m               *wasm.Module
 	gcTypeLayouts   []codegen.GCTypeLayout
 	gcStructHelpers bool
+	moduleHints     []funcHints
+	importedFuncs   int
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -646,6 +662,22 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return subHasCall, op, nil
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+		case 0x0e: // br_table: exact jump-table-data admission hint
+			n, err := s.r.U32()
+			if err != nil {
+				return true, 0, err
+			}
+			if n >= brTableJumpMin {
+				s.h.hasJumpTableData = true
+			}
+			for i := uint32(0); i < n; i++ {
+				if _, err := s.r.U32(); err != nil {
+					return true, 0, err
+				}
+			}
+			if _, err := s.r.U32(); err != nil { // default label
+				return true, 0, err
+			}
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			s.h.noteControlDepth(depth + 1)
@@ -710,6 +742,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
+			s.noteDirectCallRef(imm.Index, op == 0x10)
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -819,6 +852,24 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		}
 	}
 }
+
+func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline bool) {
+	local := int(globalIdx) - s.importedFuncs
+	if local < 0 || local >= len(s.moduleHints) {
+		return
+	}
+	target := &s.moduleHints[local]
+	if !inline {
+		target.inlineCallSites |= 0x80
+		return
+	}
+	count := target.inlineCallSites & 0x7f
+	if count != 0x7f {
+		target.inlineCallSites = target.inlineCallSites&0x80 | count + 1
+	}
+}
+
+func (h funcHints) inlineCallSiteCount() uint8 { return h.inlineCallSites & 0x7f }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
 	if op >= 0x28 && op <= 0x3e {

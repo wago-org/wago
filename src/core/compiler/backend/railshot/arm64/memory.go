@@ -77,7 +77,7 @@ const offPassiveDataPtr = abi.PassiveDataPtrOffset
 // per-call "load *trap; test; branch" check — a trap never returns through an
 // intermediate frame. Terminal, so it may freely clobber the call scratch (and SP
 // last).
-func (f *fn) emitTrap(code, function uint32) {
+func (f *fn) emitTrapRecord(code, function uint32) {
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr)) // X9 = &trapCell
 	f.a.MovImm64(X16, uint64(function+1))
 	f.st32(X9, 16, X16)
@@ -88,6 +88,9 @@ func (f *fn) emitTrap(code, function uint32) {
 		f.a.MovImm64(X16, uint64(uint32(code)))
 		f.st32(X9, 0, X16) // *trapCell = code
 	}
+}
+
+func (f *fn) emitTrapUnwind() {
 	// AArch64 has no return address on the stack: BL wrote it into LR, which a
 	// trap deep in the wasm call tree may have clobbered. The trampoline records
 	// both the foreign-stack save-area SP and the continuation PC in basedata, so
@@ -108,8 +111,7 @@ func (f *fn) emitInterruptCheck() {
 	}
 	f.ld64(X16, linMemReg, -int32(offTrapCellPtr))
 	f.ld32(X17, X16, 0)
-	f.cmpImm(X17, 0, false)
-	f.trapIf(condNE, trapInterrupted)
+	f.trapIfZero(X17, false, false, trapInterrupted)
 }
 
 // trapIf records a conditional branch to this function's shared trap stub for
@@ -125,6 +127,52 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	// emitTrapStubs uses it to tag Bcond vs Branch patch ranges (§6.2).
 	sc := f.scratchState()
 	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Bcond(cc)))
+}
+
+// zeroBranch emits a branch on a register's zero/nonzero value. Every caller is
+// an explicit compiler-authored test whose next consumer is this branch, so no
+// later instruction observes the CMP flags removed by the compact form.
+func (f *fn) zeroBranch(reg Reg, wide, onZero bool) int {
+	if directZeroBranchEnabled {
+		f.stats.peep("direct-zero-branch")
+		return f.emitZeroBranch(reg, wide, onZero)
+	}
+	f.cmpImm(reg, 0, wide)
+	if onZero {
+		return f.a.Bcond(condE)
+	}
+	return f.a.Bcond(condNE)
+}
+
+func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
+	if wide {
+		if onZero {
+			return f.a.Cbz64(reg)
+		}
+		return f.a.Cbnz64(reg)
+	}
+	if onZero {
+		return f.a.Cbz32(reg)
+	}
+	return f.a.Cbnz32(reg)
+}
+
+func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
+	if !directZeroBranchEnabled {
+		f.cmpImm(reg, 0, wide)
+		if onZero {
+			f.trapIf(condE, code)
+		} else {
+			f.trapIf(condNE, code)
+		}
+		return
+	}
+	if code == trapMemOOB {
+		f.stats.addBoundsCheck()
+	}
+	f.stats.peep("direct-zero-branch")
+	sc := f.scratchState()
+	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.emitZeroBranch(reg, wide, onZero)))
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a single B to the
@@ -145,6 +193,48 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	sizeObjective := f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded
+	groups := 0
+	if (sharedTrapUnwindEnabled || sharedTrapBodyEnabled) && sizeObjective {
+		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+			sites := f.scratchState().trapSites[code]
+			if len(sites) == 0 {
+				continue
+			}
+			sortTrapSitesByFunction(sites)
+			groups++
+			for i := 1; i < len(sites); i++ {
+				if sites[i].function != sites[i-1].function {
+					groups++
+				}
+			}
+		}
+	}
+	// A group emits at most three four-word MOV immediates plus one B. Keep every
+	// group-to-tail transfer inside B's signed imm26 range; otherwise retain the
+	// established local-record/shared-unwind path.
+	sharedBodyInRange := int64(f.a.Len())+int64(groups)*52+64 < 128<<20
+	if sharedTrapBodyEnabled && sizeObjective && groups >= 2 && sharedBodyInRange {
+		if moduleSharedTrapBodyEnabled {
+			f.emitSharedTrapStubs()
+		} else {
+			f.emitSharedTrapStubsHead()
+		}
+		f.stats.peep("shared-trap-body")
+		return
+	}
+	// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail cost 24,
+	// and the extra branch is confined to a terminal cold path.
+	shareUnwind := sharedTrapUnwindEnabled && sizeObjective && groups >= 2
+	sharedUnwind := -1
+	sharedTails := 0
+	if shareUnwind {
+		// The epilogue precedes this cold region, so normal execution cannot fall
+		// through into the island. Emit it first and patch each later B backward;
+		// this needs no per-function branch-site allocation.
+		sharedUnwind = f.a.Len()
+		f.emitTrapUnwind()
+	}
 	for code := uint32(1); code <= trapAtomicUnaligned; code++ { // deterministic order
 		sites := f.scratchState().trapSites[code]
 		if len(sites) == 0 {
@@ -161,6 +251,7 @@ func (f *fn) emitTrapStubs() {
 				end++
 			}
 			group := sites[start:end]
+			f.stats.addTrapGroup()
 			first := group[0]
 			commonJump := -1
 			if len(group) == 1 {
@@ -185,13 +276,137 @@ func (f *fn) emitTrapStubs() {
 				}
 			}
 			f.storeModuleGlobals(X9)
-			f.emitTrap(code, first.function)
+			f.emitTrapRecord(code, first.function)
+			if shareUnwind {
+				site := f.a.Branch()
+				if !f.a.PatchBranch26(site, sharedUnwind) {
+					// A pathological >128 MiB function remains correct: discard the
+					// just-emitted B and retain this group's local unwind.
+					f.a.B = f.a.B[:site]
+					f.emitTrapUnwind()
+				} else {
+					sharedTails++
+				}
+			} else {
+				f.emitTrapUnwind()
+			}
 			if commonJump >= 0 {
 				f.a.PatchBranch26(commonJump, common)
 			}
 			start = end
 		}
 	}
+	if sharedTails != 0 {
+		f.stats.peepN("cold-trap-unwind-share", sharedTails-1)
+	}
+}
+
+// emitSharedTrapStubsHead is the exact pre-module-sharing layout retained by
+// WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY. Keeping the body before its groups
+// makes that switch a byte-exact corpus oracle rather than merely disabling the
+// module compaction pass.
+func (f *fn) emitSharedTrapStubsHead() {
+	common := f.a.Len()
+	f.emitTrapFromRegisters()
+	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+		sites := f.scratchState().trapSites[code]
+		if len(sites) == 0 {
+			continue
+		}
+		f.stats.addTrapStub()
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			group := sites[start:end]
+			first := group[0]
+			pos := f.a.Len()
+			pc := uint64(^uint32(0))
+			if len(group) == 1 {
+				pc = uint64(first.pc)
+			}
+			f.a.MovImm64(X17, pc)
+			f.a.MovImm64(X10, uint64(first.function+1))
+			f.a.MovImm64(X11, uint64(code))
+			for _, site := range group {
+				if site.branch&1 != 0 {
+					f.a.PatchBranch26(site.branch&^1, pos)
+				} else {
+					f.a.PatchBranch19(site.branch, pos)
+				}
+			}
+			branch := f.a.Branch()
+			if !f.a.PatchBranch26(branch, common) {
+				f.a.B = f.a.B[:branch]
+				f.emitTrapFromRegisters()
+			}
+			f.stats.addTrapGroup()
+			start = end
+		}
+	}
+}
+
+func (f *fn) emitSharedTrapStubs() {
+	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+		sites := f.scratchState().trapSites[code]
+		if len(sites) == 0 {
+			continue
+		}
+		f.stats.addTrapStub()
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			group := sites[start:end]
+			first := group[0]
+			pos := f.a.Len()
+			pc := uint64(^uint32(0))
+			if len(group) == 1 {
+				pc = uint64(first.pc)
+			}
+			f.a.MovImm64(X17, pc)
+			f.a.MovImm64(X10, uint64(first.function+1))
+			f.a.MovImm64(X11, uint64(code))
+			for _, site := range group {
+				if site.branch&1 != 0 {
+					f.a.PatchBranch26(site.branch&^1, pos)
+				} else {
+					f.a.PatchBranch19(site.branch, pos)
+				}
+			}
+			group[0].branch = f.a.Branch()
+			f.stats.addTrapGroup()
+			start = end
+		}
+	}
+
+	f.trapBodyOff = f.a.Len()
+	f.emitTrapFromRegisters()
+	f.trapBodyEnd = f.a.Len()
+	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+		sites := f.scratchState().trapSites[code]
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			if !f.a.PatchBranch26(sites[start].branch, f.trapBodyOff) {
+				panic("arm64: bounded trap body branch exceeded imm26")
+			}
+			start = end
+		}
+	}
+}
+
+func (f *fn) emitTrapFromRegisters() {
+	f.storeModuleGlobals(X9)
+	f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
+	f.st32(X9, 16, X10)
+	f.st32(X9, 20, X17)
+	f.st32(X9, 0, X11)
+	f.emitTrapUnwind()
 }
 
 // sortTrapSitesByFunction uses an allocation-free heap sort. The order within
@@ -508,7 +723,13 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// when the value is materialized — arm64 has no memory operand to fold into,
 	// so unlike x86 there is no r/m consumer, but deferring still lets the consumer
 	// pick the destination register and elide dead loads).
-	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal))
+	st := memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal)
+	if f.opt(optValueFacts) && !wide {
+		// Every i32 load writes a W register, including sign-extending byte/word
+		// forms, so its physical X-register upper half is known zero.
+		st.facts = factUpper32Zero
+	}
+	e := f.pushValue(st)
 	if eaOwned {
 		f.regUser[ea] = e // an owned address register belongs to the deferred load
 	}
@@ -1159,8 +1380,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if memory64 {
 		high := f.allocReg(maskOf(delta))
 		f.a.LsrImm(high, delta, 32, false)
-		f.cmpImm(high, 0, true)
-		failDelta = f.a.Bcond(condNE)
+		failDelta = f.zeroBranch(high, true, false)
 		f.release(high)
 	}
 	res := f.allocReg(maskOf(delta))

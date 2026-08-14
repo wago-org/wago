@@ -438,6 +438,30 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if workers.FunctionWorkers() != 4 || NewRuntimeConfig().FunctionWorkers() != 1 {
 		t.Fatal("WithFunctionWorkers must be immutable and observable; default must remain serial")
 	}
+	baseObjective := NewRuntimeConfig()
+	sizeObjective := baseObjective.WithOptimizationObjective(OptimizeSize)
+	if baseObjective.OptimizationObjective() != OptimizeBalanced || sizeObjective.OptimizationObjective() != OptimizeSize {
+		t.Fatal("WithOptimizationObjective must be immutable and Balanced must remain the default")
+	}
+	if got := OptimizeEmbedded.String(); got != "embedded" {
+		t.Fatalf("embedded objective string = %q", got)
+	}
+	if err := baseObjective.WithOptimizationObjective(OptimizationObjective(255)).Validate(); err == nil || !strings.Contains(err.Error(), "optimization objective") {
+		t.Fatalf("invalid optimization objective validation = %v", err)
+	}
+	balancedCode, err := baseObjective.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile Balanced objective: %v", err)
+	}
+	t.Cleanup(func() { _ = balancedCode.Close() })
+	sizeCode, err := sizeObjective.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile Size objective: %v", err)
+	}
+	t.Cleanup(func() { _ = sizeCode.Close() })
+	if sizeCode.CodeSize() >= balancedCode.CodeSize() {
+		t.Fatalf("public objective did not reach layout policy: Size=%d, Balanced=%d", sizeCode.CodeSize(), balancedCode.CodeSize())
+	}
 	if got := NewRuntimeConfig().WithCompileWorkers(3); got.CompileWorkers() != 3 || got.FunctionWorkers() != 3 {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
 	}
@@ -472,8 +496,8 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") {
-		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "objective: balanced") {
+		t.Fatalf("config String missing bounds mode, objective, or serial default policy: %q", s)
 	}
 }
 

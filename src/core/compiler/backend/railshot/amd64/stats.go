@@ -22,13 +22,15 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // Explain/debug knobs, parsed once. Kept here next to the stats they drive.
 var (
 	// explainEnabled prints a per-module CodegenStats dump to stderr after every
-	// compile. Independent of the programmatic CompileOptions.Stats sink.
-	explainEnabled = os.Getenv("WAGO_EXPLAIN") == "1"
+	// compile. "size" highlights the native-byte ledger; "1" remains compatible.
+	explainMode    = os.Getenv("WAGO_EXPLAIN")
+	explainEnabled = explainMode == "1" || explainMode == "size"
 	// debugModGlobals prints the module-pinned-global choices (the #90-era temp
 	// print, now first-class).
 	debugModGlobals = os.Getenv("WAGO_DEBUG_MODGLOBALS") == "1"
@@ -41,8 +43,41 @@ var (
 	// boundsRangeEnabled lets a first scalar load certify later fixed-offset loads
 	// in the same pure straight-line range. Kept separate for A/B measurement.
 	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"
-	// compactI32FrameEnabled packs i32 locals in large control-free kernels.
+	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
+	// compactI32ControlFlowEnabled extends that typed-slot layout through structured
+	// control flow. Calls remain excluded because some argument-staging paths use
+	// intentionally full-width local loads.
+	compactI32ControlFlowEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CONTROL") != "1"
+	// compactI32CallsEnabled admits call-making functions after every deferred
+	// local argument load has selected its width from the local's machine type.
+	compactI32CallsEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CALLS") != "1"
+	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings only
+	// under Size/Embedded. Balanced retains its measured layout exactly.
+	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
+	// incDecEnabled selects compact INC/DEC for Size/Embedded Wasm add/sub by
+	// one when CF is not a compiler value. The kill switch is the A/B oracle.
+	incDecEnabled = os.Getenv("WAGO_AMD64_NO_INCDEC") != "1"
+	// directIncDecEnabled extends the same encoding choice to compiler-authored
+	// counters whose next flag consumer is ZF or whose flags are dead.
+	directIncDecEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_INCDEC") != "1"
+	// directJecxzEnabled selects JECXZ for bounded ECX byte-tail guards whose
+	// flags are dead and whose checked targets remain in rel8 range.
+	directJecxzEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_JECXZ") != "1"
+	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the invariant
+	// trap-cell stores and native-stack unwind within one compiled function.
+	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"
+	// moduleSharedTrapBodyEnabled lets later internal functions replace an exact
+	// complete trap-body copy with one near jump to a retained cold body.
+	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY") != "1"
+	// compactLowPinEnabled makes RBP the first integer-local pin only for
+	// call-free, straight-line Size/Embedded functions. The register set and pin
+	// count stay unchanged; this is an encoded-size tie-break experiment.
+	compactLowPinEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_LOW_PIN") != "1"
+	// localSlotOrderEnabled records exact emitted local-home references and lets
+	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
+	// low homes during finalization. WAGO_LOCAL_SLOT_ORDER=0 is the rollback.
+	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") != "0"
 	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
 	// slot when its still-live result must be evicted from a register.
 	teeSpillElideEnabled = os.Getenv("WAGO_NO_TEE_SPILL_ELIDE") != "1"
@@ -64,6 +99,9 @@ var (
 	// swarMaskTestEnabled gates direct packed-word mask-test fusion.
 	// WAGO_NO_SWAR_MASK_TEST=1 is the A/B oracle.
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"
+	// singleBitMaskTestEnabled selects BT for one-bit mask predicates in
+	// Size/Embedded. WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST=1 is the A/B oracle.
+	singleBitMaskTestEnabled = os.Getenv("WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST") != "1"
 	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
 	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
 	swarIdiomsEnabled = os.Getenv("WAGO_NO_SWAR_IDIOMS") != "1"
@@ -131,6 +169,18 @@ type CodegenStats struct {
 	FrameBytes    int                      // stack frame size (sub rsp, N)
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
+	NativeSize    shared.NativeFunctionSizeReport
+	Encoding      encoderamd64.EncodingStats
+	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
+	// its maximal-safe encoding instead of applying an available compaction plan.
+	FinalizerFallback string       `json:"finalizer_fallback,omitempty"`
+	literalKeys       []literalKey // stats-only keys for module-level duplicate accounting
+	Rel32Sites        uint32       `json:"rel32_sites,omitempty"`
+	Rel32Recorded     int          `json:"rel32_recorded,omitempty"`
+	Rel32Overflow     bool         `json:"rel32_overflow,omitempty"`
+	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
+	// inline sites. Caller frame growth and shared cold tails are outside it.
+	InlineSiteBytes int
 
 	// Register allocator / condense engine traffic.
 	Flushes              int // full operand-stack flushes (control boundaries + calls)
@@ -146,6 +196,7 @@ type CodegenStats struct {
 	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
 	BoundsChecksHoistable   int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
 	TrapStubs               int // shared cold trap stubs emitted (one per trap code used)
+	TrapGroups              int // distinct source-function groups across trap stubs
 	GCHandleResolutions     int // dynamic compact-handle resolutions emitted
 	GCHandleResolutionReuse int // resolutions elided by bounded raw-address reuse
 
@@ -180,6 +231,12 @@ func resetFuncStats(s *CodegenStats) {
 func (s *CodegenStats) setUnpinnedRetry() {
 	if s != nil {
 		s.UnpinnedRetry = true
+	}
+}
+
+func (s *CodegenStats) setFinalizerFallback(reason string) {
+	if s != nil {
+		s.FinalizerFallback = reason
 	}
 }
 
@@ -218,6 +275,11 @@ func (s *CodegenStats) addForcedLoad() {
 func (s *CodegenStats) addTrapStub() {
 	if s != nil {
 		s.TrapStubs++
+	}
+}
+func (s *CodegenStats) addTrapGroup() {
+	if s != nil {
+		s.TrapGroups++
 	}
 }
 func (s *CodegenStats) addBoundsCheck() {
@@ -327,6 +389,12 @@ func (s *CodegenStats) call(kind string) {
 	s.Calls[kind]++
 }
 
+func (s *CodegenStats) addInlineSiteBytes(n int) {
+	if s != nil {
+		s.InlineSiteBytes += n
+	}
+}
+
 // peep records one peephole/instruction-selection rewrite by stable name.
 func (s *CodegenStats) peep(name string) {
 	if s == nil {
@@ -364,7 +432,12 @@ type ModuleStats struct {
 	GCSharedStubBytes     int
 	GCSharedStubs         int
 	GCSharedStubCallSites int
+	NativeSize            shared.NativeSizeReport
+	Encoding              encoderamd64.EncodingStats
 }
+
+type NativeFunctionSizeReport = shared.NativeFunctionSizeReport
+type NativeSizeReport = shared.NativeSizeReport
 
 // String renders the explain dump: a module summary line, the module-pinned
 // globals, then one block per function.
@@ -374,6 +447,90 @@ func (ms *ModuleStats) String() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
+	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
+		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
+		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())
+	arenaSlack := 0
+	if ms.NativeSize.CompilerCodeArenaBytes != 0 {
+		arenaSlack = ms.NativeSize.CompilerCodeArenaBytes - ms.NativeSize.TotalBytes
+	}
+	fmt.Fprintf(&b, "native-mapping: required=%d pages=%d compiler-arena=%d arena-slack=%d\n",
+		ms.NativeSize.ExecutableMappingBytes, ms.NativeSize.ExecutableMappingPages,
+		ms.NativeSize.CompilerCodeArenaBytes, arenaSlack)
+	fmt.Fprintf(&b, "native-regions: adapters=%d internal-pad=%d internal=%d\n",
+		ms.NativeSize.HostAdapterBytes, ms.NativeSize.AdapterToInternalPaddingBytes, ms.NativeSize.InternalFunctionBytes)
+	fmt.Fprintf(&b, "native-adapters: count=%d shapes=%d unique=%d duplicates=%d\n",
+		ms.NativeSize.HostAdapterCount, ms.NativeSize.HostAdapterShapeCount, ms.NativeSize.HostAdapterUniqueBytes,
+		ms.NativeSize.HostAdapterDuplicateBytes)
+	fmt.Fprintf(&b, "native-adapter-tails: shapes=%d unique=%d duplicates=%d\n",
+		ms.NativeSize.HostAdapterTailShapeCount, ms.NativeSize.HostAdapterTailUniqueBytes,
+		ms.NativeSize.HostAdapterTailDuplicateBytes)
+	fmt.Fprintf(&b, "native-reservations: frame-physical=%d frame-dead=%d branch-holes=%d store-load-nops=%d\n",
+		ms.NativeSize.FrameAdjustmentBytes, ms.NativeSize.DeadFrameReservationBytes,
+		ms.NativeSize.BranchFoldHoleBytes, ms.NativeSize.StoreLoadNopBytes)
+	fmt.Fprintf(&b, "native-data: literals=%d module-unique-literals=%d cross-function-duplicates=%d\n",
+		ms.NativeSize.LiteralPoolBytes, ms.NativeSize.LiteralPoolUniqueBytes,
+		ms.NativeSize.LiteralPoolDuplicateBytes)
+	type fallbackTotal struct{ count, bytes int }
+	fallbacks := make(map[string]fallbackTotal)
+	for _, s := range ms.Funcs {
+		if s == nil || s.FinalizerFallback == "" {
+			continue
+		}
+		total := fallbacks[s.FinalizerFallback]
+		total.count++
+		total.bytes += s.NativeSize.DeadReservationBytes()
+		fallbacks[s.FinalizerFallback] = total
+	}
+	if len(fallbacks) != 0 {
+		keys := make([]string, 0, len(fallbacks))
+		for reason := range fallbacks {
+			keys = append(keys, reason)
+		}
+		sort.Strings(keys)
+		b.WriteString("native-finalizer-fallbacks:")
+		for _, reason := range keys {
+			total := fallbacks[reason]
+			fmt.Fprintf(&b, " %s=%d/%dB", reason, total.count, total.bytes)
+		}
+		b.WriteByte('\n')
+	}
+	rel32Sites, rel32Recorded, rel32OverflowFuncs, rel32OverflowSites, maxRel32Sites := uint64(0), 0, 0, uint64(0), uint32(0)
+	for _, s := range ms.Funcs {
+		if s == nil {
+			continue
+		}
+		rel32Sites += uint64(s.Rel32Sites)
+		rel32Recorded += s.Rel32Recorded
+		if s.Rel32Sites > maxRel32Sites {
+			maxRel32Sites = s.Rel32Sites
+		}
+		if overflow := int64(s.Rel32Sites) - int64(s.Rel32Recorded); s.Rel32Overflow && overflow > 0 {
+			rel32OverflowFuncs++
+			rel32OverflowSites += uint64(overflow)
+		}
+	}
+	fmt.Fprintf(&b, "amd64-rel32: sites=%d recorded=%d overflow-functions=%d overflow-sites=%d max-function-sites=%d\n",
+		rel32Sites, rel32Recorded, rel32OverflowFuncs, rel32OverflowSites, maxRel32Sites)
+	fmt.Fprintf(&b, "amd64-encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
+		ms.Encoding.MemoryDisp0, ms.Encoding.MemoryDisp8, ms.Encoding.MemoryDisp32,
+		ms.Encoding.MemoryDisplacementBytes(), ms.Encoding.FrameDisp0, ms.Encoding.FrameDisp8,
+		ms.Encoding.FrameDisp32, ms.Encoding.FrameDisplacementBytes())
+	fmt.Fprintf(&b, "amd64-local-encoding: disp0=%d disp8=%d disp32=%d displacement-bytes=%d disp32-shortening-ceiling=%d\n",
+		ms.Encoding.LocalDisp0, ms.Encoding.LocalDisp8, ms.Encoding.LocalDisp32,
+		ms.Encoding.LocalFrameDisplacementBytes(), 3*ms.Encoding.LocalDisp32)
+	fmt.Fprintf(&b, "amd64-prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
+		ms.Encoding.RexPrefixes, ms.Encoding.RexWPrefixes, ms.Encoding.RexBare,
+		ms.Encoding.RexNonWExtensionPrefixes())
+	fmt.Fprintf(&b, "amd64-immediates: mov-imm32=%d mov-imm32-sext=%d mov-imm64=%d mov-imm64-narrowed=%d bytes-saved=%d\n",
+		ms.Encoding.MovImm32, ms.Encoding.MovImm32Sext, ms.Encoding.MovImm64,
+		ms.Encoding.MovImmNarrow, ms.Encoding.MovImmSaved)
+	fmt.Fprintf(&b, "amd64-shifts: zero-elided=%d count-one=%d imm8=%d bytes-saved=%d\n",
+		ms.Encoding.ShiftImmZero, ms.Encoding.ShiftImmOne, ms.Encoding.ShiftImm8,
+		ms.Encoding.ShiftSaved)
+	fmt.Fprintf(&b, "amd64-accumulator-immediates: alu=%d test=%d bytes-saved=%d\n",
+		ms.Encoding.AluImm32Acc, ms.Encoding.TestImm32Acc,
+		ms.Encoding.AluImm32Acc+ms.Encoding.TestImm32Acc)
 	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
 		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
 	}
@@ -410,10 +567,40 @@ func (s *CodegenStats) report() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "fn#%d %q: code=%dB frame=%dB spill_hi=%d\n",
 		s.FuncIdx, name, s.CodeBytes, s.FrameBytes, s.MaxSpillSlots)
+	fmt.Fprintf(&b, "    native: adapter=%d internal-pad=%d internal=%d frame-adjust=%d dead-reserved=%d literals=%d\n",
+		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
+		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
+		s.NativeSize.DeadReservationBytes(), s.NativeSize.LiteralPoolBytes)
+	if s.FinalizerFallback != "" {
+		fmt.Fprintf(&b, "    finalizer-fallback: %s\n", s.FinalizerFallback)
+	}
+	fmt.Fprintf(&b, "    rel32: sites=%d recorded=%d overflow=%t\n", s.Rel32Sites, s.Rel32Recorded, s.Rel32Overflow)
+	fmt.Fprintf(&b, "    encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
+		s.Encoding.MemoryDisp0, s.Encoding.MemoryDisp8, s.Encoding.MemoryDisp32,
+		s.Encoding.MemoryDisplacementBytes(), s.Encoding.FrameDisp0, s.Encoding.FrameDisp8,
+		s.Encoding.FrameDisp32, s.Encoding.FrameDisplacementBytes())
+	fmt.Fprintf(&b, "    local-encoding: disp0=%d disp8=%d disp32=%d displacement-bytes=%d disp32-shortening-ceiling=%d\n",
+		s.Encoding.LocalDisp0, s.Encoding.LocalDisp8, s.Encoding.LocalDisp32,
+		s.Encoding.LocalFrameDisplacementBytes(), 3*s.Encoding.LocalDisp32)
+	fmt.Fprintf(&b, "    prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
+		s.Encoding.RexPrefixes, s.Encoding.RexWPrefixes, s.Encoding.RexBare,
+		s.Encoding.RexNonWExtensionPrefixes())
+	fmt.Fprintf(&b, "    immediates: mov-imm32=%d mov-imm32-sext=%d mov-imm64=%d mov-imm64-narrowed=%d bytes-saved=%d\n",
+		s.Encoding.MovImm32, s.Encoding.MovImm32Sext, s.Encoding.MovImm64,
+		s.Encoding.MovImmNarrow, s.Encoding.MovImmSaved)
+	fmt.Fprintf(&b, "    shifts: zero-elided=%d count-one=%d imm8=%d bytes-saved=%d\n",
+		s.Encoding.ShiftImmZero, s.Encoding.ShiftImmOne, s.Encoding.ShiftImm8,
+		s.Encoding.ShiftSaved)
+	fmt.Fprintf(&b, "    accumulator-immediates: alu=%d test=%d bytes-saved=%d\n",
+		s.Encoding.AluImm32Acc, s.Encoding.TestImm32Acc,
+		s.Encoding.AluImm32Acc+s.Encoding.TestImm32Acc)
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
-	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
-		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
+	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
+		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
+	if s.InlineSiteBytes != 0 {
+		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
+	}
 	if s.GCHandleResolutions != 0 || s.GCHandleResolutionReuse != 0 {
 		fmt.Fprintf(&b, "    gcresolve: emitted=%d reused=%d\n", s.GCHandleResolutions, s.GCHandleResolutionReuse)
 	}
