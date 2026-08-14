@@ -1247,3 +1247,35 @@ json-as-simd 1,008, wasm3 484, and json-as 480 bytes. No module grows.
 Exact-body and literal-tail rejection tests, serial and parallel native
 three-trap execution, the AMD64 backend and race suites, and the full Size
 execution corpus pass on `hub`.
+
+## Implementation result: AMD64 encoded-size local-pin tie-break
+
+Call-free, straight-line Size and Embedded functions now prefer RBP for their
+hottest integer-local pin before the otherwise identical high-register pin
+set. The number of pins and available scratch registers do not change, and the
+rule does not apply where taking RBP would disable control-flow register merges.
+`WAGO_AMD64_NO_COMPACT_LOW_PIN=1` restores the former R12-first order.
+
+Measured on the checked-in AMD64 Size corpus on `hub`:
+
+```text
+rollback native bytes:  63,980,210
+candidate native bytes: 63,974,878
+net reduction:               5,332 (0.0083%)
+functions selecting RBP:     2,973
+
+Ruby REX prefixes:       4,430,800 -> 4,426,248
+Ruby high-bank prefixes: 2,471,430 -> 2,466,802
+Ruby bare prefixes:        268,220 ->   268,296
+Ruby spill+reload count:                 unchanged
+
+Ruby compile median:   1,004,776,411 -> 1,007,947,408 ns/op (+0.32%)
+esbuild compile median:  544,702,827 ->   547,846,200 ns/op (+0.58%)
+compile allocation class: unchanged
+```
+
+Ruby contributes 4,487 bytes, SQLite 450, regexmatch 205, Lua 146, wasm3 43,
+and esbuild 1 byte. None of the changed macro modules exposes a manifest
+execution entry, so no workload-specific runtime claim is made. The complete
+Size execution corpus remains allocation-free. Focused ordering and native-code
+shrink tests plus the AMD64 backend and race suites pass on `hub`.
