@@ -2293,13 +2293,42 @@ bytes, and one SQLite function retains 10 bytes after the fixed deletion budget
 admits a bounded subset of its branch-fold holes. The latter is reported as
 `dead-hole-budget-partial` rather than being left unattributed.
 
-This evidence does not justify raising the existing limits. The previously
-measured 4,096-site/512 KiB experiment reclaimed only another 7,632 bytes while
-adding 12 KiB of pointer-free scratch per active Size worker. The next AMD64
-campaign should therefore target a different byte class or a more compact
-symbolic inventory, not simply weaken both bounds.
+This evidence does not justify repeating the old coupled jump directly to a
+4,096-site inventory and a 512 KiB loop bound. It does justify measuring smaller
+rel32-only tiers now that large-frame finalization admits functions the older
+capacity experiment excluded.
 
 Five serialized native stats-off samples against the exact parent keep the
 telemetry change inside the compile gate. Ruby moves from a 995,165,319 to
 1,003,266,044 ns/op median (+0.81%), and esbuild moves from 513,917,431 to
 518,787,402 ns/op (+0.95%). B/op and allocation movement is noise-level.
+
+## AMD64 2,048-site rel32 inventory
+
+The rel32 ledger now reports exact total, recorded, overflow, and per-function
+site counts. At the 1,024-site policy, 204 otherwise-admissible functions
+overflow; 77 fit within 1,280 sites, 124 within 1,536, and 177 within 2,048.
+This distribution is materially different from the earlier pre-large-frame
+experiment and supports a smaller bounded tier rather than the rejected
+4,096-site/512 KiB combination.
+
+Size and Embedded now admit 2,048 packed rel32 records. The inventory adds 4
+KiB of pointer-free tail scratch per active Size worker; `1024`, `1280`, and
+`1536` remain measured process-level comparison values through
+`WAGO_AMD64_FINALIZER_REL32_SITES`, while `256` retains the older full rollback.
+The 64 KiB loop-function work bound is unchanged.
+
+Across the exact 36-module suite, 1,280 sites reduce the image from 66,593,838
+to 66,543,139 bytes (-50,699), 1,536 reaches 66,514,299 (-79,539), and the
+accepted 2,048 tier reaches 66,478,231 (-115,607, -0.174%). Ruby contributes
+61,303 bytes, esbuild 40,050, regexmatch 9,410, SQLite 3,253, wasm3 1,275, and
+Lua 316. Retained proved-dead bytes fall from 399,026 to 285,765.
+
+Aggregate compiler-arena capacity grows by 98,304 bytes across all 36 serial
+module compiles (0.13%), while the Ruby and esbuild arena high-water marks are
+unchanged. Five serialized compile samples put Ruby at 989,135,307 ns/op with
+the 1,024-site rollback and 1,001,642,144 at 2,048 (+1.26%). Esbuild moves from
+512,254,002 to 525,493,446 ns/op (+2.58%). B/op and allocation movement remains
+noise-level, and both results stay inside the stricter 3% compile-time gate. The
+complete Size execution suite passes with zero execution allocations; its
+manifest does not expose entry points for the six changed macro modules.

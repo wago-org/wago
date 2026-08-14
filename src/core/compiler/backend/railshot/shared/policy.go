@@ -60,7 +60,7 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 		functionAlign, internalAlign, loopAlign = 0, 0, 0
 		compactNative = true
 		maxFinalizerDeletions = MaxWideOffsetMapDeletions
-		maxRel32Sites = 1024
+		maxRel32Sites = 2048
 		maxLoopCompactionBytes = 64 << 10
 	}
 	return CodegenPolicy{

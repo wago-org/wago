@@ -31,10 +31,20 @@ var loopCompactionByteLimitOverride = func() int {
 	return 0
 }()
 var finalizerRel32SiteLimitOverride = func() int {
-	if os.Getenv("WAGO_AMD64_FINALIZER_REL32_SITES") == "256" {
+	switch os.Getenv("WAGO_AMD64_FINALIZER_REL32_SITES") {
+	case "256":
 		return 256
+	case "1024":
+		return 1024
+	case "1280":
+		return 1280
+	case "1536":
+		return 1536
+	case "2048":
+		return 2048
+	default:
+		return 0
 	}
-	return 0
 }()
 var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
 
@@ -84,7 +94,7 @@ func (f *fn) finalizerRelaxIterationLimit() int {
 	return min(limit, shared.MaxWideOffsetMapDeletions)
 }
 
-const maxAMD64FinalizerRel32Sites = 1024
+const maxAMD64FinalizerRel32Sites = 2048
 const maxAMD64LoopCompactionBytes = 64 << 10
 const maxAMD64LocalRefSites = shared.MaxWideOffsetMapDeletions
 
@@ -93,7 +103,7 @@ func finalizerRel32Limit(policy CodegenPolicy) int {
 	if limit == 0 {
 		limit = 256
 	}
-	if finalizerRel32SiteLimitOverride != 0 && limit > finalizerRel32SiteLimitOverride {
+	if finalizerRel32SiteLimitOverride != 0 {
 		limit = finalizerRel32SiteLimitOverride
 	}
 	return min(limit, maxAMD64FinalizerRel32Sites)

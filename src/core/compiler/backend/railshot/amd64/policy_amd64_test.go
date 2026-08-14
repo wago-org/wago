@@ -113,8 +113,12 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 		t.Fatalf("finalizer deletion limit override = %d, want 64", got)
 	}
 	finalizerDeletionLimitOverride = 0
-	if got := finalizerRel32Limit(size); got != 1024 {
-		t.Fatalf("Size rel32 site limit = %d, want 1024", got)
+	if got := finalizerRel32Limit(size); got != 2048 {
+		t.Fatalf("Size rel32 site limit = %d, want 2048", got)
+	}
+	finalizerRel32SiteLimitOverride = 1536
+	if got := finalizerRel32Limit(size); got != 1536 {
+		t.Fatalf("rel32 experiment limit = %d, want 1536", got)
 	}
 	if got := loopCompactionLimit(size); got != 64<<10 {
 		t.Fatalf("Size loop compaction limit = %d, want 64 KiB", got)
