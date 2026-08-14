@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -15,6 +16,37 @@ func TestFuncHintsSize(t *testing.T) {
 	const want = 200
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
+
+func TestModuleEffectsTransitiveAMD64(t *testing.T) {
+	functions := wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))
+	codes := wasmtest.Vec(
+		wasmtest.Code([]byte{0x10, 0x01, 0x0b}),
+		wasmtest.Code([]byte{0x10, 0x02, 0x0b}),
+		wasmtest.Code([]byte{0x41, 0x00, 0x40, 0x00, 0x1a, 0x0b}),
+		wasmtest.Code([]byte{0x41, 0x00, 0x24, 0x00, 0x0b}),
+	)
+	raw := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, functions),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(10, codes),
+	)
+	m, err := wasm.DecodeModule(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var effects []shared.FuncEffects
+	if _, _, err = computeModuleHintsWithPolicyAndEffects(m, m.GlobalCount(), m.ImportedFuncCount(), nil, false, currentCodegenPolicy(), &effects); err != nil {
+		t.Fatal(err)
+	}
+	want := []shared.FuncEffects{shared.EffectGrowsMemory, shared.EffectGrowsMemory, shared.EffectGrowsMemory, shared.EffectWritesGlobals}
+	for i := range want {
+		if effects[i] != want[i] {
+			t.Fatalf("effects[%d] = %02b, want %02b", i, effects[i], want[i])
+		}
 	}
 }
 

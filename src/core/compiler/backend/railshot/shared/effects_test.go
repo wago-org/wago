@@ -24,3 +24,21 @@ func TestPropagateFuncEffectsMalformedGraphIsConservative(t *testing.T) {
 		t.Fatalf("malformed range effects = %02b, want all", got[0])
 	}
 }
+
+func TestFuncEffectCollectorBoundedFallback(t *testing.T) {
+	large := NewFuncEffectCollector(3, 0, 0, 2, 4)
+	large.Begin(0)
+	large.Call(0, 1)
+	if got := large.Finish()[0]; got != AllFuncEffects {
+		t.Fatalf("large graph caller effects = %02b, want all", got)
+	}
+
+	overflow := NewFuncEffectCollector(2, 0, 2, 2, 2)
+	overflow.Begin(0)
+	for range 3 {
+		overflow.Call(0, 1)
+	}
+	if got := overflow.Finish()[0]; got != AllFuncEffects {
+		t.Fatalf("edge-cap caller effects = %02b, want all", got)
+	}
+}

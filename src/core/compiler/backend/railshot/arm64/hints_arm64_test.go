@@ -53,18 +53,18 @@ func TestModuleEffectsTransitiveArm64(t *testing.T) {
 
 func TestModuleEffectsBoundedFallbackArm64(t *testing.T) {
 	large := newModuleEffectCollector(maxEffectGraphFunctions+1, 0, 0)
-	large.begin(0)
-	large.call(0, 1)
-	if got := large.finish()[0]; got != shared.AllFuncEffects {
+	large.Begin(0)
+	large.Call(0, 1)
+	if got := large.Finish()[0]; got != shared.AllFuncEffects {
 		t.Fatalf("large graph caller effects = %02b, want all", got)
 	}
 
 	overflow := newModuleEffectCollector(2, 0, maxEffectGraphCalls)
-	overflow.begin(0)
+	overflow.Begin(0)
 	for range maxEffectGraphCalls + 1 {
-		overflow.call(0, 1)
+		overflow.Call(0, 1)
 	}
-	if got := overflow.finish()[0]; got != shared.AllFuncEffects {
+	if got := overflow.Finish()[0]; got != shared.AllFuncEffects {
 		t.Fatalf("edge-cap caller effects = %02b, want all", got)
 	}
 }

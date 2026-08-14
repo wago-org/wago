@@ -1529,7 +1529,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 
 func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFuncs int, policy CodegenPolicy, effectOut *[]shared.FuncEffects) ([]funcHints, []int64, error) {
 	n := len(m.Code)
-	var effects *moduleEffectCollector
+	var effects *shared.FuncEffectCollector
 	if effectOut != nil {
 		effects = newModuleEffectCollector(n, importedFuncs, n)
 	}
@@ -1578,7 +1578,7 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	moduleEH := m.TagCount() != 0
 	localAt := 0
 	for i := range m.Code {
-		effects.begin(i)
+		effects.Begin(i)
 		nLocals := localCounts[i]
 		var h funcHints
 		if denseGlobals {
@@ -1650,7 +1650,7 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		}
 	}
 	if effectOut != nil {
-		*effectOut = effects.finish()
+		*effectOut = effects.Finish()
 	}
 	return allHints, agg, nil
 }

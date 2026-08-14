@@ -1702,6 +1702,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 			deferred = append(deferred, deferredArg{target: intArgRegs[i], root: root})
 		}
 	}
+	savedBoundsCerts, savedNextBoundsCert := f.boundsCerts, f.nextBoundsCert
+	calleeEffects := f.directCalleeEffects(localIdx)
+	preserveBoundsCerts := f.opt(optCallEffectBounds) && localIdx >= 0 && calleeEffects&shared.EffectGrowsMemory == 0
 	if p > 0 {
 		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
 	} else {
@@ -1772,6 +1775,23 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	if preserveBoundsCerts {
+		f.boundsCerts, f.nextBoundsCert = savedBoundsCerts, savedNextBoundsCert
+		kept := 0
+		for i := range f.boundsCerts {
+			cert := &f.boundsCerts[i]
+			if (cert.kind == 2 && calleeEffects&shared.EffectWritesGlobals != 0) ||
+				(cert.kind == 1 && resHint >= 0 && cert.idx == uint32(resHint)) {
+				*cert = boundsCert{}
+			}
+			if cert.kind != 0 {
+				kept++
+			}
+		}
+		for range kept {
+			f.stats.peep("bounds-cert-call-preserve")
+		}
+	}
 	// No post-call trap check: a callee trap jumps straight back to enterNative
 	// via emitTrap's handler-jump, so control never returns here with *trap set.
 
@@ -1797,6 +1817,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		}
 	}
 	return returnOffset
+}
+
+func (f *fn) directCalleeEffects(localIdx int) shared.FuncEffects {
+	if localIdx < 0 || localIdx >= len(f.calleeEffects) {
+		return shared.AllFuncEffects
+	}
+	return f.calleeEffects[localIdx]
 }
 
 // preserveIndirectCallTarget keeps an indirect native-call target live through

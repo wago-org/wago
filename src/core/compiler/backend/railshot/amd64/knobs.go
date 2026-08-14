@@ -11,6 +11,7 @@ import (
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
+	optimization.Bind("call-effect-bounds", &callEffectBoundsEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
 	optimization.Bind("store8-flags", &store8FlagsEnabled),
 	optimization.Bind("reg-merge", &regMergeEnabled),
@@ -52,6 +53,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 
 var (
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
+	optCallEffectBounds     = optimizationBindings.Option("call-effect-bounds")
 	optSTFlags              = optimizationBindings.Option("st-flags")
 	optStore8Flags          = optimizationBindings.Option("store8-flags")
 	optRegMerge             = optimizationBindings.Option("reg-merge")

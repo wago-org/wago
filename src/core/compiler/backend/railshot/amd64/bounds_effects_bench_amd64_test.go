@@ -1,6 +1,6 @@
-//go:build (linux || darwin) && arm64
+//go:build (linux || darwin) && amd64
 
-package arm64
+package amd64
 
 import (
 	"testing"
@@ -10,19 +10,20 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func BenchmarkMemoryLeafScalarABI(b *testing.B) {
-	i32 := []wasm.ValType{wasm.I32}
-	caller := []byte{0x20, 0x00, 0x41, 0x02, 0x6a, 0x21, 0x00}
+func BenchmarkBoundsCertificateAcrossSafeCalls(b *testing.B) {
+	caller := make([]byte, 0, 16*9+8)
 	for range 16 {
-		caller = append(caller, 0x20, 0x00, 0x10, 0x01, 0x1a)
+		caller = append(caller, 0x20, 0x00, 0x28, 0x02, 0x00, 0x1a, 0x10, 0x01)
 	}
-	caller = append(caller, 0x20, 0x00, 0x0b)
-	callee := []byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
+	caller = append(caller, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b)
 	raw := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(i32, i32))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(caller), wasmtest.Code(callee))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(caller), wasmtest.Code([]byte{0x0b}))),
 	)
 	m, err := wasm.DecodeModule(raw)
 	if err != nil {
@@ -33,7 +34,7 @@ func BenchmarkMemoryLeafScalarABI(b *testing.B) {
 		on   bool
 	}{{"off", false}, {"on", true}} {
 		b.Run(tc.name, func(b *testing.B) {
-			cm, compileErr := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"abi-classes": tc.on, "inline": false}})
+			cm, compileErr := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"call-effect-bounds": tc.on, "inline": false}})
 			if compileErr != nil {
 				b.Fatal(compileErr)
 			}
@@ -58,7 +59,6 @@ func BenchmarkMemoryLeafScalarABI(b *testing.B) {
 			}
 			defer coreruntime.Unmap(code)
 			args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(8)
-			args[0] = 7
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

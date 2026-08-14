@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // compileWithStats compiles m collecting per-function codegen stats and returns
@@ -22,6 +23,49 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 		t.Fatalf("stats funcs = %d, want %d", len(ms.Funcs), len(m.Code))
 	}
 	return &ms
+}
+
+func TestBoundsCertificateAcrossEffectSafeDirectCallAMD64(t *testing.T) {
+	caller := []byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x1a, 0x10, 0x01, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
+	for _, tc := range []struct {
+		name       string
+		callee     []byte
+		opts       map[string]bool
+		wantChecks int
+		wantKeep   int
+	}{
+		{name: "safe", callee: []byte{0x0b}, wantChecks: 1, wantKeep: 1},
+		{name: "disabled", callee: []byte{0x0b}, opts: map[string]bool{"call-effect-bounds": false}, wantChecks: 2},
+		{name: "grow", callee: []byte{0x41, 0x00, 0x40, 0x00, 0x1a, 0x0b}, wantChecks: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(
+					wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+					wasmtest.FuncType(nil, nil),
+				)),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(caller), wasmtest.Code(tc.callee))),
+			)
+			m, err := wasm.DecodeModule(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := map[string]bool{"inline": false}
+			for name, on := range tc.opts {
+				opts[name] = on
+			}
+			var stats ModuleStats
+			if _, err = CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: opts}); err != nil {
+				t.Fatal(err)
+			}
+			got := stats.Funcs[0]
+			if got.BoundsChecks != tc.wantChecks || got.Peephole["bounds-cert-call-preserve"] != tc.wantKeep {
+				t.Fatalf("bounds across call: checks=%d peep=%v", got.BoundsChecks, got.Peephole)
+			}
+		})
+	}
 }
 
 func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {

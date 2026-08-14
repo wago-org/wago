@@ -12,6 +12,86 @@ const (
 
 const AllFuncEffects = EffectGrowsMemory | EffectWritesGlobals
 
+// FuncEffectCollector records direct effects and a bounded CSR direct-call
+// graph during a target's existing module scan. Once either cap is exceeded it
+// conservatively classifies every call-making function while retaining exact
+// leaf effects.
+type FuncEffectCollector struct {
+	imported int
+	direct   []FuncEffects
+	starts   []uint32
+	calls    []uint32
+	current  int
+	maxCalls int
+	overflow bool
+}
+
+func NewFuncEffectCollector(functions, imported, callCap, maxFunctions, maxCalls int) *FuncEffectCollector {
+	c := &FuncEffectCollector{imported: imported, direct: make([]FuncEffects, functions), maxCalls: maxCalls}
+	if functions > maxFunctions {
+		c.overflow = true
+		return c
+	}
+	if callCap < 0 || callCap > maxCalls {
+		callCap = maxCalls
+	}
+	c.starts = make([]uint32, functions+1)
+	c.calls = make([]uint32, 0, callCap)
+	return c
+}
+
+func (c *FuncEffectCollector) Begin(caller int) {
+	if c != nil && !c.overflow && caller >= 0 && caller < len(c.direct) {
+		c.current = caller
+		c.starts[caller] = uint32(len(c.calls))
+	}
+}
+
+func (c *FuncEffectCollector) Mark(caller int, effect FuncEffects) {
+	if c != nil && caller >= 0 && caller < len(c.direct) {
+		c.direct[caller] |= effect
+	}
+}
+
+func (c *FuncEffectCollector) Call(caller int, globalTarget uint32) {
+	if c == nil || caller < 0 || caller >= len(c.direct) {
+		return
+	}
+	local := int64(globalTarget) - int64(c.imported)
+	if local < 0 || local >= int64(len(c.direct)) {
+		c.direct[caller] |= AllFuncEffects
+		return
+	}
+	if c.overflow {
+		c.direct[caller] |= AllFuncEffects
+		return
+	}
+	if len(c.calls) == c.maxCalls {
+		for i := 0; i < c.current; i++ {
+			if c.starts[i] != c.starts[i+1] {
+				c.direct[i] |= AllFuncEffects
+			}
+		}
+		c.direct[caller] |= AllFuncEffects
+		c.overflow = true
+		c.starts = nil
+		c.calls = nil
+		return
+	}
+	c.calls = append(c.calls, uint32(local))
+}
+
+func (c *FuncEffectCollector) Finish() []FuncEffects {
+	if c == nil {
+		return nil
+	}
+	if c.overflow {
+		return c.direct
+	}
+	c.starts[len(c.direct)] = uint32(len(c.calls))
+	return PropagateFuncEffects(c.direct, c.starts, c.calls)
+}
+
 // PropagateFuncEffects computes the transitive union of direct function effects
 // in direct. It reuses starts as bounded worklist storage after consuming the
 // forward CSR; calls is retained unchanged.

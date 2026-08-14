@@ -275,6 +275,33 @@ unchanged; median time moved from 248,205 to 248,999 ns/op (+0.32%). SQLite also
 kept identical B/op and allocations, with median backend time moving from 51.14
 to 50.94 ms (-0.39%).
 
+### 2026-08-14 — shared call effects and AMD64 bounds-state parity
+
+The bounded call-effect collector now lives in `railshot/shared` and both target
+scanners feed it during their existing module pass. Each backend keeps the same
+2,048-function and 4,096-edge caps, transitive recursive propagation, exact leaf
+fallback, and conservative treatment of imported, indirect, reference, AST-only,
+and custom-instruction calls. Shared tests own propagation and cap behavior;
+target tests prove each scanner's transitive `memory.grow` and `global.set`
+classification.
+
+AMD64 direct register-ABI calls now snapshot the fixed eight-entry bounds
+certificate set and restore it only when the local callee transitively cannot
+grow memory. A fused result drops the overwritten local's certificate, while a
+callee that may write globals drops every global-derived certificate and retains
+safe local-derived entries. `WAGO_AMD64_NO_CALL_EFFECT_BOUNDS=1` and the shared
+immutable `call-effect-bounds` option retain blanket call invalidation.
+
+Native Linux/AMD64 measurements on a Ryzen 7 7800X3D record 3,076 preserved
+certificates across 19 corpus modules and 8,736 fewer native bytes. No measured
+module grows. A serialized seven-sample benchmark with sixteen safe calls
+measured 23.14 ns/op enabled versus 24.01 ns/op disabled (-3.6%), with zero B/op
+and allocations. Reverse-order corpus checks were neutral to favorable:
+raytrace measured 386.68 us/op versus 389.84 us/op (-0.81%), and JSON serialize
+measured 23.68 us/op versus 23.91 us/op (-0.96%). `many_funcs` compile time,
+B/op, and allocations were flat; SQLite added approximately 3 KiB/op (+0.05%)
+and one median allocation while backend time moved from 82.18 to 82.06 ms.
+
 ---
 
 # 1. North-star architecture

@@ -234,12 +234,15 @@ func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint3
 }
 
 func scanFuncBodyIntoMemory64WithModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
-	return scanFuncBodyIntoMemory64WithModuleCalls(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+	return scanFuncBodyIntoMemory64WithModuleCalls(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0, nil, -1)
 }
 
-func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int, effects *shared.FuncEffectCollector, callerLocal int) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoMemory64WithModuleCalls(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, moduleHints, importedFuncs)
+		return scanBodyBytesIntoMemory64WithModuleCalls(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, moduleHints, importedFuncs, effects, callerLocal)
+	}
+	if effects != nil {
+		effects.Mark(callerLocal, shared.AllFuncEffects)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers), nil
 }
@@ -580,13 +583,13 @@ func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx u
 }
 
 func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
-	return scanBodyBytesIntoMemory64WithModuleCalls(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+	return scanBodyBytesIntoMemory64WithModuleCalls(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0, nil, -1)
 }
 
-func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int, effects *shared.FuncEffectCollector, callerLocal int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs, effects: effects, callerLocal: callerLocal}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -618,6 +621,8 @@ type byteBodyScanner struct {
 	gcStructHelpers bool
 	moduleHints     []funcHints
 	importedFuncs   int
+	effects         *shared.FuncEffectCollector
+	callerLocal     int
 }
 
 func (s *byteBodyScanner) noteNeverReadLocals() {
@@ -740,6 +745,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.callsSelf = true
 			}
 			s.noteDirectCallRef(imm.Index, op == 0x10)
+			if s.effects != nil {
+				s.effects.Call(s.callerLocal, imm.Index)
+			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -748,6 +756,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteStackArenaOp(op, &imm)
 			s.h.hasCall, subHasCall = true, true
+			if s.effects != nil {
+				s.effects.Mark(s.callerLocal, shared.AllFuncEffects)
+			}
 			if op == 0x13 || op == 0x15 {
 				s.h.hasTailCall = true
 			}
@@ -788,6 +799,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0x24 && s.effects != nil {
+				s.effects.Mark(s.callerLocal, shared.EffectWritesGlobals)
+			}
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
@@ -809,6 +823,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.moduleEH = true
+			}
+			if op == 0x40 && s.effects != nil {
+				s.effects.Mark(s.callerLocal, shared.EffectGrowsMemory)
 			}
 			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) {
 				s.h.hasCall, subHasCall = true, true
