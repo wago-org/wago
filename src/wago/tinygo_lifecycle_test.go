@@ -15,8 +15,7 @@ import (
 // operations use this value shape for deferred lease release.
 func TestTinyGoOperationLeaseSurvivesCollection(t *testing.T) {
 	for i := 0; i < 100; i++ {
-		rt := NewRuntime()
-		_, operation, err := rt.beginOperationGeneration("test", false)
+		operation, err := rootlessRuntimeOperation()
 		if err != nil {
 			t.Errorf("begin operation %d: %v", i, err)
 			return
@@ -24,6 +23,38 @@ func TestTinyGoOperationLeaseSurvivesCollection(t *testing.T) {
 		gruntime.GC()
 		operation.end()
 	}
+}
+
+//go:noinline
+func rootlessRuntimeOperation() (runtimeOperation, error) {
+	rt := NewRuntime()
+	_, operation, err := rt.beginOperationGeneration("test", false)
+	return operation, err
+}
+
+// TestTinyGoRuntimeCloseTaskSurvivesCollection isolates the queued task as the
+// only owner of the Runtime shutdown graph before the TinyGo scheduler runs it.
+func TestTinyGoRuntimeCloseTaskSurvivesCollection(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		closed, err := rootlessRuntimeClose()
+		if err != nil {
+			t.Errorf("Close %d: %v", i, err)
+			return
+		}
+		gruntime.GC()
+		gruntime.Gosched()
+		<-closed
+	}
+}
+
+//go:noinline
+func rootlessRuntimeClose() (<-chan struct{}, error) {
+	rt := NewRuntime()
+	rt.storeHooks(&hookRegistry{onRuntimeClose: []func(RuntimeCloseEvent){func(RuntimeCloseEvent) {}}})
+	if err := rt.Close(); err != nil {
+		return nil, err
+	}
+	return rt.Closed(), nil
 }
 
 // TestTinyGoRuntimeInstantiateCloseStability is the smallest public lifecycle
