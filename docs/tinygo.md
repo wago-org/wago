@@ -36,10 +36,10 @@ and host-call resume thunks with the repository's AArch64 encoder. The standard
 tags select the right implementation automatically.
 
 Prepared integer exports have their own TinyGo direct-entry thunks on
-linux/amd64 and linux/darwin arm64. They accept the linear-memory base plus up
-to four integer slots in the platform ABI, preserve the callee-saved Go context,
-switch to the foreign stack, and enter the JIT function without the general
-WasmWrapper marshalling path.
+linux/amd64, linux/arm64, and darwin/arm64. They accept the linear-memory base
+plus up to four integer slots in the platform ABI, preserve the callee-saved Go
+context, switch to the foreign stack, and enter the JIT function without the
+general WasmWrapper marshalling path.
 
 ## Building
 
