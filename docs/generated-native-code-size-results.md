@@ -112,6 +112,42 @@ the conservative first pass excludes its branch-bearing small-frame functions;
 the bounded exact rel32 inventory is the next prerequisite for those bytes and
 for short-branch relaxation.
 
+### Immutable AMD64 policy checkpoint
+
+AMD64 now resolves optimization selections once and stores the immutable policy
+on module scratch and function state. Hot decisions use pre-resolved option
+tokens. Per-compilation overrides no longer install package globals or hold the
+same-architecture compile lease. The public default remains Balanced, and the
+new Objective field accepts Speed, Balanced, Size, and Embedded while preserving
+the existing layout until AMD64's objective-aware alignment change lands.
+
+Tests include eight concurrent compilations with opposing register-ABI policies,
+process-default ownership checks, invalid-objective rejection, native race mode,
+and the targeted runtime/fuzz corpus with compaction both disabled and enabled.
+A detached `06f5cb61` worktree supplied the pre-policy comparison. Six 500 ms
+serial samples used alternating worktree order:
+
+| Workload | Before median | Immutable policy | Change | Code / allocations |
+| --- | ---: | ---: | ---: | ---: |
+| `many_funcs` | 452,250 ns/op | 453,851 ns/op | +0.35% | 9,704 B; 683 -> 682 allocs/op |
+| `json-as` | 1,916,112 ns/op | 1,967,082 ns/op | +2.66% | 66,131 B; 2,147 -> 2,146 allocs/op |
+
+The serial cost remains inside the proposed 3% Balanced gate. B/op also fell by
+roughly 25 bytes per compile; the exact amount varies slightly with benchmark
+accounting.
+
+The architectural benefit appears under concurrent independent-module load.
+Three one-second samples at `-cpu=8` produced:
+
+| Workload | Before median | Immutable policy | Throughput improvement |
+| --- | ---: | ---: | ---: |
+| `many_funcs` | 392,278 ns/op | 151,728 ns/op | 2.59x |
+| `json-as` | 1,431,125 ns/op | 522,041 ns/op | 2.74x |
+
+This measures eight independent module compilations, each retaining its serial
+function compiler. It isolates removal of the package-global policy lease from
+the separate per-module function-worker path.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
