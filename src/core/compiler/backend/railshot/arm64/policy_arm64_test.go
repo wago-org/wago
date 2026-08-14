@@ -84,9 +84,11 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 
 func TestNativeCompactionObjectiveAndRollbackArm64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
+	beforeLegacyLimit := legacyFinalizerDeletionLimit
 	nativeCompactionEnabled, nativeCompactionDisabled = false, false
 	t.Cleanup(func() {
 		nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled
+		legacyFinalizerDeletionLimit = beforeLegacyLimit
 	})
 
 	selection := currentCodegenPolicy().Selection
@@ -98,6 +100,14 @@ func TestNativeCompactionObjectiveAndRollbackArm64(t *testing.T) {
 	if !size.compactNative() {
 		t.Fatal("Size did not enable native compaction")
 	}
+	if got := size.finalizerDeletionLimit(); got != maxFinalizerDeletions {
+		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, maxFinalizerDeletions)
+	}
+	legacyFinalizerDeletionLimit = true
+	if got := size.finalizerDeletionLimit(); got != 8 {
+		t.Fatalf("legacy finalizer deletion limit = %d, want 8", got)
+	}
+	legacyFinalizerDeletionLimit = false
 
 	nativeCompactionEnabled = true
 	if !balanced.compactNative() {

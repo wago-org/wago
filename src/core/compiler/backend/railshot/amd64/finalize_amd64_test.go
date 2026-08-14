@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	amd64enc "github.com/wago-org/wago/src/core/encoder/amd64"
 )
@@ -191,14 +192,20 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 	subSite := a.Len() + 3
 	a.SubRsp(24)
 	sc := &scratch{}
-	for range 10 {
+	for range 20 {
 		over := a.Len()
 		a.B = append(a.B, 0x90, 0x90, 0x90, 0x90, 0x0f, 0x1f, 0x44, 0x00, 0x00)
 		sc.brFoldSites = append(sc.brFoldSites, over)
 	}
 	addSite := a.Len() + 3
 	a.AddRsp(24)
-	f := fn{a: a, sc: sc, subRspAt: subSite, addRspAt: addSite}
+	f := fn{
+		a:        a,
+		sc:       sc,
+		policy:   shared.CodegenPolicyForObjective(optimization.Selection{}, shared.OptimizeSize),
+		subRspAt: subSite,
+		addRspAt: addSite,
+	}
 	oldLen := len(a.B)
 	if _, err := f.finalizeNativeCode(0); err != nil {
 		t.Fatal(err)

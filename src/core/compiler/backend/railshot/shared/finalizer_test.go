@@ -109,18 +109,19 @@ func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
 
 func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
 	for _, test := range []struct {
-		objective   OptimizationObjective
-		wantAlign   uint8
-		wantCompact bool
+		objective     OptimizationObjective
+		wantAlign     uint8
+		wantCompact   bool
+		wantDeletions uint8
 	}{
-		{OptimizeSpeed, 4, false},
-		{OptimizeBalanced, 4, false},
-		{OptimizeSize, 0, true},
-		{OptimizeEmbedded, 0, true},
+		{OptimizeSpeed, 4, false, 8},
+		{OptimizeBalanced, 4, false, 8},
+		{OptimizeSize, 0, true, MaxOffsetMapDeletions},
+		{OptimizeEmbedded, 0, true, MaxOffsetMapDeletions},
 	} {
 		policy := CodegenPolicyForObjective(optimization.Selection{}, test.objective)
-		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign || policy.CompactNative != test.wantCompact {
-			t.Errorf("objective %d policy = %#v, want alignment log2 %d and compact %v", test.objective, policy, test.wantAlign, test.wantCompact)
+		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign || policy.CompactNative != test.wantCompact || policy.MaxFinalizerDeletions != test.wantDeletions {
+			t.Errorf("objective %d policy = %#v, want alignment log2 %d, compact %v, deletions %d", test.objective, policy, test.wantAlign, test.wantCompact, test.wantDeletions)
 		}
 	}
 }

@@ -24,12 +24,24 @@ var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
 var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
+var legacyFinalizerDeletionLimit = os.Getenv("WAGO_FINALIZER_DELETIONS") == "8"
 
 func compactNativePolicy(policy CodegenPolicy) bool {
 	return !nativeCompactionDisabled && (nativeCompactionEnabled || policy.CompactNative)
 }
 
 func (f *fn) compactNative() bool { return compactNativePolicy(f.policy) }
+
+func (f *fn) finalizerDeletionLimit() int {
+	limit := int(f.policy.MaxFinalizerDeletions)
+	if limit == 0 {
+		limit = 8
+	}
+	if legacyFinalizerDeletionLimit && limit > 8 {
+		limit = 8
+	}
+	return min(limit, shared.MaxOffsetMapDeletions)
+}
 
 const maxAMD64FinalizerRel32Sites = 256
 const maxAMD64LoopCompactionBytes = 16 << 10
@@ -127,7 +139,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	}
 
 	var storage [shared.MaxOffsetMapDeletions]shared.DeletedRange
-	deletions := storage[:0]
+	deletions := storage[:0:f.finalizerDeletionLimit()]
 	frameSites := len(f.sc.tailFrameSites) + 2
 	if frameSites > cap(deletions) {
 		return identity()

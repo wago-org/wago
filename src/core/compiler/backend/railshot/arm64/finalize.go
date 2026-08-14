@@ -22,6 +22,7 @@ var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
+var legacyFinalizerDeletionLimit = os.Getenv("WAGO_FINALIZER_DELETIONS") == "8"
 
 const maxFinalizerDeletions = shared.MaxOffsetMapDeletions
 const maxLoopCompactionBytes = 16 << 10
@@ -162,6 +163,17 @@ func (f *fn) compactNative() bool {
 	return !nativeCompactionDisabled && (nativeCompactionEnabled || f.policy.CompactNative)
 }
 
+func (f *fn) finalizerDeletionLimit() int {
+	limit := int(f.policy.MaxFinalizerDeletions)
+	if limit == 0 {
+		limit = 8
+	}
+	if legacyFinalizerDeletionLimit && limit > 8 {
+		limit = 8
+	}
+	return min(limit, maxFinalizerDeletions)
+}
+
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
@@ -176,7 +188,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	frameDeleted := 0
 	if f.compactNative() {
 		var storage [maxFinalizerDeletions]shared.DeletedRange
-		deletions, deletedFrames, ok := f.buildCompactionPlan(storage[:0])
+		deletions, deletedFrames, ok := f.buildCompactionPlan(storage[:0:f.finalizerDeletionLimit()])
 		if ok {
 			offsets, err := shared.NewOffsetMap(oldLen, deletions)
 			if err != nil {

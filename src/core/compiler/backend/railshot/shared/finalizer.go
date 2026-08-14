@@ -73,10 +73,10 @@ type OffsetMap struct {
 	deletions [MaxOffsetMapDeletions]DeletedRange
 }
 
-// MaxOffsetMapDeletions is the fixed per-function deletion budget. A backend
-// that discovers more sites leaves that function uncompressed; correctness
-// never depends on maximizing relaxation.
-const MaxOffsetMapDeletions = 8
+// MaxOffsetMapDeletions is the fixed per-function deletion budget. Backends may
+// retain later candidates in their maximal-safe form; correctness never depends
+// on maximizing relaxation.
+const MaxOffsetMapDeletions = 16
 
 func (m *OffsetMap) Map(off int) (int, bool) {
 	if off < 0 || uint64(off) > uint64(m.oldLen) {

@@ -173,16 +173,19 @@ func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
 
 	sc := &scratch{}
 	f := fn{sc: sc}
-	for off := 40; off >= 0; off -= 4 {
+	for off := 4 * (maxFinalizerDeletions + 3); off >= 0; off -= 4 {
 		f.recordBranchNext(off)
 	}
 	got := append([]int(nil), sc.branchNextSites[:sc.branchNextN]...)
 	slices.Sort(got)
-	want := []int{0, 4, 8, 12, 16, 20, 24, 28}
+	want := make([]int, maxFinalizerDeletions)
+	for i := range want {
+		want[i] = i * 4
+	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("bounded branch candidates = %v, want earliest %v", got, want)
 	}
-	for off := 0; off <= 32; off += 4 {
+	for off := 0; off <= 4*maxFinalizerDeletions; off += 4 {
 		f.recordDeadHole(off)
 	}
 	if sc.deadHoleN != maxFinalizerDeletions || !sc.deadHoleOverflow {

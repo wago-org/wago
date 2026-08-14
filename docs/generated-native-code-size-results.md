@@ -1449,6 +1449,31 @@ loop size bound, partial deletion, all-or-nothing rollback, and serial/parallel
 identity; compacted corpus execution on the AMD64 host exercises the admitted
 loop bodies.
 
+## Wider bounded offset maps
+
+Size and Embedded now permit sixteen deleted ranges per function instead of
+eight. Speed and Balanced retain the smaller bound, and
+`WAGO_FINALIZER_DELETIONS=8` is the exact Size/Embedded rollback oracle. The
+limit remains a fixed policy field backed by fixed scratch arrays: widening it
+does not introduce per-function allocation or make correctness depend on
+maximal compaction.
+
+On ARM64, the 36-module Size image falls from 77,047,372 bytes at the old bound
+to 77,034,860 bytes (-12,512). Five serialized samples put Ruby at 571,170,583
+to 573,629,458 ns/op (+0.43%) and esbuild at 306,424,541 to 307,646,917 ns/op
+(+0.40%); median allocation volume and counts are unchanged.
+
+On AMD64, the same suite falls from 69,882,897 to 69,485,720 bytes (-397,177,
+-0.57%). Five serialized samples put Ruby at 846,573,579 to 863,865,763 ns/op
+(+2.04%) and esbuild at 479,176,563 to 480,556,523 ns/op (+0.29%). Ruby median
+B/op moves by +256 with four additional allocations; esbuild moves by -600
+B/op and -11 allocations. Both remain inside the proposed Size compile-time
+gate. The much larger AMD64 reduction confirms that folded five-byte branch
+holes, rather than offset-map bookkeeping itself, dominate this capacity seam.
+
+Both backends pass policy and capacity-bound tests, race suites, and compacted
+native corpus execution with finalizer validation enabled.
+
 ### Commands
 
 ```sh
