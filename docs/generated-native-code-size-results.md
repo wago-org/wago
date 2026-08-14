@@ -264,23 +264,40 @@ execution/fuzz corpus pass on hub.
 The additional `json-as` reduction is 448 bytes. `many_funcs` has no admitted
 shortenable branch in this phase.
 
-Relocation records were narrowed from machine-sized offsets to 32-bit function
-offsets after the first measurement exposed padding in the record itself. Six
-alternating 500 ms compile samples after that correction produced:
+Relocation records are now four-byte packed site offsets plus kind/choice bits.
+The old target is read from the exact recorded displacement field before
+compaction, then the final displacement is written before the left-to-right
+copy. This is not general machine-code decoding: only encoder-recorded fields
+are read. The 512 MiB packed-offset limit has an identity fallback.
+
+Serial compilation stores the bounded recorder in the uncommitted end of the
+writable executable tail and caps code emission before that region. Parallel
+workers use their uncommitted arena tails. Two inline records fit existing
+`Asm` padding for small/fallback cases. No recorder heap allocation remains on
+the measured serial path.
+
+An in-package benchmark now holds the decoded module constant and toggles only
+compaction. Three alternating five-second samples produced:
 
 | Workload | Compaction off median | Compaction on median | Change | Allocation effect |
 | --- | ---: | ---: | ---: | --- |
-| `many_funcs` | 425,418 ns/op | 434,693 ns/op | +2.18% | 682 -> 683 allocs/op; about +16 B/op |
-| `json-as` | 1,903,284 ns/op | 1,965,320 ns/op | +3.26% | 2,146 -> 2,147 allocs/op; about +3.1 KiB/op |
+| `many_funcs` | 318,645 ns/op | 326,746 ns/op | +2.54% | 147,210 B/op / 340 allocs/op, unchanged |
+| `json-as` | 1,208,523 ns/op | 1,250,022 ns/op | +3.43% | 291,659 B/op / 1,858 allocs/op, unchanged |
 
-For larger modules, one bounded recorder allocation is now reserved before
-function lowering instead of growing geometrically. Small-function modules keep
-lazy storage, avoiding a fixed reservation when they have no branch sites. This
-reduced `json-as` from nine added allocations and about 6.1 KiB/op to one added
-allocation and about 3.1 KiB/op. The macro compile result still exceeds the
-proposed 3% Balanced gate, so the feature remains behind `WAGO_COMPACT=1`; a
-more compact site representation and cheaper relaxation solver are required
-before default enablement.
+The solver itself no longer builds a temporary offset map per candidate, and
+functions containing loops, jump-table data, or opaque plugin output skip the
+recorder when that exclusion is known before emission. Jump-table admission is
+exactly the backend's existing five-label threshold: a broader early exclusion
+briefly broke the small linear `br_table` fuzz fixture 1777 by omitting required
+branch records; the targeted regression, complete fuzz corpus, and compaction-
+off oracle now pass.
+
+Parallel p8 compilation measured about +1.23% and roughly 8 KiB less B/op due to
+the smaller worker images, although concurrency makes allocation counts noisy.
+The serial macro result still exceeds the proposed 3% Balanced gate, so AMD64
+compaction remains behind `WAGO_COMPACT=1`. A profile pair measured +2.78%,
+confirming the margin is noisy, but the longer alternating median is the release
+gate.
 
 Five alternating one-second execution samples produced these medians:
 
