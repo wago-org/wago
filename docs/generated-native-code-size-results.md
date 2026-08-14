@@ -412,6 +412,40 @@ themselves: the estimator must also account for the removed call sequence,
 caller frame changes, and any dead standalone body/adapter before re-admitting a
 Size inline.
 
+#### First proved Size inline class
+
+The existing module summary scan now saturates a per-target direct-call count in
+unused `funcHints` alignment bytes; the summary remains exactly 200 bytes on
+both architectures and no body is rescanned. Size and Embedded re-admit only a
+single-use, straight-line integer leaf whose encoded body is at most seven
+bytes, has at most one parameter and result, has no declared locals, and touches
+neither memory nor globals. This is a measured proof class, not a replacement
+fixed threshold for general inlining.
+
+Complete-corpus results improved without introducing an ARM64 regression:
+
+| Architecture | Conservative Size floor | With proved tiny inlines | Additional saving | Versus Balanced |
+| --- | ---: | ---: | ---: | --- |
+| ARM64 | 90,335,008 | 90,332,896 | -2,112 bytes | 64 smaller, 0 larger |
+| AMD64 | 80,460,177 | 80,455,899 | -4,278 bytes | 53 smaller, 1 larger, 10 unchanged |
+
+`many_funcs` now measures 9,712 bytes on ARM64 versus 9,720 Balanced, and 7,802
+bytes on AMD64 versus 7,817 Balanced. The sole remaining AMD64 Size regression
+is `isa_call`, 1,943 versus 1,928 bytes: its actual win comes from a six-byte,
+two-parameter leaf used at 16 sites, deliberately outside the first proof class.
+
+Three serialized native-AMD64 compile samples compared the call-count scan with
+detached pre-change commit `8a4d854`:
+
+| Workload | Pre-change median | Call-count median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 306,790 ns/op | 309,313 ns/op | +0.82% | 147,209 B/op / 340 allocs/op, unchanged |
+| `json-as` | 1,214,581 ns/op | 1,217,749 ns/op | +0.26% | 291,659 B/op / 1,858 allocs/op, unchanged |
+
+Both are inside the compile-time gate. The next estimator expansion should cost
+multi-site parameter binding and caller-frame effects directly; simply raising
+the body ceiling is contradicted by the earlier Ruby and esbuild measurements.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
