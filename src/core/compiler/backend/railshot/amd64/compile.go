@@ -1894,9 +1894,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	if nativeCompactionEnabled {
-		if hints.hasLoop || hints.hasBrTable || len(custom) != 0 {
-			// These are the same explicit fragment classes rejected by the
-			// current finalizer. Avoid recording sites only to take identity.
+		if hints.hasLoop || len(custom) != 0 {
+			// These are finalizer exclusions known before emission. Avoid
+			// recording sites only to take identity.
 			sc.asm.ResetRel32Recorder(0)
 		} else if !sc.rel32TailBound && sc.asm.BindRel32Tail(maxAMD64FinalizerRel32Sites) {
 			sc.rel32TailBound = true
