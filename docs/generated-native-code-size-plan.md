@@ -1451,3 +1451,75 @@ Ruby contributes 1,242 bytes, scalar BLAKE 378, SIMD BLAKE 258, and nbody 141;
 no module grows. Five-sample affected-workload execution medians range from
 -0.71% to +0.20%, with zero allocations. The native AMD64 backend, race suite,
 complete Size execution corpus, and exact corpus ledger pass.
+
+## Campaign closure audit
+
+The desktop generated-native-code campaign is complete. Every P0-P2
+workstream has either an accepted bounded implementation or a measured
+rejection recorded in this plan and the companion results ledger. The final
+36-module objective comparison is:
+
+| Architecture | Balanced native bytes | Size native bytes | Size reduction |
+| --- | ---: | ---: | ---: |
+| ARM64 | 81,735,440 | 72,198,152 | 9,537,288 (11.67%) |
+| AMD64 | 73,132,340 | 63,910,167 | 9,222,173 (12.61%) |
+
+Representative final Size reductions from current Balanced are:
+
+| Architecture | `many_funcs` | `json-as` | Ruby | esbuild |
+| --- | ---: | ---: | ---: | ---: |
+| ARM64 | 74.65% | 14.84% | 13.51% | 9.32% |
+| AMD64 | 56.61% | 12.13% | 15.30% | 9.24% |
+
+The initial 10-20% overall Size goal is met. The deliberately aspirational 15%
+per-macro goal is met by AMD64 Ruby but not uniformly by ARM64 Ruby or esbuild;
+it remains a goalpost rather than a correctness or completion gate, as stated
+at the start of the plan.
+
+### Accepted foundations and transformations
+
+- Exact byte, encoding, mapping-page, arena, fallback, adapter, trap, inline,
+  pool, and fragment attribution with structured and human-readable output.
+- Immutable per-compilation Speed/Balanced/Size/Embedded policy and public
+  objective selection.
+- Bounded identity finalization, monotonic offset maps, metadata remapping,
+  in-place compaction, explicit opaque/data fragments, rollback oracles, and
+  objective-owned physical compaction on both architectures.
+- Frame-reservation compaction, branch-hole/NOP deletion, branch-to-next
+  removal, bounded short-branch relaxation, adaptive alignment, frame/header
+  elision, compact i32 frames where proved, GC-frame remapping, and shrink-only
+  AMD64 local-home packing.
+- Bounded value provenance, costed tree/cover/immediate/branch selection,
+  native-byte-aware single-use inlining with dead-body removal, the fixed
+  24-operation machine-window seam, and its profitable ARM64 swap-chain rule.
+- Objective-aware and compact duplicate-target `br_table` forms, allocation-free
+  AMD64 function pools, the measured module literal island, right-sized code
+  arenas, and explicit executable mapping accounting.
+- Module-shared adapter tails and complete adapters, compact large AMD64 adapter
+  thunks, function- and module-shared trap bodies, and bounded host-boundary
+  trap seeding.
+
+### Measured closure of remaining desktop opportunities
+
+- ARM64 retains only 3,472 proved-dead reservation bytes in the final corpus;
+  the wider loop scan was rejected at the compile-time gate.
+- AMD64 retains 285,275 proved-dead bytes. They are wholly behind the measured
+  loop-size/rel32 inventory bounds; larger coupled inventories have a poor
+  compiler-scratch and compile-time crossover and remain rejected.
+- Wider trap catalogs produce zero bytes. AMD64 local provenance produces real
+  facts but zero bytes. Broader caller-saved/low-register pinning grows the
+  corpus. These prototypes were removed rather than becoming latent knobs.
+- A general region CSE table, broad whole-module hot/cold reorderer, and new
+  GC/EH helper dispatch were not admitted to production: the accepted local
+  covers, literal/adapter/trap islands, and GC resolver already capture the
+  measured repeated shapes, while the ledger provides no exact positive
+  crossover that would justify their extra retained compiler state or hot-path
+  branch. They remain research ideas, not unfinished production switches.
+
+### Separate product tracks
+
+The compact fixed-import Embedded ABI/AOT resource manifest and serialized
+`.wago` section/delta redesign remain separately versioned product and artifact
+work. The plan intentionally excludes their bytes from generated native-code
+results; completing this desktop campaign neither weakens the general dynamic
+runtime ABI nor reports serialized metadata savings as machine-code savings.

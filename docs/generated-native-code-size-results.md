@@ -2659,3 +2659,26 @@ The AMD64 encoder/backend suites, backend race suite, compacted runtime
 corpus/fuzz suite, and complete Size execution suite pass. Focused tests cover
 JECXZ/JRCXZ and rel8 boundary encodings, exact rollback behavior, and both
 dynamic bulk-memory selections.
+
+## Final desktop campaign snapshot
+
+Final exact 36-module totals, after enabling shrink-only AMD64 local-slot
+packing, are:
+
+| Architecture | Balanced | Size | Difference |
+| --- | ---: | ---: | ---: |
+| ARM64 | 81,735,440 | 72,198,152 | -9,537,288 (-11.67%) |
+| AMD64 | 73,132,340 | 63,910,167 | -9,222,173 (-12.61%) |
+
+Final retained proved-dead reservations are 3,472 bytes on ARM64 and 285,275
+bytes on AMD64. ARM64's remainder is behind the rejected larger loop scan.
+AMD64's remainder is fully attributed to the coupled loop-size and rel32
+inventory bounds whose larger variants were measured and rejected for their
+scratch/compile crossover. No unattributed physical-compaction opportunity
+remains in either ledger.
+
+The native-code campaign therefore closes with all enabled transforms showing
+corpus-level reduction and all accepted policies inside their compile-time,
+allocation, memory, and affected-runtime gates. Embedded ABI/AOT work and
+serialized `.wago` compaction remain separate metrics and separately versioned
+product tracks.
