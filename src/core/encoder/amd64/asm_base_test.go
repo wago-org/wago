@@ -28,6 +28,9 @@ func TestScalarAndFrameEncodings(t *testing.T) {
 		{"store rsp64", func(a *Asm) { a.StoreRsp64(12, R8) }, []byte{0x4c, 0x89, 0x44, 0x24, 12}},
 		{"load rsp64", func(a *Asm) { a.LoadRsp64(R9, 16) }, []byte{0x4c, 0x8b, 0x4c, 0x24, 16}},
 		{"mov from rsp", func(a *Asm) { a.MovFromRsp(RAX) }, []byte{0x48, 0x89, 0xe0}},
+		{"jecxz", func(a *Asm) { a.JcxzPlaceholder(false) }, []byte{0x67, 0xe3, 0x00}},
+		{"jrcxz", func(a *Asm) { a.JcxzPlaceholder(true) }, []byte{0xe3, 0x00}},
+		{"jmp rel8", func(a *Asm) { a.JmpRel8Placeholder() }, []byte{0xeb, 0x00}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -37,6 +40,20 @@ func TestScalarAndFrameEncodings(t *testing.T) {
 				t.Fatalf("encoding = %x, want %x", a.B, tc.want)
 			}
 		})
+	}
+}
+
+func TestPatchRel8(t *testing.T) {
+	var a Asm
+	at := a.JcxzPlaceholder(false)
+	for range 127 {
+		a.emit(0x90)
+	}
+	if !a.PatchRel8(at, len(a.B)) || a.B[at] != 127 {
+		t.Fatalf("forward rel8 = %d", int8(a.B[at]))
+	}
+	if a.PatchRel8(at, len(a.B)+1) {
+		t.Fatal("out-of-range rel8 accepted")
 	}
 }
 

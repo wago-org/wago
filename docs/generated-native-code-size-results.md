@@ -2602,3 +2602,35 @@ The full repository suite, ARM64 encoder/backend suites, backend race suite,
 compacted runtime corpus/fuzz suite, and complete Size execution suite pass.
 Focused encoding tests cover 32/64-bit zero and nonzero senses plus the exact
 four-byte rollback delta.
+
+## AMD64 Size-only bounded ECX zero tails
+
+AMD64 has no general `CBZ` equivalent. Two compiler-authored 32-bit ECX guards,
+at the scalar tails of dynamic `memory.copy` and `memory.fill`, do have bounded
+targets and dead flags. Size and Embedded now emit `JECXZ rel8` there and close
+the adjacent byte loop with a checked short `JNE`. The fill skip is also a fixed
+short jump, leaving no finalizer-relaxable site inside the already-patched rel8
+interval. Far targets, non-ECX registers, Speed, and Balanced retain
+`TEST+Jcc`. `WAGO_AMD64_NO_DIRECT_JECXZ=1` is byte-for-byte identical to the
+previous checkpoint.
+
+The exact 36-module AMD64 Size suite selects 3,152 sites and falls from
+66,082,735 to 66,055,508 native bytes (-27,227, -0.0412%). Esbuild contributes
+about 23.8 KiB, regexmatch 3.2 KiB, and Lua 165 bytes; the remaining net change
+comes from smaller modules. The reduction exceeds the local one-byte encoding
+delta because removing rel32 sites also lets some formerly inventory-bound
+functions enter the existing bounded finalizer. A few tiny modules trade which
+branches receive the fixed deletion budget and grow by up to 24 bytes, while the
+corpus total remains decisively smaller.
+
+Five serialized compile samples move regexmatch from a 67,851,890 ns/op rollback
+median to 66,661,620 (-1.75%) and esbuild from 555,677,966 to 543,756,628
+(-2.15%). Allocation movement is noise-level. Ten one-second Size samples move
+fannkuch from 1,055,863 to 1,041,062 ns/op (-1.40%). Five samples move json-as
+serialization from 22,397 to 22,411 ns/op (+0.06%) and deserialization from
+40,488 to 40,301 (-0.46%); every execution sample remains allocation-free.
+
+The AMD64 encoder/backend suites, backend race suite, compacted runtime
+corpus/fuzz suite, and complete Size execution suite pass. Focused tests cover
+JECXZ/JRCXZ and rel8 boundary encodings, exact rollback behavior, and both
+dynamic bulk-memory selections.

@@ -53,6 +53,40 @@ const offTrapStackReentry = 24
 // chunk loops beat `rep movs/stos` startup latency.
 const smallBulkMax = 96
 
+type rcxZeroSite struct {
+	off     int
+	compact bool
+}
+
+func (f *fn) rcxZero32Placeholder() rcxZeroSite {
+	if directJecxzEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		f.stats.peep("direct-jecxz")
+		return rcxZeroSite{off: f.a.JcxzPlaceholder(false), compact: true}
+	}
+	f.a.TestSelf(RCX, false)
+	return rcxZeroSite{off: f.a.JccPlaceholder(condE)}
+}
+
+func (f *fn) closeRCXZero32Loop(site rcxZeroSite, loop int) {
+	if site.compact {
+		if !f.a.JccRel8(condNE, loop) {
+			panic("amd64: bounded byte-tail JNE exceeded rel8 range")
+		}
+		return
+	}
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), loop)
+}
+
+func (f *fn) patchRCXZero32(site rcxZeroSite) {
+	if site.compact {
+		if !f.a.PatchRel8(site.off, f.a.Len()) {
+			panic("amd64: bounded JECXZ target exceeded rel8 range")
+		}
+		return
+	}
+	f.a.PatchRel32(site.off, f.a.Len())
+}
+
 // offTrapCellPtr is the basedata slot holding the address of the trap cell
 // (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
 // part of any call ABI: only the cold trap path reads it, so calls and returns
@@ -1164,14 +1198,13 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.AluRI(5, RCX, 8, false)
 	f.a.JmpBack(backTail8)
 	f.a.PatchRel32(backTail1, f.a.Len())
-	f.a.TestSelf(RCX, false)
-	backDone := f.a.JccPlaceholder(condE)
+	backDone := f.rcxZero32Placeholder()
 	backByte := f.a.Len()
 	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
 	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
 	f.unitAdjust(RCX, false, false)
-	f.a.PatchRel32(f.a.JccPlaceholder(condNE), backByte)
-	f.a.PatchRel32(backDone, f.a.Len())
+	f.closeRCXZero32Loop(backDone, backByte)
+	f.patchRCXZero32(backDone)
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(fwd, f.a.Len())
 	f.a.PatchRel32(fwdDisjoint, f.a.Len())
@@ -1230,17 +1263,27 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.AluRI(5, RCX, 8, false)
 	f.a.JmpBack(fill8)
 	f.a.PatchRel32(f8done, f.a.Len())
-	f.a.TestSelf(RCX, false)
-	fillDone := f.a.JccPlaceholder(condE)
+	fillDone := f.rcxZero32Placeholder()
 	fill1 := f.a.Len()
 	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
 	f.unitAdjust(RCX, false, false)
-	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fill1)
+	f.closeRCXZero32Loop(fillDone, fill1)
+	if fillDone.compact {
+		skipRep := f.a.JmpRel8Placeholder()
+		f.a.PatchRel32(bigF, f.a.Len())
+		f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
+		if !f.a.PatchRel8(skipRep, f.a.Len()) {
+			panic("amd64: bounded memory.fill skip exceeded rel8 range")
+		}
+		f.patchRCXZero32(fillDone)
+		f.setDepth(d - 3)
+		return nil
+	}
 	skipRep := f.a.JmpPlaceholder()
 	f.a.PatchRel32(bigF, f.a.Len())
 	f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
 	f.a.PatchRel32(skipRep, f.a.Len())
-	f.a.PatchRel32(fillDone, f.a.Len())
+	f.patchRCXZero32(fillDone)
 
 	f.setDepth(d - 3)
 	return nil

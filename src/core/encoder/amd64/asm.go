@@ -1138,6 +1138,39 @@ func (a *Asm) JccPlaceholder(c Cond) int {
 	return off
 }
 
+// JcxzPlaceholder emits JECXZ (wide=false) or JRCXZ (wide=true) with an
+// unresolved rel8 target and returns the displacement-byte offset.
+func (a *Asm) JcxzPlaceholder(wide bool) int {
+	if !wide {
+		a.emit(0x67) // address-size override selects ECX in 64-bit mode
+	}
+	a.emit(0xE3, 0)
+	return a.Len() - 1
+}
+
+func (a *Asm) PatchRel8(at, target int) bool {
+	delta := target - (at + 1)
+	if delta < -128 || delta > 127 {
+		return false
+	}
+	a.B[at] = byte(int8(delta))
+	return true
+}
+
+func (a *Asm) JccRel8(c Cond, target int) bool {
+	delta := target - (a.Len() + 2)
+	if delta < -128 || delta > 127 {
+		return false
+	}
+	a.emit(0x70|byte(c), byte(int8(delta)))
+	return true
+}
+
+func (a *Asm) JmpRel8Placeholder() int {
+	a.emit(0xEB, 0)
+	return a.Len() - 1
+}
+
 func (a *Asm) PatchRel32(at, target int) {
 	a.recordRel32(at, target)
 	a.PatchU32(at, uint32(int32(target-(at+4))))

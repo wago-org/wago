@@ -61,6 +61,9 @@ var (
 	// directIncDecEnabled extends the same encoding choice to compiler-authored
 	// counters whose next flag consumer is ZF or whose flags are dead.
 	directIncDecEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_INCDEC") != "1"
+	// directJecxzEnabled selects JECXZ for bounded ECX byte-tail guards whose
+	// flags are dead and whose checked targets remain in rel8 range.
+	directJecxzEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_JECXZ") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. It remains opt-in while broader shrink-only
