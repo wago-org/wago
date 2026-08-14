@@ -82,3 +82,24 @@ func TestInlineSizeObjectiveRequiresNativeByteProofArm64(t *testing.T) {
 		t.Fatalf("Size Calls[inline] = %d, want 0 without native-byte proof", got)
 	}
 }
+
+func TestInlineSizeObjectiveAdmitsTinySingleUseLeafArm64(t *testing.T) {
+	caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
+	leaf := []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: caller},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: leaf},
+	)
+	objective := OptimizeSize
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if got := stats.Funcs[0].Calls["inline"]; got != 1 {
+		t.Fatalf("Size Calls[inline] = %d, want 1 for proved tiny single-use leaf", got)
+	}
+}
