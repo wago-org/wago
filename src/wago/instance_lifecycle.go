@@ -128,15 +128,14 @@ func (in *Instance) closeAndWait() error {
 	if in == nil {
 		return nil
 	}
-	if err := in.Close(); err != nil {
-		return err
-	}
+	closeErr := in.Close()
 	state := in.ensurePluginState().close.Load()
 	if state != nil {
+		<-state.done
 		<-state.quiesced
 		return joinPrimary(state.result, state.terminalResult)
 	}
-	return nil
+	return closeErr
 }
 
 func (in *Instance) isLogicallyClosed() bool {

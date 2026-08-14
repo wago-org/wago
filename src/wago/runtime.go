@@ -1131,9 +1131,9 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 
 	instances := rt.directInstancesSnapshot()
 	for i := len(instances) - 1; i >= 0; i-- {
-		if err := instances[i].Close(); err != nil {
-			errs = append(errs, err)
-		}
+		// The close state below owns both the logical-close result and the
+		// terminal result published after admitted invocations quiesce.
+		_ = instances[i].Close()
 	}
 	for i := len(pluginRuns) - 1; i >= 0; i-- {
 		errs = append(errs, closePluginRun(ctx, pluginRuns[i])...)
@@ -1156,8 +1156,9 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 		closeState := instances[i].ensurePluginState().close.Load()
 		if closeState != nil {
 			<-closeState.done
-			if closeState.result != nil {
-				errs = append(errs, closeState.result)
+			<-closeState.quiesced
+			if err := joinPrimary(closeState.result, closeState.terminalResult); err != nil {
+				errs = append(errs, err)
 			}
 		}
 	}
