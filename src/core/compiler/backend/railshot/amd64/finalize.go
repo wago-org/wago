@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -23,7 +24,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return internalOff, nil
 	}
 	oldLen := len(f.a.B)
-	result, frameDeleted, err := f.finalizeFrameAdjustments()
+	result, frameDeleted, holeDeleted, err := f.finalizeFrameAdjustments()
 	if err != nil {
 		return 0, err
 	}
@@ -73,16 +74,19 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		f.stats.NativeSize.FrameAdjustmentBytes -= frameDeleted
 		f.stats.NativeSize.DeadFrameReservationBytes = 0
 	}
+	if holeDeleted != 0 && f.stats != nil {
+		f.stats.NativeSize.BranchFoldHoleBytes -= holeDeleted
+	}
 	return internalOff, nil
 }
 
-func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
-	identity := func() (shared.FinalizeResult, int, error) {
+func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error) {
+	identity := func() (shared.FinalizeResult, int, int, error) {
 		result, err := shared.FinalizeIdentity(f.a.B, nil, nil, nil)
 		if err != nil {
-			return shared.FinalizeResult{}, 0, fmt.Errorf("amd64 finalizer: %w", err)
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 		}
-		return result, 0, nil
+		return result, 0, 0, nil
 	}
 	if !nativeCompactionEnabled || f.hasLoop || f.hasJumpTableData ||
 		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
@@ -96,8 +100,23 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
 	var storage [shared.MaxOffsetMapDeletions]shared.DeletedRange
 	deletions := storage[:0]
 	frameSites := len(f.sc.tailFrameSites) + 2
-	if frameSites > cap(deletions) {
+	holeSites := 0
+	for _, over := range f.sc.brFoldSites {
+		if over >= 0 && over+9 <= len(f.a.B) &&
+			bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
+			holeSites++
+		}
+	}
+	if frameSites+holeSites > cap(deletions) {
 		return identity()
+	}
+	holeDeleted := 0
+	for _, over := range f.sc.brFoldSites {
+		if over >= 0 && over+9 <= len(f.a.B) &&
+			bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
+			deletions = append(deletions, shared.DeletedRange{Off: uint32(over + 4), Len: 5})
+			holeDeleted += 5
+		}
 	}
 	addFrameSite := func(site int, opcode byte) error {
 		if site < 3 || site+4 > len(f.a.B) || f.a.B[site-3] != 0x48 ||
@@ -116,15 +135,15 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
 		return nil
 	}
 	if err := addFrameSite(f.subRspAt, 0xec); err != nil {
-		return shared.FinalizeResult{}, 0, err
+		return shared.FinalizeResult{}, 0, 0, err
 	}
 	for _, site := range f.sc.tailFrameSites {
 		if err := addFrameSite(site, 0xc4); err != nil {
-			return shared.FinalizeResult{}, 0, err
+			return shared.FinalizeResult{}, 0, 0, err
 		}
 	}
 	if err := addFrameSite(f.addRspAt, 0xc4); err != nil {
-		return shared.FinalizeResult{}, 0, err
+		return shared.FinalizeResult{}, 0, 0, err
 	}
 
 	for i := 1; i < len(deletions); i++ {
@@ -138,8 +157,9 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
 	}
 	offsets, err := shared.NewOffsetMap(len(f.a.B), deletions)
 	if err != nil {
-		return shared.FinalizeResult{}, 0, fmt.Errorf("amd64 finalizer: %w", err)
+		return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 	}
+	oldLen := len(f.a.B)
 	src, dst := 0, 0
 	for _, deletion := range deletions {
 		off := int(deletion.Off)
@@ -153,11 +173,11 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
 		at, okAt := offsets.Map(site.At)
 		target, okTarget := offsets.Map(site.Target)
 		if !okAt || !okTarget || at < 0 || at+4 > len(code) || target < 0 || target > len(code) {
-			return shared.FinalizeResult{}, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", site.At, site.Target)
+			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", site.At, site.Target)
 		}
 		binary.LittleEndian.PutUint32(code[at:], uint32(int32(target-(at+4))))
 	}
-	return shared.FinalizeResult{Code: code, Offsets: offsets}, len(f.a.B) - len(code), nil
+	return shared.FinalizeResult{Code: code, Offsets: offsets}, oldLen - len(code) - holeDeleted, holeDeleted, nil
 }
 
 func mapAMD64FinalOffset(offsets *shared.OffsetMap, old, codeLen int, kind string) (int, error) {
