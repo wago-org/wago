@@ -14,11 +14,12 @@ type NativeFunctionSizeReport struct {
 	AdapterToInternalPaddingBytes int `json:"adapter_to_internal_padding_bytes"`
 	InternalFunctionBytes         int `json:"internal_function_bytes"`
 
-	FrameAdjustmentBytes      int `json:"frame_adjustment_bytes"`
-	DeadFrameReservationBytes int `json:"dead_frame_reservation_bytes"`
-	BranchFoldHoleBytes       int `json:"branch_fold_hole_bytes"`
-	StoreLoadNopBytes         int `json:"store_load_nop_bytes"`
-	LiteralPoolBytes          int `json:"literal_pool_bytes"`
+	FrameAdjustmentBytes      int    `json:"frame_adjustment_bytes"`
+	DeadFrameReservationBytes int    `json:"dead_frame_reservation_bytes"`
+	BranchFoldHoleBytes       int    `json:"branch_fold_hole_bytes"`
+	StoreLoadNopBytes         int    `json:"store_load_nop_bytes"`
+	LiteralPoolBytes          int    `json:"literal_pool_bytes"`
+	HostAdapterShapeHash      uint64 `json:"host_adapter_shape_hash,omitempty"`
 }
 
 // DeadReservationBytes returns the exact subset of emitted function bytes that
@@ -49,6 +50,27 @@ type NativeSizeReport struct {
 	LiteralPoolBytes              int `json:"literal_pool_bytes"`
 	LiteralPoolUniqueBytes        int `json:"literal_pool_unique_bytes"`
 	LiteralPoolDuplicateBytes     int `json:"literal_pool_duplicate_bytes"`
+	HostAdapterShapeCount         int `json:"host_adapter_shape_count"`
+	HostAdapterCount              int `json:"host_adapter_count"`
+	HostAdapterUniqueBytes        int `json:"host_adapter_unique_bytes"`
+	HostAdapterDuplicateBytes     int `json:"host_adapter_duplicate_bytes"`
+}
+
+// AdapterShapeHash fingerprints an adapter while replacing its one
+// function-specific call relocation with zero bytes. Equal size/hash pairs are
+// exact sharing candidates within a module; collection is stats-only.
+func AdapterShapeHash(code []byte, relocOff, relocLen int) uint64 {
+	const offset64 = 14695981039346656037
+	const prime64 = 1099511628211
+	h := uint64(offset64)
+	for i, b := range code {
+		if i >= relocOff && i < relocOff+relocLen {
+			b = 0
+		}
+		h ^= uint64(b)
+		h *= prime64
+	}
+	return h
 }
 
 // AccountedBytes returns the exhaustive top-level byte classes. Subset fields

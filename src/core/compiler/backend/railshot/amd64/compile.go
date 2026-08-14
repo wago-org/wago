@@ -1458,6 +1458,25 @@ func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, modul
 			native.AddFunction(fn.NativeSize)
 		}
 	}
+	type adapterShape struct {
+		hash  uint64
+		bytes int
+	}
+	shapes := make(map[adapterShape]struct{}) // stats-only
+	for _, fn := range ms.Funcs {
+		if fn == nil || fn.NativeSize.HostAdapterBytes == 0 {
+			continue
+		}
+		native.HostAdapterCount++
+		shape := adapterShape{fn.NativeSize.HostAdapterShapeHash, fn.NativeSize.HostAdapterBytes}
+		if _, ok := shapes[shape]; ok {
+			continue
+		}
+		shapes[shape] = struct{}{}
+		native.HostAdapterUniqueBytes += shape.bytes
+	}
+	native.HostAdapterShapeCount = len(shapes)
+	native.HostAdapterDuplicateBytes = native.HostAdapterBytes - native.HostAdapterUniqueBytes
 	if native.LiteralPoolBytes != 0 {
 		keys := make(map[literalKey]struct{}) // stats-only; ordinary compilation has nil ms
 		for _, fn := range ms.Funcs {
@@ -2970,6 +2989,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 	f.patchFrameSize()
 	if hostAdapter {
 		a.PatchRel32(adapterCall, internalOff)
+		if f.stats != nil {
+			f.stats.NativeSize.HostAdapterShapeHash = shared.AdapterShapeHash(f.a.B[:f.stats.NativeSize.HostAdapterBytes], adapterCall, 4)
+		}
 	}
 	return internalOff, nil
 }
