@@ -178,6 +178,27 @@ func TestInlineExecAdd(t *testing.T) {
 	})
 }
 
+func TestInlineSizeObjectiveRequiresNativeByteProofAMD64(t *testing.T) {
+	caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
+	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
+	m := modFuncs(t,
+		funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+		funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: leaf},
+	)
+	objective := OptimizeSize
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if got := stats.Funcs[0].Calls["inline"]; got != 0 {
+		t.Fatalf("Size Calls[inline] = %d, want 0 without native-byte proof", got)
+	}
+}
+
 // TestInlineExecTwoSites inlines the same callee at two sites in one caller,
 // exercising the shared reserved-local region (rebound per site).
 func TestInlineExecTwoSites(t *testing.T) {

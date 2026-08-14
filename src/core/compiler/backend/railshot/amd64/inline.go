@@ -158,6 +158,8 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 // only for the opt-in stats report.
 func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
+	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
+		return false
 	case f.hasControlCall:
 		return false
 	case f.calleeCount > 0:
@@ -175,6 +177,8 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 
 func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
+	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
+		return false, "size objective requires proved native-byte win"
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
 	case f.calleeCount > 0:
