@@ -210,8 +210,16 @@ func (f *fn) emitTrapStubs() {
 			}
 		}
 	}
-	if sharedTrapBodyEnabled && sizeObjective && groups >= 2 {
-		f.emitSharedTrapStubs()
+	// A group emits at most three four-word MOV immediates plus one B. Keep every
+	// group-to-tail transfer inside B's signed imm26 range; otherwise retain the
+	// established local-record/shared-unwind path.
+	sharedBodyInRange := int64(f.a.Len())+int64(groups)*52+64 < 128<<20
+	if sharedTrapBodyEnabled && sizeObjective && groups >= 2 && sharedBodyInRange {
+		if moduleSharedTrapBodyEnabled {
+			f.emitSharedTrapStubs()
+		} else {
+			f.emitSharedTrapStubsHead()
+		}
 		f.stats.peep("shared-trap-body")
 		return
 	}
@@ -293,10 +301,13 @@ func (f *fn) emitTrapStubs() {
 	}
 }
 
-func (f *fn) emitSharedTrapStubs() {
+// emitSharedTrapStubsHead is the exact pre-module-sharing layout retained by
+// WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY. Keeping the body before its groups
+// makes that switch a byte-exact corpus oracle rather than merely disabling the
+// module compaction pass.
+func (f *fn) emitSharedTrapStubsHead() {
 	common := f.a.Len()
 	f.emitTrapFromRegisters()
-
 	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 		sites := f.scratchState().trapSites[code]
 		if len(sites) == 0 {
@@ -327,12 +338,63 @@ func (f *fn) emitSharedTrapStubs() {
 			}
 			branch := f.a.Branch()
 			if !f.a.PatchBranch26(branch, common) {
-				// A pathological >128 MiB function remains correct by retaining a
-				// complete local body for this group.
 				f.a.B = f.a.B[:branch]
 				f.emitTrapFromRegisters()
 			}
 			f.stats.addTrapGroup()
+			start = end
+		}
+	}
+}
+
+func (f *fn) emitSharedTrapStubs() {
+	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+		sites := f.scratchState().trapSites[code]
+		if len(sites) == 0 {
+			continue
+		}
+		f.stats.addTrapStub()
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			group := sites[start:end]
+			first := group[0]
+			pos := f.a.Len()
+			pc := uint64(^uint32(0))
+			if len(group) == 1 {
+				pc = uint64(first.pc)
+			}
+			f.a.MovImm64(X17, pc)
+			f.a.MovImm64(X10, uint64(first.function+1))
+			f.a.MovImm64(X11, uint64(code))
+			for _, site := range group {
+				if site.branch&1 != 0 {
+					f.a.PatchBranch26(site.branch&^1, pos)
+				} else {
+					f.a.PatchBranch19(site.branch, pos)
+				}
+			}
+			group[0].branch = f.a.Branch()
+			f.stats.addTrapGroup()
+			start = end
+		}
+	}
+
+	f.trapBodyOff = f.a.Len()
+	f.emitTrapFromRegisters()
+	f.trapBodyEnd = f.a.Len()
+	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+		sites := f.scratchState().trapSites[code]
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			if !f.a.PatchBranch26(sites[start].branch, f.trapBodyOff) {
+				panic("arm64: bounded trap body branch exceeded imm26")
+			}
 			start = end
 		}
 	}

@@ -76,3 +76,53 @@ func TestSizeObjectiveSharesCompleteTrapBodyArm64(t *testing.T) {
 		t.Fatalf("Size trap stats = stubs:%d groups:%d", size.stats.TrapStubs, size.stats.TrapGroups)
 	}
 }
+
+func TestSizeObjectiveSharesModuleTrapBodiesArm64(t *testing.T) {
+	oldInline := inlineEnabled
+	inlineEnabled = false
+	t.Cleanup(func() { inlineEnabled = oldInline })
+	i32 := []wasm.ValType{wasm.I32}
+	callee := []byte{
+		0x00,
+		0x20, 0x00,
+		0x04, 0x7f,
+		0x00,
+		0x05,
+		0x41, 0x01, 0x41, 0x00, 0x6e,
+		0x0b,
+		0x0b,
+	}
+	m := modFuncs(t,
+		funcDef{i32, i32, []byte{
+			0x00,
+			0x20, 0x00,
+			0x04, 0x7f,
+			0x41, 0x01, 0x10, 0x01,
+			0x05,
+			0x41, 0x00, 0x10, 0x02,
+			0x0b,
+			0x0b,
+		}},
+		funcDef{i32, i32, callee},
+		funcDef{i32, i32, callee},
+	)
+	size := OptimizeSize
+	for _, workers := range []int{1, 2} {
+		var stats ModuleStats
+		opts := CompileOptions{Objective: &size, Stats: &stats, Workers: workers}
+		if _, err := CompileModuleWith(m, opts); err != nil {
+			t.Fatal(err)
+		}
+		if got := stats.Funcs[1].Peephole["module-shared-trap-body"] + stats.Funcs[2].Peephole["module-shared-trap-body"]; got != 1 {
+			t.Fatalf("workers=%d module trap shares = %d, want 1", workers, got)
+		}
+		if stats.NativeSize.AccountedBytes() != stats.NativeSize.TotalBytes {
+			t.Fatalf("workers=%d module native ledger = %+v", workers, stats.NativeSize)
+		}
+		for _, arg := range []uint64{0, 1} {
+			if _, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size, Workers: workers}, arg); err == nil {
+				t.Fatalf("workers=%d argument %d did not trap through module body island", workers, arg)
+			}
+		}
+	}
+}

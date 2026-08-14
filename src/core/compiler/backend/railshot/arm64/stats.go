@@ -93,6 +93,9 @@ var (
 	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the complete
 	// terminal trap record/writeback/unwind body within one function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_BODY") != "1"
+	// moduleSharedTrapBodyEnabled lets internal functions replace byte-identical
+	// complete trap bodies with one B thunk and one module cold-island copy.
+	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
 	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
 	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"

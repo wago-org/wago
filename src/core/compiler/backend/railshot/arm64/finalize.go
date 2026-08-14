@@ -277,6 +277,17 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 		f.adapterReturnOff = mapped
 	}
+	if f.trapBodyEnd > f.trapBodyOff {
+		mappedOff, err := mapFinalOffset(&result.Offsets, f.trapBodyOff, len(result.Code), "trap body start")
+		if err != nil {
+			return 0, err
+		}
+		mappedEnd, err := mapFinalOffset(&result.Offsets, f.trapBodyEnd, len(result.Code), "trap body end")
+		if err != nil {
+			return 0, err
+		}
+		f.trapBodyOff, f.trapBodyEnd = mappedOff, mappedEnd
+	}
 	if plan := f.gcFrameRoots; plan != nil {
 		if plan.AdapterReturnOffset != 0 {
 			mapped, err := mapFinalOffset(&result.Offsets, int(plan.AdapterReturnOffset), len(result.Code), "GC adapter return")

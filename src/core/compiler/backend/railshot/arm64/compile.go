@@ -225,6 +225,8 @@ type fn struct {
 	adapterReturnOff        int    // register-ABI wrapper continuation used by cross-tail reuse
 	adapterEndOff           int    // end of the wrapper before internal-entry alignment
 	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
+	trapBodyOff             int    // complete shared trap body start; zero when not emitted
+	trapBodyEnd             int    // complete shared trap body end
 	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool   // emit context-cancellation polls at entries and loop headers
@@ -624,6 +626,7 @@ type funcResult struct {
 	directPrepared bool
 	adapterTail    adapterTailInfo
 	adapter        sharedAdapterInfo
+	trapBody       sharedTrapBodyInfo
 	relocs         []callReloc
 	omitted        bool
 	err            error
@@ -1036,6 +1039,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
 			}
 		}
+		var trapBodyCluster sharedTrapBodyCluster
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
 			var st *CodegenStats
@@ -1083,6 +1087,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 					adapters = append(adapters, info)
 				}
 			}
+			if hostAdapters[i] {
+				trapBodyCluster.reset()
+			} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfo(), st)
+			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
@@ -1099,15 +1108,19 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		}
 		moduleOther := 0
 		if adapters != nil {
-			moduleOther, err = shareAdaptersCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+			var sharedBytes int
+			sharedBytes, err = shareAdaptersCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
 			if err != nil {
 				return nil, err
 			}
+			moduleOther += sharedBytes
 		} else if adapterTails != nil {
-			moduleOther, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+			var sharedBytes int
+			sharedBytes, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
 			if err != nil {
 				return nil, err
 			}
+			moduleOther += sharedBytes
 		}
 		code := codeBuffer.Bytes()
 		if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
@@ -1184,6 +1197,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
+					if moduleSharedTrapBodyEnabled && !hostAdapters[i] {
+						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfo()
+					}
 				}
 				results[i] = result
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
@@ -1208,6 +1224,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
 		}
 	}
+	var trapBodyCluster sharedTrapBodyCluster
 	for i := range results {
 		r := &results[i]
 		if r.omitted {
@@ -1230,21 +1247,35 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			r.adapter.function = uint32(i)
 			adapters = append(adapters, r.adapter)
 		}
-		code = append(code, states[r.worker].arena[r.start:r.end]...)
+		fnCode := states[r.worker].arena[r.start:r.end]
+		if r.layoutFlags&layoutHostAdapter != 0 {
+			trapBodyCluster.reset()
+		} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			var st *CodegenStats
+			if ms != nil {
+				st = ms.Funcs[i]
+			}
+			fnCode = trapBodyCluster.share(code, fnCode, entry[i], r.trapBody, st)
+		}
+		code = append(code, fnCode...)
 	}
 	moduleOther := 0
 	if adapters != nil {
 		var err error
-		code, moduleOther, err = shareAdapters(code, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+		var sharedBytes int
+		code, sharedBytes, err = shareAdapters(code, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
 		if err != nil {
 			return nil, err
 		}
+		moduleOther += sharedBytes
 	} else if adapterTails != nil {
 		var err error
-		code, moduleOther, err = shareAdapterTails(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+		var sharedBytes int
+		code, sharedBytes, err = shareAdapterTails(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
 		if err != nil {
 			return nil, err
 		}
+		moduleOther += sharedBytes
 	}
 	if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
 		return nil, err
