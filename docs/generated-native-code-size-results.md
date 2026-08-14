@@ -1474,6 +1474,22 @@ holes, rather than offset-map bookkeeping itself, dominate this capacity seam.
 Both backends pass policy and capacity-bound tests, race suites, and compacted
 native corpus execution with finalizer validation enabled.
 
+### Rejected 32-range extension
+
+A follow-up doubled the same fixed offset-map bound from sixteen to thirty-two.
+ARM64 saved only another 2,232 bytes across the 36-module Size suite
+(77,034,860 to 77,032,628). Five-sample compile medians moved Ruby from
+569,416,375 to 567,492,625 ns/op (-0.34%) and esbuild from 305,416,125 to
+308,010,083 ns/op (+0.85%), with allocations flat.
+
+AMD64 saved another 346,448 bytes (69,485,720 to 69,139,272), but Ruby compile
+time rose from 869,221,114 to 896,451,254 ns/op (+3.13%) versus sixteen while
+esbuild was effectively flat (482,054,400 to 481,721,348 ns/op, -0.07%). That
+increment would push the cumulative Size compile path beyond its proposed 5%
+gate. The thirty-two-range prototype was therefore removed; sixteen remains the
+measured fixed bound. Further branch-hole recovery should use a cheaper mapping
+or worklist representation rather than another linear capacity increase.
+
 ### Commands
 
 ```sh
