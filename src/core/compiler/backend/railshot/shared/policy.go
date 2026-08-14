@@ -59,7 +59,7 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 		// it to their instruction/data requirements.
 		functionAlign, internalAlign, loopAlign = 0, 0, 0
 		compactNative = true
-		maxFinalizerDeletions = MaxOffsetMapDeletions
+		maxFinalizerDeletions = MaxWideOffsetMapDeletions
 		maxRel32Sites = 1024
 		maxLoopCompactionBytes = 64 << 10
 	}

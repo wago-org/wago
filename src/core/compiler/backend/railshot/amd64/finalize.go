@@ -52,6 +52,8 @@ var finalizerDeletionLimitOverride = func() int {
 		return 48
 	case "64":
 		return 64
+	case "128":
+		return 128
 	default:
 		return 0
 	}
@@ -71,7 +73,7 @@ func (f *fn) finalizerDeletionLimit() int {
 	if finalizerDeletionLimitOverride != 0 && limit > finalizerDeletionLimitOverride {
 		limit = finalizerDeletionLimitOverride
 	}
-	return min(limit, shared.MaxOffsetMapDeletions)
+	return min(limit, shared.MaxWideOffsetMapDeletions)
 }
 
 func (f *fn) finalizerRelaxIterationLimit() int {
@@ -79,7 +81,7 @@ func (f *fn) finalizerRelaxIterationLimit() int {
 	if limit == 0 {
 		limit = 8
 	}
-	return min(limit, shared.MaxOffsetMapDeletions)
+	return min(limit, shared.MaxWideOffsetMapDeletions)
 }
 
 const maxAMD64FinalizerRel32Sites = 1024
@@ -183,13 +185,18 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	return internalOff, nil
 }
 
-func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error) {
-	identity := func() (shared.FinalizeResult, int, int, error) {
-		result, err := shared.FinalizeIdentity(f.a.B, nil, nil, nil)
+type amd64FinalizeResult struct {
+	Code    []byte
+	Offsets shared.WideOffsetMap
+}
+
+func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
+	identity := func() (amd64FinalizeResult, int, int, error) {
+		offsets, err := shared.NewWideOffsetMap(len(f.a.B), nil)
 		if err != nil {
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
+			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 		}
-		return result, 0, 0, nil
+		return amd64FinalizeResult{Code: f.a.B, Offsets: offsets}, 0, 0, nil
 	}
 	if !f.compactNative() || !f.loopCompactionAdmitted() || f.hasJumpTableData && !jumpTableCompactionEnabled ||
 		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
@@ -203,7 +210,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		f.a.Rel32Sites[i].SetShort(false)
 	}
 
-	var storage [shared.MaxOffsetMapDeletions]shared.DeletedRange
+	var storage [shared.MaxWideOffsetMapDeletions]shared.DeletedRange
 	deletions := storage[:0:f.finalizerDeletionLimit()]
 	frameSites := len(f.sc.tailFrameSites) + 2
 	if frameSites > cap(deletions) {
@@ -254,15 +261,15 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		return nil
 	}
 	if err := addFrameSite(f.subRspAt, 0xec); err != nil {
-		return shared.FinalizeResult{}, 0, 0, err
+		return amd64FinalizeResult{}, 0, 0, err
 	}
 	for _, site := range f.sc.tailFrameSites {
 		if err := addFrameSite(site, 0xc4); err != nil {
-			return shared.FinalizeResult{}, 0, 0, err
+			return amd64FinalizeResult{}, 0, 0, err
 		}
 	}
 	if err := addFrameSite(f.addRspAt, 0xc4); err != nil {
-		return shared.FinalizeResult{}, 0, 0, err
+		return amd64FinalizeResult{}, 0, 0, err
 	}
 
 	sortDeletions := func(ranges []shared.DeletedRange) {
@@ -277,7 +284,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 	}
 	sortDeletions(deletions)
-	var deletionPrefix [shared.MaxOffsetMapDeletions]uint32
+	var deletionPrefix [shared.MaxWideOffsetMapDeletions]uint32
 	rebuildDeletionPrefix := func(start int) {
 		deleted := uint32(0)
 		if start > 0 {
@@ -443,50 +450,50 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			}
 		}
 	}
-	offsets, err := shared.NewOffsetMap(len(f.a.B), deletions)
+	offsets, err := shared.NewWideOffsetMap(len(f.a.B), deletions)
 	if err != nil {
-		return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
+		return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: %w", err)
 	}
 	// Jump-table data has an explicit fragment owner. Compact target-ID bytes are
 	// opaque and move unchanged; signed i32 entries are relative to the table
 	// base and must follow both the base and their code targets.
 	for _, fragment := range f.sc.jumpTableFragments {
 		if fragment.start < 0 || fragment.end < fragment.start || fragment.end > len(f.a.B) {
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid jump-table fragment [%d,%d)", fragment.start, fragment.end)
+			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid jump-table fragment [%d,%d)", fragment.start, fragment.end)
 		}
 		for _, deletion := range deletions {
 			deletionStart := int(deletion.Off)
 			deletionEnd := deletionStart + int(deletion.Len)
 			if deletionStart < fragment.end && fragment.start < deletionEnd {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: deletion [%d,%d) intersects jump-table fragment [%d,%d)", deletionStart, deletionEnd, fragment.start, fragment.end)
+				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: deletion [%d,%d) intersects jump-table fragment [%d,%d)", deletionStart, deletionEnd, fragment.start, fragment.end)
 			}
 		}
 		newBase, baseOK := offsets.Map(fragment.start)
 		newEnd, endOK := offsets.Map(fragment.end)
 		if !baseOK || !endOK || newEnd-newBase != fragment.end-fragment.start {
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table fragment [%d,%d) does not map intact", fragment.start, fragment.end)
+			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table fragment [%d,%d) does not map intact", fragment.start, fragment.end)
 		}
 		switch fragment.kind {
 		case jumpTableFragmentIDs:
 			continue
 		case jumpTableFragmentDeltas:
 			if (fragment.end-fragment.start)&3 != 0 {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: unaligned jump-table fragment [%d,%d)", fragment.start, fragment.end)
+				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: unaligned jump-table fragment [%d,%d)", fragment.start, fragment.end)
 			}
 			for at := fragment.start; at < fragment.end; at += 4 {
 				oldTarget := fragment.start + int(int32(binary.LittleEndian.Uint32(f.a.B[at:])))
 				newTarget, targetOK := offsets.Map(oldTarget)
 				if !targetOK {
-					return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table target %d intersects deleted code", oldTarget)
+					return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table target %d intersects deleted code", oldTarget)
 				}
 				delta := int64(newTarget - newBase)
 				if delta < -(1<<31) || delta >= 1<<31 {
-					return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table delta %d exceeds i32", delta)
+					return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table delta %d exceeds i32", delta)
 				}
 				binary.LittleEndian.PutUint32(f.a.B[at:], uint32(int32(delta)))
 			}
 		default:
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: unknown jump-table fragment kind %d", fragment.kind)
+			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: unknown jump-table fragment kind %d", fragment.kind)
 		}
 	}
 	// Patch maximal-encoding source fields with their final displacements before
@@ -498,7 +505,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 		targetOld, okTargetOld := rel32Target(site)
 		if !okTargetOld {
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 target at %d", site.At())
+			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 target at %d", site.At())
 		}
 		target, okTarget := offsets.Map(targetOld)
 		if site.Short() {
@@ -508,11 +515,11 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 			}
 			at, okAt := offsets.Map(start)
 			if !okAt || !okTarget || at < 0 || at+shortLen > offsets.FinalLen() || target < 0 || target > offsets.FinalLen() {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At(), targetOld)
+				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel8 remap %d -> %d", site.At(), targetOld)
 			}
 			disp := target - (at + shortLen)
 			if disp < -128 || disp > 127 {
-				return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: rel8 overflow %d -> %d", site.At(), targetOld)
+				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: rel8 overflow %d -> %d", site.At(), targetOld)
 			}
 			if site.Kind() == encoderamd64.Rel32Jmp {
 				f.a.B[start] = 0xeb
@@ -525,7 +532,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		atOld := site.At()
 		at, okAt := offsets.Map(atOld)
 		if !okAt || !okTarget || at < 0 || at+4 > offsets.FinalLen() || target < 0 || target > offsets.FinalLen() {
-			return shared.FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", atOld, targetOld)
+			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid rel32 remap %d -> %d", atOld, targetOld)
 		}
 		binary.LittleEndian.PutUint32(f.a.B[atOld:], uint32(int32(target-(at+4))))
 	}
@@ -538,10 +545,10 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	}
 	copy(f.a.B[dst:], f.a.B[src:])
 	code := f.a.B[:offsets.FinalLen()]
-	return shared.FinalizeResult{Code: code, Offsets: offsets}, frameDeleted, holeDeleted, nil
+	return amd64FinalizeResult{Code: code, Offsets: offsets}, frameDeleted, holeDeleted, nil
 }
 
-func mapAMD64FinalOffset(offsets *shared.OffsetMap, old, codeLen int, kind string) (int, error) {
+func mapAMD64FinalOffset(offsets *shared.WideOffsetMap, old, codeLen int, kind string) (int, error) {
 	mapped, ok := offsets.Map(old)
 	if !ok || mapped < 0 || mapped > codeLen {
 		return 0, fmt.Errorf("amd64 finalizer: invalid %s offset %d", kind, old)

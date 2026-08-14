@@ -1922,6 +1922,34 @@ The relaxation solver now consumes the immutable policy's existing
 still produced the exact same 74,697,180-byte image and remained about 10% slower
 on esbuild, proving that excessive fixed-point rounds were not the cause.
 
+## AMD64-only 255-range offset map
+
+The remaining AMD64 ledger was still dominated by proved branch-fold holes:
+Ruby alone retained 331,010 dead reservation bytes after explicit jump-table
+fragments. Size and Embedded therefore use an AMD64-only 255-range offset map;
+the shared identity path and ARM64 keep the existing 128-range map. The compact
+map remains two arrays (deletion offsets and cumulative deleted bytes): 2,052
+bytes for active AMD64 finalization versus 1,036 bytes on ARM64. The exact AMD64
+rollback is `WAGO_FINALIZER_DELETIONS=128`.
+
+The current 64-module AMD64 Size image moves from 75,126,901 to 75,019,309
+bytes (-107,592, -0.14%). Ruby contributes -91,203, `regexmatch` -4,987,
+`script` -4,543, Lua -238, SQLite -104, and esbuild -70. ARM64 measures exactly
+87,261,040 bytes at both 128 and 255 ranges, which is why it does not carry the
+wider structure.
+
+Five serialized 500 ms samples put the Ruby median at 961,462,201 to
+971,685,891 ns/op (+1.06%) and esbuild at 513,766,017 to 512,673,260 ns/op
+(-0.21%). B/op and allocations remain noise-level. The split preserves the
+bounded, allocation-free finalizer. The extra 1,016 bytes exist only in the
+active AMD64 compiler finalizer stack frame and are never retained per function
+or module; ARM64 and shared identity callers keep the narrow type.
+
+Because every AMD64 objective calls that finalizer, a detached exact-pre-change
+Balanced comparison also passed: Ruby moved from a median 857,372,150 to
+856,236,340 ns/op (-0.13%), and esbuild from 528,047,880 to 532,428,008 ns/op
+(+0.83%). B/op and allocation counts remained noise-level in both workloads.
+
 ### Commands
 
 ```sh

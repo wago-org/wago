@@ -14,6 +14,9 @@ func TestOffsetMapCapacityGrowthDoesNotGrowTheMap(t *testing.T) {
 	if got, want := unsafe.Sizeof(OffsetMap{}), uintptr(1036); got != want {
 		t.Fatalf("OffsetMap size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(WideOffsetMap{}), uintptr(2052); got != want {
+		t.Fatalf("WideOffsetMap size = %d, want %d", got, want)
+	}
 }
 
 func TestFinalizeIdentityPreservesCodeAndMapsEveryOffset(t *testing.T) {
@@ -151,6 +154,23 @@ func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
 	}
 }
 
+func TestWideOffsetMapOwnsAMD64Capacity(t *testing.T) {
+	deletions := make([]DeletedRange, MaxOffsetMapDeletions+1)
+	for i := range deletions {
+		deletions[i] = DeletedRange{Off: uint32(2 * i), Len: 1}
+	}
+	if _, err := NewOffsetMap(2*len(deletions), deletions); err == nil {
+		t.Fatal("narrow offset map accepted AMD64-wide deletion inventory")
+	}
+	offsets, err := NewWideOffsetMap(2*len(deletions), deletions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := offsets.Map(2 * len(deletions)); !ok || got != len(deletions) {
+		t.Fatalf("wide final offset = %d, %v; want %d, true", got, ok, len(deletions))
+	}
+}
+
 func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
 	for _, test := range []struct {
 		objective     OptimizationObjective
@@ -160,8 +180,8 @@ func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
 	}{
 		{OptimizeSpeed, 4, false, 8},
 		{OptimizeBalanced, 4, false, 8},
-		{OptimizeSize, 0, true, MaxOffsetMapDeletions},
-		{OptimizeEmbedded, 0, true, MaxOffsetMapDeletions},
+		{OptimizeSize, 0, true, MaxWideOffsetMapDeletions},
+		{OptimizeEmbedded, 0, true, MaxWideOffsetMapDeletions},
 	} {
 		policy := CodegenPolicyForObjective(optimization.Selection{}, test.objective)
 		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign || policy.CompactNative != test.wantCompact || policy.MaxFinalizerDeletions != test.wantDeletions {

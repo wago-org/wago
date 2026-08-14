@@ -198,7 +198,7 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 	subSite := a.Len() + 3
 	a.SubRsp(24)
 	sc := &scratch{}
-	for range shared.MaxOffsetMapDeletions + 4 {
+	for range shared.MaxWideOffsetMapDeletions + 4 {
 		over := a.Len()
 		a.B = append(a.B, 0x90, 0x90, 0x90, 0x90, 0x0f, 0x1f, 0x44, 0x00, 0x00)
 		sc.brFoldSites = append(sc.brFoldSites, over)
@@ -217,7 +217,7 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 		t.Fatal(err)
 	}
 	const frameBytes = 6
-	const admittedHoleBytes = (shared.MaxOffsetMapDeletions - 2) * 5
+	const admittedHoleBytes = (shared.MaxWideOffsetMapDeletions - 2) * 5
 	if got, want := len(f.a.B), oldLen-frameBytes-admittedHoleBytes; got != want {
 		t.Fatalf("partially compacted code = %d bytes, want %d", got, want)
 	}
@@ -443,7 +443,7 @@ func TestFinalizerRelaxIterationLimit(t *testing.T) {
 	}{
 		{0, 8},
 		{3, 3},
-		{255, shared.MaxOffsetMapDeletions},
+		{255, shared.MaxWideOffsetMapDeletions},
 	} {
 		f := fn{policy: CodegenPolicy{MaxRelaxIterations: test.configured}}
 		if got := f.finalizerRelaxIterationLimit(); got != test.want {

@@ -105,8 +105,8 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 		t.Fatal("Size did not enable native compaction")
 	}
 	f := fn{policy: size}
-	if got := f.finalizerDeletionLimit(); got != shared.MaxOffsetMapDeletions {
-		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, shared.MaxOffsetMapDeletions)
+	if got := f.finalizerDeletionLimit(); got != shared.MaxWideOffsetMapDeletions {
+		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, shared.MaxWideOffsetMapDeletions)
 	}
 	finalizerDeletionLimitOverride = 64
 	if got := f.finalizerDeletionLimit(); got != 64 {
