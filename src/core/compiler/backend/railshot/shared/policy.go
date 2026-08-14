@@ -32,6 +32,8 @@ type CodegenPolicy struct {
 	MaxFinalizerDeletions  uint8
 	MaxRel32Sites          uint16
 	MaxLoopCompactionBytes uint32
+	MaxJumpTableBranches   uint8
+	MaxJumpTableRelaxIters uint8
 }
 
 func (p CodegenPolicy) Enabled(name string) bool { return p.Selection.Enabled(name) }
@@ -54,6 +56,8 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 	maxFinalizerDeletions := uint8(8)
 	maxRel32Sites := uint16(256)
 	maxLoopCompactionBytes := uint32(16 << 10)
+	maxJumpTableBranches := uint8(0)
+	maxJumpTableRelaxIters := uint8(0)
 	if objective == OptimizeSize || objective == OptimizeEmbedded {
 		// Zero requests the target's minimum legal code alignment. Backends clamp
 		// it to their instruction/data requirements.
@@ -62,6 +66,8 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 		maxFinalizerDeletions = MaxWideOffsetMapDeletions
 		maxRel32Sites = 2048
 		maxLoopCompactionBytes = 64 << 10
+		maxJumpTableBranches = 32
+		maxJumpTableRelaxIters = 1
 	}
 	return CodegenPolicy{
 		Objective:              objective,
@@ -75,5 +81,7 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 		MaxFinalizerDeletions:  maxFinalizerDeletions,
 		MaxRel32Sites:          maxRel32Sites,
 		MaxLoopCompactionBytes: maxLoopCompactionBytes,
+		MaxJumpTableBranches:   maxJumpTableBranches,
+		MaxJumpTableRelaxIters: maxJumpTableRelaxIters,
 	}
 }

@@ -2332,3 +2332,39 @@ the 1,024-site rollback and 1,001,642,144 at 2,048 (+1.26%). Esbuild moves from
 noise-level, and both results stay inside the stricter 3% compile-time gate. The
 complete Size execution suite passes with zero execution allocations; its
 manifest does not expose entry points for the six changed macro modules.
+
+## AMD64 bounded jump-table branch relaxation
+
+Typed jump-table fragments already distinguish executable control branches
+from opaque target-ID or signed-delta data, and fixed-width jump vectors already
+mark their entries `Rel32Other`. Size and Embedded now use that ownership to
+relax ordinary recorded branches around jump-table fragments without decoding
+the finalized instruction stream or changing table-vector stride.
+
+The initial unrestricted experiment reduced the 36-module image from
+66,478,231 to 65,902,391 bytes (-575,840), but five serialized esbuild samples
+moved from a 522,156,737 to 571,846,923 ns/op median (+9.52%), outside the Size
+compile gate. One monotonic round retains all but 4,970 bytes of the reduction,
+but is still +6.68% on esbuild because sorted deletion insertion dominates the
+large switch functions.
+
+The accepted policy therefore permits one round and at most 32 branch
+deletions per jump-table function. It reaches 66,124,844 bytes (-353,387,
+-0.532%): esbuild contributes 240,893 bytes, Ruby 95,634, SQLite 6,006,
+regexmatch 5,349, Lua 4,968, wasm3 429, `json-as` 48, and `json-as-simd` 60.
+Budgets of 64 and 128 reach 66,020,851 and 65,931,665 bytes respectively, but
+move esbuild to +5.22% and +5.73%; they are rejected.
+
+The bounds live in the immutable per-compilation policy. The exact process
+rollback is `WAGO_AMD64_JUMP_TABLE_RELAX=0`; values `1`, `2`, `4`, and `8` retain
+the measured iteration experiments, and
+`WAGO_AMD64_JUMP_TABLE_RELAX_BUDGET=32|64|128|255` selects the bounded deletion
+variants. Five serialized accepted-policy samples put Ruby at 1,000,307,355 to
+999,157,172 ns/op (-0.11%) and esbuild at 522,156,737 to 539,120,832 (+3.25%).
+B/op and allocations remain noise-level.
+
+Five one-second Size execution samples for both changed executable module
+families remain neutral: `json-as` serialization -0.58% and deserialization
+-0.45%, `json-as-simd` serialization -0.12% and deserialization +0.14%. All
+four remain allocation-free. A compact fragment-crossing regression test, the
+complete Size execution suite, and the AMD64 backend suite also pass.

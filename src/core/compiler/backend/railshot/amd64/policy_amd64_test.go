@@ -123,6 +123,12 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 	if got := loopCompactionLimit(size); got != 64<<10 {
 		t.Fatalf("Size loop compaction limit = %d, want 64 KiB", got)
 	}
+	if got := (&fn{policy: size}).jumpTableBranchRelaxationIterations(); got != 1 {
+		t.Fatalf("Size jump-table relaxation iterations = %d, want 1", got)
+	}
+	if got := (&fn{policy: size}).jumpTableBranchRelaxationLimit(); got != 32 {
+		t.Fatalf("Size jump-table branch budget = %d, want 32", got)
+	}
 	finalizerRel32SiteLimitOverride = 256
 	loopCompactionByteLimitOverride = 16 << 10
 	if got := finalizerRel32Limit(size); got != 256 {

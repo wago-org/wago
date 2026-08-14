@@ -24,6 +24,36 @@ var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
 var jumpTableCompactionEnabled = os.Getenv("WAGO_AMD64_NO_JUMP_TABLE_COMPACTION") != "1"
+var jumpTableBranchRelaxationRoundsOverride = func() int {
+	switch os.Getenv("WAGO_AMD64_JUMP_TABLE_RELAX") {
+	case "0":
+		return 0
+	case "1":
+		return 1
+	case "2":
+		return 2
+	case "4":
+		return 4
+	case "8":
+		return 8
+	default:
+		return -1
+	}
+}()
+var jumpTableBranchRelaxationBudgetOverride = func() int {
+	switch os.Getenv("WAGO_AMD64_JUMP_TABLE_RELAX_BUDGET") {
+	case "32":
+		return 32
+	case "64":
+		return 64
+	case "128":
+		return 128
+	case "255":
+		return shared.MaxWideOffsetMapDeletions
+	default:
+		return -1
+	}
+}()
 var loopCompactionByteLimitOverride = func() int {
 	if os.Getenv("WAGO_AMD64_LOOP_COMPACTION_LIMIT") == "16K" {
 		return 16 << 10
@@ -122,6 +152,22 @@ func loopCompactionLimit(policy CodegenPolicy) int {
 
 func (f *fn) loopCompactionAdmitted() bool {
 	return !f.hasLoop || loopCompactionEnabled && len(f.a.B) <= loopCompactionLimit(f.policy)
+}
+
+func (f *fn) jumpTableBranchRelaxationIterations() int {
+	limit := int(f.policy.MaxJumpTableRelaxIters)
+	if jumpTableBranchRelaxationRoundsOverride >= 0 {
+		limit = jumpTableBranchRelaxationRoundsOverride
+	}
+	return min(limit, f.finalizerRelaxIterationLimit())
+}
+
+func (f *fn) jumpTableBranchRelaxationLimit() int {
+	limit := int(f.policy.MaxJumpTableBranches)
+	if jumpTableBranchRelaxationBudgetOverride >= 0 {
+		limit = jumpTableBranchRelaxationBudgetOverride
+	}
+	return min(limit, shared.MaxWideOffsetMapDeletions)
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
@@ -472,8 +518,17 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 	// relaxation exceed the Size compile-time gate. Keep every branch in a jump-
 	// table function at its emitted width while still remapping it around frame
 	// and dead-hole deletions.
-	if !f.hasJumpTableData {
+	jumpTableRelaxIterations := f.jumpTableBranchRelaxationIterations()
+	if !f.hasJumpTableData || jumpTableRelaxIterations != 0 {
+		branchBudget := cap(deletions) - len(deletions)
+		if limit := f.jumpTableBranchRelaxationLimit(); f.hasJumpTableData && limit < branchBudget {
+			branchBudget = limit
+		}
+		branchDeleted := 0
 		for i, site := range f.a.Rel32Sites {
+			if branchDeleted == branchBudget {
+				break
+			}
 			start, _, _, ok := branchForm(site)
 			if !ok {
 				continue
@@ -487,12 +542,17 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 				continue
 			}
 			deletedBranches[i>>6] |= uint64(1) << uint(i&63)
+			branchDeleted++
 		}
-		for round := 0; round < f.finalizerRelaxIterationLimit() && len(deletions) < cap(deletions); round++ {
+		relaxIterations := f.finalizerRelaxIterationLimit()
+		if f.hasJumpTableData && jumpTableRelaxIterations < relaxIterations {
+			relaxIterations = jumpTableRelaxIterations
+		}
+		for round := 0; round < relaxIterations && len(deletions) < cap(deletions) && branchDeleted < branchBudget; round++ {
 			changed := false
 			for i := range f.a.Rel32Sites {
 				site := &f.a.Rel32Sites[i]
-				if deletedBranches[i>>6]&(uint64(1)<<uint(i&63)) != 0 || site.Short() || len(deletions) == cap(deletions) {
+				if deletedBranches[i>>6]&(uint64(1)<<uint(i&63)) != 0 || site.Short() || len(deletions) == cap(deletions) || branchDeleted == branchBudget {
 					continue
 				}
 				start, shortLen, deletion, ok := branchForm(*site)
@@ -513,6 +573,7 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 					continue
 				}
 				site.SetShort(true)
+				branchDeleted++
 				changed = true
 			}
 			if !changed {

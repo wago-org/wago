@@ -456,6 +456,45 @@ func TestFinalizerRemapsJumpTableData(t *testing.T) {
 	}
 }
 
+func TestFinalizerRelaxesBranchAroundJumpTableData(t *testing.T) {
+	oldEnabled := nativeFinalizerEnabled
+	oldCompact := nativeCompactionEnabled
+	oldJumpTables := jumpTableCompactionEnabled
+	oldRelax := jumpTableBranchRelaxationRoundsOverride
+	oldBudget := jumpTableBranchRelaxationBudgetOverride
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = oldEnabled
+		nativeCompactionEnabled = oldCompact
+		jumpTableCompactionEnabled = oldJumpTables
+		jumpTableBranchRelaxationRoundsOverride = oldRelax
+		jumpTableBranchRelaxationBudgetOverride = oldBudget
+	})
+	nativeFinalizerEnabled = true
+	nativeCompactionEnabled = true
+	jumpTableCompactionEnabled = true
+	jumpTableBranchRelaxationRoundsOverride = 1
+	jumpTableBranchRelaxationBudgetOverride = 1
+
+	a := &amd64enc.Asm{Rel32SiteLimit: maxAMD64FinalizerRel32Sites}
+	branch := a.JccPlaceholder(amd64enc.CondE)
+	tableStart := a.Len()
+	a.B = append(a.B, 1, 2, 3, 4)
+	a.PatchRel32(branch, a.Len())
+	f := fn{
+		a:                  a,
+		sc:                 &scratch{jumpTableFragments: []jumpTableFragment{{start: tableStart, end: tableStart + 4, kind: jumpTableFragmentIDs}}},
+		nLocalSlots:        16,
+		hasJumpTableData:   true,
+		compactFrameHeader: true,
+	}
+	if _, err := f.finalizeNativeCode(0); err != nil {
+		t.Fatal(err)
+	}
+	if want := []byte{0x74, 0x04, 1, 2, 3, 4}; !bytes.Equal(f.a.B, want) {
+		t.Fatalf("compacted branch/table bytes = %x, want %x", f.a.B, want)
+	}
+}
+
 func TestFinalizerRelaxIterationLimit(t *testing.T) {
 	for _, test := range []struct {
 		configured uint8
