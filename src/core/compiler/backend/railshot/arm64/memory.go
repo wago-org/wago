@@ -508,7 +508,13 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// when the value is materialized — arm64 has no memory operand to fold into,
 	// so unlike x86 there is no r/m consumer, but deferring still lets the consumer
 	// pick the destination register and elide dead loads).
-	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal))
+	st := memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal)
+	if f.opt(optValueFacts) && !wide {
+		// Every i32 load writes a W register, including sign-extending byte/word
+		// forms, so its physical X-register upper half is known zero.
+		st.facts = factUpper32Zero
+	}
+	e := f.pushValue(st)
 	if eaOwned {
 		f.regUser[ea] = e // an owned address register belongs to the deferred load
 	}

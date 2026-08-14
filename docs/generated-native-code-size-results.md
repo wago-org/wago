@@ -799,6 +799,16 @@ With `WAGO_COMPACT=1`, the same comparison saves 82,276 bytes (93,224,664 to
 hits and 72,404 default-path bytes; the remaining wins span integer-heavy real
 modules including `script`, `sqlite3`, `ruby`, `regexmatch`, and `bignum`.
 
+The next provenance source marks every deferred i32 memory load as upper-zero:
+ARM64 signed byte/word loads sign-extend into a W register, so their physical X
+upper half is still cleared. This adds 65 exact `ext-elim` hits and 240 default
+bytes across five additional improvements (`lua`, `ruby`, `script`, `sqlite3`,
+and `wasm3`) with no losses. With compaction the incremental saving is 320
+bytes. A signed-load execution test locks the `0xff -> i32 -1 -> i64
+0xffffffff` boundary. Against the immediately preceding facts checkpoint,
+`json-as` compile moved from 658,650 to 649,579 ns/op (-1.38%) with allocations
+unchanged.
+
 Serialized compilation remains inside the Balanced gate:
 
 | Workload | Facts disabled median | Facts enabled median | Change | Allocation effect |
