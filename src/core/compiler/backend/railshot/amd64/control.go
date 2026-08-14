@@ -1560,7 +1560,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		f.branchJump(fr)
 	}
-	if brTableUseJump(labels, def, ireg, f.policy) {
+	if len(labels) >= brTableJumpMin {
 		f.hasJumpTableData = true
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
@@ -1771,82 +1771,6 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 // brTableJumpMin is the label count at which br_table switches from a linear
 // cmp/jne chain to an indirect jump table.
 const brTableJumpMin = 5
-
-// brTableUseJump keeps the O(1) threshold for Speed and Balanced. Size and
-// Embedded compare the exact AMD64 dispatch encodings, then conservatively
-// credit only the five-byte branch tail known to disappear for each shared
-// target. An index already in RAX needs a relocation whose register/spill cost
-// is not known until allocation; ambiguous six-case tables therefore stay
-// linear, while seven cases amortize the worst three-byte relocation.
-func brTableUseJump(labels []uint32, def uint32, ireg Reg, policy CodegenPolicy) bool {
-	if len(labels) < brTableJumpMin {
-		return false
-	}
-	if policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded {
-		return true
-	}
-	n := len(labels)
-	linearBytes := 0
-	for i := range labels {
-		linearBytes += amd64CmpImmBytes(ireg, int32(i)) + 6 // near jcc
-	}
-	if ireg == RAX {
-		// Worst case: a three-byte move to an extended replacement register.
-		jumpBytes := 23 + amd64CmpImmBytes(8, int32(n)) + amd64ShiftImmBytes(8) + 4*n + 3
-		if jumpBytes <= linearBytes {
-			return true
-		}
-		return false
-	}
-	jumpBytes := 23 + amd64CmpImmBytes(ireg, int32(n)) + amd64ShiftImmBytes(ireg) + 4*n
-	if jumpBytes <= linearBytes {
-		return true
-	}
-
-	unique := 0
-	for i, lbl := range labels {
-		seen := false
-		for _, prev := range labels[:i] {
-			if prev == lbl {
-				seen = true
-				break
-			}
-		}
-		if !seen {
-			unique++
-		}
-	}
-	defSeen := false
-	for _, lbl := range labels {
-		if lbl == def {
-			defSeen = true
-			break
-		}
-	}
-	if !defSeen {
-		unique++
-	}
-	duplicateTargets := n + 1 - unique
-	return jumpBytes-duplicateTargets*5 <= linearBytes
-}
-
-func amd64CmpImmBytes(r Reg, imm int32) int {
-	n := 3
-	if imm < -128 || imm > 127 {
-		n = 6
-	}
-	if r >= 8 {
-		n++
-	}
-	return n
-}
-
-func amd64ShiftImmBytes(r Reg) int {
-	if r >= 8 {
-		return 4
-	}
-	return 3
-}
 
 func brTableSmallLabelsUnique(labels []uint32) bool {
 	// Keep the duplicate check bounded: larger tables use the map-backed path,
