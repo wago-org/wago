@@ -577,7 +577,7 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.localType = append(f.localType, lt)
 			f.localSlot = append(f.localSlot, f.nLocalSlots)
 			f.nLocalSlots += lt.stackSlots()
-			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
+			f.locals = append(f.locals, localDef{reg: regNone, state: lsMem})
 		}
 		f.inlineBase[t.globalIdx] = base
 	}

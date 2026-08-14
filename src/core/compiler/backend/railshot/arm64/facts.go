@@ -15,6 +15,27 @@ const (
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
 
+func (f *fn) factsForLocal(x int) valueFacts {
+	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
+		return f.locals[x].facts
+	}
+	return 0
+}
+
+func (f *fn) setFactsForLocal(x int, facts valueFacts) {
+	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
+		f.locals[x].facts = facts
+	}
+}
+
+func (f *fn) applyFactsForLocal(e *elem, x int) {
+	facts := f.factsForLocal(x)
+	e.st.facts = facts
+	if facts != 0 {
+		f.stats.peep("local-fact")
+	}
+}
+
 // deferredResultFacts returns only properties guaranteed by the Wasm operation
 // and ARM64's W-register write semantics. Reads from locals, globals, memory, or
 // unknown calls begin with no facts and cannot enter through this function.
