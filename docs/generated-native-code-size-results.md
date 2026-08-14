@@ -349,11 +349,10 @@ no allocation change:
 | `many_funcs` | 308,164 ns/op | 308,199 ns/op | +0.01% | 147,209 B/op / 340 allocs/op, unchanged |
 | `json-as` | 1,210,510 ns/op | 1,220,396 ns/op | +0.82% | 291,659 B/op / 1,858 allocs/op, unchanged |
 
-The corpus byte gate rejects this heuristic for Balanced. The implementation is
-retained only as the experimental `local-slot-order` knob, enabled explicitly
-with `WAGO_LOCAL_SLOT_ORDER=1`. Production slot ordering must use exact emitted
-frame-reference counts or symbolic stack-reference costs rather than repurposing
-the speed-oriented pin score.
+The corpus byte gate rejects this heuristic for Balanced. Its source-score
+implementation has since been removed; the experimental `local-slot-order`
+knob now names the exact symbolic finalizer described below. Production slot
+ordering does not repurpose the speed-oriented pin score.
 
 ### Objective-aware inlining baseline
 
@@ -2002,8 +2001,9 @@ RIP-relative memory displacement at the encoder seam. It separates `disp0`,
 `disp8`, and `disp32`, reports their exact physical displacement bytes, and
 keeps an RSP-based frame subset. The encoder owns the classification, so VEX,
 EVEX compressed displacement, SIMD RIP-relative literals, and ordinary scalar
-forms use the same accounting. Collection retains the existing nil-stats path,
-does not allocate, and keeps `amd64.Asm` at 80 bytes.
+forms use the same accounting. Collection retains the existing nil-stats path
+and does not allocate. The later optional symbolic-local recorder adds one
+pointer, making `amd64.Asm` 88 bytes without allocating on the default path.
 
 On the current Size objective, Ruby emits 867,766 zero-displacement memory
 operands, 2,713,186 `disp8` operands, and 83,096 `disp32` operands, occupying
@@ -2056,6 +2056,33 @@ execution samples cover every changed executable workload: nbody +0.24%,
 sha256 -0.31%, raytrace -0.38%, blake-as -0.10%, blake-as-simd -0.39%,
 utf-as-simd conversion -0.54%, and utf-as-simd validation -0.15%. Every result
 remains inside the Size gate with zero execution allocations.
+
+## Experimental AMD64 symbolic local-slot packing
+
+The old source-score ordering experiment has been replaced by a true symbolic
+finalizer path. During the existing forward lowering, local-home operands carry
+their local identity and maximal-encoding ModRM/displacement offsets. After
+emission, the finalizer may swap only an equal-type, zero-reference low home
+with a referenced `disp32` home. Because the moved-out local has no machine
+references, every changed operand is shrink-only; no instruction can require
+expansion and no second Wasm or machine-code pass is introduced.
+
+The recorder is capped at the finalizer's 255 deletion sites. Exact per-local
+counts occupy the unused high half of the existing `localSlot` words, and a
+candidate is admitted only when all its sites fit in the bounded inventory.
+`WAGO_LOCAL_SLOT_ORDER=1` enables the experiment for Size/Embedded; the default
+remains off while the remaining site storage is moved into compiler-arena tail
+scratch and broader shrink-only swaps are developed.
+
+On top of large-frame finalization, the exact 36-module Size suite falls from
+66,593,838 to 66,591,819 bytes (-2,019, -0.003%). Ruby contributes 1,242 bytes,
+blake-as 378, blake-as-simd 258, and nbody 141. Five serialized compile samples
+put the enabled-versus-disabled median at +0.48% for Ruby and +0.17% for
+esbuild; the bounded site slice adds roughly 4 KiB of reusable compiler scratch.
+Five one-second execution samples move nbody -0.39%, blake-as -0.31%, and
+blake-as-simd -0.07%, all with zero allocations. The small present corpus win
+does not justify enabling it by default, but the implementation establishes the
+recorded `RelaxStackRef` seam required for later arbitrary shrink-only packing.
 
 The same encoder ledger now counts every REX prefix, including prefixes embedded
 after another instruction in a combined emission. Ruby emits 4,730,474 total:

@@ -157,8 +157,12 @@ func modMem(t *testing.T, pages uint32, params, results []wasm.ValType, funcBody
 // returns the raw 64-bit result word, a copy of post-run linear memory, and any
 // trap error from the call.
 func runMemAmd64(t *testing.T, m *wasm.Module, setup func([]byte), args ...uint64) (uint64, []byte, error) {
+	return runMemAmd64WithOptions(t, m, CompileOptions{}, setup, args...)
+}
+
+func runMemAmd64WithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, setup func([]byte), args ...uint64) (uint64, []byte, error) {
 	t.Helper()
-	cm, err := CompileModule(m)
+	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}

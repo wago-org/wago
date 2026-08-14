@@ -672,6 +672,7 @@ type scratch struct {
 	pinnedLocals            []int       // pinned-local index backing; reused across functions
 	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
 	jumpTableFragments      []jumpTableFragment
+	localRefs               amd64.LocalRefRecorder
 	transient
 }
 
@@ -736,6 +737,7 @@ func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
+	sc.asm.LocalRefs = nil
 	if compactNativePolicy(sc.policy) {
 		sc.asm.ResetRel32Recorder(finalizerRel32Limit(sc.policy))
 	} else {
@@ -852,9 +854,20 @@ func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
 	return true
 }
 
-func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + f.localSlot[i]) }
+func (f *fn) localOff(i int) int32 {
+	return int32(f.frameHeaderBytes() + int(uint32(f.localSlot[i])))
+}
 func (f *fn) localAddr(i int) int32 {
 	off := f.localOff(i)
+	if f.a.LocalRefs != nil {
+		slot := uint64(f.localSlot[i])
+		count := uint32(slot >> 32)
+		if count != ^uint32(0) {
+			count++
+			f.localSlot[i] = int(uint64(count)<<32 | uint64(uint32(slot)))
+		}
+		f.a.LocalRefs.Mark(uint32(i))
+	}
 	if f.stats != nil {
 		f.stats.Encoding.RecordLocalFrameAddress(off)
 	}
@@ -2468,9 +2481,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, fpPinLimit, hasCall, pinLocals && f.opt(optV128Pins) && !hasCall)
-	if f.opt(optLocalSlotOrder) && !moduleEH && gcFrameRoots == nil {
-		f.orderLocalSlots(hints.localScore, compactI32Frame)
-	}
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
@@ -2510,6 +2520,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
+	if f.opt(optLocalSlotOrder) && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
+		compactNativePolicy(policy) && !moduleEH && gcFrameRoots == nil && len(inlinedCallees) == 0 {
+		sc.localRefs.Reset(f.nLocals, maxAMD64LocalRefSites)
+		sc.asm.LocalRefs = &sc.localRefs
+	}
 
 	if regABI {
 		// A host trampoline may enter this internal ABI directly when no adapter
@@ -2570,86 +2585,59 @@ func compactAccumulatorImmediatePolicy(policy CodegenPolicy) bool {
 	return (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && policy.EnabledOption(optAccumulatorImmediate)
 }
 
-// orderLocalSlots gives the shortest RSP-relative encodings to the hottest
-// locals that still use memory. Whole-function register pins go after them:
-// their ordinary gets/sets do not touch the home slot, while unpinned locals do.
-// localSlot itself temporarily holds the sorted permutation, making the layout
-// pass allocation-free. GC and EH frames are conservatively excluded at the call
-// site until their maps consume arbitrary localSlot layouts directly.
-func (f *fn) orderLocalSlots(scores []uint32, compactI32 bool) {
-	if len(scores) != f.nLocals || f.nLocals < 2 {
-		return
+// packLocalSlots uses exact emitted local-home references after the forward
+// lowering. It only swaps equal-type homes: a low home with zero references and
+// a referenced disp32 home. The moved-out local has no machine references to
+// expand, so every changed site is a monotonic disp32 -> disp8/disp0 shrink.
+func (f *fn) packLocalSlots(siteBudget int) int {
+	r := f.a.LocalRefs
+	if r == nil || r.Overflow || r.Pending || siteBudget <= 0 || int(r.Locals) != f.nLocals {
+		return 0
 	}
-	for i := 0; i < f.nLocals; i++ {
-		f.localSlot[i] = i
-	}
-	slices.SortFunc(f.localSlot, func(a, b int) int {
-		aPinned := f.locals[a].reg != regNone
-		bPinned := f.locals[b].reg != regNone
-		if aPinned != bPinned {
-			if aPinned {
-				return 1
-			}
-			return -1
-		}
-		if scores[a] != scores[b] {
-			if scores[a] > scores[b] {
-				return -1
-			}
-			return 1
-		}
-		return a - b
-	})
 
-	localBytes := 0
-	changed := false
-	for rank, local := range f.localSlot {
-		changed = changed || rank != local
-		mt := f.localType[local]
-		off := localBytes
-		if compactI32 && mt == mtI32 {
-			localBytes += 4
-		} else {
-			off = (localBytes + 7) &^ 7
-			localBytes = off + 8*mt.stackSlots()
+	swaps := 0
+	for donor := 0; donor < f.nLocals && siteBudget != 0; donor++ {
+		// A v128 home can emit multiple machine references from one localAddr
+		// call (for example, two scalar stores during zeroing). Until the
+		// recorder attaches identity to each actual memory operand, keep this
+		// one-call/one-site proof limited to single-slot values.
+		if f.localType[donor].stackSlots() != 1 || f.localRefCount(donor) != 0 || f.localOff(donor) > 127 {
+			continue
 		}
-		// localSlot is int64 on AMD64. Keep the local identity in the low word
-		// and its final byte offset in the high word until the permutation is
-		// inverted in place below.
-		f.localSlot[rank] = int(uint64(uint32(off))<<32 | uint64(uint32(local)))
-	}
-	for i := range f.localSlot {
-		for int(uint32(f.localSlot[i])) != i {
-			j := int(uint32(f.localSlot[i]))
-			f.localSlot[i], f.localSlot[j] = f.localSlot[j], f.localSlot[i]
-		}
-	}
-	for i := range f.localSlot {
-		f.localSlot[i] = int(uint64(f.localSlot[i]) >> 32)
-	}
-	if got := (localBytes + 7) / 8; got <= f.nLocalSlots {
-		f.nLocalSlots = got
-	} else {
-		// Mixing packed i32s with naturally aligned homes can move a four-byte
-		// padding gap. Never enlarge the frame to improve displacement order;
-		// restore the original deterministic declaration layout instead.
-		localBytes = 0
-		for i, mt := range f.localType[:f.nLocals] {
-			if compactI32 && mt == mtI32 {
-				f.localSlot[i] = localBytes
-				localBytes += 4
+		best, bestCount := -1, uint32(0)
+		for local := range f.nLocals {
+			count := f.localRefCount(local)
+			if int(count) > siteBudget || count <= bestCount || f.localType[local].stackSlots() != 1 ||
+				f.localType[local] != f.localType[donor] || f.localOff(local) <= 127 {
 				continue
 			}
-			localBytes = (localBytes + 7) &^ 7
-			f.localSlot[i] = localBytes
-			localBytes += 8 * mt.stackSlots()
+			recorded := uint32(0)
+			for _, site := range r.Sites {
+				if int(site.Local) == local {
+					recorded++
+				}
+			}
+			if recorded != count {
+				continue
+			}
+			best, bestCount = local, count
 		}
-		changed = false
+		if best < 0 {
+			continue
+		}
+		donorSlot, bestSlot := uint64(f.localSlot[donor]), uint64(f.localSlot[best])
+		f.localSlot[donor] = int(donorSlot&0xffffffff00000000 | bestSlot&0xffffffff)
+		f.localSlot[best] = int(bestSlot&0xffffffff00000000 | donorSlot&0xffffffff)
+		siteBudget -= int(bestCount)
+		swaps++
 	}
-	if changed {
+	if swaps != 0 {
 		f.stats.peep("local-slot-order")
 	}
+	return swaps
 }
+
+func (f *fn) localRefCount(local int) uint32 { return uint32(uint64(f.localSlot[local]) >> 32) }
 
 // finalizeStats fills the per-function size counters from final compiler state
 // (no-op when collection is off). Per-event counters are incremented at their

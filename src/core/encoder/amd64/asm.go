@@ -39,7 +39,51 @@ type Asm struct {
 	UsesBMI2                     bool
 	Rel32Overflow                bool
 	CompactAccumulatorImmediates bool
+	LocalRefs                    *LocalRefRecorder
 	rel32Inline                  [2]Rel32Site
+}
+
+// LocalRefSite identifies one disp32 field emitted for a symbolic Wasm local
+// home. ModRMOff and DispOff are maximal-encoding offsets; the backend may
+// rewrite the displacement and delete its trailing bytes during finalization.
+type LocalRefSite struct {
+	ModRMOff uint32
+	DispOff  uint32
+	Local    uint32
+	OldDisp  int32
+}
+
+// LocalRefRecorder is reusable bounded scratch for symbolic local-home memory
+// references. The backend retains exact per-local emitted reference counts;
+// Sites stores only disp32 forms that can shrink after a safe slot swap.
+type LocalRefRecorder struct {
+	Sites    []LocalRefSite
+	Limit    int
+	Locals   uint32
+	Next     uint32
+	Pending  bool
+	Overflow bool
+}
+
+func (r *LocalRefRecorder) Reset(nLocals, limit int) {
+	if cap(r.Sites) < limit {
+		r.Sites = make([]LocalRefSite, 0, limit)
+	} else {
+		r.Sites = r.Sites[:0]
+	}
+	r.Limit = limit
+	r.Locals = uint32(nLocals)
+	r.Next = 0
+	r.Pending = false
+	r.Overflow = false
+}
+
+func (r *LocalRefRecorder) Mark(local uint32) {
+	if r.Pending || local >= r.Locals {
+		r.Overflow = true
+	}
+	r.Next = local
+	r.Pending = true
 }
 
 // EncodingStats records exact memory-displacement choices made by the encoder.
@@ -337,6 +381,7 @@ func (a *Asm) emitDisp(mod byte, disp int32) {
 func (a *Asm) baseAddr(regField byte, base Reg, disp int32) {
 	mod := addrMode(base, disp)
 	a.recordAddress(base, mod)
+	modRMOff := len(a.B)
 	rm := byte(base & 7)
 	if rm == 4 {
 		a.emit(mod | ((regField & 7) << 3) | 0x04)
@@ -344,7 +389,32 @@ func (a *Asm) baseAddr(regField byte, base Reg, disp int32) {
 	} else {
 		a.emit(mod | ((regField & 7) << 3) | rm)
 	}
+	a.recordLocalRef(base, mod, modRMOff, len(a.B), disp)
 	a.emitDisp(mod, disp)
+}
+
+func (a *Asm) recordLocalRef(base Reg, mod byte, modRMOff, dispOff int, disp int32) {
+	r := a.LocalRefs
+	if r == nil || !r.Pending {
+		return
+	}
+	local := r.Next
+	r.Pending = false
+	if base != RSP || local >= r.Locals {
+		r.Overflow = true
+		return
+	}
+	if mod != 0x80 {
+		return
+	}
+	if modRMOff < 0 || dispOff < 0 || uint64(dispOff) > uint64(^uint32(0)) {
+		r.Overflow = true
+		return
+	}
+	if len(r.Sites) >= r.Limit {
+		return
+	}
+	r.Sites = append(r.Sites, LocalRefSite{ModRMOff: uint32(modRMOff), DispOff: uint32(dispOff), Local: local, OldDisp: disp})
 }
 
 func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {

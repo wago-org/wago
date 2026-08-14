@@ -55,9 +55,10 @@ var (
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings only
 	// under Size/Embedded. Balanced retains its measured layout exactly.
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
-	// localSlotOrderEnabled experiments with giving hot unpinned locals compact
-	// RSP-relative offsets. Loop-weighted pin scores are not a native-byte cost:
-	// WAGO_LOCAL_SLOT_ORDER=1 is therefore opt-in until exact ref counts drive it.
+	// localSlotOrderEnabled records exact emitted local-home references and lets
+	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
+	// low homes during finalization. It remains opt-in while its site scratch is
+	// moved into the compiler arena and broader shrink-only layouts are admitted.
 	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") == "1"
 	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
 	// slot when its still-live result must be evicted from a register.

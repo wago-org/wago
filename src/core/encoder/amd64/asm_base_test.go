@@ -89,6 +89,39 @@ func TestEncodingStatsLocalFrameDisplacementForms(t *testing.T) {
 	}
 }
 
+func TestLocalRefRecorderTracksExactLocalAndDisp32Site(t *testing.T) {
+	var refs LocalRefRecorder
+	refs.Reset(2, 1)
+	a := Asm{LocalRefs: &refs}
+	refs.Mark(0)
+	a.Load64(RAX, RSP, 128)
+	refs.Mark(1)
+	a.Store64(RSP, 16, RAX)
+	if refs.Overflow || refs.Pending {
+		t.Fatalf("local recorder state = overflow:%v pending:%v", refs.Overflow, refs.Pending)
+	}
+	if len(refs.Sites) != 1 {
+		t.Fatalf("disp32 sites = %d, want 1", len(refs.Sites))
+	}
+	site := refs.Sites[0]
+	if site.Local != 0 || site.OldDisp != 128 || a.B[site.ModRMOff]&0xc0 != 0x80 || binary.LittleEndian.Uint32(a.B[site.DispOff:]) != 128 {
+		t.Fatalf("disp32 site = %#v in %x", site, a.B)
+	}
+}
+
+func TestLocalRefRecorderRetainsBoundedPrefix(t *testing.T) {
+	var refs LocalRefRecorder
+	refs.Reset(1, 1)
+	a := Asm{LocalRefs: &refs}
+	for range 2 {
+		refs.Mark(0)
+		a.Load64(RAX, RSP, 128)
+	}
+	if refs.Overflow || refs.Pending || len(refs.Sites) != 1 || cap(refs.Sites) != 1 {
+		t.Fatalf("bounded local recorder = sites:%d/%d overflow:%v pending:%v", len(refs.Sites), cap(refs.Sites), refs.Overflow, refs.Pending)
+	}
+}
+
 func TestEncodingStatsRexPrefixes(t *testing.T) {
 	var stats EncodingStats
 	a := Asm{EncodingStats: &stats}
@@ -302,7 +335,7 @@ func TestRel32SiteCounting(t *testing.T) {
 	if got, want := unsafe.Sizeof(Rel32Site{}), uintptr(4); got != want {
 		t.Fatalf("rel32 site size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(Asm{}), uintptr(80); got != want {
+	if got, want := unsafe.Sizeof(Asm{}), uintptr(88); got != want {
 		t.Fatalf("asm size = %d, want %d", got, want)
 	}
 }

@@ -86,6 +86,7 @@ func (f *fn) finalizerRelaxIterationLimit() int {
 
 const maxAMD64FinalizerRel32Sites = 1024
 const maxAMD64LoopCompactionBytes = 64 << 10
+const maxAMD64LocalRefSites = shared.MaxWideOffsetMapDeletions
 
 func finalizerRel32Limit(policy CodegenPolicy) int {
 	limit := int(policy.MaxRel32Sites)
@@ -241,6 +242,47 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 			deletions = append(deletions, shared.DeletedRange{Off: uint32(over + 4), Len: 5})
 			holeDeleted += 5
 			holeBudget--
+		}
+	}
+	localBudget := cap(deletions) - len(deletions) - frameSites
+	if localBudget > 0 && f.packLocalSlots(localBudget) != 0 {
+		for _, site := range f.a.LocalRefs.Sites {
+			local := int(site.Local)
+			if local < 0 || local >= len(f.localSlot) {
+				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid local reference identity %d", site.Local)
+			}
+			newDisp := f.localOff(local)
+			if newDisp == site.OldDisp {
+				continue
+			}
+			modRMOff, dispOff := int(site.ModRMOff), int(site.DispOff)
+			if modRMOff < 0 || modRMOff >= len(f.a.B) || dispOff < 0 || dispOff+4 > len(f.a.B) ||
+				f.a.B[modRMOff]&0xc0 != 0x80 || int32(binary.LittleEndian.Uint32(f.a.B[dispOff:])) != site.OldDisp ||
+				newDisp < 0 || newDisp > 127 {
+				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid local disp32 site %d/%d (%d -> %d)", modRMOff, dispOff, site.OldDisp, newDisp)
+			}
+			deletion := shared.DeletedRange{Off: uint32(dispOff + 1), Len: 3}
+			f.a.B[modRMOff] = f.a.B[modRMOff]&0x3f | 0x40
+			f.a.B[dispOff] = byte(newDisp)
+			if newDisp == 0 {
+				f.a.B[modRMOff] &= 0x3f
+				deletion = shared.DeletedRange{Off: uint32(dispOff), Len: 4}
+			}
+			deletions = append(deletions, deletion)
+			if s := f.stats; s != nil {
+				s.Encoding.MemoryDisp32--
+				s.Encoding.FrameDisp32--
+				s.Encoding.LocalDisp32--
+				if newDisp == 0 {
+					s.Encoding.MemoryDisp0++
+					s.Encoding.FrameDisp0++
+					s.Encoding.LocalDisp0++
+				} else {
+					s.Encoding.MemoryDisp8++
+					s.Encoding.FrameDisp8++
+					s.Encoding.LocalDisp8++
+				}
+			}
 		}
 	}
 	addFrameSite := func(site int, opcode byte) error {
