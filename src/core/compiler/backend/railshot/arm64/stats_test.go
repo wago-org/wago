@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -178,6 +179,40 @@ func TestCodegenStatsStoreAndBoundsArm64(t *testing.T) {
 	}
 	if guard.BoundsChecks != 0 {
 		t.Errorf("guard BoundsChecks = %d, want 0", guard.BoundsChecks)
+	}
+}
+
+func TestCodegenStatsLocalTrafficCausesArm64(t *testing.T) {
+	params := make([]wasm.ValType, 16)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	body := []byte{0x01, 0x10, 0x7f} // sixteen declared i32 locals
+	for i := byte(0); i < 32; i++ {
+		body = append(body, 0x20, i, 0x1a) // local.get i; drop
+	}
+	body = append(body, 0x41, 0x00, 0x0b)
+	stats := compileWithStats(t, mod1(t, params, []wasm.ValType{wasm.I32}, body), false)
+	traffic := stats.Funcs[0].LocalTraffic
+	if traffic.ParameterHomeStores == 0 || traffic.DeclaredLocalZeroStores == 0 {
+		t.Fatalf("entry local traffic = %+v, want parameter homes and declared zeros", traffic)
+	}
+	if !strings.Contains(stats.String(), "local-traffic: param-home=") {
+		t.Fatalf("report omitted local traffic:\n%s", stats.String())
+	}
+
+	i32 := []wasm.ValType{wasm.I32}
+	callModule := modFuncs(t,
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x6a, 0x21, 0x00, 0x20, 0x00, 0x10, 0x01, 0x1a, 0x20, 0x00, 0x0b}},
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
+	)
+	var callStats ModuleStats
+	if _, err := CompileModuleWith(callModule, CompileOptions{Stats: &callStats, Optimizations: map[string]bool{"inline": false, "reg-abi": false}}); err != nil {
+		t.Fatal(err)
+	}
+	callTraffic := callStats.Funcs[0].LocalTraffic
+	if callTraffic.CallPreservationStores == 0 || callTraffic.CallPreservationReloads == 0 {
+		t.Fatalf("call local traffic = %+v, want preservation store and reload", callTraffic)
 	}
 }
 

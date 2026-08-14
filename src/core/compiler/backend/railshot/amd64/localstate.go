@@ -119,6 +119,7 @@ func (f *fn) materializeZeroLocal(x int, needSlot bool) {
 		}
 		if needSlot {
 			f.storeLocalReg(x, reg, isFloat)
+			f.stats.addDeclaredLocalZeroStore()
 			f.locals[x].state = lsStackReg
 		} else {
 			f.locals[x].state = lsReg
@@ -129,6 +130,7 @@ func (f *fn) materializeZeroLocal(x int, needSlot bool) {
 		r := f.allocReg(0)
 		f.a.XorSelf32(r)
 		f.storeFrameInt(f.localAddr(x), r, f.localType[x])
+		f.stats.addDeclaredLocalZeroStore()
 		f.release(r)
 		f.locals[x].state = lsMem
 	}
@@ -150,6 +152,7 @@ func (f *fn) recoverLocal(x int) {
 	}
 	if f.locals[x].state == lsMem {
 		f.loadLocalReg(x, reg, isFloat)
+		f.stats.addCallPreservationReload()
 		f.locals[x].state = lsStackReg
 	}
 }
@@ -219,6 +222,7 @@ func (f *fn) spillLocalsForCall() {
 		reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
 		if !f.usesCalls {
 			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
+			f.stats.addCallPreservationStore()
 			continue
 		}
 		if f.locals[x].state == lsConstZero {
@@ -233,6 +237,7 @@ func (f *fn) spillLocalsForCall() {
 				f.stats.peep("call-dead-local-store")
 			} else {
 				f.storeLocalReg(x, reg, isFloat)
+				f.stats.addCallPreservationStore()
 			}
 		}
 		f.locals[x].state = lsMem // callee clobbers the register
@@ -248,6 +253,7 @@ func (f *fn) reloadLocalsForCall() {
 	}
 	for _, x := range f.pinnedLocals {
 		f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+		f.stats.addCallPreservationReload()
 	}
 }
 
@@ -273,8 +279,10 @@ func (f *fn) reconcileLocals() {
 		switch f.locals[x].state {
 		case lsMem:
 			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			f.stats.addControlMergeReload()
 		case lsReg:
 			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			f.stats.addControlMergeStore()
 		}
 		f.locals[x].state = lsStackReg
 	}
@@ -363,6 +371,7 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	for _, x := range f.pinnedLocals {
 		if f.locals[x].state == lsReg {
 			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			f.stats.addControlMergeStore()
 			f.locals[x].state = lsStackReg
 		}
 	}
@@ -378,6 +387,7 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	for i, x := range f.pinnedLocals {
 		if t[i] == lsStackReg && f.locals[x].state == lsMem {
 			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			f.stats.addControlMergeReload()
 			f.locals[x].state = lsStackReg
 		}
 	}

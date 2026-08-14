@@ -38,6 +38,22 @@ pre-completion commit measured 262,356 ns/op versus 259,674 ns/op (+1.03%), with
 allocations unchanged at 342 allocs/op and B/op effectively unchanged at 138.8
 KiB. This remains inside the ordinary local-work compile-time gate.
 
+### 2026-08-14 — local-traffic causality ledger, first slice
+
+The shared opt-in per-function ledger now distinguishes parameter-home stores,
+declared-local zero stores, ordinary allocator spills/reloads, structured-merge
+stores/reloads, and call-preservation stores/reloads on both backends. Counters
+are incremented only at exact emitted frame accesses, remain fixed-size, and are
+absent from reports when every value is zero. Code-neutrality tests compare
+stats-enabled and disabled output bytes.
+
+A serialized five-sample Darwin/ARM64 `many_funcs` compile check measured a
+261,932 ns/op median versus 262,813 ns/op before the ledger (-0.34%, treated as
+noise), with 342 allocs/op and approximately 138.8 KiB/op unchanged. This first
+slice establishes the baseline for definite assignment, lazy parameter homing,
+regional residency, and call-effect work; argument/result moves, directory
+derivations, branch counts, and register-bank transfers remain to be attributed.
+
 ---
 
 # 1. North-star architecture

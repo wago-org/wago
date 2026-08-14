@@ -144,6 +144,7 @@ type CodegenStats struct {
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
+	LocalTraffic  shared.LocalTraffic
 	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string `json:"finalizer_fallback,omitempty"`
@@ -259,11 +260,43 @@ func (s *CodegenStats) addCondense() {
 func (s *CodegenStats) addSpill() {
 	if s != nil {
 		s.Spills++
+		s.LocalTraffic.OrdinarySpillStores++
 	}
 }
 func (s *CodegenStats) addReload() {
 	if s != nil {
 		s.Reloads++
+		s.LocalTraffic.OrdinarySpillReloads++
+	}
+}
+func (s *CodegenStats) addParameterHomeStore() {
+	if s != nil {
+		s.LocalTraffic.ParameterHomeStores++
+	}
+}
+func (s *CodegenStats) addDeclaredLocalZeroStore() {
+	if s != nil {
+		s.LocalTraffic.DeclaredLocalZeroStores++
+	}
+}
+func (s *CodegenStats) addControlMergeStore() {
+	if s != nil {
+		s.LocalTraffic.ControlMergeStores++
+	}
+}
+func (s *CodegenStats) addControlMergeReload() {
+	if s != nil {
+		s.LocalTraffic.ControlMergeReloads++
+	}
+}
+func (s *CodegenStats) addCallPreservationStore() {
+	if s != nil {
+		s.LocalTraffic.CallPreservationStores++
+	}
+}
+func (s *CodegenStats) addCallPreservationReload() {
+	if s != nil {
+		s.LocalTraffic.CallPreservationReloads++
 	}
 }
 func (s *CodegenStats) addForcedLoad() {
@@ -518,6 +551,14 @@ func (s *CodegenStats) report() string {
 	}
 	fmt.Fprintf(&b, "    alloc: flushes=%d roots=%d deferred=%d flushBelow=%d roots=%d deferred=%d callFlush=%d localSetDeferred=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
+	traffic := s.LocalTraffic
+	if traffic.Any() {
+		fmt.Fprintf(&b, "    local-traffic: param-home=%d declared-zero=%d ordinary-store=%d ordinary-reload=%d merge-store=%d merge-reload=%d call-store=%d call-reload=%d\n",
+			traffic.ParameterHomeStores, traffic.DeclaredLocalZeroStores,
+			traffic.OrdinarySpillStores, traffic.OrdinarySpillReloads,
+			traffic.ControlMergeStores, traffic.ControlMergeReloads,
+			traffic.CallPreservationStores, traffic.CallPreservationReloads)
+	}
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
 	if s.InlineSiteBytes != 0 {

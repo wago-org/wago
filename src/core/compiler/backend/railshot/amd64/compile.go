@@ -3087,6 +3087,7 @@ func (f *fn) prologue() {
 			} else {
 				a.VMovdquLoadDisp(0, RDI, paramOff)
 				a.VMovdquStoreDisp(RSP, f.localAddr(i), 0)
+				f.stats.addParameterHomeStore()
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -3106,6 +3107,7 @@ func (f *fn) prologue() {
 			} else {
 				a.Load64(RAX, RDI, paramOff)
 				f.storeFrameInt(f.localAddr(i), RAX, f.localType[i])
+				f.stats.addParameterHomeStore()
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -3140,8 +3142,11 @@ func (f *fn) zeroDeclaredLocals() {
 			} else if f.localType[i] == mtV128 {
 				a.Store64(RSP, f.localAddr(i), RAX)
 				a.Store64(RSP, f.localAddr(i)+8, RAX)
+				f.stats.addDeclaredLocalZeroStore()
+				f.stats.addDeclaredLocalZeroStore()
 			} else {
 				f.storeFrameInt(f.localAddr(i), RAX, f.localType[i])
+				f.stats.addDeclaredLocalZeroStore()
 			}
 		}
 		return
@@ -3251,6 +3256,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 				continue
 			}
 			f.storeFrameInt(f.localAddr(i), intArgRegs[gp], mt)
+			f.stats.addParameterHomeStore()
 			gp++
 		}
 		gp, fp = 0, 0
@@ -3263,6 +3269,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 				a.FMov(pr, src, mt == mtF64)
 			} else {
 				a.FStoreDisp(RSP, f.localAddr(i), src, mt == mtF64)
+				f.stats.addParameterHomeStore()
 			}
 			fp++
 		} else if len(f.intervalReg) != 0 {
@@ -3271,6 +3278,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 			f.moveInt(pr, intArgRegs[gp], mt)
 		} else {
 			f.storeFrameInt(f.localAddr(i), intArgRegs[gp], mt)
+			f.stats.addParameterHomeStore()
 		}
 		if !mt.isFloat() {
 			gp++

@@ -2569,6 +2569,7 @@ func (f *fn) prologue() {
 			} else {
 				a.VMovdquLoadDisp(0, X0, paramOff)
 				a.VMovdquStoreDisp(SP, f.localOff(i), 0)
+				f.stats.addParameterHomeStore()
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -2591,6 +2592,7 @@ func (f *fn) prologue() {
 				// but on arm64 that role register aliases the args base).
 				f.ld64(X16, X0, paramOff)
 				f.st64(SP, f.localOff(i), X16)
+				f.stats.addParameterHomeStore()
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -2628,8 +2630,11 @@ func (f *fn) zeroDeclaredLocals() {
 			} else if f.localType[i] == mtV128 {
 				f.st64(SP, f.localOff(i), ZR)
 				f.st64(SP, f.localOff(i)+8, ZR)
+				f.stats.addDeclaredLocalZeroStore()
+				f.stats.addDeclaredLocalZeroStore()
 			} else {
 				f.st64(SP, f.localOff(i), ZR)
+				f.stats.addDeclaredLocalZeroStore()
 			}
 		}
 		return
@@ -2753,6 +2758,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 				a.FMov(pr, src, mt == mtF64)
 			} else {
 				a.FStoreDisp(SP, f.localOff(i), src, mt == mtF64)
+				f.stats.addParameterHomeStore()
 			}
 			fp++
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
@@ -2761,6 +2767,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			}
 		} else {
 			f.st64(SP, f.localOff(i), intArgRegs[gp])
+			f.stats.addParameterHomeStore()
 		}
 		if !mt.isFloat() {
 			gp++
