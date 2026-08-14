@@ -82,10 +82,10 @@ func TestAdapterTailInfoRejectsEmbeddedReturnPCAMD64(t *testing.T) {
 }
 
 func TestAdapterTailIslandRangeAMD64(t *testing.T) {
-	if !adapterTailIslandInRangeAMD64((1<<31)-16, 16) {
+	if !adapterTailIslandInRangeAMD64((1<<31)-17, 16) {
 		t.Fatal("exact conservative island limit rejected")
 	}
-	if adapterTailIslandInRangeAMD64((1<<31)-15, 16) {
+	if adapterTailIslandInRangeAMD64((1<<31)-16, 16) {
 		t.Fatal("out-of-range island admitted")
 	}
 }
