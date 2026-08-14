@@ -838,6 +838,12 @@ With `WAGO_COMPACT=1`, the comparison saves 37,064 bytes (82,666,864 to
 82,629,800), again with 13 wins and no losses. `esbuild` contributes 16,084
 hits and 32,048 default-path bytes.
 
+Propagating upper-zero from AMD64 i32 loads adds 37 exact hits and saves another
+112 default bytes, or 128 bytes with compaction, without a loss. The signed-load
+execution boundary and native race suite pass. Against the immediately preceding
+facts checkpoint, `json-as` compile moved from 1,218,311 to 1,214,688 ns/op
+(-0.30%) with allocations unchanged.
+
 Serialized compilation remains inside the Balanced gate:
 
 | Workload | Facts disabled median | Facts enabled median | Change | Allocation effect |
