@@ -1080,3 +1080,44 @@ selected sites:                24
 That result does not justify another permanent selector, environment switch,
 and test surface. The prototype was removed. ARM64 retains the common
 `{3,5,9}` forms; AMD64 has no wider single-instruction scale to investigate.
+
+## Implementation result: AMD64 shared cold trap bodies
+
+The byte ledger now distinguishes per-code trap stubs from source-function trap
+groups. The current AMD64 corpus contains 73,943 of each and 4,483,429 trap-stub
+bytes, or 60.6 bytes per group. More than 16,000 functions contain at least
+three groups, establishing a strong function-local sharing crossover.
+
+For Size and Embedded, a function with at least three groups now leaves each
+group responsible only for the exact Wasm PC, source function, trap code, and a
+branch. One shared cold body writes pinned module globals, stores those three
+values to the trap cell, restores the native entry stack, and returns to Go.
+RAX, RCX, and RDX carry the three values; module-global pins remain in R12-R14.
+The last group falls through to the body. Functions below the crossover, Speed,
+Balanced, and `WAGO_AMD64_NO_SHARED_TRAP_BODY=1` retain the former layout.
+
+Measured on the checked-in AMD64 Size corpus on `hub`:
+
+```text
+rollback native bytes:  66,040,168
+candidate native bytes: 64,189,444
+net reduction:           1,850,724 (2.8024%)
+shared functions:           17,606
+
+Ruby compile median:   1,032,998,617 -> 1,027,381,363 ns/op (-0.54%)
+esbuild compile median:  551,151,645 ->   546,401,278 ns/op (-0.86%)
+compile allocation movement: noise-level
+
+raytrace render median:       357,716 -> 358,768 ns/op (+0.29%)
+utf-as-simd convert median:    51,963 ->  52,021 ns/op (+0.11%)
+runtime allocations: zero in both configurations
+```
+
+SQLite contributes 1,266,955 bytes, Ruby 441,979, regexmatch 49,736,
+raytrace 44,616, Lua 34,219, utf-as-simd 8,381, swar-pack-parse 2,868,
+wasm3 1,890, blake-as-simd 52, and globals 28 bytes; no module grows.
+
+Focused crossover and trap-frame tests, the AMD64 encoder/backend and race
+suites, compact/fuzz execution, and the complete Size execution corpus pass.
+The broader hub checkout still lacks its pinned spec-v3 submodule and retains
+the previously recorded unrelated plugin-build fixture failure.
