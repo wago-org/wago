@@ -1813,6 +1813,22 @@ encoding boundary. The production change and its rollout knob were removed.
 GC compact-i32 admission remains excluded until a representative corpus shows a
 native-byte reduction rather than only a small stack-frame accounting win.
 
+## Rejected: AMD64 64 KiB loop-compaction bound
+
+After 128-range finalization, Ruby still reports 579,340 retained branch-hole
+bytes. Per-function attribution places most of them in very large loop-bearing
+functions, so a bounded prototype raised only AMD64's 16 KiB finalizer work
+limit to 64 KiB and exposed `WAGO_AMD64_LOOP_COMPACTION_LIMIT=16K` as the exact
+rollback.
+
+The complete 36-module Size image remained exactly 67,553,398 bytes. The large
+functions carrying the holes also hit independent fail-closed conditions—most
+notably the bounded rel32 inventory or explicit jump-table-data exclusion—so
+raising the byte-scan bound alone admitted no additional function. The source
+and knob were removed without spending compile benchmarks on a zero-byte
+candidate. Further work here must expand explicit symbolic fragment/relocation
+coverage rather than weakening the existing work bound in isolation.
+
 ### Commands
 
 ```sh
