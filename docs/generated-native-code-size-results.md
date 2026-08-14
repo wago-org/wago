@@ -1066,6 +1066,29 @@ with zero allocations. Native compact-table execution, identity inventory
 validation, the ARM64 backend race suite, compacted runtime packages, and
 compacted `src/wago` tests all pass.
 
+### AMD64 compact duplicate-target tables
+
+AMD64 Size and Embedded use the same byte target-ID model with five-byte
+`jmp rel32` vector entries. Dispatch zero-extends the byte ID, forms `ID*5` with
+LEA, and jumps indirectly to the selected direct-jump entry. The exact chooser
+requires `labelBytes + 5*uniqueTargets < 4*labelCount`, caps unique IDs at 256,
+and reuses the existing control-depth target scratch. Balanced and Speed retain
+dense i32-offset tables.
+
+Across the 64-module AMD64 corpus on `hub`, Size code falls from 80,399,963 to
+80,245,798 bytes (-154,165), with 13 wins, no losses, and 51 ties. The reduction
+is identical with compaction enabled (79,964,791 to 79,810,626). Largest wins
+are Ruby (-78,372), esbuild (-33,581), script (-23,547), Lua (-7,826), markdown
+(-5,120), and regexmatch (-2,621). The ledger reports 4,593 admitted sites
+across 2,647 compilation records.
+
+Serialized Size medians were 836,162,283 to 840,914,225 ns/op (+0.57%) for Ruby
+and 483,116,796 to 485,799,308 ns/op (+0.56%) for esbuild, with only sub-0.01%
+B/op noise and no stable allocation-count change. Ten native dispatch samples
+on the Ryzen 7 7800X3D measured 9.9765 ns/op for dense Balanced and 9.7595 ns/op
+for compact Size (-2.18%), both at zero allocations. Native execution, the
+AMD64 backend race suite, and compacted runtime packages pass.
+
 ### Commands
 
 ```sh
