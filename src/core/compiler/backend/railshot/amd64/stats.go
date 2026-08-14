@@ -48,6 +48,9 @@ var (
 	// control flow. Calls remain excluded because some argument-staging paths use
 	// intentionally full-width local loads.
 	compactI32ControlFlowEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CONTROL") != "1"
+	// compactI32CallsEnabled admits call-making functions after every deferred
+	// local argument load has selected its width from the local's machine type.
+	compactI32CallsEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CALLS") != "1"
 	// localSlotOrderEnabled experiments with giving hot unpinned locals compact
 	// RSP-relative offsets. Loop-weighted pin scores are not a native-byte cost:
 	// WAGO_LOCAL_SLOT_ORDER=1 is therefore opt-in until exact ref counts drive it.

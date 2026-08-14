@@ -1652,6 +1652,33 @@ to 1,177,527,201 ns/op (+0.46%) and esbuild at 748,516,787 to 754,334,848 ns/op
 the full AMD64 backend and race suites, and compacted corpus execution with
 finalizer validation pass on the Ryzen host.
 
+## AMD64 compact i32 frames across calls
+
+Packed i32 homes now extend to call-making functions. The three deferred integer
+argument paths select `Load32` versus `Load64` from the local's machine type, so
+adjacent four-byte i32 homes cannot leak into an argument's upper half. Inline-
+reserved locals remain naturally word-sized beyond the packed caller region.
+EH and GC-frame functions retain their established layout.
+`WAGO_AMD64_NO_COMPACT_I32_CALLS=1` restores both the former admission rule and
+the former full-width argument loads as an exact code-shape oracle.
+
+Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
+from 1,926,848 to 1,429,168 bytes (-497,680, -25.83%). Raw native bytes fall from
+68,497,022 to 67,956,633 (-540,389, -0.79%). Ruby saves 394,266 bytes, SQLite
+57,919, regexmatch 51,467, wasm3 14,502, Lua 13,596, and esbuild 7,830.
+
+Five serialized rollback-versus-enabled compile samples put Ruby at 1,173,598,873
+to 1,167,247,724 ns/op (-0.54%) and esbuild at 750,020,172 to 746,254,342 ns/op
+(-0.50%). Median allocation movement is noise-level. Focused native execution,
+the full AMD64 backend and race suites, and compacted corpus execution with
+finalizer validation pass on the Ryzen host.
+
+Five 500 ms execution samples remain within the Size runtime gate. Median
+json-as serialize moves from 22,353 to 22,405 ns/op (+0.23%) and deserialize
+from 40,085 to 40,115 (+0.07%). The SIMD build moves from 27,087 to 27,345
+ns/op for serialize (+0.95%) and from 52,453 to 51,990 for deserialize (-0.88%).
+Every execution sample remains at zero B/op and zero allocations.
+
 ### Commands
 
 ```sh

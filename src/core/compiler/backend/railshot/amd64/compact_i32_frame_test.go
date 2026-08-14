@@ -85,3 +85,40 @@ func TestCompactI32FrameThroughControlFlow(t *testing.T) {
 		t.Fatalf("packed control-flow result = %d, err=%v, want 100", got, err)
 	}
 }
+
+func TestCompactI32FrameAcrossCall(t *testing.T) {
+	callee := make([]byte, 0, 205)
+	callee = append(callee, 0x00)
+	for range 200 {
+		callee = append(callee, 0x01) // nop; keep the call out of inline admission.
+	}
+	callee = append(callee, 0x20, 0x00, 0x0b)
+	caller := []byte{0x01, 0x14, 0x7f,
+		0x41, 0x2a, 0x21, 0x00,
+		0x41, 0x7f, 0x21, 0x01, // adjacent packed local must not contaminate arg 0.
+		0x20, 0x00, 0x10, 0x01,
+		0x0b}
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: caller},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: callee},
+	)
+	beforeCompact, beforeCalls := compactI32FrameEnabled, compactI32CallsEnabled
+	t.Cleanup(func() {
+		compactI32FrameEnabled = beforeCompact
+		compactI32CallsEnabled = beforeCalls
+	})
+	compactI32FrameEnabled = true
+	compactI32CallsEnabled = false
+	rollback := compileWithStats(t, m, false).Funcs[0]
+	compactI32CallsEnabled = true
+	enabled := compileWithStats(t, m, false).Funcs[0]
+	if enabled.FrameBytes >= rollback.FrameBytes {
+		t.Fatalf("packed call frame = %d bytes, rollback = %d", enabled.FrameBytes, rollback.FrameBytes)
+	}
+	if enabled.Peephole["compact-i32-frame"] != 1 {
+		t.Fatalf("compact-i32-frame hits = %d, want 1", enabled.Peephole["compact-i32-frame"])
+	}
+	if got := runAmd64(t, m); got != 42 {
+		t.Fatalf("packed call result = %d, want 42", got)
+	}
+}
