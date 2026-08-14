@@ -3,6 +3,9 @@
 package run
 
 import (
+	"bufio"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -50,31 +53,73 @@ func trackedLinuxProcessRemains(tracker *watchedProcessTracker) bool {
 	}
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
-	snapshot, err := watchedProcessSnapshot()
-	if err != nil {
-		return false
-	}
-	for _, process := range snapshot {
-		if started, ok := tracker.processes[process.pid]; ok && started == process.started {
+	for pid, started := range tracker.processes {
+		if process, ok := watchedProcess(pid); ok && started == process.started {
 			return true
 		}
 	}
 	return false
 }
 
-func watchedProcessSnapshot() ([]watchedProcessInfo, error) {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil, err
+func watchedProcessDescendants(owner, root int, tracked map[int]uint64, limit int) ([]watchedProcessInfo, error) {
+	queue := make([]watchedProcessInfo, 0, len(tracked)+2)
+	seen := make(map[int]bool, len(tracked)+2)
+	for _, pid := range []int{owner, root} {
+		if process, ok := watchedProcess(pid); ok && !seen[pid] {
+			seen[pid] = true
+			queue = append(queue, process)
+		}
 	}
-	processes := make([]watchedProcessInfo, 0, len(entries))
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
+	processes := make([]watchedProcessInfo, 0, len(tracked))
+	for pid, started := range tracked {
+		process, ok := watchedProcess(pid)
+		if !ok || process.started != started || seen[pid] {
 			continue
 		}
-		if process, ok := watchedProcess(pid); ok {
+		seen[pid] = true
+		processes = append(processes, process)
+		queue = append(queue, process)
+	}
+	for len(queue) != 0 {
+		parent := queue[0]
+		queue = queue[1:]
+		current, ok := watchedProcess(parent.pid)
+		if !ok || current.started != parent.started {
+			continue
+		}
+		file, err := os.Open("/proc/" + strconv.Itoa(parent.pid) + "/task/" + strconv.Itoa(parent.pid) + "/children")
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return processes, err
+		}
+		scanner := bufio.NewScanner(file)
+		scanner.Split(bufio.ScanWords)
+		for scanner.Scan() {
+			pid, parseErr := strconv.Atoi(scanner.Text())
+			if parseErr != nil || seen[pid] {
+				continue
+			}
+			process, exists := watchedProcess(pid)
+			if !exists || process.parent != parent.pid {
+				continue
+			}
+			if len(processes) >= limit {
+				_ = file.Close()
+				return processes, fmt.Errorf("watched process tree exceeds %d descendants", limit)
+			}
+			seen[pid] = true
 			processes = append(processes, process)
+			queue = append(queue, process)
+		}
+		scanErr := scanner.Err()
+		closeErr := file.Close()
+		if scanErr != nil {
+			return processes, scanErr
+		}
+		if closeErr != nil {
+			return processes, closeErr
 		}
 	}
 	return processes, nil

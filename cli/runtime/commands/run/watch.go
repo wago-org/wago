@@ -299,6 +299,9 @@ func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) error 
 	case <-timer.C:
 	}
 	if err := killWatchedProcess(child.platform, child.command); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		_ = child.command.Process.Kill()
+		<-child.done
+		child.releasePlatform()
 		return err
 	}
 	<-child.done

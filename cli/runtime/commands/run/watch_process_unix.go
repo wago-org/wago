@@ -287,12 +287,8 @@ func (tracker *watchedProcessTracker) ownsProcessGroup(group int) bool {
 	if err := tracker.refreshLocked(); err != nil {
 		return false
 	}
-	snapshot, err := watchedProcessSnapshot()
-	if err != nil {
-		return false
-	}
-	for _, process := range snapshot {
-		started, ok := tracker.processes[process.pid]
+	for pid, started := range tracker.processes {
+		process, ok := watchedProcess(pid)
 		if ok && started == process.started && process.group == group {
 			return true
 		}
@@ -301,44 +297,15 @@ func (tracker *watchedProcessTracker) ownsProcessGroup(group int) bool {
 }
 
 func (tracker *watchedProcessTracker) refreshLocked() error {
-	snapshot, err := watchedProcessSnapshot()
-	if err != nil {
-		return err
-	}
-	byPID := make(map[int]watchedProcessInfo, len(snapshot))
-	children := make(map[int][]watchedProcessInfo)
-	for _, process := range snapshot {
-		byPID[process.pid] = process
-		children[process.parent] = append(children[process.parent], process)
-	}
-	active := make(map[int]uint64, len(tracker.processes))
-	queue := []int{tracker.owner, tracker.root}
-	seen := map[int]bool{tracker.owner: true, tracker.root: true}
-	for pid, started := range tracker.processes {
-		if process, ok := byPID[pid]; ok && process.started == started {
-			active[pid] = started
-			seen[pid] = true
-			queue = append(queue, pid)
-		}
-	}
-	for len(queue) != 0 {
-		parent := queue[0]
-		queue = queue[1:]
-		for _, child := range children[parent] {
-			if child.pid == tracker.root || seen[child.pid] {
-				continue
-			}
-			if len(active) >= maxWatchedDescendants {
-				tracker.processes = active
-				return fmt.Errorf("watched process tree exceeds %d descendants", maxWatchedDescendants)
-			}
-			seen[child.pid] = true
-			active[child.pid] = child.started
-			queue = append(queue, child.pid)
+	descendants, err := watchedProcessDescendants(tracker.owner, tracker.root, tracker.processes, maxWatchedDescendants)
+	active := make(map[int]uint64, len(descendants))
+	for _, process := range descendants {
+		if process.pid != tracker.owner && process.pid != tracker.root {
+			active[process.pid] = process.started
 		}
 	}
 	tracker.processes = active
-	return nil
+	return err
 }
 
 func (tracker *watchedProcessTracker) close() {
