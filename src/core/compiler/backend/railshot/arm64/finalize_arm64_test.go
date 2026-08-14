@@ -136,6 +136,32 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 	}
 }
 
+func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
+	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
+	nativeFinalizerEnabled, nativeCompactionEnabled = true, true
+	t.Cleanup(func() { nativeFinalizerEnabled, nativeCompactionEnabled = beforeFinalizer, beforeCompaction })
+
+	code := make([]byte, 24)
+	wrWord(code, 0, 0x14000001)  // B +4: removable.
+	wrWord(code, 4, 0x94000001)  // BL +4: writes LR, retain.
+	wrWord(code, 8, 0x54000020)  // B.cond +4: removable.
+	wrWord(code, 12, 0x34000020) // CBZ +4: removable.
+	wrWord(code, 16, 0x36000020) // TBZ +4: removable.
+	wrWord(code, 20, nopWord)
+
+	sc := &scratch{asm: &a64.Asm{B: code}}
+	f := fn{a: sc.asm, sc: sc}
+	f.finalizePeepholes()
+	for _, pc := range []int{0, 8, 12, 16} {
+		if !sc.branchTargets[finalizerMarkerKey(pc, markerBranchNext)] {
+			t.Errorf("branch at %d was not recorded", pc)
+		}
+	}
+	if sc.branchTargets[finalizerMarkerKey(4, markerBranchNext)] {
+		t.Error("BL-to-next was incorrectly recorded")
+	}
+}
+
 func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 	t.Run("branch", func(t *testing.T) {
 		code := make([]byte, 24)

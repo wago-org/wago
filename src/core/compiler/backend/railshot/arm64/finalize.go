@@ -32,6 +32,7 @@ const (
 	markerPluginStart
 	markerPluginEnd
 	markerPCRelative
+	markerBranchNext
 )
 
 func finalizerMarkerKey(off int, marker finalizerMarker) int {
@@ -215,6 +216,42 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 		frameDeleted += frameDeleteLen
 	}
 
+	// Branches whose target was already the following instruction were recorded
+	// during the existing peephole target scan. Spend only budget left after the
+	// larger frame/hole wins. If the bound fills, deterministically retain the
+	// earliest sites instead of depending on map iteration order.
+	branchStart := len(deletions)
+	for key := range f.scratchState().branchTargets {
+		off, marker, ok := decodeFinalizerMarker(key)
+		if !ok || marker != markerBranchNext {
+			continue
+		}
+		candidate := shared.DeletedRange{Off: uint32(off), Len: 4}
+		duplicate := false
+		for _, deletion := range deletions[:branchStart] {
+			if deletion == candidate {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+		if len(deletions) < cap(deletions) {
+			deletions = append(deletions, candidate)
+			continue
+		}
+		largest := branchStart
+		for i := branchStart + 1; i < len(deletions); i++ {
+			if deletions[i].Off > deletions[largest].Off {
+				largest = i
+			}
+		}
+		if largest < len(deletions) && candidate.Off < deletions[largest].Off {
+			deletions[largest] = candidate
+		}
+	}
+
 	for i := 1; i < len(deletions); i++ {
 		value := deletions[i]
 		j := i
@@ -224,6 +261,23 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 		}
 		deletions[j] = value
 	}
+	// A size-preserving peephole can turn a branch-to-next into the same NOP
+	// already recorded as a dead hole. Keep one copy of an identical deletion;
+	// reject any other overlap rather than guessing which fragment owns it.
+	unique := deletions[:0]
+	for _, deletion := range deletions {
+		if len(unique) != 0 {
+			previous := unique[len(unique)-1]
+			if deletion.Off == previous.Off && deletion.Len == previous.Len {
+				continue
+			}
+			if deletion.Off < previous.Off+previous.Len {
+				return nil, 0, false
+			}
+		}
+		unique = append(unique, deletion)
+	}
+	deletions = unique
 	return deletions, frameDeleted, true
 }
 
@@ -410,8 +464,12 @@ func (f *fn) validateFinalizerInventory(internalOff int) error {
 		if !ok {
 			continue
 		}
-		if marker == markerDeadHole {
-			if err := shared.ValidateRelaxSite(len(f.a.B), shared.RelaxSite{Off: uint32(off), Kind: shared.RelaxDeadHole, LongLen: 4}); err != nil {
+		if marker == markerDeadHole || marker == markerBranchNext {
+			kind := shared.RelaxDeadHole
+			if marker == markerBranchNext {
+				kind = shared.RelaxBranch
+			}
+			if err := shared.ValidateRelaxSite(len(f.a.B), shared.RelaxSite{Off: uint32(off), Kind: kind, LongLen: 4}); err != nil {
 				return fmt.Errorf("arm64 identity finalizer: %w", err)
 			}
 		} else if off < 0 || off > len(f.a.B) {

@@ -25,7 +25,7 @@ const (
 // targets), and each rewrite must not disturb a word another branch targets. So
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes() {
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) {
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !(nativeFinalizerEnabled && nativeCompactionEnabled) {
 		return
 	}
 	b := f.a.B
@@ -50,6 +50,9 @@ func (f *fn) finalizePeepholes() {
 		}
 		if t, ok := branchTarget(pc, w); ok {
 			targets[t] = true
+			if nativeFinalizerEnabled && nativeCompactionEnabled && t == pc+4 && w&0xFC000000 != 0x94000000 {
+				targets[finalizerMarkerKey(pc, markerBranchNext)] = true
+			}
 		}
 	}
 	if f.opt(optBranchFold) {

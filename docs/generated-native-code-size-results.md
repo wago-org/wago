@@ -707,6 +707,40 @@ not. Compaction therefore remains behind `WAGO_COMPACT=1`. The next finalizer
 work must make loop alignment symbolic and eliminate the remaining remap cost
 before changing the default.
 
+### ARM64 branch-to-next deletion checkpoint
+
+The compactor now deletes non-linking `B`, `B.cond`, `CBZ`/`CBNZ`, and
+`TBZ`/`TBNZ` instructions whose target is already the following instruction.
+`BL` is deliberately retained because it still writes the link register. The
+sites are recorded during the existing peephole branch-target scan, so the
+finalizer does not walk arbitrary machine bytes a second time. The bounded
+deletion plan keeps the earliest sites deterministically when full, deduplicates
+a branch marker that names an already-recorded dead hole, and rejects any other
+fragment overlap.
+
+Against detached pre-change commit `0cf436b1`, the complete 64-module ARM64
+corpus with `WAGO_COMPACT=1` changed as follows:
+
+| Pre-change bytes | Current bytes | Saving | Wins / losses / ties |
+| ---: | ---: | ---: | ---: |
+| 93,336,956 | 93,215,964 | -120,992 (-0.13%) | 21 / 0 / 43 |
+
+The largest reductions were `ruby` (-84,432), `script` (-9,888), `sqlite3`
+(-7,392), and `esbuild` (-6,880). A rejected prototype found the same byte win
+by scanning every final instruction again, but increased the `many_funcs`
+compile median by 6.87%. Reusing the existing target scan keeps serialized
+compile measurements inside the Balanced gate:
+
+| Workload | Pre-change median | Current median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 187,982 ns/op | 188,744 ns/op | +0.41% | 133,665 B/op / 342 allocs, unchanged |
+| `json-as` | 732,231 ns/op | 740,745 ns/op | +1.16% | 291,674 B/op / 1,003 allocs, unchanged |
+
+Five one-second JSON execution samples remained neutral: serialize moved from
+92.31 to 92.23 ns/op (-0.09%), and deserialize from 191.7 to 191.3 ns/op
+(-0.21%), with zero allocations. The backend package, exhaustive finalizer
+validation, runtime/fuzz corpus, and race suite all pass.
+
 ### Commands
 
 ```sh
