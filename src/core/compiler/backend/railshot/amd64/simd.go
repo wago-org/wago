@@ -5,6 +5,7 @@ package amd64
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -147,6 +148,16 @@ type literalKey struct {
 	size   uint8
 }
 
+type literalReloc struct {
+	key literalKey
+	at  uint32 // function-relative disp32 field offset
+}
+
+type moduleLiteral struct {
+	key literalKey
+	off int
+}
+
 type poolSite struct {
 	off  uint32
 	next uint32
@@ -186,6 +197,24 @@ func (f *fn) emitV128ConstPool() {
 	if len(f.v128Pool) == 0 {
 		return
 	}
+	if f.stats != nil {
+		for _, c := range f.v128Pool {
+			f.stats.literalKeys = append(f.stats.literalKeys, literalKey{lo: c.lo, hi: c.hi, size: c.size})
+		}
+	}
+	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+		for _, c := range f.v128Pool {
+			key := literalKey{lo: c.lo, hi: c.hi, size: c.size}
+			for head := c.head; head != 0; {
+				s := f.poolSites[head-1]
+				f.literalRelocs = append(f.literalRelocs, literalReloc{key: key, at: s.off})
+				head = s.next
+			}
+		}
+		f.v128Pool = f.v128Pool[:0]
+		f.poolSites = f.poolSites[:0]
+		return
+	}
 	poolStart := f.a.Len()
 	var raw [16]byte
 	for _, c := range f.v128Pool {
@@ -199,16 +228,81 @@ func (f *fn) emitV128ConstPool() {
 			head = s.next
 		}
 	}
-	if f.stats != nil {
-		for _, c := range f.v128Pool {
-			f.stats.literalKeys = append(f.stats.literalKeys, literalKey{lo: c.lo, hi: c.hi, size: c.size})
-		}
-	}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	if f.stats != nil {
 		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
 	}
+}
+
+func appendLiteralKey(dst []byte, key literalKey) []byte {
+	var raw [16]byte
+	binary.LittleEndian.PutUint64(raw[:8], key.lo)
+	binary.LittleEndian.PutUint64(raw[8:], key.hi)
+	return append(dst, raw[:key.size]...)
+}
+
+// buildModuleLiteralIsland lays out each key once, in deterministic
+// function-and-first-pool order. It runs only for Size/Embedded; nil relocation
+// input preserves the Balanced and Speed paths without an allocation.
+func buildModuleLiteralIsland(relocs [][]literalReloc) ([]byte, []moduleLiteral) {
+	if len(relocs) == 0 {
+		return nil, nil
+	}
+	var code []byte
+	var literals []moduleLiteral
+	for _, function := range relocs {
+		for _, reloc := range function {
+			found := false
+			for _, literal := range literals {
+				if literal.key == reloc.key {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+			literals = append(literals, moduleLiteral{key: reloc.key, off: len(code)})
+			code = appendLiteralKey(code, reloc.key)
+		}
+	}
+	return code, literals
+}
+
+func patchModuleLiteralRelocs(code []byte, entry []int, relocs [][]literalReloc, islandBase int, literals []moduleLiteral) error {
+	if len(relocs) == 0 {
+		return nil
+	}
+	if islandBase < 0 || len(literals) == 0 {
+		for _, function := range relocs {
+			if len(function) != 0 {
+				return fmt.Errorf("amd64: literal relocations without module island")
+			}
+		}
+		return nil
+	}
+	for function, sites := range relocs {
+		for _, site := range sites {
+			at := entry[function] + int(site.at)
+			if at < 0 || at+4 > len(code) {
+				return fmt.Errorf("amd64: literal relocation out of range: function %d site %d", function, site.at)
+			}
+			target := -1
+			for _, literal := range literals {
+				if literal.key == site.key {
+					target = islandBase + literal.off
+					break
+				}
+			}
+			disp := int64(target) - int64(at+4)
+			if target < 0 || disp < math.MinInt32 || disp > math.MaxInt32 {
+				return fmt.Errorf("amd64: literal relocation out of rel32 range: function %d site %d", function, site.at)
+			}
+			binary.LittleEndian.PutUint32(code[at:], uint32(int32(disp)))
+		}
+	}
+	return nil
 }
 
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {

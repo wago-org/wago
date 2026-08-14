@@ -11,6 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -203,6 +204,11 @@ func runAmd64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
+	return runCompiledAmd64u(t, cm, args...)
+}
+
+func runCompiledAmd64u(t *testing.T, cm *encoderamd64.CompiledModule, args ...uint64) uint64 {
+	t.Helper()
 	eng, err := runtime.NewEngine()
 	if err != nil {
 		t.Fatal(err)

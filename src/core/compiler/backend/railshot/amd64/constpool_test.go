@@ -3,8 +3,12 @@
 package amd64
 
 import (
+	"bytes"
+	"encoding/binary"
+	"math"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
@@ -62,11 +66,59 @@ func TestModuleLiteralLedgerCountsCrossFunctionDuplicatesAMD64(t *testing.T) {
 		{NativeSize: NativeFunctionSizeReport{TotalBytes: 4, InternalFunctionBytes: 4, LiteralPoolBytes: 4}, literalKeys: []literalKey{key}},
 		{NativeSize: NativeFunctionSizeReport{TotalBytes: 4, InternalFunctionBytes: 4, LiteralPoolBytes: 4}, literalKeys: []literalKey{key}},
 	}}
-	finalizeModuleNativeSizeAMD64(&stats, 8, 8)
+	finalizeModuleNativeSizeAMD64(&stats, 8, 8, 0)
 	if got, want := stats.NativeSize.LiteralPoolUniqueBytes, 4; got != want {
 		t.Fatalf("unique literal bytes = %d, want %d", got, want)
 	}
 	if got, want := stats.NativeSize.LiteralPoolDuplicateBytes, 4; got != want {
 		t.Fatalf("duplicate literal bytes = %d, want %d", got, want)
+	}
+}
+
+func TestSizeObjectiveSharesModuleLiteralsAMD64(t *testing.T) {
+	want := math.Float64bits(3.75)
+	body := []byte{0x00, 0x44} // f64.const 1.5
+	body = binary.LittleEndian.AppendUint64(body, math.Float64bits(1.5))
+	body = append(body, 0x44) // f64.const 2.25
+	body = binary.LittleEndian.AppendUint64(body, math.Float64bits(2.25))
+	body = append(body, 0xa0, 0xbd, 0x0b) // f64.add; i64.reinterpret_f64; end
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I64}, body: body},
+		funcDef{results: []wasm.ValType{wasm.I64}, body: body},
+	)
+
+	var balancedStats ModuleStats
+	balanced, err := CompileModuleWith(m, CompileOptions{Workers: 1, Stats: &balancedStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balanced.CodeImage != nil {
+		defer balanced.CodeImage.Close()
+	}
+	if got, unique, duplicate := balancedStats.NativeSize.LiteralPoolBytes, balancedStats.NativeSize.LiteralPoolUniqueBytes, balancedStats.NativeSize.LiteralPoolDuplicateBytes; got != 32 || unique != 16 || duplicate != 16 {
+		t.Fatalf("Balanced literals = physical:%d unique:%d duplicate:%d, want 32/16/16", got, unique, duplicate)
+	}
+
+	objective := OptimizeSize
+	var sizeStats ModuleStats
+	sizeSerial, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: &sizeStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sizeSerial.CodeImage != nil {
+		defer sizeSerial.CodeImage.Close()
+	}
+	sizeParallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sizeSerial.Code, sizeParallel.Code) {
+		t.Fatal("Size literal-island output differs between serial and parallel compilation")
+	}
+	if got, unique, duplicate := sizeStats.NativeSize.LiteralPoolBytes, sizeStats.NativeSize.LiteralPoolUniqueBytes, sizeStats.NativeSize.LiteralPoolDuplicateBytes; got != 16 || unique != 16 || duplicate != 0 {
+		t.Fatalf("Size literals = physical:%d unique:%d duplicate:%d, want 16/16/0", got, unique, duplicate)
+	}
+	if got := runCompiledAmd64u(t, sizeSerial); got != want {
+		t.Fatalf("shared literal execution = %#x, want %#x", got, want)
 	}
 }
