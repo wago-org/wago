@@ -120,7 +120,7 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		f.a.VMovdqu(x, c)
 		return x
 	}
-	if !v128ConstCacheEnabled {
+	if !f.opt(optV128ConstCache) {
 		f.buildV128Const(x, lo, hi) // A/B fallback: rebuild the immediate in-register
 		return x
 	}
@@ -233,7 +233,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // emulation constants (read-only masks/tables, never loop-carried) are still
 // reserved. Mirrors preloadFloatConsts / arm64 preloadV128Consts.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || f.syncHostCalls || !v128ConstCacheEnabled {
+	if f.usesCalls || f.syncHostCalls || !f.opt(optV128ConstCache) {
 		return
 	}
 	f.stats.peep("v128-preload-scan")
@@ -479,7 +479,7 @@ func (f *fn) i8x16Swizzle() {
 }
 
 func (f *fn) shuffleLocalSink(r *wasm.Reader) (dst Reg, local int, tee, ok bool) {
-	if !v128LocalSinkEnabled {
+	if !f.opt(optV128Sink) {
 		return
 	}
 	save := r.Offset()
@@ -755,7 +755,7 @@ func (f *fn) v128BinInto(dst Reg, op func(dst, s1, s2 Reg)) {
 // returns false on any mismatch. Reader errors during lookahead fall back to the
 // eager path (the outer emitFD loop re-reads and surfaces them).
 func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) bool {
-	if !v128LocalSinkEnabled {
+	if !f.opt(optV128Sink) {
 		return false
 	}
 	save := r.Offset()

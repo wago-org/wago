@@ -146,7 +146,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// missed-fusion on branch-dense code (esbuild ~20k `relop;eqz;br` sites). Gated by
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
-	if stFlagsEnabled {
+	if f.opt(optSTFlags) {
 		for node.op == opEqz && isFusableCompare(node.arg0) {
 			inner := node.arg0
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block

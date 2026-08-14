@@ -676,7 +676,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// eligible loops do not pay for two immediate walks.
 		memory64 := f.memoryAddr64(0)
 		valid := false
-		if loopPrecheckEnabled && f.memSizeReg != regNone && !f.inVersionedLoop {
+		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistable(r, memory64)
 			valid = scanOK
 			fr.loopSetLocals, fr.loopHasGrow = setLocals, hasGrow

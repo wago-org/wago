@@ -154,7 +154,7 @@ func (f *fn) spill(e *elem) {
 	// identical copy to a temporary spill slot. idx is otherwise unused for an
 	// owned stReg and stores local+1; local.set clears the annotation before it
 	// changes the canonical slot.
-	if teeSpillElideEnabled && e.st.kind == stReg && !e.st.gcRoot && e.st.idx > 0 &&
+	if f.opt(optTeeSpillElide) && e.st.kind == stReg && !e.st.gcRoot && e.st.idx > 0 &&
 		(e.st.typ == mtI32 || e.st.typ == mtI64) {
 		r := e.st.reg
 		local := e.st.idx - 1

@@ -172,7 +172,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		treeRegisterNeed(left) > treeRegisterNeed(right) &&
 		treeReorderSafe(left) && treeReorderSafe(right) {
 		f.stats.peep("tree-order-candidate")
-		if treeOrderEnabled {
+		if f.opt(optTreeOrder) {
 			left, right = right, left
 			f.stats.peep("tree-order")
 		}
@@ -239,7 +239,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 			f.stats.peep("commute-self-update-candidate")
 		}
 	}
-	if commuteSelfUpdateEnabled && commuteSelfUpdate && f.commuteSelfUpdates > 1 {
+	if f.opt(optCommuteSelfUpdate) && commuteSelfUpdate && f.commuteSelfUpdates > 1 {
 		left, right = right, left
 		if f.stats != nil {
 			f.stats.peep("commute-self-update")
@@ -525,7 +525,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	deferredCover := false
 	// Keep the affine extension to the measured index needle. Main's broader LEA
 	// cover remains the fallback for every other safe nested expression.
-	if affineLeaEnabled && other.kind == ekValue && shl.arg0.kind != ekValue {
+	if f.opt(optAffineLEA) && other.kind == ekValue && shl.arg0.kind != ekValue {
 		base, baseDisp, baseOK := leaAffineValue(other, 1)
 		indexScale := int64(1 << k)
 		index, indexDisp, indexOK := leaAffineValue(shl.arg0, indexScale)
@@ -666,7 +666,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	right := node.arg1
 
 	if right.kind == ekValue && right.st.kind == stConst {
-		if bmi2RorxEnabled && (node.op == opRotr || node.op == opRotl) {
+		if f.opt(optBMI2Rorx) && (node.op == opRotr || node.op == opRotl) {
 			mask := int64(31)
 			if w {
 				mask = 63
@@ -1072,7 +1072,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		// need a temporary register. Select this only at final emission so tree
 		// scheduling, associative covering, and higher-level SWAR recognition retain
 		// their original shapes.
-		if i64Mask32Enabled && w && enc == aluTable[opAnd] && isI64Mask32(right) {
+		if f.opt(optI64Mask32) && w && enc == aluTable[opAnd] && isI64Mask32(right) {
 			f.a.AluRI(enc.digit, dest, -1, false)
 			f.stats.peep("i64-mask32")
 		} else if fitsImm32(right.st.cval) {

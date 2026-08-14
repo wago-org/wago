@@ -20,7 +20,7 @@ var branchFoldEnabled = os.Getenv("WAGO_AMD64_NOBRFOLD") != "1"
 // there instead, so it is not recorded. The jump's rel32 is patched later (block
 // ends), so the actual fold runs post-assembly in finalizeBranchFolds.
 func (f *fn) recordBrFold(over int) {
-	if !branchFoldEnabled {
+	if !f.opt(optBranchFold) {
 		return
 	}
 	if b := f.a.B; over+4 < len(b) && b[over+4] == 0xE9 {
@@ -39,7 +39,7 @@ func (f *fn) recordBrFold(over int) {
 // words must not be touched — so the pass reads and writes nothing it did not emit
 // as this precise pair.
 func (f *fn) finalizeBranchFolds() {
-	if !branchFoldEnabled {
+	if !f.opt(optBranchFold) {
 		return
 	}
 	b := f.a.B

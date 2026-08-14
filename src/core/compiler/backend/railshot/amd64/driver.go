@@ -1027,8 +1027,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// Shifts join the binary case; unary/convert and the tee form are gated (arm64).
 	var skipFrom *elem
 	if e != nil && e.isDeferred() {
-		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || teeLocalSinkEnabled)
-		unarySink := (isUnary(e.op) || isConvert(e.op)) && unaryLocalSinkEnabled && (!tee || teeLocalSinkEnabled)
+		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || f.opt(optTeeSink))
+		unarySink := (isUnary(e.op) || isConvert(e.op)) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
 			skipFrom = baseOfValentBlock(e)
 		}

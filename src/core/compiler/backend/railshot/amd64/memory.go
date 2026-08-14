@@ -435,7 +435,7 @@ func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
 	if kind == 0 {
 		return false
 	}
-	if !multiBoundsCertEnabled {
+	if !f.opt(optMultiBoundsCert) {
 		c := &f.boundsCerts[0]
 		return c.kind == kind && c.idx == idx && extent <= c.extent
 	}
@@ -451,7 +451,7 @@ func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
 // boundsCertUpdate records the check about to be emitted. The tiny round-robin
 // set covers the common two/three-array loop while keeping compiler state fixed.
 func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
-	if !multiBoundsCertEnabled {
+	if !f.opt(optMultiBoundsCert) {
 		c := &f.boundsCerts[0]
 		if kind == 0 {
 			*c = boundsCert{}
@@ -616,7 +616,7 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 // native-width carriers may have nonzero high bits, including after local.tee,
 // a sign-extending narrow load, or an identity-folded deferred operation.
 func (f *fn) cleanMemory32Address(e *elem) bool {
-	if !memory32AddrZExtElimEnabled || e == nil {
+	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
 	}
 	if e.kind != ekValue || e.st.typ != mtI32 {
@@ -751,7 +751,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// low byte. Keep SETcc's upper-register garbage dead and omit MOVZX; the byte
 	// store cannot observe it. Pending loads were materialized above, preserving
 	// pre-store reads and trap order before this dedicated sink condenses the tree.
-	if top := f.s.back(); size == 1 && store8FlagsEnabled && isFusableCompare(top) && !top.typ.isFloat() {
+	if top := f.s.back(); size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.typ.isFloat() {
 		// condenseToFlags may recursively lower div/rem or a variable shift. Those
 		// paths temporarily claim and then unpin x86's fixed-role registers; because
 		// the pin mask is not reference-counted, nesting would drop this outer

@@ -272,7 +272,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// int result feeds a pinned local moves RAX straight into the local's
 	// register — no intermediate result register, no separate set lowering.
 	hint := -1
-	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) && len(ft.Results) == 1 {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) && sigIsIntOnly(ft) && len(ft.Results) == 1 {
 		r2 := *r // peek past the call without committing
 		if b, err := r2.Byte(); err == nil && b == 0x21 {
 			if x, err := r2.U32(); err == nil {
@@ -519,7 +519,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	callerRegisterABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
 	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
-	if regABIEnabled && callerRegisterABI && targetRegisterABI {
+	if f.opt(optRegABI) && callerRegisterABI && targetRegisterABI {
 		f.stats.call("tail-direct")
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.JmpPlaceholder()
@@ -528,7 +528,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.unreachable = true
 		return nil
 	}
-	if !regABIEnabled || !callerRegisterABI || len(ft.Results) == 0 {
+	if !f.opt(optRegABI) || !callerRegisterABI || len(ft.Results) == 0 {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
 			return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
 		}
@@ -1578,7 +1578,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
-	if regABIEnabled && sigFitsRegABI(ft) {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			f.emitRegisterCall(localIdx, ft, resHint)

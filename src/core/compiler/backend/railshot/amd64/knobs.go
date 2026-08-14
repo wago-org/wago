@@ -2,7 +2,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/optimization"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/optimization"
+)
 
 // The binding inventory is checked against the amd64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
@@ -44,8 +47,55 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.BindInverted("stack-reg", &noStackReg),
 )
 
+var (
+	optBoundsFacts        = optimizationBindings.Option("bounds-facts")
+	optSTFlags            = optimizationBindings.Option("st-flags")
+	optStore8Flags        = optimizationBindings.Option("store8-flags")
+	optRegMerge           = optimizationBindings.Option("reg-merge")
+	optTeeSink            = optimizationBindings.Option("tee-sink")
+	optUnarySink          = optimizationBindings.Option("unary-sink")
+	optBranchFold         = optimizationBindings.Option("branch-fold")
+	optEntryArgPins       = optimizationBindings.Option("entry-arg-pins")
+	optExtendedFPPins     = optimizationBindings.Option("ext-fp-pins")
+	optCallNextUse        = optimizationBindings.Option("call-next-use")
+	optAffineLEA          = optimizationBindings.Option("affine-lea")
+	optTreeOrder          = optimizationBindings.Option("tree-order")
+	optAssocTree          = optimizationBindings.Option("assoc-tree")
+	optBMI2Rorx           = optimizationBindings.Option("bmi2-rorx")
+	optVEXFloatMem        = optimizationBindings.Option("vex-float-mem")
+	optMultiBoundsCert    = optimizationBindings.Option("multi-bounds-cert")
+	optAddrZExtElim       = optimizationBindings.Option("addr-zext-elim")
+	optImmutableTable     = optimizationBindings.Option("immutable-table")
+	optImmutableTableType = optimizationBindings.Option("immutable-table-type")
+	optInlineCallFree     = optimizationBindings.Option("inline-callfree")
+	optStoreForward       = optimizationBindings.Option("store-forward")
+	optFrameElide         = optimizationBindings.Option("frame-elide")
+	optCompactI32Frame    = optimizationBindings.Option("compact-i32-frame")
+	optTeeSpillElide      = optimizationBindings.Option("tee-spill-elide")
+	optCommuteSelfUpdate  = optimizationBindings.Option("commute-self-update")
+	optI64Mask32          = optimizationBindings.Option("i64-mask32")
+	optV128ConstCache     = optimizationBindings.Option("v128-const-cache")
+	optV128Pins           = optimizationBindings.Option("v128-pins")
+	optV128Sink           = optimizationBindings.Option("v128-sink")
+	optRegABI             = optimizationBindings.Option("reg-abi")
+	optInline             = optimizationBindings.Option("inline")
+	optInlineLoopCallees  = optimizationBindings.Option("inline-loop-callees")
+	optLoopPrecheck       = optimizationBindings.Option("loop-precheck")
+	optStackFence         = optimizationBindings.Option("stack-fence")
+	optStackReg           = optimizationBindings.Option("stack-reg")
+)
+
 type KnobInfo = optimization.Info
 type OptimizationSnapshot = optimization.Snapshot
+type OptimizationObjective = shared.OptimizationObjective
+type CodegenPolicy = shared.CodegenPolicy
+
+const (
+	OptimizeSpeed    = shared.OptimizeSpeed
+	OptimizeBalanced = shared.OptimizeBalanced
+	OptimizeSize     = shared.OptimizeSize
+	OptimizeEmbedded = shared.OptimizeEmbedded
+)
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
 
@@ -54,3 +104,11 @@ func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) { return optimizationB
 func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings.CurrentSnapshot() }
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }
+
+func currentCodegenPolicy() CodegenPolicy {
+	selection, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
+	if err != nil {
+		panic(err)
+	}
+	return shared.DefaultCodegenPolicy(selection)
+}
