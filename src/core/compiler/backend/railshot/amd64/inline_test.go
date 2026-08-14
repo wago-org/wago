@@ -184,6 +184,66 @@ func TestInlineExecAdd(t *testing.T) {
 	})
 }
 
+func TestInlineBrOnNullRespectsCalleeBoundaryAMD64(t *testing.T) {
+	withInlineEnabled(t, func() {
+		m := modFuncs(t,
+			funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x00, 0x10, 0x01, 0x1a, 0x41, 0x01, 0x0b}},
+			funcDef{body: []byte{0x00, 0xd0, 0x70, 0xd5, 0x00, 0x1a, 0x0b}},
+		)
+		hints, _, err := computeModuleHints(m, 0, 0, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := buildInlineTargets(m, hints, currentCodegenPolicy()).target(1)
+		if target == nil || !target.hasCtrl {
+			t.Fatalf("inline target = %#v, want synthetic control boundary", target)
+		}
+		if got := uint32(runAmd64u(t, m)); got != 1 {
+			t.Fatalf("caller result = %d, want 1", got)
+		}
+	})
+}
+
+func TestInlineTargetsRejectEHAMD64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x10, 0x01, 0x41, 0x01, 0x0b}},
+		funcDef{body: []byte{0x00, 0x0b}},
+	)
+	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+		policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, objective)
+		hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+		if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
+			t.Fatalf("objective %v admitted EH inline target", objective)
+		}
+	}
+}
+
+func TestInlineBoundaryParityAMD64(t *testing.T) {
+	var astFacts inlineFacts
+	scanInlineFactsAST([]wasm.Instruction{
+		{Kind: wasm.InstrBrOnNull},
+		{Kind: wasm.InstrBrOnCast},
+		{Kind: wasm.InstrTryTable},
+	}, &astFacts)
+	if !astFacts.hasControlFlow || !astFacts.moduleEH {
+		t.Fatalf("AST inline facts = %#v", astFacts)
+	}
+	for _, op := range []byte{0xd5, 0xd6} {
+		body := []byte{op, 0x00, 0x0b}
+		h, err := scanBodyBytes(body, 0, 0, 0)
+		if err != nil {
+			t.Fatalf("production scan opcode %#x: %v", op, err)
+		}
+		var facts inlineFacts
+		if err := scanInlineFactsBytes(body, &facts); err != nil {
+			t.Fatalf("inline scan opcode %#x: %v", op, err)
+		}
+		if !h.hasControlFlow || !facts.hasControlFlow {
+			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
+		}
+	}
+}
+
 func TestInlineSizeObjectiveRequiresNativeByteProofAMD64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}

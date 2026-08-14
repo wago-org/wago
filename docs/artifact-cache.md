@@ -40,7 +40,8 @@ fixed-order configuration values:
 - target GOOS and GOARCH;
 - accepted Core feature bits;
 - bounds-check and deferred-bounds policy;
-- maximum memory pages; and
+- maximum memory pages;
+- the top-level optimization objective; and
 - the ordered compiler-optimization bit set.
 
 Function-worker policy is intentionally excluded: it controls only bounded
