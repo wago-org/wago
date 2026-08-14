@@ -55,3 +55,18 @@ func TestConstPoolAttributesLiteralBytesAMD64(t *testing.T) {
 		t.Fatalf("code plus pool bytes = %d, want 8", got)
 	}
 }
+
+func TestModuleLiteralLedgerCountsCrossFunctionDuplicatesAMD64(t *testing.T) {
+	key := literalKey{lo: 0x04030201, size: 4}
+	stats := ModuleStats{Funcs: []*CodegenStats{
+		{NativeSize: NativeFunctionSizeReport{TotalBytes: 4, InternalFunctionBytes: 4, LiteralPoolBytes: 4}, literalKeys: []literalKey{key}},
+		{NativeSize: NativeFunctionSizeReport{TotalBytes: 4, InternalFunctionBytes: 4, LiteralPoolBytes: 4}, literalKeys: []literalKey{key}},
+	}}
+	finalizeModuleNativeSizeAMD64(&stats, 8, 8)
+	if got, want := stats.NativeSize.LiteralPoolUniqueBytes, 4; got != want {
+		t.Fatalf("unique literal bytes = %d, want %d", got, want)
+	}
+	if got, want := stats.NativeSize.LiteralPoolDuplicateBytes, 4; got != want {
+		t.Fatalf("duplicate literal bytes = %d, want %d", got, want)
+	}
+}

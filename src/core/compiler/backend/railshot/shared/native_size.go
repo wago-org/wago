@@ -47,6 +47,8 @@ type NativeSizeReport struct {
 	BranchFoldHoleBytes           int `json:"branch_fold_hole_bytes"`
 	StoreLoadNopBytes             int `json:"store_load_nop_bytes"`
 	LiteralPoolBytes              int `json:"literal_pool_bytes"`
+	LiteralPoolUniqueBytes        int `json:"literal_pool_unique_bytes"`
+	LiteralPoolDuplicateBytes     int `json:"literal_pool_duplicate_bytes"`
 }
 
 // AccountedBytes returns the exhaustive top-level byte classes. Subset fields

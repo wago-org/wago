@@ -1412,6 +1412,21 @@ func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd int) {
 			native.AddFunction(fn.NativeSize)
 		}
 	}
+	if native.LiteralPoolBytes != 0 {
+		keys := make(map[literalKey]struct{}) // stats-only; ordinary compilation has nil ms
+		for _, fn := range ms.Funcs {
+			if fn == nil {
+				continue
+			}
+			for _, key := range fn.literalKeys {
+				keys[key] = struct{}{}
+			}
+		}
+		for key := range keys {
+			native.LiteralPoolUniqueBytes += int(key.size)
+		}
+		native.LiteralPoolDuplicateBytes = native.LiteralPoolBytes - native.LiteralPoolUniqueBytes
+	}
 	native.FunctionAlignmentBytes = functionsEnd - native.FunctionBytes
 	if native.FunctionAlignmentBytes < 0 {
 		native.FunctionAlignmentBytes = 0

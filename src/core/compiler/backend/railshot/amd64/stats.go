@@ -137,6 +137,7 @@ type CodegenStats struct {
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
+	literalKeys   []literalKey // stats-only keys for module-level duplicate accounting
 	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
 	// inline sites. Caller frame growth and shared cold tails are outside it.
 	InlineSiteBytes int
@@ -401,7 +402,9 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native-reservations: frame-physical=%d frame-dead=%d branch-holes=%d store-load-nops=%d\n",
 		ms.NativeSize.FrameAdjustmentBytes, ms.NativeSize.DeadFrameReservationBytes,
 		ms.NativeSize.BranchFoldHoleBytes, ms.NativeSize.StoreLoadNopBytes)
-	fmt.Fprintf(&b, "native-data: literals=%d\n", ms.NativeSize.LiteralPoolBytes)
+	fmt.Fprintf(&b, "native-data: literals=%d module-unique-literals=%d cross-function-duplicates=%d\n",
+		ms.NativeSize.LiteralPoolBytes, ms.NativeSize.LiteralPoolUniqueBytes,
+		ms.NativeSize.LiteralPoolDuplicateBytes)
 	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
 		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
 	}

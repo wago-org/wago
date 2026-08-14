@@ -142,6 +142,11 @@ type poolConst struct {
 	size   uint8
 }
 
+type literalKey struct {
+	lo, hi uint64
+	size   uint8
+}
+
 type poolSite struct {
 	off  uint32
 	next uint32
@@ -192,6 +197,11 @@ func (f *fn) emitV128ConstPool() {
 			s := f.poolSites[head-1]
 			f.a.PatchRel32(int(s.off), off)
 			head = s.next
+		}
+	}
+	if f.stats != nil {
+		for _, c := range f.v128Pool {
+			f.stats.literalKeys = append(f.stats.literalKeys, literalKey{lo: c.lo, hi: c.hi, size: c.size})
 		}
 	}
 	f.v128Pool = f.v128Pool[:0]
