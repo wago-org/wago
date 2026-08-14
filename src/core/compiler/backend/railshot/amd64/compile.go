@@ -2432,6 +2432,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
+	if compactLowPinEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) && !hasCall && !hints.hasControlFlow {
+		preferPinReg(gpPool, RBP)
+	}
 	// Tiny prepared integer leaves can use a slimmer host trampoline when their
 	// generated code is constrained to caller-saved GPRs. Reserve every Go
 	// callee-saved allocatable register up front; RBX remains the explicit linMem
@@ -2780,6 +2783,17 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
+func preferPinReg(pool []Reg, preferred Reg) {
+	for i, r := range pool {
+		if r != preferred || i == 0 {
+			continue
+		}
+		copy(pool[1:i+1], pool[:i])
+		pool[0] = preferred
+		return
+	}
+}
+
 func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, sparseGlobals []shared.GlobalHint, gpPool []Reg, fpPinLimit int, hasCall, pinV128 bool) {
 	if cap(f.locals) < f.nLocals {
 		f.locals = make([]localDef, f.nLocals)
@@ -2875,6 +2889,9 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 		} else {
 			f.locals[c.idx].reg = gpPool[k]
 			f.stats.addPinnedLocal()
+			if gpPool[k] == RBP && k == 0 && compactLowPinEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+				f.stats.peep("compact-low-local-pin")
+			}
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}

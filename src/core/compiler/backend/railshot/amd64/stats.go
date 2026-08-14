@@ -70,6 +70,10 @@ var (
 	// moduleSharedTrapBodyEnabled lets later internal functions replace an exact
 	// complete trap-body copy with one near jump to a retained cold body.
 	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY") != "1"
+	// compactLowPinEnabled makes RBP the first integer-local pin only for
+	// call-free, straight-line Size/Embedded functions. The register set and pin
+	// count stay unchanged; this is an encoded-size tie-break experiment.
+	compactLowPinEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_LOW_PIN") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. It remains opt-in while broader shrink-only
