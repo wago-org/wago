@@ -233,7 +233,8 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 }
 
 func sizeInlineOK(f inlineFacts, policy CodegenPolicy) bool {
-	return f.callSites == 1 && f.straightLine() && f.bodyBytes <= sizeInlineBodyLimit(policy) &&
+	return !f.hasControlCall && f.calleeCount == 0 &&
+		f.callSites == 1 && f.straightLine() && f.bodyBytes <= sizeInlineBodyLimit(policy) &&
 		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
 		!f.touchesMem && !f.touchesGlobal
 }
