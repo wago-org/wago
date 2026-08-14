@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
 )
 
 func TestWithoutWatchFlagsPreservesGuestArguments(t *testing.T) {
@@ -37,6 +36,10 @@ func TestFileStampDetectsSameSizeRewriteWithRestoredModTime(t *testing.T) {
 	if err := os.Chtimes(path, modTime, modTime); err != nil {
 		t.Fatal(err)
 	}
+	firstMetadata, err := fileMetadata(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	first, err := fileStamp(path)
 	if err != nil {
 		t.Fatal(err)
@@ -47,11 +50,18 @@ func TestFileStampDetectsSameSizeRewriteWithRestoredModTime(t *testing.T) {
 	if err := os.Chtimes(path, modTime, modTime); err != nil {
 		t.Fatal(err)
 	}
+	finalMetadata, err := fileMetadata(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstMetadata == finalMetadata {
+		t.Fatal("same-size rewrite with restored timestamp did not change fast metadata")
+	}
 	final, err := fileStamp(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first == final {
+	if first.sameContent(final) {
 		t.Fatal("same-size rewrite with restored timestamp was not detected")
 	}
 }
@@ -397,6 +407,20 @@ func BenchmarkFileStamp64KiB(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		if _, err := fileStamp(path); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFileMetadata64KiB(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "module.wasm")
+	if err := os.WriteFile(path, make([]byte, 64<<10), 0o600); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := fileMetadata(path); err != nil {
 			b.Fatal(err)
 		}
 	}

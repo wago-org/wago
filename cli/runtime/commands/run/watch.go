@@ -133,7 +133,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				writeWatchedOutput(options.stderr, "%s %v\n", ui.Red("wago:"), result.err)
 			}
 		case now := <-ticker.C:
-			next, stampErr := fileStamp(options.path)
+			metadata, stampErr := fileMetadata(options.path)
 			if stampErr != nil {
 				candidateValid = false
 				message := stampErr.Error()
@@ -144,7 +144,22 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				continue
 			}
 			lastFileError = ""
-			if next == stamp && !restartPending {
+			if metadata == stamp.metadata && !restartPending {
+				candidateValid = false
+				continue
+			}
+			var next watchedStamp
+			if candidateValid && metadata == candidate.metadata {
+				next = candidate
+			} else {
+				next, stampErr = fileStamp(options.path)
+				if stampErr != nil {
+					candidateValid = false
+					continue
+				}
+			}
+			if next.sameContent(stamp) && !restartPending {
+				stamp.metadata = next.metadata
 				candidateValid = false
 				continue
 			}
@@ -182,8 +197,18 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 }
 
 type watchedStamp struct {
-	size int64
-	sum  [sha256.Size]byte
+	metadata watchedFileMetadata
+	sum      [sha256.Size]byte
+}
+
+type watchedFileMetadata struct {
+	size     int64
+	modified int64
+	change   [4]uint64
+}
+
+func (stamp watchedStamp) sameContent(other watchedStamp) bool {
+	return stamp.metadata.size == other.metadata.size && stamp.sum == other.sum
 }
 
 type watchHashBuffer [32 << 10]byte
@@ -196,11 +221,15 @@ func fileStamp(path string) (watchedStamp, error) {
 		return watchedStamp{}, err
 	}
 	defer file.Close()
-	before, err := file.Stat()
+	beforeInfo, err := file.Stat()
 	if err != nil {
 		return watchedStamp{}, err
 	}
-	if !before.Mode().IsRegular() {
+	before, err := metadataForWatchedFile(file, beforeInfo)
+	if err != nil {
+		return watchedStamp{}, err
+	}
+	if !beforeInfo.Mode().IsRegular() {
 		return watchedStamp{}, fmt.Errorf("%s is not a regular file", path)
 	}
 	hash := sha256.New()
@@ -218,7 +247,11 @@ func fileStamp(path string) (watchedStamp, error) {
 			return watchedStamp{}, readErr
 		}
 	}
-	after, err := file.Stat()
+	afterInfo, err := file.Stat()
+	if err != nil {
+		return watchedStamp{}, err
+	}
+	after, err := metadataForWatchedFile(file, afterInfo)
 	if err != nil {
 		return watchedStamp{}, err
 	}
@@ -226,12 +259,28 @@ func fileStamp(path string) (watchedStamp, error) {
 	if err != nil {
 		return watchedStamp{}, err
 	}
-	if before.Size() != after.Size() || before.ModTime() != after.ModTime() || !os.SameFile(after, current) {
+	if before != after || !os.SameFile(afterInfo, current) {
 		return watchedStamp{}, errors.New("module changed while it was read")
 	}
-	stamp := watchedStamp{size: after.Size()}
+	stamp := watchedStamp{metadata: after}
 	hash.Sum(stamp.sum[:0])
 	return stamp, nil
+}
+
+func fileMetadata(path string) (watchedFileMetadata, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return watchedFileMetadata{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return watchedFileMetadata{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return watchedFileMetadata{}, fmt.Errorf("%s is not a regular file", path)
+	}
+	return metadataForWatchedFile(file, info)
 }
 
 type watchedChild struct {

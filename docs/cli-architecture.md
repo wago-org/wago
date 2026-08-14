@@ -226,8 +226,9 @@ continue events, and its status output remains safe when background terminal
 writes are disabled. It can find the controlling terminal through stdin,
 stdout, or stderr, including after a background job is foregrounded. Hangup,
 interrupt, quit, and termination signals stop the child tree before the watcher
-exits. Content hashing detects same-size rewrites even when file timestamps do
-not change.
+exits. Cheap file identity, size, modification, and change metadata gates full
+content hashing. The hash still detects same-size rewrites when modification
+timestamps do not change.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:
