@@ -68,7 +68,7 @@ func BenchmarkCompileModuleCompactionAMD64(b *testing.B) {
 					nativeCompactionEnabled = compact
 					b.Cleanup(func() { nativeCompactionEnabled = before })
 					b.ReportAllocs()
-					for b.Loop() {
+					for i := 0; i < b.N; i++ {
 						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1})
 						if err != nil {
 							b.Fatal(err)
@@ -110,7 +110,7 @@ func TestCompileWorkersCorpusParity(t *testing.T) {
 	}
 }
 
-func readParallelTestModule(t *testing.T, path string) *wasm.Module {
+func readParallelTestModule(t testing.TB, path string) *wasm.Module {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
