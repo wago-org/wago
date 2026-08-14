@@ -44,6 +44,7 @@ func prepareWatchedCommand(command *exec.Cmd) error {
 		return err
 	}
 	attributes := &syscall.SysProcAttr{Setpgid: true}
+	configureWatchedCommandStart(attributes)
 	if fd, foreground, ok := watchedCommandTerminal(command); ok {
 		attributes.Ctty = fd
 		attributes.Foreground = foreground == syscall.Getpgrp()
@@ -263,6 +264,10 @@ func (tracker *watchedProcessTracker) signal(value syscall.Signal) error {
 	slices.Sort(pids)
 	var signalErr error
 	for _, pid := range pids {
+		process, ok := watchedProcess(pid)
+		if !ok || process.started != tracker.processes[pid] {
+			continue
+		}
 		if err := syscall.Kill(pid, value); err != nil && !errors.Is(err, syscall.ESRCH) {
 			signalErr = errors.Join(signalErr, err)
 		}

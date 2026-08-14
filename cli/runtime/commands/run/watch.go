@@ -254,6 +254,8 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	if err := prepareWatchedCommand(command); err != nil {
 		return nil, err
 	}
+	unlockStart := lockWatchedCommandStart()
+	defer unlockStart()
 	if err := command.Start(); err != nil {
 		abortWatchedCommand(command)
 		return nil, err
@@ -261,6 +263,12 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	platform, err := attachWatchedProcess(command)
 	if err != nil {
 		abortWatchedCommand(command)
+		_ = killWatchedProcess(platform, command)
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return nil, err
+	}
+	if err := resumeWatchedCommand(command); err != nil {
 		_ = killWatchedProcess(platform, command)
 		_ = command.Process.Kill()
 		_ = command.Wait()

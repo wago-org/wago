@@ -24,6 +24,10 @@ func prepareWatchedCommand(command *exec.Cmd) error {
 
 func abortWatchedCommand(*exec.Cmd) {}
 
+func lockWatchedCommandStart() func() { return func() {} }
+
+func resumeWatchedCommand(*exec.Cmd) error { return nil }
+
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {

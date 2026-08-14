@@ -5,6 +5,8 @@ package run
 import (
 	"errors"
 	"fmt"
+	"os/exec"
+	"runtime"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -12,6 +14,19 @@ import (
 
 func prepareWatchedProcessTracking() error {
 	return nil
+}
+
+func configureWatchedCommandStart(attributes *syscall.SysProcAttr) {
+	attributes.Ptrace = true
+}
+
+func lockWatchedCommandStart() func() {
+	runtime.LockOSThread()
+	return runtime.UnlockOSThread
+}
+
+func resumeWatchedCommand(command *exec.Cmd) error {
+	return unix.PtraceDetach(command.Process.Pid)
 }
 
 func finishWatchedProcessTracking(*watchedProcessTracker) {}

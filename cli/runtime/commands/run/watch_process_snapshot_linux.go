@@ -4,6 +4,7 @@ package run
 
 import (
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -15,6 +16,12 @@ import (
 func prepareWatchedProcessTracking() error {
 	return unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
 }
+
+func configureWatchedCommandStart(*syscall.SysProcAttr) {}
+
+func lockWatchedCommandStart() func() { return func() {} }
+
+func resumeWatchedCommand(*exec.Cmd) error { return nil }
 
 func startWatchedProcessTracking(*watchedProcessTracker) error {
 	return nil
@@ -66,25 +73,31 @@ func watchedProcessSnapshot() ([]watchedProcessInfo, error) {
 		if err != nil {
 			continue
 		}
-		data, err := os.ReadFile("/proc/" + entry.Name() + "/stat")
-		if err != nil {
-			continue
+		if process, ok := watchedProcess(pid); ok {
+			processes = append(processes, process)
 		}
-		close := strings.LastIndex(string(data), ") ")
-		if close < 0 {
-			continue
-		}
-		fields := strings.Fields(string(data[close+2:]))
-		if len(fields) <= 19 {
-			continue
-		}
-		parent, parentErr := strconv.Atoi(fields[1])
-		group, groupErr := strconv.Atoi(fields[2])
-		started, startedErr := strconv.ParseUint(fields[19], 10, 64)
-		if parentErr != nil || groupErr != nil || startedErr != nil {
-			continue
-		}
-		processes = append(processes, watchedProcessInfo{pid: pid, parent: parent, group: group, started: started})
 	}
 	return processes, nil
+}
+
+func watchedProcess(pid int) (watchedProcessInfo, bool) {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return watchedProcessInfo{}, false
+	}
+	close := strings.LastIndex(string(data), ") ")
+	if close < 0 {
+		return watchedProcessInfo{}, false
+	}
+	fields := strings.Fields(string(data[close+2:]))
+	if len(fields) <= 19 {
+		return watchedProcessInfo{}, false
+	}
+	parent, parentErr := strconv.Atoi(fields[1])
+	group, groupErr := strconv.Atoi(fields[2])
+	started, startedErr := strconv.ParseUint(fields[19], 10, 64)
+	if parentErr != nil || groupErr != nil || startedErr != nil {
+		return watchedProcessInfo{}, false
+	}
+	return watchedProcessInfo{pid: pid, parent: parent, group: group, started: started}, true
 }
