@@ -2509,3 +2509,27 @@ the previously accepted ordinary-if selection.
 The complete Size execution suite, focused zero/nonzero/high-bit execution,
 ARM64 backend race suite, and compacted runtime corpus/fuzz suite pass. Every
 execution sample remains allocation-free.
+
+## ARM64 concrete-eqz zero branches
+
+An `i32.eqz` or `i64.eqz` whose operand is already a concrete Valent value now
+hands that register directly to `CBZ/CBNZ` at an `if` edge. Previously the
+fused-compare path emitted `CMP reg,#0` and a separate `B.cond`. Deferred
+arithmetic and mask trees remain on the established flag-based covers, so this
+change does not displace mask-test, relational, or floating-point fusion.
+`WAGO_ARM64_NO_EQZ_ZERO_BRANCH=1` restores the preceding checkpoint exactly.
+
+The exact 36-module Size suite adds 178,159 zero-branch selections and falls
+from 76,027,480 to 75,339,552 native bytes (-687,928, -0.905%). Ruby contributes
+633,716 bytes, esbuild 45,380, SQLite 7,108, Lua 1,324, json-as/json-as-simd 276,
+and the remaining modules 124. Across all three accepted ARM64 zero-branch
+slices, the corpus has fallen 1,674,040 bytes (-2.174%) from the 77,013,592-byte
+pre-campaign baseline.
+
+Five serialized compile samples move Ruby from 595,752,333 to 596,863,541 ns/op
+(+0.19%) and esbuild from 318,148,667 to 323,574,250 (+1.71%). Median B/op and
+allocations are unchanged. Five one-second Size samples move json-as
+serialization -0.28% and deserialization +0.77%, with zero allocations.
+
+The complete Size execution suite, ARM64 backend and race suites, focused
+zero/nonzero/high-bit tests, and compacted runtime corpus/fuzz suite pass.

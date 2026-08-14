@@ -79,6 +79,7 @@ var (
 	// emptyZeroBranchEnabled extends zero-branch selection to Size/Embedded
 	// br_if edges after codegen proves that no reconciliation bytes were emitted.
 	emptyZeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_EMPTY_ZERO_BRANCH") != "1"
+	eqzZeroBranchEnabled   = os.Getenv("WAGO_ARM64_NO_EQZ_ZERO_BRANCH") != "1"
 
 	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
 	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.

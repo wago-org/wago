@@ -264,6 +264,29 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	return cc
 }
 
+// condenseSimpleEqzOperand consumes an eqz whose operand is already a concrete
+// value and returns that value in a register. Branch consumers can then select
+// CBZ/CBNZ directly without materializing NZCV. Deferred arithmetic/mask trees
+// stay on condenseToFlags so their existing fused covers remain authoritative.
+func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool) {
+	if node == nil || node.op != opEqz || node.arg0 == nil || node.arg0.kind != ekValue {
+		return 0, false, false, false
+	}
+	a := node.arg0
+	switch {
+	case a.st.kind == stLocalReg || a.st.kind == stGlobReg:
+		reg = a.st.reg
+	case a.st.kind == stReg:
+		reg, owned = a.st.reg, true
+	default:
+		reg, owned = f.materialize(a), true
+	}
+	wide = node.typ.is64()
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	return reg, owned, wide, true
+}
+
 // brIfFused lowers `<compare> br_if L` as CMP + conditional branch.
 func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	return f.brIfFusedSet(top, labelIdx, regNone)

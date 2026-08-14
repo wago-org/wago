@@ -836,6 +836,24 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
+			if zeroBranchEnabled && eqzZeroBranchEnabled {
+				if creg, cOwned, wide, ok := f.condenseSimpleEqzOperand(cond); ok {
+					fr.height = f.depth() - pN
+					fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+					f.captureGCFrameShape(&fr)
+					if wide {
+						fr.elseSite = f.a.Cbnz64(creg)
+					} else {
+						fr.elseSite = f.a.Cbnz32(creg)
+					}
+					if cOwned {
+						f.release(creg)
+					}
+					f.stats.peep("zero-branch")
+					f.ctrl = append(f.ctrl, fr)
+					return nil
+				}
+			}
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
 			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
