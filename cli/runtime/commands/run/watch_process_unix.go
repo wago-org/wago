@@ -79,6 +79,7 @@ func setWatchedTerminalForeground(fd, group int) error {
 }
 
 func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watchedProcessResult {
+	var monitorErr error
 	for {
 		var status syscall.WaitStatus
 		_, err := syscall.Wait4(command.Process.Pid, &status, syscall.WUNTRACED|syscall.WCONTINUED, nil)
@@ -90,7 +91,8 @@ func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watche
 		}
 		if status.Stopped() {
 			if err := mirrorWatchedProcessStop(platform, command); err != nil {
-				return watchedProcessResult{err: err}
+				monitorErr = err
+				_ = signalWatchedProcessGroup(command, syscall.SIGKILL)
 			}
 			continue
 		}
@@ -98,12 +100,18 @@ func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watche
 			continue
 		}
 		if status.Exited() {
+			if monitorErr != nil {
+				return watchedProcessResult{err: monitorErr}
+			}
 			if code := status.ExitStatus(); code != 0 {
 				return watchedProcessResult{err: fmt.Errorf("exit status %d", code)}
 			}
 			return watchedProcessResult{}
 		}
 		if status.Signaled() {
+			if monitorErr != nil {
+				return watchedProcessResult{err: monitorErr}
+			}
 			exitSignal := status.Signal()
 			result := watchedProcessResult{err: fmt.Errorf("signal: %s", exitSignal)}
 			if exitSignal == syscall.SIGINT || exitSignal == syscall.SIGQUIT {
@@ -117,9 +125,6 @@ func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watche
 func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) error {
 	if platform.terminalFD < 0 {
 		return nil
-	}
-	if err := setWatchedTerminalForeground(platform.terminalFD, platform.foreground); err != nil {
-		return err
 	}
 	if err := syscall.Kill(-platform.foreground, syscall.SIGSTOP); err != nil {
 		return err
