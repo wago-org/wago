@@ -92,9 +92,80 @@ func modFuncs(t testing.TB, fns ...funcDef) *wasm.Module {
 	return m
 }
 
+func TestMixedFourResultRegisterCallAMD64(t *testing.T) {
+	results := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
+	caller := []byte{
+		0x04, 0x01, 0x7f, 0x01, 0x7c, 0x01, 0x7e, 0x01, 0x7d,
+		0x10, 0x01,
+		0x21, 0x03, 0x21, 0x02, 0x21, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x20, 0x01, 0xaa, 0x6a,
+		0x20, 0x02, 0xa7, 0x6a,
+		0x20, 0x03, 0xa8, 0x6a, 0x0b,
+	}
+	callee := []byte{
+		0x00,
+		0x41, 0x01,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40,
+		0x42, 0x03,
+		0x43, 0x00, 0x00, 0x80, 0x40,
+		0x0b,
+	}
+	m := modFuncs(t, funcDef{results: []wasm.ValType{wasm.I32}, body: caller}, funcDef{results: results, body: callee})
+	for _, tc := range []struct {
+		name, callKind string
+		opts           map[string]bool
+	}{
+		{name: "register", callKind: callKindMixed, opts: map[string]bool{"inline": false}},
+		{name: "fallback", callKind: callKindWrapper, opts: map[string]bool{"inline": false, "reg-abi": false}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stats ModuleStats
+			if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: tc.opts}); err != nil {
+				t.Fatal(err)
+			}
+			if got := stats.Funcs[0].Calls[tc.callKind]; got != 1 {
+				t.Fatalf("%s calls = %d, want 1 (all: %v)", tc.callKind, got, stats.Funcs[0].Calls)
+			}
+		})
+	}
+	if got := runAmd64(t, m); got != 10 {
+		t.Fatalf("mixed four-result call = %d, want 10", got)
+	}
+}
+
+func TestMixedFourResultRegisterAdapterAMD64(t *testing.T) {
+	results := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
+	body := []byte{0x00, 0x41, 0x01, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x42, 0x03, 0x43, 0, 0, 0x80, 0x40, 0x0b}
+	got := runAmd64ResultBytes(t, modFuncs(t, funcDef{results: results, body: body}))
+	if binary.LittleEndian.Uint64(got[0:8]) != 1 ||
+		binary.LittleEndian.Uint64(got[8:16]) != math.Float64bits(2) ||
+		binary.LittleEndian.Uint64(got[16:24]) != 3 ||
+		binary.LittleEndian.Uint32(got[24:28]) != math.Float32bits(4) {
+		t.Fatalf("mixed adapter results = %x", got[:32])
+	}
+}
+
+func TestMixedFourResultDirectTailAMD64(t *testing.T) {
+	results := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
+	callee := []byte{0x00, 0x41, 0x01, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x42, 0x03, 0x43, 0, 0, 0x80, 0x40, 0x0b}
+	m := modFuncs(t, funcDef{results: results, body: []byte{0x00, 0x12, 0x01, 0x0b}}, funcDef{results: results, body: callee})
+	got := runAmd64ResultBytes(t, m)
+	if binary.LittleEndian.Uint64(got[0:8]) != 1 ||
+		binary.LittleEndian.Uint64(got[8:16]) != math.Float64bits(2) ||
+		binary.LittleEndian.Uint64(got[16:24]) != 3 ||
+		binary.LittleEndian.Uint32(got[24:28]) != math.Float32bits(4) {
+		t.Fatalf("mixed direct-tail results = %x", got[:32])
+	}
+}
+
 // runAmd64 compiles function 0 with the new amd64 backend and runs it through the real
 // wago runtime with the given i32 args, returning the first i32 result.
 func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
+	t.Helper()
+	return int32(binary.LittleEndian.Uint32(runAmd64ResultBytes(t, m, args...)))
+}
+
+func runAmd64ResultBytes(t *testing.T, m *wasm.Module, args ...int32) []byte {
 	t.Helper()
 	cm, err := CompileModule(m)
 	if err != nil {
@@ -130,7 +201,7 @@ func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 	if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
 		t.Fatalf("call: %v", err)
 	}
-	return int32(binary.LittleEndian.Uint32(results))
+	return append([]byte(nil), results...)
 }
 
 // modMem builds a one-function module that also declares a linear memory of

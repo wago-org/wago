@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -21,6 +22,12 @@ func runArm64Wrapper(t *testing.T, m *wasm.Module, args ...uint64) (uint64, erro
 }
 
 func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, args ...uint64) (uint64, error) {
+	t.Helper()
+	results, err := runArm64WrapperResultBytes(t, m, opts, args...)
+	return binary.LittleEndian.Uint64(results), err
+}
+
+func runArm64WrapperResultBytes(t *testing.T, m *wasm.Module, opts CompileOptions, args ...uint64) ([]byte, error) {
 	t.Helper()
 	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
@@ -54,7 +61,38 @@ func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOption
 		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 	}
 	err = eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results)
-	return binary.LittleEndian.Uint64(results), err
+	return append([]byte(nil), results...), err
+}
+
+func TestMixedFourResultRegisterAdapterArm64(t *testing.T) {
+	resultTypes := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
+	body := []byte{0x00, 0x41, 0x01, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x42, 0x03, 0x43, 0, 0, 0x80, 0x40, 0x0b}
+	got, err := runArm64WrapperResultBytes(t, modFuncs(t, funcDef{results: resultTypes, body: body}), CompileOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binary.LittleEndian.Uint64(got[0:8]) != 1 ||
+		binary.LittleEndian.Uint64(got[8:16]) != math.Float64bits(2) ||
+		binary.LittleEndian.Uint64(got[16:24]) != 3 ||
+		binary.LittleEndian.Uint32(got[24:28]) != math.Float32bits(4) {
+		t.Fatalf("mixed adapter results = %x", got[:32])
+	}
+}
+
+func TestMixedFourResultDirectTailArm64(t *testing.T) {
+	resultTypes := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
+	callee := []byte{0x00, 0x41, 0x01, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x42, 0x03, 0x43, 0, 0, 0x80, 0x40, 0x0b}
+	m := modFuncs(t, funcDef{results: resultTypes, body: []byte{0x00, 0x12, 0x01, 0x0b}}, funcDef{results: resultTypes, body: callee})
+	got, err := runArm64WrapperResultBytes(t, m, CompileOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binary.LittleEndian.Uint64(got[0:8]) != 1 ||
+		binary.LittleEndian.Uint64(got[8:16]) != math.Float64bits(2) ||
+		binary.LittleEndian.Uint64(got[16:24]) != 3 ||
+		binary.LittleEndian.Uint32(got[24:28]) != math.Float32bits(4) {
+		t.Fatalf("mixed direct-tail results = %x", got[:32])
+	}
 }
 
 // runArm64u runs function 0 and returns its 64-bit result, failing the test on a

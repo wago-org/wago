@@ -302,6 +302,37 @@ measured 23.68 us/op versus 23.91 us/op (-0.96%). `many_funcs` compile time,
 B/op, and allocations were flat; SQLite added approximately 3 KiB/op (+0.05%)
 and one median allocation while backend time moved from 82.18 to 82.06 ms.
 
+### 2026-08-14 — bounded register ABI v2 result banks
+
+Both backends now share a fixed four-entry scalar result plan. A register-ABI
+signature may return at most two GP values and two FP values, mapped in Wasm
+result order to `RAX/RDX` plus `XMM0/XMM1` on AMD64 or `X0/X1` plus `V0/V1` on
+ARM64. The plan is returned by value, allocates no storage, and rejects vectors,
+references, a third result in either bank, or more than four total results. Every
+rejected signature retains the established wrapper/slot ABI.
+
+Direct mixed calls capture GP results before post-call state restoration while
+leaving the dedicated FP result bank intact. Internal epilogues and host adapters
+use the same plan, so direct calls, exported entry, returns, and the wrapper
+fallback agree on result locations. Descriptor-based indirect tails retain their
+wrapper tag and restore up to four scalar results through one fixed 64-byte
+record; direct tails keep register transfer. Native execution tests cover an
+interleaved four-result call, all four adapter result words, direct tail transfer,
+mixed indirect-tail restoration, and explicit `reg-abi=false` fallback.
+
+The sixteen-call targeted benchmark measured 26.51 ns/op with register results
+versus 40.23 ns/op through ARM64 result buffers (-34.1%), and 32.07 versus 49.81
+ns/op on a Ryzen 7 7800X3D (-35.6%); all paths remained zero-allocation. The
+target module fell from 888 to 420 ARM64 native bytes and from 993 to 363 AMD64
+bytes. Seven-sample compile medians were also neutral to favorable: ARM64 moved
+from 6.922 to 6.876 us/op with 33 allocations in both cases, while AMD64 moved
+from 9.473 to 9.311 us/op and 36 to 35 allocations.
+
+The current 64-module corpus contains no mixed multi-result call admitted only by
+v2. This is therefore a measured signature-specific win, not a current broad-
+corpus claim; the opt-in causality counter `regabi-v2-result` will expose future
+producer uptake without adding normal-compilation overhead.
+
 ---
 
 # 1. North-star architecture

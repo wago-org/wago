@@ -2760,12 +2760,13 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
-// the internal entry takes args in GP/V registers and returns its single result
-// in X0/V0, or two integer results in X0/X1.
+// the internal entry takes args in GP/V registers and returns up to two scalar
+// results per register bank (X0/X1 and V0/V1).
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
+	resultPlan, _ := shared.PlanScalarResults(f.ft.Results)
 
 	// Host→internal adapter (offset 0): in X0=serArgs, X1=linMem, X2=trap,
 	// X3=results; loads args into registers, calls the internal entry, stores the
@@ -2806,17 +2807,15 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
 		}
 		a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
-		f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells (X0 holds the result)
-		if rN == 1 {
-			rt := mtOf(f.ft.Results[0])
-			if rt.isFloat() {
-				a.FStoreDisp(X3, 0, 0, rt == mtF64) // V0
+		f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells
+		for i := 0; i < rN; i++ {
+			rt := mtOf(f.ft.Results[i])
+			loc := resultPlan.Locations[i]
+			if loc.Bank == shared.ScalarResultFP {
+				a.FStoreDisp(X3, int32(i*8), fpResultRegs[loc.Index], rt == mtF64)
 			} else {
-				f.st64(X3, 0, X0)
+				f.st64(X3, int32(i*8), intResultRegs[loc.Index])
 			}
-		} else if rN == 2 {
-			f.st64(X3, 0, X0)
-			f.st64(X3, 8, X1)
 		}
 		a.Ret()
 		f.adapterEndOff = a.Len()
@@ -2902,16 +2901,16 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 		return 0, err
 	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
-	if rN == 1 && !f.singleRegResult {
-		rt := mtOf(f.ft.Results[0])
-		if rt.isFloat() {
-			a.FLoadDisp(0, SP, f.spillOff(0), rt == mtF64) // result -> V0
-		} else {
-			f.ld64(X0, SP, f.spillOff(0)) // result -> X0
+	if !(rN == 1 && f.singleRegResult) {
+		for i := 0; i < rN; i++ {
+			rt := mtOf(f.ft.Results[i])
+			loc := resultPlan.Locations[i]
+			if loc.Bank == shared.ScalarResultFP {
+				a.FLoadDisp(fpResultRegs[loc.Index], SP, f.spillOff(i), rt == mtF64)
+			} else {
+				f.ld64(intResultRegs[loc.Index], SP, f.spillOff(i))
+			}
 		}
-	} else if rN == 2 {
-		f.ld64(X0, SP, f.spillOff(0))
-		f.ld64(X1, SP, f.spillOff(1))
 	}
 	// singleRegResult: every exit already produced the result in X0/V0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before

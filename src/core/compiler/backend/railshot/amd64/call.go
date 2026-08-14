@@ -53,10 +53,12 @@ type callReloc struct {
 
 // intArgRegs is the integer argument/result register order for the internal
 // register-call ABI (our own convention, not the C ABI). RDI/RSI carry linMem/
-// trap; R12-R15 hold pinned locals; RBX holds linMem. The single result returns
-// in RAX.
+// trap; R12-R15 hold pinned locals; RBX holds linMem. Scalar results use the
+// separate bounded result banks below.
 var intArgRegs = []Reg{RAX, RCX, RDX, R8, R9, R10, R11}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // XMM0..XMM7; single float result returns in XMM0.
+var intResultRegs = [2]Reg{RAX, RDX}
+var fpResultRegs = [2]Reg{0, 1}
 
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
@@ -101,14 +103,11 @@ func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 }
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
-// and float params are assigned to separate GP/XMM banks; one result returns in
-// RAX or XMM0, and the deliberately limited two-result form uses RAX/RDX for
-// integers (mirrors arm64's X0/X1 pair return).
+// and float params are assigned to separate GP/XMM banks. Results use a fixed
+// two-register bank each: RAX/RDX for integers and XMM0/XMM1 for floats, with at
+// most four scalar results total.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 2 {
-		return false
-	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
+	if _, ok := shared.PlanScalarResults(ft.Results); !ok {
 		return false
 	}
 	gp, fp := 0, 0
@@ -125,12 +124,35 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
 		return false
 	}
-	for _, t := range ft.Results {
-		if !isIntValType(t) && !isFloatValType(t) {
-			return false
+	return true
+}
+
+// sigFitsIndirectTailRegABI is the descriptor/table contract currently encoded
+// by runtime table entries: one scalar result or the established two-GP form.
+// Wider mixed-bank results use the bounded wrapper restoration record instead.
+func sigFitsIndirectTailRegABI(ft *wasm.CompType) bool {
+	p, ok := shared.PlanScalarResults(ft.Results)
+	return ok && sigFitsRegABI(ft) && (p.Count <= 1 || p.FP == 0)
+}
+
+func (f *fn) loadTailRegisterResults(base Reg, off int32, results []wasm.ValType) {
+	p, ok := shared.PlanScalarResults(results)
+	if !ok {
+		// Typed-reference tails use the pre-existing one-GP descriptor ABI; they
+		// are intentionally outside the numeric v2 signature planner.
+		if len(results) == 1 && results[0].Kind() == wasm.ValRef {
+			f.a.Load64(intResultRegs[0], base, off)
+		}
+		return
+	}
+	for i, typ := range results {
+		loc := p.Locations[i]
+		if loc.Bank == shared.ScalarResultFP {
+			f.a.FLoadDisp(fpResultRegs[loc.Index], base, off+int32(i*8), wasm.EqualValType(typ, wasm.F64))
+		} else {
+			f.a.Load64(intResultRegs[loc.Index], base, off+int32(i*8))
 		}
 	}
-	return true
 }
 
 func preparedDirectIntSig(ft *wasm.CompType) bool {
@@ -641,16 +663,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.copyInstanceContext(RBX, R10)
 	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
-	if len(ft.Results) > 0 {
-		if isFloatValType(ft.Results[0]) {
-			f.a.FLoadDisp(0, RSP, 16, wasm.EqualValType(ft.Results[0], wasm.F64))
-		} else {
-			f.a.Load64(RAX, RSP, 16)
-		}
-	}
-	if len(ft.Results) > 1 {
-		f.a.Load64(RDX, RSP, 24)
-	}
+	f.loadTailRegisterResults(RSP, 16, ft.Results)
 	f.a.AddRsp(40)
 	f.a.Ret()
 }
@@ -717,16 +730,7 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(RBX, RSP, 0)
 	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
-	if len(ft.Results) > 0 {
-		if isFloatValType(ft.Results[0]) {
-			f.a.FLoadDisp(0, RSP, 8, wasm.EqualValType(ft.Results[0], wasm.F64))
-		} else {
-			f.a.Load64(RAX, RSP, 8)
-		}
-	}
-	if len(ft.Results) > 1 {
-		f.a.Load64(RDX, RSP, 16)
-	}
+	f.loadTailRegisterResults(RSP, 8, ft.Results)
 	f.a.AddRsp(24)
 	f.a.Ret()
 }
@@ -1851,6 +1855,10 @@ func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) Reg {
 // (mirrors arm64's mixed staging). Only const/slot args are loaded from memory.
 func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
+	resultPlan, _ := shared.PlanScalarResults(ft.Results)
+	if rN > 1 {
+		f.stats.peep("regabi-v2-result")
+	}
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
@@ -1968,40 +1976,27 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
 
-	// Capture integer results out of RAX/RDX before the reload below reuses them as
-	// scratch. A float result stays in XMM0 (never a pin target, so reload-safe).
-	resReg := regNone
-	if rN == 1 && !mtOf(ft.Results[0]).isFloat() {
-		resReg = f.allocReg(maskOf(RAX))
-		f.a.MovReg64(resReg, RAX)
-		f.pinned = f.pinned.add(resReg)
-	}
-	var pairRes [2]Reg
-	if rN == 2 {
-		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
-		f.pinned = f.pinned.add(pairRes[0])
-		f.a.MovReg64(pairRes[0], RAX)
-		pairRes[1] = f.allocReg(maskOf(RAX, RDX))
-		f.a.MovReg64(pairRes[1], RDX)
-		f.pinned = f.pinned.add(pairRes[1])
+	// Capture GP results before the reload below reuses RAX/RDX as scratch. FP
+	// results stay in XMM0/XMM1, which are deliberately outside the pin bank.
+	var gpResults [2]Reg
+	for i := uint8(0); i < resultPlan.GP; i++ {
+		gpResults[i] = f.allocReg(maskOf(RAX, RDX))
+		f.pinned = f.pinned.add(gpResults[i])
+		f.a.MovReg64(gpResults[i], intResultRegs[i])
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
-	if rN == 1 {
-		rt := mtOf(ft.Results[0])
-		if rt.isFloat() {
-			f.pushFReg(0, rt) // XMM0
-		} else {
-			f.pinned = f.pinned.remove(resReg)
-			f.pushReg(resReg, rt)
+	for i := 0; i < rN; i++ {
+		loc := resultPlan.Locations[i]
+		rt := mtOf(ft.Results[i])
+		if loc.Bank == shared.ScalarResultFP {
+			f.pushFReg(fpResultRegs[loc.Index], rt)
+			continue
 		}
-	}
-	if rN == 2 {
-		for i, reg := range pairRes {
-			f.pinned = f.pinned.remove(reg)
-			f.pushReg(reg, mtOf(ft.Results[i]))
-		}
+		reg := gpResults[loc.Index]
+		f.pinned = f.pinned.remove(reg)
+		f.pushReg(reg, rt)
 	}
 }
 
@@ -2325,10 +2320,10 @@ func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
 // emitTailCrossWrapperJump transfers a register-ABI activation to a retained
 // foreign offset-0 wrapper without retaining the current activation. A root
 // adapter drops its own [return-to-adapter, saved-results] words. A nested
-// internal caller replaces the released frame with one fixed 48-byte record:
-// [trampoline, caller linmem, caller context, result0, result1, pad], followed by
-// the caller's existing return address. Repeated foreign tail transfers reuse the
-// target wrappers and this one non-tail caller record rather than accumulating
+// internal caller replaces the released frame with one fixed 64-byte record:
+// [trampoline, caller linmem, caller context, up to four results, pad], followed
+// by the caller's existing return address. Repeated foreign tail transfers reuse
+// the target wrappers and this one non-tail caller record rather than accumulating
 // native frames.
 func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
@@ -2389,7 +2384,7 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.JmpReg(RAX)
 
 	f.a.PatchRel32(nested, f.a.Len())
-	f.a.SubRsp(48)
+	f.a.SubRsp(64)
 	trampolineSite := f.a.LeaRipPlaceholder(RAX)
 	f.a.Store64(RSP, 0, RAX)
 	f.a.Store64(RSP, 8, RBX)
@@ -2409,18 +2404,8 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.copyInstanceContext(RBX, R10)
 	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
-	if len(ft.Results) > 0 {
-		if mtOf(ft.Results[0]).isFloat() {
-			f.a.Load64(RAX, RSP, 16)
-			f.a.MovGprToXmm(0, RAX, true)
-		} else {
-			f.a.Load64(RAX, RSP, 16)
-		}
-	}
-	if len(ft.Results) > 1 {
-		f.a.Load64(RDX, RSP, 24)
-	}
-	f.a.AddRsp(40)
+	f.loadTailRegisterResults(RSP, 16, ft.Results)
+	f.a.AddRsp(56)
 	f.a.Ret()
 }
 
@@ -2446,15 +2431,16 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
+	tableHint, immutableTable := f.immutableTable(tableIdx)
+	indirectRegABI := sigFitsIndirectTailRegABI(ft)
 	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
-	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	targetRegisterTail := indirectRegABI || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
 	registerTail := callerRegisterTail && targetRegisterTail
-	wrapperTail := !callerRegisterTail && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
+	wrapperTail := (!callerRegisterTail || (f.stagedTailDescriptors && !targetRegisterTail)) && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
 	if !registerTail && !wrapperTail {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
-	tableHint, immutableTable := f.immutableTable(tableIdx)
-	if f.stagedTailDescriptors && f.importBindings != nil && !immutableTable {
+	if f.stagedTailDescriptors && (!indirectRegABI || (f.importBindings != nil && !immutableTable)) {
 		idxReg := f.materialize(f.popValue())
 		f.canonicalizeTableOperand(idxReg, tableIdx)
 		f.pinned = f.pinned.add(idxReg)

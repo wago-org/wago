@@ -60,10 +60,12 @@ type callReloc struct {
 
 // intArgRegs is the integer argument/result register order for the internal
 // register-call ABI (our own convention, not the C ABI). X0/X1 carry args/linMem;
-// X19-X23 hold pinned locals; linMemReg holds linMem. The single result returns in X0
-// (AAPCS64 return register, also arg 0).
+// X19-X23 hold pinned locals; linMemReg holds linMem. Scalar results use the
+// separate bounded result banks below.
 var intArgRegs = []Reg{X0, X1, X2, X3, X4, X5, X6, X7}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // V0..V7; single float result returns in V0.
+var intResultRegs = [2]Reg{X0, X1}
+var fpResultRegs = [2]Reg{0, 1}
 
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
@@ -105,13 +107,11 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 }
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
-// and float params are assigned to separate GP/V banks; one result returns in
-// X0/V0, and the deliberately limited two-result form uses X0/X1 for integers.
+// and float params are assigned to separate GP/V banks. Results use a fixed
+// two-register bank each: X0/X1 for integers and V0/V1 for floats, with at most
+// four scalar results total.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 2 {
-		return false
-	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
+	if _, ok := shared.PlanScalarResults(ft.Results); !ok {
 		return false
 	}
 	gp, fp := 0, 0
@@ -128,12 +128,35 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
 		return false
 	}
-	for _, t := range ft.Results {
-		if !isIntValType(t) && !isFloatValType(t) {
-			return false
+	return true
+}
+
+// sigFitsIndirectTailRegABI is the descriptor/table contract currently encoded
+// by runtime table entries: one scalar result or the established two-GP form.
+// Wider mixed-bank results use the bounded wrapper restoration record instead.
+func sigFitsIndirectTailRegABI(ft *wasm.CompType) bool {
+	p, ok := shared.PlanScalarResults(ft.Results)
+	return ok && sigFitsRegABI(ft) && (p.Count <= 1 || p.FP == 0)
+}
+
+func (f *fn) loadTailRegisterResults(base Reg, off int32, results []wasm.ValType) {
+	p, ok := shared.PlanScalarResults(results)
+	if !ok {
+		// Typed-reference tails use the pre-existing one-GP descriptor ABI; they
+		// are intentionally outside the numeric v2 signature planner.
+		if len(results) == 1 && results[0].Kind() == wasm.ValRef {
+			f.ld64(intResultRegs[0], base, off)
+		}
+		return
+	}
+	for i, typ := range results {
+		loc := p.Locations[i]
+		if loc.Bank == shared.ScalarResultFP {
+			f.fld(fpResultRegs[loc.Index], base, off+int32(i*8), wasm.EqualValType(typ, wasm.F64))
+		} else {
+			f.ld64(intResultRegs[loc.Index], base, off+int32(i*8))
 		}
 	}
-	return true
 }
 
 func tailResultABICompatible(a, b []wasm.ValType) bool {
@@ -458,16 +481,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
-	if len(ft.Results) > 0 {
-		if isFloatValType(ft.Results[0]) {
-			f.fld(0, SP, 32, wasm.EqualValType(ft.Results[0], wasm.F64))
-		} else {
-			f.ld64(X0, SP, 32)
-		}
-	}
-	if len(ft.Results) > 1 {
-		f.ld64(X1, SP, 40)
-	}
+	f.loadTailRegisterResults(SP, 32, ft.Results)
 	f.a.AddSP64(64)
 	f.a.Ret()
 	f.unreachable = true
@@ -704,16 +718,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
-	if len(ft.Results) > 0 {
-		if isFloatValType(ft.Results[0]) {
-			f.fld(0, SP, 32, wasm.EqualValType(ft.Results[0], wasm.F64))
-		} else {
-			f.ld64(X0, SP, 32)
-		}
-	}
-	if len(ft.Results) > 1 {
-		f.ld64(X1, SP, 40)
-	}
+	f.loadTailRegisterResults(SP, 32, ft.Results)
 	f.a.AddSP64(64)
 	f.a.Ret()
 }
@@ -734,7 +739,8 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	if f.stagedTailDescriptors && f.importBindings != nil && !f.immutableLocalTable {
+	indirectRegABI := sigFitsIndirectTailRegABI(ft)
+	if f.stagedTailDescriptors && (!indirectRegABI || (f.importBindings != nil && !f.immutableLocalTable)) {
 		idx := f.materialize(f.popValue())
 		f.canonicalizeTableOperand(idx, tableIdx)
 		f.pinned = f.pinned.add(idx)
@@ -789,7 +795,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.stripDescriptorHomeTags(home)
 	f.cmpRR(home, linMemReg, true)
 	f.trapIf(condNE, trapTailUnsupported)
-	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
+	registerTail := f.opt(optRegABI) && indirectRegABI
 	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
 	if registerTail {
 		wantKind = uint32(abi.FuncRefInternalTagValue)
@@ -1681,6 +1687,10 @@ func (f *fn) directCallPreservesBoundsCert(localIdx, resHint int) bool {
 // are already resident in registers do not round-trip through canonical slots.
 func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
+	resultPlan, _ := shared.PlanScalarResults(ft.Results)
+	if rN > 1 {
+		f.stats.peep("regabi-v2-result")
+	}
 	d := f.depth()
 	allRoots := f.rootsBottomToTop()
 	allTypes := f.logicalTypes(allRoots)
@@ -1827,30 +1837,22 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
-	if rN == 1 {
-		rt := mtOf(ft.Results[0])
-		if rt.isFloat() {
-			f.pushFReg(0, rt) // V0
-		} else {
-			resReg := f.allocReg(maskOf(X0))
-			f.a.MovReg64(resReg, X0)
-			f.pushReg(resReg, rt)
-		}
+	var gpResults [2]Reg
+	for i := uint8(0); i < resultPlan.GP; i++ {
+		gpResults[i] = f.allocReg(maskOf(X0, X1))
+		f.pinned = f.pinned.add(gpResults[i])
+		f.a.MovReg64(gpResults[i], intResultRegs[i])
 	}
-	if rN == 2 {
-		// Two-int register return (X0/X1): a mixed sig has float params but may
-		// still return two integers, e.g. (f64,i64,i64)->(i64,i64).
-		var pairRes [2]Reg
-		pairRes[0] = f.allocReg(maskOf(X0, X1))
-		f.pinned = f.pinned.add(pairRes[0])
-		f.a.MovReg64(pairRes[0], X0)
-		pairRes[1] = f.allocReg(maskOf(X0, X1))
-		f.a.MovReg64(pairRes[1], X1)
-		f.pinned = f.pinned.add(pairRes[1])
-		for i, reg := range pairRes {
-			f.pinned = f.pinned.remove(reg)
-			f.pushReg(reg, mtOf(ft.Results[i]))
+	for i := 0; i < rN; i++ {
+		loc := resultPlan.Locations[i]
+		rt := mtOf(ft.Results[i])
+		if loc.Bank == shared.ScalarResultFP {
+			f.pushFReg(fpResultRegs[loc.Index], rt)
+			continue
 		}
+		reg := gpResults[loc.Index]
+		f.pinned = f.pinned.remove(reg)
+		f.pushReg(reg, rt)
 	}
 }
 

@@ -3230,16 +3230,17 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
-// the internal entry takes args in GP/XMM registers and returns its single result
-// in RAX or XMM0.
+// the internal entry takes args in GP/XMM registers and returns up to two scalar
+// results per register bank (RAX/RDX and XMM0/XMM1).
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
+	resultPlan, _ := shared.PlanScalarResults(f.ft.Results)
 
 	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
 	// RCX=results; loads args into registers, calls the internal entry, stores the
-	// single register result.
+	// bounded register results.
 	var adapterCall int
 	gp, fp := 0, 0
 	if hostAdapter {
@@ -3265,21 +3266,18 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 		adapterCall = a.CallRel32()
 		f.adapterReturnOff = adapterCall + 4
 		a.Pop(RCX) // results
-		if rN == 2 {
-			// Two-int register return in RAX/RDX. Store both to the results buffer
-			// BEFORE storeModuleGlobals, which uses RDX as scratch.
-			a.Store64(RCX, 0, RAX)
-			a.Store64(RCX, 8, RDX)
-		}
-		f.storeModuleGlobals(RDX) // Go exit: module-pinned registers → cells (RAX/RDX hold the result)
-		if rN == 1 {
-			rt := mtOf(f.ft.Results[0])
-			if rt.isFloat() {
-				a.FStoreDisp(RCX, 0, 0, rt == mtF64) // XMM0
+		// Publish every bounded register result before storeModuleGlobals reuses
+		// RDX. Result order remains the Wasm signature order across both banks.
+		for i := 0; i < rN; i++ {
+			rt := mtOf(f.ft.Results[i])
+			loc := resultPlan.Locations[i]
+			if loc.Bank == shared.ScalarResultFP {
+				a.FStoreDisp(RCX, int32(i*8), fpResultRegs[loc.Index], rt == mtF64)
 			} else {
-				a.Store64(RCX, 0, RAX)
+				a.Store64(RCX, int32(i*8), intResultRegs[loc.Index])
 			}
 		}
+		f.storeModuleGlobals(RDX) // Go exit: module-pinned registers → cells
 		a.Ret()
 		f.adapterEndOff = a.Len()
 		if f.stats != nil {
@@ -3364,19 +3362,16 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 		return 0, err
 	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
-	if rN == 1 && !f.singleRegResult {
-		rt := mtOf(f.ft.Results[0])
-		if rt.isFloat() {
-			a.FLoadDisp(0, RSP, f.spillOff(0), rt == mtF64) // result -> XMM0
-		} else {
-			a.Load64(RAX, RSP, f.spillOff(0)) // result -> RAX
+	if !(rN == 1 && f.singleRegResult) {
+		for i := 0; i < rN; i++ {
+			rt := mtOf(f.ft.Results[i])
+			loc := resultPlan.Locations[i]
+			if loc.Bank == shared.ScalarResultFP {
+				a.FLoadDisp(fpResultRegs[loc.Index], RSP, f.spillOff(i), rt == mtF64)
+			} else {
+				a.Load64(intResultRegs[loc.Index], RSP, f.spillOff(i))
+			}
 		}
-	}
-	if rN == 2 {
-		// Two-int register return: both results converged to slots 0,1. (Never
-		// singleRegResult, which is one-result only.)
-		a.Load64(RAX, RSP, f.spillOff(0)) // result 0 -> RAX
-		a.Load64(RDX, RSP, f.spillOff(1)) // result 1 -> RDX
 	}
 	// singleRegResult: every exit already produced the result in RAX/XMM0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before
