@@ -2368,3 +2368,13 @@ families remain neutral: `json-as` serialization -0.58% and deserialization
 -0.45%, `json-as-simd` serialization -0.12% and deserialization +0.14%. All
 four remain allocation-free. A compact fragment-crossing regression test, the
 complete Size execution suite, and the AMD64 backend suite also pass.
+
+### Rejected: widening the remaining loop and rel32 bounds
+
+After the 2,048-site inventory, all 71 functions above the 64 KiB loop work
+bound also overflow the rel32 inventory; there is no loop-only subset to admit.
+They retain 223,661 proved-dead bytes. Only 16 of those functions fit within
+3,072 rel32 sites, representing a 17,103-byte dead-reservation ceiling; 33 fit
+within 4,096 sites, representing 48,131 bytes. Reclaiming either subset would
+couple a larger per-worker inventory to a larger function scan for a poor
+footprint crossover. Both accepted bounds remain unchanged.
