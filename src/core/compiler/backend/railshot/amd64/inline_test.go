@@ -175,6 +175,9 @@ func TestInlineExecAdd(t *testing.T) {
 		if ms.Funcs[0].Calls["inline"] != 1 {
 			t.Errorf("func 0 Calls[inline] = %d, want 1 (calls=%v)", ms.Funcs[0].Calls["inline"], ms.Funcs[0].Calls)
 		}
+		if ms.Funcs[0].InlineSiteBytes == 0 {
+			t.Error("inlined add has zero attributed inline-site bytes")
+		}
 	})
 }
 

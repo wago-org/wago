@@ -683,6 +683,7 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 // boundary frame (inlineBodyCtrl).
 func (f *fn) inlineCall(t *inlineTarget) error {
 	f.stats.call(callKindInline)
+	start := f.a.Len()
 	base := f.inlineBase[t.globalIdx]
 	f.bindInlineParams(t, base)
 
@@ -708,6 +709,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	// still referencing the reserved region into a register/value now. (The control-
 	// flow path already merged results into canonical slots, so this is a no-op there.)
 	f.realizeInlineRange(base, base+t.nLocals)
+	f.stats.addInlineSiteBytes(f.a.Len() - start)
 	return nil
 }
 

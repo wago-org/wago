@@ -117,6 +117,9 @@ type CodegenStats struct {
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
+	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
+	// inline sites. Caller frame growth and shared cold tails are outside it.
+	InlineSiteBytes int
 
 	// Register allocator / condense engine traffic.
 	Flushes              int // full operand-stack flushes (control boundaries + calls)
@@ -333,6 +336,12 @@ func (s *CodegenStats) call(kind string) {
 	s.Calls[kind]++
 }
 
+func (s *CodegenStats) addInlineSiteBytes(n int) {
+	if s != nil {
+		s.InlineSiteBytes += n
+	}
+}
+
 // peep records one peephole/instruction-selection rewrite by stable name.
 func (s *CodegenStats) peep(name string) {
 	if s == nil {
@@ -420,6 +429,9 @@ func (s *CodegenStats) report() string {
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
+	if s.InlineSiteBytes != 0 {
+		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
+	}
 	gcBytes := s.GCCodeBytes
 	if gcBytes.Allocation|gcBytes.HandleResolution|gcBytes.TypeCast|gcBytes.NullCheck|gcBytes.BoundsCheck|gcBytes.Barrier|gcBytes.SpillReload|gcBytes.HelperCall|gcBytes.SharedStub|gcBytes.TrapStub|gcBytes.RootMap != 0 {
 		fmt.Fprintf(&b, "    gcbytes: total=%d alloc=%d resolve=%d cast=%d null=%d bounds=%d barrier=%d spill=%d helper=%d shared=%d trap=%d rootmap=%d\n",

@@ -41,6 +41,9 @@ func TestInlineLeafExecAndStatsArm64(t *testing.T) {
 	if got := ms.Funcs[0].Calls["inline"]; got != 2 {
 		t.Fatalf("Calls[inline] = %d, want 2", got)
 	}
+	if ms.Funcs[0].InlineSiteBytes == 0 {
+		t.Fatal("inlined leaves have zero attributed inline-site bytes")
+	}
 }
 
 func TestInlineRejectsRecursiveArm64(t *testing.T) {
