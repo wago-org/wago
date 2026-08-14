@@ -977,6 +977,29 @@ median (+440 KiB, +0.32%) and a 100,412 KiB to 100,156 KiB esbuild median
 shared scalar island, compaction, the backend race suite, and runtime/fuzz
 corpus all pass.
 
+### Fixed-capacity machine window identity seam
+
+ARM64 and AMD64 now route resolved register-ABI move and swap sequences through
+a 24-operation fixed-capacity window before emission. The window flushes in
+program order at capacity and at the existing call/body boundary, uses only
+function-stack storage, and deliberately performs no rewrites yet. This lands
+the bounded symbolic seam separately from its first optimization so parity and
+compile cost are independently measurable.
+
+The ARM64 36-module corpus is exactly unchanged at 83,027,452 native function
+bytes, including every size and codegen counter. Against the immediately
+preceding commit, serialized compile medians were 303,803 to 306,218 ns/op
+(+0.80%) for `many_funcs` and 1,032,280 to 1,029,448 ns/op (-0.27%) for
+`json-as-simd`, with identical allocations.
+
+The native AMD64 corpus is likewise exactly unchanged across all reported
+categories and 74,151,022 function bytes. Serialized compile medians were
+299,647 to 291,302 ns/op (-2.78%) for `many_funcs` and 1,318,068 to 1,331,578
+ns/op (+1.03%) for `json-as-simd`; allocation counts remained identical. Both
+backend race suites and the compacted runtime packages pass. The broader staged
+AMD64 product tests were unavailable on `hub` because that checkout does not
+contain the pinned `tests/spec-v3` corpus.
+
 ### Commands
 
 ```sh
