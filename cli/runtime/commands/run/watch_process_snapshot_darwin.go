@@ -14,6 +14,8 @@ func prepareWatchedProcessTracking() error {
 	return nil
 }
 
+func finishWatchedProcessTracking(*watchedProcessTracker) {}
+
 func startWatchedProcessTracking(tracker *watchedProcessTracker) error {
 	queue, err := unix.Kqueue()
 	if err != nil {
@@ -70,6 +72,7 @@ func watchedProcess(pid int) (watchedProcessInfo, bool) {
 	return watchedProcessInfo{
 		pid:     pid,
 		parent:  int(entry.Eproc.Ppid),
+		group:   int(entry.Eproc.Pgid),
 		started: uint64(entry.Proc.P_starttime.Sec)*1_000_000 + uint64(entry.Proc.P_starttime.Usec),
 	}, true
 }
@@ -104,6 +107,7 @@ func watchedProcessSnapshot() ([]watchedProcessInfo, error) {
 		processes = append(processes, watchedProcessInfo{
 			pid:     int(entry.Proc.P_pid),
 			parent:  int(entry.Eproc.Ppid),
+			group:   int(entry.Eproc.Pgid),
 			started: started,
 		})
 	}

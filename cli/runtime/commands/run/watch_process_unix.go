@@ -26,6 +26,7 @@ const maxWatchedDescendants = 4096
 
 type watchedProcessInfo struct {
 	pid, parent int
+	group       int
 	started     uint64
 }
 
@@ -88,11 +89,12 @@ func killWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error 
 func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 	if platform.terminalFD >= 0 {
 		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
-		if err == nil && foreground == command.Process.Pid {
+		if err == nil && platform.processes.ownsProcessGroup(foreground) {
 			_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
 		}
 	}
 	_ = signalWatchedProcessTree(platform, command, syscall.SIGKILL)
+	finishWatchedProcessTracking(platform.processes)
 	platform.processes.close()
 	_ = command.Process.Release()
 }
@@ -266,6 +268,31 @@ func (tracker *watchedProcessTracker) signal(value syscall.Signal) error {
 		}
 	}
 	return errors.Join(refreshErr, signalErr)
+}
+
+func (tracker *watchedProcessTracker) ownsProcessGroup(group int) bool {
+	if tracker == nil {
+		return false
+	}
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if group == tracker.root {
+		return true
+	}
+	if err := tracker.refreshLocked(); err != nil {
+		return false
+	}
+	snapshot, err := watchedProcessSnapshot()
+	if err != nil {
+		return false
+	}
+	for _, process := range snapshot {
+		started, ok := tracker.processes[process.pid]
+		if ok && started == process.started && process.group == group {
+			return true
+		}
+	}
+	return false
 }
 
 func (tracker *watchedProcessTracker) refreshLocked() error {
