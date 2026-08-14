@@ -200,20 +200,22 @@ type fn struct {
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
-	spillFloor       int
-	subRspAt         int    // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
-	addRspAt         int    // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
-	tailFrameSites   []int  // tail-transfer frame-free MOVZ sites (patched with frameSize)
-	frameElided      bool   // simple register-only internal entry leaves SP unchanged
-	adapterReturnOff int    // register-ABI wrapper continuation used by cross-tail reuse
-	guardMode        bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts      bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible    bool   // emit context-cancellation polls at entries and loop headers
-	hasLoop          bool   // finalizer preserves emission-time loop layout until alignment fragments are relaxable
-	opaqueFragments  bool   // jump-table or plugin bytes require explicit fragment-aware scans
-	lazyZero         bool   // defer declared-local zeroing for small call+memory functions
-	entryInitialized uint64 // locals proven assigned before their first entry-prefix read
-	skipFence        bool   // call-free leaf with a provably small frame: no stack-fence check
+	spillFloor              int
+	subRspAt                int    // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
+	addRspAt                int    // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	tailFrameSites          []int  // tail-transfer frame-free MOVZ sites (patched with frameSize)
+	frameElided             bool   // simple register-only internal entry leaves SP unchanged
+	adapterReturnOff        int    // register-ABI wrapper continuation used by cross-tail reuse
+	adapterEndOff           int    // end of the wrapper before internal-entry alignment
+	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
+	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible           bool   // emit context-cancellation polls at entries and loop headers
+	hasLoop                 bool   // finalizer preserves emission-time loop layout until alignment fragments are relaxable
+	opaqueFragments         bool   // jump-table or plugin bytes require explicit fragment-aware scans
+	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
+	entryInitialized        uint64 // locals proven assigned before their first entry-prefix read
+	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([linMemReg-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize=R27, which
@@ -587,6 +589,7 @@ type funcResult struct {
 	layoutFlags    uint8
 	internalOff    int
 	directPrepared bool
+	adapterTail    adapterTailInfo
 	relocs         []callReloc
 	err            error
 }
@@ -604,6 +607,16 @@ func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
 	}
 	bits[bit>>6] |= uint64(1) << uint(bit&63)
 	return bits
+}
+
+func countHostAdapters(adapters []bool) int {
+	n := 0
+	for _, adapter := range adapters {
+		if adapter {
+			n++
+		}
+	}
+	return n
 }
 
 // Frameless layout (WARP-style, SP-relative). X29/FP is only a frame-record anchor
@@ -945,6 +958,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		}()
 		pressureDone := false
 		var directPrepared []uint64
+		var adapterTails []adapterTailInfo
+		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+			adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
+		}
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
 			// Align and reserve before lowering so the assembler can emit straight
@@ -975,6 +992,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 			}
 			internalEntry[i] = len(code) + internalOff
+			if adapterTails != nil && sc.fnState.adapterReturnOff != 0 {
+				if info := sc.fnState.adapterTailInfo(); info.returnOff != 0 {
+					info.function = uint32(i)
+					adapterTails = append(adapterTails, info)
+				}
+			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
@@ -989,8 +1012,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				opts.MemoryPressure()
 			}
 		}
+		moduleOther := 0
+		if adapterTails != nil {
+			moduleOther, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+			if err != nil {
+				return nil, err
+			}
+		}
 		code := codeBuffer.Bytes()
-		finalizeModuleNativeSize(ms, len(code))
+		finalizeModuleNativeSize(ms, len(code), moduleOther)
 		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 			return nil, err
 		}
@@ -1048,7 +1078,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
+				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
+				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+					result.adapterTail = ws.scratch.fnState.adapterTailInfo()
+				}
+				results[i] = result
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -1062,6 +1096,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 
 	code := make([]byte, 0, codeCap)
 	var directPrepared []uint64
+	var adapterTails []adapterTailInfo
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
+	}
 	for i := range results {
 		r := &results[i]
 		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
@@ -1073,12 +1111,24 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
 		relocs[i] = r.relocs
+		if adapterTails != nil && r.adapterTail.returnOff != 0 {
+			r.adapterTail.function = uint32(i)
+			adapterTails = append(adapterTails, r.adapterTail)
+		}
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
+	}
+	moduleOther := 0
+	if adapterTails != nil {
+		var err error
+		code, moduleOther, err = shareAdapterTails(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 		return nil, err
 	}
-	finalizeModuleNativeSize(ms, len(code))
+	finalizeModuleNativeSize(ms, len(code), moduleOther)
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
@@ -1106,7 +1156,7 @@ func firstFuncError(results []funcResult) (int, error) {
 	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
 }
 
-func finalizeModuleNativeSize(ms *ModuleStats, codeLen int) {
+func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther int) {
 	if ms == nil {
 		return
 	}
@@ -1152,7 +1202,8 @@ func finalizeModuleNativeSize(ms *ModuleStats, codeLen int) {
 	}
 	native.HostAdapterTailShapeCount = len(tailShapes)
 	native.HostAdapterTailDuplicateBytes = tailBytes - native.HostAdapterTailUniqueBytes
-	native.FunctionAlignmentBytes = codeLen - native.FunctionBytes
+	native.ModuleOtherBytes = moduleOther
+	native.FunctionAlignmentBytes = codeLen - native.FunctionBytes - moduleOther
 	if native.FunctionAlignmentBytes < 0 {
 		native.ModuleOtherBytes = native.FunctionAlignmentBytes
 		native.FunctionAlignmentBytes = 0
@@ -2446,6 +2497,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			f.st64(X3, 8, X1)
 		}
 		a.Ret()
+		f.adapterEndOff = a.Len()
 		if f.stats != nil {
 			f.stats.NativeSize.HostAdapterBytes = a.Len()
 		}

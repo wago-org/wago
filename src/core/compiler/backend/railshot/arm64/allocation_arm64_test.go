@@ -286,8 +286,8 @@ func TestExecBrTableSizeObjectiveUsesSmallerLinearFormArm64(t *testing.T) {
 	if sizeStats.Funcs[0].Peephole["br-table-jump"] != 0 {
 		t.Fatal("size objective used a jump table for five unique cases")
 	}
-	if got, want := sizeStats.NativeSize.TotalBytes, balancedStats.NativeSize.TotalBytes-8; got != want {
-		t.Fatalf("size code = %d bytes, want balanced %d - 8 = %d", got, balancedStats.NativeSize.TotalBytes, want)
+	if got, wantMax := sizeStats.NativeSize.TotalBytes, balancedStats.NativeSize.TotalBytes-8; got > wantMax {
+		t.Fatalf("size code = %d bytes, want at most balanced %d - 8 = %d", got, balancedStats.NativeSize.TotalBytes, wantMax)
 	}
 	for _, c := range []struct{ a, b, want uint64 }{
 		{0, 1, 1000}, {4, 1, 1004}, {5, 1, 1005}, {100, 1, 1005},

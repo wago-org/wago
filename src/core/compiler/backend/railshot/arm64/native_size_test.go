@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -79,5 +80,41 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesArm64(t *testing.T) {
 	report := stats.String()
 	if !strings.Contains(report, "native: total=") || !strings.Contains(report, "dead-reserved=") {
 		t.Fatalf("explain output lacks native size summary:\n%s", report)
+	}
+}
+
+func TestSizeObjectiveSharesAdapterTailsArm64(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	m := modFuncs(t,
+		funcDef{nil, i32, []byte{0x00, 0x41, 0x01, 0x0b}},
+		funcDef{nil, i32, []byte{0x00, 0x41, 0x02, 0x0b}},
+	)
+	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
+	size := OptimizeSize
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.NativeSize.ModuleOtherBytes == 0 {
+		t.Fatal("identical adapter tails were not moved to a shared island")
+	}
+	if stats.NativeSize.AccountedBytes() != len(cm.Code) {
+		t.Fatalf("accounted bytes = %d, code = %d", stats.NativeSize.AccountedBytes(), len(cm.Code))
+	}
+	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &size, Workers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(parallel.Code, cm.Code) {
+		t.Fatal("serial and parallel shared-tail layouts differ")
+	}
+	for i, fn := range stats.Funcs {
+		if fn.NativeSize.HostAdapterTailBytes != sharedAdapterTailBranchBytes {
+			t.Fatalf("function %d adapter tail = %d, want branch size %d", i, fn.NativeSize.HostAdapterTailBytes, sharedAdapterTailBranchBytes)
+		}
+	}
+	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}); err != nil || got != 1 {
+		t.Fatalf("shared adapter tail execution = %d, %v; want 1, nil", got, err)
 	}
 }

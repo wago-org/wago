@@ -438,6 +438,9 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+		f.adapterReturnReferenced = true
+	}
 	f.cmpRR(LR, X16, true)
 	nested := f.a.Bcond(condNE)
 	f.a.LdpPost(LR, X3, SP, 16)
@@ -693,6 +696,9 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+		f.adapterReturnReferenced = true
+	}
 	f.cmpRR(LR, X16, true)
 	nested := f.a.Bcond(condNE)
 	f.a.LdpPost(LR, X3, SP, 16)
