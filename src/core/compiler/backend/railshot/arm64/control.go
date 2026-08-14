@@ -679,6 +679,27 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	return false // cfFunc: the guarded form carries the singleRegResult load
 }
 
+// zeroBranchJump is condBranchJump for a materialized i32 condition whose
+// branch is taken when nonzero. It is used only after proving the edge emitted
+// no reconciliation code, so the condition register still holds the tested
+// value and no flags window is required.
+func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
+	switch fr.kind {
+	case cfLoop:
+		site := f.a.Cbnz32(condition)
+		if !f.a.PatchBranch19(site, fr.loopStart) {
+			f.a.B = f.a.B[:site]
+			return false
+		}
+		return true
+	case cfBlock, cfIf:
+		f.appendEndSite(&fr.condEnds, f.a.Cbnz32(condition))
+		fr.endReachable = true
+		return true
+	}
+	return false
+}
+
 const pollFreeLoopPhaseMaxLocals = 16
 
 // alignLoopHeader keeps poll-free loop bodies in the same half of a 32-byte
@@ -1626,7 +1647,8 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
-	f.a.CmpImm32(creg, 0) // CMP creg, #0
+	testAt := f.a.Len()
+	f.a.CmpImm32(creg, 0) // retained for non-empty edges, which may rewrite creg
 	if cOwned {
 		f.release(creg)
 	}
@@ -1641,6 +1663,18 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.moveBranchValues(fr, d, a)
 	}
 	if f.a.Len() == mark {
+		if zeroBranchEnabled && emptyZeroBranchEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+			f.a.B = f.a.B[:testAt]
+			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
+				f.stats.peep("zero-branch")
+				return nil
+			}
+			over := f.a.Cbz32(creg)
+			f.branchJump(fr)
+			f.a.PatchBranch19(over, f.a.Len())
+			f.stats.peep("zero-branch")
+			return nil
+		}
 		// Empty edge: one conditional branch straight to the target (taken when the
 		// condition holds, != 0), with no skip branch and no padding NOP.
 		if f.opt(optBranchFold) && f.condBranchJump(fr, condNE) {

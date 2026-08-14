@@ -2477,3 +2477,35 @@ fallthrough still consumed TEST's flags; `JECXZ` does not set them. Restricting
 the annotation to proved flag-dead ordinary `if` and guarded `br_if` edges
 produced zero sites in the 36-module corpus. The experiment was removed rather
 than retaining unsafe generic recognition or a zero-hit special path.
+
+## ARM64 Size-only empty-edge zero branches
+
+After ordinary `br_if` lowering emits its target-local and result
+reconciliation, it now checks whether that edge produced zero bytes. In Size
+and Embedded, an empty edge replaces the just-emitted `CMP Wn,#0` plus
+`B.cond` with one `CBNZ Wn,target`; function-result fallbacks use `CBZ` around
+the existing result-transfer branch. Non-empty edges retain CMP because their
+reconciliation may overwrite the condition register while preserving NZCV.
+`WAGO_ARM64_NO_EMPTY_ZERO_BRANCH=1` restores the first zero-branch checkpoint,
+and the broader `WAGO_ARM64_NO_ZERO_BRANCH=1` restores both zero-branch slices.
+
+This extension selects another 128,552 sites. The exact 36-module Size image
+falls from 76,541,576 to 76,027,480 (-514,096, -0.672%). Ruby contributes
+257,532 bytes, esbuild 215,984, regexmatch 16,988, SQLite 15,708, wasm3 5,060,
+Lua 2,492, and the remaining modules 332. Together with ordinary flag-dead
+`if`, ARM64 zero branches now select 246,570 sites and reduce the pre-campaign
+77,013,592-byte image by 986,112 bytes (-1.280%).
+
+Five serialized full-rollout comparisons put Ruby at 599,697,125 ns/op with
+both zero-branch slices disabled and 597,640,667 enabled (-0.34%). Esbuild
+moves from 323,867,417 to 328,883,812 (+1.55%). Median B/op and allocations are
+unchanged. Five one-second Size samples move json-as serialization +0.64% and
+deserialization +1.87%. Because deserialization crossed the investigation
+threshold, a separate ten-sample run was taken; its median moved from 37,475 to
+38,048 ns/op (+1.53%). The extension is therefore restricted to Size/Embedded,
+where it remains well inside the 5% critical-workload gate; Balanced retains
+the previously accepted ordinary-if selection.
+
+The complete Size execution suite, focused zero/nonzero/high-bit execution,
+ARM64 backend race suite, and compacted runtime corpus/fuzz suite pass. Every
+execution sample remains allocation-free.
