@@ -23,6 +23,7 @@ func TestBrTableUseJumpObjectiveCostAMD64(t *testing.T) {
 		{"size unique six", []uint32{0, 1, 2, 3, 4, 5}, 6, RCX, OptimizeSize, true},
 		{"size duplicate five", []uint32{0, 0, 1, 2, 3}, 4, RCX, OptimizeSize, true},
 		{"size rax six ambiguous", []uint32{0, 1, 2, 3, 4, 5}, 6, RAX, OptimizeSize, false},
+		{"size rax six duplicate pays", []uint32{0, 0, 1, 2, 3, 4}, 5, RAX, OptimizeSize, true},
 		{"size rax seven pays", []uint32{0, 1, 2, 3, 4, 5, 6}, 7, RAX, OptimizeSize, true},
 		{"embedded follows size", []uint32{0, 1, 2, 3, 4}, 5, RCX, OptimizeEmbedded, false},
 	}
