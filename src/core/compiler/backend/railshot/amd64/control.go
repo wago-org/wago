@@ -1790,13 +1790,15 @@ func brTableUseJump(labels []uint32, def uint32, ireg Reg, policy CodegenPolicy)
 	for i := range labels {
 		linearBytes += amd64CmpImmBytes(ireg, int32(i)) + 6 // near jcc
 	}
-	var jumpBytes int
 	if ireg == RAX {
 		// Worst case: a three-byte move to an extended replacement register.
-		jumpBytes = 23 + amd64CmpImmBytes(8, int32(n)) + amd64ShiftImmBytes(8) + 4*n + 3
-	} else {
-		jumpBytes = 23 + amd64CmpImmBytes(ireg, int32(n)) + amd64ShiftImmBytes(ireg) + 4*n
+		jumpBytes := 23 + amd64CmpImmBytes(8, int32(n)) + amd64ShiftImmBytes(8) + 4*n + 3
+		if jumpBytes <= linearBytes {
+			return true
+		}
+		return false
 	}
+	jumpBytes := 23 + amd64CmpImmBytes(ireg, int32(n)) + amd64ShiftImmBytes(ireg) + 4*n
 	if jumpBytes <= linearBytes {
 		return true
 	}
