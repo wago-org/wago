@@ -451,3 +451,38 @@ func TestFinalizerRelaxIterationLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestSizeCompactsBranchesWithoutShrinkingLargeFrameAMD64(t *testing.T) {
+	oldEnabled, oldDisabled := nativeCompactionEnabled, nativeCompactionDisabled
+	nativeCompactionEnabled, nativeCompactionDisabled = false, false
+	t.Cleanup(func() {
+		nativeCompactionEnabled, nativeCompactionDisabled = oldEnabled, oldDisabled
+	})
+
+	body := []byte{0x01, 0x14, 0x7e, 0x20, 0x00, 0x04, 0x40, 0x01, 0x0b, 0x41, 0x01, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	objective := OptimizeSize
+	compile := func(disabled bool) *CodegenStats {
+		nativeCompactionDisabled = disabled
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			t.Cleanup(func() { cm.CodeImage.Close() })
+		}
+		return stats.Funcs[0]
+	}
+	reserved := compile(true)
+	compact := compile(false)
+	if compact.FrameBytes <= 127 {
+		t.Fatalf("frame = %d bytes, want imm32-only large frame", compact.FrameBytes)
+	}
+	if compact.CodeBytes >= reserved.CodeBytes {
+		t.Fatalf("large-frame compact code = %d bytes, reserved = %d", compact.CodeBytes, reserved.CodeBytes)
+	}
+	if compact.NativeSize.FrameAdjustmentBytes != reserved.NativeSize.FrameAdjustmentBytes {
+		t.Fatalf("large frame adjustments changed: compact=%d reserved=%d", compact.NativeSize.FrameAdjustmentBytes, reserved.NativeSize.FrameAdjustmentBytes)
+	}
+}

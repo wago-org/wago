@@ -2034,6 +2034,29 @@ nil-stats Size samples move Ruby from a 975,728,289 to 980,513,950 ns/op median
 allocation counts remain noise-level, and both compile-time results are inside
 the gate.
 
+## AMD64 large-frame finalization
+
+The finalizer previously returned the identity result whenever a function's
+frame exceeded the signed-imm8 adjustment range. That protected the seven-byte
+`sub/add rsp,imm32` form, but unnecessarily disabled every independent shrink:
+dead holes, branch-to-next deletion, and short-branch relaxation. Large frames
+now retain their imm32 adjustments while the rest of the function participates
+in bounded monotonic finalization.
+
+Across the exact 36-module Size suite, raw native bytes fall from 66,798,835 to
+66,593,838 (-204,997, -0.307%). Ruby contributes 129,430 bytes (34,287,492 to
+34,158,062), SQLite 28,683 (3,275,866 to 3,247,183), esbuild 15,045
+(24,670,037 to 24,654,992), and regexmatch 23,444. The large frame adjustments
+remain byte-for-byte unchanged; only independently recorded shrink sites move.
+
+Five serialized Size compile samples move Ruby from a 991,783,302 to
+995,188,532 ns/op median (+0.34%) and esbuild from 515,358,372 to 516,946,118
+ns/op (+0.31%). B/op and allocation counts remain noise-level. Five one-second
+execution samples cover every changed executable workload: nbody +0.24%,
+sha256 -0.31%, raytrace -0.38%, blake-as -0.10%, blake-as-simd -0.39%,
+utf-as-simd conversion -0.54%, and utf-as-simd validation -0.15%. Every result
+remains inside the Size gate with zero execution allocations.
+
 The same encoder ledger now counts every REX prefix, including prefixes embedded
 after another instruction in a combined emission. Ruby emits 4,730,474 total:
 1,910,061 carry mandatory 64-bit width, 268,216 are bare prefixes required to

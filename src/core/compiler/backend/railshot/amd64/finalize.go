@@ -203,16 +203,17 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 		return identity()
 	}
 	frameSize := f.frameSize()
-	if frameSize > 127 {
-		return identity()
-	}
+	compactFrame := frameSize <= 127
 	for i := range f.a.Rel32Sites {
 		f.a.Rel32Sites[i].SetShort(false)
 	}
 
 	var storage [shared.MaxWideOffsetMapDeletions]shared.DeletedRange
 	deletions := storage[:0:f.finalizerDeletionLimit()]
-	frameSites := len(f.sc.tailFrameSites) + 2
+	frameSites := 0
+	if compactFrame {
+		frameSites = len(f.sc.tailFrameSites) + 2
+	}
 	if frameSites > cap(deletions) {
 		return identity()
 	}
@@ -260,16 +261,18 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 		frameDeleted += 3
 		return nil
 	}
-	if err := addFrameSite(f.subRspAt, 0xec); err != nil {
-		return amd64FinalizeResult{}, 0, 0, err
-	}
-	for _, site := range f.sc.tailFrameSites {
-		if err := addFrameSite(site, 0xc4); err != nil {
+	if compactFrame {
+		if err := addFrameSite(f.subRspAt, 0xec); err != nil {
 			return amd64FinalizeResult{}, 0, 0, err
 		}
-	}
-	if err := addFrameSite(f.addRspAt, 0xc4); err != nil {
-		return amd64FinalizeResult{}, 0, 0, err
+		for _, site := range f.sc.tailFrameSites {
+			if err := addFrameSite(site, 0xc4); err != nil {
+				return amd64FinalizeResult{}, 0, 0, err
+			}
+		}
+		if err := addFrameSite(f.addRspAt, 0xc4); err != nil {
+			return amd64FinalizeResult{}, 0, 0, err
+		}
 	}
 
 	sortDeletions := func(ranges []shared.DeletedRange) {
