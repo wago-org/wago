@@ -810,6 +810,39 @@ Serialized compilation remains inside the Balanced gate:
 The complete repository suite, native race suite, rollback-oracle backend run,
 and targeted runtime/fuzz corpus all pass.
 
+### AMD64 bounded value-provenance checkpoint
+
+AMD64 uses the same two one-byte facts in existing `storage` padding and the
+same semantic zero-extension consumer. The optimization catalog entry is shared
+across architectures, while `WAGO_AMD64_NOPROVENANCE=1` independently restores
+the AMD64 pre-facts path.
+
+Across all 64 native-AMD64 corpus modules on `hub@hub` with default
+non-compacting codegen:
+
+| Facts disabled | Facts enabled | Saving | Wins / losses / ties | `ext-elim` hits |
+| ---: | ---: | ---: | ---: | ---: |
+| 83,096,785 | 83,059,753 | -37,032 (-0.04%) | 13 / 0 / 51 | 18,535 |
+
+With `WAGO_COMPACT=1`, the comparison saves 37,064 bytes (82,666,864 to
+82,629,800), again with 13 wins and no losses. `esbuild` contributes 16,084
+hits and 32,048 default-path bytes.
+
+Serialized compilation remains inside the Balanced gate:
+
+| Workload | Facts disabled median | Facts enabled median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 314,524 ns/op | 308,439 ns/op | -1.93% | 147,209 B/op / 340 allocs, unchanged |
+| `json-as` | 1,216,487 ns/op | 1,218,018 ns/op | +0.13% | 291,659 B/op / 1,858 allocs, unchanged |
+| `esbuild` full compile | 758,896,224 ns/op | 757,544,506 ns/op | -0.18% | code image -32,032 bytes |
+
+Native backend, rollback-oracle, runtime/fuzz corpus, race, and affected staged
+GC type-subtyping product tests pass. The remote repository-wide run also found
+unrelated host-checkout gaps: the pinned `tests/spec-v3` corpus is absent, the
+installed `wat2wasm` lacks table64 syntax, and one plugin build helper test
+failed. Exact staged native-code/codec goldens changed earlier by branch-to-next
+compaction were refreshed and pass natively.
+
 ### Commands
 
 ```sh
