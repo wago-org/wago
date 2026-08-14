@@ -2043,6 +2043,32 @@ from 964,667,608 to 969,038,879 ns/op (+0.45%) and esbuild from 502,108,488 to
 502,350,849 ns/op (+0.05%). B/op and allocation counts remain noise-level, and
 both results are inside the compile-time gate.
 
+## AMD64 compact 64-bit immediate materialization
+
+The encoder formerly used ten-byte `movabs r64,imm64` for every `MovImm64`
+request. It now emits `mov r32,imm32` when the value is a zero-extended 32-bit
+pattern (five bytes for a low register, six for a high register), and the
+seven-byte `REX.W C7 /0 imm32` form when the value is a sign-extended signed
+32-bit pattern. Only genuinely wide values retain movabs. These are exact
+architectural equivalences: 32-bit register writes clear the upper half and C7
+with REX.W sign-extends its immediate.
+
+Across the exact 36-module AMD64 Size suite, raw native bytes fall from
+66,932,549 to 66,811,457 (-121,092, -0.181%). Esbuild contributes 101,302
+bytes (24,772,939 to 24,671,637), Ruby 12,929 (34,309,980 to 34,297,051), and
+SQLite 3,105 (3,279,313 to 3,276,208); `many_funcs` is unchanged. The stats
+ledger records both selected forms and their pre-layout byte saving. Esbuild
+narrows 21,041 movabs requests for 101,299 direct instruction bytes, Ruby
+narrows 2,817 for 12,979 bytes, and SQLite narrows 708 for 3,269 bytes. Small
+differences between direct-site and final module deltas come from bounded branch
+relaxation choices after offsets move.
+
+Five serialized Size compile samples put Ruby at a median 961,924,373 to
+970,684,520 ns/op (+0.91%) and esbuild at 501,333,738 to 503,229,515 ns/op
+(+0.38%). B/op and allocations remain noise-level. The change adds no compiler
+state, allocation, or finalizer work and applies to every objective because the
+short forms are performance-neutral maximal encodings.
+
 ### Commands
 
 ```sh

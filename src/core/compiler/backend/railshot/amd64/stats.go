@@ -435,6 +435,9 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "amd64-prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
 		ms.Encoding.RexPrefixes, ms.Encoding.RexWPrefixes, ms.Encoding.RexBare,
 		ms.Encoding.RexNonWExtensionPrefixes())
+	fmt.Fprintf(&b, "amd64-immediates: mov-imm32=%d mov-imm32-sext=%d mov-imm64=%d mov-imm64-narrowed=%d bytes-saved=%d\n",
+		ms.Encoding.MovImm32, ms.Encoding.MovImm32Sext, ms.Encoding.MovImm64,
+		ms.Encoding.MovImmNarrow, ms.Encoding.MovImmSaved)
 	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
 		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
 	}
@@ -482,6 +485,9 @@ func (s *CodegenStats) report() string {
 	fmt.Fprintf(&b, "    prefixes: rex=%d rex-w=%d rex-bare=%d rex-nonw-extension=%d\n",
 		s.Encoding.RexPrefixes, s.Encoding.RexWPrefixes, s.Encoding.RexBare,
 		s.Encoding.RexNonWExtensionPrefixes())
+	fmt.Fprintf(&b, "    immediates: mov-imm32=%d mov-imm32-sext=%d mov-imm64=%d mov-imm64-narrowed=%d bytes-saved=%d\n",
+		s.Encoding.MovImm32, s.Encoding.MovImm32Sext, s.Encoding.MovImm64,
+		s.Encoding.MovImmNarrow, s.Encoding.MovImmSaved)
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",

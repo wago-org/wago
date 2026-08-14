@@ -54,6 +54,11 @@ type EncodingStats struct {
 	RexPrefixes  uint64 `json:"rex_prefixes"`
 	RexWPrefixes uint64 `json:"rex_w_prefixes"`
 	RexBare      uint64 `json:"rex_bare_prefixes"`
+	MovImm32     uint64 `json:"mov_imm32"`
+	MovImm32Sext uint64 `json:"mov_imm32_sign_extended"`
+	MovImm64     uint64 `json:"mov_imm64"`
+	MovImmNarrow uint64 `json:"mov_imm64_narrowed"`
+	MovImmSaved  uint64 `json:"mov_imm64_bytes_saved"`
 }
 
 // Add accumulates another encoder histogram.
@@ -70,6 +75,11 @@ func (s *EncodingStats) Add(other EncodingStats) {
 	s.RexPrefixes += other.RexPrefixes
 	s.RexWPrefixes += other.RexWPrefixes
 	s.RexBare += other.RexBare
+	s.MovImm32 += other.MovImm32
+	s.MovImm32Sext += other.MovImm32Sext
+	s.MovImm64 += other.MovImm64
+	s.MovImmNarrow += other.MovImmNarrow
+	s.MovImmSaved += other.MovImmSaved
 }
 
 // MemoryDisplacementBytes returns the exact bytes occupied by recorded disp8
@@ -326,6 +336,9 @@ func (a *Asm) Pop(r Reg) {
 }
 
 func (a *Asm) MovImm32(r Reg, v int32) {
+	if a.EncodingStats != nil {
+		a.EncodingStats.MovImm32++
+	}
 	if r >= 8 {
 		a.emit(a.rexPrefix(0x41))
 	}
@@ -612,6 +625,34 @@ func (a *Asm) ShiftImm(digit byte, dst Reg, count byte, w bool) {
 func (a *Asm) ShiftCL(digit byte, dst Reg, w bool) { a.shiftCL(digit, dst, w) }
 
 func (a *Asm) MovImm64(r Reg, v uint64) {
+	// A 32-bit destination write zeroes the upper half, making B8+rd imm32
+	// exactly equivalent for every zero-extended 32-bit value. C7 /0 with REX.W
+	// sign-extends imm32 and covers the complementary signed range. Keep movabs
+	// only for values that need all eight immediate bytes.
+	if uint64(uint32(v)) == v {
+		if a.EncodingStats != nil {
+			a.EncodingStats.MovImmNarrow++
+			a.EncodingStats.MovImmSaved += 5
+			if r >= 8 {
+				a.EncodingStats.MovImmSaved--
+			}
+		}
+		a.MovImm32(r, int32(v))
+		return
+	}
+	if uint64(int64(int32(v))) == v {
+		if a.EncodingStats != nil {
+			a.EncodingStats.MovImm32Sext++
+			a.EncodingStats.MovImmNarrow++
+			a.EncodingStats.MovImmSaved += 3
+		}
+		a.emit(a.rex(true, false, false, r >= 8), 0xC7, 0xC0|byte(r&7))
+		a.imm32(int32(v))
+		return
+	}
+	if a.EncodingStats != nil {
+		a.EncodingStats.MovImm64++
+	}
 	a.emit(a.rex(true, false, false, r >= 8), 0xB8|byte(r&7))
 	var t [8]byte
 	t[0] = byte(v)

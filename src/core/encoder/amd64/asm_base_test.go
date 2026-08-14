@@ -98,6 +98,17 @@ func TestEncodingStatsRexPrefixes(t *testing.T) {
 	}
 }
 
+func TestEncodingStatsMovImmediateForms(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.MovImm64(RAX, 0x89abcdef)
+	a.MovImm64(RAX, ^uint64(0))
+	a.MovImm64(RAX, 0x1122334455667788)
+	if stats.MovImm32 != 1 || stats.MovImm32Sext != 1 || stats.MovImm64 != 1 || stats.MovImmNarrow != 2 || stats.MovImmSaved != 8 {
+		t.Fatalf("MOV immediate stats = %#v, want one of each form", stats)
+	}
+}
+
 func TestScalarFloatEncodings(t *testing.T) {
 	cases := []struct {
 		name string
@@ -158,6 +169,8 @@ func TestIntegerMemoryAndControlEncodings(t *testing.T) {
 		{"imul three operand", func(a *Asm) { a.ImulRRI(R8, R9, 7, true) }, []byte{0x4d, 0x6b, 0xc1, 7}},
 		{"shift cl", func(a *Asm) { a.ShiftCL(4, R8, true) }, []byte{0x49, 0xd3, 0xe0}},
 		{"mov immediate 64", func(a *Asm) { a.MovImm64(R8, 0x1122334455667788) }, []byte{0x49, 0xb8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}},
+		{"mov immediate 64 zero-extended", func(a *Asm) { a.MovImm64(R8, 0x89abcdef) }, []byte{0x41, 0xb8, 0xef, 0xcd, 0xab, 0x89}},
+		{"mov immediate 64 sign-extended", func(a *Asm) { a.MovImm64(R8, ^uint64(0)) }, []byte{0x49, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff}},
 		{"call memory", func(a *Asm) { a.CallMem(R12, 16) }, []byte{0x41, 0xff, 0x54, 0x24, 16}},
 		{"call register", func(a *Asm) { a.CallReg(R9) }, []byte{0x41, 0xff, 0xd1}},
 		{"lea scaled 32", func(a *Asm) { a.LeaScaledW(R8, R9, R10, 2, -4, false) }, []byte{0x47, 0x8d, 0x44, 0x91, 0xfc}},
