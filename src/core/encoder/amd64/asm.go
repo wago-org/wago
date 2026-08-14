@@ -32,12 +32,78 @@ const (
 
 type Asm struct {
 	B              []byte
+	EncodingStats  *EncodingStats
 	Rel32Sites     []Rel32Site
-	Rel32Count     int
 	Rel32SiteLimit int
-	rel32Inline    [2]Rel32Site
+	Rel32Count     uint32
 	UsesBMI2       bool
 	Rel32Overflow  bool
+	rel32Inline    [2]Rel32Site
+}
+
+// EncodingStats records exact memory-displacement choices made by the encoder.
+// It is optional so ordinary code generation does not allocate. Frame counts
+// are the subset whose base register is RSP.
+type EncodingStats struct {
+	MemoryDisp0  uint64 `json:"memory_disp0"`
+	MemoryDisp8  uint64 `json:"memory_disp8"`
+	MemoryDisp32 uint64 `json:"memory_disp32"`
+	FrameDisp0   uint64 `json:"frame_disp0"`
+	FrameDisp8   uint64 `json:"frame_disp8"`
+	FrameDisp32  uint64 `json:"frame_disp32"`
+}
+
+// Add accumulates another encoder histogram.
+func (s *EncodingStats) Add(other EncodingStats) {
+	if s == nil {
+		return
+	}
+	s.MemoryDisp0 += other.MemoryDisp0
+	s.MemoryDisp8 += other.MemoryDisp8
+	s.MemoryDisp32 += other.MemoryDisp32
+	s.FrameDisp0 += other.FrameDisp0
+	s.FrameDisp8 += other.FrameDisp8
+	s.FrameDisp32 += other.FrameDisp32
+}
+
+// MemoryDisplacementBytes returns the exact bytes occupied by recorded disp8
+// and disp32 fields. FrameDisplacementBytes is the RSP-based subset.
+func (s EncodingStats) MemoryDisplacementBytes() uint64 {
+	return s.MemoryDisp8 + 4*s.MemoryDisp32
+}
+
+func (s EncodingStats) FrameDisplacementBytes() uint64 {
+	return s.FrameDisp8 + 4*s.FrameDisp32
+}
+
+func (a *Asm) recordAddress(base Reg, mod byte) {
+	s := a.EncodingStats
+	if s == nil {
+		return
+	}
+	switch mod {
+	case 0x00:
+		s.MemoryDisp0++
+		if base == RSP {
+			s.FrameDisp0++
+		}
+	case 0x40:
+		s.MemoryDisp8++
+		if base == RSP {
+			s.FrameDisp8++
+		}
+	case 0x80:
+		s.MemoryDisp32++
+		if base == RSP {
+			s.FrameDisp32++
+		}
+	}
+}
+
+func (a *Asm) recordRipAddress() {
+	if a.EncodingStats != nil {
+		a.EncodingStats.MemoryDisp32++
+	}
 }
 
 // Rel32Count records explicitly emitted function-local PC-relative
@@ -198,6 +264,7 @@ func (a *Asm) emitDisp(mod byte, disp int32) {
 // shortest displacement selected by addrMode.
 func (a *Asm) baseAddr(regField byte, base Reg, disp int32) {
 	mod := addrMode(base, disp)
+	a.recordAddress(base, mod)
 	rm := byte(base & 7)
 	if rm == 4 {
 		a.emit(mod | ((regField & 7) << 3) | 0x04)
@@ -579,6 +646,7 @@ func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int32, w boo
 		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
 	}
 	mod := addrMode(base, disp)
+	a.recordAddress(base, mod)
 	a.emit(0x8D, mod|((byte(dst)&7)<<3)|0x04)
 	a.emit((scaleLog << 6) | ((byte(index) & 7) << 3) | byte(base&7))
 	a.emitDisp(mod, disp)
@@ -612,6 +680,7 @@ func (a *Asm) Cld()      { a.emit(0xFC) }       // clear direction flag (increme
 // [base + index + disp] operand (scale 1) with the given reg field.
 func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
 	mod := addrMode(base, disp)
+	a.recordAddress(base, mod)
 	a.emit(mod | ((byte(reg) & 7) << 3) | 0x04)     // ModRM rm=100 (SIB)
 	a.emit(((byte(index) & 7) << 3) | byte(base&7)) // SIB scale=0 index base
 	a.emitDisp(mod, disp)
@@ -944,6 +1013,7 @@ func (a *Asm) LeaRipPlaceholder(dst Reg) int {
 		rex |= 0x04 // REX.R
 	}
 	a.emit(rex, 0x8D, byte(dst&7)<<3|0x05) // ModRM mod=00 rm=101 → RIP-relative
+	a.recordRipAddress()
 	off := a.Len()
 	a.imm32(0)
 	return off

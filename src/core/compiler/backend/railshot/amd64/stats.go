@@ -22,6 +22,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // Explain/debug knobs, parsed once. Kept here next to the stats they drive.
@@ -144,6 +145,7 @@ type CodegenStats struct {
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
+	Encoding      encoderamd64.EncodingStats
 	literalKeys   []literalKey // stats-only keys for module-level duplicate accounting
 	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
 	// inline sites. Caller frame growth and shared cold tails are outside it.
@@ -388,6 +390,7 @@ type ModuleStats struct {
 	GCSharedStubs         int
 	GCSharedStubCallSites int
 	NativeSize            shared.NativeSizeReport
+	Encoding              encoderamd64.EncodingStats
 }
 
 type NativeFunctionSizeReport = shared.NativeFunctionSizeReport
@@ -425,6 +428,10 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native-data: literals=%d module-unique-literals=%d cross-function-duplicates=%d\n",
 		ms.NativeSize.LiteralPoolBytes, ms.NativeSize.LiteralPoolUniqueBytes,
 		ms.NativeSize.LiteralPoolDuplicateBytes)
+	fmt.Fprintf(&b, "amd64-encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
+		ms.Encoding.MemoryDisp0, ms.Encoding.MemoryDisp8, ms.Encoding.MemoryDisp32,
+		ms.Encoding.MemoryDisplacementBytes(), ms.Encoding.FrameDisp0, ms.Encoding.FrameDisp8,
+		ms.Encoding.FrameDisp32, ms.Encoding.FrameDisplacementBytes())
 	if ms.GCSharedStubs != 0 || ms.GCSharedStubCallSites != 0 {
 		fmt.Fprintf(&b, "module GC leaf stubs: bodies=%d calls=%d bytes=%d\n", ms.GCSharedStubs, ms.GCSharedStubCallSites, ms.GCSharedStubBytes)
 	}
@@ -465,6 +472,10 @@ func (s *CodegenStats) report() string {
 		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
 		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
 		s.NativeSize.DeadReservationBytes(), s.NativeSize.LiteralPoolBytes)
+	fmt.Fprintf(&b, "    encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
+		s.Encoding.MemoryDisp0, s.Encoding.MemoryDisp8, s.Encoding.MemoryDisp32,
+		s.Encoding.MemoryDisplacementBytes(), s.Encoding.FrameDisp0, s.Encoding.FrameDisp8,
+		s.Encoding.FrameDisp32, s.Encoding.FrameDisplacementBytes())
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",

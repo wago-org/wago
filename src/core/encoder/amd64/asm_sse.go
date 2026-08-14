@@ -186,6 +186,7 @@ func (a *Asm) vex3MemIdxL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 boo
 func (a *Asm) vex3MemRipPlaceholder(opcodeMap, pp, op byte, reg, src1 Reg) int {
 	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, true, RAX, 0, false, 0)
 	a.emit(op, ((byte(reg)&7)<<3)|0x05) // mod=00, r/m=101: RIP + disp32
+	a.recordRipAddress()
 	off := a.Len()
 	a.imm32(0)
 	return off

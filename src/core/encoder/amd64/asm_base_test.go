@@ -40,6 +40,40 @@ func TestScalarAndFrameEncodings(t *testing.T) {
 	}
 }
 
+func TestEncodingStatsDisplacementForms(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.Load64(RAX, RBX, 0)
+	a.Load64(RAX, RBX, 127)
+	a.Load64(RAX, RBX, 128)
+	a.Load64(RAX, RSP, 0)
+	a.Load64(RAX, RSP, -128)
+	a.Load64(RAX, RSP, -129)
+	a.ZMovdqu64LoadIdx(RAX, RBX, RCX, 64)
+	a.LeaRipPlaceholder(RAX)
+	a.MovdquRipPlaceholder(RAX)
+	a.MovsRipPlaceholder(RAX, true)
+	a.VPshufbRipPlaceholder(RAX, RCX)
+
+	want := EncodingStats{
+		MemoryDisp0:  2,
+		MemoryDisp8:  3,
+		MemoryDisp32: 6,
+		FrameDisp0:   1,
+		FrameDisp8:   1,
+		FrameDisp32:  1,
+	}
+	if stats != want {
+		t.Fatalf("encoding stats = %#v, want %#v", stats, want)
+	}
+	if got, wantBytes := stats.MemoryDisplacementBytes(), uint64(27); got != wantBytes {
+		t.Fatalf("memory displacement bytes = %d, want %d", got, wantBytes)
+	}
+	if got, wantBytes := stats.FrameDisplacementBytes(), uint64(5); got != wantBytes {
+		t.Fatalf("frame displacement bytes = %d, want %d", got, wantBytes)
+	}
+}
+
 func TestScalarFloatEncodings(t *testing.T) {
 	cases := []struct {
 		name string
@@ -163,7 +197,7 @@ func TestRel32SiteCounting(t *testing.T) {
 	first := a.JmpPlaceholder()
 	a.PatchRel32(first, a.Len())
 	a.JmpBack(0)
-	if got, want := a.Rel32Count, 2; got != want {
+	if got, want := a.Rel32Count, uint32(2); got != want {
 		t.Fatalf("rel32 site count = %d, want %d", got, want)
 	}
 	if got, want := len(a.Rel32Sites), 1; got != want {

@@ -52,7 +52,14 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
 	if stats.Funcs[0].NativeSize.FrameAdjustmentBytes == 0 || stats.Funcs[0].NativeSize.DeadFrameReservationBytes == 0 {
 		t.Fatalf("frame attribution = %#v", stats.Funcs[0].NativeSize)
 	}
-	if report := stats.String(); !strings.Contains(report, "native: total=") || !strings.Contains(report, "dead-reserved=") {
+	var encodingSum uint64
+	for _, fn := range stats.Funcs {
+		encodingSum += fn.Encoding.MemoryDisp0 + fn.Encoding.MemoryDisp8 + fn.Encoding.MemoryDisp32
+	}
+	if got := stats.Encoding.MemoryDisp0 + stats.Encoding.MemoryDisp8 + stats.Encoding.MemoryDisp32; got == 0 || got != encodingSum {
+		t.Fatalf("module encoding operands = %d, per-function sum = %d", got, encodingSum)
+	}
+	if report := stats.String(); !strings.Contains(report, "native: total=") || !strings.Contains(report, "dead-reserved=") || !strings.Contains(report, "amd64-encoding:") {
 		t.Fatalf("explain output lacks native ledger:\n%s", report)
 	}
 }

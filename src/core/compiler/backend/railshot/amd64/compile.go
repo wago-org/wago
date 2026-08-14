@@ -1668,10 +1668,12 @@ func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, modul
 		return
 	}
 	var native shared.NativeSizeReport
+	var encoding amd64.EncodingStats
 	native.TotalBytes = codeLen
 	for _, fn := range ms.Funcs {
 		if fn != nil {
 			native.AddFunction(fn.NativeSize)
+			encoding.Add(fn.Encoding)
 		}
 	}
 	type adapterShape struct {
@@ -1735,6 +1737,7 @@ func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, modul
 		native.LiteralPoolDuplicateBytes = 0
 	}
 	ms.NativeSize = native
+	ms.Encoding = encoding
 	ms.NativeSize.SetExecutableMapping(codeLen, mappedBytes)
 }
 
@@ -2217,6 +2220,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 
 	sc.reset()
+	if stats != nil {
+		sc.asm.EncodingStats = &stats.Encoding
+	} else {
+		sc.asm.EncodingStats = nil
+	}
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	if compactNativePolicy(sc.policy) {
 		if hints.hasLoop && !loopCompactionEnabled || hints.hasJumpTableData && !jumpTableCompactionEnabled || len(custom) != 0 {
