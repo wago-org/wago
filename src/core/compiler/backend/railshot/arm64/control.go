@@ -1208,8 +1208,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	}
 	f.reconcileLocals()
 	f.flush()
-	f.cmpImm(ehReg, 0, true)
-	noHandler := f.a.Bcond(condE)
+	noHandler := f.zeroBranch(ehReg, true, true)
 	f.ld64(X16, linMemReg, -int32(offEHTagDirPtr))
 	f.ld64(X16, X16, int32(tag*8))
 	f.st64(ehReg, ehTagOff, X16)
@@ -1242,10 +1241,8 @@ func (f *fn) opThrowRef() error {
 	f.reconcileLocals()
 	f.flush()
 	f.ld64(X16, SP, f.spillOff(refSlot))
-	f.cmpImm(X16, 0, true)
-	f.trapIf(condE, trapNullReference)
-	f.cmpImm(ehReg, 0, true)
-	noHandler := f.a.Bcond(condE)
+	f.trapIfZero(X16, true, true, trapNullReference)
+	noHandler := f.zeroBranch(ehReg, true, true)
 	for _, off := range [...]int32{0, 8, 16} {
 		f.ld64(X17, X16, off)
 		f.st64(ehReg, ehTagOff+off, X17)
@@ -1355,8 +1352,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 
 	f.leaDisp(X16, SP, recordOff, true)
 	f.ld64(X17, X16, ehPrevOff)
-	f.cmpImm(X17, 0, true)
-	noPrevious := f.a.Bcond(condE)
+	noPrevious := f.zeroBranch(X17, true, true)
 	for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
 		f.ld64(X9, X16, off)
 		f.st64(X17, off, X9)
@@ -1743,9 +1739,8 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	f.flush()
 	refSlot := f.allocSpillSlot()
 	f.st64(SP, f.spillOff(refSlot), ref)
-	f.cmpImm(ref, 0, true)
 	f.release(ref)
-	over := f.a.Bcond(condNE)
+	over := f.zeroBranch(ref, true, false)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1780,9 +1775,8 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	f.flush()
 	condition := f.allocReg(0)
 	f.ld64(condition, SP, f.spillOff(refSlot))
-	f.cmpImm(condition, 0, true)
 	f.release(condition)
-	over := f.a.Bcond(condE)
+	over := f.zeroBranch(condition, true, true)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1810,7 +1804,6 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	f.convergeBranchLocals(fr)
 	d := f.depth()
 	f.flush()
-	f.cmpImm(matched, 0, false)
 	if owned {
 		f.release(matched)
 	}
@@ -1818,7 +1811,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	if !branchOnMatch {
 		skipCond = condNE
 	}
-	over := f.a.Bcond(skipCond)
+	over := f.zeroBranch(matched, false, skipCond == condE)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {

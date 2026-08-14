@@ -2566,3 +2566,39 @@ suite pass. A full `go test ./...` was also attempted on hub; packages independe
 of external fixtures passed, while the checkout's pre-existing missing
 `tests/spec-v3` corpus, older WABT table64 syntax support, and one plugin-build
 fixture prevented an all-package green result.
+
+### Rejected: ARM64 concrete eq/ne-zero control branches
+
+An explicit experiment extended `CBZ/CBNZ` selection from concrete `eqz` to
+concrete integer `eq/ne 0` feeding `if` and fused `br_if`. Focused i32/i64 and
+zero/nonzero execution passed, but the complete 36-module Size corpus exposed
+only 106 sites and 424 removable bytes (75,339,552 to 75,339,128). The extra
+control-lowering state and branch-sense paths are not justified by that ceiling,
+so the experiment and its rollback knob were removed.
+
+## ARM64 explicit zero-test branches and traps
+
+Compiler-authored zero/nonzero checks in table helpers, indirect and tail-call
+validation, reference/GC paths, EH routing, memory64 validation, interrupt
+polling, and conditional reference branches now emit `CBZ/CBNZ` directly. Each
+site is annotated where the semantic check is produced; no finalized-byte
+pattern matching is involved. The trap form records the `CBZ/CBNZ` imm19 site in
+the existing shared-stub patch list, so trap attribution and cold-stub sharing
+remain unchanged. `WAGO_ARM64_NO_DIRECT_ZERO_BRANCH=1` restores `CMP+B.cond`.
+
+The exact 36-module ARM64 Size suite selects 24,531 sites and falls from
+75,339,552 to 75,241,428 native bytes (-98,124, -0.130%). Ruby contributes
+49,992 bytes, regexmatch 16,776, esbuild 15,312, SQLite 7,908, wasm3 6,612, Lua
+1,512, and dispatch 12. Every selected site saves exactly four bytes, with no
+secondary layout delta.
+
+Five serialized compile samples move Ruby from a 596,171,542 ns/op rollback
+median to 598,168,041 (+0.34%) and esbuild from 326,594,188 to 324,809,250
+(-0.55%). Median B/op and allocations are unchanged. Ten one-second Size
+execution samples move the directly affected dispatch benchmark from 18.56 to
+18.50 ns/op (-0.32%), with zero allocations.
+
+The full repository suite, ARM64 encoder/backend suites, backend race suite,
+compacted runtime corpus/fuzz suite, and complete Size execution suite pass.
+Focused encoding tests cover 32/64-bit zero and nonzero senses plus the exact
+four-byte rollback delta.

@@ -199,8 +199,7 @@ func (f *fn) materialize(e *elem) Reg {
 	case stFuncRef:
 		r := f.allocReg(0)
 		f.ld64(r, linMemReg, -int32(offFuncRefDescPtr))
-		f.cmpImm(r, 0, true)
-		f.trapIf(condE, trapIndirectOOB)
+		f.trapIfZero(r, true, true, trapIndirectOOB)
 		f.leaDisp(r, r, int32((e.st.idx+1)*runtime.FuncRefDescBytes), true)
 		f.occupy(e, r)
 		return r
