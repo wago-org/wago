@@ -60,6 +60,7 @@
           "type": "object",
           "propertyNames": {
             "enum": [
+              "accumulator-immediate",
               "addr-zext-elim",
               "affine-lea",
               "assoc-tree",
