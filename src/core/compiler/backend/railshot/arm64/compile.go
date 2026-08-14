@@ -55,6 +55,11 @@ var callEffectBoundsEnabled = os.Getenv("WAGO_ARM64_NO_CALL_EFFECT_BOUNDS") != "
 // remains available when disabled.
 var abiClassesEnabled = os.Getenv("WAGO_ARM64_NO_ABI_CLASSES") != "1"
 
+// abiLeafFPEnabled admits the bounded FP-preserving internal class independently
+// from the older memory-leaf extension, giving corpus A/B and rollback one exact
+// switch. The immutable compilation policy snapshots this value.
+var abiLeafFPEnabled = os.Getenv("WAGO_ARM64_NO_ABI_LEAF_FP") != "1"
+
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
 // checks and the Speed/Balanced layouts are unchanged.
@@ -937,9 +942,10 @@ type internalABIClass uint8
 const (
 	abiGeneral internalABIClass = iota
 	abiLeafScalar
+	abiLeafFP
 )
 
-func (c internalABIClass) preservesCallerPins() bool { return c == abiLeafScalar }
+func (c internalABIClass) preservesCallerPins() bool { return c == abiLeafScalar || c == abiLeafFP }
 
 // DirectBackend adapts the direct wasm-to-arm64 compiler to the shared
 // backend-neutral codegen.Backend shape used by heap/GC lowering work.
@@ -1065,7 +1071,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if i < len(calleeEffects) {
 				effects = calleeEffects[i]
 			}
-			calleeABIClasses[i] = classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, policy.EnabledOption(optABIClasses))
+			calleeABIClasses[i] = classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, policy.EnabledOption(optABIClasses), policy.EnabledOption(optABILeafFP))
 		}
 	}
 	// AArch64 lowering is close to four native bytes per Wasm opcode plus
@@ -1967,9 +1973,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if funcIdx < len(calleeEffects) {
 		selfEffects = calleeEffects[funcIdx]
 	}
-	selfABIClass := classifyInternalABI(ft, nLocals, effectiveHints, selfEffects, policy.EnabledOption(optABIClasses))
+	selfABIClass := classifyInternalABI(ft, nLocals, effectiveHints, selfEffects, policy.EnabledOption(optABIClasses), policy.EnabledOption(optABILeafFP))
 	f.preserveCallerPins = selfABIClass.preservesCallerPins()
-	if f.preserveCallerPins && effectiveHints.touchesMemory {
+	if selfABIClass == abiLeafFP {
+		f.stats.peep("abi-leaf-fp")
+	}
+	if selfABIClass == abiLeafScalar && effectiveHints.touchesMemory {
 		f.stats.peep("abi-leaf-scalar-memory")
 	}
 	if f.preserveCallerPins {
@@ -1981,6 +1990,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 		for _, r := range [...]Reg{X9, X10, X11, mergeReg} {
 			f.reserved = f.reserved.add(r)
+		}
+		for _, r := range pinnedFLocalRegs {
+			f.fpinnedLocalMask = f.fpinnedLocalMask.add(r)
 		}
 	}
 	regABI := policy.EnabledOption(optRegABI) && sigFitsRegABI(ft)
@@ -2105,7 +2117,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if intervalRegion {
 		gpPool = nil // regional assignments supersede whole-function GP pins
 	}
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, hasCall, pinLocals)
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, hasCall, pinLocals && !f.preserveCallerPins)
 	for i := range f.locals {
 		if r := f.locals[i].reg; r >= X2 && r <= X7 {
 			f.stats.peep("entry-arg-local-pin")
@@ -2119,7 +2131,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// callee that itself makes a call must retain the normal callee-saved local
 	// model for its own call boundaries.
 	if f.preserveCallerPins {
-		f.pinLeafRegABIIntParams()
+		f.pinLeafRegABIParams()
 	}
 	if f.pinnedLocalMask.has(mergeReg) {
 		f.regMerge = false // X15 now holds a pinned local/global, so it can't be the merge register
@@ -2197,13 +2209,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 }
 
 // classifyInternalABI selects one of the finite internal register contracts.
-// LeafScalar has no declared locals, calls, or global access; its integer
-// parameters stay in the incoming argument registers while every caller-pinned
-// register is reserved. Effect-proven memory leaves may join this class because
-// ordinary linear-memory access cannot mutate caller register state; memory.grow
-// remains General because it invalidates the shared size cache.
-func classifyInternalABI(ft *wasm.CompType, nLocals int, h funcHints, effects shared.FuncEffects, admitMemory bool) internalABIClass {
-	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.hasCall {
+// LeafScalar and LeafFP have no declared locals, calls, or global access; their
+// parameters stay in incoming registers while every caller pin is reserved.
+// Effect-proven memory leaves may join because ordinary linear-memory access
+// cannot mutate caller register state; memory.grow remains General because it
+// invalidates the shared size cache. LeafFP also carries the tighter pressure
+// and control bounds below.
+func classifyInternalABI(ft *wasm.CompType, nLocals int, h funcHints, effects shared.FuncEffects, admitMemory, admitFP bool) internalABIClass {
+	if !sigFitsRegABI(ft) || nLocals != len(ft.Params) || h.hasCall {
 		return abiGeneral
 	}
 	if len(h.sparseGlobals) != 0 {
@@ -2216,6 +2229,15 @@ func classifyInternalABI(ft *wasm.CompType, nLocals int, h funcHints, effects sh
 	}
 	if h.touchesMemory && (!admitMemory || effects&shared.EffectGrowsMemory != 0) {
 		return abiGeneral
+	}
+	if !sigIsIntOnly(ft) {
+		// The FP-preserving class reserves the caller's complete V-register pin
+		// bank. Admit only tiny straight-line leaves so that reduced transient FP
+		// capacity cannot turn caller traffic into callee spills.
+		if !admitFP || h.hasControlFlow || h.stackArenaNodes > 12 {
+			return abiGeneral
+		}
+		return abiLeafFP
 	}
 	return abiLeafScalar
 }
@@ -2486,14 +2508,20 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 	}
 }
 
-// pinLeafRegABIIntParams maps integer parameters of a call-free register-ABI
-// function onto X0..X7, their incoming locations at the internal entry.  The
-// normal local allocator may already have selected a callee-saved pin for the
-// parameter; release that pin before installing the argument register.
-func (f *fn) pinLeafRegABIIntParams() {
-	gp := 0
+// pinLeafRegABIParams maps scalar parameters of a call-free register-ABI
+// function onto their incoming GP/FP locations. This class has no declared
+// locals, and its transient allocators reserve every caller pin bank.
+func (f *fn) pinLeafRegABIParams() {
+	gp, fp := 0, 0
 	for i := 0; i < f.nParams; i++ {
 		if f.localType[i].isFloat() {
+			if fp >= len(fpArgRegs) {
+				return
+			}
+			f.locals[i].reg = fpArgRegs[fp]
+			f.locals[i].isFloat = true
+			f.fpinnedLocalMask = f.fpinnedLocalMask.add(fpArgRegs[fp])
+			fp++
 			continue
 		}
 		if gp >= len(intArgRegs) {

@@ -116,7 +116,7 @@ func TestCrossInstanceAndMixedRegisterCallLowering(t *testing.T) {
 	mixed.pushValue(storage{kind: stConst, typ: mtF64, cval: int64(floatBits(3.5, true))})
 	mixed.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
 	floatResult := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.F64, wasm.I32}, Results: []wasm.ValType{wasm.F64}}
-	mixed.emitMixedRegisterCall(4, floatResult)
+	mixed.emitMixedRegisterCall(4, floatResult, false)
 	if mixed.depth() != 1 || mixed.s.back().st.typ != mtF64 || len(mixed.relocs) != 1 || len(mixed.a.B) == 0 {
 		t.Fatalf("mixed call result stack/code = depth %d, top %#v, relocs %d, code %d", mixed.depth(), mixed.s.back(), len(mixed.relocs), len(mixed.a.B))
 	}
@@ -126,7 +126,7 @@ func TestCrossInstanceAndMixedRegisterCallLowering(t *testing.T) {
 	intArg := registerArgs.pushValue(storage{kind: stReg, typ: mtI64, reg: X4})
 	registerArgs.fregUser[3], registerArgs.regUser[X4] = floatArg, intArg
 	twoIntResults := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.F32, wasm.I64}, Results: []wasm.ValType{wasm.I64, wasm.I32}}
-	registerArgs.emitMixedRegisterCall(5, twoIntResults)
+	registerArgs.emitMixedRegisterCall(5, twoIntResults, false)
 	if registerArgs.depth() != 2 || len(registerArgs.relocs) != 1 || len(registerArgs.a.B) == 0 {
 		t.Fatalf("mixed register-arg result stack/code = depth %d, relocs %d, code %d", registerArgs.depth(), len(registerArgs.relocs), len(registerArgs.a.B))
 	}
@@ -210,23 +210,35 @@ func TestDirectCallBoundsEffectGate(t *testing.T) {
 func TestInternalABIClassEffectGate(t *testing.T) {
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
 	h := funcHints{nLocals: 1, touchesMemory: true}
-	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiLeafScalar {
+	if got := classifyInternalABI(ft, 1, h, 0, true, true); got != abiLeafScalar {
 		t.Fatalf("effect-safe memory leaf class = %d, want LeafScalar", got)
 	}
-	if got := classifyInternalABI(ft, 1, h, 0, false); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, h, 0, false, true); got != abiGeneral {
 		t.Fatalf("disabled memory leaf class = %d, want General", got)
 	}
-	if got := classifyInternalABI(ft, 1, h, shared.EffectGrowsMemory, true); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, h, shared.EffectGrowsMemory, true, true); got != abiGeneral {
 		t.Fatalf("growing memory leaf class = %d, want General", got)
 	}
 	h.sparseGlobals = []shared.GlobalHint{{Index: 7, Score: 1}}
-	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, h, 0, true, true); got != abiGeneral {
 		t.Fatalf("sparse-global memory leaf class = %d, want General", got)
 	}
 	h.sparseGlobals = nil
 	h.hasCall = true
-	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, h, 0, true, true); got != abiGeneral {
 		t.Fatalf("call-making memory leaf class = %d, want General", got)
+	}
+	fp := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.F64}, Results: []wasm.ValType{wasm.F64}}
+	fpHints := funcHints{nLocals: 1, stackArenaNodes: 8}
+	if got := classifyInternalABI(fp, 1, fpHints, 0, true, true); got != abiLeafFP {
+		t.Fatalf("tiny FP leaf class = %d, want LeafFP", got)
+	}
+	if got := classifyInternalABI(fp, 1, fpHints, 0, true, false); got != abiGeneral {
+		t.Fatalf("disabled FP leaf class = %d, want General", got)
+	}
+	fpHints.stackArenaNodes = 13
+	if got := classifyInternalABI(fp, 1, fpHints, 0, true, true); got != abiGeneral {
+		t.Fatalf("high-pressure FP leaf class = %d, want General", got)
 	}
 }
 

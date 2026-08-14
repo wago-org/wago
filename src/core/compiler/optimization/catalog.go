@@ -264,6 +264,7 @@ var catalog = []Definition{
 	both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
 	both("call-effect-bounds", "Call effect bounds", "preserve bounds proofs across effect-safe direct calls"),
 	arm64("abi-classes", "Internal ABI classes", "classify effect-safe direct-call register contracts"),
+	arm64("abi-leaf-fp", "FP leaf ABI", "preserve caller pin banks across bounded FP leaf calls"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),

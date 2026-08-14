@@ -354,6 +354,33 @@ both report zero B/op and allocations. This is infrastructure with preserved
 code generation, not a new execution-speed claim. Further rule families remain
 gated on provenance, effects, physical constraints, corpus hits, and A/B results.
 
+### 2026-08-14 — bounded ARM64 LeafFP internal ABI class
+
+ARM64's finite internal ABI classes now include `LeafFP` for scalar signatures
+that use either register bank. Admission remains deliberately narrow: the callee
+must fit the register ABI, have no declared locals, calls, globals, or control
+flow, and have at most 12 estimated operand-stack nodes. Memory-touching leaves
+still require the existing effect proof and may not grow memory. Every rejected
+shape uses `General`, and `abi-leaf-fp` is an independent immutable policy bit
+with `WAGO_ARM64_NO_ABI_LEAF_FP=1` as its exact A/B switch.
+
+An admitted callee keeps parameters in `X0..X7` and `V0..V7`, reserves the full
+caller GP and FP pin banks, and disables function-local FP/vector constant caches
+that would compete for that reduced scratch set. Mixed direct calls can therefore
+leave dirty caller locals in registers instead of storing and lazily reloading
+them. A pressure test initially found the wider 32-node proposal could exhaust
+the restricted V-register set; the production cap was reduced to 12 and that
+shape now falls back conservatively.
+
+The 64-module corpus admits 27 LeafFP functions across Lua, Ruby, Script,
+SQLite, and wasm3. All five affected module images shrink, by 640 native bytes
+in total, and no module grows. A four-live-FP-local benchmark making 64 direct
+calls measured 50.46 ns/op versus 51.76 ns/op for `General` (-2.5%), with zero
+B/op and allocations; native code fell from 2,552 to 1,516 bytes. Seven-sample
+focused compile medians improved from 38.85 to 36.20 us/op with 49 allocations
+unchanged. Five-sample SQLite backend medians were neutral (52.72 ms enabled
+versus 52.68 ms disabled), with 25,132 allocations unchanged and B/op noise-only.
+
 ---
 
 # 1. North-star architecture

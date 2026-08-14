@@ -1397,7 +1397,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 			f.emitRegisterCall(localIdx, ft, resHint, preservesPins)
 		} else {
 			f.stats.call(callKindMixed)
-			f.emitMixedRegisterCall(localIdx, ft)
+			f.emitMixedRegisterCall(localIdx, ft, f.directCalleePreservesPins(localIdx))
 		}
 		finishRoots()
 		return nil
@@ -1685,7 +1685,7 @@ func (f *fn) directCallPreservesBoundsCert(localIdx, resHint int) bool {
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
 // GP and FP arguments are staged independently as parallel moves, so values that
 // are already resident in registers do not round-trip through canonical slots.
-func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPins bool) {
 	p, rN := len(ft.Params), len(ft.Results)
 	resultPlan, _ := shared.PlanScalarResults(ft.Results)
 	if rN > 1 {
@@ -1698,7 +1698,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
-	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	if !preservesPins {
+		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	}
 	argRoots := f.tmpRoots[:0]
 	if cap(argRoots) < p {
 		argRoots = make([]*elem, p)
@@ -1758,8 +1760,10 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.flush()
 	}
 	// Dirty locals are saved after argument values have been copied into owned
-	// registers; the mixed callee may clobber every caller pin.
-	f.spillLocalsForCall()
+	// registers unless the finite callee class reserves every caller pin.
+	if !preservesPins {
+		f.spillLocalsForCall()
+	}
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
@@ -1834,8 +1838,10 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 
 	site := f.a.Bl()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
-	f.reloadLocalsForCall() // non-STACK_REG model only
-	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	if !preservesPins {
+		f.reloadLocalsForCall() // non-STACK_REG model only
+		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	}
 
 	var gpResults [2]Reg
 	for i := uint8(0); i < resultPlan.GP; i++ {

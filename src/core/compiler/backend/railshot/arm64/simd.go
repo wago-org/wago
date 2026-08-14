@@ -208,7 +208,7 @@ func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
 // for call-making functions: a wasm→wasm call preserves only the low 64 bits of
 // the callee-saved V range, so a 128-bit reserved const could not survive a call.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || !f.opt(optV128ConstCache) {
+	if f.usesCalls || f.preserveCallerPins || !f.opt(optV128ConstCache) {
 		return
 	}
 	// Register-pressure gate. Reserving a V register for a cached const is only a win
