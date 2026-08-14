@@ -1229,6 +1229,47 @@ needs an explicit module-level return-site/descriptor contract plus bounded
 target materialization (and ARM64 clustering for `ADR` range) before its much
 larger ledger ceiling can be realized safely.
 
+### Interim campaign calibration against `7f7a5f46`
+
+The audited baseline predates the objective selector, so this comparison uses
+its unchanged default compiler against current Size. Current Balanced is also
+reported to separate objective-specific savings from neutral backend drift.
+All byte totals use the same 54-module manifest plus generated ISA inventory.
+
+On ARM64, the baseline emits 83,258,460 bytes. Current Balanced emits
+83,161,572 (-96,888, -0.12%). Current Size emits 78,610,376 (-4,648,084,
+-5.58% from the baseline and -5.47% from current Balanced), or 78,157,392 with
+physical compaction enabled (-6.13% from the baseline). Representative raw
+Size reductions are Ruby 42,287,648 to 40,017,076 (-5.37%), esbuild 31,068,584
+to 29,182,968 (-6.07%), SQLite 3,775,296 to 3,524,348 (-6.65%), wasm3 985,560
+to 898,900 (-8.79%), and many_funcs 9,720 to 9,712 (-0.08%).
+
+Ten serialized ARM64 samples put baseline-default versus current-Size compile
+medians at 543,063,979 to 560,742,875 ns/op for Ruby (+3.25%) and 352,365,813
+to 321,247,521 ns/op for esbuild (-8.83%). Median heap bytes fall 2.82% and
+4.56%, and allocation counts fall 9.97% and 5.47%, respectively.
+
+On AMD64, the baseline emits 74,624,119 bytes. Current Balanced emits
+74,534,730 (-89,389, -0.12%). Current Size emits 71,374,850 (-3,249,269,
+-4.35% from the baseline and -4.24% from current Balanced), or 70,991,238 with
+physical compaction enabled (-4.87% from the baseline). Representative raw
+Size reductions are Ruby 39,065,506 to 37,445,596 (-4.15%), esbuild 26,648,656
+to 25,346,699 (-4.89%), SQLite 3,663,252 to 3,482,042 (-4.95%), wasm3 932,090
+to 878,153 (-5.79%), and many_funcs 9,704 to 7,802 (-19.60%).
+
+Ten serialized AMD64 samples put baseline-default versus current-Size compile
+medians at 814,487,135 to 825,334,341 ns/op for Ruby (+1.33%) and 502,875,063
+to 482,683,412 ns/op for esbuild (-4.02%). Median heap bytes fall about 1.6%
+and 7.6%, and allocation counts fall about 11.1% and 14.2%, respectively.
+
+The compile-time and compiler-memory gates pass, but the initial 15% macro Size
+goal does not. This is therefore an interim calibration, not completion of the
+roadmap. AMD64 already reaches the 15% target on the many-small-function stress
+case; ARM64 does not, and both architectures retain only 4-9% reductions on the
+representative macro modules. The adapter ledger still identifies roughly
+1.2-1.5 MiB of conservative whole-adapter opportunity, so the next campaign
+must first make shared adapter return metadata and target dispatch explicit.
+
 ### Commands
 
 ```sh
