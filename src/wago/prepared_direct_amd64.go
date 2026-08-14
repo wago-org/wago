@@ -48,24 +48,22 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	if fn.scalarWideMask&8 == 0 {
 		a3 = uint64(uint32(a3))
 	}
-	result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
-	if err != nil {
-		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	var first, second uint64
+	if fn.resultSlots == 2 {
+		first, second = in.eng.EnterPreparedInt2(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	} else {
+		result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+		if err != nil {
+			return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+		}
+		first = result
 	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
-	out := in.resultVals[:fn.resultSlots]
-	if fn.resultSlots == 1 {
-		if fn.scalarResultWide {
-			out[0] = result
-		} else {
-			out[0] = uint64(uint32(result))
-		}
-	}
-	return out, nil
+	return fn.unpackDirectBankResults(first, second), nil
 }
 
 func (fn *PreparedFunction) invokeDirectFP(args []uint64) ([]uint64, error) {
@@ -90,21 +88,18 @@ func (fn *PreparedFunction) invokeDirectFP(args []uint64) ([]uint64, error) {
 	if !fn.isolatedFast {
 		return nil, fmt.Errorf("wago: direct prepared FP entry requires an isolated instance")
 	}
-	result := in.eng.EnterPreparedFP(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	var first, second uint64
+	if fn.resultSlots == 2 {
+		first, second = in.eng.EnterPreparedFP2(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	} else {
+		first = in.eng.EnterPreparedFP(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
-	out := in.resultVals[:fn.resultSlots]
-	if fn.resultSlots == 1 {
-		if fn.scalarResultWide {
-			out[0] = result
-		} else {
-			out[0] = uint64(uint32(result))
-		}
-	}
-	return out, nil
+	return fn.unpackDirectBankResults(first, second), nil
 }
 
 func (fn *PreparedFunction) invokeDirectMixed(args []uint64) ([]uint64, error) {

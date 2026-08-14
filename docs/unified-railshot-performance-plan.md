@@ -474,6 +474,29 @@ one-second `many_funcs` full-compile samples measured 391.1 us/op enabled versus
 391.8 us/op disabled (-0.17%, treated as noise), with 381 allocations/op,
 approximately 200.3 KiB/op, and 28,968 generated code bytes unchanged.
 
+### 2026-08-14 — bounded same-bank prepared results
+
+Prepared integer and FP entries now return at most two results from one register
+bank through fixed architecture trampolines: `RAX`/`RDX` and `XMM0`/`XMM1` on
+AMD64, or `X0`/`X1` and `V0`/`V1` on ARM64. Existing one-result trampolines are
+unchanged. Admission remains limited to four scalar parameters and two scalar
+results; mixed-bank results keep their prior trampoline, while larger, reference,
+and vector signatures keep their established fallbacks. The trampolines reuse
+the instance's two-slot result buffer and add no signature cache, generated
+adapter, unbounded state, or execution allocation.
+
+Tests cover both banks, result order, i32/f32 upper-bit cleanup, i64 parameter
+preservation, compiler and runtime rollback, a three-result near miss, division
+traps, and post-trap recovery. The focused suite passes natively on ARM64 and
+through Darwin's AMD64 execution path; native AMD64 timing remains pending
+because the configured host was unreachable. Three one-second Apple M4 Max
+samples improved integer pairs from a median 83.88 to 19.00 ns/op (-77.3%) and
+FP pairs from 83.59 to 19.37 ns/op (-76.8%), all at zero B/op and allocations.
+The existing one-result FP direct path remains at roughly 18.0 ns/op. A
+five-sample `many_funcs` compile run measured a 263.3 us/op median with 344
+allocations/op; the implementation adds no compiler scratch or generated
+function bytes beyond the existing direct-entry selection.
+
 ---
 
 # 1. North-star architecture

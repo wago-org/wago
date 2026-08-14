@@ -72,7 +72,7 @@ func isIntValType(t wasm.ValType) bool {
 }
 
 func preparedDirectIntSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -89,7 +89,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectFPSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
 		return false
 	}
 	for _, typ := range ft.Params {

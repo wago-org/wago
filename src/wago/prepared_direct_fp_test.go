@@ -65,6 +65,30 @@ func preparedMixedResultModule() []byte {
 	)
 }
 
+func preparedSameBankResultModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32}, []wasm.ValType{wasm.I64, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.F32}, []wasm.ValType{wasm.F64, wasm.F32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("int-pair", 0, 0),
+			wasmtest.ExportEntry("fp-pair", 0, 1),
+			wasmtest.ExportEntry("trap-pair", 0, 2),
+			wasmtest.ExportEntry("three", 0, 3),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x6d, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x00, 0x20, 0x00, 0x0b}),
+		)),
+	)
+}
+
 func TestPreparedDirectFP(t *testing.T) {
 	if !preparedDirectFPSupported {
 		t.Skip("architecture does not support direct prepared FP entry")
@@ -293,6 +317,164 @@ func TestPreparedDirectMixedResults(t *testing.T) {
 	got, err = fallback.Invoke(I64(99), F64(2.75))
 	if err != nil || len(got) != 2 || AsI64(got[0]) != 99 || math.Float64bits(AsF64(got[1])) != math.Float64bits(2.75) {
 		t.Fatalf("fallback = %v, %v", got, err)
+	}
+}
+
+func TestPreparedDirectSameBankResults(t *testing.T) {
+	if !preparedDirectFPSupported || !preparedDirectIntSupported {
+		t.Skip("architecture does not support direct prepared register entry")
+	}
+	module := preparedSameBankResultModule()
+	compiled := MustCompile(module)
+	for _, i := range []int{0, 1, 2} {
+		if !compiled.directPreparedAt(i) {
+			t.Fatalf("function %d did not retain direct prepared metadata", i)
+		}
+	}
+	if compiled.directPreparedAt(3) {
+		t.Fatal("three-result near miss retained direct prepared metadata")
+	}
+	withoutInt, err := Compile(NewRuntimeConfig().WithOptimizations(map[string]bool{"reg-abi": false}), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withoutInt.directPreparedAt(0) || withoutInt.directPreparedAt(2) {
+		t.Fatal("disabled register ABI retained integer-pair direct metadata")
+	}
+	withoutFP, err := Compile(NewRuntimeConfig().WithOptimizations(map[string]bool{"prepared-fp-entry": false}), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withoutFP.directPreparedAt(1) {
+		t.Fatal("disabled prepared FP policy retained FP-pair direct metadata")
+	}
+	if len(compiled.code) != len(withoutFP.code) {
+		t.Fatalf("FP-pair admission changed generated code size: enabled=%d disabled=%d", len(compiled.code), len(withoutFP.code))
+	}
+
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	intPair, err := in.PrepareFunction("int-pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !intPair.directIntFast || intPair.scalarFast {
+		t.Fatalf("int-pair direct/scalar = %v/%v, want true/false", intPair.directIntFast, intPair.scalarFast)
+	}
+	got, err := intPair.Invoke(I64(1<<50|7), uint64(0xffffffff00000000)|19)
+	if err != nil || len(got) != 2 || AsI64(got[0]) != (1<<50|7) || got[1] != 19 {
+		t.Fatalf("int-pair = %v, %v", got, err)
+	}
+
+	fpPair, err := in.PrepareFunction("fp-pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fpPair.directFPFast || fpPair.scalarFast {
+		t.Fatalf("fp-pair direct/scalar = %v/%v, want true/false", fpPair.directFPFast, fpPair.scalarFast)
+	}
+	got, err = fpPair.Invoke(F64(-3.25), uint64(0xffffffff00000000)|F32(1.5))
+	if err != nil || len(got) != 2 || math.Float64bits(AsF64(got[0])) != math.Float64bits(-3.25) || got[1] != F32(1.5) {
+		t.Fatalf("fp-pair = %v, %v", got, err)
+	}
+
+	trapPair, err := in.PrepareFunction("trap-pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !trapPair.directIntFast {
+		t.Fatal("trap-pair did not select direct integer entry")
+	}
+	if _, err := trapPair.Invoke(I32(9), I32(8), I32(0)); err == nil {
+		t.Fatal("integer-pair division by zero did not trap")
+	}
+	got, err = trapPair.Invoke(I32(9), I32(8), I32(2))
+	if err != nil || len(got) != 2 || AsI32(got[0]) != 9 || AsI32(got[1]) != 4 {
+		t.Fatalf("integer-pair call after trap = %v, %v", got, err)
+	}
+
+	savedInt, savedFP := preparedDirectIntEnabled, preparedDirectFPEnabled
+	preparedDirectIntEnabled, preparedDirectFPEnabled = false, false
+	t.Cleanup(func() {
+		preparedDirectIntEnabled, preparedDirectFPEnabled = savedInt, savedFP
+	})
+	fallbackInt, err := in.PrepareFunction("int-pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallbackFP, err := in.PrepareFunction("fp-pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fallbackInt.directIntFast || fallbackFP.directFPFast {
+		t.Fatal("disabled runtime policy retained same-bank fast path")
+	}
+	got, err = fallbackInt.Invoke(I64(99), I32(7))
+	if err != nil || len(got) != 2 || AsI64(got[0]) != 99 || AsI32(got[1]) != 7 {
+		t.Fatalf("integer fallback = %v, %v", got, err)
+	}
+}
+
+func BenchmarkPreparedDirectSameBankResults(b *testing.B) {
+	if !preparedDirectFPSupported || !preparedDirectIntSupported {
+		b.Skip("architecture does not support direct prepared register entry")
+	}
+	compiled := MustCompile(preparedSameBankResultModule())
+	bench := func(b *testing.B, export string, args []uint64, intBank, direct bool) {
+		savedInt, savedFP := preparedDirectIntEnabled, preparedDirectFPEnabled
+		if intBank {
+			preparedDirectIntEnabled = direct
+		} else {
+			preparedDirectFPEnabled = direct
+		}
+		defer func() {
+			preparedDirectIntEnabled, preparedDirectFPEnabled = savedInt, savedFP
+		}()
+		in, err := Instantiate(compiled, InstantiateOptions{})
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer in.Close()
+		fn, err := in.PrepareFunction(export)
+		if err != nil {
+			b.Fatal(err)
+		}
+		selected, other := fn.directFPFast, fn.directIntFast
+		if intBank {
+			selected, other = fn.directIntFast, fn.directFPFast
+		}
+		if selected != direct || other {
+			b.Fatalf("direct integer/FP selection = %v/%v, want bank direct=%v", fn.directIntFast, fn.directFPFast, direct)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		for range b.N {
+			if _, err := fn.Invoke(args...); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		name    string
+		export  string
+		args    []uint64
+		intBank bool
+	}{
+		{name: "int", export: "int-pair", args: []uint64{I64(1 << 50), I32(19)}, intBank: true},
+		{name: "fp", export: "fp-pair", args: []uint64{F64(-3.25), F32(1.5)}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			for _, direct := range []bool{false, true} {
+				name := "general"
+				if direct {
+					name = "direct"
+				}
+				b.Run(name, func(b *testing.B) { bench(b, tc.export, tc.args, tc.intBank, direct) })
+			}
+		})
 	}
 }
 

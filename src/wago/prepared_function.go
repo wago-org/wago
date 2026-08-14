@@ -41,7 +41,7 @@ func (c *Compiled) directPreparedAt(local int) bool {
 }
 
 func preparedDirectIntSignature(sig FuncSig) bool {
-	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+	if len(sig.Params) > 4 || len(sig.Results) > 2 {
 		return false
 	}
 	for _, typ := range sig.Params {
@@ -58,7 +58,7 @@ func preparedDirectIntSignature(sig FuncSig) bool {
 }
 
 func preparedDirectFPSignature(sig FuncSig) bool {
-	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+	if len(sig.Params) > 4 || len(sig.Results) > 2 {
 		return false
 	}
 	for _, typ := range sig.Params {
@@ -173,6 +173,24 @@ func (fn *PreparedFunction) unpackDirectMixedResults(gp, fp uint64) []uint64 {
 	return out
 }
 
+func (fn *PreparedFunction) unpackDirectBankResults(first, second uint64) []uint64 {
+	out := fn.in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 0 {
+		return out
+	}
+	if !isWideValType(fn.resultTypes[0]) {
+		first = uint64(uint32(first))
+	}
+	out[0] = first
+	if fn.resultSlots == 2 {
+		if !isWideValType(fn.resultTypes[1]) {
+			second = uint64(uint32(second))
+		}
+		out[1] = second
+	}
+	return out
+}
+
 // PrepareFunction resolves a locally-defined function export once. The returned
 // handle is the like-for-like counterpart of runtimes whose exported-function
 // lookup occurs outside the timed invocation loop. Re-exported imports continue
@@ -212,7 +230,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		ic.paramSlots <= 4 &&
 		ic.resultSlots <= 2
 	var scalarWideMask uint8
-	if scalarFast {
+	if scalarFast || directFastCandidate {
 		slot := 0
 		for _, typ := range sig.Params {
 			if typ == ValV128 {
