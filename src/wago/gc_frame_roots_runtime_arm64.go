@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -31,7 +30,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	offsets := safepoint.offsets
 	frameBytes := safepoint.frameBytes
-	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < shared.ARM64FrameHeaderBytes {
+	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < 8 {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 frame-root metadata is unavailable or oversized")})
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
@@ -40,7 +39,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root control has invalid saved SP %#x", base)})
 	}
 	for _, off := range offsets {
-		if off < shared.ARM64FrameHeaderBytes || off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
+		if off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d is outside frame size %d", off, frameBytes)})
 		}
 		word := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8)

@@ -672,6 +672,28 @@ func (f *fn) frameHeaderBytes() int {
 	return frameHdrBytes
 }
 
+// prepareCompactGCFrameHeader makes the frontend's collector-local offsets
+// consume this function's final local layout. The plan retains local identities
+// specifically so this rewrite is allocation-free. Fixed roots belong to the EH
+// layout and keep the stable header until those records become layout-relative.
+func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
+	if plan == nil {
+		return true
+	}
+	if !plan.Candidate || len(plan.FixedOffsets) != 0 || len(plan.LocalIndexes) != len(plan.LocalOffsets) {
+		return false
+	}
+	for _, index := range plan.LocalIndexes {
+		if int(index) >= f.nLocals {
+			return false
+		}
+	}
+	for i, index := range plan.LocalIndexes {
+		plan.LocalOffsets[i] = uint32(f.localOff(int(index)))
+	}
+	return true
+}
+
 func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + 8*f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
@@ -1838,7 +1860,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// below the internal frame, while direct internal and tail paths return in
 	// registers. EH and GC frame plans retain the established fixed layout until
 	// their independently generated offset tables become header-relative.
-	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !f.moduleEH && gcFrameRoots == nil
+	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !f.moduleEH
+	if f.compactFrameHeader && !f.prepareCompactGCFrameHeader(gcFrameRoots) {
+		f.compactFrameHeader = false
+	}
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}

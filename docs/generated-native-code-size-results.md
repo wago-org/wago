@@ -1691,6 +1691,24 @@ the campaign rule that every enabled transform demonstrate corpus-level native
 reduction. ARM64 packed homes remain deferred until a broader layout proof can
 cross enough frame-adjustment or address-materialization boundaries to pay.
 
+## ARM64 GC-frame header remapping
+
+Collector frame plans already retain each root local's Wasm index. ARM64 now
+rewrites the existing `LocalOffsets` slice in place from the final function
+layout before body emission, allowing register-ABI GC functions to omit the
+wrapper-only frame header without allocating another map. Plans with EH fixed
+roots, inconsistent tables, or out-of-range local identities retain the stable
+header and fail closed as before. Runtime metadata validation now accepts aligned
+roots at frame offset zero while preserving frame bounds and strict ordering.
+
+Across the 22 `TestGCArm64*` compiled-module cases (29 generated functions),
+aggregate frame reservation falls from 1,648 to 1,264 bytes (-384). Native code
+remains 14,308 bytes because the nonzero ARM64 frame adjustment is still one
+instruction. Stress collection, recursive/cross-instance/call_ref/indirect root
+maps, artifact round trips, the full ARM64 backend and `src/wago` suites, race
+tests, and compacted corpus execution all pass. This layout-relative metadata
+seam is also the prerequisite for the variable-length AMD64 implementation.
+
 ### Commands
 
 ```sh
