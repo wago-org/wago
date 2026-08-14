@@ -111,7 +111,7 @@ func runWatchJobControlWrapper(t *testing.T) {
 func runWatchJobControlHelper(t *testing.T) {
 	signal.Reset(syscall.SIGTSTP, syscall.SIGTTIN, syscall.SIGTTOU)
 	options := watchTestOptions(os.Getenv("WAGO_WATCH_MODULE"), os.Getenv("WAGO_WATCH_LOG"), "", false)
-	options.stdin, options.stdout, options.stderr = os.Stdin, os.Stdout, os.Stderr
+	options.stdin, options.stdout, options.stderr = strings.NewReader(""), os.Stdout, os.Stderr
 	err := superviseWatch(context.Background(), options)
 	var interrupted *watchInterruptedError
 	if !errors.As(err, &interrupted) || interrupted.signal != os.Interrupt {

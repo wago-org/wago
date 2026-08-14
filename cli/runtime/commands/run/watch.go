@@ -109,6 +109,14 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 			}
 			return ctx.Err()
 		case interrupted := <-options.interrupts:
+			if watchedContinueSignal(interrupted) {
+				if child != nil {
+					if err := continueWatchedProcess(child.platform, child.command); err != nil {
+						return err
+					}
+				}
+				continue
+			}
 			if child != nil {
 				_ = child.stop(options.stopGrace, interrupted)
 				child = nil

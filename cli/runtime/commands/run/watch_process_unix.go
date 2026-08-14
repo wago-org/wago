@@ -43,13 +43,9 @@ func prepareWatchedCommand(command *exec.Cmd) error {
 		return err
 	}
 	attributes := &syscall.SysProcAttr{Setpgid: true}
-	if terminal, ok := command.Stdin.(*os.File); ok {
-		fd := int(terminal.Fd())
-		foreground, err := unix.IoctlGetInt(fd, unix.TIOCGPGRP)
-		if err == nil && foreground == syscall.Getpgrp() {
-			attributes.Foreground = true
-			attributes.Ctty = fd
-		}
+	if fd, foreground, ok := watchedCommandTerminal(command); ok {
+		attributes.Ctty = fd
+		attributes.Foreground = foreground == syscall.Getpgrp()
 	}
 	command.SysProcAttr = attributes
 	return nil
@@ -62,13 +58,15 @@ func abortWatchedCommand(command *exec.Cmd) {
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	tracker := &watchedProcessTracker{owner: os.Getpid(), root: command.Process.Pid, processes: make(map[int]uint64)}
 	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
+	if fd, _, ok := watchedCommandTerminal(command); ok {
+		platform.terminalFD, platform.foreground = fd, syscall.Getpgrp()
+	}
 	if command.SysProcAttr == nil || !command.SysProcAttr.Foreground {
 		if err := tracker.refresh(); err != nil {
 			return platform, err
 		}
 		return platform, startWatchedProcessTracking(tracker)
 	}
-	platform.terminalFD, platform.foreground = command.SysProcAttr.Ctty, syscall.Getpgrp()
 	if err := tracker.refresh(); err != nil {
 		return platform, err
 	}
@@ -89,7 +87,10 @@ func killWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error 
 
 func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 	if platform.terminalFD >= 0 {
-		_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
+		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
+		if err == nil && foreground == command.Process.Pid {
+			_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
+		}
 	}
 	_ = signalWatchedProcessTree(platform, command, syscall.SIGKILL)
 	platform.processes.close()
@@ -165,13 +166,35 @@ func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) 
 	if err := syscall.Kill(-platform.foreground, syscall.SIGSTOP); err != nil {
 		return err
 	}
-	foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
-	if err == nil && foreground == platform.foreground {
-		if err := setWatchedTerminalForeground(platform.terminalFD, command.Process.Pid); err != nil {
-			return err
+	return continueWatchedProcess(platform, command)
+}
+
+func continueWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error {
+	if platform.terminalFD >= 0 {
+		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
+		if err == nil && foreground == platform.foreground {
+			if err := setWatchedTerminalForeground(platform.terminalFD, command.Process.Pid); err != nil {
+				return err
+			}
 		}
 	}
 	return signalWatchedProcessTree(platform, command, syscall.SIGCONT)
+}
+
+func watchedCommandTerminal(command *exec.Cmd) (int, int, bool) {
+	streams := []any{command.Stdin, command.Stdout, command.Stderr}
+	for _, stream := range streams {
+		file, ok := stream.(*os.File)
+		if !ok {
+			continue
+		}
+		fd := int(file.Fd())
+		foreground, err := unix.IoctlGetInt(fd, unix.TIOCGPGRP)
+		if err == nil {
+			return fd, foreground, true
+		}
+	}
+	return -1, 0, false
 }
 
 func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {

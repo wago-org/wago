@@ -104,6 +104,8 @@ func waitWatchedProcess(_ watchedChildPlatform, command *exec.Cmd) watchedProces
 	return watchedProcessResult{err: command.Wait()}
 }
 
+func continueWatchedProcess(watchedChildPlatform, *exec.Cmd) error { return nil }
+
 func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {
 	_, _ = fmt.Fprintf(writer, format, arguments...)
 }

@@ -218,9 +218,11 @@ stops. The watcher also records bounded process identities. Linux subreaper
 ownership and macOS kernel fork events keep double-forked children tracked, so
 cleanup reaches descendants that create a new session or process group. The
 watcher mirrors terminal stop and continue events, and its status output remains
-safe when background terminal writes are disabled. Hangup, interrupt, quit, and
-termination signals stop the child tree before the watcher exits. Content
-hashing detects same-size rewrites even when file timestamps do not change.
+safe when background terminal writes are disabled. It can find the controlling
+terminal through stdin, stdout, or stderr, including after a background job is
+foregrounded. Hangup, interrupt, quit, and termination signals stop the child
+tree before the watcher exits. Content hashing detects same-size rewrites even
+when file timestamps do not change.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:
