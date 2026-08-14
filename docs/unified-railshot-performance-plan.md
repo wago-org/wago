@@ -117,6 +117,24 @@ until their first sink. A new general recipe layer is therefore deferred until
 spill attribution identifies a value that is currently materialized and stored
 despite being cheaper and semantically safe to reconstruct.
 
+### 2026-08-14 — entry-overwritten parameter homes
+
+The existing one-pass entry-prefix proof now applies to unpinned parameters as
+well as declared-local zeroing. When a parameter's first access is a
+`local.set` or `local.tee` before any structured-control edge, AMD64 and ARM64
+skip its canonical frame-home store. Reads before the write remain a tested
+near miss. The proof stays bounded to the existing 64-local mask and is disabled
+by the established EH and exact GC-root-plan gates; it adds no summary storage,
+body scan, retry, or execution allocation.
+
+The repository corpus records 22 `entry-param-home-elide` hits: 20 in
+`bench/corpus/ruby.wasm` and two in `bench/corpus/lua.wasm`. Ruby shrinks by 80
+native bytes on Darwin/ARM64 with unchanged spill high-water marks; Lua's two
+removed stores are absorbed by existing module alignment. A serialized
+three-sample, two-second `many_funcs` compile benchmark measured a 252,713 ns/op
+median versus 252,897 ns/op at the preceding commit (-0.07%, treated as noise),
+with 343 allocs/op and approximately 138.9 KiB/op unchanged.
+
 ---
 
 # 1. North-star architecture

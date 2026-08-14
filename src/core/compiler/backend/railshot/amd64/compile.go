@@ -3102,6 +3102,8 @@ func (f *fn) prologue() {
 		if f.localType[i] == mtV128 {
 			if pr, _, ok := f.pinReg(i); ok {
 				a.VMovdquLoadDisp(pr, RDI, paramOff) // pinned v128 param → its XMM register
+			} else if f.entryParamOverwritten(i) {
+				f.stats.peep("entry-param-home-elide")
 			} else {
 				a.VMovdquLoadDisp(0, RDI, paramOff)
 				a.VMovdquStoreDisp(RSP, f.localAddr(i), 0)
@@ -3122,6 +3124,8 @@ func (f *fn) prologue() {
 				}
 			} else if ok && isFloat {
 				a.FLoadDisp(pr, RDI, paramOff, f.localType[i] == mtF64) // pinned float param → XMM
+			} else if f.entryParamOverwritten(i) {
+				f.stats.peep("entry-param-home-elide")
 			} else {
 				a.Load64(RAX, RDI, paramOff)
 				f.storeFrameInt(f.localAddr(i), RAX, f.localType[i])
@@ -3136,6 +3140,13 @@ func (f *fn) prologue() {
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
 	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
+}
+
+// entryParamOverwritten reports the bounded one-pass proof that parameter i's
+// first access in the straight-line entry prefix is local.set/tee. No call,
+// control edge, or read can observe the incoming value before that overwrite.
+func (f *fn) entryParamOverwritten(i int) bool {
+	return i >= 0 && i < f.nParams && i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0
 }
 
 // zeroDeclaredLocals initializes non-parameter locals. Most functions keep the
@@ -3273,8 +3284,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 				fp++
 				continue
 			}
-			f.storeFrameInt(f.localAddr(i), intArgRegs[gp], mt)
-			f.stats.addParameterHomeStore()
+			if f.entryParamOverwritten(i) {
+				f.stats.peep("entry-param-home-elide")
+			} else {
+				f.storeFrameInt(f.localAddr(i), intArgRegs[gp], mt)
+				f.stats.addParameterHomeStore()
+			}
 			gp++
 		}
 		gp, fp = 0, 0
@@ -3285,6 +3300,8 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 			src := fpArgRegs[fp]
 			if pr, isFloat, ok := f.pinReg(i); ok && isFloat {
 				a.FMov(pr, src, mt == mtF64)
+			} else if f.entryParamOverwritten(i) {
+				f.stats.peep("entry-param-home-elide")
 			} else {
 				a.FStoreDisp(RSP, f.localAddr(i), src, mt == mtF64)
 				f.stats.addParameterHomeStore()
@@ -3294,6 +3311,8 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 			// Already homed; the regional cache loads it on first use.
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			f.moveInt(pr, intArgRegs[gp], mt)
+		} else if f.entryParamOverwritten(i) {
+			f.stats.peep("entry-param-home-elide")
 		} else {
 			f.storeFrameInt(f.localAddr(i), intArgRegs[gp], mt)
 			f.stats.addParameterHomeStore()

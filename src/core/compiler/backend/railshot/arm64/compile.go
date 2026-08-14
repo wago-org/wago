@@ -2584,6 +2584,8 @@ func (f *fn) prologue() {
 		if f.localType[i] == mtV128 {
 			if pr, _, ok := f.pinReg(i); ok {
 				a.VMovdquLoadDisp(pr, X0, paramOff) // pinned v128 param → its V register
+			} else if f.entryParamOverwritten(i) {
+				f.stats.peep("entry-param-home-elide")
 			} else {
 				a.VMovdquLoadDisp(0, X0, paramOff)
 				a.VMovdquStoreDisp(SP, f.localOff(i), 0)
@@ -2604,6 +2606,8 @@ func (f *fn) prologue() {
 				}
 			} else if ok && isFloat {
 				a.FLoadDisp(pr, X0, paramOff, f.localType[i] == mtF64) // pinned float param → V reg
+			} else if f.entryParamOverwritten(i) {
+				f.stats.peep("entry-param-home-elide")
 			} else {
 				// X16 (backend scratch) is the copy temp: X0 is the serArgs base and
 				// must stay live for the remaining param loads (amd64 used RAX here,
@@ -2621,6 +2625,13 @@ func (f *fn) prologue() {
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
 	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
+}
+
+// entryParamOverwritten reports the bounded one-pass proof that parameter i's
+// first access in the straight-line entry prefix is local.set/tee. No call,
+// control edge, or read can observe the incoming value before that overwrite.
+func (f *fn) entryParamOverwritten(i int) bool {
+	return i >= 0 && i < f.nParams && i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0
 }
 
 // zeroDeclaredLocals initializes non-parameter locals. Most functions keep the
@@ -2774,6 +2785,8 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			src := fpArgRegs[fp]
 			if pr, isFloat, ok := f.pinReg(i); ok && isFloat {
 				a.FMov(pr, src, mt == mtF64)
+			} else if f.entryParamOverwritten(i) {
+				f.stats.peep("entry-param-home-elide")
 			} else {
 				a.FStoreDisp(SP, f.localOff(i), src, mt == mtF64)
 				f.stats.addParameterHomeStore()
@@ -2783,6 +2796,8 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			if pr != intArgRegs[gp] {
 				moves = append(moves, regMove{dst: pr, src: intArgRegs[gp]})
 			}
+		} else if f.entryParamOverwritten(i) {
+			f.stats.peep("entry-param-home-elide")
 		} else {
 			f.st64(SP, f.localOff(i), intArgRegs[gp])
 			f.stats.addParameterHomeStore()
