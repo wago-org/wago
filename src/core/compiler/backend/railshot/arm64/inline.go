@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -79,6 +80,7 @@ type inlineFacts struct {
 	hasControlCall bool     // call_indirect / return_call* / call_ref (inline blocker)
 	hasLoop        bool
 	hasControlFlow bool // any block/loop/if/else/br*/return/unreachable
+	moduleEH       bool // requires caller EH frame planning, so cannot yet inline
 	touchesMem     bool // any linear-memory op (load/store/size/grow/bulk)
 	touchesGlobal  bool // any global.get/global.set
 	params         int
@@ -180,6 +182,8 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 // can be spliced wherever it appears.
 func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
+	case f.moduleEH:
+		return false, "requires exception-handling frame"
 	case (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && !sizeInlineOK(f, policy):
 		return false, "size objective requires proved native-byte win"
 	case f.hasControlCall:
@@ -212,6 +216,8 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 
 func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
+	case f.moduleEH:
+		return false
 	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
 		return sizeInlineOK(f, policy)
 	case f.hasControlCall, f.calleeCount > 0, !f.regABIIntOnly:
@@ -226,7 +232,7 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 }
 
 func sizeInlineOK(f inlineFacts, policy CodegenPolicy) bool {
-	return !f.hasControlCall && f.calleeCount == 0 &&
+	return !f.moduleEH && !f.hasControlCall && f.calleeCount == 0 &&
 		f.callSites == 1 && f.straightLine() && f.bodyBytes <= sizeInlineBodyLimit(policy) &&
 		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
 		!f.touchesMem && !f.touchesGlobal
@@ -283,18 +289,24 @@ func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
 		if err != nil {
 			return err
 		}
-		// Control-flow opcodes: unreachable/block/loop/if/else/br/br_if/br_table/
-		// return. The single terminating `end` (0x0b) is the body end, not a nested
-		// block close, so it is not treated as control flow. (ClassifyInstruction-
-		// Immediate handles these structurally, so key off the raw opcode.)
-		switch op {
-		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
+		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
 			f.hasControlFlow = true
+		}
+		if shared.InstructionNeedsEHFrame(op, wasm.InstrInvalid) {
+			f.moduleEH = true
+		}
+		switch op {
 		case 0x23, 0x24: // global.get / global.set
 			f.touchesGlobal = true
 		}
 		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
 			return err
+		}
+		if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+			f.hasControlFlow = true
+		}
+		if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+			f.moduleEH = true
 		}
 		if imm.TouchesMemory || imm.UsesBulkMemory {
 			f.touchesMem = true
@@ -316,6 +328,12 @@ func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
 func scanInlineFactsAST(instrs []wasm.Instruction, f *inlineFacts) {
 	for i := range instrs {
 		in := &instrs[i]
+		if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
+			f.hasControlFlow = true
+		}
+		if shared.InstructionNeedsEHFrame(0, in.Kind) {
+			f.moduleEH = true
+		}
 		switch in.Kind {
 		case wasm.InstrCall:
 			f.calleeCount++
@@ -499,6 +517,9 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			continue
 		}
 		h := allHints[i]
+		if h.moduleEH {
+			continue
+		}
 		touchesGlobal := false
 		for _, score := range h.globalScore {
 			if score != 0 {
