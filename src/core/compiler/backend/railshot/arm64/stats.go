@@ -84,6 +84,9 @@ var (
 	// logicalMoveImmediateEnabled lets constant materialization use the one-word
 	// ORR-from-zero-register alias when the value is a logical immediate.
 	logicalMoveImmediateEnabled = os.Getenv("WAGO_ARM64_NO_LOGICAL_MOVE_IMMEDIATE") != "1"
+	// compactMoveImmediate32Enabled selects true W-register MOVZ/MOVN/MOVK
+	// sequences instead of constructing every i32 as a zero-extended i64.
+	compactMoveImmediate32Enabled = os.Getenv("WAGO_ARM64_NO_COMPACT_MOVE_IMMEDIATE32") != "1"
 	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
 	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
 	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"

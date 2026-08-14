@@ -266,6 +266,26 @@ func TestMovImmLogicalImmediate(t *testing.T) {
 	}
 }
 
+func TestMovImm32UsesWMoveWide(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		val  int32
+		want uint32
+	}{
+		{"minus one", -1, 0x12800007},
+		{"negative low bits", -2, 0x12800027},
+		{"high ones", -60876, 0x129db967},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var a Asm
+			a.MovImm32(X7, test.val)
+			if len(a.B) != 4 || a.wordAt(0) != test.want || a.CompactMoveImmediates32 != 1 {
+				t.Fatalf("MOV32(%#x) = % x hits=%d, want word %#08x", uint32(test.val), a.B, a.CompactMoveImmediates32, test.want)
+			}
+		})
+	}
+}
+
 func TestCompatibilityLoadStoreAndLayoutWrappers(t *testing.T) {
 	var a Asm
 	a.CvtI2F(X0, X1, false, false)

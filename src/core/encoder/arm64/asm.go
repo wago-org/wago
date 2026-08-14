@@ -93,10 +93,12 @@ func (c Cond) Invert() Cond { return c ^ 1 }
 // Asm accumulates encoded instruction words as little-endian bytes. Its zero
 // value is ready to use. Mirrors amd64.Asm{ B []byte }.
 type Asm struct {
-	B                           []byte
-	DenseIdxDisp                bool // prefer ADD base,index + immediate-offset load/store
-	DisableLogicalMoveImmediate bool
-	LogicalMoveImmediates       int
+	B                             []byte
+	DenseIdxDisp                  bool // prefer ADD base,index + immediate-offset load/store
+	DisableLogicalMoveImmediate   bool
+	DisableCompactMoveImmediate32 bool
+	LogicalMoveImmediates         int
+	CompactMoveImmediates32       int
 }
 
 // word appends one 32-bit instruction little-endian.
@@ -260,6 +262,9 @@ func (a *Asm) movWide(base uint32, rd Reg, imm16 uint16, hw uint32) {
 func (a *Asm) Movz64(rd Reg, imm16 uint16, hw uint32) { a.movWide(0xD2800000, rd, imm16, hw) }
 func (a *Asm) Movk64(rd Reg, imm16 uint16, hw uint32) { a.movWide(0xF2800000, rd, imm16, hw) }
 func (a *Asm) Movn64(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x92800000, rd, imm16, hw) }
+func (a *Asm) Movz32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x52800000, rd, imm16, hw) }
+func (a *Asm) Movk32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x72800000, rd, imm16, hw) }
+func (a *Asm) Movn32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x12800000, rd, imm16, hw) }
 
 // MovImm64 materializes an arbitrary 64-bit constant into rd using the shortest
 // MOVZ/MOVN + MOVK sequence (1..4 instructions), mirroring the amd64 encoder's

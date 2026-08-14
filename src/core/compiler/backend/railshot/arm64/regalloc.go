@@ -336,14 +336,12 @@ func (f *fn) materializePendingLoadsBeforeStore(base Reg, baseLocal int, baseLoc
 	}
 }
 
-// loadConst emits an immediate load of st's constant into r. A 32-bit constant is
-// materialized as its zero-extended uint32 value: a W-register write semantics is
-// achieved by MovImm64 of the zero-extended constant (the upper 32 bits are then
-// don't-cares / cleared), matching amd64's MovImm32.
+// loadConst emits an immediate load of st's constant into r. A W-register move
+// zero-extends a 32-bit constant into the physical X register.
 func (f *fn) loadConst(r Reg, st storage) {
 	if st.typ.is64() {
 		f.a.MovImm64(r, uint64(st.cval))
 	} else {
-		f.a.MovImm64(r, uint64(uint32(st.cval)))
+		f.a.MovImm32(r, int32(st.cval))
 	}
 }

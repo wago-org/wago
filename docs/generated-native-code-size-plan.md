@@ -978,3 +978,43 @@ sites and no byte change (66,040,168 bytes in both configurations). Those sites
 belong to optional native-GC helper shapes absent from the checked-in corpus.
 The prototype was removed under the corpus-hit acceptance rule; the general
 constant loader and its flag-preserving behavior remain unchanged.
+
+## Implementation result: ARM64 compact 32-bit move immediates
+
+ARM64 Size and Embedded now route i32 constant materialization through a true
+W-register `MOVZ/MOVN/MOVK` chooser. The former path zero-extended the value and
+always used the 64-bit chooser, so values such as `0xffffffff` required two
+words; `MOVN Wd,#0` produces the same zero-extended X-register value in one.
+Logical-immediate selection remains the first choice when it is the unique
+one-word form. Balanced and Speed preserve their former bytes, and
+`WAGO_ARM64_NO_COMPACT_MOVE_IMMEDIATE32=1` restores the exact prior path.
+
+Measured on the checked-in ARM64 Size corpus:
+
+```text
+rollback native bytes:  75,036,220
+candidate native bytes: 75,026,240
+net reduction:              9,980 (0.0133%)
+shorter selections:        12,102
+
+Ruby compile median:   601,067,417 -> 606,430,167 ns/op (+0.89%)
+esbuild compile median:334,114,770 -> 337,877,750 ns/op (+1.13%)
+compile allocations: unchanged
+
+JSON serialize median:       18,585 -> 18,777 ns/op (+1.03%)
+JSON deserialize median:     38,364 -> 38,512 ns/op (+0.39%)
+SIMD JSON serialize median:  22,401 -> 22,418 ns/op (+0.08%)
+SIMD JSON deserialize median:49,690 -> 49,902 ns/op (+0.43%)
+runtime allocations: zero in both configurations
+```
+
+Ruby contributed 7,392 bytes, regexmatch 1,128, SQLite 896, Lua 440, wasm3
+108, utf-as 12, and esbuild 4 bytes. The gap between selected-site bytes and
+final-image bytes comes primarily from later omission of proved-dead standalone
+inline bodies. Encoder and objective-policy tests, native execution, the ARM64
+backend race suite, compact/fuzz corpus, and complete Size execution corpus with
+finalizer validation passed.
+
+AMD64 needs no corresponding change: its `MovImm32` is already the native
+one-instruction zero-extending form, and `MovImm64` already selects it whenever
+the value fits.
