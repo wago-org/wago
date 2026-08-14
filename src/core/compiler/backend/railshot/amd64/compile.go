@@ -938,7 +938,7 @@ func (f *fn) frameSize() int {
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || frameElideVoid && voidResult
-	if !f.opt(optFrameElide) || !registerResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	if !f.allLocalsRegisterHomed() {
