@@ -1679,6 +1679,18 @@ from 40,085 to 40,115 (+0.07%). The SIMD build moves from 27,087 to 27,345
 ns/op for serialize (+0.95%) and from 52,453 to 51,990 for deserialize (-0.88%).
 Every execution sample remains at zero B/op and zero allocations.
 
+### Rejected ARM64 compact-i32 frame prototype
+
+A conservative ARM64 prototype packed i32 homes only in call-free,
+control-free, non-EH/non-GC functions and made every admitted local access
+width-aware. It reduced aggregate corpus frame reservation from 1,778,416 to
+1,771,408 bytes (-7,008), but the 36-module native total remained exactly
+77,023,124 bytes. Fixed-width load/store encodings and already-compact frame
+adjustments produced no executable-byte win, so the prototype was removed under
+the campaign rule that every enabled transform demonstrate corpus-level native
+reduction. ARM64 packed homes remain deferred until a broader layout proof can
+cross enough frame-adjustment or address-materialization boundaries to pay.
+
 ### Commands
 
 ```sh
