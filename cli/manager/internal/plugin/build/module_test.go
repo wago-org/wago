@@ -229,6 +229,40 @@ func TestResolvedBuildHashTracksModuleAndGoEnvironment(t *testing.T) {
 	}
 }
 
+func TestResolvedBuildHashIgnoresGeneratedMainThroughDirectorySymlink(t *testing.T) {
+	root := t.TempDir()
+	physical := filepath.Join(root, "physical")
+	if err := os.Mkdir(physical, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(physical, alias); err != nil {
+		t.Skipf("directory symlinks unavailable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(physical, "go.mod"), []byte("module example.test/build\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(physical, "main.go")
+	if err := os.WriteFile(mainPath, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	config := Config{RuntimeVersion: "test", Profile: "standard"}
+	first, cacheable, err := resolvedBuildHash(alias, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("first resolved hash = %q, %v, %v", first, cacheable, err)
+	}
+	if err := os.WriteFile(mainPath, []byte("package main\n\nfunc main() { panic(\"changed generated identity\") }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, cacheable, err := resolvedBuildHash(alias, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("second resolved hash = %q, %v, %v", second, cacheable, err)
+	}
+	if first != second {
+		t.Fatal("resolved build hash included generated main.go through a directory symlink")
+	}
+}
+
 func TestEnsureBinaryUsesResolvedInputsAndInvalidatesFailedBuild(t *testing.T) {
 	source := t.TempDir()
 	files := map[string]string{

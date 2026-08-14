@@ -229,10 +229,11 @@ func selectedBuildFiles(dir, buildTag string) ([]selectedBuildFile, error) {
 		args = append(args, "-tags", buildTag)
 	}
 	args = append(args, ".")
-	generatedMain, err := filepath.Abs(filepath.Join(dir, "main.go"))
+	generatedDir, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return nil, err
 	}
+	generatedMain := filepath.Join(generatedDir, "main.go")
 	var files []selectedBuildFile
 	err = decodeBuildGoJSON(dir, args, func(decoder *json.Decoder) error {
 		for {
@@ -251,11 +252,15 @@ func selectedBuildFiles(dir, buildTag string) ([]selectedBuildFile, error) {
 				{"objc", pkg.MFiles}, {"header", pkg.HFiles}, {"fortran", pkg.FFiles}, {"asm", pkg.SFiles},
 				{"swig", pkg.SwigFiles}, {"swig-cxx", pkg.SwigCXXFiles}, {"syso", pkg.SysoFiles}, {"embed", pkg.EmbedFiles},
 			}
+			packageDir, err := filepath.EvalSymlinks(pkg.Dir)
+			if err != nil {
+				return err
+			}
 			for _, group := range groups {
 				for _, name := range group.files {
 					path := name
 					if !filepath.IsAbs(path) {
-						path = filepath.Join(pkg.Dir, filepath.FromSlash(path))
+						path = filepath.Join(packageDir, filepath.FromSlash(path))
 					}
 					path, err = filepath.Abs(path)
 					if err != nil {
