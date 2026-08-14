@@ -24,6 +24,8 @@ func configureWatchedCommandStart(*syscall.SysProcAttr) {}
 
 func lockWatchedCommandStart() func() { return func() {} }
 
+func waitWatchedCommandStart(*exec.Cmd) error { return nil }
+
 func resumeWatchedCommand(*exec.Cmd) error { return nil }
 
 func startWatchedProcessTracking(*watchedProcessTracker) error {

@@ -26,6 +26,8 @@ func abortWatchedCommand(*exec.Cmd) {}
 
 func lockWatchedCommandStart() func() { return func() {} }
 
+func waitWatchedCommandStart(*exec.Cmd) error { return nil }
+
 func resumeWatchedCommand(*exec.Cmd) error { return nil }
 
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {

@@ -25,7 +25,7 @@ func lockWatchedCommandStart() func() {
 	return runtime.UnlockOSThread
 }
 
-func resumeWatchedCommand(command *exec.Cmd) error {
+func waitWatchedCommandStart(command *exec.Cmd) error {
 	var status syscall.WaitStatus
 	for {
 		_, err := syscall.Wait4(command.Process.Pid, &status, syscall.WUNTRACED, nil)
@@ -40,6 +40,10 @@ func resumeWatchedCommand(command *exec.Cmd) error {
 	if !status.Stopped() {
 		return fmt.Errorf("watched process did not stop before tracking: %v", status)
 	}
+	return nil
+}
+
+func resumeWatchedCommand(command *exec.Cmd) error {
 	return unix.PtraceDetach(command.Process.Pid)
 }
 
