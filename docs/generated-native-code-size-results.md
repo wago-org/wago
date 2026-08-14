@@ -934,6 +934,49 @@ AMD64 `rel32` reach is sufficient for the measured module sizes, but the design
 must preserve serial direct-buffer emission and parallel worker-local
 finalization before it is eligible for Size or Embedded mode.
 
+### AMD64 Size/Embedded shared literal island
+
+Size and Embedded now defer function-local 4-, 8-, and 16-byte pool values to
+one deterministic module island. Speed and Balanced retain their byte-for-byte
+existing function-local pools. Function finalization remaps packed literal-site
+records alongside calls and metadata; serial compilation appends records to one
+module arena, while parallel workers use worker-owned arenas that are joined in
+function order. `WAGO_AMD64_NOMODULELITERALS=1` restores the previous Size path.
+
+The first prototype stored a full key at every site and was rejected because it
+added 0.7%-3.9% B/op. The retained design packs each function as a key table plus
+one 64-bit site/key record per reference, uses reusable function scratch, and
+performs no per-function relocation allocation.
+
+Across all 36 native AMD64 corpus modules in Size mode:
+
+| Previous bytes | Shared-island bytes | Saving | Wins / losses / ties |
+| ---: | ---: | ---: | ---: |
+| 71,750,535 | 71,734,647 | -15,888 (-0.02%) | 9 / 0 / 27 |
+
+The reductions are Ruby (-9,260), SQLite (-2,144; eight bytes of changed stub
+alignment consume part of the 2,152-byte duplicate ceiling), esbuild (-1,944),
+wasm3 (-1,236), Lua (-968), json-as-simd (-144), blake-as-simd (-112),
+utf-as-simd (-48), and raytrace (-32). With `WAGO_COMPACT=1`, the same 15,888
+bytes are removed (71,366,937 to 71,351,049).
+
+Serialized native Size compilation against the rollback oracle remains within
+the 5% gate:
+
+| Workload | Previous median | Shared-island median | Time | B/op change | Alloc change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Ruby | 816,231,740 ns/op | 822,243,540 ns/op | +0.74% | +380,504 (+1.10%) | +73 |
+| esbuild | 480,276,262 ns/op | 482,290,472 ns/op | +0.42% | +99,404 (+0.39%) | +39 |
+| SQLite | 72,911,190 ns/op | 73,618,957 ns/op | +0.97% | +97,162 (+1.55%) | +35 |
+| Lua | 21,690,172 ns/op | 21,800,398 ns/op | +0.51% | +64,766 (+2.17%) | +36 |
+| wasm3 | 12,590,834 ns/op | 12,570,588 ns/op | -0.16% | +44,565 (+2.63%) | +32 |
+
+Five fresh-process peak-RSS samples give a 138,628 KiB to 139,068 KiB Ruby
+median (+440 KiB, +0.32%) and a 100,412 KiB to 100,156 KiB esbuild median
+(-256 KiB). Serial and parallel output parity, native execution through a
+shared scalar island, compaction, the backend race suite, and runtime/fuzz
+corpus all pass.
+
 ### Commands
 
 ```sh
