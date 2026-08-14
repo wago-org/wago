@@ -1380,3 +1380,10 @@ Ruby contributes 30,888 bytes, regexmatch 1,276, SQLite 418, scalar and SIMD
 JSON 96 each, wasm3 44, and Lua 44. No module grows. Affected JSON execution
 medians range from -0.14% to +0.72%, with zero allocations. The AMD64 backend
 and race suites plus the complete Size execution corpus pass on `hub`.
+
+### Rejected ARM64 sixteen-shape trap catalog
+
+Doubling the fixed per-cluster trap-body catalog from eight to sixteen shapes
+left the complete ARM64 Size corpus exactly unchanged at 72,198,152 bytes. The
+existing bound does not saturate on this corpus, so the experiment was removed
+without spending compile benchmarks or doubling that compiler state.
