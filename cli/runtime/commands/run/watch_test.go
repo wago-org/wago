@@ -72,8 +72,10 @@ func TestWatchSupervisorRestartsLongRunningChildWithNewestContent(t *testing.T) 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	stopped := false
+	options := watchTestOptions(modulePath, logPath, address, false)
+	options.debounce = 250 * time.Millisecond
 	go func() {
-		done <- superviseWatch(ctx, watchTestOptions(modulePath, logPath, address, false))
+		done <- superviseWatch(ctx, options)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -94,7 +96,6 @@ func TestWatchSupervisorRestartsLongRunningChildWithNewestContent(t *testing.T) 
 	if err := os.Chtimes(modulePath, modTime, modTime); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(20 * time.Millisecond)
 	if err := os.WriteFile(modulePath, []byte("final"), 0o600); err != nil {
 		t.Fatal(err)
 	}
