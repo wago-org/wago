@@ -193,9 +193,9 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
-	shareUnwind := false
-	if sharedTrapUnwindEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
-		groups := 0
+	sizeObjective := f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded
+	groups := 0
+	if (sharedTrapUnwindEnabled || sharedTrapBodyEnabled) && sizeObjective {
 		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 			sites := f.scratchState().trapSites[code]
 			if len(sites) == 0 {
@@ -209,10 +209,15 @@ func (f *fn) emitTrapStubs() {
 				}
 			}
 		}
-		// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail
-		// cost 24, and the extra branch is confined to a terminal cold path.
-		shareUnwind = groups >= 2
 	}
+	if sharedTrapBodyEnabled && sizeObjective && groups >= 2 {
+		f.emitSharedTrapStubs()
+		f.stats.peep("shared-trap-body")
+		return
+	}
+	// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail cost 24,
+	// and the extra branch is confined to a terminal cold path.
+	shareUnwind := sharedTrapUnwindEnabled && sizeObjective && groups >= 2
 	sharedUnwind := -1
 	sharedTails := 0
 	if shareUnwind {
@@ -238,6 +243,7 @@ func (f *fn) emitTrapStubs() {
 				end++
 			}
 			group := sites[start:end]
+			f.stats.addTrapGroup()
 			first := group[0]
 			commonJump := -1
 			if len(group) == 1 {
@@ -285,6 +291,60 @@ func (f *fn) emitTrapStubs() {
 	if sharedTails != 0 {
 		f.stats.peepN("cold-trap-unwind-share", sharedTails-1)
 	}
+}
+
+func (f *fn) emitSharedTrapStubs() {
+	common := f.a.Len()
+	f.emitTrapFromRegisters()
+
+	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
+		sites := f.scratchState().trapSites[code]
+		if len(sites) == 0 {
+			continue
+		}
+		f.stats.addTrapStub()
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			group := sites[start:end]
+			first := group[0]
+			pos := f.a.Len()
+			pc := uint64(^uint32(0))
+			if len(group) == 1 {
+				pc = uint64(first.pc)
+			}
+			f.a.MovImm64(X17, pc)
+			f.a.MovImm64(X10, uint64(first.function+1))
+			f.a.MovImm64(X11, uint64(code))
+			for _, site := range group {
+				if site.branch&1 != 0 {
+					f.a.PatchBranch26(site.branch&^1, pos)
+				} else {
+					f.a.PatchBranch19(site.branch, pos)
+				}
+			}
+			branch := f.a.Branch()
+			if !f.a.PatchBranch26(branch, common) {
+				// A pathological >128 MiB function remains correct by retaining a
+				// complete local body for this group.
+				f.a.B = f.a.B[:branch]
+				f.emitTrapFromRegisters()
+			}
+			f.stats.addTrapGroup()
+			start = end
+		}
+	}
+}
+
+func (f *fn) emitTrapFromRegisters() {
+	f.storeModuleGlobals(X9)
+	f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
+	f.st32(X9, 16, X10)
+	f.st32(X9, 20, X17)
+	f.st32(X9, 0, X11)
+	f.emitTrapUnwind()
 }
 
 // sortTrapSitesByFunction uses an allocation-free heap sort. The order within

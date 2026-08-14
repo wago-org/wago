@@ -90,6 +90,9 @@ var (
 	// shiftedAddSubImmediateEnabled selects the legal imm12 LSL #12 form for
 	// Size/Embedded add, sub, compare, and address displacement operations.
 	shiftedAddSubImmediateEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ADD_SUB_IMMEDIATE") != "1"
+	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the complete
+	// terminal trap record/writeback/unwind body within one function.
+	sharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_BODY") != "1"
 	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
 	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
 	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"
@@ -165,6 +168,7 @@ type CodegenStats struct {
 	BoundsChecksInLoop    int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
 	BoundsChecksHoistable int // subset on a loop-INVARIANT local base (not set in the loop) â the P6.2 hoistable target; count-only
 	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
+	TrapGroups            int // distinct source-function groups across trap stubs
 
 	// Calls, by lowering kind: regabi / mixed / wrapper / host / indirect /
 	// crossinstance / importdispatch.
@@ -267,6 +271,11 @@ func (s *CodegenStats) addForcedLoad() {
 func (s *CodegenStats) addTrapStub() {
 	if s != nil {
 		s.TrapStubs++
+	}
+}
+func (s *CodegenStats) addTrapGroup() {
+	if s != nil {
+		s.TrapGroups++
 	}
 }
 func (s *CodegenStats) addBoundsCheck() {
@@ -506,8 +515,8 @@ func (s *CodegenStats) report() string {
 	}
 	fmt.Fprintf(&b, "    alloc: flushes=%d roots=%d deferred=%d flushBelow=%d roots=%d deferred=%d callFlush=%d localSetDeferred=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
-	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
-		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
+	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
+		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
 	if s.InlineSiteBytes != 0 {
 		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
 	}

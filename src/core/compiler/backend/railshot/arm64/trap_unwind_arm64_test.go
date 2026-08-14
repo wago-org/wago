@@ -44,6 +44,9 @@ func TestSizeObjectiveSharedTrapUnwindExecutesArm64(t *testing.T) {
 }
 
 func TestSizeObjectiveSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
+	before := sharedTrapBodyEnabled
+	sharedTrapBodyEnabled = false
+	t.Cleanup(func() { sharedTrapBodyEnabled = before })
 	balanced, balancedBytes := emitTwoTrapGroupsArm64(OptimizeBalanced)
 	size, sizeBytes := emitTwoTrapGroupsArm64(OptimizeSize)
 	if got, want := balancedBytes-sizeBytes, 8; got != want {
@@ -54,5 +57,22 @@ func TestSizeObjectiveSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
 	}
 	if got := size.stats.Peephole["cold-trap-unwind-share"]; got != 1 {
 		t.Fatalf("Size shared trap unwind count = %d, want 1", got)
+	}
+}
+
+func TestSizeObjectiveSharesCompleteTrapBodyArm64(t *testing.T) {
+	before := sharedTrapBodyEnabled
+	sharedTrapBodyEnabled = true
+	t.Cleanup(func() { sharedTrapBodyEnabled = before })
+	_, balancedBytes := emitTwoTrapGroupsArm64(OptimizeBalanced)
+	size, sizeBytes := emitTwoTrapGroupsArm64(OptimizeSize)
+	if got, want := balancedBytes-sizeBytes, 32; got != want {
+		t.Fatalf("two-group complete trap saving = %d bytes, want %d (balanced=%d size=%d)", got, want, balancedBytes, sizeBytes)
+	}
+	if got := size.stats.Peephole["shared-trap-body"]; got != 1 {
+		t.Fatalf("Size shared trap body count = %d, want 1", got)
+	}
+	if size.stats.TrapStubs != 2 || size.stats.TrapGroups != 2 {
+		t.Fatalf("Size trap stats = stubs:%d groups:%d", size.stats.TrapStubs, size.stats.TrapGroups)
 	}
 }
