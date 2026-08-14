@@ -1221,13 +1221,9 @@ five bytes (`mov rsp,[rbx+disp8]; ret`), exactly the size of `jmp rel32`; every
 shared form therefore adds the retained five-byte body without removing any
 per-group bytes. An encoder-backed test locks down the 5/5-byte comparison.
 
-Whole-adapter sharing is also deferred rather than guessed into this campaign.
-GC frame roots currently encode an adapter return as a function-relative
-`AdapterReturnOffset`, later materialized as `Entry[function] + offset`, and
-cross-tail code may embed that same per-function return PC. A shared adapter
-needs an explicit module-level return-site/descriptor contract plus bounded
-target materialization (and ARM64 clustering for `ADR` range) before its much
-larger ledger ceiling can be realized safely.
+Whole-adapter sharing was deferred at this point rather than guessed into the
+tail campaign. The later whole-adapter phase below makes its return-PC and target
+contracts explicit before taking the larger ledger opportunity.
 
 ### Interim campaign calibration against `7f7a5f46`
 
@@ -1269,6 +1265,83 @@ case; ARM64 does not, and both architectures retain only 4-9% reductions on the
 representative macro modules. The adapter ledger still identifies roughly
 1.2-1.5 MiB of conservative whole-adapter opportunity, so the next campaign
 must first make shared adapter return metadata and target dispatch explicit.
+
+### Module-shared whole host adapters
+
+Size and Embedded now replace profitable byte-identical register-ABI adapters
+with one cold module body per exact shape plus a small function-local target
+thunk. Speed and Balanced remain byte-for-byte unchanged. The shape hash is
+only an index; byte comparison after normalizing the one direct-call
+displacement remains the admission proof.
+
+The GC frame-root contract remains allocation-neutral. A function's existing
+`AdapterReturnOffset` is still relative to its public `Entry`, but may point
+forward into a module adapter island. Runtime flattening sorts and deduplicates
+the resulting absolute PCs, so every function in one shared shape can name the
+same return site without adding a module-plan slice. Functions whose tail-call
+lowering embeds their local adapter return PC remain unshared.
+
+ARM64 uses an eight-byte thunk:
+
+```text
+ADR X17, internal-entry
+B   shared-adapter-shape
+```
+
+The shared copy replaces its direct `BL` with same-width `BLR X17`. The adapter
+prefix does not allocate or write X17; argument registers stop at X7 and module
+pins use X23-X25. Non-call PC-relative and literal-load instructions fail closed,
+and the existing ±128 MiB island check plus per-thunk ADR check retain local
+adapters when range is unavailable.
+
+Against module-shared tails, the 54-module ARM64 Size image falls from
+78,610,376 to 77,762,656 raw bytes (-847,720) and from 78,157,392 to 77,309,672
+with compaction (the same reduction). Incremental wins include Ruby -531,784,
+esbuild -231,560, wasm3 -28,164, SQLite -26,636, regexmatch -15,208, and Lua
+-10,960. Relative to audited baseline `7f7a5f46`, current raw Size is 6.60%
+smaller and compacted Size is 7.14% smaller. Raw macro reductions are Ruby
+6.63%, esbuild 6.81%, SQLite 7.35%, and wasm3 11.65%.
+
+Five serialized ARM64 samples put tail-sharing versus whole-sharing medians at
+568,632,542 to 571,865,125 ns/op for Ruby (+0.57%) and 322,669,292 to
+318,267,666 ns/op for esbuild (-1.36%). Median heap movement is below 0.01%; the
+larger exact-shape inventory adds 16 and 6 small planning allocations. A
+ten-sample wrapper benchmark measured 13.105 ns/op Balanced versus 13.215 ns/op
+Size (+0.84%), both with zero allocations.
+
+AMD64 uses a twelve-byte thunk:
+
+```text
+LEA RBP, [RIP+internal-entry]
+JMP shared-adapter-shape
+```
+
+The shared copy replaces five-byte `CALL rel32` with two-byte `CALL RBP`. RBP is
+not read or written by the non-EH adapter prefix; EH adapters are conservatively
+excluded. The port also fixed a pre-existing tail-compaction omission by
+remapping function-relative module-literal relocation sites whenever adapter
+bytes before an internal body are deleted.
+
+Against module-shared tails, the 54-module AMD64 Size image falls from
+71,374,850 to 70,665,700 raw bytes (-709,150) and from 70,991,238 to 70,282,088
+with compaction. Incremental wins include Ruby -453,005, esbuild -194,371,
+wasm3 -22,684, SQLite -18,636, regexmatch -11,184, and Lua -7,837. Relative to
+the audited baseline, current raw Size is 5.30% smaller and compacted Size is
+5.82% smaller. Raw macro reductions are Ruby 5.31%, esbuild 5.62%, SQLite
+5.46%, and wasm3 8.22%; many_funcs remains 19.60% smaller.
+
+Five serialized AMD64 samples put tail-sharing versus whole-sharing medians at
+830,330,801 to 829,357,955 ns/op for Ruby (-0.12%) and 474,004,873 to
+476,971,140 ns/op for esbuild (+0.63%). Median heap movement is about 0.01% and
+allocation-count movement is noise-level. A ten-sample wrapper benchmark
+measured 9.6245 ns/op Balanced versus 9.698 ns/op Size (+0.76%), both with zero
+allocations (one Size sample was a 11.39 ns outlier and remains included in the
+median calculation).
+
+Both architectures pass native wrapper execution, exact thunk/body crossover
+tests, serial/parallel corpus identity, call relocation and GC return-PC
+remapping, ARM64 PC-relative rejection, AMD64 literal-site remapping, backend
+race suites, and compacted runtime and `src/wago` tests.
 
 ### Commands
 
