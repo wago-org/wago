@@ -311,6 +311,50 @@ Five alternating one-second execution samples produced these medians:
 Every execution benchmark remained at zero B/op and zero allocs/op. All four
 are comfortably inside the 1.5% investigation gate.
 
+### AMD64 score-based local-slot ordering experiment
+
+Commits `624e942`, `bd70739`, and `9136453` on the native AMD64 branch tested a
+bounded frame-layout pass after whole-function pin assignment. It reuses the
+existing `localSlot` slice as an in-place permutation, keeps GC/EH layouts on
+their established path, and never accepts a reordered mixed-width layout that
+would enlarge the frame. Focused execution, instruction-corpus, worker-parity,
+and full AMD64 package tests pass with the pass both enabled and disabled.
+
+The first profitability input was the existing loop-weighted local access score.
+That is appropriate for register pins but not for native bytes: encoded size
+depends on the exact number of frame references, including pinned-local
+spill/reload traffic around calls. A complete 64-module corpus comparison with
+compaction disabled produced:
+
+| Result | Modules | Raw native bytes |
+| --- | ---: | ---: |
+| Smaller | 8 | included below |
+| Larger | 11 | included below |
+| Unchanged | 45 | — |
+| Corpus total | — | 83,092,299 -> 83,756,523 (+664,224, +0.80%) |
+
+Representative wins were `blake-as` 10,804 -> 10,148 (-6.07%),
+`blake-as-simd` 35,908 -> 34,487 (-3.96%), `nbody` 5,876 -> 5,745
+(-2.23%), and `wasm3` 930,170 -> 927,754 (-0.26%). Regressions included
+`sqlite3` 3,647,849 -> 3,703,561 (+1.53%), `lua` 1,076,612 -> 1,089,524
+(+1.20%), `regexmatch` 2,774,699 -> 2,802,651 (+1.01%), `ruby` 39,032,426
+-> 39,399,642 (+0.94%), and `esbuild` 26,648,528 -> 26,806,944 (+0.59%).
+The headline `many_funcs` and scalar `json-as` modules were unchanged.
+
+Three serialized native-AMD64 compile samples, with compaction disabled, found
+no allocation change:
+
+| Workload | Declaration order median | Score order median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 308,164 ns/op | 308,199 ns/op | +0.01% | 147,209 B/op / 340 allocs/op, unchanged |
+| `json-as` | 1,210,510 ns/op | 1,220,396 ns/op | +0.82% | 291,659 B/op / 1,858 allocs/op, unchanged |
+
+The corpus byte gate rejects this heuristic for Balanced. The implementation is
+retained only as the experimental `local-slot-order` knob, enabled explicitly
+with `WAGO_LOCAL_SLOT_ORDER=1`. Production slot ordering must use exact emitted
+frame-reference counts or symbolic stack-reference costs rather than repurposing
+the speed-oriented pin score.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
