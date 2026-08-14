@@ -1131,9 +1131,9 @@ least two groups use X17, X10, and X11 for PC, source function, and trap code,
 then branch to one complete terminal body. That body writes module globals,
 updates the trap cell, restores SP and LR, and returns to the trampoline.
 
-The common body is emitted before the group stubs, so every transfer is a
-backward `B`. A pathological out-of-range transfer fails closed by retaining a
-complete local body for that group. Speed, Balanced, one-group functions, and
+The initial common body was emitted before the group stubs, so every transfer
+was a backward `B`. A pathological out-of-range transfer fails closed by
+retaining the established local layout. Speed, Balanced, one-group functions, and
 `WAGO_ARM64_NO_SHARED_TRAP_BODY=1` retain the former per-group record plus
 shared-unwind layout.
 
@@ -1161,3 +1161,51 @@ SQLite contributes 1,490,860 bytes, Ruby 502,536, Lua 81,976, raytrace
 Focused two-arm native trap execution and crossover tests, the ARM64 backend
 and race suites, compact/fuzz and trap-frame execution, the complete Size
 execution corpus, and the full repository suite pass.
+
+## Implementation result: ARM64 cross-function trap-body sharing
+
+The complete ARM64 body is now a true function-tail fragment. This immediately
+lets the bounded finalizer delete the last group's branch-to-next. Across the
+corpus that layout change removes 73,520 bytes without changing a useful
+instruction or hot path.
+
+Size and Embedded then reuse exact byte-identical bodies across internal
+functions. A fixed eight-shape catalog retains the first body in its original
+cold tail and replaces later copies with one backward `B`. The catalog resets
+at every host-adapter boundary: subsequent adapter compaction can shift a whole
+cluster, but cannot change a branch displacement within it. This small seam
+avoids a whole-module code IR, a second image, per-function module records, and
+all heap allocation in the sharing decision. PC-relative and literal-load
+fragments fail closed. `WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY=1` restores the
+exact preceding 72,813,164-byte layout, including the body-before-groups order.
+
+Measured on the checked-in ARM64 Size corpus:
+
+```text
+rollback native bytes:  72,813,164
+candidate native bytes: 72,278,560
+net reduction:             534,604 (0.7342%)
+  tail branch deletion:     73,520
+  cross-function reuse:    461,084
+shared later functions:      7,964
+
+Ruby compile median:   593,981,833 -> 593,252,584 ns/op (-0.12%)
+esbuild compile median:333,882,709 -> 331,387,208 ns/op (-0.75%)
+compile allocation class: unchanged
+
+selected Size runtime medians:
+  raytrace render:       +0.68%
+  JSON serialize:        +1.00%
+  JSON deserialize:      +0.30%
+  SIMD UTF-8 convert:    +0.39%
+  SIMD UTF-8 validate:   +0.91%
+runtime allocations: zero in both configurations
+```
+
+Ruby contributes 429,848 bytes, SQLite 57,608, regexmatch 21,500, Lua 10,256,
+wasm3 7,452, json-as-simd 2,888, esbuild 2,664, json-as 1,940, and the remaining
+modules 448 bytes. No module grows.
+
+Exact-body and PC-relative rejection tests, serial and parallel native trap
+execution, the backend race suite, the complete repository suite, and the full
+Size execution corpus pass.
