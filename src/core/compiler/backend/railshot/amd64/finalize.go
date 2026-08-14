@@ -23,6 +23,12 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return 0, fmt.Errorf("amd64 finalizer: %w", err)
 	}
 	f.a.B = result.Code
+	if internalOff == 0 && len(f.relocs) == 0 && f.adapterReturnOff == 0 && f.gcFrameRoots == nil {
+		// The common tiny internal leaf has no function-relative metadata to
+		// remap. FinalizeIdentity has still validated the emitted image; avoid a
+		// redundant map call for every such function in many-function modules.
+		return 0, nil
+	}
 
 	internalOff, err = mapAMD64FinalOffset(&result.Offsets, internalOff, len(result.Code), "internal entry")
 	if err != nil {
