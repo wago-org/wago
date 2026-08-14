@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/cli/internal/project"
 )
@@ -122,29 +123,185 @@ func TestNewBuildIdentityIsPerBinary(t *testing.T) {
 	}
 }
 
-func TestBuildHashTracksMirroredFilesystemReplacementContent(t *testing.T) {
-	source := t.TempDir()
+func TestResolvedBuildHashTracksFilesystemReplacementContent(t *testing.T) {
+	buildDir := t.TempDir()
 	replacement := filepath.Join(t.TempDir(), "plugin")
 	if err := os.MkdirAll(replacement, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	goMod := "module github.com/wago-org/wago\n\ngo 1.22\n\nreplace example.test/plugin => " + filepath.ToSlash(replacement) + "\n"
-	if err := os.WriteFile(filepath.Join(source, "go.mod"), []byte(goMod), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(replacement, "go.mod"), []byte("module example.test/plugin\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goMod := "module example.test/build\n\ngo 1.22\n\nrequire example.test/plugin v0.0.0\n\nreplace example.test/plugin => " + filepath.ToSlash(replacement) + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), []byte("package main\n\nimport _ \"example.test/plugin\"\n\nfunc main() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	pluginFile := filepath.Join(replacement, "plugin.go")
 	if err := os.WriteFile(pluginFile, []byte("package plugin\n\nconst Value = 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("WAGO_SRC", source)
 	config := Config{RuntimeVersion: "test", Profile: "test"}
-	first := Hash(Input{}, config)
+	first, cacheable, err := resolvedBuildHash(buildDir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("first resolved hash = %q, %v, %v", first, cacheable, err)
+	}
 	if err := os.WriteFile(pluginFile, []byte("package plugin\n\nconst Value = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	second := Hash(Input{}, config)
+	second, cacheable, err := resolvedBuildHash(buildDir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("second resolved hash = %q, %v, %v", second, cacheable, err)
+	}
 	if first == second {
-		t.Fatal("build hash ignored mutable filesystem replacement content")
+		t.Fatal("resolved build hash ignored mutable filesystem replacement content")
+	}
+	extra := filepath.Join(replacement, "extra.go")
+	if err := os.WriteFile(extra, []byte("package plugin\n\nconst Extra = 3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	third, cacheable, err := resolvedBuildHash(buildDir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("third resolved hash = %q, %v, %v", third, cacheable, err)
+	}
+	if second == third {
+		t.Fatal("resolved build hash ignored a new local source file")
+	}
+	if err := os.Chtimes(extra, time.Now().Add(-time.Hour), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	fourth, cacheable, err := resolvedBuildHash(buildDir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("fourth resolved hash = %q, %v, %v", fourth, cacheable, err)
+	}
+	if third != fourth {
+		t.Fatal("resolved build hash depends on an irrelevant file timestamp")
+	}
+}
+
+func TestBuildHashTracksBuildTag(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "go.mod"), []byte("module github.com/wago-org/wago\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_SRC", source)
+	config := Config{RuntimeVersion: "test", Profile: "standard", BuildTag: "first"}
+	first := Hash(Input{}, config)
+	config.BuildTag = "second"
+	if second := Hash(Input{}, config); first == second {
+		t.Fatal("build hash ignored the build tag")
+	}
+}
+
+func TestResolvedBuildHashTracksModuleAndGoEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.test/build\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOFLAGS", "")
+	config := Config{RuntimeVersion: "test", Profile: "standard"}
+	first, cacheable, err := resolvedBuildHash(dir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("first resolved hash = %q, %v, %v", first, cacheable, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.test/build\n\ngo 1.22\n\n// resolved input changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, cacheable, err := resolvedBuildHash(dir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("second resolved hash = %q, %v, %v", second, cacheable, err)
+	}
+	if first == second {
+		t.Fatal("resolved build hash ignored go.mod")
+	}
+	t.Setenv("GOFLAGS", "-trimpath")
+	third, cacheable, err := resolvedBuildHash(dir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("third resolved hash = %q, %v, %v", third, cacheable, err)
+	}
+	if second == third {
+		t.Fatal("resolved build hash ignored GOFLAGS")
+	}
+}
+
+func TestEnsureBinaryUsesResolvedInputsAndInvalidatesFailedBuild(t *testing.T) {
+	source := t.TempDir()
+	files := map[string]string{
+		"go.mod": "module github.com/wago-org/wago\n\ngo 1.22\n",
+		"wago.go": `package wago
+
+type PluginSelection struct{}
+type PluginProvider struct{}
+type PluginSet struct {
+	Providers []PluginProvider
+	Selections []PluginSelection
+}
+func ValidatePluginSet(PluginSet) error { return nil }
+`,
+		"cli/runtime/runtime.go": `package runtime
+import wago "github.com/wago-org/wago"
+func MainWithPluginSet(string, string, wago.PluginSet) {}
+`,
+		"register/register.go": `package register
+import wago "github.com/wago-org/wago"
+func Providers() []wago.PluginProvider { return nil }
+`,
+	}
+	for path, body := range files {
+		fullPath := filepath.Join(source, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("WAGO_SRC", source)
+	input := Input{
+		Sources:         []project.PluginSource{{Module: wagoModuleName, Version: "v0.0.0"}},
+		ProviderImports: []string{wagoModuleName + "/register"},
+	}
+	config := Config{RuntimeVersion: "test", Profile: "standard", BuildTag: "first"}
+	dir := filepath.Join(t.TempDir(), "build")
+	bin, cached, err := EnsureBinary(dir, input, false, false, config)
+	if err != nil || cached {
+		t.Fatalf("first build = %q, cached %v, err %v", bin, cached, err)
+	}
+	firstHash, err := os.ReadFile(bin + ".hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, cached, err := EnsureBinary(dir, input, false, false, config); err != nil || !cached {
+		t.Fatalf("repeat build = cached %v, err %v", cached, err)
+	}
+	config.BuildTag = "second"
+	if _, cached, err := EnsureBinary(dir, input, false, false, config); err != nil || cached {
+		t.Fatalf("changed-tag build = cached %v, err %v", cached, err)
+	}
+	secondHash, err := os.ReadFile(bin + ".hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(firstHash) == string(secondHash) {
+		t.Fatal("changed build tag reused the executable cache key")
+	}
+	broken := `package register
+import wago "github.com/wago-org/wago"
+func Providers() []wago.PluginProvider { return missing }
+`
+	if err := os.WriteFile(filepath.Join(source, "register", "register.go"), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := EnsureBinary(dir, input, false, false, config); err == nil {
+		t.Fatal("invalid local source built successfully")
+	}
+	if _, err := os.Stat(bin + ".hash"); !os.IsNotExist(err) {
+		t.Fatalf("failed build retained a valid cache key: %v", err)
 	}
 }
 
