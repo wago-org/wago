@@ -2378,3 +2378,36 @@ They retain 223,661 proved-dead bytes. Only 16 of those functions fit within
 within 4,096 sites, representing 48,131 bytes. Reclaiming either subset would
 couple a larger per-worker inventory to a larger function scan for a poor
 footprint crossover. Both accepted bounds remain unchanged.
+
+## Size single-use inline proof and 16-byte body bound
+
+The Size/Embedded single-use inline body limit now belongs to the immutable
+codegen policy, with `WAGO_SIZE_INLINE_MAXBYTES` retained as an exact bounded
+experiment and rollback control. Testing wider bodies exposed a latent proof
+gap: the Size-specific predicate bypassed the common leaf check, so Ruby could
+admit a small non-leaf parent and separately omit its single-use child. Splicing
+only the parent transplanted a native call into a caller that had not reserved
+the child's inline-local plan, and the module finalizer correctly rejected the
+surviving relocation.
+
+Both backends now prune a Size inline parent whenever its body directly calls
+another body slated for omission. The parent remains standalone, where its own
+compile can inline and safely eliminate the child. This preserves the exact
+7-byte corpus baselines while making wider limits fail closed without a
+transitive inline graph or a second optimization pass. Focused three-function
+regressions cover the parent/child proof on both architectures.
+
+The accepted body limit increases from 7 to 16 bytes. On ARM64, the 36-module
+image falls from 77,015,260 to 77,013,592 bytes (-1,668): Ruby contributes 852
+bytes, SQLite 528, regexmatch 200, and wasm3 88. A 24-byte limit saves only
+another 112 bytes and is rejected. Five serialized ARM64 compile samples put
+Ruby at 589,705,292 to 590,327,959 ns/op (+0.11%) and esbuild at 323,676,000 to
+325,367,354 (+0.52%).
+
+On AMD64, the image falls from 66,124,844 to 66,123,590 bytes (-1,254): Ruby
+contributes 698 bytes, SQLite 373, regexmatch 120, and wasm3 63. A 24-byte limit
+saves only another 85 bytes. Five serialized AMD64 samples put Ruby at
+993,625,075 to 1,002,936,441 ns/op (+0.94%) and esbuild at 542,982,839 to
+542,378,922 (-0.11%). B/op and allocation movement is noise-level on both
+architectures. None of the changed macro modules exposes an execution entry in
+the permanent corpus.

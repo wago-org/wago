@@ -89,6 +89,28 @@ func TestInlineSizeObjectiveRequiresNativeByteProofArm64(t *testing.T) {
 	}
 }
 
+func TestInlineSizeObjectivePrunesTransitiveOmissionArm64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x10, 0x02, 0x0b}},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
+	)
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	policy.MaxSizeInlineBodyBytes = 12
+	hints := []funcHints{
+		{hasCall: true},
+		{nLocals: 1, hasCall: true, inlineCallSites: 1, directCallRefs: 1},
+		{nLocals: 1, inlineCallSites: 1, directCallRefs: 1},
+	}
+	targets := buildInlineTargets(m, hints, policy)
+	if targets.target(1) != nil {
+		t.Fatal("transitive parent remained an inline target")
+	}
+	if targets.target(2) == nil || !targets.omitStandaloneBody(2, false) {
+		t.Fatal("leaf child was not retained as an omittable inline target")
+	}
+}
+
 func TestInlineSizeObjectiveAdmitsTinySingleUseLeafArm64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}

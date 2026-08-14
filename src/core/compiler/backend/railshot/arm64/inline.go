@@ -55,6 +55,22 @@ var inlineMaxBytes = func() int {
 	return inlineMaxBodyBytes
 }()
 
+var sizeInlineMaxBytesOverride = func() int {
+	if v := os.Getenv("WAGO_SIZE_INLINE_MAXBYTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+			return n
+		}
+	}
+	return -1
+}()
+
+func sizeInlineBodyLimit(policy CodegenPolicy) int {
+	if sizeInlineMaxBytesOverride >= 0 {
+		return sizeInlineMaxBytesOverride
+	}
+	return int(policy.MaxSizeInlineBodyBytes)
+}
+
 // inlineFacts are the per-function facts the candidacy decision needs.
 type inlineFacts struct {
 	bodyBytes      int      // encoded body size (proxy for inlined code growth)
@@ -129,7 +145,11 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 		}
 	}
 
-	rep := &InlineReport{MaxBodyBytes: inlineMaxBytes}
+	maxBodyBytes := inlineMaxBytes
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		maxBodyBytes = sizeInlineBodyLimit(policy)
+	}
+	rep := &InlineReport{MaxBodyBytes: maxBodyBytes}
 	rep.Funcs = make([]InlineCandidateInfo, n)
 	for i := range facts {
 		globalIdx := importedFuncs + i
@@ -160,7 +180,7 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 // can be spliced wherever it appears.
 func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
-	case (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && !sizeInlineOK(f):
+	case (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && !sizeInlineOK(f, policy):
 		return false, "size objective requires proved native-byte win"
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
@@ -193,7 +213,7 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
 	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
-		return sizeInlineOK(f)
+		return sizeInlineOK(f, policy)
 	case f.hasControlCall, f.calleeCount > 0, !f.regABIIntOnly:
 		return false
 	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
@@ -205,8 +225,8 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	}
 }
 
-func sizeInlineOK(f inlineFacts) bool {
-	return f.callSites == 1 && f.straightLine() && f.bodyBytes <= 7 &&
+func sizeInlineOK(f inlineFacts, policy CodegenPolicy) bool {
+	return f.callSites == 1 && f.straightLine() && f.bodyBytes <= sizeInlineBodyLimit(policy) &&
 		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
 		!f.touchesMem && !f.touchesGlobal
 }
@@ -558,7 +578,44 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.hasInlineLoopCall,
 		}
 	}
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		pruneNestedSizeInlineTargets(m, &targets)
+	}
 	return targets
+}
+
+// pruneNestedSizeInlineTargets prevents transitive body omission without a
+// transitive inline-local plan. If an admitted parent directly calls another
+// body slated for omission, splicing only the parent would transplant that call
+// into a caller that did not reserve the child's inline locals. Keep the parent
+// standalone; its own compile can then inline and safely eliminate the child.
+func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
+	if targets.empty() {
+		return
+	}
+	for i := range targets.targets {
+		target := &targets.targets[i]
+		if !target.valid || len(m.Code[i].BodyBytes) == 0 {
+			continue
+		}
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		var imm wasm.InstructionImmediate
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil || wasm.ClassifyInstructionImmediateInto(r, op, &imm) != nil {
+				target.valid = false
+				break
+			}
+			if imm.Kind != wasm.InstrCall {
+				continue
+			}
+			callee := int(imm.Index) - targets.first
+			if callee >= 0 && callee < len(targets.targets) && targets.targets[callee].omitStandalone {
+				target.valid = false
+				break
+			}
+		}
+	}
 }
 
 // inlineInLoopIsRegressive identifies a tiny stateless leaf whose native

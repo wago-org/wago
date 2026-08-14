@@ -34,6 +34,7 @@ type CodegenPolicy struct {
 	MaxLoopCompactionBytes uint32
 	MaxJumpTableBranches   uint8
 	MaxJumpTableRelaxIters uint8
+	MaxSizeInlineBodyBytes uint8
 }
 
 func (p CodegenPolicy) Enabled(name string) bool { return p.Selection.Enabled(name) }
@@ -58,6 +59,7 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 	maxLoopCompactionBytes := uint32(16 << 10)
 	maxJumpTableBranches := uint8(0)
 	maxJumpTableRelaxIters := uint8(0)
+	maxSizeInlineBodyBytes := uint8(0)
 	if objective == OptimizeSize || objective == OptimizeEmbedded {
 		// Zero requests the target's minimum legal code alignment. Backends clamp
 		// it to their instruction/data requirements.
@@ -68,6 +70,7 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 		maxLoopCompactionBytes = 64 << 10
 		maxJumpTableBranches = 32
 		maxJumpTableRelaxIters = 1
+		maxSizeInlineBodyBytes = 16
 	}
 	return CodegenPolicy{
 		Objective:              objective,
@@ -83,5 +86,6 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 		MaxLoopCompactionBytes: maxLoopCompactionBytes,
 		MaxJumpTableBranches:   maxJumpTableBranches,
 		MaxJumpTableRelaxIters: maxJumpTableRelaxIters,
+		MaxSizeInlineBodyBytes: maxSizeInlineBodyBytes,
 	}
 }
