@@ -17,6 +17,13 @@ import (
 )
 
 func prepareWatchedProcessTracking() error {
+	children, err := os.Open("/proc/self/task/" + strconv.Itoa(os.Getpid()) + "/children")
+	if err != nil {
+		return fmt.Errorf("watch process tracking requires procfs child lists: %w", err)
+	}
+	if err := children.Close(); err != nil {
+		return fmt.Errorf("watch process tracking requires procfs child lists: %w", err)
+	}
 	return unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
 }
 
