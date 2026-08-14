@@ -33,10 +33,10 @@ type sharedTrapBodyGroup struct {
 	hash   uint64
 }
 
-// sharedTrapBodyCluster owns a bounded catalog for one run of internal
-// functions between host adapters. Adapter sharing can only delete bytes at a
-// cluster boundary, so every backward B inside a cluster keeps the same
-// displacement after later module layout transforms.
+// sharedTrapBodyCluster owns a bounded catalog for one run beginning at a host
+// adapter and continuing through the internal functions before the next one.
+// Adapter sharing can only delete bytes before both the retained boundary body
+// and every later branch, so their relative displacements remain unchanged.
 type sharedTrapBodyCluster struct {
 	groups [maxSharedTrapBodyShapes]sharedTrapBodyGroup
 	n      uint8

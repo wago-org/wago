@@ -19,6 +19,34 @@ func emitTwoTrapGroupsArm64(objective OptimizationObjective) (*fn, int) {
 	return f, a.Len()
 }
 
+func TestModuleSharedTrapBodySeedsFromHostBoundaryArm64(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	callee := []byte{
+		0x00,
+		0x20, 0x00,
+		0x04, 0x7f,
+		0x00,
+		0x05,
+		0x41, 0x01, 0x41, 0x00, 0x6e,
+		0x0b,
+		0x0b,
+	}
+	m := modFuncs(t, funcDef{i32, i32, callee}, funcDef{i32, i32, callee})
+	size := OptimizeSize
+	for _, workers := range []int{1, 2} {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats, Workers: workers}); err != nil {
+			t.Fatal(err)
+		}
+		if got := stats.Funcs[1].Peephole["module-shared-trap-body"]; got != 1 {
+			t.Fatalf("workers=%d internal function shares = %d, want host-boundary seed", workers, got)
+		}
+		if _, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size, Workers: workers}, 0); err == nil {
+			t.Fatalf("workers=%d host-boundary seed did not preserve trap", workers)
+		}
+	}
+}
+
 func TestSizeObjectiveSharedTrapUnwindExecutesArm64(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	// if arg != 0: unreachable; otherwise load at 65536 from a one-page memory.

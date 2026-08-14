@@ -1089,7 +1089,8 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			if hostAdapters[i] {
 				trapBodyCluster.reset()
-			} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			}
+			if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfo(), st)
 			}
 			if sc.directPrepared {
@@ -1197,7 +1198,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
-					if moduleSharedTrapBodyEnabled && !hostAdapters[i] {
+					if moduleSharedTrapBodyEnabled {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfo()
 					}
 				}
@@ -1250,7 +1251,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		fnCode := states[r.worker].arena[r.start:r.end]
 		if r.layoutFlags&layoutHostAdapter != 0 {
 			trapBodyCluster.reset()
-		} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+		}
+		if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]
