@@ -496,6 +496,64 @@ var preloadScanGatesEnabled = true
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
+const (
+	layoutHostAdapter uint8 = 1 << iota
+	layoutHasLoop
+	layoutHasCall
+	layoutCallsSelf
+)
+
+func boolFlag(on bool, flag uint8) uint8 {
+	if on {
+		return flag
+	}
+	return 0
+}
+
+func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
+	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) |
+		boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
+	return functionStartPaddingFlags(off, bodyBytes, flags, policy)
+}
+
+func functionStartPaddingFlags(off, bodyBytes int, flags uint8, policy CodegenPolicy) int {
+	optional := (-off) & 15
+	if optional == 0 || policy.FunctionAlignLog2 < 4 {
+		return 0
+	}
+	switch policy.Objective {
+	case OptimizeSpeed:
+		return optional
+	case OptimizeSize, OptimizeEmbedded:
+		return 0
+	}
+	if flags&layoutHostAdapter != 0 {
+		return optional
+	}
+	if flags&(layoutHasLoop|layoutHasCall|layoutCallsSelf) == 0 && bodyBytes < 256 {
+		return 0
+	}
+	if optional <= min(15, bodyBytes/16) {
+		return optional
+	}
+	return 0
+}
+
+func internalEntryShouldAlign(currentOff, bodyBytes int, policy CodegenPolicy) bool {
+	pad := (-currentOff) & 15
+	if pad == 0 || policy.InternalAlignLog2 < 4 {
+		return false
+	}
+	switch policy.Objective {
+	case OptimizeSpeed:
+		return true
+	case OptimizeSize, OptimizeEmbedded:
+		return false
+	default:
+		return pad <= min(15, bodyBytes/16)
+	}
+}
+
 func asmCapForBody(bodyLen int) int {
 	// A direct lowering usually emits several native bytes per wasm byte. Reserve
 	// enough for small/medium functions to avoid repeated encoder slice growth,
@@ -666,6 +724,8 @@ type funcResult struct {
 	start          int
 	end            int
 	internalOff    int
+	bodyBytes      int
+	layoutFlags    uint8
 	directPrepared bool
 	relocs         []callReloc
 	err            error
@@ -1053,7 +1113,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			// into the module-owned image. If an unusually large function outgrows
 			// the mapping tail, CommitTail rejects the detached slice and Append
 			// preserves the old capacity-underestimate fallback.
-			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
+			if pad := functionStartPadding(len(codeBuffer.Bytes()), len(m.Code[i].BodyBytes), hostAdapters[i], allHints[i], policy); pad != 0 {
 				if err := codeBuffer.AppendZeros(pad); err != nil {
 					return nil, fmt.Errorf("amd64: grow code image: %w", err)
 				}
@@ -1176,7 +1236,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
+				hints := allHints[i]
+				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
@@ -1185,7 +1246,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
+				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) |
+					boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -1205,7 +1268,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var directPrepared []uint64
 	for i := range results {
 		r := &results[i]
-		if pad := (16 - len(code)%16) % 16; pad != 0 {
+		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)
@@ -2631,7 +2694,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 	// carries no environment setup at all (WARP's model). Args in GP/XMM regs.
 	if hostAdapter {
 		beforeAlign := a.Len()
-		a.Align16() // internal entries are hot call targets; align like function starts
+		if internalEntryShouldAlign(a.Len(), len(c.BodyBytes), f.policy) {
+			a.Align16()
+		}
 		if f.stats != nil {
 			f.stats.NativeSize.AdapterToInternalPaddingBytes = a.Len() - beforeAlign
 		}
