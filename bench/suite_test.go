@@ -388,11 +388,22 @@ func BenchmarkInstantiate(b *testing.B) {
 // BenchmarkExec times the host->wasm call for each module's manifest exec
 // entries, naming results Exec/<module>.<export>.
 func BenchmarkExec(b *testing.B) {
+	benchmarkExecObjective(b, wago.NewRuntimeConfig())
+}
+
+// BenchmarkExecSize runs the same executable corpus through the public Size
+// objective. Keep it separate so Balanced history remains comparable and every
+// size-only codegen choice has a real instantiate/invoke performance gate.
+func BenchmarkExecSize(b *testing.B) {
+	benchmarkExecObjective(b, wago.NewRuntimeConfig().WithOptimizationObjective(wago.OptimizeSize))
+}
+
+func benchmarkExecObjective(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
 		if len(m.Exec) == 0 || !m.supports("Exec") {
 			continue
 		}
-		c, err := wago.Compile(nil, m.bytes)
+		c, err := cfg.Compile(m.bytes)
 		if err != nil {
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}

@@ -2109,6 +2109,25 @@ small byte saving. The accumulator selection and its counters were removed.
 Any future attempt must be objective/layout-aware and pass Size-profile runtime
 measurement; semantic equivalence alone is not a sufficient performance proof.
 
+## Public immutable objectives and Size execution benchmark
+
+`RuntimeConfig.WithOptimizationObjective` now carries Speed, Balanced, Size, or
+Embedded through the public compile pipeline into the same immutable backend
+policy used by direct compiler tests. Balanced remains the default; invalid
+values fail configuration validation. The generated top-level facade exports
+the type and constants, so callers can compile and instantiate a Size module
+without backend-internal APIs.
+
+`BenchmarkExecSize` mirrors the existing executable-corpus benchmark but
+compiles every module through that public Size configuration. This closes a
+validation gap: `BenchmarkCompileSize` previously measured Size code generation,
+while every standard execution benchmark still ran Balanced code. On AMD64,
+ten one-second `many_funcs` Size samples are bimodal (roughly 7.50--8.07 ns/op)
+with a median around 7.53 ns/op, versus about 7.57 ns/op for the corresponding
+current Balanced sample. The point is not a speed claim; it establishes the
+direct profile-specific runtime gate required before reviving any Size-only
+layout or instruction-selection experiment.
+
 ### Commands
 
 ```sh
