@@ -1820,7 +1820,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		f.branchJump(fr)
 	}
-	if len(labels) >= brTableJumpMin {
+	if brTableUseJump(labels, def, f.policy) {
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
 		// The table base and target live in the backend scratch registers X16/X17
@@ -2031,6 +2031,56 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 // brTableJumpMin is the label count at which br_table switches from a linear
 // cmp/jne chain to an indirect jump table.
 const brTableJumpMin = 5
+
+// brTableUseJump keeps the O(1) dispatch threshold for Speed and Balanced, but
+// makes Size and Embedded account for the exact fixed dispatch bytes and the
+// minimum four-byte branch tail eliminated for every duplicate target. Case
+// setup can only make sharing more profitable, so this bounded calculation
+// never chooses a jump table that is larger than the linear form.
+func brTableUseJump(labels []uint32, def uint32, policy CodegenPolicy) bool {
+	if len(labels) < brTableJumpMin {
+		return false
+	}
+	if policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded {
+		return true
+	}
+	// At seven labels the fixed dispatch and table bytes break even with the
+	// linear compares before any shared target tails are counted. Avoid scanning
+	// the labels of larger tables: their decision is unconditional.
+	if len(labels) >= 7 {
+		return true
+	}
+	const jumpFixedBytes = 7 * 4 // cmp, b.cond, adr, lsl, ldr, add, br
+	linearBytes := len(labels) * 2 * 4
+	jumpBytes := jumpFixedBytes + len(labels)*4
+
+	unique := 0
+	for i, lbl := range labels {
+		seen := false
+		for _, prev := range labels[:i] {
+			if prev == lbl {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			unique++
+		}
+	}
+	defSeen := false
+	for _, lbl := range labels {
+		if lbl == def {
+			defSeen = true
+			break
+		}
+	}
+	if !defSeen {
+		unique++
+	}
+	duplicateTargets := len(labels) + 1 - unique
+	jumpBytes -= duplicateTargets * 4 // every shared case has at least its branch tail
+	return jumpBytes <= linearBytes
+}
 
 func brTableSmallLabelsUnique(labels []uint32) bool {
 	// Keep the duplicate check bounded: larger tables use the map-backed path,

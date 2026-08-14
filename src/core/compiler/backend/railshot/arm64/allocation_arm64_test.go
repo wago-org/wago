@@ -230,6 +230,39 @@ func TestExecBrTableComputedIndexArm64(t *testing.T) {
 	}
 }
 
+func TestExecBrTableSizeObjectiveUsesSmallerLinearFormArm64(t *testing.T) {
+	m := brTableComputedIndexArm64(t)
+	balanced := OptimizeBalanced
+	size := OptimizeSize
+	var balancedStats, sizeStats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Objective: &balanced, Stats: &balancedStats}); err != nil {
+		t.Fatalf("compile balanced: %v", err)
+	}
+	if _, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &sizeStats}); err != nil {
+		t.Fatalf("compile size: %v", err)
+	}
+	if balancedStats.Funcs[0].Peephole["br-table-jump"] == 0 {
+		t.Fatal("balanced objective did not retain jump-table dispatch")
+	}
+	if sizeStats.Funcs[0].Peephole["br-table-jump"] != 0 {
+		t.Fatal("size objective used a jump table for five unique cases")
+	}
+	if got, want := sizeStats.NativeSize.TotalBytes, balancedStats.NativeSize.TotalBytes-8; got != want {
+		t.Fatalf("size code = %d bytes, want balanced %d - 8 = %d", got, balancedStats.NativeSize.TotalBytes, want)
+	}
+	for _, c := range []struct{ a, b, want uint64 }{
+		{0, 1, 1000}, {4, 1, 1004}, {5, 1, 1005}, {100, 1, 1005},
+	} {
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}, c.a, c.b)
+		if err != nil {
+			t.Fatalf("f(%d,%d): %v", c.a, c.b, err)
+		}
+		if got != c.want {
+			t.Fatalf("f(%d,%d) = %d, want %d", c.a, c.b, got, c.want)
+		}
+	}
+}
+
 // TestStackArenaOverflowKeepsExistingPointersStableArm64 checks the operand-stack
 // arena: growing past its first chunk must keep already-handed-out element
 // pointers valid and linked. Ported from amd64's identically-named test.
