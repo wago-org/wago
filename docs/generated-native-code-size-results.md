@@ -1191,6 +1191,44 @@ four-`MOV` expansion is twelve bytes even with low registers. A permanent
 encoder-backed test locks down that cost comparison; AMD64 keeps the existing
 compact swap chain.
 
+### Function-local cold trap unwind sharing
+
+ARM64 Size and Embedded now emit one terminal trap unwind per function when at
+least two trap-code/source-function groups are present. Each group keeps its
+existing exact PC, function index, trap code, pinned-global writeback, and trap
+record stores, then reaches the common cold tail with a four-byte `B`. The
+shared tail restores the trampoline stack and continuation and returns to Go.
+Speed and Balanced retain the former byte layout, and an out-of-range branch in
+a pathological function falls back to a local unwind.
+
+The exact crossover is 32 bytes for two duplicated 16-byte tails versus 24
+bytes for two branches plus one tail. Across the established 54-module ARM64
+inventory, raw Size code falls from 79,062,340 to 78,610,376 bytes (-451,964).
+With compaction enabled it falls from 78,609,356 to 78,157,392 bytes, the same
+451,964-byte reduction. The largest ordinary-corpus reductions are Ruby
+(-285,020), esbuild (-93,500), SQLite (-26,512), wasm3 (-19,756), regexmatch
+(-19,192), and Lua (-6,316); the generated ISA modules contribute the remaining
+96 bytes.
+
+Five serialized Size samples put Ruby at 561,740,250 to 565,171,084 ns/op
+(+0.61%) and esbuild at 322,477,542 to 319,414,542 ns/op (-0.95%). Median B/op
+and allocation counts are unchanged for both modules. Native tests exercise
+both incoming ARM64 trap groups, while the backend race suite and compacted
+runtime and `src/wago` tests pass.
+
+AMD64 deliberately keeps its local tails. Its complete terminal unwind is only
+five bytes (`mov rsp,[rbx+disp8]; ret`), exactly the size of `jmp rel32`; every
+shared form therefore adds the retained five-byte body without removing any
+per-group bytes. An encoder-backed test locks down the 5/5-byte comparison.
+
+Whole-adapter sharing is also deferred rather than guessed into this campaign.
+GC frame roots currently encode an adapter return as a function-relative
+`AdapterReturnOffset`, later materialized as `Entry[function] + offset`, and
+cross-tail code may embed that same per-function return PC. A shared adapter
+needs an explicit module-level return-site/descriptor contract plus bounded
+target materialization (and ARM64 clustering for `ADR` range) before its much
+larger ledger ceiling can be realized safely.
+
 ### Commands
 
 ```sh
