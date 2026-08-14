@@ -212,10 +212,11 @@ packages; it does not become a third CLI role.
 the input module changes, preserving guest arguments and plugin selection made
 by the manager handoff. The runtime supervises one child process tree at a time,
 keeps file polling active while the guest runs, and waits for stable content
-before a restart. On Linux and macOS, the foreground watcher proxies terminal
-input to the isolated child process group. Interrupt and termination signals
-stop the child tree before the watcher exits. Content hashing detects same-size
-rewrites even when file timestamps do not change.
+before a restart. On Linux and macOS, the active child process group owns the
+real foreground terminal and the watcher restores terminal ownership after it
+stops. Interrupt, quit, and termination signals stop the child tree before the
+watcher exits. Content hashing detects same-size rewrites even when file
+timestamps do not change.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

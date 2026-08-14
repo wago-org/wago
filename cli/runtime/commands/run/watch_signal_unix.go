@@ -8,7 +8,7 @@ import (
 )
 
 func watchedSignals() []os.Signal {
-	return []os.Signal{os.Interrupt, syscall.SIGTERM}
+	return []os.Signal{os.Interrupt, syscall.SIGQUIT, syscall.SIGTERM}
 }
 
 func watchedSignalExitCode(signal os.Signal) int {

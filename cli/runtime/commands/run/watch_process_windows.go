@@ -16,11 +16,11 @@ type watchedChildPlatform struct {
 	job windows.Handle
 }
 
-func proxyWatchedInput() bool { return false }
-
 func prepareWatchedCommand(command *exec.Cmd) {
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED}
 }
+
+func abortWatchedCommand(*exec.Cmd) {}
 
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	job, err := windows.CreateJobObject(nil, nil)
@@ -97,3 +97,5 @@ func killWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) error {
 func releaseWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) {
 	windows.CloseHandle(platform.job)
 }
+
+func watchedProcessExitSignal(watchedChildPlatform, error) os.Signal { return nil }

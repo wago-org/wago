@@ -79,11 +79,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 	if err != nil {
 		return err
 	}
-	var input *watchedInput
-	if options.stdin != nil && proxyWatchedInput() {
-		input = &watchedInput{source: options.stdin}
-	}
-	child, err := startWatchedChild(options, input)
+	child, err := startWatchedChild(options)
 	if err != nil {
 		return err
 	}
@@ -119,8 +115,12 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 			}
 			return &watchInterruptedError{signal: interrupted}
 		case childErr := <-childDone:
-			child.releaseResources()
+			exitSignal := watchedProcessExitSignal(child.platform, childErr)
+			child.releasePlatform()
 			child = nil
+			if exitSignal != nil {
+				return &watchInterruptedError{signal: exitSignal}
+			}
 			if childErr != nil {
 				fmt.Fprintf(options.stderr, "%s %v\n", ui.Red("wago:"), childErr)
 			}
@@ -164,7 +164,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				continue
 			}
 			fmt.Fprintf(options.stderr, "%s changed %s\n", ui.Dim("→"), options.path)
-			child, err = startWatchedChild(options, input)
+			child, err = startWatchedChild(options)
 			if err != nil {
 				return err
 			}
@@ -229,48 +229,29 @@ func fileStamp(path string) (watchedStamp, error) {
 type watchedChild struct {
 	command  *exec.Cmd
 	platform watchedChildPlatform
-	input    *watchedInput
-	target   *watchedInputTarget
 	done     chan error
 	release  sync.Once
 }
 
-func startWatchedChild(options watchOptions, input *watchedInput) (*watchedChild, error) {
+func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	command := exec.Command(options.executable, options.arguments...)
-	command.Stdout, command.Stderr = options.stdout, options.stderr
-	var target *watchedInputTarget
-	if input == nil {
-		command.Stdin = options.stdin
-	} else {
-		writer, err := command.StdinPipe()
-		if err != nil {
-			return nil, err
-		}
-		target = &watchedInputTarget{writer: writer}
-	}
+	command.Stdin, command.Stdout, command.Stderr = options.stdin, options.stdout, options.stderr
 	if options.environment != nil {
 		command.Env = options.environment
 	}
 	prepareWatchedCommand(command)
 	if err := command.Start(); err != nil {
-		if target != nil {
-			_ = target.writer.Close()
-		}
+		abortWatchedCommand(command)
 		return nil, err
 	}
 	platform, err := attachWatchedProcess(command)
 	if err != nil {
-		if target != nil {
-			_ = target.writer.Close()
-		}
+		abortWatchedCommand(command)
 		_ = command.Process.Kill()
 		_ = command.Wait()
 		return nil, err
 	}
-	child := &watchedChild{command: command, platform: platform, input: input, target: target, done: make(chan error, 1)}
-	if input != nil {
-		input.bind(target)
-	}
+	child := &watchedChild{command: command, platform: platform, done: make(chan error, 1)}
 	go func() {
 		err := command.Wait()
 		child.done <- err
@@ -282,7 +263,7 @@ func startWatchedChild(options watchOptions, input *watchedInput) (*watchedChild
 func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) error {
 	select {
 	case <-child.done:
-		child.releaseResources()
+		child.releasePlatform()
 		return nil
 	default:
 	}
@@ -291,96 +272,20 @@ func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) error 
 	defer timer.Stop()
 	select {
 	case <-child.done:
-		child.releaseResources()
+		child.releasePlatform()
 		return nil
 	case <-timer.C:
 	}
-	child.closeInput()
 	if err := killWatchedProcess(child.platform, child.command); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
 	}
 	<-child.done
-	child.releaseResources()
+	child.releasePlatform()
 	return nil
 }
 
-func (child *watchedChild) closeInput() {
-	if child.input != nil && child.target != nil {
-		child.input.unbind(child.target)
-	}
-}
-
-func (child *watchedChild) releaseResources() {
-	child.release.Do(func() {
-		child.closeInput()
-		releaseWatchedProcess(child.platform, child.command)
-	})
-}
-
-type watchedInput struct {
-	source io.Reader
-	mu     sync.RWMutex
-	once   sync.Once
-	target *watchedInputTarget
-	closed bool
-}
-
-type watchedInputTarget struct {
-	writer io.WriteCloser
-}
-
-func (input *watchedInput) bind(target *watchedInputTarget) {
-	input.mu.Lock()
-	if input.closed {
-		input.mu.Unlock()
-		_ = target.writer.Close()
-		return
-	}
-	input.target = target
-	input.mu.Unlock()
-	input.once.Do(func() { go input.copy() })
-}
-
-func (input *watchedInput) unbind(target *watchedInputTarget) {
-	input.mu.Lock()
-	if input.target == target {
-		input.target = nil
-	}
-	input.mu.Unlock()
-	_ = target.writer.Close()
-}
-
-func (input *watchedInput) copy() {
-	buffer := make([]byte, 32<<10)
-	for {
-		read, readErr := input.source.Read(buffer)
-		if read != 0 {
-			input.mu.RLock()
-			target := input.target
-			input.mu.RUnlock()
-			if target != nil {
-				remaining := buffer[:read]
-				for len(remaining) != 0 {
-					written, writeErr := target.writer.Write(remaining)
-					if writeErr != nil || written == 0 {
-						break
-					}
-					remaining = remaining[written:]
-				}
-			}
-		}
-		if readErr != nil {
-			input.mu.Lock()
-			input.closed = true
-			target := input.target
-			input.target = nil
-			input.mu.Unlock()
-			if target != nil {
-				_ = target.writer.Close()
-			}
-			return
-		}
-	}
+func (child *watchedChild) releasePlatform() {
+	child.release.Do(func() { releaseWatchedProcess(child.platform, child.command) })
 }
 
 func withoutWatchFlags(arguments []string) []string {
