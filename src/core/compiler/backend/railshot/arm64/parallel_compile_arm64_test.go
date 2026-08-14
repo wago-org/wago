@@ -104,7 +104,7 @@ func BenchmarkCompileModuleCompactionArm64(b *testing.B) {
 					nativeCompactionEnabled = compact
 					b.Cleanup(func() { nativeCompactionEnabled = before })
 					b.ReportAllocs()
-					for b.Loop() {
+					for i := 0; i < b.N; i++ {
 						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1})
 						if err != nil {
 							b.Fatal(err)
