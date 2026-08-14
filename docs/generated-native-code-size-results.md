@@ -891,6 +891,29 @@ source enabled would violate the plan's acceptance rule. AMD64 local provenance
 should return only with a byte-producing consumer such as narrower displacement,
 mask, or address selection.
 
+### AMD64 allocation-free function constant pools
+
+ARM64 has no equivalent trailing literal-pool representation: it register-caches
+repeated SIMD constants and synthesizes excess constants. On AMD64, the old pool
+allocated one copied byte slice and one site slice per distinct 4-, 8-, or
+16-byte constant. It now stores fixed `lo`/`hi`/size keys and links references
+through one flat site arena. Both slices live in reusable per-module scratch and
+are explicitly reset on every function attempt, including retry paths.
+
+The 36-module native corpus remains byte-for-byte identical at 74,326,416 bytes.
+Native `hub@hub` compile measurements against detached commit `7866c16` show
+lower allocation and neutral-or-better time on every constant-heavy workload:
+
+| Workload | Pre-change median | Current median | Time | B/op reduction | Alloc reduction |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `json-as-simd` | 2,030,208 ns/op | 2,028,871 ns/op | -0.07% | -1,719 | -71 |
+| `blake-as-simd` | 1,352,776 ns/op | 1,345,589 ns/op | -0.53% | -2,751 | -48 |
+| `utf-as-simd` | 831,637 ns/op | 815,824 ns/op | -1.90% | -4,108 | -145 |
+| `esbuild` | 761,580,570 ns/op | 757,589,007 ns/op | -0.52% | -52,696 | -1,285 |
+
+A zero-allocation retained-storage unit test, the native AMD64 backend, native
+race suite, and compacted runtime/fuzz corpus pass.
+
 ### Commands
 
 ```sh
