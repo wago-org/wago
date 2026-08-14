@@ -202,6 +202,8 @@ type fn struct {
 	guardMode        bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts      bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible    bool   // emit context-cancellation polls at entries and loop headers
+	hasLoop          bool   // finalizer preserves emission-time loop layout until alignment fragments are relaxable
+	opaqueFragments  bool   // jump-table or plugin bytes require explicit fragment-aware scans
 	lazyZero         bool   // defer declared-local zeroing for small call+memory functions
 	entryInitialized uint64 // locals proven assigned before their first entry-prefix read
 	skipFence        bool   // call-free leaf with a provably small frame: no stack-fence check
@@ -403,6 +405,67 @@ var alignPad [16]byte
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
+func alignmentPadding(off int, log2 uint8) int {
+	if log2 < 2 {
+		log2 = 2
+	}
+	align := 1 << log2
+	return (-off) & (align - 1)
+}
+
+// functionStartPadding makes optional entry alignment a policy-owned, costed
+// choice. Balanced keeps addressable entries aligned and admits statically hot
+// or large bodies only when their Wasm size can amortize the exact padding.
+func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
+	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) | boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
+	return functionStartPaddingFlags(off, bodyBytes, flags, policy)
+}
+
+func boolFlag(on bool, flag uint8) uint8 {
+	if on {
+		return flag
+	}
+	return 0
+}
+
+func functionStartPaddingFlags(off, bodyBytes int, flags uint8, policy CodegenPolicy) int {
+	mandatory := alignmentPadding(off, 2)
+	optional := alignmentPadding(off, policy.FunctionAlignLog2)
+	if optional == mandatory || policy.FunctionAlignLog2 <= 2 {
+		return mandatory
+	}
+	switch policy.Objective {
+	case OptimizeSpeed:
+		return optional
+	case OptimizeSize, OptimizeEmbedded:
+		return mandatory
+	}
+	if flags&layoutHostAdapter != 0 {
+		return optional
+	}
+	if flags&(layoutHasLoop|layoutHasCall|layoutCallsSelf) == 0 && bodyBytes < 256 {
+		return mandatory
+	}
+	budget := min(12, bodyBytes/16)
+	if optional <= budget {
+		return optional
+	}
+	return mandatory
+}
+
+func (f *fn) alignCode(log2 uint8) int {
+	if log2 == 0 {
+		// Isolated backend primitive tests construct fn directly. Production
+		// compilation always supplies a resolved policy.
+		log2 = 4
+	}
+	pad := alignmentPadding(f.a.Len(), log2)
+	for range pad / 4 {
+		f.a.Nop()
+	}
+	return pad
+}
+
 func asmCapForBody(bodyLen int) int {
 	// A direct lowering usually emits several native bytes per wasm byte. Reserve
 	// enough for small/medium functions to avoid repeated encoder slice growth,
@@ -513,11 +576,20 @@ type funcResult struct {
 	worker         int
 	start          int
 	end            int
+	bodyBytes      int
+	layoutFlags    uint8
 	internalOff    int
 	directPrepared bool
 	relocs         []callReloc
 	err            error
 }
+
+const (
+	layoutHostAdapter uint8 = 1 << iota
+	layoutHasLoop
+	layoutHasCall
+	layoutCallsSelf
+)
 
 func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
 	if bits == nil {
@@ -662,6 +734,9 @@ type CompileOptions struct {
 	// selection while retaining the same compile lock and snapshot semantics.
 	OptimizationSnapshot OptimizationSnapshot
 	OptimizationDeltas   map[string]bool
+	// Objective selects the coherent speed/size tradeoff for this compilation.
+	// nil preserves the public Balanced default.
+	Objective *OptimizationObjective
 
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
@@ -767,7 +842,23 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
-	policy := shared.DefaultCodegenPolicy(selection)
+	objective := OptimizeBalanced
+	if opts.Objective != nil {
+		objective = *opts.Objective
+		if objective > OptimizeEmbedded {
+			return nil, fmt.Errorf("arm64: invalid optimization objective %d", objective)
+		}
+	}
+	policy := shared.CodegenPolicyForObjective(selection, objective)
+	if policy.FunctionAlignLog2 < 2 {
+		policy.FunctionAlignLog2 = 2
+	}
+	if policy.InternalAlignLog2 < 2 {
+		policy.InternalAlignLog2 = 2
+	}
+	if policy.LoopAlignLog2 < 2 {
+		policy.LoopAlignLog2 = 2
+	}
 	guardMode := opts.ElideBoundsChecks
 	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).
 	boundsFacts := policy.EnabledOption(optBoundsFacts) && !opts.NoBoundsFacts
@@ -853,7 +944,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			// into the module-owned image. If an unusually large function outgrows
 			// the mapping tail, CommitTail rejects the detached slice and Append
 			// preserves the old capacity-underestimate fallback.
-			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
+			if pad := functionStartPadding(len(codeBuffer.Bytes()), len(m.Code[i].BodyBytes), hostAdapters[i], allHints[i], policy); pad != 0 {
 				if err := codeBuffer.AppendZeros(pad); err != nil {
 					return nil, fmt.Errorf("arm64: grow code image: %w", err)
 				}
@@ -941,6 +1032,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
+				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].hasLoop, layoutHasLoop) | boolFlag(allHints[i].hasCall, layoutHasCall) | boolFlag(allHints[i].callsSelf, layoutCallsSelf)
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
@@ -949,7 +1041,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -965,7 +1057,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var directPrepared []uint64
 	for i := range results {
 		r := &results[i]
-		if pad := (16 - len(code)%16) % 16; pad != 0 {
+		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)
@@ -1439,7 +1531,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !entryInitElisionEnabled || gcFrameRoots != nil && gcFrameRoots.Candidate {
 		entryInitialized = 0
 	}
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.hasLoop, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
@@ -2317,7 +2409,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	// carries no environment setup at all (WARP's model). Args in GP/V regs.
 	if hostAdapter {
 		beforeAlign := a.Len()
-		a.Align16() // internal entries are hot call targets; align like function starts
+		f.alignCode(f.policy.InternalAlignLog2)
 		if f.stats != nil {
 			f.stats.NativeSize.AdapterToInternalPaddingBytes = a.Len() - beforeAlign
 		}

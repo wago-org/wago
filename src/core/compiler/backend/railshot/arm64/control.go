@@ -687,8 +687,12 @@ const pollFreeLoopPhaseMaxLocals = 16
 // a backedge. Large, loop-dense functions skip it: their extra code footprint
 // costs more than preserving the fetch phase.
 func (f *fn) alignLoopHeader() {
-	f.a.Align16()
-	if !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
+	loopAlign := f.policy.LoopAlignLog2
+	if loopAlign == 0 {
+		loopAlign = 4
+	}
+	f.alignCode(loopAlign)
+	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
 		for range 4 {
 			f.a.Nop()
 		}
@@ -1127,6 +1131,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	f.a.AddImm64(X17, SP, 0)
 	f.st64(X16, ehSavedSPOff, X17)
 	fr.ehTargetSite = f.a.Adr(X17)
+	f.recordPCRelative(fr.ehTargetSite)
 	f.st64(X16, ehTargetOff, X17)
 	f.st64(X16, ehSavedLinMemOff, linMemReg)
 	f.a.MovReg64(ehReg, X16)
@@ -1831,8 +1836,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			f.a.MovImm64(X16, uint64(uint32(len(labels)))) // X16 is reused as the table base below, after this compare
 			f.a.CmpReg32(ireg, X16)
 		}
-		defSite := f.a.Bcond(condAE)                  // idx >= n → default (B.cond, imm19)
-		adrSite := f.a.Adr(X16)                       // X16 = &table (PC-relative ADR, patched)
+		defSite := f.a.Bcond(condAE) // idx >= n → default (B.cond, imm19)
+		adrSite := f.a.Adr(X16)      // X16 = &table (PC-relative ADR, patched)
+		f.recordPCRelative(adrSite)
 		f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
 		f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
 		f.a.Add64(X17, X16, X17)                      // target = table base + entry

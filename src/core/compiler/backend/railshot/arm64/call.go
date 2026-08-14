@@ -436,6 +436,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	// A register-ABI function entered through its own wrapper can discard the
 	// wrapper record as well, preserving the outer LR/results destination.
 	adapterPC := f.a.Adr(X16)
+	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
 	f.cmpRR(LR, X16, true)
 	nested := f.a.Bcond(condNE)
@@ -450,6 +451,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.st64(SP, 16, X12)
 	f.a.LeaSP(X3, 32)
 	trampolineADR := f.a.Adr(LR)
+	f.recordPCRelative(trampolineADR)
 	transfer()
 
 	trampoline := f.a.Len()
@@ -689,6 +691,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 
 	f.emitTailFrameRelease()
 	adapterPC := f.a.Adr(X16)
+	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
 	f.cmpRR(LR, X16, true)
 	nested := f.a.Bcond(condNE)
@@ -702,6 +705,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.st64(SP, 16, X12)
 	f.a.LeaSP(X3, 32)
 	trampolineADR := f.a.Adr(LR)
+	f.recordPCRelative(trampolineADR)
 	transfer()
 
 	trampoline := f.a.Len()

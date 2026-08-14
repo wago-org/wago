@@ -41,7 +41,7 @@ func (f *fn) finalizePeepholes() {
 	}
 	opaque := false
 	for pc := 0; pc < n; pc += 4 {
-		if nativeFinalizerEnabled && nativeCompactionEnabled && finalizerOpaqueAt(targets, pc, &opaque) {
+		if nativeFinalizerEnabled && nativeCompactionEnabled && f.opaqueFragments && finalizerOpaqueAt(targets, pc, &opaque) {
 			continue
 		}
 		w := rdWord(b, pc)
@@ -55,7 +55,7 @@ func (f *fn) finalizePeepholes() {
 	if f.opt(optBranchFold) {
 		f.foldBranchPairs(b, n, targets)
 	}
-	if f.opt(optStoreLoadFwd) && !(nativeFinalizerEnabled && nativeCompactionEnabled) {
+	if f.opt(optStoreLoadFwd) {
 		f.forwardStoreLoads(b, n, targets)
 	}
 }
@@ -80,7 +80,7 @@ func (f *fn) finalizePeepholes() {
 func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 	opaque := false
 	for pc := 0; pc+8 <= n; pc += 4 {
-		if nativeFinalizerEnabled && nativeCompactionEnabled && finalizerOpaqueAt(targets, pc, &opaque) {
+		if nativeFinalizerEnabled && nativeCompactionEnabled && f.opaqueFragments && finalizerOpaqueAt(targets, pc, &opaque) {
 			continue
 		}
 		w := rdWord(b, pc)
@@ -128,7 +128,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
 	opaque := false
 	for pc := 0; pc+8 <= n; pc += 4 {
-		if nativeFinalizerEnabled && nativeCompactionEnabled && finalizerOpaqueAt(targets, pc, &opaque) {
+		if nativeFinalizerEnabled && nativeCompactionEnabled && f.opaqueFragments && finalizerOpaqueAt(targets, pc, &opaque) {
 			continue
 		}
 		if f.forwardStoreLoadAt(b, n, pc, targets, true) {

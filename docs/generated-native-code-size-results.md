@@ -192,6 +192,70 @@ delta remapping. The ARM64 package passes normal, inventory-validation, and race
 test modes. Targeted runtime corpus and fuzz-regression execution also pass with
 both compaction and exhaustive validation enabled.
 
+### Objective-aware ARM64 alignment checkpoint
+
+Alignment is now owned by the immutable per-compilation policy rather than
+hard-coded emission calls. The low-level ARM64 compile API accepts an explicit
+objective; nil remains Balanced. Speed retains 16-byte function, internal-entry,
+and loop alignment. Size and Embedded retain only ARM64's mandatory four-byte
+instruction alignment. Balanced applies an exact padding budget:
+
+```text
+addressable entry: retain 16-byte alignment
+looping, recursive, call-making, or >=256-byte body:
+  optional padding <= min(12, wasmBodyBytes / 16)
+other tiny leaf:
+  four-byte alignment
+```
+
+This is deliberately static and allocation-free, so the serial compiler can
+continue emitting directly into the module-owned executable buffer. Serial and
+parallel compilation use the same retained layout flags and are byte-identical
+for every objective.
+
+With compaction disabled, Balanced reduces `json-as` from 77,516 to 77,436
+bytes (-0.10%) and leaves `many_funcs` at 28,984 bytes: its maximal 96-byte leaf
+functions happened to be naturally 16-byte sized. With opt-in compaction, those
+same leaves become densely packed and `many_funcs` reaches 21,756 bytes
+(-24.94% from baseline). `json-as` reaches 77,036 bytes (-0.62%). The extra 12
+bytes beyond the prior compaction checkpoint come from deleting proved-dead
+same-register store/load NOPs.
+
+Functions containing loops currently retain the size-stable path. This keeps
+emission-time loop alignment valid until loop padding becomes an explicit
+relaxable fragment. Explicit ADR site markers and a span-copy fast path avoid a
+second machine-instruction walk for ordinary loop-free functions.
+
+#### Alignment execution check
+
+A detached `a2e4b092` worktree provided the pre-alignment comparison. Five
+strictly alternating one-second samples used `WAGO_COMPACT=0` on both trees:
+
+| Workload | Before median | Adaptive Balanced median | Change |
+| --- | ---: | ---: | ---: |
+| `many_funcs.run` | 17.51 ns/op | 17.38 ns/op | -0.74% |
+| `json-as.serializeN` | 18,664 ns/op | 18,774 ns/op | +0.59% |
+| `json-as.deserializeN` | 38,661 ns/op | 37,385 ns/op | -3.30% |
+
+All remained at zero B/op and zero allocs/op. The three-workload geomean
+improved; no individual regression exceeded the 1.5% investigation gate.
+
+#### Why compaction remains opt-in
+
+An in-package benchmark now measures decoded-module compilation with compaction
+on and off in the same process, avoiding frontend work and reducing macOS
+MAP_JIT frequency noise. Five 500 ms samples produced:
+
+| Workload | Off median | On median | Change | B/op / allocs |
+| --- | ---: | ---: | ---: | ---: |
+| `many_funcs` | 188,280 ns/op | 193,158 ns/op | +2.59% | 133,665 / 342, unchanged |
+| `json-as` | 668,298 ns/op | 750,050 ns/op | +12.23% | 291,674 / 1,003, unchanged |
+
+The loop-free workload is inside the proposed 3% Balanced gate; `json-as` is
+not. Compaction therefore remains behind `WAGO_COMPACT=1`. The next finalizer
+work must make loop alignment symbolic and eliminate the remaining remap cost
+before changing the default.
+
 ### Commands
 
 ```sh
@@ -225,4 +289,8 @@ go test -run '^$' \
 
 WAGO_COMPACT=1 WAGO_FINALIZE_VALIDATE=1 go test -count=1 \
   ./src/wago -run '^(TestCorpusExecution|TestFuzzRegressionCorpus)$'
+
+go test -run '^$' -bench '^BenchmarkCompileModuleCompactionArm64$' \
+  -benchmem -benchtime=500ms -count=5 \
+  ./src/core/compiler/backend/railshot/arm64
 ```

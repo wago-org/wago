@@ -16,9 +16,9 @@ import (
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 
-// Compaction remains opt-in until alignment is selected against final offsets:
-// deleting prologue reservations can otherwise move hot bodies and loops away
-// from alignments chosen during maximal-form emission.
+// Compaction remains opt-in while its bounded remapping cost is brought under
+// the Balanced compile-time gate. Loop-bearing functions also retain the old
+// size-stable path until their alignment fragments become relaxable.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 
 const maxFinalizerDeletions = shared.MaxOffsetMapDeletions
@@ -31,6 +31,7 @@ const (
 	markerJumpDataEnd
 	markerPluginStart
 	markerPluginEnd
+	markerPCRelative
 )
 
 func finalizerMarkerKey(off int, marker finalizerMarker) int {
@@ -57,15 +58,21 @@ func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
 }
 
 func (f *fn) recordJumpTableData(start, end int) {
+	f.opaqueFragments = true
 	f.recordFinalizerMarker(start, markerJumpDataStart)
 	f.recordFinalizerMarker(end, markerJumpDataEnd)
 }
 
 func (f *fn) recordOpaquePlugin(start, end int) {
 	if end > start {
+		f.opaqueFragments = true
 		f.recordFinalizerMarker(start, markerPluginStart)
 		f.recordFinalizerMarker(end, markerPluginEnd)
 	}
+}
+
+func (f *fn) recordPCRelative(off int) {
+	f.recordFinalizerMarker(off, markerPCRelative)
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
@@ -78,10 +85,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 	}
 	oldLen := len(f.a.B)
-	result, err := shared.FinalizeIdentity(f.a.B, nil, nil, nil)
-	if err != nil {
-		return 0, fmt.Errorf("arm64 finalizer: %w", err)
-	}
+	var result shared.FinalizeResult
 	frameDeleted := 0
 	if nativeCompactionEnabled {
 		var storage [maxFinalizerDeletions]shared.DeletedRange
@@ -98,15 +102,27 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			result.Code = code
 			result.Offsets = offsets
 			frameDeleted = deletedFrames
-		} else if f.opt(optStoreLoadFwd) {
-			f.forwardStoreLoads(f.a.B, len(f.a.B)&^3, f.scratchState().branchTargets)
+		} else {
+			offsets, err := shared.NewOffsetMap(oldLen, nil)
+			if err != nil {
+				return 0, fmt.Errorf("arm64 finalizer: %w", err)
+			}
+			result = shared.FinalizeResult{Code: f.a.B, Offsets: offsets}
+		}
+	} else {
+		var err error
+		result, err = shared.FinalizeIdentity(f.a.B, nil, nil, nil)
+		if err != nil {
+			return 0, fmt.Errorf("arm64 finalizer: %w", err)
 		}
 	}
 	f.a.B = result.Code
 
-	if internalOff, err = mapFinalOffset(&result.Offsets, internalOff, len(result.Code), "internal entry"); err != nil {
+	mappedInternal, err := mapFinalOffset(&result.Offsets, internalOff, len(result.Code), "internal entry")
+	if err != nil {
 		return 0, err
 	}
+	internalOff = mappedInternal
 	for i := range f.relocs {
 		mapped, err := mapFinalOffset(&result.Offsets, f.relocs[i].at, len(result.Code), "call relocation")
 		if err != nil {
@@ -144,6 +160,12 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 }
 
 func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.DeletedRange, int, bool) {
+	// Any deletion before a loop would move its body away from alignment chosen
+	// against maximal offsets. Preserve the size-stable path until loop padding
+	// itself is an explicit relaxable fragment.
+	if f.hasLoop {
+		return nil, 0, false
+	}
 	add := func(off, length int) bool {
 		if len(deletions) == cap(deletions) {
 			return false
@@ -207,9 +229,18 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 
 func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.DeletedRange) ([]byte, error) {
 	code := f.a.B
-	n := len(code) &^ 3
+	if !f.compactionNeedsReencode() {
+		src, dst := 0, 0
+		for _, deletion := range deletions {
+			off := int(deletion.Off)
+			copy(code[dst:], code[src:off])
+			dst += off - src
+			src = off + int(deletion.Len)
+		}
+		copy(code[dst:], code[src:])
+		return code[:offsets.FinalLen()], nil
+	}
 	markers := f.scratchState().branchTargets
-	storeForward := f.opt(optStoreLoadFwd)
 	deletionIndex := 0
 	dst := 0
 	jumpData := false
@@ -228,9 +259,6 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 			continue
 		}
 		word := rdWord(code, src)
-		if !jumpData && storeForward && src+8 <= n && isSPStoreWord(word) {
-			f.forwardStoreLoadAt(code, n, src, markers, false)
-		}
 		var err error
 		if jumpData {
 			word, err = remapJumpTableWord(word, jumpBase, offsets)
@@ -249,8 +277,20 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 	return code[:offsets.FinalLen()], nil
 }
 
-func isSPStoreWord(word uint32) bool {
-	return word&0xFFC00000 == 0xF9000000 || word&0xFFC00000 == 0xB9000000
+func (f *fn) compactionNeedsReencode() bool {
+	if len(f.relocs) != 0 {
+		return true
+	}
+	for key := range f.scratchState().branchTargets {
+		if key >= 0 {
+			return true
+		}
+		_, marker, ok := decodeFinalizerMarker(key)
+		if ok && (marker == markerJumpDataStart || marker == markerJumpDataEnd || marker == markerPCRelative) {
+			return true
+		}
+	}
+	return false
 }
 
 func isPCRelativeWord(word uint32) bool {

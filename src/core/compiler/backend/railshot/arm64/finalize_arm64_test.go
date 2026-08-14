@@ -148,7 +148,7 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f := fn{a: &a64.Asm{B: code}, sc: &scratch{branchTargets: make(map[int]bool)}}
+		f := fn{a: &a64.Asm{B: code}, sc: &scratch{branchTargets: map[int]bool{20: true}}}
 		got, err := f.compactNativeCode(&offsets, deletions)
 		if err != nil {
 			t.Fatal(err)

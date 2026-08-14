@@ -3,6 +3,8 @@ package shared
 import (
 	"bytes"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
 
 func TestFinalizeIdentityPreservesCodeAndMapsEveryOffset(t *testing.T) {
@@ -101,6 +103,23 @@ func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
 	} {
 		if _, err := NewOffsetMap(8, deletions); err == nil {
 			t.Fatalf("invalid deletions accepted: %#v", deletions)
+		}
+	}
+}
+
+func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
+	for _, test := range []struct {
+		objective OptimizationObjective
+		wantAlign uint8
+	}{
+		{OptimizeSpeed, 4},
+		{OptimizeBalanced, 4},
+		{OptimizeSize, 0},
+		{OptimizeEmbedded, 0},
+	} {
+		policy := CodegenPolicyForObjective(optimization.Selection{}, test.objective)
+		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign {
+			t.Errorf("objective %d policy = %#v, want alignment log2 %d", test.objective, policy, test.wantAlign)
 		}
 	}
 }

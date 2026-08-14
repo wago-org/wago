@@ -36,15 +36,27 @@ func (p CodegenPolicy) EnabledOption(option optimization.Option) bool {
 }
 func (p CodegenPolicy) Valid() bool { return p.Selection.Valid() }
 
-// DefaultCodegenPolicy preserves current Balanced behavior. Objective-specific
-// layout decisions are introduced by later measured changes.
+// DefaultCodegenPolicy preserves the public Balanced default.
 func DefaultCodegenPolicy(selection optimization.Selection) CodegenPolicy {
+	return CodegenPolicyForObjective(selection, OptimizeBalanced)
+}
+
+// CodegenPolicyForObjective resolves the small immutable policy consumed by a
+// compilation. The four objectives own layout choices; individual selection
+// bits remain available for testing and bisection.
+func CodegenPolicyForObjective(selection optimization.Selection, objective OptimizationObjective) CodegenPolicy {
+	functionAlign, internalAlign, loopAlign := uint8(4), uint8(4), uint8(4)
+	if objective == OptimizeSize || objective == OptimizeEmbedded {
+		// Zero requests the target's minimum legal code alignment. Backends clamp
+		// it to their instruction/data requirements.
+		functionAlign, internalAlign, loopAlign = 0, 0, 0
+	}
 	return CodegenPolicy{
-		Objective:          OptimizeBalanced,
+		Objective:          objective,
 		Selection:          selection,
-		FunctionAlignLog2:  4,
-		InternalAlignLog2:  4,
-		LoopAlignLog2:      4,
+		FunctionAlignLog2:  functionAlign,
+		InternalAlignLog2:  internalAlign,
+		LoopAlignLog2:      loopAlign,
 		MaxMachineWindow:   24,
 		MaxRelaxIterations: 8,
 	}

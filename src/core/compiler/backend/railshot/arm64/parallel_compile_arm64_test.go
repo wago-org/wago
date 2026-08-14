@@ -53,7 +53,7 @@ func TestCompileWorkersLowestIndexErrorArm64(t *testing.T) {
 	}
 }
 
-func readParallelTestModuleArm64(t *testing.T, path string) *wasm.Module {
+func readParallelTestModuleArm64(t testing.TB, path string) *wasm.Module {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -64,6 +64,38 @@ func readParallelTestModuleArm64(t *testing.T, path string) *wasm.Module {
 		t.Fatal(err)
 	}
 	return m
+}
+
+func BenchmarkCompileModuleCompactionArm64(b *testing.B) {
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	for _, name := range []string{"many_funcs.wasm", "json-as.wasm"} {
+		m := readParallelTestModuleArm64(b, filepath.Join(corpus, name))
+		b.Run(name, func(b *testing.B) {
+			for _, compact := range []bool{false, true} {
+				label := "off"
+				if compact {
+					label = "on"
+				}
+				b.Run(label, func(b *testing.B) {
+					before := nativeCompactionEnabled
+					nativeCompactionEnabled = compact
+					b.Cleanup(func() { nativeCompactionEnabled = before })
+					b.ReportAllocs()
+					for b.Loop() {
+						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1})
+						if err != nil {
+							b.Fatal(err)
+						}
+						if cm.CodeImage != nil {
+							if err := cm.CodeImage.Close(); err != nil {
+								b.Fatal(err)
+							}
+						}
+					}
+				})
+			}
+		})
+	}
 }
 
 func compileWorkerTestModuleArm64(t *testing.T, m *wasm.Module, workers int) (*encoder.CompiledModule, *ModuleStats) {
