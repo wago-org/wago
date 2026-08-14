@@ -355,6 +355,43 @@ with `WAGO_LOCAL_SLOT_ORDER=1`. Production slot ordering must use exact emitted
 frame-reference counts or symbolic stack-reference costs rather than repurposing
 the speed-oriented pin score.
 
+### Objective-aware inlining baseline
+
+Commit `7989cb5` on the native AMD64 branch makes Size and Embedded reject an
+inline site until the backend has a native-byte profitability proof. Speed and
+Balanced retain the existing execution-oriented inliner. This is a conservative
+first objective rule, not the finished estimator: it establishes the no-growth
+floor while actual inline-region and removed-call byte feedback is added.
+
+The need is measurable. With AMD64 layout otherwise held at Balanced and
+compaction disabled, toggling the existing inliner over all 64 corpus modules
+changed raw native bytes from 80,743,112 with inlining disabled to 83,092,299
+with it enabled: +2,349,187 bytes (+2.91%). Seven modules shrank, eight grew,
+and 49 were unchanged. `many_funcs` was a real win (7,889 -> 7,817), while the
+large growth cases included `esbuild` (25,598,288 -> 26,648,528), `ruby`
+(37,976,170 -> 39,032,426), and `sqlite3` (3,509,001 -> 3,647,849).
+
+The architecture-native explain tool now accepts
+`-objective balanced|speed|size|embedded`. Paired complete-corpus runs after the
+conservative Size gate produced:
+
+| Architecture | Balanced bytes | Size bytes | Change | Module results |
+| --- | ---: | ---: | ---: | --- |
+| ARM64 | 93,739,924 | 90,335,008 | -3,404,916 (-3.63%) | 63 smaller, 1 larger |
+| AMD64 | 83,092,299 | 80,460,177 | -2,632,122 (-3.17%) | 52 smaller, 2 larger, 10 unchanged |
+
+Representative AMD64 Size results were `esbuild` 26,648,528 -> 25,546,888,
+`ruby` 39,032,426 -> 37,814,624, `sqlite3` 3,647,849 -> 3,494,478, and
+`json-as` 57,939 -> 57,699. ARM64 showed the same direction: `esbuild`
+31,068,584 -> 29,615,504, `ruby` 42,272,912 -> 40,776,132, `sqlite3`
+3,768,848 -> 3,570,788, and `json-as` 65,256 -> 63,252.
+
+`many_funcs` is the important calibration counterexample: Size grows AMD64 from
+7,817 to 7,874 bytes and ARM64 from 9,720 to 9,788 because its tiny leaf splice
+really is smaller than the retained call path. A native-aware estimator should
+eventually re-admit this proved-negative-net class while continuing to reject
+the large corpus expansions above.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
