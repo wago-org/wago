@@ -35,6 +35,8 @@ var finalizerDeletionLimitOverride = func() int {
 		return 32
 	case "48":
 		return 48
+	case "64":
+		return 64
 	default:
 		return 0
 	}

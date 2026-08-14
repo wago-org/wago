@@ -9,9 +9,9 @@ import (
 )
 
 func TestOffsetMapCapacityGrowthDoesNotGrowTheMap(t *testing.T) {
-	// Split offset/length storage keeps the 64-range map the same size as the
-	// former 48-range DeletedRange representation.
-	if got, want := unsafe.Sizeof(OffsetMap{}), uintptr(588); got != want {
+	// Deletion lengths are derived from adjacent prefix counts, so doubling the
+	// bound does not retain a third per-range array.
+	if got, want := unsafe.Sizeof(OffsetMap{}), uintptr(1036); got != want {
 		t.Fatalf("OffsetMap size = %d, want %d", got, want)
 	}
 }

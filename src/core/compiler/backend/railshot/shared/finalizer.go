@@ -71,14 +71,13 @@ type OffsetMap struct {
 	finalLen    uint32
 	deletionN   uint8
 	deletionOff [MaxOffsetMapDeletions]uint32
-	deletionLen [MaxOffsetMapDeletions]uint8
 	deleted     [MaxOffsetMapDeletions]uint32
 }
 
 // MaxOffsetMapDeletions is the fixed per-function deletion budget. Backends may
 // retain later candidates in their maximal-safe form; correctness never depends
 // on maximizing relaxation.
-const MaxOffsetMapDeletions = 64
+const MaxOffsetMapDeletions = 128
 
 func (m *OffsetMap) Map(off int) (int, bool) {
 	if off < 0 || uint64(off) > uint64(m.oldLen) {
@@ -102,7 +101,11 @@ func (m *OffsetMap) Map(off int) (int, bool) {
 		return off, true
 	}
 	start := int(m.deletionOff[i])
-	length := uint32(m.deletionLen[i])
+	previousDeleted := uint32(0)
+	if i > 0 {
+		previousDeleted = m.deleted[i-1]
+	}
+	length := m.deleted[i] - previousDeleted
 	end := start + int(length)
 	if off > start && off < end {
 		return 0, false
@@ -146,11 +149,7 @@ func NewOffsetMap(oldLen int, deletions []DeletedRange) (OffsetMap, error) {
 	result := OffsetMap{oldLen: uint32(oldLen), finalLen: uint32(uint64(oldLen) - deleted), deletionN: uint8(len(deletions))}
 	deleted = 0
 	for i, deletion := range deletions {
-		if deletion.Len > 255 {
-			return OffsetMap{}, fmt.Errorf("finalizer: deletion %d length %d exceeds compact map", i, deletion.Len)
-		}
 		result.deletionOff[i] = deletion.Off
-		result.deletionLen[i] = uint8(deletion.Len)
 		deleted += uint64(deletion.Len)
 		result.deleted[i] = uint32(deleted)
 	}
