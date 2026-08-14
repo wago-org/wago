@@ -1381,9 +1381,11 @@ JSON 96 each, wasm3 44, and Lua 44. No module grows. Affected JSON execution
 medians range from -0.14% to +0.72%, with zero allocations. The AMD64 backend
 and race suites plus the complete Size execution corpus pass on `hub`.
 
-### Rejected ARM64 sixteen-shape trap catalog
+### Rejected sixteen-shape trap catalogs
 
 Doubling the fixed per-cluster trap-body catalog from eight to sixteen shapes
 left the complete ARM64 Size corpus exactly unchanged at 72,198,152 bytes. The
 existing bound does not saturate on this corpus, so the experiment was removed
-without spending compile benchmarks or doubling that compiler state.
+without spending compile benchmarks or doubling that compiler state. The same
+AMD64 trial also left its full Size corpus exactly unchanged at 63,912,186
+bytes, confirming the eight-shape bound on both backends.
