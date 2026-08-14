@@ -15,6 +15,8 @@ type watchedChildPlatform struct {
 	job windows.Handle
 }
 
+func proxyWatchedInput() bool { return false }
+
 func prepareWatchedCommand(command *exec.Cmd) {
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
 }

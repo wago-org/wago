@@ -11,6 +11,8 @@ import (
 
 type watchedChildPlatform struct{}
 
+func proxyWatchedInput() bool { return true }
+
 func prepareWatchedCommand(command *exec.Cmd) {
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }

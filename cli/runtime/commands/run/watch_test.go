@@ -251,6 +251,49 @@ func TestWatchSupervisorForwardsInterrupt(t *testing.T) {
 	}
 }
 
+func TestWatchSupervisorProxiesGuestInput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows children keep direct console input")
+	}
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "module.wasm")
+	logPath := filepath.Join(dir, "starts.log")
+	if err := os.WriteFile(modulePath, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options := watchTestOptions(modulePath, logPath, "", false)
+	options.environment = append(options.environment, "WAGO_WATCH_STDIN=1")
+	options.stdin = strings.NewReader("terminal-input")
+	done := make(chan error, 1)
+	stopped := false
+	go func() { done <- superviseWatch(ctx, options) }()
+	t.Cleanup(func() {
+		cancel()
+		if stopped {
+			return
+		}
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("watch supervisor did not stop")
+		}
+	})
+	if got, want := waitForWatchLog(t, logPath, 1), []string{"terminal-input"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("helper input log = %#v, want %#v", got, want)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("supervisor exit = %v, want context cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch supervisor did not stop")
+	}
+	stopped = true
+}
+
 func watchTestOptions(modulePath, logPath, address string, exit bool) watchOptions {
 	environment := append([]string(nil), os.Environ()...)
 	environment = append(environment,
@@ -313,6 +356,14 @@ func TestWatchHelperProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 		select {}
+	}
+	if os.Getenv("WAGO_WATCH_STDIN") == "1" {
+		input, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			t.Fatalf("read watched stdin: %v", err)
+		}
+		appendWatchLog(t, string(input))
+		return
 	}
 	var listener net.Listener
 	if address := os.Getenv("WAGO_WATCH_ADDRESS"); address != "" {
