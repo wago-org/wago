@@ -32,13 +32,14 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals       int
-	hasCall       bool // any direct or indirect call
-	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
-	callsSelf     bool // a direct call to the function's own index
-	touchesMemory bool // any linear-memory op
-	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
-	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	nLocals         int
+	inlineCallSites uint32 // direct call sites targeting this local function
+	hasCall         bool   // any direct or indirect call
+	hasTailCall     bool   // any return_call/return_call_indirect/return_call_ref
+	callsSelf       bool   // a direct call to the function's own index
+	touchesMemory   bool   // any linear-memory op
+	usesBulkMem     bool   // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
+	mutatesTable    bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
 	// maxControlDepth is the greatest simultaneously open structured-control
 	// depth, excluding the implicit function frame. Byte-backed production
 	// modules populate it during the existing one-pass hint scan. The byte uses
@@ -231,8 +232,12 @@ func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint3
 }
 
 func scanFuncBodyIntoMemory64WithModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
+	return scanFuncBodyIntoMemory64WithModuleCalls(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+}
+
+func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoMemory64WithModule(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers)
+		return scanBodyBytesIntoMemory64WithModuleCalls(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, moduleHints, importedFuncs)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers), nil
 }
@@ -577,9 +582,13 @@ func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx u
 }
 
 func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
+	return scanBodyBytesIntoMemory64WithModuleCalls(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+}
+
+func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -607,6 +616,8 @@ type byteBodyScanner struct {
 	m               *wasm.Module
 	gcTypeLayouts   []codegen.GCTypeLayout
 	gcStructHelpers bool
+	moduleHints     []funcHints
+	importedFuncs   int
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
@@ -729,6 +740,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
+			if op == 0x10 {
+				s.noteInlineCallSite(imm.Index)
+			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -836,6 +850,16 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		}
+	}
+}
+
+func (s *byteBodyScanner) noteInlineCallSite(globalIdx uint32) {
+	local := int(globalIdx) - s.importedFuncs
+	if local < 0 || local >= len(s.moduleHints) {
+		return
+	}
+	if s.moduleHints[local].inlineCallSites != ^uint32(0) {
+		s.moduleHints[local].inlineCallSites++
 	}
 }
 

@@ -1550,11 +1550,13 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 			intervalAt += nLocals
 		}
 		h.nLocals = nLocals
+		h.inlineCallSites = allHints[i].inlineCallSites
 		var err error
-		h, err = scanFuncBodyIntoMemory64WithModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts, gcStructHelpers)
+		h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
+		h.inlineCallSites = allHints[i].inlineCallSites
 		localAt += nLocals
 		h.globalAccum = nil
 		allHints[i] = h

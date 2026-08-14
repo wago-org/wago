@@ -64,6 +64,8 @@ type inlineFacts struct {
 	touchesGlobal  bool // any global.get/global.set
 	params         int
 	results        int
+	declaredLocals int
+	callSites      int
 	regABIIntOnly  bool // signature fits the int-only register ABI
 }
 
@@ -136,6 +138,7 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 			Results:   facts[i].results,
 			CallSites: callSites[globalIdx],
 		}
+		facts[i].callSites = callSites[globalIdx]
 		info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx], policy)
 		if info.Candidate {
 			rep.NumCandidates++
@@ -159,7 +162,7 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
 	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
-		return false
+		return sizeInlineOK(f)
 	case f.hasControlCall:
 		return false
 	case f.calleeCount > 0:
@@ -177,7 +180,7 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 
 func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
-	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
+	case (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && !sizeInlineOK(f):
 		return false, "size objective requires proved native-byte win"
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
@@ -205,6 +208,12 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	default:
 		return true, ""
 	}
+}
+
+func sizeInlineOK(f inlineFacts) bool {
+	return f.callSites == 1 && f.straightLine() && f.bodyBytes <= 7 &&
+		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
+		!f.touchesMem && !f.touchesGlobal
 }
 
 // inlineDecision layers the call-site gate on inlineClass for the report (a
@@ -235,6 +244,9 @@ func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int) 
 		f.params = len(ft.Params)
 		f.results = len(ft.Results)
 		f.regABIIntOnly = sigFitsRegABI(ft) && sigIsIntOnly(ft)
+	}
+	for _, run := range fn.Locals.Runs {
+		f.declaredLocals += int(run.Count)
 	}
 	if len(fn.BodyBytes) != 0 {
 		if err := scanInlineFactsBytes(fn.BodyBytes, &f); err != nil {
@@ -477,6 +489,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			touchesMem:     h.touchesMemory || h.usesBulkMem,
 			params:         len(ft.Params),
 			results:        len(ft.Results),
+			declaredLocals: h.nLocals - len(ft.Params),
+			callSites:      int(h.inlineCallSites),
 			regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
 		}
 		if h.hasCall {
