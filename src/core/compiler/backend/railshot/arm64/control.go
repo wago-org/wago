@@ -828,11 +828,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 		f.captureGCFrameShape(&fr)
 		f.flush()
-		f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
+		if zeroBranchEnabled {
+			fr.elseSite = f.a.Cbz32(creg) // false edge; flags are dead at this control edge
+			f.stats.peep("zero-branch")
+		} else {
+			f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
+			fr.elseSite = f.a.Bcond(condE)
+		}
 		if cOwned {
 			f.release(creg)
 		}
-		fr.elseSite = f.a.Bcond(condE) // B.EQ else/end (branch when condition is zero)
 	} else {
 		fr.height = f.depth() - pN
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -953,11 +958,17 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	}
 	f.realizeLocalRefs(x, baseOfValentBlock(cond))
 	creg, cOwned := f.materializeRead(f.popValue())
-	f.a.CmpImm32(creg, 0)
+	var toElse int
+	if zeroBranchEnabled {
+		toElse = f.a.Cbz32(creg)
+		f.stats.peep("zero-branch")
+	} else {
+		f.a.CmpImm32(creg, 0)
+		toElse = f.a.Bcond(condE)
+	}
 	if cOwned {
 		f.release(creg)
 	}
-	toElse := f.a.Bcond(condE)
 	if !f.aluImm3(thenArm.op, dest, dest, thenArm.imm, false) {
 		panic("arm64: prechecked if arm immediate became unencodable")
 	}

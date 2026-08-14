@@ -2411,3 +2411,33 @@ saves only another 85 bytes. Five serialized AMD64 samples put Ruby at
 542,378,922 (-0.11%). B/op and allocation movement is noise-level on both
 architectures. None of the changed macro modules exposes an execution entry in
 the permanent corpus.
+
+## ARM64 flag-dead zero branches
+
+Ordinary i32 `if` tests and the bounded simple-if/local-update lowering now use
+one `CBZ Wn,target` instruction when the condition flags are dead, rather than
+materializing NZCV with `CMP Wn,#0` and then branching with `B.EQ`. The encoder
+has explicit 32-bit `CBZ`/`CBNZ` forms, and
+`WAGO_ARM64_NO_ZERO_BRANCH=1` restores the former two-word lowering exactly.
+Compare-producing conditions continue through the existing flag-fused path;
+this change only consumes an already materialized i32 value at an immediate
+control edge.
+
+The exact 36-module Size suite records 118,018 selected sites. Raw native bytes
+fall from 77,013,592 to 76,541,576 (-472,016, -0.613%). Ruby contributes
+444,672 bytes, SQLite 11,564, esbuild 11,544, Lua 3,316, json-as 380, and
+json-as-simd 364; the remaining changed modules contribute 176 bytes. The net
+image delta is 56 bytes smaller than four bytes per selected site because final
+layout and shared module fragments are recomputed from the shorter functions.
+
+Five serialized compile samples put Ruby at a 603,523,625 ns/op rollback median
+and 604,687,209 ns/op with `CBZ` (+0.19%). Esbuild moves from 326,305,688 to
+328,420,750 ns/op (+0.65%). Median B/op and allocations are unchanged. Five
+one-second Size execution samples move json-as serialization from 18,852 to
+18,885 ns/op (+0.18%) and deserialization from 37,989 to 38,373 ns/op (+1.01%);
+all samples remain allocation-free and inside the individual-workload gate.
+
+The complete Size execution suite, ARM64 encoder/backend suites, backend race
+suite, and compacted runtime corpus/fuzz regression suite pass. Focused tests
+cover the exact four-byte lowering delta and zero, nonzero, and high-bit i32
+conditions.

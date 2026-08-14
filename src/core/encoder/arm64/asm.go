@@ -508,6 +508,8 @@ func (a *Asm) Bcond(c Cond) int { at := a.Len(); a.word(0x54000000 | uint32(c));
 
 // Cbz / Cbnz emit a compare-and-branch on Rt==0 / Rt!=0 with a zero displacement;
 // patch with PatchBranch19.
+func (a *Asm) Cbz32(rt Reg) int  { at := a.Len(); a.word(0x34000000 | r(rt)); return at }
+func (a *Asm) Cbnz32(rt Reg) int { at := a.Len(); a.word(0x35000000 | r(rt)); return at }
 func (a *Asm) Cbz64(rt Reg) int  { at := a.Len(); a.word(0xB4000000 | r(rt)); return at }
 func (a *Asm) Cbnz64(rt Reg) int { at := a.Len(); a.word(0xB5000000 | r(rt)); return at }
 

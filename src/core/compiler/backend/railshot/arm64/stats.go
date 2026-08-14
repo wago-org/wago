@@ -72,6 +72,10 @@ var (
 	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
 	// FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
 	fcmpFuseEnabled = os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
+	// zeroBranchEnabled selects CBZ/CBNZ for flag-dead i32 control tests instead
+	// of materializing NZCV with CMP before B.cond. The kill switch is the A/B
+	// oracle for the one-word lowering.
+	zeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_ZERO_BRANCH") != "1"
 
 	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
 	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.

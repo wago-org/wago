@@ -95,6 +95,8 @@ func TestEncodings(t *testing.T) {
 		{"b.eq #0", func(a *Asm) { a.Bcond(CondEQ) }, 0x54000000},
 		{"cbz x0,#0", func(a *Asm) { a.Cbz64(X0) }, 0xb4000000},
 		{"cbnz x1,#0", func(a *Asm) { a.Cbnz64(X1) }, 0xb5000001},
+		{"cbz w2,#0", func(a *Asm) { a.Cbz32(X2) }, 0x34000002},
+		{"cbnz w3,#0", func(a *Asm) { a.Cbnz32(X3) }, 0x35000003},
 		// logical immediate (bitmask)
 		{"and x0,x1,#0xff", func(a *Asm) {
 			if !a.AndImm64(X0, X1, 0xff) {
