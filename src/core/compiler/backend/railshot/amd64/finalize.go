@@ -51,12 +51,16 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 		f.relocs[i].at = mapped
 	}
-	for i := range f.literalRelocs {
-		mapped, err := mapAMD64FinalOffset(&result.Offsets, int(f.literalRelocs[i].at), len(result.Code), "literal relocation")
-		if err != nil {
-			return 0, err
+	if len(f.literalWords) != 0 {
+		keyCount := int(f.literalWords[0])
+		for i := 1 + 3*keyCount; i < len(f.literalWords); i++ {
+			encoded := f.literalWords[i]
+			mapped, err := mapAMD64FinalOffset(&result.Offsets, int(uint32(encoded>>32)), len(result.Code), "literal relocation")
+			if err != nil {
+				return 0, err
+			}
+			f.literalWords[i] = uint64(uint32(mapped))<<32 | uint64(uint32(encoded))
 		}
-		f.literalRelocs[i].at = uint32(mapped)
 	}
 	if f.adapterReturnOff != 0 {
 		mapped, err := mapAMD64FinalOffset(&result.Offsets, f.adapterReturnOff, len(result.Code), "adapter return")

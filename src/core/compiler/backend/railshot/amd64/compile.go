@@ -395,10 +395,6 @@ type fn struct {
 
 	// Call state (Phase 4).
 	relocs []callReloc // CallRel32 sites to patch at module layout
-	// literalRelocs is populated only for Size/Embedded, where function-local
-	// pool bytes are deferred to one module island. It is independently owned like
-	// relocs so serial scratch reuse and parallel worker arenas cannot overwrite it.
-	literalRelocs []literalReloc
 
 	// Inlining (Phase 2 of auto-inlining, WAGO_INLINE). inlineTargets maps a
 	// callee's GLOBAL function index to its splice info; when a `call` targets one,
@@ -472,6 +468,7 @@ type transient struct {
 	tmpIntervalReg []Reg
 	v128Pool       []poolConst // reusable 4/8/16-byte trailing rip-relative constants
 	poolSites      []poolSite  // flat intrusive site lists; no per-constant allocation
+	literalWords   []uint64    // packed Size/Embedded island plan; reusable per worker
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -727,6 +724,7 @@ func (sc *scratch) reset() {
 type workerState struct {
 	scratch  *scratch
 	arena    []byte
+	literals []uint64
 	usesBMI2 bool
 }
 
@@ -742,7 +740,8 @@ type funcResult struct {
 	layoutFlags    uint8
 	directPrepared bool
 	relocs         []callReloc
-	literalRelocs  []literalReloc
+	literalStart   int
+	literalEnd     int
 	err            error
 }
 
@@ -1009,9 +1008,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	boundsFacts := policy.EnabledOption(optBoundsFacts) && !opts.NoBoundsFacts
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
-	var literalRelocs [][]literalReloc
+	var literalWords []uint64
+	var literalOffsets []uint32
 	if moduleLiteralIsland(policy) {
-		literalRelocs = make([][]literalReloc, n)
+		literalOffsets = make([]uint32, n+1)
 	}
 	entry, internalEntry := shared.ModuleEntries(n)
 	importedFuncs := m.ImportedFuncCount()
@@ -1172,8 +1172,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
 			relocs[i] = rl
-			if literalRelocs != nil {
-				literalRelocs[i] = sc.fnState.literalRelocs
+			if literalOffsets != nil {
+				literalWords = append(literalWords, sc.fnState.literalWords...)
+				if uint64(len(literalWords)) > math.MaxUint32 {
+					return nil, fmt.Errorf("amd64: module literal metadata exceeds uint32")
+				}
+				literalOffsets[i+1] = uint32(len(literalWords))
 			}
 			if !codeBuffer.CommitTail(fnCode) {
 				if err := codeBuffer.Append(fnCode); err != nil {
@@ -1186,7 +1190,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 		}
 		functionsEnd := len(codeBuffer.Bytes())
-		literalCode, moduleLiterals := buildModuleLiteralIsland(literalRelocs)
+		literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
 		literalBase := -1
 		if len(literalCode) != 0 {
 			literalBase = len(codeBuffer.Bytes())
@@ -1219,7 +1223,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
 			return nil, err
 		}
-		if err := patchModuleLiteralRelocs(code, entry, literalRelocs, literalBase, moduleLiterals); err != nil {
+		if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 			return nil, err
 		}
 		if explainEnabled && ms != nil {
@@ -1229,12 +1233,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalRelocs, allHints, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, literalRelocs [][]literalReloc, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
@@ -1295,7 +1299,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.arena = append(ws.arena, fnCode...)
 				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) |
 					boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
-				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalRelocs: ws.scratch.fnState.literalRelocs}
+				literalStart := len(ws.literals)
+				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
+				results[i] = funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalStart: literalStart, literalEnd: len(ws.literals)}
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 					pressureOnce.Do(opts.MemoryPressure)
 				}
@@ -1312,6 +1318,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	// Join in original function order so layout, alignment, entry metadata, and
 	// relocation patching are byte-for-byte identical to the serial compiler.
 	code := make([]byte, 0, codeCap)
+	var literalWords []uint64
 	var directPrepared []uint64
 	for i := range results {
 		r := &results[i]
@@ -1324,13 +1331,17 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
 		relocs[i] = r.relocs
-		if literalRelocs != nil {
-			literalRelocs[i] = r.literalRelocs
+		if literalOffsets != nil {
+			literalWords = append(literalWords, states[r.worker].literals[r.literalStart:r.literalEnd]...)
+			if uint64(len(literalWords)) > math.MaxUint32 {
+				return nil, fmt.Errorf("amd64: module literal metadata exceeds uint32")
+			}
+			literalOffsets[i+1] = uint32(len(literalWords))
 		}
 		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
 	functionsEnd := len(code)
-	literalCode, moduleLiterals := buildModuleLiteralIsland(literalRelocs)
+	literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
 	literalBase := -1
 	if len(literalCode) != 0 {
 		literalBase = len(code)
@@ -1353,7 +1364,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
 		return nil, err
 	}
-	if err := patchModuleLiteralRelocs(code, entry, literalRelocs, literalBase, moduleLiterals); err != nil {
+	if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 		return nil, err
 	}
 	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode))
@@ -1982,6 +1993,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
+	f.literalWords = f.literalWords[:0]
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl

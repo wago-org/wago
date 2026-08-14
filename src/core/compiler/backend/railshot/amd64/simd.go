@@ -157,11 +157,6 @@ type literalKey struct {
 	size   uint8
 }
 
-type literalReloc struct {
-	key literalKey
-	at  uint32 // function-relative disp32 field offset
-}
-
 type moduleLiteral struct {
 	key literalKey
 	off int
@@ -212,11 +207,14 @@ func (f *fn) emitV128ConstPool() {
 		}
 	}
 	if moduleLiteralIsland(f.policy) {
+		f.literalWords = append(f.literalWords, uint64(len(f.v128Pool)))
 		for _, c := range f.v128Pool {
-			key := literalKey{lo: c.lo, hi: c.hi, size: c.size}
+			f.literalWords = append(f.literalWords, c.lo, c.hi, uint64(c.size))
+		}
+		for keyIndex, c := range f.v128Pool {
 			for head := c.head; head != 0; {
 				s := f.poolSites[head-1]
-				f.literalRelocs = append(f.literalRelocs, literalReloc{key: key, at: s.off})
+				f.literalWords = append(f.literalWords, uint64(s.off)<<32|uint64(uint32(keyIndex)))
 				head = s.next
 			}
 		}
@@ -254,17 +252,27 @@ func appendLiteralKey(dst []byte, key literalKey) []byte {
 // buildModuleLiteralIsland lays out each key once, in deterministic
 // function-and-first-pool order. It runs only for Size/Embedded; nil relocation
 // input preserves the Balanced and Speed paths without an allocation.
-func buildModuleLiteralIsland(relocs [][]literalReloc) ([]byte, []moduleLiteral) {
-	if len(relocs) == 0 {
+func literalPlanKey(words []uint64, index int) literalKey {
+	base := 1 + 3*index
+	return literalKey{lo: words[base], hi: words[base+1], size: uint8(words[base+2])}
+}
+
+func buildModuleLiteralIsland(words []uint64, offsets []uint32) ([]byte, []moduleLiteral) {
+	if len(offsets) == 0 {
 		return nil, nil
 	}
 	var code []byte
 	var literals []moduleLiteral
-	for _, function := range relocs {
-		for _, reloc := range function {
+	for function := 0; function+1 < len(offsets); function++ {
+		plan := words[offsets[function]:offsets[function+1]]
+		if len(plan) == 0 {
+			continue
+		}
+		for keyIndex := 0; keyIndex < int(plan[0]); keyIndex++ {
+			key := literalPlanKey(plan, keyIndex)
 			found := false
 			for _, literal := range literals {
-				if literal.key == reloc.key {
+				if literal.key == key {
 					found = true
 					break
 				}
@@ -272,41 +280,49 @@ func buildModuleLiteralIsland(relocs [][]literalReloc) ([]byte, []moduleLiteral)
 			if found {
 				continue
 			}
-			literals = append(literals, moduleLiteral{key: reloc.key, off: len(code)})
-			code = appendLiteralKey(code, reloc.key)
+			literals = append(literals, moduleLiteral{key: key, off: len(code)})
+			code = appendLiteralKey(code, key)
 		}
 	}
 	return code, literals
 }
 
-func patchModuleLiteralRelocs(code []byte, entry []int, relocs [][]literalReloc, islandBase int, literals []moduleLiteral) error {
-	if len(relocs) == 0 {
+func patchModuleLiteralRelocs(code []byte, entry []int, words []uint64, offsets []uint32, islandBase int, literals []moduleLiteral) error {
+	if len(offsets) == 0 {
 		return nil
 	}
 	if islandBase < 0 || len(literals) == 0 {
-		for _, function := range relocs {
-			if len(function) != 0 {
+		for function := 0; function+1 < len(offsets); function++ {
+			if offsets[function] != offsets[function+1] {
 				return fmt.Errorf("amd64: literal relocations without module island")
 			}
 		}
 		return nil
 	}
-	for function, sites := range relocs {
-		for _, site := range sites {
-			at := entry[function] + int(site.at)
+	for function := 0; function+1 < len(offsets); function++ {
+		plan := words[offsets[function]:offsets[function+1]]
+		if len(plan) == 0 {
+			continue
+		}
+		keyCount := int(plan[0])
+		for _, encoded := range plan[1+3*keyCount:] {
+			site := uint32(encoded >> 32)
+			keyIndex := int(uint32(encoded))
+			at := entry[function] + int(site)
 			if at < 0 || at+4 > len(code) {
-				return fmt.Errorf("amd64: literal relocation out of range: function %d site %d", function, site.at)
+				return fmt.Errorf("amd64: literal relocation out of range: function %d site %d", function, site)
 			}
+			key := literalPlanKey(plan, keyIndex)
 			target := -1
 			for _, literal := range literals {
-				if literal.key == site.key {
+				if literal.key == key {
 					target = islandBase + literal.off
 					break
 				}
 			}
 			disp := int64(target) - int64(at+4)
 			if target < 0 || disp < math.MinInt32 || disp > math.MaxInt32 {
-				return fmt.Errorf("amd64: literal relocation out of rel32 range: function %d site %d", function, site.at)
+				return fmt.Errorf("amd64: literal relocation out of rel32 range: function %d site %d", function, site)
 			}
 			binary.LittleEndian.PutUint32(code[at:], uint32(int32(disp)))
 		}
