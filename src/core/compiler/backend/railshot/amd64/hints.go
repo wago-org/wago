@@ -43,10 +43,12 @@ type funcHints struct {
 	// depth, excluding the implicit function frame. Byte-backed production
 	// modules populate it during the existing one-pass hint scan. The byte uses
 	// existing alignment padding; 255 is a saturated fallback sentinel.
-	maxControlDepth  uint8
-	inlineCallSites  uint8 // saturated direct call sites targeting this local function
-	gcResolverSites  int   // conservative direct scalar/length resolver site count
-	gcSharedResolver bool  // module decision: shared island beats one-site inline crossover
+	maxControlDepth uint8
+	// inlineCallSites packs a saturated 7-bit ordinary-call count plus a high
+	// bit recording any return_call reference to this local function.
+	inlineCallSites  uint8
+	gcResolverSites  int  // conservative direct scalar/length resolver site count
+	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
 
 	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
 	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set
@@ -740,9 +742,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
-			if op == 0x10 {
-				s.noteInlineCallSite(imm.Index)
-			}
+			s.noteDirectCallRef(imm.Index, op == 0x10)
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -853,15 +853,23 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	}
 }
 
-func (s *byteBodyScanner) noteInlineCallSite(globalIdx uint32) {
+func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline bool) {
 	local := int(globalIdx) - s.importedFuncs
 	if local < 0 || local >= len(s.moduleHints) {
 		return
 	}
-	if s.moduleHints[local].inlineCallSites != ^uint8(0) {
-		s.moduleHints[local].inlineCallSites++
+	target := &s.moduleHints[local]
+	if !inline {
+		target.inlineCallSites |= 0x80
+		return
+	}
+	count := target.inlineCallSites & 0x7f
+	if count != 0x7f {
+		target.inlineCallSites = target.inlineCallSites&0x80 | count + 1
 	}
 }
+
+func (h funcHints) inlineCallSiteCount() uint8 { return h.inlineCallSites & 0x7f }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
 	if op >= 0x28 && op <= 0x3e {

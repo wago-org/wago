@@ -751,6 +751,7 @@ type funcResult struct {
 	relocs         []callReloc
 	literalStart   int
 	literalEnd     int
+	omitted        bool
 	err            error
 }
 
@@ -1156,6 +1157,19 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 		}
 		for i := range m.Code {
+			var st *CodegenStats
+			if ms != nil {
+				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+				ms.Funcs[i] = st
+			}
+			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+				st.peep("inline-dead-body")
+				if literalOffsets != nil {
+					literalOffsets[i+1] = uint32(len(literalWords))
+				}
+				allHints[i] = funcHints{}
+				continue
+			}
 			// Align and reserve before lowering so the assembler can emit straight
 			// into the module-owned image. If an unusually large function outgrows
 			// the mapping tail, CommitTail rejects the detached slice and Append
@@ -1179,11 +1193,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			sc.asm.Rel32Sites = nil
 			sc.rel32TailBound = false
 			hints := allHints[i]
-			var st *CodegenStats
-			if ms != nil {
-				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
-				ms.Funcs[i] = st
-			}
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
 			if err == nil && deferSingleFuncGCResolverDecision && sc.fnState.gcHandleResolutions >= 2 {
 				hints.gcSharedResolver = true
@@ -1240,6 +1249,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, err
 			}
+		}
+		if err := finalizeOmittedInlineEntriesAMD64(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
+			return nil, err
 		}
 		functionsEnd := len(codeBuffer.Bytes()) - sharedAdapterBytes
 		literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
@@ -1331,6 +1343,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
+				if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+					st.peep("inline-dead-body")
+					allHints[i] = funcHints{}
+					results[i] = funcResult{omitted: true}
+					continue
+				}
 				if compactNativePolicy(policy) {
 					ws.scratch.asm.Rel32Sites = nil
 					ws.scratch.rel32TailBound = false
@@ -1391,6 +1409,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	for i := range results {
 		r := &results[i]
+		if r.omitted {
+			if literalOffsets != nil {
+				literalOffsets[i+1] = uint32(len(literalWords))
+			}
+			continue
+		}
 		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
@@ -1430,6 +1454,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err := finalizeOmittedInlineEntriesAMD64(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
+		return nil, err
 	}
 	functionsEnd := len(code) - sharedAdapterBytes
 	literalCode, moduleLiterals := buildModuleLiteralIsland(literalWords, literalOffsets)
@@ -1487,6 +1514,36 @@ func countGCSharedStubRelocs(relocs [][]callReloc) int {
 		}
 	}
 	return count
+}
+
+func finalizeOmittedInlineEntriesAMD64(entry, internalEntry []int, relocs [][]callReloc, hostAdapters []bool, targets inlineTargetTable) error {
+	if len(entry) == 0 {
+		return nil
+	}
+	anchor := -1
+	for i := range entry {
+		if !targets.omitStandaloneBody(i, hostAdapters[i]) {
+			anchor = i
+			break
+		}
+	}
+	if anchor < 0 {
+		return fmt.Errorf("amd64: every local function was marked as an omitted inline body")
+	}
+	for caller := range relocs {
+		for _, rl := range relocs[caller] {
+			if rl.target >= 0 && rl.target < len(entry) && targets.omitStandaloneBody(rl.target, hostAdapters[rl.target]) {
+				return fmt.Errorf("amd64: function %d retains relocation to omitted inline body %d", caller, rl.target)
+			}
+		}
+	}
+	alias := internalEntry[anchor]
+	for i := range entry {
+		if targets.omitStandaloneBody(i, hostAdapters[i]) {
+			entry[i], internalEntry[i] = alias, alias
+		}
+	}
+	return nil
 }
 
 func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc, stubBase int, stubOffsets [gcSharedStubMax]int) error {

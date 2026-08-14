@@ -3,9 +3,12 @@
 package amd64
 
 import (
+	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -209,9 +212,21 @@ func TestInlineSizeObjectiveAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 		funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
 		funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
 	)
+	before := inlineDeadBodyEnabled
+	t.Cleanup(func() { inlineDeadBodyEnabled = before })
 	objective := OptimizeSize
+	inlineDeadBodyEnabled = false
+	var rollbackStats ModuleStats
+	rollback, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &rollbackStats, Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollback.CodeImage != nil {
+		defer rollback.CodeImage.Close()
+	}
+	inlineDeadBodyEnabled = true
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +235,91 @@ func TestInlineSizeObjectiveAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 	}
 	if got := stats.Funcs[0].Calls["inline"]; got != 1 {
 		t.Fatalf("Size Calls[inline] = %d, want 1 for proved tiny single-use leaf", got)
+	}
+	if len(cm.Code) >= len(rollback.Code) {
+		t.Fatalf("dead-body code = %d bytes, rollback = %d", len(cm.Code), len(rollback.Code))
+	}
+	if got := stats.Funcs[1].Peephole["inline-dead-body"]; got != 1 || stats.Funcs[1].CodeBytes != 0 {
+		t.Fatalf("omitted callee stats = %+v", stats.Funcs[1])
+	}
+	if cm.Entry[1] != cm.InternalEntry[1] || cm.InternalEntry[1] != cm.InternalEntry[0] {
+		t.Fatalf("omitted entry/internal = %v/%v", cm.Entry, cm.InternalEntry)
+	}
+	if got := runCompiledAmd64u(t, cm); uint32(got) != 6 {
+		t.Fatalf("inlined caller result = %d, want 6", got)
+	}
+	var parallelStats ModuleStats
+	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &parallelStats, Workers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(parallel.Code, cm.Code) || !reflect.DeepEqual(parallel.Entry, cm.Entry) || !reflect.DeepEqual(parallel.InternalEntry, cm.InternalEntry) {
+		t.Fatal("serial and parallel dead-body layouts differ")
+	}
+	if got := parallelStats.Funcs[1].Peephole["inline-dead-body"]; got != 1 {
+		t.Fatalf("parallel inline-dead-body = %d, want 1", got)
+	}
+
+	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
+	var addressableStats ModuleStats
+	addressable, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &addressableStats, Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if addressable.CodeImage != nil {
+		defer addressable.CodeImage.Close()
+	}
+	if addressableStats.Funcs[1].CodeBytes == 0 || addressableStats.Funcs[1].Peephole["inline-dead-body"] != 0 {
+		t.Fatalf("addressable callee was omitted: %+v", addressableStats.Funcs[1])
+	}
+}
+
+func TestFinalizeOmittedInlineEntriesRejectsResidualCallAMD64(t *testing.T) {
+	targets := inlineTargetTable{targets: []inlineTarget{{}, {valid: true, omitStandalone: true}}}
+	err := finalizeOmittedInlineEntriesAMD64(
+		[]int{0, 12}, []int{4, 12},
+		[][]callReloc{{{target: 1, internal: true}}, nil},
+		[]bool{true, false}, targets,
+	)
+	if err == nil {
+		t.Fatal("residual relocation to omitted inline body was accepted")
+	}
+}
+
+func TestInlineDeadBodyProofRejectsTailReferenceAMD64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
+	)
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	base := []funcHints{{hasCall: true}, {nLocals: 1, inlineCallSites: 1}}
+	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
+		t.Fatal("single ordinary call did not prove standalone body dead")
+	}
+	tail := append([]funcHints(nil), base...)
+	tail[1].inlineCallSites |= 0x80
+	if targets := buildInlineTargets(m, tail, policy); targets.omitStandaloneBody(1, false) {
+		t.Fatal("tail-call reference permitted standalone body omission")
+	}
+}
+
+func TestInlineDeadBodyRetainsTailReferencedCalleeAMD64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x12, 0x01, 0x0b}},
+	)
+	objective := OptimizeSize
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if stats.Funcs[1].CodeBytes == 0 || stats.Funcs[1].Peephole["inline-dead-body"] != 0 {
+		t.Fatalf("tail-referenced callee was omitted: %+v", stats.Funcs[1])
 	}
 }
 

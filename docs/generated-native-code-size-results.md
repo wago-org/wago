@@ -1529,6 +1529,29 @@ bytes and entry tables, retain exported, tail-referenced, and loop-site callees,
 and reject a synthetic residual relocation. The full ARM64 backend and race
 suites plus compacted corpus execution with finalizer validation pass.
 
+## AMD64 dead standalone bodies after proved Size inlining
+
+AMD64 uses the same module-layout proof and `WAGO_INLINE_DEAD_BODY=0` rollback,
+without ARM64's loop-site exclusion because its admitted Size calls are spliced
+inside loops too. The existing one-byte call-site hint now packs a saturated
+seven-bit ordinary-call count and a high-bit `return_call` reference marker, so
+the 200-byte function summary does not grow. Skipped functions also carry the
+current module-literal prefix forward, preserving the per-function literal
+offset table for every later body.
+
+Across the 36-module AMD64 Size suite, raw native bytes fall from 69,139,272 to
+69,135,610 (-3,662). Ruby contributes 3,451 bytes through 288 omitted bodies,
+falling from 35,882,185 to 35,878,734; the remaining corpus contributes 211
+bytes. Five serialized rollback-versus-enabled samples put Ruby at 886,542,928
+to 883,005,986 ns/op (-0.40%) and esbuild at 481,844,499 to 481,874,698 ns/op
+(+0.01%). Ruby median allocations fall by 1,148 and about 3.4 KiB; esbuild
+allocation movement is noise-level.
+
+Native execution, serial/parallel layout identity, addressability and tail-call
+retention, residual-relocation rejection, the full AMD64 backend and race
+suites, and compacted corpus execution with finalizer validation all pass on
+the Ryzen 7 7800X3D host.
+
 ### Commands
 
 ```sh
