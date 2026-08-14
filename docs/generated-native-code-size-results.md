@@ -271,12 +271,16 @@ alternating 500 ms compile samples after that correction produced:
 | Workload | Compaction off median | Compaction on median | Change | Allocation effect |
 | --- | ---: | ---: | ---: | --- |
 | `many_funcs` | 425,418 ns/op | 434,693 ns/op | +2.18% | 682 -> 683 allocs/op; about +16 B/op |
-| `json-as` | 1,899,608 ns/op | 1,973,401 ns/op | +3.88% | 2,146 -> 2,155 allocs/op; about +6.1 KiB/op |
+| `json-as` | 1,903,284 ns/op | 1,965,320 ns/op | +3.26% | 2,146 -> 2,147 allocs/op; about +3.1 KiB/op |
 
-The macro compile result exceeds the proposed 3% Balanced gate, and the
-recorder still adds nine allocations. The feature therefore remains behind
-`WAGO_COMPACT=1`; reusable preallocated site storage and a cheaper relaxation
-solver are required before default enablement.
+For larger modules, one bounded recorder allocation is now reserved before
+function lowering instead of growing geometrically. Small-function modules keep
+lazy storage, avoiding a fixed reservation when they have no branch sites. This
+reduced `json-as` from nine added allocations and about 6.1 KiB/op to one added
+allocation and about 3.1 KiB/op. The macro compile result still exceeds the
+proposed 3% Balanced gate, so the feature remains behind `WAGO_COMPACT=1`; a
+more compact site representation and cheaper relaxation solver are required
+before default enablement.
 
 Five alternating one-second execution samples produced these medians:
 
