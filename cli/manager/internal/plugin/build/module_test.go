@@ -236,9 +236,11 @@ func TestResolvedBuildHashTracksModuleAndGoEnvironment(t *testing.T) {
 	if second == third {
 		t.Fatal("resolved build hash ignored GOFLAGS")
 	}
-	t.Setenv("GOFLAGS", "-pgo=off")
-	if _, cacheable, err := resolvedBuildHash(dir, Input{}, config); err != nil || cacheable {
-		t.Fatalf("explicit PGO resolved hash cacheable = %v, %v; want false", cacheable, err)
+	for _, goflags := range []string{"-pgo=off", "-compiler=gc"} {
+		t.Setenv("GOFLAGS", goflags)
+		if _, cacheable, err := resolvedBuildHash(dir, Input{}, config); err != nil || cacheable {
+			t.Fatalf("external input GOFLAGS %q cacheable = %v, %v; want false", goflags, cacheable, err)
+		}
 	}
 	t.Setenv("GOFLAGS", "")
 	if err := os.WriteFile(filepath.Join(dir, "default.pgo"), []byte("profile input"), 0o644); err != nil {

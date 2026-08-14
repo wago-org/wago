@@ -27,7 +27,7 @@ var buildEnvironmentKeys = []string{
 	"GOMIPS", "GOMIPS64", "GOOS", "GOPPC64", "GORISCV64", "GOROOT", "GOTOOLCHAIN", "GOVERSION", "GOWASM", "PKG_CONFIG",
 }
 
-var externalInputBuildFlags = []string{"-modfile", "-overlay", "-pgo", "-pkgdir", "-toolexec"}
+var externalInputBuildFlags = []string{"-compiler", "-modfile", "-overlay", "-pgo", "-pkgdir", "-toolexec"}
 
 type resolvedModuleIdentity struct {
 	Path      string                  `json:"path"`
