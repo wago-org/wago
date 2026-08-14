@@ -34,7 +34,7 @@ func TestCompileWorkersDeterministicArm64(t *testing.T) {
 				for repeat := 0; repeat < 5; repeat++ {
 					got, gotStats := compileWorkerTestModuleArm64(t, m, workers)
 					assertCompiledModuleEqualArm64(t, got, want)
-					if !reflect.DeepEqual(gotStats, wantStats) {
+					if !equalWorkerModuleStatsARM64(gotStats, wantStats) {
 						t.Fatalf("workers=%d repeat=%d: stats differ\n got: %#v\nwant: %#v", workers, repeat, gotStats, wantStats)
 					}
 				}
@@ -52,11 +52,18 @@ func TestCompileWorkersSizeSharedAdaptersDeterministicArm64(t *testing.T) {
 			want, wantStats := compileWorkerTestModuleObjectiveArm64(t, m, 1, &size)
 			got, gotStats := compileWorkerTestModuleObjectiveArm64(t, m, 4, &size)
 			assertCompiledModuleEqualArm64(t, got, want)
-			if !reflect.DeepEqual(gotStats, wantStats) {
+			if !equalWorkerModuleStatsARM64(gotStats, wantStats) {
 				t.Fatalf("Size stats differ\n got: %#v\nwant: %#v", gotStats, wantStats)
 			}
 		})
 	}
+}
+
+func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
+	aCopy, bCopy := *a, *b
+	aCopy.NativeSize.CompilerCodeArenaBytes = 0
+	bCopy.NativeSize.CompilerCodeArenaBytes = 0
+	return reflect.DeepEqual(&aCopy, &bCopy)
 }
 
 func TestCompileWorkersLowestIndexErrorArm64(t *testing.T) {

@@ -1108,7 +1108,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
 			return nil, err
 		}
-		finalizeModuleNativeSize(ms, len(code), moduleOther)
+		finalizeModuleNativeSize(ms, len(code), moduleOther, len(codeBuffer.Mapping()))
 		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 			return nil, err
 		}
@@ -1247,7 +1247,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 		return nil, err
 	}
-	finalizeModuleNativeSize(ms, len(code), moduleOther)
+	finalizeModuleNativeSize(ms, len(code), moduleOther, 0)
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
@@ -1310,7 +1310,7 @@ func firstFuncError(results []funcResult) (int, error) {
 	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
 }
 
-func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther int) {
+func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther, mappedBytes int) {
 	if ms == nil {
 		return
 	}
@@ -1363,6 +1363,7 @@ func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther int) {
 		native.FunctionAlignmentBytes = 0
 	}
 	ms.NativeSize = native
+	ms.NativeSize.SetExecutableMapping(codeLen, mappedBytes)
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the

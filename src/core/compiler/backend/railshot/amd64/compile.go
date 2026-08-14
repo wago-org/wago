@@ -1343,7 +1343,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 		}
 		code := codeBuffer.Bytes()
-		finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode))
+		finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), len(codeBuffer.Mapping()))
 		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
 			return nil, err
 		}
@@ -1545,7 +1545,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 		return nil, err
 	}
-	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode))
+	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), 0)
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
@@ -1655,7 +1655,7 @@ func firstFuncError(results []funcResult) (int, error) {
 	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
 }
 
-func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, moduleLiteralBytes int) {
+func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, moduleLiteralBytes, mappedBytes int) {
 	if ms == nil {
 		return
 	}
@@ -1727,6 +1727,7 @@ func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, modul
 		native.LiteralPoolDuplicateBytes = 0
 	}
 	ms.NativeSize = native
+	ms.NativeSize.SetExecutableMapping(codeLen, mappedBytes)
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the

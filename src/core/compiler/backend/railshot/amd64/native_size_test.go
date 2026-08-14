@@ -26,6 +26,9 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
 		t.Fatal(err)
 	}
 	native := stats.NativeSize
+	if native.ExecutableMappingBytes < native.TotalBytes || native.ExecutableMappingPages == 0 {
+		t.Fatalf("executable mapping = %d bytes / %d pages for %d raw bytes", native.ExecutableMappingBytes, native.ExecutableMappingPages, native.TotalBytes)
+	}
 	if native.TotalBytes != len(cm.Code) || native.AccountedBytes() != native.TotalBytes {
 		t.Fatalf("module native report = %#v, code bytes = %d", native, len(cm.Code))
 	}

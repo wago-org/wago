@@ -66,7 +66,7 @@ func TestModuleLiteralLedgerCountsCrossFunctionDuplicatesAMD64(t *testing.T) {
 		{NativeSize: NativeFunctionSizeReport{TotalBytes: 4, InternalFunctionBytes: 4, LiteralPoolBytes: 4}, literalKeys: []literalKey{key}},
 		{NativeSize: NativeFunctionSizeReport{TotalBytes: 4, InternalFunctionBytes: 4, LiteralPoolBytes: 4}, literalKeys: []literalKey{key}},
 	}}
-	finalizeModuleNativeSizeAMD64(&stats, 8, 8, 0)
+	finalizeModuleNativeSizeAMD64(&stats, 8, 8, 0, 0)
 	if got, want := stats.NativeSize.LiteralPoolUniqueBytes, 4; got != want {
 		t.Fatalf("unique literal bytes = %d, want %d", got, want)
 	}

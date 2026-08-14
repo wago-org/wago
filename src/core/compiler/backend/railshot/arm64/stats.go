@@ -388,6 +388,13 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())
+	arenaSlack := 0
+	if ms.NativeSize.CompilerCodeArenaBytes != 0 {
+		arenaSlack = ms.NativeSize.CompilerCodeArenaBytes - ms.NativeSize.TotalBytes
+	}
+	fmt.Fprintf(&b, "native-mapping: required=%d pages=%d compiler-arena=%d arena-slack=%d\n",
+		ms.NativeSize.ExecutableMappingBytes, ms.NativeSize.ExecutableMappingPages,
+		ms.NativeSize.CompilerCodeArenaBytes, arenaSlack)
 	fmt.Fprintf(&b, "native-regions: adapters=%d internal-pad=%d internal=%d\n",
 		ms.NativeSize.HostAdapterBytes, ms.NativeSize.AdapterToInternalPaddingBytes,
 		ms.NativeSize.InternalFunctionBytes)
