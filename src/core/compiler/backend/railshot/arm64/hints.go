@@ -40,17 +40,19 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals         int
-	hasCall         bool   // any direct or indirect call
-	callsSelf       bool   // a direct call to the function's own index
-	hasLoop         bool   // structured loop (X12/X13 may be borrowed by loop promotion)
-	touchesMemory   bool   // any linear-memory op
-	inlineCallSites uint16 // saturated direct call sites targeting this local function
-	memOps          int    // scalar/vector/bulk linear-memory instructions
-	usesBulkMem     bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
-	mutatesTable    bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
-	hasControlFlow  bool   // control opcode relevant to inline splice framing
-	moduleEH        bool   // module-wide: reserve the active exception-handler register
+	nLocals           int
+	hasCall           bool   // any direct or indirect call
+	callsSelf         bool   // a direct call to the function's own index
+	hasLoop           bool   // structured loop (X12/X13 may be borrowed by loop promotion)
+	touchesMemory     bool   // any linear-memory op
+	inlineCallSites   uint16 // saturated ordinary direct call sites targeting this local function
+	directCallRefs    uint8  // saturated call + return_call references targeting this local function
+	hasInlineLoopCall bool   // an ordinary direct call site is nested in a loop
+	memOps            int    // scalar/vector/bulk linear-memory instructions
+	usesBulkMem       bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
+	mutatesTable      bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	hasControlFlow    bool   // control opcode relevant to inline splice framing
+	moduleEH          bool   // module-wide: reserve the active exception-handler register
 
 	// immutableLocalTable is derived after the one-pass per-function scans have
 	// been aggregated. The table must also be private (an exported table can be
@@ -621,9 +623,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
-			if op == 0x10 {
-				s.noteInlineCallSite(imm.Index)
-			}
+			s.noteDirectCallRef(imm.Index, op == 0x10, loopDepth != 0)
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -739,13 +739,20 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	}
 }
 
-func (s *byteBodyScanner) noteInlineCallSite(globalIdx uint32) {
+func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop bool) {
 	local := int(globalIdx) - s.importedFuncs
 	if local < 0 || local >= len(s.moduleHints) {
 		return
 	}
-	if s.moduleHints[local].inlineCallSites != ^uint16(0) {
-		s.moduleHints[local].inlineCallSites++
+	target := &s.moduleHints[local]
+	if target.directCallRefs != ^uint8(0) {
+		target.directCallRefs++
+	}
+	if inline && target.inlineCallSites != ^uint16(0) {
+		target.inlineCallSites++
+	}
+	if inline && inLoop {
+		target.hasInlineLoopCall = true
 	}
 }
 

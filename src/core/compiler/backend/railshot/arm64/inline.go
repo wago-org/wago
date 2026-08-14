@@ -42,6 +42,10 @@ const inlineCallSeqBytes = 24
 // splice (see inlineClass).
 var inlineLoopCallees = os.Getenv("WAGO_INLINE_LOOPCALLEE") == "1"
 
+// inlineDeadBodyEnabled is the rollout/measurement oracle for module-layout
+// omission of fully spliced, non-addressable Size callees.
+var inlineDeadBodyEnabled = os.Getenv("WAGO_INLINE_DEAD_BODY") != "0"
+
 var inlineMaxBytes = func() int {
 	if v := os.Getenv("WAGO_INLINE_MAXBYTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
@@ -420,6 +424,7 @@ type inlineTarget struct {
 	touchesMem     bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
 	touchesGlob    bool          // the body reads or writes a global
 	hasCtrl        bool          // the body has control flow → splice through a synthetic boundary frame
+	omitStandalone bool          // module layout may omit this unreachable standalone body
 }
 
 type inlineTargetTable struct {
@@ -436,6 +441,11 @@ func (ts inlineTargetTable) target(globalIdx int) *inlineTarget {
 }
 
 func (ts inlineTargetTable) empty() bool { return len(ts.targets) == 0 }
+
+func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) bool {
+	return inlineDeadBodyEnabled && !hostAdapter && localIdx >= 0 && localIdx < len(ts.targets) &&
+		ts.targets[localIdx].valid && ts.targets[localIdx].omitStandalone
+}
 
 // buildInlineTargets returns the straight-line leaf inline candidates keyed by
 // GLOBAL function index, or an empty table when inlining is disabled. Candidacy
@@ -544,6 +554,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			touchesMem:     facts.touchesMem,
 			touchesGlob:    facts.touchesGlobal,
 			hasCtrl:        facts.hasControlFlow,
+			omitStandalone: (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
+				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.hasInlineLoopCall,
 		}
 	}
 	return targets

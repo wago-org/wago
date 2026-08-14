@@ -1501,6 +1501,34 @@ movement is noise-level. The accepted incremental saving is 346,448 bytes.
 This reclaims the higher-value AMD64 holes while keeping both architectures
 inside the Size compile-time gate.
 
+## ARM64 dead standalone bodies after proved Size inlining
+
+The first native-aware inline proof class admits only a tiny, straight-line,
+single-use Size/Embedded callee. ARM64 module layout now omits that callee's
+standalone body when host-adapter analysis also proves it non-addressable, the
+one-pass hint scan finds exactly one ordinary direct reference, no
+`return_call` reference, and no call site inside an ARM64 loop where the backend
+would retain the call. `WAGO_INLINE_DEAD_BODY=0` is the exact rollback oracle.
+
+Omitted logical functions retain structurally valid entry metadata: after all
+adapter sharing and compaction, both entry offsets alias one retained internal
+entry. This alias is unreachable by proof. Before installing it, module layout
+rejects any surviving call relocation to an omitted target, so an incomplete
+reference proof fails compilation instead of silently invoking the alias.
+
+Across the 36-module ARM64 Size suite, raw native bytes fall from 77,032,628 to
+77,027,052 (-5,576). Ruby contributes 5,384 bytes through 286 omitted bodies,
+falling from 39,072,028 to 39,066,644; the remaining corpus contributes 192
+bytes. Five serialized rollback-versus-enabled samples put Ruby at 568,487,250
+to 571,852,083 ns/op (+0.59%) and esbuild at 307,133,125 to 310,867,750 ns/op
+(+1.22%). Ruby median allocations fall by 1,130 and about 3.4 KiB because those
+functions are no longer lowered; esbuild allocation movement is noise-level.
+
+Dedicated tests execute the inlined caller, compare serial and parallel module
+bytes and entry tables, retain exported, tail-referenced, and loop-site callees,
+and reject a synthetic residual relocation. The full ARM64 backend and race
+suites plus compacted corpus execution with finalizer validation pass.
+
 ### Commands
 
 ```sh

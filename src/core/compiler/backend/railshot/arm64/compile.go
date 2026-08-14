@@ -612,6 +612,7 @@ type funcResult struct {
 	adapterTail    adapterTailInfo
 	adapter        sharedAdapterInfo
 	relocs         []callReloc
+	omitted        bool
 	err            error
 }
 
@@ -990,6 +991,16 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		}
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
+			var st *CodegenStats
+			if ms != nil {
+				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+				ms.Funcs[i] = st
+			}
+			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+				st.peep("inline-dead-body")
+				allHints[i] = funcHints{}
+				continue
+			}
 			// Align and reserve before lowering so the assembler can emit straight
 			// into the module-owned image. If an unusually large function outgrows
 			// the mapping tail, CommitTail rejects the detached slice and Append
@@ -1007,11 +1018,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			sc.asm.B = tail
 			hints := allHints[i]
-			var st *CodegenStats
-			if ms != nil {
-				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
-				ms.Funcs[i] = st
-			}
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
@@ -1057,6 +1063,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}
 		code := codeBuffer.Bytes()
+		if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
+			return nil, err
+		}
 		finalizeModuleNativeSize(ms, len(code), moduleOther)
 		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 			return nil, err
@@ -1106,6 +1115,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
+				if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+					st.peep("inline-dead-body")
+					allHints[i] = funcHints{}
+					results[i] = funcResult{omitted: true}
+					continue
+				}
 				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].hasLoop, layoutHasLoop) | boolFlag(allHints[i].hasCall, layoutHasCall) | boolFlag(allHints[i].callsSelf, layoutCallsSelf)
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
 				allHints[i] = funcHints{}
@@ -1148,6 +1163,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	for i := range results {
 		r := &results[i]
+		if r.omitted {
+			continue
+		}
 		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
@@ -1181,6 +1199,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			return nil, err
 		}
 	}
+	if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
+		return nil, err
+	}
 	if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 		return nil, err
 	}
@@ -1189,6 +1210,41 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		fmt.Fprint(os.Stderr, ms.String())
 	}
 	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
+}
+
+// finalizeOmittedInlineEntries closes the module-layout seam for standalone
+// bodies proved unreachable by Size inlining. Any surviving relocation fails
+// closed. Entry metadata remains structurally valid by aliasing omitted logical
+// functions to one retained internal entry; the proof guarantees it is never
+// observed by Wasm or the host.
+func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs [][]callReloc, hostAdapters []bool, targets inlineTargetTable) error {
+	if len(entry) == 0 {
+		return nil
+	}
+	anchor := -1
+	for i := range entry {
+		if !targets.omitStandaloneBody(i, hostAdapters[i]) {
+			anchor = i
+			break
+		}
+	}
+	if anchor < 0 {
+		return fmt.Errorf("arm64: every local function was marked as an omitted inline body")
+	}
+	for caller := range relocs {
+		for _, rl := range relocs[caller] {
+			if rl.target >= 0 && rl.target < len(entry) && targets.omitStandaloneBody(rl.target, hostAdapters[rl.target]) {
+				return fmt.Errorf("arm64: function %d retains relocation to omitted inline body %d", caller, rl.target)
+			}
+		}
+	}
+	alias := internalEntry[anchor]
+	for i := range entry {
+		if targets.omitStandaloneBody(i, hostAdapters[i]) {
+			entry[i], internalEntry[i] = alias, alias
+		}
+	}
+	return nil
 }
 
 func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc) error {
@@ -1382,12 +1438,16 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		h.inlineCallSites = allHints[i].inlineCallSites
+		h.directCallRefs = allHints[i].directCallRefs
+		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		var err error
 		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, allHints, importedFuncs)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
+		h.directCallRefs = allHints[i].directCallRefs
+		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		localAt += nLocals
 		moduleEH = moduleEH || h.moduleEH
 		h.globalAccum = nil
