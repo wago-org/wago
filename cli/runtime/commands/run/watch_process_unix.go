@@ -35,6 +35,7 @@ type watchedProcessTracker struct {
 	mu        sync.Mutex
 	owner     int
 	root      int
+	rootStart uint64
 	processes map[int]uint64
 	stop      func()
 	drain     func() error
@@ -60,7 +61,11 @@ func abortWatchedCommand(command *exec.Cmd) {
 }
 
 func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
-	tracker := &watchedProcessTracker{owner: os.Getpid(), root: command.Process.Pid, processes: make(map[int]uint64)}
+	root, ok := watchedProcess(command.Process.Pid)
+	if !ok {
+		return watchedChildPlatform{terminalFD: -1}, errors.New("inspect watched root process")
+	}
+	tracker := &watchedProcessTracker{owner: os.Getpid(), root: command.Process.Pid, rootStart: root.started, processes: make(map[int]uint64)}
 	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
 	if fd, _, ok := watchedCommandTerminal(command); ok {
 		platform.terminalFD, platform.foreground = fd, syscall.Getpgrp()
@@ -235,22 +240,19 @@ func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {
 	}
 }
 
-func signalWatchedProcessGroup(command *exec.Cmd, signal syscall.Signal) error {
+func signalWatchedProcessGroup(platform watchedChildPlatform, command *exec.Cmd, signal syscall.Signal) error {
 	if command.Process == nil {
 		return os.ErrProcessDone
 	}
-	group, err := syscall.Getpgid(command.Process.Pid)
-	if errors.Is(err, syscall.ESRCH) {
+	process, ok := watchedProcess(command.Process.Pid)
+	if !ok || platform.processes == nil || process.started != platform.processes.rootStart {
 		return os.ErrProcessDone
 	}
-	if err != nil {
-		return err
-	}
-	target := -group
-	if group == syscall.Getpgrp() {
+	target := -process.group
+	if process.group == syscall.Getpgrp() {
 		target = command.Process.Pid
 	}
-	err = syscall.Kill(target, signal)
+	err := syscall.Kill(target, signal)
 	if errors.Is(err, syscall.ESRCH) {
 		return os.ErrProcessDone
 	}
@@ -259,7 +261,7 @@ func signalWatchedProcessGroup(command *exec.Cmd, signal syscall.Signal) error {
 
 func signalWatchedProcessTree(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal) error {
 	descendantErr := signalWatchedDescendants(platform, value)
-	groupErr := signalWatchedProcessGroup(command, value)
+	groupErr := signalWatchedProcessGroup(platform, command, value)
 	if errors.Is(groupErr, os.ErrProcessDone) {
 		groupErr = nil
 	}
@@ -307,7 +309,7 @@ func (tracker *watchedProcessTracker) ownsProcessGroup(group int) bool {
 	}
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
-	if group == tracker.root {
+	if root, ok := watchedProcess(tracker.root); ok && root.started == tracker.rootStart && root.group == group {
 		return true
 	}
 	if err := tracker.refreshLocked(); err != nil {
