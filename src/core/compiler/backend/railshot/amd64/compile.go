@@ -702,7 +702,7 @@ func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
-	if nativeCompactionEnabled {
+	if compactNativePolicy(sc.policy) {
 		sc.asm.ResetRel32Recorder(maxAMD64FinalizerRel32Sites)
 	} else {
 		sc.asm.ResetRel32Recorder(0)
@@ -1168,7 +1168,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			code := codeBuffer.Bytes()
 			entry[i] = len(code)
 			tailCap := asmCapForBody(len(m.Code[i].BodyBytes))
-			if nativeCompactionEnabled {
+			if compactNativePolicy(policy) {
 				tailCap += amd64.Rel32ScratchSize(maxAMD64FinalizerRel32Sites)
 			}
 			tail, err := codeBuffer.AppendTail(tailCap)
@@ -1331,7 +1331,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				if nativeCompactionEnabled {
+				if compactNativePolicy(policy) {
 					ws.scratch.asm.Rel32Sites = nil
 					ws.scratch.rel32TailBound = false
 					arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
@@ -2092,7 +2092,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	if nativeCompactionEnabled {
+	if compactNativePolicy(sc.policy) {
 		if hints.hasLoop || hints.hasJumpTableData || len(custom) != 0 {
 			// These are finalizer exclusions known before emission. Avoid
 			// recording sites only to take identity.

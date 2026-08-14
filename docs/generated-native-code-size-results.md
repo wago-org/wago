@@ -1374,6 +1374,27 @@ Three serialized samples put rollback versus default Size medians at
 +24 respectively; allocation counts move by +9 and +1. Both workloads remain
 inside the proposed 5% Size compile-time gate.
 
+## AMD64 Size objective owns physical compaction
+
+AMD64 now consumes the same immutable `CompactNative` policy bit. Size and
+Embedded enable frame, branch-hole, and short-branch compaction by default;
+Speed and Balanced remain on identity finalization. `WAGO_COMPACT=1` still
+forces compaction for measurement and `WAGO_COMPACT=0` disables it for every
+objective.
+
+Across the 36 modules exercised by `BenchmarkCompileSize` on the Ryzen 7
+7800X3D host, default Size falls from 70,470,222 bytes with `WAGO_COMPACT=0` to
+70,086,624 bytes (-383,598, -0.54%). This matches the prior opt-in compaction
+ceiling to within corpus/reporting noise; AMD64's existing fixed-capacity rel32
+recorder required no additional inventory redesign.
+
+Three serialized samples put rollback versus default Size medians at
+842,132,575 to 848,242,757 ns/op for Ruby (+0.73%) and 486,400,652 to
+483,514,234 ns/op for esbuild (-0.59%). Median B/op moves by -432 and +448
+respectively, with allocation-count movement in either direction at noise
+level. Both workloads remain comfortably inside the proposed 5% Size
+compile-time gate.
+
 ### Commands
 
 ```sh

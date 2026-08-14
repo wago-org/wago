@@ -17,9 +17,17 @@ import (
 // function-relative metadata offset before AMD64 relaxation can shrink code.
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 
-// WAGO_COMPACT=1 enables the bounded AMD64 shrink path. It remains opt-in until
-// its compile-time cost is consistently inside the default Balanced gate.
+// WAGO_COMPACT=1 forces bounded shrinking for every objective. Size and
+// Embedded enable it through their immutable per-compilation policy;
+// WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
+var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
+
+func compactNativePolicy(policy CodegenPolicy) bool {
+	return !nativeCompactionDisabled && (nativeCompactionEnabled || policy.CompactNative)
+}
+
+func (f *fn) compactNative() bool { return compactNativePolicy(f.policy) }
 
 const maxAMD64FinalizerRel32Sites = 256
 
@@ -103,7 +111,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 		return result, 0, 0, nil
 	}
-	if !nativeCompactionEnabled || f.hasLoop || f.hasJumpTableData ||
+	if !f.compactNative() || f.hasLoop || f.hasJumpTableData ||
 		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
 		return identity()
 	}

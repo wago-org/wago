@@ -82,6 +82,33 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 	}
 }
 
+func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
+	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
+	nativeCompactionEnabled, nativeCompactionDisabled = false, false
+	t.Cleanup(func() {
+		nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled
+	})
+
+	selection := currentCodegenPolicy().Selection
+	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
+	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
+	if compactNativePolicy(balanced) {
+		t.Fatal("Balanced unexpectedly enabled native compaction")
+	}
+	if !compactNativePolicy(size) {
+		t.Fatal("Size did not enable native compaction")
+	}
+
+	nativeCompactionEnabled = true
+	if !compactNativePolicy(balanced) {
+		t.Fatal("WAGO_COMPACT=1 override did not enable Balanced compaction")
+	}
+	nativeCompactionDisabled = true
+	if compactNativePolicy(size) || compactNativePolicy(balanced) {
+		t.Fatal("WAGO_COMPACT=0 rollback did not disable compaction")
+	}
+}
+
 func TestFunctionStartPaddingObjectivesAMD64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
 	policy := func(objective OptimizationObjective) CodegenPolicy {
