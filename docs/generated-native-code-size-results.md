@@ -241,6 +241,55 @@ that worktree lacks the pinned `tests/spec-v3` checkout, and its installed
 `wat2wasm` predates table64 syntax. These are recorded as environment gaps, not
 passing coverage.
 
+### Bounded AMD64 short-branch checkpoint
+
+The admitted local branch inventory now distinguishes `jmp`, `jcc`, and
+width-fixed rel32 users at the explicit patch site. A monotonic solver starts
+from maximal encodings, includes frame and hole deletions, and selects `rel8`
+forms that fit after provisional compaction. Rejected sites are reconsidered so
+one shortening can bring another branch into range. The solver shares the
+eight-deletion offset-map budget; when the budget is exhausted, all remaining
+branches stay near.
+
+Tests cover `jmp` and `jcc` at exact +127/+128 boundaries and a cascading pair
+where the outer branch fits only after the inner branch shrinks. Calls and
+RIP-relative address sites retain rel32. Native package tests and the targeted
+execution/fuzz corpus pass on hub.
+
+| Workload | Original baseline | Before short branches | With short branches | Baseline change |
+| --- | ---: | ---: | ---: | ---: |
+| `many_funcs` | 9,704 B | 3,603 B | 3,603 B | -62.87% |
+| `json-as` | 66,131 B | 65,811 B | 65,363 B | -1.16% |
+
+The additional `json-as` reduction is 448 bytes. `many_funcs` has no admitted
+shortenable branch in this phase.
+
+Relocation records were narrowed from machine-sized offsets to 32-bit function
+offsets after the first measurement exposed padding in the record itself. Six
+alternating 500 ms compile samples after that correction produced:
+
+| Workload | Compaction off median | Compaction on median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 425,418 ns/op | 434,693 ns/op | +2.18% | 682 -> 683 allocs/op; about +16 B/op |
+| `json-as` | 1,899,608 ns/op | 1,973,401 ns/op | +3.88% | 2,146 -> 2,155 allocs/op; about +6.1 KiB/op |
+
+The macro compile result exceeds the proposed 3% Balanced gate, and the
+recorder still adds nine allocations. The feature therefore remains behind
+`WAGO_COMPACT=1`; reusable preallocated site storage and a cheaper relaxation
+solver are required before default enablement.
+
+Five alternating one-second execution samples produced these medians:
+
+| Workload | Compaction off | Compaction on | Change |
+| --- | ---: | ---: | ---: |
+| `json-as.serializeN` | 23,673 ns/op | 23,644 ns/op | -0.12% |
+| `json-as.deserializeN` | 42,150 ns/op | 42,187 ns/op | +0.09% |
+| `json-as-simd.serializeN` | 28,547 ns/op | 28,406 ns/op | -0.49% |
+| `json-as-simd.deserializeN` | 54,864 ns/op | 54,432 ns/op | -0.79% |
+
+Every execution benchmark remained at zero B/op and zero allocs/op. All four
+are comfortably inside the 1.5% investigation gate.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
