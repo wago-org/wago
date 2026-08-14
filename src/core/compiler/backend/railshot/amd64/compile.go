@@ -602,6 +602,7 @@ type scratch struct {
 	stack          *stack     // the valent-block operand stack
 	asm            *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared bool
+	rel32TailBound bool // Rel32Sites uses the current function buffer's uncommitted tail
 	policy         CodegenPolicy
 	fnState        fn // per-function compiler state, reused across the module
 
@@ -639,28 +640,6 @@ func newScratch() *scratch {
 
 func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
-}
-
-func (sc *scratch) reserveRel32Sites(capacity int) {
-	if capacity != 0 && cap(sc.asm.Rel32Sites) < capacity {
-		sc.asm.Rel32Sites = make([]amd64.Rel32Site, 0, capacity)
-	}
-}
-
-// moduleRel32SiteCap pays one bounded allocation for modules large enough to
-// otherwise grow the opt-in recorder repeatedly. Small-function modules retain
-// lazy storage: most contain no local branch site, so reserving the full budget
-// would cost more memory than it saves.
-func moduleRel32SiteCap(m *wasm.Module) int {
-	if !nativeCompactionEnabled {
-		return 0
-	}
-	for i := range m.Code {
-		if len(m.Code[i].BodyBytes) >= maxAMD64FinalizerRel32Sites {
-			return maxAMD64FinalizerRel32Sites
-		}
-	}
-	return 0
 }
 
 // moduleStackArenaCap chooses the first operand-stack chunk reused across the
@@ -1121,7 +1100,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
-		sc.reserveRel32Sites(moduleRel32SiteCap(m))
 		sc.policy = policy
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.ctrl = make([]ctrlFrame, 0, ctrlCap)
@@ -1151,11 +1129,17 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			code := codeBuffer.Bytes()
 			entry[i] = len(code)
-			tail, err := codeBuffer.AppendTail(asmCapForBody(len(m.Code[i].BodyBytes)))
+			tailCap := asmCapForBody(len(m.Code[i].BodyBytes))
+			if nativeCompactionEnabled {
+				tailCap += amd64.Rel32ScratchSize(maxAMD64FinalizerRel32Sites)
+			}
+			tail, err := codeBuffer.AppendTail(tailCap)
 			if err != nil {
 				return nil, fmt.Errorf("amd64: grow code image: %w", err)
 			}
 			sc.asm.B = tail
+			sc.asm.Rel32Sites = nil
+			sc.rel32TailBound = false
 			hints := allHints[i]
 			var st *CodegenStats
 			if ms != nil {
@@ -1240,13 +1224,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	arenaCap := (codeCap + workers - 1) / workers
 	stackCap := moduleStackArenaCap(m, allHints)
 	ctrlCap := moduleControlFrameCap(m, allHints)
-	rel32Cap := moduleRel32SiteCap(m)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
-		states[i].scratch.reserveRel32Sites(rel32Cap)
 		states[i].scratch.policy = policy
 		if ctrlCap != 0 {
 			states[i].scratch.ctrl = make([]ctrlFrame, 0, ctrlCap)
@@ -1907,6 +1889,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
+	if nativeCompactionEnabled && !sc.rel32TailBound && sc.asm.BindRel32Tail(maxAMD64FinalizerRel32Sites) {
+		sc.rel32TailBound = true
+	}
 	globalIdx := m.ImportedFuncCount() + funcIdx
 	entryInitialized := hints.entryInitialized
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {

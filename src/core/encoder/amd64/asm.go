@@ -4,7 +4,10 @@
 // wasm→native code generator itself lives in backend/railshot.
 package amd64
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"unsafe"
+)
 
 type Reg byte
 
@@ -75,6 +78,32 @@ func (s *Rel32Site) SetShort(short bool) {
 
 func (s *Rel32Site) setTarget(target int) {
 	s.targetAndFlags = s.targetAndFlags&^rel32TargetMask | uint32(target)
+}
+
+// Rel32ScratchSize is the tail capacity required to bind capacity packed
+// records at any byte-slice alignment. The alignment slop is never committed as
+// code.
+func Rel32ScratchSize(capacity int) int { return capacity*int(unsafe.Sizeof(Rel32Site{})) + 7 }
+
+// BindRel32Tail uses the uncommitted end of B as bounded compiler scratch and
+// caps B before that region, so subsequent instruction appends cannot overwrite
+// records. B must refer to writable, pointer-free storage owned for the complete
+// function compile. The finalizer consumes the records before the code prefix is
+// committed or sealed.
+func (a *Asm) BindRel32Tail(capacity int) bool {
+	if capacity <= 0 {
+		return false
+	}
+	bytes := capacity * int(unsafe.Sizeof(Rel32Site{}))
+	start := (cap(a.B) - bytes) &^ 7
+	if start < len(a.B) || start < 0 {
+		return false
+	}
+	full := a.B[:cap(a.B)]
+	storage := unsafe.Slice((*Rel32Site)(unsafe.Pointer(&full[start])), capacity)
+	a.B = a.B[:len(a.B):start]
+	a.Rel32Sites = storage[:0]
+	return true
 }
 
 // Grow ensures B has capacity for at least n bytes, reusing the existing backing

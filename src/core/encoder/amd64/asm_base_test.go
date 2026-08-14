@@ -200,6 +200,27 @@ func TestRel32SiteRewrite(t *testing.T) {
 	}
 }
 
+func TestBindRel32TailSeparatesCodeAndScratch(t *testing.T) {
+	a := Asm{B: make([]byte, 0, 64), Rel32SiteLimit: 2}
+	if !a.BindRel32Tail(2) {
+		t.Fatal("bind rel32 tail failed")
+	}
+	if got, want := cap(a.B), 48; got != want {
+		t.Fatalf("code capacity = %d, want %d", got, want)
+	}
+	if got, want := cap(a.Rel32Sites), 2; got != want {
+		t.Fatalf("site capacity = %d, want %d", got, want)
+	}
+	one := a.JmpPlaceholder()
+	a.PatchRel32(one, a.Len())
+	two := a.JccPlaceholder(CondE)
+	a.PatchRel32(two, a.Len())
+	a.B = append(a.B, make([]byte, cap(a.B)-len(a.B))...)
+	if got := a.Rel32Sites; len(got) != 2 || got[0].Kind() != Rel32Jmp || got[1].Kind() != Rel32Jcc {
+		t.Fatalf("tail-backed sites corrupted by code writes: %+v", got)
+	}
+}
+
 func TestRemainingIntegerInstructionForms(t *testing.T) {
 	cases := []struct {
 		name string
