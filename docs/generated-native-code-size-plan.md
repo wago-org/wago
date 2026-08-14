@@ -1399,3 +1399,29 @@ modules also improved, Ruby grew by 2,858 bytes. The complete AMD64 Size corpus
 grew from 63,912,186 to 63,914,238 bytes (+2,052). Different scratch and move
 interactions outweighed the REX-prefix savings, so the prototype and its knob
 were removed without timed benchmarks.
+
+### Rejected AMD64 straight-line local provenance
+
+ARM64's bounded value-fact layer carries upper-zero and boolean provenance
+through assignment versions of locals in straight-line functions. An AMD64
+parity prototype reused the obsolete type byte in the four-byte `localDef`,
+disabled itself for every function containing control flow, and provided an
+independent rollback switch so the existing operation-result facts remained
+enabled. Focused execution tests proved local round trips and conservative
+control-flow rejection, and the Size corpus recorded genuine `local-fact`
+transfers.
+
+The exact 36-module AMD64 Size corpus nevertheless remained unchanged with the
+layer enabled and disabled:
+
+```text
+rollback native bytes:  63,912,186
+candidate native bytes: 63,912,186
+net reduction:                   0
+```
+
+The current AMD64 consumers already obtain their useful upper-zero facts from
+32-bit operation results and loads, so preserving the same fact through a local
+did not unlock another compact encoding in the corpus. The prototype and knob
+were removed. Per the Phase 0 gate, a zero-byte transform did not proceed to
+compile-time benchmarking.
