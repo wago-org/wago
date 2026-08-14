@@ -36,6 +36,7 @@ type watchedProcessTracker struct {
 	root      int
 	processes map[int]uint64
 	stop      func()
+	drain     func() error
 	eventErr  error
 }
 
@@ -319,4 +320,20 @@ func (tracker *watchedProcessTracker) close() {
 	if stop != nil {
 		stop()
 	}
+}
+
+func (tracker *watchedProcessTracker) drainEvents() error {
+	if tracker == nil || tracker.drain == nil {
+		return nil
+	}
+	return tracker.drain()
+}
+
+func (tracker *watchedProcessTracker) processCount() int {
+	if tracker == nil {
+		return 0
+	}
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	return len(tracker.processes)
 }
