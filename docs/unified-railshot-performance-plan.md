@@ -434,6 +434,26 @@ on an AMD Ryzen 7 7800X3D. Every path remains at zero B/op and allocations.
 Compile storage and generated function bytes are unchanged beyond the already
 measured direct-entry metadata bitset.
 
+### 2026-08-14 — ARM64 halfword ZIP shuffle selection
+
+Exact `i8x16.shuffle` masks for halfword `ZIP1` and `ZIP2` now lower to one
+native NEON instruction instead of two table lookups, two mask constants, and
+an OR. The selector is a pair of fixed-array comparisons in the existing
+one-operation shuffle path. It adds no scan, retained IR, dynamic storage, or
+retry, and `shuffle-half-zip` is an immutable per-compilation policy bit with
+`WAGO_ARM64_NO_SHUFFLE_HALF_ZIP=1` as the process-default rollback.
+
+Both positive masks execute through the native ARM64 harness, including pinned
+destination aliasing. Disabling the rule and changing one mask lane are tested
+fallbacks. A scan of the top-level checked-in corpus found exactly two hits,
+both in `utf-as-simd.wasm`; native code falls from 20,444 to 20,252 bytes
+(-192 bytes, -0.94%). Four alternating two-second `validateN` comparisons were
+timing-neutral (medians of 142.12 us enabled and
+142.09 us disabled), with zero B/op and allocations. Five one-second full
+compile samples measured 558.0 us/op enabled versus 561.1 us/op disabled
+(-0.55%, treated as noise), with 362 allocations/op unchanged and effectively
+unchanged B/op near 309.9 KiB.
+
 ---
 
 # 1. North-star architecture

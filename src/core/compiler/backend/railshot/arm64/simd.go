@@ -342,6 +342,8 @@ var (
 	i8x16Zip2D    = [16]byte{8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31}
 	i8x16Zip1S    = [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}
 	i8x16Zip2S    = [16]byte{8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31}
+	i8x16Zip1H    = [16]byte{0, 1, 16, 17, 2, 3, 18, 19, 4, 5, 20, 21, 6, 7, 22, 23}
+	i8x16Zip2H    = [16]byte{8, 9, 24, 25, 10, 11, 26, 27, 12, 13, 28, 29, 14, 15, 30, 31}
 )
 
 // i8x16ExtOffset recognizes a contiguous 16-byte window crossing the two Wasm
@@ -366,7 +368,8 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 	// so aliasing dst with either input is safe. Rotate-8 stays on the fresh-result
 	// path because its USHR+SLI sequence needs the original source twice.
 	extOffset, isExt := i8x16ExtOffset(lanes)
-	directSink := v128ShuffleSinkEnabled && (isExt || lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S)
+	halfZip := f.opt(optShuffleHalfZip) && (lanes == i8x16Zip1H || lanes == i8x16Zip2H)
+	directSink := v128ShuffleSinkEnabled && (isExt || lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S || halfZip)
 	if directSink {
 		if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
 			f.stats.peep("v128-shuffle-sink")
@@ -399,6 +402,12 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 					f.a.NeonZip1S(dst, s1, s2)
 				case i8x16Zip2S:
 					f.a.NeonZip2S(dst, s1, s2)
+				case i8x16Zip1H:
+					f.a.NeonZip1H(dst, s1, s2)
+					f.stats.peep("simd-shuffle-half-zip")
+				case i8x16Zip2H:
+					f.a.NeonZip2H(dst, s1, s2)
+					f.stats.peep("simd-shuffle-half-zip")
 				}
 			}
 			f.fpinned = f.fpinned.remove(s1).remove(s2)
@@ -472,9 +481,9 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 		return nil
 	}
 
-	// BLAKE's message schedule also uses the four canonical ZIP masks. They map
-	// directly to ZIP1/ZIP2 at 64- or 32-bit lane widths.
-	if lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S {
+	// Canonical ZIP masks map directly to ZIP1/ZIP2 at 64-, 32-, or 16-bit
+	// lane widths. Halfword selection is independently rollbackable.
+	if lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S || halfZip {
 		bElem := f.popValue()
 		aElem := f.popValue()
 		xa, aOwned := f.operandRegV128(aElem)
@@ -491,6 +500,12 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 			f.a.NeonZip1S(dst, xa, xb)
 		case i8x16Zip2S:
 			f.a.NeonZip2S(dst, xa, xb)
+		case i8x16Zip1H:
+			f.a.NeonZip1H(dst, xa, xb)
+			f.stats.peep("simd-shuffle-half-zip")
+		case i8x16Zip2H:
+			f.a.NeonZip2H(dst, xa, xb)
+			f.stats.peep("simd-shuffle-half-zip")
 		}
 		f.fpinned = f.fpinned.remove(xa).remove(xb)
 		if bOwned {

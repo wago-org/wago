@@ -61,6 +61,10 @@ var (
 	// v128ShuffleSinkEnabled writes one-instruction REV32/ZIP shuffles directly
 	// into a following pinned local. The kill switch is the A/B oracle.
 	v128ShuffleSinkEnabled = os.Getenv("WAGO_ARM64_NO_V128_SHUFFLE_SINK") != "1"
+	// shuffleHalfZipEnabled selects exact i8x16.shuffle masks that are native
+	// halfword ZIP1/ZIP2 operations. WAGO_ARM64_NO_SHUFFLE_HALF_ZIP=1 is the
+	// process-default rollback; per-compilation policy remains authoritative.
+	shuffleHalfZipEnabled = os.Getenv("WAGO_ARM64_NO_SHUFFLE_HALF_ZIP") != "1"
 	// intervalRegionPinsEnabled reuses GP registers across integer-local
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.

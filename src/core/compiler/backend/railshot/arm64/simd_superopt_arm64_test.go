@@ -205,6 +205,52 @@ func TestSIMDShuffleExtSelectorRejectsNonContiguousArm64(t *testing.T) {
 	}
 }
 
+func simdShuffleBodyArm64(a, b [16]byte, lanes [16]byte) []byte {
+	body := []byte{0x00}
+	body = append(body, simdConst(a)...)
+	body = append(body, simdConst(b)...)
+	body = append(body, simdOp(13)...)
+	body = append(body, lanes[:]...)
+	return append(body, 0x0b)
+}
+
+func TestSIMDShuffleHalfZipSelectorArm64(t *testing.T) {
+	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	b := i8x16Bytes(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31)
+	for _, lanes := range [][16]byte{i8x16Zip1H, i8x16Zip2H} {
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, simdShuffleBodyArm64(a, b, lanes))
+		compile := func(on bool) *CodegenStats {
+			var stats ModuleStats
+			if _, err := CompileModuleWith(m, CompileOptions{
+				Stats:         &stats,
+				Optimizations: map[string]bool{"shuffle-half-zip": on},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return stats.Funcs[0]
+		}
+		on, off := compile(true), compile(false)
+		if got := on.Peephole["simd-shuffle-half-zip"]; got != 1 {
+			t.Fatalf("simd-shuffle-half-zip = %d, want 1 (all: %v)", got, on.Peephole)
+		}
+		if got := off.Peephole["simd-shuffle-half-zip"]; got != 0 {
+			t.Fatalf("disabled simd-shuffle-half-zip = %d, want 0", got)
+		}
+		if on.CodeBytes >= off.CodeBytes {
+			t.Fatalf("halfword ZIP code = %d bytes, fallback = %d; want smaller", on.CodeBytes, off.CodeBytes)
+		}
+	}
+}
+
+func TestSIMDShuffleHalfZipSelectorRejectsNearMissArm64(t *testing.T) {
+	lanes := i8x16Zip1H
+	lanes[15]--
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, simdShuffleBodyArm64(i8x16Bytes(), i8x16Bytes(), lanes))
+	if got := compileWithStats(t, m, false).Funcs[0].Peephole["simd-shuffle-half-zip"]; got != 0 {
+		t.Fatalf("simd-shuffle-half-zip = %d, want 0 for near miss", got)
+	}
+}
+
 func TestSIMDShuffleExtSelectorSinksToPinnedLocalArm64(t *testing.T) {
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31)

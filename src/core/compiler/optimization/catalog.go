@@ -295,6 +295,7 @@ var catalog = []Definition{
 	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
 	both("v128-sink", "Vector sinking", "sink vector operations into pinned locals"),
+	arm64("shuffle-half-zip", "Halfword shuffle ZIP", "select native halfword ZIP instructions for exact shuffle masks"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("inline", "Inlining", "inline eligible callees"),
 	experimentalBoth("inline-loop-callees", "Loop-call inlining", "inline callees invoked from inside loops"),

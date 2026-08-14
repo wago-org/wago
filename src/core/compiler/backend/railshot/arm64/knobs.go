@@ -39,6 +39,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
+	optimization.Bind("shuffle-half-zip", &shuffleHalfZipEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
@@ -81,6 +82,7 @@ var (
 	optV128ConstCache        = optimizationBindings.Option("v128-const-cache")
 	optV128Pins              = optimizationBindings.Option("v128-pins")
 	optV128Sink              = optimizationBindings.Option("v128-sink")
+	optShuffleHalfZip        = optimizationBindings.Option("shuffle-half-zip")
 	optRegABI                = optimizationBindings.Option("reg-abi")
 	optInline                = optimizationBindings.Option("inline")
 	optInlineLoopCallees     = optimizationBindings.Option("inline-loop-callees")
