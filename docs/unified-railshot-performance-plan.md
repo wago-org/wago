@@ -222,6 +222,36 @@ identical to the preceding commit. A three-sample `many_funcs` compile median
 was 252,370 ns/op versus 248,919 ns/op (+1.39%), with allocations unchanged at
 343/op and B/op effectively unchanged near 138.9 KiB.
 
+### 2026-08-14 — bounded ARM64 call-effect summaries, first slice
+
+The existing ARM64 module scan now records compact direct `memory.grow` and
+`global.set` effects plus same-module direct-call edges. A shared reverse
+worklist computes transitive effects through recursive call cycles in
+`O(functions + direct calls)` time per effect bit. The graph is capped at 2,048
+functions and 4,096 calls; cap exhaustion and larger modules conservatively
+classify every call-making function while retaining exact leaf effects. Tests
+exercise recursive propagation, malformed edges, both caps, and the conservative
+fallback. Imported, indirect, reference, AST-only, and custom-instruction calls
+remain fully conservative.
+
+ARM64 register-ABI direct calls use the summary to retain an existing explicit
+linear-memory bounds certificate when the callee transitively cannot grow
+memory. Certificates derived from mutable globals additionally require a
+no-global-write proof, and a call result targeting the source local remains a
+near miss. The optimization has an immutable per-compilation
+`call-effect-bounds` option and `WAGO_ARM64_NO_CALL_EFFECT_BOUNDS=1` rollback
+switch; guard mode and modules without memory allocate no effect state.
+
+The benchmark corpus records 2,168 preserved certificates across 19 modules.
+Darwin/ARM64 native code falls by 5,120 bytes in total; alignment absorbs some
+individual removals. The large-graph fallback kept SQLite compile overhead to
+about 13 KiB/op (+0.26%) and two allocations, versus a rejected unbounded
+prototype's roughly 397 KiB/op increase. Median SQLite backend time was 50.12 ms
+enabled versus 49.56 ms disabled (+1.1%, treated as noise). Reverse-order
+raytrace execution measured 259.8 us/op enabled versus 259.4 us/op disabled
+(+0.15%), and the measured JSON/JSON-SIMD rows remained within approximately
+1.3%; all retained zero execution allocations.
+
 ---
 
 # 1. North-star architecture

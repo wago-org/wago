@@ -190,6 +190,23 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 	}
 }
 
+func TestDirectCallBoundsEffectGate(t *testing.T) {
+	f := fn{bcKind: 2, bcIdx: 3, calleeEffects: []shared.FuncEffects{0, shared.EffectWritesGlobals, shared.EffectGrowsMemory}}
+	if !f.directCallPreservesBoundsCert(0, -1) {
+		t.Fatal("effect-free direct call did not preserve global-source certificate")
+	}
+	if f.directCallPreservesBoundsCert(1, -1) || f.directCallPreservesBoundsCert(2, -1) || f.directCallPreservesBoundsCert(-1, -1) {
+		t.Fatal("effectful or unknown call preserved global-source certificate")
+	}
+	f.bcKind, f.bcIdx = 1, 4
+	if !f.directCallPreservesBoundsCert(1, -1) {
+		t.Fatal("global writes incorrectly invalidate a caller-local certificate")
+	}
+	if f.directCallPreservesBoundsCert(1, 4) {
+		t.Fatal("call result overwriting the source local preserved its certificate")
+	}
+}
+
 func TestConstantDivisionLoweringHelpers(t *testing.T) {
 	savedUnsigned, savedSigned := magicDivEnabled, magicDivSignedEnabled
 	t.Cleanup(func() { magicDivEnabled, magicDivSignedEnabled = savedUnsigned, savedSigned })

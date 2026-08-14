@@ -6,6 +6,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -14,6 +15,57 @@ func TestFuncHintsSizeArm64(t *testing.T) {
 	const want = 200
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
+
+func TestModuleEffectsTransitiveArm64(t *testing.T) {
+	functions := wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))
+	memory := wasmtest.Vec([]byte{0x00, 0x01})
+	global := wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))
+	codes := wasmtest.Vec(
+		wasmtest.Code([]byte{0x10, 0x01, 0x0b}),                   // 0 -> 1
+		wasmtest.Code([]byte{0x10, 0x02, 0x0b}),                   // 1 -> 2
+		wasmtest.Code([]byte{0x41, 0x00, 0x40, 0x00, 0x1a, 0x0b}), // memory.grow
+		wasmtest.Code([]byte{0x41, 0x00, 0x24, 0x00, 0x0b}),       // global.set
+	)
+	raw := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, functions),
+		wasmtest.Section(5, memory),
+		wasmtest.Section(6, global),
+		wasmtest.Section(10, codes),
+	)
+	m, err := wasm.DecodeModule(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var effects []shared.FuncEffects
+	if _, _, err = computeModuleHintsWithPolicyAndEffects(m, m.GlobalCount(), m.ImportedFuncCount(), currentCodegenPolicy(), &effects); err != nil {
+		t.Fatal(err)
+	}
+	want := []shared.FuncEffects{shared.EffectGrowsMemory, shared.EffectGrowsMemory, shared.EffectGrowsMemory, shared.EffectWritesGlobals}
+	for i := range want {
+		if effects[i] != want[i] {
+			t.Fatalf("effects[%d] = %02b, want %02b", i, effects[i], want[i])
+		}
+	}
+}
+
+func TestModuleEffectsBoundedFallbackArm64(t *testing.T) {
+	large := newModuleEffectCollector(maxEffectGraphFunctions+1, 0, 0)
+	large.begin(0)
+	large.call(0, 1)
+	if got := large.finish()[0]; got != shared.AllFuncEffects {
+		t.Fatalf("large graph caller effects = %02b, want all", got)
+	}
+
+	overflow := newModuleEffectCollector(2, 0, maxEffectGraphCalls)
+	overflow.begin(0)
+	for range maxEffectGraphCalls + 1 {
+		overflow.call(0, 1)
+	}
+	if got := overflow.finish()[0]; got != shared.AllFuncEffects {
+		t.Fatalf("edge-cap caller effects = %02b, want all", got)
 	}
 }
 

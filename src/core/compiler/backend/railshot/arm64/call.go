@@ -1518,6 +1518,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			deferred = append(deferred, deferredArg{target: intArgRegs[i], root: root})
 		}
 	}
+	certKind, certIdx, certExtent := f.bcKind, f.bcIdx, f.bcExtent
+	preserveBoundsCert := f.directCallPreservesBoundsCert(localIdx, resHint)
 	if p > 0 {
 		f.stats.addCallFlush()
 		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
@@ -1611,6 +1613,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.reloadLocalsForCall() // non-STACK_REG model only
 		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 	}
+	if preserveBoundsCert {
+		f.bcKind, f.bcIdx, f.bcExtent = certKind, certIdx, certExtent
+		f.stats.peep("bounds-cert-call-preserve")
+	}
 	// No post-call trap check: a callee trap jumps straight back to enterNative
 	// via emitTrap's handler-jump, so control never returns here with *trap set.
 
@@ -1643,6 +1649,31 @@ func (f *fn) directCalleePreservesPins(localIdx int) bool {
 		return false
 	}
 	return f.calleePreservesPins[localIdx]
+}
+
+func (f *fn) directCalleeEffects(localIdx int) shared.FuncEffects {
+	if localIdx < 0 || localIdx >= len(f.calleeEffects) {
+		return shared.AllFuncEffects
+	}
+	return f.calleeEffects[localIdx]
+}
+
+func (f *fn) directCallPreservesBoundsCert(localIdx, resHint int) bool {
+	if f.bcKind == 0 || localIdx < 0 {
+		return false
+	}
+	effects := f.directCalleeEffects(localIdx)
+	if effects&shared.EffectGrowsMemory != 0 {
+		return false
+	}
+	switch f.bcKind {
+	case 1: // caller local: only this call's fused result can change it
+		return resHint < 0 || uint32(resHint) != f.bcIdx
+	case 2: // mutable global: require a transitive no-write proof
+		return effects&shared.EffectWritesGlobals == 0
+	default:
+		return false
+	}
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.

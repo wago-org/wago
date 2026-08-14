@@ -96,6 +96,91 @@ type funcHints struct {
 	stackArenaNodes int
 }
 
+// moduleEffectCollector records direct semantic effects and a CSR direct-call
+// graph during the existing module hint scan. It owns module-sized storage; no
+// function retains call-edge slices and no opcode allocates independently.
+type moduleEffectCollector struct {
+	imported int
+	direct   []shared.FuncEffects
+	starts   []uint32
+	calls    []uint32
+	current  int
+	overflow bool
+}
+
+const (
+	maxEffectGraphFunctions = 2048
+	maxEffectGraphCalls     = 4096
+)
+
+func newModuleEffectCollector(functions, imported, callCap int) *moduleEffectCollector {
+	c := &moduleEffectCollector{imported: imported, direct: make([]shared.FuncEffects, functions)}
+	if functions > maxEffectGraphFunctions {
+		c.overflow = true
+		return c
+	}
+	if callCap < 0 || callCap > maxEffectGraphCalls {
+		callCap = maxEffectGraphCalls
+	}
+	c.starts = make([]uint32, functions+1)
+	c.calls = make([]uint32, 0, callCap)
+	return c
+}
+
+func (c *moduleEffectCollector) begin(caller int) {
+	if c != nil && !c.overflow && caller >= 0 && caller < len(c.direct) {
+		c.current = caller
+		c.starts[caller] = uint32(len(c.calls))
+	}
+}
+
+func (c *moduleEffectCollector) mark(caller int, effect shared.FuncEffects) {
+	if c != nil && caller >= 0 && caller < len(c.direct) {
+		c.direct[caller] |= effect
+	}
+}
+
+func (c *moduleEffectCollector) call(caller int, globalTarget uint32) {
+	if c == nil || caller < 0 || caller >= len(c.direct) {
+		return
+	}
+	local := int64(globalTarget) - int64(c.imported)
+	if local < 0 || local >= int64(len(c.direct)) {
+		c.direct[caller] |= shared.AllFuncEffects
+		return
+	}
+	if c.overflow {
+		c.direct[caller] |= shared.AllFuncEffects
+		return
+	}
+	if len(c.calls) == maxEffectGraphCalls {
+		// The complete graph no longer fits the bounded summary arena. Mark every
+		// already-seen caller conservative, then keep doing so for later calls.
+		for i := 0; i < c.current; i++ {
+			if c.starts[i] != c.starts[i+1] {
+				c.direct[i] |= shared.AllFuncEffects
+			}
+		}
+		c.direct[caller] |= shared.AllFuncEffects
+		c.overflow = true
+		c.starts = nil
+		c.calls = nil
+		return
+	}
+	c.calls = append(c.calls, uint32(local))
+}
+
+func (c *moduleEffectCollector) finish() []shared.FuncEffects {
+	if c == nil {
+		return nil
+	}
+	if c.overflow {
+		return c.direct
+	}
+	c.starts[len(c.direct)] = uint32(len(c.calls))
+	return shared.PropagateFuncEffects(c.direct, c.starts, c.calls)
+}
+
 func newFuncHints(nLocals, nGlobals int) funcHints {
 	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
 	h.localLastGet = make([]uint32, nLocals)
@@ -207,12 +292,15 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHin
 }
 
 func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0)
+	return scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0, nil, -1)
 }
 
-func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int, effects *moduleEffectCollector, callerLocal int) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, moduleHints, importedFuncs)
+		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, moduleHints, importedFuncs, effects, callerLocal)
+	}
+	if effects != nil {
+		effects.mark(callerLocal, shared.AllFuncEffects)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
@@ -487,13 +575,13 @@ func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGl
 }
 
 func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0)
+	return scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0, nil, -1)
 }
 
-func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int, effects *moduleEffectCollector, callerLocal int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, moduleHints: moduleHints, importedFuncs: importedFuncs, entryPrefix: true}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, moduleHints: moduleHints, importedFuncs: importedFuncs, effects: effects, callerLocal: callerLocal, entryPrefix: true}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
@@ -520,6 +608,8 @@ type byteBodyScanner struct {
 	m              *wasm.Module
 	moduleHints    []funcHints
 	importedFuncs  int
+	effects        *moduleEffectCollector
+	callerLocal    int
 	entryPrefix    bool
 	entrySeen      uint64
 	localRead      uint64
@@ -627,6 +717,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.callsSelf = true
 			}
 			s.noteDirectCallRef(imm.Index, op == 0x10, loopDepth != 0)
+			if s.effects != nil {
+				s.effects.call(s.callerLocal, imm.Index)
+			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -635,6 +728,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteStackArenaOp(op, &imm)
 			s.h.hasCall, subHasCall = true, true
+			if s.effects != nil {
+				s.effects.mark(s.callerLocal, shared.AllFuncEffects)
+			}
 		case 0x20, 0x21, 0x22: // local.get/set/tee
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -673,6 +769,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
+			if op == 0x24 && s.effects != nil {
+				s.effects.mark(s.callerLocal, shared.EffectWritesGlobals)
+			}
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
 					s.h.addGlobalHotness(idx, 2*pathWeight*loopWeight(loopDepth))
@@ -693,6 +792,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.moduleEH = true
+			}
+			if op == 0x40 && s.effects != nil {
+				s.effects.mark(s.callerLocal, shared.EffectGrowsMemory)
 			}
 			if op == 0xfb {
 				// Collector-backed GC instructions may enter the synchronous Go

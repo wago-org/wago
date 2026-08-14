@@ -67,6 +67,7 @@
               "bmi2-rorx",
               "bounds-facts",
               "branch-fold",
+              "call-effect-bounds",
               "call-next-use",
               "commute-self-update",
               "compact-i32-frame",
