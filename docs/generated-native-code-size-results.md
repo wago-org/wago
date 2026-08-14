@@ -1765,6 +1765,22 @@ execution and codec round trips passed. The host's remaining broad `src/wago`
 failures require its absent optional spec-v3 checkout or a newer `wat2wasm` for
 table64 syntax; focused corpus and product gates pass.
 
+## Rejected: AMD64 compact i32 slots in GC-root frames
+
+The collector-local identity remapper makes it possible to pack ordinary i32
+locals while preserving exact GC root offsets. A conservative prototype admitted
+only candidate plans with matching local-index/offset tables, no fixed roots,
+valid local identities, and no EH. A dedicated compiled-function test verified
+the remapped reference-local offset and executed the resulting native body.
+
+Across the 135 modules and 245 generated functions in the focused `TestGC*`
+suite, the prototype admitted 39 functions and reduced aggregate frame
+reservation from 51,216 to 50,912 bytes (-304). Raw native code remained exactly
+183,033 bytes: no frame adjustment or local displacement crossed an AMD64
+encoding boundary. The production change and its rollout knob were removed.
+GC compact-i32 admission remains excluded until a representative corpus shows a
+native-byte reduction rather than only a small stack-frame accounting win.
+
 ### Commands
 
 ```sh
