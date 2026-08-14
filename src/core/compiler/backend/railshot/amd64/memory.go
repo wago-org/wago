@@ -165,6 +165,26 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	groups := 0
+	for code := uint32(1); code <= trapMax; code++ {
+		sites := f.sc.trapSites[code]
+		if len(sites) == 0 {
+			continue
+		}
+		sortTrapSitesByFunction(sites)
+		groups++
+		for i := 1; i < len(sites); i++ {
+			if sites[i].function != sites[i-1].function {
+				groups++
+			}
+		}
+	}
+	if sharedTrapBodyEnabled && groups >= 3 &&
+		(f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		f.emitSharedTrapStubs(groups)
+		f.stats.peep("shared-trap-body")
+		return
+	}
 	for code := uint32(1); code <= trapMax; code++ { // deterministic order
 		sites := f.sc.trapSites[code]
 		if len(sites) == 0 {
@@ -174,7 +194,6 @@ func (f *fn) emitTrapStubs() {
 		// Inlining can interleave sites attributed to many source functions. Sort
 		// once so grouping and patching are linear instead of repeatedly rescanning
 		// the complete site list for every distinct function.
-		sortTrapSitesByFunction(sites)
 		for start := 0; start < len(sites); {
 			end := start + 1
 			for end < len(sites) && sites[end].function == sites[start].function {
@@ -201,6 +220,67 @@ func (f *fn) emitTrapStubs() {
 			f.emitTrap(code, first.function)
 			if commonJump >= 0 {
 				f.a.PatchRel32(commonJump, common)
+			}
+			start = end
+		}
+	}
+}
+
+func (f *fn) emitSharedTrapStubs(groupCount int) {
+	emitted := 0
+	for code := uint32(1); code <= trapMax; code++ {
+		sites := f.sc.trapSites[code]
+		if len(sites) == 0 {
+			continue
+		}
+		f.stats.addTrapStub()
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			group := sites[start:end]
+			first := group[0]
+			pos := f.a.Len()
+			pc := int32(-1)
+			if len(group) == 1 {
+				pc = int32(first.pc)
+			}
+			f.a.MovImm32(RAX, pc)
+			f.a.MovImm32(RCX, int32(first.function+1))
+			f.a.MovImm32(RDX, int32(code))
+			for _, site := range group {
+				f.a.PatchRel32(site.branch, pos)
+			}
+			f.stats.addTrapGroup()
+			emitted++
+			if emitted < groupCount {
+				group[0].branch = f.a.JmpPlaceholder()
+			} else {
+				group[0].branch = -1
+			}
+			start = end
+		}
+	}
+
+	common := f.a.Len()
+	f.storeModuleGlobals(RSI)
+	f.a.Load64(RSI, RBX, -offTrapCellPtr)
+	f.a.Store32(RSI, 16, RCX)
+	f.a.Store32(RSI, 20, RAX)
+	f.a.Store32(RSI, 0, RDX)
+	f.a.Load64(RSP, RBX, -offTrapStackReentry)
+	f.a.Ret()
+
+	for code := uint32(1); code <= trapMax; code++ {
+		sites := f.sc.trapSites[code]
+		for start := 0; start < len(sites); {
+			end := start + 1
+			for end < len(sites) && sites[end].function == sites[start].function {
+				end++
+			}
+			if sites[start].branch >= 0 {
+				f.a.PatchRel32(sites[start].branch, common)
 			}
 			start = end
 		}

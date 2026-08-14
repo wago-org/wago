@@ -64,6 +64,9 @@ var (
 	// directJecxzEnabled selects JECXZ for bounded ECX byte-tail guards whose
 	// flags are dead and whose checked targets remain in rel8 range.
 	directJecxzEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_JECXZ") != "1"
+	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the invariant
+	// trap-cell stores and native-stack unwind within one compiled function.
+	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. It remains opt-in while broader shrink-only

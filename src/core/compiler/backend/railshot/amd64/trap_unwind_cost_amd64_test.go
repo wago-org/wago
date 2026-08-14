@@ -31,3 +31,37 @@ func TestFunctionLocalTrapUnwindSharingIsNotProfitableAMD64(t *testing.T) {
 		}
 	}
 }
+
+func TestSizeSharesCompleteTrapBodyAMD64(t *testing.T) {
+	before := sharedTrapBodyEnabled
+	t.Cleanup(func() { sharedTrapBodyEnabled = before })
+	emit := func(enabled bool) (int, *CodegenStats) {
+		sharedTrapBodyEnabled = enabled
+		a := &amd64.Asm{}
+		sc := &scratch{}
+		stats := &CodegenStats{}
+		f := fn{
+			a:      a,
+			sc:     sc,
+			stats:  stats,
+			policy: CodegenPolicy{Objective: OptimizeSize},
+		}
+		for code := uint32(1); code <= 3; code++ {
+			branch := a.JccPlaceholder(condNE)
+			sc.trapSites[code] = append(sc.trapSites[code], trapSite{
+				branch: branch, function: 4, pc: code * 10,
+			})
+		}
+		f.emitTrapStubs()
+		return a.Len(), stats
+	}
+
+	rollbackBytes, _ := emit(false)
+	sharedBytes, stats := emit(true)
+	if sharedBytes >= rollbackBytes {
+		t.Fatalf("shared trap bytes = %d, rollback = %d; want shrink", sharedBytes, rollbackBytes)
+	}
+	if stats.Peephole["shared-trap-body"] != 1 || stats.TrapStubs != 3 || stats.TrapGroups != 3 {
+		t.Fatalf("shared trap stats = stubs:%d groups:%d peep:%v", stats.TrapStubs, stats.TrapGroups, stats.Peephole)
+	}
+}
