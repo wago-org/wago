@@ -154,6 +154,9 @@ type CodegenStats struct {
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string       `json:"finalizer_fallback,omitempty"`
 	literalKeys       []literalKey // stats-only keys for module-level duplicate accounting
+	Rel32Sites        uint32       `json:"rel32_sites,omitempty"`
+	Rel32Recorded     int          `json:"rel32_recorded,omitempty"`
+	Rel32Overflow     bool         `json:"rel32_overflow,omitempty"`
 	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
 	// inline sites. Caller frame growth and shared cold tails are outside it.
 	InlineSiteBytes int
@@ -465,6 +468,23 @@ func (ms *ModuleStats) String() string {
 		}
 		b.WriteByte('\n')
 	}
+	rel32Sites, rel32Recorded, rel32OverflowFuncs, rel32OverflowSites, maxRel32Sites := uint64(0), 0, 0, uint64(0), uint32(0)
+	for _, s := range ms.Funcs {
+		if s == nil {
+			continue
+		}
+		rel32Sites += uint64(s.Rel32Sites)
+		rel32Recorded += s.Rel32Recorded
+		if s.Rel32Sites > maxRel32Sites {
+			maxRel32Sites = s.Rel32Sites
+		}
+		if overflow := int64(s.Rel32Sites) - int64(s.Rel32Recorded); s.Rel32Overflow && overflow > 0 {
+			rel32OverflowFuncs++
+			rel32OverflowSites += uint64(overflow)
+		}
+	}
+	fmt.Fprintf(&b, "amd64-rel32: sites=%d recorded=%d overflow-functions=%d overflow-sites=%d max-function-sites=%d\n",
+		rel32Sites, rel32Recorded, rel32OverflowFuncs, rel32OverflowSites, maxRel32Sites)
 	fmt.Fprintf(&b, "amd64-encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
 		ms.Encoding.MemoryDisp0, ms.Encoding.MemoryDisp8, ms.Encoding.MemoryDisp32,
 		ms.Encoding.MemoryDisplacementBytes(), ms.Encoding.FrameDisp0, ms.Encoding.FrameDisp8,
@@ -527,6 +547,7 @@ func (s *CodegenStats) report() string {
 	if s.FinalizerFallback != "" {
 		fmt.Fprintf(&b, "    finalizer-fallback: %s\n", s.FinalizerFallback)
 	}
+	fmt.Fprintf(&b, "    rel32: sites=%d recorded=%d overflow=%t\n", s.Rel32Sites, s.Rel32Recorded, s.Rel32Overflow)
 	fmt.Fprintf(&b, "    encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",
 		s.Encoding.MemoryDisp0, s.Encoding.MemoryDisp8, s.Encoding.MemoryDisp32,
 		s.Encoding.MemoryDisplacementBytes(), s.Encoding.FrameDisp0, s.Encoding.FrameDisp8,

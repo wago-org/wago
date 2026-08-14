@@ -26,9 +26,9 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 
 func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {
 	ms := ModuleStats{Funcs: []*CodegenStats{
-		{FinalizerFallback: "rel32-overflow", NativeSize: NativeFunctionSizeReport{BranchFoldHoleBytes: 5}},
-		{FinalizerFallback: "loop-function-size", NativeSize: NativeFunctionSizeReport{DeadFrameReservationBytes: 7}},
-		{FinalizerFallback: "rel32-overflow", NativeSize: NativeFunctionSizeReport{DeadFrameReservationBytes: 7}},
+		{FinalizerFallback: "rel32-overflow", NativeSize: NativeFunctionSizeReport{BranchFoldHoleBytes: 5}, Rel32Sites: 1100, Rel32Recorded: 1024, Rel32Overflow: true},
+		{FinalizerFallback: "loop-function-size", NativeSize: NativeFunctionSizeReport{DeadFrameReservationBytes: 7}, Rel32Sites: 200, Rel32Recorded: 200},
+		{FinalizerFallback: "rel32-overflow", NativeSize: NativeFunctionSizeReport{DeadFrameReservationBytes: 7}, Rel32Sites: 1300, Rel32Recorded: 1024, Rel32Overflow: true},
 	}}
 	report := ms.String()
 	if !strings.Contains(report, "native-finalizer-fallbacks: loop-function-size=1/7B rel32-overflow=2/12B") {
@@ -36,6 +36,9 @@ func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {
 	}
 	if got := strings.Count(report, "finalizer-fallback: rel32-overflow"); got != 2 {
 		t.Fatalf("per-function rel32 fallback reports = %d, want 2:\n%s", got, report)
+	}
+	if !strings.Contains(report, "amd64-rel32: sites=2600 recorded=2248 overflow-functions=2 overflow-sites=352 max-function-sites=1300") {
+		t.Fatalf("module report missing rel32 totals:\n%s", report)
 	}
 }
 

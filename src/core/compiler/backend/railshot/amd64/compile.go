@@ -2672,6 +2672,9 @@ func (f *fn) finalizeStats(codeLen int) {
 	if s == nil {
 		return
 	}
+	s.Rel32Sites = f.a.Rel32Count
+	s.Rel32Recorded = len(f.a.Rel32Sites)
+	s.Rel32Overflow = f.a.Rel32Overflow
 	s.CodeBytes = codeLen
 	s.NativeSize.TotalBytes = codeLen
 	s.NativeSize.InternalFunctionBytes = codeLen - s.NativeSize.HostAdapterBytes - s.NativeSize.AdapterToInternalPaddingBytes
