@@ -22,6 +22,8 @@ var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 // WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
+var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
+var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
 
 func compactNativePolicy(policy CodegenPolicy) bool {
 	return !nativeCompactionDisabled && (nativeCompactionEnabled || policy.CompactNative)
@@ -30,6 +32,7 @@ func compactNativePolicy(policy CodegenPolicy) bool {
 func (f *fn) compactNative() bool { return compactNativePolicy(f.policy) }
 
 const maxAMD64FinalizerRel32Sites = 256
+const maxAMD64LoopCompactionBytes = 16 << 10
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
@@ -111,7 +114,7 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 		}
 		return result, 0, 0, nil
 	}
-	if !f.compactNative() || f.hasLoop || f.hasJumpTableData ||
+	if !f.compactNative() || f.hasLoop && (!loopCompactionEnabled || len(f.a.B) > maxAMD64LoopCompactionBytes) || f.hasJumpTableData ||
 		len(f.customInstructions) != 0 || f.a.Rel32Overflow {
 		return identity()
 	}
@@ -126,23 +129,33 @@ func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, int, error)
 	var storage [shared.MaxOffsetMapDeletions]shared.DeletedRange
 	deletions := storage[:0]
 	frameSites := len(f.sc.tailFrameSites) + 2
-	holeSites := 0
-	for _, over := range f.sc.brFoldSites {
-		if over >= 0 && over+9 <= len(f.a.B) &&
-			bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
-			holeSites++
-		}
-	}
-	if frameSites+holeSites > cap(deletions) {
+	if frameSites > cap(deletions) {
 		return identity()
+	}
+	holeBudget := cap(deletions) - frameSites
+	if !partialHoleCompactionEnabled {
+		holeSites := 0
+		for _, over := range f.sc.brFoldSites {
+			if over >= 0 && over+9 <= len(f.a.B) &&
+				bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
+				holeSites++
+			}
+		}
+		if holeSites > holeBudget {
+			return identity()
+		}
 	}
 	holeDeleted := 0
 	frameDeleted := 0
 	for _, over := range f.sc.brFoldSites {
+		if holeBudget == 0 {
+			break
+		}
 		if over >= 0 && over+9 <= len(f.a.B) &&
 			bytes.Equal(f.a.B[over+4:over+9], []byte{0x0f, 0x1f, 0x44, 0x00, 0x00}) {
 			deletions = append(deletions, shared.DeletedRange{Off: uint32(over + 4), Len: 5})
 			holeDeleted += 5
+			holeBudget--
 		}
 	}
 	addFrameSite := func(site int, opcode byte) error {

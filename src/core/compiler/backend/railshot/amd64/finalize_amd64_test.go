@@ -50,6 +50,69 @@ func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 	}
 }
 
+func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
+	oldEnabled, oldDisabled, oldLoops := nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled
+	nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = false, false, true
+	t.Cleanup(func() {
+		nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = oldEnabled, oldDisabled, oldLoops
+	})
+
+	m := modFuncs(t, funcDef{nil, nil, []byte{0x00, 0x03, 0x40, 0x0b, 0x0b}})
+	objective := OptimizeSize
+	stats := &ModuleStats{}
+	compact, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compact.CodeImage != nil {
+		defer compact.CodeImage.Close()
+	}
+	if got := stats.NativeSize.DeadFrameReservationBytes; got != 0 {
+		t.Fatalf("Size loop dead frame bytes = %d, want 0", got)
+	}
+
+	loopCompactionEnabled = false
+	reservedStats := &ModuleStats{}
+	reserved, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: reservedStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reserved.CodeImage != nil {
+		defer reserved.CodeImage.Close()
+	}
+	if got := reservedStats.NativeSize.DeadFrameReservationBytes; got == 0 {
+		t.Fatal("rollback loop retained no dead frame reservation; test cannot detect compaction")
+	}
+	if len(compact.Code) >= len(reserved.Code) {
+		t.Fatalf("compacted loop code = %d bytes, rollback = %d", len(compact.Code), len(reserved.Code))
+	}
+
+	loopCompactionEnabled = true
+	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parallel.CodeImage != nil {
+		defer parallel.CodeImage.Close()
+	}
+	if !bytes.Equal(compact.Code, parallel.Code) || !reflect.DeepEqual(compact.Entry, parallel.Entry) || !reflect.DeepEqual(compact.InternalEntry, parallel.InternalEntry) {
+		t.Fatal("serial and parallel loop compaction differ")
+	}
+
+	f := fn{
+		a:       &amd64enc.Asm{B: make([]byte, maxAMD64LoopCompactionBytes+1)},
+		hasLoop: true,
+		policy:  shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
+	}
+	result, _, _, err := f.finalizeFrameAdjustments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Code) != len(f.a.B) {
+		t.Fatal("oversized loop function unexpectedly compacted")
+	}
+}
+
 func TestIdentityFinalizerCompileParity(t *testing.T) {
 	m := mod1(t, nil, nil, []byte{0x00, 0x01, 0x0b})
 	oldEnabled := nativeFinalizerEnabled
@@ -112,6 +175,59 @@ func TestFinalizerCompactsSmallFrameAdjustments(t *testing.T) {
 	want := []byte{0x48, 0x83, 0xec, 24, 0x90, 0x48, 0x83, 0xc4, 24}
 	if !bytes.Equal(f.a.B, want) {
 		t.Fatalf("compacted frame bytes = %x, want %x", f.a.B, want)
+	}
+}
+
+func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
+	oldEnabled, oldCompact, oldDisabled := nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled
+	oldPartial := partialHoleCompactionEnabled
+	nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled, partialHoleCompactionEnabled = true, true, false, true
+	t.Cleanup(func() {
+		nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled = oldEnabled, oldCompact, oldDisabled
+		partialHoleCompactionEnabled = oldPartial
+	})
+
+	a := &amd64enc.Asm{}
+	subSite := a.Len() + 3
+	a.SubRsp(24)
+	sc := &scratch{}
+	for range 10 {
+		over := a.Len()
+		a.B = append(a.B, 0x90, 0x90, 0x90, 0x90, 0x0f, 0x1f, 0x44, 0x00, 0x00)
+		sc.brFoldSites = append(sc.brFoldSites, over)
+	}
+	addSite := a.Len() + 3
+	a.AddRsp(24)
+	f := fn{a: a, sc: sc, subRspAt: subSite, addRspAt: addSite}
+	oldLen := len(a.B)
+	if _, err := f.finalizeNativeCode(0); err != nil {
+		t.Fatal(err)
+	}
+	const frameBytes = 6
+	const admittedHoleBytes = (shared.MaxOffsetMapDeletions - 2) * 5
+	if got, want := len(f.a.B), oldLen-frameBytes-admittedHoleBytes; got != want {
+		t.Fatalf("partially compacted code = %d bytes, want %d", got, want)
+	}
+
+	partialHoleCompactionEnabled = false
+	a2 := &amd64enc.Asm{}
+	sub2 := a2.Len() + 3
+	a2.SubRsp(24)
+	sc2 := &scratch{}
+	for range 10 {
+		over := a2.Len()
+		a2.B = append(a2.B, 0x90, 0x90, 0x90, 0x90, 0x0f, 0x1f, 0x44, 0x00, 0x00)
+		sc2.brFoldSites = append(sc2.brFoldSites, over)
+	}
+	add2 := a2.Len() + 3
+	a2.AddRsp(24)
+	f2 := fn{a: a2, sc: sc2, subRspAt: sub2, addRspAt: add2}
+	oldLen2 := len(a2.B)
+	if _, err := f2.finalizeNativeCode(0); err != nil {
+		t.Fatal(err)
+	}
+	if len(f2.a.B) != oldLen2 {
+		t.Fatal("all-or-nothing rollback unexpectedly compacted over-budget holes")
 	}
 }
 

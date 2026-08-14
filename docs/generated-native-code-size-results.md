@@ -1416,6 +1416,39 @@ Five serialized rollback-versus-enabled samples put Ruby at 569,009,042 to
 serial/parallel identity, and the fixed-size admission bound have dedicated
 tests.
 
+## AMD64 bounded loop and partial-hole compaction
+
+AMD64 Size/Embedded now compact loop-bearing functions up to the same 16 KiB
+work bound. `WAGO_AMD64_NO_LOOP_COMPACTION=1` restores the previous exclusion.
+Because AMD64 emits no optional loop padding, every byte deletion remains safe
+for layout; the bound exists solely to cap compile work.
+
+The finalizer also no longer rejects a whole function when its frame sites and
+folded-branch holes exceed the fixed eight-range offset map. It reserves frame
+sites first, then deletes the earliest five-byte holes that fit; later holes
+remain valid NOPs. `WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION=1` restores the prior
+all-or-nothing admission rule.
+
+Together these changes reduce the 36-module AMD64 Size suite from 70,086,624 to
+69,882,897 bytes (-203,727). Ruby falls by 160,837 bytes, from 36,705,850 to
+36,545,013. It still retains 849,765 branch-hole bytes beyond the current fixed
+budget, making the offset-map capacity a measured future tuning seam rather
+than a correctness requirement.
+
+The first execution gate caught that the rel32 recorder was still disabled for
+all loop functions, an invariant inherited from their former identity-only
+finalization. Moving those functions without recorded branch sources caused an
+immediate `SIGILL`/fault. Admitted loops now retain the fixed-capacity rel32
+inventory; the rollback path still skips it. Both loop-only and combined
+loop/partial-hole compacted corpus execution pass after the fix.
+
+Five serialized exact-rollback-versus-enabled samples put Ruby at 839,338,074
+to 848,691,984 ns/op (+1.11%) and esbuild at 477,997,708 to 479,959,025 ns/op
+(+0.41%). Median allocation volume is noise-level. Dedicated tests cover the
+loop size bound, partial deletion, all-or-nothing rollback, and serial/parallel
+identity; compacted corpus execution on the AMD64 host exercises the admitted
+loop bodies.
+
 ### Commands
 
 ```sh
