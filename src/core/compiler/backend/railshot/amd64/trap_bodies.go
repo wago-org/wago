@@ -33,15 +33,22 @@ type sharedTrapBodyGroupAMD64 struct {
 	hash   uint64
 }
 
-// sharedTrapBodyClusterAMD64 is reset at every host-adapter boundary. Adapter
-// sharing can shift a complete cluster but cannot change a near-jump
-// displacement within it.
+// sharedTrapBodyClusterAMD64 owns one run beginning at a host adapter and
+// continuing through the internal functions before the next one. Adapter
+// sharing shifts the retained boundary body and every later branch equally.
 type sharedTrapBodyClusterAMD64 struct {
 	groups [maxSharedTrapBodyShapesAMD64]sharedTrapBodyGroupAMD64
 	n      uint8
 }
 
 func (c *sharedTrapBodyClusterAMD64) reset() { c.n = 0 }
+
+func (c *sharedTrapBodyClusterAMD64) shareFunction(hostAdapter bool, codeBefore, fnCode []byte, entry int, info sharedTrapBodyInfoAMD64, stats *CodegenStats) []byte {
+	if hostAdapter {
+		c.reset()
+	}
+	return c.share(codeBefore, fnCode, entry, info, stats)
+}
 
 func (c *sharedTrapBodyClusterAMD64) share(codeBefore, fnCode []byte, entry int, info sharedTrapBodyInfoAMD64, stats *CodegenStats) []byte {
 	// A trailing SIMD literal pool makes the trap body non-tail. Retain that

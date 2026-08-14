@@ -1332,10 +1332,8 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				}
 				literalOffsets[i+1] = uint32(len(literalWords))
 			}
-			if hostAdapters[i] {
-				trapBodyCluster.reset()
-			} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
-				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfoAMD64(), st)
+			if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+				fnCode = trapBodyCluster.shareFunction(hostAdapters[i], codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfoAMD64(), st)
 			}
 			if !codeBuffer.CommitTail(fnCode) {
 				if err := codeBuffer.Append(fnCode); err != nil {
@@ -1500,7 +1498,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
-					if moduleSharedTrapBodyEnabled && !hostAdapters[i] {
+					if moduleSharedTrapBodyEnabled {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
 					}
 				}
@@ -1566,14 +1564,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			literalOffsets[i+1] = uint32(len(literalWords))
 		}
 		fnCode := states[r.worker].arena[r.start:r.end]
-		if r.layoutFlags&layoutHostAdapter != 0 {
-			trapBodyCluster.reset()
-		} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+		if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]
 			}
-			fnCode = trapBodyCluster.share(code, fnCode, entry[i], r.trapBody, st)
+			fnCode = trapBodyCluster.shareFunction(r.layoutFlags&layoutHostAdapter != 0, code, fnCode, entry[i], r.trapBody, st)
 		}
 		code = append(code, fnCode...)
 	}

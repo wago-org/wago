@@ -17,11 +17,11 @@ func TestSharedTrapBodyClusterAMD64(t *testing.T) {
 	}
 	info := sharedTrapBodyInfoAMD64{off: 4, endOff: 24}
 	var cluster sharedTrapBodyClusterAMD64
-	if got := cluster.share(nil, first, 0, info, nil); len(got) != 24 {
+	if got := cluster.shareFunction(true, nil, first, 0, info, nil); len(got) != 24 {
 		t.Fatalf("first body length = %d, want 24", len(got))
 	}
 	stats := &CodegenStats{CodeBytes: 24, NativeSize: shared.NativeFunctionSizeReport{TotalBytes: 24, InternalFunctionBytes: 24}, GCCodeBytes: shared.GCNativeCodeBytes{Total: 24, TrapStub: 20}}
-	got := cluster.share(first, second, 24, info, stats)
+	got := cluster.shareFunction(false, first, second, 24, info, stats)
 	if len(got) != 9 || got[4] != 0xe9 {
 		t.Fatalf("shared body = %d bytes, opcode %#x; want 9 and JMP", len(got), got[4])
 	}
