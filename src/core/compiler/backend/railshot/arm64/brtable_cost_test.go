@@ -4,6 +4,10 @@ package arm64
 
 import "testing"
 
+func repeatedBrTableLabelsArm64(n int) []uint32 {
+	return make([]uint32, n)
+}
+
 func TestBrTableUseJumpObjectiveCostArm64(t *testing.T) {
 	policy := func(objective OptimizationObjective) CodegenPolicy {
 		p := CodegenPolicy{}
@@ -50,6 +54,9 @@ func TestBrTableCompactPlanArm64(t *testing.T) {
 		{"size duplicate", []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, OptimizeSize, true, 4},
 		{"size unique", []uint32{0, 1, 2, 3, 4, 5, 6, 7}, OptimizeSize, false, 0},
 		{"balanced duplicate", []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, OptimizeBalanced, false, 0},
+		{"size 4092 labels", repeatedBrTableLabelsArm64(4092), OptimizeSize, true, 1},
+		{"size 4093 labels", repeatedBrTableLabelsArm64(4093), OptimizeSize, false, 0},
+		{"size 4095 labels", repeatedBrTableLabelsArm64(4095), OptimizeSize, false, 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

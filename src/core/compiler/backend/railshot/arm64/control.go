@@ -2135,7 +2135,9 @@ func align4(n int) int { return (n + 3) &^ 3 }
 // intentionally Size/Embedded only: the compact form adds one predictable
 // direct branch after the indirect dispatch.
 func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
-	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || len(labels) > 4095 {
+	// The aligned target-ID table precedes the branch vector and is added with
+	// an unshifted 12-bit immediate, so its offset must not exceed 4095.
+	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || align4(len(labels)) > 4095 {
 		return false, 0, nil
 	}
 	var seen [4]uint64

@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"fmt"
 	"testing"
 	"unsafe"
 
@@ -227,6 +228,32 @@ func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
 		if got != c.want {
 			t.Fatalf("f(%d,1) = %d, want %d", c.index, got, c.want)
 		}
+	}
+}
+
+func TestExecBrTableCompactTargetIDsImmediateBoundaryArm64(t *testing.T) {
+	size := OptimizeSize
+	for _, labelN := range []int{4093, 4095} {
+		t.Run(fmt.Sprint(labelN), func(t *testing.T) {
+			labels := make([]uint32, labelN)
+			m := brTableComputedLabelsArm64(t, labels, 1)
+			var stats ModuleStats
+			if _, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats}); err != nil {
+				t.Fatalf("compile size: %v", err)
+			}
+			if stats.Funcs[0].Peephole["br-table-compact"] != 0 {
+				t.Fatalf("%d-label table used compact IDs past the add-immediate boundary: %v", labelN, stats.Funcs[0].Peephole)
+			}
+			for _, c := range []struct{ index, want uint64 }{{0, 1000}, {uint64(labelN - 1), 1000}, {uint64(labelN), 1001}} {
+				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}, c.index, 1)
+				if err != nil {
+					t.Fatalf("f(%d,1): %v", c.index, err)
+				}
+				if got != c.want {
+					t.Fatalf("f(%d,1) = %d, want %d", c.index, got, c.want)
+				}
+			}
+		})
 	}
 }
 
