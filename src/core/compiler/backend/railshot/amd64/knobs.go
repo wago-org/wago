@@ -33,6 +33,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("store-forward", &linearStoreForwardEnabled),
 	optimization.Bind("frame-elide", &smallFrameElideEnabled),
 	optimization.Bind("compact-i32-frame", &compactI32FrameEnabled),
+	optimization.Bind("local-slot-order", &localSlotOrderEnabled),
 	optimization.Bind("tee-spill-elide", &teeSpillElideEnabled),
 	optimization.Bind("commute-self-update", &commuteSelfUpdateEnabled),
 	optimization.Bind("i64-mask32", &i64Mask32Enabled),
@@ -71,6 +72,7 @@ var (
 	optStoreForward       = optimizationBindings.Option("store-forward")
 	optFrameElide         = optimizationBindings.Option("frame-elide")
 	optCompactI32Frame    = optimizationBindings.Option("compact-i32-frame")
+	optLocalSlotOrder     = optimizationBindings.Option("local-slot-order")
 	optTeeSpillElide      = optimizationBindings.Option("tee-spill-elide")
 	optCommuteSelfUpdate  = optimizationBindings.Option("commute-self-update")
 	optI64Mask32          = optimizationBindings.Option("i64-mask32")

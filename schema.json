@@ -84,6 +84,7 @@
               "leaf-scratch-pins",
               "legacy-fp-pins",
               "legacy-gp-pins",
+              "local-slot-order",
               "loop-precheck",
               "loop-region-pins",
               "multi-bounds-cert",

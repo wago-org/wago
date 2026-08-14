@@ -44,6 +44,9 @@ var (
 	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"
 	// compactI32FrameEnabled packs i32 locals in large control-free kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
+	// localSlotOrderEnabled gives frequently accessed unpinned locals the compact
+	// RSP-relative offsets. WAGO_NO_LOCAL_SLOT_ORDER=1 is the A/B oracle.
+	localSlotOrderEnabled = os.Getenv("WAGO_NO_LOCAL_SLOT_ORDER") != "1"
 	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
 	// slot when its still-live result must be evicted from a register.
 	teeSpillElideEnabled = os.Getenv("WAGO_NO_TEE_SPILL_ELIDE") != "1"

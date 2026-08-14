@@ -2110,6 +2110,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, fpPinLimit, hasCall, pinLocals && f.opt(optV128Pins) && !hasCall)
+	if f.opt(optLocalSlotOrder) && !moduleEH && gcFrameRoots == nil {
+		f.orderLocalSlots(hints.localScore, compactI32Frame)
+	}
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
@@ -2203,6 +2206,71 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	return f.a.B, f.relocs, 0, nil
+}
+
+// orderLocalSlots gives the shortest RSP-relative encodings to the hottest
+// locals that still use memory. Whole-function register pins go after them:
+// their ordinary gets/sets do not touch the home slot, while unpinned locals do.
+// localSlot itself temporarily holds the sorted permutation, making the layout
+// pass allocation-free. GC and EH frames are conservatively excluded at the call
+// site until their maps consume arbitrary localSlot layouts directly.
+func (f *fn) orderLocalSlots(scores []uint32, compactI32 bool) {
+	if len(scores) != f.nLocals || f.nLocals < 2 {
+		return
+	}
+	for i := 0; i < f.nLocals; i++ {
+		f.localSlot[i] = i
+	}
+	slices.SortFunc(f.localSlot, func(a, b int) int {
+		aPinned := f.locals[a].reg != regNone
+		bPinned := f.locals[b].reg != regNone
+		if aPinned != bPinned {
+			if aPinned {
+				return 1
+			}
+			return -1
+		}
+		if scores[a] != scores[b] {
+			if scores[a] > scores[b] {
+				return -1
+			}
+			return 1
+		}
+		return a - b
+	})
+
+	localBytes := 0
+	changed := false
+	for rank, local := range f.localSlot {
+		changed = changed || rank != local
+		mt := f.localType[local]
+		off := localBytes
+		if compactI32 && mt == mtI32 {
+			localBytes += 4
+		} else {
+			off = (localBytes + 7) &^ 7
+			localBytes = off + 8*mt.stackSlots()
+		}
+		// localSlot is int64 on AMD64. Keep the local identity in the low word
+		// and its final byte offset in the high word until the permutation is
+		// inverted in place below.
+		f.localSlot[rank] = int(uint64(uint32(off))<<32 | uint64(uint32(local)))
+	}
+	for i := range f.localSlot {
+		for int(uint32(f.localSlot[i])) != i {
+			j := int(uint32(f.localSlot[i]))
+			f.localSlot[i], f.localSlot[j] = f.localSlot[j], f.localSlot[i]
+		}
+	}
+	for i := range f.localSlot {
+		f.localSlot[i] = int(uint64(f.localSlot[i]) >> 32)
+	}
+	if got := (localBytes + 7) / 8; got != f.nLocalSlots {
+		panic("amd64: local slot ordering changed frame size")
+	}
+	if changed {
+		f.stats.peep("local-slot-order")
+	}
 }
 
 // finalizeStats fills the per-function size counters from final compiler state

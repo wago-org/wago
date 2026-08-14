@@ -375,6 +375,7 @@ var catalog = []Definition{
 	both("store-forward", "Store forwarding", "forward straight-line stores into loads"),
 	amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
 	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
+	amd64("local-slot-order", "Local slot ordering", "place hot unpinned locals at compact frame offsets"),
 	amd64("tee-spill-elide", "Reuse tee spill homes", "reuse a local.tee frame slot when spilling its still-live scalar result"),
 	amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
 	amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
