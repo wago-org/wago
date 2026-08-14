@@ -11,6 +11,7 @@ import (
 
 func TestLoopScanUsesBoundedScratch(t *testing.T) {
 	body := []byte{
+		0x20, 0x07, // local.get 7
 		0x21, 0x03, // local.set 3
 		0x22, 0x03, // local.tee 3 (deduplicated)
 		0x03, 0x40, // nested loop (empty block type)
@@ -28,9 +29,9 @@ func TestLoopScanUsesBoundedScratch(t *testing.T) {
 	if !scan.exact || !scan.hasGrow || !scan.hasNested || scan.hasCall || scan.hasTable {
 		t.Fatalf("scan flags = %+v", scan)
 	}
-	if scan.count != 2 || f.loopSetN != 2 || !f.loopSetsLocal(&ctrlFrame{loopSetStart: scan.start, loopSetCount: scan.count}, 3) ||
-		!f.loopSetsLocal(&ctrlFrame{loopSetStart: scan.start, loopSetCount: scan.count}, 7) {
-		t.Fatalf("scan locals = %v, used = %d", f.sc.loopSetLocals[:scan.count], f.loopSetN)
+	fr := ctrlFrame{loopFactStart: scan.start, loopFactCount: scan.count}
+	if scan.count != 2 || f.loopFactN != 2 || !f.loopSetsLocal(&fr, 3) || !f.loopSetsLocal(&fr, 7) || f.loopFactSlice(&fr)[0].gets != 1 {
+		t.Fatalf("scan locals = %v, used = %d", f.sc.loopLocalFacts[:scan.count], f.loopFactN)
 	}
 }
 
@@ -47,9 +48,9 @@ func TestLoopScanFallsBackAtCaps(t *testing.T) {
 	})
 
 	t.Run("local arena", func(t *testing.T) {
-		body := make([]byte, 0, maxLoopSetLocals*3)
+		body := make([]byte, 0, maxLoopLocalFacts*3)
 		var buf [binary.MaxVarintLen32]byte
-		for i := uint32(0); i <= maxLoopSetLocals; i++ {
+		for i := uint32(0); i <= maxLoopLocalFacts; i++ {
 			body = append(body, 0x21) // local.set
 			n := binary.PutUvarint(buf[:], uint64(i))
 			body = append(body, buf[:n]...)
@@ -67,7 +68,7 @@ func assertConservativeLoopScan(t *testing.T, f *fn, r *wasm.Reader) {
 	if scan.exact || scan.count != 0 || !scan.hasGrow || !scan.hasCall || !scan.hasNested || !scan.hasTable {
 		t.Fatalf("fallback scan = %+v", scan)
 	}
-	if f.loopSetN != 0 || r.Offset() != 0 {
-		t.Fatalf("fallback retained scratch/reader state: used=%d offset=%d", f.loopSetN, r.Offset())
+	if f.loopFactN != 0 || r.Offset() != 0 {
+		t.Fatalf("fallback retained scratch/reader state: used=%d offset=%d", f.loopFactN, r.Offset())
 	}
 }

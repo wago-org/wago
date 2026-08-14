@@ -312,10 +312,10 @@ type fn struct {
 	// deeply-nested functions (60% of esbuild's compile). Set on activateLoopPins,
 	// cleared when that frame is popped in opEnd.
 	activeLoopPins []loopPin
-	// loopSetN is the used prefix of scratch.loopSetLocals. Each open loop owns
+	// loopFactN is the used prefix of scratch.loopLocalFacts. Each open loop owns
 	// one contiguous range; opEnd rewinds it, so nested loop scans share one
 	// fixed-capacity arena without per-loop allocation.
-	loopSetN    uint16
+	loopFactN   uint16
 	unreachable bool // in dead code after an unconditional branch/trap
 
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
@@ -531,7 +531,7 @@ type scratch struct {
 	// immutableIntGlobals is module-owned read-only summary state. Keeping its
 	// slice header here avoids inflating every compact funcHints entry.
 	immutableIntGlobals []shared.ImmutableIntGlobal
-	loopSetLocals       [maxLoopSetLocals]uint32
+	loopLocalFacts      [maxLoopLocalFacts]loopLocalFact
 
 	retSites         []int
 	ctrl             []ctrlFrame

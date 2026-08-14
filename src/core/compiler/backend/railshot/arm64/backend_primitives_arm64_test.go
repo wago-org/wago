@@ -138,6 +138,7 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 	t.Cleanup(func() { loopRegionPinsEnabled = saved })
 	f := &fn{
 		a:         &a64.Asm{},
+		stats:     &CodegenStats{},
 		localType: []machineType{mtI32, mtI64, mtF32, mtI32},
 		localSlot: []int{0, 1, 2, 3},
 		locals: []localDef{
@@ -149,8 +150,8 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 		nLocals: 4,
 	}
 	f.sc = &scratch{}
-	f.sc.loopSetLocals = [maxLoopSetLocals]uint32{0, 1, 2, 3}
-	fr := &ctrlFrame{kind: cfLoop, loopScanExact: true, loopSetCount: 4}
+	f.sc.loopLocalFacts = [maxLoopLocalFacts]loopLocalFact{{local: 0, gets: 3, sets: 1}, {local: 1, gets: 3, sets: 1}, {local: 2, gets: 1, sets: 1}, {local: 3, gets: 1, sets: 1}}
+	fr := &ctrlFrame{kind: cfLoop, loopScanExact: true, loopFactCount: 4}
 	f.activateLoopPins(fr)
 	if len(fr.loopPins) != 2 || fr.loopPins[0].local != 0 || fr.loopPins[1].local != 1 ||
 		!f.pinnedLocalMask.has(X12) || !f.pinnedLocalMask.has(X13) || len(f.a.B) == 0 {
@@ -158,6 +159,9 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 	}
 	if f.locals[0].state != lsReg || f.locals[1].state != lsStackReg {
 		t.Fatalf("pin states = %v, %v", f.locals[0].state, f.locals[1].state)
+	}
+	if f.stats.Peephole["loop-region-pin"] != 2 || f.stats.Peephole["loop-region-entry-load"] != 1 || f.stats.Peephole["loop-region-score-4-7"] != 2 {
+		t.Fatalf("loop pin stats = %v", f.stats.Peephole)
 	}
 	f.ctrl = []ctrlFrame{{}, *fr}
 	before := len(f.a.B)
@@ -169,11 +173,20 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 	if f.pinnedLocalMask.has(X12) || f.pinnedLocalMask.has(X13) || f.locals[0].state != lsMem || f.locals[1].state != lsMem {
 		t.Fatalf("released loop pins left mask/state = %#v, %v, %v", f.pinnedLocalMask, f.locals[0].state, f.locals[1].state)
 	}
+	if f.stats.Peephole["loop-region-edge-store"] != 2 || f.stats.Peephole["loop-region-exit-store"] != 2 {
+		t.Fatalf("loop store stats = %v", f.stats.Peephole)
+	}
 
-	blocked := &ctrlFrame{kind: cfLoop, loopScanExact: true, loopHasCall: true, loopSetCount: 1}
+	blocked := &ctrlFrame{kind: cfLoop, loopScanExact: true, loopHasCall: true, loopFactCount: 1}
 	f.activateLoopPins(blocked)
 	if len(blocked.loopPins) != 0 {
 		t.Fatal("call-containing loop received region pins")
+	}
+	f.nLocals = maxLoopRegionLocals + 1
+	tooManyLocals := &ctrlFrame{kind: cfLoop, loopScanExact: true, loopFactCount: 1}
+	f.activateLoopPins(tooManyLocals)
+	if len(tooManyLocals.loopPins) != 0 {
+		t.Fatal("high-pressure function received loop-region pins")
 	}
 }
 

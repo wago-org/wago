@@ -65,8 +65,8 @@ type ctrlFrame struct {
 	// cfLoop only (P6.2 foundation): the fixed scratch-arena range containing
 	// locals set anywhere in the loop body. loopScanExact is required before using
 	// absence from that range as proof of invariance.
-	loopSetStart  uint16
-	loopSetCount  uint16
+	loopFactStart uint16
+	loopFactCount uint16
 	loopScanExact bool
 	loopHasGrow   bool
 	// Loop-region allocation eligibility is collected in the same bounded scan
@@ -117,17 +117,23 @@ type loopPin struct {
 	reg   Reg
 }
 
+type loopLocalFact struct {
+	local      uint32
+	gets, sets uint16
+}
+
 // activateLoopPins is the deliberately narrow v1 region allocator. It borrows
 // two caller-saved registers only for a simple call-free loop; slots remain the
 // canonical representation outside the loop.
 func (f *fn) activateLoopPins(fr *ctrlFrame) {
-	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || !fr.loopScanExact || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
+	if !f.opt(optLoopRegionPins) || f.nLocals > maxLoopRegionLocals || fr.kind != cfLoop || !fr.loopScanExact || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
 		return
 	}
 	for _, r := range []Reg{X12, X13} {
-		best := -1
-		for x := 0; x < f.nLocals; x++ {
-			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !f.loopSetsLocal(fr, uint32(x)) {
+		best, bestScore := -1, uint32(0)
+		for _, fact := range f.loopFactSlice(fr) {
+			x := int(fact.local)
+			if fact.gets == 0 || fact.sets == 0 || x >= f.nLocals || f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone {
 				continue
 			}
 			already := false
@@ -137,14 +143,26 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 					break
 				}
 			}
-			if !already && best < 0 {
-				best = x
+			score := uint32(fact.gets) + uint32(fact.sets)
+			if !already && (score > bestScore || score == bestScore && (best < 0 || x < best)) {
+				best, bestScore = x, score
 			}
 		}
 		if best < 0 {
 			break
 		}
 		fr.loopPins = append(fr.loopPins, loopPin{best, r})
+		f.stats.peep("loop-region-pin")
+		switch {
+		case bestScore >= 16:
+			f.stats.peep("loop-region-score-16+")
+		case bestScore >= 8:
+			f.stats.peep("loop-region-score-8-15")
+		case bestScore >= 4:
+			f.stats.peep("loop-region-score-4-7")
+		default:
+			f.stats.peep("loop-region-score-2-3")
+		}
 		f.activeLoopPins = fr.loopPins // O(1) pinReg index; this is the only frame with pins
 		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
 		if f.locals[best].state == lsConstZero {
@@ -152,6 +170,7 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 			f.locals[best].state = lsReg
 		} else {
 			f.ld64(r, SP, f.localOff(best))
+			f.stats.peep("loop-region-entry-load")
 			f.locals[best].state = lsStackReg
 		}
 	}
@@ -161,6 +180,7 @@ func (f *fn) storeLoopPinsLeaving(target int) {
 	for i := len(f.ctrl) - 1; i > target; i-- {
 		for _, p := range f.ctrl[i].loopPins {
 			f.st64(SP, f.localOff(p.local), p.reg)
+			f.stats.peep("loop-region-edge-store")
 		}
 	}
 }
@@ -168,6 +188,7 @@ func (f *fn) storeLoopPinsLeaving(target int) {
 func (f *fn) releaseLoopPins(fr *ctrlFrame) {
 	for _, p := range fr.loopPins {
 		f.st64(SP, f.localOff(p.local), p.reg)
+		f.stats.peep("loop-region-exit-store")
 		f.pinnedLocalMask = f.pinnedLocalMask.remove(p.reg)
 		f.locals[p.local].state = lsMem
 	}
@@ -750,9 +771,10 @@ func (f *fn) alignLoopHeader() {
 // --- control opcodes ---
 
 const (
-	maxLoopSetLocals = 64
-	maxLoopScanOps   = 1024
-	maxLoopScanBytes = 16 << 10
+	maxLoopLocalFacts   = 64
+	maxLoopScanOps      = 1024
+	maxLoopScanBytes    = 16 << 10
+	maxLoopRegionLocals = 8
 )
 
 type loopScan struct {
@@ -760,17 +782,45 @@ type loopScan struct {
 	exact, hasGrow, hasCall, hasNested, hasTable bool
 }
 
-func (f *fn) loopSetSlice(fr *ctrlFrame) []uint32 {
-	return f.scratchState().loopSetLocals[int(fr.loopSetStart):int(fr.loopSetStart+fr.loopSetCount)]
+func (f *fn) loopFactSlice(fr *ctrlFrame) []loopLocalFact {
+	return f.scratchState().loopLocalFacts[int(fr.loopFactStart):int(fr.loopFactStart+fr.loopFactCount)]
 }
 
 func (f *fn) loopSetsLocal(fr *ctrlFrame, idx uint32) bool {
-	for _, set := range f.loopSetSlice(fr) {
-		if set == idx {
-			return true
+	for _, fact := range f.loopFactSlice(fr) {
+		if fact.local == idx {
+			return fact.sets != 0
 		}
 	}
 	return false
+}
+
+func (f *fn) addLoopLocalFact(out *loopScan, idx uint32, get bool) bool {
+	facts := f.scratchState().loopLocalFacts[int(out.start):int(out.start+out.count)]
+	for i := range facts {
+		if facts[i].local == idx {
+			if get {
+				if facts[i].gets != ^uint16(0) {
+					facts[i].gets++
+				}
+			} else if facts[i].sets != ^uint16(0) {
+				facts[i].sets++
+			}
+			return true
+		}
+	}
+	if int(f.loopFactN)+int(out.count) >= maxLoopLocalFacts {
+		return false
+	}
+	fact := &f.scratchState().loopLocalFacts[int(out.start+out.count)]
+	*fact = loopLocalFact{local: idx}
+	if get {
+		fact.gets = 1
+	} else {
+		fact.sets = 1
+	}
+	out.count++
+	return true
 }
 
 // scanLoopBody scans a loop body ahead from the reader's current position (the
@@ -780,7 +830,7 @@ func (f *fn) loopSetsLocal(fr *ctrlFrame, idx uint32) bool {
 // exhaustion makes the result conservative rather than growing storage.
 func (f *fn) scanLoopBody(r *wasm.Reader, memory64 bool) (out loopScan) {
 	start := r.Offset()
-	out.start = f.loopSetN
+	out.start = f.loopFactN
 	depth := 0
 	ok := false
 scan:
@@ -819,21 +869,13 @@ scan:
 				break scan
 			}
 			depth--
-		case 0x21, 0x22: // local.set / local.tee
+		case 0x20, 0x21, 0x22: // local.get / local.set / local.tee
 			idx, err := r.U32()
 			if err != nil {
 				break scan
 			}
-			seen := false
-			for _, set := range f.scratchState().loopSetLocals[int(out.start):int(out.start+out.count)] {
-				seen = seen || set == idx
-			}
-			if !seen {
-				if int(f.loopSetN)+int(out.count) >= maxLoopSetLocals {
-					break scan
-				}
-				f.scratchState().loopSetLocals[int(out.start+out.count)] = idx
-				out.count++
+			if !f.addLoopLocalFact(&out, idx, op == 0x20) {
+				break scan
 			}
 		case 0x40: // memory.grow
 			if _, err := r.U32(); err != nil {
@@ -863,7 +905,7 @@ scan:
 	r.JumpTo(start)
 	if ok {
 		out.exact = true
-		f.loopSetN += out.count
+		f.loopFactN += out.count
 		return out
 	}
 	// No absence fact is safe after a bounded fallback. Make every eligibility
@@ -903,7 +945,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
 		scan := f.scanLoopBody(r, f.memoryAddr64(0)) // P6.2 + region-pin foundation (reader restored)
-		fr.loopSetStart, fr.loopSetCount, fr.loopScanExact = scan.start, scan.count, scan.exact
+		fr.loopFactStart, fr.loopFactCount, fr.loopScanExact = scan.start, scan.count, scan.exact
 		fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scan.hasGrow, scan.hasCall, scan.hasNested, scan.hasTable
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
@@ -1514,7 +1556,7 @@ func (f *fn) opEnd() error {
 	f.ctrl[last] = ctrlFrame{}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 	if fr.kind == cfLoop {
-		f.loopSetN = fr.loopSetStart
+		f.loopFactN = fr.loopFactStart
 	}
 	if len(fr.loopPins) != 0 {
 		f.activeLoopPins = nil // this frame's pins leave scope with the pop

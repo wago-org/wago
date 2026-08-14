@@ -179,11 +179,12 @@ with 343 allocs/op and B/op unchanged.
 
 ARM64 loop residency and bounds-hoist admission no longer allocate one map or
 scan an unbounded body at every reachable loop header. Exact set-local facts now
-occupy a 64-entry, 256-byte arena owned by the serial compiler or parallel
-worker; nested frames hold only range descriptors and rewind the arena when they
-close. The copied reader has independent 1,024-operation and 16 KiB limits, and
-large immediate vectors are capped separately. Exhaustion, malformed input, or
-structured EH discards partial facts, marks every loop effect conservatively,
+occupy a 64-entry, 512-byte arena owned by the serial compiler or parallel
+worker; each entry also holds saturated local get/set counts for residency
+scoring. Nested frames hold only range descriptors and rewind the arena when
+they close. The copied reader has independent 1,024-operation and 16 KiB limits,
+and large immediate vectors are capped separately. Exhaustion, malformed input,
+or structured EH discards partial facts, marks every loop effect conservatively,
 and disables both residency and invariance proofs for that loop.
 
 Cap tests cover operation fuel and local-arena exhaustion, reader restoration,
@@ -195,6 +196,31 @@ fell from 17,375 to 17,240. `sieve` measured 12,834 ns/op versus 13,651 ns/op
 (-5.98%), with allocations falling from 52 to 44 and B/op from 31,568 to 31,056.
 A rejected 256-entry version was not retained because its 1 KiB fixed arena
 raised small-module compile B/op by roughly 6.6%.
+
+### 2026-08-14 — measured ARM64 loop-residency scoring
+
+The opt-in ARM64 loop region now chooses at most two integer locals by saturated
+static get+set count, with stable local-index tie-breaking, instead of choosing
+the first set locals. Admission is limited to functions with at most eight
+locals; a measured 10-local `json-as-simd.deserializeN` case regressed by roughly
+7% when X12/X13 were reserved despite unchanged spill counts. Explain mode now
+attributes pin count, entry loads, branch-edge stores, exit stores, and score
+buckets, while normal compilation retains the nil-stats path.
+
+The narrower policy preserves the high-value `utf-as-simd` result: serialized
+Darwin/ARM64 medians move from 57,212 to 42,944 ns/op for `convertN` (-24.9%) and
+from 142,320 to 19,846 ns/op for `validateN` (-86.1%). Both return the same
+results with the policy disabled and enabled (`710400` and `200`) and remain at
+zero B/op and allocations. Comparable `json-as-simd` medians improve by 1.0%
+for serialize and 0.9% for deserialize. Ordinary `json-as` serialize improves
+0.9%, but deserialize remains about 1.5% slower; therefore loop residency stays
+opt-in while trip-count/amortization admission is unresolved rather than being
+enabled globally on the strength of the UTF result.
+
+With the option disabled, all checked-in benchmark-corpus module sizes remain
+identical to the preceding commit. A three-sample `many_funcs` compile median
+was 252,370 ns/op versus 248,919 ns/op (+1.39%), with allocations unchanged at
+343/op and B/op effectively unchanged near 138.9 KiB.
 
 ---
 
