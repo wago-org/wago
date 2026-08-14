@@ -13,8 +13,13 @@ import (
 
 func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 	oldEnabled := nativeFinalizerEnabled
+	oldCompact := nativeCompactionEnabled
 	nativeFinalizerEnabled = true
-	t.Cleanup(func() { nativeFinalizerEnabled = oldEnabled })
+	nativeCompactionEnabled = false
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = oldEnabled
+		nativeCompactionEnabled = oldCompact
+	})
 
 	code := []byte{0x48, 0x81, 0xec, 0, 0, 0, 0, 0xe8, 0, 0, 0, 0, 0xc3}
 	original := append([]byte(nil), code...)
@@ -47,7 +52,12 @@ func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 func TestIdentityFinalizerCompileParity(t *testing.T) {
 	m := mod1(t, nil, nil, []byte{0x00, 0x01, 0x0b})
 	oldEnabled := nativeFinalizerEnabled
-	t.Cleanup(func() { nativeFinalizerEnabled = oldEnabled })
+	oldCompact := nativeCompactionEnabled
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = oldEnabled
+		nativeCompactionEnabled = oldCompact
+	})
+	nativeCompactionEnabled = false
 
 	nativeFinalizerEnabled = false
 	without, err := CompileModule(m)
@@ -70,5 +80,36 @@ func TestIdentityFinalizerCompileParity(t *testing.T) {
 		!reflect.DeepEqual(without.InternalEntry, with.InternalEntry) {
 		t.Fatalf("identity finalizer changed entries: entry %v/%v internal %v/%v",
 			without.Entry, with.Entry, without.InternalEntry, with.InternalEntry)
+	}
+}
+
+func TestFinalizerCompactsSmallFrameAdjustments(t *testing.T) {
+	oldEnabled := nativeFinalizerEnabled
+	oldCompact := nativeCompactionEnabled
+	t.Cleanup(func() {
+		nativeFinalizerEnabled = oldEnabled
+		nativeCompactionEnabled = oldCompact
+	})
+	nativeFinalizerEnabled = true
+	nativeCompactionEnabled = true
+
+	a := &amd64enc.Asm{}
+	subSite := a.Len() + 3
+	a.SubRsp(24)
+	a.B = append(a.B, 0x90)
+	addSite := a.Len() + 3
+	a.AddRsp(24)
+	sc := &scratch{}
+	f := fn{a: a, sc: sc, subRspAt: subSite, addRspAt: addSite}
+
+	if _, err := f.finalizeNativeCode(0); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(f.a.B), 9; got != want {
+		t.Fatalf("compacted code length = %d, want %d", got, want)
+	}
+	want := []byte{0x48, 0x83, 0xec, 24, 0x90, 0x48, 0x83, 0xc4, 24}
+	if !bytes.Equal(f.a.B, want) {
+		t.Fatalf("compacted frame bytes = %x, want %x", f.a.B, want)
 	}
 }

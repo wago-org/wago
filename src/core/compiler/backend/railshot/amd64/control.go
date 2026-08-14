@@ -1561,6 +1561,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.branchJump(fr)
 	}
 	if len(labels) >= brTableJumpMin {
+		f.hasJumpTableData = true
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
 		// RAX/RDX are free after the flush (pinned locals never occupy scratch); the

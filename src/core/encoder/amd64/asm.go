@@ -28,9 +28,14 @@ const (
 )
 
 type Asm struct {
-	B        []byte
-	UsesBMI2 bool
+	B          []byte
+	UsesBMI2   bool
+	Rel32Count int
 }
+
+// Rel32Count records explicitly emitted function-local PC-relative
+// displacements. Initial frame compaction admits only functions with none; a
+// later bounded site inventory can retain their exact offsets for relaxation.
 
 // Grow ensures B has capacity for at least n bytes, reusing the existing backing
 // array when it is already large enough. Used to pre-size a reused encoder buffer
@@ -692,9 +697,21 @@ func (a *Asm) JccPlaceholder(c Cond) int {
 	return off
 }
 
-func (a *Asm) PatchRel32(at, target int) { a.PatchU32(at, uint32(int32(target-(at+4)))) }
+func (a *Asm) PatchRel32(at, target int) {
+	a.recordRel32(at, target)
+	a.PatchU32(at, uint32(int32(target-(at+4))))
+}
 
-func (a *Asm) JmpBack(target int) { a.emit(0xE9); off := a.Len(); a.imm32(int32(target - (off + 4))) }
+func (a *Asm) JmpBack(target int) {
+	a.emit(0xE9)
+	off := a.Len()
+	a.recordRel32(off, target)
+	a.imm32(int32(target - (off + 4)))
+}
+
+func (a *Asm) recordRel32(_, _ int) {
+	a.Rel32Count++
+}
 
 func (a *Asm) Cmovcc(cc Cond, dst, src Reg, w bool) {
 	if w || dst >= 8 || src >= 8 {

@@ -156,6 +156,16 @@ func TestAssemblerPatchingAndAlignment(t *testing.T) {
 	}
 }
 
+func TestRel32SiteCounting(t *testing.T) {
+	var a Asm
+	first := a.JmpPlaceholder()
+	a.PatchRel32(first, a.Len())
+	a.JmpBack(0)
+	if got, want := a.Rel32Count, 2; got != want {
+		t.Fatalf("rel32 site count = %d, want %d", got, want)
+	}
+}
+
 func TestRemainingIntegerInstructionForms(t *testing.T) {
 	cases := []struct {
 		name string

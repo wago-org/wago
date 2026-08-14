@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 
@@ -13,17 +14,19 @@ import (
 // identity finalizer changes no bytes; it establishes one owner for every
 // function-relative metadata offset before AMD64 relaxation can shrink code.
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
+var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
 	}
-	result, err := shared.FinalizeIdentity(f.a.B, nil, nil, nil)
+	oldLen := len(f.a.B)
+	result, frameDeleted, err := f.finalizeFrameAdjustments()
 	if err != nil {
-		return 0, fmt.Errorf("amd64 finalizer: %w", err)
+		return 0, err
 	}
 	f.a.B = result.Code
-	if internalOff == 0 && len(f.relocs) == 0 && f.adapterReturnOff == 0 && f.gcFrameRoots == nil {
+	if len(result.Code) == oldLen && internalOff == 0 && len(f.relocs) == 0 && f.adapterReturnOff == 0 && f.gcFrameRoots == nil {
 		// The common tiny internal leaf has no function-relative metadata to
 		// remap. FinalizeIdentity has still validated the emitted image; avoid a
 		// redundant map call for every such function in many-function modules.
@@ -64,7 +67,87 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			plan.Callsites[i].ReturnOffset = uint32(mapped)
 		}
 	}
+	if frameDeleted != 0 && f.stats != nil {
+		f.stats.NativeSize.FrameAdjustmentBytes -= frameDeleted
+		f.stats.NativeSize.DeadFrameReservationBytes = 0
+	}
 	return internalOff, nil
+}
+
+func (f *fn) finalizeFrameAdjustments() (shared.FinalizeResult, int, error) {
+	identity := func() (shared.FinalizeResult, int, error) {
+		result, err := shared.FinalizeIdentity(f.a.B, nil, nil, nil)
+		if err != nil {
+			return shared.FinalizeResult{}, 0, fmt.Errorf("amd64 finalizer: %w", err)
+		}
+		return result, 0, nil
+	}
+	if !nativeCompactionEnabled || f.hasLoop || f.hasJumpTableData ||
+		len(f.customInstructions) != 0 || f.a.Rel32Count != 0 {
+		return identity()
+	}
+	frameSize := f.frameSize()
+	if frameSize > 127 {
+		return identity()
+	}
+
+	var storage [shared.MaxOffsetMapDeletions]shared.DeletedRange
+	deletions := storage[:0]
+	frameSites := len(f.sc.tailFrameSites) + 2
+	if frameSites > cap(deletions) {
+		return identity()
+	}
+	addFrameSite := func(site int, opcode byte) error {
+		if site < 3 || site+4 > len(f.a.B) || f.a.B[site-3] != 0x48 ||
+			f.a.B[site-2] != 0x81 || f.a.B[site-1] != opcode ||
+			binary.LittleEndian.Uint32(f.a.B[site:]) != uint32(frameSize) {
+			return fmt.Errorf("amd64 finalizer: invalid frame-adjustment site %d", site)
+		}
+		if frameSize == 0 {
+			deletions = append(deletions, shared.DeletedRange{Off: uint32(site - 3), Len: 7})
+			return nil
+		}
+		// 48 81 /digit imm32 -> 48 83 /digit imm8. The low immediate byte is
+		// already correct; delete only the trailing three bytes.
+		f.a.B[site-2] = 0x83
+		deletions = append(deletions, shared.DeletedRange{Off: uint32(site + 1), Len: 3})
+		return nil
+	}
+	if err := addFrameSite(f.subRspAt, 0xec); err != nil {
+		return shared.FinalizeResult{}, 0, err
+	}
+	for _, site := range f.sc.tailFrameSites {
+		if err := addFrameSite(site, 0xc4); err != nil {
+			return shared.FinalizeResult{}, 0, err
+		}
+	}
+	if err := addFrameSite(f.addRspAt, 0xc4); err != nil {
+		return shared.FinalizeResult{}, 0, err
+	}
+
+	for i := 1; i < len(deletions); i++ {
+		value := deletions[i]
+		j := i
+		for j > 0 && deletions[j-1].Off > value.Off {
+			deletions[j] = deletions[j-1]
+			j--
+		}
+		deletions[j] = value
+	}
+	offsets, err := shared.NewOffsetMap(len(f.a.B), deletions)
+	if err != nil {
+		return shared.FinalizeResult{}, 0, fmt.Errorf("amd64 finalizer: %w", err)
+	}
+	src, dst := 0, 0
+	for _, deletion := range deletions {
+		off := int(deletion.Off)
+		copy(f.a.B[dst:], f.a.B[src:off])
+		dst += off - src
+		src = off + int(deletion.Len)
+	}
+	copy(f.a.B[dst:], f.a.B[src:])
+	code := f.a.B[:offsets.FinalLen()]
+	return shared.FinalizeResult{Code: code, Offsets: offsets}, len(f.a.B) - len(code), nil
 }
 
 func mapAMD64FinalOffset(offsets *shared.OffsetMap, old, codeLen int, kind string) (int, error) {
