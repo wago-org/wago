@@ -318,7 +318,7 @@ func (in *Instance) collectGenericGCAtBoundary() error {
 	if in == nil || in.gc == nil || in.c == nil || !in.c.genericGCBoundaryCollectionSafe() {
 		return nil
 	}
-	return in.CollectGC()
+	return in.collectGC()
 }
 
 // reconcileGCGlobalRoots synchronizes exact staged mutable GC global cells with

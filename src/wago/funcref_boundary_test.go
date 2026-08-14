@@ -312,14 +312,8 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 			t.Fatalf("Compile importer: %v", err)
 		}
 		importer, err := importerRT.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
-		if err != nil {
-			t.Fatalf("Instantiate importer: %v", err)
-		}
-		defer importer.Close()
-
-		got, err := importer.Invoke("get")
-		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
-			t.Fatalf("cross-runtime imported get = %v, %v; want fail-closed result", got, err)
+		if err == nil || importer != nil || !strings.Contains(err.Error(), "dynamic funcref producer requires the same Runtime") {
+			t.Fatalf("cross-runtime dynamic producer instantiate = %v, %v; want same-Runtime rejection", importer, err)
 		}
 		if len(importerRT.refStore.byToken) != 0 || len(importerRT.refStore.byIdentity) != 0 {
 			t.Fatal("cross-runtime rejection issued a public token")

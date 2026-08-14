@@ -28,6 +28,9 @@ var (
 const (
 	executionFlagIndependent uint32 = 1 << iota
 	executionFlagNativeControlShared
+	executionFlagImportedGCDomain
+	executionFlagDynamicGCDomain
+	executionFlagStoreOwnedGCCollector
 )
 
 type invocationID uint64
@@ -47,15 +50,15 @@ type nativeActivation struct {
 	id invocationID
 }
 
-func markNativeActive(in *Instance) {
-	activation := nativeActivation{in: in, id: in.currentInvocationID()}
+func markNativeActiveID(in *Instance, id invocationID) {
+	activation := nativeActivation{in: in, id: id}
 	nativeActiveMu.Lock()
 	nativeActive[activation]++
 	nativeActiveMu.Unlock()
 }
 
-func unmarkNativeActive(in *Instance) {
-	activation := nativeActivation{in: in, id: in.currentInvocationID()}
+func unmarkNativeActiveID(in *Instance, id invocationID) {
+	activation := nativeActivation{in: in, id: id}
 	nativeActiveMu.Lock()
 	if nativeActive[activation] <= 1 {
 		delete(nativeActive, activation)

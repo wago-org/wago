@@ -79,6 +79,8 @@ func (in *Instance) closeOnce() error {
 	activeInvocations := previousInvocations & instanceInvocationCount
 	in.lifeMu.Lock()
 	if activeInvocations != 0 && len(in.trap) >= 4 {
+		// Host re-entry swaps the trap slice under lifeMu, so Close observes one
+		// complete active slice header before requesting interruption.
 		in.ensurePluginState().close.Load().interruptStop = runtime.RequestInterruptAsync(in.trap)
 	}
 	in.lifeMu.Unlock()
@@ -318,7 +320,7 @@ func (in *Instance) releaseResources() {
 			if table := in.existingGCRefTestTableState(); table != nil {
 				table.drop(in.gc)
 			}
-			if in.refStore == nil || !in.refStore.ownsGCCollector(in.gc) {
+			if in.executionFlags.Load()&executionFlagStoreOwnedGCCollector == 0 {
 				in.gc.Close()
 			}
 		}

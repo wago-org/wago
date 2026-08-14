@@ -170,7 +170,7 @@ func (in *Instance) transferImportedTableAttachment(table *Table) {
 	}
 	state.mu.Unlock()
 	if !exists {
-		table.detachImporter()
+		table.detachImporter(in.refStore)
 	}
 }
 

@@ -46,7 +46,10 @@ directly from PowerShell rather than through Make.
 Linux/amd64 continues to host architecture-independent lint, TinyGo, and
 binary-size jobs on pull requests and pushes to `main`; coverage runs only for
 code changes pushed to `main`, keeping the expensive merged report off pull
-requests while retaining it as a post-merge gate.
+requests while retaining it as a post-merge gate. A separate bounded runtime
+concurrency matrix runs the deterministic public-API harness on native Linux
+amd64 and arm64. The Linux/amd64 race lane runs the same harness under `-race`
+alongside the focused runtime packages.
 The size job runs `scripts/size-card.sh` for four explicit Linux/AMD64 release
 profiles: manager, Standard runtime, Minimal runtime, and the TinyGo Minimal
 runtime. It fails above the byte ceilings in
@@ -137,6 +140,7 @@ do not contaminate `make lint`.
 make docs-check
 make lint
 make test
+make test-concurrency  # replay with WAGO_CONCURRENCY_SEED=<seed>[,<seed>...]
 make test-guard   # only on a supported guard-page target
 WAGO_CORPUS_TIMEOUT=20s make test-corpus
 make simd

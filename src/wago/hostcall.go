@@ -178,10 +178,14 @@ func (s *hostCallScope) begin(in *Instance) instanceHostModule {
 }
 
 func (s *hostCallScope) beginReserved(in *Instance, reservation *pluginOperationReservation) instanceHostModule {
+	return s.beginReservedWithID(in, in.currentInvocationID(), reservation)
+}
+
+func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation *pluginOperationReservation) instanceHostModule {
 	parent := s.active.Load()
 	generation := uint64(newInvocationID())
 	s.active.Store(generation)
-	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: in.currentInvocationID(), reservation: reservation}
+	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: id, reservation: reservation}
 }
 
 func (s *hostCallScope) end(generation, parent uint64) {
@@ -214,7 +218,11 @@ func (in *Instance) beginHostCallScope() instanceHostModule {
 }
 
 func (in *Instance) beginHostCallScopeReserved(reservation *pluginOperationReservation) instanceHostModule {
-	return in.ensurePluginState().hostScope.beginReserved(in, reservation)
+	return in.beginHostCallScopeReservedWithID(in.currentInvocationID(), reservation)
+}
+
+func (in *Instance) beginHostCallScopeReservedWithID(id invocationID, reservation *pluginOperationReservation) instanceHostModule {
+	return in.ensurePluginState().hostScope.beginReservedWithID(in, id, reservation)
 }
 
 func (in *Instance) currentInvocationID() invocationID {
@@ -609,7 +617,12 @@ func (h instanceHostModule) CollectGC() error {
 	if !h.valid() {
 		return fmt.Errorf("wago: GC host module is outside its active callback: %w", ErrPermissionDenied)
 	}
-	return h.in.CollectGC()
+	if h.in.ownsGCInvocation(h.invocationID) {
+		return h.in.collectGC()
+	}
+	lease := h.in.lockGCInvocation(h.invocationID)
+	defer lease.unlock()
+	return h.in.collectGC()
 }
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
 	if !h.valid() {
@@ -777,7 +790,8 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 		defer gcTemps.release(in)
-		caller := in.beginHostCallScope()
+		invocation := currentHostInvocationContext(ctrl, in)
+		caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
 		defer caller.scope.end(caller.generation, caller.parentGeneration)
 		var mod HostModule = caller
 		fn(mod, args, results)
