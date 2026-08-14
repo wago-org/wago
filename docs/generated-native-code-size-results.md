@@ -392,6 +392,26 @@ really is smaller than the retained call path. A native-aware estimator should
 eventually re-admit this proved-negative-net class while continuing to reject
 the large corpus expansions above.
 
+The next instrumentation records the exact encoder span for each inline site,
+from argument binding through body emission and result realization. It is
+allocation-free and appears as `InlineSiteBytes` in structured stats and
+`inline-site-bytes` in explain output. It deliberately excludes caller-frame
+growth and later shared cold tails, which remain visible in the paired module
+delta. Current AMD64 samples are:
+
+| Module | Direct inline-site bytes | Whole-module inline effect |
+| --- | ---: | ---: |
+| `many_funcs` | 35 | -72 bytes |
+| `json-as` | 0 | 0 bytes |
+| `esbuild` | 1,061,957 | +1,050,240 bytes |
+| `ruby` | 907,033 | +1,056,256 bytes |
+| `sqlite3` | 142,866 | +138,848 bytes |
+
+The `many_funcs` result proves why direct site bytes cannot be the decision by
+themselves: the estimator must also account for the removed call sequence,
+caller frame changes, and any dead standalone body/adapter before re-admitting a
+Size inline.
+
 ## ARM64 baseline: 2026-08-13
 
 Environment:
