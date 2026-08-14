@@ -59,6 +59,10 @@ type EncodingStats struct {
 	MovImm64     uint64 `json:"mov_imm64"`
 	MovImmNarrow uint64 `json:"mov_imm64_narrowed"`
 	MovImmSaved  uint64 `json:"mov_imm64_bytes_saved"`
+	ShiftImmZero uint64 `json:"shift_imm_zero_elided"`
+	ShiftImmOne  uint64 `json:"shift_imm_one"`
+	ShiftImm8    uint64 `json:"shift_imm8"`
+	ShiftSaved   uint64 `json:"shift_imm_bytes_saved"`
 }
 
 // Add accumulates another encoder histogram.
@@ -80,6 +84,10 @@ func (s *EncodingStats) Add(other EncodingStats) {
 	s.MovImm64 += other.MovImm64
 	s.MovImmNarrow += other.MovImmNarrow
 	s.MovImmSaved += other.MovImmSaved
+	s.ShiftImmZero += other.ShiftImmZero
+	s.ShiftImmOne += other.ShiftImmOne
+	s.ShiftImm8 += other.ShiftImm8
+	s.ShiftSaved += other.ShiftSaved
 }
 
 // MemoryDisplacementBytes returns the exact bytes occupied by recorded disp8
@@ -616,10 +624,32 @@ func (a *Asm) ImulRRI(dst, src Reg, imm int32, w bool) {
 }
 
 func (a *Asm) ShiftImm(digit byte, dst Reg, count byte, w bool) {
+	if count == 0 {
+		if a.EncodingStats != nil {
+			a.EncodingStats.ShiftImmZero++
+			a.EncodingStats.ShiftSaved += 3
+			if w || dst >= 8 {
+				a.EncodingStats.ShiftSaved++
+			}
+		}
+		return
+	}
 	if w || dst >= 8 {
 		a.emit(a.rex(w, false, false, dst >= 8))
 	}
-	a.emit(0xC1, 0xC0|(digit<<3)|byte(dst&7), count)
+	mod := byte(0xC0) | (digit << 3) | byte(dst&7)
+	if count == 1 {
+		if a.EncodingStats != nil {
+			a.EncodingStats.ShiftImmOne++
+			a.EncodingStats.ShiftSaved++
+		}
+		a.emit(0xD1, mod)
+		return
+	}
+	if a.EncodingStats != nil {
+		a.EncodingStats.ShiftImm8++
+	}
+	a.emit(0xC1, mod, count)
 }
 
 func (a *Asm) ShiftCL(digit byte, dst Reg, w bool) { a.shiftCL(digit, dst, w) }

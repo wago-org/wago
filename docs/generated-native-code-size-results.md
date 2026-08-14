@@ -2069,6 +2069,28 @@ Five serialized Size compile samples put Ruby at a median 961,924,373 to
 state, allocation, or finalizer work and applies to every objective because the
 short forms are performance-neutral maximal encodings.
 
+## AMD64 one-bit shift encodings
+
+Constant register shifts now use the implicit-count-one D1 encoding instead of
+C1 plus an immediate byte. A literal zero count emits no instruction: x86 does
+not write the destination or flags for a zero-count shift, so deletion preserves
+both. The stats ledger separates zero deletions, D1 sites, and remaining imm8
+sites and records the exact direct bytes saved.
+
+The exact 36-module AMD64 Size suite falls from 66,811,457 to 66,802,423 bytes
+(-9,034, -0.014%). Ruby contributes 7,493 bytes (34,297,051 to 34,289,558),
+esbuild 591 (24,671,637 to 24,671,046), and SQLite 169 (3,276,208 to
+3,276,039). The encoder sees 7,674, 591, and 285 count-one sites respectively;
+no zero-count site occurs in these three modules. As with narrowed movabs,
+bounded finalizer choices account for the small difference between direct-site
+and final module deltas.
+
+Five serialized Size samples move Ruby from a 972,286,047 to 971,396,010 ns/op
+median (-0.09%) and esbuild from 503,990,133 to 505,441,268 ns/op (+0.29%).
+B/op and allocations remain noise-level. D1 executes the same operation with
+the same flags while removing one fetched byte, so no runtime tradeoff is
+introduced.
+
 ### Commands
 
 ```sh

@@ -109,6 +109,17 @@ func TestEncodingStatsMovImmediateForms(t *testing.T) {
 	}
 }
 
+func TestEncodingStatsShiftImmediateForms(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.ShiftImm(4, R8, 0, true)
+	a.ShiftImm(4, R8, 1, true)
+	a.ShiftImm(4, R8, 2, true)
+	if stats.ShiftImmZero != 1 || stats.ShiftImmOne != 1 || stats.ShiftImm8 != 1 || stats.ShiftSaved != 5 {
+		t.Fatalf("shift immediate stats = %#v, want one of each form and five bytes saved", stats)
+	}
+}
+
 func TestScalarFloatEncodings(t *testing.T) {
 	cases := []struct {
 		name string
@@ -342,6 +353,8 @@ func TestRemainingIntegerInstructionForms(t *testing.T) {
 		{"imul memory", func(a *Asm) { a.ImulRM(R8, R9, 4, true) }, []byte{0x4d, 0x0f, 0xaf, 0x41, 4}},
 		{"imul immediate", func(a *Asm) { a.ImulRI(R8, 0x1234, true) }, []byte{0x4d, 0x69, 0xc0, 0x34, 0x12, 0, 0}},
 		{"shift immediate", func(a *Asm) { a.ShiftImm(4, R8, 3, true) }, []byte{0x49, 0xc1, 0xe0, 3}},
+		{"shift immediate one", func(a *Asm) { a.ShiftImm(4, R8, 1, true) }, []byte{0x49, 0xd1, 0xe0}},
+		{"shift immediate zero", func(a *Asm) { a.ShiftImm(4, R8, 0, true) }, nil},
 		{"add rsp", func(a *Asm) { a.AddRsp(16) }, []byte{0x48, 0x81, 0xc4, 16, 0, 0, 0}},
 		{"lea rsp", func(a *Asm) { a.LeaRsp(R8, 4) }, []byte{0x4c, 0x8d, 0x44, 0x24, 4}},
 		{"lea scaled", func(a *Asm) { a.LeaScaled(R8, R9, R10, 1, 4) }, []byte{0x4f, 0x8d, 0x44, 0x51, 4}},
