@@ -210,7 +210,11 @@ packages; it does not become a third CLI role.
 
 `run --watch` is runtime-owned. It relaunches the same runtime executable when
 the input module changes, preserving guest arguments and plugin selection made
-by the manager handoff.
+by the manager handoff. The runtime supervises one child process tree at a time,
+keeps file polling active while the guest runs, and waits for stable content
+before a restart. Interrupt and termination signals stop the child tree before
+the watcher exits. Content hashing detects same-size rewrites even when file
+timestamps do not change.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:
