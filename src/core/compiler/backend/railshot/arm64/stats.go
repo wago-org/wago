@@ -353,6 +353,12 @@ func (s *CodegenStats) peep(name string) {
 	s.Peephole[name]++
 }
 
+func (s *CodegenStats) peepN(name string, n int) {
+	for ; n > 0; n-- {
+		s.peep(name)
+	}
+}
+
 // ModuleGlobalPinInfo describes one module-wide global-to-register reservation.
 type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 

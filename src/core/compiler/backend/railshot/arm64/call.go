@@ -1555,13 +1555,20 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.remove(m.src)
 	}
 	// AArch64 has no XCHG: a register swap goes through the backend scratch X16.
-	resolveRegMovesWindow(moves,
+	swapChains := resolveRegMovesWindow(moves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+		},
+		func(a, b, c Reg) {
+			f.a.MovReg64(X16, a)
+			f.a.MovReg64(a, b)
+			f.a.MovReg64(b, c)
+			f.a.MovReg64(c, X16)
 		})
+	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
 		switch da.root.st.kind {
@@ -1732,18 +1739,25 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
-	resolveRegMovesWindow(gpMoves,
+	gpSwapChains := resolveRegMovesWindow(gpMoves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+		},
+		func(a, b, c Reg) {
+			f.a.MovReg64(X16, a)
+			f.a.MovReg64(a, b)
+			f.a.MovReg64(b, c)
+			f.a.MovReg64(c, X16)
 		})
+	f.stats.peepN("machine-swap-chain", gpSwapChains)
 	for _, m := range fpMoves {
 		f.fpinned = f.fpinned.remove(m.src)
 	}
 	fpSwapSlot := -1
-	resolveRegMovesWindow(fpMoves,
+	fpSwapChains := resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
@@ -1753,7 +1767,18 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.fst(SP, off, x, true)
 			f.a.FmovReg(x, y, true)
 			f.fld(y, SP, off, true)
+		},
+		func(a, b, c Reg) {
+			if fpSwapSlot < 0 {
+				fpSwapSlot = f.allocSpillSlot()
+			}
+			off := f.spillOff(fpSwapSlot)
+			f.fst(SP, off, a, true)
+			f.a.FmovReg(a, b, true)
+			f.a.FmovReg(b, c, true)
+			f.fld(c, SP, off, true)
 		})
+	f.stats.peepN("machine-swap-chain", fpSwapChains)
 	for _, da := range deferred {
 		if da.float {
 			switch da.root.st.kind {

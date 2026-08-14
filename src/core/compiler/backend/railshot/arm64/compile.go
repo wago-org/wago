@@ -2551,13 +2551,20 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 			gp++
 		}
 	}
-	resolveRegMovesWindow(moves,
+	swapChains := resolveRegMovesWindow(moves,
 		func(dst, src Reg) { a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			a.MovReg64(X16, x)
 			a.MovReg64(x, y)
 			a.MovReg64(y, X16)
+		},
+		func(a, b, c Reg) {
+			f.a.MovReg64(X16, a)
+			f.a.MovReg64(a, b)
+			f.a.MovReg64(b, c)
+			f.a.MovReg64(c, X16)
 		})
+	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
 	f.zeroDeclaredLocals()
 	f.preloadFloatConsts(c.BodyBytes)
