@@ -15,27 +15,6 @@ const (
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
 
-func (f *fn) factsForLocal(x int) valueFacts {
-	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		return f.locals[x].facts
-	}
-	return 0
-}
-
-func (f *fn) setFactsForLocal(x int, facts valueFacts) {
-	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		f.locals[x].facts = facts
-	}
-}
-
-func (f *fn) applyFactsForLocal(e *elem, x int) {
-	facts := f.factsForLocal(x)
-	e.st.facts = facts
-	if facts != 0 {
-		f.stats.peep("local-fact")
-	}
-}
-
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
 	if isCompare(op) || op == opEqz {
 		return factUpper32Zero | factBoolean

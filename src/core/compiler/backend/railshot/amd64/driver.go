@@ -178,7 +178,6 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			value = f.pushReg(reg, f.localType[x])
 			value.st.gcRoot = f.gcFrameLocal(int(x))
 			f.markLocalGetExactGCType(value, int(x))
-			f.applyFactsForLocal(value, int(x))
 			break
 		}
 		if f.localConstZero(int(x)) {
@@ -196,16 +195,12 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		value.st.gcRoot = f.gcFrameLocal(int(x))
 		f.markLocalGetExactGCType(value, int(x))
-		f.applyFactsForLocal(value, int(x))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
 			return err
 		}
 		if op == 0x22 {
-			// Specialized tee rewrites bypass setLocal. Invalidate first; a failed
-			// match falls through and installs the exact source fact below.
-			f.setFactsForLocal(int(x)+f.localBase, 0)
 			if done, err := f.tryMulHighU(r, int(x)+f.localBase); done || err != nil {
 				return err
 			}
@@ -1020,9 +1015,6 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
-	// Capture the semantic result before condensing or moving it. Every assignment
-	// replaces the current straight-line version of the local.
-	f.setFactsForLocal(x, e.st.facts)
 	f.captureGCLoadResultLocal(e, x)
 	gcFact, hasGCExactType := f.setLocalExactGCType(x, e)
 	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {

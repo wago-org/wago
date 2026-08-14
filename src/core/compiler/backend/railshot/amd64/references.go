@@ -16,7 +16,6 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	// raw resolved addresses live in separate fn state and are never copied here.
 	fact := gcRefFact(e)
 	st.gcRoot = st.gcRoot || e.st.gcRoot
-	st.facts |= e.st.facts
 	putGCRefFact(&st, fact)
 	e.st = st
 }
