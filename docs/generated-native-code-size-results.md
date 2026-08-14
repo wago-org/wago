@@ -859,6 +859,38 @@ installed `wat2wasm` lacks table64 syntax, and one plugin build helper test
 failed. Exact staged native-code/codec goldens changed earlier by branch-to-next
 compaction were refreshed and pass natively.
 
+### Straight-line local-provenance checkpoint
+
+ARM64 now carries value facts through local assignments in functions with no
+control-flow joins. Every assignment replaces the current local version;
+specialized tee rewrites invalidate before bypassing the ordinary setter, and
+functions with control flow remain fully conservative. The fact reuses the
+previously unused byte in the existing four-byte `localDef`, so neither local
+metadata nor operand-stack nodes grow and no allocation is added.
+
+Across the 36 modules currently admitted by the local backend-only corpus run,
+8,234 proven local reads expose 15 additional redundant zero extensions. Raw
+native bytes move from 83,027,500 to 83,027,452 (-48 bytes, no losses); with
+`WAGO_COMPACT=1`, they move from 82,561,108 to 82,561,012 (-96 bytes). Against
+detached commit `6a6a186f`, serialized compilation remains neutral:
+
+| Workload | Pre-change median | Current median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 301,859 ns/op | 301,797 ns/op | -0.02% | 195,144 B/op / 379 allocs, unchanged |
+| `json-as` | 1,041,140 ns/op | 1,030,012 ns/op | -1.07% | 351,176 B/op / 1,272 allocs, unchanged |
+
+The full repository suite, native ARM64 race suite, and compacted runtime/fuzz
+corpus pass.
+
+The identical AMD64 experiment was rejected and reverted. On native AMD64 at
+`hub@hub`, 8,253 proven local reads exposed only one additional extension
+candidate, but the required destination move meant the 36-module total remained
+exactly 74,326,416 bytes. Allocations were unchanged; `many_funcs` compile moved
+-0.74%, while `json-as` moved +1.40%. With no corpus byte reduction, keeping the
+source enabled would violate the plan's acceptance rule. AMD64 local provenance
+should return only with a byte-producing consumer such as narrower displacement,
+mask, or address selection.
+
 ### Commands
 
 ```sh
