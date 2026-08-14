@@ -123,6 +123,15 @@ func TestNewBuildIdentityIsPerBinary(t *testing.T) {
 	}
 }
 
+func TestRejectChangedBuildInputs(t *testing.T) {
+	if err := rejectChangedBuildInputs("same", "same"); err != nil {
+		t.Fatalf("unchanged inputs rejected: %v", err)
+	}
+	if err := rejectChangedBuildInputs("before", "after"); err == nil {
+		t.Fatal("changed inputs accepted")
+	}
+}
+
 func TestResolvedBuildHashTracksFilesystemReplacementContent(t *testing.T) {
 	buildDir := t.TempDir()
 	replacement := filepath.Join(t.TempDir(), "plugin")

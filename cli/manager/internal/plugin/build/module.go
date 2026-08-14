@@ -548,8 +548,8 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 	if err != nil {
 		return "", false, err
 	}
-	if cacheable && afterCacheable && after != want {
-		return "", false, fmt.Errorf("plugin build inputs changed during compilation; retry the build")
+	if err := rejectChangedBuildInputs(want, after); err != nil {
+		return "", false, err
 	}
 	if err := atomicfile.CommitTempFile(staged, bin, atomicfile.Options{Mode: 0o755, Sync: true}); err != nil {
 		return "", false, fmt.Errorf("install plugin build: %w", err)
@@ -564,6 +564,13 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 		return "", false, fmt.Errorf("publish plugin build hash: %w", err)
 	}
 	return bin, false, nil
+}
+
+func rejectChangedBuildInputs(want, after string) error {
+	if after != want {
+		return fmt.Errorf("plugin build inputs changed during compilation; retry the build")
+	}
+	return nil
 }
 
 func newBuildIdentity(buildHash string) string {
