@@ -229,6 +229,38 @@ func TestResolvedBuildHashTracksModuleAndGoEnvironment(t *testing.T) {
 	}
 }
 
+func TestResolvedBuildHashTracksAssemblyIncludes(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.test/build\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "value.s"), []byte("#include \"value.inc\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	includePath := filepath.Join(dir, "value.inc")
+	if err := os.WriteFile(includePath, []byte("#define VALUE 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	config := Config{RuntimeVersion: "test", Profile: "standard"}
+	first, cacheable, err := resolvedBuildHash(dir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("first assembly resolved hash = %q, %v, %v", first, cacheable, err)
+	}
+	if err := os.WriteFile(includePath, []byte("#define VALUE 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, cacheable, err := resolvedBuildHash(dir, Input{}, config)
+	if err != nil || !cacheable {
+		t.Fatalf("second assembly resolved hash = %q, %v, %v", second, cacheable, err)
+	}
+	if first == second {
+		t.Fatal("resolved build hash ignored an assembler include")
+	}
+}
+
 func TestResolvedBuildHashIgnoresGeneratedMainThroughDirectorySymlink(t *testing.T) {
 	root := t.TempDir()
 	physical := filepath.Join(root, "physical")

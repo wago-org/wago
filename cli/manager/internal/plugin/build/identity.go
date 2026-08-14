@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -103,16 +104,17 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 		fmt.Fprintf(h, "module\x00%s\x00", encoded)
 	}
 
-	files, err := selectedBuildFiles(dir, config.BuildTag)
+	files, err := selectedBuildFiles(dir, config.BuildTag, environment["GOROOT"])
 	if err != nil {
 		return "", false, err
 	}
 	cacheable = cacheable && len(files) <= maxBuildIdentityFiles
 	for _, file := range files {
 		switch file.Kind {
-		case "cgo", "swig", "swig-cxx":
-			// External compilers and headers can change without changing Go's
-			// module graph. Build them, but never reuse their executable key.
+		case "cgo", "swig", "swig-cxx", "asm-unresolved-include":
+			// External compilers, headers, and unresolved assembler includes
+			// can change without changing Go's module graph. Build them, but
+			// never reuse their executable key.
 			cacheable = false
 		}
 	}
@@ -223,7 +225,7 @@ func selectedModules(dir string) ([]resolvedModuleIdentity, error) {
 	return modules, nil
 }
 
-func selectedBuildFiles(dir, buildTag string) ([]selectedBuildFile, error) {
+func selectedBuildFiles(dir, buildTag, goRoot string) ([]selectedBuildFile, error) {
 	args := []string{"list", "-deps", "-json"}
 	if buildTag != "" {
 		args = append(args, "-tags", buildTag)
@@ -272,6 +274,17 @@ func selectedBuildFiles(dir, buildTag string) ([]selectedBuildFile, error) {
 					if len(files) <= maxBuildIdentityFiles {
 						files = append(files, selectedBuildFile{ImportPath: pkg.ImportPath, Kind: group.kind, Path: filepath.Clean(path)})
 					}
+					if group.kind == "asm" && len(files) <= maxBuildIdentityFiles {
+						includes, complete := selectedAssemblyIncludes(path, packageDir, goRoot)
+						for _, include := range includes {
+							if len(files) <= maxBuildIdentityFiles {
+								files = append(files, selectedBuildFile{ImportPath: pkg.ImportPath, Kind: "asm-include", Path: include})
+							}
+						}
+						if !complete && len(files) <= maxBuildIdentityFiles {
+							files = append(files, selectedBuildFile{ImportPath: pkg.ImportPath, Kind: "asm-unresolved-include", Path: filepath.Clean(path)})
+						}
+					}
 				}
 			}
 		}
@@ -289,6 +302,107 @@ func selectedBuildFiles(dir, buildTag string) ([]selectedBuildFile, error) {
 		return files[i].Path < files[j].Path
 	})
 	return files, nil
+}
+
+func selectedAssemblyIncludes(assemblyPath, packageDir, goRoot string) (paths []string, complete bool) {
+	complete = true
+	pending := []string{assemblyPath}
+	seen := map[string]struct{}{filepath.Clean(assemblyPath): {}}
+	for len(pending) > 0 {
+		path := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		file, err := os.Open(path)
+		if err != nil {
+			complete = false
+			continue
+		}
+		scanner := bufio.NewScanner(file)
+		scanner.Buffer(make([]byte, 4096), 1<<20)
+		for scanner.Scan() {
+			name, include, valid := assemblyIncludeName(scanner.Text())
+			if !include {
+				continue
+			}
+			if !valid {
+				complete = false
+				continue
+			}
+			includePath, found := resolveAssemblyInclude(name, packageDir, goRoot)
+			if !found {
+				// The go command generates go_asm.h from selected Go files in
+				// its object directory. Those Go files are already fingerprinted.
+				if name != "go_asm.h" {
+					complete = false
+				}
+				continue
+			}
+			if _, ok := seen[includePath]; ok {
+				continue
+			}
+			seen[includePath] = struct{}{}
+			paths = append(paths, includePath)
+			if len(paths) > maxBuildIdentityFiles {
+				complete = false
+				break
+			}
+			pending = append(pending, includePath)
+		}
+		if scanner.Err() != nil {
+			complete = false
+		}
+		if err := file.Close(); err != nil {
+			complete = false
+		}
+		if len(paths) > maxBuildIdentityFiles {
+			return paths, false
+		}
+	}
+	return paths, complete
+}
+
+func assemblyIncludeName(line string) (name string, include, valid bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "#") {
+		return "", false, false
+	}
+	line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+	if !strings.HasPrefix(line, "include") {
+		return "", false, false
+	}
+	line = strings.TrimSpace(strings.TrimPrefix(line, "include"))
+	if len(line) < 2 || line[0] != '"' {
+		return "", true, false
+	}
+	end := strings.IndexByte(line[1:], '"')
+	if end < 0 {
+		return "", true, false
+	}
+	name = line[1 : end+1]
+	return name, true, name != ""
+}
+
+func resolveAssemblyInclude(name, packageDir, goRoot string) (string, bool) {
+	var candidates []string
+	if filepath.IsAbs(name) {
+		candidates = append(candidates, name)
+	} else {
+		candidates = append(candidates, filepath.Join(packageDir, filepath.FromSlash(name)))
+		if goRoot != "" {
+			candidates = append(candidates, filepath.Join(goRoot, "pkg", "include", filepath.FromSlash(name)))
+		}
+	}
+	for _, candidate := range candidates {
+		info, err := os.Stat(candidate)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		path, err := filepath.Abs(candidate)
+		if err != nil {
+			return "", false
+		}
+		return filepath.Clean(path), true
+	}
+	return "", false
 }
 
 func hashBuildFile(path string) (string, error) {
