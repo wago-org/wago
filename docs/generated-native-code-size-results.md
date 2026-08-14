@@ -1343,6 +1343,37 @@ tests, serial/parallel corpus identity, call relocation and GC return-PC
 remapping, ARM64 PC-relative rejection, AMD64 literal-site remapping, backend
 race suites, and compacted runtime and `src/wago` tests.
 
+## ARM64 Size objective owns physical compaction
+
+The Size and Embedded policies now enable physical native compaction directly;
+Speed and Balanced retain identity finalization. `WAGO_COMPACT=1` remains the
+force-on measurement override, while `WAGO_COMPACT=0` is the all-objective
+rollback oracle. The choice is carried by the immutable per-compilation policy,
+so concurrent compilations with different objectives do not share mutable
+decision state.
+
+The first policy-enabled prototype failed the Size compile-time gate badly:
+Ruby rose from about 542 ms to 974 ms and esbuild from about 308 ms to 816 ms.
+A CPU and allocation profile identified two inventories whose work exceeded the
+finalizer's fixed eight-deletion budget: per-word opaque-fragment hash probes
+and retention of every branch-to-next candidate. The accepted implementation
+uses an ordered reusable fragment cursor, retains only the earliest eight
+branch-to-next candidates in fixed scratch, and preserves the established
+no-peephole boundary for opaque functions. Explicit fragment records still let
+those functions compact frame reservations and repatch PC-relative words.
+
+Across the 36 modules exercised by `BenchmarkCompileSize`, default Size falls
+from 77,643,636 bytes with `WAGO_COMPACT=0` to 77,198,532 bytes (-445,104,
+-0.57%). The conservative opaque-function boundary gives back 7,856 bytes from
+the earlier unbounded implementation in exchange for removing its large target
+map and compile-time regression.
+
+Three serialized samples put rollback versus default Size medians at
+563,555,000 to 582,933,167 ns/op for Ruby (+3.44%) and 310,166,208 to
+313,872,416 ns/op for esbuild (+1.20%). Median B/op moves by +6,408 (+0.02%) and
++24 respectively; allocation counts move by +9 and +1. Both workloads remain
+inside the proposed 5% Size compile-time gate.
+
 ### Commands
 
 ```sh

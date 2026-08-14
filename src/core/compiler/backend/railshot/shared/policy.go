@@ -18,8 +18,9 @@ const (
 // catalog flags in a compact bitset. The numeric fields bound later finalizer,
 // layout, inlining, and machine-window decisions without package-global state.
 type CodegenPolicy struct {
-	Objective OptimizationObjective
-	Selection optimization.Selection
+	Objective     OptimizationObjective
+	Selection     optimization.Selection
+	CompactNative bool
 
 	FunctionAlignLog2 uint8
 	InternalAlignLog2 uint8
@@ -46,14 +47,17 @@ func DefaultCodegenPolicy(selection optimization.Selection) CodegenPolicy {
 // bits remain available for testing and bisection.
 func CodegenPolicyForObjective(selection optimization.Selection, objective OptimizationObjective) CodegenPolicy {
 	functionAlign, internalAlign, loopAlign := uint8(4), uint8(4), uint8(4)
+	compactNative := false
 	if objective == OptimizeSize || objective == OptimizeEmbedded {
 		// Zero requests the target's minimum legal code alignment. Backends clamp
 		// it to their instruction/data requirements.
 		functionAlign, internalAlign, loopAlign = 0, 0, 0
+		compactNative = true
 	}
 	return CodegenPolicy{
 		Objective:          objective,
 		Selection:          selection,
+		CompactNative:      compactNative,
 		FunctionAlignLog2:  functionAlign,
 		InternalAlignLog2:  internalAlign,
 		LoopAlignLog2:      loopAlign,

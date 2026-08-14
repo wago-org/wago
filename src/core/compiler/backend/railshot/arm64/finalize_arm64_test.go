@@ -153,12 +153,40 @@ func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
 	f := fn{a: sc.asm, sc: sc}
 	f.finalizePeepholes()
 	for _, pc := range []int{0, 8, 12, 16} {
-		if !sc.branchTargets[finalizerMarkerKey(pc, markerBranchNext)] {
+		if !slices.Contains(sc.branchNextSites[:sc.branchNextN], pc) {
 			t.Errorf("branch at %d was not recorded", pc)
 		}
 	}
-	if sc.branchTargets[finalizerMarkerKey(4, markerBranchNext)] {
+	if slices.Contains(sc.branchNextSites[:sc.branchNextN], 4) {
 		t.Error("BL-to-next was incorrectly recorded")
+	}
+}
+
+func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
+	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
+	beforeDisabled := nativeCompactionDisabled
+	nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled = true, true, false
+	t.Cleanup(func() {
+		nativeFinalizerEnabled, nativeCompactionEnabled = beforeFinalizer, beforeCompaction
+		nativeCompactionDisabled = beforeDisabled
+	})
+
+	sc := &scratch{}
+	f := fn{sc: sc}
+	for off := 40; off >= 0; off -= 4 {
+		f.recordBranchNext(off)
+	}
+	got := append([]int(nil), sc.branchNextSites[:sc.branchNextN]...)
+	slices.Sort(got)
+	want := []int{0, 4, 8, 12, 16, 20, 24, 28}
+	if !slices.Equal(got, want) {
+		t.Fatalf("bounded branch candidates = %v, want earliest %v", got, want)
+	}
+	for off := 0; off <= 32; off += 4 {
+		f.recordDeadHole(off)
+	}
+	if sc.deadHoleN != maxFinalizerDeletions || !sc.deadHoleOverflow {
+		t.Fatalf("dead-hole inventory = %d overflow=%v, want %d and overflow", sc.deadHoleN, sc.deadHoleOverflow, maxFinalizerDeletions)
 	}
 }
 
@@ -205,7 +233,10 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 			finalizerMarkerKey(8, markerJumpDataStart): true,
 			finalizerMarkerKey(16, markerJumpDataEnd):  true,
 		}
-		f := fn{a: &a64.Asm{B: code}, sc: &scratch{branchTargets: markers}}
+		f := fn{a: &a64.Asm{B: code}, sc: &scratch{
+			branchTargets:  markers,
+			finalFragments: []finalizerFragment{{start: 8, end: 16, kind: fragmentJumpData}},
+		}}
 		got, err := f.compactNativeCode(&offsets, deletions)
 		if err != nil {
 			t.Fatal(err)

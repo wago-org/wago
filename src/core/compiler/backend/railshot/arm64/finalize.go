@@ -16,10 +16,11 @@ import (
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 
-// Compaction remains opt-in while its bounded remapping cost is brought under
-// the Balanced compile-time gate. Loop-bearing functions also retain the old
-// size-stable path until their alignment fragments become relaxable.
+// WAGO_COMPACT=1 forces bounded shrinking for every objective. Size and
+// Embedded enable it through their immutable per-compilation policy;
+// WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
+var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 
 const maxFinalizerDeletions = shared.MaxOffsetMapDeletions
 
@@ -36,6 +37,35 @@ const (
 	markerOpaqueDataStart
 	markerOpaqueDataEnd
 )
+
+type finalizerFragmentKind uint8
+
+const (
+	fragmentJumpData finalizerFragmentKind = iota + 1
+	fragmentOpaqueData
+	fragmentPlugin
+)
+
+type finalizerFragment struct {
+	start int
+	end   int
+	kind  finalizerFragmentKind
+}
+
+type finalizerFragmentCursor struct {
+	fragments []finalizerFragment
+	index     int
+}
+
+func (c *finalizerFragmentCursor) at(pc int) (finalizerFragment, bool) {
+	for c.index < len(c.fragments) && pc >= c.fragments[c.index].end {
+		c.index++
+	}
+	if c.index == len(c.fragments) || pc < c.fragments[c.index].start {
+		return finalizerFragment{}, false
+	}
+	return c.fragments[c.index], true
+}
 
 func finalizerMarkerKey(off int, marker finalizerMarker) int {
 	return -((off << 4) | int(marker)) - 1
@@ -62,6 +92,7 @@ func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
 
 func (f *fn) recordJumpTableData(start, end int) {
 	f.opaqueFragments = true
+	f.recordFinalizerFragment(start, end, fragmentJumpData)
 	f.recordFinalizerMarker(start, markerJumpDataStart)
 	f.recordFinalizerMarker(end, markerJumpDataEnd)
 }
@@ -69,6 +100,7 @@ func (f *fn) recordJumpTableData(start, end int) {
 func (f *fn) recordOpaqueData(start, end int) {
 	if end > start {
 		f.opaqueFragments = true
+		f.recordFinalizerFragment(start, end, fragmentOpaqueData)
 		f.recordFinalizerMarker(start, markerOpaqueDataStart)
 		f.recordFinalizerMarker(end, markerOpaqueDataEnd)
 	}
@@ -77,13 +109,55 @@ func (f *fn) recordOpaqueData(start, end int) {
 func (f *fn) recordOpaquePlugin(start, end int) {
 	if end > start {
 		f.opaqueFragments = true
+		f.recordFinalizerFragment(start, end, fragmentPlugin)
 		f.recordFinalizerMarker(start, markerPluginStart)
 		f.recordFinalizerMarker(end, markerPluginEnd)
 	}
 }
 
+func (f *fn) recordFinalizerFragment(start, end int, kind finalizerFragmentKind) {
+	if !nativeFinalizerEnabled || !f.compactNative() || end <= start {
+		return
+	}
+	sc := f.scratchState()
+	sc.finalFragments = append(sc.finalFragments, finalizerFragment{start: start, end: end, kind: kind})
+}
+
 func (f *fn) recordPCRelative(off int) {
 	f.recordFinalizerMarker(off, markerPCRelative)
+}
+
+func (f *fn) recordBranchNext(off int) {
+	if !nativeFinalizerEnabled || !f.compactNative() {
+		return
+	}
+	sc := f.scratchState()
+	for i := range int(sc.branchNextN) {
+		if sc.branchNextSites[i] == off {
+			return
+		}
+	}
+	if int(sc.branchNextN) < len(sc.branchNextSites) {
+		sc.branchNextSites[sc.branchNextN] = off
+		sc.branchNextN++
+	} else {
+		largest := 0
+		for i := 1; i < len(sc.branchNextSites); i++ {
+			if sc.branchNextSites[i] > sc.branchNextSites[largest] {
+				largest = i
+			}
+		}
+		if off < sc.branchNextSites[largest] {
+			sc.branchNextSites[largest] = off
+		}
+	}
+	if nativeFinalizerValidate {
+		f.recordFinalizerMarker(off, markerBranchNext)
+	}
+}
+
+func (f *fn) compactNative() bool {
+	return !nativeCompactionDisabled && (nativeCompactionEnabled || f.policy.CompactNative)
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
@@ -98,7 +172,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	oldLen := len(f.a.B)
 	var result shared.FinalizeResult
 	frameDeleted := 0
-	if nativeCompactionEnabled {
+	if f.compactNative() {
 		var storage [maxFinalizerDeletions]shared.DeletedRange
 		deletions, deletedFrames, ok := f.buildCompactionPlan(storage[:0])
 		if ok {
@@ -184,15 +258,21 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 		deletions = append(deletions, shared.DeletedRange{Off: uint32(off), Len: uint32(length)})
 		return true
 	}
-	for key := range f.scratchState().branchTargets {
-		off, marker, ok := decodeFinalizerMarker(key)
+	sc := f.scratchState()
+	for key := range sc.branchTargets {
+		_, marker, ok := decodeFinalizerMarker(key)
 		if !ok {
 			continue
 		}
 		if marker == markerPluginStart || marker == markerPluginEnd {
 			return nil, 0, false
 		}
-		if marker == markerDeadHole && !add(off, 4) {
+	}
+	if sc.deadHoleOverflow {
+		return nil, 0, false
+	}
+	for _, off := range sc.deadHoleSites[:sc.deadHoleN] {
+		if !add(off, 4) {
 			return nil, 0, false
 		}
 	}
@@ -231,11 +311,7 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 	// larger frame/hole wins. If the bound fills, deterministically retain the
 	// earliest sites instead of depending on map iteration order.
 	branchStart := len(deletions)
-	for key := range f.scratchState().branchTargets {
-		off, marker, ok := decodeFinalizerMarker(key)
-		if !ok || marker != markerBranchNext {
-			continue
-		}
+	for _, off := range sc.branchNextSites[:sc.branchNextN] {
 		candidate := shared.DeletedRange{Off: uint32(off), Len: 4}
 		duplicate := false
 		for _, deletion := range deletions[:branchStart] {
@@ -304,26 +380,10 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 		copy(code[dst:], code[src:])
 		return code[:offsets.FinalLen()], nil
 	}
-	markers := f.scratchState().branchTargets
+	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	deletionIndex := 0
 	dst := 0
-	jumpData := false
-	opaqueData := false
-	jumpBase := 0
 	for src := 0; src < len(code); src += 4 {
-		if markers[finalizerMarkerKey(src, markerJumpDataEnd)] {
-			jumpData = false
-		}
-		if markers[finalizerMarkerKey(src, markerJumpDataStart)] {
-			jumpData = true
-			jumpBase = src
-		}
-		if markers[finalizerMarkerKey(src, markerOpaqueDataEnd)] {
-			opaqueData = false
-		}
-		if markers[finalizerMarkerKey(src, markerOpaqueDataStart)] {
-			opaqueData = true
-		}
 		if deletionIndex < len(deletions) && src == int(deletions[deletionIndex].Off) {
 			src += int(deletions[deletionIndex].Len) - 4
 			deletionIndex++
@@ -331,10 +391,11 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 		}
 		word := rdWord(code, src)
 		var err error
-		if opaqueData {
+		fragment, inFragment := fragments.at(src)
+		if inFragment && fragment.kind == fragmentOpaqueData {
 			// Compact target-ID bytes are data, not instructions or relocations.
-		} else if jumpData {
-			word, err = remapJumpTableWord(word, jumpBase, offsets)
+		} else if inFragment && fragment.kind == fragmentJumpData {
+			word, err = remapJumpTableWord(word, fragment.start, offsets)
 		} else if isPCRelativeWord(word) {
 			word, err = remapPCRelativeWord(word, src, dst, offsets)
 		}

@@ -514,11 +514,17 @@ type scratch struct {
 	fnState        fn       // per-function compiler state, reused across the module
 	directPrepared bool
 
-	retSites      []int
-	ctrl          []ctrlFrame
-	trapSites     [trapAtomicUnaligned + 1][]trapSite
-	branchTargets map[int]bool
-	brTableStubAt []int // duplicate-heavy jump-table target positions by control depth
+	retSites         []int
+	ctrl             []ctrlFrame
+	trapSites        [trapAtomicUnaligned + 1][]trapSite
+	branchTargets    map[int]bool
+	brTableStubAt    []int // duplicate-heavy jump-table target positions by control depth
+	finalFragments   []finalizerFragment
+	deadHoleSites    [maxFinalizerDeletions]int
+	branchNextSites  [maxFinalizerDeletions]int
+	deadHoleN        uint8
+	branchNextN      uint8
+	deadHoleOverflow bool
 	transient
 }
 
@@ -578,6 +584,10 @@ func (sc *scratch) reset() {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}
 	clear(sc.branchTargets)
+	sc.finalFragments = sc.finalFragments[:0]
+	sc.deadHoleN = 0
+	sc.branchNextN = 0
+	sc.deadHoleOverflow = false
 }
 
 // workerState owns every mutable buffer used by one parallel compiler worker.

@@ -25,7 +25,17 @@ const (
 // targets), and each rewrite must not disturb a word another branch targets. So
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes() {
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !(nativeFinalizerEnabled && nativeCompactionEnabled) {
+	compact := nativeFinalizerEnabled && f.compactNative()
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !compact {
+		return
+	}
+	// The established size-stable peephole abandons a function when it reaches
+	// an indirect branch because jump-table data follows in the instruction
+	// stream. Keep that no-rewrite boundary under compaction too: the explicit
+	// fragment inventory still lets the finalizer shrink frame reservations and
+	// repatch PC-relative words without retaining every branch target in a large
+	// map merely to prove local peepholes safe.
+	if compact && f.opaqueFragments {
 		return
 	}
 	b := f.a.B
@@ -39,19 +49,19 @@ func (f *fn) finalizePeepholes() {
 		targets = make(map[int]bool, 16)
 		sc.branchTargets = targets
 	}
-	opaque := false
+	fragments := finalizerFragmentCursor{fragments: sc.finalFragments}
 	for pc := 0; pc < n; pc += 4 {
-		if nativeFinalizerEnabled && nativeCompactionEnabled && f.opaqueFragments && finalizerOpaqueAt(targets, pc, &opaque) {
+		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
 			continue
 		}
 		w := rdWord(b, pc)
-		if !(nativeFinalizerEnabled && nativeCompactionEnabled) && isIndirectBranch(w) {
+		if !compact && isIndirectBranch(w) {
 			return
 		}
 		if t, ok := branchTarget(pc, w); ok {
 			targets[t] = true
-			if nativeFinalizerEnabled && nativeCompactionEnabled && t == pc+4 && w&0xFC000000 != 0x94000000 {
-				targets[finalizerMarkerKey(pc, markerBranchNext)] = true
+			if compact && t == pc+4 && w&0xFC000000 != 0x94000000 {
+				f.recordBranchNext(pc)
 			}
 		}
 	}
@@ -81,9 +91,10 @@ func (f *fn) finalizePeepholes() {
 // expected a branch. We prove that by collecting every PC-relative branch
 // target first and only folding pairs whose middle word is not among them.
 func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
-	opaque := false
+	compact := nativeFinalizerEnabled && f.compactNative()
+	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
-		if nativeFinalizerEnabled && nativeCompactionEnabled && f.opaqueFragments && finalizerOpaqueAt(targets, pc, &opaque) {
+		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
 			continue
 		}
 		w := rdWord(b, pc)
@@ -129,9 +140,10 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 // SP between them) and only fired when nothing branches to the load: an external
 // entrant that skipped the store must genuinely load from memory.
 func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
-	opaque := false
+	compact := nativeFinalizerEnabled && f.compactNative()
+	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
-		if nativeFinalizerEnabled && nativeCompactionEnabled && f.opaqueFragments && finalizerOpaqueAt(targets, pc, &opaque) {
+		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
 			continue
 		}
 		if f.forwardStoreLoadAt(b, n, pc, targets, true) {
@@ -170,6 +182,9 @@ func (f *fn) forwardStoreLoadAt(b []byte, n, pc int, targets map[int]bool, recor
 	return true
 }
 
+// finalizerOpaqueAt decodes the marker-map representation used by validation.
+// Production compaction scans scratch.finalFragments through an ordered cursor
+// so it does not pay these hash probes for every emitted word.
 func finalizerOpaqueAt(markers map[int]bool, pc int, opaque *bool) bool {
 	if markers[finalizerMarkerKey(pc, markerJumpDataEnd)] || markers[finalizerMarkerKey(pc, markerOpaqueDataEnd)] || markers[finalizerMarkerKey(pc, markerPluginEnd)] {
 		*opaque = false
@@ -185,7 +200,19 @@ func finalizerOpaqueAt(markers map[int]bool, pc int, opaque *bool) bool {
 // branch targets, so this reuses existing scratch without another allocation or
 // per-function slice. The finalizer decodes these entries before compaction.
 func (f *fn) recordDeadHole(off int) {
-	f.recordFinalizerMarker(off, markerDeadHole)
+	if !nativeFinalizerEnabled || !f.compactNative() {
+		return
+	}
+	sc := f.scratchState()
+	if int(sc.deadHoleN) == len(sc.deadHoleSites) {
+		sc.deadHoleOverflow = true
+		return
+	}
+	sc.deadHoleSites[sc.deadHoleN] = off
+	sc.deadHoleN++
+	if nativeFinalizerValidate {
+		f.recordFinalizerMarker(off, markerDeadHole)
+	}
 }
 
 // spStoreImm / spLoadImm decode an unsigned-offset SP-relative STR/LDR of a full

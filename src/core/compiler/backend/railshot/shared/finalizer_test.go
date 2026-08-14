@@ -109,17 +109,18 @@ func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
 
 func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
 	for _, test := range []struct {
-		objective OptimizationObjective
-		wantAlign uint8
+		objective   OptimizationObjective
+		wantAlign   uint8
+		wantCompact bool
 	}{
-		{OptimizeSpeed, 4},
-		{OptimizeBalanced, 4},
-		{OptimizeSize, 0},
-		{OptimizeEmbedded, 0},
+		{OptimizeSpeed, 4, false},
+		{OptimizeBalanced, 4, false},
+		{OptimizeSize, 0, true},
+		{OptimizeEmbedded, 0, true},
 	} {
 		policy := CodegenPolicyForObjective(optimization.Selection{}, test.objective)
-		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign {
-			t.Errorf("objective %d policy = %#v, want alignment log2 %d", test.objective, policy, test.wantAlign)
+		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign || policy.CompactNative != test.wantCompact {
+			t.Errorf("objective %d policy = %#v, want alignment log2 %d and compact %v", test.objective, policy, test.wantAlign, test.wantCompact)
 		}
 	}
 }
