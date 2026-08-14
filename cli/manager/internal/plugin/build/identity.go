@@ -99,21 +99,38 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 		fmt.Fprintf(h, "default-pgo\x00stat-error\x00%v\x00", statErr)
 	}
 
-	modules, err := selectedModules(dir)
-	if err != nil {
-		return "", false, err
+	vendorModulesPath := filepath.Join(dir, "vendor", "modules.txt")
+	_, vendorStatErr := os.Lstat(vendorModulesPath)
+	vendorMode := vendorStatErr == nil
+	if vendorStatErr != nil && !os.IsNotExist(vendorStatErr) {
+		return "", false, fmt.Errorf("inspect vendor modules: %w", vendorStatErr)
 	}
-	for _, module := range modules {
-		encoded, err := json.Marshal(module)
+	if vendorMode {
+		// `go list -m all` is unavailable in vendor mode. The selected package
+		// files and modules.txt still prove that inputs stayed stable, but a
+		// complete reusable module identity is unavailable.
+		cacheable = false
+		fmt.Fprint(h, "vendor-mode\x00")
+	} else {
+		modules, err := selectedModules(dir)
 		if err != nil {
-			return "", false, fmt.Errorf("encode selected module %q: %w", module.Path, err)
+			return "", false, err
 		}
-		fmt.Fprintf(h, "module\x00%s\x00", encoded)
+		for _, module := range modules {
+			encoded, err := json.Marshal(module)
+			if err != nil {
+				return "", false, fmt.Errorf("encode selected module %q: %w", module.Path, err)
+			}
+			fmt.Fprintf(h, "module\x00%s\x00", encoded)
+		}
 	}
 
 	files, err := selectedBuildFiles(dir, config.BuildTag, environment["GOROOT"])
 	if err != nil {
 		return "", false, err
+	}
+	if vendorMode {
+		files = append(files, selectedBuildFile{Kind: "vendor-modules", Path: vendorModulesPath})
 	}
 	cacheable = cacheable && len(files) <= maxBuildIdentityFiles
 	for _, file := range files {
