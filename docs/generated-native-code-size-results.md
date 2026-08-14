@@ -770,6 +770,46 @@ Five one-second JSON execution samples remained neutral: serialize moved from
 (+0.20%), with zero allocations. The native backend, compacted runtime/fuzz
 corpus, and race suite all pass.
 
+### ARM64 bounded value-provenance checkpoint
+
+The first provenance class carries `upper32Zero` and `boolean` facts directly in
+the existing padding of each Valent `storage`. Static sizes remain 64 bytes per
+storage and 112 bytes per operand-stack node, so the reusable arena neither
+grows nor allocates. Facts are attached only to operations with exact semantic
+proofs; local/global reads, signed loads, and unknown call results begin unknown.
+They survive materialization and spills because they describe the value rather
+than its current location.
+
+The first consumer replaces the old deferred-producer whitelist for redundant
+`i64.extend_i32_u`. It can now remove the extension even when a proven-clean
+32-bit result was forced into a register or spill before the conversion. The
+immutable policy exposes `value-facts`, with `WAGO_ARM64_NOPROVENANCE=1` as the
+rollback and measurement oracle. Boolean provenance is carried and tested, but
+does not yet enable a production rewrite because the first proposed `& 1`
+consumer had no complete-corpus hits.
+
+Across all 64 ARM64 corpus modules with default non-compacting codegen:
+
+| Facts disabled | Facts enabled | Saving | Wins / losses / ties | `ext-elim` hits |
+| ---: | ---: | ---: | ---: | ---: |
+| 93,748,432 | 93,666,860 | -81,572 (-0.09%) | 13 / 0 / 51 | 20,480 |
+
+With `WAGO_COMPACT=1`, the same comparison saves 82,276 bytes (93,224,664 to
+93,142,388), again with 13 wins and no losses. `esbuild` accounts for 18,145
+hits and 72,404 default-path bytes; the remaining wins span integer-heavy real
+modules including `script`, `sqlite3`, `ruby`, `regexmatch`, and `bignum`.
+
+Serialized compilation remains inside the Balanced gate:
+
+| Workload | Facts disabled median | Facts enabled median | Change | Allocation effect |
+| --- | ---: | ---: | ---: | --- |
+| `many_funcs` | 182,478 ns/op | 182,275 ns/op | -0.11% | 133,665 B/op / 342 allocs, unchanged |
+| `json-as` | 652,751 ns/op | 655,963 ns/op | +0.49% | 291,674 B/op / 1,003 allocs, unchanged |
+| `esbuild` full compile | 519,695,979 ns/op | 517,029,490 ns/op | -0.51% | code image -72,212 bytes; B/op -163,840 |
+
+The complete repository suite, native race suite, rollback-oracle backend run,
+and targeted runtime/fuzz corpus all pass.
+
 ### Commands
 
 ```sh
