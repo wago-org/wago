@@ -17,9 +17,9 @@ import (
 // function-relative metadata offset before AMD64 relaxation can shrink code.
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 
-// WAGO_COMPACT=0 retains maximal AMD64 encodings as a rollout oracle. The
-// bounded safe subset is otherwise part of the default Balanced path.
-var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") != "0"
+// WAGO_COMPACT=1 enables the bounded AMD64 shrink path. It remains opt-in until
+// its compile-time cost is consistently inside the default Balanced gate.
+var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 
 const maxAMD64FinalizerRel32Sites = 256
 
