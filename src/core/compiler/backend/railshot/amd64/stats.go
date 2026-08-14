@@ -67,6 +67,9 @@ var (
 	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the invariant
 	// trap-cell stores and native-stack unwind within one compiled function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"
+	// moduleSharedTrapBodyEnabled lets later internal functions replace an exact
+	// complete trap-body copy with one near jump to a retained cold body.
+	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
 	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. It remains opt-in while broader shrink-only

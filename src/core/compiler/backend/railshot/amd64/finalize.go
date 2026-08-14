@@ -180,7 +180,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return 0, err
 	}
 	f.a.B = result.Code
-	if len(result.Code) == oldLen && internalOff == 0 && len(f.relocs) == 0 && f.adapterReturnOff == 0 && f.gcFrameRoots == nil {
+	if len(result.Code) == oldLen && internalOff == 0 && len(f.relocs) == 0 && f.adapterReturnOff == 0 && f.trapBodyEnd == 0 && f.gcFrameRoots == nil {
 		// The common tiny internal leaf has no function-relative metadata to
 		// remap. FinalizeIdentity has still validated the emitted image; avoid a
 		// redundant map call for every such function in many-function modules.
@@ -215,6 +215,17 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			return 0, err
 		}
 		f.adapterReturnOff = mapped
+	}
+	if f.trapBodyEnd > f.trapBodyOff {
+		mappedOff, err := mapAMD64FinalOffset(&result.Offsets, f.trapBodyOff, len(result.Code), "trap body start")
+		if err != nil {
+			return 0, err
+		}
+		mappedEnd, err := mapAMD64FinalOffset(&result.Offsets, f.trapBodyEnd, len(result.Code), "trap body end")
+		if err != nil {
+			return 0, err
+		}
+		f.trapBodyOff, f.trapBodyEnd = mappedOff, mappedEnd
 	}
 	if plan := f.gcFrameRoots; plan != nil {
 		if plan.AdapterReturnOffset != 0 {

@@ -5,6 +5,7 @@ package amd64
 import (
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
@@ -28,6 +29,61 @@ func TestFunctionLocalTrapUnwindSharingIsNotProfitableAMD64(t *testing.T) {
 		shared := groups*jumpBytes + unwindBytes
 		if shared <= local {
 			t.Fatalf("%d groups unexpectedly cross over: local=%d shared=%d", groups, local, shared)
+		}
+	}
+}
+
+func TestSizeSharesTrapBodiesAcrossFunctionsAMD64(t *testing.T) {
+	oldInline := inlineEnabled
+	inlineEnabled = false
+	t.Cleanup(func() { inlineEnabled = oldInline })
+	i32 := []wasm.ValType{wasm.I32}
+	callee := []byte{
+		0x00,
+		0x20, 0x00, 0x45,
+		0x04, 0x7f,
+		0x00,
+		0x05,
+		0x20, 0x00, 0x41, 0x01, 0x46,
+		0x04, 0x7f,
+		0x41, 0x01, 0x41, 0x00, 0x6e,
+		0x05,
+		0x41, 0x80, 0x80, 0x80, 0x80, 0x78, 0x41, 0x7f, 0x6d,
+		0x0b,
+		0x0b,
+		0x0b,
+	}
+	m := modFuncs(t,
+		funcDef{i32, i32, []byte{
+			0x00,
+			0x20, 0x00,
+			0x04, 0x7f,
+			0x20, 0x00, 0x10, 0x01,
+			0x05,
+			0x20, 0x00, 0x10, 0x02,
+			0x0b,
+			0x0b,
+		}},
+		funcDef{i32, i32, callee},
+		funcDef{i32, i32, callee},
+	)
+	size := OptimizeSize
+	for _, workers := range []int{1, 2} {
+		var stats ModuleStats
+		opts := CompileOptions{Objective: &size, Stats: &stats, Workers: workers}
+		if _, err := CompileModuleWith(m, opts); err != nil {
+			t.Fatal(err)
+		}
+		if got := stats.Funcs[1].Peephole["module-shared-trap-body"] + stats.Funcs[2].Peephole["module-shared-trap-body"]; got != 1 {
+			t.Fatalf("workers=%d module trap shares = %d, want 1", workers, got)
+		}
+		if stats.NativeSize.AccountedBytes() != stats.NativeSize.TotalBytes {
+			t.Fatalf("workers=%d native ledger = %+v", workers, stats.NativeSize)
+		}
+		for _, arg := range []uint64{0, 1, 2} {
+			if _, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Objective: &size, Workers: workers}, nil, arg); err == nil {
+				t.Fatalf("workers=%d argument %d did not trap through shared body", workers, arg)
+			}
 		}
 	}
 }

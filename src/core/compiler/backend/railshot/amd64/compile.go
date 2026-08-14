@@ -307,6 +307,8 @@ type fn struct {
 	adapterReturnOff        int    // offset immediately after this function's root adapter CALL
 	adapterEndOff           int    // end of the wrapper before internal-entry alignment
 	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
+	trapBodyOff             int    // complete shared trap body start; zero when not emitted
+	trapBodyEnd             int    // complete shared trap body end before any literal pool
 	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool   // emit context-cancellation polls at entries and loop headers
@@ -786,6 +788,7 @@ type funcResult struct {
 	directPrepared bool
 	adapterTail    adapterTailInfo
 	adapter        sharedAdapterInfo
+	trapBody       sharedTrapBodyInfoAMD64
 	relocs         []callReloc
 	literalStart   int
 	literalEnd     int
@@ -1245,6 +1248,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
 			}
 		}
+		var trapBodyCluster sharedTrapBodyClusterAMD64
 		for i := range m.Code {
 			var st *CodegenStats
 			if ms != nil {
@@ -1321,6 +1325,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 					return nil, fmt.Errorf("amd64: module literal metadata exceeds uint32")
 				}
 				literalOffsets[i+1] = uint32(len(literalWords))
+			}
+			if hostAdapters[i] {
+				trapBodyCluster.reset()
+			} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfoAMD64(), st)
 			}
 			if !codeBuffer.CommitTail(fnCode) {
 				if err := codeBuffer.Append(fnCode); err != nil {
@@ -1485,6 +1494,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
+					if moduleSharedTrapBodyEnabled && !hostAdapters[i] {
+						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
+					}
 				}
 				results[i] = result
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
@@ -1514,6 +1526,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
 		}
 	}
+	var trapBodyCluster sharedTrapBodyClusterAMD64
 	for i := range results {
 		r := &results[i]
 		if r.omitted {
@@ -1546,7 +1559,17 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			}
 			literalOffsets[i+1] = uint32(len(literalWords))
 		}
-		code = append(code, states[r.worker].arena[r.start:r.end]...)
+		fnCode := states[r.worker].arena[r.start:r.end]
+		if r.layoutFlags&layoutHostAdapter != 0 {
+			trapBodyCluster.reset()
+		} else if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			var st *CodegenStats
+			if ms != nil {
+				st = ms.Funcs[i]
+			}
+			fnCode = trapBodyCluster.share(code, fnCode, entry[i], r.trapBody, st)
+		}
+		code = append(code, fnCode...)
 	}
 	sharedAdapterBytes := 0
 	if adapters != nil {

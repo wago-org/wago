@@ -264,6 +264,7 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 	}
 
 	common := f.a.Len()
+	f.trapBodyOff = common
 	f.storeModuleGlobals(RSI)
 	f.a.Load64(RSI, RBX, -offTrapCellPtr)
 	f.a.Store32(RSI, 16, RCX)
@@ -271,6 +272,7 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 	f.a.Store32(RSI, 0, RDX)
 	f.a.Load64(RSP, RBX, -offTrapStackReentry)
 	f.a.Ret()
+	f.trapBodyEnd = f.a.Len()
 
 	for code := uint32(1); code <= trapMax; code++ {
 		sites := f.sc.trapSites[code]
