@@ -2708,7 +2708,10 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !registerTail && !wrapperTail {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
-	if f.stagedTailDescriptors && (!indirectRegABI || (f.importBindings != nil && !immutableTable)) {
+	// Reference-bearing register tails need the descriptor path below. A
+	// wrapper tail (for example v128 results) is deliberately not a register
+	// tail and must stay on the ordinary indirect wrapper path.
+	if f.stagedTailDescriptors && ((registerTail && !indirectRegABI) || (f.importBindings != nil && !immutableTable)) {
 		idxReg := f.materialize(f.popValue())
 		f.canonicalizeTableOperand(idxReg, tableIdx)
 		f.pinned = f.pinned.add(idxReg)
