@@ -881,10 +881,9 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	callerRegisterTail := stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
-	targetRegisterTail := stagedTailRegisterABI(ft, f.stagedTailDescriptors)
-	registerTail := callerRegisterTail && targetRegisterTail
-	if !registerTail && funcTypeSlots(ft.Params) > abi.TailArgsSlots {
+	callerRegisterTail := f.opt(optRegABI) && stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
+	targetRegisterTail := f.opt(optRegABI) && stagedTailRegisterABI(ft, f.stagedTailDescriptors)
+	if !targetRegisterTail && funcTypeSlots(ft.Params) > abi.TailArgsSlots {
 		return fmt.Errorf("return_call_indirect: type %d requires %d wrapper argument slots, limit %d", typeIdx, funcTypeSlots(ft.Params), abi.TailArgsSlots)
 	}
 	if f.stagedTailDescriptors && f.importBindings != nil && !f.immutableLocalTable {
@@ -942,9 +941,8 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.stripDescriptorHomeTags(home)
 	f.cmpRR(home, linMemReg, true)
 	f.trapIf(condNE, trapTailUnsupported)
-	registerTail = f.opt(optRegABI) && registerTail
 	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
-	if registerTail {
+	if targetRegisterTail {
 		wantKind = uint32(abi.FuncRefInternalTagValue)
 	}
 	f.cmpImm(kind, wantKind, true)
@@ -959,8 +957,12 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.ld64(X16, linMemReg, -int32(offSpillRegion))
 		f.a.Br(X16)
 	}
-	if registerTail {
-		f.emitTailRegisterJump(ft, jump)
+	if targetRegisterTail {
+		if callerRegisterTail {
+			f.emitTailRegisterJump(ft, jump)
+		} else {
+			f.emitTailWrapperToRegisterJump(ft, jump)
+		}
 	} else {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
 			return fmt.Errorf("return_call_indirect: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)

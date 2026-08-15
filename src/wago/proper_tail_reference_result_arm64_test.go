@@ -206,26 +206,40 @@ func TestARM64WideWrapperCallerTailsToNarrowFuncrefRegisterTarget(t *testing.T) 
 		args[i] = ValueI32(0)
 	}
 	for _, tail := range []struct {
-		name string
-		body []byte
+		name     string
+		body     []byte
+		indirect bool
 	}{
 		{name: "direct", body: []byte{0x12, 0x00, 0x0b}},
+		{name: "indirect", body: []byte{0x41, 0x00, 0x13, 0x00, 0x00, 0x0b}, indirect: true},
 		{name: "reference", body: []byte{0xd2, 0x00, 0x15, 0x00, 0x0b}},
 	} {
 		t.Run(tail.name, func(t *testing.T) {
-			module := wasmtest.Module(
+			sections := [][]byte{
 				wasmtest.Section(1, wasmtest.Vec(
 					wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
 					wasmtest.FuncType(params, []wasm.ValType{wasm.FuncRef}),
 				)),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
-				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
-				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))...))),
-				wasmtest.Section(10, wasmtest.Vec(
-					wasmtest.Code([]byte{0xd2, 0x01, 0x0b}), // target returns ref.func caller
-					wasmtest.Code(tail.body),
-				)),
-			)
+			}
+			if tail.indirect {
+				sections = append(sections, wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})))
+			}
+			sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))))
+			if tail.indirect {
+				sections = append(sections, wasmtest.Section(9, wasmtest.Vec(
+					[]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00},
+					append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(1))...),
+				)))
+			} else {
+				declared := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))...)
+				sections = append(sections, wasmtest.Section(9, wasmtest.Vec(declared)))
+			}
+			sections = append(sections, wasmtest.Section(10, wasmtest.Vec(
+				wasmtest.Code([]byte{0xd2, 0x01, 0x0b}), // target returns ref.func caller
+				wasmtest.Code(tail.body),
+			)))
+			module := wasmtest.Module(sections...)
 			for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
 				t.Run(objective.String(), func(t *testing.T) {
 					compiled := compileProperTailBehavior(t, module, objective, 2)
