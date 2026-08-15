@@ -4498,3 +4498,74 @@ ordinary B/op and allocation counts unchanged apart from threshold noise.
 Tests cover the positive path, a next-read near miss, the exact 64-operation
 fuel cap, deterministic fallback, disabled policy, and native execution.
 `WAGO_ARM64_NO_MERGE_NEXT_USE=1` restores eager merge reloads.
+
+## 2026-08-15 — cumulative core-program acceptance
+
+The bounded core campaign is accepted against the branch point requested for
+this work:
+
+```text
+baseline:           3a4deae55bb15a3bf4b8a023708d0729ae74f912
+measured candidate: 63d17699fd944806e2f2bc7e578a26ed29aeab16
+```
+
+Five 500 ms Apple M4 Max samples across all 36 executable benchmark rows,
+compared with the seven retained baseline samples, give:
+
+```text
+execution geomean: 6.692 -> 6.637 us/op (-0.82%)
+execution memory:  0 B/op and 0 allocs/op on every row
+
+notable rows:
+  raytrace:            -9.31%
+  linked_list:         -6.91%
+  fannkuch:            -3.11%
+  json-as deserialize: -2.12%
+  tiny prepared call:  -1.19%
+```
+
+The one statistically significant execution regression above 1.5% is the
+single-operation `swar-pack-parse.pack` row (+2.22%, or 0.65 ns). Its first
+deterministic code change is the bounded definite-assignment work: the function
+shrinks from 436 to 416 native bytes. The sustained `runN` form is neutral
+(940.8 versus 942.0 ns/op), so this is a fixed host-boundary/alignment effect,
+not a kernel-throughput loss. The adjacent `parse4` row is +1.49%.
+
+Pinned-core Linux/AMD64 compile measurements used five fixed-work samples per
+module on a Ryzen 7 7800X3D with `GOMAXPROCS=1` and CPU 7:
+
+| Gate | Baseline | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Backend compile geomean | 272.3 us | 285.0 us | +4.66% |
+| Full compile geomean | 451.0 us | 470.3 us | +4.28% |
+| Backend compile B/op geomean | 111.2 KiB | 111.5 KiB | +0.33% |
+| Full compile B/op geomean | 142.0 KiB | 142.3 KiB | +0.22% |
+| Backend allocations geomean | 309.1 | 308.7 | -0.13% |
+| Full compile allocations geomean | 513.1 | 513.2 | +0.02% |
+| Process peak RSS | 188,844 KiB | 188,920 KiB | +0.04% |
+
+Summing the per-module medians, rather than giving tiny modules equal weight,
+full Wago compilation takes 2.371 seconds versus wazero's 9.232 seconds across
+the corpus: Wago remains 3.89 times faster. Backend-only Wago compilation takes
+1.740 seconds, 5.31 times faster than wazero. The weighted cumulative changes
+from the requested baseline are +5.86% for backend compilation and +3.49% for
+full compilation, both inside the cumulative budget.
+
+Opt-in native-byte accounting across the same 36 modules reports:
+
+```text
+81,716,736 -> 78,151,252 bytes (-3,565,484, or -4.36%)
+```
+
+The full Darwin/ARM64 repository and benchmark-module tests pass. Focused race
+coverage for prepared entries passes. At the exact candidate SHA, native AMD64
+compiler, runtime, encoder, prepared-entry correctness, and zero-allocation
+benchmarks pass on the hub. The hub's broad `src/wago` package additionally
+requires the external Release 3 spec checkout and a newer `wat2wasm`; those
+environmental failures do not touch the changed prepared-entry path.
+
+This closes the measured phases 0 through 5 of the core campaign. Phase 6 and
+7 items remain evidence-gated experiments: accepted bounded slices are recorded
+above, while opportunity probes that did not justify production machinery stay
+explicitly deferred. No general CFG, whole-function SSA, unbounded allocator,
+or online optimizer was introduced.
