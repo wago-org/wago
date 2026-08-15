@@ -205,6 +205,8 @@ func TestDecodeKey(t *testing.T) {
 		{[]byte{'a'}, keyAll},
 		{[]byte{'n'}, keyClear},
 		{[]byte{'r'}, keyReject},
+		{[]byte{'c'}, keyCopy},
+		{[]byte{'o'}, keyOpen},
 		{[]byte{'q'}, keyQuit},
 		{[]byte{3}, keyQuit},    // Ctrl-C
 		{[]byte{27}, keyCancel}, // bare ESC
@@ -224,6 +226,31 @@ func TestDecodeKey(t *testing.T) {
 	for _, tc := range cases {
 		if got := decodeKey(tc.in); got != tc.want {
 			t.Errorf("decodeKey(%v) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestActionPrompt(t *testing.T) {
+	for _, test := range []struct {
+		key       selectKey
+		action    Action
+		cancelled bool
+	}{
+		{keyCopy, ActionCopy, false},
+		{keyOpen, ActionOpen, false},
+		{keyAccept, ActionContinue, false},
+		{keyCancel, ActionNone, true},
+	} {
+		prompt := &ActionPrompt{Text: "Authorize on GitHub"}
+		done, cancelled := prompt.apply(test.key)
+		if !done || cancelled != test.cancelled || prompt.Action() != test.action {
+			t.Fatalf("action %d = done %v, cancelled %v, action %d", test.key, done, cancelled, prompt.Action())
+		}
+	}
+	frame := (&ActionPrompt{Text: "Authorize on GitHub"}).Frame()
+	for _, want := range []string{"Authorize on GitHub", "c copy code", "o open browser", "enter continue", "esc cancel"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("action frame missing %q:\n%s", want, frame)
 		}
 	}
 }

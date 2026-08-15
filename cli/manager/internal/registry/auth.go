@@ -115,7 +115,7 @@ func loginMethodPicker() *tui.Picker {
 	return tui.NewPicker("Choose login method", []tui.Item{
 		{
 			Label:       "Link",
-			Description: "Open one-time authorization in a browser",
+			Description: "Copy the code or open GitHub from this terminal",
 			Value:       "link",
 		},
 		{
@@ -127,7 +127,8 @@ func loginMethodPicker() *tui.Picker {
 }
 
 // chooseLoginMethodContext asks how to log in using the shared radio selector.
-// Link is selected by default and remains the fallback for non-interactive callers.
+// Link is selected by default. Non-interactive callers fall back to code mode,
+// which never launches a browser without an explicit --link.
 func chooseLoginMethodContext(ctx context.Context, base string) (string, bool) {
 	p := loginMethodPicker()
 	submitted, cancelled := tui.Run(p)
@@ -136,7 +137,7 @@ func chooseLoginMethodContext(ctx context.Context, base string) (string, bool) {
 	}
 	method := p.Selected()
 	if !submitted {
-		method = "link"
+		method = "code"
 	}
 	switch method {
 	case "code":
@@ -214,6 +215,8 @@ type deviceFlowHooks struct {
 	deviceCodeEndpoint  string
 	accessTokenEndpoint string
 	openBrowser         func(string) error
+	copyCode            func(string) error
+	promptAction        func() (tui.Action, bool, bool)
 	wait                func(context.Context, time.Duration) error
 }
 
@@ -233,8 +236,19 @@ func githubDeviceTokenContext(ctx context.Context, base string, openBrowser bool
 		deviceCodeEndpoint:  "https://github.com/login/device/code",
 		accessTokenEndpoint: "https://github.com/login/oauth/access_token",
 		openBrowser:         OpenBrowser,
+		copyCode:            CopyClipboard,
+		promptAction:        promptDeviceAuthorizationAction,
 		wait:                waitDevicePollContext,
 	})
+}
+
+func promptDeviceAuthorizationAction() (action tui.Action, submitted, cancelled bool) {
+	if !tui.StdinIsTTY() {
+		return tui.ActionNone, false, false
+	}
+	prompt := &tui.ActionPrompt{Text: "Authorize this login"}
+	submitted, cancelled = tui.Run(prompt)
+	return prompt.Action(), submitted, cancelled
 }
 
 func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser bool, hooks deviceFlowHooks) (string, error) {
@@ -301,18 +315,51 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	lifetime, pollInterval := deviceFlowTiming(dc.ExpiresIn, dc.Interval)
 	verifyURI := trustedDeviceVerificationURL(dc.VerificationURI, hooks.deviceCodeEndpoint)
 
-	// Print the one-time code before launching a browser so it remains available
-	// when GitHub does not provide a verification_uri_complete value.
+	// Print the one-time code before offering any browser action so the user can
+	// copy it first when GitHub does not provide a complete verification URL.
 	fmt.Printf("\n  First, copy your one-time code:\n\n      %s\n\n", bold(dc.UserCode))
 	if openBrowser {
 		browserURL := trustedDeviceVerificationURL(dc.VerificationURIComplete, hooks.deviceCodeEndpoint)
 		if dc.VerificationURIComplete == "" || browserURL == "" {
 			browserURL = verifyURI
 		}
-		if err := hooks.openBrowser(browserURL); err != nil {
-			fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))
-		} else {
-			fmt.Printf("%s Opened %s in your browser.\n", dim("→"), cyan(browserURL))
+		handled := hooks.promptAction != nil
+		if hooks.promptAction != nil {
+			for {
+				action, submitted, cancelled := hooks.promptAction()
+				if cancelled {
+					return "", context.Canceled
+				}
+				if !submitted {
+					fmt.Printf("  Open %s and enter the code.\n", cyan(verifyURI))
+					break
+				}
+				switch action {
+				case tui.ActionCopy:
+					if hooks.copyCode == nil || hooks.copyCode(dc.UserCode) != nil {
+						fmt.Printf("%s Could not copy automatically; copy %s manually.\n", dim("→"), bold(dc.UserCode))
+					} else {
+						fmt.Printf("%s Copied the one-time code.\n", cyan("✓"))
+					}
+					continue
+				case tui.ActionOpen:
+					if err := hooks.openBrowser(browserURL); err != nil {
+						fmt.Printf("  Open %s and enter the code.\n", cyan(verifyURI))
+					} else {
+						fmt.Printf("%s Opened %s in your browser.\n", dim("→"), cyan(browserURL))
+					}
+				default:
+					fmt.Printf("  Open %s and enter the code.\n", cyan(verifyURI))
+				}
+				break
+			}
+		}
+		if !handled {
+			if err := hooks.openBrowser(browserURL); err != nil {
+				fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))
+			} else {
+				fmt.Printf("%s Opened %s in your browser.\n", dim("→"), cyan(browserURL))
+			}
 		}
 	} else {
 		fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))

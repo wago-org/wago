@@ -40,6 +40,8 @@ const (
 	keyQuit   // q / ctrl-c — abort from any page
 	keyLeft
 	keyRight
+	keyCopy // c
+	keyOpen // o
 )
 
 const (
@@ -51,6 +53,55 @@ const (
 	KeyLeft   = keyLeft
 	KeyRight  = keyRight
 )
+
+// Action is the result of a one-key action prompt.
+type Action int
+
+const (
+	ActionNone Action = iota
+	ActionContinue
+	ActionCopy
+	ActionOpen
+)
+
+// ActionPrompt presents compact keyboard actions without a selectable list.
+// The model remains pure; callers perform the selected side effect after Run.
+type ActionPrompt struct {
+	Text   string
+	Prompt string
+	action Action
+}
+
+func (p *ActionPrompt) apply(key selectKey) (done, cancelled bool) {
+	switch key {
+	case keyCopy:
+		p.action = ActionCopy
+		return true, false
+	case keyOpen:
+		p.action = ActionOpen
+		return true, false
+	case keyAccept, keyRight:
+		p.action = ActionContinue
+		return true, false
+	case keyLeft, keyCancel, keyQuit:
+		return true, true
+	}
+	return false, false
+}
+
+func (p *ActionPrompt) frame() string {
+	prompt := p.Prompt
+	if prompt == "" {
+		prompt = "c copy code · o open browser · enter continue · esc cancel"
+	}
+	return p.Text + "\n" + ui.Dim(prompt) + "\n"
+}
+
+// Action reports the submitted action after Run returns.
+func (p *ActionPrompt) Action() Action { return p.action }
+
+// Frame returns the prompt's rendered text for tests and previews.
+func (p *ActionPrompt) Frame() string { return p.frame() }
 
 // selectorModel is implemented by both the capability multi-select and the
 // hierarchical single-choice picker.
@@ -186,6 +237,10 @@ func decodeKey(b []byte) selectKey {
 			return keyClear
 		case 'r', 'R':
 			return keyReject
+		case 'c', 'C':
+			return keyCopy
+		case 'o', 'O':
+			return keyOpen
 		case 27:
 			return keyCancel
 		case 'q', 'Q', 3:
