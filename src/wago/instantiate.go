@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	goruntime "runtime"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
@@ -671,6 +672,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			for i := range c.extraTables {
 				if c.extraTables[i].ImportKey != "" {
 					localFuncrefsMayEscape = true
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for _, fidx := range c.Exports {
+				local := fidx - c.NumImports
+				if local < 0 || local >= len(c.Funcs) {
+					continue
+				}
+				for _, result := range c.Funcs[local].Results {
+					if result == ValFuncRef {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
+				if localFuncrefsMayEscape {
 					break
 				}
 			}
