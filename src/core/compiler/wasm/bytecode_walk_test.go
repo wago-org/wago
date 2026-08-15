@@ -113,6 +113,14 @@ func TestClassifyInstructionImmediateReportsMemargMetadata(t *testing.T) {
 	if imm.Kind != InstrI64Load || imm.MemAlign != 3 || imm.MemOffset != 1<<32 {
 		t.Fatalf("memory64 memarg metadata = %+v", imm)
 	}
+
+	r = NewReader([]byte{0x01}) // memory index 1
+	if err := ClassifyInstructionImmediateIntoWithFeatures(r, 0x3f, &imm, false, true); err != nil {
+		t.Fatal(err)
+	}
+	if imm.Kind != InstrMemorySize || imm.Index != 1 || !imm.TouchesMemory {
+		t.Fatalf("multi-memory immediate metadata = %+v", imm)
+	}
 }
 
 func TestSkipInstructionImmediateRejectsMalformedVectors(t *testing.T) {
