@@ -91,21 +91,21 @@ func (f *fn) markDeclaredLocalZero(x int) {
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	if f.localType[x] == mtV128 {
-		f.a.VMovdquStoreDisp(RSP, f.localOff(x), reg)
+		f.a.VMovdquStoreDisp(RSP, f.localAddr(x), reg)
 	} else if isFloat {
-		f.a.FStoreDisp(RSP, f.localOff(x), reg, f.localType[x] == mtF64)
+		f.a.FStoreDisp(RSP, f.localAddr(x), reg, f.localType[x] == mtF64)
 	} else {
-		f.storeFrameInt(f.localOff(x), reg, f.localType[x])
+		f.storeFrameInt(f.localAddr(x), reg, f.localType[x])
 	}
 }
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 	if f.localType[x] == mtV128 {
-		f.a.VMovdquLoadDisp(reg, RSP, f.localOff(x))
+		f.a.VMovdquLoadDisp(reg, RSP, f.localAddr(x))
 	} else if isFloat {
-		f.a.FLoadDisp(reg, RSP, f.localOff(x), f.localType[x] == mtF64)
+		f.a.FLoadDisp(reg, RSP, f.localAddr(x), f.localType[x] == mtF64)
 	} else {
-		f.loadFrameInt(reg, f.localOff(x), f.localType[x])
+		f.loadFrameInt(reg, f.localAddr(x), f.localType[x])
 	}
 }
 
@@ -128,7 +128,7 @@ func (f *fn) materializeZeroLocal(x int, needSlot bool) {
 	if needSlot {
 		r := f.allocReg(0)
 		f.a.XorSelf32(r)
-		f.storeFrameInt(f.localOff(x), r, f.localType[x])
+		f.storeFrameInt(f.localAddr(x), r, f.localType[x])
 		f.release(r)
 		f.locals[x].state = lsMem
 	}

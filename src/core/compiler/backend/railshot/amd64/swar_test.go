@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	wagoruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -22,6 +23,11 @@ func swarMaskBranchBody() []byte {
 	b := swarMaskEqzBody()
 	b = b[:len(b)-1]
 	return append(b, 0x04, 0x7f, 0x41, 0x01, 0x05, 0x41, 0x00, 0x0b, 0x0b)
+}
+
+func singleBitMaskBranchBody() []byte {
+	// (local.get 0 & 0x80) == 0 ? 1 : 0
+	return []byte{0x00, 0x20, 0x00, 0x42, 0x80, 0x01, 0x83, 0x50, 0x04, 0x7f, 0x41, 0x01, 0x05, 0x41, 0x00, 0x0b, 0x0b}
 }
 
 func swarWiden4Body() []byte {
@@ -116,6 +122,36 @@ func TestSWARMaskBranchFusion(t *testing.T) {
 	for x, want := range map[uint64]uint32{0: 1, 0x7f7f: 1, 0x80: 0} {
 		if got := uint32(runAmd64u(t, m, x)); got != want {
 			t.Fatalf("x=%#x: got %d, want %d", x, got, want)
+		}
+	}
+}
+
+func TestSizeSingleBitMaskTest(t *testing.T) {
+	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, singleBitMaskBranchBody())
+	before := singleBitMaskTestEnabled
+	t.Cleanup(func() { singleBitMaskTestEnabled = before })
+	compile := func(enabled bool) (*encoderamd64.CompiledModule, *ModuleStats) {
+		singleBitMaskTestEnabled = enabled
+		size := OptimizeSize
+		stats := &ModuleStats{}
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats, Workers: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { cm.CodeImage.Close() })
+		return cm, stats
+	}
+	long, longStats := compile(false)
+	short, shortStats := compile(true)
+	if shortStats.Funcs[0].CodeBytes > longStats.Funcs[0].CodeBytes {
+		t.Fatalf("BT code = %d bytes, TEST code = %d; want no growth", shortStats.Funcs[0].CodeBytes, longStats.Funcs[0].CodeBytes)
+	}
+	if got := shortStats.Funcs[0].Peephole["single-bit-mask-test"]; got != 1 {
+		t.Fatalf("single-bit-mask-test hits = %d, want 1", got)
+	}
+	for x, want := range map[uint64]uint64{0: 1, 0x7f: 1, 0x80: 0, ^uint64(0): 0} {
+		if got := runCompiledAmd64u(t, short, x); got != want {
+			t.Fatalf("x=%#x: got %d, want %d (rollback bytes %d)", x, got, want, len(long.Code))
 		}
 	}
 }

@@ -2,7 +2,9 @@
 
 package arm64
 
-import "os"
+import (
+	"os"
+)
 
 // branchFoldEnabled gates the post-assembly double-branch peephole. On by
 // default; WAGO_ARM64_NOBRFOLD=1 disables it for A/B measurement.
@@ -23,7 +25,17 @@ const (
 // targets), and each rewrite must not disturb a word another branch targets. So
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes() {
-	if !branchFoldEnabled && !storeLoadFwdEnabled {
+	compact := nativeFinalizerEnabled && f.compactNative()
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !compact {
+		return
+	}
+	// The established size-stable peephole abandons a function when it reaches
+	// an indirect branch because jump-table data follows in the instruction
+	// stream. Keep that no-rewrite boundary under compaction too: the explicit
+	// fragment inventory still lets the finalizer shrink frame reservations and
+	// repatch PC-relative words without retaining every branch target in a large
+	// map merely to prove local peepholes safe.
+	if compact && f.opaqueFragments {
 		return
 	}
 	b := f.a.B
@@ -37,20 +49,89 @@ func (f *fn) finalizePeepholes() {
 		targets = make(map[int]bool, 16)
 		sc.branchTargets = targets
 	}
+	fragments := finalizerFragmentCursor{fragments: sc.finalFragments}
 	for pc := 0; pc < n; pc += 4 {
+		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
+			continue
+		}
 		w := rdWord(b, pc)
-		if isIndirectBranch(w) {
+		if !compact && isIndirectBranch(w) {
 			return
 		}
 		if t, ok := branchTarget(pc, w); ok {
 			targets[t] = true
+			if compact && t == pc+4 && w&0xFC000000 != 0x94000000 {
+				f.recordBranchNext(pc)
+			}
 		}
 	}
-	if branchFoldEnabled {
+	if f.opt(optBranchFold) {
+		f.foldSingleBitBranches(b, n, targets)
 		f.foldBranchPairs(b, n, targets)
 	}
-	if storeLoadFwdEnabled {
+	if f.opt(optStoreLoadFwd) {
 		f.forwardStoreLoads(b, n, targets)
+	}
+}
+
+type singleBitTestSite struct {
+	off int
+	reg Reg
+	bit uint8
+}
+
+func (f *fn) recordSingleBitTest(off int, reg Reg, bit uint8) {
+	if !singleBitBranchEnabled || !nativeFinalizerEnabled || !f.compactNative() {
+		return
+	}
+	sc := f.scratchState()
+	if int(sc.singleBitTestN) == len(sc.singleBitTests) {
+		return
+	}
+	sc.singleBitTests[sc.singleBitTestN] = singleBitTestSite{off: off, reg: reg, bit: bit}
+	sc.singleBitTestN++
+}
+
+// foldSingleBitBranches consumes only candidates explicitly recorded by the
+// masked-eqz lowering. The final target is now known, so an adjacent TST plus
+// EQ/NE branch can become TBZ/TBNZ when the tighter imm14 range permits it.
+func (f *fn) foldSingleBitBranches(b []byte, n int, targets map[int]bool) {
+	sc := f.scratchState()
+	for _, site := range sc.singleBitTests[:sc.singleBitTestN] {
+		test, branch := site.off, site.off+4
+		if test < 0 || branch+4 > n || targets[branch] || int(sc.deadHoleN) == len(sc.deadHoleSites) {
+			continue
+		}
+		w := rdWord(b, branch)
+		if w&0xFF000010 != 0x54000000 {
+			continue
+		}
+		cc := Cond(w & 0xF)
+		if cc != condE && cc != condNE {
+			continue
+		}
+		target, ok := branchTarget(branch, w)
+		if !ok {
+			continue
+		}
+		delta := target - test
+		if delta&3 != 0 {
+			continue
+		}
+		words := delta / 4
+		if words < -(1<<13) || words >= 1<<13 {
+			continue
+		}
+		base := uint32(0x36000000) // TBZ
+		if cc == condNE {
+			base |= 0x01000000 // TBNZ
+		}
+		word := base | uint32(site.bit>>5)<<31 | uint32(site.bit&31)<<19 |
+			(uint32(words)&0x3FFF)<<5 | uint32(site.reg&31)
+		wrWord(b, test, word)
+		wrWord(b, branch, nopWord)
+		f.recordDeadHole(branch)
+		f.stats.peep("single-bit-test-branch")
 	}
 }
 
@@ -72,7 +153,12 @@ func (f *fn) finalizePeepholes() {
 // expected a branch. We prove that by collecting every PC-relative branch
 // target first and only folding pairs whose middle word is not among them.
 func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
+	compact := nativeFinalizerEnabled && f.compactNative()
+	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
+		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
+			continue
+		}
 		w := rdWord(b, pc)
 		cc, ok := bcondSkipOne(w) // B.cond whose displacement is exactly +2 words
 		if !ok {
@@ -95,7 +181,11 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 		inv := uint32(cc.Invert())
 		wrWord(b, pc, 0x54000000|(uint32(d)&0x7FFFF)<<5|inv)
 		wrWord(b, mid, nopWord)
+		f.recordDeadHole(mid)
 		f.stats.peep("br-pair-fold")
+		if f.stats != nil {
+			f.stats.NativeSize.BranchFoldHoleBytes += 4
+		}
 		pc += 4 // step past the NOP we just wrote
 	}
 }
@@ -112,31 +202,78 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 // SP between them) and only fired when nothing branches to the load: an external
 // entrant that skipped the store must genuinely load from memory.
 func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
+	compact := nativeFinalizerEnabled && f.compactNative()
+	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
-		rs, k, w64, ok := spStoreImm(rdWord(b, pc))
-		if !ok {
+		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
 			continue
 		}
-		ld := pc + 4
-		if targets[ld] {
-			continue // a branch lands on the load — it must read memory
+		if f.forwardStoreLoadAt(b, n, pc, targets, true) {
+			pc += 4 // step past the word we just rewrote
 		}
-		rd, k2, w642, ok := spLoadImm(rdWord(b, ld))
-		if !ok || k != k2 || w64 != w642 {
-			continue // different slot or width
+	}
+}
+
+func (f *fn) forwardStoreLoadAt(b []byte, n, pc int, targets map[int]bool, recordHole bool) bool {
+	rs, k, w64, ok := spStoreImm(rdWord(b, pc))
+	if !ok {
+		return false
+	}
+	ld := pc + 4
+	if ld+4 > n || targets[ld] {
+		return false // a branch lands on the load — it must read memory
+	}
+	rd, k2, w642, ok := spLoadImm(rdWord(b, ld))
+	if !ok || k != k2 || w64 != w642 || rd == 31 {
+		return false
+	}
+	if rd == rs {
+		wrWord(b, ld, nopWord)
+		if recordHole {
+			f.recordDeadHole(ld)
 		}
-		if rd == 31 { // LDR ZR — degenerate; leave it
-			continue
+		if f.stats != nil {
+			f.stats.NativeSize.StoreLoadNopBytes += 4
 		}
-		if rd == rs {
-			wrWord(b, ld, nopWord) // value already in the register
-		} else if w64 {
-			wrWord(b, ld, 0xAA0003E0|uint32(rs)<<16|uint32(rd)) // MOV Xd,Xs (ORR Xd,XZR,Xs)
-		} else {
-			wrWord(b, ld, 0x2A0003E0|uint32(rs)<<16|uint32(rd)) // MOV Wd,Ws (ORR Wd,WZR,Ws)
-		}
-		f.stats.peep("store-load-fwd")
-		pc += 4 // step past the word we just rewrote
+	} else if w64 {
+		wrWord(b, ld, 0xAA0003E0|uint32(rs)<<16|uint32(rd))
+	} else {
+		wrWord(b, ld, 0x2A0003E0|uint32(rs)<<16|uint32(rd))
+	}
+	f.stats.peep("store-load-fwd")
+	return true
+}
+
+// finalizerOpaqueAt decodes the marker-map representation used by validation.
+// Production compaction scans scratch.finalFragments through an ordered cursor
+// so it does not pay these hash probes for every emitted word.
+func finalizerOpaqueAt(markers map[int]bool, pc int, opaque *bool) bool {
+	if markers[finalizerMarkerKey(pc, markerJumpDataEnd)] || markers[finalizerMarkerKey(pc, markerOpaqueDataEnd)] || markers[finalizerMarkerKey(pc, markerPluginEnd)] {
+		*opaque = false
+	}
+	if markers[finalizerMarkerKey(pc, markerJumpDataStart)] || markers[finalizerMarkerKey(pc, markerOpaqueDataStart)] || markers[finalizerMarkerKey(pc, markerPluginStart)] {
+		*opaque = true
+	}
+	return *opaque
+}
+
+// recordDeadHole retains explicit hole positions in the branch-target map after
+// the target scan is complete. Negative keys cannot be valid function-relative
+// branch targets, so this reuses existing scratch without another allocation or
+// per-function slice. The finalizer decodes these entries before compaction.
+func (f *fn) recordDeadHole(off int) {
+	if !nativeFinalizerEnabled || !f.compactNative() {
+		return
+	}
+	sc := f.scratchState()
+	if int(sc.deadHoleN) == len(sc.deadHoleSites) {
+		sc.deadHoleOverflow = true
+		return
+	}
+	sc.deadHoleSites[sc.deadHoleN] = off
+	sc.deadHoleN++
+	if nativeFinalizerValidate {
+		f.recordFinalizerMarker(off, markerDeadHole)
 	}
 }
 
@@ -219,7 +356,8 @@ func uncondBranchImm(w uint32) (int, bool) {
 
 // branchTarget returns the byte offset a PC-relative branch at pc jumps to.
 // Covers B, BL, B.cond, CBZ/CBNZ, TBZ/TBNZ — every static branch that can land
-// inside the function. Indirect branches are handled by isIndirectBranch.
+// inside the function. Explicit fragment markers keep embedded data out of the
+// instruction walk; indirect branches require no target entry.
 func branchTarget(pc int, w uint32) (int, bool) {
 	switch {
 	case w&0xFC000000 == 0x14000000, w&0xFC000000 == 0x94000000: // B / BL (imm26)
@@ -252,8 +390,8 @@ func imm19(w uint32) int {
 }
 
 // isIndirectBranch reports whether w is a BR (unconditional indirect branch).
-// BLR and RET are excluded: a BLR resumes at the following word (a fall-through,
-// never a fold middle) and RET leaves the function.
+// Without explicit fragment handling, the old peephole path stops here because
+// a br_table may place data immediately after the dispatch.
 func isIndirectBranch(w uint32) bool {
 	return w&0xFFFFFC1F == 0xD61F0000 // BR Xn
 }

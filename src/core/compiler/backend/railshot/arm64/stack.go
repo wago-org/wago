@@ -125,6 +125,7 @@ type storage struct {
 	reg    Reg
 	ehRoot bool // frame-relative rooted exception identity; clear its three-word record on drop
 	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
+	facts  valueFacts
 	slot   int
 	idx    int   // local/global index for stLocalRef/stGlobalRef
 	cval   int64 // constant value/bits for stConst
@@ -384,6 +385,9 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
+	if f.opt(optValueFacts) {
+		node.st.facts = deferredResultFacts(op, typ)
+	}
 	node.arg0, node.arg1 = left, right
 	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
 	f.s.push(node)
@@ -553,6 +557,9 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	}
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
+	if f.opt(optValueFacts) {
+		node.st.facts = deferredResultFacts(op, typ)
+	}
 	node.arg0 = operand
 	node.deferDepth = 1 + deferDepthOf(operand)
 	f.s.push(node)

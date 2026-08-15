@@ -676,7 +676,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// eligible loops do not pay for two immediate walks.
 		memory64 := f.memoryAddr64(0)
 		valid := false
-		if loopPrecheckEnabled && f.memSizeReg != regNone && !f.inVersionedLoop {
+		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistable(r, memory64)
 			valid = scanOK
 			fr.loopSetLocals, fr.loopHasGrow = setLocals, hasGrow
@@ -1561,6 +1561,8 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.branchJump(fr)
 	}
 	if len(labels) >= brTableJumpMin {
+		f.hasJumpTableData = true
+		compactIDs, uniqueN, compactStubAt := f.brTableCompactPlan(labels, def)
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
 		// RAX/RDX are free after the flush (pinned locals never occupy scratch); the
@@ -1581,15 +1583,58 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.a.AluRI(cmpDigit, ireg, int32(len(labels)), false)
 		defSite := f.a.JccPlaceholder(condAE) // idx >= n → default
 		leaSite := f.a.LeaRipPlaceholder(RAX) // RAX = &table
-		f.a.ShiftImm(4, ireg, 2, false)       // idx *= 4 (u32 entries)
-		f.a.LoadIdx(RDX, RAX, ireg, 0, 4, true, true)
-		f.a.AluRR(0x01, RDX, RAX, true) // target = table base + entry
+		if compactIDs {
+			f.stats.peep("br-table-compact")
+			f.a.LoadIdx(RDX, RAX, ireg, 0, 1, false, true) // RDX = target ID
+			f.a.LeaScaled(RDX, RDX, RDX, 2, 0)             // RDX = ID * 5
+			f.a.LeaScaled(RDX, RAX, RDX, 0, int32(len(labels)))
+		} else {
+			f.a.ShiftImm(4, ireg, 2, false) // idx *= 4 (u32 entries)
+			f.a.LoadIdx(RDX, RAX, ireg, 0, 4, true, true)
+			f.a.AluRR(0x01, RDX, RAX, true) // target = table base + entry
+		}
 		f.a.JmpReg(RDX)
 		tablePos := f.a.Len()
 		f.a.PatchRel32(leaSite, tablePos)
+		if compactIDs {
+			for _, lbl := range labels {
+				f.a.B = append(f.a.B, byte(compactStubAt[lbl]-1))
+			}
+			vectorPos := f.a.Len()
+			f.sc.jumpTableFragments = append(f.sc.jumpTableFragments, jumpTableFragment{
+				start: tablePos, end: vectorPos, kind: jumpTableFragmentIDs,
+			})
+			for range uniqueN {
+				f.a.JmpPlaceholder()
+			}
+			for _, lbl := range labels {
+				encodedID := compactStubAt[lbl]
+				if encodedID <= 0 {
+					continue
+				}
+				i := encodedID - 1
+				p := f.a.Len()
+				compactStubAt[lbl] = -p - 1
+				vectorSite := vectorPos + 5*i + 1
+				f.a.PatchRel32(vectorSite, p)
+				f.a.KeepRel32Long(vectorSite)
+				emitCase(lbl)
+			}
+			if encoded := compactStubAt[def]; encoded < 0 {
+				f.a.PatchRel32(defSite, -encoded-1)
+			} else {
+				f.a.PatchRel32(defSite, f.a.Len())
+				emitCase(def)
+			}
+			f.unreachable = true
+			return nil
+		}
 		for range labels {
 			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
 		}
+		f.sc.jumpTableFragments = append(f.sc.jumpTableFragments, jumpTableFragment{
+			start: tablePos, end: f.a.Len(), kind: jumpTableFragmentDeltas,
+		})
 		if brTableSmallLabelsUnique(labels) {
 			defIdx := -1
 			for i, lbl := range labels {
@@ -1770,6 +1815,43 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 // brTableJumpMin is the label count at which br_table switches from a linear
 // cmp/jne chain to an indirect jump table.
 const brTableJumpMin = 5
+
+// brTableCompactPlan chooses byte target IDs plus five-byte direct-jump vector
+// entries only when their exact data bytes beat the dense i32-offset table.
+// The compact Size/Embedded dispatch retains the same instruction count as the
+// dense form but adds one predictable direct branch after the indirect jump.
+func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
+	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded {
+		return false, 0, nil
+	}
+	sc := f.sc
+	stubAt := sc.brTableStubAt
+	if cap(stubAt) < len(f.ctrl) {
+		stubAt = make([]int, len(f.ctrl))
+	} else {
+		stubAt = stubAt[:len(f.ctrl)]
+	}
+	sc.brTableStubAt = stubAt
+	for _, lbl := range labels {
+		stubAt[lbl] = 0
+	}
+	stubAt[def] = 0
+	uniqueN := 0
+	for _, lbl := range labels {
+		if stubAt[lbl] != 0 {
+			continue
+		}
+		if uniqueN == 256 {
+			return false, 0, nil
+		}
+		uniqueN++
+		stubAt[lbl] = uniqueN
+	}
+	if len(labels)+5*uniqueN >= 4*len(labels) {
+		return false, 0, nil
+	}
+	return true, uniqueN, stubAt
+}
 
 func brTableSmallLabelsUnique(labels []uint32) bool {
 	// Keep the duplicate check bounded: larger tables use the map-backed path,

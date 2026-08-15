@@ -43,6 +43,8 @@ const inlineCallSeqBytes = 24
 // splice (see inlineClass).
 var inlineLoopCallees = os.Getenv("WAGO_INLINE_LOOPCALLEE") == "1"
 
+var inlineDeadBodyEnabled = os.Getenv("WAGO_INLINE_DEAD_BODY") != "0"
+
 var inlineMaxBytes = func() int {
 	if v := os.Getenv("WAGO_INLINE_MAXBYTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
@@ -52,6 +54,22 @@ var inlineMaxBytes = func() int {
 	return inlineMaxBodyBytes
 }()
 
+var sizeInlineMaxBytesOverride = func() int {
+	if v := os.Getenv("WAGO_SIZE_INLINE_MAXBYTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+			return n
+		}
+	}
+	return -1
+}()
+
+func sizeInlineBodyLimit(policy CodegenPolicy) int {
+	if sizeInlineMaxBytesOverride >= 0 {
+		return sizeInlineMaxBytesOverride
+	}
+	return int(policy.MaxSizeInlineBodyBytes)
+}
+
 // inlineFacts are the per-function facts the candidacy decision needs.
 type inlineFacts struct {
 	bodyBytes      int      // encoded body size (proxy for inlined code growth)
@@ -60,10 +78,13 @@ type inlineFacts struct {
 	hasControlCall bool     // call_indirect / return_call* / call_ref (inline blocker)
 	hasLoop        bool
 	hasControlFlow bool // any block/loop/if/else/br*/return/unreachable
+	moduleEH       bool // requires caller EH frame planning, so cannot yet inline
 	touchesMem     bool // any linear-memory op (load/store/size/grow/bulk)
 	touchesGlobal  bool // any global.get/global.set
 	params         int
 	results        int
+	declaredLocals int
+	callSites      int
 	regABIIntOnly  bool // signature fits the int-only register ABI
 }
 
@@ -98,6 +119,10 @@ type InlineReport struct {
 // local functions and returns the report. It is pure analysis (no compilation)
 // so it is safe to call independently — e.g. from tooling or tests.
 func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
+	return analyzeInlineCandidates(m, currentCodegenPolicy())
+}
+
+func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineReport, error) {
 	importedFuncs := m.ImportedFuncCount()
 	n := len(m.Code)
 	facts := make([]inlineFacts, n)
@@ -120,7 +145,11 @@ func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
 		}
 	}
 
-	rep := &InlineReport{MaxBodyBytes: inlineMaxBytes}
+	maxBodyBytes := inlineMaxBytes
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		maxBodyBytes = sizeInlineBodyLimit(policy)
+	}
+	rep := &InlineReport{MaxBodyBytes: maxBodyBytes}
 	rep.Funcs = make([]InlineCandidateInfo, n)
 	for i := range facts {
 		globalIdx := importedFuncs + i
@@ -132,7 +161,8 @@ func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
 			Results:   facts[i].results,
 			CallSites: callSites[globalIdx],
 		}
-		info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx])
+		facts[i].callSites = callSites[globalIdx]
+		info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx], policy)
 		if info.Candidate {
 			rep.NumCandidates++
 			rep.TotalInlinableCallSites += info.CallSites
@@ -152,15 +182,19 @@ func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
 // string. The compile hot path (buildInlineTargets) runs this for every function
 // and discards the reason, so it must not allocate; inlineClass adds the reason
 // only for the opt-in stats report.
-func inlineOK(f inlineFacts) bool {
+func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
+	case f.moduleEH:
+		return false
+	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
+		return sizeInlineOK(f, policy)
 	case f.hasControlCall:
 		return false
 	case f.calleeCount > 0:
 		return false
 	case !f.regABIIntOnly:
 		return false
-	case f.hasLoop && !inlineLoopCallees:
+	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
 		return false
 	case f.bodyBytes > inlineMaxBytes:
 		return false
@@ -169,8 +203,12 @@ func inlineOK(f inlineFacts) bool {
 	}
 }
 
-func inlineClass(f inlineFacts) (bool, string) {
+func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
+	case f.moduleEH:
+		return false, "requires exception-handling frame"
+	case (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && !sizeInlineOK(f, policy):
+		return false, "size objective requires proved native-byte win"
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
 	case f.calleeCount > 0:
@@ -182,7 +220,7 @@ func inlineClass(f inlineFacts) (bool, string) {
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
-	case f.hasLoop && !inlineLoopCallees:
+	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
 		// A leaf callee that contains a LOOP is a net-negative to splice: its loop
 		// body lands inside the caller's hot region and adds register pressure /
 		// code that outweighs the call it removes. Measured: excluding these speeds
@@ -199,10 +237,17 @@ func inlineClass(f inlineFacts) (bool, string) {
 	}
 }
 
+func sizeInlineOK(f inlineFacts, policy CodegenPolicy) bool {
+	return !f.moduleEH && !f.hasControlCall && f.calleeCount == 0 &&
+		f.callSites == 1 && f.straightLine() && f.bodyBytes <= sizeInlineBodyLimit(policy) &&
+		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
+		!f.touchesMem && !f.touchesGlobal
+}
+
 // inlineDecision layers the call-site gate on inlineClass for the report (a
 // class member with no call sites is unused, not inlinable).
-func inlineDecision(f inlineFacts, callSites int) (bool, string) {
-	if ok, reason := inlineClass(f); !ok {
+func inlineDecision(f inlineFacts, callSites int, policy CodegenPolicy) (bool, string) {
+	if ok, reason := inlineClass(f, policy); !ok {
 		return false, reason
 	}
 	if callSites == 0 {
@@ -228,6 +273,9 @@ func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int) 
 		f.results = len(ft.Results)
 		f.regABIIntOnly = sigFitsRegABI(ft) && sigIsIntOnly(ft)
 	}
+	for _, run := range fn.Locals.Runs {
+		f.declaredLocals += int(run.Count)
+	}
 	if len(fn.BodyBytes) != 0 {
 		if err := scanInlineFactsBytes(fn.BodyBytes, &f); err != nil {
 			return f, err
@@ -247,18 +295,24 @@ func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
 		if err != nil {
 			return err
 		}
-		// Control-flow opcodes: unreachable/block/loop/if/else/br/br_if/br_table/
-		// return. The single terminating `end` (0x0b) is the body end, not a nested
-		// block close, so it is not treated as control flow. (ClassifyInstruction-
-		// Immediate handles these structurally, so key off the raw opcode.)
-		switch op {
-		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
+		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
 			f.hasControlFlow = true
+		}
+		if shared.InstructionNeedsEHFrame(op, wasm.InstrInvalid) {
+			f.moduleEH = true
+		}
+		switch op {
 		case 0x23, 0x24: // global.get / global.set
 			f.touchesGlobal = true
 		}
 		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
 			return err
+		}
+		if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+			f.hasControlFlow = true
+		}
+		if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+			f.moduleEH = true
 		}
 		if imm.TouchesMemory || imm.UsesBulkMemory {
 			f.touchesMem = true
@@ -280,6 +334,12 @@ func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
 func scanInlineFactsAST(instrs []wasm.Instruction, f *inlineFacts) {
 	for i := range instrs {
 		in := &instrs[i]
+		if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
+			f.hasControlFlow = true
+		}
+		if shared.InstructionNeedsEHFrame(0, in.Kind) {
+			f.moduleEH = true
+		}
 		switch in.Kind {
 		case wasm.InstrCall:
 			f.calleeCount++
@@ -409,6 +469,7 @@ type inlineTarget struct {
 	res0           machineType        // first result type (mtNone if none) — for the single-result merge
 	touchesMem     bool               // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
 	hasCtrl        bool               // the body has control flow → splice through a synthetic boundary frame
+	omitStandalone bool               // module layout may omit this unreachable standalone body
 }
 
 type inlineTargetTable struct {
@@ -426,6 +487,11 @@ func (ts inlineTargetTable) target(globalIdx int) *inlineTarget {
 
 func (ts inlineTargetTable) empty() bool { return len(ts.targets) == 0 }
 
+func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) bool {
+	return inlineDeadBodyEnabled && !hostAdapter && localIdx >= 0 && localIdx < len(ts.targets) &&
+		ts.targets[localIdx].valid && ts.targets[localIdx].omitStandalone
+}
+
 // buildInlineTargets returns the straight-line leaf inline candidates keyed by
 // GLOBAL function index, or an empty table when inlining is disabled. Candidacy
 // here is a property of the callee alone (the call-site count only mattered for the report),
@@ -434,8 +500,8 @@ func (ts inlineTargetTable) empty() bool { return len(ts.targets) == 0 }
 // gathered by computeModuleHints — no second body walk. inlineFacts is
 // reconstructed from the hints (any call ⇒ not a leaf ⇒ ineligible, so hasCall
 // stands in for both calleeCount>0 and hasControlCall), plus the signature.
-func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable {
-	if !inlineEnabled {
+func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy) inlineTargetTable {
+	if !policy.EnabledOption(optInline) {
 		return inlineTargetTable{}
 	}
 	hasCall := false
@@ -462,6 +528,9 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 			continue
 		}
 		h := allHints[i]
+		if h.moduleEH {
+			continue
+		}
 		facts := inlineFacts{
 			bodyBytes:      len(body),
 			hasLoop:        h.hasLoop,
@@ -469,6 +538,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 			touchesMem:     h.touchesMemory || h.usesBulkMem,
 			params:         len(ft.Params),
 			results:        len(ft.Results),
+			declaredLocals: h.nLocals - len(ft.Params),
+			callSites:      int(h.inlineCallSiteCount()),
 			regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
 		}
 		if h.hasCall {
@@ -481,7 +552,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 		// stands in for its function boundary (its `return`/`end` merge there), so
 		// the existing block/br/convergence machinery lowers it. A straight-line
 		// callee skips the frame entirely (the cheaper fast path).
-		if !inlineOK(facts) {
+		if !inlineOK(facts, policy) {
 			continue
 		}
 		if targets.empty() {
@@ -543,9 +614,48 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints) inlineTargetTable 
 			res0:           res0,
 			touchesMem:     facts.touchesMem,
 			hasCtrl:        facts.hasControlFlow,
+			omitStandalone: (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
+				h.inlineCallSites == 1,
 		}
 	}
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		pruneNestedSizeInlineTargets(m, &targets)
+	}
 	return targets
+}
+
+// pruneNestedSizeInlineTargets prevents transitive body omission without a
+// transitive inline-local plan. If an admitted parent directly calls another
+// body slated for omission, splicing only the parent would transplant that call
+// into a caller that did not reserve the child's inline locals. Keep the parent
+// standalone; its own compile can then inline and safely eliminate the child.
+func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
+	if targets.empty() {
+		return
+	}
+	for i := range targets.targets {
+		target := &targets.targets[i]
+		if !target.valid || len(m.Code[i].BodyBytes) == 0 {
+			continue
+		}
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		var imm wasm.InstructionImmediate
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil || wasm.ClassifyInstructionImmediateInto(r, op, &imm) != nil {
+				target.valid = false
+				break
+			}
+			if imm.Kind != wasm.InstrCall {
+				continue
+			}
+			callee := int(imm.Index) - targets.first
+			if callee >= 0 && callee < len(targets.targets) && targets.targets[callee].omitStandalone {
+				target.valid = false
+				break
+			}
+		}
+	}
 }
 
 // reserveInlineLocals scans the caller body for calls to inline targets and, for
@@ -589,7 +699,7 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 // Requires at least one call (a genuinely call-free function is handled by the
 // ordinary hints). Inline targets are call-free leaves (inlineClass), so a true
 // result means the spliced body adds no call either.
-func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable) bool {
+func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, _ CodegenPolicy) bool {
 	if targets.empty() || len(caller.BodyBytes) == 0 {
 		return false
 	}
@@ -675,6 +785,7 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 // boundary frame (inlineBodyCtrl).
 func (f *fn) inlineCall(t *inlineTarget) error {
 	f.stats.call(callKindInline)
+	start := f.a.Len()
 	base := f.inlineBase[t.globalIdx]
 	f.bindInlineParams(t, base)
 
@@ -700,6 +811,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	// still referencing the reserved region into a register/value now. (The control-
 	// flow path already merged results into canonical slots, so this is a no-op there.)
 	f.realizeInlineRange(base, base+t.nLocals)
+	f.stats.addInlineSiteBytes(f.a.Len() - start)
 	return nil
 }
 
@@ -719,7 +831,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 		for i := t.params; i < t.nLocals; i++ {
 			local := base + i
 			for s := 0; s < t.localTypes[i].stackSlots(); s++ {
-				f.a.Store64(RSP, f.localOff(local)+int32(8*s), z)
+				f.a.Store64(RSP, f.localAddr(local)+int32(8*s), z)
 			}
 			f.locals[local].state = lsMem
 			f.invalidateGCLoadFactsForLocal(local)

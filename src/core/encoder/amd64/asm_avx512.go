@@ -53,6 +53,7 @@ func evexAddrMode(base Reg, disp, tupleScale int32) (mod byte, encodedDisp int32
 func (a *Asm) evexMemIdx(opcodeMap, pp, op byte, w bool, reg, base, index Reg, disp, tupleScale int32) {
 	a.evexPrefix(opcodeMap, pp, w, reg, 0, base, index, true)
 	mod, encodedDisp := evexAddrMode(base, disp, tupleScale)
+	a.recordAddress(base, mod)
 	a.emit(op, mod|byte(reg&7)<<3|0x04)
 	a.emit(byte(index&7)<<3 | byte(base&7))
 	a.emitDisp(mod, encodedDisp)

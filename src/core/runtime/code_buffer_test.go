@@ -104,6 +104,36 @@ func TestCodeBufferAppendTail(t *testing.T) {
 	}
 }
 
+func TestCodeBufferTruncate(t *testing.T) {
+	b, err := NewCodeBuffer(16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	if err := b.Append([]byte{1, 2, 3, 4}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Truncate(2); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := b.Bytes(), []byte{1, 2}; !bytes.Equal(got, want) {
+		t.Fatalf("Bytes after Truncate = %v, want %v", got, want)
+	}
+	if err := b.Truncate(3); err == nil {
+		t.Fatal("Truncate grew the logical image")
+	}
+	if err := b.Truncate(-1); err == nil {
+		t.Fatal("Truncate accepted a negative length")
+	}
+	if err := b.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Truncate(1); err == nil {
+		t.Fatal("Truncate succeeded after Seal")
+	}
+}
+
 func BenchmarkCodeImageTransition(b *testing.B) {
 	code := bytes.Repeat([]byte{0x90}, 1<<20)
 	b.Run("copy-and-seal", func(b *testing.B) {
