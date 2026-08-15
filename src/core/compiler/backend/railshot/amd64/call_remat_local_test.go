@@ -42,7 +42,7 @@ func BenchmarkCallLocalRematerializationAMD64(b *testing.B) {
 	}{{"stored", false}, {"rematerialized", true}} {
 		b.Run(tc.name, func(b *testing.B) {
 			var ms ModuleStats
-			cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"call-remat-local": tc.on, "inline": false}, Stats: &ms})
+			cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"call-remat-local": tc.on, "call-result-residency": false, "inline": false}, Stats: &ms})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -89,8 +89,9 @@ func TestCallLocalRematerializationAMD64(t *testing.T) {
 		cm, err := CompileModuleWith(m, CompileOptions{
 			Workers: workers,
 			Optimizations: map[string]bool{
-				"call-remat-local": on,
-				"inline":           false,
+				"call-remat-local":      on,
+				"call-result-residency": false,
+				"inline":                false,
 			},
 			Stats: &ms,
 		})

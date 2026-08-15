@@ -1799,6 +1799,16 @@ func (f *fn) restoreCallRemat(r callRemat) {
 	}
 }
 
+func (f *fn) keepCallResultsResident(localIdx int, remat callRemat) bool {
+	if !f.opt(optCallResultResidency) || localIdx < 0 || remat.root != nil {
+		return false
+	}
+	// On AMD64 the copy after a self-recursive call breaks a return-register
+	// dependency that is material in recursive kernels. Keep that measured
+	// fallback until a bounded renamer can choose the profitable chain locally.
+	return localIdx+f.m.ImportedFuncCount() != f.globalIdx
+}
+
 func callRematFrameLeaf(e *elem) bool {
 	return e != nil && e.kind == ekValue && (e.st.kind == stConst || e.st.kind == stLocalRef)
 }
@@ -1917,25 +1927,37 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		returnOffset = uint32(len(f.a.B))
 	}
 
-	// Capture the result(s) out of the return registers before the reload
-	// sequence below reuses RAX/RDX as scratch. Single int → RAX; two ints →
-	// RAX/RDX (mirrors arm64's X0/X1 pair return).
+	// Direct internal results can remain in RAX/RDX because the caller-state
+	// reload banks are disjoint. Keep the copy fallback for indirect calls and
+	// when a below-call rematerialization recipe takes priority.
+	residentResults := f.keepCallResultsResident(localIdx, remat)
 	resReg := regNone
 	if rN == 1 && resHint < 0 {
-		resReg = f.allocReg(maskOf(RAX))
-		f.a.MovReg64(resReg, RAX)
-		f.stats.addRegisterResultMoves(1)
+		if residentResults {
+			resReg = RAX
+			f.stats.peep("call-result-resident")
+		} else {
+			resReg = f.allocReg(maskOf(RAX))
+			f.a.MovReg64(resReg, RAX)
+			f.stats.addRegisterResultMoves(1)
+		}
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
 	if rN == 2 {
-		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
-		f.pinned = f.pinned.add(pairRes[0])
-		f.a.MovReg64(pairRes[0], RAX)
-		f.stats.addRegisterResultMoves(1)
-		pairRes[1] = f.allocReg(maskOf(RAX, RDX))
-		f.a.MovReg64(pairRes[1], RDX)
-		f.stats.addRegisterResultMoves(1)
+		if residentResults {
+			pairRes = [2]Reg{RAX, RDX}
+			f.stats.peep("call-result-resident")
+			f.stats.peep("call-result-resident")
+		} else {
+			pairRes[0] = f.allocReg(maskOf(RAX, RDX))
+			f.pinned = f.pinned.add(pairRes[0])
+			f.a.MovReg64(pairRes[0], RAX)
+			f.stats.addRegisterResultMoves(1)
+			pairRes[1] = f.allocReg(maskOf(RAX, RDX))
+			f.a.MovReg64(pairRes[1], RDX)
+			f.stats.addRegisterResultMoves(1)
+		}
 		f.pinned = f.pinned.add(pairRes[1])
 	}
 	if !preservesPins {
@@ -2170,14 +2192,20 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
 
-	// Capture GP results before the reload below reuses RAX/RDX as scratch. FP
-	// results stay in XMM0/XMM1, which are deliberately outside the pin bank.
+	// Direct internal GP results can remain in RAX/RDX because the caller-state
+	// reload banks are disjoint. FP results already remain in XMM0/XMM1.
+	residentResults := f.keepCallResultsResident(localIdx, remat)
 	var gpResults [2]Reg
 	for i := uint8(0); i < resultPlan.GP; i++ {
-		gpResults[i] = f.allocReg(maskOf(RAX, RDX))
+		if residentResults {
+			gpResults[i] = intResultRegs[i]
+			f.stats.peep("call-result-resident")
+		} else {
+			gpResults[i] = f.allocReg(maskOf(RAX, RDX))
+			f.a.MovReg64(gpResults[i], intResultRegs[i])
+			f.stats.addRegisterResultMoves(1)
+		}
 		f.pinned = f.pinned.add(gpResults[i])
-		f.a.MovReg64(gpResults[i], intResultRegs[i])
-		f.stats.addRegisterResultMoves(1)
 	}
 	if !preservesPins {
 		f.reloadLocalsForCall() // non-STACK_REG model only

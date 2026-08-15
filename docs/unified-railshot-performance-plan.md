@@ -3684,3 +3684,47 @@ production rule, rollback semantics, and target test matrix. This family should
 be reconsidered only if profiles show those sites are hot or a later bounded
 recipe representation already pays the required complexity for another
 measured use.
+
+## 2026-08-15 — AMD64 direct-call result residency
+
+AMD64 now retains direct internal integer results in `RAX`/`RDX` while it
+reloads caller-local and pinned-global state. Those reload banks are disjoint
+from the result registers, so single, pair, and mixed GP/FP results can remain
+symbolic physical locations and flow directly into their consumers. Indirect,
+host, disabled-policy, and below-call rematerialization paths keep the existing
+copy fallback.
+
+Self-recursive calls also retain the fallback. An initial broader admission
+removed the same copies there but slowed `fib_rec(25)` by a repeatable 7.5% on
+the Ryzen 7 7800X3D. The explicit self-edge exclusion restores the benchmark to
+about 338 microseconds per invocation, matching the copied baseline, while
+retaining more than 99% of the full-corpus opportunities. This is a measured
+AMD64 dependency-chain exception, not a semantic restriction; a later bounded
+post-allocation renamer may revisit it.
+
+The immutable option and rollback control are:
+
+```text
+call-result-residency
+WAGO_AMD64_NO_CALL_RESULT_RESIDENCY=1
+```
+
+Across the 64-module Balanced corpus, the final admission records:
+
+```text
+direct result residency hits: 93,814
+register result moves:         158,809 -> 64,995 (-93,814, -59.1%)
+native bytes:                  81,031,771 -> 80,747,816 (-283,955, -0.35%)
+```
+
+A focused 16-call chain remains execution-neutral within noise, reduces its
+caller from 259 to 164 native bytes (-36.7%), and executes with zero
+allocations. Six order-balanced compile comparisons over regexmatch, SQLite,
+Ruby, and esbuild report a +0.29% time geomean; B/op and allocation counts are
+materially unchanged.
+
+Native tests cover single, pair, and mixed-bank execution, disabled-policy
+fallback, self-recursive fallback, interaction with below-call
+rematerialization, code reduction, and serial/parallel determinism. The full
+local repository suite, native AMD64 backend, focused race tests, SQLite query,
+executable corpus, and fuzz regression corpus pass.

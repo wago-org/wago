@@ -56,6 +56,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
+	optimization.Bind("call-result-residency", &callResultResidencyEnabled),
 	optimization.Bind("simd-wide-bitmask-consumer", &simdWideBitmaskConsumerEnabled),
 	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
 	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
@@ -114,6 +115,7 @@ var (
 	optV128Sink             = optimizationBindings.Option("v128-sink")
 	optRegABI               = optimizationBindings.Option("reg-abi")
 	optPreparedFPEntry      = optimizationBindings.Option("prepared-fp-entry")
+	optCallResultResidency  = optimizationBindings.Option("call-result-residency")
 	optSIMDWideBitmask      = optimizationBindings.Option("simd-wide-bitmask-consumer")
 	optEntryInitElide       = optimizationBindings.Option("entry-init-elide")
 	optGCDeadNew            = optimizationBindings.Option("gc-dead-new")
