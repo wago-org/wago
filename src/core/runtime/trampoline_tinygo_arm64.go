@@ -51,11 +51,17 @@ func tinygoARM64SaveGoContext(a *a64.Asm, top a64.Reg) {
 	for reg, off := a64.X19, uint32(8); reg <= a64.LR; reg, off = reg+1, off+8 {
 		tinygoARM64Store(a, reg, top, off)
 	}
+	for reg, off := a64.Reg(8), int32(104); reg <= a64.Reg(15); reg, off = reg+1, off+8 {
+		a.FStoreDisp(top, off, reg, true)
+	}
 }
 
 func tinygoARM64RestoreGoContext(a *a64.Asm) {
 	for reg, off := a64.X19, uint32(8); reg <= a64.LR; reg, off = reg+1, off+8 {
 		tinygoARM64Load(a, reg, a64.SP, off)
+	}
+	for reg, off := a64.Reg(8), int32(104); reg <= a64.Reg(15); reg, off = reg+1, off+8 {
+		a.FLoadDisp(reg, a64.SP, off, true)
 	}
 	tinygoARM64Load(a, a64.X11, a64.SP, 0)
 	a.AddImm64(a64.SP, a64.X11, 0)
