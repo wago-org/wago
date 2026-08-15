@@ -9,6 +9,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // GC helpers share the synchronous parked-host dispatch ABI with amd64. Keep
@@ -849,6 +851,11 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 		_ = r.JumpTo(start)
 		return false, nil
 	}
+	if f.policy.EnabledOption(optGCNativeFinalArrayLen) && !f.policy.CompactNative {
+		f.stats.peep("final-cast-array-len-fuse")
+		f.stats.peep("gc-native-final-array-len")
+		return true, f.emitNativeFinalCastArrayLen(typeIndex, nullable)
+	}
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 	if nullable {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
@@ -858,6 +865,92 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
 	f.stats.peep("final-cast-array-len-fuse")
 	return true, f.callGCStructHelper(gcStructFinalCastArrayLen, []wasm.ValType{anyref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+}
+
+// emitNativeFinalCastArrayLen resolves one compact reference through the
+// versioned collector native view, proves exact equality with the statically
+// final array type, and loads its length. Instantiation validates the immutable
+// view ABI and local type map; mutable collector backing is reloaded here.
+//
+// The checks deliberately mirror the Go helper's observable order: null first,
+// then i31/handle/range/type validation. ref.cast_null accepts null, but the
+// immediately fused array.len still reports a null-reference trap.
+func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error {
+	object := f.popValue()
+	ref := f.materialize(object)
+	if nullable {
+		f.trapIfZero(ref, false, true, trapNullReference)
+	} else {
+		f.trapIfZero(ref, false, true, trapCastFailure)
+	}
+	if !f.a.TstImm32(ref, 1) {
+		panic("arm64: compact-reference tag is not an encodable logical immediate")
+	}
+	f.trapIf(condNE, trapCastFailure)
+
+	view := f.allocReg(maskOf(ref))
+	f.ld64(view, linMemReg, -int32(abi.GCNativeViewPtrOffset))
+	domain := f.allocReg(maskOf(ref, view))
+	f.ld64(domain, view, gc.NativeInstanceViewLocalTypesOffset)
+	tmp := f.allocReg(maskOf(ref, view, domain))
+	f.a.MovImm64(tmp, uint64(typeIndex)*4)
+	f.a.LoadIdx(domain, domain, tmp, 0, 4, false, false)
+	f.release(tmp)
+
+	// Convert the compact reference to its handle index and validate it before
+	// following the current handle-table backing.
+	f.ld64(view, view, gc.NativeInstanceViewCollectorOffset)
+	f.a.LsrImm32(ref, ref, 1)
+	tmp = f.allocReg(maskOf(ref, view, domain))
+	f.ld32(tmp, view, gc.NativeViewHandleCountOffset)
+	f.cmpRR(ref, tmp, false)
+	f.trapIf(condAE, trapCastFailure)
+	f.ld64(tmp, view, gc.NativeViewHandlesOffset)
+	handle := f.allocReg(maskOf(ref, view, domain, tmp))
+	f.a.MovImm64(handle, gc.NativeHandleStride)
+	f.a.Mul64(ref, ref, handle)
+	f.a.Add64(tmp, tmp, ref) // tmp = handle entry
+
+	// Select the current heap space. Reading the packed word at offset 16 keeps
+	// the access within the 20-byte handle entry while extracting byte 18.
+	f.ld32(handle, tmp, 16)
+	f.a.LsrImm32(handle, handle, 16)
+	if !f.a.AndImm32(handle, handle, 0xff) {
+		panic("arm64: native space mask is not an encodable logical immediate")
+	}
+	f.trapIfZero(handle, false, true, trapCastFailure)
+	f.cmpImm(handle, gc.NativeSpaceCount-1, false)
+	f.trapIf(condA, trapCastFailure)
+	f.a.LslImm64(handle, handle, 4)
+	f.a.Add64(view, view, handle)
+
+	// Retain offset and size only; the handle-table entry is no longer needed.
+	f.ld32(ref, tmp, gc.NativeHandleOffsetOffset)
+	f.ld32(handle, tmp, gc.NativeHandleSizeOffset)
+	f.release(tmp)
+	tmp = f.allocReg(maskOf(ref, view, domain, handle))
+	f.ld64(tmp, view, gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset)
+	f.ld32(view, view, gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset)
+	f.cmpRR(ref, view, false)
+	f.trapIf(condA, trapCastFailure)
+	f.a.Sub32(view, view, ref)
+	f.cmpRR(handle, view, false)
+	f.trapIf(condA, trapCastFailure)
+	f.cmpImm(handle, gc.HeaderSize, false)
+	f.trapIf(condB, trapCastFailure)
+
+	// Exact final-type equality proves the object header and array-length layout.
+	f.a.Add64(tmp, tmp, ref)
+	f.ld32(view, tmp, 0)
+	f.cmpRR(view, domain, false)
+	f.trapIf(condNE, trapCastFailure)
+	f.ld32(ref, tmp, 8)
+	f.release(view)
+	f.release(domain)
+	f.release(handle)
+	f.release(tmp)
+	f.pushReg(ref, mtI32)
+	return nil
 }
 
 func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) error {

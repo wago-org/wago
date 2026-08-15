@@ -682,6 +682,27 @@ compile B/op fell from 95,562 to 38,170, allocations fell from 19 to 17, and
 native bytes fell by the same 419 bytes. Single-site fixtures save two final
 aligned bytes.
 
+### 2026-08-14 — ARM64 native final-cast array length
+
+ARM64 now lowers an exact adjacent cast to a final array type followed by
+`array.len` through the versioned collector native view. The bounded inline path
+reloads mutable handle and heap backing, validates the compact handle, space,
+range, header extent, and exact canonical type, then reads the array length
+without a second synchronous Go transition. Null, `ref.cast_null`, i31, and cast
+failure ordering match the helper path. One immutable per-compilation option
+controls the lowering; disabled, Size, and Embedded policies retain the helper.
+
+The common cast/null trap-site storage now uses 144 owner-local inline bytes per
+compiler worker, eliminating the native path's transient slice growth while
+retaining bounded slice fallback for pathological functions. Five Apple M4 Max
+execution samples improved from a 322.6 to 285.6 ns/op median (-11.5%) with zero
+B/op and allocations. The deliberately tiny compile fixture increased from
+4.969 to 5.747 us/op (+15.7%), while median B/op rose 0.8%, allocations fell
+from 36 to 35, and Balanced native output grew from 316 to 440 bytes. The
+speed-oriented Balanced path accepts that local tradeoff to remove a runtime
+helper; compact objectives reject it, and the growth remains visible in native
+byte attribution.
+
 ---
 
 # 1. North-star architecture

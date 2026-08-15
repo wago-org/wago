@@ -84,6 +84,11 @@ var constGCStructGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONST_STRUCT_GET") != 
 // exact non-null result back to the same defined type.
 var gcConstructorCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONSTRUCTOR_CAST") != "1"
 
+// nativeGCFinalArrayLenEnabled resolves an adjacent final cast plus array.len
+// through the checked collector native view. The immutable per-compilation
+// policy controls admission; the existing Go helper remains the exact fallback.
+var nativeGCFinalArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_LEN") != "1"
+
 // simdWideBitmaskConsumerEnabled avoids materializing a scalar mask when a
 // 16- or 32-bit lane bitmask is consumed immediately by a zero test, or a
 // 16-, 32-, or 64-bit lane mask by popcount. Selection uses fixed lookahead.
@@ -582,6 +587,8 @@ type scratch struct {
 	retSites         []int
 	ctrl             []ctrlFrame
 	trapSites        [trapAtomicUnaligned + 1][]trapSite
+	gcCastTrapSites  [8]trapSite
+	gcNullTrapSite   [1]trapSite
 	branchTargets    map[int]bool
 	brTableStubAt    []int // duplicate-heavy jump-table target positions by control depth
 	finalFragments   []finalizerFragment
@@ -618,7 +625,13 @@ func newScratch() *scratch {
 }
 
 func newScratchWithStackCap(stackCap int) *scratch {
-	return &scratch{stack: newStackWithCap(stackCap), asm: &a64.Asm{}}
+	sc := &scratch{stack: newStackWithCap(stackCap), asm: &a64.Asm{}}
+	// Exact native GC access emits several cast-failure checks and usually one
+	// null check. Keep their ordinary site storage owner-local and inline; a
+	// pathological function grows the slices normally and reset retains them.
+	sc.trapSites[trapCastFailure] = sc.gcCastTrapSites[:0]
+	sc.trapSites[trapNullReference] = sc.gcNullTrapSite[:0]
+	return sc
 }
 
 // moduleStackArenaCap chooses the first chunk of the operand-stack scratch that
