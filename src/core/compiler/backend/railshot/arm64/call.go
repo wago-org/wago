@@ -37,11 +37,9 @@ var callResultResidencyEnabled = os.Getenv("WAGO_ARM64_NO_CALL_RESULT_RESIDENCY"
 var noStackFence = os.Getenv("WAGO_ARM64_NOFENCE") == "1"
 
 // immutableLocalPolyFastPath gates the polymorphic immutable-local call_indirect
-// fast path (see callIndirect). It is OFF: that path does not preserve the stack
-// fence for deeply self-recursive targets and faults instead of trapping. Set
-// WAGO_ARM64_IMMUTABLE_POLY_FASTPATH=1 only for A/B measurement of the lost
-// specialization; it reintroduces the spec call_indirect runaway crash.
-var immutableLocalPolyFastPath = os.Getenv("WAGO_ARM64_IMMUTABLE_POLY_FASTPATH") == "1"
+// fast path (see callIndirect). It is on by default; the callsite performs the
+// stack-fence check skipped by the runtime internal-entry pointer.
+var immutableLocalPolyFastPath = os.Getenv("WAGO_ARM64_NO_IMMUTABLE_POLY_FASTPATH") != "1"
 
 // noStackReg disables the WARP STACK_REG lazy local model (reverts to spill-all/
 // reload-all around calls, no branch reconcile) — A/B measurement.
@@ -2218,7 +2216,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.trapIf(condNE, trapIndirectSig)
 	}
 
-	// With one private local immutable table and no function imports, every non-null
+	// With one private immutable table whose entries are all proven local, every non-null
 	// entry is necessarily a same-module internal entry. Avoid loading its home pointer,
 	// testing the internal-entry tag, emitting the wrapper/cross-instance path, and
 	// reconciling two compiler states. The ordinary OOB/null/type checks above are
@@ -2243,18 +2241,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	// NOTE: the polymorphic immutable-local fast path (register-ABI Blr of the
-	// entry's runtime code pointer) is disabled — it is incorrect for the stack
-	// fence. Under the register pressure of a large module it can enter a deeply
-	// self-recursive target (spec call_indirect.wast $runaway / $mutual-runaway)
-	// without the per-frame fence check tripping, so unbounded recursion faults
-	// the foreign stack (Go "split stack overflow") instead of trapping "call
-	// stack exhausted". The monomorphic fast path above (a direct call to the
-	// proven internal entry, which carries the fence) is unaffected; polymorphic
-	// entries fall through to emitIndirectCallHomeAware below, which enters the
-	// callee's offset-0 entry with the correct per-execution control words
-	// (including the stack fence). Verified: spec1 passes and spec2/3 no longer
-	// crash. Re-enable only with an entry pointer that preserves the fence.
+	// A polymorphic immutable-local entry publishes its register-ABI internal
+	// address. That address is past the target's ordinary fence prologue, so this
+	// path performs an equivalent callsite check before BLR.
 	if f.opt(optImmutablePolyFastPath) && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		home := f.allocReg(maskOf(idxReg, code))
 		f.ld64(home, idxReg, 24)
@@ -2269,7 +2258,19 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(idxReg).add(code)
 		f.release(idxReg)
 		f.stats.peep("immutable-local-call-indirect")
-		f.emitRegisterCallVia(ft, -1, false, -1, code)
+		// The runtime code pointer enters after the target's ordinary stack-fence
+		// prologue. Check at every polymorphic edge so direct/indirect recursion
+		// cycles still trap before exhausting the foreign stack.
+		if f.opt(optStackFence) {
+			f.ld64(X16, linMemReg, -int32(offStackFence))
+			f.a.CmpSP64(X16)
+			f.trapIf(condB, trapStackFence)
+			f.stats.peep("immutable-local-call-indirect-fence")
+		}
+		returnOffset := f.emitRegisterCallVia(ft, -1, false, -1, code)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		return nil

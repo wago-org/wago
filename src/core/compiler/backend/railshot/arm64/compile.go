@@ -1718,7 +1718,8 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		}
 	}
 	immutableLocalTable := policy.EnabledOption(optImmutableTable) &&
-		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
+		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m) &&
+		immutableLocalTableEntries(m)
 	if immutableLocalTable {
 		for i := range allHints {
 			if allHints[i].mutatesTable {
@@ -1796,6 +1797,43 @@ func moduleExportsTable(m *wasm.Module) bool {
 		}
 	}
 	return false
+}
+
+// immutableLocalTableEntries proves that every statically installed non-null
+// table-0 entry names a local function. With no table mutation/import/export,
+// no host or cross-instance descriptor can subsequently enter the table.
+func immutableLocalTableEntries(m *wasm.Module) bool {
+	if len(m.Tables) != 1 {
+		return false
+	}
+	if init := m.Tables[0].Init; init != nil {
+		ee, err := wasm.ParseElementExpr(*init)
+		if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+			return false
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
+			continue
+		}
+		switch e.Kind.Kind {
+		case wasm.ElemFuncs:
+			for _, idx := range e.Kind.Funcs {
+				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+					return false
+				}
+			}
+		default:
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 func immutableLocalTableType(m *wasm.Module) (uint64, bool) {

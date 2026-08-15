@@ -4206,3 +4206,39 @@ serialization neutral and both paths at zero B/op and allocations. Full-width
 zero, low-sign, and high-sign values execute through both `if` and `br_if`;
 disabled and non-branch near misses, the complete native AMD64 backend, focused
 race coverage, and the JSON workload correctness test pass.
+
+## 2026-08-15 — fenced ARM64 immutable-table indirect calls
+
+ARM64 now uses the register ABI for polymorphic `call_indirect` through one
+private, unexported, unmutated table only after the module summary proves every
+statically installed non-null entry targets a local function. Imported entries,
+out-of-range indexes, and `global.get` element initializers retain the general
+home-aware path. The proof is one bounded module scan and adds no retained
+per-function state.
+
+Runtime table entries point past a local target's ordinary stack-fence prologue.
+The specialized callsite therefore performs the equivalent fence check before
+`BLR`; runaway and mutually recursive indirect calls still trap rather than
+faulting the foreign stack. GC-capable callers also record the optimized call's
+exact native return PC and live reference offsets. Stress-collector execution,
+artifact round trips, official Core V2 recursion tests, and focused race tests
+cover those contracts. `WAGO_ARM64_NO_IMMUTABLE_POLY_FASTPATH=1` retains the
+general path for A/B diagnosis.
+
+Five checked-in corpus modules hit the rule: dispatch (1 site), regexmatch
+(1,398), wasm3 (31), Ruby (4,135), and esbuild (1,276). Ruby's ARM64 native image
+falls from 40,733,680 to 39,029,920 bytes (-1,703,760, or -4.2%). Six-sample
+Darwin/ARM64 compile medians changed by:
+
+```text
+dispatch:    9.745 ->   8.808 us/op  (-9.6%), 61 -> 55 allocs/op
+regexmatch: 35.186 ->  34.210 ms/op  (-2.8%), 12,369 -> 10,810 allocs/op
+wasm3:       8.586 ->   8.591 ms/op  (neutral), 6,129 -> 6,082 allocs/op
+Ruby:      541.456 -> 538.492 ms/op  (-0.5%), 196,273 -> 191,218 allocs/op
+esbuild:   321.026 -> 323.030 ms/op  (+0.6%), 62,195 -> 60,494 allocs/op
+```
+
+The executable corpus has one matching indirect call per invocation; it remains
+neutral at about 18.9 ns/op and zero B/op with zero allocations. The full local
+repository suite and native ARM64 backend/runtime suites pass with the rule on
+by default.
