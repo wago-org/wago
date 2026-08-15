@@ -294,11 +294,16 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	target := int(idx) - imported
 	callerRegisterABI := stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
 	targetRegisterABI := stagedTailRegisterABI(ft, f.stagedTailDescriptors)
-	if f.opt(optRegABI) && callerRegisterABI && targetRegisterABI {
-		f.emitTailRegisterJump(ft, func() {
+	if f.opt(optRegABI) && targetRegisterABI {
+		jump := func() {
 			site := f.a.Branch()
 			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
-		})
+		}
+		if callerRegisterABI {
+			f.emitTailRegisterJump(ft, jump)
+		} else {
+			f.emitTailWrapperToRegisterJump(ft, jump)
+		}
 	} else {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
 			return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
