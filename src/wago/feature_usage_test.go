@@ -82,6 +82,31 @@ func TestRequiredFeaturesBodyScannerFastImmediatePaths(t *testing.T) {
 	}
 }
 
+func BenchmarkAnalyzeModuleRequirementsMixedManyFunctionsAndMemories(b *testing.B) {
+	const count = 1000
+	m := &wasm.Module{Imports: make([]wasm.Import, count), Code: make([]wasm.Func, count)}
+	memory32 := wasm.NewMemExternType(wasm.MemType{Limits: wasm.Limits{Min: 1}})
+	memory64 := wasm.NewMemExternType(wasm.MemType{Limits: wasm.Limits{Min: 1, Addr64: true}})
+	for i := range m.Imports {
+		if i&1 == 0 {
+			m.Imports[i].Type = memory32
+		} else {
+			m.Imports[i].Type = memory64
+		}
+	}
+	body := []byte{0x28, 0x40, 0xe7, 0x07, 0x00, 0x1a, 0x0b} // i32.load memory 999; drop; end
+	for i := range m.Code {
+		m.Code[i].BodyBytes = body
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		got := analyzeModuleRequirements(m)
+		if !got.features.IsEnabled(CoreFeatureMultiMemory) || !got.features.IsEnabled(CoreFeatureMemory64) {
+			b.Fatal(got.features)
+		}
+	}
+}
+
 func BenchmarkRequiredFeaturesScalarBody(b *testing.B) {
 	// A representative scalar stream: two immediate-bearing constants followed by
 	// two immediate-free ALU/stack instructions. The feature scanner must still
