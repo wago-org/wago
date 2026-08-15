@@ -1457,6 +1457,24 @@ loop/control regions would add allocator state without a production consumer.
 The probe was removed; FP/vector regional residency remains ordered after a
 measured structured-region extension.
 
+A 2026-08-15 re-audit after forward-merge residency reached the same ordering
+decision with the current eleven-register FP/vector pin bank as its baseline.
+There are still zero score-qualified overflow locals in functions admitted by
+the straight-line interval cache. The remaining 98 overflow candidates all
+cross a barrier that needs explicit ownership convergence:
+
+```text
+call-free structured control: 62
+call-making functions:         36
+```
+
+The structured candidates are confined to two `blake-as-simd` functions (50)
+and `nbody.step` (12). The call-making candidates are concentrated in
+`raytrace` (28), with three in esbuild, three in Ruby, and two in SQLite. The
+temporary stats-only probe was removed. A second dynamic XMM owner bank should
+therefore be built only with the call/control-separated region contract; adding
+it to the current straight-line admission still has no production consumer.
+
 ### 2026-08-14 — ARM64 barrier-free reference array fills
 
 ARM64 now selects the existing `ArrayFillNoBarrier` runtime helper for reference
