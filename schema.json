@@ -112,6 +112,7 @@
               "leaf-scratch-pins",
               "legacy-fp-pins",
               "legacy-gp-pins",
+              "load-pair",
               "local-slot-order",
               "loop-precheck",
               "loop-region-pins",
