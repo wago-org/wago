@@ -468,6 +468,7 @@ type inlineTarget struct {
 	resultTypes    []machineType      // the callee's result machine types
 	res0           machineType        // first result type (mtNone if none) — for the single-result merge
 	hasRefLocals   bool               // reference locals exclude physical-slot overlay until root maps encode exact live meaning
+	hasV128Locals  bool               // vector locals retain distinct regions in the first scalar-only overlay
 	touchesMem     bool               // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
 	hasCtrl        bool               // the body has control flow → splice through a synthetic boundary frame
 	omitStandalone bool               // module layout may omit this unreachable standalone body
@@ -578,9 +579,10 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 				zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, p))
 			}
 		}
-		hasRefLocals := false
+		hasRefLocals, hasV128Locals := false, false
 		for _, run := range m.Code[i].Locals.Runs {
 			hasRefLocals = hasRefLocals || run.Type.Kind() == wasm.ValRef
+			hasV128Locals = hasV128Locals || wasm.EqualValType(run.Type, wasm.V128)
 			for k := 0; k < int(run.Count); k++ {
 				typeArena = append(typeArena, mtOf(run.Type))
 				if exactGCRefFactsEnabled {
@@ -616,6 +618,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			resultTypes:    rt,
 			res0:           res0,
 			hasRefLocals:   hasRefLocals,
+			hasV128Locals:  hasV128Locals,
 			touchesMem:     facts.touchesMem,
 			hasCtrl:        facts.hasControlFlow,
 			omitStandalone: (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
@@ -680,15 +683,9 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 	// each logical local distinct there until that packer understands aliases.
 	overlay := f.opt(optInlineSlotOverlay) && f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded && len(callees) > 1
 	for _, t := range callees {
-		if t.hasRefLocals {
+		if t.hasRefLocals || t.hasV128Locals {
 			overlay = false
 			break
-		}
-		for _, typ := range t.localTypes {
-			if typ == mtV128 {
-				overlay = false
-				break
-			}
 		}
 	}
 	overlayBaseSlot, overlayMaxSlots := f.nLocalSlots, 0

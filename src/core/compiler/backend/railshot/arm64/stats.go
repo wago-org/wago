@@ -41,6 +41,10 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check â the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
+	// onto one max-sized physical scratch region. WAGO_ARM64_NO_INLINE_SLOT_OVERLAY=1
+	// retains the prior one-region-per-callee frame layout.
+	inlineSlotOverlayEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_SLOT_OVERLAY") != "1"
 	// stFlagsEnabled gates the stFlags tee-forward window (R1): a compare stored by
 	// `local.tee $c` and consumed by the next if/br_if/select fuses into the branch,
 	// storing $c with a flag-neutral Cset after the CMP. WAGO_NO_STFLAGS=1 is the

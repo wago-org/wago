@@ -58,6 +58,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("call-result-residency", &callResultResidencyEnabled),
 	optimization.Bind("inline", &inlineEnabled),
+	optimization.Bind("inline-slot-overlay", &inlineSlotOverlayEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.Bind("loop-region-pins", &loopRegionPinsEnabled),
@@ -117,6 +118,7 @@ var (
 	optRegABI                = optimizationBindings.Option("reg-abi")
 	optCallResultResidency   = optimizationBindings.Option("call-result-residency")
 	optInline                = optimizationBindings.Option("inline")
+	optInlineSlotOverlay     = optimizationBindings.Option("inline-slot-overlay")
 	optInlineLoopCallees     = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck          = optimizationBindings.Option("loop-precheck")
 	optLoopRegionPins        = optimizationBindings.Option("loop-region-pins")

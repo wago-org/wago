@@ -320,7 +320,7 @@ var catalog = []Definition{
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	arm64("call-result-residency", "Direct call result residency", "retain direct internal GP results in ABI registers through safe caller-state reloads"),
 	both("inline", "Inlining", "inline eligible callees"),
-	amd64("inline-slot-overlay", "Inline slot overlay", "overlay non-overlapping numeric inlined-callee local regions"),
+	both("inline-slot-overlay", "Inline slot overlay", "overlay non-overlapping numeric inlined-callee local regions"),
 	experimentalBoth("inline-loop-callees", "Loop-call inlining", "inline callees invoked from inside loops"),
 	both("loop-precheck", "Loop prechecks", "hoist invariant bounds checks before loops"),
 	experimentalArm64("loop-region-pins", "Loop-region pins", "pin loop-carried values across loop regions"),

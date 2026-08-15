@@ -3455,7 +3455,7 @@ therefore removed rather than adding scan state without a material execution or
 code-size gain. Simple-loop residency should be retried only with a distinct
 fixed backedge contract that demonstrably removes dynamic loop-body traffic.
 
-## 2026-08-15 — AMD64 numeric inlined-callee slot overlay
+## 2026-08-15 — numeric inlined-callee slot overlay
 
 Distinct numeric-only inlined callees now retain separate logical locals and
 types while sharing one max-sized physical scratch-slot region. Inlined bodies
@@ -3471,6 +3471,7 @@ selection bit and rollback environment variable are:
 ```text
 inline-slot-overlay
 WAGO_AMD64_NO_INLINE_SLOT_OVERLAY=1
+WAGO_ARM64_NO_INLINE_SLOT_OVERLAY=1
 ```
 
 The focused two-callee test reduces the caller frame by 16 bytes, preserves a
@@ -3495,3 +3496,11 @@ alternating compile comparison
 
 The complete native AMD64 backend, focused race coverage, SQLite query,
 execution corpus, and fuzz regression corpus pass with the overlay enabled.
+
+ARM64 uses the same logical/physical split and conservative reference/vector
+fallback. It has no post-lowering local-home packer, so all four objectives may
+use the overlay. On Apple M4 Max the same corpus records 3,394 hits and reduces
+cumulative frame bytes from 1,876,720 to 1,849,536 (-27,184, -1.45%); fixed-width
+instruction encodings leave native bytes unchanged. Six alternating
+regexmatch/SQLite/Ruby/esbuild comparisons move compile geomean +0.25% with no
+significant individual row, while B/op and allocations remain unchanged.
