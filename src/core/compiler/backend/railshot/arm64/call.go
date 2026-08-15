@@ -141,15 +141,21 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 // The descriptor pointer remains owned by the instance's bounded descriptor arena;
 // no GC-managed reference or foreign wrapper result is admitted by this shape.
 func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
-	if ft == nil || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.FuncRef) || len(ft.Params) > len(intArgRegs) {
+	if ft == nil || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.FuncRef) || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
 		return false
 	}
+	gp, fp := 0, 0
 	for _, typ := range ft.Params {
-		if !isIntValType(typ) {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
 			return false
 		}
 	}
-	return true
+	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
 }
 
 func stagedTailRegisterABI(ft *wasm.CompType, staged bool) bool {
@@ -1468,7 +1474,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
 	if f.opt(optRegABI) && stagedTailRegisterABI(ft, f.stagedTailDescriptors) {
-		if sigIsIntOnly(ft) || sigFitsReferenceResultRegABI(ft) {
+		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			preservesPins := f.directCalleePreservesPins(localIdx)
 			if recordRoots {
@@ -1737,6 +1743,10 @@ func (f *fn) directCalleePreservesPins(localIdx int) bool {
 // GP and FP arguments are staged independently as parallel moves, so values that
 // are already resident in registers do not round-trip through canonical slots.
 func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+	f.emitMixedRegisterCallVia(localIdx, regNone, ft)
+}
+
+func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompType) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	allRoots := f.rootsBottomToTop()
@@ -1879,8 +1889,15 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
-	site := f.a.Bl()
-	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+	var returnOffset uint32
+	if localIdx >= 0 {
+		site := f.a.Bl()
+		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+		returnOffset = uint32(site + 4)
+	} else {
+		f.a.Blr(indirect)
+		returnOffset = uint32(f.a.Len())
+	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
@@ -1909,6 +1926,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.pushReg(reg, mtOf(ft.Results[i]))
 		}
 	}
+	return returnOffset
 }
 
 func (f *fn) descriptorEntryKind(home Reg, avoid regMask) Reg {
@@ -1989,7 +2007,12 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		wrapper := f.a.Bcond(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		returnOffset := f.emitRegisterCallVia(ft, -1, false, -1, code)
+		var returnOffset uint32
+		if sigFitsReferenceResultRegABI(ft) {
+			returnOffset = f.emitMixedRegisterCallVia(-1, code, ft)
+		} else {
+			returnOffset = f.emitRegisterCallVia(ft, -1, false, -1, code)
+		}
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}
@@ -2180,7 +2203,12 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		wrapper := f.a.Bcond(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		returnOffset := f.emitRegisterCallVia(ft, -1, false, -1, code)
+		var returnOffset uint32
+		if sigFitsReferenceResultRegABI(ft) {
+			returnOffset = f.emitMixedRegisterCallVia(-1, code, ft)
+		} else {
+			returnOffset = f.emitRegisterCallVia(ft, -1, false, -1, code)
+		}
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}
