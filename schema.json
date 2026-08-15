@@ -73,6 +73,7 @@
               "call-effect-bounds",
               "call-next-use",
               "call-remat-const",
+              "call-remat-local",
               "call-result-residency",
               "commute-self-update",
               "compact-i32-frame",

@@ -1726,33 +1726,66 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	return offsets, true
 }
 
-type callConstRemat struct {
+type callRemat struct {
 	root  *elem
 	st    storage
 	index int
+	local bool
 }
 
-func (f *fn) planCallConstRemat(roots []*elem, p int) (r callConstRemat) {
+func (f *fn) planCallRemat(roots []*elem, p int, preservesPins bool) (r callRemat) {
 	belowN := len(roots) - p
-	if !f.opt(optCallRematConst) || f.moduleEH || p == 0 || belowN == 0 {
+	if f.moduleEH || p == 0 || belowN == 0 {
 		return r
 	}
 	root := roots[belowN-1]
-	if root.kind != ekValue || root.st.kind != stConst || root.st.typ != mtI32 && root.st.typ != mtI64 {
+	if root.kind != ekValue || root.st.typ != mtI32 && root.st.typ != mtI64 {
 		return r
 	}
-	return callConstRemat{root: root, st: root.st, index: belowN - 1}
+	switch root.st.kind {
+	case stConst:
+		if !f.opt(optCallRematConst) {
+			return r
+		}
+		return callRemat{root: root, st: root.st, index: belowN - 1}
+	case stLocalRef, stLocalReg:
+		if !f.opt(optCallRematLocal) {
+			return r
+		}
+		st := root.st
+		if st.kind == stLocalReg && !preservesPins {
+			state := f.locals[st.idx].state
+			if f.usesCalls && state != lsReg && (state != lsStackReg || f.mergeRegResidency) {
+				// A register-only value is published by spillLocalsForCall below.
+				// Do not compose the clean-frame inference with bounded merge
+				// residency; keep the established operand snapshot for that case.
+				return r
+			}
+			// The local.get precedes the call in Wasm, so bounded post-call
+			// liveness may otherwise classify an immediately overwritten local
+			// as dead. The symbolic stack value still needs its canonical copy.
+			f.callDeadGP &^= uint16(1) << uint(st.reg)
+			st.kind, st.reg = stLocalRef, regNone
+		}
+		return callRemat{root: root, st: st, index: belowN - 1, local: true}
+	default:
+		return r
+	}
 }
 
-func (f *fn) restoreCallConstRemat(r callConstRemat) {
+func (f *fn) restoreCallRemat(r callRemat) {
 	if r.root == nil {
 		return
 	}
 	roots := f.rootsBottomToTop()
 	root := roots[r.index]
 	root.kind = ekValue
-	root.st = r.st // the admitted integer constant is never a GC root
-	f.stats.peep("call-remat-const")
+	root.st = r.st // admitted integer recipes are never GC roots
+	if r.local {
+		f.stats.peep("call-remat-local")
+	} else {
+		f.stats.peep("call-remat-const")
+	}
 }
 
 // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
@@ -1768,7 +1801,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
-	remat := f.planCallConstRemat(allRoots, p)
+	remat := f.planCallRemat(allRoots, p, preservesPins)
 	if !preservesPins {
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 	}
@@ -1851,7 +1884,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	// Consume the args while preserving collector identity for every value below
 	// the arguments. Those canonical slots remain live across the native call.
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
-	f.restoreCallConstRemat(remat)
+	f.restoreCallRemat(remat)
 
 	// No environment passing: RBX (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
@@ -1990,7 +2023,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
-	remat := f.planCallConstRemat(allRoots, p)
+	remat := f.planCallRemat(allRoots, p, preservesPins)
 
 	if !preservesPins {
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
@@ -2117,7 +2150,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
-	f.restoreCallConstRemat(remat)
+	f.restoreCallRemat(remat)
 
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})

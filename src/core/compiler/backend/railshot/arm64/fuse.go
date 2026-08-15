@@ -68,9 +68,9 @@ func (f *fn) flushBelow(node *elem) int {
 	return f.flushBelowExcept(node, nil)
 }
 
-// flushBelowExcept leaves one integer constant symbolic while reserving its
-// canonical slot. The call rematerializer restores that exact recipe after the
-// call rebuilds the below-argument stack; every other user passes nil.
+// flushBelowExcept leaves one bounded integer recipe symbolic while reserving
+// its canonical slot. The call rematerializer restores that exact recipe after
+// the call rebuilds the below-argument stack; every other user passes nil.
 func (f *fn) flushBelowExcept(node, except *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register

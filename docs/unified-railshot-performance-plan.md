@@ -3556,3 +3556,60 @@ cover integer and mixed-bank execution, zero-argument and EH fallbacks,
 disabled policy, and serial/parallel determinism. Both complete native backend
 suites, focused race tests, SQLite, execution corpus, and fuzz regression corpus
 pass.
+
+## 2026-08-15 — bounded integer-local rematerialization across calls
+
+The call-surviving recipe now also retains one topmost `i32` or `i64` local
+read below a nonzero-argument register-ABI call. A frame-backed local remains a
+symbolic frame reference. A dirty pinned local is first protected from AMD64's
+bounded call-dead scan, then published by the ordinary call-preservation pass
+and restored as a frame reference. A pin-preserving finite ABI class may retain
+the borrowed register directly.
+
+The mechanism reuses the constant recipe's single fixed descriptor. It does not
+add a recipe slice, another Wasm scan, or per-operation allocation. EH,
+zero-argument, host, wrapper, tail, reference, FP, vector, and non-adjacent
+values retain the canonical operand-slot path. AMD64 also declines a clean
+register local in a function using forward-merge residency; the executable
+corpus exposed that independent state combination in recursive
+`memory_tree.wasm`, and the conservative fallback preserves the established
+operand snapshot rather than relying on a second optimizer's frame-copy state.
+
+The immutable option and rollback controls are:
+
+```text
+call-remat-local
+WAGO_AMD64_NO_CALL_REMAT_LOCAL=1
+WAGO_ARM64_NO_CALL_REMAT_LOCAL=1
+```
+
+An opt-in demand probe, removed before commit, found 2,490 topmost AMD64 local
+reads and 2,366 ARM64 local reads in the 64-module corpus. After all admission
+checks, the production transform records:
+
+```text
+AMD64: 1,900 recipes, 81,253,241 -> 81,228,025 native bytes (-25,216)
+ARM64: 2,900 recipes, 91,584,152 -> 91,555,144 native bytes (-29,008)
+```
+
+Focused 16-call results:
+
+```text
+Ryzen 7 7800X3D, eight samples:
+    stored:         about 27.84 ns/op, 522 native bytes, 0 B/op
+    rematerialized: about 23.12 ns/op, 362 native bytes, 0 B/op
+    delta:          about -17.0% time, -30.7% native bytes
+
+Apple M4 Max, eight samples:
+    stored:         about 18.91 ns/op, 524 native bytes, 0 B/op
+    rematerialized: about 18.90 ns/op, 396 native bytes, 0 B/op
+    delta:          execution neutral, -24.4% native bytes
+```
+
+Six order-balanced compile comparisons over regexmatch, SQLite, Ruby, and
+esbuild report a -0.00% AMD64 and +0.42% ARM64 geomean. B/op and allocation
+counts are materially unchanged. Focused tests cover dirty-register
+publication, frame-reference retention, overwrite-after-call semantics,
+forward-merge fallback, disabled policy, and serial/parallel determinism. The
+complete local repository suite, both native backend suites, focused race
+tests, SQLite query, executable corpus, and fuzz regression corpus pass.

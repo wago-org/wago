@@ -163,7 +163,7 @@ func TestCallConstRematerializationEHPolicyFallbackArm64(t *testing.T) {
 		{kind: ekValue, st: storage{kind: stConst, typ: mtI32, cval: 7}},
 		{kind: ekValue, st: storage{kind: stConst, typ: mtI32, cval: 5}},
 	}
-	if got := f.planCallConstRemat(roots, 1); got.root != nil {
+	if got := f.planCallRemat(roots, 1, false); got.root != nil {
 		t.Fatal("EH module admitted call rematerialization")
 	}
 }
