@@ -60,6 +60,8 @@ func TestEncodings(t *testing.T) {
 		{"strb w17,[x18,#1]", func(a *Asm) { a.Strb(X17, X18, 1) }, 0x39000651},
 		// frame pair
 		{"stp x29,x30,[sp,#-16]!", func(a *Asm) { a.StpPre(X29, X30, SP, -16) }, 0xa9bf7bfd},
+		{"ldp x16,x17,[x0,#16]", func(a *Asm) { a.LdpOffset(X16, X17, X0, 16) }, 0xa9414410},
+		{"ldp w16,w17,[x0,#8]", func(a *Asm) { a.LdpOffset32(X16, X17, X0, 8) }, 0x29414410},
 		{"ldp x29,x30,[sp],#16", func(a *Asm) { a.LdpPost(X29, X30, SP, 16) }, 0xa8c17bfd},
 		// compare / select / set
 		{"cmp x0,x1", func(a *Asm) { a.CmpReg64(X0, X1) }, 0xeb01001f},
