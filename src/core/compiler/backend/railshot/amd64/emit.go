@@ -170,6 +170,9 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // and mul: compute the left operand into dest, then fold the right operand in
 // place (const→imm, memory→r/m, reg→reg).
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
+	if result := f.tryThreeWayUnsignedCompare(node, dest); result != regNone {
+		return result
+	}
 	w := node.typ.is64()
 	left := node.arg0
 	right := node.arg1
