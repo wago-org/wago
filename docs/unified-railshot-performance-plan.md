@@ -3947,3 +3947,21 @@ mostly the deliberately retained recursive dependency break. The next bounded
 AMD64 target is instead transferring a direct call result into a local without
 an unconditional physical copy. On ARM64, the same corpus reports 6,286 result
 moves: 6,236 indirect and only 50 local sinks, so that target remains AMD64-only.
+
+## 2026-08-15 — reject dead direct-call local results
+
+A bounded AMD64 prototype reused the existing copied Wasm reader and 64-op
+`call-next-use` fuel to recognize `call -> local.set x` results overwritten
+before any read. Proven-dead results were left in `RAX` and discarded, while a
+read, control boundary, malformed immediate, or exhausted fuel retained the
+current result-to-local move. It required no summary, allocation, or retained
+machine state and passed native execution, near-miss, cap, and deterministic
+parallel tests.
+
+The synthetic 64-call fixture improved from 64.47 to 63.91 ns/op median (-0.9%)
+on Ryzen 7 7800X3D at zero allocations. However, the exact AMD64 compile corpus
+recorded zero selections and left all 52,171 local-sink result moves unchanged.
+The implementation and tests were removed. Dead-result lookahead should not be
+revisited without workload evidence; the real local-sink opportunity requires
+physical ownership transfer or a finite ABI result class, not dead-store
+elimination.
