@@ -135,16 +135,28 @@ func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := instantiateCore(compiled, InstantiateOptions{})
+		defer compiled.Close()
+		blob, err := compiled.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer in.Close()
-		for _, export := range []string{"run_ref", "run_indirect"} {
-			got, err := in.Call(context.Background(), export)
-			if err != nil || len(got) != 1 || got[0].I32() != 1 {
-				t.Fatalf("%s wrapper-ABI dynamic call = %v, %v; want [1]", export, got, err)
+		loaded, err := Load(blob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer loaded.Close()
+		for _, artifact := range []*Compiled{compiled, loaded} {
+			in, err := instantiateCore(artifact, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
 			}
+			for _, export := range []string{"run_ref", "run_indirect"} {
+				got, err := in.Call(context.Background(), export)
+				if err != nil || len(got) != 1 || got[0].I32() != 1 {
+					t.Fatalf("%s wrapper-ABI dynamic call = %v, %v; want [1]", export, got, err)
+				}
+			}
+			_ = in.Close()
 		}
 	})
 }
