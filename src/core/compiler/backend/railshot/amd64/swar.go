@@ -200,7 +200,7 @@ func (f *fn) trySWARWiden4(r *wasm.Reader, x int) (bool, error) {
 	}
 	if !matchStage(16, 0x0000ffff0000ffff, true) ||
 		!matchStage(8, 0x00ff00ff00ff00ff, false) ||
-		!localDeadBeforeWrite(r, raw) {
+		!localDeadBeforeWrite(r, raw, f.classifier) {
 		if err := r.JumpTo(save); err != nil {
 			return false, err
 		}
@@ -215,7 +215,7 @@ func (f *fn) trySWARWiden4(r *wasm.Reader, x int) (bool, error) {
 	return true, nil
 }
 
-func localDeadBeforeWrite(r *wasm.Reader, x uint32) bool {
+func localDeadBeforeWrite(r *wasm.Reader, x uint32, classifier wasm.ModuleInstructionClassifier) bool {
 	save := r.Offset()
 	defer func() { _ = r.JumpTo(save) }()
 	for {
@@ -247,7 +247,8 @@ func localDeadBeforeWrite(r *wasm.Reader, x uint32) bool {
 		case 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11:
 			return false
 		}
-		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return false
 		}
 	}
