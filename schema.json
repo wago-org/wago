@@ -101,6 +101,7 @@
               "inline",
               "inline-callfree",
               "inline-loop-callees",
+              "inline-slot-overlay",
               "leaf-scratch-pins",
               "legacy-fp-pins",
               "legacy-gp-pins",

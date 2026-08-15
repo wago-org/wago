@@ -3454,3 +3454,44 @@ produced the same effective code for this admitted shape. The prototype was
 therefore removed rather than adding scan state without a material execution or
 code-size gain. Simple-loop residency should be retried only with a distinct
 fixed backedge contract that demonstrably removes dynamic loop-body traffic.
+
+## 2026-08-15 — AMD64 numeric inlined-callee slot overlay
+
+Distinct numeric-only inlined callees now retain separate logical locals and
+types while sharing one max-sized physical scratch-slot region. Inlined bodies
+finish sequentially, and the existing result-realization boundary removes any
+borrow from one callee's region before another splice reuses it. The transform
+adds no table or per-operation allocation.
+
+Reference locals and `v128` locals retain distinct regions. Size and Embedded
+also retain the established layout because their post-lowering symbolic local
+packer does not yet encode physical-slot aliases. The immutable per-compilation
+selection bit and rollback environment variable are:
+
+```text
+inline-slot-overlay
+WAGO_AMD64_NO_INLINE_SLOT_OVERLAY=1
+```
+
+The focused two-callee test reduces the caller frame by 16 bytes, preserves a
+result from the first splice across the second splice, and produces identical
+serial and parallel code. An `externref`-local near miss and the Size objective
+both retain the old frame layout.
+
+Native Ryzen 7 7800X3D corpus results:
+
+```text
+64-module Balanced compile, one compile per module:
+    overlay hits: 3394
+    cumulative function frame bytes: 1532440 -> 1504936 (-27504, -1.79%)
+    native bytes:                    72783119 -> 72748399 (-34720, -0.05%)
+
+alternating compile comparison
+(regexmatch, SQLite, Ruby, esbuild; n=6 per mode, three compiles/sample):
+    geomean time: -0.21%
+    B/op:         unchanged
+    allocs/op:    +0.01% (rounding; no material change)
+```
+
+The complete native AMD64 backend, focused race coverage, SQLite query,
+execution corpus, and fuzz regression corpus pass with the overlay enabled.

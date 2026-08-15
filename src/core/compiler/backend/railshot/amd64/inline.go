@@ -467,6 +467,7 @@ type inlineTarget struct {
 	localZeroFacts []shared.GCRefFact // facts after zeroing each reusable inline local
 	resultTypes    []machineType      // the callee's result machine types
 	res0           machineType        // first result type (mtNone if none) — for the single-result merge
+	hasRefLocals   bool               // reference locals exclude physical-slot overlay until root maps encode exact live meaning
 	touchesMem     bool               // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
 	hasCtrl        bool               // the body has control flow → splice through a synthetic boundary frame
 	omitStandalone bool               // module layout may omit this unreachable standalone body
@@ -577,7 +578,9 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 				zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, p))
 			}
 		}
+		hasRefLocals := false
 		for _, run := range m.Code[i].Locals.Runs {
+			hasRefLocals = hasRefLocals || run.Type.Kind() == wasm.ValRef
 			for k := 0; k < int(run.Count); k++ {
 				typeArena = append(typeArena, mtOf(run.Type))
 				if exactGCRefFactsEnabled {
@@ -612,6 +615,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			localZeroFacts: zf,
 			resultTypes:    rt,
 			res0:           res0,
+			hasRefLocals:   hasRefLocals,
 			touchesMem:     facts.touchesMem,
 			hasCtrl:        facts.hasControlFlow,
 			omitStandalone: (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
@@ -672,12 +676,32 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 	}
 	f.inlineTargets = targets
 	f.inlineBase = make(map[int]int, len(callees))
+	// Compact objectives may reorder symbolic local homes after lowering. Keep
+	// each logical local distinct there until that packer understands aliases.
+	overlay := f.opt(optInlineSlotOverlay) && f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded && len(callees) > 1
+	for _, t := range callees {
+		if t.hasRefLocals {
+			overlay = false
+			break
+		}
+		for _, typ := range t.localTypes {
+			if typ == mtV128 {
+				overlay = false
+				break
+			}
+		}
+	}
+	overlayBaseSlot, overlayMaxSlots := f.nLocalSlots, 0
 	for _, t := range callees {
 		base := len(f.localType)
+		baseSlot, calleeSlots := f.nLocalSlots, 0
+		if overlay {
+			baseSlot = overlayBaseSlot
+		}
 		for i, lt := range t.localTypes {
 			f.localType = append(f.localType, lt)
-			f.localSlot = append(f.localSlot, 8*f.nLocalSlots)
-			f.nLocalSlots += lt.stackSlots()
+			f.localSlot = append(f.localSlot, 8*(baseSlot+calleeSlots))
+			calleeSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 			if exactGCRefFactsEnabled {
 				fact := shared.GCRefFact{}
@@ -687,7 +711,20 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 				f.localGCRefFacts = append(f.localGCRefFacts, fact)
 			}
 		}
+		if overlay {
+			if calleeSlots > overlayMaxSlots {
+				overlayMaxSlots = calleeSlots
+			}
+		} else {
+			f.nLocalSlots += calleeSlots
+		}
 		f.inlineBase[t.globalIdx] = base
+	}
+	if overlay {
+		f.nLocalSlots = overlayBaseSlot + overlayMaxSlots
+		for range len(callees) - 1 {
+			f.stats.peep("inline-slot-overlay")
+		}
 	}
 }
 

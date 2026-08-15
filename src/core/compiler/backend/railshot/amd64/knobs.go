@@ -57,6 +57,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
 	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
 	optimization.Bind("inline", &inlineEnabled),
+	optimization.Bind("inline-slot-overlay", &inlineSlotOverlayEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
@@ -111,6 +112,7 @@ var (
 	optEntryInitElide       = optimizationBindings.Option("entry-init-elide")
 	optGCDeadNew            = optimizationBindings.Option("gc-dead-new")
 	optInline               = optimizationBindings.Option("inline")
+	optInlineSlotOverlay    = optimizationBindings.Option("inline-slot-overlay")
 	optInlineLoopCallees    = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck         = optimizationBindings.Option("loop-precheck")
 	optStackFence           = optimizationBindings.Option("stack-fence")

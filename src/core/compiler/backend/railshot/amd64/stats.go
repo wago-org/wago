@@ -110,6 +110,10 @@ var (
 	// canonical contract. WAGO_AMD64_NO_MERGE_REG_RESIDENCY=1 is the exact A/B
 	// and rollback path.
 	mergeRegResidencyEnabled = os.Getenv("WAGO_AMD64_NO_MERGE_REG_RESIDENCY") != "1"
+	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
+	// onto one max-sized physical scratch region. WAGO_AMD64_NO_INLINE_SLOT_OVERLAY=1
+	// retains the prior one-region-per-callee frame layout.
+	inlineSlotOverlayEnabled = os.Getenv("WAGO_AMD64_NO_INLINE_SLOT_OVERLAY") != "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
 	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
