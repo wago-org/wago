@@ -196,6 +196,10 @@ var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 // pin allocator as an A/B and correctness oracle.
 var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
+// entryInitElisionEnabled skips parameter homes and declared-local zero stores
+// when the combined summary scan proves the incoming value cannot be read.
+var entryInitElisionEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_INIT_ELISION") != "1"
+
 // memory32AddrZExtElimEnabled avoids a redundant self-move when the storage
 // form feeding a memory32 access already guarantees a zero upper half. Default
 // ON; WAGO_AMD64_NO_ADDR_ZEXT_ELIM=1 disables it for A/B.
@@ -328,7 +332,7 @@ type fn struct {
 	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool   // emit context-cancellation polls at entries and loop headers
 	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
-	entryInitialized        uint64 // locals proven assigned before first entry-prefix read
+	entryInitialized        uint64 // locals whose initial value cannot be read
 	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
 	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 	threadedMemory0         bool   // route shared memory zero through the private instance directory
@@ -2356,8 +2360,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if symbolicLocalSlotPackingPolicy(sc.policy) && !sc.localRefTailBound && sc.asm.BindLocalRefTail(&sc.localRefs, maxAMD64LocalRefSites) {
 		sc.localRefTailBound = true
 	}
+	policy := sc.policy
+	if !policy.Valid() {
+		policy = currentCodegenPolicy()
+	}
 	globalIdx := m.ImportedFuncCount() + funcIdx
-	entryInitialized := hints.entryInitialized
+	entryInitialized := uint64(0)
+	if policy.EnabledOption(optEntryInitElide) {
+		entryInitialized = hints.entryInitialized
+	}
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		// Conservative root maps may publish a reference local before its first
 		// Wasm assignment. Keep every declared slot zero-initialized so a reused
@@ -2365,10 +2376,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		entryInitialized = 0
 	}
 	f := &sc.fnState
-	policy := sc.policy
-	if !policy.Valid() {
-		policy = currentCodegenPolicy()
-	}
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
 	localType, localSlot, localGCRefFacts, locals := f.localType, f.localSlot, f.localGCRefFacts, f.locals
 	mt0, _ := m.MemoryType(0)
@@ -3179,8 +3186,7 @@ func (f *fn) prologue() {
 }
 
 // entryParamOverwritten reports the bounded one-pass proof that parameter i's
-// first access in the straight-line entry prefix is local.set/tee. No call,
-// control edge, or read can observe the incoming value before that overwrite.
+// incoming value cannot be read before a definite local.set/tee.
 func (f *fn) entryParamOverwritten(i int) bool {
 	return i >= 0 && i < f.nParams && i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0
 }

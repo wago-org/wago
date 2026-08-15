@@ -72,9 +72,10 @@ type funcHints struct {
 	// local.get. It lets the bounded regional cache return a register as soon as
 	// that local's lifetime ends without rescanning the body during compilation.
 	localLastGet []uint32
-	// entryInitialized marks locals (up to 64) whose initial value is unobservable:
-	// either their first entry-prefix access is local.set/tee or they are never read.
-	// The prologue may skip initializing or homing those locals.
+	// entryInitialized marks locals (up to 64) whose initial value is unobservable.
+	// The byte scan tracks straight-line writes and intersects simple if arms;
+	// blocks, loops, try_table, and escaping edges reset conservatively. The prologue may
+	// skip initializing or homing those locals.
 	entryInitialized uint64
 
 	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
@@ -536,11 +537,20 @@ type byteBodyScanner struct {
 	callerLocal    int
 	entryPrefix    bool
 	entrySeen      uint64
-	localRead      uint64
+	localRead      uint64 // initial-value reads not dominated by a definite write
+	defWritten     uint64
+	defEscaped     bool
 }
 
 func (s *byteBodyScanner) noteNeverReadLocals() {
 	s.h.entryInitialized |= shared.UnreadLocalMask(s.nLocals, s.localRead)
+}
+
+func (s *byteBodyScanner) noteConditionalEscape(kind wasm.InstrKind) {
+	switch kind {
+	case wasm.InstrBrOnNull, wasm.InstrBrOnNonNull, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
+		s.defEscaped = true
+	}
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
@@ -561,6 +571,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		}
 		switch op {
+		case 0x00, 0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x0e, 0x0f: // escaping control edge
+			s.defEscaped = true
+		}
+		switch op {
 		case 0x0b: // end
 			s.h.stackArenaNodes += 2 // flush/rebuild allowance for the closing edge.
 			return subHasCall, op, nil
@@ -572,6 +586,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
+			entryWritten, outerEscaped := s.defWritten, s.defEscaped
+			s.defEscaped = false
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
@@ -585,6 +601,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				if term != 0x0b {
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
+				childEscaped := s.defEscaped
+				s.defWritten = entryWritten
+				s.defEscaped = outerEscaped || childEscaped
 				subHasCall = subHasCall || calls
 			case 0x03: // loop
 				s.h.hasLoop = true
@@ -596,6 +615,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				if term != 0x0b {
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
+				childEscaped := s.defEscaped
+				s.defWritten = entryWritten
+				s.defEscaped = outerEscaped || childEscaped
 				if calls {
 					subHasCall = true
 				} else {
@@ -617,16 +639,28 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				if err != nil {
 					return true, 0, err
 				}
+				thenWritten, thenEscaped := s.defWritten, s.defEscaped
 				callsElse := false
+				elseWritten, elseEscaped := entryWritten, false
 				if term == 0x05 {
+					s.defWritten, s.defEscaped = entryWritten, false
 					callsElse, term, err = s.scanExpr(depth+1, loopDepth, curLoop, false, elseWeight)
 					if err != nil {
 						return true, 0, err
 					}
+					elseWritten, elseEscaped = s.defWritten, s.defEscaped
 				}
 				if term != 0x0b {
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
+				if thenEscaped {
+					thenWritten = entryWritten
+				}
+				if elseEscaped {
+					elseWritten = entryWritten
+				}
+				s.defWritten = thenWritten & elseWritten
+				s.defEscaped = outerEscaped || thenEscaped || elseEscaped
 				subHasCall = subHasCall || callsThen || callsElse
 			}
 		case 0x10, 0x12: // call, return_call
@@ -664,8 +698,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
 			if int(idx) < s.nLocals {
-				if op == 0x20 && idx < 64 {
-					s.localRead |= uint64(1) << idx
+				if idx < 64 {
+					bit := uint64(1) << idx
+					if op == 0x20 {
+						if s.defWritten&bit == 0 {
+							s.localRead |= bit
+						}
+					} else {
+						s.defWritten |= bit
+					}
 				}
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
@@ -717,6 +758,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.moduleEH = true
 			}
+			s.noteConditionalEscape(imm.Kind)
 			if op == 0x40 && s.effects != nil {
 				s.effects.Mark(s.callerLocal, shared.EffectGrowsMemory)
 			}
@@ -738,6 +780,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
+			entryWritten, outerEscaped := s.defWritten, s.defEscaped
+			s.defEscaped = false
 			s.h.moduleEH = true
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
@@ -750,6 +794,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if term != 0x0b {
 				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
+			childEscaped := s.defEscaped
+			s.defWritten = entryWritten
+			s.defEscaped = outerEscaped || childEscaped
 			subHasCall = subHasCall || calls
 		case 0x08, 0x0a: // throw, throw_ref
 			s.h.moduleEH = true
@@ -772,6 +819,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.moduleEH = true
 			}
+			s.noteConditionalEscape(imm.Kind)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 				s.h.memOps++

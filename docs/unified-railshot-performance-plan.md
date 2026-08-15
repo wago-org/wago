@@ -497,6 +497,38 @@ five-sample `many_funcs` compile run measured a 263.3 us/op median with 344
 allocations/op; the implementation adds no compiler scratch or generated
 function bytes beyond the existing direct-entry selection.
 
+### 2026-08-14 — structured definite-assignment entry elision
+
+The combined byte-body scan now carries two inline 64-bit masks for definite
+writes and reads of an initial local value. Straight-line writes dominate later
+reads, and simple `if` arms retain only the intersection of definitely written
+locals. Blocks, loops, `try_table`, escaping control edges, AST-only bodies,
+locals beyond index 63, and conservative GC-root plans keep the established
+eager initialization fallback. The result removes both declared-local zero
+stores and parameter homes when the incoming value cannot be observed, without
+a CFG, retained data-flow table, heap allocation, or second semantic traversal.
+The option is part of the immutable per-compilation policy and has an explicit
+rollback path.
+
+Across the 1,053 compilable modules among 1,333 checked-in Wasm files, the
+broader proof removes 339 parameter-home stores and 30,888 declared-local zero
+stores. Total Darwin/ARM64 native output falls by 137,764 bytes; Ruby alone
+shrinks by 58,640 bytes, with Script, SQLite,
+Esbuild, Regexmatch, and Lua also contributing materially. Exact alternating
+Ruby compile measurements produced a +1.29% median time delta, while B/op fell
+by about 56 KiB and allocations were effectively unchanged. Alternating `json-as`
+execution medians were effectively flat for serialize (+0.26%) and improved
+1.72% for deserialize, with zero B/op and allocations throughout.
+
+Positive execution tests cover both outcomes of a definitely assigning `if`;
+single-arm assignment, an escaping `br_if`, block/loop conservatism, the
+64-local cap, and policy-disabled compilation are tested near misses. The scan
+frame grows by 32 bytes per recursive control level; at the existing 20,000
+level guard the static upper-bound delta is 640 KiB, below the plan's 1 MiB
+absolute gate. Full repository and focused race tests pass. AMD64 correctness
+passes under Rosetta and its Linux test binary cross-compiles; native AMD64
+timing remains pending because `hub@hub` still times out before authentication.
+
 ---
 
 # 1. North-star architecture

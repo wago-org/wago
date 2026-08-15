@@ -35,6 +35,24 @@ func TestEntryOverwrittenParameterSkipsHomeAMD64(t *testing.T) {
 	}
 }
 
+func TestStructuredDefiniteAssignmentExecAMD64(t *testing.T) {
+	body := []byte{
+		0x01, 0x01, 0x7f, // one i32 local at index 1
+		0x20, 0x00, 0x04, 0x40, // local.get 0; if
+		0x41, 0x0b, 0x21, 0x01, //   local[1] = 11
+		0x05, 0x41, 0x16, 0x21, 0x01, 0x0b, // else; local[1] = 22; end
+		0x20, 0x01, 0x0b, // return local[1]
+	}
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	for _, tc := range []struct {
+		arg, want uint64
+	}{{0, 22}, {1, 11}} {
+		if got := runAmd64u(t, m, tc.arg); got != tc.want {
+			t.Fatalf("arg %d: result = %d, want %d", tc.arg, got, tc.want)
+		}
+	}
+}
+
 func entryOverwrittenParamModuleAMD64(t testing.TB, readFirst, unused bool) *wasm.Module {
 	t.Helper()
 	params := make([]wasm.ValType, 16)

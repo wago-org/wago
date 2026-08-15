@@ -255,7 +255,7 @@ type fn struct {
 	hasLoop                 bool   // finalizer preserves emission-time loop layout until alignment fragments are relaxable
 	opaqueFragments         bool   // jump-table or plugin bytes require explicit fragment-aware scans
 	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
-	entryInitialized        uint64 // locals proven assigned before their first entry-prefix read
+	entryInitialized        uint64 // locals whose initial value cannot be read
 	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([linMemReg-bdCurBytes]) in a
@@ -1912,7 +1912,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals := f.localType, f.localSlot, f.locals
 	mt0, _ := m.MemoryType(0)
 	entryInitialized := hints.entryInitialized
-	if !entryInitElisionEnabled || gcFrameRoots != nil && gcFrameRoots.Candidate {
+	if !policy.EnabledOption(optEntryInitElide) || gcFrameRoots != nil && gcFrameRoots.Candidate {
 		entryInitialized = 0
 	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.hasLoop, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.hasControlFlow}
@@ -2738,8 +2738,7 @@ func (f *fn) prologue() {
 }
 
 // entryParamOverwritten reports the bounded one-pass proof that parameter i's
-// first access in the straight-line entry prefix is local.set/tee. No call,
-// control edge, or read can observe the incoming value before that overwrite.
+// incoming value cannot be read before a definite local.set/tee.
 func (f *fn) entryParamOverwritten(i int) bool {
 	return i >= 0 && i < f.nParams && i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0
 }
