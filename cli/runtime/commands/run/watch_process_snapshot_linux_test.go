@@ -250,6 +250,49 @@ func TestWatchFinishDoesNotReapUnrelatedChild(t *testing.T) {
 	}
 }
 
+func TestWatchReapsSeededWorkerAfterRootExit(t *testing.T) {
+	if err := prepareWatchedProcessTracking(); err != nil {
+		t.Fatal(err)
+	}
+	worker := exec.Command("/bin/true")
+	if err := worker.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := false
+	t.Cleanup(func() {
+		if done {
+			return
+		}
+		_ = worker.Process.Kill()
+		_ = worker.Wait()
+	})
+	identity, ok := watchedProcess(worker.Process.Pid)
+	if !ok {
+		t.Fatal("inspect seeded worker")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for identity.state != 'Z' && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+		identity, ok = watchedProcess(worker.Process.Pid)
+		if !ok {
+			t.Fatal("seeded worker disappeared before reap")
+		}
+	}
+	if identity.state != 'Z' {
+		t.Fatal("seeded worker did not exit")
+	}
+	tracker := &watchedProcessTracker{
+		owner: os.Getpid(), root: 1 << 30,
+		processes: map[int]uint64{identity.pid: identity.started},
+	}
+	tracker.reapAdopted()
+	if _, ok := watchedProcess(identity.pid); ok {
+		t.Fatal("seeded worker remained after reap")
+	}
+	_ = worker.Process.Release()
+	done = true
+}
+
 func newTestWatchProcessTracker(t *testing.T, rootPID int) *watchedProcessTracker {
 	t.Helper()
 	root, ok := watchedProcess(rootPID)

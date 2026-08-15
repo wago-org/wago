@@ -47,31 +47,55 @@ type watchedProcessTracker struct {
 	signalRelay       *watchsupervisor.SignalRelay
 }
 
+type watchedCommandResources struct {
+	lifetime *watchsupervisor.ChildLifetime
+	startup  *watchsupervisor.GuardianStartup
+}
+
 func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
-	lifetime, err := prepareWatchedCommand(command)
+	resources, err := prepareWatchedCommand(command)
 	if err != nil {
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
 	started := false
 	defer func() {
 		if !started {
-			_ = lifetime.Close()
+			_ = resources.lifetime.Close()
 		}
 	}()
+	defer resources.startup.Close()
 	unlockStart := lockWatchedCommandStart()
 	defer unlockStart()
 	if err := command.Start(); err != nil {
 		abortWatchedCommand(command)
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
-	lifetime.Started()
+	resources.lifetime.Started()
+	resources.startup.Started()
+	root, ok := watchedProcess(command.Process.Pid)
+	if !ok {
+		abortWatchedCommand(command)
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return watchedChildPlatform{terminalFD: -1}, errors.New("inspect watched root process")
+	}
+	var worker watchsupervisor.ChildIdentity
+	if resources.startup != nil {
+		worker, err = resources.startup.Wait()
+		if err != nil {
+			abortWatchedCommand(command)
+			_ = command.Process.Kill()
+			_ = command.Wait()
+			return watchedChildPlatform{terminalFD: -1}, err
+		}
+	}
 	if err := waitWatchedCommandStart(command); err != nil {
 		abortWatchedCommand(command)
 		_ = command.Process.Kill()
 		_ = command.Wait()
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
-	platform, err := attachWatchedProcess(command)
+	platform, err := attachWatchedProcess(command, root, worker)
 	if err != nil {
 		abortWatchedCommand(command)
 		_ = killWatchedProcess(platform, command)
@@ -85,14 +109,14 @@ func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 		_ = command.Wait()
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
-	platform.lifetime = lifetime
+	platform.lifetime = resources.lifetime
 	started = true
 	return platform, nil
 }
 
-func prepareWatchedCommand(command *exec.Cmd) (*watchsupervisor.ChildLifetime, error) {
+func prepareWatchedCommand(command *exec.Cmd) (watchedCommandResources, error) {
 	if err := prepareWatchedProcessTracking(); err != nil {
-		return nil, err
+		return watchedCommandResources{}, err
 	}
 	attributes := &syscall.SysProcAttr{Setpgid: true}
 	configureWatchedCommandStart(attributes)
@@ -100,21 +124,30 @@ func prepareWatchedCommand(command *exec.Cmd) (*watchsupervisor.ChildLifetime, e
 		attributes.Setpgid = false
 	}
 	command.SysProcAttr = attributes
-	return watchsupervisor.BindChild(command)
+	startup, err := watchsupervisor.BindGuardianStartup(command)
+	if err != nil {
+		return watchedCommandResources{}, err
+	}
+	lifetime, err := watchsupervisor.BindChild(command)
+	if err != nil {
+		_ = startup.Close()
+		return watchedCommandResources{}, err
+	}
+	return watchedCommandResources{lifetime: lifetime, startup: startup}, nil
 }
 
 func abortWatchedCommand(command *exec.Cmd) {
 	restoreWatchedTerminal(command)
 }
 
-func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
-	root, ok := watchedProcess(command.Process.Pid)
-	if !ok {
-		return watchedChildPlatform{terminalFD: -1}, errors.New("inspect watched root process")
+func attachWatchedProcess(command *exec.Cmd, root watchedProcessInfo, worker watchsupervisor.ChildIdentity) (watchedChildPlatform, error) {
+	processes := make(map[int]uint64)
+	if worker.PID > 0 {
+		processes[worker.PID] = worker.Started
 	}
 	tracker := &watchedProcessTracker{
 		owner: os.Getpid(), root: command.Process.Pid, rootStart: root.started,
-		processes: make(map[int]uint64),
+		processes: processes,
 	}
 	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
 	if fd, _, ok := watchedCommandTerminal(command); ok {

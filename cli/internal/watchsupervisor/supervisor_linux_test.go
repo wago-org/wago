@@ -293,12 +293,82 @@ func TestChildLifetimeSurvivesGoThreadExit(t *testing.T) {
 	}
 }
 
+func TestGuardianStartupReportsWorkerAfterGuardianExit(t *testing.T) {
+	const testName = "^TestGuardianStartupReportsWorkerAfterGuardianExit$"
+	const roleEnvironment = "WAGO_WATCH_STARTUP_TEST_ROLE"
+	switch os.Getenv(roleEnvironment) {
+	case "worker":
+		if err := reportGuardianStartup(); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(30 * time.Second)
+		return
+	case "guardian":
+		worker := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+		worker.Env = replaceEnvironmentField(os.Environ(), roleEnvironment, "worker")
+		startup, err := forwardGuardianStartup(worker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if startup == nil {
+			t.Fatal("missing forwarded guardian startup pipe")
+		}
+		if err := worker.Start(); err != nil {
+			t.Fatal(err)
+		}
+		if err := startup.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	if err := prepare(); err != nil {
+		t.Fatal(err)
+	}
+	guardian := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+	guardian.Env = append(os.Environ(),
+		roleEnvironment+"=guardian",
+		markerEnvironment+"="+guardianRole,
+	)
+	startup, err := BindGuardianStartup(guardian)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guardian.Env = replaceEnvironmentField(guardian.Environ(), markerEnvironment, "")
+	defer startup.Close()
+	if err := guardian.Start(); err != nil {
+		t.Fatal(err)
+	}
+	startup.Started()
+	identity, err := startup.Wait()
+	if err != nil {
+		_ = guardian.Process.Kill()
+		_ = guardian.Wait()
+		t.Fatal(err)
+	}
+	if err := guardian.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	worker, ok := processByPID(identity.PID)
+	if !ok || worker.started != identity.Started || worker.parent != os.Getpid() {
+		t.Fatalf("reported worker identity after adoption = %+v, found %+v", identity, worker)
+	}
+	if err := signalProcessIdentity(processInfo{pid: identity.PID, started: identity.Started}, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	var status syscall.WaitStatus
+	if pid, err := syscall.Wait4(identity.PID, &status, 0, nil); err != nil || pid != identity.PID {
+		t.Fatalf("reap reported worker: pid=%d err=%v", pid, err)
+	}
+}
+
 func TestEnvironmentReplacesInternalValues(t *testing.T) {
 	input := []string{
 		markerEnvironment + "=old",
 		"WAGO_TEST=value",
 		guestExecutableEnvironment + "=/old",
 		parentLifetimeFDEnvironment + "=9",
+		guardianStartupFDEnvironment + "=10",
 	}
 	want := "WAGO_TEST=value\n" + markerEnvironment + "=" + guardianRole + "\n" + guestExecutableEnvironment + "=/guest"
 	if got := strings.Join(Environment(input, "/guest"), "\n"); got != want {

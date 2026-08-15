@@ -7,12 +7,14 @@ package watchsupervisor
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +27,7 @@ const markerEnvironment = "WAGO_WATCH_SUPERVISOR"
 const guestExecutableEnvironment = "WAGO_WATCH_GUEST_EXECUTABLE"
 const parentPIDEnvironment = "WAGO_WATCH_SUPERVISOR_PARENT"
 const parentLifetimeFDEnvironment = "WAGO_WATCH_PARENT_LIFETIME_FD"
+const guardianStartupFDEnvironment = "WAGO_WATCH_GUARDIAN_STARTUP_FD"
 const signalRelayReadyFDEnvironment = "WAGO_WATCH_SIGNAL_RELAY_READY_FD"
 const signalRelayParentStartEnvironment = "WAGO_WATCH_SIGNAL_RELAY_PARENT_START"
 const guardianRole = "guardian"
@@ -47,6 +50,18 @@ type processInfo struct {
 // ChildLifetime holds the parent side of a pipe inherited by a child process.
 // The child observes EOF only when this whole process exits or Close is called.
 type ChildLifetime struct {
+	read  *os.File
+	write *os.File
+}
+
+// ChildIdentity identifies a process without trusting a reusable PID alone.
+type ChildIdentity struct {
+	PID     int
+	Started uint64
+}
+
+// GuardianStartup carries the worker identity from a guardian to its parent.
+type GuardianStartup struct {
 	read  *os.File
 	write *os.File
 }
@@ -149,6 +164,71 @@ func BindChild(command *exec.Cmd) (*ChildLifetime, error) {
 	return &ChildLifetime{read: read, write: write}, nil
 }
 
+// BindGuardianStartup adds a pipe that reports the guardian's worker identity.
+func BindGuardianStartup(command *exec.Cmd) (*GuardianStartup, error) {
+	if !hasEnvironmentValue(command.Environ(), markerEnvironment, guardianRole) {
+		return nil, nil
+	}
+	read, write, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	fd := 3 + len(command.ExtraFiles)
+	command.ExtraFiles = append(command.ExtraFiles, write)
+	command.Env = replaceEnvironmentField(command.Environ(), guardianStartupFDEnvironment, strconv.Itoa(fd))
+	return &GuardianStartup{read: read, write: write}, nil
+}
+
+func hasEnvironmentValue(environment []string, name, value string) bool {
+	want := name + "=" + value
+	return slices.Contains(environment, want)
+}
+
+// Started releases the parent's copy of the inherited write side.
+func (startup *GuardianStartup) Started() {
+	if startup != nil && startup.write != nil {
+		_ = startup.write.Close()
+		startup.write = nil
+	}
+}
+
+// Wait returns the worker identity reported by the worker itself.
+func (startup *GuardianStartup) Wait() (ChildIdentity, error) {
+	if startup == nil || startup.read == nil {
+		return ChildIdentity{}, errors.New("missing watch guardian startup pipe")
+	}
+	if err := startup.read.SetReadDeadline(time.Now().Add(probeTimeout)); err != nil {
+		return ChildIdentity{}, err
+	}
+	var data [16]byte
+	if _, err := io.ReadFull(startup.read, data[:]); err != nil {
+		return ChildIdentity{}, fmt.Errorf("read watch guardian startup: %w", err)
+	}
+	pid := binary.LittleEndian.Uint64(data[:8])
+	started := binary.LittleEndian.Uint64(data[8:])
+	if pid == 0 || pid > uint64(^uint(0)>>1) || started == 0 {
+		return ChildIdentity{}, errors.New("invalid watch guardian worker identity")
+	}
+	return ChildIdentity{PID: int(pid), Started: started}, nil
+}
+
+// Close releases both parent-side startup pipe descriptors.
+func (startup *GuardianStartup) Close() error {
+	if startup == nil {
+		return nil
+	}
+	var readErr, writeErr error
+	if startup.read != nil {
+		readErr = startup.read.Close()
+		startup.read = nil
+	}
+	if startup.write != nil {
+		writeErr = startup.write.Close()
+		startup.write = nil
+	}
+	return errors.Join(readErr, writeErr)
+}
+
 // Started releases the parent's copy of the inherited read side.
 func (lifetime *ChildLifetime) Started() {
 	if lifetime != nil && lifetime.read != nil {
@@ -248,6 +328,12 @@ func Enter() {
 		}
 		os.Exit(0)
 	}
+	if role == workerRole {
+		if err := reportGuardianStartup(); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "wago: watch supervisor: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	guest := os.Getenv(guestExecutableEnvironment)
 	if guest == "" {
 		_, _ = fmt.Fprintln(os.Stderr, "wago: watch supervisor: missing guest executable")
@@ -258,13 +344,80 @@ func Enter() {
 		_, _ = fmt.Fprintf(os.Stderr, "wago: watch supervisor: %v\n", err)
 		os.Exit(1)
 	}
+	var startup *os.File
+	if role == guardianRole {
+		startup, err = forwardGuardianStartup(command)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "wago: watch supervisor: %v\n", err)
+			os.Exit(1)
+		}
+		if startup != nil {
+			defer startup.Close()
+		}
+	}
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
-	code, err := Run(command)
+	code, err := run(command, func() {
+		if startup != nil {
+			_ = startup.Close()
+			startup = nil
+		}
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "wago: watch supervisor: %v\n", err)
 		code = 1
 	}
 	os.Exit(code)
+}
+
+func forwardGuardianStartup(command *exec.Cmd) (*os.File, error) {
+	value := os.Getenv(guardianStartupFDEnvironment)
+	if value == "" {
+		return nil, nil
+	}
+	fd, err := strconv.Atoi(value)
+	if err != nil || fd < 3 {
+		return nil, errors.New("invalid watch guardian startup descriptor")
+	}
+	if _, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil {
+		return nil, fmt.Errorf("inspect watch guardian startup descriptor: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), "wago-watch-guardian-startup")
+	if file == nil {
+		return nil, errors.New("open watch guardian startup descriptor")
+	}
+	unix.CloseOnExec(fd)
+	childFD := 3 + len(command.ExtraFiles)
+	command.ExtraFiles = append(command.ExtraFiles, file)
+	command.Env = replaceEnvironmentField(command.Environ(), guardianStartupFDEnvironment, strconv.Itoa(childFD))
+	return file, nil
+}
+
+func reportGuardianStartup() error {
+	value := os.Getenv(guardianStartupFDEnvironment)
+	if value == "" {
+		return nil
+	}
+	fd, err := strconv.Atoi(value)
+	if err != nil || fd < 3 {
+		return errors.New("invalid watch guardian startup descriptor")
+	}
+	file := os.NewFile(uintptr(fd), "wago-watch-guardian-startup")
+	if file == nil {
+		return errors.New("open watch guardian startup descriptor")
+	}
+	unix.CloseOnExec(fd)
+	defer file.Close()
+	process, ok := processByPID(os.Getpid())
+	if !ok {
+		return errors.New("inspect watch guardian worker")
+	}
+	var data [16]byte
+	binary.LittleEndian.PutUint64(data[:8], uint64(process.pid))
+	binary.LittleEndian.PutUint64(data[8:], process.started)
+	if _, err := file.Write(data[:]); err != nil {
+		return fmt.Errorf("report watch guardian worker: %w", err)
+	}
+	return nil
 }
 
 func supervisorCommand(role, guest string) (*exec.Cmd, error) {
@@ -302,6 +455,7 @@ func withoutInternalEnvironment(environment []string) []string {
 			strings.HasPrefix(entry, guestExecutableEnvironment+"=") ||
 			strings.HasPrefix(entry, parentPIDEnvironment+"=") ||
 			strings.HasPrefix(entry, parentLifetimeFDEnvironment+"=") ||
+			strings.HasPrefix(entry, guardianStartupFDEnvironment+"=") ||
 			strings.HasPrefix(entry, signalRelayReadyFDEnvironment+"=") ||
 			strings.HasPrefix(entry, signalRelayParentStartEnvironment+"=") {
 			continue
@@ -372,6 +526,10 @@ func runSignalRelay() error {
 
 // Run supervises command and returns its process exit code.
 func Run(command *exec.Cmd) (int, error) {
+	return run(command, nil)
+}
+
+func run(command *exec.Cmd, started func()) (int, error) {
 	parentLifetime, parentExited, err := monitorParentLifetime()
 	if err != nil {
 		return 1, err
@@ -399,6 +557,9 @@ func Run(command *exec.Cmd) (int, error) {
 		return 1, err
 	}
 	childLifetime.Started()
+	if started != nil {
+		started()
+	}
 	directChild, ok := processByPID(command.Process.Pid)
 	if !ok {
 		_ = command.Process.Kill()
