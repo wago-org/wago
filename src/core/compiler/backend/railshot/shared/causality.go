@@ -21,3 +21,16 @@ func (t LocalTraffic) Any() bool {
 		t.ControlMergeStores != 0 || t.ControlMergeReloads != 0 ||
 		t.CallPreservationStores != 0 || t.CallPreservationReloads != 0
 }
+
+// CallTraffic attributes physical register-copy instructions emitted solely to
+// satisfy the internal register ABI. Loads, constant materialization, wrapper
+// slot traffic, and ordinary allocator copies remain outside this first slice.
+// The fixed-size counters live only in opt-in CodegenStats.
+type CallTraffic struct {
+	RegisterArgumentMoves int
+	RegisterResultMoves   int
+}
+
+func (t CallTraffic) Any() bool {
+	return t.RegisterArgumentMoves != 0 || t.RegisterResultMoves != 0
+}

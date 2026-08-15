@@ -1056,6 +1056,31 @@ and allocations. Compile medians improved 23.9% and 18.8%; B/op was -0.1% and
 from 1,480 to 804 bytes and 1,588 to 1,104 bytes. Compact objectives retain the
 existing helpers.
 
+### 2026-08-14 — register-ABI call-move causality
+
+The opt-in ledger now counts physical register-copy instructions emitted solely
+to satisfy the internal register ABI. Argument counts cover GP/FP parallel-move
+resolution, including bounded swap chains; result counts cover copies out of
+ABI result registers and direct pinned-local sinks. Loads, constant
+materialization, wrapper-slot traffic, and ordinary allocator copies remain
+excluded, so this first call-traffic slice has an exact causal definition. The
+two fixed counters live only in `CodegenStats`, render only when nonzero, and
+code-neutrality tests retain identical native bytes with statistics disabled or
+enabled.
+
+The new counts identify a concrete next target. On the checked-in corpus,
+Darwin/ARM64 records 11,248 argument and 78,303 result moves in Ruby, 2,476 and
+2,739 in Lua, and 834 and 993 in wasm3. Native AMD64 records 112,865 argument
+and 78,209 result moves in Ruby, 6,511 and 2,759 in Lua, and 1,679 and 988 in
+wasm3. This makes Ruby's call-result preservation a shared priority and its
+AMD64 argument shuffling a separate target-specific priority.
+
+Six-sample fixed-work compile checks were neutral: on Apple M4 Max the general
+FP-call median moved -1.7% and the leaf-FP median +0.6%, with 50 allocations/op
+and B/op unchanged; on Ryzen 7 7800X3D, the mixed four-result register case
+moved -0.8%, with 35 allocations/op and its ordinary B/op range unchanged.
+Native AMD64 race and full backend tests pass.
+
 ---
 
 # 1. North-star architecture

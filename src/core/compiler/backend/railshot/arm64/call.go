@@ -1602,17 +1602,22 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	}
 	// AArch64 has no XCHG: a register swap goes through the backend scratch X16.
 	swapChains := resolveRegMovesWindow(moves,
-		func(dst, src Reg) { f.a.MovReg64(dst, src) },
+		func(dst, src Reg) {
+			f.a.MovReg64(dst, src)
+			f.stats.addRegisterArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+			f.stats.addRegisterArgumentMoves(3)
 		},
 		func(a, b, c Reg) {
 			f.a.MovReg64(X16, a)
 			f.a.MovReg64(a, b)
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
+			f.stats.addRegisterArgumentMoves(4)
 		})
 	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
@@ -1654,6 +1659,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		} else {
 			resReg = f.allocReg(maskOf(X0))
 			f.a.MovReg64(resReg, X0)
+			f.stats.addRegisterResultMoves(1)
 		}
 		f.pinned = f.pinned.add(resReg)
 	}
@@ -1665,8 +1671,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			pairRes[0] = f.allocReg(maskOf(X0, X1))
 			f.pinned = f.pinned.add(pairRes[0])
 			f.a.MovReg64(pairRes[0], X0)
+			f.stats.addRegisterResultMoves(1)
 			pairRes[1] = f.allocReg(maskOf(X0, X1))
 			f.a.MovReg64(pairRes[1], X1)
+			f.stats.addRegisterResultMoves(1)
 		}
 		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
 	}
@@ -1687,6 +1695,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
 		f.a.MovReg64(pr, X0)
+		f.stats.addRegisterResultMoves(1)
 		f.markLocalDirty(resHint)
 		facts := valueFacts(0)
 		if f.opt(optValueFacts) && ft.Results[0].Kind() == wasm.ValRef && !ft.Results[0].Ref().Nullable() {
@@ -1830,17 +1839,22 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		f.pinned = f.pinned.remove(m.src)
 	}
 	gpSwapChains := resolveRegMovesWindow(gpMoves,
-		func(dst, src Reg) { f.a.MovReg64(dst, src) },
+		func(dst, src Reg) {
+			f.a.MovReg64(dst, src)
+			f.stats.addRegisterArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+			f.stats.addRegisterArgumentMoves(3)
 		},
 		func(a, b, c Reg) {
 			f.a.MovReg64(X16, a)
 			f.a.MovReg64(a, b)
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
+			f.stats.addRegisterArgumentMoves(4)
 		})
 	f.stats.peepN("machine-swap-chain", gpSwapChains)
 	for _, m := range fpMoves {
@@ -1848,7 +1862,10 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 	}
 	fpSwapSlot := -1
 	fpSwapChains := resolveRegMovesWindow(fpMoves,
-		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
+		func(dst, src Reg) {
+			f.a.FmovReg(dst, src, true)
+			f.stats.addRegisterArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
 				fpSwapSlot = f.allocSpillSlot()
@@ -1857,6 +1874,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 			f.fst(SP, off, x, true)
 			f.a.FmovReg(x, y, true)
 			f.fld(y, SP, off, true)
+			f.stats.addRegisterArgumentMoves(1)
 		},
 		func(a, b, c Reg) {
 			if fpSwapSlot < 0 {
@@ -1867,6 +1885,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 			f.a.FmovReg(a, b, true)
 			f.a.FmovReg(b, c, true)
 			f.fld(c, SP, off, true)
+			f.stats.addRegisterArgumentMoves(2)
 		})
 	f.stats.peepN("machine-swap-chain", fpSwapChains)
 	for _, da := range deferred {
@@ -1910,6 +1929,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		gpResults[i] = f.allocReg(maskOf(X0, X1))
 		f.pinned = f.pinned.add(gpResults[i])
 		f.a.MovReg64(gpResults[i], intResultRegs[i])
+		f.stats.addRegisterResultMoves(1)
 	}
 	for i := 0; i < rN; i++ {
 		loc := resultPlan.Locations[i]

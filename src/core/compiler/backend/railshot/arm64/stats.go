@@ -149,6 +149,7 @@ type CodegenStats struct {
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
 	LocalTraffic  shared.LocalTraffic
+	CallTraffic   shared.CallTraffic
 	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string `json:"finalizer_fallback,omitempty"`
@@ -301,6 +302,16 @@ func (s *CodegenStats) addCallPreservationStore() {
 func (s *CodegenStats) addCallPreservationReload() {
 	if s != nil {
 		s.LocalTraffic.CallPreservationReloads++
+	}
+}
+func (s *CodegenStats) addRegisterArgumentMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves += n
+	}
+}
+func (s *CodegenStats) addRegisterResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
 	}
 }
 func (s *CodegenStats) addForcedLoad() {
@@ -562,6 +573,11 @@ func (s *CodegenStats) report() string {
 			traffic.OrdinarySpillStores, traffic.OrdinarySpillReloads,
 			traffic.ControlMergeStores, traffic.ControlMergeReloads,
 			traffic.CallPreservationStores, traffic.CallPreservationReloads)
+	}
+	callTraffic := s.CallTraffic
+	if callTraffic.Any() {
+		fmt.Fprintf(&b, "    call-traffic: reg-arg-move=%d reg-result-move=%d\n",
+			callTraffic.RegisterArgumentMoves, callTraffic.RegisterResultMoves)
 	}
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)

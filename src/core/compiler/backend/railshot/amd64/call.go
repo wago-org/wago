@@ -901,13 +901,22 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	for _, move := range gpMoves[:gpN] {
 		f.pinned = f.pinned.remove(move.src)
 	}
-	resolveRegMovesWindow(gpMoves[:gpN], func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	resolveRegMovesWindow(gpMoves[:gpN], func(dst, src Reg) {
+		f.a.MovReg64(dst, src)
+		f.stats.addRegisterArgumentMoves(1)
+	}, func(x, y Reg) {
+		f.a.Xchg64(x, y)
+		f.stats.addRegisterArgumentMoves(1)
+	})
 	for _, move := range fpMoves[:fpN] {
 		f.fpinned = f.fpinned.remove(move.src)
 	}
 	fpSwapSlot := -1
 	resolveRegMovesWindow(fpMoves[:fpN],
-		func(dst, src Reg) { f.a.FMov(dst, src, true) },
+		func(dst, src Reg) {
+			f.a.FMov(dst, src, true)
+			f.stats.addRegisterArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
 				fpSwapSlot = f.allocSpillSlot()
@@ -916,6 +925,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.a.FStoreDisp(RSP, off, x, true)
 			f.a.FMov(x, y, true)
 			f.a.FLoadDisp(y, RSP, off, true)
+			f.stats.addRegisterArgumentMoves(1)
 		})
 	for _, arg := range deferred[:deferredN] {
 		if arg.float {
@@ -1779,7 +1789,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	for _, m := range moves {
 		f.pinned = f.pinned.remove(m.src)
 	}
-	resolveRegMovesWindow(moves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	resolveRegMovesWindow(moves, func(dst, src Reg) {
+		f.a.MovReg64(dst, src)
+		f.stats.addRegisterArgumentMoves(1)
+	}, func(x, y Reg) {
+		f.a.Xchg64(x, y)
+		f.stats.addRegisterArgumentMoves(1)
+	})
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
 		switch da.root.st.kind {
@@ -1820,6 +1836,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	if rN == 1 && resHint < 0 {
 		resReg = f.allocReg(maskOf(RAX))
 		f.a.MovReg64(resReg, RAX)
+		f.stats.addRegisterResultMoves(1)
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
@@ -1827,8 +1844,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 		f.pinned = f.pinned.add(pairRes[0])
 		f.a.MovReg64(pairRes[0], RAX)
+		f.stats.addRegisterResultMoves(1)
 		pairRes[1] = f.allocReg(maskOf(RAX, RDX))
 		f.a.MovReg64(pairRes[1], RDX)
+		f.stats.addRegisterResultMoves(1)
 		f.pinned = f.pinned.add(pairRes[1])
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
@@ -1859,6 +1878,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
 		f.a.MovReg64(pr, RAX)
+		f.stats.addRegisterResultMoves(1)
 		f.markLocalDirty(resHint)
 	}
 
@@ -1988,13 +2008,22 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
-	resolveRegMovesWindow(gpMoves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	resolveRegMovesWindow(gpMoves, func(dst, src Reg) {
+		f.a.MovReg64(dst, src)
+		f.stats.addRegisterArgumentMoves(1)
+	}, func(x, y Reg) {
+		f.a.Xchg64(x, y)
+		f.stats.addRegisterArgumentMoves(1)
+	})
 	for _, m := range fpMoves {
 		f.fpinned = f.fpinned.remove(m.src)
 	}
 	fpSwapSlot := -1
 	resolveRegMovesWindow(fpMoves,
-		func(dst, src Reg) { f.a.FMov(dst, src, true) },
+		func(dst, src Reg) {
+			f.a.FMov(dst, src, true)
+			f.stats.addRegisterArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
 				fpSwapSlot = f.allocSpillSlot()
@@ -2003,6 +2032,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.a.FStoreDisp(RSP, off, x, true)
 			f.a.FMov(x, y, true)
 			f.a.FLoadDisp(y, RSP, off, true)
+			f.stats.addRegisterArgumentMoves(1)
 		})
 	for _, da := range deferred {
 		if da.float {
@@ -2037,6 +2067,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		gpResults[i] = f.allocReg(maskOf(RAX, RDX))
 		f.pinned = f.pinned.add(gpResults[i])
 		f.a.MovReg64(gpResults[i], intResultRegs[i])
+		f.stats.addRegisterResultMoves(1)
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
