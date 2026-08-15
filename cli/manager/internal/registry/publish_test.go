@@ -136,6 +136,22 @@ func TestCatalogVersionInfersOneProviderVersion(t *testing.T) {
 	}
 }
 
+func TestUnresolvedReleaseTagInstructions(t *testing.T) {
+	message := unresolvedReleaseTagInstructions("v1.2.3")
+	for _, want := range []string{
+		"cannot resolve release tag v1.2.3",
+		"must match package.version in wago.json",
+		"git fetch origin tag v1.2.3",
+		"git tag v1.2.3",
+		"git push origin HEAD v1.2.3",
+		"wago plugin publish",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("release tag instructions missing %q:\n%s", want, message)
+		}
+	}
+}
+
 func TestComparePublishedPackageManifestIgnoresProjectStateOnly(t *testing.T) {
 	local := map[string]any{"package": map[string]any{"module": "github.com/acme/root", "tags": []any{"one"}}, "plugins": map[string]any{"local": "^1"}}
 	artifact := map[string]any{"package": map[string]any{"module": "github.com/acme/root", "tags": []any{"one"}}, "plugins": map[string]any{}}

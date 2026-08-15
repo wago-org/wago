@@ -54,7 +54,7 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	version = canonicalGoVersion(version)
 	commit := strings.TrimSpace(gitOutputAt(moduleRoot, "rev-list", "-n", "1", version))
 	if commit == "" {
-		fatal("publish: cannot resolve the commit for tag %s; fetch the exact release tag", version)
+		fatal("publish: %s", unresolvedReleaseTagInstructions(version))
 	}
 	if !fullGitCommit(commit) {
 		fatal("publish: commit must be the full 40-character commit for tag %s", version)
@@ -135,6 +135,21 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	default:
 		fatal("publish: %s", apiError(status, data))
 	}
+}
+
+func unresolvedReleaseTagInstructions(version string) string {
+	return fmt.Sprintf(`cannot resolve release tag %[1]s.
+The tag must match package.version in wago.json and point to the commit containing the release manifest and wago.providers.json.
+
+If %[1]s already exists remotely:
+  git fetch origin tag %[1]s
+
+If this is a new release, first commit the exact release files, then run:
+  git tag %[1]s
+  git push origin HEAD %[1]s
+
+Then retry:
+  wago plugin publish`, version)
 }
 
 type publishMetadata struct {
