@@ -118,6 +118,7 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
+			storeTrap(trap, 0)
 			return trapErrorFromBuffer(tc, trap)
 		}
 	}
@@ -160,10 +161,13 @@ func clearTrapUnlessInterrupted(trap []byte) {
 }
 
 func installTrapCell(linMem, trap []byte) {
-	if len(trap) < 4 || len(linMem) == 0 {
+	if len(trap) < 4 {
 		return
 	}
 	clearTrapUnlessInterrupted(trap)
+	if len(linMem) == 0 {
+		return
+	}
 	base := unsafe.Pointer(&linMem[0])
 	*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
 	*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0

@@ -25,7 +25,7 @@ func BenchmarkCompileDirectTailCallScratch(b *testing.B) {
 	)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		cm, err := CompileModule(m)
 		if err != nil {
 			b.Fatal(err)
@@ -54,7 +54,7 @@ func BenchmarkCompileWideTailCallScratch(b *testing.B) {
 	m := modFuncs(b, fns...)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		cm, err := CompileModule(m)
 		if err != nil {
 			b.Fatal(err)

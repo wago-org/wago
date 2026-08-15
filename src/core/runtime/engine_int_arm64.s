@@ -79,8 +79,8 @@ afterNativeInt2Call:
 	LDP  88(RSP), (R29, R30)
 	MOVD 0(RSP), R11
 	MOVD R11, RSP
-	MOVD R0, first+56(FP)
-	MOVD R1, second+64(FP)
+	MOVD R0, ret+56(FP)
+	MOVD R1, ret1+64(FP)
 	RET
 
 callNativeInt2:
@@ -177,8 +177,8 @@ afterNativeFP2Call:
 	MOVD R11, RSP
 	FMOVD F0, R0
 	FMOVD F1, R1
-	MOVD R0, first+56(FP)
-	MOVD R1, second+64(FP)
+	MOVD R0, ret+56(FP)
+	MOVD R1, ret1+64(FP)
 	RET
 
 callNativeFP2:
@@ -224,8 +224,8 @@ afterNativeMixedCall:
 	MOVD 0(RSP), R11
 	MOVD R11, RSP
 	FMOVD F0, R1
-	MOVD R0, gp+56(FP)
-	MOVD R1, fp+64(FP)
+	MOVD R0, ret+56(FP)
+	MOVD R1, ret1+64(FP)
 	RET
 
 callNativeMixed:

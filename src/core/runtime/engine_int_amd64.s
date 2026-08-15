@@ -58,8 +58,8 @@ TEXT ·enterNativeInt2(SB), NOSPLIT, $0-72
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
 	PXOR X15, X15
-	MOVQ DI, first+56(FP)
-	MOVQ SI, second+64(FP)
+	MOVQ DI, ret+56(FP)
+	MOVQ SI, ret1+64(FP)
 	RET
 
 // func enterNativeFP(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
@@ -126,8 +126,8 @@ TEXT ·enterNativeFP2(SB), NOSPLIT, $0-72
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
 	PXOR X15, X15
-	MOVQ DI, first+56(FP)
-	MOVQ SI, second+64(FP)
+	MOVQ DI, ret+56(FP)
+	MOVQ SI, ret1+64(FP)
 	RET
 
 // func enterNativeMixed(code, linMem, g0, g1, f0, f1, foreignStackTop uintptr) (uintptr, uintptr)
@@ -159,6 +159,6 @@ TEXT ·enterNativeMixed(SB), NOSPLIT, $0-72
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
 	PXOR X15, X15
-	MOVQ DI, gp+56(FP)
-	MOVQ SI, fp+64(FP)
+	MOVQ DI, ret+56(FP)
+	MOVQ SI, ret1+64(FP)
 	RET
