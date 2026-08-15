@@ -94,13 +94,13 @@ func Build(request Request) (Result, error) {
 		if !request.Target.supportsTinyGo() {
 			return Result{}, fmt.Errorf("TinyGo standalone executables are not supported for target %s", request.Target)
 		}
-		host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
-		if request.Target != host {
-			return Result{}, fmt.Errorf("TinyGo precompiled standalone builds require the native target %s; got %s", host, request.Target)
-		}
 	}
 	if request.Core == 3 && !request.Target.supportsCore3() {
 		return Result{}, fmt.Errorf("WebAssembly Core 3 is not supported for target %s", request.Target)
+	}
+	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if request.Target != host {
+		return Result{}, fmt.Errorf("precompiled standalone builds require the native target %s; got %s", host, request.Target)
 	}
 	if request.Output == "" {
 		request.Output = DefaultOutput(request.Input, request.Target)
@@ -147,19 +147,24 @@ func Build(request Request) (Result, error) {
 	if err := runGo(buildDir, environment, request.Verbose, "mod", "tidy"); err != nil {
 		return Result{}, err
 	}
+	if err := os.WriteFile(mainPath, artifactCompilerSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
+		return Result{}, err
+	}
+	helperArgs := []string{"run"}
 	if request.TinyGo {
-		if err := os.WriteFile(mainPath, artifactCompilerSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
-			return Result{}, err
-		}
 		// The helper itself uses standard Go, but its output executes under TinyGo.
 		// Select final-runtime capabilities such as cooperative interruption while
 		// retaining the standard compiler needed to generate the artifact.
-		if err := runGo(buildDir, environment, request.Verbose, "run", "-tags=wago_target_tinygo", "."); err != nil {
-			return Result{}, fmt.Errorf("precompile standalone artifact: %w", err)
-		}
-		if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, true), 0o644); err != nil {
-			return Result{}, err
-		}
+		helperArgs = append(helperArgs, "-tags=wago_target_tinygo")
+	}
+	helperArgs = append(helperArgs, ".")
+	if err := runGo(buildDir, environment, request.Verbose, helperArgs...); err != nil {
+		return Result{}, fmt.Errorf("precompile standalone artifact: %w", err)
+	}
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, true), 0o644); err != nil {
+		return Result{}, err
+	}
+	if request.TinyGo {
 		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative", "-tags=wago_precompiled"}
 		if !request.KeepSymbols {
 			args = append(args, "-no-debug")
@@ -175,7 +180,7 @@ func Build(request Request) (Result, error) {
 		}
 		return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
 	}
-	args := []string{"build", "-buildvcs=false", "-trimpath"}
+	args := []string{"build", "-buildvcs=false", "-trimpath", "-tags=wago_precompiled"}
 	if !request.KeepSymbols {
 		args = append(args, "-ldflags=-s -w")
 	}

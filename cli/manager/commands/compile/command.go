@@ -30,7 +30,7 @@ func Command(environment Environment) *command.Cmd {
 	knobs := compileKnobFlags()
 	flags := []command.Flag{
 		{Name: "output", Short: "o", Arg: "<file>", Help: "output executable path"},
-		{Name: "target", Arg: "<os/arch>", Help: "target platform (default: current platform)"},
+		{Name: "target", Arg: "<os/arch>", Help: "native target platform (default: current platform)"},
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		internalparallel.Flag(),
@@ -51,12 +51,11 @@ func Command(environment Environment) *command.Cmd {
 		Normalize: func(args []string) ([]string, error) {
 			return internalparallel.NormalizeArgs(args, parserFlags, false)
 		},
-		Long: "The executable embeds the module and selected plugin configuration. By default it\n" +
+		Long: "The executable embeds precompiled machine code, the runtime, and selected plugin configuration. By default it\n" +
 			"calls _start, then main, then the sole exported function; use --invoke to select\n" +
-			"another export. --tinygo embeds precompiled native code and requires a native target. Core features,\n" +
-			"parallelism, and optimization knobs are fixed at build time. Use --target\n" +
-			"linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64,\n" +
-			"or windows/arm64 to cross-compile with the matching Wago backend.",
+			"another export. --tinygo uses TinyGo for the final runtime link. Core features,\n" +
+			"parallelism, and optimization knobs are fixed at build time. Because the machine code\n" +
+			"is generated before linking, --target must match the current platform.",
 		Run: func(context *command.Ctx) {
 			if len(context.Args) != 1 {
 				ui.Usage("compile: need exactly one <file>")

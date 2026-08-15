@@ -1,7 +1,6 @@
 package standalone
 
 import (
-	"debug/elf"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,12 +31,12 @@ func TestMainSourceBakesInvokeExport(t *testing.T) {
 	}
 }
 
-func TestMainSourceEmbedsPrecompiledArtifactForTinyGo(t *testing.T) {
+func TestMainSourceEmbedsPrecompiledArtifact(t *testing.T) {
 	source := string(mainSource(nil, nil, "", 2, true, 0, nil, true))
 	if !strings.Contains(source, "//go:embed module.wago") ||
 		!strings.Contains(source, `standalone.RunArtifact(module, pluginSet(), options, os.Args)`) ||
 		strings.Contains(source, "module.wasm") {
-		t.Fatalf("generated TinyGo main does not load the precompiled artifact:\n%s", source)
+		t.Fatalf("generated main does not load the precompiled artifact:\n%s", source)
 	}
 	compiler := string(artifactCompilerSource(nil, nil, "", 2, true, 0, nil))
 	if !strings.Contains(compiler, `standalone.CompileArtifact(module, pluginSet(), options)`) ||
@@ -46,7 +45,7 @@ func TestMainSourceEmbedsPrecompiledArtifactForTinyGo(t *testing.T) {
 	}
 }
 
-func TestBuildRejectsNonNativeTinyGoTarget(t *testing.T) {
+func TestBuildRejectsNonNativeTarget(t *testing.T) {
 	project := t.TempDir()
 	input := filepath.Join(project, "hello.wasm")
 	if err := os.WriteFile(input, emptyStartModule(), 0o644); err != nil {
@@ -56,10 +55,41 @@ func TestBuildRejectsNonNativeTinyGoTarget(t *testing.T) {
 	if target == (Target{OS: runtime.GOOS, Arch: runtime.GOARCH}) {
 		target = Target{OS: "linux", Arch: "arm64"}
 	}
-	_, err := Build(Request{Input: input, Target: target, TinyGo: true})
-	if err == nil || !strings.Contains(err.Error(), "TinyGo precompiled standalone builds require the native target") {
+	_, err := Build(Request{Input: input, Target: target})
+	if err == nil || !strings.Contains(err.Error(), "precompiled standalone builds require the native target") {
 		t.Fatalf("build error = %v", err)
 	}
+}
+
+func TestBuildEmbedsArtifactWithoutCompiler(t *testing.T) {
+	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	input := filepath.Join(root, "tests", "fixtures", "wasm", "fib.wasm")
+	output := filepath.Join(project, "hello")
+	t.Setenv("WAGO_SRC", root)
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_BARE", "1")
+	t.Setenv("GOOS", "windows")
+	if host.Arch == "amd64" {
+		t.Setenv("GOARCH", "arm64")
+	} else {
+		t.Setenv("GOARCH", "amd64")
+	}
+	result, err := Build(Request{Input: input, Output: output, Target: host, Invoke: "fib", KeepSymbols: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(result.Output, "20")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("run standalone: %v\n%s", err, output)
+	} else if got := strings.TrimSpace(string(output)); got != "6765" {
+		t.Fatalf("standalone output = %q, want 6765", got)
+	}
+	assertNoCompilerSymbols(t, result.Output, "standalone")
 }
 
 func TestBuildTinyGoEmbedsArtifactWithoutCompiler(t *testing.T) {
@@ -96,16 +126,29 @@ func TestBuildTinyGoEmbedsArtifactWithoutCompiler(t *testing.T) {
 	if output, err := exec.Command(result.Output).CombinedOutput(); err != nil {
 		t.Fatalf("run TinyGo standalone: %v\n%s", err, output)
 	}
-	names, err := exec.Command("go", "tool", "nm", result.Output).Output()
+	assertNoCompilerSymbols(t, result.Output, "TinyGo standalone")
+}
+
+func assertNoCompilerSymbols(t *testing.T, executable, description string) {
+	t.Helper()
+	names, err := exec.Command("go", "tool", "nm", executable).Output()
 	if err != nil {
-		t.Fatalf("inspect TinyGo standalone: %v", err)
+		t.Fatalf("inspect %s: %v", description, err)
 	}
 	for _, forbidden := range []string{
-		"compiler/backend/railshot/amd64.", "compiler/backend/railshot/arm64.",
-		"compileWithConfig", "CompileModuleWith", "CompileArtifact",
+		"compiler/backend/railshot/amd64.", "compiler/backend/railshot/arm64.", "CompileArtifact",
 	} {
 		if strings.Contains(string(names), forbidden) {
-			t.Errorf("TinyGo precompiled executable retains compiler symbol containing %q", forbidden)
+			var matches []string
+			for _, line := range strings.Split(string(names), "\n") {
+				if strings.Contains(line, forbidden) {
+					matches = append(matches, line)
+					if len(matches) == 5 {
+						break
+					}
+				}
+			}
+			t.Errorf("%s retains compiler symbol containing %q:\n%s", description, forbidden, strings.Join(matches, "\n"))
 		}
 	}
 }
@@ -140,57 +183,6 @@ func TestBuildTinyGoStripsByDefault(t *testing.T) {
 	}
 	if output, err := exec.Command(result.Output).CombinedOutput(); err != nil {
 		t.Fatalf("run stripped TinyGo standalone: %v\n%s", err, output)
-	}
-}
-
-func TestBuildSelectsOnlyTargetBackend(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	project := t.TempDir()
-	input := filepath.Join(project, "hello.wasm")
-	if err := os.WriteFile(input, emptyStartModule(), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WAGO_SRC", root)
-	t.Setenv("WAGO_HOME", t.TempDir())
-	t.Setenv("WAGO_BARE", "1")
-
-	for _, test := range []struct {
-		arch    string
-		machine elf.Machine
-		backend string
-		other   string
-	}{
-		{arch: "amd64", machine: elf.EM_X86_64, backend: "railshot/amd64", other: "railshot/arm64"},
-		{arch: "arm64", machine: elf.EM_AARCH64, backend: "railshot/arm64", other: "railshot/amd64"},
-	} {
-		output := filepath.Join(project, "hello-"+test.arch)
-		result, err := Build(Request{
-			Input: input, Output: output, Target: Target{OS: "linux", Arch: test.arch}, KeepSymbols: true,
-		})
-		if err != nil {
-			t.Fatalf("build linux/%s: %v", test.arch, err)
-		}
-		binary, err := elf.Open(result.Output)
-		if err != nil {
-			t.Fatalf("open linux/%s: %v", test.arch, err)
-		}
-		if binary.Machine != test.machine {
-			t.Errorf("linux/%s machine = %v, want %v", test.arch, binary.Machine, test.machine)
-		}
-		_ = binary.Close()
-		names, err := exec.Command("go", "tool", "nm", result.Output).Output()
-		if err != nil {
-			t.Fatalf("nm linux/%s: %v", test.arch, err)
-		}
-		if !strings.Contains(string(names), test.backend) {
-			t.Errorf("linux/%s executable does not contain target backend %q", test.arch, test.backend)
-		}
-		if strings.Contains(string(names), test.other) {
-			t.Errorf("linux/%s executable contains opposite backend %q", test.arch, test.other)
-		}
 	}
 }
 

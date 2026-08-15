@@ -27,7 +27,7 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 }
 
 // CompileArtifact applies the selected plugins and compilation options once and
-// returns the target-specific artifact embedded by TinyGo standalone builds.
+// returns the target-specific artifact embedded by standalone builds.
 func CompileArtifact(source []byte, plugins wago.PluginSet, options Options) ([]byte, error) {
 	runtime, err := loadRuntime(plugins, options, nil)
 	if err != nil {
