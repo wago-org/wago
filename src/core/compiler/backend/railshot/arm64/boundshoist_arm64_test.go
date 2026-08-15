@@ -62,8 +62,13 @@ func TestLoopPrecheckScannerConsumesMixedMemoryWidthImmediatesArm64(t *testing.T
 		0x1a,       // drop
 		0x41, 0x00, // i32.const 0
 		0x40, 0x00, // memory.grow 0
-		0x1a, // drop
+		0x1a,       // drop
+		0x10, 0x00, // call 0 after the wide immediate
 		0x0b,
+	}
+	set, grow, call, nested, table := scanLoopBody(wasm.NewReader(body), m)
+	if len(set) != 0 || !grow || !call || nested || table {
+		t.Fatalf("mixed-width loop facts = set=%v grow=%v call=%v nested=%v table=%v", set, grow, call, nested, table)
 	}
 	cands, n, grow := scanLoopHoistable(wasm.NewReader(body), m)
 	if len(cands) != 0 || n != 0 || !grow {
