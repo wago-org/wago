@@ -3812,3 +3812,28 @@ The prototype and benchmark were removed. Multiple call-separated regions must
 be summary-ranked by useful work between barriers; treating every eligible
 whole function as a region repeatedly reloads locals that fixed pins preserve
 more cheaply.
+
+### Rejected follow-up: packed top-two call-region summaries
+
+A second bounded prototype extended the existing byte scan with one current
+call-separated region and two ranked winners. Each region admitted at most nine
+distinct locals, retained only locals used at least twice, packed its 16-bit
+start/end offsets and local IDs into four words, and rejected control, loops,
+tail calls, bulk operations, EH, implicit helper calls, and cap overflow. Eight
+words per storage-eligible function lived in the capacity tail of the existing
+last-use allocation, so `funcHints` did not grow and the scan allocated no
+per-region storage.
+
+The exact 64-module AMD64 corpus contains 31,320 functions, of which 1,288 meet
+the existing regional body/local storage bounds. The intended minimum of eight
+useful local accesses found no admissible region while reserving 41,216 bytes of
+summary storage. Lowering the threshold to four found one region with two
+locals in one Ruby function. Even a two-access threshold found only six regions
+and seven retained locals across five Ruby functions; Ruby still lacks an
+executable corpus host bridge.
+
+The scanner, packed representation, query seam, cap tests, and corpus probe were
+removed. This opportunity density does not justify permanent summary memory or
+lowering state. Call-separated residency should remain deferred until profiles
+identify executable hot regions or another required summary can carry the same
+facts without incremental module storage.
