@@ -63,6 +63,7 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			return reject("import %d has unsupported external kind %d", i, m.Imports[i].Type.Kind)
 		}
 	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	ehMaps, err := railarm64.BuildExceptionRootMaps(m)
 	if err != nil {
 		return reject("exception root maps: %v", err)
@@ -87,7 +88,7 @@ functions:
 			return reject("function %d has no validated signature", function)
 		}
 		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
-		mayCollect := gcFrameBodyMayCollect(m.Code[function].BodyBytes)
+		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if arm64CollectorFrameRefType(m, t) {
@@ -123,15 +124,15 @@ functions:
 				}
 			}
 		}
-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes) {
+		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		var liveMasks, callMasks []uint64
 		var maskExtra gcFrameLivenessExtra
-		if arm64BodyUsesEH(m.Code[function].BodyBytes) {
-			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra)
+		if arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) {
+			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
 		} else {
-			liveMasks, err = gcFrameLocalLiveness(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra)
+			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
@@ -237,15 +238,15 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	return true
 }
 
-func arm64GCFrameBodySafe(m *wasm.Module, body []byte) bool {
+func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
 	r := wasm.NewReader(body)
+	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return false
 		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return false
 		}
 		switch op {
@@ -299,8 +300,9 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte) bool {
 	return true
 }
 
-func arm64BodyUsesEH(body []byte) bool {
+func arm64BodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
 	r := wasm.NewReader(body)
+	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -310,15 +312,15 @@ func arm64BodyUsesEH(body []byte) bool {
 		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f:
 			return true
 		}
-		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return true
 		}
 	}
 	return false
 }
 
-func arm64GCFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra) (allocations, calls []uint64, err error) {
-	return gcFrameAllLiveMasks(body, localRoots, extra)
+func arm64GCFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
+	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
 }
 
 func arm64GCFunctionTableMonomorphic(m *wasm.Module) bool {
