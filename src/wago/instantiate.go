@@ -677,6 +677,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			localFuncrefsMayEscape = len(c.tableExports) != 0
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for _, globalIdx := range c.GlobalExports {
+				if globalIdx >= 0 && globalIdx < len(c.Globals) && c.Globals[globalIdx].Type == ValFuncRef {
+					localFuncrefsMayEscape = true
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for _, fidx := range c.Exports {
 				local := fidx - c.NumImports
 				if local < 0 || local >= len(c.Funcs) {
