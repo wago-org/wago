@@ -896,6 +896,13 @@ from 32,992 to 32,632, allocations fell from 32 to 28, and native output fell
 from 564 to 356 bytes (-36.9%). Tests pin eight `ref.is_null` folds, sixteen
 fact-driven null-check removals, and the disabled-policy fallback.
 
+The same result contract now marks every non-null reference returned by an
+ARM64 GC helper, so struct and array constructors retain the fact after their
+safepoint and through locals. An eight-constructor compile fixture improved
+from a 11.999 to 11.229 us/op median (-6.4%), B/op fell from 24,640 to 24,472,
+allocations fell from 36 to 33, and native output fell from 888 to 712 bytes
+(-19.8%). Nullable helper results remain deliberately unmarked.
+
 ---
 
 # 1. North-star architecture

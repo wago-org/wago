@@ -1558,7 +1558,13 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		payload = helper
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
-	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
+	if err := f.callHostSync(int(gcStructDispatchBit|payload), ft); err != nil {
+		return err
+	}
+	if f.opt(optValueFacts) && len(results) == 1 && results[0].Kind() == wasm.ValRef && !results[0].Ref().Nullable() {
+		f.s.back().st.facts |= factNonZero
+	}
+	return nil
 }
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
