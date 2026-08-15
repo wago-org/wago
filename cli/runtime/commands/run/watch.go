@@ -116,7 +116,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 		case <-ctx.Done():
 			if child != nil {
 				if err := child.stopAndReport(options.stderr, options.stopGrace, nil); err != nil {
-					return err
+					return errors.Join(ctx.Err(), err)
 				}
 				child = nil
 			}
