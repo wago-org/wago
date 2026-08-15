@@ -5,6 +5,34 @@ import (
 	"testing"
 )
 
+func TestModuleMemargWidthsScansImportedAndLocalMemories(t *testing.T) {
+	memory32 := NewMemExternType(MemType{Limits: Limits{Min: 1}})
+	memory64 := NewMemExternType(MemType{Limits: Limits{Min: 1, Addr64: true}})
+	uniform := &Module{Imports: []Import{{Type: memory64}, {Type: memory64}}}
+	if got := moduleMemargWidths(uniform); got.module != nil || !got.fixed64 {
+		t.Fatalf("uniform imported memory64 widths = %+v", got)
+	}
+	mixed := &Module{Imports: []Import{{Type: memory32}}, Memories: []MemType{{Limits: Limits{Min: 1, Addr64: true}}}}
+	if got := moduleMemargWidths(mixed); got.module != mixed {
+		t.Fatalf("mixed imported/local widths = %+v, want module-aware", got)
+	}
+}
+
+func BenchmarkModuleMemargWidthsManyImports(b *testing.B) {
+	const memoryCount = 10000
+	m := &Module{Imports: make([]Import, memoryCount)}
+	memory64 := NewMemExternType(MemType{Limits: Limits{Min: 1, Addr64: true}})
+	for i := range m.Imports {
+		m.Imports[i].Type = memory64
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if got := moduleMemargWidths(m); got.module != nil || !got.fixed64 {
+			b.Fatal(got)
+		}
+	}
+}
+
 func TestDecodeMemoryOffsetWidthFollowsMemoryType(t *testing.T) {
 	paths := []struct {
 		name   string

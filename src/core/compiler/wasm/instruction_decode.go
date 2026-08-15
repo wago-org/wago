@@ -271,16 +271,30 @@ type memargWidths struct {
 func fixedMemargWidths(addr64 bool) memargWidths { return memargWidths{fixed64: addr64} }
 
 func moduleMemargWidths(m *Module) memargWidths {
-	if m == nil || m.MemCount() == 0 {
+	if m == nil {
 		return memargWidths{}
 	}
-	first, _ := m.MemoryType(0)
-	addr64 := first.Limits.Addr64
-	for i := 1; i < m.MemCount(); i++ {
-		mt, _ := m.MemoryType(uint32(i))
-		if mt.Limits.Addr64 != addr64 {
+	seen := false
+	addr64 := false
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternMem {
+			continue
+		}
+		got := m.Imports[i].Type.MemType().Limits.Addr64
+		if seen && got != addr64 {
 			return memargWidths{module: m}
 		}
+		seen, addr64 = true, got
+	}
+	for i := range m.Memories {
+		got := m.Memories[i].Limits.Addr64
+		if seen && got != addr64 {
+			return memargWidths{module: m}
+		}
+		seen, addr64 = true, got
+	}
+	if !seen {
+		return memargWidths{}
 	}
 	// Preserve the allocation-free fixed-width hot path for the overwhelmingly
 	// common single-memory and uniform-width multi-memory modules.
