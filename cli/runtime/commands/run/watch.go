@@ -1,16 +1,28 @@
+//go:build (linux || windows) && !wago_lean
+
 package run
 
 import (
+	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"os/signal"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
-func watchModule(path, intervalValue string) {
+const watchStopGrace = 2 * time.Second
+const watchFullScanIntervals = 25
+
+func watchModule(path, intervalValue string, arguments []string, flags []command.Flag) {
 	interval := 200 * time.Millisecond
 	if intervalValue != "" {
 		parsed, err := time.ParseDuration(intervalValue)
@@ -19,78 +31,407 @@ func watchModule(path, intervalValue string) {
 		}
 		interval = parsed
 	}
-	arguments := withoutWatchFlags(os.Args[1:])
-	runWatched(arguments)
-	stamp, err := fileStamp(path)
+	signals := watchedSignals()
+	interrupts := make(chan os.Signal, len(signals))
+	signal.Notify(interrupts, signals...)
+	defer signal.Stop(interrupts)
+	executable, environment, err := watchedChildLaunch()
 	if err != nil {
 		ui.Fatal("watch: %v", err)
 	}
-	fmt.Fprintf(os.Stderr, "%s watching %s\n", ui.Dim("→"), path)
-	for range time.NewTicker(interval).C {
-		next, err := fileStamp(path)
-		if err != nil {
-			continue
+	err = superviseWatch(context.Background(), watchOptions{
+		path:        path,
+		interval:    interval,
+		debounce:    interval,
+		stopGrace:   watchStopGrace,
+		executable:  executable,
+		arguments:   watchedChildArguments(arguments, flags),
+		environment: environment,
+		stdin:       os.Stdin,
+		stdout:      os.Stdout,
+		stderr:      os.Stderr,
+		interrupts:  interrupts,
+	})
+	var interrupted *watchInterruptedError
+	if errors.As(err, &interrupted) {
+		os.Exit(watchedSignalExitCode(interrupted.signal))
+	}
+	if err != nil {
+		ui.Fatal("watch: %v", err)
+	}
+}
+
+type watchOptions struct {
+	path        string
+	interval    time.Duration
+	debounce    time.Duration
+	stopGrace   time.Duration
+	executable  string
+	arguments   []string
+	environment []string
+	stdin       io.Reader
+	stdout      io.Writer
+	stderr      io.Writer
+	interrupts  <-chan os.Signal
+}
+
+type watchInterruptedError struct {
+	signal os.Signal
+}
+
+func (err *watchInterruptedError) Error() string { return "interrupted by " + err.signal.String() }
+
+func superviseWatch(ctx context.Context, options watchOptions) error {
+	if options.interval <= 0 || options.debounce <= 0 || options.stopGrace <= 0 {
+		return errors.New("watch timing must be positive")
+	}
+	stamp, err := fileStamp(options.path)
+	if err != nil {
+		return err
+	}
+	writeWatchedOutput(options.stderr, "%s watching %s\n", ui.Dim("→"), options.path)
+	child, err := startWatchedChild(options)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if child != nil {
+			_, _, _ = child.stop(options.stopGrace, nil)
 		}
-		if next == stamp {
-			continue
+	}()
+	ticker := time.NewTicker(options.interval)
+	defer ticker.Stop()
+	nextFullScan := time.Now().Add(watchFullScanIntervals * options.interval)
+	var candidate watchedStamp
+	var candidateSince time.Time
+	var candidateValid bool
+	var restartPending bool
+	var lastFileError string
+	for {
+		var childDone <-chan watchedProcessResult
+		if child != nil {
+			childDone = child.done
 		}
-		stamp = next
-		fmt.Fprintf(os.Stderr, "%s changed %s\n", ui.Dim("→"), path)
-		runWatched(arguments)
+		select {
+		case <-ctx.Done():
+			if child != nil {
+				if err := child.stopAndReport(options.stderr, options.stopGrace, nil); err != nil {
+					return errors.Join(ctx.Err(), err)
+				}
+				child = nil
+			}
+			return ctx.Err()
+		case interrupted := <-options.interrupts:
+			if watchedContinueSignal(interrupted) {
+				if child != nil {
+					if err := continueWatchedProcess(child.platform, child.command); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if child != nil {
+				if err := child.stopAndReport(options.stderr, options.stopGrace, interrupted); err != nil {
+					return err
+				}
+				child = nil
+			}
+			return &watchInterruptedError{signal: interrupted}
+		case result := <-childDone:
+			releaseErr := child.releasePlatform()
+			child = nil
+			if releaseErr != nil {
+				return releaseErr
+			}
+			reportWatchedProcessResult(options.stderr, result)
+		case now := <-ticker.C:
+			metadata, stampErr := fileMetadata(options.path)
+			if stampErr != nil {
+				candidateValid = false
+				message := stampErr.Error()
+				if message != lastFileError {
+					writeWatchedOutput(options.stderr, "%s watch: %v\n", ui.Red("wago:"), stampErr)
+					lastFileError = message
+				}
+				continue
+			}
+			lastFileError = ""
+			if metadata == stamp.metadata && !restartPending && !candidateValid && now.Before(nextFullScan) {
+				candidateValid = false
+				continue
+			}
+			var next watchedStamp
+			if candidateValid && metadata == candidate.metadata {
+				next = candidate
+			} else {
+				next, stampErr = fileStamp(options.path)
+				if stampErr != nil {
+					candidateValid = false
+					continue
+				}
+				nextFullScan = now.Add(watchFullScanIntervals * options.interval)
+			}
+			if next.sameContent(stamp) && !restartPending {
+				stamp.metadata = next.metadata
+				candidateValid = false
+				continue
+			}
+			if !candidateValid || next != candidate {
+				candidate, candidateSince, candidateValid = next, now, true
+				continue
+			}
+			if now.Sub(candidateSince) < options.debounce {
+				continue
+			}
+			if child != nil {
+				if err := child.stopAndReport(options.stderr, options.stopGrace, nil); err != nil {
+					return err
+				}
+				child = nil
+			}
+			restartPending = true
+			latest, stampErr := fileStamp(options.path)
+			if stampErr != nil {
+				candidateValid = false
+				continue
+			}
+			if latest != candidate {
+				candidate, candidateSince, candidateValid = latest, time.Now(), true
+				continue
+			}
+			writeWatchedOutput(options.stderr, "%s changed %s\n", ui.Dim("→"), options.path)
+			child, err = startWatchedChild(options)
+			if err != nil {
+				return err
+			}
+			stamp, candidateValid, restartPending = latest, false, false
+			nextFullScan = now.Add(watchFullScanIntervals * options.interval)
+		}
+	}
+}
+
+func reportWatchedProcessResult(writer io.Writer, result watchedProcessResult) {
+	if result.err != nil {
+		writeWatchedOutput(writer, "%s %v\n", ui.Red("wago:"), result.err)
 	}
 }
 
 type watchedStamp struct {
-	modTime int64
-	size    int64
+	metadata watchedFileMetadata
+	sum      [sha256.Size]byte
 }
 
+type watchedFileMetadata struct {
+	size     int64
+	modified int64
+	change   [4]uint64
+}
+
+func (stamp watchedStamp) sameContent(other watchedStamp) bool {
+	return stamp.metadata.size == other.metadata.size && stamp.sum == other.sum
+}
+
+type watchHashBuffer [32 << 10]byte
+
+var watchHashBuffers = sync.Pool{New: func() any { return new(watchHashBuffer) }}
+
 func fileStamp(path string) (watchedStamp, error) {
-	info, err := os.Stat(path)
+	file, err := openWatchedFile(path)
 	if err != nil {
 		return watchedStamp{}, err
 	}
-	return watchedStamp{modTime: info.ModTime().UnixNano(), size: info.Size()}, nil
-}
-
-func runWatched(arguments []string) {
-	command := exec.Command(os.Args[0], arguments...)
-	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := command.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", ui.Red("wago:"), err)
+	defer file.Close()
+	beforeInfo, err := file.Stat()
+	if err != nil {
+		return watchedStamp{}, err
 	}
+	before, err := metadataForWatchedFile(file, beforeInfo)
+	if err != nil {
+		return watchedStamp{}, err
+	}
+	if !beforeInfo.Mode().IsRegular() {
+		return watchedStamp{}, fmt.Errorf("%s is not a regular file", path)
+	}
+	hash := sha256.New()
+	buffer := watchHashBuffers.Get().(*watchHashBuffer)
+	defer watchHashBuffers.Put(buffer)
+	for {
+		read, readErr := file.Read(buffer[:])
+		if read != 0 {
+			_, _ = hash.Write(buffer[:read])
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return watchedStamp{}, readErr
+		}
+	}
+	afterInfo, err := file.Stat()
+	if err != nil {
+		return watchedStamp{}, err
+	}
+	after, err := metadataForWatchedFile(file, afterInfo)
+	if err != nil {
+		return watchedStamp{}, err
+	}
+	current, err := os.Stat(path)
+	if err != nil {
+		return watchedStamp{}, err
+	}
+	if before != after || !os.SameFile(afterInfo, current) {
+		return watchedStamp{}, errors.New("module changed while it was read")
+	}
+	stamp := watchedStamp{metadata: after}
+	hash.Sum(stamp.sum[:0])
+	return stamp, nil
 }
 
-func withoutWatchFlags(arguments []string) []string {
+func fileMetadata(path string) (watchedFileMetadata, error) {
+	file, err := openWatchedFile(path)
+	if err != nil {
+		return watchedFileMetadata{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return watchedFileMetadata{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return watchedFileMetadata{}, fmt.Errorf("%s is not a regular file", path)
+	}
+	return metadataForWatchedFile(file, info)
+}
+
+type watchedChild struct {
+	command    *exec.Cmd
+	platform   watchedChildPlatform
+	done       chan watchedProcessResult
+	release    sync.Once
+	releaseErr error
+}
+
+type watchedProcessResult struct {
+	err        error
+	exitCode   int
+	exitSignal os.Signal
+}
+
+var errWatchedGracefulStopUnavailable = errors.New("graceful watched-process stop unavailable")
+
+func startWatchedChild(options watchOptions) (*watchedChild, error) {
+	command := exec.Command(options.executable, options.arguments...)
+	command.Stdin, command.Stdout, command.Stderr = options.stdin, options.stdout, options.stderr
+	if options.environment != nil {
+		command.Env = options.environment
+	}
+	platform, err := startWatchedProcess(command)
+	if err != nil {
+		return nil, err
+	}
+	child := &watchedChild{command: command, platform: platform, done: make(chan watchedProcessResult, 1)}
+	go func() {
+		child.done <- waitWatchedProcess(platform, command)
+		close(child.done)
+	}()
+	return child, nil
+}
+
+func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) (watchedProcessResult, bool, error) {
+	select {
+	case result := <-child.done:
+		return result, true, child.releasePlatform()
+	default:
+	}
+	completed, interruptErr := interruptWatchedProcess(child.platform, child.command, interrupt)
+	if completed {
+		result := <-child.done
+		return result, true, errors.Join(interruptErr, child.releasePlatform())
+	}
+	gracefulUnavailable := errors.Is(interruptErr, errWatchedGracefulStopUnavailable)
+	if gracefulUnavailable {
+		interruptErr = nil
+	} else {
+		timer := time.NewTimer(grace)
+		defer timer.Stop()
+		select {
+		case result := <-child.done:
+			return result, false, errors.Join(interruptErr, watchedStopError(result, interrupt, false), child.releasePlatform())
+		case <-timer.C:
+		}
+	}
+	if err := killWatchedProcess(child.platform, child.command); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		_ = child.command.Process.Kill()
+		result := <-child.done
+		return result, false, errors.Join(interruptErr, err, child.releasePlatform())
+	}
+	result := <-child.done
+	return result, false, errors.Join(interruptErr, watchedStopError(result, interrupt, true), child.releasePlatform())
+}
+
+func (child *watchedChild) stopAndReport(writer io.Writer, grace time.Duration, interrupt os.Signal) error {
+	result, completed, err := child.stop(grace, interrupt)
+	if err != nil {
+		return err
+	}
+	if completed {
+		reportWatchedProcessResult(writer, result)
+	}
+	return nil
+}
+
+func (child *watchedChild) releasePlatform() error {
+	child.release.Do(func() { child.releaseErr = releaseWatchedProcess(child.platform, child.command) })
+	return child.releaseErr
+}
+
+func withoutWatchFlags(arguments []string, flags []command.Flag) []string {
 	result := make([]string, 0, len(arguments))
-	passThrough := false
 	for index := 0; index < len(arguments); index++ {
 		argument := arguments[index]
-		if passThrough {
-			result = append(result, argument)
-			continue
-		}
 		if argument == "--" {
-			passThrough = true
+			return append(result, arguments[index:]...)
+		}
+		if argument == "-" || argument == "" || argument[0] != '-' {
+			return append(result, arguments[index:]...)
+		}
+		flag, inline, ok := watchedCommandFlag(argument, flags)
+		if !ok {
 			result = append(result, argument)
 			continue
 		}
-		if argument == "--watch" || argument == "-w" {
+		if flag.Name == "watch" {
 			continue
 		}
-		if argument == "--watch-interval" {
-			if index+1 < len(arguments) {
+		if flag.Name == "watch-interval" {
+			if !inline && index+1 < len(arguments) {
 				index++
 			}
 			continue
 		}
-		if len(argument) > len("--watch-interval=") && argument[:len("--watch-interval=")] == "--watch-interval=" {
-			continue
-		}
 		result = append(result, argument)
-		if handoff.LooksLikeRuntimeTarget(argument) {
-			passThrough = true
+		if !flag.Bool && !inline && index+1 < len(arguments) {
+			index++
+			result = append(result, arguments[index])
 		}
 	}
 	return result
+}
+
+func watchedChildArguments(arguments []string, flags []command.Flag) []string {
+	return append([]string{"run"}, withoutWatchFlags(arguments, flags)...)
+}
+
+func watchedCommandFlag(argument string, flags []command.Flag) (command.Flag, bool, bool) {
+	name := argument
+	inline := false
+	if equals := strings.IndexByte(argument, '='); equals >= 0 {
+		name, inline = argument[:equals], true
+	}
+	for _, flag := range flags {
+		if name == "--"+flag.Name || flag.Short != "" && name == "-"+flag.Short {
+			return flag, inline, true
+		}
+	}
+	return command.Flag{}, inline, false
 }

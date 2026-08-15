@@ -222,7 +222,34 @@ packages; it does not become a third CLI role.
 
 `run --watch` is runtime-owned. It relaunches the same runtime executable when
 the input module changes, preserving guest arguments and plugin selection made
-by the manager handoff.
+by the manager handoff. The runtime supervises one child process tree at a time,
+keeps file polling active while the guest runs, and waits for stable content
+before a restart. On Linux, the runtime starts two provider-free manager
+processes as a guard and a subreaper worker. The worker starts the active runtime
+as its guest. The guard cleans the tree if the worker dies. Close-on-exec
+lifetime pipes make each supervisor clean the tree if its parent process dies.
+This places supervision before generated plugin providers can initialize. A
+runtime started directly, without the manager handoff, rejects Linux watch mode.
+A terminal-backed watcher and its direct guest stay in the shell's foreground
+job group, so both receive terminal interrupts. If a guest descendant creates a
+separate foreground group, the watcher restores that group after a stop and
+uses a provider-free helper in the group to relay terminal interrupts. It also
+records bounded process identities and checks each identity again before
+signaling it. Linux subreaper ownership keeps double-forked children tracked. On
+Windows, the extended process-start API
+puts the child in its kill-on-close job before its first instruction runs. The
+watcher mirrors terminal stop and
+continue events, and its status output remains safe when background terminal
+writes are disabled. It can find the controlling terminal through stdin,
+stdout, or stderr, including after a background job is foregrounded. Hangup,
+interrupt, quit, and termination signals stop the child tree before the watcher
+exits. Cheap file identity, size, modification, and change metadata gates full
+content hashing. A full scan after 25 poll intervals is the bound when a file
+system does not update that metadata. The hash still detects same-size rewrites
+when modification timestamps do not change. macOS does not provide a safe public
+API to track a process that double-forks before a process-table scan. macOS and
+the size-first `wago_lean` profile therefore do not include watch mode. Their
+parsers reject `--watch`.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

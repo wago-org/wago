@@ -32,7 +32,7 @@ func WantsHelp(args []string, passThrough bool, flags []Flag) bool {
 // Parse accepts long and short flags, inline values, a positional terminator,
 // and first-positional pass-through for guest arguments.
 func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
-	ctx := &Ctx{Cmd: c, Path: path, strs: map[string]string{}, bools: map[string]bool{}}
+	ctx := &Ctx{Cmd: c, Path: path, input: append([]string(nil), args...), strs: map[string]string{}, bools: map[string]bool{}}
 	lookup := flagLookup(c.AllFlags())
 	raw, passThrough := false, false
 	for index := 0; index < len(args); index++ {
