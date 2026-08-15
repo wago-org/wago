@@ -165,6 +165,20 @@ func TestWatchSupervisorRestartsAfterChildExit(t *testing.T) {
 	stopped = true
 }
 
+func TestWatchedChildStopKeepsCompletedExitNonfatal(t *testing.T) {
+	child := &watchedChild{done: make(chan watchedProcessResult, 1)}
+	child.release.Do(func() {})
+	child.done <- watchedProcessResult{err: errors.New("exit status 1"), exitCode: 1}
+	close(child.done)
+	var output strings.Builder
+	if err := child.stopAndReport(&output, time.Second, nil); err != nil {
+		t.Fatalf("stop completed child: %v", err)
+	}
+	if got := output.String(); !strings.Contains(got, "exit status 1") {
+		t.Fatalf("completed child output = %q, want exit status", got)
+	}
+}
+
 func TestWatchSupervisorHandlesDeleteAndRecreate(t *testing.T) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "module.wasm")

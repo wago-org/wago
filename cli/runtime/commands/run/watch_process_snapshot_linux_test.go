@@ -82,7 +82,7 @@ func TestWatchTrackingExcludesLateDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = child.stop(250*time.Millisecond, nil) })
+	t.Cleanup(func() { _, _, _ = child.stop(250*time.Millisecond, nil) })
 	pidPath := filepath.Join(t.TempDir(), "unrelated.pid")
 	helper := exec.Command("/bin/sh", "-c", `sleep 10 >/dev/null 2>&1 & echo $! > "$1"`, "watch-helper", pidPath)
 	if err := helper.Run(); err != nil {

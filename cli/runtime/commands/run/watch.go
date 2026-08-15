@@ -96,7 +96,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 	}
 	defer func() {
 		if child != nil {
-			_ = child.stop(options.stopGrace, nil)
+			_, _, _ = child.stop(options.stopGrace, nil)
 		}
 	}()
 	ticker := time.NewTicker(options.interval)
@@ -115,7 +115,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 		select {
 		case <-ctx.Done():
 			if child != nil {
-				if err := child.stop(options.stopGrace, nil); err != nil {
+				if err := child.stopAndReport(options.stderr, options.stopGrace, nil); err != nil {
 					return err
 				}
 				child = nil
@@ -131,7 +131,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				continue
 			}
 			if child != nil {
-				if err := child.stop(options.stopGrace, interrupted); err != nil {
+				if err := child.stopAndReport(options.stderr, options.stopGrace, interrupted); err != nil {
 					return err
 				}
 				child = nil
@@ -143,9 +143,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 			if releaseErr != nil {
 				return releaseErr
 			}
-			if result.err != nil {
-				writeWatchedOutput(options.stderr, "%s %v\n", ui.Red("wago:"), result.err)
-			}
+			reportWatchedProcessResult(options.stderr, result)
 		case now := <-ticker.C:
 			metadata, stampErr := fileMetadata(options.path)
 			if stampErr != nil {
@@ -186,7 +184,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				continue
 			}
 			if child != nil {
-				if err := child.stop(options.stopGrace, nil); err != nil {
+				if err := child.stopAndReport(options.stderr, options.stopGrace, nil); err != nil {
 					return err
 				}
 				child = nil
@@ -209,6 +207,12 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 			stamp, candidateValid, restartPending = latest, false, false
 			nextFullScan = now.Add(watchFullScanIntervals * options.interval)
 		}
+	}
+}
+
+func reportWatchedProcessResult(writer io.Writer, result watchedProcessResult) {
+	if result.err != nil {
+		writeWatchedOutput(writer, "%s %v\n", ui.Red("wago:"), result.err)
 	}
 }
 
@@ -331,10 +335,10 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	return child, nil
 }
 
-func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) error {
+func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) (watchedProcessResult, bool, error) {
 	select {
 	case result := <-child.done:
-		return errors.Join(result.err, child.releasePlatform())
+		return result, true, child.releasePlatform()
 	default:
 	}
 	_ = interruptWatchedProcess(child.platform, child.command, interrupt)
@@ -342,16 +346,27 @@ func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) error 
 	defer timer.Stop()
 	select {
 	case result := <-child.done:
-		return errors.Join(watchedStopError(result, interrupt, false), child.releasePlatform())
+		return result, false, errors.Join(watchedStopError(result, interrupt, false), child.releasePlatform())
 	case <-timer.C:
 	}
 	if err := killWatchedProcess(child.platform, child.command); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		_ = child.command.Process.Kill()
-		<-child.done
-		return errors.Join(err, child.releasePlatform())
+		result := <-child.done
+		return result, false, errors.Join(err, child.releasePlatform())
 	}
 	result := <-child.done
-	return errors.Join(watchedStopError(result, interrupt, true), child.releasePlatform())
+	return result, false, errors.Join(watchedStopError(result, interrupt, true), child.releasePlatform())
+}
+
+func (child *watchedChild) stopAndReport(writer io.Writer, grace time.Duration, interrupt os.Signal) error {
+	result, completed, err := child.stop(grace, interrupt)
+	if err != nil {
+		return err
+	}
+	if completed {
+		reportWatchedProcessResult(writer, result)
+	}
+	return nil
 }
 
 func (child *watchedChild) releasePlatform() error {
