@@ -69,7 +69,7 @@ func choosePackageInstall(pkg registry.InstallPackage) ([]string, error) {
 		if mode == "all" {
 			return []string{pkg.Module}, nil
 		}
-		selected, back, err := choosePackageProviders(pkg)
+		selected, back, err := choosePackageSubpackages(pkg)
 		if err != nil {
 			return nil, err
 		}
@@ -81,19 +81,19 @@ func choosePackageInstall(pkg registry.InstallPackage) ([]string, error) {
 
 func packageInstallModeItems(count int) []tui.Item {
 	return []tui.Item{
-		{Label: "Everything", Description: fmt.Sprintf("install all %d providers", count), Value: "all"},
-		{Label: "Choose providers", Description: "select only what you need", Value: "custom"},
+		{Label: "Everything", Description: fmt.Sprintf("install all %d subpackages", count), Value: "all"},
+		{Label: "Choose subpackages", Description: "select only what you need", Value: "custom"},
 	}
 }
 
-func choosePackageProviders(pkg registry.InstallPackage) ([]string, bool, error) {
-	selector, modules := packageProviderSelector(pkg)
+func choosePackageSubpackages(pkg registry.InstallPackage) ([]string, bool, error) {
+	selector, modules := packageSubpackageSelector(pkg)
 	for {
 		submitted, cancelled := tui.Run(selector)
 		if cancelled || !submitted {
 			return nil, true, nil
 		}
-		selected := selectedPackageProviders(selector, modules)
+		selected := selectedPackageSubpackages(selector, modules)
 		if !selector.Rejected() && len(selected) != 0 {
 			return selected, false, nil
 		}
@@ -109,7 +109,7 @@ func choosePackageProviders(pkg registry.InstallPackage) ([]string, bool, error)
 	}
 }
 
-func packageProviderSelector(pkg registry.InstallPackage) (*tui.MultiSelect, []string) {
+func packageSubpackageSelector(pkg registry.InstallPackage) (*tui.MultiSelect, []string) {
 	items := make([]tui.SelectItem, 0, len(pkg.Subpackages)+1)
 	modules := make([]string, 0, len(pkg.Subpackages))
 	for _, subpackage := range pkg.Subpackages {
@@ -126,13 +126,13 @@ func packageProviderSelector(pkg registry.InstallPackage) (*tui.MultiSelect, []s
 	}
 	items = append(items, tui.SelectItem{Label: "Install none", Description: "cancel installation", Reject: true})
 	return &tui.MultiSelect{
-		Title:  "Providers · " + pkg.Name,
+		Title:  "Subpackages · " + pkg.Name,
 		Prompt: "space toggle · enter confirm · r install none · esc back",
 		Items:  items,
 	}, modules
 }
 
-func selectedPackageProviders(selector *tui.MultiSelect, modules []string) []string {
+func selectedPackageSubpackages(selector *tui.MultiSelect, modules []string) []string {
 	var selected []string
 	for index, module := range modules {
 		if selector.Items[index].On {

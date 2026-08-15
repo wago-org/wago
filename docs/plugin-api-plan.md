@@ -204,7 +204,7 @@ configuration.
 `wago add` performs one transaction:
 
 1. Resolve package metadata. An interactive package-root install chooses either
-   the root bundle or an explicit subset of its published providers;
+   the root bundle or an explicit subset of its published subpackages;
    non-interactive root installs keep the root and therefore select everything.
 2. Resolve the requested plugins and transitive definitions from the registry.
 3. Compute the proposed manifest, lock graph, authority review, and build inputs
