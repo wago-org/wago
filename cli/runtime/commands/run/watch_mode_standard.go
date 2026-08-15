@@ -21,6 +21,6 @@ func runWatch(ctx *command.Ctx) bool {
 	if len(ctx.Args) == 0 {
 		ui.Usage("run: need a <file>")
 	}
-	watchModule(ctx.Args[0], ctx.Str("watch-interval"))
+	watchModule(ctx.Args[0], ctx.Str("watch-interval"), ctx.Invocation(), ctx.Cmd.AllFlags())
 	return true
 }

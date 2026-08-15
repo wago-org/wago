@@ -11,17 +11,18 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/ui"
 )
 
 const watchStopGrace = 2 * time.Second
 const watchFullScanIntervals = 25
 
-func watchModule(path, intervalValue string) {
+func watchModule(path, intervalValue string, arguments []string, flags []command.Flag) {
 	interval := 200 * time.Millisecond
 	if intervalValue != "" {
 		parsed, err := time.ParseDuration(intervalValue)
@@ -40,7 +41,7 @@ func watchModule(path, intervalValue string) {
 		debounce:   interval,
 		stopGrace:  watchStopGrace,
 		executable: os.Args[0],
-		arguments:  withoutWatchFlags(os.Args[1:]),
+		arguments:  withoutWatchFlags(arguments, flags),
 		stdin:      os.Stdin,
 		stdout:     os.Stdout,
 		stderr:     os.Stderr,
@@ -346,36 +347,49 @@ func (child *watchedChild) releasePlatform() {
 	child.release.Do(func() { releaseWatchedProcess(child.platform, child.command) })
 }
 
-func withoutWatchFlags(arguments []string) []string {
+func withoutWatchFlags(arguments []string, flags []command.Flag) []string {
 	result := make([]string, 0, len(arguments))
-	passThrough := false
 	for index := 0; index < len(arguments); index++ {
 		argument := arguments[index]
-		if passThrough {
-			result = append(result, argument)
-			continue
-		}
 		if argument == "--" {
-			passThrough = true
+			return append(result, arguments[index:]...)
+		}
+		if argument == "-" || argument == "" || argument[0] != '-' {
+			return append(result, arguments[index:]...)
+		}
+		flag, inline, ok := watchedCommandFlag(argument, flags)
+		if !ok {
 			result = append(result, argument)
 			continue
 		}
-		if argument == "--watch" || argument == "-w" {
+		if flag.Name == "watch" {
 			continue
 		}
-		if argument == "--watch-interval" {
-			if index+1 < len(arguments) {
+		if flag.Name == "watch-interval" {
+			if !inline && index+1 < len(arguments) {
 				index++
 			}
 			continue
 		}
-		if len(argument) > len("--watch-interval=") && argument[:len("--watch-interval=")] == "--watch-interval=" {
-			continue
-		}
 		result = append(result, argument)
-		if handoff.LooksLikeRuntimeTarget(argument) {
-			passThrough = true
+		if !flag.Bool && !inline && index+1 < len(arguments) {
+			index++
+			result = append(result, arguments[index])
 		}
 	}
 	return result
+}
+
+func watchedCommandFlag(argument string, flags []command.Flag) (command.Flag, bool, bool) {
+	name := argument
+	inline := false
+	if equals := strings.IndexByte(argument, '='); equals >= 0 {
+		name, inline = argument[:equals], true
+	}
+	for _, flag := range flags {
+		if name == "--"+flag.Name || flag.Short != "" && name == "-"+flag.Short {
+			return flag, inline, true
+		}
+	}
+	return command.Flag{}, inline, false
 }
