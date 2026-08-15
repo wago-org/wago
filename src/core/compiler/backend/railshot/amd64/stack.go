@@ -298,6 +298,18 @@ func (s *stack) erase(e *elem) {
 	e.prev, e.next = nil, nil
 }
 
+// replaceTopWithBlock replaces the current single top value with a previously
+// detached valent block. Call rematerialization uses this after rebuilding the
+// below-argument stack, so the original bounded tree consumes no new arena
+// nodes and preserves its producer links.
+func (s *stack) replaceTopWithBlock(base, root *elem) {
+	top := s.back()
+	prev := top.prev
+	s.erase(top)
+	prev.next, base.prev = base, prev
+	root.next, s.head.prev = s.head, root
+}
+
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
 
 // baseOfValentBlock walks the left spine of the valent block rooted at `root`

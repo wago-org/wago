@@ -1731,6 +1731,7 @@ type callRemat struct {
 	st    storage
 	index int
 	local bool
+	tree  bool
 }
 
 func (f *fn) planCallRemat(roots []*elem, p int, preservesPins bool) (r callRemat) {
@@ -1739,6 +1740,11 @@ func (f *fn) planCallRemat(roots []*elem, p int, preservesPins bool) (r callRema
 		return r
 	}
 	root := roots[belowN-1]
+	if f.opt(optCallRematBin) && root.kind == ekDeferred &&
+		(root.typ == mtI32 || root.typ == mtI64) && isBinALU(root.op) &&
+		callRematFrameLeaf(root.arg0) && callRematFrameLeaf(root.arg1) {
+		return callRemat{root: root, index: belowN - 1, tree: true}
+	}
 	if root.kind != ekValue || root.st.typ != mtI32 && root.st.typ != mtI64 {
 		return r
 	}
@@ -1779,6 +1785,11 @@ func (f *fn) restoreCallRemat(r callRemat) {
 	}
 	roots := f.rootsBottomToTop()
 	root := roots[r.index]
+	if r.tree {
+		f.s.replaceTopWithBlock(baseOfValentBlock(r.root), r.root)
+		f.stats.peep("call-remat-bin")
+		return
+	}
 	root.kind = ekValue
 	root.st = r.st // admitted integer recipes are never GC roots
 	if r.local {
@@ -1786,6 +1797,10 @@ func (f *fn) restoreCallRemat(r callRemat) {
 	} else {
 		f.stats.peep("call-remat-const")
 	}
+}
+
+func callRematFrameLeaf(e *elem) bool {
+	return e != nil && e.kind == ekValue && (e.st.kind == stConst || e.st.kind == stLocalRef)
 }
 
 // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)

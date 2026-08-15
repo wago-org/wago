@@ -48,6 +48,9 @@ var (
 	// callRematLocalEnabled retains one topmost integer local read below a
 	// register-ABI call. WAGO_ARM64_NO_CALL_REMAT_LOCAL=1 is the rollback path.
 	callRematLocalEnabled = os.Getenv("WAGO_ARM64_NO_CALL_REMAT_LOCAL") != "1"
+	// callRematBinEnabled retains one depth-one pure integer expression below a
+	// register-ABI call. WAGO_ARM64_NO_CALL_REMAT_BIN=1 is the rollback path.
+	callRematBinEnabled = os.Getenv("WAGO_ARM64_NO_CALL_REMAT_BIN") != "1"
 	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
 	// onto one max-sized physical scratch region. WAGO_ARM64_NO_INLINE_SLOT_OVERLAY=1
 	// retains the prior one-region-per-callee frame layout.

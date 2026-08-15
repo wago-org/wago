@@ -72,6 +72,7 @@
               "branch-fold",
               "call-effect-bounds",
               "call-next-use",
+              "call-remat-bin",
               "call-remat-const",
               "call-remat-local",
               "call-result-residency",

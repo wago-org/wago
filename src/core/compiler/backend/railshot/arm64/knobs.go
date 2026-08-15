@@ -24,6 +24,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("call-effect-bounds", &callEffectBoundsEnabled),
 	optimization.Bind("call-remat-const", &callRematConstEnabled),
 	optimization.Bind("call-remat-local", &callRematLocalEnabled),
+	optimization.Bind("call-remat-bin", &callRematBinEnabled),
 	optimization.Bind("abi-classes", &abiClassesEnabled),
 	optimization.Bind("abi-leaf-fp", &abiLeafFPEnabled),
 	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
@@ -86,6 +87,7 @@ var (
 	optCallEffectBounds      = optimizationBindings.Option("call-effect-bounds")
 	optCallRematConst        = optimizationBindings.Option("call-remat-const")
 	optCallRematLocal        = optimizationBindings.Option("call-remat-local")
+	optCallRematBin          = optimizationBindings.Option("call-remat-bin")
 	optABIClasses            = optimizationBindings.Option("abi-classes")
 	optABILeafFP             = optimizationBindings.Option("abi-leaf-fp")
 	optPreparedFPEntry       = optimizationBindings.Option("prepared-fp-entry")

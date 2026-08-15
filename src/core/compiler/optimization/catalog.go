@@ -269,6 +269,7 @@ var catalog = []Definition{
 	both("call-effect-bounds", "Call effect bounds", "preserve bounds proofs across effect-safe direct calls"),
 	both("call-remat-const", "Call constant rematerialization", "retain one integer constant symbolically across register-ABI calls"),
 	both("call-remat-local", "Call local rematerialization", "retain one integer local read symbolically across register-ABI calls"),
+	both("call-remat-bin", "Call expression rematerialization", "retain one depth-one pure integer expression across register-ABI calls"),
 	both("abi-classes", "Internal ABI classes", "classify effect-safe direct-call register contracts"),
 	both("abi-leaf-fp", "FP leaf ABI", "preserve caller pin banks across bounded FP leaf calls"),
 	both("prepared-fp-entry", "Prepared FP/mixed entry", "mark bounded FP and mixed-bank functions for fixed prepared trampolines"),

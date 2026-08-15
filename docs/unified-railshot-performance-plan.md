@@ -3613,3 +3613,59 @@ publication, frame-reference retention, overwrite-after-call semantics,
 forward-merge fallback, disabled policy, and serial/parallel determinism. The
 complete local repository suite, both native backend suites, focused race
 tests, SQLite query, executable corpus, and fuzz regression corpus pass.
+
+## 2026-08-15 — depth-one pure-expression rematerialization across calls
+
+The next call-surviving recipe retains one topmost depth-one integer ALU tree
+below a nonzero-argument register-ABI call. Admission requires an `i32` or
+`i64` nontrapping add, subtract, multiply, or bitwise operation whose two leaves
+are constants or frame-backed caller locals. Register leaves, nested trees,
+division, remainder, comparisons, shifts, references, FP/vector operations,
+EH, host/wrapper calls, zero-argument calls, and tail transfers keep the
+canonical operand snapshot.
+
+The call flush reserves the expression's result slot but leaves its three
+existing Valent nodes untouched. After the below-argument stack is rebuilt, it
+removes the generated top slot and splices the original leaf/leaf/operator
+block back into the intrusive stack. This adds no nodes, copy, slice, scan, or
+heap allocation, and it preserves the original producer links for ordinary
+target selection after the call.
+
+The immutable option and rollback controls are:
+
+```text
+call-remat-bin
+WAGO_AMD64_NO_CALL_REMAT_BIN=1
+WAGO_ARM64_NO_CALL_REMAT_BIN=1
+```
+
+A removed demand probe found 216 AMD64 and 218 ARM64 deferred integer ALU roots
+immediately below calls. The strict depth-one/frame-leaf contract admits 67 and
+152 respectively. Balanced corpus output changes by:
+
+```text
+AMD64: 81,228,025 -> 81,227,337 native bytes (-688)
+ARM64: 91,555,144 -> 91,554,296 native bytes (-848)
+```
+
+Focused one-call results:
+
+```text
+Ryzen 7 7800X3D, eight samples:
+    stored:         about 13.16 ns/op, 182 native bytes, 0 B/op
+    rematerialized: about 12.80 ns/op, 175 native bytes, 0 B/op
+    delta:          about -2.7% time, -3.8% native bytes
+
+Apple M4 Max, eight samples:
+    stored:         about 13.10 ns/op, 216 native bytes, 0 B/op
+    rematerialized: about 12.63 ns/op, 208 native bytes, 0 B/op
+    delta:          about -3.6% time, -3.7% native bytes
+```
+
+Six order-balanced compile comparisons over regexmatch, SQLite, Ruby, and
+esbuild report +0.03% AMD64 and +0.33% ARM64 geomeans. B/op and allocation
+counts are materially unchanged. Native tests cover enabled and disabled
+execution, code reduction, serial/parallel determinism, register-leaf and
+nested-tree fallbacks, and the fixed descriptor path. The complete repository,
+both native backend suites, focused race tests, SQLite query, executable corpus,
+and fuzz regression corpus pass.
