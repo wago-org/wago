@@ -4014,3 +4014,19 @@ The exact 64-module AMD64 corpus recorded zero selections. The scanner and
 lowering were removed. Eliminating the remaining `call -> local.set` moves needs
 a finite result ABI or bounded physical ownership transfer; another dead-local
 lookahead does not match the current workloads.
+
+### Rejected follow-up: AMD64 straight-line local value facts
+
+An AMD64 parity prototype retained upper-zero, boolean, and sign-extension facts
+through straight-line `local.set`/`local.get` pairs, matching the existing ARM64
+assignment-version model. It replaced the unused type byte in `localDef`, so the
+per-local structure remained four bytes, and control-bearing functions kept the
+conservative no-fact fallback.
+
+The exact 64-module corpus recorded 9,862 fact-carrying local reads across 14
+modules, led by Ruby (6,411), but a direct candidate-versus-parent compiler
+comparison produced zero changed native bytes in every module. AMD64's typed
+32-bit local loads and materialization already establish the useful machine
+width at the measured consumers. The bookkeeping and tests were removed;
+architecture-neutral facts do not require symmetric target retention when one
+backend has no code-selection benefit.
