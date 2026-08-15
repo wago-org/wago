@@ -38,7 +38,7 @@ func BenchmarkThreeWayUnsignedCompare(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			var stats ModuleStats
 			cm, err := CompileModuleWith(m, CompileOptions{
-				Optimizations: map[string]bool{"st-flags": tc.on},
+				Optimizations: map[string]bool{"three-way-unsigned": tc.on},
 				Stats:         &stats,
 			})
 			if err != nil {
@@ -68,8 +68,8 @@ func BenchmarkThreeWayUnsignedCompare(b *testing.B) {
 			binary.LittleEndian.PutUint64(args, ^uint64(0))
 			binary.LittleEndian.PutUint64(args[8:], 1)
 			b.ReportAllocs()
-			b.ReportMetric(float64(stats.Funcs[0].CodeBytes), "native-bytes")
 			b.ResetTimer()
+			b.ReportMetric(float64(stats.Funcs[0].CodeBytes), "native-bytes")
 			for i := 0; i < b.N; i++ {
 				if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err != nil {
 					b.Fatal(err)
@@ -89,7 +89,7 @@ func BenchmarkCompileThreeWayUnsignedCompare(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"st-flags": tc.on}})
+				cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"three-way-unsigned": tc.on}})
 				if err != nil {
 					b.Fatal(err)
 				}

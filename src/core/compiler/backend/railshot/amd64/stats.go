@@ -93,6 +93,10 @@ var (
 	// storing $c with a flag-neutral SETcc after the CMP. WAGO_NO_STFLAGS=1 is the
 	// A/B oracle + kill switch for this flag-desync-sensitive path.
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
+	// threeWayUnsignedEnabled retains one unsigned comparison's flags across
+	// SETA and SBB to form -1/0/1. WAGO_AMD64_NO_THREE_WAY_UNSIGNED=1 is the A/B
+	// oracle for this bounded tree rule.
+	threeWayUnsignedEnabled = os.Getenv("WAGO_AMD64_NO_THREE_WAY_UNSIGNED") != "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
 	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"

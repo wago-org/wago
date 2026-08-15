@@ -34,7 +34,7 @@ func TestThreeWayUnsignedCompare(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			off, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"st-flags": false}})
+			off, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"three-way-unsigned": false}})
 			if err != nil {
 				t.Fatal(err)
 			}

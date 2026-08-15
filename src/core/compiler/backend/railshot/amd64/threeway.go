@@ -17,7 +17,7 @@ func (f *fn) tryThreeWayUnsignedCompare(node *elem, dest Reg) Reg {
 		return regNone
 	}
 	f.stats.peep("three-way-unsigned-candidate")
-	if !f.opt(optSTFlags) {
+	if !f.opt(optThreeWayUnsigned) {
 		return regNone
 	}
 
