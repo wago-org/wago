@@ -90,6 +90,7 @@ func configureStagedGCArrayTypeDescs(_ stagedGCArrayProduct, descs []gc.TypeDesc
 func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 	var found stagedGCArrayProduct
 	generic := false
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		r := wasm.NewReader(m.Code[i].BodyBytes)
 		for r.HasNext() {
@@ -97,8 +98,8 @@ func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 			if err != nil {
 				return 0, false
 			}
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 				return 0, false
 			}
 			var product stagedGCArrayProduct
