@@ -921,6 +921,14 @@ and native output fell from 780 to 636 bytes (-18.5%). Tests cover direct
 consumption, a local round trip, disabled facts, and the nullable-result near
 miss.
 
+Native final struct and array reference loads now preserve a field's declared
+non-null result type when they publish the compact handle. Helper-backed loads
+already receive the same contract from typed helper results. A combined
+eight-pair struct/array fixture improved from a 38.050 to 36.971 us/op compile
+median (-2.8%), B/op fell from 40,344 to 39,960, allocations fell from 44 to 43,
+and native output fell from 7,032 to 6,840 bytes (-2.7%). Both native load
+families, disabled facts, and a nullable field near miss are tested.
+
 ---
 
 # 1. North-star architecture

@@ -179,6 +179,9 @@ func TestNativeFinalCastRefGetFusionARM64(t *testing.T) {
 	if got := stats.Funcs[0].Calls[callKindHostSync]; got != 0 {
 		t.Fatalf("native final cast reference helper calls = %d, want 0", got)
 	}
+	if got := stats.Funcs[0].Peephole["ref-is-null-fold"]; got != 0 {
+		t.Fatalf("nullable field ref.is_null folds = %d, want 0", got)
+	}
 }
 
 func BenchmarkNativeFinalRefGetCompileARM64(b *testing.B) {

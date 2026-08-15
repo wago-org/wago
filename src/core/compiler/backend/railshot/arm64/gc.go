@@ -356,7 +356,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + 4
 				if required <= math.MaxInt32 {
 					f.stats.peep("gc-native-final-struct-ref-get")
-					return f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), true)
+					return f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), true, field.Storage().Val())
 				}
 			}
 		}
@@ -587,7 +587,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		if sub == 11 && f.policy.EnabledOption(optGCNativeRefGet) && !f.policy.CompactNative && f.directGCArrayRefLayout(typeIndex) {
 			f.stats.peep("gc-native-final-array-ref-get")
-			return f.emitNativeFinalArrayRefGet(typeIndex)
+			return f.emitNativeFinalArrayRefGet(typeIndex, resultType)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -893,7 +893,7 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 			if required <= math.MaxInt32 {
 				f.stats.peep("final-cast-struct-get-fuse")
 				f.stats.peep("gc-native-final-struct-ref-get")
-				return true, f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), nullable)
+				return true, f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), nullable, field.Storage().Val())
 			}
 		}
 	}
@@ -1000,7 +1000,7 @@ func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uin
 	return nil
 }
 
-func (f *fn) emitNativeFinalStructRefGet(typeIndex, fieldOffset, required uint32, nullable bool) error {
+func (f *fn) emitNativeFinalStructRefGet(typeIndex, fieldOffset, required uint32, nullable bool, resultType wasm.ValType) error {
 	object, err := f.emitNativeFinalCastObject(typeIndex, required, nullable)
 	if err != nil {
 		return err
@@ -1013,7 +1013,9 @@ func (f *fn) emitNativeFinalStructRefGet(typeIndex, fieldOffset, required uint32
 	if result != object {
 		f.release(object)
 	}
-	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+	value := f.pushReg(result, mtI64)
+	value.st.gcRoot = f.tracksGCFrameRoots()
+	f.applyFactsForTypedResult(value, resultType)
 	return nil
 }
 
@@ -1076,7 +1078,7 @@ func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directG
 	return nil
 }
 
-func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
+func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32, resultType wasm.ValType) error {
 	indexValue := f.popValue()
 	index := f.materialize(indexValue)
 	f.a.MovReg32(index, index)
@@ -1090,7 +1092,9 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 	f.pinned = f.pinned.remove(index)
 	f.release(index)
 	f.release(object)
-	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+	value := f.pushReg(result, mtI64)
+	value.st.gcRoot = f.tracksGCFrameRoots()
+	f.applyFactsForTypedResult(value, resultType)
 	return nil
 }
 
