@@ -147,7 +147,13 @@ func (f *fn) flushBelow(node *elem) int {
 // comparison holds. The CMP must be the last flag-affecting instruction before
 // the branch, so callers flush everything below first.
 func (f *fn) condenseToFlags(node *elem) Cond {
-	f.stats.peep("cmp-branch-fuse")
+	return f.condenseToFlagsMode(node, true)
+}
+
+func (f *fn) condenseToFlagsMode(node *elem, branch bool) Cond {
+	if branch {
+		f.stats.peep("cmp-branch-fuse")
+	}
 	// eqz over a fusable compare fuses by INVERTING the branch condition rather than
 	// materializing the inner boolean (the SETcc+MOVZX+TEST an `eqz(a<b)` otherwise
 	// costs): `eqz(a<b)` branches on !(a<b) directly. Nested eqz peels too

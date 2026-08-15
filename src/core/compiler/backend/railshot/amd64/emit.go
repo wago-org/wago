@@ -177,6 +177,11 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 // architectural carry flag from the final full-width addition live. It disables
 // flag-neutral LEA/tree covers and INC, whose carry semantics differ from ADD.
 func (f *fn) condenseBinaryMode(node *elem, dest Reg, requireAddCarry bool) Reg {
+	if !requireAddCarry {
+		if result := f.tryWidenedCarryArithmetic(node, dest); result != regNone {
+			return result
+		}
+	}
 	if result := f.tryThreeWayUnsignedCompare(node, dest); result != regNone {
 		return result
 	}

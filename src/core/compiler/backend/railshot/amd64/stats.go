@@ -101,6 +101,10 @@ var (
 	// `iN.add; local.tee; local.get <add operand>; iN.lt_u` (and its optional
 	// i64.extend_i32_u). WAGO_AMD64_NO_TEE_ADD_CARRY=1 is the A/B oracle.
 	teeAddCarryEnabled = os.Getenv("WAGO_AMD64_NO_TEE_ADD_CARRY") != "1"
+	// widenedCarryArithmeticEnabled folds an immediately widened unsigned less-
+	// than into the CF input of ADC/SBB. WAGO_AMD64_NO_WIDENED_CARRY_ARITH=1 is
+	// the A/B oracle.
+	widenedCarryArithmeticEnabled = os.Getenv("WAGO_AMD64_NO_WIDENED_CARRY_ARITH") != "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
 	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
