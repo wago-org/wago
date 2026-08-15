@@ -9,4 +9,7 @@ func TestCallTrafficAny(t *testing.T) {
 	if !(CallTraffic{RegisterArgumentMoves: 1}).Any() || !(CallTraffic{RegisterResultMoves: 1}).Any() {
 		t.Fatal("nonzero call traffic was omitted")
 	}
+	if !(CallTraffic{IntegerCallArgumentMoves: 1}).Any() || !(CallTraffic{MixedCallArgumentMoves: 1}).Any() || !(CallTraffic{TailCallArgumentMoves: 1}).Any() {
+		t.Fatal("nonzero call-argument cause was omitted")
+	}
 }

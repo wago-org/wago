@@ -301,9 +301,22 @@ func (s *CodegenStats) addCallPreservationReload() {
 		s.LocalTraffic.CallPreservationReloads++
 	}
 }
-func (s *CodegenStats) addRegisterArgumentMoves(n int) {
+func (s *CodegenStats) addIntegerCallArgumentMove() {
 	if s != nil {
-		s.CallTraffic.RegisterArgumentMoves += n
+		s.CallTraffic.RegisterArgumentMoves++
+		s.CallTraffic.IntegerCallArgumentMoves++
+	}
+}
+func (s *CodegenStats) addMixedCallArgumentMove() {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves++
+		s.CallTraffic.MixedCallArgumentMoves++
+	}
+}
+func (s *CodegenStats) addTailCallArgumentMove() {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves++
+		s.CallTraffic.TailCallArgumentMoves++
 	}
 }
 func (s *CodegenStats) addRegisterResultMoves(n int) {
@@ -650,8 +663,10 @@ func (s *CodegenStats) report() string {
 	}
 	callTraffic := s.CallTraffic
 	if callTraffic.Any() {
-		fmt.Fprintf(&b, "    call-traffic: reg-arg-move=%d reg-result-move=%d\n",
-			callTraffic.RegisterArgumentMoves, callTraffic.RegisterResultMoves)
+		fmt.Fprintf(&b, "    call-traffic: reg-arg-move=%d reg-result-move=%d arg-int=%d arg-mixed=%d arg-tail=%d\n",
+			callTraffic.RegisterArgumentMoves, callTraffic.RegisterResultMoves,
+			callTraffic.IntegerCallArgumentMoves, callTraffic.MixedCallArgumentMoves,
+			callTraffic.TailCallArgumentMoves)
 	}
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)

@@ -1112,6 +1112,29 @@ from a 67.02 to 73.42 ns/op median (+9.5%) after removing both copies. Future
 AMD64 argument work should therefore target allocation and parallel-shuffle
 shape without shortening every call/return interval indiscriminately.
 
+### 2026-08-14 — AMD64 argument-move causality refinement
+
+The opt-in call ledger now partitions AMD64 register-argument instructions by
+integer, mixed-bank, and tail-call lowering, and separately marks the bounded
+parallel resolver's swap cases. The three fixed counters add 24 bytes only to
+an opt-in per-function `CodegenStats`; ordinary compilation retains nil stats,
+the same emitted bytes, and no new allocation. Eight-sample native compile
+medians were neutral at 8.51 versus 8.47 us/op, with 35 allocations/op and B/op
+unchanged.
+
+On native AMD64 Ruby, 112,404 of 112,865 argument moves (99.6%) come from the
+ordinary integer-call path, 461 from mixed calls, and none from tail calls. Only
+five integer moves are cycle-breaking swaps; mixed calls add four FP swaps.
+A temporary stats-only source probe further attributed 103,176 integer
+mismatches to pinned locals, 5,775 to deferred expressions, 2,488 to memory
+references, and 970 to ordinary values. The probe was removed after measurement
+to keep disabled statistics off the production compile path.
+
+The next AMD64 step is therefore not resolver tuning. It is bounded
+call-position-aware local ownership: arrange a dying or call-adjacent pinned
+local in its ABI argument register before the call, without globally pinning
+fixed-role RAX/RCX/RDX/R8 and without changing call/return spacing.
+
 ---
 
 # 1. North-star architecture

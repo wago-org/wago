@@ -903,10 +903,11 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	}
 	resolveRegMovesWindow(gpMoves[:gpN], func(dst, src Reg) {
 		f.a.MovReg64(dst, src)
-		f.stats.addRegisterArgumentMoves(1)
+		f.stats.addTailCallArgumentMove()
 	}, func(x, y Reg) {
 		f.a.Xchg64(x, y)
-		f.stats.addRegisterArgumentMoves(1)
+		f.stats.addTailCallArgumentMove()
+		f.stats.peep("tail-call-arg-swap")
 	})
 	for _, move := range fpMoves[:fpN] {
 		f.fpinned = f.fpinned.remove(move.src)
@@ -915,7 +916,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	resolveRegMovesWindow(fpMoves[:fpN],
 		func(dst, src Reg) {
 			f.a.FMov(dst, src, true)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addTailCallArgumentMove()
 		},
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
@@ -925,7 +926,8 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.a.FStoreDisp(RSP, off, x, true)
 			f.a.FMov(x, y, true)
 			f.a.FLoadDisp(y, RSP, off, true)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addTailCallArgumentMove()
+			f.stats.peep("tail-call-fp-arg-swap")
 		})
 	for _, arg := range deferred[:deferredN] {
 		if arg.float {
@@ -1791,10 +1793,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	}
 	resolveRegMovesWindow(moves, func(dst, src Reg) {
 		f.a.MovReg64(dst, src)
-		f.stats.addRegisterArgumentMoves(1)
+		f.stats.addIntegerCallArgumentMove()
 	}, func(x, y Reg) {
 		f.a.Xchg64(x, y)
-		f.stats.addRegisterArgumentMoves(1)
+		f.stats.addIntegerCallArgumentMove()
+		f.stats.peep("call-arg-swap")
 	})
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
@@ -2010,10 +2013,11 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	resolveRegMovesWindow(gpMoves, func(dst, src Reg) {
 		f.a.MovReg64(dst, src)
-		f.stats.addRegisterArgumentMoves(1)
+		f.stats.addMixedCallArgumentMove()
 	}, func(x, y Reg) {
 		f.a.Xchg64(x, y)
-		f.stats.addRegisterArgumentMoves(1)
+		f.stats.addMixedCallArgumentMove()
+		f.stats.peep("mixed-call-gp-arg-swap")
 	})
 	for _, m := range fpMoves {
 		f.fpinned = f.fpinned.remove(m.src)
@@ -2022,7 +2026,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) {
 			f.a.FMov(dst, src, true)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addMixedCallArgumentMove()
 		},
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
@@ -2032,7 +2036,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.a.FStoreDisp(RSP, off, x, true)
 			f.a.FMov(x, y, true)
 			f.a.FLoadDisp(y, RSP, off, true)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addMixedCallArgumentMove()
+			f.stats.peep("mixed-call-fp-arg-swap")
 		})
 	for _, da := range deferred {
 		if da.float {

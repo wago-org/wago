@@ -29,8 +29,16 @@ func (t LocalTraffic) Any() bool {
 type CallTraffic struct {
 	RegisterArgumentMoves int
 	RegisterResultMoves   int
+
+	// AMD64 argument moves are split by the lowering path that requested them.
+	// The total above remains the cross-target headline counter.
+	IntegerCallArgumentMoves int
+	MixedCallArgumentMoves   int
+	TailCallArgumentMoves    int
 }
 
 func (t CallTraffic) Any() bool {
-	return t.RegisterArgumentMoves != 0 || t.RegisterResultMoves != 0
+	return t.RegisterArgumentMoves != 0 || t.RegisterResultMoves != 0 ||
+		t.IntegerCallArgumentMoves != 0 || t.MixedCallArgumentMoves != 0 ||
+		t.TailCallArgumentMoves != 0
 }
