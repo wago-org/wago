@@ -886,7 +886,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !targetRegisterTail && funcTypeSlots(ft.Params) > abi.TailArgsSlots {
 		return fmt.Errorf("return_call_indirect: type %d requires %d wrapper argument slots, limit %d", typeIdx, funcTypeSlots(ft.Params), abi.TailArgsSlots)
 	}
-	if f.stagedTailDescriptors && f.importBindings != nil && !f.immutableLocalTable {
+	if f.stagedTailDescriptors && f.importBindings != nil {
 		idx := f.materialize(f.popValue())
 		f.canonicalizeTableOperand(idx, tableIdx)
 		f.pinned = f.pinned.add(idx)
