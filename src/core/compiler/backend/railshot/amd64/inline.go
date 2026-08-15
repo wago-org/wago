@@ -712,7 +712,7 @@ func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, _ CodegenP
 		if err != nil {
 			return false
 		}
-		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
 			return false
 		}
 		switch imm.Kind {
