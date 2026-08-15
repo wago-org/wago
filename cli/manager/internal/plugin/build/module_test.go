@@ -383,6 +383,7 @@ func ValidatePluginSet(PluginSet) error { return nil }
 `,
 		"cli/runtime/runtime.go": `package runtime
 import wago "github.com/wago-org/wago"
+func SuperviseWatchedChild() {}
 func MainWithPluginSet(string, string, wago.PluginSet) {}
 `,
 		"register/register.go": `package register

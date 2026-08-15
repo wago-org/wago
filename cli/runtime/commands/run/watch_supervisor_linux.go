@@ -38,9 +38,11 @@ func setWatchedSupervisorEnvironment(environment []string, value string) []strin
 	return result
 }
 
-func maybeSuperviseWatchedChild() bool {
+// SuperviseWatchedChild replaces a marked Linux watch child with its supervised
+// guest. Call it before generated plugin providers are constructed.
+func SuperviseWatchedChild() {
 	if os.Getenv(watchedSupervisorEnvironmentName) != "1" {
-		return false
+		return
 	}
 	executable, err := os.Executable()
 	if err != nil {
@@ -56,7 +58,6 @@ func maybeSuperviseWatchedChild() bool {
 		code = 1
 	}
 	os.Exit(code)
-	return true
 }
 
 func superviseWatchedCommand(command *exec.Cmd, signals []os.Signal) (int, error) {
@@ -130,6 +131,10 @@ func cleanupWatchedSupervisorProcesses() error {
 			scanErr = err
 		}
 		for _, process := range processes {
+			current, ok := watchedProcess(process.pid)
+			if !ok || current.started != process.started {
+				continue
+			}
 			if killErr := syscall.Kill(process.pid, syscall.SIGKILL); killErr != nil && !errors.Is(killErr, syscall.ESRCH) {
 				scanErr = errors.Join(scanErr, killErr)
 			}

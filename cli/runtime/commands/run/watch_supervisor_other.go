@@ -2,4 +2,5 @@
 
 package run
 
-func maybeSuperviseWatchedChild() bool { return false }
+// SuperviseWatchedChild is unavailable outside standard Linux builds.
+func SuperviseWatchedChild() {}

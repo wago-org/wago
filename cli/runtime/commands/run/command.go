@@ -56,9 +56,6 @@ type implementation struct {
 }
 
 func (cmd implementation) Run(ctx *command.Ctx) {
-	if maybeSuperviseWatchedChild() {
-		return
-	}
 	if runWatch(ctx) {
 		return
 	}

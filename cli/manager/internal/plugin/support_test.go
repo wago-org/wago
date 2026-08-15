@@ -21,6 +21,7 @@ func TestPluginBuildFileHelpers(t *testing.T) {
 	}
 	body, err := os.ReadFile(filepath.Join(dir, "main.go"))
 	if err != nil || !strings.Contains(string(body), "runtime.MainWithPluginSet(version, buildIdentity, set)") ||
+		!strings.Contains(string(body), "runtime.SuperviseWatchedChild()\n\tset := pluginSet()") ||
 		!strings.Contains(string(body), "wago.ValidatePluginSet(set)") ||
 		!strings.Contains(string(body), "provider0.Providers()") || strings.Contains(string(body), "\t_ \"example.com/a/register\"") {
 		t.Fatalf("generated main = %s, %v", body, err)
