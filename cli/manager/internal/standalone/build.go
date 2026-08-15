@@ -54,6 +54,7 @@ type Request struct {
 	Target                 Target
 	Verbose                bool
 	KeepSymbols            bool
+	TinyGo                 bool
 }
 
 type Result struct {
@@ -89,8 +90,17 @@ func Build(request Request) (Result, error) {
 			return Result{}, err
 		}
 	}
+	if request.TinyGo {
+		if !request.Target.supportsTinyGo() {
+			return Result{}, fmt.Errorf("TinyGo standalone executables are not supported for target %s", request.Target)
+		}
+	}
 	if request.Core == 3 && !request.Target.supportsCore3() {
 		return Result{}, fmt.Errorf("WebAssembly Core 3 is not supported for target %s", request.Target)
+	}
+	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if request.Target != host {
+		return Result{}, fmt.Errorf("precompiled standalone builds require the native target %s; got %s", host, request.Target)
 	}
 	if request.Output == "" {
 		request.Output = DefaultOutput(request.Input, request.Target)
@@ -125,7 +135,8 @@ func Build(request Request) (Result, error) {
 	if err := os.WriteFile(filepath.Join(buildDir, "module.wasm"), source, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "main.go"), mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
+	mainPath := filepath.Join(buildDir, "main.go")
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, false), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -136,7 +147,40 @@ func Build(request Request) (Result, error) {
 	if err := runGo(buildDir, environment, request.Verbose, "mod", "tidy"); err != nil {
 		return Result{}, err
 	}
-	args := []string{"build", "-buildvcs=false", "-trimpath"}
+	if err := os.WriteFile(mainPath, artifactCompilerSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
+		return Result{}, err
+	}
+	helperArgs := []string{"run"}
+	if request.TinyGo {
+		// The helper itself uses standard Go, but its output executes under TinyGo.
+		// Select final-runtime capabilities such as cooperative interruption while
+		// retaining the standard compiler needed to generate the artifact.
+		helperArgs = append(helperArgs, "-tags=wago_target_tinygo")
+	}
+	helperArgs = append(helperArgs, ".")
+	if err := runGo(buildDir, environment, request.Verbose, helperArgs...); err != nil {
+		return Result{}, fmt.Errorf("precompile standalone artifact: %w", err)
+	}
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, true), 0o644); err != nil {
+		return Result{}, err
+	}
+	if request.TinyGo {
+		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative", "-tags=wago_precompiled"}
+		if !request.KeepSymbols {
+			args = append(args, "-no-debug")
+		}
+		args = append(args, "-o", output, ".")
+		if err := runTool("tinygo", buildDir, environment, request.Verbose, args...); err != nil {
+			return Result{}, err
+		}
+		if !request.KeepSymbols {
+			if err := stripTinyGo(buildDir, environment, request.Verbose, output, request.Target); err != nil {
+				return Result{}, err
+			}
+		}
+		return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
+	}
+	args := []string{"build", "-buildvcs=false", "-trimpath", "-tags=wago_precompiled"}
 	if !request.KeepSymbols {
 		args = append(args, "-ldflags=-s -w")
 	}
@@ -147,7 +191,7 @@ func Build(request Request) (Result, error) {
 	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
 }
 
-func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool) []byte {
+func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, precompiled bool) []byte {
 	providerImports = append([]string(nil), providerImports...)
 	sort.Strings(providerImports)
 	var source bytes.Buffer
@@ -157,7 +201,13 @@ func mainSource(providerImports []string, selections []byte, invoke string, core
 	for index, providerImport := range providerImports {
 		fmt.Fprintf(&source, "\tprovider%d %q\n", index, providerImport)
 	}
-	source.WriteString(")\n\n//go:embed module.wasm\nvar module []byte\n\n")
+	artifact := "module.wasm"
+	run := "Run"
+	if precompiled {
+		artifact = "module.wago"
+		run = "RunArtifact"
+	}
+	fmt.Fprintf(&source, ")\n\n//go:embed %s\nvar module []byte\n\n", artifact)
 	fmt.Fprintf(&source, "var selectionJSON = []byte(%q)\n\n", selections)
 	source.WriteString("func pluginSet() wago.PluginSet {\n\tvar selections []wago.PluginSelection\n\tif err := json.Unmarshal(selectionJSON, &selections); err != nil { panic(err) }\n\tvar providers []wago.PluginProvider\n")
 	for index := range providerImports {
@@ -174,12 +224,25 @@ func mainSource(providerImports []string, selections []byte, invoke string, core
 		fmt.Fprintf(&source, "%q: %t, ", name, optimizations[name])
 	}
 	source.WriteString("}}\n\n")
-	source.WriteString("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }\n")
+	fmt.Fprintf(&source, "func main() { os.Exit(standalone.%s(module, pluginSet(), options, os.Args)) }\n", run)
 	return source.Bytes()
 }
 
+func artifactCompilerSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool) []byte {
+	source := mainSource(providerImports, selections, invoke, core, deferredBoundsChecking, functionWorkers, optimizations, false)
+	source = bytes.Replace(source, []byte("\t\"os\"\n"), []byte("\t\"os\"\n\t\"fmt\"\n"), 1)
+	source = bytes.Replace(source,
+		[]byte("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }"),
+		[]byte("func main() { artifact, err := standalone.CompileArtifact(module, pluginSet(), options); if err == nil { err = os.WriteFile(\"module.wago\", artifact, 0o644) }; if err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) } }"), 1)
+	return source
+}
+
 func runGo(dir string, environment []string, verbose bool, args ...string) error {
-	command := exec.Command("go", args...)
+	return runTool("go", dir, environment, verbose, args...)
+}
+
+func runTool(tool, dir string, environment []string, verbose bool, args ...string) error {
+	command := exec.Command(tool, args...)
 	command.Dir = dir
 	command.Env = environment
 	automation.ConfigureCommand(command)
@@ -189,7 +252,23 @@ func runGo(dir string, environment []string, verbose bool, args ...string) error
 	}
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("go %s: %w\n%s", args[0], err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("%s %s: %w\n%s", tool, args[0], err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func (t Target) supportsTinyGo() bool {
+	return (t.OS == "linux" && (t.Arch == "amd64" || t.Arch == "arm64")) ||
+		(t.OS == "darwin" && t.Arch == "arm64")
+}
+
+func stripTinyGo(dir string, environment []string, verbose bool, output string, target Target) error {
+	switch target.OS {
+	case "darwin":
+		return runTool("strip", dir, environment, verbose, "-x", output)
+	case "linux":
+		return runTool("strip", dir, environment, verbose, "-s", output)
+	default:
+		return fmt.Errorf("TinyGo stripping is not supported for target %s", target)
+	}
 }

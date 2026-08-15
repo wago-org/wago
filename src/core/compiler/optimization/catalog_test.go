@@ -59,7 +59,7 @@ func TestBindingsApplyAndRestoreSelection(t *testing.T) {
 	if values[0] {
 		t.Fatal("selection was not applied")
 	}
-	restore()
+	restore.Restore()
 	if !values[0] {
 		t.Fatal("selection was not restored")
 	}
@@ -79,7 +79,7 @@ func TestBindingsApplySnapshotUsesDeltasAtMatchingRevision(t *testing.T) {
 	if values[0] {
 		t.Fatal("matching snapshot delta was not applied")
 	}
-	restore()
+	restore.Restore()
 	if !values[0] {
 		t.Fatal("matching snapshot delta was not restored")
 	}
@@ -98,7 +98,7 @@ func TestBindingsApplySnapshotUsesChangedOverrideMissingFromDeltas(t *testing.T)
 	if values[0] {
 		t.Fatal("changed override omitted from deltas was not applied")
 	}
-	restore()
+	restore.Restore()
 }
 
 func TestBindingsApplySnapshotUsesSelectionWhenDeltaConflicts(t *testing.T) {
@@ -115,7 +115,7 @@ func TestBindingsApplySnapshotUsesSelectionWhenDeltaConflicts(t *testing.T) {
 	if values[0] {
 		t.Fatal("conflicting delta took precedence over complete selection")
 	}
-	restore()
+	restore.Restore()
 }
 
 func TestBindingsApplySnapshotRejectsUnknownOverrideAtMatchingRevision(t *testing.T) {
@@ -145,7 +145,7 @@ func TestBindingsApplySnapshotRevisionMismatchUsesCapturedSelection(t *testing.T
 	if !values[0] {
 		t.Fatal("stale snapshot did not install its captured selection")
 	}
-	restore()
+	restore.Restore()
 	if values[0] {
 		t.Fatal("stale snapshot did not restore the newer process default")
 	}
@@ -174,7 +174,7 @@ func TestBindingsApplySnapshotSerializesConcurrentSet(t *testing.T) {
 		t.Fatal("Set completed while a compile snapshot held the binding lease")
 	default:
 	}
-	restore()
+	restore.Restore()
 	if !<-done {
 		t.Fatalf("Set(%q) failed", name)
 	}
@@ -192,7 +192,7 @@ func TestBindingsDefaultApplyAllocationBudget(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		restore()
+		restore.Restore()
 	})
 	if allocs > 1 {
 		t.Fatalf("matching default ApplySnapshot allocations = %.0f, want <= 1", allocs)

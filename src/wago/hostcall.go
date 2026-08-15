@@ -293,11 +293,11 @@ func (rt *Runtime) newHostFuncRef(fn HostFunc, sig FuncSig, gcCapable, allowLoad
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
-	end, err := rt.beginOperation("NewHostFuncRef", allowLoading)
+	operation, err := rt.beginOperation("NewHostFuncRef", allowLoading)
 	if err != nil {
 		return nil, err
 	}
-	defer end()
+	defer operation.end()
 	if fn == nil {
 		return nil, fmt.Errorf("wago: host function is nil")
 	}

@@ -253,9 +253,37 @@ func (b *Bindings) Set(name string, on bool) bool {
 	return true
 }
 
-// Apply installs overrides for one compile and returns a function that restores
-// the process defaults and releases the compile lock.
-func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
+// Lease holds one installed optimization selection and its compile lock. It is
+// deliberately a value rather than a restore closure: that keeps compiler
+// inputs out of closure boxes under TinyGo's conservative collector.
+type Lease struct {
+	bindings *Bindings
+	changed  int // -1 restores the complete selection
+	active   bool
+}
+
+// Restore restores the process defaults and releases the compile lock.
+func (l *Lease) Restore() {
+	if l == nil || !l.active {
+		return
+	}
+	l.active = false
+	b := l.bindings
+	if l.changed < 0 {
+		for index, entry := range b.entries {
+			*entry.value = b.before[index]
+		}
+	} else {
+		for _, index := range b.changed[:l.changed] {
+			*b.entries[index].value = b.before[index]
+		}
+	}
+	b.mu.Unlock()
+}
+
+// Apply installs overrides for one compile and returns an explicit lease that
+// restores the process defaults and releases the compile lock.
+func (b *Bindings) Apply(overrides map[string]bool) (Lease, error) {
 	return b.ApplySnapshot(overrides, Snapshot{}, nil)
 }
 
@@ -265,10 +293,10 @@ func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
 // validated and applied in full. The revision comparison, installation,
 // compilation lease, and restoration all share the same lock, so a concurrent
 // Set cannot invalidate the fast path.
-func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (func(), error) {
+func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (Lease, error) {
 	b.mu.Lock()
 	if overrides == nil {
-		return b.mu.Unlock, nil
+		return Lease{bindings: b, active: true}, nil
 	}
 	if snapshot.bindings == b && snapshot.revision == b.revision && b.deltasMatchLocked(overrides, deltas) {
 		changed := 0
@@ -286,12 +314,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 			b.before[index] = *entry.value
 			*entry.value = on
 		}
-		return func() {
-			for _, index := range b.changed[:changed] {
-				*b.entries[index].value = b.before[index]
-			}
-			b.mu.Unlock()
-		}, nil
+		return Lease{bindings: b, changed: changed, active: true}, nil
 	}
 	for index, entry := range b.entries {
 		b.before[index] = *entry.value
@@ -303,7 +326,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 				*entry.value = b.before[index]
 			}
 			b.mu.Unlock()
-			return nil, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+			return Lease{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
 		}
 		entry := b.entries[index]
 		if entry.inverted {
@@ -311,12 +334,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 		}
 		*entry.value = on
 	}
-	return func() {
-		for index, entry := range b.entries {
-			*entry.value = b.before[index]
-		}
-		b.mu.Unlock()
-	}, nil
+	return Lease{bindings: b, changed: -1, active: true}, nil
 }
 
 // deltasMatchLocked reports whether deltas are a complete, coherent summary of

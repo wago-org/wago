@@ -14,6 +14,20 @@ func TestRunEmptyStartModule(t *testing.T) {
 	}
 }
 
+func TestCompileAndRunArtifact(t *testing.T) {
+	options := Options{DeferBoundsChecks: true}
+	artifact, err := CompileArtifact(emptyStartModule(), wago.PluginSet{}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wago.IsCompiled(artifact) {
+		t.Fatal("CompileArtifact did not return a .wago artifact")
+	}
+	if code := RunArtifact(artifact, wago.PluginSet{}, options, []string{"hello"}); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+}
+
 func TestExecuteRejectsModuleWithoutFunctionExports(t *testing.T) {
 	empty := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}
 	if err := execute(empty, wago.PluginSet{}, Options{DeferBoundsChecks: true}, nil); err == nil || err.Error() != "module exports no functions" {

@@ -173,7 +173,14 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, cfg.frontendFeatures(), instructions)
+	compiled, err := compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, cfg.frontendFeatures(), instructions)
+	// TinyGo's conservative collector must not reclaim compiler inputs whose
+	// derived slices and pointers remain in use below this public boundary.
+	// Keep the complete owners live until decoding and code generation finish.
+	goruntime.KeepAlive(wasmBytes)
+	goruntime.KeepAlive(cfg)
+	goruntime.KeepAlive(instructions)
+	return compiled, err
 }
 
 func stagedTwoLocalTableOperation(k wasm.InstrKind) (allowed bool, tableOperation bool) {

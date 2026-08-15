@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && amd64 && !tinygo && !wago_target_tinygo
 
 #include "textflag.h"
 

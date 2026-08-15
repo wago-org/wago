@@ -35,6 +35,12 @@ and host-call resume thunks with the repository's AArch64 encoder. The standard
 (`!tinygo`) build is unchanged and keeps using the assembly trampolines; build
 tags select the right implementation automatically.
 
+Prepared integer exports have their own TinyGo direct-entry thunks on
+linux/amd64, linux/arm64, and darwin/arm64. They accept the linear-memory base
+plus up to four integer slots in the platform ABI, preserve the callee-saved Go
+context, switch to the foreign stack, and enter the JIT function without the
+general WasmWrapper marshalling path.
+
 ## Building
 
 TinyGo on Linux links with LLVM `lld`. Make sure `ld.lld` is on `PATH`
@@ -55,6 +61,35 @@ The `wago_lean` profile does not include `run --watch`. Watch mode needs the
 full process-tree supervisor and periodic content scan. A lean build rejects
 `--watch` as an unknown flag instead of using a smaller supervisor that can
 leave guest processes running.
+
+The standard-Go manager can use TinyGo for the final link of a runtime-only
+command binary:
+
+```bash
+wago compile --tinygo --invoke fib fib.wasm -o fib
+./fib 20
+```
+
+Like every `wago compile` build, this compiles the Wasm once with the native
+standard-Go compiler, embeds the resulting `.wago` artifact, then links the
+loader under the `wago_precompiled` build tag. `--tinygo` selects TinyGo for that
+final link. The helper is pinned to the validated native
+`GOOS/GOARCH` even when the caller has cross-compilation variables exported. It
+also compiles under `wago_target_tinygo`, so Linux artifacts contain cooperative
+interruption safepoints for the final TinyGo runtime instead of assuming the
+standard-Go helper's signal unwinder will be present. The emitted executable
+does not retain Railshot's source compiler and does not generate Wasm machine
+code at startup. It retains the small runtime-owned host-call thunk emitter
+required to bind imported functions during instantiation.
+
+Precompiled standalone builds intentionally require the destination to equal the
+build host's `GOOS/GOARCH`. Native artifacts incorporate platform admission and
+interruption decisions as well as the instruction set.
+Linux standalone outputs use the portable `strip -s` interface by default;
+release packaging may apply additional pinned-toolchain ELF section removal.
+The Linux TinyGo CI matrix builds this path with default stripping and verifies
+that a context cancellation interrupts an artifact containing an infinite loop
+on both AMD64 and ARM64.
 
 ## Scheduler: use `-scheduler=tasks`
 
@@ -124,6 +159,19 @@ neither. The `-opt=2` build is about 0.8 MiB larger than `-opt=z`; use it only w
 measured compile-time speed matters more than footprint. UPX was not available on
 the measurement host, so no current UPX size is claimed.
 
+The fixed-arity prepared-call path is also footprint-bounded. The original
+implementation at `78d8273a`, measured against `10ff9733` with the release build
+and platform strip commands, had these effects. The rebased review fixes changed
+thunk ownership and error handling; use the current PR build-size check for the
+final artifact delta.
+
+| release runtime | baseline | fixed-arity path | delta |
+|---|---:|---:|---:|
+| Darwin/arm64 Standard/Tiny | 2,000,240 B | 2,000,328 B | +88 B |
+| Darwin/arm64 Minimal/Tiny | 1,900,480 B | 1,917,080 B | +16,600 B (0.87%) |
+| Linux/amd64 Standard/Tiny | 2,239,992 B | 2,245,736 B | +5,744 B (0.26%) |
+| Linux/amd64 Minimal/Tiny | 2,122,432 B | 2,127,952 B | +5,520 B (0.26%) |
+
 ## Call latency
 
 The runtime-generated trampoline **adds no latency to the standard build** — that
@@ -165,6 +213,50 @@ in.WriteUint32Le(off, v)
 
 None of this touches the wasm execution path, which runs wago's own JIT-emitted
 machine code, not TinyGo-compiled Go.
+
+### Public API hot path
+
+For a repeatedly called local integer export, resolve it once and use the
+matching fixed-arity method:
+
+```go
+fn, err := instance.PrepareFunction("step")
+if err != nil {
+    return err
+}
+result, err := fn.Invoke2(state, input)
+```
+
+`PreparedFunction.Invoke0` through `Invoke4` avoid the argument-slice allocation
+that TinyGo emits at a variadic call site. Eligible signatures (up to four
+`i32`/`i64` argument slots and one `i32`/`i64` result) take the direct-entry
+thunk above. The ordinary variadic `Invoke` remains the compatibility path for
+dynamic arity, references, vectors, and larger signatures.
+
+This distinction matters when comparing complete public calls rather than only
+the low-level trampoline. Fixed prepared integer calls are allocation-free under
+both toolchains and are the closest TinyGo public-API latency path. General
+`Instance.Invoke`, host imports, and instantiation still carry more TinyGo
+allocator/runtime overhead; do not infer their performance from the
+boundary-only table above.
+
+The table below measures complete public operations with the release TinyGo
+flags (`-scheduler=tasks -no-debug -opt=z -gc=conservative`). Values are medians
+of ten 300 ms samples. ARM64 is an Apple M4 Max; AMD64 is a Ryzen 7 7800X3D with
+both binaries pinned to otherwise-idle core 7.
+
+| public benchmark | ARM64 Go | ARM64 TinyGo | ratio | AMD64 Go | AMD64 TinyGo | ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| compile small scalar | 6.47 us | 10.97 us | 1.69x | 15.24 us | 13.63 us | **0.89x** |
+| instantiate small scalar | 0.976 us | 3.44 us | 3.52x | 1.89 us | 4.03 us | 2.13x |
+| `Instance.Invoke` | 74.2 ns | 212.6 ns | 2.87x | 71.3 ns | 214.0 ns | 3.00x |
+| indirect invoke | 75.6 ns | 226.7 ns | 3.00x | 72.4 ns | 231.2 ns | 3.19x |
+| direct host import | 252.7 ns | 927.8 ns | 3.67x | 418.6 ns | 921.7 ns | 2.20x |
+| prepared `Invoke1` | 16.43 ns | **14.24 ns** | **0.87x** | 6.66 ns | 11.45 ns | 1.72x |
+
+Prepared `Invoke1` is zero-allocation under both toolchains. The TinyGo
+variadic invoke paths still allocate five objects per call, host import calls
+allocate 19, and instantiation allocates 66; those are the next parity targets.
 
 `make build-runtime-minimal-tinygo` uses `-opt=z` (size); it is already at parity above. `-opt=2`
 trades ~size for a further ~15-20% on these wrappers and on compile-time Go (decode
@@ -211,6 +303,14 @@ checks. Go keeps its ~2× edge only on pure host-side *memory loops* (0.57 vs 1.
   and the external `WAGO_SPECTEST_DIR` spec harness are standard-Go-only. The
   runtime stress test is build-tagged `!tinygo`, with a TinyGo-appropriate
   counterpart in `stress_tinygo_test.go`.
+
+- **Conservative-GC liveness.** Compiler metadata owners and asynchronous
+  Runtime shutdown tasks are held through explicit value leases and final-use
+  barriers. `tinygo_lifecycle_test.go` repeatedly collects across decode,
+  compile, instantiate, close, and queued teardown boundaries. Keep these
+  ownership points explicit when adding callbacks or replacing value state with
+  closures; TinyGo boxes captured variables differently from the standard
+  compiler.
 
 - **Platform.** Native execution is covered on `linux/amd64`, `linux/arm64`, and
   `darwin/arm64`. Darwin/amd64 is a compiler/encoder portability target until

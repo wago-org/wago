@@ -1,5 +1,7 @@
 package wasm
 
+import "runtime"
+
 // directCodeBody is the part of a code-section function body the byte-backed
 // validator keeps: compact local runs plus raw expression bytes. This matches
 // DecodeModule's no-body instruction representation for decoded function bodies.
@@ -168,7 +170,17 @@ func directExpr(e directConstExpr) Expr {
 }
 
 func decodeDirectModule(data []byte) (*directModule, error) {
-	r := newReader(data)
+	dm, err := decodeDirectModuleInner(data)
+	runtime.KeepAlive(data)
+	return dm, err
+}
+
+func decodeDirectModuleInner(data []byte) (*directModule, error) {
+	// Keep the top-level cursor in this frame. TinyGo's conservative collector
+	// can otherwise lose the heap-allocated reader while its backing slice is
+	// still being consumed across allocation-heavy section decoding.
+	var r reader
+	r.reset(data)
 	magic, err := r.bytes(4)
 	if err != nil {
 		return nil, err
