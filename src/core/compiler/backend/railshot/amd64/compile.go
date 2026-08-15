@@ -179,6 +179,10 @@ var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 // post-call access overwrites the local before reading it.
 var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
 
+// mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
+// proves the local dies before its next read. Loop and EH targets stay fixed.
+var mergeNextUseEnabled = os.Getenv("WAGO_AMD64_NO_MERGE_NEXT_USE") != "1"
+
 // affineLeaEnabled extends scaled-index LEA selection across one-level affine
 // base/index subtrees, folding their constants into the LEA displacement.
 // WAGO_AMD64_NO_AFFINE_LEA=1 disables it for A/B.

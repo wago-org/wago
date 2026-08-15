@@ -21,6 +21,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
 	optimization.Bind("call-next-use", &callNextUseEnabled),
+	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
 	optimization.Bind("affine-lea", &affineLeaEnabled),
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
@@ -67,6 +68,7 @@ var (
 	optEntryArgPins         = optimizationBindings.Option("entry-arg-pins")
 	optExtendedFPPins       = optimizationBindings.Option("ext-fp-pins")
 	optCallNextUse          = optimizationBindings.Option("call-next-use")
+	optMergeNextUse         = optimizationBindings.Option("merge-next-use")
 	optAffineLEA            = optimizationBindings.Option("affine-lea")
 	optTreeOrder            = optimizationBindings.Option("tree-order")
 	optAssocTree            = optimizationBindings.Option("assoc-tree")

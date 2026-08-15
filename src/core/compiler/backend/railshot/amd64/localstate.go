@@ -2,7 +2,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
 // FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING
@@ -352,6 +355,10 @@ func (f *fn) freeEndsBuf(b []int) {
 }
 
 func (f *fn) convergeEdgeTo(target *[]locState) {
+	f.convergeEdgeToWithDead(target, 0, 0)
+}
+
+func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
 	// Lazy zeros always materialize to the slot so unpinned declared-zero locals
 	// have a real slot value on every edge (all locals — const-zero ones may be
 	// unpinned). materializeZeroLocal leaves a pinned local in lsStackReg, so the
@@ -386,11 +393,103 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	t := *target
 	for i, x := range f.pinnedLocals {
 		if t[i] == lsStackReg && f.locals[x].state == lsMem {
+			reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
+			dead := deadGP.has(reg)
+			if isFloat {
+				dead = deadFP.has(reg)
+			}
+			if dead {
+				t[i] = lsMem
+				f.stats.peep("merge-dead-reload")
+				continue
+			}
 			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 			f.stats.addControlMergeReload()
 			f.locals[x].state = lsStackReg
 		}
 	}
+}
+
+const maxMergeNextUseOps = 64
+
+// planForwardMergeDeadLocals returns fixed register masks for target locals
+// that arrive memory-only on the current forward edge and are overwritten or
+// dead before their next read after the merge. It copies the active reader and
+// uses constant storage; uncertainty, nested control, and fuel exhaustion keep
+// the existing eager edge reload.
+func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source []locState) (deadGP, deadFP regMask) {
+	if !f.opt(optMergeNextUse) || !f.usesCalls || target == nil {
+		return 0, 0
+	}
+	var candGP, candFP regMask
+	for i, x := range f.pinnedLocals {
+		state := f.locals[x].state
+		if source != nil {
+			state = source[i]
+		}
+		if target[i] != lsStackReg || state != lsMem {
+			continue
+		}
+		reg := f.locals[x].reg
+		if f.locals[x].isFloat {
+			candFP = candFP.add(reg)
+		} else {
+			candGP = candGP.add(reg)
+		}
+	}
+	if candGP == 0 && candFP == 0 {
+		return 0, 0
+	}
+	peek := *r
+	for fuel := 0; fuel < maxMergeNextUseOps; fuel++ {
+		op, err := peek.Byte()
+		if err != nil {
+			return 0, 0
+		}
+		switch op {
+		case 0x00, 0x0f: // unreachable / return: no later local read on this path
+			return deadGP | candGP, deadFP | candFP
+		case 0x0b: // only the physical function end proves every candidate dead
+			if f.localBase == 0 && peek.BytesLeft() == 0 {
+				return deadGP | candGP, deadFP | candFP
+			}
+			return 0, 0
+		case 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x1f:
+			return 0, 0 // structured or exceptional control: conservative fallback
+		case 0x10, 0x11, 0x14, 0x12, 0x13, 0x15:
+			return 0, 0 // calls may inline or transfer; keep the merge contract
+		case 0x20, 0x21, 0x22: // local.get / local.set / local.tee
+			x32, err := peek.U32()
+			if err != nil {
+				return 0, 0
+			}
+			x := int(x32) + f.localBase
+			reg, isFloat, ok := f.pinReg(x)
+			if !ok {
+				continue
+			}
+			cand := &candGP
+			dead := &deadGP
+			if isFloat {
+				cand, dead = &candFP, &deadFP
+			}
+			if !cand.has(reg) {
+				continue
+			}
+			if op != 0x20 {
+				*dead = dead.add(reg)
+			}
+			*cand = cand.remove(reg)
+			if candGP == 0 && candFP == 0 {
+				return deadGP, deadFP
+			}
+		default:
+			if err := skipImmediates(&peek, op); err != nil {
+				return 0, 0
+			}
+		}
+	}
+	return 0, 0
 }
 
 // setLocalsState installs a merge point's recorded target as the tracked state

@@ -1135,6 +1135,24 @@ call-position-aware local ownership: arrange a dying or call-adjacent pinned
 local in its ABI argument register before the call, without globally pinning
 fixed-role RAX/RCX/RDX/R8 and without changing call/return spacing.
 
+### 2026-08-14 — bounded AMD64 forward-merge next use
+
+Forward block and `if` merges now keep a memory-only pinned local lazy when a
+copied Wasm reader proves that the local is overwritten, returned past, or dead
+at the physical function end before its next read. The scan uses two register
+masks, has a hard 64-operation fuel cap, and falls back on malformed input,
+nested control, calls, tail transfer, EH, and exhaustion. Loop headers retain
+their fixed eager contract. No CFG, heap allocation, or retained liveness
+interval is introduced.
+
+This removes 2,275 of Ruby's 213,965 AMD64 control-merge reloads and 11,920
+native bytes. A 32-merge native Ryzen 7 7800X3D workload improves from a 39.67
+to 38.89 ns/op median (-2.0%), shrinks from 1,558 to 1,270 native bytes, and
+remains at zero execution allocations. Six fixed-work Ruby compile samples move
+from an 890.86 to 896.41 ms median (+0.62%); B/op and allocations are unchanged.
+Positive, next-read near-miss, disabled-policy, and fuel-exhaustion cases retain
+deterministic conservative behavior.
+
 ---
 
 # 1. North-star architecture
