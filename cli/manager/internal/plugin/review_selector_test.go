@@ -28,8 +28,11 @@ func TestAuthorityReviewSelectorShowsRequiredAndRejectAll(t *testing.T) {
 	if !strings.Contains(selector.Title, required.PluginID) {
 		t.Fatalf("selector title = %q", selector.Title)
 	}
-	if !selector.Items[0].On || !selector.Items[0].ConfirmOff || !strings.Contains(selector.Items[0].Description, "required") || !strings.Contains(selector.Items[0].Description, required.Request.Reason) || !strings.Contains(selector.Items[0].Description, "cancels installation") {
+	if !selector.Items[0].On || !selector.Items[0].ConfirmOff || !strings.Contains(selector.Items[0].Description, "required") || !strings.Contains(selector.Items[0].Description, required.Request.Reason) {
 		t.Fatalf("required row = %#v", selector.Items[0])
+	}
+	if strings.Contains(selector.Items[0].Description, "cancel") || strings.Contains(selector.Items[0].Description, "deselect") {
+		t.Fatalf("required row repeats cancellation behavior: %q", selector.Items[0].Description)
 	}
 	if selector.Items[1].On || !strings.Contains(selector.Items[1].Description, "optional") {
 		t.Fatalf("optional row = %#v", selector.Items[1])
@@ -37,7 +40,7 @@ func TestAuthorityReviewSelectorShowsRequiredAndRejectAll(t *testing.T) {
 	if strings.Contains(selector.Items[0].Description, "—") || !strings.HasPrefix(selector.Items[0].Description, "(required)") {
 		t.Fatalf("required metadata = %q", selector.Items[0].Description)
 	}
-	if !selector.Items[2].Reject || selector.Items[2].Label != "Reject all" {
+	if !selector.Items[2].Reject || selector.Items[2].Label != "Reject all" || selector.Items[2].Description != "cancel installation" {
 		t.Fatalf("reject row = %#v", selector.Items[2])
 	}
 	selector.Items[0].On = false
@@ -64,11 +67,11 @@ func TestAuthorityReviewSelectorSectionsMultiplePlugins(t *testing.T) {
 }
 
 func TestAuthorityRejectionChoicesUseYesAndNo(t *testing.T) {
-	items := authorityRejectionItems("restore required authorities", "required authorities cannot be denied")
-	if len(items) != 2 || items[0].Label != "No" || items[0].Value != "continue" {
+	items := authorityExitItems()
+	if len(items) != 2 || items[0].Label != "No" || items[0].Value != "continue" || items[0].Description != "" {
 		t.Fatalf("back choice = %#v", items)
 	}
-	if items[1].Label != "Yes" || items[1].Value != "cancel" {
+	if items[1].Label != "Yes" || items[1].Value != "cancel" || items[1].Description != "" {
 		t.Fatalf("exit choice = %#v", items)
 	}
 }

@@ -115,7 +115,6 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 			description += " " + review.Request.Reason
 		}
 		if review.Request.Mode == project.AuthorityRequired {
-			description += "; deselecting cancels installation"
 			requiredKeys[key] = true
 		}
 		if scope := projectScopeSuffix(review.Request.Scope); scope != "" {
@@ -132,7 +131,7 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 		itemKeys = append(itemKeys, key)
 	}
 	items = append(items, tui.SelectItem{
-		Label: "Reject all", Description: "cancel installation and make no changes", Reject: true,
+		Label: "Reject all", Description: "cancel installation", Reject: true,
 	})
 	return &tui.MultiSelect{
 		Title: title, Prompt: "space toggle · enter confirm · r reject all · esc cancel", Items: items,
@@ -148,14 +147,7 @@ func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool) 
 		}
 		missingRequired := requiredAuthorityDeselected(selector, itemKeys, requiredKeys)
 		if selector.Rejected() || missingRequired {
-			title := "Exit installation?"
-			backDescription := "return to authority review"
-			cancelDescription := "reject all grants and make no changes"
-			if missingRequired && !selector.Rejected() {
-				backDescription = "restore required authorities and return to the list"
-				cancelDescription = "required authorities cannot be denied"
-			}
-			selection, ok := tui.Choose(title, authorityRejectionItems(backDescription, cancelDescription))
+			selection, ok := tui.Choose("Exit installation?", authorityExitItems())
 			if ok && selection == "cancel" {
 				return fmt.Errorf("authority review rejected; no changes were made")
 			}
@@ -178,10 +170,10 @@ func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool) 
 	}
 }
 
-func authorityRejectionItems(backDescription, cancelDescription string) []tui.Item {
+func authorityExitItems() []tui.Item {
 	return []tui.Item{
-		{Label: "No", Description: backDescription, Value: "continue"},
-		{Label: "Yes", Description: cancelDescription, Value: "cancel"},
+		{Label: "No", Value: "continue"},
+		{Label: "Yes", Value: "cancel"},
 	}
 }
 
