@@ -2424,8 +2424,12 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 	}
 	for i := range f.locals {
 		facts := valueFacts(0)
-		if f.localFactsEnabled && i >= f.nParams && f.localType[i] == mtI32 {
-			facts = factUpper32Zero | factBoolean // declared locals start at zero
+		if f.localFactsEnabled {
+			if i < f.nParams && i < len(f.ft.Params) && f.ft.Params[i].Kind() == wasm.ValRef && !f.ft.Params[i].Ref().Nullable() {
+				facts = factNonZero
+			} else if i >= f.nParams && f.localType[i] == mtI32 {
+				facts = factUpper32Zero | factBoolean // declared locals start at zero
+			}
 		}
 		f.locals[i] = localDef{reg: regNone, facts: facts, state: lsReg}
 	}

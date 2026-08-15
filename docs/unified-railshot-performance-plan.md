@@ -903,6 +903,14 @@ from a 11.999 to 11.229 us/op median (-6.4%), B/op fell from 24,640 to 24,472,
 allocations fell from 36 to 33, and native output fell from 888 to 712 bytes
 (-19.8%). Nullable helper results remain deliberately unmarked.
 
+Non-null reference parameters now seed the same fact in the existing
+straight-line local fact table; mutable locals replace it on assignment and
+control-bearing functions retain the established conservative fallback. An
+eight-use parameter fixture improved from a 7.847 to 6.872 us/op compile median
+(-12.4%), B/op fell from 15,096 to 14,928, allocations fell from 31 to 28, and
+native output fell from 268 to 92 bytes (-65.7%). A nullable parameter is a
+tested near miss.
+
 ---
 
 # 1. North-star architecture
