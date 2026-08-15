@@ -4049,3 +4049,36 @@ zero B/op and allocations. The earlier scratch copy breaks the pinned-local
 dependency before call staging, while the shorter sequence moves that dependency
 onto the late ABI copy. The rule and tests were removed. Future call-position
 ownership work must cost dependency depth, not only moves and bytes.
+
+### Deferred follow-up: nonzero-table directory caching
+
+A temporary AMD64 causality counter recorded every table descriptor derivation
+that loads the multi-table directory rather than table 0's direct basedata slot.
+The exact 64-module corpus recorded zero events. The counter was removed; a
+protected directory register or one-entry descriptor cache would add function
+state and register pressure without serving a current workload. Reconsider only
+with measured multi-table traffic.
+
+### Deferred follow-up: host effect classes
+
+The current AMD64 rebaseline initially showed Wago's ordinary host round trip at
+about 478 ns/op versus wazero at about 405 ns/op. Isolating export lookup and the
+ordinary invocation contract with `PrepareFunction` reduced the same Wago
+Wasm-to-Go-host-to-Wasm round trip to a 396 ns/op median on the Ryzen 7 7800X3D,
+with the same 96 B/op and two allocations. The synchronous host transition is
+therefore not the measured deficit. The remaining ordinary-path cost provides
+instance serialization, close admission, collector ownership, and re-entry
+identity; it must not be removed based on a leaf-host benchmark. Explicit host
+effects remain useful only after a workload shows call-adjacent compiler state
+invalidation, rather than public invocation bookkeeping, to be dominant.
+
+### Rejected follow-up: dead forward-merge stores
+
+The existing 64-operation merge next-use scan was temporarily extended to omit
+a dirty pinned-local store when the local was overwritten before any read after
+the merge. It remained bounded and allocation-free, hit 31 times in five of the
+64 exact corpus modules, and reduced their combined native output by 208 bytes.
+A 32-site Ryzen 7 7800X3D benchmark was flat at about 39 ns/op in both modes,
+with zero execution allocations. Because generated-size reduction is baseline
+work and this produced no material execution gain, the rule and tests were
+removed under the execution-first admission gate.
