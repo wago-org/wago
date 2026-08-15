@@ -44,6 +44,27 @@ func moduleFactsFixture(byteBacked bool) *wasm.Module {
 	return m
 }
 
+func TestAnalyzeModuleFactsMixedMemory64MemargDoesNotInventFacts(t *testing.T) {
+	m := &wasm.Module{
+		Memories: []wasm.MemType{
+			{Limits: wasm.Limits{Min: 1}},
+			{Limits: wasm.Limits{Min: 1, Addr64: true}},
+		},
+		Code: []wasm.Func{{BodyBytes: []byte{
+			0x42, 0x00, // i64.const 0
+			0x28, 0x40, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // i32.load memory 1, offset 1<<32
+			0x1a, 0x0b, // drop; end
+		}}},
+	}
+	facts, err := AnalyzeModuleFacts(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(facts.MemoryGrowUsed, []bool{false, false}) || facts.UsesRefFunc {
+		t.Fatalf("mixed-width memarg invented module facts: %+v", facts)
+	}
+}
+
 func TestAnalyzeModuleFactsMatchesByteAndInstructionForms(t *testing.T) {
 	byteFacts, err := AnalyzeModuleFacts(moduleFactsFixture(true))
 	if err != nil {

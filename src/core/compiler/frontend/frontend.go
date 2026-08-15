@@ -329,6 +329,7 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 		return nil, fmt.Errorf("nil module")
 	}
 	facts := NewModuleFacts(m.TableCount(), m.MemCount())
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Exports {
 		ex := m.Exports[i].Index
 		switch ex.Kind {
@@ -410,7 +411,8 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 				}
 				continue
 			}
-			in, err := wasm.ClassifyInstructionImmediate(r, op)
+			var in wasm.InstructionImmediate
+			err = classifier.ClassifyInto(r, op, &in)
 			if err != nil {
 				// The feature-aware support pass will validate/reject this body. Facts
 				// conservatively preserve every indexed growth capacity meanwhile.
