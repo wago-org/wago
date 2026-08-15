@@ -30,12 +30,22 @@ func versionString() string {
 	return version
 }
 
-// root is the profile-specific runtime command registry.
-var root = buildCommandRegistry()
+// root is the profile-specific runtime command registry. Keep its construction
+// lazy so generated plugin binaries can validate their plugin set without
+// loading project settings while the manager holds the project mutation lock.
+var root *command.Cmd
+
+func runtimeCommandRegistry() *command.Cmd {
+	if root == nil {
+		root = buildCommandRegistry()
+	}
+	return root
+}
 
 // Main runs the runtime command matching os.Args.
 func Main(v string) {
 	version = v
+	registry := runtimeCommandRegistry()
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {
 		ui.Usage("%v", err)
@@ -68,29 +78,29 @@ func Main(v string) {
 	// Help describes the invoked CLI, not a generated plugin artifact that may
 	// have been compiled by an older Wago. Resolve it before plugin handoff so
 	// every command advertises the current interface.
-	if cmd := root.Child(args[0]); cmd != nil && command.InvocationWantsHelp(cmd, args[1:]) {
+	if cmd := registry.Child(args[0]); cmd != nil && command.InvocationWantsHelp(cmd, args[1:]) {
 		cmd.Dispatch("wago "+cmd.Name, args[1:])
 		return
 	}
-	if cmd := root.Child(args[0]); cmd != nil {
+	if cmd := registry.Child(args[0]); cmd != nil {
 		cmd.Dispatch("wago "+cmd.Name, args[1:])
 		return
 	}
 	// Not a known command. A file path (or a leading flag) is an implicit `run`;
 	// anything else is an unknown command rather than a mystery file-open.
 	if handoff.LooksLikeRuntimeTarget(args[0]) || strings.HasPrefix(args[0], "-") {
-		root.Child("run").Dispatch("wago run", args)
+		registry.Child("run").Dispatch("wago run", args)
 		return
 	}
 	if automation.JSON() {
 		hint := "wago help --json"
-		if suggestion := command.SuggestChild(root, args[0]); suggestion != "" {
+		if suggestion := command.SuggestChild(registry, args[0]); suggestion != "" {
 			hint = "wago " + suggestion + " --help"
 		}
 		ui.UsageHint(hint, "unknown command %q", args[0])
 	}
 	fmt.Fprintf(os.Stderr, "%s unknown command %q\n\n", red("wago:"), args[0])
-	if suggestion := command.SuggestChild(root, args[0]); suggestion != "" {
+	if suggestion := command.SuggestChild(registry, args[0]); suggestion != "" {
 		fmt.Fprintf(os.Stderr, "Did you mean %q?\n\n", suggestion)
 	}
 	usage(os.Stderr)
@@ -130,7 +140,7 @@ func parseTopAutomation(args []string) {
 }
 
 func writeRuntimeSchema() {
-	if err := command.WriteSchema(os.Stdout, root); err != nil {
+	if err := command.WriteSchema(os.Stdout, runtimeCommandRegistry()); err != nil {
 		ui.Fatal("commands: %v", err)
 	}
 }
@@ -181,5 +191,5 @@ func writeCommandList(w *os.File) {
 // The manager owns the cohesive user-facing help and never asks a runtime to
 // advertise manager commands.
 func topLevelHelpCommands() []*command.Cmd {
-	return append([]*command.Cmd(nil), root.Children...)
+	return append([]*command.Cmd(nil), runtimeCommandRegistry().Children...)
 }

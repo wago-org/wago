@@ -4,14 +4,59 @@ package runtime
 
 import (
 	"bytes"
+	"context"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/project"
 )
+
+const validationProcessEnvironment = "WAGO_TEST_VALIDATION_PROCESS"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(validationProcessEnvironment) != "1" {
+		root = buildCommandRegistry()
+	}
+	os.Exit(m.Run())
+}
+
+func TestValidationModeDoesNotWaitForProjectLock(t *testing.T) {
+	if os.Getenv(validationProcessEnvironment) == "1" {
+		return
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wago.json"), []byte(`{"$schema":"https://wago.sh/v1/schema.json"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var output []byte
+	var childErr error
+	err := project.WithMutation(context.Background(), dir, func(*project.Mutation) error {
+		command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestValidationModeDoesNotWaitForProjectLock$")
+		command.Dir = dir
+		command.Env = append(os.Environ(), validationProcessEnvironment+"=1", "WAGO_INTERNAL_VALIDATE_PLUGIN_SET=1")
+		output, childErr = command.CombinedOutput()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("validation process waited for the project lock: %v\n%s", ctx.Err(), output)
+	}
+	if childErr != nil {
+		t.Fatalf("validation process failed: %v\n%s", childErr, output)
+	}
+}
 
 func TestUsageDocumentsCommandSurface(t *testing.T) {
 	f, err := os.CreateTemp(t.TempDir(), "usage-*.txt")
