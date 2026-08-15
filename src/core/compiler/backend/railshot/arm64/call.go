@@ -1605,6 +1605,14 @@ func callRematFrameLeaf(e *elem) bool {
 	return e != nil && e.kind == ekValue && (e.st.kind == stConst || e.st.kind == stLocalRef)
 }
 
+func (f *fn) addIntegerResultFallbackMoves(localIdx, n int) {
+	if localIdx < 0 {
+		f.stats.addIndirectResultMoves(n)
+	} else {
+		f.stats.addDirectResultFallbackMoves(n)
+	}
+}
+
 // emitRegisterCallVia emits either a direct internal BL (localIdx >= 0) or an
 // indirect BLR. Explicit operands avoid allocating a closure at every wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, localIdx int, indirect Reg) uint32 {
@@ -1735,7 +1743,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		} else {
 			resReg = f.allocReg(maskOf(X0))
 			f.a.MovReg64(resReg, X0)
-			f.stats.addRegisterResultMoves(1)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 		}
 		f.pinned = f.pinned.add(resReg)
 	}
@@ -1750,10 +1758,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			pairRes[0] = f.allocReg(maskOf(X0, X1))
 			f.pinned = f.pinned.add(pairRes[0])
 			f.a.MovReg64(pairRes[0], X0)
-			f.stats.addRegisterResultMoves(1)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 			pairRes[1] = f.allocReg(maskOf(X0, X1))
 			f.a.MovReg64(pairRes[1], X1)
-			f.stats.addRegisterResultMoves(1)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 		}
 		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
 	}
@@ -1774,7 +1782,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
 		f.a.MovReg64(pr, X0)
-		f.stats.addRegisterResultMoves(1)
+		f.stats.addLocalSinkResultMoves(1)
 		f.markLocalDirty(resHint)
 		facts := valueFacts(0)
 		if f.opt(optValueFacts) && ft.Results[0].Kind() == wasm.ValRef && !ft.Results[0].Ref().Nullable() {
@@ -2014,7 +2022,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		} else {
 			gpResults[i] = f.allocReg(maskOf(X0, X1))
 			f.a.MovReg64(gpResults[i], intResultRegs[i])
-			f.stats.addRegisterResultMoves(1)
+			f.stats.addMixedResultFallbackMoves(1)
 		}
 		f.pinned = f.pinned.add(gpResults[i])
 	}

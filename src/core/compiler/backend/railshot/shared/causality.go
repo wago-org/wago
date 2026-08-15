@@ -36,10 +36,20 @@ type CallTraffic struct {
 	IntegerCallArgumentMoves int
 	MixedCallArgumentMoves   int
 	TailCallArgumentMoves    int
+
+	// Result moves are partitioned by the decision that prevented the ABI result
+	// register from remaining the value's final physical location.
+	DirectResultFallbackMoves int
+	RecursiveResultMoves      int
+	IndirectResultMoves       int
+	LocalSinkResultMoves      int
+	MixedResultFallbackMoves  int
 }
 
 func (t CallTraffic) Any() bool {
 	return t.RegisterArgumentMoves != 0 || t.RegisterResultMoves != 0 ||
 		t.IntegerCallArgumentMoves != 0 || t.MixedCallArgumentMoves != 0 ||
-		t.TailCallArgumentMoves != 0
+		t.TailCallArgumentMoves != 0 || t.DirectResultFallbackMoves != 0 ||
+		t.RecursiveResultMoves != 0 || t.IndirectResultMoves != 0 ||
+		t.LocalSinkResultMoves != 0 || t.MixedResultFallbackMoves != 0
 }

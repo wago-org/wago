@@ -60,6 +60,9 @@ func TestCallResultResidencyAMD64(t *testing.T) {
 	if got := offStats.CallTraffic.RegisterResultMoves; got != 16 {
 		t.Fatalf("fallback result moves = %d, want 16", got)
 	}
+	if got := offStats.CallTraffic.DirectResultFallbackMoves; got != 16 {
+		t.Fatalf("direct fallback result moves = %d, want 16", got)
+	}
 	if onStats.CodeBytes >= offStats.CodeBytes {
 		t.Fatalf("code bytes off=%d on=%d, want reduction", offStats.CodeBytes, onStats.CodeBytes)
 	}
@@ -133,6 +136,9 @@ func TestCallResultResidencySelfRecursiveFallbackAMD64(t *testing.T) {
 	}
 	if got := ms.Funcs[0].CallTraffic.RegisterResultMoves; got != 1 {
 		t.Fatalf("self-recursive result moves = %d, want fallback move", got)
+	}
+	if got := ms.Funcs[0].CallTraffic.RecursiveResultMoves; got != 1 {
+		t.Fatalf("attributed recursive result moves = %d, want 1", got)
 	}
 }
 

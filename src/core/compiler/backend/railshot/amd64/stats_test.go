@@ -444,6 +444,9 @@ func TestCodegenStatsLocalTrafficCauses(t *testing.T) {
 	if registerTraffic.IntegerCallArgumentMoves != 1 || registerTraffic.MixedCallArgumentMoves != 0 || registerTraffic.TailCallArgumentMoves != 0 {
 		t.Fatalf("register argument causes = %+v, want one integer-call move", registerTraffic)
 	}
+	if registerTraffic.DirectResultFallbackMoves != 1 {
+		t.Fatalf("register result causes = %+v, want one direct fallback move", registerTraffic)
+	}
 	if !strings.Contains(registerStats.String(), "call-traffic: reg-arg-move=") {
 		t.Fatalf("report omitted register call traffic:\n%s", registerStats.String())
 	}

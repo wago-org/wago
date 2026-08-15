@@ -330,9 +330,28 @@ func (s *CodegenStats) addMixedCallArgumentMoves(n int) {
 		s.CallTraffic.MixedCallArgumentMoves += n
 	}
 }
-func (s *CodegenStats) addRegisterResultMoves(n int) {
+func (s *CodegenStats) addDirectResultFallbackMoves(n int) {
 	if s != nil {
 		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.DirectResultFallbackMoves += n
+	}
+}
+func (s *CodegenStats) addIndirectResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.IndirectResultMoves += n
+	}
+}
+func (s *CodegenStats) addLocalSinkResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.LocalSinkResultMoves += n
+	}
+}
+func (s *CodegenStats) addMixedResultFallbackMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.MixedResultFallbackMoves += n
 	}
 }
 func (s *CodegenStats) addForcedLoad() {
@@ -597,10 +616,12 @@ func (s *CodegenStats) report() string {
 	}
 	callTraffic := s.CallTraffic
 	if callTraffic.Any() {
-		fmt.Fprintf(&b, "    call-traffic: reg-arg-move=%d reg-result-move=%d int-arg=%d mixed-arg=%d tail-arg=%d\n",
+		fmt.Fprintf(&b, "    call-traffic: reg-arg-move=%d reg-result-move=%d int-arg=%d mixed-arg=%d tail-arg=%d result-direct=%d result-recursive=%d result-indirect=%d result-local=%d result-mixed=%d\n",
 			callTraffic.RegisterArgumentMoves, callTraffic.RegisterResultMoves,
 			callTraffic.IntegerCallArgumentMoves, callTraffic.MixedCallArgumentMoves,
-			callTraffic.TailCallArgumentMoves)
+			callTraffic.TailCallArgumentMoves, callTraffic.DirectResultFallbackMoves,
+			callTraffic.RecursiveResultMoves, callTraffic.IndirectResultMoves,
+			callTraffic.LocalSinkResultMoves, callTraffic.MixedResultFallbackMoves)
 	}
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)

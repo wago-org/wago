@@ -3922,3 +3922,28 @@ allocations. The ARM64 implementation and option binding were therefore removed;
 `call-arg-direct` remains AMD64-only. This is a concrete example of the plan's
 rule that semantic opportunities may be shared while target instruction choices
 remain architecture-specific.
+
+## 2026-08-15 — call-result move causality
+
+The opt-in call-traffic ledger now partitions every register-result copy into a
+mutually exclusive cause: ordinary direct fallback, self-recursion, indirect
+call, `local.set` sink, or mixed-bank fallback. The five fixed counters live only
+in requested `CodegenStats`; ordinary compilation and execution gain no state,
+allocation, scan, or branch. Their sum is tested against the existing headline
+result-move count through backend fixtures and corpus measurement.
+
+On the current AMD64 compile corpus, all 61,307 result moves are attributed:
+
+```text
+call -> local.set       52,171
+indirect result          6,214
+direct fallback          2,139
+self-recursive             769
+mixed-bank fallback         14
+```
+
+This rejects the prior aggregate inference that Ruby's 53,981 result moves were
+mostly the deliberately retained recursive dependency break. The next bounded
+AMD64 target is instead transferring a direct call result into a local without
+an unconditional physical copy. On ARM64, the same corpus reports 6,286 result
+moves: 6,236 indirect and only 50 local sinks, so that target remains AMD64-only.

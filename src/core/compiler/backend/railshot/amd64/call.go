@@ -1809,6 +1809,17 @@ func (f *fn) keepCallResultsResident(localIdx int, remat callRemat) bool {
 	return localIdx+f.m.ImportedFuncCount() != f.globalIdx
 }
 
+func (f *fn) addIntegerResultFallbackMoves(localIdx, n int) {
+	switch {
+	case localIdx < 0:
+		f.stats.addIndirectResultMoves(n)
+	case localIdx+f.m.ImportedFuncCount() == f.globalIdx:
+		f.stats.addRecursiveResultMoves(n)
+	default:
+		f.stats.addDirectResultFallbackMoves(n)
+	}
+}
+
 func callRematFrameLeaf(e *elem) bool {
 	return e != nil && e.kind == ekValue && (e.st.kind == stConst || e.st.kind == stLocalRef)
 }
@@ -1956,7 +1967,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		} else {
 			resReg = f.allocReg(maskOf(RAX))
 			f.a.MovReg64(resReg, RAX)
-			f.stats.addRegisterResultMoves(1)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 		}
 		f.pinned = f.pinned.add(resReg)
 	}
@@ -1970,10 +1981,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 			pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 			f.pinned = f.pinned.add(pairRes[0])
 			f.a.MovReg64(pairRes[0], RAX)
-			f.stats.addRegisterResultMoves(1)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 			pairRes[1] = f.allocReg(maskOf(RAX, RDX))
 			f.a.MovReg64(pairRes[1], RDX)
-			f.stats.addRegisterResultMoves(1)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 		}
 		f.pinned = f.pinned.add(pairRes[1])
 	}
@@ -2007,7 +2018,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
 		f.a.MovReg64(pr, RAX)
-		f.stats.addRegisterResultMoves(1)
+		f.stats.addLocalSinkResultMoves(1)
 		f.markLocalDirty(resHint)
 	}
 
@@ -2220,7 +2231,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		} else {
 			gpResults[i] = f.allocReg(maskOf(RAX, RDX))
 			f.a.MovReg64(gpResults[i], intResultRegs[i])
-			f.stats.addRegisterResultMoves(1)
+			f.stats.addMixedResultFallbackMoves(1)
 		}
 		f.pinned = f.pinned.add(gpResults[i])
 	}
