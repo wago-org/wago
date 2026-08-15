@@ -747,6 +747,45 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		aliasLocal = addrLocal
 	}
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
+	if f.opt(optLoadPair) && !f.guardMode && !f.threadedMemory0 && !signed &&
+		(size == 4 && !wide || size == 8 && wide) && addrOK {
+		if first := f.s.back(); first != nil && first.kind == ekValue && first.st.kind == stMemRef &&
+			first.st.memAliasLocal() == addrLocal && first.st.memSize() == size &&
+			!first.st.memSigned() && first.st.typ.is64() == wide &&
+			disp == first.st.memDisp()+int32(size) {
+			avoid := maskOf(first.st.reg, ea)
+			dst := first.st.reg
+			if first.st.memBorrow() >= 0 {
+				dst = f.allocReg(avoid)
+				avoid = avoid.add(dst)
+			}
+			dst2 := ea
+			if !eaOwned || dst2 == dst {
+				dst2 = f.allocReg(avoid)
+			}
+			if f.a.LoadPairIdx(dst, dst2, linMemReg, ea, first.st.memDisp(), size) {
+				if first.st.memBorrow() < 0 && first.st.reg != dst {
+					f.release(first.st.reg)
+				}
+				if eaOwned && ea != dst2 && ea != dst {
+					f.release(ea)
+				}
+				f.occupy(first, dst)
+				second := f.pushReg(dst2, first.st.typ)
+				if f.opt(optValueFacts) {
+					second.st.facts = shared.ValueFactsForIntLoad(size, signed, wide)
+				}
+				f.stats.peep("load-pair")
+				return nil
+			}
+			if first.st.memBorrow() >= 0 {
+				f.release(dst)
+			}
+			if !eaOwned || ea == dst {
+				f.release(dst2)
+			}
+		}
+	}
 	// Defer the load: push a bounds-checked memory reference (the LDR is emitted
 	// when the value is materialized — arm64 has no memory operand to fold into,
 	// so unlike x86 there is no r/m consumer, but deferring still lets the consumer

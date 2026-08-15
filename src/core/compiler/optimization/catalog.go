@@ -277,6 +277,7 @@ var catalog = []Definition{
 	both("entry-init-elide", "Entry initialization elision", "skip local initialization when bounded definite assignment makes the initial value unobservable"),
 	arm64("entry-param-pairs", "Entry parameter pairs", "pair adjacent serialized wrapper parameter homes in function prologues"),
 	arm64("entry-zero-pairs", "Entry zero pairs", "pair adjacent declared-local zero stores in function prologues"),
+	arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),
 	both("gc-dead-new", "Dropped GC constructors", "retain allocation and traps while omitting unreachable constructor payload population"),
 	arm64("gc-fixed-array-len", "Known array lengths", "replace an immediately consumed constructor reference with its statically known length"),
 	arm64("gc-const-struct-get", "Known struct fields", "replace an immediately consumed constructor reference with its statically known numeric field"),

@@ -33,6 +33,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
 	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
+	optimization.Bind("load-pair", &loadPairEnabled),
 	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
 	optimization.Bind("gc-fixed-array-len", &fixedGCArrayLenEnabled),
 	optimization.Bind("gc-const-struct-get", &constGCStructGetEnabled),
@@ -101,6 +102,7 @@ var (
 	optEntryInitElide        = optimizationBindings.Option("entry-init-elide")
 	optEntryParamPairs       = optimizationBindings.Option("entry-param-pairs")
 	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
+	optLoadPair              = optimizationBindings.Option("load-pair")
 	optGCDeadNew             = optimizationBindings.Option("gc-dead-new")
 	optGCFixedArrayLen       = optimizationBindings.Option("gc-fixed-array-len")
 	optGCConstStructGet      = optimizationBindings.Option("gc-const-struct-get")

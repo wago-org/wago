@@ -1461,6 +1461,40 @@ unsigned borrow. Its full-width execution and encoding tests passed, but the
 exact bounded matcher found zero sites in the same 64 modules. That encoder,
 matcher, option, and tests were removed rather than retaining an unused rule.
 
+### 2026-08-15 — adjacent ARM64 scalar load pairs
+
+ARM64 now combines two immediately adjacent full-width `i32.load` or `i64.load`
+operations from the same local address and consecutive static offsets into one
+indexed `LDP`. Both ordinary explicit bounds checks run before selection, and
+the rule then replaces the two deferred loads with one address addition and one
+pair load. The matcher retains no history beyond the already pending first
+load, adds no summary or heap storage, and falls back when the pair displacement
+is not encodable.
+
+Guard-page compilation retains separate loads so a native fault still identifies
+the exact Wasm access. Shared memory is also excluded because pair loads do not
+provide the ordinary scalar access contract required in the presence of data
+races. Different bases, nonconsecutive offsets, sub-width or signed loads, and
+mixed widths remain unchanged. The immutable `load-pair` policy and
+`WAGO_ARM64_NO_LOAD_PAIR=1` provide exact A/B and rollback boundaries.
+
+The 64-module corpus contains 2,030 accepted pairs across 14 modules, led by
+Script (748), esbuild (387), regexmatch (229), Ruby (209), SQLite (165), Lua
+(92), and jsonproc (78). Total ARM64 native output falls from 87,802,672 to
+87,788,400 bytes (-14,272), with no module growth. An Apple M4 Max fixture with
+16 pairs improves from a roughly 18.65 to 17.98 ns/op median (-3.6%) and remains
+at zero B/op and allocations. Order-balanced regexmatch compilation is neutral;
+SQLite remains within the compile gate at roughly +2.7%, with identical B/op
+and allocation counts.
+
+Tests cover the 32- and 64-bit encodings and native execution, disabled policy,
+nonconsecutive offsets, different local bases, guard mode, shared memory, and
+native-size reduction. Pre/post-index addressing was audited separately but is
+not a correct local rewrite: Wasm locals hold linear-memory offsets, while an
+AArch64 updating load writes back a native pointer. Supporting those 682 raw
+corpus shapes would require a bounded native-pointer representation rather than
+silently changing the local's value.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with

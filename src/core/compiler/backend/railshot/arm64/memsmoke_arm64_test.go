@@ -9,7 +9,7 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func modMem(t *testing.T, pages uint32, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
+func modMem(t testing.TB, pages uint32, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
 	t.Helper()
 	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
 	memType := append([]byte{0x00}, wasmtest.ULEB(pages)...) // flags=0 (min only)
