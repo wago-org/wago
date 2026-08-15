@@ -124,13 +124,15 @@ Create a project and add the WASI plugin:
 
 ```sh
 wago init --run
-wago add github.com/wago-org/wasi
+wago add wago-org/wasi
 wago run program.wasm hello world
 ```
 
-`wago add` resolves the complete dependency and Contract graph, reviews exact
-scoped Authorities, pins sources and bindings in `wago-lock.json`, verifies the
-linked definitions, and atomically publishes the rebuilt runtime.
+For GitHub plugins, `owner/repository` is shorthand for the canonical
+`github.com/owner/repository` Plugin ID. `wago add` resolves the complete
+dependency and Contract graph, reviews exact scoped Authorities, pins sources
+and bindings in `wago-lock.json`, verifies the linked definitions, and
+atomically publishes the rebuilt runtime.
 
 Useful plugin commands:
 
