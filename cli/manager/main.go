@@ -16,6 +16,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/cli/internal/watchsupervisor"
 	versioninstall "github.com/wago-org/wago/cli/manager/commands/version/install"
 	managerplugin "github.com/wago-org/wago/cli/manager/internal/plugin"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
@@ -41,6 +42,7 @@ func versionString() string {
 // the active host runner; the manager itself owns version selection and network
 // installation so every profile retains the same management commands.
 func Main(v string) {
+	watchsupervisor.Enter()
 	version = v
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
