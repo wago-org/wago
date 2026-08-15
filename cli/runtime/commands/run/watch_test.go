@@ -1,4 +1,4 @@
-//go:build !tinygo
+//go:build !tinygo && !wago_lean
 
 package run
 
@@ -36,10 +36,6 @@ func TestFileStampDetectsSameSizeRewriteWithRestoredModTime(t *testing.T) {
 	if err := os.Chtimes(path, modTime, modTime); err != nil {
 		t.Fatal(err)
 	}
-	firstMetadata, err := fileMetadata(path)
-	if err != nil {
-		t.Fatal(err)
-	}
 	first, err := fileStamp(path)
 	if err != nil {
 		t.Fatal(err)
@@ -49,13 +45,6 @@ func TestFileStampDetectsSameSizeRewriteWithRestoredModTime(t *testing.T) {
 	}
 	if err := os.Chtimes(path, modTime, modTime); err != nil {
 		t.Fatal(err)
-	}
-	finalMetadata, err := fileMetadata(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if firstMetadata == finalMetadata {
-		t.Fatal("same-size rewrite with restored timestamp did not change fast metadata")
 	}
 	final, err := fileStamp(path)
 	if err != nil {
@@ -71,6 +60,10 @@ func TestWatchSupervisorRestartsLongRunningChildWithDetachedDescendant(t *testin
 	modulePath := filepath.Join(dir, "module.wasm")
 	logPath := filepath.Join(dir, "starts.log")
 	if err := os.WriteFile(modulePath, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	modTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(modulePath, modTime, modTime); err != nil {
 		t.Fatal(err)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -100,8 +93,7 @@ func TestWatchSupervisorRestartsLongRunningChildWithDetachedDescendant(t *testin
 			t.Error("watch supervisor did not stop")
 		}
 	})
-	waitForWatchLog(t, logPath, 1)
-	modTime := time.Unix(1_700_000_000, 0)
+	waitForActiveWatchLog(t, logPath, 1, done)
 	if err := os.WriteFile(modulePath, []byte("middl"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +106,7 @@ func TestWatchSupervisorRestartsLongRunningChildWithDetachedDescendant(t *testin
 	if err := os.Chtimes(modulePath, modTime, modTime); err != nil {
 		t.Fatal(err)
 	}
-	lines := waitForWatchLog(t, logPath, 2)
+	lines := waitForActiveWatchLog(t, logPath, 2, done)
 	if got, want := lines, []string{"first", "final"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("child starts = %#v, want %#v", got, want)
 	}
@@ -149,11 +141,11 @@ func TestWatchSupervisorRestartsAfterChildExit(t *testing.T) {
 			t.Error("watch supervisor did not stop")
 		}
 	})
-	waitForWatchLog(t, logPath, 1)
+	waitForActiveWatchLog(t, logPath, 1, done)
 	if err := os.WriteFile(modulePath, []byte("final"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	lines := waitForWatchLog(t, logPath, 2)
+	lines := waitForActiveWatchLog(t, logPath, 2, done)
 	if got, want := lines, []string{"first", "final"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("child starts = %#v, want %#v", got, want)
 	}
@@ -193,7 +185,7 @@ func TestWatchSupervisorHandlesDeleteAndRecreate(t *testing.T) {
 			t.Error("watch supervisor did not stop")
 		}
 	})
-	waitForWatchLog(t, logPath, 1)
+	waitForActiveWatchLog(t, logPath, 1, done)
 	if err := os.Remove(modulePath); err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +193,7 @@ func TestWatchSupervisorHandlesDeleteAndRecreate(t *testing.T) {
 	if err := os.WriteFile(modulePath, []byte("final"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := waitForWatchLog(t, logPath, 2), []string{"first", "final"}; !reflect.DeepEqual(got, want) {
+	if got, want := waitForActiveWatchLog(t, logPath, 2, done), []string{"first", "final"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("child starts = %#v, want %#v", got, want)
 	}
 	cancel()
@@ -257,7 +249,7 @@ func TestWatchSupervisorForwardsInterrupt(t *testing.T) {
 					t.Error("watch supervisor did not stop")
 				}
 			})
-			waitForWatchLog(t, logPath, 1)
+			waitForActiveWatchLog(t, logPath, 1, done)
 			interrupts <- test.signal
 			select {
 			case err := <-done:
@@ -308,6 +300,31 @@ func waitForWatchLog(t *testing.T, path string, count int) []string {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			lines := strings.Fields(string(data))
+			if len(lines) >= count {
+				return lines
+			}
+		} else if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("watch log did not reach %d entries", count)
+	return nil
+}
+
+func waitForActiveWatchLog(t *testing.T, path string, count int, done chan error) []string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-done:
+			done <- err
+			t.Fatalf("watch supervisor stopped before log entry %d: %v", count, err)
+		default:
+		}
 		data, err := os.ReadFile(path)
 		if err == nil {
 			lines := strings.Fields(string(data))

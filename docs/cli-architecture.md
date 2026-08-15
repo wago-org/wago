@@ -220,15 +220,18 @@ and checks each identity again before signaling it. Linux subreaper ownership
 and macOS kernel fork events keep double-forked children tracked. On macOS, a
 trusted shell trampoline waits on an inherited pipe until event tracking is
 active, then replaces itself with the runtime in the same process. Cleanup
-therefore reaches descendants that
-create a new session or process group. The watcher mirrors terminal stop and
+therefore reaches descendants that create a new session or process group. On
+Windows, the extended process-start API puts the child in its kill-on-close job
+before its first instruction runs. The watcher mirrors terminal stop and
 continue events, and its status output remains safe when background terminal
 writes are disabled. It can find the controlling terminal through stdin,
 stdout, or stderr, including after a background job is foregrounded. Hangup,
 interrupt, quit, and termination signals stop the child tree before the watcher
 exits. Cheap file identity, size, modification, and change metadata gates full
-content hashing. The hash still detects same-size rewrites when modification
-timestamps do not change.
+content hashing. A full scan after 25 poll intervals is the bound when a file
+system does not update that metadata. The hash still detects same-size rewrites
+when modification timestamps do not change. The size-first `wago_lean` profile
+does not include watch mode; its parser rejects `--watch`.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

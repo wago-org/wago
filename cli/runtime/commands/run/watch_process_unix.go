@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build (linux || darwin) && !wago_lean
 
 package run
 
@@ -40,6 +40,39 @@ type watchedProcessTracker struct {
 	stop      func()
 	drain     func() error
 	eventErr  error
+}
+
+func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
+	if err := prepareWatchedCommand(command); err != nil {
+		return watchedChildPlatform{terminalFD: -1}, err
+	}
+	unlockStart := lockWatchedCommandStart()
+	defer unlockStart()
+	if err := command.Start(); err != nil {
+		abortWatchedCommand(command)
+		return watchedChildPlatform{terminalFD: -1}, err
+	}
+	if err := waitWatchedCommandStart(command); err != nil {
+		abortWatchedCommand(command)
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return watchedChildPlatform{terminalFD: -1}, err
+	}
+	platform, err := attachWatchedProcess(command)
+	if err != nil {
+		abortWatchedCommand(command)
+		_ = killWatchedProcess(platform, command)
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return watchedChildPlatform{terminalFD: -1}, err
+	}
+	if err := resumeWatchedCommand(command); err != nil {
+		_ = killWatchedProcess(platform, command)
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return watchedChildPlatform{terminalFD: -1}, err
+	}
+	return platform, nil
 }
 
 func prepareWatchedCommand(command *exec.Cmd) error {

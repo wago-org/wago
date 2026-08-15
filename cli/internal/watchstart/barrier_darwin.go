@@ -17,7 +17,7 @@ func Prepare(command *exec.Cmd) error {
 	command.ExtraFiles = append(command.ExtraFiles, reader, writer)
 	originalPath := command.Path
 	originalArguments := append([]string(nil), command.Args[1:]...)
-	script := fmt.Sprintf("exec %d>&-; release=$(/bin/dd bs=1 count=1 <&%d 2>/dev/null); exec %d<&-; [ \"$release\" = x ] || exit 1; exec \"$@\"", readFD+1, readFD, readFD)
+	script := fmt.Sprintf("exec %d>&-; IFS= read -r release <&%d; exec %d<&-; [ \"$release\" = x ] || exit 1; exec \"$@\"", readFD+1, readFD, readFD)
 	command.Path = "/bin/sh"
 	command.Args = append([]string{"sh", "-c", script, "wago-watch-start", originalPath}, originalArguments...)
 	return nil
@@ -36,7 +36,7 @@ func Release(command *exec.Cmd) error {
 	if !ok {
 		return nil
 	}
-	_, err := writer.Write([]byte{'x'})
+	_, err := writer.Write([]byte{'x', '\n'})
 	closeErr := writer.Close()
 	if err != nil {
 		return err

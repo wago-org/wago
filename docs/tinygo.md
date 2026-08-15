@@ -51,6 +51,11 @@ tinygo build -scheduler=tasks -tags wago_runtime,wago_lean,wago_minimal \
 ./wago-runtime-minimal-tiny run tests/fixtures/wasm/fib.wasm --invoke fib 20
 ```
 
+The `wago_lean` profile does not include `run --watch`. Watch mode needs the
+full process-tree supervisor and periodic content scan. A lean build rejects
+`--watch` as an unknown flag instead of using a smaller supervisor that can
+leave guest processes running.
+
 ## Scheduler: use `-scheduler=tasks`
 
 Build wago programs with **`-scheduler=tasks`** (cooperative, single-threaded).

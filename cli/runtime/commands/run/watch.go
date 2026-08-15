@@ -1,3 +1,5 @@
+//go:build !wago_lean
+
 package run
 
 import (
@@ -17,6 +19,7 @@ import (
 )
 
 const watchStopGrace = 2 * time.Second
+const watchFullScanIntervals = 25
 
 func watchModule(path, intervalValue string) {
 	interval := 200 * time.Millisecond
@@ -92,6 +95,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 	}()
 	ticker := time.NewTicker(options.interval)
 	defer ticker.Stop()
+	nextFullScan := time.Now().Add(watchFullScanIntervals * options.interval)
 	var candidate watchedStamp
 	var candidateSince time.Time
 	var candidateValid bool
@@ -144,7 +148,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				continue
 			}
 			lastFileError = ""
-			if metadata == stamp.metadata && !restartPending {
+			if metadata == stamp.metadata && !restartPending && !candidateValid && now.Before(nextFullScan) {
 				candidateValid = false
 				continue
 			}
@@ -157,6 +161,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 					candidateValid = false
 					continue
 				}
+				nextFullScan = now.Add(watchFullScanIntervals * options.interval)
 			}
 			if next.sameContent(stamp) && !restartPending {
 				stamp.metadata = next.metadata
@@ -192,6 +197,7 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				return err
 			}
 			stamp, candidateValid, restartPending = latest, false, false
+			nextFullScan = now.Add(watchFullScanIntervals * options.interval)
 		}
 	}
 }
@@ -301,33 +307,8 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	if options.environment != nil {
 		command.Env = options.environment
 	}
-	if err := prepareWatchedCommand(command); err != nil {
-		return nil, err
-	}
-	unlockStart := lockWatchedCommandStart()
-	defer unlockStart()
-	if err := command.Start(); err != nil {
-		abortWatchedCommand(command)
-		return nil, err
-	}
-	if err := waitWatchedCommandStart(command); err != nil {
-		abortWatchedCommand(command)
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		return nil, err
-	}
-	platform, err := attachWatchedProcess(command)
+	platform, err := startWatchedProcess(command)
 	if err != nil {
-		abortWatchedCommand(command)
-		_ = killWatchedProcess(platform, command)
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		return nil, err
-	}
-	if err := resumeWatchedCommand(command); err != nil {
-		_ = killWatchedProcess(platform, command)
-		_ = command.Process.Kill()
-		_ = command.Wait()
 		return nil, err
 	}
 	child := &watchedChild{command: command, platform: platform, done: make(chan watchedProcessResult, 1)}

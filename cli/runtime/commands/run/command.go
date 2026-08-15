@@ -25,13 +25,12 @@ type Environment interface {
 }
 
 func Command(environment Environment) *command.Cmd {
-	flags := []command.Flag{
-		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
-		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
-		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
+	flags := []command.Flag{{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"}}
+	flags = append(flags, watchFlags()...)
+	flags = append(flags,
+		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		ParallelFlag(),
-	}
+	)
 	flags = append(flags, environment.ProfileFlags()...)
 	knobs := append(DeferredBoundsCheckingFlags(), OptimizationFlags()...)
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -57,11 +56,7 @@ type implementation struct {
 }
 
 func (cmd implementation) Run(ctx *command.Ctx) {
-	if ctx.Bool("watch") {
-		if len(ctx.Args) == 0 {
-			ui.Usage("run: need a <file>")
-		}
-		watchModule(ctx.Args[0], ctx.Str("watch-interval"))
+	if runWatch(ctx) {
 		return
 	}
 	deferredBoundsChecking, err := DeferredBoundsOverride(ctx)
