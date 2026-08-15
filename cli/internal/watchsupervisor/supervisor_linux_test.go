@@ -13,6 +13,27 @@ import (
 	"time"
 )
 
+func TestMain(main *testing.M) {
+	Enter()
+	os.Exit(main.Run())
+}
+
+func TestProbeAcceptsCurrentSupervisor(t *testing.T) {
+	if err := Probe(os.Args[0]); err != nil {
+		t.Fatalf("probe current supervisor: %v", err)
+	}
+}
+
+func TestProbeRejectsExecutableWithoutProtocol(t *testing.T) {
+	executable, err := exec.LookPath("true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Probe(executable); err == nil {
+		t.Fatal("probe accepted executable without supervisor protocol")
+	}
+}
+
 func TestEnvironmentReplacesInternalValues(t *testing.T) {
 	input := []string{
 		markerEnvironment + "=old",

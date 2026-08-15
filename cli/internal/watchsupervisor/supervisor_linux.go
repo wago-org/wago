@@ -6,6 +6,7 @@ package watchsupervisor
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -25,10 +26,13 @@ const guestExecutableEnvironment = "WAGO_WATCH_GUEST_EXECUTABLE"
 const parentPIDEnvironment = "WAGO_WATCH_SUPERVISOR_PARENT"
 const guardianRole = "guardian"
 const workerRole = "worker"
+const probeRole = "probe"
+const probeResponse = "wago-watch-supervisor-v1"
 const maxDescendants = 4096
 const maxThreads = 4096
 const stopGrace = time.Second
 const cleanupGrace = 500 * time.Millisecond
+const probeTimeout = 2 * time.Second
 
 type processInfo struct {
 	pid, parent int
@@ -44,11 +48,52 @@ func Environment(base []string, guest string) []string {
 	return append(result, markerEnvironment+"="+guardianRole, guestExecutableEnvironment+"="+guest)
 }
 
+// Probe verifies that manager understands this supervisor protocol.
+func Probe(manager string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, manager, "--help")
+	command.Env = append(withoutInternalEnvironment(os.Environ()), markerEnvironment+"="+probeRole)
+	var output probeOutput
+	command.Stdout = &output
+	command.Stderr = io.Discard
+	err := command.Run()
+	if ctx.Err() != nil {
+		return errors.New("manager watch supervisor probe timed out")
+	}
+	if err != nil {
+		return fmt.Errorf("manager watch supervisor probe failed: %w", err)
+	}
+	if output.overflow || strings.TrimSpace(output.String()) != probeResponse {
+		return errors.New("manager does not support watch supervisor protocol v1")
+	}
+	return nil
+}
+
+type probeOutput struct {
+	data     [64]byte
+	length   int
+	overflow bool
+}
+
+func (output *probeOutput) Write(data []byte) (int, error) {
+	written := copy(output.data[output.length:], data)
+	output.length += written
+	output.overflow = output.overflow || written != len(data)
+	return len(data), nil
+}
+
+func (output *probeOutput) String() string { return string(output.data[:output.length]) }
+
 // Enter starts the marked guest and exits. It returns for normal invocations.
 func Enter() {
 	role := os.Getenv(markerEnvironment)
 	if role == "" {
 		return
+	}
+	if role == probeRole {
+		_, _ = fmt.Fprintln(os.Stdout, probeResponse)
+		os.Exit(0)
 	}
 	guest := os.Getenv(guestExecutableEnvironment)
 	if guest == "" {
