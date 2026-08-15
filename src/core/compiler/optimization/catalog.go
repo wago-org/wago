@@ -273,6 +273,7 @@ var catalog = []Definition{
 	arm64("gc-constructor-cast", "Constructor casts", "elide an adjacent cast of a constructor result to its exact defined type"),
 	arm64("gc-native-final-array-len", "Native final array lengths", "resolve adjacent final casts and array lengths through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-scalar-get", "Native final scalar reads", "resolve adjacent final casts and pointer-free scalar struct reads through checked collector metadata for speed-oriented output"),
+	arm64("gc-native-resolve-reuse", "Native GC resolution reuse", "retain one checked object address across adjacent scalar reads from the same local"),
 	both("simd-wide-bitmask-consumer", "Wide SIMD bitmask consumers", "reduce wide-lane sign bits directly for adjacent zero tests and population counts"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),

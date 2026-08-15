@@ -728,6 +728,26 @@ The separate ordinary `struct.get` fixture improved from 317.6 to 274.9 ns/op
 316 to 496 native bytes, while B/op fell 0.9% and allocations fell from 36 to
 34. Both execution paths remain zero-allocation.
 
+### 2026-08-14 — bounded ARM64 native GC resolution reuse
+
+ARM64 now retains one checked raw object address across an adjacent run of
+scalar reads from the same local. The compact reference remains the rooted
+semantic identity. The raw address occupies one protected register and is
+discarded at calls, collector safepoints, local mutation, control boundaries,
+non-GC operations, and unsupported GC suboperations. The first read validates
+the final struct's complete immutable object extent, allowing later fields at
+higher offsets to reuse the same certificate without weakening malformed-handle
+checks. An immutable per-compilation option and
+`WAGO_ARM64_NO_GC_RESOLVE_REUSE=1` retain the independent checked path.
+
+Positive tests reach seven reuses in one eight-read region; a constructor
+safepoint near miss proves that reuse stops and may begin again only afterward.
+On Apple M4 Max, eight adjacent reads improved from a 99.5 to 87.1 ns/op median
+(-12.5%) through prepared invocation with zero B/op and allocations. The
+matching compile fixture improved from 11.44 to 8.06 us/op (-29.6%), allocations
+fell from 52 to 46, B/op fell 12.8%, and native output fell from
+1,888 to 740 bytes because seven duplicate checked resolvers disappeared.
+
 ---
 
 # 1. North-star architecture

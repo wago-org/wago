@@ -93,6 +93,12 @@ var nativeGCFinalArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRA
 // pointer-free scalar struct read through the checked collector native view.
 var nativeGCFinalScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCALAR_GET") != "1"
 
+// nativeGCResolveReuseEnabled retains one checked raw object address across an
+// adjacent run of scalar reads from the same local. The immutable compact
+// reference remains the semantic identity; every other operation invalidates
+// the transient address before it could cross a safepoint or mutation.
+var nativeGCResolveReuseEnabled = os.Getenv("WAGO_ARM64_NO_GC_RESOLVE_REUSE") != "1"
+
 // simdWideBitmaskConsumerEnabled avoids materializing a scalar mask when a
 // 16- or 32-bit lane bitmask is consumed immediately by a zero test, or a
 // 16-, 32-, or 64-bit lane mask by popcount. Selection uses fixed lookahead.
@@ -436,6 +442,10 @@ type fn struct {
 	storeFwd storeForward
 	// Keep the extra protected register out of large/high-pressure functions.
 	storeForwardOK bool
+	// gcResolved is one transient, straight-line raw-address certificate. It is
+	// protected from allocation but never published as a root or retained across
+	// calls, control flow, mutation, or any non-GC operation.
+	gcResolved gcResolvedObject
 	// threadedMemory0 routes shared memory zero through the instance-owned memory
 	// directory, leaving linMemReg's negative basedata private to the instance.
 	threadedMemory0 bool

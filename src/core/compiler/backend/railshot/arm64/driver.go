@@ -44,6 +44,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		}
 		f.prepareStoreForward(op)
+		f.prepareGCResolvedObject(op)
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
@@ -164,6 +165,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
 			value.st.gcRoot = f.gcFrameLocal(int(x))
+			// stReg has no canonical slot payload. Retain the source local so a
+			// final interval use can participate in bounded GC resolution reuse.
+			value.st.slot = int(x) + 1
 			f.applyFactsForLocal(value, int(x))
 			break
 		}

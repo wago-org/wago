@@ -370,6 +370,7 @@ func (f *fn) frameDepthTypes(base, suffix []machineType) []machineType {
 // all registers freed. v128 values occupy two adjacent 8-byte slots.
 func (f *fn) flush() {
 	f.stats.addFlush()
+	f.invalidateGCResolvedObject()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()

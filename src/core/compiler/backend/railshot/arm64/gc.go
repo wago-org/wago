@@ -61,6 +61,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.prepareGCResolvedFB(sub)
 	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
 		return f.emitGCArray(sub, r)
@@ -929,6 +930,27 @@ func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uin
 // returns its current object-header address. The caller must consume or release
 // the returned allocator-owned register without crossing a safepoint.
 func (f *fn) emitNativeFinalCastObject(typeIndex, required uint32, nullable bool) (Reg, error) {
+	local, hasLocal := gcLocalProvenance(f.s.back())
+	if f.opt(optGCNativeResolveReuse) && hasLocal && f.gcResolved.valid &&
+		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex &&
+		required <= f.gcResolved.required {
+		object := f.popValue()
+		if object.st.kind == stReg {
+			f.release(object.st.reg)
+		}
+		f.stats.peep("gc-native-resolve-reuse")
+		return f.gcResolved.reg, nil
+	}
+	f.invalidateGCResolvedObject()
+	checkedRequired := required
+	if f.opt(optGCNativeResolveReuse) && hasLocal {
+		// A cached struct address may feed a later, higher-offset field. Validate
+		// the immutable final layout's complete extent once so every subsequent
+		// scalar field covered by that layout can reuse the certificate.
+		if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.ObjectSize > checkedRequired {
+			checkedRequired = layout.ObjectSize
+		}
+	}
 	object := f.popValue()
 	ref := f.materialize(object)
 	if nullable {
@@ -989,11 +1011,11 @@ func (f *fn) emitNativeFinalCastObject(typeIndex, required uint32, nullable bool
 	f.a.Sub32(view, view, ref)
 	f.cmpRR(handle, view, false)
 	f.trapIf(condA, trapCastFailure)
-	if required <= 0xfff {
-		f.cmpImm(handle, required, false)
+	if checkedRequired <= 0xfff {
+		f.cmpImm(handle, checkedRequired, false)
 	} else {
 		viewRequired := f.allocReg(maskOf(ref, view, domain, handle, tmp))
-		f.a.MovImm64(viewRequired, uint64(required))
+		f.a.MovImm64(viewRequired, uint64(checkedRequired))
 		f.cmpRR(handle, viewRequired, false)
 		f.release(viewRequired)
 	}
@@ -1008,6 +1030,10 @@ func (f *fn) emitNativeFinalCastObject(typeIndex, required uint32, nullable bool
 	f.release(view)
 	f.release(domain)
 	f.release(handle)
+	if f.opt(optGCNativeResolveReuse) && hasLocal {
+		f.pinned = f.pinned.add(tmp)
+		f.gcResolved = gcResolvedObject{valid: true, local: local, typeIndex: typeIndex, required: checkedRequired, reg: tmp}
+	}
 	return tmp, nil
 }
 
