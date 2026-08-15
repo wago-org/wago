@@ -89,10 +89,11 @@ func selfExecutablePath() string {
 var (
 	resolveManagerUpdate  = managerversion.ResolveManagerUpdate
 	installManagerPayload = managerversion.InstallManagerPayload
+	syncManagerSource     = managerversion.SyncInstalledSource
 )
 
 func selfUpdate(current, executable string, force bool) {
-	selfUpdateUsing(current, executable, force, resolveManagerUpdate, installManagerPayload)
+	selfUpdateUsing(current, executable, force, resolveManagerUpdate, installManagerPayload, syncManagerSource)
 }
 
 func selfUpdateContext(ctx context.Context, current, executable string, force bool) {
@@ -103,6 +104,9 @@ func selfUpdateContext(ctx context.Context, current, executable string, force bo
 		func(resolved, destination string, sourceOnly bool, progress *managerprogress.Progress) error {
 			return managerversion.InstallManagerPayloadContext(ctx, resolved, destination, sourceOnly, progress)
 		},
+		func(resolved, destination string, progress *managerprogress.Progress) error {
+			return managerversion.SyncInstalledSourceContext(ctx, resolved, destination, progress)
+		},
 	)
 }
 
@@ -111,6 +115,7 @@ func selfUpdateUsing(
 	force bool,
 	resolve func(string, *managerprogress.Progress) (string, bool, error),
 	install func(string, string, bool, *managerprogress.Progress) error,
+	syncSource func(string, string, *managerprogress.Progress) error,
 ) {
 	progress := managerprogress.NewProgress(os.Stderr)
 	progress.Title("Updating Wago")
@@ -132,6 +137,12 @@ func selfUpdateUsing(
 		_ = os.Remove(staged)
 		fatal("self update: %v", err)
 	}
+	if source := managedSourceForUpdate(executable); source != "" {
+		if err := syncSource(resolved, source, progress); err != nil {
+			_ = os.Remove(staged)
+			fatal("self update: sync plugin build source: %v", err)
+		}
+	}
 	deferred, err := selfreplace.Executable(executable, staged)
 	if err != nil {
 		_ = os.Remove(staged)
@@ -143,6 +154,17 @@ func selfUpdateUsing(
 	}
 	progress.Finish("Updated Wago to " + managerversion.DisplayRelease(resolved))
 	printDetail(progress.Writer(), "location", displayPath(executable))
+}
+
+func managedSourceForUpdate(executable string) string {
+	source := InstalledSourcePath()
+	if source == "" {
+		return ""
+	}
+	if os.Getenv("WAGO_SRC_DIR") != "" || pathContains(filepath.Dir(source), executable) {
+		return source
+	}
+	return ""
 }
 
 func createSelfUpdateStage(executable string) (string, error) {
