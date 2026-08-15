@@ -75,6 +75,7 @@ func validateBranchHints(m *Module) error {
 		}
 		fn := m.Code[localIndex]
 		r := NewReader(fn.BodyBytes)
+		var imm InstructionImmediate
 		for _, hint := range funcs.Hints {
 			want := int(hint.Offset) - int(fn.LocalDeclBytes)
 			if want < 0 {
@@ -85,7 +86,7 @@ func validateBranchHints(m *Module) error {
 				if err != nil {
 					return &DecodeError{Code: ErrInvalidSection}
 				}
-				if err := SkipInstructionImmediate(r, op); err != nil {
+				if err := ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, true); err != nil {
 					return &DecodeError{Code: ErrInvalidSection}
 				}
 			}
@@ -99,7 +100,7 @@ func validateBranchHints(m *Module) error {
 			if op != 0x04 && op != 0x0d {
 				return &DecodeError{Code: ErrInvalidSection}
 			}
-			if err := SkipInstructionImmediate(r, op); err != nil {
+			if err := ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, true); err != nil {
 				return &DecodeError{Code: ErrInvalidSection}
 			}
 		}
