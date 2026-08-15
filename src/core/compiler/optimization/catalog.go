@@ -275,6 +275,7 @@ var catalog = []Definition{
 	both("abi-leaf-fp", "FP leaf ABI", "preserve caller pin banks across bounded FP leaf calls"),
 	both("prepared-fp-entry", "Prepared FP/mixed entry", "mark bounded FP and mixed-bank functions for fixed prepared trampolines"),
 	both("entry-init-elide", "Entry initialization elision", "skip local initialization when bounded definite assignment makes the initial value unobservable"),
+	arm64("entry-zero-pairs", "Entry zero pairs", "pair adjacent declared-local zero stores in function prologues"),
 	both("gc-dead-new", "Dropped GC constructors", "retain allocation and traps while omitting unreachable constructor payload population"),
 	arm64("gc-fixed-array-len", "Known array lengths", "replace an immediately consumed constructor reference with its statically known length"),
 	arm64("gc-const-struct-get", "Known struct fields", "replace an immediately consumed constructor reference with its statically known numeric field"),

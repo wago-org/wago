@@ -4265,3 +4265,32 @@ compile medians remain within 1% on every hit module with identical B/op and
 allocation counts. `WAGO_ARM64_NO_INDIRECT_RESULT_RESIDENCY=1` is the exact
 rollback. Enabled/disabled selection, conservative target marking, native ARM64
 execution, official specs, and GC stress paths pass.
+
+## 2026-08-15 — paired ARM64 declared-local initialization
+
+ARM64 function prologues now combine two adjacent in-range declared-local zero
+slots into one offset `STP XZR, XZR`. The rule operates while the existing local
+layout is streamed, retains only one pending offset, and falls back to ordinary
+stores at pin/elision holes and beyond the signed pair-offset range. It adds no
+per-function summary or heap storage. V128 locals use the same slot rule, while
+register-pinned locals retain their established register-zero instructions.
+
+The exact 64-module corpus contains 26,975 pairs across 13 modules. Total native
+output falls by 105,968 bytes; Ruby contributes 19,564 pairs and 77,200 bytes,
+esbuild 6,123 pairs and 23,232 bytes, regexmatch 618 pairs and 2,592 bytes, and
+SQLite 476 pairs and 1,968 bytes. Every affected module shrinks or remains
+alignment-neutral; none grows.
+
+On an Apple M4 Max fixture with 64 declared i64 locals, eight samples improve
+from a 14.92 to 13.44 ns/op median (-9.9%), reduce the function from 320 to 204
+native bytes, and remain at zero B/op and allocations. Focused compile medians
+improve from 5.33 to 5.04 us/op (-5.4%) with 31 allocations/op unchanged. The
+large real-module compile rows remain within 2.2%; B/op and allocations are
+unchanged except for code-buffer threshold noise below 0.1%.
+
+Alternating isolated samples resolve the broad-run drift in the two apparent
+execution near misses: nbody is neutral within 0.1%, as is blake-as. Other
+executable corpus rows are neutral or improve, and all remain zero-allocation.
+`WAGO_ARM64_NO_ENTRY_ZERO_PAIRS=1` is the exact rollback. Tests cover the
+encoding, scalar and V128 execution, disabled policy, offset-cap fallback, and
+native-size/store attribution.
