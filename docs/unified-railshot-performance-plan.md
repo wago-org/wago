@@ -3669,3 +3669,18 @@ execution, code reduction, serial/parallel determinism, register-leaf and
 nested-tree fallbacks, and the fixed descriptor path. The complete repository,
 both native backend suites, focused race tests, SQLite query, executable corpus,
 and fuzz regression corpus pass.
+
+### Rejected follow-up: shallow conversions and comparisons across calls
+
+A temporary exact-shape probe tested whether the same fixed tree splice should
+also retain integer conversions and comparisons. The broad corpus had 20
+conversion roots on each architecture, but none had a frame-backed leaf after
+ordinary lowering; every one would require adding register preservation or a
+deeper recipe. Only 5 AMD64 and 13 ARM64 comparisons met the complete
+frame-leaf contract.
+
+The probe was removed. Eighteen comparison sites do not justify widening the
+production rule, rollback semantics, and target test matrix. This family should
+be reconsidered only if profiles show those sites are hot or a later bounded
+recipe representation already pays the required complexity for another
+measured use.
