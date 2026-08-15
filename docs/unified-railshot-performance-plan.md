@@ -1495,6 +1495,27 @@ AArch64 updating load writes back a native pointer. Supporting those 682 raw
 corpus shapes would require a bounded native-pointer representation rather than
 silently changing the local's value.
 
+### 2026-08-15 — closed ARM64 address and shuffle follow-up
+
+The remaining scalar pair-store and canonical shuffle classes were audited
+after adjacent load pairs landed. A copied-reader counter found only 54 exact
+full-width local-to-local store pairs across 13 modules: Ruby contributes 21,
+Wasm3 five, eight modules contribute three each, SQLite two, and two modules one
+each. A general `STP` rewrite is not semantics-preserving under explicit bounds:
+when the first store is in bounds and the second traps, Wasm requires the first
+write to remain observable. Checking the complete pair before `STP` would erase
+that side effect. Guard mode cannot attribute a pair fault to the exact access,
+and shared memory retains scalar accesses. Store pairing is therefore deferred
+to a future region carrying an exact prior no-trap range proof; the counter and
+pending-store state were removed.
+
+An exact mask classifier also scanned identity, byte splat, and `UZP1/UZP2` and
+`TRN1/TRN2` shapes at 8-, 16-, 32-, and 64-bit lane widths. It found no new
+corpus masks. The only 44 apparent matches were the degenerate 64-bit
+`UZP1/UZP2` forms, which are byte-identical to the 22 `ZIP1 D` and 22 `ZIP2 D`
+masks the existing selector already lowers. No encoder methods, matcher state,
+policy bits, or production counters were retained.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
