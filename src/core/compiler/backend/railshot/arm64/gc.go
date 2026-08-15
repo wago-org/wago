@@ -1083,6 +1083,13 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
 	original := f.popValue()
 	local, hasLocal := gcLocalProvenance(original)
+	if hasLocal && f.gcResolved.valid && f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex {
+		ref := f.materialize(original)
+		f.stats.peep("gc-native-resolve-reuse")
+		f.stats.peep("gc-native-final-cast-elide")
+		f.pushReg(ref, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+		return nil
+	}
 	ref := f.materialize(original)
 	result := f.allocReg(maskOf(ref))
 	f.a.MovReg64(result, ref)

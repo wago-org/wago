@@ -90,6 +90,9 @@ func TestNativeFinalCastARM64(t *testing.T) {
 			if got := on.Peephole["gc-native-resolve-reuse"]; got != 7 {
 				t.Fatalf("native final cast resolver reuses = %d, want 7", got)
 			}
+			if got := on.Peephole["gc-native-final-cast-elide"]; got != 7 {
+				t.Fatalf("native final cast elisions = %d, want 7", got)
+			}
 			if got := off.Peephole["gc-native-final-cast"]; got != 0 {
 				t.Fatalf("disabled native final casts = %d, want 0", got)
 			}
