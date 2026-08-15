@@ -45,7 +45,6 @@ type watchedProcessTracker struct {
 	eventErr          error
 	stoppedForeground int
 	signalRelay       *watchsupervisor.SignalRelay
-	signalRelayGroup  int
 }
 
 func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
@@ -162,6 +161,7 @@ func killWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error 
 }
 
 func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error {
+	relayErr := platform.processes.closeSignalRelay()
 	var terminalErr error
 	if platform.terminalFD >= 0 {
 		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
@@ -170,7 +170,6 @@ func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) err
 		}
 	}
 	signalErr := signalWatchedProcessTree(platform, command, syscall.SIGKILL)
-	relayErr := platform.processes.closeSignalRelay()
 	platform.processes.close()
 	finishErr := finishWatchedProcessTracking(platform.processes)
 	releaseErr := command.Process.Release()
@@ -355,22 +354,17 @@ func (tracker *watchedProcessTracker) ensureSignalRelay(command *exec.Cmd, group
 	}
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
-	if tracker.signalRelay != nil && tracker.signalRelayGroup == group {
-		return nil
-	}
 	if tracker.signalRelay != nil {
 		if err := tracker.signalRelay.Close(); err != nil {
 			return err
 		}
 		tracker.signalRelay = nil
-		tracker.signalRelayGroup = 0
 	}
 	relay, err := watchsupervisor.StartSignalRelay(command.Path, command.Args[1:], command.Env, group)
 	if err != nil {
 		return err
 	}
 	tracker.signalRelay = relay
-	tracker.signalRelayGroup = group
 	return nil
 }
 
@@ -381,7 +375,6 @@ func (tracker *watchedProcessTracker) closeSignalRelay() error {
 	tracker.mu.Lock()
 	relay := tracker.signalRelay
 	tracker.signalRelay = nil
-	tracker.signalRelayGroup = 0
 	tracker.mu.Unlock()
 	return relay.Close()
 }

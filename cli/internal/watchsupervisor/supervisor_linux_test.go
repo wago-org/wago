@@ -54,6 +54,27 @@ func TestSignalRelayForwardsGuestGroupInterrupt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := relay.command.Process.Signal(syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		process, ok := processByPID(relay.command.Process.Pid)
+		if ok && (process.state == 'T' || process.state == 't') {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("signal relay did not stop")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := relay.Close(); err != nil {
+		t.Fatal(err)
+	}
+	relay, err = StartSignalRelay(os.Args[0], []string{"-test.run=^TestSignalRelayForwardsGuestGroupInterrupt$", "-test.count=1"}, os.Environ(), group.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer relay.Close()
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt)

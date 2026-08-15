@@ -262,6 +262,48 @@ func newTestWatchProcessTracker(t *testing.T, rootPID int) *watchedProcessTracke
 	}
 }
 
+func TestWatchedTerminalRestoreAfterRelayClose(t *testing.T) {
+	group := exec.Command("sleep", "30")
+	group.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := group.Start(); err != nil {
+		t.Fatal(err)
+	}
+	groupDone := false
+	t.Cleanup(func() {
+		if groupDone {
+			return
+		}
+		_ = group.Process.Kill()
+		_ = group.Wait()
+	})
+	relay, err := watchsupervisor.StartSignalRelay(os.Args[0], []string{"-test.run=^TestWatchHelperProcess$", "-test.count=1"}, os.Environ(), group.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relay.Close()
+	if err := group.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := group.Wait(); err == nil {
+		t.Fatal("process group leader ignored kill")
+	}
+	groupDone = true
+	if watchedTerminalGroupCanRestore(nil, group.Process.Pid) {
+		t.Fatal("live relay did not keep the process group active")
+	}
+	if err := relay.Close(); err != nil {
+		t.Fatal(err)
+	}
+	relay = nil
+	deadline := time.Now().Add(5 * time.Second)
+	for !watchedTerminalGroupCanRestore(nil, group.Process.Pid) {
+		if time.Now().After(deadline) {
+			t.Fatal("closed relay kept the process group active")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestWatchSupervisorContinuesAfterChildSIGINT(t *testing.T) {
 	directory := t.TempDir()
 	modulePath := directory + "/module.wasm"
