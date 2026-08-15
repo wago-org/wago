@@ -84,6 +84,7 @@
               "gc-dead-new",
               "gc-fixed-array-len",
               "gc-native-final-array-len",
+              "gc-native-final-scalar-get",
               "i64-mask32",
               "immutable-poly-fastpath",
               "immutable-table",

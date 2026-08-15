@@ -89,6 +89,10 @@ var gcConstructorCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONSTRUCTOR_CAST") !=
 // policy controls admission; the existing Go helper remains the exact fallback.
 var nativeGCFinalArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_LEN") != "1"
 
+// nativeGCFinalScalarGetEnabled resolves an adjacent final cast plus
+// pointer-free scalar struct read through the checked collector native view.
+var nativeGCFinalScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCALAR_GET") != "1"
+
 // simdWideBitmaskConsumerEnabled avoids materializing a scalar mask when a
 // 16- or 32-bit lane bitmask is consumed immediately by a zero test, or a
 // 16-, 32-, or 64-bit lane mask by popcount. Selection uses fixed lookahead.

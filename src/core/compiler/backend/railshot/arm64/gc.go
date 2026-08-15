@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -812,6 +813,16 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 		_ = r.JumpTo(start)
 		return false, nil
 	}
+	if f.policy.EnabledOption(optGCNativeScalarGet) && !f.policy.CompactNative {
+		if layout, scalar, layoutOK := f.directGCStructLayout(typeIndex, fieldIndex); layoutOK {
+			required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + uint64(scalar.size)
+			if required <= math.MaxInt32 {
+				f.stats.peep("final-cast-struct-get-fuse")
+				f.stats.peep("gc-native-final-struct-scalar-get")
+				return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, uint32(required), nullable, sub, scalar)
+			}
+		}
+	}
 	resultType := field.Storage().Val()
 	if field.Storage().Packed() {
 		resultType = wasm.I32
@@ -876,6 +887,39 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 // then i31/handle/range/type validation. ref.cast_null accepts null, but the
 // immediately fused array.len still reports a null-reference trap.
 func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error {
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.HeaderSize, nullable)
+	if err != nil {
+		return err
+	}
+	f.ld32(object, object, 8)
+	f.pushReg(object, mtI32)
+	return nil
+}
+
+func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset, required uint32, nullable bool, sub uint32, scalar directGCScalar) error {
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, nullable)
+	if err != nil {
+		return err
+	}
+	disp := int32(gc.PayloadOffset + fieldOffset)
+	if scalar.typ.isFloat() {
+		result := f.allocFReg(0)
+		f.fld(result, object, disp, scalar.typ == mtF64)
+		f.release(object)
+		f.pushFReg(result, scalar.typ)
+		return nil
+	}
+	result := f.allocReg(maskOf(object))
+	f.a.LoadIdx(result, object, ZR, disp, scalar.size, sub == 3, scalar.typ == mtI64)
+	f.release(object)
+	f.pushReg(result, scalar.typ)
+	return nil
+}
+
+// emitNativeFinalCastObject validates one exact-final compact reference and
+// returns its current object-header address. The caller must consume or release
+// the returned allocator-owned register without crossing a safepoint.
+func (f *fn) emitNativeFinalCastObject(typeIndex, required uint32, nullable bool) (Reg, error) {
 	object := f.popValue()
 	ref := f.materialize(object)
 	if nullable {
@@ -936,21 +980,26 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 	f.a.Sub32(view, view, ref)
 	f.cmpRR(handle, view, false)
 	f.trapIf(condA, trapCastFailure)
-	f.cmpImm(handle, gc.HeaderSize, false)
+	if required <= 0xfff {
+		f.cmpImm(handle, required, false)
+	} else {
+		viewRequired := f.allocReg(maskOf(ref, view, domain, handle, tmp))
+		f.a.MovImm64(viewRequired, uint64(required))
+		f.cmpRR(handle, viewRequired, false)
+		f.release(viewRequired)
+	}
 	f.trapIf(condB, trapCastFailure)
 
-	// Exact final-type equality proves the object header and array-length layout.
+	// Exact final-type equality proves the statically selected object layout.
 	f.a.Add64(tmp, tmp, ref)
 	f.ld32(view, tmp, 0)
 	f.cmpRR(view, domain, false)
 	f.trapIf(condNE, trapCastFailure)
-	f.ld32(ref, tmp, 8)
+	f.release(ref)
 	f.release(view)
 	f.release(domain)
 	f.release(handle)
-	f.release(tmp)
-	f.pushReg(ref, mtI32)
-	return nil
+	return tmp, nil
 }
 
 func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) error {

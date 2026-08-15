@@ -703,6 +703,25 @@ speed-oriented Balanced path accepts that local tradeoff to remove a runtime
 helper; compact objectives reject it, and the growth remains visible in native
 byte attribution.
 
+### 2026-08-14 — ARM64 native final-cast scalar struct reads
+
+The checked ARM64 exact-final resolver now returns a bounded, ephemeral object
+address to one immediate consumer. Adjacent final casts followed by scalar
+`struct.get`, `struct.get_s`, or `struct.get_u` use that shared resolver and load
+packed i8/i16, i32/i64, or f32/f64 fields directly. Every mutable native-view
+pointer is reloaded after the constructor safepoint; the handle, heap range,
+required field extent, and exact canonical type are checked before the load.
+Reference and vector fields, missing layout metadata, disabled policy, and
+Size/Embedded objectives retain the combined helper.
+
+Native execution covers all six admitted storage classes, signed and unsigned
+packed extension, null/cast/i31 trap order, and 100 forced major collections
+with collector verification. Five Apple M4 Max i32 samples improved from a
+324.1 to 280.1 ns/op median (-13.6%) with zero B/op and allocations. The tiny
+compile fixture increased from 5.740 to 6.072 us/op (+5.8%) and from 348 to 448
+native bytes, while B/op fell 25.2% (16,596 to 12,416) and allocations fell from
+40 to 35. Compact objectives keep the helper to avoid that local code growth.
+
 ---
 
 # 1. North-star architecture
