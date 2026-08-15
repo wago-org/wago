@@ -134,32 +134,73 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	if len(f.intervalReg) == 0 {
 		return regNone
 	}
+	next := f.intervalNextAccess()
 	// First prefer a value whose next bounded access overwrites it. This is the
 	// exact dead-value case: with no pending borrowed read, the dirty register can
 	// be released without publishing its old value to the frame.
-	overwrites := f.intervalOverwriteBeforeRead()
 	for reg, x := range f.intervalOwner {
-		if x < 0 || !overwrites.has(Reg(reg)) || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) ||
+		if x < 0 || !next.overwritten.has(Reg(reg)) || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) ||
 			f.intervalLocalHasMemBorrow(x) || f.intervalLocalHasValueBorrow(x) || int(f.intervalScore[x]) >= scoreLimit {
 			continue
 		}
 		return f.releaseIntervalLocal(x, false)
 	}
-	best, bestScore := -1, int(^uint(0)>>1)
+
+	var candidates regMask
+	preferClean := false
+	scoreBest, scoreBestScore := -1, int(^uint(0)>>1)
 	for reg, x := range f.intervalOwner {
 		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) || f.intervalLocalHasMemBorrow(x) {
 			continue
 		}
-		s := 0
-		if x < len(f.intervalScore) {
-			s = int(f.intervalScore[x])
+		s := int(f.intervalScore[x])
+		if s >= scoreLimit {
+			continue
 		}
-		if s < scoreLimit && s < bestScore {
+		candidates = candidates.add(Reg(reg))
+		preferClean = preferClean || f.locals[x].state == lsStackReg
+		if s < scoreBestScore {
+			scoreBest, scoreBestScore = x, s
+		}
+	}
+	if scoreBest < 0 {
+		return regNone
+	}
+
+	best, bestScore := -1, int(^uint(0)>>1)
+	allResolved := true
+	for reg, x := range f.intervalOwner {
+		r := Reg(reg)
+		if x < 0 || !candidates.has(r) || preferClean && f.locals[x].state != lsStackReg {
+			continue
+		}
+		if !next.resolved.has(r) {
+			allResolved = false
+		}
+		s := int(f.intervalScore[x])
+		if s < bestScore {
 			best, bestScore = x, s
 		}
 	}
-	if best < 0 {
-		return regNone
+	if allResolved {
+		for reg, x := range f.intervalOwner {
+			r := Reg(reg)
+			if x < 0 || !candidates.has(r) || preferClean && f.locals[x].state != lsStackReg {
+				continue
+			}
+			bestReg := f.locals[best].reg
+			if next.distance[reg] > next.distance[bestReg] ||
+				next.distance[reg] == next.distance[bestReg] && int(f.intervalScore[x]) < bestScore {
+				best, bestScore = x, int(f.intervalScore[x])
+			}
+		}
+	}
+	if best != scoreBest {
+		if preferClean && f.locals[scoreBest].state == lsReg {
+			f.stats.peep("interval-region-clean-evict")
+		} else {
+			f.stats.peep("interval-region-next-use-evict")
+		}
 	}
 	return f.releaseIntervalLocal(best, true)
 }
@@ -182,10 +223,17 @@ func (f *fn) releaseIntervalLocal(x int, storeDirty bool) Reg {
 	return reg
 }
 
-// intervalOverwriteBeforeRead scans at most 64 operations from the active
-// forward reader. Structured boundaries and malformed immediates abandon the
-// proof; unresolved locals retain the ordinary score-based eviction fallback.
-func (f *fn) intervalOverwriteBeforeRead() regMask {
+type intervalNextUse struct {
+	overwritten regMask
+	resolved    regMask
+	distance    [16]uint8
+}
+
+// intervalNextAccess scans at most 64 operations from the active forward
+// reader. Structured boundaries and malformed immediates retain facts resolved
+// before the boundary; eviction uses distance only when every candidate in the
+// selected cleanliness class was resolved.
+func (f *fn) intervalNextAccess() (next intervalNextUse) {
 	var unresolved regMask
 	for reg, x := range f.intervalOwner {
 		if x >= 0 {
@@ -193,19 +241,18 @@ func (f *fn) intervalOverwriteBeforeRead() regMask {
 		}
 	}
 	peek := f.bodyReader
-	var overwritten regMask
 	for fuel := 0; fuel < maxIntervalNextUseOps && unresolved != 0; fuel++ {
 		op, err := peek.Byte()
 		if err != nil {
-			return overwritten
+			return next
 		}
 		switch op {
 		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
-			return overwritten
+			return next
 		case 0x20, 0x21, 0x22:
 			x32, err := peek.U32()
 			if err != nil {
-				return overwritten
+				return next
 			}
 			x := int(x32) + f.localBase
 			for reg, owner := range f.intervalOwner {
@@ -214,18 +261,24 @@ func (f *fn) intervalOverwriteBeforeRead() regMask {
 					continue
 				}
 				if op != 0x20 {
-					overwritten = overwritten.add(r)
+					next.overwritten = next.overwritten.add(r)
 				}
+				next.resolved = next.resolved.add(r)
+				next.distance[reg] = uint8(fuel + 1)
 				unresolved = unresolved.remove(r)
 				break
 			}
 		default:
 			if err := skipImmediates(&peek, op); err != nil {
-				return overwritten
+				return next
 			}
 		}
 	}
-	return overwritten
+	return next
+}
+
+func (f *fn) intervalOverwriteBeforeRead() regMask {
+	return f.intervalNextAccess().overwritten
 }
 
 func (f *fn) intervalLocalHasMemBorrow(x int) bool {

@@ -3714,7 +3714,7 @@ Across the 64-module Balanced corpus, the final admission records:
 ```text
 direct result residency hits: 93,814
 register result moves:         158,809 -> 64,995 (-93,814, -59.1%)
-native bytes:                  81,031,771 -> 80,747,816 (-283,955, -0.35%)
+native bytes:                  81,043,790 -> 80,759,867 (-283,923, -0.35%)
 ```
 
 A focused 16-call chain remains execution-neutral within noise, reduces its
@@ -3728,3 +3728,41 @@ fallback, self-recursive fallback, interaction with below-call
 rematerialization, code reduction, and serial/parallel determinism. The full
 local repository suite, native AMD64 backend, focused race tests, SQLite query,
 executable corpus, and fuzz regression corpus pass.
+
+## 2026-08-15 — AMD64 clean and farthest-next-use regional eviction
+
+AMD64 regional integer residency now completes the next two bounded eviction
+priorities after overwrite-before-read. When pressure requires a cache register,
+it first prefers a clean local whose canonical frame value is already current.
+Within the selected cleanliness class, it chooses the farthest exact next access
+when the existing 64-operation copied-reader scan resolves every candidate.
+Fuel exhaustion, malformed immediates, structured boundaries, pending memory
+borrows, and partially resolved candidate sets retain static score selection.
+
+The scan returns two register masks and sixteen one-byte distances by value. It
+does not add persistent function state, another body walk, a slice, or a heap
+allocation. The original overwrite proof consumes the same result, so eviction
+still performs only one bounded lookahead. Locals remain subject to the existing
+score threshold before either new tie-breaker can select them.
+
+The exact 64-module Balanced corpus records:
+
+```text
+clean-victim changes:       79
+farthest-next-use changes:  17
+ordinary stores/reloads:    unchanged
+native bytes:               80,759,867 -> 80,759,586 (-281)
+```
+
+The affected executable modules remain allocation-free. Six order-balanced
+Ryzen 7 7800X3D samples report `blake-as.hashN` improving from a 734,687 to
+727,579 ns/op median (-0.97%) and `blake-as-simd.hashN` from 533,658 to 532,633
+ns/op (-0.19%). Ruby contains 88 of the 96 changed decisions but is compile-only
+because the checked-in module requires its external host bridge.
+
+Six order-balanced compile comparisons over regexmatch, SQLite, Ruby, and
+esbuild report a -0.15% time geomean. B/op and allocation counts are materially
+unchanged. Tests cover clean preference, farthest exact next use, unresolved
+fuel fallback, overwrite-before-read, and deterministic bounded scanning. The
+existing `WAGO_AMD64_INTERVAL_REGIONS=0` switch remains the full regional-cache
+rollback path.
