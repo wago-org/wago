@@ -1253,6 +1253,22 @@ us/op (-0.8%), and SIMD serialization from 26.76 to 26.51 us/op (-0.9%). The
 execution cases, the complete AMD64 backend, the executable corpus, and native
 race tests pass.
 
+### 2026-08-14 — rejected ARM64 bulk-memory register pairs
+
+An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
+pre/post-indexed Q-register LDP/STP pairs. The encodings and forward, backward,
+overlap, and tail behavior passed native execution tests, and the dynamic copy
+function shrank from 816 to 736 native bytes; fill shrank from 428 to 408 bytes.
+
+The smaller loops were not faster on Apple M4 Max. Six serialized 4 KiB samples
+moved forward copy from a 40.02 to 41.96 ns/op median (+4.8%). At 256 bytes,
+copy moved from 9.76 to 10.39 ns/op (+6.4%). Fill improved from 35.51 to 35.25
+ns/op at 4 KiB (-0.7%) but regressed from 7.38 to 7.49 ns/op at 256 bytes
+(+1.5%). All measurements retained zero B/op and allocations. The encoder,
+policy bit, generated schema entry, loop changes, and benchmarks were removed;
+the existing separate vector loads/stores plus pointer increments remain the
+measured throughput choice.
+
 ---
 
 # 1. North-star architecture
