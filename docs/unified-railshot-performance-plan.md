@@ -1106,6 +1106,12 @@ AMD64 move elimination makes these copies much cheaper than their byte count
 suggests, so AMD64 retains the existing protective copies pending a different
 selection or alignment strategy.
 
+A narrower result-to-next-call-argument form was also rejected. It matched only
+134 of Ruby's 112,865 argument moves, and a 32-chain focused workload slowed
+from a 67.02 to 73.42 ns/op median (+9.5%) after removing both copies. Future
+AMD64 argument work should therefore target allocation and parallel-shuffle
+shape without shortening every call/return interval indiscriminately.
+
 ---
 
 # 1. North-star architecture
