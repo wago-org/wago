@@ -65,10 +65,14 @@ type hoistCand struct {
 // offsets therefore cannot desynchronize this scan. No partial findings escape
 // on failure.
 func walkLoopBody(r *wasm.Reader, m *wasm.Module, visit func(op byte, imm wasm.InstructionImmediate)) bool {
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	return walkLoopBodyWithClassifier(r, m, classifier, visit)
+}
+
+func walkLoopBodyWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier, visit func(op byte, imm wasm.InstructionImmediate)) bool {
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	depth := 0
-	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
@@ -100,8 +104,12 @@ func walkLoopBody(r *wasm.Reader, m *wasm.Module, visit func(op byte, imm wasm.I
 // grows memory. valid is false on any classifier failure; callers must then
 // discard all findings and conservatively clear loop-sensitive facts.
 func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals map[uint32]bool, hasGrow, valid bool) {
+	return scanLoopBodyWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true))
+}
+
+func scanLoopBodyWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier) (setLocals map[uint32]bool, hasGrow, valid bool) {
 	setLocals = map[uint32]bool{}
-	valid = walkLoopBody(r, m, func(_ byte, imm wasm.InstructionImmediate) {
+	valid = walkLoopBodyWithClassifier(r, m, classifier, func(_ byte, imm wasm.InstructionImmediate) {
 		switch imm.Kind {
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
 			setLocals[imm.Index] = true
@@ -123,6 +131,10 @@ func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals map[uint32]bool, ha
 // failure returns no candidates or local findings. Memory64 still returns mutation
 // and grow facts but no candidates until memAddr64 consumes a carry-safe certificate.
 func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool, valid bool) {
+	return scanLoopHoistableWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true))
+}
+
+func scanLoopHoistableWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool, valid bool) {
 	setLocals = map[uint32]bool{}
 	memory64 := false
 	if m != nil {
@@ -134,7 +146,7 @@ func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elida
 	acc := map[uint32]int{}     // direct-access count per base
 	poison := map[uint32]bool{} // bases with a direct access this scan can't size
 	prevGet := int64(-1)        // local index of an immediately-preceding local.get, else -1
-	valid = walkLoopBody(r, m, func(op byte, imm wasm.InstructionImmediate) {
+	valid = walkLoopBodyWithClassifier(r, m, classifier, func(op byte, imm wasm.InstructionImmediate) {
 		curGet := int64(-1)
 		switch imm.Kind {
 		case wasm.InstrLocalGet:

@@ -676,7 +676,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// eligible loops do not pay for two immediate walks.
 		valid := false
 		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
-			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistable(r, f.m)
+			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistableWithClassifier(r, f.m, f.classifier)
 			valid = scanOK
 			fr.loopSetLocals, fr.loopHasGrow = setLocals, hasGrow
 			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
@@ -685,7 +685,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				}
 			}
 		} else {
-			fr.loopSetLocals, fr.loopHasGrow, valid = scanLoopBody(r, f.m) // reader restored
+			fr.loopSetLocals, fr.loopHasGrow, valid = scanLoopBodyWithClassifier(r, f.m, f.classifier) // reader restored
 		}
 		if valid {
 			f.invalidateLoopModifiedGCRefFacts(fr.loopSetLocals)
