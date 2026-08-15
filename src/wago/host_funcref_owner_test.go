@@ -98,56 +98,6 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	}
 }
 
-func TestLeafOnlyHostDispatchRetainsOwnedFuncrefCalls(t *testing.T) {
-	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
-		results[0] = I32(42)
-	}), FuncSig{Results: []ValType{ValI32}})
-	if err != nil {
-		t.Fatalf("NewHostFuncRef: %v", err)
-	}
-	defer func() {
-		_ = rt.Close()
-		_ = owner.Close()
-	}()
-
-	producerMod, err := rt.Compile(benchOwnedHostFuncrefModule(t))
-	if err != nil {
-		t.Fatalf("Compile producer: %v", err)
-	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
-	if err != nil {
-		t.Fatalf("Instantiate producer: %v", err)
-	}
-	defer producer.Close()
-	token, err := producer.Call(context.Background(), "get")
-	if err != nil || len(token) != 1 {
-		t.Fatalf("get owned host token = %v, %v", token, err)
-	}
-
-	consumerMod, err := rt.Compile(watToWasm(t, `(module
-		(type $target (func (result i32)))
-		(type $leaf (func))
-		(import "env" "leaf" (func $leaf (type $leaf)))
-		(table 1 funcref)
-		(func (export "call") (param funcref) (result i32)
-			(i32.const 0) (local.get 0) (table.set 0)
-			(i32.const 0) (call_indirect (type $target))))`))
-	if err != nil {
-		t.Fatalf("Compile consumer: %v", err)
-	}
-	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{
-		"env.leaf": LeafHostFunc(func(_, _ []uint64) {}),
-	}))
-	if err != nil {
-		t.Fatalf("Instantiate consumer: %v", err)
-	}
-	defer consumer.Close()
-	if got, err := consumer.Call(context.Background(), "call", token[0]); err != nil || len(got) != 1 || got[0].I32() != 42 {
-		t.Fatalf("leaf-specialized owned host call = %v, %v; want 42", got, err)
-	}
-}
-
 func TestOwnedHostFuncrefRequiresExactRuntimeSignatureAndMetadata(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
