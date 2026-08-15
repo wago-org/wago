@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -121,19 +122,16 @@ var manifestFeatureNames = stringSet(
 	"typed-function-references",
 )
 
-var manifestOptimizationNames = stringSet(
-	"affine-lea", "assoc-tree", "bmi2-rorx", "bmi2-shifts", "bounds-facts", "branch-fold",
-	"call-next-use", "commute-self-update", "compact-i32-frame", "deep-fp-pins",
-	"entry-arg-pins", "ext-fp-pins", "frame-elide", "frame-elide-reghomed",
-	"immutable-poly-fastpath", "immutable-table", "immutable-table-type", "inline",
-	"inline-callfree", "inline-loop-callees", "leaf-scratch-pins", "legacy-fp-pins",
-	"legacy-gp-pins", "loop-precheck", "loop-region-pins", "multi-bounds-cert",
-	"olddest-rhs-sink", "reg-abi", "reg-merge", "small-frame", "st-flags",
-	"stack-fence", "stack-reg", "store-forward", "store-load-fwd", "store8-flags",
-	"tee-sink", "tee-spill-elide", "three-op-sink", "tree-order", "unary-sink",
-	"uxtw-add", "v128-const-cache", "v128-pins", "v128-sink", "vex-float-mem",
-	"x8-pin",
-)
+var manifestOptimizationNames = registeredOptimizationNames()
+
+func registeredOptimizationNames() map[string]struct{} {
+	definitions := optimization.All()
+	names := make(map[string]struct{}, len(definitions))
+	for _, definition := range definitions {
+		names[definition.Name] = struct{}{}
+	}
+	return names
+}
 
 // ValidateManifest enforces the checked-in v1 schema before any project read
 // or transaction. The manifest remains a generic map so unrelated v1 fields
