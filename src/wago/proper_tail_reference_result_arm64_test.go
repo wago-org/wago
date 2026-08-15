@@ -129,6 +129,24 @@ func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
 			}
 		})
 	}
+	t.Run("register ABI disabled", func(t *testing.T) {
+		cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", false)
+		compiled, err := cfg.Compile(module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := instantiateCore(compiled, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer in.Close()
+		for _, export := range []string{"run_ref", "run_indirect"} {
+			got, err := in.Call(context.Background(), export)
+			if err != nil || len(got) != 1 || got[0].I32() != 1 {
+				t.Fatalf("%s wrapper-ABI dynamic call = %v, %v; want [1]", export, got, err)
+			}
+		}
+	})
 }
 
 func TestARM64ProperTailReferenceResultContractsExecuteAcrossKinds(t *testing.T) {

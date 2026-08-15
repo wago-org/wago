@@ -685,17 +685,19 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if li < len(c.InternalEntry) {
 					internal = internalEntryOffset(c.InternalEntry[li])
 				}
-				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
+				regABIEnabled := !c.registerABIDisabled
+				stagedTailRegABI := regABIEnabled && c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
+				localRegABI := regABIEnabled && funcSigLocalRegABI(c.Funcs[li])
 				// Equal wrapper/internal offsets on a register-ABI function encode an
 				// intentionally wrapperless direct-only function. It cannot be a valid
 				// ref.func target; leave its unused descriptor entry invalid instead of
 				// publishing the internal ABI under a wrapper tag.
-				if internal == c.Entry[li] && (funcSigLocalRegABI(c.Funcs[li]) || stagedTailRegABI) {
+				if internal == c.Entry[li] && (localRegABI || stagedTailRegABI) {
 					continue
 				}
 				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
-				if !localFuncrefsMayEscape && internal != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
+				if !localFuncrefsMayEscape && internal != c.Entry[li] && (regABIEnabled && funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
 					code = uint64(base) + uint64(internal)
 					kind = abi.FuncRefEntryInternal
 				}
