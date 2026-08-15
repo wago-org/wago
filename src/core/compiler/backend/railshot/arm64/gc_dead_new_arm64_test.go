@@ -11,7 +11,7 @@ import (
 
 func immediateDeadGCConstructorsModuleARM64(t testing.TB, drop bool) *wasm.Module {
 	t.Helper()
-	arrayType := []byte{0x5e, 0x7f, 0x01} // (array (mut i32))
+	arrayType := []byte{0x5e, 0x78, 0x01} // (array (mut i8))
 	structType := []byte{0x5f}
 	structType = append(structType, wasmtest.Vec(
 		[]byte{0x7f, 0x00}, // immutable i32
@@ -32,13 +32,20 @@ func immediateDeadGCConstructorsModuleARM64(t testing.TB, drop bool) *wasm.Modul
 			0x41, 0x03, 0x41, 0x04,
 			0xfb, 0x08, 0x00, 0x02, // array.new_fixed type 0, count 2
 			0x1a,
+			0x41, 0x05, 0x41, 0x03, 0xfb, 0x06, 0x00, 0x1a, // array.new 0; drop
+			0x41, 0x03, 0xfb, 0x07, 0x00, 0x1a, // array.new_default 0; drop
+			0x41, 0x00, 0x41, 0x02, 0xfb, 0x09, 0x00, 0x00, 0x1a, // array.new_data 0 0; drop
 		)
 	}
 	body = append(body, 0x0b)
+	dataEntry := append([]byte{0x01}, wasmtest.ULEB(4)...)
+	dataEntry = append(dataEntry, 1, 2, 3, 4)
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(arrayType, structType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(11, wasmtest.Vec(dataEntry)),
 	)
 	m, err := wasm.DecodeModule(data)
 	if err != nil {
@@ -65,14 +72,14 @@ func TestImmediateDeadGCConstructorsARM64(t *testing.T) {
 		return stats.Funcs[0]
 	}
 	on, off := compile(true), compile(false)
-	if got := on.Peephole["gc-dead-new"]; got != 2 {
-		t.Fatalf("gc-dead-new = %d, want 2 (all: %v)", got, on.Peephole)
+	if got := on.Peephole["gc-dead-new"]; got != 5 {
+		t.Fatalf("gc-dead-new = %d, want 5 (all: %v)", got, on.Peephole)
 	}
 	if got := off.Peephole["gc-dead-new"]; got != 0 {
 		t.Fatalf("disabled gc-dead-new = %d, want 0", got)
 	}
-	if on.Calls[callKindHostSync] != 2 || off.Calls[callKindHostSync] != 2 {
-		t.Fatalf("helper calls enabled/disabled = %d/%d, want 2/2", on.Calls[callKindHostSync], off.Calls[callKindHostSync])
+	if on.Calls[callKindHostSync] != 5 || off.Calls[callKindHostSync] != 5 {
+		t.Fatalf("helper calls enabled/disabled = %d/%d, want 5/5", on.Calls[callKindHostSync], off.Calls[callKindHostSync])
 	}
 	if on.GCCodeBytes.Allocation == 0 || on.GCCodeBytes.Allocation >= off.GCCodeBytes.Allocation {
 		t.Fatalf("allocation bytes enabled/disabled = %d/%d, want a nonzero reduction", on.GCCodeBytes.Allocation, off.GCCodeBytes.Allocation)
@@ -90,6 +97,119 @@ func TestDeadGCConstructorObservableNearMissARM64(t *testing.T) {
 	}
 	if got := stats.Funcs[0].Peephole["gc-dead-new"]; got != 0 {
 		t.Fatalf("observable constructor gc-dead-new = %d, want 0", got)
+	}
+}
+
+func nestedDeadGCConstructorsModuleARM64(t testing.TB) *wasm.Module {
+	t.Helper()
+	arrayType := []byte{0x5e, 0x7f, 0x01}
+	wrapperType := []byte{0x5f}
+	wrapperType = append(wrapperType, wasmtest.Vec(
+		[]byte{0x63, 0x00, 0x00}, // immutable (ref null 0)
+		[]byte{0x7f, 0x00},
+	)...)
+	body := []byte{
+		0x41, 0x2a,
+		0x41, 0x01, 0x41, 0x02, 0xfb, 0x08, 0x00, 0x02,
+		0x41, 0x07, 0xfb, 0x00, 0x01, 0x1a,
+		0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(arrayType, wrapperType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestNestedDeadGCConstructorTreeARM64(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(nestedDeadGCConstructorsModuleARM64(t), CompileOptions{
+			GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats,
+			Optimizations: map[string]bool{"gc-dead-new": enabled},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		want := 0
+		if enabled {
+			want = 2
+		}
+		if got := stats.Funcs[0].Peephole["gc-dead-new"]; got != want {
+			t.Fatalf("enabled=%v: gc-dead-new = %d, want %d", enabled, got, want)
+		}
+	}
+}
+
+func TestNestedDeadGCLookaheadCapARM64(t *testing.T) {
+	body := []byte{0x41, 0x01, 0x41, 0x02, 0xfb, 0x08, 0x00, 0x02}
+	for range 32 {
+		body = append(body, 0x41, 0x00) // recognized values exhaust lookahead fuel
+	}
+	for range 33 {
+		body = append(body, 0x1a)
+	}
+	body = append(body, 0x41, 0x2a, 0x0b)
+	arrayType := []byte{0x5e, 0x7f, 0x01}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(arrayType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stats.Funcs[0].Peephole["gc-dead-new"]; got != 0 {
+		t.Fatalf("fuel-exhausted gc-dead-new = %d, want fallback", got)
+	}
+}
+
+func TestNestedDeadGCReferenceIntermediateKeepsConstructorARM64(t *testing.T) {
+	innerArray := []byte{0x5e, 0x7f, 0x01}
+	outerArray := []byte{0x5e, 0x63, 0x00, 0x00} // immutable (ref null 0) array
+	wrapper := []byte{0x5f}
+	wrapper = append(wrapper, wasmtest.Vec([]byte{0x63, 0x01, 0x00})...)
+	body := []byte{
+		0x41, 0x01, 0xfb, 0x08, 0x00, 0x01,
+		0xfb, 0x08, 0x01, 0x01,
+		0xfb, 0x00, 0x02, 0x1a,
+		0x41, 0x07, 0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(innerArray, outerArray, wrapper, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(3))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	got := stats.Funcs[0]
+	if got.Peephole["gc-dead-new"] != 2 || got.Calls[callKindHostSync] != 3 {
+		t.Fatalf("reference intermediate stats = dead %d, calls %d; want 2/3 (all: %v)",
+			got.Peephole["gc-dead-new"], got.Calls[callKindHostSync], got.Peephole)
 	}
 }
 

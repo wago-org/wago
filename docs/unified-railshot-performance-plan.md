@@ -532,24 +532,31 @@ timing remains pending because `hub@hub` still times out before authentication.
 ### 2026-08-14 — retained immediate dead constructors on ARM64
 
 ARM64 now recognizes an exact one-byte consumer window for `struct.new`,
-`struct.new_default`, and `array.new_fixed` whose result is immediately dropped.
+`struct.new_default`, `array.new`, `array.new_default`, `array.new_fixed`, and
+`array.new_data` whose result is immediately dropped. Reference-uniform and
+element-segment arrays remain on the full constructor path.
 The lowering still evaluates every operand, performs the real collector
 allocation, preserves allocation and operand traps, and records the ordinary GC
 safepoint. It replaces unreachable payload population with the existing shared
 dead-reservation helpers, then consumes the dead operand trees. Observable
 results and a per-compilation `gc-dead-new=false` selection keep the full
-constructor path. This is deliberately narrower than AMD64's bounded nested-tree
-recognizer; dynamic and nested ARM64 constructors remain follow-up parity work.
+constructor path. A copied reader also recognizes at most 32 postfix operations
+in pointer-safe nested constructor trees. Each nested reservation retains its
+real compact result as a root across later allocations; reference-containing
+intermediates keep the full constructor path. Fuel exhaustion and unknown
+operations fall back without partial transformation or reader movement.
 
-The two-constructor native fixture falls from 344 to 296 function bytes, while
-allocation-family attribution falls from 416 to 320 bytes. Five alternating
-Apple M4 Max compile samples improved from a 5.463 to 5.337 us/op median
-(-2.3%), with allocations falling from 37 to 34 and median B/op falling by
-about 100 bytes. Five alternating sustained product samples improved from
-326.5 to 305.2 ns/op (-6.5%), retaining zero B/op and allocations. Forced
-collection executes 200 retained allocations correctly, and a division trap in
-a constructor operand is verified to occur before allocation; the subsequent
-nontrapping call proves recovery and the retained allocation count. The shared
+The five-constructor native fixture falls from 620 to 548 function bytes, while
+allocation-family attribution falls from 968 to 824 bytes. Five alternating
+Apple M4 Max compile samples improved from a 6.998 to 6.662 us/op median
+(-4.8%), with allocations falling from 37 to 34 and median B/op falling by
+125 bytes. With a nested numeric-array/struct tree included, five alternating
+sustained product samples improved from 722.1 to 609.0 ns/op (-15.7%), retaining
+zero B/op and allocations. Forced collection executes 700 retained allocations
+correctly. A division trap in a constructor
+operand and an out-of-bounds passive-data range are verified before allocation;
+the subsequent nontrapping call proves recovery and exact retained allocation
+counting. The shared
 optimization catalog now gives AMD64's existing broader implementation the same
 immutable per-compilation rollback.
 

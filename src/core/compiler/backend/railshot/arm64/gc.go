@@ -46,6 +46,9 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayCheckDefault        uint32 = 36
+	gcArrayCheckUniform        uint32 = 37
+	gcArrayCheckData           uint32 = 38
 	gcArrayCheckFixed          uint32 = 39
 )
 
@@ -229,11 +232,18 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: struct.new type %d is unavailable", typeIndex)
 		}
-		if f.deadGCImmediateDrop(r) {
-			if err := f.reserveDeadGCStructConstructor(typeIndex, len(st.Comp.Fields)); err != nil {
+		nestedPayloadSafe := true
+		for _, field := range st.Comp.Fields {
+			if field.Storage().Val().Kind() == wasm.ValRef {
+				nestedPayloadSafe = false
+				break
+			}
+		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, nestedPayloadSafe); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, len(st.Comp.Fields), deadUse); err != nil {
 				return err
 			}
-			f.finishDeadGCImmediateDrop(r)
+			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
 		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
@@ -256,11 +266,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if _, ok := f.stagedStructType(typeIndex); !ok {
 			return fmt.Errorf("arm64: struct.new_default type %d is unavailable", typeIndex)
 		}
-		if f.deadGCImmediateDrop(r) {
-			if err := f.reserveDeadGCStructConstructor(typeIndex, 0); err != nil {
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, 0, deadUse); err != nil {
 				return err
 			}
-			f.finishDeadGCImmediateDrop(r)
+			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -341,6 +351,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); valueType.Kind() != wasm.ValRef && deadUse != checkedDeadGCNone {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+			if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
@@ -351,6 +369,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		if _, ok := f.stagedArrayType(typeIndex); !ok {
 			return fmt.Errorf("arm64: array.new_default type %d is unavailable", typeIndex)
+		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+			if err := f.callGCStructHelper(gcArrayCheckDefault, []wasm.ValType{wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -372,11 +398,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
-		if f.deadGCImmediateDrop(r) {
-			if err := f.reserveDeadGCFixedArrayConstructor(typeIndex, count); err != nil {
+		if deadUse := f.checkedDeadGCConstructorUse(r, valueType.Kind() != wasm.ValRef); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCFixedArrayConstructor(typeIndex, count, deadUse); err != nil {
 				return err
 			}
-			f.finishDeadGCImmediateDrop(r)
+			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
@@ -420,6 +446,17 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(segmentIndex)})
+		deadUse := checkedDeadGCNone
+		if sub == 9 {
+			deadUse = f.checkedDeadGCConstructorUse(r, true)
+		}
+		if deadUse != checkedDeadGCNone {
+			if err := f.callGCStructHelper(gcArrayCheckData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
 	case 11, 12, 13:
@@ -962,7 +999,7 @@ func arm64GCHelperMayAllocate(helper uint32) bool {
 	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
-		gcArrayCheckFixed:
+		gcArrayCheckDefault, gcArrayCheckUniform, gcArrayCheckData, gcArrayCheckFixed:
 		return true
 	default:
 		return false
