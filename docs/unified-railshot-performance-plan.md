@@ -816,6 +816,28 @@ Compilation improved from 11.54 to 7.90 us/op (-31.5%), B/op fell 36.5%,
 allocations fell from 47 to 41, and native output fell from 1,404 to 728 bytes
 because seven duplicate checked resolvers and all eight helper calls disappeared.
 
+### 2026-08-14 — ARM64 native final struct reference reads
+
+Final struct fields that use the collector's compact four-byte reference
+representation now load directly after the same nullable-handle, heap-extent,
+and exact-final-type checks as scalar fields. The loaded compact reference is
+marked as a frame root whenever the function has exact root maps. Function and
+external references, non-final layouts, disabled policy, and Size/Embedded
+objectives retain the helper. Repeated reads from one local reuse the bounded
+raw parent address, while the compact child remains the only semantic value
+that may cross a safepoint.
+
+Execution tests keep the final loaded child live across a subsequent allocating
+helper and run 100 iterations with collection on every allocation, forced major
+collections, and collector verification under both A/B settings. A separate
+near miss proves that an eight-byte function-reference field remains helper
+bound. On Apple M4 Max, eight reference reads in the admitted constructor
+fixture improved from a 655.5 to 324.5 ns/op median (-50.5%) through prepared
+invocation with zero B/op and allocations. Compilation improved from 10.84 to
+8.25 us/op (-23.8%), B/op fell 34.5%, allocations fell from 42 to 40, and
+native output fell from 1,352 to 880 bytes because seven duplicate checked
+resolvers and eight read helpers disappeared.
+
 ---
 
 # 1. North-star architecture

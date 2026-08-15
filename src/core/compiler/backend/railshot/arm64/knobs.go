@@ -33,6 +33,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("gc-native-final-array-len", &nativeGCFinalArrayLenEnabled),
 	optimization.Bind("gc-native-final-scalar-get", &nativeGCFinalScalarGetEnabled),
 	optimization.Bind("gc-native-final-scalar-set", &nativeGCFinalScalarSetEnabled),
+	optimization.Bind("gc-native-final-ref-get", &nativeGCFinalRefGetEnabled),
 	optimization.Bind("gc-native-final-array-scalar-get", &nativeGCFinalArrayScalarGetEnabled),
 	optimization.Bind("gc-native-final-array-scalar-set", &nativeGCFinalArrayScalarSetEnabled),
 	optimization.Bind("gc-native-resolve-reuse", &nativeGCResolveReuseEnabled),
@@ -88,6 +89,7 @@ var (
 	optGCNativeFinalArrayLen = optimizationBindings.Option("gc-native-final-array-len")
 	optGCNativeScalarGet     = optimizationBindings.Option("gc-native-final-scalar-get")
 	optGCNativeScalarSet     = optimizationBindings.Option("gc-native-final-scalar-set")
+	optGCNativeRefGet        = optimizationBindings.Option("gc-native-final-ref-get")
 	optGCNativeArrayGet      = optimizationBindings.Option("gc-native-final-array-scalar-get")
 	optGCNativeArraySet      = optimizationBindings.Option("gc-native-final-array-scalar-set")
 	optGCNativeResolveReuse  = optimizationBindings.Option("gc-native-resolve-reuse")

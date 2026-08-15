@@ -331,6 +331,15 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				}
 			}
 		}
+		if sub == 2 && f.policy.EnabledOption(optGCNativeRefGet) && !f.policy.CompactNative {
+			if layout, layoutOK := f.directGCStructRefLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + 4
+				if required <= math.MaxInt32 {
+					f.stats.peep("gc-native-final-struct-ref-get")
+					return f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), true)
+				}
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -854,6 +863,16 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 			}
 		}
 	}
+	if sub == 2 && f.policy.EnabledOption(optGCNativeRefGet) && !f.policy.CompactNative {
+		if layout, layoutOK := f.directGCStructRefLayout(typeIndex, fieldIndex); layoutOK {
+			required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + 4
+			if required <= math.MaxInt32 {
+				f.stats.peep("final-cast-struct-get-fuse")
+				f.stats.peep("gc-native-final-struct-ref-get")
+				return true, f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), nullable)
+			}
+		}
+	}
 	resultType := field.Storage().Val()
 	if field.Storage().Packed() {
 		resultType = wasm.I32
@@ -954,6 +973,23 @@ func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uin
 	f.a.LoadIdx(result, object, ZR, disp, scalar.size, sub == 3, scalar.typ == mtI64)
 	f.release(object)
 	f.pushReg(result, scalar.typ)
+	return nil
+}
+
+func (f *fn) emitNativeFinalStructRefGet(typeIndex, fieldOffset, required uint32, nullable bool) error {
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, nullable)
+	if err != nil {
+		return err
+	}
+	result := object
+	if f.gcResolved.valid && f.gcResolved.reg == object {
+		result = f.allocReg(maskOf(object))
+	}
+	f.a.LoadIdx(result, object, ZR, int32(gc.PayloadOffset+fieldOffset), 4, false, false)
+	if result != object {
+		f.release(object)
+	}
+	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()
 	return nil
 }
 

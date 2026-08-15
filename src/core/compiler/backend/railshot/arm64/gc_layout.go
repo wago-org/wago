@@ -52,6 +52,15 @@ func (f *fn) directGCStructLayout(typeIndex, fieldIndex uint32) (codegen.GCField
 	return layout.FieldLayout[fieldIndex], scalar, true
 }
 
+func (f *fn) directGCStructRefLayout(typeIndex, fieldIndex uint32) (codegen.GCFieldLayout, bool) {
+	layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct)
+	if !ok || !layout.Type.Final || int(fieldIndex) >= len(layout.FieldLayout) {
+		return codegen.GCFieldLayout{}, false
+	}
+	field := layout.FieldLayout[fieldIndex]
+	return field, field.CollectorRef && field.Size == 4
+}
+
 func (f *fn) directGCArrayLayout(typeIndex uint32) (directGCScalar, bool) {
 	layout, ok := f.gcTypeLayout(typeIndex, wasm.CompArray)
 	if !ok || !layout.Type.Final {

@@ -97,6 +97,10 @@ var nativeGCFinalScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCA
 // writes through the checked collector native view in speed-oriented output.
 var nativeGCFinalScalarSetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCALAR_SET") != "1"
 
+// nativeGCFinalRefGetEnabled resolves final collector-reference struct reads
+// through the checked collector native view in speed-oriented output.
+var nativeGCFinalRefGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_REF_GET") != "1"
+
 // nativeGCFinalArrayScalarGetEnabled resolves final pointer-free scalar array
 // reads through the checked collector native view in speed-oriented output.
 var nativeGCFinalArrayScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_SCALAR_GET") != "1"

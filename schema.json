@@ -86,6 +86,7 @@
               "gc-native-final-array-len",
               "gc-native-final-array-scalar-get",
               "gc-native-final-array-scalar-set",
+              "gc-native-final-ref-get",
               "gc-native-final-scalar-get",
               "gc-native-final-scalar-set",
               "gc-native-resolve-reuse",

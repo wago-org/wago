@@ -173,7 +173,7 @@ func TestNativeFinalScalarGetRejectsReferenceFieldARM64(t *testing.T) {
 	if _, err := CompileModuleWith(m, CompileOptions{
 		GCStructHelpers: true,
 		Stats:           &stats,
-		Optimizations:   map[string]bool{"gc-native-final-scalar-get": true},
+		Optimizations:   map[string]bool{"gc-native-final-scalar-get": true, "gc-native-final-ref-get": false},
 		Codegen:         codegen.Options{Module: codegen.ModuleInfo{GCTypeLayouts: metadata.Layouts}},
 	}); err != nil {
 		t.Fatal(err)
