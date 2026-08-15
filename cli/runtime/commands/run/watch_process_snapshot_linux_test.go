@@ -25,12 +25,13 @@ func TestWatchReapsAdoptedChildrenWhileRootRuns(t *testing.T) {
 	if err := prepareWatchedProcessTracking(); err != nil {
 		t.Fatal(err)
 	}
-	root, pid := startTestWatchRoot(t, "0.2")
+	root, pid := startTestWatchRoot(t, "0.5")
 	tracker := newTestWatchProcessTracker(t, root.Process.Pid)
 	if err := startWatchedProcessTracking(tracker); err != nil {
 		t.Fatal(err)
 	}
 	defer tracker.close()
+	waitForTrackedWatchProcess(t, tracker, pid)
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -39,35 +40,56 @@ func TestWatchReapsAdoptedChildrenWhileRootRuns(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("adopted child %d was not reaped", pid)
+	process, processOK := watchedProcess(pid)
+	matches, identityErr := watchedProcessHasIdentity(pid, testWatchProcessIdentity)
+	tracker.mu.Lock()
+	trackedStart, tracked := tracker.processes[pid]
+	tracker.mu.Unlock()
+	t.Fatalf("adopted child %d was not reaped: process=%+v exists=%t identity=%t identity_error=%v tracked=%t tracked_start=%d", pid, process, processOK, matches, identityErr, tracked, trackedStart)
 }
 
-func TestWatchReapsChildPresentAtTrackingStart(t *testing.T) {
+func TestWatchTracksAdoptedChildPresentAtTrackingStart(t *testing.T) {
 	if err := prepareWatchedProcessTracking(); err != nil {
 		t.Fatal(err)
 	}
-	root, pid := startTestWatchRoot(t, "0.05")
+	root, pid := startTestWatchRoot(t, "0.5")
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	time.Sleep(100 * time.Millisecond)
 	tracker := newTestWatchProcessTracker(t, root.Process.Pid)
 	if err := startWatchedProcessTracking(tracker); err != nil {
 		t.Fatal(err)
 	}
-	tracker.close()
-	if _, err := os.Stat("/proc/" + strconv.Itoa(pid)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("child present at tracking start was not reaped: %v", err)
+	defer tracker.close()
+	waitForTrackedWatchProcess(t, tracker, pid)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat("/proc/" + strconv.Itoa(pid)); errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+	t.Fatalf("adopted child present at tracking start was not reaped: %d", pid)
 }
 
-func TestWatchTrackingExcludesExistingChild(t *testing.T) {
-	unrelated := exec.Command("/bin/sh", "-c", "sleep 10")
-	if err := unrelated.Start(); err != nil {
-		t.Fatal(err)
+func waitForTrackedWatchProcess(t *testing.T, tracker *watchedProcessTracker, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if err := tracker.refresh(); err != nil {
+			t.Fatal(err)
+		}
+		tracker.mu.Lock()
+		_, tracked := tracker.processes[pid]
+		tracker.mu.Unlock()
+		if tracked {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	t.Cleanup(func() {
-		_ = unrelated.Process.Kill()
-		_ = unrelated.Wait()
-	})
+	t.Fatalf("adopted child %d was not tracked", pid)
+}
+
+func TestWatchTrackingExcludesLateDaemon(t *testing.T) {
 	child, err := startWatchedChild(watchOptions{
 		stopGrace:  250 * time.Millisecond,
 		executable: "/bin/sh",
@@ -80,11 +102,29 @@ func TestWatchTrackingExcludesExistingChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = child.stop(250*time.Millisecond, nil) })
+	pidPath := filepath.Join(t.TempDir(), "unrelated.pid")
+	helper := exec.Command("/bin/sh", "-c", `sleep 10 >/dev/null 2>&1 & echo $! > "$1"`, "watch-helper", pidPath)
+	if err := helper.Run(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelatedPID, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = syscall.Kill(unrelatedPID, syscall.SIGKILL)
+		var status syscall.WaitStatus
+		_, _ = syscall.Wait4(unrelatedPID, &status, 0, nil)
+	})
 	if err := child.platform.processes.refresh(); err != nil {
 		t.Fatal(err)
 	}
 	child.platform.processes.mu.Lock()
-	_, tracked := child.platform.processes.processes[unrelated.Process.Pid]
+	_, tracked := child.platform.processes.processes[unrelatedPID]
 	child.platform.processes.mu.Unlock()
 	if tracked {
 		t.Fatal("existing watcher child was tracked as a guest descendant")
@@ -101,13 +141,13 @@ func TestWatchFinishDoesNotReapUnrelatedChild(t *testing.T) {
 		_ = unrelated.Wait()
 	})
 	time.Sleep(50 * time.Millisecond)
-	process, ok := watchedProcess(unrelated.Process.Pid)
+	_, ok := watchedProcess(unrelated.Process.Pid)
 	if !ok {
 		t.Fatal("inspect unrelated child")
 	}
 	tracker := &watchedProcessTracker{
 		owner: os.Getpid(), root: 1 << 30, processes: make(map[int]uint64),
-		excluded: map[int]uint64{process.pid: process.started},
+		identity: testWatchProcessIdentity,
 	}
 	finishWatchedProcessTracking(tracker)
 	if err := unrelated.Wait(); err != nil {
@@ -118,6 +158,7 @@ func TestWatchFinishDoesNotReapUnrelatedChild(t *testing.T) {
 func startTestWatchRoot(t *testing.T, childDelay string) (*exec.Cmd, int) {
 	t.Helper()
 	command := exec.Command("/bin/sh", "-c", "/bin/sh -c 'sleep "+childDelay+" & echo $!'; sleep 10")
+	command.Env = watchedProcessEnvironment(nil, testWatchProcessIdentity)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -149,7 +190,17 @@ func newTestWatchProcessTracker(t *testing.T, rootPID int) *watchedProcessTracke
 	}
 	return &watchedProcessTracker{
 		owner: os.Getpid(), root: rootPID, rootStart: root.started,
-		processes: make(map[int]uint64),
+		processes: make(map[int]uint64), identity: testWatchProcessIdentity,
+	}
+}
+
+const testWatchProcessIdentity = "test-watch-process-identity"
+
+func TestWatchedProcessEnvironmentReplacesIdentity(t *testing.T) {
+	input := []string{watchedProcessIdentityEnvironment + "=old", "WAGO_TEST=value"}
+	want := watchedProcessIdentityEnvironment + "=new\nWAGO_TEST=value"
+	if got := strings.Join(watchedProcessEnvironment(input, "new"), "\n"); got != want {
+		t.Fatalf("watched process environment = %q, want %q", got, want)
 	}
 }
 
@@ -222,6 +273,7 @@ func TestWatchSignalSkipsTerminalGroupButReachesDetachedDescendant(t *testing.T)
 	logPath := filepath.Join(directory, "signal.log")
 	root := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
 	root.Env = append(os.Environ(),
+		watchedProcessIdentityEnvironment+"="+testWatchProcessIdentity,
 		"WAGO_WATCH_SIGNAL_TREE_ROLE=root",
 		"WAGO_WATCH_SIGNAL_TREE_PID="+pidPath,
 		"WAGO_WATCH_SIGNAL_TREE_READY="+readyPath,
@@ -236,6 +288,8 @@ func TestWatchSignalSkipsTerminalGroupButReachesDetachedDescendant(t *testing.T)
 		_ = root.Wait()
 		if leafPID > 0 {
 			_ = syscall.Kill(leafPID, syscall.SIGKILL)
+			var status syscall.WaitStatus
+			_, _ = syscall.Wait4(leafPID, &status, 0, nil)
 		}
 	})
 	deadline := time.Now().Add(5 * time.Second)
@@ -296,6 +350,7 @@ func TestWatchSignalSendsOnceToIsolatedGroup(t *testing.T) {
 	leafLog := filepath.Join(directory, "leaf.log")
 	root := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
 	root.Env = append(os.Environ(),
+		watchedProcessIdentityEnvironment+"="+testWatchProcessIdentity,
 		"WAGO_WATCH_GROUP_ROOT=1",
 		"WAGO_WATCH_GROUP_ROOT_READY="+rootReady,
 		"WAGO_WATCH_GROUP_ROOT_LOG="+rootLog,
@@ -424,7 +479,7 @@ func TestWatchedProcessDescendantsScansEveryThread(t *testing.T) {
 	if len(children) == 0 {
 		t.Fatal("did not start a child from a non-leader thread")
 	}
-	descendants, err := watchedProcessDescendants(os.Getpid(), os.Getpid(), nil, nil, maxWatchedDescendants)
+	descendants, err := watchedProcessDescendants(os.Getpid(), os.Getpid(), nil, "", maxWatchedDescendants)
 	if err != nil {
 		t.Fatal(err)
 	}

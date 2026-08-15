@@ -4,6 +4,7 @@ package run
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -27,16 +28,6 @@ func prepareWatchedProcessTracking() error {
 		return fmt.Errorf("watch process tracking requires procfs child lists: %w", err)
 	}
 	return unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
-}
-
-func watchedProcessTrackingBaseline() (map[int]uint64, error) {
-	owner := os.Getpid()
-	processes, err := watchedProcessDescendants(owner, owner, nil, nil, maxWatchedDescendants)
-	baseline := make(map[int]uint64, len(processes))
-	for _, process := range processes {
-		baseline[process.pid] = process.started
-	}
-	return baseline, err
 }
 
 func configureWatchedCommandStart(*syscall.SysProcAttr) {}
@@ -107,7 +98,7 @@ func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
 	}
 }
 
-func watchedProcessDescendants(owner, root int, tracked, excluded map[int]uint64, limit int) ([]watchedProcessInfo, error) {
+func watchedProcessDescendants(owner, root int, tracked map[int]uint64, identity string, limit int) ([]watchedProcessInfo, error) {
 	queue := make([]watchedProcessInfo, 0, len(tracked)+2)
 	seen := make(map[int]bool, len(tracked)+2)
 	for _, pid := range []int{owner, root} {
@@ -119,13 +110,14 @@ func watchedProcessDescendants(owner, root int, tracked, excluded map[int]uint64
 	processes := make([]watchedProcessInfo, 0, len(tracked))
 	for pid, started := range tracked {
 		process, ok := watchedProcess(pid)
-		if !ok || process.started != started || seen[pid] || excluded[pid] == process.started {
+		if !ok || process.started != started || seen[pid] {
 			continue
 		}
 		seen[pid] = true
 		processes = append(processes, process)
 		queue = append(queue, process)
 	}
+	inspected := len(processes)
 	for len(queue) != 0 {
 		parent := queue[0]
 		queue = queue[1:]
@@ -159,9 +151,21 @@ func watchedProcessDescendants(owner, root int, tracked, excluded map[int]uint64
 				if !exists || process.parent != parent.pid {
 					continue
 				}
-				if excluded[pid] == process.started {
-					seen[pid] = true
-					continue
+				inspected++
+				if inspected > limit {
+					_ = file.Close()
+					return processes, fmt.Errorf("watched process scan exceeds %d descendants", limit)
+				}
+				if parent.pid == owner && owner != root {
+					matches, identityErr := watchedProcessHasIdentity(pid, identity)
+					if identityErr != nil {
+						seen[pid] = true
+						continue
+					}
+					if !matches {
+						seen[pid] = true
+						continue
+					}
 				}
 				if len(processes) >= limit {
 					_ = file.Close()
@@ -182,6 +186,43 @@ func watchedProcessDescendants(owner, root int, tracked, excluded map[int]uint64
 		}
 	}
 	return processes, nil
+}
+
+const maxWatchedProcessEnvironment = 4 << 20
+
+func watchedProcessHasIdentity(pid int, identity string) (bool, error) {
+	file, err := os.Open("/proc/" + strconv.Itoa(pid) + "/environ")
+	if err != nil {
+		return false, err
+	}
+	want := []byte(watchedProcessIdentityEnvironment + "=" + identity)
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 4096), maxWatchedProcessEnvironment)
+	scanner.Split(scanWatchedProcessEnvironment)
+	total := 0
+	for scanner.Scan() {
+		total += len(scanner.Bytes()) + 1
+		if total > maxWatchedProcessEnvironment {
+			_ = file.Close()
+			return false, fmt.Errorf("process %d environment exceeds %d bytes", pid, maxWatchedProcessEnvironment)
+		}
+		if bytes.Equal(scanner.Bytes(), want) {
+			return true, file.Close()
+		}
+	}
+	scanErr := scanner.Err()
+	closeErr := file.Close()
+	return false, errors.Join(scanErr, closeErr)
+}
+
+func scanWatchedProcessEnvironment(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if end := bytes.IndexByte(data, 0); end >= 0 {
+		return end + 1, data[:end], nil
+	}
+	if atEOF && len(data) != 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 func watchedProcessTasks(pid, limit int) ([]int, error) {
