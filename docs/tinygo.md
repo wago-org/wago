@@ -57,6 +57,25 @@ tinygo build -scheduler=tasks -tags wago_runtime,wago_lean,wago_minimal \
 ./wago-runtime-minimal-tiny run tests/fixtures/wasm/fib.wasm --invoke fib 20
 ```
 
+The standard-Go manager can also produce a runtime-only TinyGo command binary:
+
+```bash
+wago compile --tinygo --invoke fib fib.wasm -o fib
+./fib 20
+```
+
+This mode compiles the Wasm once with the native standard-Go compiler, embeds
+the resulting `.wago` artifact, then links the loader with TinyGo under the
+`wago_precompiled` build tag. The emitted executable does not retain Railshot's
+source compiler and does not generate Wasm machine code at startup. It retains
+the small runtime-owned host-call thunk emitter required to bind imported
+functions during instantiation.
+
+Precompiled TinyGo standalone builds intentionally require the destination to
+equal the build host's `GOOS/GOARCH`. Native artifacts incorporate platform
+admission and interruption decisions as well as the instruction set; ordinary
+standard-Go standalone builds remain cross-compilable.
+
 ## Scheduler: use `-scheduler=tasks`
 
 Build wago programs with **`-scheduler=tasks`** (cooperative, single-threaded).

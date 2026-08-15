@@ -77,6 +77,13 @@ generated target applies the settings through the selected runtime backend.
 GOOS/GOARCH select exactly one build-tagged Railshot backend, so an AMD64
 executable does not link ARM64 codegen and vice versa. `--watch` intentionally
 has no standalone equivalent because the embedded module cannot change.
+With `--tinygo`, the manager first runs a native standard-Go helper containing
+the reviewed plugin set to produce `module.wago`, then replaces that helper with
+a `wago_precompiled` entry point and invokes TinyGo. The final binary contains
+the artifact loader, runtime, selected plugins, and runtime-owned host-call
+thunk emitter, but no Railshot source compiler. Because compilation policy is
+platform-sensitive, this path rejects non-native `--target` values instead of
+producing an artifact under the wrong OS or architecture assumptions.
 
 `cli/internal/handoff.Metadata` is the sole definition of launch metadata. It
 encodes and decodes the `WAGO_MANAGER_*` and `WAGO_RUNTIME_*` environment
