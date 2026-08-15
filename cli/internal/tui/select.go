@@ -137,9 +137,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 	case keyToggle:
 		if len(m.Items) > 0 && !m.Items[m.Cursor].Disabled {
 			if m.Items[m.Cursor].Reject {
-				for i := range m.Items {
-					m.Items[i].On = i == m.Cursor
-				}
+				m.rejectAll()
 				return true, false
 			} else {
 				m.Items[m.Cursor].On = !m.Items[m.Cursor].On
@@ -177,16 +175,23 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 			}
 		}
 	case keyReject: // clear all, then submit — a deliberate "grant nothing"
-		for i := range m.Items {
-			m.Items[i].On = m.Items[i].Reject
-		}
+		m.rejectAll()
 		return true, false
 	case keyAccept, keyRight:
+		if len(m.Items) > 0 && m.Items[m.Cursor].Reject && !m.Items[m.Cursor].Disabled {
+			m.rejectAll()
+		}
 		return true, false
 	case keyLeft, keyCancel, keyQuit:
 		return true, true
 	}
 	return false, false
+}
+
+func (m *MultiSelect) rejectAll() {
+	for i := range m.Items {
+		m.Items[i].On = m.Items[i].Reject
+	}
 }
 
 // chosen returns the labels of the selected rows, in list order.

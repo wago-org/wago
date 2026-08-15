@@ -174,9 +174,20 @@ func TestMultiSelectRejectRowIsExclusive(t *testing.T) {
 	}
 }
 
+func TestMultiSelectEnterOnRejectRowRejects(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{
+		{Label: "required", On: true},
+		{Label: "Reject all", Reject: true},
+	}, Cursor: 1}
+	done, cancelled := m.apply(keyAccept)
+	if !done || cancelled || !m.Rejected() || m.Items[0].On {
+		t.Fatalf("enter on Reject all = done %v, cancelled %v, items %#v", done, cancelled, m.Items)
+	}
+}
+
 func TestMultiSelectEnterAccepts(t *testing.T) {
 	m := &MultiSelect{Items: []SelectItem{{Label: "a", On: true}, {Label: "b", On: false}}}
-	// Enter always submits the checked items (never rejects), wherever the cursor is.
+	// Enter on an ordinary row submits the checked items.
 	m.apply(keyDown) // cursor on the unchecked "b"
 	done, cancelled := m.apply(keyAccept)
 	if !done || cancelled {
