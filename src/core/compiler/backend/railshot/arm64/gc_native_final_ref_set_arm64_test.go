@@ -327,6 +327,102 @@ func TestNativeFinalI31RefSetThroughLocalARM64(t *testing.T) {
 	}
 }
 
+func gcBarrierFreeArrayFillModuleARM64(t testing.TB, i31, unknown bool) *wasm.Module {
+	t.Helper()
+	childType := []byte{0x5f, 0x00}
+	arrayType := []byte{0x5e, 0x63, 0x00, 0x01}
+	funcType := wasmtest.FuncType(nil, nil)
+	localIndex := byte(0)
+	value := []byte{0xd0, 0x00} // ref.null child
+	initial := value
+	if i31 {
+		arrayType = []byte{0x5e, 0x6e, 0x01}
+		value = []byte{0x41, 0x2a, 0xfb, 0x1c}
+		initial = value
+	}
+	if unknown {
+		funcType = []byte{0x60, 0x01, 0x63, 0x00, 0x00} // (func (param (ref null 0)))
+		localIndex = 1
+		value = []byte{0x20, 0x00}
+		initial = value
+	}
+	body := []byte{0x01, 0x01, 0x63, 0x01} // one nullable array local
+	body = append(body, initial...)
+	body = append(body, 0x41, 0x08, 0xfb, 0x06, 0x01, 0x21, localIndex) // array.new; local.set
+	body = append(body, 0x20, localIndex, 0x41, 0x00)                   // array; start
+	body = append(body, value...)
+	body = append(body, 0x41, 0x08, 0xfb, 0x10, 0x01, 0x0b) // length; array.fill; end
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(childType, arrayType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func compileBarrierFreeArrayFillARM64(t testing.TB, i31, unknown, enabled, facts bool) *CodegenStats {
+	t.Helper()
+	m := gcBarrierFreeArrayFillModuleARM64(t, i31, unknown)
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		GCStructHelpers: true,
+		GCArrayHelpers:  true,
+		Stats:           &stats,
+		Optimizations: map[string]bool{
+			"gc-native-final-ref-set": enabled,
+			"value-facts":             facts,
+		},
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiled.CodeImage.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return stats.Funcs[0]
+}
+
+func TestBarrierFreeArrayFillARM64(t *testing.T) {
+	t.Run("null", func(t *testing.T) {
+		on := compileBarrierFreeArrayFillARM64(t, false, false, true, true)
+		off := compileBarrierFreeArrayFillARM64(t, false, false, false, true)
+		if got := on.Peephole["gc-bulk-barrier-elide"]; got != 1 {
+			t.Fatalf("null array.fill barrier elisions = %d, want 1", got)
+		}
+		if got := off.Peephole["gc-bulk-barrier-elide"]; got != 0 {
+			t.Fatalf("disabled null array.fill barrier elisions = %d, want 0", got)
+		}
+	})
+	t.Run("i31", func(t *testing.T) {
+		on := compileBarrierFreeArrayFillARM64(t, true, false, true, true)
+		factsOff := compileBarrierFreeArrayFillARM64(t, true, false, true, false)
+		if got := on.Peephole["gc-bulk-barrier-elide"]; got != 1 {
+			t.Fatalf("i31 array.fill barrier elisions = %d, want 1", got)
+		}
+		if got := factsOff.Peephole["gc-bulk-barrier-elide"]; got != 0 {
+			t.Fatalf("facts-disabled i31 array.fill barrier elisions = %d, want 0", got)
+		}
+	})
+	t.Run("unknown heap child", func(t *testing.T) {
+		stats := compileBarrierFreeArrayFillARM64(t, false, true, true, true)
+		if got := stats.Peephole["gc-bulk-barrier-elide"]; got != 0 {
+			t.Fatalf("unknown-child array.fill barrier elisions = %d, want 0", got)
+		}
+	})
+}
+
 func BenchmarkNativeFinalI31RefSetCompileARM64(b *testing.B) {
 	for _, array := range []bool{false, true} {
 		kind := "struct"

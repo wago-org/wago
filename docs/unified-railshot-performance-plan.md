@@ -1301,6 +1301,23 @@ loop/control regions would add allocator state without a production consumer.
 The probe was removed; FP/vector regional residency remains ordered after a
 measured structured-region extension.
 
+### 2026-08-14 — ARM64 barrier-free reference array fills
+
+ARM64 now selects the existing `ArrayFillNoBarrier` runtime helper for reference
+`array.fill` operations whose value is proven null or exact i31. It reuses the
+same immutable `gc-native-final-ref-set` policy and value facts as native
+single-element stores; unknown heap children, disabled facts for i31, and a
+disabled policy retain the full barrier helper. The call ABI, helper transition,
+collector implementation, native code size, and compiler storage are unchanged.
+
+Tests cover null and i31 selection plus all three conservative near misses. Six
+serialized Apple M4 Max collector samples isolate the work removed behind the
+unchanged helper boundary: the median for 16 elements moved from 29.58 to 28.56
+ns/op (-3.4%), and 256 elements from 47.27 to 44.98 ns/op (-4.8%). At 4,096
+elements the medians were 206.0 and 204.5 ns/op (-0.7%, treated as noise) as the
+fill itself dominates. Every case remains at zero B/op and allocations. The
+ARM64 backend, shared-fact, and collector suites pass.
+
 ---
 
 # 1. North-star architecture

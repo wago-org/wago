@@ -49,6 +49,7 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayFillNoBarrier       uint32 = 35
 	gcArrayCheckDefault        uint32 = 36
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
@@ -697,9 +698,18 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		helper := uint32(gcArrayFill)
+		if field.Storage().Val().Kind() == wasm.ValRef && f.opt(optGCNativeRefSet) {
+			lengthRoot := f.s.back()
+			valueRoot := baseOfValentBlock(lengthRoot).prev
+			if barrierFreeReferenceStore(valueRoot) != barrierFreeRefUnknown {
+				helper = gcArrayFillNoBarrier
+				f.stats.peep("gc-bulk-barrier-elide")
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayFill, []wasm.ValType{object, wasm.I32, valueType, wasm.I32, wasm.I32}, nil)
+		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, valueType, wasm.I32, wasm.I32}, nil)
 	case 17:
 		dstType, err := r.U32()
 		if err != nil {
