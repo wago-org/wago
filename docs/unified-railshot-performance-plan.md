@@ -3784,3 +3784,31 @@ unchanged. Tests cover clean preference, farthest exact next use, unresolved
 fuel fallback, overwrite-before-read, and deterministic bounded scanning. The
 existing `WAGO_AMD64_INTERVAL_REGIONS=0` switch remains the full regional-cache
 rollback path.
+
+### Rejected follow-up: whole-function admission with call barriers
+
+A bounded prototype admitted non-looping, control-free call-making functions to
+the existing interval cache and canonicalized every active owner immediately
+before each ordinary call. This was correct without a CFG or new storage: call
+arguments borrowing a regional local were demoted to their canonical frame
+read, and the cache restarted lazily after the call.
+
+Only four functions in the 64-module corpus were admitted, all in Ruby. Across
+45 call barriers they reduced call-preservation stores by 17 and reloads by 27,
+added two ordinary stores, and reduced native code by 187 bytes. Ruby cannot be
+executed in the corpus without its external host bridge, so those code-shape
+changes are insufficient performance evidence.
+
+A focused eight-call, twenty-local kernel exposed the missing admission rule:
+
+```text
+Ryzen 7 7800X3D, eight samples:
+    fixed whole-function pins: 17.91 ns/op, 372 native bytes, 0 B/op
+    barrier-flushed regions:   20.77 ns/op, 771 native bytes, 0 B/op
+    delta:                     about +16% time, +107% native bytes
+```
+
+The prototype and benchmark were removed. Multiple call-separated regions must
+be summary-ranked by useful work between barriers; treating every eligible
+whole function as a region repeatedly reloads locals that fixed pins preserve
+more cheaply.
