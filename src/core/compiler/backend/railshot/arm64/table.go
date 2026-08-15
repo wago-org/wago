@@ -527,19 +527,32 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 		return err
 	}
 	if f.gcTypeSubtypingRefTest {
-		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: int(idx)})
+		result := f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: int(idx)})
+		if f.opt(optValueFacts) {
+			result.st.facts |= factNonZero
+		}
 		return nil
 	}
 	ref := f.allocReg(0)
 	f.ld64(ref, linMemReg, -int32(offFuncRefDescPtr))
 	f.trapIfZero(ref, true, true, trapIndirectOOB)
 	f.leaDisp(ref, ref, int32((idx+1)*runtime.FuncRefDescBytes), true)
-	f.pushReg(ref, mtI64)
+	result := f.pushReg(ref, mtI64)
+	if f.opt(optValueFacts) {
+		result.st.facts |= factNonZero
+	}
 	return nil
 }
 
 func (f *fn) refIsNull() {
-	ref := f.materialize(f.popValue())
+	value := f.popValue()
+	if f.opt(optValueFacts) && value.st.facts.Has(factNonZero) {
+		f.releaseDroppedValue(value)
+		f.pushValue(storage{kind: stConst, typ: mtI32, facts: factUpper32Zero | factBoolean})
+		f.stats.peep("ref-is-null-fold")
+		return
+	}
+	ref := f.materialize(value)
 	f.cmpImm(ref, 0, true) // was TestSelf
 	f.a.Cset32(ref, condE) // ref = (ref == 0) ? 1 : 0 (was SetccReg)
 	f.pushReg(ref, mtI32)
@@ -548,9 +561,19 @@ func (f *fn) refIsNull() {
 func (f *fn) refAsNonNull() {
 	value := f.popValue()
 	root := value.st.gcRoot
+	facts := value.st.facts
 	ref := f.materialize(value)
-	f.trapIfZero(ref, true, true, trapNullReference)
-	f.pushReg(ref, mtI64).st.gcRoot = root
+	if f.opt(optValueFacts) && facts.Has(factNonZero) {
+		f.stats.peep("gc-null-check-elide")
+	} else {
+		f.trapIfZero(ref, true, true, trapNullReference)
+	}
+	result := f.pushReg(ref, mtI64)
+	result.st.gcRoot = root
+	result.st.facts = facts
+	if f.opt(optValueFacts) {
+		result.st.facts |= factNonZero
+	}
 }
 
 func (f *fn) refEq() {

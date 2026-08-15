@@ -397,7 +397,7 @@ func TestReferenceAndTableSizeLoweringHelpers(t *testing.T) {
 		if err := f.refFunc(wasm.NewReader([]byte{3})); err != nil {
 			t.Fatal(err)
 		}
-		if f.depth() != 1 || f.s.back().st.typ != mtI64 || len(f.a.B) == 0 {
+		if f.depth() != 1 || f.s.back().st.typ != mtI64 || !f.s.back().st.facts.Has(factNonZero) || len(f.a.B) == 0 {
 			t.Fatalf("ref.func stack/code = %#v / %d bytes", f.s.back().st, len(f.a.B))
 		}
 	})

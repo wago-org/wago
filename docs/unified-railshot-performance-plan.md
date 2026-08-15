@@ -880,18 +880,21 @@ improved from 14.41 to 9.77 us/op (-32.2%), B/op fell from 27,288 to 17,912
 (-34.4%), allocations fell from 49 to 44, and native output fell from 1,188 to
 596 bytes (-49.8%).
 
-### 2026-08-14 — shared nonzero provenance for ARM64 i31 extraction
+### 2026-08-14 — shared nonzero reference provenance on ARM64
 
 The shared one-byte value-provenance field now records a nonzero fact. ARM64
-marks every `ref.i31` result and removes the null trap from an adjacent
-`i31.get_s` or `i31.get_u`; disabling `value-facts` retains the original checks.
-The new bit fits existing storage padding, intersects conservatively at merges,
-and adds no side table or per-operation allocation.
+marks `ref.i31`, `ref.func`, and successful `ref.as_non_null` results. The fact
+survives ordinary local storage, removes redundant `ref.as_non_null` and
+`i31.get_s`/`i31.get_u` traps, and folds `ref.is_null` to false. Disabling
+`value-facts` retains the original checks and comparisons. The new bit fits
+existing storage padding, intersects conservatively at merges, and adds no side
+table or per-operation allocation.
 
-On Apple M4 Max, an eight-extraction compile fixture improved from a 7.93 to
-7.46 us/op median (-5.9%), B/op fell from 19,448 to 19,280, allocations fell
-from 26 to 23, and native output fell from 372 to 292 bytes (-21.5%). Tests pin
-all eight fact-driven null-check removals and the disabled-policy fallback.
+On Apple M4 Max, an eight-chain compile fixture that round-trips each `ref.i31`
+through a local improved from a 10.851 to 9.911 us/op median (-8.7%), B/op fell
+from 32,992 to 32,632, allocations fell from 32 to 28, and native output fell
+from 564 to 356 bytes (-36.9%). Tests pin eight `ref.is_null` folds, sixteen
+fact-driven null-check removals, and the disabled-policy fallback.
 
 ---
 

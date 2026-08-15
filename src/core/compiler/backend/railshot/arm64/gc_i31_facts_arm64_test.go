@@ -11,9 +11,14 @@ import (
 
 func i31NonZeroFactModuleARM64(t testing.TB) *wasm.Module {
 	t.Helper()
-	body := []byte{}
+	body := []byte{0x01, 0x01, 0x6c}
 	for range 8 {
-		body = append(body, 0x41, 0x2a, 0xfb, 0x1c, 0xfb, 0x1e)
+		body = append(body,
+			0x41, 0x2a, 0xfb, 0x1c,
+			0x21, 0x00,
+			0x20, 0x00, 0xd1, 0x1a,
+			0x20, 0x00, 0xd4, 0xfb, 0x1e,
+		)
 	}
 	for range 7 {
 		body = append(body, 0x6a)
@@ -22,7 +27,7 @@ func i31NonZeroFactModuleARM64(t testing.TB) *wasm.Module {
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 	m, err := wasm.DecodeModule(data)
 	if err != nil {
@@ -50,11 +55,17 @@ func TestI31NonZeroFactsARM64(t *testing.T) {
 	}
 	on, onBytes := compile(true)
 	off, offBytes := compile(false)
-	if got := on.Peephole["gc-null-check-elide"]; got != 8 {
-		t.Fatalf("i31 null-check elisions = %d, want 8", got)
+	if got := on.Peephole["gc-null-check-elide"]; got != 16 {
+		t.Fatalf("i31 null-check elisions = %d, want 16", got)
 	}
 	if got := off.Peephole["gc-null-check-elide"]; got != 0 {
 		t.Fatalf("disabled i31 null-check elisions = %d, want 0", got)
+	}
+	if got := on.Peephole["ref-is-null-fold"]; got != 8 {
+		t.Fatalf("ref.is_null folds = %d, want 8", got)
+	}
+	if got := off.Peephole["ref-is-null-fold"]; got != 0 {
+		t.Fatalf("disabled ref.is_null folds = %d, want 0", got)
 	}
 	if onBytes >= offBytes {
 		t.Fatalf("native bytes enabled/disabled = %d/%d, want reduction", onBytes, offBytes)
