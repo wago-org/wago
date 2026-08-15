@@ -962,6 +962,16 @@ following `i64.extend_i32_u` and reduces native output from 452 to 388 bytes
 9.161 us/op (+1.7%, treated as noise), with 22,432 B/op and 30 allocations/op
 unchanged. The disabled-policy fixture retains every extension.
 
+Successful non-null ARM64 `ref.cast` operations now retain the value's guaranteed
+nonzero state across native final-type checks, inline function and abstract-heap
+checks, and collector-helper lowering. Nullable `ref.cast_null` deliberately
+does not acquire the fact. An eight-cast helper-backed fixture removes eight
+following `ref.as_non_null` checks and folds eight `ref.is_null` consumers,
+reducing native output from 1,220 to 1,100 bytes (-9.8%). Six alternating
+fixed-work compile samples improved from a 14.903 to 14.443 us/op median (-3.1%),
+B/op fell from 43,720 to 43,552, and allocations fell from 55 to 52. Tests cover
+the disabled-policy and nullable-cast near misses.
+
 ---
 
 # 1. North-star architecture

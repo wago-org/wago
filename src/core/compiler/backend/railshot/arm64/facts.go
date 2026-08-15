@@ -66,6 +66,16 @@ func (f *fn) markTopBooleanFact() {
 	}
 }
 
+func (f *fn) markTopNonZeroFact() {
+	if !f.opt(optValueFacts) {
+		return
+	}
+	e := f.s.back()
+	if e != nil && e != f.s.head && e.kind == ekValue {
+		e.st.facts |= factNonZero
+	}
+}
+
 // deferredResultFacts returns only properties guaranteed by the Wasm operation
 // and ARM64's W-register write semantics. Reads from locals, globals, memory, or
 // unknown calls begin with no facts and cannot enter through this function.

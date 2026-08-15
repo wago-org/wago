@@ -150,7 +150,13 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			if f.policy.EnabledOption(optGCNativeFinalCast) && !f.policy.CompactNative {
 				if f.directGCFinalType(uint32(heap)) {
 					f.stats.peep("gc-native-final-cast")
-					return f.emitNativeFinalCast(uint32(heap), sub == 23)
+					if err := f.emitNativeFinalCast(uint32(heap), sub == 23); err != nil {
+						return err
+					}
+					if sub == 22 {
+						f.markTopNonZeroFact()
+					}
+					return nil
 				}
 			}
 		}
@@ -161,6 +167,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				ref := f.materialize(value)
 				f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, exactTarget, trapCastFailure)
 				f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+				if sub == 22 {
+					f.markTopNonZeroFact()
+				}
 				return nil
 			}
 		}
@@ -191,6 +200,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.a.PatchBranch19(done, f.a.Len())
 			}
 			f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+			if sub == 22 {
+				f.markTopNonZeroFact()
+			}
 			return nil
 		}
 		if !f.gcStructHelpers {
@@ -208,7 +220,13 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{anyref})
+		if err := f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{anyref}); err != nil {
+			return err
+		}
+		if sub == 22 {
+			f.markTopNonZeroFact()
+		}
+		return nil
 	}
 	if sub == 26 || sub == 27 {
 		if !f.gcStructHelpers {
