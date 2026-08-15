@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -127,6 +129,89 @@ func TestWatchSupervisorContinuesAfterChildSIGINT(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("supervisor exit = %v, want context cancellation", err)
 	}
+}
+
+func TestWatchSignalSkipsTerminalGroupButReachesDetachedDescendant(t *testing.T) {
+	const testName = "^TestWatchSignalSkipsTerminalGroupButReachesDetachedDescendant$"
+	switch os.Getenv("WAGO_WATCH_SIGNAL_TREE_ROLE") {
+	case "root":
+		leaf := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+		leaf.Env = append(os.Environ(), "WAGO_WATCH_SIGNAL_TREE_ROLE=leaf")
+		leaf.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		if err := leaf.Start(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_SIGNAL_TREE_PID"), []byte(strconv.Itoa(leaf.Process.Pid)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(24 * time.Hour)
+		return
+	case "leaf":
+		interrupts := make(chan os.Signal, 1)
+		signal.Notify(interrupts, syscall.SIGINT)
+		defer signal.Stop(interrupts)
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_SIGNAL_TREE_READY"), []byte("ready"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		<-interrupts
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_SIGNAL_TREE_LOG"), []byte("interrupt"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	directory := t.TempDir()
+	pidPath := filepath.Join(directory, "leaf.pid")
+	readyPath := filepath.Join(directory, "ready")
+	logPath := filepath.Join(directory, "signal.log")
+	root := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+	root.Env = append(os.Environ(),
+		"WAGO_WATCH_SIGNAL_TREE_ROLE=root",
+		"WAGO_WATCH_SIGNAL_TREE_PID="+pidPath,
+		"WAGO_WATCH_SIGNAL_TREE_READY="+readyPath,
+		"WAGO_WATCH_SIGNAL_TREE_LOG="+logPath,
+	)
+	if err := root.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var leafPID int
+	t.Cleanup(func() {
+		_ = root.Process.Kill()
+		_ = root.Wait()
+		if leafPID > 0 {
+			_ = syscall.Kill(leafPID, syscall.SIGKILL)
+		}
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		data, pidErr := os.ReadFile(pidPath)
+		_, readyErr := os.Stat(readyPath)
+		if pidErr == nil && readyErr == nil {
+			leafPID, pidErr = strconv.Atoi(string(data))
+			if pidErr == nil {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if leafPID == 0 {
+		t.Fatal("detached descendant did not start")
+	}
+	tracker := newTestWatchProcessTracker(t, root.Process.Pid)
+	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
+	if err := signalWatchedProcessTreeExceptGroup(platform, root, syscall.SIGINT, syscall.Getpgrp()); err != nil {
+		t.Fatal(err)
+	}
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(logPath); err == nil && string(data) == "interrupt" {
+			if err := syscall.Kill(root.Process.Pid, 0); err != nil {
+				t.Fatalf("shared-group root received interrupt: %v", err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("detached descendant did not receive interrupt")
 }
 
 func TestWatchedProcessDescendantsScansEveryThread(t *testing.T) {

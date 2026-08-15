@@ -103,7 +103,7 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 func runWatchJobControlHelper(t *testing.T) {
 	signal.Reset(syscall.SIGTSTP, syscall.SIGTTIN, syscall.SIGTTOU)
 	options := watchTestOptions(os.Getenv("WAGO_WATCH_MODULE"), os.Getenv("WAGO_WATCH_LOG"), "", false)
-	options.environment = append(options.environment, "WAGO_WATCH_SIGNAL=1")
+	options.environment = append(options.environment, "WAGO_WATCH_SIGNAL=1", "WAGO_WATCH_COUNT_SIGNALS=1")
 	options.stdin, options.stdout, options.stderr = strings.NewReader(""), os.Stdout, os.Stderr
 	signals := watchedSignals()
 	interrupts := make(chan os.Signal, len(signals))

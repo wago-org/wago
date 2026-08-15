@@ -384,7 +384,7 @@ func TestWatchHelperProcess(t *testing.T) {
 	}
 	var interrupts chan os.Signal
 	if os.Getenv("WAGO_WATCH_SIGNAL") == "1" {
-		interrupts = make(chan os.Signal, 1)
+		interrupts = make(chan os.Signal, 8)
 		signal.Notify(interrupts, watchedSignals()...)
 		defer signal.Stop(interrupts)
 	}
@@ -399,6 +399,23 @@ func TestWatchHelperProcess(t *testing.T) {
 				continue
 			}
 			appendWatchLog(t, received.String())
+			if os.Getenv("WAGO_WATCH_COUNT_SIGNALS") == "1" {
+				timer := time.NewTimer(100 * time.Millisecond)
+			waitForRepeatedSignal:
+				for {
+					select {
+					case repeated := <-interrupts:
+						if watchedContinueSignal(repeated) {
+							continue
+						}
+						appendWatchLog(t, "repeat-"+repeated.String())
+						break waitForRepeatedSignal
+					case <-timer.C:
+						break waitForRepeatedSignal
+					}
+				}
+				timer.Stop()
+			}
 			return
 		}
 	}

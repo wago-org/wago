@@ -119,7 +119,20 @@ func interruptWatchedProcess(platform watchedChildPlatform, command *exec.Cmd, i
 	if value, ok := interrupt.(syscall.Signal); ok && (value == syscall.SIGHUP || value == syscall.SIGINT || value == syscall.SIGQUIT || value == syscall.SIGTERM) {
 		sig = value
 	}
+	if sig == syscall.SIGINT || sig == syscall.SIGQUIT {
+		if group, ok := watchedTerminalSignalGroup(platform); ok {
+			return signalWatchedProcessTreeExceptGroup(platform, command, sig, group)
+		}
+	}
 	return signalWatchedProcessTree(platform, command, sig)
+}
+
+func watchedTerminalSignalGroup(platform watchedChildPlatform) (int, bool) {
+	if platform.terminalFD < 0 {
+		return 0, false
+	}
+	group, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
+	return group, err == nil && group == platform.foreground
 }
 
 func killWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error {
@@ -278,13 +291,16 @@ func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {
 	}
 }
 
-func signalWatchedProcessGroup(platform watchedChildPlatform, command *exec.Cmd, signal syscall.Signal) error {
+func signalWatchedProcessGroupExceptGroup(platform watchedChildPlatform, command *exec.Cmd, signal syscall.Signal, excludedGroup int) error {
 	if command.Process == nil {
 		return os.ErrProcessDone
 	}
 	process, ok := watchedProcess(command.Process.Pid)
 	if !ok || platform.processes == nil || process.started != platform.processes.rootStart {
 		return os.ErrProcessDone
+	}
+	if process.group == excludedGroup {
+		return nil
 	}
 	target := -process.group
 	if process.group == syscall.Getpgrp() {
@@ -298,8 +314,12 @@ func signalWatchedProcessGroup(platform watchedChildPlatform, command *exec.Cmd,
 }
 
 func signalWatchedProcessTree(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal) error {
-	descendantErr := signalWatchedDescendants(platform, value)
-	groupErr := signalWatchedProcessGroup(platform, command, value)
+	return signalWatchedProcessTreeExceptGroup(platform, command, value, 0)
+}
+
+func signalWatchedProcessTreeExceptGroup(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal, excludedGroup int) error {
+	descendantErr := signalWatchedDescendantsExceptGroup(platform, value, excludedGroup)
+	groupErr := signalWatchedProcessGroupExceptGroup(platform, command, value, excludedGroup)
 	if errors.Is(groupErr, os.ErrProcessDone) {
 		groupErr = nil
 	}
@@ -313,6 +333,13 @@ func signalWatchedDescendants(platform watchedChildPlatform, value syscall.Signa
 	return platform.processes.signal(value)
 }
 
+func signalWatchedDescendantsExceptGroup(platform watchedChildPlatform, value syscall.Signal, group int) error {
+	if platform.processes == nil {
+		return nil
+	}
+	return platform.processes.signalExceptGroup(value, group)
+}
+
 func (tracker *watchedProcessTracker) refresh() error {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
@@ -320,6 +347,10 @@ func (tracker *watchedProcessTracker) refresh() error {
 }
 
 func (tracker *watchedProcessTracker) signal(value syscall.Signal) error {
+	return tracker.signalExceptGroup(value, 0)
+}
+
+func (tracker *watchedProcessTracker) signalExceptGroup(value syscall.Signal, excludedGroup int) error {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	refreshErr := errors.Join(tracker.eventErr, tracker.refreshLocked())
@@ -331,7 +362,7 @@ func (tracker *watchedProcessTracker) signal(value syscall.Signal) error {
 	var signalErr error
 	for _, pid := range pids {
 		process, ok := watchedProcess(pid)
-		if !ok || process.started != tracker.processes[pid] {
+		if !ok || process.started != tracker.processes[pid] || process.group == excludedGroup {
 			continue
 		}
 		if err := syscall.Kill(pid, value); err != nil && !errors.Is(err, syscall.ESRCH) {
