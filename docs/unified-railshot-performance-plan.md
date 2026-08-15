@@ -1205,6 +1205,26 @@ remain neutral at 915.78 ms with the option disabled versus 917.29 ms enabled
 (+0.17%); B/op rises by about 19 KiB (+0.05%) for the one-byte-per-function
 class table and allocations remain within run-to-run noise.
 
+### 2026-08-14 — rejected dynamic-import context guard
+
+An AMD64 prototype used the already-instantiated equality of target and caller
+context pointers to skip redundant context copies for direct host imports. The
+first form guarded both the pre-call target copy and post-call caller restore.
+Across 65 imports per invocation, host calls improved from 18.116 to 17.703 us
+(-2.3%), but real cross-instance calls regressed from 539.4 to 542.5 ns (+0.6%)
+because every foreign target paid two failed guards. A narrower pre-call-only
+form retained a host improvement from 17.683 to 17.350 us (-1.9%) but worsened
+the cross-instance regression to 538.4 versus 542.7 ns (+0.8%). All measurements
+used seven serialized one-second samples on the Ryzen 7 7800X3D; cross-instance
+execution remained zero-allocation.
+
+The prototype and its policy bit were removed. The viable seam is an
+instantiation-selected dispatch target: host imports should call a path that
+never copies instance context, while cross-instance imports should target a
+dedicated context-transfer trampoline. That design avoids a per-call kind guard
+and belongs with the finite dispatch-cell classification, not the shared Wasm
+callsite lowering.
+
 ---
 
 # 1. North-star architecture
