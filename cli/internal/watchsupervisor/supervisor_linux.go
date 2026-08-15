@@ -26,6 +26,7 @@ const guestExecutableEnvironment = "WAGO_WATCH_GUEST_EXECUTABLE"
 const parentPIDEnvironment = "WAGO_WATCH_SUPERVISOR_PARENT"
 const parentLifetimeFDEnvironment = "WAGO_WATCH_PARENT_LIFETIME_FD"
 const signalRelayReadyFDEnvironment = "WAGO_WATCH_SIGNAL_RELAY_READY_FD"
+const signalRelayParentStartEnvironment = "WAGO_WATCH_SIGNAL_RELAY_PARENT_START"
 const guardianRole = "guardian"
 const workerRole = "worker"
 const probeRole = "probe"
@@ -72,11 +73,17 @@ func StartSignalRelay(executable string, arguments, environment []string, group 
 	if base == nil {
 		base = os.Environ()
 	}
+	parent, ok := processByPID(os.Getpid())
+	if !ok {
+		_ = readyWrite.Close()
+		return nil, errors.New("inspect watch signal relay parent")
+	}
 	command := exec.Command(executable, arguments...)
 	command.Env = append(withoutInternalEnvironment(base),
 		markerEnvironment+"="+signalRelayRole,
 		parentPIDEnvironment+"="+strconv.Itoa(os.Getpid()),
 		signalRelayReadyFDEnvironment+"=3",
+		signalRelayParentStartEnvironment+"="+strconv.FormatUint(parent.started, 10),
 	)
 	command.ExtraFiles = []*os.File{readyWrite}
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: group}
@@ -295,7 +302,8 @@ func withoutInternalEnvironment(environment []string) []string {
 			strings.HasPrefix(entry, guestExecutableEnvironment+"=") ||
 			strings.HasPrefix(entry, parentPIDEnvironment+"=") ||
 			strings.HasPrefix(entry, parentLifetimeFDEnvironment+"=") ||
-			strings.HasPrefix(entry, signalRelayReadyFDEnvironment+"=") {
+			strings.HasPrefix(entry, signalRelayReadyFDEnvironment+"=") ||
+			strings.HasPrefix(entry, signalRelayParentStartEnvironment+"=") {
 			continue
 		}
 		result = append(result, entry)
@@ -307,6 +315,14 @@ func runSignalRelay() error {
 	parent, err := strconv.Atoi(os.Getenv(parentPIDEnvironment))
 	if err != nil || parent <= 0 || syscall.Getppid() != parent {
 		return errors.New("signal relay parent exited before startup")
+	}
+	parentStart, err := strconv.ParseUint(os.Getenv(signalRelayParentStartEnvironment), 10, 64)
+	if err != nil || parentStart == 0 {
+		return errors.New("invalid signal relay parent identity")
+	}
+	parentIdentity := processInfo{pid: parent, started: parentStart}
+	if current, ok := processByPID(parent); !ok || current.started != parentStart {
+		return errors.New("signal relay parent changed before startup")
 	}
 	readyFD, err := strconv.Atoi(os.Getenv(signalRelayReadyFDEnvironment))
 	if err != nil || readyFD < 3 {
@@ -344,8 +360,8 @@ func runSignalRelay() error {
 			if !ok {
 				continue
 			}
-			if err := syscall.Kill(parent, value); err != nil {
-				if errors.Is(err, syscall.ESRCH) {
+			if err := signalProcessIdentity(parentIdentity, value); err != nil {
+				if errors.Is(err, os.ErrProcessDone) {
 					return nil
 				}
 				return err
