@@ -1384,6 +1384,28 @@ benchmark, and policy extension were removed. A future retry must fuse through
 `if`/`br_if` as a condition token rather than stopping at a materialized
 boolean.
 
+### 2026-08-15 — ARM64 bitmask zero-branch fusion
+
+The accepted follow-up carries the six exact `bitmask; i32.eqz; if/br_if`
+shapes through the branch rather than materializing a boolean. The bitmask
+lowering adds one bounded deferred node only when a copied reader proves the
+two-operation consumer. Ordinary value consumers, `i64x2`, disabled policy,
+malformed suffixes, and every non-branch near miss retain eager scalar-mask
+lowering. At the existing compare-to-branch boundary, Railshot flushes lower
+operands first, reduces the i8/i16/i32 lane sign bits, emits the final `CMP`, and
+lets the established condition path consume NZCV directly. No condition object,
+retained CFG, heap allocation, or finalizer responsibility was added.
+
+On Apple M4 Max, six serialized samples of a 64-branch i16 fixture improve from
+a 31.24 to 13.87 ns/op median (-55.6%), with zero execution B/op and
+allocations. Native function bytes fall from 4,516 to 1,956. Focused compile
+median improves from 48.71 to 40.88 us/op (-16.1%); compile traffic remains
+104,656 B/op and 34 allocations. Six alternating real `json-as-simd` pairs move
+deserialization from a 248.4 to 245.6 ns/op median (-1.1%), leave serialization
+within noise, and shrink the module by 224 native bytes. Exact i8/i16/i32 `if`
+and `br_if` execution, policy and near-miss cases, the ARM64 race suite, and the
+full repository suite pass.
+
 ---
 
 # 1. North-star architecture
