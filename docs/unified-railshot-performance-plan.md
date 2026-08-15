@@ -4145,3 +4145,20 @@ all LeafHostFunc execution paths: 0 B/op, 0 alloc/op
 Direct, void, imported-function re-export, and table-indirect tests cover the
 new binding. The legacy wrapper remains available for non-synchronous modules,
 while the synchronous hot path stays reflection-free and allocation-free.
+
+## 2026-08-15 — reject shared-dispatch leaf bypass
+
+A prototype recognized `LeafHostFunc` in `dispatchSynchronousHostCall` and
+called it directly after the required native-lease and GC-suspension protocol.
+This removed one intermediate dispatcher call. On the Ryzen 7 7800X3D it
+improved the prepared leaf median from 284.9 to 268.9 ns/op (-5.6%) and the
+ordinary leaf median from 345.5 to 337.1 ns/op (-2.4%).
+
+The recognition branch also occupied the shared capable-host path. Repeated
+alternating AMD64 measurements moved the ordinary `HostFunc` median from 438.4
+to 447.5 ns/op (+2.1%). ARM64 showed no repeatable prepared-leaf improvement
+and a smaller general-host regression. The prototype was rejected. Any future
+attempt must specialize dispatch at instantiation so a general-only instance
+executes byte-for-byte-equivalent routing, while retaining parked-frame roots,
+collector lease suspension, native lease release, panic restoration, and
+cross-instance context restoration for leaf callbacks.
