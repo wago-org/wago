@@ -12,7 +12,10 @@ import (
 
 func mustCompilePreparedFP(t testing.TB, module []byte) *Compiled {
 	t.Helper()
-	compiled, err := Compile(NewRuntimeConfig().WithOptimizations(map[string]bool{"prepared-fp-entry": true}), module)
+	// The isolated direct entry deliberately rejects signal-based bounds mode.
+	// Keep these ABI tests independent of the platform default so Linux/ARM64
+	// exercises the same eligible configuration as Darwin/ARM64 and AMD64.
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimizations(map[string]bool{"prepared-fp-entry": true}), module)
 	if err != nil {
 		t.Fatal(err)
 	}
