@@ -3,8 +3,6 @@
 package run
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +10,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"slices"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -40,7 +37,6 @@ type watchedProcessTracker struct {
 	root      int
 	rootStart uint64
 	processes map[int]uint64
-	identity  string
 	stop      func()
 	drain     func() error
 	eventErr  error
@@ -50,11 +46,7 @@ func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	if err := prepareWatchedCommand(command); err != nil {
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
-	identity, err := newWatchedProcessIdentity()
-	if err != nil {
-		return watchedChildPlatform{terminalFD: -1}, err
-	}
-	command.Env = watchedProcessEnvironment(command.Env, identity)
+	command.Env = watchedSupervisorEnvironment(command.Env)
 	unlockStart := lockWatchedCommandStart()
 	defer unlockStart()
 	if err := command.Start(); err != nil {
@@ -67,7 +59,7 @@ func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 		_ = command.Wait()
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
-	platform, err := attachWatchedProcess(command, identity)
+	platform, err := attachWatchedProcess(command)
 	if err != nil {
 		abortWatchedCommand(command)
 		_ = killWatchedProcess(platform, command)
@@ -101,14 +93,14 @@ func abortWatchedCommand(command *exec.Cmd) {
 	restoreWatchedTerminal(command)
 }
 
-func attachWatchedProcess(command *exec.Cmd, identity string) (watchedChildPlatform, error) {
+func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	root, ok := watchedProcess(command.Process.Pid)
 	if !ok {
 		return watchedChildPlatform{terminalFD: -1}, errors.New("inspect watched root process")
 	}
 	tracker := &watchedProcessTracker{
 		owner: os.Getpid(), root: command.Process.Pid, rootStart: root.started,
-		processes: make(map[int]uint64), identity: identity,
+		processes: make(map[int]uint64),
 	}
 	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
 	if fd, _, ok := watchedCommandTerminal(command); ok {
@@ -124,31 +116,6 @@ func attachWatchedProcess(command *exec.Cmd, identity string) (watchedChildPlatf
 		return platform, err
 	}
 	return platform, startWatchedProcessTracking(tracker)
-}
-
-const watchedProcessIdentityEnvironment = "WAGO_WATCH_PROCESS_ID"
-
-func newWatchedProcessIdentity() (string, error) {
-	var value [16]byte
-	if _, err := rand.Read(value[:]); err != nil {
-		return "", fmt.Errorf("create watch process identity: %w", err)
-	}
-	return hex.EncodeToString(value[:]), nil
-}
-
-func watchedProcessEnvironment(environment []string, identity string) []string {
-	if environment == nil {
-		environment = os.Environ()
-	}
-	prefix := watchedProcessIdentityEnvironment + "="
-	result := make([]string, 0, len(environment)+1)
-	result = append(result, prefix+identity)
-	for _, value := range environment {
-		if !strings.HasPrefix(value, prefix) {
-			result = append(result, value)
-		}
-	}
-	return result
 }
 
 func interruptWatchedProcess(platform watchedChildPlatform, command *exec.Cmd, interrupt os.Signal) error {
@@ -440,7 +407,7 @@ func (tracker *watchedProcessTracker) ownsProcessGroup(group int) bool {
 }
 
 func (tracker *watchedProcessTracker) refreshLocked() error {
-	descendants, err := watchedProcessDescendants(tracker.owner, tracker.root, tracker.processes, tracker.identity, maxWatchedDescendants)
+	descendants, err := watchedProcessDescendants(tracker.root, tracker.processes, maxWatchedDescendants)
 	active := make(map[int]uint64, len(descendants))
 	for _, process := range descendants {
 		if process.pid != tracker.owner && process.pid != tracker.root {

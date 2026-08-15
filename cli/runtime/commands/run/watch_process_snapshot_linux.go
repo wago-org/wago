@@ -4,7 +4,6 @@ package run
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -98,14 +97,12 @@ func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
 	}
 }
 
-func watchedProcessDescendants(owner, root int, tracked map[int]uint64, identity string, limit int) ([]watchedProcessInfo, error) {
+func watchedProcessDescendants(root int, tracked map[int]uint64, limit int) ([]watchedProcessInfo, error) {
 	queue := make([]watchedProcessInfo, 0, len(tracked)+2)
 	seen := make(map[int]bool, len(tracked)+2)
-	for _, pid := range []int{owner, root} {
-		if process, ok := watchedProcess(pid); ok && !seen[pid] {
-			seen[pid] = true
-			queue = append(queue, process)
-		}
+	if process, ok := watchedProcess(root); ok {
+		seen[root] = true
+		queue = append(queue, process)
 	}
 	processes := make([]watchedProcessInfo, 0, len(tracked))
 	for pid, started := range tracked {
@@ -156,17 +153,6 @@ func watchedProcessDescendants(owner, root int, tracked map[int]uint64, identity
 					_ = file.Close()
 					return processes, fmt.Errorf("watched process scan exceeds %d descendants", limit)
 				}
-				if parent.pid == owner && owner != root {
-					matches, identityErr := watchedProcessHasIdentity(pid, identity)
-					if identityErr != nil {
-						seen[pid] = true
-						continue
-					}
-					if !matches {
-						seen[pid] = true
-						continue
-					}
-				}
 				if len(processes) >= limit {
 					_ = file.Close()
 					return processes, fmt.Errorf("watched process tree exceeds %d descendants", limit)
@@ -186,43 +172,6 @@ func watchedProcessDescendants(owner, root int, tracked map[int]uint64, identity
 		}
 	}
 	return processes, nil
-}
-
-const maxWatchedProcessEnvironment = 4 << 20
-
-func watchedProcessHasIdentity(pid int, identity string) (bool, error) {
-	file, err := os.Open("/proc/" + strconv.Itoa(pid) + "/environ")
-	if err != nil {
-		return false, err
-	}
-	want := []byte(watchedProcessIdentityEnvironment + "=" + identity)
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 4096), maxWatchedProcessEnvironment)
-	scanner.Split(scanWatchedProcessEnvironment)
-	total := 0
-	for scanner.Scan() {
-		total += len(scanner.Bytes()) + 1
-		if total > maxWatchedProcessEnvironment {
-			_ = file.Close()
-			return false, fmt.Errorf("process %d environment exceeds %d bytes", pid, maxWatchedProcessEnvironment)
-		}
-		if bytes.Equal(scanner.Bytes(), want) {
-			return true, file.Close()
-		}
-	}
-	scanErr := scanner.Err()
-	closeErr := file.Close()
-	return false, errors.Join(scanErr, closeErr)
-}
-
-func scanWatchedProcessEnvironment(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if end := bytes.IndexByte(data, 0); end >= 0 {
-		return end + 1, data[:end], nil
-	}
-	if atEOF && len(data) != 0 {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
 }
 
 func watchedProcessTasks(pid, limit int) ([]int, error) {

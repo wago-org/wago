@@ -343,6 +343,9 @@ func waitForActiveWatchLog(t *testing.T, path string, count int, done chan error
 }
 
 func TestWatchHelperProcess(t *testing.T) {
+	if maybeSuperviseWatchedChild() {
+		return
+	}
 	if os.Getenv("WAGO_WATCH_HELPER") != "1" {
 		return
 	}
