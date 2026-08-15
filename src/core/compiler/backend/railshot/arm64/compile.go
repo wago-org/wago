@@ -46,18 +46,18 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 
 // callEffectBoundsEnabled preserves explicit-mode bounds certificates across
 // direct calls whose compact transitive effect summary proves memory cannot
-// grow. WAGO_ARM64_NO_CALL_EFFECT_BOUNDS=1 retains blanket call invalidation
-// for A/B measurement and immediate rollback.
+// grow. WAGO_ARM64_EXPERIMENTAL_CALL_EFFECT_BOUNDS=1 enables the default-off
+// A/B path; unset or 0 retains blanket call invalidation.
 var callEffectBoundsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_EFFECT_BOUNDS") == "1"
 
 // mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
 // proves the local is overwritten or dead before its next read. Loop and EH
-// targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
+// targets stay conservative. WAGO_ARM64_EXPERIMENTAL_MERGE_NEXT_USE=1 enables it.
 var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_MERGE_NEXT_USE") == "1"
 
 // mergeRegResidencyEnabled keeps dedicated pinned locals in registers across
-// summary-proven bounded forward merges. WAGO_ARM64_NO_MERGE_REG_RESIDENCY=1
-// restores canonical slot synchronization for A/B measurement and rollback.
+// summary-proven bounded forward merges. It is enabled only by
+// WAGO_ARM64_EXPERIMENTAL_MERGE_REG_RESIDENCY=1.
 var mergeRegResidencyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_MERGE_REG_RESIDENCY") == "1"
 
 // abiClassesEnabled admits effect-proven memory-touching scalar leaves into the

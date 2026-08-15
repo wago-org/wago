@@ -29,7 +29,7 @@ import (
 // that is what makes hoisting sound here (a plain hoisted check would move the
 // trap earlier, which is observable because a wasm trap leaves partial memory
 // writes visible). Explicit-bounds mode only (guard mode has no inline check to
-// elide). Defaults on; set WAGO_LOOP_PRECHECK=0/off/false to disable it for A/B runs.
+// elide). It is experimental and default-off; WAGO_LOOP_PRECHECK=1 enables it.
 
 var loopPrecheckEnabled = os.Getenv("WAGO_LOOP_PRECHECK") == "1"
 

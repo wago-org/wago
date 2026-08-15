@@ -36,6 +36,7 @@ func TestMain(m *testing.M) {
 	entryInitElisionEnabled = true
 	callResultResidencyEnabled = true
 	indirectCallResultResidencyEnabled = true
+	immutableLocalPolyFastPath = true
 	loopPrecheckEnabled = true
 	os.Exit(m.Run())
 }

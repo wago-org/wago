@@ -16,6 +16,15 @@ It should **not** grow into a semantic optimizer. Semantic and machine-local opt
 
 ## Implementation progress
 
+Progress entries below describe accepted bounded implementation slices, not
+completion of the full roadmap contracts in sections 5 through 10. In
+particular, the current shared effect vocabulary contains only
+`EffectGrowsMemory` and `EffectWritesGlobals`; the finite internal ABI contains
+`General`, `LeafScalar`, and `LeafFP`; and the fixed machine window currently
+holds only move/swap operations for bounded call shuffles. The remaining effect
+classes, ABI classes, producer/effect/fact machine operations, and general
+combiner rules remain planned work.
+
 ### 2026-08-14 — immutable optimization selection
 
 The issue #399 compiler lease has been removed from production compilation.
@@ -239,8 +248,9 @@ linear-memory bounds certificate when the callee transitively cannot grow
 memory. Certificates derived from mutable globals additionally require a
 no-global-write proof, and a call result targeting the source local remains a
 near miss. The optimization has an immutable per-compilation
-`call-effect-bounds` option and `WAGO_ARM64_NO_CALL_EFFECT_BOUNDS=1` rollback
-switch; guard mode and modules without memory allocate no effect state.
+`call-effect-bounds` option and the default-off
+`WAGO_ARM64_EXPERIMENTAL_CALL_EFFECT_BOUNDS=1` A/B switch; unset or `0` is the
+rollback. Guard mode and modules without memory allocate no effect state.
 
 The benchmark corpus records 2,168 preserved certificates across 19 modules.
 Darwin/ARM64 native code falls by 5,120 bytes in total; alignment absorbs some
@@ -261,8 +271,9 @@ effect-safe memory-touching leaves may now join it when they have no declared
 locals, global access, nested calls, or `memory.grow`. The callee reserves the
 caller's pin bank and keeps parameters in incoming registers, so the caller can
 avoid pinned-local/global preservation and post-call reload work. Every rejected
-shape uses `General`; `WAGO_ARM64_NO_ABI_CLASSES=1` and the immutable
-per-compilation `abi-classes` option restore the narrower admission policy.
+shape uses `General`. The immutable `abi-classes` option and default-off
+`WAGO_ARM64_EXPERIMENTAL_ABI_CLASSES=1` switch enable the wider admission;
+unset or `0` retains the narrower policy.
 
 Focused codegen tests prove the memory-leaf class removes the caller's
 preservation store/reload pair, and native execution tests compare enabled and
@@ -289,8 +300,9 @@ AMD64 direct register-ABI calls now snapshot the fixed eight-entry bounds
 certificate set and restore it only when the local callee transitively cannot
 grow memory. A fused result drops the overwritten local's certificate, while a
 callee that may write globals drops every global-derived certificate and retains
-safe local-derived entries. `WAGO_AMD64_NO_CALL_EFFECT_BOUNDS=1` and the shared
-immutable `call-effect-bounds` option retain blanket call invalidation.
+safe local-derived entries. The shared immutable `call-effect-bounds` option
+and default-off `WAGO_AMD64_EXPERIMENTAL_CALL_EFFECT_BOUNDS=1` switch enable
+the proof; unset or `0` retains blanket call invalidation.
 
 Native Linux/AMD64 measurements on a Ryzen 7 7800X3D record 3,076 preserved
 certificates across 19 corpus modules and 8,736 fewer native bytes. No measured
@@ -365,7 +377,8 @@ uncalled private functions from reserving pin banks without removing any caller
 traffic. Memory-touching leaves
 still require the existing effect proof and may not grow memory. Every rejected
 shape uses `General`, and `abi-leaf-fp` is an independent immutable policy bit
-with `WAGO_ARM64_NO_ABI_LEAF_FP=1` as its exact A/B switch.
+with default-off `WAGO_ARM64_EXPERIMENTAL_ABI_LEAF_FP=1` as its exact A/B
+switch; unset or `0` selects `General`.
 
 An admitted callee keeps parameters in `X0..X7` and `V0..V7`, reserves the full
 caller GP and FP pin banks, and disables function-local FP/vector constant caches
@@ -396,9 +409,10 @@ compiler's existing bounded direct-entry functions; mixed signatures,
 references, vectors, wider arities, shared execution control, and every
 unsupported architecture retain the ordinary prepared path.
 
-`prepared-fp-entry` is an immutable compiler policy bit with
-`WAGO_AMD64_NO_PREPARED_FP_ENTRY=1` and
-`WAGO_ARM64_NO_PREPARED_FP_ENTRY=1` as metadata rollbacks. Runtime selection has
+`prepared-fp-entry` is an immutable compiler policy bit enabled for A/B by
+`WAGO_AMD64_EXPERIMENTAL_PREPARED_FP_ENTRY=1` or
+`WAGO_ARM64_EXPERIMENTAL_PREPARED_FP_ENTRY=1`; unset or `0` is the metadata
+rollback. Runtime selection has
 an independent `WAGO_PREPARED_DIRECT_FP=0` fallback. Both `f32` and `f64`
 bit-preserving execution and both fallback layers are covered natively on both
 architectures.
@@ -743,7 +757,8 @@ non-GC operations, and unsupported GC suboperations. The first read validates
 the final struct's complete immutable object extent, allowing later fields at
 higher offsets to reuse the same certificate without weakening malformed-handle
 checks. An immutable per-compilation option and
-`WAGO_ARM64_NO_GC_RESOLVE_REUSE=1` retain the independent checked path.
+`WAGO_ARM64_EXPERIMENTAL_GC_RESOLVE_REUSE=1` enables the A/B path; unset or
+`0` retains the independent checked path.
 
 Positive tests reach seven reuses in one eight-read region; a constructor
 safepoint near miss proves that reuse stops and may begin again only afterward.
@@ -3534,10 +3549,10 @@ The regression test reproduces the old `f(1) = 0` result and verifies that any
 register-residency convergence code is skipped by the taken arm. Native SQLite
 initialization and query execution now pass with the optimization enabled.
 
-The rollback switch is:
+The default-off A/B switch is:
 
 ```text
-WAGO_AMD64_NO_MERGE_REG_RESIDENCY=1
+WAGO_AMD64_EXPERIMENTAL_MERGE_REG_RESIDENCY=1
 ```
 
 ### Rejected follow-up: per-block forward rescanning
@@ -3625,10 +3640,10 @@ workloads, not a requirement that every module shrink. The full repository
 suite, bench-module executable corpus, focused race suite, no-`else` false-edge
 regression, barrier tests, and fixed-cap fallback tests pass.
 
-The rollback switch is:
+The default-off A/B switch is:
 
 ```text
-WAGO_ARM64_NO_MERGE_REG_RESIDENCY=1
+WAGO_ARM64_EXPERIMENTAL_MERGE_REG_RESIDENCY=1
 ```
 
 ## 2026-08-15 — numeric inlined-callee slot overlay
@@ -3642,12 +3657,12 @@ adds no table or per-operation allocation.
 Reference locals and `v128` locals retain distinct regions. Size and Embedded
 also retain the established layout because their post-lowering symbolic local
 packer does not yet encode physical-slot aliases. The immutable per-compilation
-selection bit and rollback environment variable are:
+selection bit and default-off A/B environment variables are:
 
 ```text
 inline-slot-overlay
-WAGO_AMD64_NO_INLINE_SLOT_OVERLAY=1
-WAGO_ARM64_NO_INLINE_SLOT_OVERLAY=1
+WAGO_AMD64_EXPERIMENTAL_INLINE_SLOT_OVERLAY=1
+WAGO_ARM64_EXPERIMENTAL_INLINE_SLOT_OVERLAY=1
 ```
 
 The focused two-callee test reduces the caller frame by 16 bytes, preserves a
@@ -3697,12 +3712,12 @@ paths, and tail transfers retain canonical flushing. Integer constants are not
 GC roots, so the recipe never weakens root publication. Mixed GP/FP calls use
 the same bounded contract.
 
-The immutable option and rollback controls are:
+The immutable option and default-off A/B controls are:
 
 ```text
 call-remat-const
-WAGO_AMD64_NO_CALL_REMAT_CONST=1
-WAGO_ARM64_NO_CALL_REMAT_CONST=1
+WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_CONST=1
+WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_CONST=1
 ```
 
 An opt-in corpus probe was removed after establishing demand. The complete
@@ -3751,12 +3766,12 @@ corpus exposed that independent state combination in recursive
 `memory_tree.wasm`, and the conservative fallback preserves the established
 operand snapshot rather than relying on a second optimizer's frame-copy state.
 
-The immutable option and rollback controls are:
+The immutable option and default-off A/B controls are:
 
 ```text
 call-remat-local
-WAGO_AMD64_NO_CALL_REMAT_LOCAL=1
-WAGO_ARM64_NO_CALL_REMAT_LOCAL=1
+WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_LOCAL=1
+WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_LOCAL=1
 ```
 
 An opt-in demand probe, removed before commit, found 2,490 topmost AMD64 local
@@ -3807,12 +3822,12 @@ block back into the intrusive stack. This adds no nodes, copy, slice, scan, or
 heap allocation, and it preserves the original producer links for ordinary
 target selection after the call.
 
-The immutable option and rollback controls are:
+The immutable option and default-off A/B controls are:
 
 ```text
 call-remat-bin
-WAGO_AMD64_NO_CALL_REMAT_BIN=1
-WAGO_ARM64_NO_CALL_REMAT_BIN=1
+WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_BIN=1
+WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_BIN=1
 ```
 
 A removed demand probe found 216 AMD64 and 218 ARM64 deferred integer ALU roots
@@ -3878,11 +3893,11 @@ retaining more than 99% of the full-corpus opportunities. This is a measured
 AMD64 dependency-chain exception, not a semantic restriction; a later bounded
 post-allocation renamer may revisit it.
 
-The immutable option and rollback control are:
+The immutable option and default-off A/B control are:
 
 ```text
 call-result-residency
-WAGO_AMD64_NO_CALL_RESULT_RESIDENCY=1
+WAGO_AMD64_EXPERIMENTAL_CALL_RESULT_RESIDENCY=1
 ```
 
 Across the 64-module Balanced corpus, the final admission records:
@@ -4278,8 +4293,8 @@ The specialized callsite therefore performs the equivalent fence check before
 faulting the foreign stack. GC-capable callers also record the optimized call's
 exact native return PC and live reference offsets. Stress-collector execution,
 artifact round trips, official Core V2 recursion tests, and focused race tests
-cover those contracts. `WAGO_ARM64_NO_IMMUTABLE_POLY_FASTPATH=1` retains the
-general path for A/B diagnosis.
+cover those contracts. `WAGO_ARM64_EXPERIMENTAL_IMMUTABLE_POLY_FASTPATH=1`
+enables the default-off A/B path; unset or `0` retains the general path.
 
 Five checked-in corpus modules hit the rule: dispatch (1 site), regexmatch
 (1,398), wasm3 (31), Ruby (4,135), and esbuild (1,276). Ruby's ARM64 native image
@@ -4318,8 +4333,9 @@ be table targets. No module grows.
 Ten one-second Apple M4 Max samples move `dispatch.apply` from a 19.25 to
 19.03 ns/op median (-1.1%), with zero B/op and zero allocations. Five-sample
 compile medians remain within 1% on every hit module with identical B/op and
-allocation counts. `WAGO_ARM64_NO_INDIRECT_RESULT_RESIDENCY=1` is the exact
-rollback. Enabled/disabled selection, conservative target marking, native ARM64
+allocation counts. `WAGO_ARM64_EXPERIMENTAL_INDIRECT_RESULT_RESIDENCY=1`
+enables the default-off A/B path; unset or `0` is the exact rollback.
+Enabled/disabled selection, conservative target marking, native ARM64
 execution, official specs, and GC stress paths pass.
 
 ## 2026-08-15 — paired ARM64 declared-local initialization
@@ -4426,12 +4442,15 @@ ordinary B/op and allocation counts unchanged apart from threshold noise.
 
 Tests cover the positive path, a next-read near miss, the exact 64-operation
 fuel cap, deterministic fallback, disabled policy, and native execution.
-`WAGO_ARM64_NO_MERGE_NEXT_USE=1` restores eager merge reloads.
+`WAGO_ARM64_EXPERIMENTAL_MERGE_NEXT_USE=1` enables the default-off A/B path;
+unset or `0` retains eager merge reloads.
 
-## 2026-08-15 — cumulative core-program acceptance
+## 2026-08-15 — historical experimental-candidate measurement
 
-The bounded core campaign is accepted against the branch point requested for
-this work:
+This measurement predates the default-off landing policy and is retained only
+as provenance for the explicitly enabled experimental candidate. It is not
+evidence for the current default configuration and does not accept the campaign
+for landing. The measured pair was:
 
 ```text
 baseline:           3a4deae55bb15a3bf4b8a023708d0729ae74f912
@@ -4493,8 +4512,11 @@ benchmarks pass on the hub. The hub's broad `src/wago` package additionally
 requires the external Release 3 spec checkout and a newer `wat2wasm`; those
 environmental failures do not touch the changed prepared-entry path.
 
-This closes the measured phases 0 through 5 of the core campaign. Phase 6 and
-7 items remain evidence-gated experiments: accepted bounded slices are recorded
-above, while opportunity probes that did not justify production machinery stay
-explicitly deferred. No general CFG, whole-function SSA, unbounded allocator,
-or online optimizer was introduced.
+Separately, the previously published AMD64 experimental table reported a
+weighted `+1.25%` execution regression. That exceeds the plan's `0.5%`
+whole-corpus gate, so it is a rejected aggregate landing candidate even where
+focused rows improved. Current-head default-policy evidence
+must be recorded separately at the exact promoted commit. Phase 6 and 7 items
+remain evidence-gated experiments, and the phase 0 through 5 entries above are
+initial bounded slices rather than completed roadmap phases. No general CFG,
+whole-function SSA, unbounded allocator, or online optimizer was introduced.

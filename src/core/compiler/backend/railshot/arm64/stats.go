@@ -42,18 +42,18 @@ var (
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check â the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
 	// callRematConstEnabled retains one topmost integer constant below a
-	// register-ABI call as a symbolic recipe. WAGO_ARM64_NO_CALL_REMAT_CONST=1 is
-	// the bounded A/B and rollback path.
+	// register-ABI call as a symbolic recipe. It is experimental and default-off;
+	// WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_CONST=1 enables the bounded A/B path.
 	callRematConstEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_CONST") == "1"
 	// callRematLocalEnabled retains one topmost integer local read below a
-	// register-ABI call. WAGO_ARM64_NO_CALL_REMAT_LOCAL=1 is the rollback path.
+	// register-ABI call. WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_LOCAL=1 enables it.
 	callRematLocalEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_LOCAL") == "1"
 	// callRematBinEnabled retains one depth-one pure integer expression below a
-	// register-ABI call. WAGO_ARM64_NO_CALL_REMAT_BIN=1 is the rollback path.
+	// register-ABI call. WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_BIN=1 enables it.
 	callRematBinEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_BIN") == "1"
 	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
-	// onto one max-sized physical scratch region. WAGO_ARM64_NO_INLINE_SLOT_OVERLAY=1
-	// retains the prior one-region-per-callee frame layout.
+	// onto one max-sized physical scratch region. It is enabled only by
+	// WAGO_ARM64_EXPERIMENTAL_INLINE_SLOT_OVERLAY=1.
 	inlineSlotOverlayEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_INLINE_SLOT_OVERLAY") == "1"
 	// stFlagsEnabled gates the stFlags tee-forward window (R1): a compare stored by
 	// `local.tee $c` and consumed by the next if/br_if/select fuses into the branch,

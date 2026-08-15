@@ -41,9 +41,9 @@ var indirectCallResultResidencyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_INDI
 var noStackFence = os.Getenv("WAGO_ARM64_NOFENCE") == "1"
 
 // immutableLocalPolyFastPath gates the polymorphic immutable-local call_indirect
-// fast path (see callIndirect). It is on by default; the callsite performs the
-// stack-fence check skipped by the runtime internal-entry pointer.
-var immutableLocalPolyFastPath = os.Getenv("WAGO_ARM64_NO_IMMUTABLE_POLY_FASTPATH") != "1"
+// fast path (see callIndirect). It is experimental and default-off; the callsite
+// performs the stack-fence check skipped by the runtime internal-entry pointer.
+var immutableLocalPolyFastPath = os.Getenv("WAGO_ARM64_EXPERIMENTAL_IMMUTABLE_POLY_FASTPATH") == "1"
 
 // noStackReg disables the WARP STACK_REG lazy local model (reverts to spill-all/
 // reload-all around calls, no branch reconcile) — A/B measurement.

@@ -39,8 +39,8 @@ var callEffectBoundsEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_EFFECT_BOU
 // deadGCNewEnabled removes bounded GC constructor trees whose result is dropped.
 // Struct and fixed-array trees disappear directly; dynamic/default/data/element
 // arrays retain a nonallocating preflight helper so size, segment, and initializer
-// traps remain ordered. WAGO_AMD64_NO_DEAD_GC_NEW=1 keeps every allocation helper
-// for differential A/B testing.
+// traps remain ordered. WAGO_AMD64_EXPERIMENTAL_DEAD_GC_NEW=1 enables the
+// default-off differential A/B path.
 var deadGCNewEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_DEAD_GC_NEW") == "1"
 
 // exactGCRefFactsEnabled propagates exact non-null reference facts through

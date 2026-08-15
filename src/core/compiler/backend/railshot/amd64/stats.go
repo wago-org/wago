@@ -41,18 +41,18 @@ var (
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
 	// callRematConstEnabled retains one topmost integer constant below a
-	// register-ABI call as a symbolic recipe. WAGO_AMD64_NO_CALL_REMAT_CONST=1 is
-	// the bounded A/B and rollback path.
+	// register-ABI call as a symbolic recipe. It is experimental and default-off;
+	// WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_CONST=1 enables the bounded A/B path.
 	callRematConstEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_CONST") == "1"
 	// callRematLocalEnabled retains one topmost integer local read below a
-	// register-ABI call. WAGO_AMD64_NO_CALL_REMAT_LOCAL=1 is the rollback path.
+	// register-ABI call. WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_LOCAL=1 enables it.
 	callRematLocalEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_LOCAL") == "1"
 	// callRematBinEnabled retains one depth-one pure integer expression below a
-	// register-ABI call. WAGO_AMD64_NO_CALL_REMAT_BIN=1 is the rollback path.
+	// register-ABI call. WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_BIN=1 enables it.
 	callRematBinEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_BIN") == "1"
 	// callResultResidencyEnabled keeps direct internal GP results in RAX/RDX
-	// through disjoint caller-state reloads. WAGO_AMD64_NO_CALL_RESULT_RESIDENCY=1
-	// is the rollback path.
+	// through disjoint caller-state reloads. It is enabled only by
+	// WAGO_AMD64_EXPERIMENTAL_CALL_RESULT_RESIDENCY=1.
 	callResultResidencyEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_RESULT_RESIDENCY") == "1"
 	// callArgDirectEnabled lowers a deferred integer argument directly into its
 	// free ABI target register. WAGO_AMD64_NO_CALL_ARG_DIRECT=1 is the A/B oracle.
@@ -124,12 +124,12 @@ var (
 	widenedCarryArithmeticEnabled = os.Getenv("WAGO_AMD64_NO_WIDENED_CARRY_ARITH") != "1"
 	// mergeRegResidencyEnabled keeps dirty pinned locals in their dedicated
 	// registers across forward structured merges. Loop targets retain their fixed
-	// canonical contract. WAGO_AMD64_NO_MERGE_REG_RESIDENCY=1 is the exact A/B
-	// and rollback path.
+	// canonical contract. WAGO_AMD64_EXPERIMENTAL_MERGE_REG_RESIDENCY=1 enables
+	// the exact A/B path.
 	mergeRegResidencyEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_MERGE_REG_RESIDENCY") == "1"
 	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
-	// onto one max-sized physical scratch region. WAGO_AMD64_NO_INLINE_SLOT_OVERLAY=1
-	// retains the prior one-region-per-callee frame layout.
+	// onto one max-sized physical scratch region. It is enabled only by
+	// WAGO_AMD64_EXPERIMENTAL_INLINE_SLOT_OVERLAY=1.
 	inlineSlotOverlayEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_INLINE_SLOT_OVERLAY") == "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
