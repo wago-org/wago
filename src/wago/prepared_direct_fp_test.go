@@ -8,6 +8,15 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func mustCompilePreparedFP(t testing.TB, module []byte) *Compiled {
+	t.Helper()
+	compiled, err := Compile(NewRuntimeConfig().WithOptimizations(map[string]bool{"prepared-fp-entry": true}), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return compiled
+}
+
 func preparedFPAddModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64}))),
@@ -93,7 +102,7 @@ func TestPreparedDirectFP(t *testing.T) {
 	if !preparedDirectFPSupported {
 		t.Skip("architecture does not support direct prepared FP entry")
 	}
-	config := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
+	config := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimizations(map[string]bool{"prepared-fp-entry": true})
 	compiled, err := Compile(config, preparedFPAddModule())
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -151,7 +160,7 @@ func TestPreparedDirectF32Bits(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x92, 0x0b}))),
 	)
-	in, err := Instantiate(MustCompile(add), InstantiateOptions{})
+	in, err := Instantiate(mustCompilePreparedFP(t, add), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -173,7 +182,7 @@ func TestPreparedDirectMixed(t *testing.T) {
 	if !preparedDirectFPSupported {
 		t.Skip("architecture does not support direct prepared mixed entry")
 	}
-	in, err := Instantiate(MustCompile(preparedMixedModule()), InstantiateOptions{})
+	in, err := Instantiate(mustCompilePreparedFP(t, preparedMixedModule()), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -249,7 +258,7 @@ func TestPreparedDirectMixedResults(t *testing.T) {
 	if !preparedDirectFPSupported {
 		t.Skip("architecture does not support direct prepared mixed entry")
 	}
-	compiled := MustCompile(preparedMixedResultModule())
+	compiled := mustCompilePreparedFP(t, preparedMixedResultModule())
 	for i := range 3 {
 		if !compiled.directPreparedAt(i) {
 			t.Fatalf("function %d did not retain direct prepared metadata", i)
@@ -325,7 +334,7 @@ func TestPreparedDirectSameBankResults(t *testing.T) {
 		t.Skip("architecture does not support direct prepared register entry")
 	}
 	module := preparedSameBankResultModule()
-	compiled := MustCompile(module)
+	compiled := mustCompilePreparedFP(t, module)
 	for _, i := range []int{0, 1, 2} {
 		if !compiled.directPreparedAt(i) {
 			t.Fatalf("function %d did not retain direct prepared metadata", i)
@@ -513,7 +522,7 @@ func BenchmarkPreparedDirectFP(b *testing.B) {
 	if !preparedDirectFPSupported {
 		b.Skip("architecture does not support direct prepared FP entry")
 	}
-	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), preparedFPAddModule())
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimizations(map[string]bool{"prepared-fp-entry": true}), preparedFPAddModule())
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -576,7 +585,7 @@ func BenchmarkPreparedDirectMixed(b *testing.B) {
 	if !preparedDirectFPSupported {
 		b.Skip("architecture does not support direct prepared mixed entry")
 	}
-	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), preparedMixedModule())
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimizations(map[string]bool{"prepared-fp-entry": true}), preparedMixedModule())
 	if err != nil {
 		b.Fatal(err)
 	}

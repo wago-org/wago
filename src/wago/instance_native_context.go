@@ -306,7 +306,7 @@ func (in *Instance) preparedEntryMode() preparedEntryMode {
 			return preparedEntryGeneral
 		}
 	}
-	if len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
+	if in.c.memoryCount() == 0 && len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
 		in.c.NumImports == 0 && !in.c.NeedsFuncRefDescs {
 		return preparedEntryIsolated
 	}

@@ -12,9 +12,15 @@ import (
 )
 
 func TestFuncHintsSizeArm64(t *testing.T) {
-	const want = 200
+	const want = 216
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
+
+func TestStackFenceElisionUsesFinalFrameArm64(t *testing.T) {
+	if !stackFenceElisionValid(true, 4096) || stackFenceElisionValid(true, 4097) || !stackFenceElisionValid(false, 1<<20) {
+		t.Fatal("final-frame stack-fence validation boundary is wrong")
 	}
 }
 

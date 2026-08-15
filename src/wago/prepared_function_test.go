@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	runtimegc "github.com/wago-org/wago/src/core/runtime/gc"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -239,6 +240,46 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 	in.c.NeedsFuncRefDescs = true
 	if in.preparedIsolatedEligible() {
 		t.Fatal("instance with function-reference descriptors should not be isolated")
+	}
+	in.c.NeedsFuncRefDescs = false
+
+	in.memoryDir = &instanceMemoryDirectory{}
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with a memory directory should use general entry")
+	}
+	in.memoryDir = nil
+	in.syncMode = true
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with synchronous host state should use general entry")
+	}
+	in.syncMode = false
+	in.executionFlags.Store(executionFlagNativeControlShared)
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with shared native control should use general entry")
+	}
+	in.executionFlags.Store(0)
+	in.memory = &Memory{}
+	in.ownsMem = false
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with imported memory should use general entry")
+	}
+	in.ownsMem = true
+	in.c.HasMemory = true
+	if !in.preparedPrivateEligible() || in.preparedIsolatedEligible() {
+		t.Fatal("instance-owned memory should use private, non-isolated entry")
+	}
+	sharedState := &memoryState{}
+	sharedState.set(memoryStateShared, true)
+	in.memory.state.Store(sharedState)
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with shared memory should use general entry")
+	}
+	in.memory = nil
+	in.ownsMem = false
+	in.c.HasMemory = false
+	in.gc = &runtimegc.Collector{}
+	if !in.preparedPrivateEligible() || in.preparedIsolatedEligible() {
+		t.Fatal("instance with GC state should use private, non-isolated entry")
 	}
 }
 

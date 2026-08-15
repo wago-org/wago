@@ -1719,6 +1719,10 @@ It does **not** mean every opcode must irreversibly emit its final instruction b
 9. **Native-code growth remains budgeted because larger code also consumes memory and I-cache.**
 10. **Semantic facts are shared; target instruction choices remain architecture-specific.**
 
+## Landing policy for semantic transforms
+
+Equivalent encoding and instruction-selection rules may remain ordinary defaults after their focused differential tests pass. Transformations that change initialization, value or root lifetime, trap ordering, collector interaction, calling convention, frame ownership, or control-flow state land as experimental and default-off. Each such optimization is promoted independently only after optimization-on/off differential execution, both native architectures, cap/fallback coverage, and workload-specific performance evidence pass on the exact commit being promoted.
+
 The intended compiler workspace remains:
 
 ```text

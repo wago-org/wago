@@ -48,91 +48,91 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // direct calls whose compact transitive effect summary proves memory cannot
 // grow. WAGO_ARM64_NO_CALL_EFFECT_BOUNDS=1 retains blanket call invalidation
 // for A/B measurement and immediate rollback.
-var callEffectBoundsEnabled = os.Getenv("WAGO_ARM64_NO_CALL_EFFECT_BOUNDS") != "1"
+var callEffectBoundsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_EFFECT_BOUNDS") == "1"
 
 // mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
 // proves the local is overwritten or dead before its next read. Loop and EH
 // targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
-var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
+var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_MERGE_NEXT_USE") == "1"
 
 // mergeRegResidencyEnabled keeps dedicated pinned locals in registers across
 // summary-proven bounded forward merges. WAGO_ARM64_NO_MERGE_REG_RESIDENCY=1
 // restores canonical slot synchronization for A/B measurement and rollback.
-var mergeRegResidencyEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_REG_RESIDENCY") != "1"
+var mergeRegResidencyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_MERGE_REG_RESIDENCY") == "1"
 
 // abiClassesEnabled admits effect-proven memory-touching scalar leaves into the
 // finite LeafScalar internal ABI class. The pre-existing narrower leaf contract
 // remains available when disabled.
-var abiClassesEnabled = os.Getenv("WAGO_ARM64_NO_ABI_CLASSES") != "1"
+var abiClassesEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_ABI_CLASSES") == "1"
 
 // abiLeafFPEnabled admits the bounded FP-preserving internal class independently
 // from the older memory-leaf extension, giving corpus A/B and rollback one exact
 // switch. The immutable compilation policy snapshots this value.
-var abiLeafFPEnabled = os.Getenv("WAGO_ARM64_NO_ABI_LEAF_FP") != "1"
+var abiLeafFPEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_ABI_LEAF_FP") == "1"
 
 // preparedFPEntryEnabled marks bounded FP and mixed-bank signatures for fixed
 // native prepared trampolines. It changes metadata only; ordinary
 // wrapper/internal entry code remains identical.
-var preparedFPEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_FP_ENTRY") != "1"
+var preparedFPEntryEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_PREPARED_FP_ENTRY") == "1"
 
 // deadGCNewEnabled retains the real allocation and traps of an immediately
 // dropped GC constructor while omitting unreachable payload population.
-var deadGCNewEnabled = os.Getenv("WAGO_ARM64_NO_DEAD_GC_NEW") != "1"
+var deadGCNewEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_DEAD_GC_NEW") == "1"
 
 // fixedGCArrayLenEnabled recognizes an array constructor with a statically known
 // length followed immediately by array.len. The allocating helper and all
 // initializer evaluation remain; only the redundant second helper transition
 // is replaced by the encoded count.
-var fixedGCArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_FIXED_ARRAY_LEN") != "1"
+var fixedGCArrayLenEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_FIXED_ARRAY_LEN") == "1"
 
 // constGCStructGetEnabled recognizes a struct constructor followed immediately
 // by a read of a numeric field whose initializer is already an exact constant.
 // Allocation and every initializer evaluation remain on the ordinary path.
-var constGCStructGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONST_STRUCT_GET") != "1"
+var constGCStructGetEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_CONST_STRUCT_GET") == "1"
 
 // gcConstructorCastEnabled removes only an adjacent cast of a constructor's
 // exact non-null result back to the same defined type.
-var gcConstructorCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONSTRUCTOR_CAST") != "1"
+var gcConstructorCastEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_CONSTRUCTOR_CAST") == "1"
 
 // nativeGCFinalCastEnabled resolves standalone casts to final collector struct
 // and array types through the checked collector native view.
-var nativeGCFinalCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_CAST") != "1"
+var nativeGCFinalCastEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_CAST") == "1"
 
 // nativeGCFinalArrayLenEnabled resolves an adjacent final cast plus array.len
 // through the checked collector native view. The immutable per-compilation
 // policy controls admission; the existing Go helper remains the exact fallback.
-var nativeGCFinalArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_LEN") != "1"
+var nativeGCFinalArrayLenEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_ARRAY_LEN") == "1"
 
 // nativeGCFinalScalarGetEnabled resolves an adjacent final cast plus
 // pointer-free scalar struct read through the checked collector native view.
-var nativeGCFinalScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCALAR_GET") != "1"
+var nativeGCFinalScalarGetEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_SCALAR_GET") == "1"
 
 // nativeGCFinalScalarSetEnabled resolves final pointer-free scalar struct
 // writes through the checked collector native view in speed-oriented output.
-var nativeGCFinalScalarSetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCALAR_SET") != "1"
+var nativeGCFinalScalarSetEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_SCALAR_SET") == "1"
 
 // nativeGCFinalRefGetEnabled resolves final collector-reference struct/array reads
 // through the checked collector native view in speed-oriented output.
-var nativeGCFinalRefGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_REF_GET") != "1"
+var nativeGCFinalRefGetEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_REF_GET") == "1"
 
 // nativeGCFinalRefSetEnabled resolves proven barrier-free writes to final
 // collector-reference struct fields and arrays through the checked collector
 // native view. Null and i31 children never require a generational write barrier.
-var nativeGCFinalRefSetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_REF_SET") != "1"
+var nativeGCFinalRefSetEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_REF_SET") == "1"
 
 // nativeGCFinalArrayScalarGetEnabled resolves final pointer-free scalar array
 // reads through the checked collector native view in speed-oriented output.
-var nativeGCFinalArrayScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_SCALAR_GET") != "1"
+var nativeGCFinalArrayScalarGetEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_ARRAY_SCALAR_GET") == "1"
 
 // nativeGCFinalArrayScalarSetEnabled resolves final pointer-free scalar array
 // writes through the checked collector native view in speed-oriented output.
-var nativeGCFinalArrayScalarSetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_SCALAR_SET") != "1"
+var nativeGCFinalArrayScalarSetEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_NATIVE_FINAL_ARRAY_SCALAR_SET") == "1"
 
 // nativeGCResolveReuseEnabled retains one checked raw object address across an
 // adjacent run of scalar reads from the same local. The immutable compact
 // reference remains the semantic identity; every other operation invalidates
 // the transient address before it could cross a safepoint or mutation.
-var nativeGCResolveReuseEnabled = os.Getenv("WAGO_ARM64_NO_GC_RESOLVE_REUSE") != "1"
+var nativeGCResolveReuseEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_GC_RESOLVE_REUSE") == "1"
 
 // simdWideBitmaskConsumerEnabled avoids materializing a scalar mask when a
 // 16- or 32-bit lane bitmask is consumed immediately by a zero test, or a
@@ -1649,10 +1649,7 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	allHints := make([]funcHints, n)
 	localCounts := make([]int, n)
 	totalLocals := 0
-	mergeRegionFuncs := 0
 	moduleEH := m.TagCount() != 0
-	mergeRegionsEnabled := policy.EnabledOption(optMergeRegResidency) &&
-		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded && !moduleEH
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -1667,21 +1664,11 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		}
 		localCounts[i] = count
 		totalLocals += count
-		if bodyLen := len(m.Code[i].BodyBytes); mergeRegionsEnabled && bodyLen > 0 && bodyLen <= maxMergeRegionBody {
-			mergeRegionFuncs++
-		}
 	}
 	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
-	if mergeRegionFuncs > int(^uint(0)>>1)/(maxMergeRegionHints/2) {
-		return nil, nil, fmt.Errorf("function hint region storage overflow")
-	}
-	regionWords := mergeRegionFuncs * (maxMergeRegionHints / 2)
-	if totalLocals > int(^uint(0)>>1)-regionWords {
-		return nil, nil, fmt.Errorf("function hint region storage overflow")
-	}
-	localScores := make([]uint32, totalLocals+regionWords)
+	localScores := make([]uint32, totalLocals)
 	localLastGets := make([]uint32, totalLocals)
 	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
 	var globalScores []uint32
@@ -1707,17 +1694,13 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	for i := range m.Code {
 		effects.Begin(i)
 		nLocals := localCounts[i]
-		mergeWords := 0
-		if bodyLen := len(m.Code[i].BodyBytes); mergeRegionsEnabled && bodyLen > 0 && bodyLen <= maxMergeRegionBody {
-			mergeWords = maxMergeRegionHints / 2
-		}
 		var h funcHints
 		if denseGlobals {
 			globalAt := i * nGlobals
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
 		} else {
 			sparseAccum.Reset(nGlobals)
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], nil, nil)
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
 		h.localLastGet = localLastGets[lastAt : lastAt+nLocals]
@@ -1733,7 +1716,7 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
 		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
-		localAt += nLocals + mergeWords
+		localAt += nLocals
 		lastAt += nLocals
 		moduleEH = moduleEH || h.moduleEH
 		h.globalAccum = nil
@@ -2039,6 +2022,8 @@ type regExhausted struct{}
 // pinning off) from a genuine compile error (propagate).
 var errRegExhausted = errors.New("arm64: no register available to spill")
 
+var errStackFenceRequired = errors.New("arm64: final frame exceeds fence-elision budget")
+
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
@@ -2050,9 +2035,8 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
-	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeABIClasses, calleeEffects, policy, sc)
-	if errors.Is(err, errRegExhausted) {
-		resetFuncStats(stats)
+	pinLocals, allowFenceSkip := true, true
+	for attempts := 0; attempts < 3; attempts++ {
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
 			gcFrameRoots.Exact = true
 			gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
@@ -2060,15 +2044,25 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 			gcFrameRoots.FrameBytes = 0
 			gcFrameRoots.AdapterReturnOffset = 0
 		}
-		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, false, inlineTargets, calleeABIClasses, calleeEffects, policy, sc)
-		if err == nil {
-			stats.setUnpinnedRetry()
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, pinLocals, allowFenceSkip, inlineTargets, calleeABIClasses, calleeEffects, policy, sc)
+		if errors.Is(err, errStackFenceRequired) && allowFenceSkip {
+			allowFenceSkip = false
+			resetFuncStats(stats)
+			continue
 		}
+		if !errors.Is(err, errRegExhausted) || !pinLocals {
+			if err == nil && !pinLocals {
+				stats.setUnpinnedRetry()
+			}
+			return
+		}
+		pinLocals = false
+		resetFuncStats(stats)
 	}
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeABIClasses []internalABIClass, calleeEffects []shared.FuncEffects, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals, allowFenceSkip bool, inlineTargets inlineTargetTable, calleeABIClasses []internalABIClass, calleeEffects []shared.FuncEffects, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -2350,7 +2344,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:
 	// spill slots never exceed the body's operand pushes (< one per body byte).
-	f.skipFence = shouldSkipStackFence(hasCall, f.nLocalSlots, len(c.BodyBytes))
+	f.skipFence = allowFenceSkip && shouldSkipStackFence(hasCall, f.nLocalSlots, len(c.BodyBytes))
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
@@ -2380,6 +2374,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 				f.gcFrameRoots.Exact = false
 			}
 		}
+		if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+			return nil, nil, 0, errStackFenceRequired
+		}
 		f.finalizePeepholes()
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
@@ -2398,6 +2395,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.epilogue()
 	f.emitTrapStubs()
 	f.patchFrameAdjusts()
+	if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+		return nil, nil, 0, errStackFenceRequired
+	}
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
 		if f.gcCallsiteIndex != len(f.gcFrameRoots.LiveCallLocalMasks) {

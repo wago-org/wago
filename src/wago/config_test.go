@@ -24,6 +24,19 @@ func signExtModule() []byte {
 	)
 }
 
+func TestSemanticOptimizationsDefaultOff(t *testing.T) {
+	config := NewRuntimeConfig()
+	for _, name := range []string{
+		"merge-reg-residency", "call-effect-bounds", "call-remat-const", "call-remat-local", "call-remat-bin",
+		"abi-classes", "abi-leaf-fp", "prepared-fp-entry", "entry-init-elide", "gc-dead-new",
+		"merge-next-use", "call-result-residency", "inline-slot-overlay", "loop-precheck",
+	} {
+		if config.optimizations[name] {
+			t.Errorf("semantic optimization %q is enabled by default", name)
+		}
+	}
+}
+
 // simdModule exports f() and uses v128.const/drop, enough to exercise 0xfd
 // feature gating without requiring the public API to marshal a v128 result.
 func simdModule() []byte {

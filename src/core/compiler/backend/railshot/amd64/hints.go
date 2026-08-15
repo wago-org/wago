@@ -34,6 +34,7 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
+	mergeRegions  [maxMergeRegionHints / 2]uint32
 	nLocals       int
 	hasCall       bool // any direct or indirect call
 	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
@@ -157,18 +158,11 @@ func (h *funcHints) hasMergeRegion(start int) bool {
 }
 
 func (h *funcHints) mergeRegionWords() []uint32 {
-	// The local-score slice keeps its logical local-indexed length. Its bounded
-	// capacity tail belongs to merge summaries, preserving the 200-byte
-	// funcHints structure and the module scan's single dense allocation.
-	if cap(h.localScore)-len(h.localScore) < maxMergeRegionHints/2 {
-		return nil
-	}
-	return h.localScore[len(h.localScore) : len(h.localScore)+maxMergeRegionHints/2]
+	return h.mergeRegions[:]
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
-	localWords := make([]uint32, nLocals+maxMergeRegionHints/2)
-	h := funcHintsWithStorage(localWords[:nLocals], make([]uint32, nGlobals), make([]bool, nGlobals))
+	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
 	h.localLastGet = make([]uint32, nLocals)
 	h.nLocals = nLocals
 	return h
@@ -1133,6 +1127,10 @@ func (r *byteScanReader) byte() (byte, error) { return r.Byte() }
 
 func shouldSkipStackFence(hasCall bool, nLocalSlots int, bodyBytesLen int) bool {
 	return !hasCall && frameHdrBytes+8*nLocalSlots+8*bodyBytesLen <= 4096
+}
+
+func stackFenceElisionValid(skip bool, finalFrameBytes int) bool {
+	return !skip || finalFrameBytes <= 4096
 }
 
 func instrTouchesMemory(k wasm.InstrKind) bool {

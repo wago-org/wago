@@ -34,14 +34,14 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
 // callEffectBoundsEnabled preserves bounded explicit-mode bounds certificates
 // across direct calls whose transitive effect summary proves memory cannot grow.
-var callEffectBoundsEnabled = os.Getenv("WAGO_AMD64_NO_CALL_EFFECT_BOUNDS") != "1"
+var callEffectBoundsEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_EFFECT_BOUNDS") == "1"
 
 // deadGCNewEnabled removes bounded GC constructor trees whose result is dropped.
 // Struct and fixed-array trees disappear directly; dynamic/default/data/element
 // arrays retain a nonallocating preflight helper so size, segment, and initializer
 // traps remain ordered. WAGO_AMD64_NO_DEAD_GC_NEW=1 keeps every allocation helper
 // for differential A/B testing.
-var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
+var deadGCNewEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_DEAD_GC_NEW") == "1"
 
 // exactGCRefFactsEnabled propagates exact non-null reference facts through
 // locals inside conservative straight-line structured regions. It removes only
@@ -79,7 +79,7 @@ var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
 
 // preparedFPEntryEnabled marks bounded FP and mixed-bank signatures for fixed
 // native prepared trampolines. It changes metadata only.
-var preparedFPEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_FP_ENTRY") != "1"
+var preparedFPEntryEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_PREPARED_FP_ENTRY") == "1"
 
 // simdWideBitmaskConsumerEnabled avoids constructing the packed i16x8 mask
 // when an adjacent consumer observes only whether any sign lane is set.
@@ -181,15 +181,15 @@ var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
 
 // abiClassesEnabled admits bounded effect-safe scalar leaves into a finite
 // caller-pin-preserving internal ABI class.
-var abiClassesEnabled = os.Getenv("WAGO_AMD64_NO_ABI_CLASSES") != "1"
+var abiClassesEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_ABI_CLASSES") == "1"
 
 // abiLeafFPEnabled admits the tighter FP-preserving leaf contract independently
 // from the scalar class so target-specific pressure regressions stay reversible.
-var abiLeafFPEnabled = os.Getenv("WAGO_AMD64_NO_ABI_LEAF_FP") != "1"
+var abiLeafFPEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_ABI_LEAF_FP") == "1"
 
 // mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
 // proves the local dies before its next read. Loop and EH targets stay fixed.
-var mergeNextUseEnabled = os.Getenv("WAGO_AMD64_NO_MERGE_NEXT_USE") != "1"
+var mergeNextUseEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_MERGE_NEXT_USE") == "1"
 
 // affineLeaEnabled extends scaled-index LEA selection across one-level affine
 // base/index subtrees, folding their constants into the LEA displacement.
@@ -214,7 +214,7 @@ var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
 // entryInitElisionEnabled skips parameter homes and declared-local zero stores
 // when the combined summary scan proves the incoming value cannot be read.
-var entryInitElisionEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_INIT_ELISION") != "1"
+var entryInitElisionEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_ENTRY_INIT_ELISION") == "1"
 
 // memory32AddrZExtElimEnabled avoids a redundant self-move when the storage
 // form feeding a memory32 access already guarantees a zero upper half. Default
@@ -2002,7 +2002,6 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	allHints := make([]funcHints, n)
 	totalLocals := 0
 	intervalLocals := 0
-	mergeRegionFuncs := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	for i := range m.Code {
@@ -2025,21 +2024,11 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 			}
 			intervalLocals += count
 		}
-		if bodyLen := len(m.Code[i].BodyBytes); bodyLen > 0 && bodyLen <= maxMergeRegionBody {
-			mergeRegionFuncs++
-		}
 	}
 	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
-	if mergeRegionFuncs > int(^uint(0)>>1)/(maxMergeRegionHints/2) {
-		return nil, nil, fmt.Errorf("function hint region storage overflow")
-	}
-	regionWords := mergeRegionFuncs * (maxMergeRegionHints / 2)
-	if totalLocals > int(^uint(0)>>1)-regionWords {
-		return nil, nil, fmt.Errorf("function hint region storage overflow")
-	}
-	localScores := make([]uint32, totalLocals+regionWords)
+	localScores := make([]uint32, totalLocals)
 	localLastGets := make([]uint32, intervalLocals)
 	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
 	var globalScores []uint32
@@ -2069,17 +2058,13 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	for i := range m.Code {
 		effects.Begin(i)
 		nLocals := allHints[i].nLocals
-		mergeWords := 0
-		if bodyLen := len(m.Code[i].BodyBytes); bodyLen > 0 && bodyLen <= maxMergeRegionBody {
-			mergeWords = maxMergeRegionHints / 2
-		}
 		var h funcHints
 		if denseGlobals {
 			globalAt := i * nGlobals
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
 		} else {
 			sparseAccum.Reset(nGlobals)
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], nil, nil)
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
 		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), nLocals, moduleEH) {
@@ -2094,7 +2079,7 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
-		localAt += nLocals + mergeWords
+		localAt += nLocals
 		h.globalAccum = nil
 		allHints[i] = h
 		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
@@ -2417,6 +2402,8 @@ type regExhausted struct{}
 // pinning off) from a genuine compile error (propagate).
 var errRegExhausted = errors.New("amd64: no register available to spill")
 
+var errStackFenceRequired = errors.New("amd64: final frame exceeds fence-elision budget")
+
 // classifyInternalABI selects one of a finite set of complete preservation
 // contracts. Both AMD64 classes are deliberately bounded to tiny straight-line
 // leaves. Four-argument bank caps keep R9-R11 and XMM4-XMM7 outside argument
@@ -2477,18 +2464,34 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		// generalized to pinned registers.
 		modGlobals = nil
 	}
-	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, calleeABIClasses, calleeEffects, sc)
-	if errors.Is(err, errRegExhausted) {
-		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, false, inlineTargets, calleeABIClasses, calleeEffects, sc)
-		if err == nil {
-			stats.setUnpinnedRetry()
+	allowFenceSkip := true
+	for attempts := 0; attempts < 3; attempts++ {
+		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+			gcFrameRoots.Exact = true
+			gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
+			gcFrameRoots.Callsites = gcFrameRoots.Callsites[:0]
+			gcFrameRoots.FrameBytes = 0
+			gcFrameRoots.AdapterReturnOffset = 0
 		}
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, allowFenceSkip, inlineTargets, calleeABIClasses, calleeEffects, sc)
+		if errors.Is(err, errStackFenceRequired) && allowFenceSkip {
+			allowFenceSkip = false
+			resetFuncStats(stats)
+			continue
+		}
+		if !errors.Is(err, errRegExhausted) || !pinLocals {
+			if err == nil && !pinLocals {
+				stats.setUnpinnedRetry()
+			}
+			return
+		}
+		pinLocals = false
+		resetFuncStats(stats)
 	}
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeABIClasses []internalABIClass, calleeEffects []shared.FuncEffects, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals, allowFenceSkip bool, inlineTargets inlineTargetTable, calleeABIClasses []internalABIClass, calleeEffects []shared.FuncEffects, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -2811,7 +2814,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:
 	// spill slots never exceed the body's operand pushes (< one per body byte).
-	f.skipFence = shouldSkipStackFence(hasCall, f.nLocalSlots, len(c.BodyBytes))
+	f.skipFence = allowFenceSkip && shouldSkipStackFence(hasCall, f.nLocalSlots, len(c.BodyBytes))
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
@@ -2845,6 +2848,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			return nil, nil, 0, err
 		}
 		f.emitV128ConstPool()
+		if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+			return nil, nil, 0, errStackFenceRequired
+		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
 			return nil, nil, 0, err
@@ -2875,6 +2881,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 	f.patchFrameSize()
+	if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+		return nil, nil, 0, errStackFenceRequired
+	}
 	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)
 	if _, err := f.finalizeNativeCode(0); err != nil {
 		return nil, nil, 0, err

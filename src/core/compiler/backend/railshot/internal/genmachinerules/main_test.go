@@ -31,6 +31,10 @@ func TestParseRulesRejectsMalformedAndDuplicateRules(t *testing.T) {
 		"copy swap swap first.src=second.dst first.dst!=second.src move\n",
 		"swap-chain-3 swap swap first.src=second.dst first.dst!=second.src swap-chain\n" +
 			"swap-chain-3 swap swap first.src=second.dst first.dst!=second.src swap-chain\n",
+		"foo-bar swap swap first.src=second.dst first.dst!=second.src swap-chain\n" +
+			"foo_bar swap swap first.src=second.dst first.dst!=second.src swap-chain\n",
+		"--- swap swap first.src=second.dst first.dst!=second.src swap-chain\n",
+		"3foo swap swap first.src=second.dst first.dst!=second.src swap-chain\n",
 	} {
 		if _, err := parse([]byte(source)); err == nil {
 			t.Fatalf("parse unexpectedly accepted %q", source)

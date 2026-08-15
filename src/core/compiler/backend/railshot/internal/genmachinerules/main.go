@@ -8,7 +8,11 @@ import (
 	"crypto/sha256"
 	"flag"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -54,6 +58,7 @@ func main() {
 
 func parse(source []byte) ([]rule, error) {
 	var rules []rule
+	identifiers := make(map[string]string)
 	s := bufio.NewScanner(bytes.NewReader(source))
 	for line := 1; s.Scan(); line++ {
 		text := strings.TrimSpace(s.Text())
@@ -68,11 +73,14 @@ func parse(source []byte) ([]rule, error) {
 		if r.first != "swap" || r.second != "swap" || r.join != "first.src=second.dst" || r.guard != "first.dst!=second.src" || r.output != "swap-chain" {
 			return nil, fmt.Errorf("line %d: unsupported rule shape %q", line, text)
 		}
-		for _, old := range rules {
-			if old.name == r.name {
-				return nil, fmt.Errorf("line %d: duplicate rule %q", line, r.name)
-			}
+		identifier := exported(r.name)
+		if !token.IsIdentifier(identifier) {
+			return nil, fmt.Errorf("line %d: rule name %q does not form a Go identifier", line, r.name)
 		}
+		if old, ok := identifiers[identifier]; ok {
+			return nil, fmt.Errorf("line %d: rule names %q and %q both form Go identifier %q", line, old, r.name, identifier)
+		}
+		identifiers[identifier] = r.name
 		rules = append(rules, r)
 	}
 	if err := s.Err(); err != nil {
@@ -112,6 +120,18 @@ func generate(pkg string, source []byte, rules []rule) ([]byte, error) {
 	formatted, err := format.Source([]byte(g.String()))
 	if err != nil {
 		return nil, fmt.Errorf("format generated source: %w", err)
+	}
+	fset := token.NewFileSet()
+	generated, err := parser.ParseFile(fset, "machine_rules_gen.go", formatted, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parse generated source: %w", err)
+	}
+	stub, err := parser.ParseFile(fset, "machine_rules_types.go", "package "+pkg+"\ntype Reg uint8\ntype machineOp struct { kind int; src, dst Reg }\nconst machineSwap = 1\n", 0)
+	if err != nil {
+		return nil, fmt.Errorf("parse generated type stubs: %w", err)
+	}
+	if _, err := (&types.Config{}).Check(pkg, fset, []*ast.File{generated, stub}, nil); err != nil {
+		return nil, fmt.Errorf("type-check generated source: %w", err)
 	}
 	return formatted, nil
 }

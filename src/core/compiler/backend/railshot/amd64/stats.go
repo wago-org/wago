@@ -43,17 +43,17 @@ var (
 	// callRematConstEnabled retains one topmost integer constant below a
 	// register-ABI call as a symbolic recipe. WAGO_AMD64_NO_CALL_REMAT_CONST=1 is
 	// the bounded A/B and rollback path.
-	callRematConstEnabled = os.Getenv("WAGO_AMD64_NO_CALL_REMAT_CONST") != "1"
+	callRematConstEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_CONST") == "1"
 	// callRematLocalEnabled retains one topmost integer local read below a
 	// register-ABI call. WAGO_AMD64_NO_CALL_REMAT_LOCAL=1 is the rollback path.
-	callRematLocalEnabled = os.Getenv("WAGO_AMD64_NO_CALL_REMAT_LOCAL") != "1"
+	callRematLocalEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_LOCAL") == "1"
 	// callRematBinEnabled retains one depth-one pure integer expression below a
 	// register-ABI call. WAGO_AMD64_NO_CALL_REMAT_BIN=1 is the rollback path.
-	callRematBinEnabled = os.Getenv("WAGO_AMD64_NO_CALL_REMAT_BIN") != "1"
+	callRematBinEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_BIN") == "1"
 	// callResultResidencyEnabled keeps direct internal GP results in RAX/RDX
 	// through disjoint caller-state reloads. WAGO_AMD64_NO_CALL_RESULT_RESIDENCY=1
 	// is the rollback path.
-	callResultResidencyEnabled = os.Getenv("WAGO_AMD64_NO_CALL_RESULT_RESIDENCY") != "1"
+	callResultResidencyEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_RESULT_RESIDENCY") == "1"
 	// callArgDirectEnabled lowers a deferred integer argument directly into its
 	// free ABI target register. WAGO_AMD64_NO_CALL_ARG_DIRECT=1 is the A/B oracle.
 	callArgDirectEnabled = os.Getenv("WAGO_AMD64_NO_CALL_ARG_DIRECT") != "1"
@@ -126,11 +126,11 @@ var (
 	// registers across forward structured merges. Loop targets retain their fixed
 	// canonical contract. WAGO_AMD64_NO_MERGE_REG_RESIDENCY=1 is the exact A/B
 	// and rollback path.
-	mergeRegResidencyEnabled = os.Getenv("WAGO_AMD64_NO_MERGE_REG_RESIDENCY") != "1"
+	mergeRegResidencyEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_MERGE_REG_RESIDENCY") == "1"
 	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
 	// onto one max-sized physical scratch region. WAGO_AMD64_NO_INLINE_SLOT_OVERLAY=1
 	// retains the prior one-region-per-callee frame layout.
-	inlineSlotOverlayEnabled = os.Getenv("WAGO_AMD64_NO_INLINE_SLOT_OVERLAY") != "1"
+	inlineSlotOverlayEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_INLINE_SLOT_OVERLAY") == "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
 	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"

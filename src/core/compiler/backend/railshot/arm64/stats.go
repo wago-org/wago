@@ -44,17 +44,17 @@ var (
 	// callRematConstEnabled retains one topmost integer constant below a
 	// register-ABI call as a symbolic recipe. WAGO_ARM64_NO_CALL_REMAT_CONST=1 is
 	// the bounded A/B and rollback path.
-	callRematConstEnabled = os.Getenv("WAGO_ARM64_NO_CALL_REMAT_CONST") != "1"
+	callRematConstEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_CONST") == "1"
 	// callRematLocalEnabled retains one topmost integer local read below a
 	// register-ABI call. WAGO_ARM64_NO_CALL_REMAT_LOCAL=1 is the rollback path.
-	callRematLocalEnabled = os.Getenv("WAGO_ARM64_NO_CALL_REMAT_LOCAL") != "1"
+	callRematLocalEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_LOCAL") == "1"
 	// callRematBinEnabled retains one depth-one pure integer expression below a
 	// register-ABI call. WAGO_ARM64_NO_CALL_REMAT_BIN=1 is the rollback path.
-	callRematBinEnabled = os.Getenv("WAGO_ARM64_NO_CALL_REMAT_BIN") != "1"
+	callRematBinEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_BIN") == "1"
 	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
 	// onto one max-sized physical scratch region. WAGO_ARM64_NO_INLINE_SLOT_OVERLAY=1
 	// retains the prior one-region-per-callee frame layout.
-	inlineSlotOverlayEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_SLOT_OVERLAY") != "1"
+	inlineSlotOverlayEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_INLINE_SLOT_OVERLAY") == "1"
 	// stFlagsEnabled gates the stFlags tee-forward window (R1): a compare stored by
 	// `local.tee $c` and consumed by the next if/br_if/select fuses into the branch,
 	// storing $c with a flag-neutral Cset after the CMP. WAGO_NO_STFLAGS=1 is the
@@ -85,7 +85,7 @@ var (
 	intervalRegionPinsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_REGIONS") != "0"
 	// entryInitElisionEnabled skips zero-initialization for declared locals whose
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
-	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"
+	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_ENTRY_INIT_ELISION") == "1"
 
 	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
 	// FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.

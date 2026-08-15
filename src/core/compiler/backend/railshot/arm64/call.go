@@ -31,11 +31,11 @@ var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
 
 // callResultResidencyEnabled keeps direct internal GP results in X0/X1 through
 // post-call pin reloads, whose fixed destination banks exclude ABI results.
-var callResultResidencyEnabled = os.Getenv("WAGO_ARM64_NO_CALL_RESULT_RESIDENCY") != "1"
+var callResultResidencyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_RESULT_RESIDENCY") == "1"
 
 // indirectCallResultResidencyEnabled keeps immutable-table call results in the
 // register result bank when the caller cannot itself be one of the targets.
-var indirectCallResultResidencyEnabled = os.Getenv("WAGO_ARM64_NO_INDIRECT_RESULT_RESIDENCY") != "1"
+var indirectCallResultResidencyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_INDIRECT_RESULT_RESIDENCY") == "1"
 
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
 var noStackFence = os.Getenv("WAGO_ARM64_NOFENCE") == "1"
