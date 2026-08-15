@@ -4183,3 +4183,26 @@ The specialization adds no `Instance` field and no execution allocation. A
 native AMD64 regression test passes an owned host funcref through a module whose
 ordinary imports are all leaves, proving the specialized dispatcher retains the
 dynamic reference path rather than assuming every dispatch index is ordinary.
+
+## 2026-08-15 — AMD64 i16 bitmask zero-branch fusion
+
+AMD64 now carries the exact `i16x8.bitmask; i32.eqz; if/br_if` shape into the
+existing flags-to-branch boundary. A copied reader checks only the next two
+operations and leaves ordinary parsing responsible for both. The branch sink
+arithmetic-shifts each word sign, forms the byte movemask, and tests it directly;
+it never creates the masked scalar value or an intermediate 0/1 boolean.
+Non-branch eqz consumers, nonzero comparisons, disabled policy, and malformed
+suffixes retain the established lowering.
+
+On the Ryzen 7 7800X3D, eight serialized samples of a 64-branch fixture improve
+from a 29.22 to 23.95 ns/op median (-18.0%), with zero B/op and allocations.
+Function bytes fall from 2231 to 1911. Six compile samples improve from about
+65.44 to 63.86 us/op (-2.4%) with identical 96,304 B/op and 30 allocations.
+
+The checked-in `json-as-simd.wasm` module has five exact sites. Its native image
+falls by 32 bytes, from 64,877 to 64,845 bytes. Six two-second native samples
+move deserialization from a 250.7 to 249.3 ns/op median (-0.6%), with
+serialization neutral and both paths at zero B/op and allocations. Full-width
+zero, low-sign, and high-sign values execute through both `if` and `br_if`;
+disabled and non-branch near misses, the complete native AMD64 backend, focused
+race coverage, and the JSON workload correctness test pass.

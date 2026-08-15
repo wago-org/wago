@@ -2163,6 +2163,36 @@ func (f *fn) i16x8Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
+// tryDeferI16x8BitmaskZeroBranch keeps the exact
+// `i16x8.bitmask; i32.eqz; if/br_if` shape symbolic until branch lowering can
+// consume zero-ness directly. The copied reader is never committed: ordinary
+// parsing still owns eqz and the branch.
+func (f *fn) tryDeferI16x8BitmaskZeroBranch(r *wasm.Reader) bool {
+	if !f.opt(optSIMDWideBitmask) {
+		return false
+	}
+	look := *r
+	next, err := look.Byte()
+	if err != nil || next != 0x45 { // i32.eqz
+		return false
+	}
+	next, err = look.Byte()
+	if err != nil || (next != 0x04 && next != 0x0d) { // if / br_if
+		return false
+	}
+	operand := f.s.back()
+	if deferDepthOf(operand) >= maxDeferDepth {
+		return false
+	}
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, opSIMDBitmaskAny16, mtI32
+	node.arg0 = operand
+	node.deferDepth = 1 + deferDepthOf(operand)
+	f.s.push(node)
+	f.stats.peep("simd-bitmask-zero-branch-candidate")
+	return true
+}
+
 // tryI16x8BitmaskNonZero selects the exact adjacent
 // `i16x8.bitmask; i32.const 0; i32.ne` sequence. A packed scalar mask is not
 // needed when only zero-ness is observed: arithmetic-shift every lane sign
@@ -3059,6 +3089,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 131: // i16x8.all_true
 		f.i16x8AllTrue()
 	case 132: // i16x8.bitmask
+		if f.tryDeferI16x8BitmaskZeroBranch(r) {
+			break
+		}
 		if f.tryI16x8BitmaskNonZero(r) {
 			break
 		}
