@@ -797,6 +797,25 @@ with zero B/op and allocations. Compilation improved from 11.67 to 9.27 us/op
 (-20.5%), B/op fell 35.4%, and native output fell from 1,508 to 1,152 bytes;
 compile allocations increased by one (49 to 50) and remain explicitly tracked.
 
+### 2026-08-14 — ARM64 native final struct scalar writes
+
+Final mutable structs with pointer-free scalar fields now lower `struct.set`
+through the same checked native object resolver as scalar reads. The value stays
+protected while the nullable reference, handle, heap extent, required field
+extent, and exact final type are checked, then packed i8/i16, i32/i64, or
+f32/f64 data is stored directly. Reference/vector fields, non-final or immutable
+layouts, disabled policy, and Size/Embedded objectives retain the helper. An
+adjacent run reuses one bounded raw-address certificate because scalar stores
+cannot move collector backing or change object identity.
+
+Execution tests cover null traps, all admitted scalar storage classes, signed
+and unsigned packed round trips, and eight alternating field writes followed by
+a native read. On Apple M4 Max, that region improved from a 554.7 to 89.2 ns/op
+median (-83.9%) through prepared invocation with zero B/op and allocations.
+Compilation improved from 11.54 to 7.90 us/op (-31.5%), B/op fell 36.5%,
+allocations fell from 47 to 41, and native output fell from 1,404 to 728 bytes
+because seven duplicate checked resolvers and all eight helper calls disappeared.
+
 ---
 
 # 1. North-star architecture

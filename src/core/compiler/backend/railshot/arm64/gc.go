@@ -352,6 +352,15 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		if f.policy.EnabledOption(optGCNativeScalarSet) && !f.policy.CompactNative {
+			if layout, scalar, layoutOK := f.directGCStructLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + uint64(scalar.size)
+				if required <= math.MaxInt32 {
+					f.stats.peep("gc-native-final-struct-scalar-set")
+					return f.emitNativeFinalStructScalarSet(typeIndex, layout.Offset, uint32(required), scalar)
+				}
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -945,6 +954,34 @@ func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uin
 	f.a.LoadIdx(result, object, ZR, disp, scalar.size, sub == 3, scalar.typ == mtI64)
 	f.release(object)
 	f.pushReg(result, scalar.typ)
+	return nil
+}
+
+func (f *fn) emitNativeFinalStructScalarSet(typeIndex, fieldOffset, required uint32, scalar directGCScalar) error {
+	valueElem := f.popValue()
+	var value Reg
+	if scalar.typ.isFloat() {
+		value = f.materializeF(valueElem)
+		f.fpinned = f.fpinned.add(value)
+	} else {
+		value = f.materialize(valueElem)
+		f.pinned = f.pinned.add(value)
+	}
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, true)
+	if err != nil {
+		return err
+	}
+	disp := int32(gc.PayloadOffset + fieldOffset)
+	if scalar.typ.isFloat() {
+		f.fst(object, disp, value, scalar.typ == mtF64)
+		f.fpinned = f.fpinned.remove(value)
+		f.releaseF(value)
+	} else {
+		f.a.StoreIdx(object, ZR, value, disp, scalar.size)
+		f.pinned = f.pinned.remove(value)
+		f.release(value)
+	}
+	f.release(object)
 	return nil
 }
 
