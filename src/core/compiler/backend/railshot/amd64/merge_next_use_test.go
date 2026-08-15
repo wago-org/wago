@@ -31,7 +31,7 @@ func forwardMergeModule(t *testing.T, after []byte) *wasm.Module {
 func compileForwardMergeStats(t *testing.T, m *wasm.Module, on bool) CodegenStats {
 	t.Helper()
 	var stats ModuleStats
-	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"inline": false, "merge-next-use": on}}); err != nil {
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"abi-classes": false, "inline": false, "merge-next-use": on}}); err != nil {
 		t.Fatal(err)
 	}
 	return *stats.Funcs[0]
@@ -73,7 +73,7 @@ func TestForwardMergeNextUseKeepsReadAndFuelFallbackAMD64(t *testing.T) {
 		t.Fatalf("fuel fallback traffic = %+v peep=%v", fuelStats.LocalTraffic, fuelStats.Peephole)
 	}
 	compile := func() []byte {
-		cm, err := CompileModuleWith(fuel, CompileOptions{Optimizations: map[string]bool{"inline": false, "merge-next-use": true}})
+		cm, err := CompileModuleWith(fuel, CompileOptions{Optimizations: map[string]bool{"abi-classes": false, "inline": false, "merge-next-use": true}})
 		if err != nil {
 			t.Fatal(err)
 		}

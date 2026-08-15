@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -65,6 +66,110 @@ func TestBoundsCertificateAcrossEffectSafeDirectCallAMD64(t *testing.T) {
 				t.Fatalf("bounds across call: checks=%d peep=%v", got.BoundsChecks, got.Peephole)
 			}
 		})
+	}
+}
+
+func TestMemoryLeafScalarABIAvoidsCallPreservationAMD64(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	caller := []byte{0x20, 0x00, 0x41, 0x02, 0x6a, 0x21, 0x00, 0x20, 0x00, 0x10, 0x01, 0x1a, 0x20, 0x00, 0x0b}
+	callee := []byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
+	raw := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(i32, i32))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(caller), wasmtest.Code(callee))),
+	)
+	m, err := wasm.DecodeModule(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compile := func(abiClasses bool) ModuleStats {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"abi-classes": abiClasses, "inline": false}}); err != nil {
+			t.Fatal(err)
+		}
+		return stats
+	}
+	on, off := compile(true), compile(false)
+	if traffic := on.Funcs[0].LocalTraffic; traffic.CallPreservationStores != 0 || traffic.CallPreservationReloads != 0 {
+		t.Fatalf("LeafScalar call traffic = %+v, want no preservation", traffic)
+	}
+	if traffic := off.Funcs[0].LocalTraffic; traffic.CallPreservationStores == 0 || traffic.CallPreservationReloads == 0 {
+		t.Fatalf("General call traffic = %+v, want store and reload", traffic)
+	}
+	if got := on.Funcs[0].Peephole["abi-leaf-scalar-call"]; got != 1 {
+		t.Fatalf("preserving call count = %d, want 1", got)
+	}
+	if got := on.Funcs[1].Peephole["abi-leaf-scalar"]; got != 1 {
+		t.Fatalf("memory callee class count = %d, want 1", got)
+	}
+	var inlined ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &inlined, Optimizations: map[string]bool{"abi-classes": true, "inline": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := inlined.Funcs[1].Peephole["abi-leaf-scalar"]; got != 0 {
+		t.Fatalf("fully inlined callee class count = %d, want 0", got)
+	}
+	growRaw := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(i32, i32))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(caller), wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}))),
+	)
+	grow, err := wasm.DecodeModule(growRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var growStats ModuleStats
+	if _, err := CompileModuleWith(grow, CompileOptions{Stats: &growStats, Optimizations: map[string]bool{"abi-classes": true, "inline": false}}); err != nil {
+		t.Fatal(err)
+	}
+	if traffic := growStats.Funcs[0].LocalTraffic; traffic.CallPreservationStores == 0 || traffic.CallPreservationReloads == 0 {
+		t.Fatalf("memory.grow call traffic = %+v, want conservative preservation", traffic)
+	}
+	compileCode := func() []byte {
+		cm, compileErr := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"abi-classes": true, "inline": false}})
+		if compileErr != nil {
+			t.Fatal(compileErr)
+		}
+		return cm.Code
+	}
+	if a, b := compileCode(), compileCode(); !bytes.Equal(a, b) {
+		t.Fatal("LeafScalar classification emitted nondeterministic code")
+	}
+	for _, abiClasses := range []bool{false, true} {
+		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"abi-classes": abiClasses, "inline": false}}, func(memory []byte) {
+			memory[9] = 41
+		}, 7)
+		if err != nil || got != 9 {
+			t.Fatalf("execute abi-classes=%t: got=%d err=%v, want 9", abiClasses, got, err)
+		}
+	}
+}
+
+func TestInternalABIClassEffectAndShapeGatesAMD64(t *testing.T) {
+	ft := &wasm.CompType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
+	h := funcHints{nLocals: 1, inlineCallSites: 1, touchesMemory: true}
+	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiLeafScalar {
+		t.Fatalf("effect-safe memory leaf = %v, want LeafScalar", got)
+	}
+	if got := classifyInternalABI(ft, 1, h, shared.EffectGrowsMemory, true); got != abiGeneral {
+		t.Fatalf("memory-growing leaf = %v, want General", got)
+	}
+	h.hasControlFlow = true
+	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+		t.Fatalf("control-flow leaf = %v, want General", got)
+	}
+	h.hasControlFlow = false
+	h.stackArenaNodes = 13
+	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+		t.Fatalf("over-cap leaf = %v, want General", got)
+	}
+	if got := classifyInternalABI(ft, 1, funcHints{nLocals: 1, inlineCallSites: 1}, 0, false); got != abiGeneral {
+		t.Fatalf("disabled class = %v, want General", got)
+	}
+	if got := classifyInternalABI(ft, 1, funcHints{nLocals: 1, inlineCallSites: 0x80}, 0, true); got != abiGeneral {
+		t.Fatalf("tail-only callee class = %v, want General", got)
 	}
 }
 

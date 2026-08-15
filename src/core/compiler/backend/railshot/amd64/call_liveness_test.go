@@ -32,12 +32,15 @@ func deadLocalAcrossCallModule(t *testing.T, readBeforeOverwrite bool) *wasm.Mod
 func TestCallNextUseSkipsOnlyDeadLocalStore(t *testing.T) {
 	saved := callNextUseEnabled
 	savedInline := inlineEnabled
+	savedABIClasses := abiClassesEnabled
 	defer func() {
 		callNextUseEnabled = saved
 		inlineEnabled = savedInline
+		abiClassesEnabled = savedABIClasses
 	}()
 	callNextUseEnabled = true
 	inlineEnabled = false
+	abiClassesEnabled = false
 
 	dead := deadLocalAcrossCallModule(t, false)
 	if got := compileWithStats(t, dead, false).Funcs[0].Peephole["call-dead-local-store"]; got != 1 {

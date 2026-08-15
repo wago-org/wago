@@ -1733,6 +1733,7 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
 // or an indirect register call. Explicit operands avoid a closure per wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
+	preservesPins := f.directCalleePreservesPins(localIdx)
 	callTarget := f.preserveIndirectCallTarget(indirect, p)
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
@@ -1740,7 +1741,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
-	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
+	if !preservesPins {
+		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
+	}
 
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
@@ -1785,7 +1788,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	// (clobbered by the linMem/trap setup below), not just in a callee-clobbered
 	// register. Their values were already copied out above where an argument reads
 	// them. Lazy reload on the next read — WARP's STACK_REG model.
-	f.spillLocalsForCall()
+	if preservesPins {
+		f.callDeadGP, f.callDeadFP = 0, 0
+		f.stats.peep("abi-leaf-scalar-call")
+	} else {
+		f.spillLocalsForCall()
+	}
 
 	// Unpin the owned source registers, then resolve the parallel move into targets.
 	for _, m := range moves {
@@ -1853,8 +1861,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		f.stats.addRegisterResultMoves(1)
 		f.pinned = f.pinned.add(pairRes[1])
 	}
-	f.reloadLocalsForCall() // non-STACK_REG model only
-	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	if !preservesPins {
+		f.reloadLocalsForCall() // non-STACK_REG model only
+		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	}
 	if preserveBoundsCerts {
 		f.boundsCerts, f.nextBoundsCert = savedBoundsCerts, savedNextBoundsCert
 		kept := 0
@@ -1898,6 +1908,15 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		}
 	}
 	return returnOffset
+}
+
+// directCalleePreservesPins returns the module-precomputed leaf classification
+// for one direct target. This is compile-time only; execution stays a plain CALL.
+func (f *fn) directCalleePreservesPins(localIdx int) bool {
+	if localIdx < 0 || localIdx >= len(f.calleeABIClasses) {
+		return false
+	}
+	return f.calleeABIClasses[localIdx].preservesCallerPins()
 }
 
 func (f *fn) directCalleeEffects(localIdx int) shared.FuncEffects {

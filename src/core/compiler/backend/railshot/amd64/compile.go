@@ -179,6 +179,10 @@ var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 // post-call access overwrites the local before reading it.
 var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
 
+// abiClassesEnabled admits bounded effect-safe scalar leaves into a finite
+// caller-pin-preserving internal ABI class.
+var abiClassesEnabled = os.Getenv("WAGO_AMD64_NO_ABI_CLASSES") != "1"
+
 // mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
 // proves the local dies before its next read. Loop and EH targets stay fixed.
 var mergeNextUseEnabled = os.Getenv("WAGO_AMD64_NO_MERGE_NEXT_USE") != "1"
@@ -429,7 +433,9 @@ type fn struct {
 	// lengths (sc.reset) rather than reallocating. See scratch.
 	sc *scratch
 
-	calleeEffects []shared.FuncEffects
+	calleeABIClasses   []internalABIClass
+	calleeEffects      []shared.FuncEffects
+	preserveCallerPins bool
 
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
 	// holds the loop-invariant address-source locals whose inline bounds check is
@@ -1087,6 +1093,15 @@ type CustomInstructionOp = railcore.CustomInstructionOp
 type CustomInstructionNode = railcore.CustomInstructionNode
 type CustomInstruction = railcore.CustomInstruction
 
+type internalABIClass uint8
+
+const (
+	abiGeneral internalABIClass = iota
+	abiLeafScalar
+)
+
+func (c internalABIClass) preservesCallerPins() bool { return c == abiLeafScalar }
+
 const (
 	CustomInstructionInput  = railcore.CustomInstructionInput
 	CustomInstructionConst  = railcore.CustomInstructionConst
@@ -1178,7 +1193,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	_, hasMemory := m.MemoryType(0)
 	var allHints []funcHints
 	var globalScores []int64
-	if policy.EnabledOption(optCallEffectBounds) && boundsFacts && !guardMode && hasMemory {
+	needEffects := hasMemory && (policy.EnabledOption(optABIClasses) || policy.EnabledOption(optCallEffectBounds) && boundsFacts && !guardMode)
+	if needEffects {
 		allHints, globalScores, err = computeModuleHintsWithPolicyAndEffects(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, &calleeEffects)
 	} else {
 		allHints, globalScores, err = computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy)
@@ -1251,6 +1267,43 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// stream. Keep that stream one-to-one with native callsites rather than
 		// silently invalidating collection metadata by splicing a local callee.
 		inlineTargets = inlineTargetTable{}
+	}
+	var calleeABIClasses []internalABIClass
+	if policy.EnabledOption(optABIClasses) {
+		for i := range allHints {
+			// Every ordinary call to an admitted inline target is spliced. Reserving
+			// its standalone body's pin banks cannot remove caller traffic and may
+			// only increase pressure in an exported or otherwise retained body.
+			if inlineTargets.target(importedFuncs+i) != nil {
+				continue
+			}
+			ft, ok := m.LocalFuncType(i)
+			if !ok {
+				continue
+			}
+			effects := shared.AllFuncEffects
+			if i < len(calleeEffects) {
+				effects = calleeEffects[i]
+			}
+			if classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, true) != abiGeneral {
+				calleeABIClasses = make([]internalABIClass, n)
+				break
+			}
+		}
+		for i := range calleeABIClasses {
+			if inlineTargets.target(importedFuncs+i) != nil {
+				continue
+			}
+			ft, ok := m.LocalFuncType(i)
+			if !ok {
+				continue
+			}
+			effects := shared.AllFuncEffects
+			if i < len(calleeEffects) {
+				effects = calleeEffects[i]
+			}
+			calleeABIClasses[i] = classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, true)
+		}
 	}
 	requiresAVX2 := false
 	requiresAVX512 := false
@@ -1350,11 +1403,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			sc.localRefs.Sites = nil
 			sc.localRefTailBound = false
 			hints := allHints[i]
-			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, calleeEffects, sc)
+			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, calleeABIClasses, calleeEffects, sc)
 			if err == nil && deferSingleFuncGCResolverDecision && sc.fnState.gcHandleResolutions >= 2 {
 				hints.gcSharedResolver = true
 				resetFuncStats(st)
-				fnCode, rl, internalOff, err = compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, calleeEffects, sc)
+				fnCode, rl, internalOff, err = compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, calleeABIClasses, calleeEffects, sc)
 			}
 			allHints[i] = funcHints{}
 			if err != nil {
@@ -1457,12 +1510,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, modGlobals, hostAdapters, inlineTargets, calleeEffects, immutableIntGlobals, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, modGlobals, hostAdapters, inlineTargets, calleeABIClasses, calleeEffects, immutableIntGlobals, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, calleeEffects []shared.FuncEffects, immutableIntGlobals []shared.ImmutableIntGlobal, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, calleeABIClasses []internalABIClass, calleeEffects []shared.FuncEffects, immutableIntGlobals []shared.ImmutableIntGlobal, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
@@ -1532,7 +1585,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					}
 				}
 				hints := allHints[i]
-				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, calleeEffects, ws.scratch)
+				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, calleeABIClasses, calleeEffects, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
@@ -2295,10 +2348,34 @@ type regExhausted struct{}
 // pinning off) from a genuine compile error (propagate).
 var errRegExhausted = errors.New("amd64: no register available to spill")
 
+// classifyInternalABI selects one of a finite set of complete preservation
+// contracts. The first AMD64 class is deliberately bounded to tiny straight-
+// line integer leaves: at most four GP arguments keep R9-R11 outside argument
+// staging, and the pressure cap lets the callee reserve every possible caller
+// pin without needing a general allocator retry protocol.
+func classifyInternalABI(ft *wasm.CompType, nLocals int, h funcHints, effects shared.FuncEffects, enabled bool) internalABIClass {
+	if !enabled || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || len(ft.Params) > 4 ||
+		nLocals != len(ft.Params) || h.hasCall || h.hasControlFlow || h.stackArenaNodes > 12 || h.inlineCallSiteCount() == 0 {
+		return abiGeneral
+	}
+	if len(h.sparseGlobals) != 0 {
+		return abiGeneral
+	}
+	for _, score := range h.globalScore {
+		if score != 0 {
+			return abiGeneral
+		}
+	}
+	if h.touchesMemory && effects&shared.EffectGrowsMemory != 0 {
+		return abiGeneral
+	}
+	return abiLeafScalar
+}
+
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, calleeEffects []shared.FuncEffects, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, calleeABIClasses []internalABIClass, calleeEffects []shared.FuncEffects, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		gcFrameRoots.Exact = true
 		gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
@@ -2314,10 +2391,10 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		// generalized to pinned registers.
 		modGlobals = nil
 	}
-	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, calleeEffects, sc)
+	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, calleeABIClasses, calleeEffects, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, false, inlineTargets, calleeEffects, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, false, inlineTargets, calleeABIClasses, calleeEffects, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -2325,7 +2402,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeEffects []shared.FuncEffects, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeABIClasses []internalABIClass, calleeEffects []shared.FuncEffects, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -2387,7 +2464,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
 	localType, localSlot, localGCRefFacts, locals := f.localType, f.localSlot, f.localGCRefFacts, f.locals
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver, calleeEffects: calleeEffects}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]
@@ -2490,6 +2567,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.peep("all-calls-inlined")
 	}
 	regABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
+	selfABIClass := abiGeneral
+	if funcIdx < len(calleeABIClasses) {
+		selfABIClass = calleeABIClasses[funcIdx]
+	}
+	f.preserveCallerPins = selfABIClass.preservesCallerPins()
+	if f.preserveCallerPins {
+		f.stats.peep("abi-leaf-scalar")
+	}
 	// Ordinary register-ABI bodies never consume frResultsOff: adapters preserve
 	// RCX below the internal frame and direct calls return in registers. Retain the
 	// established header for tail transfer, EH, and GC-frame paths whose auxiliary
@@ -2503,6 +2588,17 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
+	if f.preserveCallerPins {
+		// The direct caller may own any register in these fixed pin banks. Keep
+		// this leaf entirely in the disjoint scratch/argument banks.
+		for _, r := range [...]Reg{R12, R13, R14, R15, R9, R10, R11, RBP} {
+			gpPool = withoutReg(gpPool, r)
+			f.reserved = f.reserved.add(r)
+		}
+		for _, r := range pinnedFLocalRegs {
+			f.fpinnedLocalMask = f.fpinnedLocalMask.add(r)
+		}
+	}
 	if compactLowPinEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) && !hasCall && !hints.hasControlFlow {
 		preferPinReg(gpPool, RBP)
 	}

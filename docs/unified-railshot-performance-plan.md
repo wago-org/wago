@@ -1153,6 +1153,36 @@ from an 890.86 to 896.41 ms median (+0.62%); B/op and allocations are unchanged.
 Positive, next-read near-miss, disabled-policy, and fuel-exhaustion cases retain
 deterministic conservative behavior.
 
+### 2026-08-14 — finite AMD64 LeafScalar ABI class
+
+AMD64 direct calls can now use one finite pin-preserving internal ABI class for
+tiny integer-only leaves. Admission requires a register-ABI signature with at
+most four parameters, no declared locals, calls, control flow, or global access,
+and at most 12 estimated stack-arena nodes. A memory-touching leaf is admitted
+only when the existing transitive effect summary proves that it cannot execute
+`memory.grow`. The callee reserves the complete GP and FP local-pin banks; the
+caller can therefore keep dirty pinned locals and value-pinned globals in their
+registers across the call. All other calls retain the General contract.
+
+The class table is one byte per local function and is allocated only after the
+module admits at least one non-inlined class member. Targets whose ordinary calls
+will all be inlined are excluded: reserving registers in a retained export or
+standalone body cannot help those callers. With default inlining, Ruby therefore
+emits byte-for-byte identical native code to the disabled policy and allocates no
+class table. With inlining deliberately disabled, Ruby
+admits 876 leaves across 6,461 direct calls, removes 1,259 call-preservation
+stores and 3,978 reloads, and shrinks by 47,885 native bytes.
+
+On a serialized Ryzen 7 7800X3D workload containing 128 calls per invocation,
+five two-second samples improve from a 172.1 to 155.7 ns/op median (-9.5%) and
+shrink from 2,497 to 1,979 native bytes (-20.7%), with zero B/op and allocations.
+Five fixed-work default-inline Ruby codegen samples remain neutral at an 891.20
+ms median versus 893.12 ms with the policy disabled (-0.21%, treated as noise);
+B/op and allocations remain within run-to-run noise. Tests
+cover execution with the class enabled and disabled, `memory.grow`, control and
+pressure-cap near misses, full-inline exclusion, deterministic recompilation,
+and isolated interaction with the call- and merge-next-use optimizers.
+
 ---
 
 # 1. North-star architecture
