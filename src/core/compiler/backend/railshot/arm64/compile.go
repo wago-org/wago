@@ -80,6 +80,10 @@ var fixedGCArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_FIXED_ARRAY_LEN") != "1
 // Allocation and every initializer evaluation remain on the ordinary path.
 var constGCStructGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONST_STRUCT_GET") != "1"
 
+// gcConstructorCastEnabled removes only an adjacent cast of a constructor's
+// exact non-null result back to the same defined type.
+var gcConstructorCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONSTRUCTOR_CAST") != "1"
+
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
 // checks and the Speed/Balanced layouts are unchanged.

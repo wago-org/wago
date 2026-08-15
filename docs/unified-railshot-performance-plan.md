@@ -619,6 +619,26 @@ before allocation, while the subsequent nontrapping call proves recovery. A
 dynamic selected-field initializer is an explicit near miss and retains both
 helpers.
 
+### 2026-08-14 — ARM64 exact constructor-cast elision
+
+ARM64 now recognizes an exact adjacent `struct.new`/`struct.new_default` or
+bounded array constructor followed by `ref.cast` or `ref.cast_null` to the same
+defined type. Constructor results already prove that exact non-null type, so the
+cast is an identity. The allocating helper, initializer evaluation, safepoint,
+rooted result, OOM/segment traps, and following consumers remain unchanged; only
+the redundant cast helper disappears. A copied reader admits only the exact
+same-type producer/consumer pair. Other targets, malformed suffixes, intervening
+operations, oversized vector constructors, dropped-constructor trees, and the
+immutable `gc-constructor-cast=false` policy retain the ordinary path.
+
+The struct/array fixture falls from 504 to 296 native bytes and from four
+synchronous GC helpers to two. Five alternating Apple M4 Max execution samples
+improved from a 382.5 to 299.6 ns/op median (-21.7%) with zero B/op and
+allocations. Five alternating compile samples improved from 6.604 to 4.751
+us/op (-28.1%); allocations fell from 35 to 31 and median B/op fell by about
+4.2 KiB. Enabled and disabled forced-collection paths both retain exactly 200
+allocations across 100 calls, and a non-adjacent cast is an explicit near miss.
+
 ---
 
 # 1. North-star architecture

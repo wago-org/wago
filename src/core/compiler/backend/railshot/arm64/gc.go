@@ -247,6 +247,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return nil
 		}
 		knownField, consumeField := f.consumeKnownGCStructGet(typeIndex, st, false, r)
+		consumeCast := !consumeField && f.consumeExactGCConstructorCast(typeIndex, r)
 		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
 		for _, field := range st.Comp.Fields {
 			valueType := field.Storage().Val()
@@ -262,6 +263,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		f.finishKnownGCStructGet(knownField, consumeField)
+		f.finishExactGCConstructorCast(consumeCast)
 		return nil
 	case 1: // struct.new_default
 		typeIndex, err := r.U32()
@@ -280,12 +282,14 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return nil
 		}
 		knownField, consumeField := f.consumeKnownGCStructGet(typeIndex, st, true, r)
+		consumeCast := !consumeField && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if err := f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.finishKnownGCStructGet(knownField, consumeField)
+		f.finishExactGCConstructorCast(consumeCast)
 		return nil
 	case 2, 3, 4:
 		typeIndex, err := r.U32()
@@ -371,12 +375,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return nil
 		}
 		knownLength, consumeLength := f.consumeKnownGCArrayLen(r)
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if err := f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
 		return nil
 	case 7: // array.new_default
 		typeIndex, err := r.U32()
@@ -395,12 +401,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return nil
 		}
 		knownLength, consumeLength := f.consumeKnownGCArrayLen(r)
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if err := f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
 		return nil
 	case 8: // array.new_fixed
 		typeIndex, err := r.U32()
@@ -435,6 +443,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return fmt.Errorf("arm64: array.new_fixed count %d exceeds helper slot bound", count)
 		}
 		consumeLength := f.policy.EnabledOption(optGCFixedArrayLen) && consumeImmediateGCArrayLen(r)
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
 			params = append(params, valueType)
@@ -447,6 +456,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		f.finishKnownGCArrayLen(count, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
 		return nil
 	case 9, 10: // array.new_data / array.new_elem
 		typeIndex, err := r.U32()
@@ -474,6 +484,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if sub == 9 {
 			knownLength, consumeLength = f.consumeKnownGCArrayLen(r)
 		}
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(segmentIndex)})
 		deadUse := checkedDeadGCNone
@@ -492,6 +503,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
 		return nil
 	case 11, 12, 13:
 		typeIndex, err := r.U32()
@@ -730,6 +742,37 @@ func (f *fn) finishKnownGCStructGet(known knownGCStructField, consume bool) {
 	f.pushValue(storage{kind: stConst, typ: known.typ, cval: known.value})
 	f.stats.peep("gc-known-struct-get")
 	f.stats.peep("gc-struct-get-elide")
+}
+
+func (f *fn) consumeExactGCConstructorCast(typeIndex uint32, r *wasm.Reader) bool {
+	if !f.policy.EnabledOption(optGCConstructorCast) {
+		return false
+	}
+	look := *r
+	op, err := look.Byte()
+	if err != nil || op != 0xfb {
+		return false
+	}
+	sub, err := look.U32()
+	if err != nil || (sub != 22 && sub != 23) {
+		return false
+	}
+	target, _, err := readRefHeapTypeImmediate(&look)
+	if err != nil || target != int64(typeIndex) {
+		return false
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("arm64: copied GC constructor-cast lookahead produced an invalid reader offset")
+	}
+	return true
+}
+
+func (f *fn) finishExactGCConstructorCast(consume bool) {
+	if !consume {
+		return
+	}
+	f.stats.peep("gc-ref-cast-elide")
+	f.stats.peep("gc-constructor-cast")
 }
 
 func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
