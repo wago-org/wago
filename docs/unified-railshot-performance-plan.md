@@ -3355,9 +3355,9 @@ Native A/B results on a Ryzen 7 7800X3D:
     delta:     about -4.2% time, -22.2% native bytes
 
 64-module AMD64 corpus:
-    merge stores: 724139 -> 706639 (-17500, -2.4%)
-    merge reloads: 452566 -> 452644 (+78)
-    native bytes: 81438930 -> 81377313 (-61617)
+    merge stores: 724139 -> 706248 (-17891, -2.5%)
+    merge reloads: 452566 -> 452618 (+52)
+    native bytes: 81438930 -> 81373857 (-65073)
 
 alternating real-module compile sample
 (regexmatch, SQLite, Ruby, esbuild; n=6 per mode):
