@@ -487,12 +487,13 @@ adapter, unbounded state, or execution allocation.
 
 Tests cover both banks, result order, i32/f32 upper-bit cleanup, i64 parameter
 preservation, compiler and runtime rollback, a three-result near miss, division
-traps, and post-trap recovery. The focused suite passes natively on ARM64 and
-through Darwin's AMD64 execution path; native AMD64 timing remains pending
-because the configured host was unreachable. Three one-second Apple M4 Max
-samples improved integer pairs from a median 83.88 to 19.00 ns/op (-77.3%) and
-FP pairs from 83.59 to 19.37 ns/op (-76.8%), all at zero B/op and allocations.
-The existing one-result FP direct path remains at roughly 18.0 ns/op. A
+traps, and post-trap recovery. The focused suite passes natively on both
+architectures. Three one-second Apple M4 Max samples improved integer pairs from
+a median 83.88 to 19.00 ns/op (-77.3%) and FP pairs from 83.59 to 19.37 ns/op
+(-76.8%). Five one-second Ryzen 7 7800X3D samples improved integer pairs from
+87.88 to 9.381 ns/op (-89.3%) and FP pairs from 87.22 to 9.693 ns/op (-88.9%).
+Every measured path remains at zero B/op and allocations. The existing
+one-result FP direct path remains at roughly 18.0 ns/op on the Apple system. A
 five-sample `many_funcs` compile run measured a 263.3 us/op median with 344
 allocations/op; the implementation adds no compiler scratch or generated
 function bytes beyond the existing direct-entry selection.
