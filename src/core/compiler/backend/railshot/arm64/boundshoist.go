@@ -68,13 +68,14 @@ func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elida
 	poison := map[uint32]bool{}
 	prevGet := int64(-1)
 	depth := 0
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
 		if err != nil {
 			return nil, 0, false
 		}
-		if err := wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, true); err != nil {
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return nil, 0, false
 		}
 		curGet := int64(-1)

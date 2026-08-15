@@ -455,7 +455,7 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 
 func scanBodyBytesGlobalScores(m *wasm.Module, body []byte, nGlobals int, add func(g uint32, score int64)) error {
 	r := wasm.ReaderFrom(body)
-	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add, m: m}
+	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add, m: m, classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	term, err := s.scanExpr(0, 0, false)
 	if err != nil {
 		return err
@@ -467,10 +467,11 @@ func scanBodyBytesGlobalScores(m *wasm.Module, body []byte, nGlobals int, add fu
 }
 
 type globalScoreByteScanner struct {
-	r        byteScanReader
-	nGlobals int
-	add      func(g uint32, score int64)
-	m        *wasm.Module
+	r          byteScanReader
+	nGlobals   int
+	add        func(g uint32, score int64)
+	m          *wasm.Module
+	classifier wasm.ModuleInstructionClassifier
 }
 
 func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse bool) (byte, error) {
@@ -561,7 +562,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 
 func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
 	if s.m != nil {
-		return wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(&s.r.Reader, op, imm, s.m, true)
+		return s.classifier.ClassifyInto(&s.r.Reader, op, imm)
 	}
 	return wasm.ClassifyInstructionImmediateInto(&s.r.Reader, op, imm)
 }
@@ -590,7 +591,7 @@ func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int,
 func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, classifier: wasm.NewModuleInstructionClassifier(m, true), gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
@@ -616,6 +617,7 @@ type byteBodyScanner struct {
 	entrySeen       uint64
 	memory64        bool
 	m               *wasm.Module
+	classifier      wasm.ModuleInstructionClassifier
 	gcTypeLayouts   []codegen.GCTypeLayout
 	gcStructHelpers bool
 	moduleHints     []funcHints
@@ -881,7 +883,7 @@ func (h funcHints) inlineCallSiteCount() uint8 { return h.inlineCallSites & 0x7f
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
 	var err error
 	if s.m != nil {
-		err = wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(&s.r.Reader, op, imm, s.m, true)
+		err = s.classifier.ClassifyInto(&s.r.Reader, op, imm)
 	} else {
 		err = wasm.ClassifyInstructionImmediateIntoWithFeatures(&s.r.Reader, op, imm, s.memory64, true)
 	}

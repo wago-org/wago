@@ -732,13 +732,14 @@ func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals map[uint32]bool, ha
 	defer func() { _ = r.JumpTo(start) }()
 	setLocals = map[uint32]bool{}
 	depth := 0
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
 		if err != nil {
 			return nil, true, true, true, true
 		}
-		if err := wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, true); err != nil {
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return nil, true, true, true, true
 		}
 		switch imm.Kind {

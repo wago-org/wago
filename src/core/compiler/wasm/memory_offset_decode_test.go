@@ -33,6 +33,34 @@ func BenchmarkModuleMemargWidthsManyImports(b *testing.B) {
 	}
 }
 
+func BenchmarkModuleInstructionClassifierManyImportsAndOps(b *testing.B) {
+	const count = 10000
+	m := &Module{Imports: make([]Import, count)}
+	memory32 := NewMemExternType(MemType{Limits: Limits{Min: 1}})
+	for i := range m.Imports {
+		m.Imports[i].Type = memory32
+	}
+	body := make([]byte, count)
+	for i := range body {
+		body[i] = 0x01 // nop; the old per-op module helper still rescanned imports
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		classifier := NewModuleInstructionClassifier(m, true)
+		r := NewReader(body)
+		var imm InstructionImmediate
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
 func TestDecodeMemoryOffsetWidthFollowsMemoryType(t *testing.T) {
 	paths := []struct {
 		name   string

@@ -68,6 +68,7 @@ func walkLoopBody(r *wasm.Reader, m *wasm.Module, visit func(op byte, imm wasm.I
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	depth := 0
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
@@ -75,7 +76,7 @@ func walkLoopBody(r *wasm.Reader, m *wasm.Module, visit func(op byte, imm wasm.I
 			return false
 		}
 		if m != nil {
-			err = wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, true)
+			err = classifier.ClassifyInto(r, op, &imm)
 		} else {
 			err = wasm.ClassifyInstructionImmediateInto(r, op, &imm)
 		}

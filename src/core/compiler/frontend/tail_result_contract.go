@@ -432,6 +432,7 @@ func functionFlowsToType(m *wasm.Module, function, typeIndex uint32) bool {
 
 func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *[]TailResultSite, mutatedTables map[uint32]bool, m *wasm.Module, multiMemory bool) error {
 	r := wasm.NewReader(body)
+	classifier := wasm.NewModuleInstructionClassifier(m, multiMemory)
 	var previous wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -439,7 +440,7 @@ func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *
 			return err
 		}
 		var imm wasm.InstructionImmediate
-		if err := wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, multiMemory); err != nil {
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return err
 		}
 		markMutatedTable(imm.Kind, uint32(imm.Index), uint32(imm.Index2), mutatedTables)

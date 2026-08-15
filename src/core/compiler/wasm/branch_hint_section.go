@@ -65,6 +65,7 @@ func decodeBranchHintSection(payload []byte) ([]FuncBranchHints, error) {
 // instruction-boundary check.
 func validateBranchHints(m *Module) error {
 	imported := m.ImportedFuncCount()
+	classifier := NewModuleInstructionClassifier(m, true)
 	for _, funcs := range m.BranchHints {
 		if funcs.FuncIndex < uint32(imported) {
 			return &DecodeError{Code: ErrInvalidSection}
@@ -86,7 +87,7 @@ func validateBranchHints(m *Module) error {
 				if err != nil {
 					return &DecodeError{Code: ErrInvalidSection}
 				}
-				if err := ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, true); err != nil {
+				if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 					return &DecodeError{Code: ErrInvalidSection}
 				}
 			}
@@ -100,7 +101,7 @@ func validateBranchHints(m *Module) error {
 			if op != 0x04 && op != 0x0d {
 				return &DecodeError{Code: ErrInvalidSection}
 			}
-			if err := ClassifyInstructionImmediateIntoWithModuleFeatures(r, op, &imm, m, true); err != nil {
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 				return &DecodeError{Code: ErrInvalidSection}
 			}
 		}
