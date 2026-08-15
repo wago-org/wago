@@ -1940,6 +1940,76 @@ func (f *fn) tryI8x16BitmaskPopcnt(r *wasm.Reader) bool {
 	return true
 }
 
+// tryWideBitmaskConsumer selects an immediately consumed i16x8/i32x4/i64x2
+// bitmask. A zero test needs only whether any lane sign bit is set, while
+// popcount needs only their count; neither consumer needs the packed scalar
+// mask or its lane-weight constant.
+func (f *fn) tryWideBitmaskConsumer(r *wasm.Reader, laneBits int, popcnt bool) bool {
+	if !f.opt(optSIMDWideBitmask) {
+		return false
+	}
+	look := *r
+	if popcnt {
+		op, err := look.Byte()
+		if err != nil || op != 0x69 { // i32.popcnt
+			return false
+		}
+	} else {
+		op, err := look.Byte()
+		if err != nil || op != 0x41 { // i32.const
+			return false
+		}
+		zero, err := look.I32()
+		if err != nil || zero != 0 {
+			return false
+		}
+		op, err = look.Byte()
+		if err != nil || op != 0x47 { // i32.ne
+			return false
+		}
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("arm64: copied wide-bitmask lookahead produced an invalid reader offset")
+	}
+
+	v := f.popValue()
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	result := f.allocReg(0)
+	switch laneBits {
+	case 16:
+		f.a.NeonUshrH(x, src, 15)
+		f.a.NeonAddvH(x, x)
+		f.a.FmovToGpr(result, x, false)
+	case 32:
+		f.a.NeonUshrS(x, src, 31)
+		f.a.NeonAddvS(x, x)
+		f.a.FmovToGpr(result, x, false)
+	case 64:
+		f.a.NeonUshrD(x, src, 63)
+		hi := f.allocReg(maskOf(result))
+		f.a.FmovToGpr(result, x, true)
+		f.a.NeonUmovD(hi, x, 1)
+		f.a.Add32(result, result, hi)
+		f.release(hi)
+	default:
+		panic("arm64: unsupported wide bitmask lane width")
+	}
+	f.releaseF(x)
+	if popcnt {
+		f.stats.peep("simd-bitmask-popcnt")
+	} else {
+		f.a.CmpImm32(result, 0)
+		f.a.Cset32(result, condNE)
+		f.stats.peep("simd-bitmask-nonzero")
+	}
+	f.pushReg(result, mtI32)
+	return true
+}
+
 // v128MaskReg materializes a 128-bit constant into a fresh V register without
 // clobbering the caller's live operand(s) named in avoid.
 func (f *fn) v128MaskReg(lo, hi uint64, avoid regMask) Reg {
@@ -2824,14 +2894,25 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 131: // i16x8.all_true
 		f.i16x8AllTrue()
 	case 132: // i16x8.bitmask
+		if f.tryWideBitmaskConsumer(r, 16, true) || f.tryWideBitmaskConsumer(r, 16, false) {
+			break
+		}
 		f.i16x8Bitmask()
 	case 163: // i32x4.all_true
 		f.i32x4AllTrue()
 	case 164: // i32x4.bitmask
+		if f.tryWideBitmaskConsumer(r, 32, true) || f.tryWideBitmaskConsumer(r, 32, false) {
+			break
+		}
 		f.i32x4Bitmask()
 	case 195: // i64x2.all_true
 		f.i64x2AllTrue()
 	case 196: // i64x2.bitmask
+		// M4 measures the two-lane zero-test reduction slower than packing and
+		// testing the mask; retain only the profitable popcount consumer.
+		if f.tryWideBitmaskConsumer(r, 64, true) {
+			break
+		}
 		f.i64x2Bitmask()
 	case 96: // i8x16.abs
 		return f.v128IntegerAbs(r, f.a.NeonAbsB)

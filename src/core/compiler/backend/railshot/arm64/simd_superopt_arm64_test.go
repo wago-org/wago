@@ -3,9 +3,14 @@
 package arm64
 
 import (
+	"fmt"
+	"syscall"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/arm64spike"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func simdAndAnyTrueBodyArm64(a, b [16]byte) []byte {
@@ -162,6 +167,198 @@ func TestSIMDBitmaskPopcntSuperoptArm64(t *testing.T) {
 			if on.CodeBytes >= off.CodeBytes {
 				t.Fatalf("fused code = %d bytes, unfused = %d; want smaller", on.CodeBytes, off.CodeBytes)
 			}
+		})
+	}
+}
+
+func simdWideBitmaskConsumerBodyArm64(v [16]byte, bitmaskOp uint32, popcnt bool, compare int32) []byte {
+	body := []byte{0x00}
+	body = append(body, simdConst(v)...)
+	body = append(body, simdOp(bitmaskOp)...)
+	if popcnt {
+		return append(body, 0x69, 0x0b) // i32.popcnt; end
+	}
+	body = append(body, 0x41)
+	body = append(body, wasmtest.SLEB32(compare)...)
+	return append(body, 0x47, 0x0b) // i32.ne; end
+}
+
+func TestSIMDWideBitmaskConsumersArm64(t *testing.T) {
+	cases := []struct {
+		name      string
+		v         [16]byte
+		bitmaskOp uint32
+		count     uint64
+		nonzero   bool
+	}{
+		{"i16x8", i16x8Bytes(-1, 0, -32768, 7, 8, -2, 10, 11), 132, 3, true},
+		{"i32x4", i32x4Bytes(-1, 0, -2147483648, 7), 164, 2, true},
+		{"i64x2", i64x2Bytes(-1, 0), 196, 1, false},
+	}
+	for _, tc := range cases {
+		for _, popcnt := range []bool{false, true} {
+			if !popcnt && !tc.nonzero {
+				continue
+			}
+			consumer := "nonzero"
+			want := uint64(1)
+			peep := "simd-bitmask-nonzero"
+			if popcnt {
+				consumer = "popcnt"
+				want = tc.count
+				peep = "simd-bitmask-popcnt"
+			}
+			t.Run(tc.name+"/"+consumer, func(t *testing.T) {
+				body := simdWideBitmaskConsumerBodyArm64(tc.v, tc.bitmaskOp, popcnt, 0)
+				m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+				compile := func(enabled bool) *CodegenStats {
+					var stats ModuleStats
+					cm, err := CompileModuleWith(m, CompileOptions{
+						Stats:         &stats,
+						Optimizations: map[string]bool{"simd-wide-bitmask-consumer": enabled},
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if cm.CodeImage != nil {
+						t.Cleanup(func() { cm.CodeImage.Close() })
+					}
+					return stats.Funcs[0]
+				}
+				on, off := compile(true), compile(false)
+				if got := on.Peephole[peep]; got != 1 {
+					t.Fatalf("%s hits = %d, want 1 (all: %v)", peep, got, on.Peephole)
+				}
+				if got := off.Peephole[peep]; got != 0 {
+					t.Fatalf("disabled %s hits = %d, want 0", peep, got)
+				}
+				if on.CodeBytes > off.CodeBytes || (on.CodeBytes == off.CodeBytes && tc.name != "i64x2") {
+					t.Fatalf("fused/unfused code = %d/%d bytes, want no growth and a reduction before i64 alignment", on.CodeBytes, off.CodeBytes)
+				}
+				t.Logf("fused/unfused code = %d/%d bytes", on.CodeBytes, off.CodeBytes)
+				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"simd-wide-bitmask-consumer": true}})
+				if err != nil || got != want {
+					t.Fatalf("result = %d, %v; want %d", got, err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestSIMDWideBitmaskNonZeroRejectsOtherConstantArm64(t *testing.T) {
+	body := simdWideBitmaskConsumerBodyArm64(i16x8Bytes(-1), 132, false, 1)
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stats.Funcs[0].Peephole["simd-bitmask-nonzero"]; got != 0 {
+		t.Fatalf("simd-bitmask-nonzero hits = %d, want 0", got)
+	}
+	if got := runArm64I32(t, body); got != 0 {
+		t.Fatalf("bitmask != 1 = %d, want 0", got)
+	}
+}
+
+func benchmarkSIMDWideBitmaskBodyARM64(v [16]byte, bitmaskOp uint32, popcnt bool) []byte {
+	body := []byte{0x00}
+	for i := 0; i < 64; i++ {
+		body = append(body, simdConst(v)...)
+		body = append(body, simdOp(bitmaskOp)...)
+		if popcnt {
+			body = append(body, 0x69) // i32.popcnt
+		} else {
+			body = append(body, 0x41, 0x00, 0x47) // i32.const 0; i32.ne
+		}
+		if i != 0 {
+			body = append(body, 0x6a) // i32.add
+		}
+	}
+	return append(body, 0x0b)
+}
+
+func BenchmarkSIMDWideBitmaskConsumersARM64(b *testing.B) {
+	for _, tc := range []struct {
+		name      string
+		v         [16]byte
+		bitmaskOp uint32
+		nonzero   bool
+	}{
+		{"i16x8", i16x8Bytes(-1, 0, -32768, 7, 8, -2, 10, 11), 132, true},
+		{"i32x4", i32x4Bytes(-1, 0, -2147483648, 7), 164, true},
+		{"i64x2", i64x2Bytes(-1, 0), 196, false},
+	} {
+		for _, popcnt := range []bool{false, true} {
+			if !popcnt && !tc.nonzero {
+				continue
+			}
+			consumer := "nonzero"
+			if popcnt {
+				consumer = "popcnt"
+			}
+			body := benchmarkSIMDWideBitmaskBodyARM64(tc.v, tc.bitmaskOp, popcnt)
+			m := mod1(b, nil, []wasm.ValType{wasm.I32}, body)
+			for _, enabled := range []bool{false, true} {
+				selection := "unfused"
+				if enabled {
+					selection = "fused"
+				}
+				b.Run(fmt.Sprintf("%s/%s/%s", tc.name, consumer, selection), func(b *testing.B) {
+					cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{
+						"simd-wide-bitmask-consumer": enabled,
+						"stack-fence":                false,
+					}})
+					if err != nil {
+						b.Fatal(err)
+					}
+					code, err := arm64spike.MapExec(cm.Code)
+					if err != nil {
+						b.Fatal(err)
+					}
+					b.Cleanup(func() { _ = syscall.Munmap(code) })
+					entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+					b.ReportAllocs()
+					b.ReportMetric(float64(len(cm.Code)), "code-B")
+					b.ResetTimer()
+					for range b.N {
+						arm64spike.Call2(entry, 0, 0)
+					}
+				})
+			}
+		}
+	}
+}
+
+func BenchmarkSIMDWideBitmaskConsumersCompileARM64(b *testing.B) {
+	body := benchmarkSIMDWideBitmaskBodyARM64(i16x8Bytes(-1, 0, -32768, 7, 8, -2, 10, 11), 132, false)
+	m := mod1(b, nil, []wasm.ValType{wasm.I32}, body)
+	for _, enabled := range []bool{false, true} {
+		name := "unfused"
+		if enabled {
+			name = "fused"
+		}
+		b.Run(name, func(b *testing.B) {
+			opts := CompileOptions{Workers: 1, Optimizations: map[string]bool{"simd-wide-bitmask-consumer": enabled}}
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Stats: &stats, Optimizations: opts.Optimizations})
+			if err != nil {
+				b.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				_ = cm.CodeImage.Close()
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				cm, err := CompileModuleWith(m, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if cm.CodeImage != nil {
+					_ = cm.CodeImage.Close()
+				}
+			}
+			b.ReportMetric(float64(stats.Funcs[0].CodeBytes), "code-B")
 		})
 	}
 }

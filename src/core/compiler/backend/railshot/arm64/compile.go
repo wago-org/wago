@@ -84,6 +84,11 @@ var constGCStructGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONST_STRUCT_GET") != 
 // exact non-null result back to the same defined type.
 var gcConstructorCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONSTRUCTOR_CAST") != "1"
 
+// simdWideBitmaskConsumerEnabled avoids materializing a scalar mask when a
+// 16- or 32-bit lane bitmask is consumed immediately by a zero test, or a
+// 16-, 32-, or 64-bit lane mask by popcount. Selection uses fixed lookahead.
+var simdWideBitmaskConsumerEnabled = os.Getenv("WAGO_ARM64_NO_SIMD_WIDE_BITMASK_CONSUMER") != "1"
+
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
 // checks and the Speed/Balanced layouts are unchanged.

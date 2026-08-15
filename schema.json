@@ -102,6 +102,7 @@
               "reg-abi",
               "reg-merge",
               "shuffle-half-zip",
+              "simd-wide-bitmask-consumer",
               "small-frame",
               "st-flags",
               "stack-fence",

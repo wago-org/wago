@@ -639,6 +639,29 @@ us/op (-28.1%); allocations fell from 35 to 31 and median B/op fell by about
 4.2 KiB. Enabled and disabled forced-collection paths both retain exactly 200
 allocations across 100 calls, and a non-adjacent cast is an explicit near miss.
 
+### 2026-08-14 — ARM64 wide-bitmask consumer fusion
+
+ARM64 now recognizes exact adjacent `i16x8.bitmask`/`i32x4.bitmask` consumers
+that either compare the mask with zero or population-count it, plus
+`i64x2.bitmask` followed by population count. The lowering shifts each lane's
+sign bit to 0/1 and horizontally sums those values, avoiding the lane-weight
+constant and packed scalar-mask synthesis. It uses at most two copied-reader
+operations, has no retained state or allocation, is controlled by immutable
+per-compilation policy, and leaves the live reader untouched on every near miss.
+Comparisons with nonzero constants retain the ordinary lowering. The two-lane nonzero form
+was deliberately excluded after an Apple M4 Max trial measured it slower.
+
+Five Apple M4 Max samples of a 64-sequence native fixture improved medians from
+32.36 to 14.46 ns/op for i16x8 nonzero (-55.3%), 35.36 to 11.67 ns/op for
+i16x8 popcount (-67.0%), 26.05 to 13.82 ns/op for i32x4 nonzero (-47.0%),
+31.70 to 11.84 ns/op for i32x4 popcount (-62.6%), and 27.13 to 19.13 ns/op for
+i64x2 popcount (-29.5%). Every path remained zero-allocation. Per-site native
+bytes fell from 160 to 120, 168 to 112, 132 to 108, 140 to 100, and 104 to 88,
+respectively. On the 64-sequence i16x8 nonzero compile fixture, five-sample
+median compile time improved from 31.475 to 20.765 us/op (-34.0%), native bytes
+fell from 4,808 to 1,988, compile B/op fell from 100,187 to 42,795, and
+allocations fell from 23 to 21.
+
 ---
 
 # 1. North-star architecture

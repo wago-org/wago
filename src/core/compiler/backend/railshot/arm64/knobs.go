@@ -30,6 +30,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("gc-fixed-array-len", &fixedGCArrayLenEnabled),
 	optimization.Bind("gc-const-struct-get", &constGCStructGetEnabled),
 	optimization.Bind("gc-constructor-cast", &gcConstructorCastEnabled),
+	optimization.Bind("simd-wide-bitmask-consumer", &simdWideBitmaskConsumerEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
 	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
@@ -78,6 +79,7 @@ var (
 	optGCFixedArrayLen       = optimizationBindings.Option("gc-fixed-array-len")
 	optGCConstStructGet      = optimizationBindings.Option("gc-const-struct-get")
 	optGCConstructorCast     = optimizationBindings.Option("gc-constructor-cast")
+	optSIMDWideBitmask       = optimizationBindings.Option("simd-wide-bitmask-consumer")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
 	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")
