@@ -99,7 +99,7 @@ func BenchmarkAnalyzeModuleRequirementsMixedManyFunctionsAndMemories(b *testing.
 		m.Code[i].BodyBytes = body
 	}
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		got := analyzeModuleRequirements(m)
 		if !got.features.IsEnabled(CoreFeatureMultiMemory) || !got.features.IsEnabled(CoreFeatureMemory64) {
 			b.Fatal(got.features)

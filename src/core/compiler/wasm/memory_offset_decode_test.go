@@ -26,7 +26,7 @@ func BenchmarkModuleMemargWidthsManyImports(b *testing.B) {
 		m.Imports[i].Type = memory64
 	}
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		if got := moduleMemargWidths(m); len(got.indexed64) != 0 || !got.fixed64 {
 			b.Fatal(got)
 		}
@@ -45,7 +45,7 @@ func BenchmarkModuleInstructionClassifierManyImportsAndOps(b *testing.B) {
 		body[i] = 0x01 // nop; the old per-op module helper still rescanned imports
 	}
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		classifier := NewModuleInstructionClassifier(m, true)
 		r := NewReader(body)
 		var imm InstructionImmediate
@@ -78,7 +78,7 @@ func BenchmarkModuleInstructionClassifierMixedLateMemory(b *testing.B) {
 		body = append(body, 0x28, 0x40, 0x8f, 0x4e, 0x00) // i32.load memory 9999, offset 0
 	}
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		classifier := NewModuleInstructionClassifier(m, true)
 		r := NewReader(body)
 		var imm InstructionImmediate
