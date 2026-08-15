@@ -1813,6 +1813,12 @@ func callRematFrameLeaf(e *elem) bool {
 	return e != nil && e.kind == ekValue && (e.st.kind == stConst || e.st.kind == stLocalRef)
 }
 
+func (f *fn) canCondenseCallArgTo(root *elem, target Reg) bool {
+	return f.opt(optCallArgDirect) && root != nil && root.isDeferred() &&
+		f.regUser[target] == nil && !f.pinned.has(target) &&
+		!f.pinnedLocalMask.has(target) && !f.reserved.has(target)
+}
+
 // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
 // or an indirect register call. The top operands become ABI argument registers;
 // resHint may sink a single result directly into a pinned local. Explicit
@@ -1854,9 +1860,20 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
 		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
-			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
+			target := intArgRegs[i]
+			reg := regNone
+			// A free target is safe to own immediately: every other argument remains
+			// represented on the operand stack, so recursive condensation may spill
+			// it but cannot silently clobber it. Fixed/reserved/borrowed targets keep
+			// the ordinary materialize-plus-parallel-copy path.
+			if f.canCondenseCallArgTo(root, target) {
+				reg = f.condense(root, target)
+				f.stats.peep("call-arg-direct")
+			} else {
+				reg = f.materialize(root) // stMemRef → emits the deferred load into its addr reg
+			}
 			f.pinned = f.pinned.add(reg)
-			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
+			moves = append(moves, regMove{dst: target, src: reg})
 		} else {
 			deferred = append(deferred, deferredArg{target: intArgRegs[i], root: root})
 		}

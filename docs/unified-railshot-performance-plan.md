@@ -3861,3 +3861,45 @@ removed. This opportunity density does not justify permanent summary memory or
 lowering state. Call-separated residency should remain deferred until profiles
 identify executable hot regions or another required summary can carry the same
 facts without incremental module storage.
+
+## 2026-08-15 — AMD64 direct deferred call arguments
+
+AMD64 integer register-ABI calls now give each deferred argument expression its
+physical ABI register as a destination when that register is free, unreserved,
+unpinned, and has no local-cache owner. The existing Valent condenser therefore
+emits the expression directly into `RAX`, `RCX`, `RDX`, or the later argument
+registers, and the bounded parallel-copy resolver sees an identity edge. An
+occupied or fixed-role target, a nondeferred value, disabled policy, and every
+pressure conflict retain ordinary materialization followed by the proven
+parallel move. No scan, retained descriptor, retry, or compiler allocation is
+added.
+
+The immutable option and rollback control are:
+
+```text
+call-arg-direct
+WAGO_AMD64_NO_CALL_ARG_DIRECT=1
+```
+
+Across the exact 64-module Balanced corpus, the rule records 39,788 selections
+and removes 39,434 attributed integer-call moves. Total module-image bytes fall
+from 80,956,932 to 80,891,624 (-65,308, -0.08%); no module grows. Script has
+16,635 selections, followed by SQLite (5,750), Ruby (5,686), Esbuild (4,488),
+and Regexmatch (3,611).
+
+On a 16-call Ryzen 7 7800X3D fixture, five complete one-second samples improve
+from a 22.79 to 22.28 ns/op median (-2.2%), reduce the caller from 291 to 259
+native bytes, and remain at zero B/op and allocations. Six focused compile
+samples improve from about 16.26 to 15.65 us/op (-3.7%) with 36 allocations
+unchanged. Fixed-work Ruby, Esbuild, SQLite, and Regexmatch compile medians have
+a favorable roughly -0.3% geomean; SQLite is the largest memory change at about
++1.25% B/op and +0.36% allocations, within the gate. JSON serialize and
+deserialize remain timing-neutral at roughly 108.7 and 194.9 ns/op with zero
+execution allocations.
+
+Tests cover enabled and disabled execution, physical-register near misses,
+move and byte reduction, serial/parallel determinism, and generated-schema
+registration. The full local repository suite, native AMD64 backend, executable
+benchmark corpus, and regression corpus pass. The remote full-repository run is
+otherwise limited by its absent pinned `tests/spec-v3` checkout and one unrelated
+plugin go.mod fixture failure.

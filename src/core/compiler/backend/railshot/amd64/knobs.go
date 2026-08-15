@@ -15,6 +15,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("call-remat-const", &callRematConstEnabled),
 	optimization.Bind("call-remat-local", &callRematLocalEnabled),
 	optimization.Bind("call-remat-bin", &callRematBinEnabled),
+	optimization.Bind("call-arg-direct", &callArgDirectEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
 	optimization.Bind("three-way-unsigned", &threeWayUnsignedEnabled),
 	optimization.Bind("tee-add-carry", &teeAddCarryEnabled),
@@ -74,6 +75,7 @@ var (
 	optCallRematConst       = optimizationBindings.Option("call-remat-const")
 	optCallRematLocal       = optimizationBindings.Option("call-remat-local")
 	optCallRematBin         = optimizationBindings.Option("call-remat-bin")
+	optCallArgDirect        = optimizationBindings.Option("call-arg-direct")
 	optSTFlags              = optimizationBindings.Option("st-flags")
 	optThreeWayUnsigned     = optimizationBindings.Option("three-way-unsigned")
 	optTeeAddCarry          = optimizationBindings.Option("tee-add-carry")

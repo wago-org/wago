@@ -54,6 +54,9 @@ var (
 	// through disjoint caller-state reloads. WAGO_AMD64_NO_CALL_RESULT_RESIDENCY=1
 	// is the rollback path.
 	callResultResidencyEnabled = os.Getenv("WAGO_AMD64_NO_CALL_RESULT_RESIDENCY") != "1"
+	// callArgDirectEnabled lowers a deferred integer argument directly into its
+	// free ABI target register. WAGO_AMD64_NO_CALL_ARG_DIRECT=1 is the A/B oracle.
+	callArgDirectEnabled = os.Getenv("WAGO_AMD64_NO_CALL_ARG_DIRECT") != "1"
 	// boundsRangeEnabled lets a first scalar load certify later fixed-offset loads
 	// in the same pure straight-line range. Kept separate for A/B measurement.
 	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"
