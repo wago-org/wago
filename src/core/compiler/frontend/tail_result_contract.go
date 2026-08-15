@@ -26,6 +26,10 @@ type TailResultSite struct {
 // deliberately narrow, mechanically evident ref.func-immediately-before-call
 // shape. Other reference producers remain dynamic and conservative.
 func AnalyzeTailResultSites(m *wasm.Module) ([]TailResultSite, error) {
+	return analyzeTailResultSitesWithFeatures(m, wasm.ValidationFeatures{})
+}
+
+func analyzeTailResultSitesWithFeatures(m *wasm.Module, features wasm.ValidationFeatures) ([]TailResultSite, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil module")
 	}
@@ -37,7 +41,7 @@ func AnalyzeTailResultSites(m *wasm.Module) ([]TailResultSite, error) {
 		ordinal := uint32(0)
 		fn := &m.Code[local]
 		if len(fn.BodyBytes) != 0 {
-			if err := scanTailResultByteBody(fn.BodyBytes, caller, &ordinal, &sites, nil, memarg64); err != nil {
+			if err := scanTailResultByteBody(fn.BodyBytes, caller, &ordinal, &sites, nil, memarg64, features.MultiMemory); err != nil {
 				return nil, fmt.Errorf("function %d tail-result scan: %w", caller, err)
 			}
 			continue
@@ -90,11 +94,11 @@ func ValidateTailResultRewriteWithFeatures(before, after *wasm.Module, features 
 		return err
 	}
 
-	beforeSites, err := AnalyzeTailResultSites(before)
+	beforeSites, err := analyzeTailResultSitesWithFeatures(before, features)
 	if err != nil {
 		return err
 	}
-	afterSites, err := AnalyzeTailResultSites(after)
+	afterSites, err := analyzeTailResultSitesWithFeatures(after, features)
 	if err != nil {
 		return err
 	}
@@ -125,11 +129,11 @@ func ValidateTailResultRewriteWithFeatures(before, after *wasm.Module, features 
 				return fmt.Errorf("return_call_ref at caller %d site %d did not rewrite its known target with type %d", site.Caller, site.Ordinal, site.Target)
 			}
 		case wasm.InstrReturnCallIndirect:
-			beforeTargets, ok := immutableLocalTableTargets(before, site.Table)
+			beforeTargets, ok := immutableLocalTableTargets(before, site.Table, features.MultiMemory)
 			if !ok {
 				return fmt.Errorf("return_call_indirect at caller %d site %d has an unknown target set", site.Caller, site.Ordinal)
 			}
-			afterTargets, ok := immutableLocalTableTargets(after, site.Table)
+			afterTargets, ok := immutableLocalTableTargets(after, site.Table, features.MultiMemory)
 			if !ok || !slices.Equal(beforeTargets, afterTargets) {
 				return fmt.Errorf("return_call_indirect at caller %d site %d changed or lost its proven target set", site.Caller, site.Ordinal)
 			}
@@ -427,7 +431,7 @@ func functionFlowsToType(m *wasm.Module, function, typeIndex uint32) bool {
 	return m.ReferenceTypeSubtype(actual, required)
 }
 
-func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *[]TailResultSite, mutatedTables map[uint32]bool, memarg64 bool) error {
+func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *[]TailResultSite, mutatedTables map[uint32]bool, memarg64, multiMemory bool) error {
 	r := wasm.NewReader(body)
 	var previous wasm.InstructionImmediate
 	for r.HasNext() {
@@ -436,7 +440,7 @@ func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *
 			return err
 		}
 		var imm wasm.InstructionImmediate
-		if err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(r, op, &imm, memarg64); err != nil {
+		if err := wasm.ClassifyInstructionImmediateIntoWithFeatures(r, op, &imm, memarg64, multiMemory); err != nil {
 			return err
 		}
 		markMutatedTable(imm.Kind, uint32(imm.Index), uint32(imm.Index2), mutatedTables)
@@ -511,7 +515,7 @@ func markMutatedTable(kind wasm.InstrKind, index, index2 uint32, mutated map[uin
 	}
 }
 
-func immutableLocalTableTargets(m *wasm.Module, table uint32) ([]uint32, bool) {
+func immutableLocalTableTargets(m *wasm.Module, table uint32, multiMemory bool) ([]uint32, bool) {
 	imports := uint32(m.ImportedTableCount())
 	if table < imports || int(table) >= m.TableCount() {
 		return nil, false
@@ -527,7 +531,7 @@ func immutableLocalTableTargets(m *wasm.Module, table uint32) ([]uint32, bool) {
 		fn := &m.Code[i]
 		ordinal := uint32(0)
 		if len(fn.BodyBytes) != 0 {
-			if err := scanTailResultByteBody(fn.BodyBytes, uint32(m.ImportedFuncCount()+i), &ordinal, nil, mutated, memarg64); err != nil {
+			if err := scanTailResultByteBody(fn.BodyBytes, uint32(m.ImportedFuncCount()+i), &ordinal, nil, mutated, memarg64, multiMemory); err != nil {
 				return nil, false
 			}
 		} else {

@@ -517,6 +517,26 @@ func TestValidateTailResultRewriteUsesExactValidationFeatures(t *testing.T) {
 		if err := ValidateTailResultRewriteWithFeatures(before, after, wasm.ValidationFeatures{MultiMemory: true}); err != nil {
 			t.Fatalf("multi-memory result rewrite: %v", err)
 		}
+
+		before = indirectTailRewriteModule([]wasm.ValType{wasm.I32}, false)
+		after = indirectTailRewriteModule(nil, false)
+		for _, m := range []*wasm.Module{before, after} {
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1}}}
+			m.Code[0].Body.Instrs = nil
+			m.Code[1].Body.Instrs = nil
+			m.Code[1].BodyBytes = []byte{
+				0x3f, 0x01, // memory.size 1
+				0x1a,       // drop
+				0x41, 0x00, // i32.const 0
+				0x13, 0x00, 0x00, // return_call_indirect type 0 table 0
+				0x0b,
+			}
+		}
+		before.Code[0].BodyBytes = []byte{0x41, 0x00, 0x0b}
+		after.Code[0].BodyBytes = []byte{0x0b}
+		if err := ValidateTailResultRewriteWithFeatures(before, after, wasm.ValidationFeatures{MultiMemory: true}); err != nil {
+			t.Fatalf("byte-backed multi-memory result rewrite: %v", err)
+		}
 	})
 
 	t.Run("memory64 byte-backed memarg", func(t *testing.T) {

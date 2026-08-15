@@ -50,7 +50,8 @@ surfaces are conservative because externalized GC objects may carry nested
 function references in either boundary direction;
 parameter rewrites; tail-site retargeting; mutable or exported tables; imported
 indirect targets; and dynamic `return_call_ref` producers. Byte-backed scans use
-the validated module's memory32 or memory64 memarg width.
+the validated module's memory32 or memory64 memarg width and staged multi-memory
+immediate encoding.
 
 The helper is intentionally off the ordinary compile hot path. The current
 Railshot optimizations do not rewrite Wasm function signatures, so paying for a
@@ -72,7 +73,8 @@ immutable-indirect, and immediate-reference elimination; partial transforms;
 mutable tables; imported targets and reference sinks; typed-global references;
 recursive signature graphs, including nested function-result changes reached from
 parameters; exported function-reference escape surfaces; caller-only reference
-covariance; memory64 byte-backed memargs; AST/byte-backed parity; and fuzz seeds.
+covariance; memory64 memargs and multi-memory indexes in byte-backed bodies;
+AST/byte-backed parity; and fuzz seeds.
 
 The runtime matrix executes direct, indirect, and reference proper tails across
 Balanced, Size, and Embedded objectives. Scalar, multivalue, SIMD,
