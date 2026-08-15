@@ -6,7 +6,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/project"
 )
 
-func TestFormatReviewPlanGroupsChangesByPlugin(t *testing.T) {
+func TestFormatReviewPlanGroupsContractChangesByPlugin(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	plan := ResolutionPlan{
 		Reviews: []AuthorityReview{
@@ -48,11 +48,6 @@ func TestFormatReviewPlanGroupsChangesByPlugin(t *testing.T) {
   Authority grants constrain Wago interfaces; they are not an OS sandbox.
 
 github.com/wago-org/wasi
-  Authorities
-    host.arguments.read  required · new
-      expose the guest argv
-    host.import.define  required · new
-      define WASI host functions  modules=wasi_snapshot_preview1
   Contracts
     github.com/wago-org/stdio@1  optional · changed
       available: github.com/wago-org/stdio-native

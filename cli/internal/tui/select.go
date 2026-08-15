@@ -17,6 +17,7 @@ type SelectItem struct {
 	Description string // one-line human description (may be empty)
 	On          bool   // currently selected
 	Disabled    bool   // visible preview row that cannot be toggled or selected
+	Reject      bool   // exclusive visible action that clears every normal row
 }
 
 // selectKey is a normalized keypress the model understands.
@@ -82,12 +83,21 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 	case keyToggle:
 		if len(m.Items) > 0 && !m.Items[m.Cursor].Disabled {
-			m.Items[m.Cursor].On = !m.Items[m.Cursor].On
+			if m.Items[m.Cursor].Reject {
+				for i := range m.Items {
+					m.Items[i].On = i == m.Cursor
+				}
+			} else {
+				m.Items[m.Cursor].On = !m.Items[m.Cursor].On
+				if m.Items[m.Cursor].On {
+					m.clearRejection()
+				}
+			}
 		}
 	case keyAll:
 		allSelected, selectable := true, false
 		for _, item := range m.Items {
-			if item.Disabled {
+			if item.Disabled || item.Reject {
 				continue
 			}
 			selectable = true
@@ -98,8 +108,10 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 		allSelected = allSelected && selectable
 		for i := range m.Items {
-			if !m.Items[i].Disabled {
+			if !m.Items[i].Disabled && !m.Items[i].Reject {
 				m.Items[i].On = !allSelected
+			} else if m.Items[i].Reject {
+				m.Items[i].On = false
 			}
 		}
 	case keyClear:
@@ -110,7 +122,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 	case keyReject: // clear all, then submit — a deliberate "grant nothing"
 		for i := range m.Items {
-			m.Items[i].On = false
+			m.Items[i].On = m.Items[i].Reject
 		}
 		return true, false
 	case keyAccept, keyRight:
@@ -125,11 +137,29 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 func (m *MultiSelect) Chosen() []string {
 	var out []string
 	for _, it := range m.Items {
-		if it.On && !it.Disabled {
+		if it.On && !it.Disabled && !it.Reject {
 			out = append(out, it.Label)
 		}
 	}
 	return out
+}
+
+// Rejected reports whether the explicit reject-all action is selected.
+func (m *MultiSelect) Rejected() bool {
+	for _, item := range m.Items {
+		if item.Reject && item.On {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *MultiSelect) clearRejection() {
+	for i := range m.Items {
+		if m.Items[i].Reject {
+			m.Items[i].On = false
+		}
+	}
 }
 
 // decodeKey maps a raw input chunk (one keypress, possibly a multi-byte escape

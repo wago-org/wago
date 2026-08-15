@@ -110,7 +110,7 @@ func TestMultiSelectAcceptCancel(t *testing.T) {
 }
 
 func TestMultiSelectRejectKey(t *testing.T) {
-	m := &MultiSelect{Items: []SelectItem{{Label: "a", On: true}, {Label: "b", On: true}}}
+	m := &MultiSelect{Items: []SelectItem{{Label: "a", On: true}, {Label: "b", On: true}, {Label: "Reject all", Reject: true}}}
 	// r clears everything and submits (grant nothing), and is NOT a cancel.
 	done, cancelled := m.apply(keyReject)
 	if !done || cancelled {
@@ -118,6 +118,26 @@ func TestMultiSelectRejectKey(t *testing.T) {
 	}
 	if got := m.Chosen(); len(got) != 0 {
 		t.Fatalf("r must clear all selections, got %v", got)
+	}
+	if !m.Rejected() {
+		t.Fatal("r did not select the explicit reject row")
+	}
+}
+
+func TestMultiSelectRejectRowIsExclusive(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{
+		{Label: "required", On: true},
+		{Label: "optional", On: true},
+		{Label: "Reject all", Reject: true},
+	}, Cursor: 2}
+	m.apply(keyToggle)
+	if got := m.Chosen(); got != nil || !m.Rejected() {
+		t.Fatalf("reject row left grants selected: chosen=%v rejected=%v", got, m.Rejected())
+	}
+	m.Cursor = 0
+	m.apply(keyToggle)
+	if got := m.Chosen(); !reflect.DeepEqual(got, []string{"required"}) || m.Rejected() {
+		t.Fatalf("grant row did not clear rejection: chosen=%v rejected=%v", got, m.Rejected())
 	}
 }
 

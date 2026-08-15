@@ -64,10 +64,12 @@ Add, update, and remove use the same all-or-nothing transaction:
 6. Atomically replace the manifest, lockfile, and artifact only after every
    prior step succeeds.
 
-Rejecting a required Authority cancels the transaction. Optional Authorities
-may be denied or narrowed. An error, interruption, failed build, mismatched
-definition, or invalid plugin leaves the previous project and runnable artifact
-unchanged.
+Interactive review shows required and optional Authorities as selectable rows.
+Required rows start selected and are marked as required; deselecting one asks
+for confirmation before cancelling the transaction. `Reject all` explicitly
+cancels installation without publishing changes. Optional Authorities may be
+denied or narrowed. An error, interruption, failed build, mismatched definition,
+or invalid plugin leaves the previous project and runnable artifact unchanged.
 
 ## Author narrower grants
 

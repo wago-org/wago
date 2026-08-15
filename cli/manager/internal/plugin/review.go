@@ -68,32 +68,11 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 				return project.LockDocument{}, err
 			}
 		}
-		var items []tui.SelectItem
-		var itemKeys []string
 		if interactiveAuthorities {
-			for _, review := range plan.Reviews {
-				if review.Request.Mode != project.AuthorityOptional {
-					continue
-				}
-				key := authorityKey(review.PluginID, review.Request.Name)
-				items = append(items, tui.SelectItem{
-					Label:       review.PluginID + ": " + review.Request.Name,
-					Description: review.Request.Reason + projectScopeSuffix(review.Request.Scope),
-					On:          keys[key],
-				})
-				itemKeys = append(itemKeys, key)
+			if err := reviewAuthorityChoices(plan.Reviews, keys); err != nil {
+				return project.LockDocument{}, err
 			}
-		}
-		if len(items) != 0 {
-			selector := &tui.MultiSelect{Title: "Optional authority grants", Prompt: "space toggle · enter accept · esc cancel", Items: items}
-			_, cancelled := tui.Run(selector)
-			if cancelled {
-				return project.LockDocument{}, fmt.Errorf("authority review cancelled; no changes were made")
-			}
-			for index := range itemKeys {
-				keys[itemKeys[index]] = selector.Items[index].On
-			}
-		} else if interactiveAuthorities || interactiveContracts {
+		} else if interactiveContracts {
 			selector := &tui.MultiSelect{Title: "Approve this reviewed plugin plan", Prompt: "enter accept · space decline · esc cancel", Items: []tui.SelectItem{{Label: "Apply this plan", Description: "publish the staged manifest, lock graph, and runtime together", On: true}}}
 			_, cancelled := tui.Run(selector)
 			if cancelled || !selector.Items[0].On {
@@ -113,10 +92,102 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 	return plan.Lock, nil
 }
 
+func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool) (*tui.MultiSelect, []string, map[string]bool) {
+	pluginIDs := map[string]bool{}
+	for _, review := range reviews {
+		pluginIDs[review.PluginID] = true
+	}
+	showPluginID := len(pluginIDs) > 1
+	title := "Authority grants"
+	if len(pluginIDs) == 1 {
+		for pluginID := range pluginIDs {
+			title += " · " + pluginID
+		}
+	}
+	items := make([]tui.SelectItem, 0, len(reviews)+1)
+	itemKeys := make([]string, 0, len(reviews))
+	requiredKeys := map[string]bool{}
+	for _, review := range reviews {
+		key := authorityKey(review.PluginID, review.Request.Name)
+		label := review.Request.Name
+		if showPluginID {
+			label = review.PluginID + ": " + label
+		}
+		description := string(review.Request.Mode)
+		if review.Request.Reason != "" {
+			description += " — " + review.Request.Reason
+		}
+		if review.Request.Mode == project.AuthorityRequired {
+			description += "; deselecting cancels installation"
+			requiredKeys[key] = true
+		}
+		if scope := projectScopeSuffix(review.Request.Scope); scope != "" {
+			description += scope
+		}
+		items = append(items, tui.SelectItem{Label: label, Description: description, On: choices[key]})
+		itemKeys = append(itemKeys, key)
+	}
+	items = append(items, tui.SelectItem{
+		Label: "Reject all", Description: "cancel installation and make no changes", Reject: true,
+	})
+	return &tui.MultiSelect{
+		Title: title, Prompt: "space toggle · enter confirm · r reject all · esc cancel", Items: items,
+	}, itemKeys, requiredKeys
+}
+
+func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool) error {
+	selector, itemKeys, requiredKeys := authorityReviewSelector(reviews, choices)
+	for {
+		submitted, cancelled := tui.Run(selector)
+		if !submitted || cancelled {
+			return fmt.Errorf("authority review cancelled; no changes were made")
+		}
+		missingRequired := requiredAuthorityDeselected(selector, itemKeys, requiredKeys)
+		if selector.Rejected() || missingRequired {
+			title := "Reject all authority grants?"
+			cancelDescription := "reject all grants and make no changes"
+			if missingRequired && !selector.Rejected() {
+				title = "Required authority deselected"
+				cancelDescription = "required authorities cannot be denied"
+			}
+			selection, ok := tui.Choose(title, []tui.Item{
+				{Label: "Continue review", Description: "restore required authorities and return to the list", Value: "continue"},
+				{Label: "Cancel installation", Description: cancelDescription, Value: "cancel"},
+			})
+			if ok && selection == "cancel" {
+				return fmt.Errorf("authority review rejected; no changes were made")
+			}
+			for index, key := range itemKeys {
+				if requiredKeys[key] {
+					selector.Items[index].On = true
+				}
+			}
+			for index := range selector.Items {
+				if selector.Items[index].Reject {
+					selector.Items[index].On = false
+				}
+			}
+			continue
+		}
+		for index, key := range itemKeys {
+			choices[key] = selector.Items[index].On
+		}
+		return nil
+	}
+}
+
+func requiredAuthorityDeselected(selector *tui.MultiSelect, itemKeys []string, requiredKeys map[string]bool) bool {
+	for index, key := range itemKeys {
+		if requiredKeys[key] && !selector.Items[index].On {
+			return true
+		}
+	}
+	return false
+}
+
 type pluginReviewGroup struct {
-	id          string
-	authorities []AuthorityReview
-	contracts   []ContractReview
+	id        string
+	contracts []ContractReview
 }
 
 func formatReviewPlan(plan ResolutionPlan) string {
@@ -130,10 +201,6 @@ func formatReviewPlan(plan ResolutionPlan) string {
 		groups = append(groups, pluginReviewGroup{id: id})
 		return &groups[len(groups)-1]
 	}
-	for _, review := range plan.Reviews {
-		current := group(review.PluginID)
-		current.authorities = append(current.authorities, review)
-	}
 	for _, review := range plan.ContractReviews {
 		current := group(review.PluginID)
 		current.contracts = append(current.contracts, review)
@@ -145,17 +212,6 @@ func formatReviewPlan(plan ResolutionPlan) string {
 	fmt.Fprintln(&output, "  Authority grants constrain Wago interfaces; they are not an OS sandbox.")
 	for _, group := range groups {
 		fmt.Fprintf(&output, "\n%s\n", cyan(group.id))
-		if len(group.authorities) != 0 {
-			fmt.Fprintf(&output, "  %s\n", bold("Authorities"))
-			for _, review := range group.authorities {
-				fmt.Fprintf(&output, "    %s  %s\n", review.Request.Name, dim(string(review.Request.Mode)+" · "+review.Change))
-				reason := review.Request.Reason
-				if scope := projectScopeText(review.Request.Scope); scope != "" {
-					reason += "  " + dim(scope)
-				}
-				fmt.Fprintf(&output, "      %s\n", reason)
-			}
-		}
 		if len(group.contracts) != 0 {
 			fmt.Fprintf(&output, "  %s\n", bold("Contracts"))
 			for _, review := range group.contracts {
