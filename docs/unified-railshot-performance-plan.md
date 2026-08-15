@@ -759,6 +759,26 @@ overwritten. Its Apple M4 Max prepared-invocation median improved from 98.7 to
 from 11.17 to 7.96 us/op (-28.7%), cut B/op 20.5%, removed three allocations,
 and reduced native output from 1,764 to 616 bytes.
 
+### 2026-08-14 — ARM64 native final array scalar reads
+
+ARM64 now lowers scalar `array.get`, `array.get_s`, and `array.get_u` for final,
+pointer-free element layouts through the checked native object resolver. The
+path preserves null-before-bounds trap order, checks the logical index against
+the array length, independently checks the scaled element extent against the
+object header size, and handles packed i8/i16, i32/i64, and f32/f64 loads.
+Reference/vector arrays, non-final layouts, disabled policy, and Size/Embedded
+objectives retain the helper. Repeated reads from one local reuse the bounded
+raw-address certificate; constant indices do not invalidate it.
+
+Execution tests cover null, logical out-of-bounds, all admitted scalar storage
+classes, signed/unsigned extension, and an eight-read reuse region. On Apple M4
+Max, that region improved from a 471.4 to 90.0 ns/op median (-80.9%) through
+prepared invocation with zero B/op and allocations. Compilation improved from
+13.75 to 11.10 us/op (-19.3%), B/op fell 63.4%, and allocations fell from 66 to
+54. Balanced native output grew from 1,384 to 1,588 bytes (+14.7%); compact
+objectives retain helpers, and the growth stays within the fixture's explicit
+256-byte budget.
+
 ---
 
 # 1. North-star architecture

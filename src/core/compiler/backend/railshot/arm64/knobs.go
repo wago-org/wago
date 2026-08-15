@@ -32,6 +32,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("gc-constructor-cast", &gcConstructorCastEnabled),
 	optimization.Bind("gc-native-final-array-len", &nativeGCFinalArrayLenEnabled),
 	optimization.Bind("gc-native-final-scalar-get", &nativeGCFinalScalarGetEnabled),
+	optimization.Bind("gc-native-final-array-scalar-get", &nativeGCFinalArrayScalarGetEnabled),
 	optimization.Bind("gc-native-resolve-reuse", &nativeGCResolveReuseEnabled),
 	optimization.Bind("simd-wide-bitmask-consumer", &simdWideBitmaskConsumerEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
@@ -84,6 +85,7 @@ var (
 	optGCConstructorCast     = optimizationBindings.Option("gc-constructor-cast")
 	optGCNativeFinalArrayLen = optimizationBindings.Option("gc-native-final-array-len")
 	optGCNativeScalarGet     = optimizationBindings.Option("gc-native-final-scalar-get")
+	optGCNativeArrayGet      = optimizationBindings.Option("gc-native-final-array-scalar-get")
 	optGCNativeResolveReuse  = optimizationBindings.Option("gc-native-resolve-reuse")
 	optSIMDWideBitmask       = optimizationBindings.Option("simd-wide-bitmask-consumer")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")

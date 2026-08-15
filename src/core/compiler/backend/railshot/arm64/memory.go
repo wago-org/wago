@@ -21,6 +21,7 @@ import (
 // to the amd64 twin's table).
 const (
 	trapUnreachable        = 1
+	trapBuiltin            = 2
 	trapMemOOB             = 3
 	trapIndirectOOB        = 5
 	trapIndirectSig        = 6

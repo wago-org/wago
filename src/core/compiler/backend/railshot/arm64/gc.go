@@ -541,6 +541,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("arm64: plain array.get cannot access packed storage")
 		}
+		if f.policy.EnabledOption(optGCNativeArrayGet) && !f.policy.CompactNative {
+			if scalar, ok := f.directGCArrayLayout(typeIndex); ok {
+				f.stats.peep("gc-native-final-array-scalar-get")
+				return f.emitNativeFinalArrayScalarGet(typeIndex, sub, scalar)
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
@@ -931,6 +937,52 @@ func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uin
 	}
 	result := f.allocReg(maskOf(object))
 	f.a.LoadIdx(result, object, ZR, disp, scalar.size, sub == 3, scalar.typ == mtI64)
+	f.release(object)
+	f.pushReg(result, scalar.typ)
+	return nil
+}
+
+func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directGCScalar) error {
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+
+	length := f.allocReg(maskOf(object, index))
+	f.ld32(length, object, 8)
+	f.cmpRR(index, length, false)
+	f.trapIf(condAE, trapBuiltin)
+	f.release(length)
+
+	if scalar.size > 1 {
+		f.a.LslImm64(index, index, uint8(log2u(uint64(scalar.size))))
+	}
+	objectSize := f.allocReg(maskOf(object, index))
+	f.ld32(objectSize, object, 4)
+	end := f.allocReg(maskOf(object, index, objectSize))
+	f.leaDisp(end, index, int32(gc.PayloadOffset)+int32(scalar.size), true)
+	f.cmpRR(end, objectSize, true)
+	f.trapIf(condA, trapCastFailure)
+	f.release(objectSize)
+
+	if scalar.typ.isFloat() {
+		result := f.allocFReg(0)
+		f.a.LdrFIdx(result, object, index, int32(gc.PayloadOffset), scalar.typ == mtF64)
+		f.release(end)
+		f.pinned = f.pinned.remove(index)
+		f.release(index)
+		f.release(object)
+		f.pushFReg(result, scalar.typ)
+		return nil
+	}
+	result := end
+	f.a.LoadIdx(result, object, index, int32(gc.PayloadOffset), scalar.size, sub == 12, scalar.typ == mtI64)
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
 	f.release(object)
 	f.pushReg(result, scalar.typ)
 	return nil
