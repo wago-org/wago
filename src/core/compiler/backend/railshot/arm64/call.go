@@ -141,21 +141,15 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 // The descriptor pointer remains owned by the instance's bounded descriptor arena;
 // no GC-managed reference or foreign wrapper result is admitted by this shape.
 func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
-	if ft == nil || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.FuncRef) || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
+	if ft == nil || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.FuncRef) || len(ft.Params) > len(intArgRegs) {
 		return false
 	}
-	gp, fp := 0, 0
 	for _, typ := range ft.Params {
-		switch {
-		case isIntValType(typ):
-			gp++
-		case isFloatValType(typ):
-			fp++
-		default:
+		if !isIntValType(typ) {
 			return false
 		}
 	}
-	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
+	return true
 }
 
 func stagedTailRegisterABI(ft *wasm.CompType, staged bool) bool {
@@ -1474,7 +1468,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
 	if f.opt(optRegABI) && stagedTailRegisterABI(ft, f.stagedTailDescriptors) {
-		if sigIsIntOnly(ft) {
+		if sigIsIntOnly(ft) || sigFitsReferenceResultRegABI(ft) {
 			f.stats.call(callKindRegisterABI)
 			preservesPins := f.directCalleePreservesPins(localIdx)
 			if recordRoots {
@@ -1977,7 +1971,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
-	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if sigFitsRegABI(ft) && sigIsIntOnly(ft) || sigFitsReferenceResultRegABI(ft) {
 		roots := f.rootsBottomToTop()
 		types := make([]machineType, len(roots))
 		var gcRoots []bool
@@ -2166,7 +2160,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.release(canonical)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
-	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if sigFitsRegABI(ft) && sigIsIntOnly(ft) || sigFitsReferenceResultRegABI(ft) {
 		// Flush once, then emit both guarded paths from the same canonical stack
 		// state. The compiler state for locals is restored before producing the
 		// wrapper path; at run time only one branch executes.

@@ -77,6 +77,43 @@ func TestARM64OrdinaryCallUsesFuncrefResultRegisterABI(t *testing.T) {
 	}
 }
 
+func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run_ref", 0, 1),
+			wasmtest.ExportEntry("run_indirect", 0, 2),
+		)),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd0, 0x70, 0x0b}),                         // ref.null func
+			wasmtest.Code([]byte{0xd2, 0x00, 0x14, 0x00, 0xd1, 0x0b}),       // ref.func 0; call_ref 0; ref.is_null
+			wasmtest.Code([]byte{0x41, 0x00, 0x11, 0x00, 0x00, 0xd1, 0x0b}), // call_indirect 0 0; ref.is_null
+		)),
+	)
+	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+		t.Run(objective.String(), func(t *testing.T) {
+			compiled := compileProperTailBehavior(t, module, objective, 3)
+			in, err := instantiateCore(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for _, export := range []string{"run_ref", "run_indirect"} {
+				got, err := in.Call(context.Background(), export)
+				if err != nil || len(got) != 1 || got[0].I32() != 1 {
+					t.Fatalf("%s funcref-result dynamic call = %v, %v; want [1]", export, got, err)
+				}
+			}
+		})
+	}
+}
+
 func TestARM64ProperTailReferenceResultContractsExecuteAcrossKinds(t *testing.T) {
 	cases := []struct {
 		name     string
