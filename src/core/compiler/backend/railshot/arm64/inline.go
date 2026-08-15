@@ -467,8 +467,9 @@ type inlineTarget struct {
 }
 
 type inlineTargetTable struct {
-	first   int
-	targets []inlineTarget
+	first      int
+	targets    []inlineTarget
+	classifier wasm.ModuleInstructionClassifier
 }
 
 func (ts inlineTargetTable) target(globalIdx int) *inlineTarget {
@@ -505,7 +506,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		return inlineTargetTable{}
 	}
 	importedFuncs := m.ImportedFuncCount()
-	var targets inlineTargetTable
+	targets := inlineTargetTable{classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	var typeArena []machineType
 	for i := range m.Code {
 		body := m.Code[i].BodyBytes
@@ -691,7 +692,7 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 		if err != nil {
 			return out
 		}
-		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
 			return out
 		}
 		if imm.Kind != wasm.InstrCall {
