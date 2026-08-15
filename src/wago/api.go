@@ -216,7 +216,7 @@ func stagedTableInstrsAllowed(instrs []wasm.Instruction, allowed func(wasm.Instr
 	return found, nil
 }
 
-func stagedTableBodyAllowed(body wasm.Expr, allowed func(wasm.InstrKind) bool) (bool, error) {
+func stagedTableBodyAllowed(body wasm.Expr, allowed func(wasm.InstrKind) bool, classifier *wasm.ModuleInstructionClassifier) (bool, error) {
 	if len(body.BodyBytes) == 0 {
 		return stagedTableInstrsAllowed(body.Instrs, allowed)
 	}
@@ -227,8 +227,8 @@ func stagedTableBodyAllowed(body wasm.Expr, allowed func(wasm.InstrKind) bool) (
 		if err != nil {
 			return false, err
 		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return false, err
 		}
 		if _, tableOperation := stagedTwoLocalTableOperation(imm.Kind); tableOperation {
@@ -259,8 +259,9 @@ func stagedTwoLocalExternrefFillShape(m *wasm.Module) bool {
 
 func stagedExactTableOperationShape(m *wasm.Module, label string, allowed func(wasm.InstrKind) bool) error {
 	found := false
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		bodyFound, err := stagedTableBodyAllowed(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, allowed)
+		bodyFound, err := stagedTableBodyAllowed(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, allowed, &classifier)
 		if err != nil {
 			return fmt.Errorf("function %d: %w", i, err)
 		}
@@ -397,7 +398,7 @@ func stagedThreeLocalTableInit64Instrs(instrs []wasm.Instruction) (foundInit, fo
 	return foundInit, foundIndirect, nil
 }
 
-func stagedThreeLocalTableInit64Body(body wasm.Expr) (foundInit, foundIndirect bool, err error) {
+func stagedThreeLocalTableInit64Body(body wasm.Expr, classifier *wasm.ModuleInstructionClassifier) (foundInit, foundIndirect bool, err error) {
 	if len(body.BodyBytes) == 0 {
 		return stagedThreeLocalTableInit64Instrs(body.Instrs)
 	}
@@ -407,8 +408,8 @@ func stagedThreeLocalTableInit64Body(body wasm.Expr) (foundInit, foundIndirect b
 		if readErr != nil {
 			return false, false, readErr
 		}
-		imm, classifyErr := wasm.ClassifyInstructionImmediate(r, op)
-		if classifyErr != nil {
+		var imm wasm.InstructionImmediate
+		if classifyErr := classifier.ClassifyInto(r, op, &imm); classifyErr != nil {
 			return false, false, classifyErr
 		}
 		found, checkErr := stagedThreeLocalTableInit64Instruction(wasm.Instruction{Kind: imm.Kind, Index: uint32(imm.Index), Index2: uint32(imm.Index2)})
@@ -451,8 +452,9 @@ func stagedThreeLocalTableInit64Shape(m *wasm.Module) error {
 		}
 	}
 	foundInit, foundIndirect := false, false
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		bodyInit, bodyIndirect, err := stagedThreeLocalTableInit64Body(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes})
+		bodyInit, bodyIndirect, err := stagedThreeLocalTableInit64Body(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, &classifier)
 		if err != nil {
 			return fmt.Errorf("function %d: %w", i, err)
 		}
