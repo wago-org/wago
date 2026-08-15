@@ -35,6 +35,10 @@ func Outdated(request MaintenanceRequest) {
 		ui.PrintJSON(reports)
 		return
 	}
+	if len(reports) == 0 {
+		fmt.Println("no plugins enabled")
+		return
+	}
 	for _, report := range reports {
 		fmt.Printf("%s  %s  %s\n", report.Plugin, report.Current, dim(report.Constraint))
 	}
@@ -64,6 +68,10 @@ func Tree(request MaintenanceRequest) {
 		return
 	}
 	fmt.Printf("Plugins (%s)\n", scope)
+	if len(entries) == 0 {
+		fmt.Println("  no plugins enabled")
+		return
+	}
 	for _, entry := range entries {
 		kind := "transitive"
 		if entry.Direct {

@@ -9,15 +9,17 @@ Wago separates project intent, reviewed resolution, and generated artifacts:
 - `.wago/` contains replaceable generated build artifacts for one exact Wago
   release, profile, target, and lock fingerprint.
 
-Plugin IDs are canonical Go module or package paths everywhere. For example,
-use `github.com/wago-org/wasi`; `wago-org/wasi` is not an alias.
+Plugin IDs are canonical Go module or package paths everywhere. `wago add`
+accepts `owner/repository` as GitHub shorthand, so `wago add wago-org/wasi`
+resolves and stores the canonical `github.com/wago-org/wasi` Plugin ID. Other
+hosts must be written as fully qualified paths; Wago does not infer them.
 
 ## Local projects
 
 `wago add` changes the current project by default:
 
 ```sh
-wago add github.com/wago-org/wasi
+wago add wago-org/wasi
 wago add github.com/JairusSW/pool
 ```
 
@@ -62,10 +64,12 @@ Add, update, and remove use the same all-or-nothing transaction:
 6. Atomically replace the manifest, lockfile, and artifact only after every
    prior step succeeds.
 
-Rejecting a required Authority cancels the transaction. Optional Authorities
-may be denied or narrowed. An error, interruption, failed build, mismatched
-definition, or invalid plugin leaves the previous project and runnable artifact
-unchanged.
+Interactive review shows required and optional Authorities as selectable rows.
+Required rows start selected and are marked as required; deselecting one asks
+for confirmation before cancelling the transaction. `Reject all` explicitly
+cancels installation without publishing changes. Optional Authorities may be
+denied or narrowed. An error, interruption, failed build, mismatched definition,
+or invalid plugin leaves the previous project and runnable artifact unchanged.
 
 ## Author narrower grants
 

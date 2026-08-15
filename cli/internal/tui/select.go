@@ -15,8 +15,11 @@ import (
 type SelectItem struct {
 	Label       string // machine value, e.g. a capability id "wasi:stdio"
 	Description string // one-line human description (may be empty)
+	Group       string // optional section heading shared by adjacent rows
 	On          bool   // currently selected
 	Disabled    bool   // visible preview row that cannot be toggled or selected
+	Reject      bool   // exclusive visible action that clears every normal row
+	ConfirmOff  bool   // submit immediately when this selected row is toggled off
 }
 
 // selectKey is a normalized keypress the model understands.
@@ -37,6 +40,8 @@ const (
 	keyQuit   // q / ctrl-c — abort from any page
 	keyLeft
 	keyRight
+	keyCopy // c
+	keyOpen // o
 )
 
 const (
@@ -49,6 +54,55 @@ const (
 	KeyRight  = keyRight
 )
 
+// Action is the result of a one-key action prompt.
+type Action int
+
+const (
+	ActionNone Action = iota
+	ActionContinue
+	ActionCopy
+	ActionOpen
+)
+
+// ActionPrompt presents compact keyboard actions without a selectable list.
+// The model remains pure; callers perform the selected side effect after Run.
+type ActionPrompt struct {
+	Text   string
+	Prompt string
+	action Action
+}
+
+func (p *ActionPrompt) apply(key selectKey) (done, cancelled bool) {
+	switch key {
+	case keyCopy:
+		p.action = ActionCopy
+		return true, false
+	case keyOpen:
+		p.action = ActionOpen
+		return true, false
+	case keyAccept, keyRight:
+		p.action = ActionContinue
+		return true, false
+	case keyLeft, keyCancel, keyQuit:
+		return true, true
+	}
+	return false, false
+}
+
+func (p *ActionPrompt) frame() string {
+	prompt := p.Prompt
+	if prompt == "" {
+		prompt = "c copy code · o open browser · enter continue · esc cancel"
+	}
+	return p.Text + "\n" + ui.Dim(prompt) + "\n"
+}
+
+// Action reports the submitted action after Run returns.
+func (p *ActionPrompt) Action() Action { return p.action }
+
+// Frame returns the prompt's rendered text for tests and previews.
+func (p *ActionPrompt) Frame() string { return p.frame() }
+
 // selectorModel is implemented by both the capability multi-select and the
 // hierarchical single-choice picker.
 type selectorModel interface {
@@ -56,9 +110,8 @@ type selectorModel interface {
 	frame() string
 }
 
-// multiSelect is the pure capability picker state: a list plus a cursor.
-// prompt overrides the default footer hint. Rejection is a footer key (r), not
-// a selectable row.
+// MultiSelect is the pure picker state: a list plus a cursor. Prompt overrides
+// the default footer hint. A Reject item and the r key both submit rejection.
 type MultiSelect struct {
 	Title  string
 	Prompt string
@@ -68,8 +121,8 @@ type MultiSelect struct {
 
 // apply advances the model by one key. It reports whether the interaction is
 // finished, and if so whether it was cancelled (esc) rather than submitted.
-// Enter always submits the checked items; r clears then submits (reject-all);
-// movement clamps at the ends; → is an alternate submit key.
+// Enter submits the focused action, r clears then submits rejection, movement
+// clamps at the ends, and → is an alternate submit key.
 func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 	switch k {
 	case keyUp:
@@ -82,12 +135,22 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 	case keyToggle:
 		if len(m.Items) > 0 && !m.Items[m.Cursor].Disabled {
-			m.Items[m.Cursor].On = !m.Items[m.Cursor].On
+			if m.Items[m.Cursor].Reject {
+				m.rejectAll()
+				return true, false
+			} else {
+				m.Items[m.Cursor].On = !m.Items[m.Cursor].On
+				if m.Items[m.Cursor].On {
+					m.clearRejection()
+				} else if m.Items[m.Cursor].ConfirmOff {
+					return true, false
+				}
+			}
 		}
 	case keyAll:
 		allSelected, selectable := true, false
 		for _, item := range m.Items {
-			if item.Disabled {
+			if item.Disabled || item.Reject {
 				continue
 			}
 			selectable = true
@@ -98,8 +161,10 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 		allSelected = allSelected && selectable
 		for i := range m.Items {
-			if !m.Items[i].Disabled {
+			if !m.Items[i].Disabled && !m.Items[i].Reject {
 				m.Items[i].On = !allSelected
+			} else if m.Items[i].Reject {
+				m.Items[i].On = false
 			}
 		}
 	case keyClear:
@@ -109,11 +174,12 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 			}
 		}
 	case keyReject: // clear all, then submit — a deliberate "grant nothing"
-		for i := range m.Items {
-			m.Items[i].On = false
-		}
+		m.rejectAll()
 		return true, false
 	case keyAccept, keyRight:
+		if len(m.Items) > 0 && m.Items[m.Cursor].Reject && !m.Items[m.Cursor].Disabled {
+			m.rejectAll()
+		}
 		return true, false
 	case keyLeft, keyCancel, keyQuit:
 		return true, true
@@ -121,15 +187,39 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 	return false, false
 }
 
+func (m *MultiSelect) rejectAll() {
+	for i := range m.Items {
+		m.Items[i].On = m.Items[i].Reject
+	}
+}
+
 // chosen returns the labels of the selected rows, in list order.
 func (m *MultiSelect) Chosen() []string {
 	var out []string
 	for _, it := range m.Items {
-		if it.On && !it.Disabled {
+		if it.On && !it.Disabled && !it.Reject {
 			out = append(out, it.Label)
 		}
 	}
 	return out
+}
+
+// Rejected reports whether the explicit reject-all action is selected.
+func (m *MultiSelect) Rejected() bool {
+	for _, item := range m.Items {
+		if item.Reject && item.On {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *MultiSelect) clearRejection() {
+	for i := range m.Items {
+		if m.Items[i].Reject {
+			m.Items[i].On = false
+		}
+	}
 }
 
 // decodeKey maps a raw input chunk (one keypress, possibly a multi-byte escape
@@ -151,6 +241,10 @@ func decodeKey(b []byte) selectKey {
 			return keyClear
 		case 'r', 'R':
 			return keyReject
+		case 'c', 'C':
+			return keyCopy
+		case 'o', 'O':
+			return keyOpen
 		case 27:
 			return keyCancel
 		case 'q', 'Q', 3:
@@ -197,11 +291,22 @@ func (m *MultiSelect) frame() string {
 	if start > 0 {
 		fmt.Fprintf(&b, "%s\n", ui.Dim(fmt.Sprintf("  ↑ %d more", start)))
 	}
+	previousGroup := ""
 	for i := start; i < end; i++ {
 		it := m.Items[i]
+		if it.Group != "" && it.Group != previousGroup {
+			fmt.Fprintf(&b, "%s\n", ui.Bold(it.Group))
+		}
+		previousGroup = it.Group
 		cursor := "  "
+		if it.Group != "" {
+			cursor = "    "
+		}
 		if i == m.Cursor {
 			cursor = ui.Cyan("› ")
+			if it.Group != "" {
+				cursor = ui.Cyan("  › ")
+			}
 		}
 		mark := "○"
 		if it.Disabled {

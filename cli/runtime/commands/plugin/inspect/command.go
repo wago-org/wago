@@ -80,7 +80,7 @@ func printDefinition(definition wago.PluginDefinition, entry *wago.PluginPlanEnt
 	if len(definition.Authorities) != 0 {
 		fmt.Printf("  %s\n", ui.Dim("authorities:"))
 		for _, request := range definition.Authorities {
-			fmt.Printf("    %s %s — %s%s\n", ui.Cyan(string(request.Name)), ui.Dim(string(request.Mode)), request.Reason, scopeLabel(request.Scope))
+			fmt.Printf("    %s %s: %s%s\n", ui.Cyan(string(request.Name)), ui.Dim(string(request.Mode)), request.Reason, scopeLabel(request.Scope))
 		}
 	}
 	if entry != nil && len(entry.Contracts) != 0 {

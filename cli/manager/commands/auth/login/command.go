@@ -22,7 +22,7 @@ func Command(environment Environment) *command.Cmd {
 		Summary:    "log in to the registry",
 		Automation: command.DryRun,
 		Flags: []command.Flag{
-			{Name: "link", Short: "l", Bool: true, Help: "open one-time authorization in a browser on this machine"},
+			{Name: "link", Short: "l", Bool: true, Help: "show one-time authorization with copy and browser shortcuts"},
 			{Name: "code", Short: "c", Bool: true, Help: "log in with a one-time code (headless/remote)"},
 			{Name: "token", Short: "t", Arg: "<t>", Help: "use this API token directly"},
 			{Name: "with-token", Bool: true, Help: "read an API token from stdin (for CI)"},

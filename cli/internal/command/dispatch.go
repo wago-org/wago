@@ -37,9 +37,16 @@ func (c *Cmd) Dispatch(path string, args []string) {
 			return
 		}
 		if automation.JSON() {
-			ui.UsageHint(path+" --help", "%s: unknown subcommand %q", c.Label(path), args[0])
+			hint := path + " --help"
+			if suggestion := SuggestChild(c, args[0]); suggestion != "" {
+				hint = path + " " + suggestion + " --help"
+			}
+			ui.UsageHint(hint, "%s: unknown subcommand %q", c.Label(path), args[0])
 		}
 		fmt.Fprintf(os.Stderr, "%s %s: unknown subcommand %q\n\n", ui.Red("wago:"), c.Label(path), args[0])
+		if suggestion := SuggestChild(c, args[0]); suggestion != "" {
+			fmt.Fprintf(os.Stderr, "Did you mean %q?\n\n", suggestion)
+		}
 		c.PrintHelp(os.Stderr, path)
 		os.Exit(2)
 	}
@@ -49,6 +56,10 @@ func (c *Cmd) Dispatch(path string, args []string) {
 		if err != nil {
 			ui.Fatal("%s: %v", c.Label(path), err)
 		}
+	}
+	if len(c.Knobs) != 0 && WantsOptimizationHelp(args, c.PassThrough, c.AllFlags()) {
+		c.PrintOptimizationHelp(os.Stdout, path)
+		return
 	}
 	if WantsHelp(args, c.PassThrough, c.AllFlags()) {
 		c.PrintHelp(os.Stdout, path)

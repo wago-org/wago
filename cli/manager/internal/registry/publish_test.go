@@ -95,6 +95,13 @@ func TestParsePublishManifestUsesNestedV1PackageAndExplicitCatalogs(t *testing.T
 	}
 }
 
+func TestParsePublishManifestExplainsApplicationManifest(t *testing.T) {
+	_, _, _, err := parsePublishManifest([]byte(`{"$schema":"https://wago.sh/v1/schema.json","plugins":{}}`))
+	if err == nil || !strings.Contains(err.Error(), "configures an application") || !strings.Contains(err.Error(), "required package object") {
+		t.Fatalf("application manifest error = %v", err)
+	}
+}
+
 func TestCanonicalGoVersionAndIsolatedWorkspace(t *testing.T) {
 	for input, want := range map[string]string{
 		"0.1.0":   "v0.1.0",
@@ -133,6 +140,22 @@ func TestCatalogVersionInfersOneProviderVersion(t *testing.T) {
 	providers[1].Definition.Version = "1.2.4"
 	if _, err := catalogVersion("", providers); err == nil {
 		t.Fatal("catalogVersion accepted mismatched providers")
+	}
+}
+
+func TestUnresolvedReleaseTagInstructions(t *testing.T) {
+	message := unresolvedReleaseTagInstructions("v1.2.3")
+	for _, want := range []string{
+		"cannot resolve release tag v1.2.3",
+		"must match package.version in wago.json",
+		"git fetch origin tag v1.2.3",
+		"git tag v1.2.3",
+		"git push origin HEAD v1.2.3",
+		"wago plugin publish",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("release tag instructions missing %q:\n%s", want, message)
+		}
 	}
 }
 
@@ -200,8 +223,33 @@ func Providers() []wago.PluginProvider { return []wago.PluginProvider{{Definitio
 	if err := generateProviderCatalog(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := ValidateCatalogPlan(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidatePublishPlan(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
 	write("wago.providers.json", "{}\n")
 	if err := generateProviderCatalog(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err == nil || !strings.Contains(err.Error(), "stale") {
 		t.Fatalf("stale check error = %v", err)
+	}
+	if _, err := ValidateCatalogPlan(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("catalog dry-run stale check error = %v", err)
+	}
+	if _, err := ValidatePublishPlan(context.Background(), manifest); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("publish dry-run stale check error = %v", err)
+	}
+	catalogPath := filepath.Join(root, wago.ProviderCatalogFile)
+	if err := os.Remove(catalogPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateCatalogPlan(context.Background(), CatalogRequest{Manifest: manifest}); err != nil {
+		t.Fatalf("catalog generation dry run = %v", err)
+	}
+	if _, err := os.Stat(catalogPath); !os.IsNotExist(err) {
+		t.Fatalf("catalog dry run wrote %s: %v", catalogPath, err)
+	}
+	if _, err := ValidatePublishPlan(context.Background(), manifest); err == nil || !strings.Contains(err.Error(), "missing or unreadable") {
+		t.Fatalf("publish dry-run missing catalog error = %v", err)
 	}
 }

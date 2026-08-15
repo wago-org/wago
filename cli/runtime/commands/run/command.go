@@ -46,7 +46,7 @@ func Command(environment Environment) *command.Cmd {
 			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
 			"or --core 3 for the complete release. Use -p for\n" +
 			"adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to force a\n" +
-			"worker maximum. Optimization knobs are listed in `wago run --help`.",
+			"worker maximum. Advanced compiler controls are listed in `wago run --help-optimizations`.",
 		Run: implementation.Run,
 	}
 }

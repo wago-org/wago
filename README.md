@@ -100,7 +100,8 @@ codegen at startup. It does not embed the source Wasm or Railshot compiler. Use
 `wago.json` before compiling so resolution, Authorities, and Contract bindings
 stay reviewable and reproducible. `--core 3`, `--parallel`, and compiler flags
 such as `--no-inline` and `--no-deferred-bounds-checking` are applied while
-producing the embedded machine code.
+producing the embedded machine code. Run `wago compile --help-optimizations` to
+see the advanced compiler controls without crowding the everyday command help.
 There is no standalone watch mode because the module is immutable once embedded.
 Standalone builds are native-target-only because codegen, interruption, and
 feature admission must match the runtime that executes the artifact. `--tinygo`
@@ -124,13 +125,15 @@ Create a project and add the WASI plugin:
 
 ```sh
 wago init --run
-wago add github.com/wago-org/wasi
+wago add wago-org/wasi
 wago run program.wasm hello world
 ```
 
-`wago add` resolves the complete dependency and Contract graph, reviews exact
-scoped Authorities, pins sources and bindings in `wago-lock.json`, verifies the
-linked definitions, and atomically publishes the rebuilt runtime.
+For GitHub plugins, `owner/repository` is shorthand for the canonical
+`github.com/owner/repository` Plugin ID. `wago add` resolves the complete
+dependency and Contract graph, reviews exact scoped Authorities, pins sources
+and bindings in `wago-lock.json`, verifies the linked definitions, and
+atomically publishes the rebuilt runtime.
 
 Useful plugin commands:
 
