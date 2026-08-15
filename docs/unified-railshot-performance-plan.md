@@ -1353,6 +1353,27 @@ state was added; this item remains deferred until an opportunity counter finds
 a representative load-free workload or a separate trap-preserving predication
 scheme is justified.
 
+### 2026-08-15 — rejected AMD64 structured fast-return shrink wrapping
+
+The first exact shrink-wrap prototype targeted the one strong pure corpus shape:
+`fib_rec.wasm` compares its i32 parameter, returns that parameter as i64 on the
+fast arm, and performs recursive calls only on the slow arm. A bounded prefix
+reader emitted the comparison and fast return before the normal register-ABI
+frame, while the false edge entered the unchanged prologue and body. The fast
+edge retained its entry interrupt poll; loops, EH, locals beyond the parameter,
+other signatures, other comparisons, and trapping fast arms were excluded.
+
+This did not pass the native throughput gate. On the Ryzen 7 7800X3D, six
+serialized one-second samples of fib(20) moved from a 26.17 to 26.41 us/op
+median (+0.9%), with zero B/op and allocations. The repository's standard
+fib-rec benchmark at fib(25) was neutral within 0.1% across six two-second
+samples. The slow recursive arm pays for the duplicated comparison and branch,
+offsetting the frame work removed at leaves. A Rosetta run had misleadingly
+shown an approximately 20% improvement, reinforcing that target-native evidence
+is required for machine-local transforms. The reader, emitter, policy bit,
+tests, and benchmarks were removed; broader shrink wrapping remains deferred
+until a shape can enter its slow body directly without duplicating hot work.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
