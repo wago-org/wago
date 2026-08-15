@@ -49,7 +49,9 @@ func run(c *command.Ctx) {
 	}
 	if automation.JSON() {
 		ui.PrintJSON(map[string]any{"valid": true, "file": c.Args[0], "bytes": len(src), "workers": selection.FunctionWorkers})
+		return
 	}
+	fmt.Printf("%s %s is valid\n", ui.Cyan("✓"), c.Args[0])
 }
 
 func ModuleBytes(src []byte) error {

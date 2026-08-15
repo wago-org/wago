@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,37 +50,28 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 		version = strings.TrimSpace(gitOutputAt(moduleRoot, "describe", "--tags", "--abbrev=0"))
 	}
 	if version == "" {
-		fatal("publish: no version — set package.version or tag the repository")
+		fatal("publish: no version; set package.version or tag the repository")
 	}
 	version = canonicalGoVersion(version)
-	commit := strings.TrimSpace(gitOutputAt(moduleRoot, "rev-list", "-n", "1", version))
-	if commit == "" {
-		fatal("publish: cannot resolve the commit for tag %s; fetch the exact release tag", version)
+	catalog, err := buildProviderCatalog(ctx, manifestPath, metadata)
+	if err != nil {
+		fatal("publish: local provider catalog: %v", err)
+	}
+	if strings.TrimPrefix(catalog.version, "v") != strings.TrimPrefix(version, "v") {
+		fatal("publish: local provider version %s does not match release %s", catalog.version, version)
+	}
+	if err := checkProviderCatalogCurrent(catalog); err != nil {
+		fatal("publish: %v", err)
+	}
+	commit, err := resolvePublishTag(ctx, moduleRoot, manifestPath, version, defaultPublishTagUI())
+	if errors.Is(err, errPublishCancelled) {
+		return
+	}
+	if err != nil {
+		fatal("publish: %v", err)
 	}
 	if !fullGitCommit(commit) {
 		fatal("publish: commit must be the full 40-character commit for tag %s", version)
-	}
-	generated, localProviders, err := generateLocalProviderCatalog(ctx, moduleRoot, metadata)
-	if err != nil {
-		fatal("publish: local provider catalog: %v", err)
-	}
-	localVersion, err := catalogVersion(metadata.Version, localProviders)
-	if err != nil {
-		fatal("publish: local provider catalog: %v", err)
-	}
-	if strings.TrimPrefix(localVersion, "v") != strings.TrimPrefix(version, "v") {
-		fatal("publish: local provider version %s does not match release %s", localVersion, version)
-	}
-	if err := validatePublishProviders(localProviders, metadata, version); err != nil {
-		fatal("publish: local provider catalog: %v", err)
-	}
-	committedPath := filepath.Join(moduleRoot, wago.ProviderCatalogFile)
-	committed, err := readRegularFile(committedPath, providerCatalogFileLimit)
-	if err != nil {
-		fatal("publish: read %s: %v (run: wago plugin catalog)", committedPath, err)
-	}
-	if !bytes.Equal(committed, generated) {
-		fatal("publish: %s is stale (run: wago plugin catalog)", committedPath)
 	}
 	download, err := downloadModuleSource(ctx, metadata.Module, version)
 	if err != nil {
@@ -103,7 +95,7 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	if err != nil {
 		fatal("publish: exact source artifact %s: %v", wago.ProviderCatalogFile, err)
 	}
-	if !bytes.Equal(artifactCatalog, generated) {
+	if !bytes.Equal(artifactCatalog, catalog.generated) {
 		fatal("publish: exact source artifact %s does not match the local generated catalog", wago.ProviderCatalogFile)
 	}
 	document, err := wago.DecodeProviderCatalog(artifactCatalog)
@@ -135,6 +127,21 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	default:
 		fatal("publish: %s", apiError(status, data))
 	}
+}
+
+func unresolvedReleaseTagInstructions(version string) string {
+	return fmt.Sprintf(`cannot resolve release tag %[1]s.
+The tag must match package.version in wago.json and point to the commit containing the release manifest and wago.providers.json.
+
+If %[1]s already exists remotely:
+  git fetch origin tag %[1]s
+
+If this is a new release, first commit the exact release files, then run:
+  git tag %[1]s
+  git push origin HEAD %[1]s
+
+Then retry:
+  wago plugin publish`, version)
 }
 
 type publishMetadata struct {
@@ -172,7 +179,7 @@ func parsePublishManifest(raw []byte) (map[string]any, publishMetadata, []string
 	}
 	pkg, ok := manifest["package"].(map[string]any)
 	if !ok {
-		return nil, publishMetadata{}, nil, fmt.Errorf("package must be an object")
+		return nil, publishMetadata{}, nil, fmt.Errorf("this manifest configures an application, not a publishable plugin; add the required package object to wago.json (see https://docs.wago.sh/reference/configuration)")
 	}
 	module, _ := pkg["module"].(string)
 	if err := project.ValidatePluginID(module); err != nil {

@@ -20,6 +20,13 @@ import (
 
 const providerCatalogFileLimit = 2 << 20
 
+type providerCatalogBuild struct {
+	generated []byte
+	providers []publishProvider
+	version   string
+	path      string
+}
+
 func registryCatalogContext(ctx context.Context, request CatalogRequest) {
 	if err := generateProviderCatalog(ctx, request); err != nil {
 		fatal("catalog: %v", err)
@@ -35,36 +42,55 @@ func generateProviderCatalog(ctx context.Context, request CatalogRequest) error 
 	if err != nil {
 		return err
 	}
-	generated, providers, err := generateLocalProviderCatalog(ctx, filepath.Dir(manifestPath), metadata)
+	catalog, err := buildProviderCatalog(ctx, manifestPath, metadata)
 	if err != nil {
 		return err
+	}
+	if request.Check {
+		if err := checkProviderCatalogCurrent(catalog); err != nil {
+			return err
+		}
+		fmt.Printf("%s %s is current (%d provider%s)\n", cyan("✓"), catalog.path, len(catalog.providers), pluralRegistry(len(catalog.providers)))
+		return nil
+	}
+	if err := atomicfile.ReplaceFile(catalog.path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+		_, err := writer.Write(catalog.generated)
+		return err
+	}); err != nil {
+		return fmt.Errorf("write %s: %w", catalog.path, err)
+	}
+	fmt.Printf("%s Wrote %s with %d provider%s\n", cyan("✓"), catalog.path, len(catalog.providers), pluralRegistry(len(catalog.providers)))
+	return nil
+}
+
+func buildProviderCatalog(ctx context.Context, manifestPath string, metadata publishMetadata) (providerCatalogBuild, error) {
+	generated, providers, err := generateLocalProviderCatalog(ctx, filepath.Dir(manifestPath), metadata)
+	if err != nil {
+		return providerCatalogBuild{}, err
 	}
 	version, err := catalogVersion(metadata.Version, providers)
 	if err != nil {
-		return err
+		return providerCatalogBuild{}, err
 	}
 	if err := validatePublishProviders(providers, metadata, version); err != nil {
-		return err
+		return providerCatalogBuild{}, err
 	}
-	path := filepath.Join(filepath.Dir(manifestPath), wago.ProviderCatalogFile)
-	if request.Check {
-		committed, err := readRegularFile(path, providerCatalogFileLimit)
-		if err != nil {
-			return fmt.Errorf("%s is missing or unreadable: %v (run: wago plugin catalog)", path, err)
-		}
-		if !bytes.Equal(committed, generated) {
-			return fmt.Errorf("%s is stale (run: wago plugin catalog)", path)
-		}
-		fmt.Printf("%s %s is current (%d provider%s)\n", cyan("✓"), path, len(providers), pluralRegistry(len(providers)))
-		return nil
+	return providerCatalogBuild{
+		generated: generated,
+		providers: providers,
+		version:   version,
+		path:      filepath.Join(filepath.Dir(manifestPath), wago.ProviderCatalogFile),
+	}, nil
+}
+
+func checkProviderCatalogCurrent(catalog providerCatalogBuild) error {
+	committed, err := readRegularFile(catalog.path, providerCatalogFileLimit)
+	if err != nil {
+		return fmt.Errorf("%s is missing or unreadable: %v (run: wago plugin catalog)", catalog.path, err)
 	}
-	if err := atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
-		_, err := writer.Write(generated)
-		return err
-	}); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+	if !bytes.Equal(committed, catalog.generated) {
+		return fmt.Errorf("%s is stale (run: wago plugin catalog)", catalog.path)
 	}
-	fmt.Printf("%s Wrote %s with %d provider%s\n", cyan("✓"), path, len(providers), pluralRegistry(len(providers)))
 	return nil
 }
 

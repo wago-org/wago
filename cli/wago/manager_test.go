@@ -7,10 +7,33 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestManagerSuggestsRuntimeNestedTypoWithoutSelectedRuntime(t *testing.T) {
+	const helperEnvironment = "WAGO_TEST_RUNTIME_NESTED_TYPO"
+	if os.Getenv(helperEnvironment) == "1" {
+		os.Args = []string{"wago", "module", "improts", "--help"}
+		main()
+		return
+	}
+
+	t.Setenv("WAGO_HOME", t.TempDir())
+	command := exec.Command(os.Args[0], "-test.run=^TestManagerSuggestsRuntimeNestedTypoWithoutSelectedRuntime$")
+	command.Env = append(os.Environ(), helperEnvironment+"=1")
+	output, err := command.CombinedOutput()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() != 2 {
+		t.Fatalf("nested typo exit = %v, want status 2\n%s", err, output)
+	}
+	text := string(output)
+	if !strings.Contains(text, `Did you mean "imports"?`) || strings.Contains(text, "no active runtime is selected") {
+		t.Fatalf("nested typo was not diagnosed by the manager:\n%s", text)
+	}
+}
 
 func TestManagerLaunchesSelectedRunner(t *testing.T) {
 	root := t.TempDir()
@@ -142,6 +165,44 @@ func TestManagerOwnsPluginIntrospectionHelpWithoutSelectedRuntime(t *testing.T) 
 	text := string(output)
 	if !strings.Contains(text, "Usage: wago plugin list") {
 		t.Fatalf("manager plugin list help = %q", text)
+	}
+}
+
+func TestManagerOwnsRuntimeHelpWithoutSelectedRuntime(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "run", args: []string{"run", "--help"}, want: "Usage: wago run"},
+		{name: "module group", args: []string{"module"}, want: "Usage: wago module <command>"},
+		{name: "module child", args: []string{"module", "imports", "--help"}, want: "Usage: wago module imports"},
+		{name: "build", args: []string{"build", "--help"}, want: "Usage: wago build"},
+		{name: "validate", args: []string{"validate", "--help"}, want: "Usage: wago validate"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			oldArgs, oldStdout := os.Args, os.Stdout
+			t.Cleanup(func() { os.Args, os.Stdout = oldArgs, oldStdout })
+			read, write, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.Stdout = write
+			os.Args = append([]string{"wago"}, test.args...)
+			main()
+			_ = write.Close()
+			output, err := io.ReadAll(read)
+			_ = read.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if text := string(output); !strings.Contains(text, test.want) {
+				t.Fatalf("runtime help missing %q:\n%s", test.want, text)
+			}
+		})
 	}
 }
 

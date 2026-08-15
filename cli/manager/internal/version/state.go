@@ -170,7 +170,7 @@ func vmList(d wagopaths.Dirs) {
 		return
 	}
 	if len(vers) == 0 {
-		fmt.Println(dim("no versions installed; try: wago version install <ver>"))
+		fmt.Println(dim("no versions installed; run: wago version install --latest --use"))
 		return
 	}
 	active, profile, build := activeVersion(d), activeProfile(d), activeBuild(d)
@@ -216,7 +216,7 @@ func vmCurrent(d wagopaths.Dirs) {
 		fmt.Printf("%s %s %s\n", a, activeProfile(d), activeBuild(d))
 		return
 	}
-	fmt.Println(dim("no active version set"))
+	fmt.Println(dim("no active version set; run: wago version install --latest --use"))
 }
 
 func vmWhich(d wagopaths.Dirs) {

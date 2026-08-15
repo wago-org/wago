@@ -2,6 +2,8 @@
 package add
 
 import (
+	"strings"
+
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/cli/internal/ui"
@@ -26,6 +28,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "add", Summary: "add and enable plugins, then rebuild Wago",
+		Long:       "GitHub plugins may use owner/repository shorthand; Wago stores the canonical github.com/owner/repository Plugin ID.",
 		Automation: command.DryRun,
 		Args:       "<plugin-id>[@range]...",
 		Flags: []command.Flag{
@@ -52,8 +55,12 @@ func Command(environment Environment) *command.Cmd {
 			if err != nil {
 				ui.Usage("add: %v", err)
 			}
+			modules := make([]string, len(c.Args))
+			for i, module := range c.Args {
+				modules[i] = expandGitHubPluginSpec(module)
+			}
 			options := Options{
-				Modules: c.Args, Global: c.Bool("global"), Local: c.Bool("local"),
+				Modules: modules, Global: c.Bool("global"), Local: c.Bool("local"),
 				Force: c.Bool("force"), Verbose: c.Bool("verbose"),
 				Authorities:     plugin.SplitCommaList(c.Str("allow")),
 				GrantAll:        c.Bool("allow-all"),
@@ -67,4 +74,19 @@ func Command(environment Environment) *command.Cmd {
 			environment.Add(options)
 		},
 	}
+}
+
+func expandGitHubPluginSpec(spec string) string {
+	id := spec
+	if index := strings.LastIndexByte(spec, '@'); index > 0 {
+		id = spec[:index]
+	}
+	if project.ValidatePluginID(id) == nil || strings.Count(id, "/") != 1 {
+		return spec
+	}
+	candidate := "github.com/" + id
+	if project.ValidatePluginID(candidate) != nil {
+		return spec
+	}
+	return "github.com/" + spec
 }
