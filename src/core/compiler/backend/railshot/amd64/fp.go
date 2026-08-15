@@ -189,6 +189,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	}
 	f.stats.peep("float-preload-scan")
 	r := wasm.NewReader(code)
+	var imm wasm.InstructionImmediate
 	for r.HasNext() && len(f.fconsts) < 2 {
 		op, err := r.Byte()
 		if err != nil {
@@ -208,7 +209,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 			}
 			f.floatConstReg(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
 		default:
-			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
 				return
 			}
 		}
