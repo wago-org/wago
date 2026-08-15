@@ -3,6 +3,7 @@
 package run
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -22,19 +23,12 @@ func TestWatchReapsAdoptedChildrenWhileRootRuns(t *testing.T) {
 	if err := prepareWatchedProcessTracking(); err != nil {
 		t.Fatal(err)
 	}
-	tracker := newTestWatchProcessTracker(t)
+	root, pid := startTestWatchRoot(t, "0.2")
+	tracker := newTestWatchProcessTracker(t, root.Process.Pid)
 	if err := startWatchedProcessTracking(tracker); err != nil {
 		t.Fatal(err)
 	}
 	defer tracker.close()
-	output, err := exec.Command("/bin/sh", "-c", "sleep 0.2 & echo $!").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(output)))
-	if err != nil {
-		t.Fatal(err)
-	}
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -50,17 +44,10 @@ func TestWatchReapsChildPresentAtTrackingStart(t *testing.T) {
 	if err := prepareWatchedProcessTracking(); err != nil {
 		t.Fatal(err)
 	}
-	output, err := exec.Command("/bin/sh", "-c", "sleep 0.05 & echo $!").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(output)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	root, pid := startTestWatchRoot(t, "0.05")
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	time.Sleep(100 * time.Millisecond)
-	tracker := newTestWatchProcessTracker(t)
+	tracker := newTestWatchProcessTracker(t, root.Process.Pid)
 	if err := startWatchedProcessTracking(tracker); err != nil {
 		t.Fatal(err)
 	}
@@ -70,14 +57,40 @@ func TestWatchReapsChildPresentAtTrackingStart(t *testing.T) {
 	}
 }
 
-func newTestWatchProcessTracker(t *testing.T) *watchedProcessTracker {
+func startTestWatchRoot(t *testing.T, childDelay string) (*exec.Cmd, int) {
 	t.Helper()
-	owner, ok := watchedProcess(os.Getpid())
+	command := exec.Command("/bin/sh", "-c", "/bin/sh -c 'sleep "+childDelay+" & echo $!'; sleep 10")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		_ = command.Wait()
+	})
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return command, pid
+}
+
+func newTestWatchProcessTracker(t *testing.T, rootPID int) *watchedProcessTracker {
+	t.Helper()
+	root, ok := watchedProcess(rootPID)
 	if !ok {
-		t.Fatal("inspect test process")
+		t.Fatal("inspect test root")
 	}
 	return &watchedProcessTracker{
-		owner: os.Getpid(), root: os.Getpid(), rootStart: owner.started,
+		owner: os.Getpid(), root: rootPID, rootStart: root.started,
 		processes: make(map[int]uint64),
 	}
 }
