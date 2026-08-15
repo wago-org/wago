@@ -36,6 +36,7 @@ const probeTimeout = 2 * time.Second
 
 type processInfo struct {
 	pid, parent int
+	state       byte
 	started     uint64
 }
 
@@ -167,30 +168,54 @@ func Run(command *exec.Cmd) (int, error) {
 	if err := command.Start(); err != nil {
 		return 1, err
 	}
-	done := make(chan error, 1)
-	go func() { done <- command.Wait() }()
+	defer command.Process.Release()
+	states := make(chan syscall.WaitStatus, 8)
+	exited := make(chan childExit, 1)
+	go waitDirectChild(command.Process.Pid, states, exited)
 	for {
 		select {
-		case result := <-done:
+		case result := <-exited:
 			if cleanupErr := cleanup(); cleanupErr != nil {
 				return 1, cleanupErr
 			}
-			return commandExitCode(result), nil
+			return commandExitCode(result), result.err
+		case status := <-states:
+			if status.Stopped() {
+				child, ok := processByPID(command.Process.Pid)
+				if !ok || (child.state != 'T' && child.state != 't') {
+					continue
+				}
+				if err := syscall.Kill(os.Getpid(), syscall.SIGSTOP); err != nil {
+					_ = command.Process.Kill()
+					result := <-exited
+					return 1, errors.Join(err, result.err, cleanup())
+				}
+				if err := syscall.Kill(command.Process.Pid, syscall.SIGCONT); err != nil && !errors.Is(err, syscall.ESRCH) {
+					_ = command.Process.Kill()
+					result := <-exited
+					return 1, errors.Join(err, result.err, cleanup())
+				}
+			}
 		case received := <-events:
 			switch received {
 			case syscall.SIGCHLD:
 				if err := reapAdopted(command.Process.Pid); err != nil {
 					_ = command.Process.Kill()
-					<-done
-					return 1, errors.Join(err, cleanup())
+					result := <-exited
+					return 1, errors.Join(err, result.err, cleanup())
 				}
 				continue
 			case syscall.SIGCONT:
+				if err := syscall.Kill(command.Process.Pid, syscall.SIGCONT); err != nil && !errors.Is(err, syscall.ESRCH) {
+					_ = command.Process.Kill()
+					result := <-exited
+					return 1, errors.Join(err, result.err, cleanup())
+				}
 				continue
 			}
 			timer := time.NewTimer(stopGrace)
 			select {
-			case <-done:
+			case <-exited:
 				if !timer.Stop() {
 					select {
 					case <-timer.C:
@@ -199,13 +224,38 @@ func Run(command *exec.Cmd) (int, error) {
 				}
 			case <-timer.C:
 				_ = command.Process.Kill()
-				<-done
+				<-exited
 			}
 			if cleanupErr := cleanup(); cleanupErr != nil {
 				return 1, cleanupErr
 			}
 			return signalExitCode(received), nil
 		}
+	}
+}
+
+type childExit struct {
+	status syscall.WaitStatus
+	err    error
+}
+
+func waitDirectChild(pid int, states chan<- syscall.WaitStatus, exited chan<- childExit) {
+	for {
+		var status syscall.WaitStatus
+		_, err := syscall.Wait4(pid, &status, syscall.WUNTRACED|syscall.WCONTINUED, nil)
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
+		if err != nil {
+			exited <- childExit{err: err}
+			return
+		}
+		if status.Stopped() || status.Continued() {
+			states <- status
+			continue
+		}
+		exited <- childExit{status: status}
+		return
 	}
 }
 
@@ -369,7 +419,11 @@ func processByPID(pid int) (processInfo, bool) {
 	if parentErr != nil || startedErr != nil {
 		return processInfo{}, false
 	}
-	return processInfo{pid: pid, parent: parent, started: started}, true
+	state := byte(0)
+	if fields[0] != "" {
+		state = fields[0][0]
+	}
+	return processInfo{pid: pid, parent: parent, state: state, started: started}, true
 }
 
 func reapAll() {
@@ -382,22 +436,14 @@ func reapAll() {
 	}
 }
 
-func commandExitCode(err error) int {
-	if err == nil {
-		return 0
-	}
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
+func commandExitCode(result childExit) int {
+	if result.err != nil {
 		return 1
 	}
-	status, ok := exit.Sys().(syscall.WaitStatus)
-	if !ok {
-		return 1
+	if result.status.Signaled() {
+		return 128 + int(result.status.Signal())
 	}
-	if status.Signaled() {
-		return 128 + int(status.Signal())
-	}
-	return status.ExitStatus()
+	return result.status.ExitStatus()
 }
 
 func signalExitCode(value os.Signal) int {

@@ -34,6 +34,101 @@ func TestProbeRejectsExecutableWithoutProtocol(t *testing.T) {
 	}
 }
 
+func TestRunPropagatesChildStopAndContinue(t *testing.T) {
+	const testName = "^TestRunPropagatesChildStopAndContinue$"
+	switch os.Getenv("WAGO_WATCH_STOP_ROLE") {
+	case "child":
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_STOP_READY"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := syscall.Kill(os.Getpid(), syscall.SIGSTOP); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_STOP_CONTINUED"), []byte("continued"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	case "supervisor":
+		child := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+		child.Env = append(os.Environ(), "WAGO_WATCH_STOP_ROLE=child")
+		child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		code, err := Run(child)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if code != 0 {
+			t.Fatalf("child exit code = %d, want 0", code)
+		}
+		return
+	}
+
+	directory := t.TempDir()
+	readyPath := directory + "/ready"
+	continuedPath := directory + "/continued"
+	supervisor := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+	supervisor.Env = append(os.Environ(),
+		"WAGO_WATCH_STOP_ROLE=supervisor",
+		"WAGO_WATCH_STOP_READY="+readyPath,
+		"WAGO_WATCH_STOP_CONTINUED="+continuedPath,
+	)
+	if err := supervisor.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var childPID int
+	finished := false
+	t.Cleanup(func() {
+		if finished {
+			return
+		}
+		_ = supervisor.Process.Kill()
+		_ = supervisor.Wait()
+		if childPID > 0 {
+			_ = syscall.Kill(childPID, syscall.SIGKILL)
+		}
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(readyPath); err == nil {
+			childPID, _ = strconv.Atoi(string(data))
+			if childPID > 0 {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if childPID == 0 {
+		t.Fatal("child did not stop")
+	}
+	var status syscall.WaitStatus
+	for time.Now().Before(deadline) {
+		pid, err := syscall.Wait4(supervisor.Process.Pid, &status, syscall.WUNTRACED|syscall.WNOHANG, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pid == supervisor.Process.Pid && status.Stopped() {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !status.Stopped() {
+		t.Fatal("supervisor did not mirror child stop")
+	}
+	if err := supervisor.Process.Signal(syscall.SIGCONT); err != nil {
+		t.Fatal(err)
+	}
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(continuedPath); err == nil && string(data) == "continued" {
+			if err := supervisor.Wait(); err != nil {
+				t.Fatal(err)
+			}
+			finished = true
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("continued supervisor did not continue child")
+}
+
 func TestEnvironmentReplacesInternalValues(t *testing.T) {
 	input := []string{
 		markerEnvironment + "=old",

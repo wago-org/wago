@@ -251,12 +251,9 @@ func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) 
 	if platform.terminalFD < 0 {
 		return nil
 	}
-	group, err := syscall.Getpgid(command.Process.Pid)
-	if err == nil && group == platform.foreground {
+	root, ok := watchedRootProcess(platform, command)
+	if !ok || (root.state != 'T' && root.state != 't') {
 		return nil
-	}
-	if err != nil && !errors.Is(err, syscall.ESRCH) {
-		return err
 	}
 	if err := signalWatchedDescendants(platform, syscall.SIGSTOP); err != nil {
 		return err
