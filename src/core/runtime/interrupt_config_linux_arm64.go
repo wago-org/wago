@@ -1,4 +1,4 @@
-//go:build linux && arm64 && !tinygo
+//go:build linux && arm64 && !tinygo && !wago_target_tinygo
 
 package runtime
 

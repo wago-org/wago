@@ -57,6 +57,35 @@ tinygo build -scheduler=tasks -tags wago_runtime,wago_lean,wago_minimal \
 ./wago-runtime-minimal-tiny run tests/fixtures/wasm/fib.wasm --invoke fib 20
 ```
 
+The standard-Go manager can use TinyGo for the final link of a runtime-only
+command binary:
+
+```bash
+wago compile --tinygo --invoke fib fib.wasm -o fib
+./fib 20
+```
+
+Like every `wago compile` build, this compiles the Wasm once with the native
+standard-Go compiler, embeds the resulting `.wago` artifact, then links the
+loader under the `wago_precompiled` build tag. `--tinygo` selects TinyGo for that
+final link. The helper is pinned to the validated native
+`GOOS/GOARCH` even when the caller has cross-compilation variables exported. It
+also compiles under `wago_target_tinygo`, so Linux artifacts contain cooperative
+interruption safepoints for the final TinyGo runtime instead of assuming the
+standard-Go helper's signal unwinder will be present. The emitted executable
+does not retain Railshot's source compiler and does not generate Wasm machine
+code at startup. It retains the small runtime-owned host-call thunk emitter
+required to bind imported functions during instantiation.
+
+Precompiled standalone builds intentionally require the destination to equal the
+build host's `GOOS/GOARCH`. Native artifacts incorporate platform admission and
+interruption decisions as well as the instruction set.
+Linux standalone outputs use the portable `strip -s` interface by default;
+release packaging may apply additional pinned-toolchain ELF section removal.
+The Linux TinyGo CI matrix builds this path with default stripping and verifies
+that a context cancellation interrupts an artifact containing an infinite loop
+on both AMD64 and ARM64.
+
 ## Scheduler: use `-scheduler=tasks`
 
 Build wago programs with **`-scheduler=tasks`** (cooperative, single-threaded).

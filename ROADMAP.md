@@ -300,6 +300,11 @@ current optimization priorities. The Core 3.0 implementation ledger is
   `wago run` reuses an automatic cache keyed by the module, exact runtime
   executable, GOOS/GOARCH, effective feature/bounds/memory configuration, and
   optimization knobs. `wago cache` owns inspection, pruning, and cleanup.
+- [x] Runtime-only standalone commands: `wago compile` precompiles the reviewed
+  module/plugin graph into a native `.wago` artifact and embeds it in a
+  `wago_precompiled` loader, retaining no Railshot source compiler. `--tinygo`
+  selects TinyGo for the final link and strips the resulting native binary.
+  Platform-sensitive codegen keeps both link paths native-target-only.
 
 ## Verification & quality
 

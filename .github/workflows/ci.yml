@@ -482,6 +482,13 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
 
+      # Drive the manager with standard Go while TinyGo links and executes the
+      # final runtime-only binary. This covers target-policy handoff, portable
+      # stripping, and cooperative interruption of a CPU-bound guest.
+      - name: Test precompiled standalone under TinyGo
+        if: runner.os == 'Linux'
+        run: go test -count=1 -run '^(TestBuildTinyGoEmbedsArtifactWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoArtifactSupportsCooperativeInterruption)$' ./cli/manager/internal/standalone
+
       # Compile portability: the whole pipeline (wasm -> amd64 -> runtime ->
       # public API + CLI) must build under TinyGo. A NOTE: the output name must
       # not end in .bin, which TinyGo treats as a firmware image.
