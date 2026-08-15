@@ -976,6 +976,18 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if err != nil {
 		return nil, fmt.Errorf("arm64: host adapter analysis: %w", err)
 	}
+	if policy.EnabledOption(optRegABI) {
+		// A wrapper-ABI caller can tail-enter any exact-funcref result target.
+		// Retain offset-zero adapters for this staged register-ABI class so mixed
+		// wide-caller/narrow-target tails still write through the caller's X3
+		// destination instead of returning an unconsumed X0 value.
+		for i := range m.Code {
+			ft, ok := m.FuncSignature(uint32(importedFuncs + i))
+			if ok && sigFitsReferenceResultRegABI(ft) {
+				hostAdapters[i] = true
+			}
+		}
+	}
 	if len(opts.CustomInstructions) != 0 {
 		for i := range hostAdapters {
 			hostAdapters[i] = true
