@@ -59,6 +59,62 @@ func TestWatchReapsChildPresentAtTrackingStart(t *testing.T) {
 	}
 }
 
+func TestWatchTrackingExcludesExistingChild(t *testing.T) {
+	unrelated := exec.Command("/bin/sh", "-c", "sleep 10")
+	if err := unrelated.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = unrelated.Process.Kill()
+		_ = unrelated.Wait()
+	})
+	child, err := startWatchedChild(watchOptions{
+		stopGrace:  250 * time.Millisecond,
+		executable: "/bin/sh",
+		arguments:  []string{"-c", "sleep 10"},
+		stdin:      nil,
+		stdout:     io.Discard,
+		stderr:     io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = child.stop(250*time.Millisecond, nil) })
+	if err := child.platform.processes.refresh(); err != nil {
+		t.Fatal(err)
+	}
+	child.platform.processes.mu.Lock()
+	_, tracked := child.platform.processes.processes[unrelated.Process.Pid]
+	child.platform.processes.mu.Unlock()
+	if tracked {
+		t.Fatal("existing watcher child was tracked as a guest descendant")
+	}
+}
+
+func TestWatchFinishDoesNotReapUnrelatedChild(t *testing.T) {
+	unrelated := exec.Command("/bin/true")
+	if err := unrelated.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = unrelated.Process.Kill()
+		_ = unrelated.Wait()
+	})
+	time.Sleep(50 * time.Millisecond)
+	process, ok := watchedProcess(unrelated.Process.Pid)
+	if !ok {
+		t.Fatal("inspect unrelated child")
+	}
+	tracker := &watchedProcessTracker{
+		owner: os.Getpid(), root: 1 << 30, processes: make(map[int]uint64),
+		excluded: map[int]uint64{process.pid: process.started},
+	}
+	finishWatchedProcessTracking(tracker)
+	if err := unrelated.Wait(); err != nil {
+		t.Fatalf("unrelated child wait: %v", err)
+	}
+}
+
 func startTestWatchRoot(t *testing.T, childDelay string) (*exec.Cmd, int) {
 	t.Helper()
 	command := exec.Command("/bin/sh", "-c", "/bin/sh -c 'sleep "+childDelay+" & echo $!'; sleep 10")
@@ -214,6 +270,108 @@ func TestWatchSignalSkipsTerminalGroupButReachesDetachedDescendant(t *testing.T)
 	t.Fatal("detached descendant did not receive interrupt")
 }
 
+func TestWatchSignalSendsOnceToIsolatedGroup(t *testing.T) {
+	const testName = "^TestWatchSignalSendsOnceToIsolatedGroup$"
+	if os.Getenv("WAGO_WATCH_GROUP_LEAF") == "1" {
+		recordWatchSignalCount(t, os.Getenv("WAGO_WATCH_GROUP_LEAF_READY"), os.Getenv("WAGO_WATCH_GROUP_LEAF_LOG"))
+		return
+	}
+	if os.Getenv("WAGO_WATCH_GROUP_ROOT") == "1" {
+		leaf := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+		leaf.Env = append(os.Environ(), "WAGO_WATCH_GROUP_LEAF=1")
+		if err := leaf.Start(); err != nil {
+			t.Fatal(err)
+		}
+		recordWatchSignalCount(t, os.Getenv("WAGO_WATCH_GROUP_ROOT_READY"), os.Getenv("WAGO_WATCH_GROUP_ROOT_LOG"))
+		if err := leaf.Wait(); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	directory := t.TempDir()
+	rootReady := filepath.Join(directory, "root.ready")
+	rootLog := filepath.Join(directory, "root.log")
+	leafReady := filepath.Join(directory, "leaf.ready")
+	leafLog := filepath.Join(directory, "leaf.log")
+	root := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+	root.Env = append(os.Environ(),
+		"WAGO_WATCH_GROUP_ROOT=1",
+		"WAGO_WATCH_GROUP_ROOT_READY="+rootReady,
+		"WAGO_WATCH_GROUP_ROOT_LOG="+rootLog,
+		"WAGO_WATCH_GROUP_LEAF_READY="+leafReady,
+		"WAGO_WATCH_GROUP_LEAF_LOG="+leafLog,
+	)
+	root.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := root.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = syscall.Kill(-root.Process.Pid, syscall.SIGKILL)
+		_ = root.Wait()
+	})
+	waitForWatchFiles(t, rootReady, leafReady)
+	tracker := newTestWatchProcessTracker(t, root.Process.Pid)
+	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
+	if err := signalWatchedProcessTree(platform, root, syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	waitForWatchFiles(t, rootLog, leafLog)
+	for name, path := range map[string]string{"root": rootLog, "leaf": leafLog} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "1" {
+			t.Fatalf("%s signal count = %q, want 1", name, data)
+		}
+	}
+}
+
+func recordWatchSignalCount(t *testing.T, readyPath, logPath string) {
+	t.Helper()
+	interrupts := make(chan os.Signal, 8)
+	signal.Notify(interrupts, syscall.SIGTERM)
+	defer signal.Stop(interrupts)
+	if err := os.WriteFile(readyPath, []byte("ready"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	<-interrupts
+	count := 1
+	deadline := time.NewTimer(100 * time.Millisecond)
+	defer deadline.Stop()
+	for {
+		select {
+		case <-interrupts:
+			count++
+		case <-deadline.C:
+			if err := os.WriteFile(logPath, []byte(strconv.Itoa(count)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+}
+
+func waitForWatchFiles(t *testing.T, paths ...string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		ready := true
+		for _, path := range paths {
+			if _, err := os.Stat(path); err != nil {
+				ready = false
+				break
+			}
+		}
+		if ready {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for files: %v", paths)
+}
+
 func TestWatchedProcessDescendantsScansEveryThread(t *testing.T) {
 	if os.Getenv("WAGO_WATCH_THREAD_CHILD") == "1" {
 		time.Sleep(24 * time.Hour)
@@ -266,7 +424,7 @@ func TestWatchedProcessDescendantsScansEveryThread(t *testing.T) {
 	if len(children) == 0 {
 		t.Fatal("did not start a child from a non-leader thread")
 	}
-	descendants, err := watchedProcessDescendants(os.Getpid(), os.Getpid(), nil, maxWatchedDescendants)
+	descendants, err := watchedProcessDescendants(os.Getpid(), os.Getpid(), nil, nil, maxWatchedDescendants)
 	if err != nil {
 		t.Fatal(err)
 	}

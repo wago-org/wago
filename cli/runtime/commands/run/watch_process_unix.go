@@ -37,6 +37,7 @@ type watchedProcessTracker struct {
 	root      int
 	rootStart uint64
 	processes map[int]uint64
+	excluded  map[int]uint64
 	stop      func()
 	drain     func() error
 	eventErr  error
@@ -44,6 +45,10 @@ type watchedProcessTracker struct {
 
 func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	if err := prepareWatchedCommand(command); err != nil {
+		return watchedChildPlatform{terminalFD: -1}, err
+	}
+	excluded, err := watchedProcessTrackingBaseline()
+	if err != nil {
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
 	unlockStart := lockWatchedCommandStart()
@@ -58,7 +63,7 @@ func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 		_ = command.Wait()
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
-	platform, err := attachWatchedProcess(command)
+	platform, err := attachWatchedProcess(command, excluded)
 	if err != nil {
 		abortWatchedCommand(command)
 		_ = killWatchedProcess(platform, command)
@@ -92,12 +97,15 @@ func abortWatchedCommand(command *exec.Cmd) {
 	restoreWatchedTerminal(command)
 }
 
-func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
+func attachWatchedProcess(command *exec.Cmd, excluded map[int]uint64) (watchedChildPlatform, error) {
 	root, ok := watchedProcess(command.Process.Pid)
 	if !ok {
 		return watchedChildPlatform{terminalFD: -1}, errors.New("inspect watched root process")
 	}
-	tracker := &watchedProcessTracker{owner: os.Getpid(), root: command.Process.Pid, rootStart: root.started, processes: make(map[int]uint64)}
+	tracker := &watchedProcessTracker{
+		owner: os.Getpid(), root: command.Process.Pid, rootStart: root.started,
+		processes: make(map[int]uint64), excluded: excluded,
+	}
 	platform := watchedChildPlatform{terminalFD: -1, processes: tracker}
 	if fd, _, ok := watchedCommandTerminal(command); ok {
 		platform.terminalFD, platform.foreground = fd, syscall.Getpgrp()
@@ -291,14 +299,7 @@ func writeWatchedOutput(writer io.Writer, format string, arguments ...any) {
 	}
 }
 
-func signalWatchedProcessGroupExceptGroup(platform watchedChildPlatform, command *exec.Cmd, signal syscall.Signal, excludedGroup int) error {
-	if command.Process == nil {
-		return os.ErrProcessDone
-	}
-	process, ok := watchedProcess(command.Process.Pid)
-	if !ok || platform.processes == nil || process.started != platform.processes.rootStart {
-		return os.ErrProcessDone
-	}
+func signalWatchedProcessGroup(process watchedProcessInfo, command *exec.Cmd, signal syscall.Signal, excludedGroup int) error {
 	if process.group == excludedGroup {
 		return nil
 	}
@@ -318,12 +319,28 @@ func signalWatchedProcessTree(platform watchedChildPlatform, command *exec.Cmd, 
 }
 
 func signalWatchedProcessTreeExceptGroup(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal, excludedGroup int) error {
-	descendantErr := signalWatchedDescendantsExceptGroup(platform, value, excludedGroup)
-	groupErr := signalWatchedProcessGroupExceptGroup(platform, command, value, excludedGroup)
+	root, rootOK := watchedRootProcess(platform, command)
+	rootGroup := 0
+	if rootOK && root.group != syscall.Getpgrp() {
+		rootGroup = root.group
+	}
+	descendantErr := signalWatchedDescendantsExceptGroups(platform, value, excludedGroup, rootGroup)
+	var groupErr error
+	if rootOK {
+		groupErr = signalWatchedProcessGroup(root, command, value, excludedGroup)
+	}
 	if errors.Is(groupErr, os.ErrProcessDone) {
 		groupErr = nil
 	}
 	return errors.Join(groupErr, descendantErr)
+}
+
+func watchedRootProcess(platform watchedChildPlatform, command *exec.Cmd) (watchedProcessInfo, bool) {
+	if command.Process == nil || platform.processes == nil {
+		return watchedProcessInfo{}, false
+	}
+	process, ok := watchedProcess(command.Process.Pid)
+	return process, ok && process.started == platform.processes.rootStart
 }
 
 func signalWatchedDescendants(platform watchedChildPlatform, value syscall.Signal) error {
@@ -333,11 +350,11 @@ func signalWatchedDescendants(platform watchedChildPlatform, value syscall.Signa
 	return platform.processes.signal(value)
 }
 
-func signalWatchedDescendantsExceptGroup(platform watchedChildPlatform, value syscall.Signal, group int) error {
+func signalWatchedDescendantsExceptGroups(platform watchedChildPlatform, value syscall.Signal, firstGroup, secondGroup int) error {
 	if platform.processes == nil {
 		return nil
 	}
-	return platform.processes.signalExceptGroup(value, group)
+	return platform.processes.signalExceptGroups(value, firstGroup, secondGroup)
 }
 
 func (tracker *watchedProcessTracker) refresh() error {
@@ -347,10 +364,10 @@ func (tracker *watchedProcessTracker) refresh() error {
 }
 
 func (tracker *watchedProcessTracker) signal(value syscall.Signal) error {
-	return tracker.signalExceptGroup(value, 0)
+	return tracker.signalExceptGroups(value, 0, 0)
 }
 
-func (tracker *watchedProcessTracker) signalExceptGroup(value syscall.Signal, excludedGroup int) error {
+func (tracker *watchedProcessTracker) signalExceptGroups(value syscall.Signal, firstGroup, secondGroup int) error {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	refreshErr := errors.Join(tracker.eventErr, tracker.refreshLocked())
@@ -362,7 +379,7 @@ func (tracker *watchedProcessTracker) signalExceptGroup(value syscall.Signal, ex
 	var signalErr error
 	for _, pid := range pids {
 		process, ok := watchedProcess(pid)
-		if !ok || process.started != tracker.processes[pid] || process.group == excludedGroup {
+		if !ok || process.started != tracker.processes[pid] || process.group == firstGroup || process.group == secondGroup {
 			continue
 		}
 		if err := syscall.Kill(pid, value); err != nil && !errors.Is(err, syscall.ESRCH) {
@@ -394,7 +411,7 @@ func (tracker *watchedProcessTracker) ownsProcessGroup(group int) bool {
 }
 
 func (tracker *watchedProcessTracker) refreshLocked() error {
-	descendants, err := watchedProcessDescendants(tracker.owner, tracker.root, tracker.processes, maxWatchedDescendants)
+	descendants, err := watchedProcessDescendants(tracker.owner, tracker.root, tracker.processes, tracker.excluded, maxWatchedDescendants)
 	active := make(map[int]uint64, len(descendants))
 	for _, process := range descendants {
 		if process.pid != tracker.owner && process.pid != tracker.root {

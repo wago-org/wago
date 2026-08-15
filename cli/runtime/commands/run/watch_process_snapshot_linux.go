@@ -29,6 +29,16 @@ func prepareWatchedProcessTracking() error {
 	return unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
 }
 
+func watchedProcessTrackingBaseline() (map[int]uint64, error) {
+	owner := os.Getpid()
+	processes, err := watchedProcessDescendants(owner, owner, nil, nil, maxWatchedDescendants)
+	baseline := make(map[int]uint64, len(processes))
+	for _, process := range processes {
+		baseline[process.pid] = process.started
+	}
+	return baseline, err
+}
+
 func configureWatchedCommandStart(*syscall.SysProcAttr) {}
 
 func lockWatchedCommandStart() func() { return func() {} }
@@ -85,10 +95,10 @@ func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
 	_ = tracker.drainEvents()
 	deadline := time.Now().Add(100 * time.Millisecond)
 	for {
-		reapWatchedLinuxProcesses()
+		tracker.reapAdopted()
 		_ = tracker.signal(syscall.SIGKILL)
 		if tracker.processCount() == 0 {
-			reapWatchedLinuxProcesses()
+			tracker.reapAdopted()
 			return
 		}
 		if time.Now().After(deadline) {
@@ -98,17 +108,7 @@ func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
 	}
 }
 
-func reapWatchedLinuxProcesses() {
-	for {
-		var status syscall.WaitStatus
-		pid, _ := syscall.Wait4(-1, &status, syscall.WNOHANG, nil)
-		if pid <= 0 {
-			return
-		}
-	}
-}
-
-func watchedProcessDescendants(owner, root int, tracked map[int]uint64, limit int) ([]watchedProcessInfo, error) {
+func watchedProcessDescendants(owner, root int, tracked, excluded map[int]uint64, limit int) ([]watchedProcessInfo, error) {
 	queue := make([]watchedProcessInfo, 0, len(tracked)+2)
 	seen := make(map[int]bool, len(tracked)+2)
 	for _, pid := range []int{owner, root} {
@@ -120,7 +120,7 @@ func watchedProcessDescendants(owner, root int, tracked map[int]uint64, limit in
 	processes := make([]watchedProcessInfo, 0, len(tracked))
 	for pid, started := range tracked {
 		process, ok := watchedProcess(pid)
-		if !ok || process.started != started || seen[pid] {
+		if !ok || process.started != started || seen[pid] || excluded[pid] == process.started {
 			continue
 		}
 		seen[pid] = true
@@ -158,6 +158,10 @@ func watchedProcessDescendants(owner, root int, tracked map[int]uint64, limit in
 				}
 				process, exists := watchedProcess(pid)
 				if !exists || process.parent != parent.pid {
+					continue
+				}
+				if excluded[pid] == process.started {
+					seen[pid] = true
 					continue
 				}
 				if len(processes) >= limit {
