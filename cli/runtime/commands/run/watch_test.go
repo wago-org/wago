@@ -79,6 +79,8 @@ func TestWatchSupervisorRestartsLongRunningChildWithDetachedDescendant(t *testin
 	stopped := false
 	options := watchTestOptions(modulePath, logPath, address, false)
 	options.debounce = 250 * time.Millisecond
+	options.environment = append(options.environment, "WAGO_WATCH_DEBUG=1")
+	options.stdout, options.stderr = os.Stdout, os.Stderr
 	go func() {
 		done <- superviseWatch(ctx, options)
 	}()
@@ -352,6 +354,9 @@ func TestWatchHelperProcess(t *testing.T) {
 		}
 		command.Env = append(os.Environ(), "WAGO_WATCH_LEAF="+next)
 		command.Stdout, command.Stderr = io.Discard, io.Discard
+		if os.Getenv("WAGO_WATCH_DEBUG") == "1" {
+			command.Stdout, command.Stderr = os.Stdout, os.Stderr
+		}
 		if next == "intermediate" && os.Getenv("WAGO_WATCH_DETACH") == "1" {
 			detachWatchHelperProcess(command)
 		}
