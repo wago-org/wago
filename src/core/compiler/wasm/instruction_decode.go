@@ -264,8 +264,8 @@ func readReservedZeroByte(r *reader) error {
 }
 
 type memargWidths struct {
-	module  *Module
-	fixed64 bool
+	indexed64 []uint64
+	fixed64   bool
 }
 
 func fixedMemargWidths(addr64 bool) memargWidths { return memargWidths{fixed64: addr64} }
@@ -274,37 +274,56 @@ func moduleMemargWidths(m *Module) memargWidths {
 	if m == nil {
 		return memargWidths{}
 	}
-	seen := false
+	seen, mixed := false, false
 	addr64 := false
+	count := 0
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind != ExternMem {
 			continue
 		}
 		got := m.Imports[i].Type.MemType().Limits.Addr64
-		if seen && got != addr64 {
-			return memargWidths{module: m}
-		}
+		mixed = mixed || seen && got != addr64
 		seen, addr64 = true, got
+		count++
 	}
 	for i := range m.Memories {
 		got := m.Memories[i].Limits.Addr64
-		if seen && got != addr64 {
-			return memargWidths{module: m}
-		}
+		mixed = mixed || seen && got != addr64
 		seen, addr64 = true, got
+		count++
 	}
 	if !seen {
 		return memargWidths{}
 	}
 	// Preserve the allocation-free fixed-width hot path for the overwhelmingly
 	// common single-memory and uniform-width multi-memory modules.
-	return memargWidths{fixed64: addr64}
+	if !mixed {
+		return memargWidths{fixed64: addr64}
+	}
+	indexed64 := make([]uint64, (count+63)/64)
+	index := 0
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternMem {
+			continue
+		}
+		if m.Imports[i].Type.MemType().Limits.Addr64 {
+			indexed64[index>>6] |= uint64(1) << (uint(index) & 63)
+		}
+		index++
+	}
+	for i := range m.Memories {
+		if m.Memories[i].Limits.Addr64 {
+			indexed64[index>>6] |= uint64(1) << (uint(index) & 63)
+		}
+		index++
+	}
+	return memargWidths{indexed64: indexed64}
 }
 
 func (w memargWidths) offset64(memoryIndex uint32) bool {
-	if w.module != nil {
-		mt, ok := w.module.MemoryType(memoryIndex)
-		return ok && mt.Limits.Addr64
+	word := memoryIndex >> 6
+	if int(word) < len(w.indexed64) {
+		return w.indexed64[word]&(uint64(1)<<(memoryIndex&63)) != 0
 	}
 	return w.fixed64
 }

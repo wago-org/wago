@@ -9,12 +9,12 @@ func TestModuleMemargWidthsScansImportedAndLocalMemories(t *testing.T) {
 	memory32 := NewMemExternType(MemType{Limits: Limits{Min: 1}})
 	memory64 := NewMemExternType(MemType{Limits: Limits{Min: 1, Addr64: true}})
 	uniform := &Module{Imports: []Import{{Type: memory64}, {Type: memory64}}}
-	if got := moduleMemargWidths(uniform); got.module != nil || !got.fixed64 {
+	if got := moduleMemargWidths(uniform); len(got.indexed64) != 0 || !got.fixed64 {
 		t.Fatalf("uniform imported memory64 widths = %+v", got)
 	}
 	mixed := &Module{Imports: []Import{{Type: memory32}}, Memories: []MemType{{Limits: Limits{Min: 1, Addr64: true}}}}
-	if got := moduleMemargWidths(mixed); got.module != mixed {
-		t.Fatalf("mixed imported/local widths = %+v, want module-aware", got)
+	if got := moduleMemargWidths(mixed); len(got.indexed64) != 1 || got.offset64(0) || !got.offset64(1) {
+		t.Fatalf("mixed imported/local widths = %+v, want [memory32,memory64]", got)
 	}
 }
 
@@ -27,7 +27,7 @@ func BenchmarkModuleMemargWidthsManyImports(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		if got := moduleMemargWidths(m); got.module != nil || !got.fixed64 {
+		if got := moduleMemargWidths(m); len(got.indexed64) != 0 || !got.fixed64 {
 			b.Fatal(got)
 		}
 	}
@@ -43,6 +43,39 @@ func BenchmarkModuleInstructionClassifierManyImportsAndOps(b *testing.B) {
 	body := make([]byte, count)
 	for i := range body {
 		body[i] = 0x01 // nop; the old per-op module helper still rescanned imports
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		classifier := NewModuleInstructionClassifier(m, true)
+		r := NewReader(body)
+		var imm InstructionImmediate
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+func BenchmarkModuleInstructionClassifierMixedLateMemory(b *testing.B) {
+	const count = 10000
+	m := &Module{Imports: make([]Import, count)}
+	memory32 := NewMemExternType(MemType{Limits: Limits{Min: 1}})
+	memory64 := NewMemExternType(MemType{Limits: Limits{Min: 1, Addr64: true}})
+	for i := range m.Imports {
+		if i&1 == 0 {
+			m.Imports[i].Type = memory32
+		} else {
+			m.Imports[i].Type = memory64
+		}
+	}
+	body := make([]byte, 0, 5*count)
+	for range count {
+		body = append(body, 0x28, 0x40, 0x8f, 0x4e, 0x00) // i32.load memory 9999, offset 0
 	}
 	b.ReportAllocs()
 	for b.Loop() {
