@@ -17,7 +17,21 @@ import (
 const (
 	maximumRegistrySuggestions = 1024
 	maximumSuggestionIDLength  = 300
+	maximumInstallSubpackages  = 128
 )
+
+type InstallPackage struct {
+	Module      string
+	Name        string
+	Subpackages []InstallSubpackage
+}
+
+type InstallSubpackage struct {
+	Module      string
+	Name        string
+	Description string
+	Stability   string
+}
 
 type packageSuggestion struct {
 	ID string `json:"id"`
@@ -218,6 +232,58 @@ func resolveRegistryModuleContext(ctx context.Context, name string) (string, err
 		return "", fmt.Errorf("plugin %q has an invalid module path", name)
 	}
 	return p.Name, nil
+}
+
+// ResolveInstallPackage returns the published package members when id names a
+// package root. A provider subpackage is not itself a package and returns false.
+func ResolveInstallPackage(ctx context.Context, id string) (InstallPackage, bool, error) {
+	status, data, err := apiRequestContext(ctx, http.MethodGet, "/api/packages/"+url.PathEscape(id), "", nil)
+	if err != nil {
+		return InstallPackage{}, false, err
+	}
+	if status == http.StatusNotFound {
+		return InstallPackage{}, false, nil
+	}
+	if status != http.StatusOK {
+		return InstallPackage{}, false, fmt.Errorf("resolve package %s: %s", id, apiError(status, data))
+	}
+	var response struct {
+		Module      string `json:"module"`
+		DisplayName string `json:"displayName"`
+		Subpackages []struct {
+			Module      string `json:"module"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Stability   string `json:"stability"`
+		} `json:"subpackages"`
+	}
+	if err := unmarshalUniqueJSON(data, &response); err != nil {
+		return InstallPackage{}, false, errors.New("registry returned invalid package metadata")
+	}
+	if response.Module != id || project.ValidatePluginID(response.Module) != nil || len(response.Subpackages) > maximumInstallSubpackages {
+		return InstallPackage{}, false, errors.New("registry returned invalid package metadata")
+	}
+	if response.DisplayName == "" {
+		response.DisplayName = response.Module
+	}
+	if validateTerminalTextField("package name", response.DisplayName, 256) != nil {
+		return InstallPackage{}, false, errors.New("registry returned invalid package metadata")
+	}
+	result := InstallPackage{Module: response.Module, Name: response.DisplayName}
+	seen := map[string]bool{}
+	for _, subpackage := range response.Subpackages {
+		if project.ValidatePluginID(subpackage.Module) != nil || !strings.HasPrefix(subpackage.Module, response.Module+"/") || seen[subpackage.Module] ||
+			validateTerminalTextField("subpackage name", subpackage.Name, 256) != nil ||
+			validateTerminalTextField("subpackage description", subpackage.Description, 2048) != nil ||
+			validateTerminalTextField("subpackage stability", subpackage.Stability, 64) != nil {
+			return InstallPackage{}, false, errors.New("registry returned invalid package metadata")
+		}
+		seen[subpackage.Module] = true
+		result.Subpackages = append(result.Subpackages, InstallSubpackage{
+			Module: subpackage.Module, Name: subpackage.Name, Description: subpackage.Description, Stability: subpackage.Stability,
+		})
+	}
+	return result, true, nil
 }
 
 // registryPublish reads a wago.json manifest and POSTs it to /api/publish

@@ -130,10 +130,12 @@ wago run program.wasm hello world
 ```
 
 For GitHub plugins, `owner/repository` is shorthand for the canonical
-`github.com/owner/repository` Plugin ID. `wago add` resolves the complete
-dependency and Contract graph, reviews exact scoped Authorities, pins sources
-and bindings in `wago-lock.json`, verifies the linked definitions, and
-atomically publishes the rebuilt runtime.
+`github.com/owner/repository` Plugin ID. When a package publishes multiple
+providers, adding its root offers to install everything or choose individual
+providers. Explicit paths such as `wago-org/wasi/p1` install that provider
+directly. `wago add` resolves the complete dependency and Contract graph,
+reviews exact scoped Authorities, pins sources and bindings in `wago-lock.json`,
+verifies the linked definitions, and atomically publishes the rebuilt runtime.
 
 Useful plugin commands:
 
@@ -142,9 +144,9 @@ wago plugin list
 wago plugin list --json
 wago plugin inspect github.com/wago-org/wasi
 wago plugin tree
-wago plugin grant github.com/wago-org/wasi
-wago plugin grant github.com/wago-org/wasi --scopes '{"github.com/wago-org/wasi":{"host.import.define":{"modules":["wasi_snapshot_preview1"]}}}'
-wago plugin config github.com/wago-org/wasi '{"stdout":"discard"}'
+wago plugin grant github.com/wago-org/wasi/p1
+wago plugin grant github.com/wago-org/wasi/p1 --scopes '{"github.com/wago-org/wasi/p1":{"host.import.define":{"modules":["wasi_snapshot_preview1"]}}}'
+wago plugin config github.com/wago-org/wasi/p1 '{"stdout":"discard"}'
 wago plugin update
 wago plugin rebuild --locked
 wago plugin remove github.com/wago-org/wasi

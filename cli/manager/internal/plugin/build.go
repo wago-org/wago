@@ -49,6 +49,22 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		progress.Fail("Plugin fetch failed")
 		fatal("add: %v", err)
 	}
+	if !automation.NoInput() {
+		prompts, err := findPackageInstallPrompts(pluginContext(options.ctx), specs)
+		if err != nil {
+			progress.Fail("Plugin fetch failed")
+			fatal("add: %v", err)
+		}
+		if len(prompts) != 0 {
+			progress.Finish("Fetched package details")
+			specs, err = reviewPackageInstallChoices(specs, prompts)
+			if err != nil {
+				progress.Fail("Plugin install cancelled")
+				fatal("add: %v", err)
+			}
+			progress.Begin("Fetching selected plugins")
+		}
+	}
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
 		if err != nil {
