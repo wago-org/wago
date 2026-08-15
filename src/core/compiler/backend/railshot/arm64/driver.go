@@ -62,7 +62,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x05: // else
 			err = f.opElse()
 		case 0x0b: // end
-			err = f.opEnd()
+			err = f.opEnd(r)
 		case 0x0c, 0x0d: // br / br_if
 			err = f.opBr(r, op == 0x0d)
 		case 0x0e: // br_table

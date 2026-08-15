@@ -4323,8 +4323,8 @@ fixture regressed from a 13.76 to 14.30 ns/op median (+3.9%), and eight
 alternating JSON deserialize pairs reproduced a roughly 10% regression through
 a hot internal callee. The accepted wrapper-only boundary restores
 byte-identical code for every executable corpus module while retaining the
-independent wrapper win. Tests cover native
-execution, disabled policy, exact byte/store attribution, and offset-cap
+independent wrapper win. Tests cover native execution, disabled policy, exact
+byte/store attribution, and offset-cap
 fallback; `WAGO_ARM64_NO_ENTRY_PARAM_PAIRS=1` is the exact rollback.
 
 ## 2026-08-15 — rejected ARM64 host-adapter argument pairs
@@ -4342,3 +4342,32 @@ removed. Adapter-local instruction savings alone do not satisfy the execution
 gate, particularly when internal-entry alignment can consume part of the byte
 reduction. This rule should return only with a target workload that measures a
 repeatable boundary improvement.
+
+## 2026-08-15 — bounded ARM64 forward-merge next use
+
+ARM64 forward block and `if` merges now keep a memory-only pinned local lazy
+when a copied Wasm reader proves that it is overwritten, returned past, or dead
+at the physical function end before its next read. The rule uses two register
+masks and the existing immutable policy, stops after 64 operations, and falls
+back on nested control, calls, tail transfers, EH structure, GC/bulk/atomic
+prefixes, malformed input, and fuel exhaustion. Loop targets retain their
+existing eager contract. No CFG, liveness interval, heap allocation, or retained
+summary is introduced.
+
+The exact 64-module ARM64 corpus removes 872 control-merge reloads, taking the
+whole-corpus count from 22,863 to 21,991, and reduces native output by 3,380
+bytes; every hit module shrinks. Esbuild contributes 711 removals, followed by
+SQLite (55), Script (31), Ruby (25), Raytrace (23), Lua (11), Wasm3 (9), Memory
+Tree (6), and recursive Fibonacci (1).
+
+Six order-balanced Apple M4 Max pairs improve recursive Fibonacci from a
+1,015.5 to 1,002.1 us/op median (-1.3%), Raytrace from 233.8 to 230.7 us/op
+(-1.3%), and Memory Tree from 8.52 to 8.47 us/op (-0.6%). All three remain at
+zero B/op and allocations. Eight order-balanced focused compile pairs improve
+from 5.63 to 5.60 us/op (-0.5%) with 36 allocations/op unchanged. Fixed-work
+Esbuild, Ruby, SQLite, and Raytrace compile medians remain within 1.3%, with
+ordinary B/op and allocation counts unchanged apart from threshold noise.
+
+Tests cover the positive path, a next-read near miss, the exact 64-operation
+fuel cap, deterministic fallback, disabled policy, and native execution.
+`WAGO_ARM64_NO_MERGE_NEXT_USE=1` restores eager merge reloads.

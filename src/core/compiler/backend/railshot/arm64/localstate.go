@@ -2,7 +2,10 @@
 
 package arm64
 
-import a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+)
 
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
 // FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING
@@ -316,6 +319,10 @@ func (f *fn) freeEndsBuf(b []int) {
 }
 
 func (f *fn) convergeEdgeTo(target *[]locState) {
+	f.convergeEdgeToWithDead(target, 0, 0)
+}
+
+func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
 	// Dirty registers and lazy zeros always materialize to the slot: every
 	// target guarantees at least "slot is current". Non-lazy functions can never
 	// contain lsConstZero and skip that complete local-array scan.
@@ -355,11 +362,111 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 			continue
 		}
 		if t[x] == lsStackReg && f.locals[x].state == lsMem {
+			dead := deadGP.has(reg)
+			if isFloat {
+				dead = deadFP.has(reg)
+			}
+			if dead {
+				t[x] = lsMem
+				f.stats.peep("merge-dead-reload")
+				continue
+			}
 			f.loadLocalReg(x, reg, isFloat)
 			f.stats.addControlMergeReload()
 			f.locals[x].state = lsStackReg
 		}
 	}
+}
+
+const maxMergeNextUseOps = 64
+
+// planForwardMergeDeadLocals returns fixed register masks for target locals
+// that arrive memory-only on the current forward edge and are overwritten or
+// dead before their next read after the merge. It copies the active reader and
+// uses constant storage; uncertainty, nested control, and fuel exhaustion keep
+// the existing eager edge reload.
+func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source []locState) (deadGP, deadFP regMask) {
+	if !f.opt(optMergeNextUse) || !f.usesCalls || target == nil {
+		return 0, 0
+	}
+	var candGP, candFP regMask
+	for x := 0; x < f.nLocals; x++ {
+		state := f.locals[x].state
+		if source != nil {
+			state = source[x]
+		}
+		if target[x] != lsStackReg || state != lsMem {
+			continue
+		}
+		reg, isFloat, ok := f.pinReg(x)
+		if !ok {
+			continue
+		}
+		if isFloat {
+			candFP = candFP.add(reg)
+		} else {
+			candGP = candGP.add(reg)
+		}
+	}
+	if candGP == 0 && candFP == 0 {
+		return 0, 0
+	}
+	peek := *r
+	for fuel := 0; fuel < maxMergeNextUseOps; fuel++ {
+		op, err := peek.Byte()
+		if err != nil {
+			return 0, 0
+		}
+		switch op {
+		case 0x00, 0x0f: // unreachable / return: no later local read on this path
+			return deadGP | candGP, deadFP | candFP
+		case 0x0b: // only the physical function end proves every candidate dead
+			if f.localBase == 0 && peek.BytesLeft() == 0 {
+				return deadGP | candGP, deadFP | candFP
+			}
+			return 0, 0
+		case 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x1f:
+			return 0, 0 // structured or exceptional control: conservative fallback
+		case 0x10, 0x11, 0x14, 0x12, 0x13, 0x15:
+			return 0, 0 // calls may inline or transfer; keep the merge contract
+		case 0x40, 0xfb, 0xfc, 0xfe:
+			// memory.grow and prefixed GC/bulk/atomic families can lower through a
+			// helper or safepoint without an explicit Wasm local.get. A register-
+			// only predecessor may have a stale root slot, so do not prove death
+			// through these barriers.
+			return 0, 0
+		case 0x20, 0x21, 0x22: // local.get / local.set / local.tee
+			x32, err := peek.U32()
+			if err != nil {
+				return 0, 0
+			}
+			x := int(x32) + f.localBase
+			reg, isFloat, ok := f.pinReg(x)
+			if !ok {
+				continue
+			}
+			cand := &candGP
+			dead := &deadGP
+			if isFloat {
+				cand, dead = &candFP, &deadFP
+			}
+			if !cand.has(reg) {
+				continue
+			}
+			if op != 0x20 {
+				*dead = dead.add(reg)
+			}
+			*cand = cand.remove(reg)
+			if candGP == 0 && candFP == 0 {
+				return deadGP, deadFP
+			}
+		default:
+			if err := skipImmediates(&peek, op); err != nil {
+				return 0, 0
+			}
+		}
+	}
+	return 0, 0
 }
 
 // setLocalsState installs a merge point's recorded target as the tracked state

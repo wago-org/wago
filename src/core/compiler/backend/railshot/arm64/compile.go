@@ -50,6 +50,11 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // for A/B measurement and immediate rollback.
 var callEffectBoundsEnabled = os.Getenv("WAGO_ARM64_NO_CALL_EFFECT_BOUNDS") != "1"
 
+// mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
+// proves the local is overwritten or dead before its next read. Loop and EH
+// targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
+var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
+
 // abiClassesEnabled admits effect-proven memory-touching scalar leaves into the
 // finite LeafScalar internal ABI class. The pre-existing narrower leaf contract
 // remains available when disabled.
