@@ -271,7 +271,7 @@ var catalog = []Definition{
 	arm64("gc-fixed-array-len", "Known array lengths", "replace an immediately consumed constructor reference with its statically known length"),
 	arm64("gc-const-struct-get", "Known struct fields", "replace an immediately consumed constructor reference with its statically known numeric field"),
 	arm64("gc-constructor-cast", "Constructor casts", "elide an adjacent cast of a constructor result to its exact defined type"),
-	arm64("simd-wide-bitmask-consumer", "Wide SIMD bitmask consumers", "reduce wide-lane sign bits directly for adjacent zero tests and population counts"),
+	both("simd-wide-bitmask-consumer", "Wide SIMD bitmask consumers", "reduce wide-lane sign bits directly for adjacent zero tests and population counts"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),

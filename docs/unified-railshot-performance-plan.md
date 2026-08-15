@@ -662,6 +662,26 @@ median compile time improved from 31.475 to 20.765 us/op (-34.0%), native bytes
 fell from 4,808 to 1,988, compile B/op fell from 100,187 to 42,795, and
 allocations fell from 23 to 21.
 
+### 2026-08-14 — AMD64 i16x8 bitmask zero-test fusion
+
+AMD64 now shares the immutable `simd-wide-bitmask-consumer` policy and recognizes
+the exact adjacent `i16x8.bitmask; i32.const 0; i32.ne` consumer. Because only
+zero-ness is observable, it arithmetic-shifts each word's sign across that word
+and tests the byte movemask directly. This removes the saturating pack and scalar
+mask operation without changing the baseline ISA. A copied reader examines two
+Wasm operations, so nonzero comparisons, popcount, malformed suffixes, disabled
+policy, and every non-adjacent consumer retain the ordinary path. Direct
+`i32x4`/`i64x2` movemask instructions already make their zero-test paths compact,
+so this slice does not replace them speculatively.
+
+Five serial samples on a Ryzen 7 7800X3D of a 64-sequence native fixture improved
+the median from 31.96 to 29.90 ns/op (-6.4%) with zero B/op and allocations, while
+native function bytes fell from 2,396 to 1,977. The corresponding compile fixture,
+including code-image release, improved from 36.348 to 29.854 us/op (-17.9%);
+compile B/op fell from 95,562 to 38,170, allocations fell from 19 to 17, and
+native bytes fell by the same 419 bytes. Single-site fixtures save two final
+aligned bytes.
+
 ---
 
 # 1. North-star architecture

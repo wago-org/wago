@@ -81,6 +81,10 @@ var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
 // native prepared trampolines. It changes metadata only.
 var preparedFPEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_FP_ENTRY") != "1"
 
+// simdWideBitmaskConsumerEnabled avoids constructing the packed i16x8 mask
+// when an adjacent consumer observes only whether any sign lane is set.
+var simdWideBitmaskConsumerEnabled = os.Getenv("WAGO_AMD64_NO_SIMD_WIDE_BITMASK_CONSUMER") != "1"
+
 // sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
 // host adapters with compact function-local target thunks plus one cold
 // module copy. WAGO_AMD64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
