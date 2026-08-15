@@ -226,5 +226,9 @@ func watchedProcess(pid int) (watchedProcessInfo, bool) {
 	if parentErr != nil || groupErr != nil || startedErr != nil {
 		return watchedProcessInfo{}, false
 	}
-	return watchedProcessInfo{pid: pid, parent: parent, group: group, started: started}, true
+	state := byte(0)
+	if fields[0] != "" {
+		state = fields[0][0]
+	}
+	return watchedProcessInfo{pid: pid, parent: parent, group: group, state: state, started: started}, true
 }

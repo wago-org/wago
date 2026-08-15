@@ -28,6 +28,7 @@ const maxWatchedThreads = 4096
 type watchedProcessInfo struct {
 	pid, parent int
 	group       int
+	state       byte
 	started     uint64
 }
 
@@ -117,17 +118,17 @@ func attachWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	return platform, startWatchedProcessTracking(tracker)
 }
 
-func interruptWatchedProcess(platform watchedChildPlatform, command *exec.Cmd, interrupt os.Signal) error {
+func interruptWatchedProcess(platform watchedChildPlatform, command *exec.Cmd, interrupt os.Signal) (bool, error) {
 	sig := syscall.SIGTERM
 	if value, ok := interrupt.(syscall.Signal); ok && (value == syscall.SIGHUP || value == syscall.SIGINT || value == syscall.SIGQUIT || value == syscall.SIGTERM) {
 		sig = value
 	}
 	if sig == syscall.SIGINT || sig == syscall.SIGQUIT {
 		if group, ok := watchedTerminalSignalGroup(platform); ok {
-			return signalWatchedProcessTreeExceptGroup(platform, command, sig, group)
+			return signalWatchedProcessTreeResult(platform, command, sig, group)
 		}
 	}
-	return signalWatchedProcessTree(platform, command, sig)
+	return signalWatchedProcessTreeResult(platform, command, sig, 0)
 }
 
 func watchedTerminalSignalGroup(platform watchedChildPlatform) (int, bool) {
@@ -336,10 +337,16 @@ func signalWatchedProcessGroup(process watchedProcessInfo, command *exec.Cmd, si
 }
 
 func signalWatchedProcessTree(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal) error {
-	return signalWatchedProcessTreeExceptGroup(platform, command, value, 0)
+	_, err := signalWatchedProcessTreeResult(platform, command, value, 0)
+	return err
 }
 
 func signalWatchedProcessTreeExceptGroup(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal, excludedGroup int) error {
+	_, err := signalWatchedProcessTreeResult(platform, command, value, excludedGroup)
+	return err
+}
+
+func signalWatchedProcessTreeResult(platform watchedChildPlatform, command *exec.Cmd, value syscall.Signal, excludedGroup int) (bool, error) {
 	root, rootOK := watchedRootProcess(platform, command)
 	rootGroup := 0
 	if rootOK && root.group != syscall.Getpgrp() {
@@ -347,13 +354,19 @@ func signalWatchedProcessTreeExceptGroup(platform watchedChildPlatform, command 
 	}
 	descendantErr := signalWatchedDescendantsExceptGroups(platform, value, excludedGroup, rootGroup)
 	var groupErr error
+	rootDone := !rootOK
 	if rootOK {
-		groupErr = signalWatchedProcessGroup(root, command, value, excludedGroup)
+		current, currentOK := watchedProcess(root.pid)
+		rootDone = !currentOK || current.started != root.started || current.state == 'Z' || current.state == 'X'
+		if !rootDone {
+			groupErr = signalWatchedProcessGroup(current, command, value, excludedGroup)
+		}
 	}
 	if errors.Is(groupErr, os.ErrProcessDone) {
+		rootDone = true
 		groupErr = nil
 	}
-	return errors.Join(groupErr, descendantErr)
+	return rootDone, errors.Join(groupErr, descendantErr)
 }
 
 func watchedRootProcess(platform watchedChildPlatform, command *exec.Cmd) (watchedProcessInfo, bool) {

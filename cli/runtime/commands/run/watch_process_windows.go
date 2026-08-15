@@ -212,11 +212,11 @@ func closeWatchedWindowsHandles(handles []windows.Handle) {
 	}
 }
 
-func interruptWatchedProcess(_ watchedChildPlatform, command *exec.Cmd, _ os.Signal) error {
+func interruptWatchedProcess(_ watchedChildPlatform, command *exec.Cmd, _ os.Signal) (bool, error) {
 	if command.Process == nil {
-		return os.ErrProcessDone
+		return true, nil
 	}
-	return windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(command.Process.Pid))
+	return false, windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(command.Process.Pid))
 }
 
 func killWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) error {

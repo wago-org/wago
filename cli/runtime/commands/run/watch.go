@@ -341,21 +341,25 @@ func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) (watch
 		return result, true, child.releasePlatform()
 	default:
 	}
-	_ = interruptWatchedProcess(child.platform, child.command, interrupt)
+	completed, interruptErr := interruptWatchedProcess(child.platform, child.command, interrupt)
+	if completed {
+		result := <-child.done
+		return result, true, errors.Join(interruptErr, child.releasePlatform())
+	}
 	timer := time.NewTimer(grace)
 	defer timer.Stop()
 	select {
 	case result := <-child.done:
-		return result, false, errors.Join(watchedStopError(result, interrupt, false), child.releasePlatform())
+		return result, false, errors.Join(interruptErr, watchedStopError(result, interrupt, false), child.releasePlatform())
 	case <-timer.C:
 	}
 	if err := killWatchedProcess(child.platform, child.command); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		_ = child.command.Process.Kill()
 		result := <-child.done
-		return result, false, errors.Join(err, child.releasePlatform())
+		return result, false, errors.Join(interruptErr, err, child.releasePlatform())
 	}
 	result := <-child.done
-	return result, false, errors.Join(watchedStopError(result, interrupt, true), child.releasePlatform())
+	return result, false, errors.Join(interruptErr, watchedStopError(result, interrupt, true), child.releasePlatform())
 }
 
 func (child *watchedChild) stopAndReport(writer io.Writer, grace time.Duration, interrupt os.Signal) error {
