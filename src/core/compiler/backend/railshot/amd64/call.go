@@ -1726,6 +1726,35 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	return offsets, true
 }
 
+type callConstRemat struct {
+	root  *elem
+	st    storage
+	index int
+}
+
+func (f *fn) planCallConstRemat(roots []*elem, p int) (r callConstRemat) {
+	belowN := len(roots) - p
+	if !f.opt(optCallRematConst) || f.moduleEH || p == 0 || belowN == 0 {
+		return r
+	}
+	root := roots[belowN-1]
+	if root.kind != ekValue || root.st.kind != stConst || root.st.typ != mtI32 && root.st.typ != mtI64 {
+		return r
+	}
+	return callConstRemat{root: root, st: root.st, index: belowN - 1}
+}
+
+func (f *fn) restoreCallConstRemat(r callConstRemat) {
+	if r.root == nil {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	root := roots[r.index]
+	root.kind = ekValue
+	root.st = r.st // the admitted integer constant is never a GC root
+	f.stats.peep("call-remat-const")
+}
+
 // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
 // or an indirect register call. The top operands become ABI argument registers;
 // resHint may sink a single result directly into a pinned local. Explicit
@@ -1739,6 +1768,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
+	remat := f.planCallConstRemat(allRoots, p)
 	if !preservesPins {
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 	}
@@ -1777,7 +1807,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	calleeEffects := f.directCalleeEffects(localIdx)
 	preserveBoundsCerts := f.opt(optCallEffectBounds) && localIdx >= 0 && calleeEffects&shared.EffectGrowsMemory == 0
 	if p > 0 {
-		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
+		f.flushBelowExcept(argRoots[0], remat.root) // operands below the args → canonical slots
 	} else {
 		f.flush()
 	}
@@ -1821,6 +1851,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	// Consume the args while preserving collector identity for every value below
 	// the arguments. Those canonical slots remain live across the native call.
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	f.restoreCallConstRemat(remat)
 
 	// No environment passing: RBX (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
@@ -1959,6 +1990,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
+	remat := f.planCallConstRemat(allRoots, p)
 
 	if !preservesPins {
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
@@ -2017,7 +2049,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		}
 	}
 	if p > 0 {
-		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
+		f.flushBelowExcept(argRoots[0], remat.root) // operands below the args → canonical slots
 	} else {
 		f.flush()
 	}
@@ -2085,6 +2117,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	f.restoreCallConstRemat(remat)
 
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})

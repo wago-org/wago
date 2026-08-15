@@ -3504,3 +3504,55 @@ cumulative frame bytes from 1,876,720 to 1,849,536 (-27,184, -1.45%); fixed-widt
 instruction encodings leave native bytes unchanged. Six alternating
 regexmatch/SQLite/Ruby/esbuild comparisons move compile geomean +0.25% with no
 significant individual row, while B/op and allocations remain unchanged.
+
+## 2026-08-15 — bounded integer-constant rematerialization across calls
+
+The first call-surviving recipe now retains one topmost `i32` or
+`i64` constant below a nonzero-argument register-ABI call. The ordinary partial
+flush reserves the constant's canonical slot without emitting its store; after
+the call rebuilds the below-argument stack, lowering reinstalls the exact
+constant recipe. Its later consumer can select an immediate or rematerialize it
+without a frame reload.
+
+The mechanism is one fixed local descriptor, not a recipe slice. It admits only
+the immediately adjacent below-call value and has no per-operation allocation.
+Zero-argument calls, non-constant values, EH modules, disabled policy, host
+paths, and tail transfers retain canonical flushing. Integer constants are not
+GC roots, so the recipe never weakens root publication. Mixed GP/FP calls use
+the same bounded contract.
+
+The immutable option and rollback controls are:
+
+```text
+call-remat-const
+WAGO_AMD64_NO_CALL_REMAT_CONST=1
+WAGO_ARM64_NO_CALL_REMAT_CONST=1
+```
+
+An opt-in corpus probe was removed after establishing demand. The complete
+corpus contained 788 AMD64 and 790 ARM64 integer constants below calls; 560 and
+561 respectively were the admitted topmost value below a nonzero-argument
+call.
+
+Focused 32-call results:
+
+```text
+Ryzen 7 7800X3D, ten samples:
+    stored:         about 46.5 ns/op, 1268 native bytes, 0 B/op
+    rematerialized: about 41.2 ns/op,  916 native bytes, 0 B/op
+    delta:          about -11.5% time, -27.8% native bytes
+
+Apple M4 Max, ten samples:
+    stored:         26.37 ns/op, 1258 native bytes, 0 B/op
+    rematerialized: 26.39 ns/op,  908 native bytes, 0 B/op
+    delta:          execution neutral, -27.8% native bytes
+```
+
+Balanced 64-module code falls by 4,480 bytes on AMD64 and 2,768 bytes on
+ARM64, with 560 and 561 retained recipes. Six alternating compile comparisons
+over regexmatch, SQLite, Ruby, and esbuild report +0.36% AMD64 and +0.19% ARM64
+geomeans. B/op and allocation counts are materially unchanged. Focused tests
+cover integer and mixed-bank execution, zero-argument and EH fallbacks,
+disabled policy, and serial/parallel determinism. Both complete native backend
+suites, focused race tests, SQLite, execution corpus, and fuzz regression corpus
+pass.

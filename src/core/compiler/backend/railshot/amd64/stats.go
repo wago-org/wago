@@ -40,6 +40,10 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// callRematConstEnabled retains one topmost integer constant below a
+	// register-ABI call as a symbolic recipe. WAGO_AMD64_NO_CALL_REMAT_CONST=1 is
+	// the bounded A/B and rollback path.
+	callRematConstEnabled = os.Getenv("WAGO_AMD64_NO_CALL_REMAT_CONST") != "1"
 	// boundsRangeEnabled lets a first scalar load certify later fixed-offset loads
 	// in the same pure straight-line range. Kept separate for A/B measurement.
 	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"

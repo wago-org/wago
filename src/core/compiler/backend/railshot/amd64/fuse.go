@@ -82,6 +82,13 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 // fused compare so the subsequent branch's moveSlots reads canonical slots and no
 // flag-clobbering flush happens between the CMP and the Jcc.
 func (f *fn) flushBelow(node *elem) int {
+	return f.flushBelowExcept(node, nil)
+}
+
+// flushBelowExcept leaves one integer constant symbolic while reserving its
+// canonical slot. The call rematerializer restores that exact recipe after the
+// call rebuilds the below-argument stack; every other user passes nil.
+func (f *fn) flushBelowExcept(node, except *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
@@ -97,6 +104,10 @@ func (f *fn) flushBelow(node *elem) int {
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
+		if root == except {
+			slot += typ.stackSlots()
+			continue
+		}
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue

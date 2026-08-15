@@ -41,6 +41,10 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check â the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// callRematConstEnabled retains one topmost integer constant below a
+	// register-ABI call as a symbolic recipe. WAGO_ARM64_NO_CALL_REMAT_CONST=1 is
+	// the bounded A/B and rollback path.
+	callRematConstEnabled = os.Getenv("WAGO_ARM64_NO_CALL_REMAT_CONST") != "1"
 	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
 	// onto one max-sized physical scratch region. WAGO_ARM64_NO_INLINE_SLOT_OVERLAY=1
 	// retains the prior one-region-per-callee frame layout.
