@@ -175,11 +175,11 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	if err != nil {
 		return nil, err
 	}
-	hooks, reservation, end, err := m.rt.beginOperationGeneration("managed Fork", true)
+	hooks, operation, err := m.rt.beginOperationGeneration("managed Fork", true)
 	if err != nil {
 		return nil, err
 	}
-	defer end()
+	defer operation.end()
 	imports, err := managedForkImports(parent)
 	if err != nil {
 		return nil, err
@@ -216,7 +216,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	if hasGC {
 		gc = *state.gcConfig
 	}
-	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, gc, hasGC, false, InstantiateManaged, hooks, reservation)
+	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation)
 	if err != nil {
 		m.mu.Lock()
 		m.live--

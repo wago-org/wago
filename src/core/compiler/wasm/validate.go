@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -47,11 +48,22 @@ func ValidateModuleWithFeaturesAndWorkers(m *Module, features ValidationFeatures
 }
 
 func validateModuleWithWorkersAndFeatures(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures) error {
-	v := &moduleValidator{m: m, funcIndex: -1, direct: direct, features: features}
+	// Keep the serial validation owner in this frame. TinyGo's conservative
+	// collector can otherwise lose a short-lived heap validator while nested
+	// decoding allocates, leaving its inline operand/control stacks reclaimed
+	// during validation.
+	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features}
 	if err := v.validateModule(); err != nil {
+		runtime.KeepAlive(m)
+		runtime.KeepAlive(direct)
 		return err
 	}
-	return v.validateFunctions(workers)
+	err := v.validateFunctions(workers)
+	// TinyGo's conservative collector needs the metadata owners to remain live
+	// while validators consume their nested byte slices and type views.
+	runtime.KeepAlive(m)
+	runtime.KeepAlive(direct)
+	return err
 }
 
 func (v *moduleValidator) validateFunctions(workers int) error {
@@ -68,9 +80,12 @@ func (v *moduleValidator) validateFunctions(workers int) error {
 func (v *moduleValidator) validateFunctionsSerial() error {
 	importedFuncs := v.m.ImportedFuncCount()
 	memarg64 := moduleMemargOffset64(v.m)
-	fv := &funcValidator{moduleValidator: v}
+	// Keep the reusable operand/control-stack owner in the validating frame.
+	// Besides avoiding one allocation, this makes its lifetime explicit for
+	// TinyGo's conservative collector across allocation-heavy decode steps.
+	fv := funcValidator{moduleValidator: v}
 	for i := range v.m.Code {
-		if err := v.validateFunction(fv, i, importedFuncs, memarg64); err != nil {
+		if err := v.validateFunction(&fv, i, importedFuncs, memarg64); err != nil {
 			return err
 		}
 	}
