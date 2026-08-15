@@ -703,12 +703,14 @@ speed-oriented Balanced path accepts that local tradeoff to remove a runtime
 helper; compact objectives reject it, and the growth remains visible in native
 byte attribution.
 
-### 2026-08-14 — ARM64 native final-cast scalar struct reads
+### 2026-08-14 — ARM64 native final scalar struct reads
 
 The checked ARM64 exact-final resolver now returns a bounded, ephemeral object
 address to one immediate consumer. Adjacent final casts followed by scalar
 `struct.get`, `struct.get_s`, or `struct.get_u` use that shared resolver and load
-packed i8/i16, i32/i64, or f32/f64 fields directly. Every mutable native-view
+packed i8/i16, i32/i64, or f32/f64 fields directly. Ordinary scalar reads whose
+validated operand is already a nullable reference to the same final type use the
+same path without cast lookahead. Every mutable native-view
 pointer is reloaded after the constructor safepoint; the handle, heap range,
 required field extent, and exact canonical type are checked before the load.
 Reference and vector fields, missing layout metadata, disabled policy, and
@@ -721,6 +723,10 @@ with collector verification. Five Apple M4 Max i32 samples improved from a
 compile fixture increased from 5.740 to 6.072 us/op (+5.8%) and from 348 to 448
 native bytes, while B/op fell 25.2% (16,596 to 12,416) and allocations fell from
 40 to 35. Compact objectives keep the helper to avoid that local code growth.
+The separate ordinary `struct.get` fixture improved from 317.6 to 274.9 ns/op
+(-13.4%). Its tiny compile fixture increased from 4.774 to 5.519 us/op and from
+316 to 496 native bytes, while B/op fell 0.9% and allocations fell from 36 to
+34. Both execution paths remain zero-allocation.
 
 ---
 

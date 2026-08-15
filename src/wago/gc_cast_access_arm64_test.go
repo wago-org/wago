@@ -38,6 +38,79 @@ func gcFinalCastStructI32GetBytesARM64() []byte {
 	return gcFinalCastStructScalarGetModuleARM64(structType, wasm.I32, []byte{0x41, 0x2a}, 2)
 }
 
+func gcFinalStructI32GetBytesARM64(null bool) []byte {
+	structType := append([]byte{0x5f}, wasmtest.Vec([]byte{0x7f, 0x01})...)
+	types := wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})))
+	funcs := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1)))
+	definedGlobal := []byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b} // (mut (ref null 0)) (ref.null 0)
+	globals := wasmtest.Section(6, wasmtest.Vec(definedGlobal))
+	exports := wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0)))
+	body := []byte{0x23, 0x00}
+	if !null {
+		body = []byte{
+			0x41, 0x2a,
+			0xfb, 0x00, 0x00,
+			0x24, 0x00,
+			0x23, 0x00,
+		}
+	}
+	body = append(body, 0xfb, 0x02, 0x00, 0x00, 0x0b)
+	return wasmtest.Module(types, funcs, globals, exports, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+}
+
+func TestGCFinalStructScalarGetARM64(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFinalStructI32GetBytesARM64(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("run = %v, %v; want [42]", got, err)
+	}
+}
+
+func TestGCFinalStructScalarGetNullARM64(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFinalStructI32GetBytesARM64(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err == nil || !strings.Contains(err.Error(), "null reference") {
+		t.Fatalf("run error = %v, want null reference", err)
+	}
+}
+
+func BenchmarkGCFinalStructScalarGetARM64(b *testing.B) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFinalStructI32GetBytesARM64(false))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{ThroughputHeapBytes: 256 << 20}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer instance.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		got, err := instance.Invoke("run")
+		if err != nil || len(got) != 1 || got[0] != 42 {
+			b.Fatalf("run = %v, %v; want [42]", got, err)
+		}
+	}
+}
+
 func TestGCFinalCastStructScalarGetARM64(t *testing.T) {
 	f32 := make([]byte, 5)
 	f32[0] = 0x43

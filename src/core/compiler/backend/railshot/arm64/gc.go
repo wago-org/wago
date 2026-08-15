@@ -321,6 +321,15 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("arm64: plain struct.get cannot access a packed field")
 		}
+		if f.policy.EnabledOption(optGCNativeScalarGet) && !f.policy.CompactNative {
+			if layout, scalar, layoutOK := f.directGCStructLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + uint64(scalar.size)
+				if required <= math.MaxInt32 {
+					f.stats.peep("gc-native-final-struct-scalar-get")
+					return f.emitNativeFinalStructScalarGet(typeIndex, layout.Offset, uint32(required), true, sub, scalar)
+				}
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -819,7 +828,7 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 			if required <= math.MaxInt32 {
 				f.stats.peep("final-cast-struct-get-fuse")
 				f.stats.peep("gc-native-final-struct-scalar-get")
-				return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, uint32(required), nullable, sub, scalar)
+				return true, f.emitNativeFinalStructScalarGet(typeIndex, layout.Offset, uint32(required), nullable, sub, scalar)
 			}
 		}
 	}
@@ -896,7 +905,7 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 	return nil
 }
 
-func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset, required uint32, nullable bool, sub uint32, scalar directGCScalar) error {
+func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uint32, nullable bool, sub uint32, scalar directGCScalar) error {
 	object, err := f.emitNativeFinalCastObject(typeIndex, required, nullable)
 	if err != nil {
 		return err
