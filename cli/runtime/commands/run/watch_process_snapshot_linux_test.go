@@ -22,14 +22,7 @@ func TestWatchReapsAdoptedChildrenWhileRootRuns(t *testing.T) {
 	if err := prepareWatchedProcessTracking(); err != nil {
 		t.Fatal(err)
 	}
-	owner, ok := watchedProcess(os.Getpid())
-	if !ok {
-		t.Fatal("inspect test process")
-	}
-	tracker := &watchedProcessTracker{
-		owner: os.Getpid(), root: os.Getpid(), rootStart: owner.started,
-		processes: make(map[int]uint64),
-	}
+	tracker := newTestWatchProcessTracker(t)
 	if err := startWatchedProcessTracking(tracker); err != nil {
 		t.Fatal(err)
 	}
@@ -51,6 +44,42 @@ func TestWatchReapsAdoptedChildrenWhileRootRuns(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("adopted child %d was not reaped", pid)
+}
+
+func TestWatchReapsChildPresentAtTrackingStart(t *testing.T) {
+	if err := prepareWatchedProcessTracking(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command("/bin/sh", "-c", "sleep 0.05 & echo $!").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(output)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	time.Sleep(100 * time.Millisecond)
+	tracker := newTestWatchProcessTracker(t)
+	if err := startWatchedProcessTracking(tracker); err != nil {
+		t.Fatal(err)
+	}
+	tracker.close()
+	if _, err := os.Stat("/proc/" + strconv.Itoa(pid)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("child present at tracking start was not reaped: %v", err)
+	}
+}
+
+func newTestWatchProcessTracker(t *testing.T) *watchedProcessTracker {
+	t.Helper()
+	owner, ok := watchedProcess(os.Getpid())
+	if !ok {
+		t.Fatal("inspect test process")
+	}
+	return &watchedProcessTracker{
+		owner: os.Getpid(), root: os.Getpid(), rootStart: owner.started,
+		processes: make(map[int]uint64),
+	}
 }
 
 func TestWatchSupervisorContinuesAfterChildSIGINT(t *testing.T) {

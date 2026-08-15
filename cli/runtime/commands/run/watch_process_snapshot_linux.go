@@ -42,6 +42,7 @@ func startWatchedProcessTracking(tracker *watchedProcessTracker) error {
 	stopped := make(chan struct{})
 	done := make(chan struct{})
 	signal.Notify(events, syscall.SIGCHLD)
+	tracker.reapAdopted()
 	tracker.stop = func() {
 		signal.Stop(events)
 		close(stopped)
