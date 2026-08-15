@@ -1269,6 +1269,26 @@ policy bit, generated schema entry, loop changes, and benchmarks were removed;
 the existing separate vector loads/stores plus pointer increments remain the
 measured throughput choice.
 
+### 2026-08-14 — deferred poll coalescing and stack-fence hoisting
+
+The current module scan retains bounded direct-call edges only long enough to
+propagate semantic effects. It does not retain the complete entry-reachability
+proof needed to remove a poll from shared function code: exports, the start
+function, element/table references, `ref.func`, tail entries, host reentry, and
+every direct caller would all have to be excluded or bounded. Moving the same
+poll to each direct call site would save no execution work, while inheriting an
+older caller poll has no documented instruction or time cancellation budget.
+Poll coalescing is therefore deferred rather than admitted on a leaf-only
+approximation.
+
+Stack-fence hoisting has the same reachability requirement plus a fixed-point
+over finalized frame sizes and cumulative direct-call depth. The existing
+backends already omit the fence for call-free functions whose conservative
+frame bound is at most 4 KiB, so a new leaf class has no remaining work to
+remove. Non-leaf chains remain fenced until an exact acyclic, externally rooted
+chain proof can be built without retaining a general CFG. No production code or
+compiler storage was added for either experiment.
+
 ---
 
 # 1. North-star architecture
