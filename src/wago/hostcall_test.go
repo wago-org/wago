@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,57 @@ func TestIndependentInstanceExecutionBypassesProcessLease(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("independent invocation waited for the process-wide native execution lease")
+	}
+}
+
+func TestIndependentHostDispatchDoesNotRaceProcessEpoch(t *testing.T) {
+	sig := wasmtest.FuncType(nil, nil)
+	body := []byte{0x00, 0x10, 0x00, 0x0b} // call 0; end
+	module := returningImportModule(sig, body)
+	instantiate := func(config *RuntimeConfig) *Instance {
+		compiled, err := config.Compile(module)
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		t.Cleanup(func() { _ = compiled.Close() })
+		in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		t.Cleanup(func() { _ = in.Close() })
+		return in
+	}
+
+	independent := instantiate(NewRuntimeConfig().WithIndependentInstanceExecution(true))
+	serial := instantiate(NewRuntimeConfig().WithIndependentInstanceExecution(false))
+	if !independent.usesIndependentExecution() || serial.usesIndependentExecution() {
+		t.Fatal("test instances did not select distinct native execution leases")
+	}
+
+	const calls = 1000
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var ready sync.WaitGroup
+	ready.Add(2)
+	run := func(in *Instance) {
+		ready.Done()
+		<-start
+		for range calls {
+			if _, err := in.Invoke("g"); err != nil {
+				errs <- err
+				return
+			}
+		}
+		errs <- nil
+	}
+	go run(independent)
+	go run(serial)
+	ready.Wait()
+	close(start)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
