@@ -72,6 +72,40 @@ func TestSignalRelayForwardsGuestGroupInterrupt(t *testing.T) {
 	groupDone = true
 }
 
+func TestSignalProcessIdentityRejectsChangedStart(t *testing.T) {
+	child := exec.Command("sleep", "30")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	finished := false
+	t.Cleanup(func() {
+		if finished {
+			return
+		}
+		_ = child.Process.Kill()
+		_ = child.Wait()
+	})
+	process, ok := processByPID(child.Process.Pid)
+	if !ok {
+		t.Fatal("inspect child process")
+	}
+	changed := process
+	changed.started++
+	if err := signalProcessIdentity(changed, syscall.SIGKILL); !errors.Is(err, os.ErrProcessDone) {
+		t.Fatalf("changed process identity signal = %v, want process done", err)
+	}
+	if err := child.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Fatalf("changed identity killed child: %v", err)
+	}
+	if err := signalProcessIdentity(process, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Wait(); err == nil {
+		t.Fatal("valid process identity did not kill child")
+	}
+	finished = true
+}
+
 func TestRunPropagatesChildStopAndContinue(t *testing.T) {
 	const testName = "^TestRunPropagatesChildStopAndContinue$"
 	switch os.Getenv("WAGO_WATCH_STOP_ROLE") {

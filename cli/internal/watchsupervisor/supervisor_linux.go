@@ -383,6 +383,12 @@ func Run(command *exec.Cmd) (int, error) {
 		return 1, err
 	}
 	childLifetime.Started()
+	directChild, ok := processByPID(command.Process.Pid)
+	if !ok {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return 1, errors.New("inspect watch supervisor child")
+	}
 	defer command.Process.Release()
 	states := make(chan syscall.WaitStatus, 8)
 	exited := make(chan childExit, 1)
@@ -398,7 +404,7 @@ func Run(command *exec.Cmd) (int, error) {
 				}
 			}
 		case <-timer.C:
-			_ = command.Process.Kill()
+			_ = signalProcessIdentity(directChild, syscall.SIGKILL)
 			<-exited
 		}
 		if cleanupErr := cleanup(); cleanupErr != nil {
@@ -418,16 +424,16 @@ func Run(command *exec.Cmd) (int, error) {
 		case status := <-states:
 			if status.Stopped() {
 				child, ok := processByPID(command.Process.Pid)
-				if !ok || (child.state != 'T' && child.state != 't') {
+				if !ok || child.started != directChild.started || (child.state != 'T' && child.state != 't') {
 					continue
 				}
 				if err := syscall.Kill(os.Getpid(), syscall.SIGSTOP); err != nil {
-					_ = command.Process.Kill()
+					_ = signalProcessIdentity(directChild, syscall.SIGKILL)
 					result := <-exited
 					return 1, errors.Join(err, result.err, cleanup())
 				}
-				if err := syscall.Kill(command.Process.Pid, syscall.SIGCONT); err != nil && !errors.Is(err, syscall.ESRCH) {
-					_ = command.Process.Kill()
+				if err := signalProcessIdentity(directChild, syscall.SIGCONT); err != nil && !errors.Is(err, os.ErrProcessDone) {
+					_ = signalProcessIdentity(directChild, syscall.SIGKILL)
 					result := <-exited
 					return 1, errors.Join(err, result.err, cleanup())
 				}
@@ -436,14 +442,14 @@ func Run(command *exec.Cmd) (int, error) {
 			switch received {
 			case syscall.SIGCHLD:
 				if err := reapAdopted(command.Process.Pid); err != nil {
-					_ = command.Process.Kill()
+					_ = signalProcessIdentity(directChild, syscall.SIGKILL)
 					result := <-exited
 					return 1, errors.Join(err, result.err, cleanup())
 				}
 				continue
 			case syscall.SIGCONT:
-				if err := syscall.Kill(command.Process.Pid, syscall.SIGCONT); err != nil && !errors.Is(err, syscall.ESRCH) {
-					_ = command.Process.Kill()
+				if err := signalProcessIdentity(directChild, syscall.SIGCONT); err != nil && !errors.Is(err, os.ErrProcessDone) {
+					_ = signalProcessIdentity(directChild, syscall.SIGKILL)
 					result := <-exited
 					return 1, errors.Join(err, result.err, cleanup())
 				}
@@ -487,6 +493,20 @@ func monitorParentLifetime() (*os.File, <-chan struct{}, error) {
 type childExit struct {
 	status syscall.WaitStatus
 	err    error
+}
+
+func signalProcessIdentity(process processInfo, value syscall.Signal) error {
+	current, ok := processByPID(process.pid)
+	if !ok || current.started != process.started {
+		return os.ErrProcessDone
+	}
+	if err := syscall.Kill(process.pid, value); err != nil {
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	return nil
 }
 
 func waitDirectChild(pid int, states chan<- syscall.WaitStatus, exited chan<- childExit) {
