@@ -96,11 +96,10 @@ func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
 	deadline := time.Now().Add(100 * time.Millisecond)
 	for {
 		tracker.reapAdopted()
-		_ = tracker.signal(syscall.SIGKILL)
 		if tracker.processCount() == 0 {
-			tracker.reapAdopted()
 			return
 		}
+		_ = tracker.signal(syscall.SIGKILL)
 		if time.Now().After(deadline) {
 			return
 		}
