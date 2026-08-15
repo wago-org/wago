@@ -1135,6 +1135,30 @@ call-position-aware local ownership: arrange a dying or call-adjacent pinned
 local in its ABI argument register before the call, without globally pinning
 fixed-role RAX/RCX/RDX/R8 and without changing call/return spacing.
 
+#### Follow-up demand audit: safe whole-function pin placement is too narrow
+
+A temporary opt-in source probe partitioned every mismatched pinned-local
+integer argument by ABI position across the native AMD64 corpus. It was removed
+after measurement and made no code-selection decisions:
+
+```text
+arg0 / RAX: 72000
+arg1 / RCX: 35201
+arg2 / RDX: 17121
+arg3 / R8:   5146
+arg4 / R9:   1478
+arg5 / R10:   341
+arg6 / R11:    82
+total:      131369
+```
+
+The first four fixed-role registers account for 129,468 mismatches (98.6%).
+Only 1,901 (1.4%) target the safe extended pin pool R9-R11. Merely preferring a
+whole-function local pin for those three registers therefore cannot address the
+measured problem and was not implemented. A future retry needs bounded
+call-site ownership transfer for a dying local, with explicit fixed-register
+pressure accounting; it must not globally pin RAX/RCX/RDX/R8.
+
 ### 2026-08-14 — bounded AMD64 forward-merge next use
 
 Forward block and `if` merges now keep a memory-only pinned local lazy when a
