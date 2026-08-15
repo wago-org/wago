@@ -1657,12 +1657,18 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
 	if f.opt(optRegABI) && sigFitsRegABI(ft) {
+		preservesPins := f.directCalleePreservesPins(localIdx)
+		if recordRoots {
+			// Exact caller maps name frame slots. Use the ordinary spill-managed
+			// path even when the leaf cannot itself collect.
+			preservesPins = false
+		}
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
-			f.emitRegisterCall(localIdx, ft, resHint)
+			f.emitRegisterCallVia(ft, resHint, localIdx, regNone, preservesPins)
 		} else {
 			f.stats.call(callKindMixed)
-			f.emitMixedRegisterCall(localIdx, ft)
+			f.emitMixedRegisterCall(localIdx, ft, preservesPins)
 		}
 		finishRoots()
 		return nil
@@ -1720,20 +1726,12 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	return offsets, true
 }
 
-// emitRegisterCall lowers an internal call to a register-ABI function: the top p
-// operands become the argument registers (via a parallel move), the callee is
-// entered at its internal entry, and the single result is taken from RAX.
-// resHint >= 0 fuses a following `local.set resHint`: RAX moves straight into
-// the pinned local's register instead of an allocated result register.
-func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
-	f.emitRegisterCallVia(ft, resHint, localIdx, regNone)
-}
-
 // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
-// or an indirect register call. Explicit operands avoid a closure per wasm call.
-func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
+// or an indirect register call. The top operands become ABI argument registers;
+// resHint may sink a single result directly into a pinned local. Explicit
+// operands avoid a closure per Wasm call.
+func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg, preservesPins bool) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
-	preservesPins := f.directCalleePreservesPins(localIdx)
 	callTarget := f.preserveIndirectCallTarget(indirect, p)
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
@@ -1949,7 +1947,7 @@ func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) Reg {
 // GP and FP arguments are staged independently as parallel moves, so values that
 // are already resident in registers do not round-trip through canonical slots
 // (mirrors arm64's mixed staging). Only const/slot args are loaded from memory.
-func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPins bool) {
 	p, rN := len(ft.Params), len(ft.Results)
 	resultPlan, _ := shared.PlanScalarResults(ft.Results)
 	if rN > 1 {
@@ -1962,7 +1960,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
-	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	if !preservesPins {
+		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	}
 
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
@@ -2023,7 +2023,12 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	// Store dirty pinned locals AFTER their values were copied out above (an arg may
 	// read a pinned local); a mixed callee may clobber every caller pin.
-	f.spillLocalsForCall()
+	if preservesPins {
+		f.callDeadGP, f.callDeadFP = 0, 0
+		f.stats.peep("abi-leaf-fp-call")
+	} else {
+		f.spillLocalsForCall()
+	}
 
 	// Resolve each bank's parallel move independently. GP swaps use XCHG; XMM has no
 	// swap, so a cyclic FP move goes through one reused spill slot (like arm64).
@@ -2093,8 +2098,10 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.a.MovReg64(gpResults[i], intResultRegs[i])
 		f.stats.addRegisterResultMoves(1)
 	}
-	f.reloadLocalsForCall() // non-STACK_REG model only
-	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	if !preservesPins {
+		f.reloadLocalsForCall() // non-STACK_REG model only
+		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	}
 
 	for i := 0; i < rN; i++ {
 		loc := resultPlan.Locations[i]
@@ -2199,7 +2206,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		wrapper := f.a.JccPlaceholder(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code, false)
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}
@@ -2725,7 +2732,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(idxReg)
 		f.release(code)
 		f.stats.peep("monomorphic-call-indirect")
-		returnOffset := f.emitRegisterCallVia(ft, -1, tableHint.monomorphicTarget, regNone)
+		returnOffset := f.emitRegisterCallVia(ft, -1, tableHint.monomorphicTarget, regNone, false)
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}
@@ -2746,7 +2753,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(idxReg)
 		f.pinned = f.pinned.add(code)
 		f.stats.peep("immutable-local-call-indirect")
-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code, false)
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}
@@ -2783,7 +2790,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		wrapper := f.a.JccPlaceholder(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code, false)
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}

@@ -22,6 +22,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
 	optimization.Bind("call-next-use", &callNextUseEnabled),
 	optimization.Bind("abi-classes", &abiClassesEnabled),
+	optimization.Bind("abi-leaf-fp", &abiLeafFPEnabled),
 	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
 	optimization.Bind("affine-lea", &affineLeaEnabled),
 	optimization.Bind("tree-order", &treeOrderEnabled),
@@ -70,6 +71,7 @@ var (
 	optExtendedFPPins       = optimizationBindings.Option("ext-fp-pins")
 	optCallNextUse          = optimizationBindings.Option("call-next-use")
 	optABIClasses           = optimizationBindings.Option("abi-classes")
+	optABILeafFP            = optimizationBindings.Option("abi-leaf-fp")
 	optMergeNextUse         = optimizationBindings.Option("merge-next-use")
 	optAffineLEA            = optimizationBindings.Option("affine-lea")
 	optTreeOrder            = optimizationBindings.Option("tree-order")

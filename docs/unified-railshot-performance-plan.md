@@ -1168,8 +1168,8 @@ The class table is one byte per local function and is allocated only after the
 module admits at least one non-inlined class member. Targets whose ordinary calls
 will all be inlined are excluded: reserving registers in a retained export or
 standalone body cannot help those callers. With default inlining, Ruby therefore
-emits byte-for-byte identical native code to the disabled policy and allocates no
-class table. With inlining deliberately disabled, Ruby
+emits byte-for-byte identical native code to the disabled scalar policy and the
+scalar classification alone allocates no class table. With inlining deliberately disabled, Ruby
 admits 876 leaves across 6,461 direct calls, removes 1,259 call-preservation
 stores and 3,978 reloads, and shrinks by 47,885 native bytes.
 
@@ -1182,6 +1182,28 @@ B/op and allocations remain within run-to-run noise. Tests
 cover execution with the class enabled and disabled, `memory.grow`, control and
 pressure-cap near misses, full-inline exclusion, deterministic recompilation,
 and isolated interaction with the call- and merge-next-use optimizers.
+
+### 2026-08-14 — finite AMD64 LeafFP ABI class
+
+The same module-precomputed contract now admits tiny FP and mixed scalar leaves
+independently under `abi-leaf-fp`. Admission retains the scalar class's no-local,
+no-call, no-control, no-global, effect-safe-memory, and 12-node pressure bounds,
+and adds a hard maximum of four arguments in each register bank. This cap is
+required on AMD64 because XMM4-XMM7 are both later FP argument registers and
+members of the caller local-pin bank. Admitted callees reserve every GP and FP
+pin; direct mixed callers skip local/global preservation. Exact GC caller-root
+maps force the General call path so their canonical frame-slot contract remains
+unchanged.
+
+Ruby admits three FP leaves across 60 direct calls, removes 11 preservation
+stores and 29 reloads, and shrinks by 1,042 native bytes. Lua and wasm3 are exact
+near misses with unchanged code. On a serialized Ryzen 7 7800X3D workload with
+128 four-argument FP calls per invocation, seven one-second samples improve from
+a 165.2 to 156.2 ns/op median (-5.4%) and shrink from 6,879 to 3,396 native bytes
+(-50.6%), with zero B/op and allocations. Five fixed-work Ruby compile samples
+remain neutral at 915.78 ms with the option disabled versus 917.29 ms enabled
+(+0.17%); B/op rises by about 19 KiB (+0.05%) for the one-byte-per-function
+class table and allocations remain within run-to-run noise.
 
 ---
 

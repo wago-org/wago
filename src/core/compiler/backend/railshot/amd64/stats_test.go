@@ -4,6 +4,8 @@ package amd64
 
 import (
 	"bytes"
+	"encoding/binary"
+	"math"
 	"strings"
 	"testing"
 
@@ -150,26 +152,90 @@ func TestMemoryLeafScalarABIAvoidsCallPreservationAMD64(t *testing.T) {
 func TestInternalABIClassEffectAndShapeGatesAMD64(t *testing.T) {
 	ft := &wasm.CompType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
 	h := funcHints{nLocals: 1, inlineCallSites: 1, touchesMemory: true}
-	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiLeafScalar {
+	if got := classifyInternalABI(ft, 1, h, 0, true, false); got != abiLeafScalar {
 		t.Fatalf("effect-safe memory leaf = %v, want LeafScalar", got)
 	}
-	if got := classifyInternalABI(ft, 1, h, shared.EffectGrowsMemory, true); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, h, shared.EffectGrowsMemory, true, false); got != abiGeneral {
 		t.Fatalf("memory-growing leaf = %v, want General", got)
 	}
 	h.hasControlFlow = true
-	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, h, 0, true, false); got != abiGeneral {
 		t.Fatalf("control-flow leaf = %v, want General", got)
 	}
 	h.hasControlFlow = false
 	h.stackArenaNodes = 13
-	if got := classifyInternalABI(ft, 1, h, 0, true); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, h, 0, true, false); got != abiGeneral {
 		t.Fatalf("over-cap leaf = %v, want General", got)
 	}
-	if got := classifyInternalABI(ft, 1, funcHints{nLocals: 1, inlineCallSites: 1}, 0, false); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, funcHints{nLocals: 1, inlineCallSites: 1}, 0, false, false); got != abiGeneral {
 		t.Fatalf("disabled class = %v, want General", got)
 	}
-	if got := classifyInternalABI(ft, 1, funcHints{nLocals: 1, inlineCallSites: 0x80}, 0, true); got != abiGeneral {
+	if got := classifyInternalABI(ft, 1, funcHints{nLocals: 1, inlineCallSites: 0x80}, 0, true, false); got != abiGeneral {
 		t.Fatalf("tail-only callee class = %v, want General", got)
+	}
+	fp := &wasm.CompType{Params: []wasm.ValType{wasm.F64, wasm.F64, wasm.F64, wasm.F64}, Results: []wasm.ValType{wasm.F64}}
+	if got := classifyInternalABI(fp, 4, funcHints{nLocals: 4, inlineCallSites: 1, stackArenaNodes: 12}, 0, false, true); got != abiLeafFP {
+		t.Fatalf("four-argument FP leaf = %v, want LeafFP", got)
+	}
+	fp.Params = append(fp.Params, wasm.F64)
+	if got := classifyInternalABI(fp, 5, funcHints{nLocals: 5, inlineCallSites: 1}, 0, false, true); got != abiGeneral {
+		t.Fatalf("five-argument FP leaf = %v, want General", got)
+	}
+}
+
+func TestLeafFPABIAvoidsCallPreservationAMD64(t *testing.T) {
+	f64 := []wasm.ValType{wasm.F64}
+	appendF64 := func(body []byte, value float64) []byte {
+		body = append(body, 0x44)
+		var bits [8]byte
+		binary.LittleEndian.PutUint64(bits[:], math.Float64bits(value))
+		return append(body, bits[:]...)
+	}
+	caller := []byte{0x00, 0x20, 0x00}
+	caller = appendF64(caller, 1)
+	caller = append(caller, 0xa0, 0x21, 0x00, 0x20, 0x00)
+	for range 3 {
+		caller = appendF64(caller, 0)
+	}
+	caller = append(caller, 0x10, 0x01, 0x1a, 0x20, 0x00, 0x0b)
+	callee := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xa0, 0x20, 0x02, 0xa0, 0x20, 0x03, 0xa0, 0x0b}
+	m := modFuncs(t,
+		funcDef{params: f64, results: f64, body: caller},
+		funcDef{params: []wasm.ValType{wasm.F64, wasm.F64, wasm.F64, wasm.F64}, results: f64, body: callee},
+	)
+	compile := func(on bool) ModuleStats {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"abi-leaf-fp": on, "inline": false}}); err != nil {
+			t.Fatal(err)
+		}
+		return stats
+	}
+	on, off := compile(true), compile(false)
+	if got := on.Funcs[1].Peephole["abi-leaf-fp"]; got != 1 {
+		t.Fatalf("abi-leaf-fp = %d, want 1", got)
+	}
+	if traffic := on.Funcs[0].LocalTraffic; traffic.CallPreservationStores != 0 || traffic.CallPreservationReloads != 0 {
+		t.Fatalf("LeafFP call traffic = %+v, want no preservation", traffic)
+	}
+	if traffic := off.Funcs[0].LocalTraffic; traffic.CallPreservationStores == 0 || traffic.CallPreservationReloads == 0 {
+		t.Fatalf("General FP call traffic = %+v, want store and reload", traffic)
+	}
+	roots := &shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{
+		{Candidate: true, LiveCallLocalMasks: []uint64{0}},
+		nil,
+	}}
+	var exactStats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &exactStats, GCFrameRoots: roots, Optimizations: map[string]bool{"abi-leaf-fp": true, "inline": false}}); err != nil {
+		t.Fatal(err)
+	}
+	if traffic := exactStats.Funcs[0].LocalTraffic; traffic.CallPreservationStores == 0 || traffic.CallPreservationReloads == 0 {
+		t.Fatalf("exact-root FP call traffic = %+v, want canonical preservation", traffic)
+	}
+	for _, enabled := range []bool{false, true} {
+		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"abi-leaf-fp": enabled, "inline": false}}, nil, math.Float64bits(7))
+		if err != nil || math.Float64frombits(got) != 8 {
+			t.Fatalf("execute abi-leaf-fp=%t: got=%g err=%v, want 8", enabled, math.Float64frombits(got), err)
+		}
 	}
 }
 

@@ -183,6 +183,10 @@ var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
 // caller-pin-preserving internal ABI class.
 var abiClassesEnabled = os.Getenv("WAGO_AMD64_NO_ABI_CLASSES") != "1"
 
+// abiLeafFPEnabled admits the tighter FP-preserving leaf contract independently
+// from the scalar class so target-specific pressure regressions stay reversible.
+var abiLeafFPEnabled = os.Getenv("WAGO_AMD64_NO_ABI_LEAF_FP") != "1"
+
 // mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
 // proves the local dies before its next read. Loop and EH targets stay fixed.
 var mergeNextUseEnabled = os.Getenv("WAGO_AMD64_NO_MERGE_NEXT_USE") != "1"
@@ -1098,9 +1102,10 @@ type internalABIClass uint8
 const (
 	abiGeneral internalABIClass = iota
 	abiLeafScalar
+	abiLeafFP
 )
 
-func (c internalABIClass) preservesCallerPins() bool { return c == abiLeafScalar }
+func (c internalABIClass) preservesCallerPins() bool { return c == abiLeafScalar || c == abiLeafFP }
 
 const (
 	CustomInstructionInput  = railcore.CustomInstructionInput
@@ -1193,7 +1198,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	_, hasMemory := m.MemoryType(0)
 	var allHints []funcHints
 	var globalScores []int64
-	needEffects := hasMemory && (policy.EnabledOption(optABIClasses) || policy.EnabledOption(optCallEffectBounds) && boundsFacts && !guardMode)
+	needEffects := hasMemory && (policy.EnabledOption(optABIClasses) || policy.EnabledOption(optABILeafFP) || policy.EnabledOption(optCallEffectBounds) && boundsFacts && !guardMode)
 	if needEffects {
 		allHints, globalScores, err = computeModuleHintsWithPolicyAndEffects(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, &calleeEffects)
 	} else {
@@ -1269,7 +1274,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		inlineTargets = inlineTargetTable{}
 	}
 	var calleeABIClasses []internalABIClass
-	if policy.EnabledOption(optABIClasses) {
+	if policy.EnabledOption(optABIClasses) || policy.EnabledOption(optABILeafFP) {
 		for i := range allHints {
 			// Every ordinary call to an admitted inline target is spliced. Reserving
 			// its standalone body's pin banks cannot remove caller traffic and may
@@ -1285,7 +1290,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if i < len(calleeEffects) {
 				effects = calleeEffects[i]
 			}
-			if classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, true) != abiGeneral {
+			if classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, policy.EnabledOption(optABIClasses), policy.EnabledOption(optABILeafFP)) != abiGeneral {
 				calleeABIClasses = make([]internalABIClass, n)
 				break
 			}
@@ -1302,7 +1307,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if i < len(calleeEffects) {
 				effects = calleeEffects[i]
 			}
-			calleeABIClasses[i] = classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, true)
+			calleeABIClasses[i] = classifyInternalABI(ft, allHints[i].nLocals, allHints[i], effects, policy.EnabledOption(optABIClasses), policy.EnabledOption(optABILeafFP))
 		}
 	}
 	requiresAVX2 := false
@@ -2349,12 +2354,12 @@ type regExhausted struct{}
 var errRegExhausted = errors.New("amd64: no register available to spill")
 
 // classifyInternalABI selects one of a finite set of complete preservation
-// contracts. The first AMD64 class is deliberately bounded to tiny straight-
-// line integer leaves: at most four GP arguments keep R9-R11 outside argument
+// contracts. Both AMD64 classes are deliberately bounded to tiny straight-line
+// leaves. Four-argument bank caps keep R9-R11 and XMM4-XMM7 outside argument
 // staging, and the pressure cap lets the callee reserve every possible caller
 // pin without needing a general allocator retry protocol.
-func classifyInternalABI(ft *wasm.CompType, nLocals int, h funcHints, effects shared.FuncEffects, enabled bool) internalABIClass {
-	if !enabled || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || len(ft.Params) > 4 ||
+func classifyInternalABI(ft *wasm.CompType, nLocals int, h funcHints, effects shared.FuncEffects, admitScalar, admitFP bool) internalABIClass {
+	if !sigFitsRegABI(ft) ||
 		nLocals != len(ft.Params) || h.hasCall || h.hasControlFlow || h.stackArenaNodes > 12 || h.inlineCallSiteCount() == 0 {
 		return abiGeneral
 	}
@@ -2367,6 +2372,23 @@ func classifyInternalABI(ft *wasm.CompType, nLocals int, h funcHints, effects sh
 		}
 	}
 	if h.touchesMemory && effects&shared.EffectGrowsMemory != 0 {
+		return abiGeneral
+	}
+	if !sigIsIntOnly(ft) {
+		gp, fp := 0, 0
+		for _, typ := range ft.Params {
+			if isFloatValType(typ) {
+				fp++
+			} else {
+				gp++
+			}
+		}
+		if !admitFP || gp > 4 || fp > 4 {
+			return abiGeneral
+		}
+		return abiLeafFP
+	}
+	if !admitScalar || len(ft.Params) > 4 {
 		return abiGeneral
 	}
 	return abiLeafScalar
@@ -2572,8 +2594,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		selfABIClass = calleeABIClasses[funcIdx]
 	}
 	f.preserveCallerPins = selfABIClass.preservesCallerPins()
-	if f.preserveCallerPins {
+	if selfABIClass == abiLeafScalar {
 		f.stats.peep("abi-leaf-scalar")
+	} else if selfABIClass == abiLeafFP {
+		f.stats.peep("abi-leaf-fp")
 	}
 	// Ordinary register-ABI bodies never consume frResultsOff: adapters preserve
 	// RCX below the internal frame and direct calls return in registers. Retain the
