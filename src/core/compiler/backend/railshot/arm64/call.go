@@ -1747,6 +1747,12 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 }
 
 func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompType) uint32 {
+	if indirect != regNone {
+		// GP argument staging owns X0-X7. Preserve a descriptor target selected in
+		// that bank before parallel moves and deferred loads overwrite it.
+		f.a.MovReg64(X17, indirect)
+		indirect = X17
+	}
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	allRoots := f.rootsBottomToTop()

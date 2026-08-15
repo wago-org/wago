@@ -78,9 +78,26 @@ func TestARM64OrdinaryCallUsesFuncrefResultRegisterABI(t *testing.T) {
 }
 
 func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
+	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.F32}
+	callRefBody := make([]byte, 0, 32)
+	callIndirectBody := make([]byte, 0, 32)
+	for range 7 {
+		callRefBody = append(callRefBody, 0x41, 0x00)
+		callIndirectBody = append(callIndirectBody, 0x41, 0x00)
+	}
+	callRefBody = append(callRefBody,
+		0x43, 0x00, 0x00, 0x00, 0x00, // f32.const 0
+		0xd2, 0x00, 0x14, 0x00, // ref.func 0; call_ref 0
+		0xd1, 0x0b, // ref.is_null
+	)
+	callIndirectBody = append(callIndirectBody,
+		0x43, 0x00, 0x00, 0x00, 0x00, // f32.const 0
+		0x41, 0x00, 0x11, 0x00, 0x00, // call_indirect 0 0
+		0xd1, 0x0b, // ref.is_null
+	)
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.FuncRef}),
+			wasmtest.FuncType(params, []wasm.ValType{wasm.FuncRef}),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
@@ -92,16 +109,8 @@ func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
 		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0xd0, 0x70, 0x0b}), // ref.null func
-			wasmtest.Code([]byte{
-				0x43, 0x00, 0x00, 0x00, 0x00, // f32.const 0
-				0xd2, 0x00, 0x14, 0x00, // ref.func 0; call_ref 0
-				0xd1, 0x0b, // ref.is_null
-			}),
-			wasmtest.Code([]byte{
-				0x43, 0x00, 0x00, 0x00, 0x00, // f32.const 0
-				0x41, 0x00, 0x11, 0x00, 0x00, // call_indirect 0 0
-				0xd1, 0x0b, // ref.is_null
-			}),
+			wasmtest.Code(callRefBody),
+			wasmtest.Code(callIndirectBody),
 		)),
 	)
 	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
