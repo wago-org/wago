@@ -246,6 +246,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
+		knownField, consumeField := f.consumeKnownGCStructGet(typeIndex, st, false, r)
 		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
 		for _, field := range st.Comp.Fields {
 			valueType := field.Storage().Val()
@@ -257,13 +258,18 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCStructGet(knownField, consumeField)
+		return nil
 	case 1: // struct.new_default
 		typeIndex, err := r.U32()
 		if err != nil {
 			return err
 		}
-		if _, ok := f.stagedStructType(typeIndex); !ok {
+		st, ok := f.stagedStructType(typeIndex)
+		if !ok {
 			return fmt.Errorf("arm64: struct.new_default type %d is unavailable", typeIndex)
 		}
 		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
@@ -273,9 +279,14 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
+		knownField, consumeField := f.consumeKnownGCStructGet(typeIndex, st, true, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCStructGet(knownField, consumeField)
+		return nil
 	case 2, 3, 4:
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -634,6 +645,91 @@ func (f *fn) finishKnownGCArrayLen(length uint32, consume bool) {
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(length)})
 	f.stats.peep("gc-known-array-len")
 	f.stats.peep("gc-array-len-elide")
+}
+
+type knownGCStructField struct {
+	value int64
+	typ   machineType
+}
+
+func (f *fn) consumeKnownGCStructGet(typeIndex uint32, st wasm.SubType, defaulted bool, r *wasm.Reader) (knownGCStructField, bool) {
+	if !f.policy.EnabledOption(optGCConstStructGet) {
+		return knownGCStructField{}, false
+	}
+	look := *r
+	op, err := look.Byte()
+	if err != nil || op != 0xfb {
+		return knownGCStructField{}, false
+	}
+	sub, err := look.U32()
+	if err != nil || sub < 2 || sub > 4 {
+		return knownGCStructField{}, false
+	}
+	accessType, err := look.U32()
+	if err != nil || accessType != typeIndex {
+		return knownGCStructField{}, false
+	}
+	fieldIndex, err := look.U32()
+	if err != nil || fieldIndex >= uint32(len(st.Comp.Fields)) {
+		return knownGCStructField{}, false
+	}
+	field := st.Comp.Fields[fieldIndex]
+	storageType := field.Storage()
+	if (sub == 2) == storageType.Packed() {
+		return knownGCStructField{}, false
+	}
+	known := knownGCStructField{typ: mtI32}
+	if !storageType.Packed() {
+		valueType := storageType.Val()
+		if !wasm.EqualValType(valueType, wasm.I32) && !wasm.EqualValType(valueType, wasm.I64) {
+			return knownGCStructField{}, false
+		}
+		known.typ = mtOf(valueType)
+	}
+	if !defaulted {
+		roots := f.rootsBottomToTop()
+		firstField := len(roots) - len(st.Comp.Fields)
+		if firstField < 0 {
+			return knownGCStructField{}, false
+		}
+		initializer := roots[firstField+int(fieldIndex)]
+		if initializer.kind != ekValue || initializer.st.kind != stConst {
+			return knownGCStructField{}, false
+		}
+		known.value = initializer.st.cval
+	}
+	if storageType.Packed() {
+		switch storageType.Pack() {
+		case wasm.PackI8:
+			if sub == 3 {
+				known.value = int64(int32(int8(known.value)))
+			} else {
+				known.value = int64(uint8(known.value))
+			}
+		case wasm.PackI16:
+			if sub == 3 {
+				known.value = int64(int32(int16(known.value)))
+			} else {
+				known.value = int64(uint16(known.value))
+			}
+		default:
+			return knownGCStructField{}, false
+		}
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("arm64: copied GC struct lookahead produced an invalid reader offset")
+	}
+	return known, true
+}
+
+func (f *fn) finishKnownGCStructGet(known knownGCStructField, consume bool) {
+	if !consume {
+		return
+	}
+	f.dropValue()
+	f.pushValue(storage{kind: stConst, typ: known.typ, cval: known.value})
+	f.stats.peep("gc-known-struct-get")
+	f.stats.peep("gc-struct-get-elide")
 }
 
 func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {

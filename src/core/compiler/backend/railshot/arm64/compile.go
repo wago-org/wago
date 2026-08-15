@@ -75,6 +75,11 @@ var deadGCNewEnabled = os.Getenv("WAGO_ARM64_NO_DEAD_GC_NEW") != "1"
 // is replaced by the encoded count.
 var fixedGCArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_FIXED_ARRAY_LEN") != "1"
 
+// constGCStructGetEnabled recognizes a struct constructor followed immediately
+// by a read of a numeric field whose initializer is already an exact constant.
+// Allocation and every initializer evaluation remain on the ordinary path.
+var constGCStructGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONST_STRUCT_GET") != "1"
+
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
 // checks and the Speed/Balanced layouts are unchanged.

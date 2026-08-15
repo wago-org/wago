@@ -594,6 +594,31 @@ B/op and allocations. Five alternating compile samples improved from 7.065 to
 allocations across 100 calls. A mixed fixture proves one dynamic length keeps its
 own `array.len` helper while independent constant-length sites still fuse.
 
+### 2026-08-14 — ARM64 constructor-known numeric struct reads
+
+ARM64 now recognizes exact adjacent `struct.new` or `struct.new_default` to
+`struct.get`, `struct.get_s`, or `struct.get_u` shapes when the selected numeric
+initializer is already a Valent constant. A copied reader requires the same
+defined type and valid field/access form. Plain i32/i64 constants and packed
+i8/i16 signed or unsigned reads are normalized at compile time. Float, vector,
+reference, dynamic, mismatched-type, non-adjacent, and malformed cases retain
+the existing helper path. The constructor still evaluates every field, performs
+the real allocation and safepoint, and roots its result; only the successful
+adjacent read helper is replaced. The immutable `gc-const-struct-get` policy
+provides an exact rollback.
+
+The three-site plain/packed/default fixture falls from 672 to 408 native bytes
+and from six synchronous GC helpers to three. Five alternating Apple M4 Max
+execution samples improved from a 498.8 to 368.2 ns/op median (-26.2%) with zero
+B/op and allocations. Five alternating compile samples improved from 7.547 to
+6.301 us/op (-16.5%); allocations remained 35/op and median B/op rose by 89
+bytes (+0.54%), within the gate. Enabled and disabled forced-collection paths
+both retain exactly 301 successful allocations across 100 main calls and one
+nontrapping operand call. A division by zero in an unselected initializer traps
+before allocation, while the subsequent nontrapping call proves recovery. A
+dynamic selected-field initializer is an explicit near miss and retains both
+helpers.
+
 ---
 
 # 1. North-star architecture

@@ -79,6 +79,7 @@
               "ext-fp-pins",
               "frame-elide",
               "frame-elide-reghomed",
+              "gc-const-struct-get",
               "gc-dead-new",
               "gc-fixed-array-len",
               "i64-mask32",
