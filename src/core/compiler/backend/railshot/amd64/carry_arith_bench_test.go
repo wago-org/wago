@@ -15,10 +15,14 @@ var carryArithmeticBenchmarkSink uint64
 func widenedCarryArithmeticBenchmarkModule(tb testing.TB) *wasm.Module {
 	tb.Helper()
 	body := []byte{0x01, 0x01, 0x7e} // one i64 result local
-	for range 128 {
+	for i := range 128 {
+		compare := byte(0x54) // i64.lt_u
+		if i&1 != 0 {
+			compare = 0x56 // i64.gt_u: exercise reversed-CMP carry selection.
+		}
 		body = append(body,
 			0x20, 0x00, // x
-			0x20, 0x01, 0x20, 0x02, 0x54, // a <u b
+			0x20, 0x01, 0x20, 0x02, compare,
 			0xad, 0x7c, // widen carry; x + carry
 			0x21, 0x03, // local.set result
 		)

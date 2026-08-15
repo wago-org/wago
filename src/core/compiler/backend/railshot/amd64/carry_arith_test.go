@@ -26,14 +26,17 @@ func TestWidenedCarryArithmetic(t *testing.T) {
 		name      string
 		op        byte
 		carryLeft bool
+		compare   byte
 	}{
-		{"add-right", 0x7c, false},
-		{"add-left", 0x7c, true},
-		{"sub-right", 0x7d, false},
+		{"add-right-lt", 0x7c, false, 0x54},
+		{"add-left-lt", 0x7c, true, 0x54},
+		{"sub-right-lt", 0x7d, false, 0x54},
+		{"add-right-gt", 0x7c, false, 0x56},
+		{"sub-right-gt", 0x7d, false, 0x56},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m := mod1(t, []wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, widenedCarryArithmeticBody(tc.op, tc.carryLeft, 0x54))
+			m := mod1(t, []wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, widenedCarryArithmeticBody(tc.op, tc.carryLeft, tc.compare))
 			var stats ModuleStats
 			on, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
 			if err != nil {
@@ -51,7 +54,7 @@ func TestWidenedCarryArithmetic(t *testing.T) {
 			}
 			for _, args := range [][3]uint64{{10, 1, 2}, {10, 2, 1}, {0, 0, ^uint64(0)}, {^uint64(0), 0, 1}} {
 				carry := uint64(0)
-				if args[1] < args[2] {
+				if tc.compare == 0x54 && args[1] < args[2] || tc.compare == 0x56 && args[1] > args[2] {
 					carry = 1
 				}
 				want := args[0] + carry
@@ -71,7 +74,7 @@ func TestWidenedCarryArithmeticNearMisses(t *testing.T) {
 		name string
 		body []byte
 	}{
-		{"unsigned-greater", widenedCarryArithmeticBody(0x7c, false, 0x56)},
+		{"unsigned-less-equal", widenedCarryArithmeticBody(0x7c, false, 0x58)},
 		{"signed-less", widenedCarryArithmeticBody(0x7c, false, 0x53)},
 		{"carry-left-sub", widenedCarryArithmeticBody(0x7d, true, 0x54)},
 	}
