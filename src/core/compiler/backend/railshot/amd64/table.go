@@ -627,19 +627,28 @@ func (f *fn) refIsNull() {
 	switch fact.Nullability() {
 	case shared.GCKnownNull:
 		f.dropValue()
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+		result := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+		if f.opt(optValueFacts) {
+			result.st.facts = factUpper32Zero | factBoolean
+		}
 		f.stats.peep("gc-null-check-elide")
 		return
 	case shared.GCKnownNonNull:
 		f.dropValue()
-		f.pushValue(storage{kind: stConst, typ: mtI32})
+		result := f.pushValue(storage{kind: stConst, typ: mtI32})
+		if f.opt(optValueFacts) {
+			result.st.facts = factUpper32Zero | factBoolean
+		}
 		f.stats.peep("gc-null-check-elide")
 		return
 	}
 	ref := f.materialize(f.popValue())
 	f.a.TestSelf(ref, true)
 	f.a.SetccReg(condE, ref)
-	f.pushReg(ref, mtI32)
+	result := f.pushReg(ref, mtI32)
+	if f.opt(optValueFacts) {
+		result.st.facts = factUpper32Zero | factBoolean
+	}
 }
 
 func (f *fn) refEq() {
@@ -650,7 +659,10 @@ func (f *fn) refEq() {
 	f.pinned = f.pinned.remove(right)
 	f.release(right)
 	f.a.SetccReg(condE, left)
-	f.pushReg(left, mtI32)
+	result := f.pushReg(left, mtI32)
+	if f.opt(optValueFacts) {
+		result.st.facts = factUpper32Zero | factBoolean
+	}
 }
 
 func (f *fn) refAsNonNull() {

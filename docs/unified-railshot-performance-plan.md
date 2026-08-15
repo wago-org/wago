@@ -1001,6 +1001,17 @@ compile medians were 12.754 versus 12.793 us/op (+0.3%, treated as noise), with
 18,856 B/op and 45 allocations/op unchanged. Disabling value facts retains all
 extensions.
 
+AMD64 now records the same clean-upper-half facts for materialized
+`ref.is_null`/`ref.eq` booleans and both i31 getter results. Its existing richer
+GC-reference fact remains the sole owner of nullability; the shared one-byte
+value field is used only for machine-width provenance. On a Ryzen 7 7800X3D,
+the sixteen-boolean fixture shrank from 381 to 349 native bytes (-8.4%) and six
+alternating fixed-work compile medians improved from 16.153 to 16.113 us/op
+(-0.2%, treated as noise). The sixteen-i31-get fixture similarly shrank from
+383 to 351 bytes (-8.4%) and compile medians improved from 16.204 to 16.137
+us/op (-0.4%, treated as noise). B/op and allocations remained unchanged at
+22,136/31 and 18,368/34 respectively; disabled facts retain every extension.
+
 ---
 
 # 1. North-star architecture
