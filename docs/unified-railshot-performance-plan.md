@@ -952,6 +952,16 @@ native output from 416 to 352 bytes (-15.4%). Six-sample compile medians were
 11.668 versus 11.672 us/op (+0.03%, treated as noise), with 26,640 B/op and 30
 allocations/op unchanged. Disabling value facts retains every extension.
 
+ARM64 `ref.test` and `ref.test_null` now publish that same semantic boolean
+contract for constant function references, inline abstract-heap tests, dynamic
+function-subtype tests, and collector-helper results. This is attached only
+after successful lowering, so helper errors and disabled value facts preserve
+the conservative path. A sixteen-test nullable-funcref fixture removes every
+following `i64.extend_i32_u` and reduces native output from 452 to 388 bytes
+(-14.2%). Six alternating fixed-work compile samples measured 9.009 versus
+9.161 us/op (+1.7%, treated as noise), with 22,432 B/op and 30 allocations/op
+unchanged. The disabled-policy fixture retains every extension.
+
 ---
 
 # 1. North-star architecture

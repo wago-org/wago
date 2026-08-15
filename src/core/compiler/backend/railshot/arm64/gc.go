@@ -83,12 +83,17 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 					matched = 1
 				}
 				f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
+				f.markTopBooleanFact()
 				return nil
 			}
 		}
 		_, targetIsFunc := f.m.TypeFunc(uint32(heap))
 		if f.gcTypeSubtypingRefTest && heap >= 0 && targetIsFunc {
-			return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
+			if err := f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable); err != nil {
+				return err
+			}
+			f.markTopBooleanFact()
+			return nil
 		}
 		if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
 			value := f.materialize(f.popValue())
@@ -107,6 +112,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.a.MovImm32(value, 0)
 			}
 			f.pushReg(value, mtI32)
+			f.markTopBooleanFact()
 			return nil
 		}
 		if !f.gcStructHelpers {
@@ -120,7 +126,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullableFlag})
 		f.pushValue(storage{kind: stConst, typ: mtI32}) // ref.test does not admit exact heap markers
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+		if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+			return err
+		}
+		f.markTopBooleanFact()
+		return nil
 	}
 	if sub == 24 || sub == 25 { // br_on_cast / br_on_cast_fail
 		return f.emitGCBranchCast(sub, r)
