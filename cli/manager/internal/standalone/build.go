@@ -148,11 +148,13 @@ func Build(request Request) (Result, error) {
 		return Result{}, err
 	}
 	if request.TinyGo {
-		hostEnvironment := append(os.Environ(), "CGO_ENABLED=0")
 		if err := os.WriteFile(mainPath, artifactCompilerSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
 			return Result{}, err
 		}
-		if err := runGo(buildDir, hostEnvironment, request.Verbose, "run", "."); err != nil {
+		// The helper itself uses standard Go, but its output executes under TinyGo.
+		// Select final-runtime capabilities such as cooperative interruption while
+		// retaining the standard compiler needed to generate the artifact.
+		if err := runGo(buildDir, environment, request.Verbose, "run", "-tags=wago_target_tinygo", "."); err != nil {
 			return Result{}, fmt.Errorf("precompile standalone artifact: %w", err)
 		}
 		if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, true), 0o644); err != nil {
@@ -260,9 +262,7 @@ func stripTinyGo(dir string, environment []string, verbose bool, output string, 
 	case "darwin":
 		return runTool("strip", dir, environment, verbose, "-x", output)
 	case "linux":
-		return runTool("strip", dir, environment, verbose,
-			"-s", "--strip-section-headers", "--remove-section=.eh_frame",
-			"--remove-section=.eh_frame_hdr", "--remove-section=.comment", output)
+		return runTool("strip", dir, environment, verbose, "-s", output)
 	default:
 		return fmt.Errorf("TinyGo stripping is not supported for target %s", target)
 	}

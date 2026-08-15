@@ -83,6 +83,12 @@ func TestBuildTinyGoEmbedsArtifactWithoutCompiler(t *testing.T) {
 	t.Setenv("WAGO_SRC", root)
 	t.Setenv("WAGO_HOME", t.TempDir())
 	t.Setenv("WAGO_BARE", "1")
+	t.Setenv("GOOS", "windows")
+	if host.Arch == "amd64" {
+		t.Setenv("GOARCH", "arm64")
+	} else {
+		t.Setenv("GOARCH", "amd64")
+	}
 	result, err := Build(Request{Input: input, Output: output, Target: host, TinyGo: true, KeepSymbols: true})
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +107,39 @@ func TestBuildTinyGoEmbedsArtifactWithoutCompiler(t *testing.T) {
 		if strings.Contains(string(names), forbidden) {
 			t.Errorf("TinyGo precompiled executable retains compiler symbol containing %q", forbidden)
 		}
+	}
+}
+
+func TestBuildTinyGoStripsByDefault(t *testing.T) {
+	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if !host.supportsTinyGo() {
+		t.Skipf("TinyGo standalone is unsupported on %s", host)
+	}
+	if _, err := exec.LookPath("tinygo"); err != nil {
+		t.Skip("tinygo is not installed")
+	}
+	if _, err := exec.LookPath("strip"); err != nil {
+		t.Skip("strip is not installed")
+	}
+	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	input := filepath.Join(project, "hello.wasm")
+	output := filepath.Join(project, "hello")
+	if err := os.WriteFile(input, emptyStartModule(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_SRC", root)
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_BARE", "1")
+	result, err := Build(Request{Input: input, Output: output, Target: host, TinyGo: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command(result.Output).CombinedOutput(); err != nil {
+		t.Fatalf("run stripped TinyGo standalone: %v\n%s", err, output)
 	}
 }
 

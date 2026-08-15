@@ -83,7 +83,11 @@ a `wago_precompiled` entry point and invokes TinyGo. The final binary contains
 the artifact loader, runtime, selected plugins, and runtime-owned host-call
 thunk emitter, but no Railshot source compiler. Because compilation policy is
 platform-sensitive, this path rejects non-native `--target` values instead of
-producing an artifact under the wrong OS or architecture assumptions.
+producing an artifact under the wrong OS or architecture assumptions. The
+helper environment pins that native target rather than inheriting ambient
+cross-compilation variables. Its `wago_target_tinygo` build tag also selects the
+final runtime's cooperative interruption policy, which is distinct from the
+standard-Go Linux helper's signal-based policy.
 
 `cli/internal/handoff.Metadata` is the sole definition of launch metadata. It
 encodes and decodes the `WAGO_MANAGER_*` and `WAGO_RUNTIME_*` environment
