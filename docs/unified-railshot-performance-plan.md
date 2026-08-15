@@ -1289,6 +1289,18 @@ remove. Non-leaf chains remain fenced until an exact acyclic, externally rooted
 chain proof can be built without retaining a general CFG. No production code or
 compiler storage was added for either experiment.
 
+### 2026-08-14 — deferred AMD64 FP regional bank
+
+A temporary opt-in counter broadened the existing AMD64 interval-region local
+filter from integers to scalar `f32`/`f64` while retaining every current
+admission rule: 128--16,384 body bytes, 16--256 locals, no calls, no control
+flow, no bulk memory, and a minimum local score of two. It found zero qualifying
+FP locals across all 64 checked-in benchmark modules. Useful corpus FP work is
+loop-shaped, so adding a second owner bank and FP eviction path before bounded
+loop/control regions would add allocator state without a production consumer.
+The probe was removed; FP/vector regional residency remains ordered after a
+measured structured-region extension.
+
 ---
 
 # 1. North-star architecture
