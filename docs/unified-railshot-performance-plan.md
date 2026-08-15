@@ -1374,6 +1374,17 @@ is required for machine-local transforms. The reader, emitter, policy bit,
 tests, and benchmarks were removed; broader shrink wrapping remains deferred
 until a shape can enter its slow body directly without duplicating hot work.
 
+### 2026-08-15 — deferred inverted widened carries
+
+An AMD64 extension admitted widened unsigned `<=`/`>=` booleans into the
+existing `ADC`/`SBB` carry rule by complementing CF with one `CMC`. Full-width
+add/sub execution and the generated encoding passed, and a mixed 128-site
+fixture improved materially without execution allocation. However, a distinct
+opt-in counter found zero inverted-carry sites across all 64 benchmark modules;
+all 200 real widened-carry hits remain `<`/`>`. The rule, counter, encoder method,
+and tests were removed. It should return only with production-corpus demand,
+not because the isolated sequence is locally cheaper.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
