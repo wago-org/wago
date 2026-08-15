@@ -148,16 +148,14 @@ func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool) 
 		}
 		missingRequired := requiredAuthorityDeselected(selector, itemKeys, requiredKeys)
 		if selector.Rejected() || missingRequired {
-			title := "Reject all authority grants?"
+			title := "Exit installation?"
+			backDescription := "return to authority review"
 			cancelDescription := "reject all grants and make no changes"
 			if missingRequired && !selector.Rejected() {
-				title = "Required authority deselected"
+				backDescription = "restore required authorities and return to the list"
 				cancelDescription = "required authorities cannot be denied"
 			}
-			selection, ok := tui.Choose(title, []tui.Item{
-				{Label: "Continue review", Description: "restore required authorities and return to the list", Value: "continue"},
-				{Label: "Cancel installation", Description: cancelDescription, Value: "cancel"},
-			})
+			selection, ok := tui.Choose(title, authorityRejectionItems(backDescription, cancelDescription))
 			if ok && selection == "cancel" {
 				return fmt.Errorf("authority review rejected; no changes were made")
 			}
@@ -177,6 +175,13 @@ func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool) 
 			choices[key] = selector.Items[index].On
 		}
 		return nil
+	}
+}
+
+func authorityRejectionItems(backDescription, cancelDescription string) []tui.Item {
+	return []tui.Item{
+		{Label: "No", Description: backDescription, Value: "continue"},
+		{Label: "Yes", Description: cancelDescription, Value: "cancel"},
 	}
 }
 

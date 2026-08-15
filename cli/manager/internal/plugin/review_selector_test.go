@@ -62,3 +62,13 @@ func TestAuthorityReviewSelectorSectionsMultiplePlugins(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthorityRejectionChoicesUseYesAndNo(t *testing.T) {
+	items := authorityRejectionItems("restore required authorities", "required authorities cannot be denied")
+	if len(items) != 2 || items[0].Label != "No" || items[0].Value != "continue" {
+		t.Fatalf("back choice = %#v", items)
+	}
+	if items[1].Label != "Yes" || items[1].Value != "cancel" {
+		t.Fatalf("exit choice = %#v", items)
+	}
+}
