@@ -707,7 +707,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for i := range c.GlobalImports {
-				if c.GlobalImports[i].Mutable && c.GlobalImports[i].Type == ValFuncRef {
+				if c.GlobalImports[i].Type == ValFuncRef {
 					localFuncrefsMayEscape = true
 					break
 				}
