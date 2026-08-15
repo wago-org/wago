@@ -54,6 +54,23 @@ func runArm64WrapperMem(t *testing.T, m *wasm.Module, arg uint32, init func([]by
 	return binary.LittleEndian.Uint32(results), err
 }
 
+func TestLoopPrecheckScannerConsumesMixedMemoryWidthImmediatesArm64(t *testing.T) {
+	m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}}}
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0xfd, 0x00, 0x44, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // v128.load memory 1, offset 2^32
+		0x1a,       // drop
+		0x41, 0x00, // i32.const 0
+		0x40, 0x00, // memory.grow 0
+		0x1a, // drop
+		0x0b,
+	}
+	cands, n, grow := scanLoopHoistable(wasm.NewReader(body), m)
+	if len(cands) != 0 || n != 0 || !grow {
+		t.Fatalf("mixed-width loop scan = cands=%v n=%d grow=%v", cands, n, grow)
+	}
+}
+
 func TestLoopPrecheckExecAndSlowTrapArm64(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	m := modMem(t, 1, i32, i32, readLoopBodyArm64)

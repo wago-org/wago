@@ -54,6 +54,17 @@ func ClassifyInstructionImmediateIntoWithMemarg64(r *Reader, op byte, imm *Instr
 // by validated module walkers. multiMemory changes memory.size/memory.grow from
 // the legacy reserved-zero byte to a memory index; memarg64 selects u64 offsets.
 func ClassifyInstructionImmediateIntoWithFeatures(r *Reader, op byte, imm *InstructionImmediate, memarg64, multiMemory bool) error {
+	return classifyInstructionImmediateIntoWithWidths(r, op, imm, fixedMemargWidths(memarg64), multiMemory)
+}
+
+// ClassifyInstructionImmediateIntoWithModuleFeatures selects each memarg offset
+// width from the memory index encoded by that instruction. It is the module-aware
+// form for validated multi-memory/memory64 walkers.
+func ClassifyInstructionImmediateIntoWithModuleFeatures(r *Reader, op byte, imm *InstructionImmediate, m *Module, multiMemory bool) error {
+	return classifyInstructionImmediateIntoWithWidths(r, op, imm, moduleMemargWidths(m), multiMemory)
+}
+
+func classifyInstructionImmediateIntoWithWidths(r *Reader, op byte, imm *InstructionImmediate, widths memargWidths, multiMemory bool) error {
 	*imm = InstructionImmediate{}
 	if kind := simpleOpcode[op]; kind != InstrInvalid {
 		imm.Kind = kind
@@ -87,7 +98,7 @@ func ClassifyInstructionImmediateIntoWithFeatures(r *Reader, op byte, imm *Instr
 		return err
 	}
 	ir := &reader{data: r.data, pos: r.pos}
-	_, err := classifyExprOpAfterOpcodeWithFeatures(ir, op, imm, memarg64, multiMemory)
+	_, err := classifyExprOpAfterOpcodeWithWidths(ir, op, imm, widths, multiMemory)
 	r.pos = ir.pos
 	return err
 }

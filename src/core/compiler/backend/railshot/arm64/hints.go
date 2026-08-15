@@ -777,54 +777,18 @@ func (s *byteBodyScanner) branchHintAt(offset uint32) (bool, bool) {
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
-	if op >= 0x28 && op <= 0x3e {
-		align, err := s.r.U32()
+	var err error
+	if s.m != nil {
+		err = wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(&s.r.Reader, op, imm, s.m, true)
+	} else {
+		start := s.r.Offset()
+		err = wasm.ClassifyInstructionImmediateInto(&s.r.Reader, op, imm)
 		if err != nil {
-			return err
+			// Legacy unit scanners may not carry a module. Retain their validated
+			// single-memory memory64 retry without weakening module-aware walks.
+			s.r.JumpTo(start)
+			err = wasm.ClassifyInstructionImmediateIntoWithMemarg64(&s.r.Reader, op, imm, true)
 		}
-		memoryIndex := uint32(0)
-		if align >= 64 && align < 128 {
-			memoryIndex, err = s.r.U32()
-			if err != nil {
-				return err
-			}
-			imm.HasMemIndex, imm.MemIndex = true, memoryIndex
-		}
-		memory64 := false
-		if s.m != nil {
-			if mt, ok := s.m.MemoryType(memoryIndex); ok {
-				memory64 = mt.Limits.Addr64
-			}
-		}
-		if memory64 {
-			_, err = s.r.U64()
-		} else {
-			_, err = s.r.U32()
-		}
-		imm.TouchesMemory = true
-		return err
-	}
-	if op == 0x3f || op == 0x40 {
-		index, err := s.r.U32()
-		if err != nil {
-			return err
-		}
-		imm.Index = index
-		imm.TouchesMemory = true
-		if op == 0x3f {
-			imm.Kind = wasm.InstrMemorySize
-		} else {
-			imm.Kind = wasm.InstrMemoryGrow
-		}
-		return nil
-	}
-	start := s.r.Offset()
-	err := wasm.ClassifyInstructionImmediateInto(&s.r.Reader, op, imm)
-	if err != nil {
-		// SIMD memory immediates may carry u64 offsets. Validation has already
-		// established their shape, so a width retry is safe for this hint-only walk.
-		s.r.JumpTo(start)
-		err = wasm.ClassifyInstructionImmediateIntoWithMemarg64(&s.r.Reader, op, imm, true)
 	}
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true

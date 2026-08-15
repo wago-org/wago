@@ -875,43 +875,12 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline bool) {
 func (h funcHints) inlineCallSiteCount() uint8 { return h.inlineCallSites & 0x7f }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
-	if op >= 0x28 && op <= 0x3e {
-		align, err := s.r.U32()
-		if err != nil {
-			return err
-		}
-		if align >= 64 && align < 128 {
-			index, err := s.r.U32()
-			if err != nil {
-				return err
-			}
-			imm.HasMemIndex, imm.MemIndex = true, index
-		}
-		if s.memory64 {
-			if _, err := s.r.U64(); err != nil {
-				return err
-			}
-		} else if _, err := s.r.U32(); err != nil {
-			return err
-		}
-		imm.TouchesMemory = true
-		return nil
+	var err error
+	if s.m != nil {
+		err = wasm.ClassifyInstructionImmediateIntoWithModuleFeatures(&s.r.Reader, op, imm, s.m, true)
+	} else {
+		err = wasm.ClassifyInstructionImmediateIntoWithFeatures(&s.r.Reader, op, imm, s.memory64, true)
 	}
-	if op == 0x3f || op == 0x40 {
-		index, err := s.r.U32()
-		if err != nil {
-			return err
-		}
-		imm.Index = index
-		imm.TouchesMemory = true
-		if op == 0x3f {
-			imm.Kind = wasm.InstrMemorySize
-		} else {
-			imm.Kind = wasm.InstrMemoryGrow
-		}
-		return nil
-	}
-	err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(&s.r.Reader, op, imm, s.memory64)
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true
 	}
