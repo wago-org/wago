@@ -145,8 +145,23 @@ func publishBranchItems(ctx context.Context, root string, now time.Time) ([]tui.
 		return nil, fmt.Errorf("list release branches: %w", err)
 	}
 	branches := strings.Fields(output)
+	defaultRef := defaultBranch
+	defaultIsLocal := false
+	for _, branch := range branches {
+		if branch == defaultBranch {
+			defaultIsLocal = true
+			break
+		}
+	}
+	if !defaultIsLocal && defaultBranch != "" {
+		remoteRef := "origin/" + defaultBranch
+		if commit := strings.TrimSpace(gitOutputAt(root, "show-ref", "--verify", "--hash", "refs/remotes/"+remoteRef)); commit != "" {
+			branches = append(branches, remoteRef)
+			defaultRef = remoteRef
+		}
+	}
 	if len(branches) == 0 {
-		return nil, errors.New("no local branches are available for the release tag")
+		return nil, errors.New("no local or fetched origin branches are available for the release tag")
 	}
 	sort.Strings(branches)
 	ordered := make([]string, 0, len(branches))
@@ -166,7 +181,7 @@ func publishBranchItems(ctx context.Context, root string, now time.Time) ([]tui.
 			}
 		}
 	}
-	appendBranch(defaultBranch)
+	appendBranch(defaultRef)
 	appendBranch(current)
 	for _, branch := range branches {
 		appendBranch(branch)
@@ -178,8 +193,11 @@ func publishBranchItems(ctx context.Context, root string, now time.Time) ([]tui.
 			return nil, err
 		}
 		label := branch
-		if branch == defaultBranch {
-			label += " (default)"
+		if branch == defaultRef {
+			label = defaultBranch + " (default)"
+			if !defaultIsLocal {
+				label = defaultBranch + " (default, origin)"
+			}
 		} else if branch == current {
 			label += " (current)"
 		}

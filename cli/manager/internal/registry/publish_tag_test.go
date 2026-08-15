@@ -171,6 +171,40 @@ func TestResolvePublishTagCanChooseCurrentBranchInsteadOfDefault(t *testing.T) {
 	}
 }
 
+func TestPublishBranchItemsIncludeRemoteOnlyDefaultBranch(t *testing.T) {
+	repository, remote, commit := newPublishTagRepository(t)
+	testGit(t, repository, "switch", "-c", "feature")
+	testGit(t, repository, "branch", "-D", "main")
+
+	ui := publishTagUI{
+		interactive: true,
+		choose: func(title string, items []tui.Item) (string, bool) {
+			switch {
+			case strings.HasPrefix(title, "No release tag"), strings.HasPrefix(title, "Create and push"):
+				return "yes", true
+			case strings.HasPrefix(title, "Create v1.2.3 from"):
+				if len(items) < 2 || items[0].Label != "main (default, origin)" || items[0].Value != "origin/main" || items[1].Label != "feature (current)" {
+					t.Fatalf("remote-only default branch ordering = %#v", items)
+				}
+				return items[0].Value, true
+			default:
+				return "", false
+			}
+		},
+		out: &bytes.Buffer{},
+		now: time.Now,
+	}
+
+	got, err := resolvePublishTag(context.Background(), repository, filepath.Join(repository, "wago.json"), "v1.2.3", ui)
+	if err != nil || got != commit {
+		t.Fatalf("resolve remote-only default branch = %q, %v; want %q", got, err, commit)
+	}
+	remoteCommit := strings.TrimSpace(testGit(t, remote, "rev-parse", "refs/tags/v1.2.3^{commit}"))
+	if remoteCommit != commit {
+		t.Fatalf("remote tag = %q, want remote-only default commit %q", remoteCommit, commit)
+	}
+}
+
 func TestResolvePublishTagRejectsBranchWithoutCurrentReleaseFiles(t *testing.T) {
 	repository, _, _ := newPublishTagRepository(t)
 	testGit(t, repository, "switch", "-c", "release-candidate")
