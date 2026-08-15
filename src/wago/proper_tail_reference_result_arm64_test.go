@@ -190,7 +190,7 @@ func TestARM64WideWrapperCallerTailsToNarrowFuncrefRegisterTarget(t *testing.T) 
 				)),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
 				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
-				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(1))...))),
+				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))...))),
 				wasmtest.Section(10, wasmtest.Vec(
 					wasmtest.Code([]byte{0xd2, 0x01, 0x0b}), // target returns ref.func caller
 					wasmtest.Code(tail.body),
