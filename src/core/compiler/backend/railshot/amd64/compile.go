@@ -742,6 +742,15 @@ type trapSite struct {
 	pc       uint32
 }
 
+// scratchState keeps low-level backend tests able to exercise an isolated fn.
+// Production compilation always installs the module-owned scratch explicitly.
+func (f *fn) scratchState() *scratch {
+	if f.sc == nil {
+		f.sc = &scratch{}
+	}
+	return f.sc
+}
+
 func newScratch() *scratch {
 	return newScratchWithStackCap(defaultStackArenaCap)
 }
