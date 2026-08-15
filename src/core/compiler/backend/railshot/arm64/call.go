@@ -2254,6 +2254,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		// wrapper path; at run time only one branch executes.
 		roots := f.rootsBottomToTop()
 		types := make([]machineType, len(roots))
+		gcRoots := gcRootFlags(roots)
 		for i, root := range roots {
 			types[i] = root.st.typ
 			if root.kind == ekDeferred && root.typ != mtNone {
@@ -2280,7 +2281,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		done := f.a.Branch()
 		f.a.PatchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
-		f.setDepthTypes(types)
+		f.setDepthTypesWithGCRoots(types, gcRoots)
 		f.st64(linMemReg, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
