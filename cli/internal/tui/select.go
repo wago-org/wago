@@ -110,9 +110,8 @@ type selectorModel interface {
 	frame() string
 }
 
-// multiSelect is the pure capability picker state: a list plus a cursor.
-// prompt overrides the default footer hint. Rejection is a footer key (r), not
-// a selectable row.
+// MultiSelect is the pure picker state: a list plus a cursor. Prompt overrides
+// the default footer hint. A Reject item and the r key both submit rejection.
 type MultiSelect struct {
 	Title  string
 	Prompt string
@@ -122,8 +121,8 @@ type MultiSelect struct {
 
 // apply advances the model by one key. It reports whether the interaction is
 // finished, and if so whether it was cancelled (esc) rather than submitted.
-// Enter always submits the checked items; r clears then submits (reject-all);
-// movement clamps at the ends; → is an alternate submit key.
+// Enter submits the focused action, r clears then submits rejection, movement
+// clamps at the ends, and → is an alternate submit key.
 func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 	switch k {
 	case keyUp:
