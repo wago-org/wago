@@ -1275,6 +1275,37 @@ execution B/op and allocations. Focused compilation improves from an 87.50 to
 near-miss cases, the AMD64 race suite, and the full repository suite pass
 natively.
 
+### 2026-08-15 — AMD64 widened `local.tee` carry fusion
+
+The wide-arithmetic campaign now recognizes the exact producer/consumer form
+`iN.add; local.tee $sum; local.get $operand; iN.lt_u;
+i64.extend_i32_u`, where `$operand` is one of the addition's original local
+operands. AMD64 forces the final operation to be an ordinary full-width `ADD`,
+homes `$sum` with flag-neutral moves, and materializes the widened carry directly
+from CF. Flag-neutral LEA/tree covers and `INC` are excluded from this path. A
+dedicated immutable `tee-add-carry` policy retains the ordinary compare path as
+the exact fallback.
+
+The widening is an intentional cost gate. An earlier prototype also accepted an
+unextended comparison and found 287 apparent corpus sites, but most were
+allocator overflow checks already handled more cheaply by compare-to-branch
+fusion. That broad form increased several native images and was removed. The
+retained form has 65 exact sites: 34 in Ruby, 10 in SQLite, 9 in Lua, and one
+each in the script and esbuild artifacts after excluding nested additions that
+already have an associative-tree cover. Their combined native output falls by
+336 bytes; the isolated 128-site function falls from 3,141 to 2,264 bytes.
+
+On the Ryzen 7 7800X3D, six serialized one-second samples of that fixture improve
+from a 46.06 to 36.35 ns/op median (-21.1%), with zero execution B/op and
+allocations. Focused compilation improves from 101.33 to 66.29 us/op (-34.6%);
+B/op falls from about 211 kB to 96 kB and allocations from 33 to 31 because the
+exact reader window consumes the redundant compare and extension without
+building their Valent nodes. Six fixed-work SQLite compile samples remain within
+the corpus gate at 79.91 ms disabled versus 80.25 ms enabled (+0.4%), with B/op
+and allocations unchanged within run-to-run noise. Full-width i32/i64 execution,
+policy and single-precondition near misses, every affected corpus module, the
+complete AMD64 backend, the repository suite, and native race tests pass.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
