@@ -48,22 +48,24 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	if fn.scalarWideMask&8 == 0 {
 		a3 = uint64(uint32(a3))
 	}
-	var first, second uint64
-	if fn.resultSlots == 2 {
-		first, second = in.eng.EnterPreparedInt2(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
-	} else {
-		result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
-		if err != nil {
-			return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
-		}
-		first = result
+	first, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
-	return fn.unpackDirectBankResults(first, second), nil
+	out := in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 1 {
+		if fn.scalarResultWide {
+			out[0] = first
+		} else {
+			out[0] = uint64(uint32(first))
+		}
+	}
+	return out, nil
 }
 
 func (fn *PreparedFunction) invokeDirectFP(args []uint64) ([]uint64, error) {
@@ -88,11 +90,62 @@ func (fn *PreparedFunction) invokeDirectFP(args []uint64) ([]uint64, error) {
 	if !fn.isolatedFast {
 		return nil, fmt.Errorf("wago: direct prepared FP entry requires an isolated instance")
 	}
+	first := in.eng.EnterPreparedFP(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 1 {
+		if fn.scalarResultWide {
+			out[0] = first
+		} else {
+			out[0] = uint64(uint32(first))
+		}
+	}
+	return out, nil
+}
+
+func (fn *PreparedFunction) invokeDirectPair(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	}
+	if !fn.isolatedFast {
+		return nil, fmt.Errorf("wago: direct prepared result-pair entry requires an isolated instance")
+	}
+	var a0, a1, a2, a3 uint64
+	switch len(args) {
+	case 4:
+		a3 = args[3]
+		if !fn.directPairFP && fn.scalarWideMask&8 == 0 {
+			a3 = uint64(uint32(a3))
+		}
+		fallthrough
+	case 3:
+		a2 = args[2]
+		if !fn.directPairFP && fn.scalarWideMask&4 == 0 {
+			a2 = uint64(uint32(a2))
+		}
+		fallthrough
+	case 2:
+		a1 = args[1]
+		if !fn.directPairFP && fn.scalarWideMask&2 == 0 {
+			a1 = uint64(uint32(a1))
+		}
+		fallthrough
+	case 1:
+		a0 = args[0]
+		if !fn.directPairFP && fn.scalarWideMask&1 == 0 {
+			a0 = uint64(uint32(a0))
+		}
+	}
 	var first, second uint64
-	if fn.resultSlots == 2 {
+	if fn.directPairFP {
 		first, second = in.eng.EnterPreparedFP2(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
 	} else {
-		first = in.eng.EnterPreparedFP(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+		first, second = in.eng.EnterPreparedInt2(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
 	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))

@@ -32,6 +32,8 @@ type PreparedFunction struct {
 	isolatedFast        bool
 	directIntFast       bool
 	directFPFast        bool
+	directPairFast      bool
+	directPairFP        bool
 	directMixedFast     bool
 	directMixedResultFP bool
 }
@@ -268,10 +270,19 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 			mixedResultFP, mixed := preparedDirectMixedSignature(sig)
 			switch {
 			case (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig):
-				fn.directIntFast = true
+				if fn.resultSlots == 2 {
+					fn.directPairFast = true
+				} else {
+					fn.directIntFast = true
+				}
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			case fn.isolatedFast && preparedDirectFPSupported && preparedDirectFPEnabled && preparedDirectFPSignature(sig):
-				fn.directFPFast = true
+				if fn.resultSlots == 2 {
+					fn.directPairFast = true
+					fn.directPairFP = true
+				} else {
+					fn.directFPFast = true
+				}
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			case fn.isolatedFast && preparedDirectFPSupported && preparedDirectFPEnabled && mixed:
 				fn.directMixedFast = true
@@ -292,6 +303,9 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 		}
 		if fn.directFPFast {
 			return fn.invokeDirectFP(args)
+		}
+		if fn.directPairFast {
+			return fn.invokeDirectPair(args)
 		}
 		if fn.directMixedFast {
 			return fn.invokeDirectMixed(args)

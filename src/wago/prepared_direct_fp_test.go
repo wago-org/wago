@@ -361,8 +361,8 @@ func TestPreparedDirectSameBankResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !intPair.directIntFast || intPair.scalarFast {
-		t.Fatalf("int-pair direct/scalar = %v/%v, want true/false", intPair.directIntFast, intPair.scalarFast)
+	if !intPair.directPairFast || intPair.directPairFP || intPair.scalarFast {
+		t.Fatalf("int-pair direct/fp/scalar = %v/%v/%v, want true/false/false", intPair.directPairFast, intPair.directPairFP, intPair.scalarFast)
 	}
 	got, err := intPair.Invoke(I64(1<<50|7), uint64(0xffffffff00000000)|19)
 	if err != nil || len(got) != 2 || AsI64(got[0]) != (1<<50|7) || got[1] != 19 {
@@ -373,8 +373,8 @@ func TestPreparedDirectSameBankResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !fpPair.directFPFast || fpPair.scalarFast {
-		t.Fatalf("fp-pair direct/scalar = %v/%v, want true/false", fpPair.directFPFast, fpPair.scalarFast)
+	if !fpPair.directPairFast || !fpPair.directPairFP || fpPair.scalarFast {
+		t.Fatalf("fp-pair direct/fp/scalar = %v/%v/%v, want true/true/false", fpPair.directPairFast, fpPair.directPairFP, fpPair.scalarFast)
 	}
 	got, err = fpPair.Invoke(F64(-3.25), uint64(0xffffffff00000000)|F32(1.5))
 	if err != nil || len(got) != 2 || math.Float64bits(AsF64(got[0])) != math.Float64bits(-3.25) || got[1] != F32(1.5) {
@@ -385,7 +385,7 @@ func TestPreparedDirectSameBankResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !trapPair.directIntFast {
+	if !trapPair.directPairFast || trapPair.directPairFP {
 		t.Fatal("trap-pair did not select direct integer entry")
 	}
 	if _, err := trapPair.Invoke(I32(9), I32(8), I32(0)); err == nil {
@@ -409,7 +409,7 @@ func TestPreparedDirectSameBankResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fallbackInt.directIntFast || fallbackFP.directFPFast {
+	if fallbackInt.directPairFast || fallbackFP.directPairFast {
 		t.Fatal("disabled runtime policy retained same-bank fast path")
 	}
 	got, err = fallbackInt.Invoke(I64(99), I32(7))
@@ -442,12 +442,8 @@ func BenchmarkPreparedDirectSameBankResults(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		selected, other := fn.directFPFast, fn.directIntFast
-		if intBank {
-			selected, other = fn.directIntFast, fn.directFPFast
-		}
-		if selected != direct || other {
-			b.Fatalf("direct integer/FP selection = %v/%v, want bank direct=%v", fn.directIntFast, fn.directFPFast, direct)
+		if fn.directPairFast != direct || direct && fn.directPairFP == intBank {
+			b.Fatalf("direct pair/fp selection = %v/%v, want direct=%v int=%v", fn.directPairFast, fn.directPairFP, direct, intBank)
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
