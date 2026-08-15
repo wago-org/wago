@@ -41,7 +41,7 @@ func watchModule(path, intervalValue string, arguments []string, flags []command
 		debounce:   interval,
 		stopGrace:  watchStopGrace,
 		executable: os.Args[0],
-		arguments:  withoutWatchFlags(arguments, flags),
+		arguments:  watchedChildArguments(arguments, flags),
 		stdin:      os.Stdin,
 		stdout:     os.Stdout,
 		stderr:     os.Stderr,
@@ -378,6 +378,10 @@ func withoutWatchFlags(arguments []string, flags []command.Flag) []string {
 		}
 	}
 	return result
+}
+
+func watchedChildArguments(arguments []string, flags []command.Flag) []string {
+	return append([]string{"run"}, withoutWatchFlags(arguments, flags)...)
 }
 
 func watchedCommandFlag(argument string, flags []command.Flag) (command.Flag, bool, bool) {

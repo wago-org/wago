@@ -21,9 +21,9 @@ import (
 
 func TestWithoutWatchFlagsPreservesGuestArguments(t *testing.T) {
 	input := []string{"--invoke", "helper.wasm", "--watch", "--watch-interval", "1s", "module.wasm", "--watch", "guest"}
-	want := []string{"--invoke", "helper.wasm", "module.wasm", "--watch", "guest"}
-	if got := withoutWatchFlags(input, Command(testEnvironment{}).AllFlags()); !reflect.DeepEqual(got, want) {
-		t.Fatalf("withoutWatchFlags = %#v, want %#v", got, want)
+	want := []string{"run", "--invoke", "helper.wasm", "module.wasm", "--watch", "guest"}
+	if got := watchedChildArguments(input, Command(testEnvironment{}).AllFlags()); !reflect.DeepEqual(got, want) {
+		t.Fatalf("watchedChildArguments = %#v, want %#v", got, want)
 	}
 }
 
