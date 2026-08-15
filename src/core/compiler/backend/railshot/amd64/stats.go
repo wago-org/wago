@@ -105,6 +105,11 @@ var (
 	// than into the CF input of ADC/SBB. WAGO_AMD64_NO_WIDENED_CARRY_ARITH=1 is
 	// the A/B oracle.
 	widenedCarryArithmeticEnabled = os.Getenv("WAGO_AMD64_NO_WIDENED_CARRY_ARITH") != "1"
+	// mergeRegResidencyEnabled keeps dirty pinned locals in their dedicated
+	// registers across forward structured merges. Loop targets retain their fixed
+	// canonical contract. WAGO_AMD64_NO_MERGE_REG_RESIDENCY=1 is the exact A/B
+	// and rollback path.
+	mergeRegResidencyEnabled = os.Getenv("WAGO_AMD64_NO_MERGE_REG_RESIDENCY") != "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
 	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"

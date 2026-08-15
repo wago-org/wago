@@ -355,10 +355,22 @@ func (f *fn) freeEndsBuf(b []int) {
 }
 
 func (f *fn) convergeEdgeTo(target *[]locState) {
-	f.convergeEdgeToWithDead(target, 0, 0)
+	f.convergeEdgeToWithDeadMode(target, 0, 0, true)
 }
 
 func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
+	f.convergeEdgeToWithDeadMode(target, deadGP, deadFP, true)
+}
+
+func (f *fn) convergeIfEdgeTo(target *[]locState) {
+	f.convergeEdgeToWithDeadMode(target, 0, 0, false)
+}
+
+func (f *fn) convergeIfEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
+	f.convergeEdgeToWithDeadMode(target, deadGP, deadFP, false)
+}
+
+func (f *fn) convergeEdgeToWithDeadMode(target *[]locState, deadGP, deadFP regMask, fixed bool) {
 	// Lazy zeros always materialize to the slot so unpinned declared-zero locals
 	// have a real slot value on every edge (all locals — const-zero ones may be
 	// unpinned). materializeZeroLocal leaves a pinned local in lsStackReg, so the
@@ -374,25 +386,60 @@ func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) 
 	if !f.usesCalls || len(f.pinnedLocals) == 0 {
 		return
 	}
-	// Dirty pinned registers materialize to the slot too.
-	for _, x := range f.pinnedLocals {
-		if f.locals[x].state == lsReg {
-			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
-			f.stats.addControlMergeStore()
-			f.locals[x].state = lsStackReg
+	keepRegs := f.mergeRegResidency && !fixed
+	if !keepRegs {
+		// The rollback and fixed-target paths canonicalize dirty registers exactly
+		// as before.
+		for _, x := range f.pinnedLocals {
+			if f.locals[x].state == lsReg {
+				f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+				f.stats.addControlMergeStore()
+				f.locals[x].state = lsStackReg
+			}
 		}
 	}
 	if *target == nil { // first edge fixes the frame's merge state
 		t := f.newLocStateBuf()
 		for i, x := range f.pinnedLocals {
 			t[i] = f.locals[x].state
+			if keepRegs && t[i] == lsReg {
+				f.stats.peep("merge-reg-resident")
+			}
 		}
 		*target = t
 		return
 	}
 	t := *target
 	for i, x := range f.pinnedLocals {
-		if t[i] == lsStackReg && f.locals[x].state == lsMem {
+		source := f.locals[x].state
+		if keepRegs && t[i] == lsStackReg && source == lsReg {
+			// Every prior edge has a valid dedicated register (lsStackReg is
+			// stronger), so weaken the forward merge contract to register-only
+			// instead of storing this edge's dirty value.
+			t[i] = lsReg
+			f.stats.peep("merge-reg-resident")
+			continue
+		}
+		if keepRegs && t[i] == lsReg {
+			if source != lsMem {
+				continue // register valid here; slot validity is irrelevant
+			}
+			// Earlier edges already promised a register. Reload the memory-only
+			// edge; lsStackReg is stronger than the merge's lsReg contract.
+			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			f.stats.addControlMergeReload()
+			f.locals[x].state = lsStackReg
+			continue
+		}
+		if keepRegs && t[i] == lsMem && source == lsReg {
+			// A prior memory-only edge fixed the target. Publish this edge's dirty
+			// value to the slot; the merge conservatively tracks lsMem.
+			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			f.stats.addControlMergeStore()
+			f.locals[x].state = lsStackReg
+			continue
+		}
+		if t[i] == lsStackReg && source == lsMem {
 			reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
 			dead := deadGP.has(reg)
 			if isFloat {
@@ -411,6 +458,45 @@ func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) 
 }
 
 const maxMergeNextUseOps = 64
+
+const maxMergeRegionScanOps = 256
+
+// scanForwardControlCall reports whether the structured region beginning at the
+// reader's current position contains a call-like boundary before its matching
+// end. It consumes only a copied reader and fixed storage. Uncertainty is
+// conservative: large regions, GC/bulk/atomic prefixes, memory.grow, and decode
+// failures keep the canonical merge representation.
+func scanForwardControlCall(r *wasm.Reader) (hasCall, exact bool) {
+	peek := *r
+	depth := 0
+	var imm wasm.InstructionImmediate
+	for fuel := 0; fuel < maxMergeRegionScanOps; fuel++ {
+		op, err := peek.Byte()
+		if err != nil {
+			return false, false
+		}
+		if err := wasm.ClassifyInstructionImmediateInto(&peek, op, &imm); err != nil {
+			return false, false
+		}
+		switch imm.Kind {
+		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
+			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
+			return true, true
+		}
+		switch op {
+		case 0x02, 0x03, 0x04: // block / loop / if
+			depth++
+		case 0x0b: // end
+			if depth == 0 {
+				return false, true
+			}
+			depth--
+		case 0x40, 0xfb, 0xfc, 0xfe: // grow and prefixed helper/barrier families
+			return true, true
+		}
+	}
+	return false, false
+}
 
 // planForwardMergeDeadLocals returns fixed register masks for target locals
 // that arrive memory-only on the current forward edge and are overwritten or
@@ -458,6 +544,12 @@ func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source []locStat
 			return 0, 0 // structured or exceptional control: conservative fallback
 		case 0x10, 0x11, 0x14, 0x12, 0x13, 0x15:
 			return 0, 0 // calls may inline or transfer; keep the merge contract
+		case 0x40, 0xfb, 0xfc, 0xfe:
+			// memory.grow and prefixed GC/bulk/atomic families can lower through a
+			// helper or safepoint without an explicit Wasm local.get. A register-
+			// only predecessor may have a stale root slot, so do not prove death
+			// through these barriers.
+			return 0, 0
 		case 0x20, 0x21, 0x22: // local.get / local.set / local.tee
 			x32, err := peek.U32()
 			if err != nil {

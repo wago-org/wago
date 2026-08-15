@@ -381,6 +381,10 @@ type fn struct {
 	resultFloat     bool
 	resultF64       bool
 	regMerge        bool // reconcile single-result blocks in mergeReg/mergeFReg
+	// mergeRegResidency admits forward structured residency only for bounded
+	// bodies. Large generated functions can fan one dirty merge state into many
+	// later call sites, duplicating stores; their canonical fallback is cheaper.
+	mergeRegResidency bool
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
 	// Each admitted table has a finite proof that every non-null entry targets this
@@ -2492,6 +2496,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, localGCRefFacts, locals := f.localType, f.localSlot, f.localGCRefFacts, f.locals
 	mt0, _ := m.MemoryType(0)
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects}
+	f.mergeRegResidency = policy.EnabledOption(optMergeRegResidency) &&
+		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded &&
+		len(c.BodyBytes) <= 4096
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]

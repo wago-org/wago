@@ -728,7 +728,14 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return nil
 	}
 	if kind == cfIf {
-		f.convergeEdgeTo(&fr.entryState) // header snapshot: else entry / cond-false edge state
+		// A call inside either arm can fan one dirty header state into several
+		// preservation stores. Keep those regions canonical; exact bounded
+		// call-free arms retain their dedicated registers across the split.
+		if hasCall, exact := scanForwardControlCall(r); !exact || hasCall {
+			f.convergeEdgeTo(&fr.entryState)
+		} else {
+			f.convergeIfEdgeTo(&fr.entryState)
+		}
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
@@ -1156,7 +1163,7 @@ func (f *fn) opElse() error {
 		// state; as the chronologically first end edge it usually fixes it.
 		f.recordGCBranchResults(fr, fr.resultN)
 		f.mergeGCRefFactsInto(&fr.branchGCFacts)
-		f.convergeEdgeTo(&fr.branchState)
+		f.convergeIfEdgeTo(&fr.branchState)
 		if fr.regMerge1 {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
@@ -1202,7 +1209,11 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
 			deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, nil)
-			f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			if fr.kind == cfIf {
+				f.convergeIfEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			} else {
+				f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			}
 		}
 		if fr.regMerge1 {
 			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
@@ -1236,25 +1247,30 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		// value in mergeReg), a stub on this edge converges it. The then
 		// fall-through jumps over the stub.
 		deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, fr.entryState)
-		needLoads := false
+		needConvergeCode := false
 		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
 			for i, x := range f.pinnedLocals {
-				if fr.branchState[i] == lsStackReg && fr.entryState[i] == lsMem {
+				target, source := fr.branchState[i], fr.entryState[i]
+				if (target == lsStackReg || target == lsReg) && source == lsMem {
 					reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
 					dead := deadGP.has(reg)
 					if isFloat {
 						dead = deadFP.has(reg)
 					}
-					if dead {
+					if target == lsStackReg && dead {
 						continue
 					}
-					needLoads = true
+					needConvergeCode = true
+					break
+				}
+				if f.mergeRegResidency && target == lsMem && source == lsReg {
+					needConvergeCode = true
 					break
 				}
 			}
 		}
 		skip := -1
-		if (fr.regMerge1 || needLoads) && fallthroughReachable {
+		if (fr.regMerge1 || needConvergeCode) && fallthroughReachable {
 			skip = f.a.JmpPlaceholder()
 		}
 		f.a.PatchRel32(fr.elseSite, f.a.Len())
@@ -1271,7 +1287,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.setLocalsState(fr.entryState)
 		f.installGCRefFacts(fr.entryGCFacts)
 		f.mergeGCRefFactsInto(&fr.branchGCFacts)
-		f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+		f.convergeIfEdgeToWithDead(&fr.branchState, deadGP, deadFP)
 		if skip != -1 {
 			f.a.PatchRel32(skip, f.a.Len())
 		}

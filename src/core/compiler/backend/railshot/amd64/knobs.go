@@ -27,6 +27,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("abi-classes", &abiClassesEnabled),
 	optimization.Bind("abi-leaf-fp", &abiLeafFPEnabled),
 	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+	optimization.Bind("merge-reg-residency", &mergeRegResidencyEnabled),
 	optimization.Bind("affine-lea", &affineLeaEnabled),
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
@@ -80,6 +81,7 @@ var (
 	optABIClasses           = optimizationBindings.Option("abi-classes")
 	optABILeafFP            = optimizationBindings.Option("abi-leaf-fp")
 	optMergeNextUse         = optimizationBindings.Option("merge-next-use")
+	optMergeRegResidency    = optimizationBindings.Option("merge-reg-residency")
 	optAffineLEA            = optimizationBindings.Option("affine-lea")
 	optTreeOrder            = optimizationBindings.Option("tree-order")
 	optAssocTree            = optimizationBindings.Option("assoc-tree")

@@ -108,6 +108,7 @@
               "loop-precheck",
               "loop-region-pins",
               "merge-next-use",
+              "merge-reg-residency",
               "multi-bounds-cert",
               "olddest-rhs-sink",
               "prepared-fp-entry",
@@ -122,9 +123,11 @@
               "store-forward",
               "store-load-fwd",
               "store8-flags",
+              "tee-add-carry",
               "tee-sink",
               "tee-spill-elide",
               "three-op-sink",
+              "three-way-unsigned",
               "tree-order",
               "unary-sink",
               "uxtw-add",
@@ -133,6 +136,7 @@
               "v128-sink",
               "value-facts",
               "vex-float-mem",
+              "widened-carry-arith",
               "x8-pin"
             ]
           },
