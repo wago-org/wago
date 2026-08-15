@@ -17,7 +17,7 @@ func TestWatchedChildLaunchUsesManagerAsSupervisor(t *testing.T) {
 		t.Fatalf("watch supervisor = %q, want /opt/wago", executable)
 	}
 	joined := strings.Join(environment, "\n")
-	if !strings.Contains(joined, "WAGO_WATCH_SUPERVISOR=1") ||
+	if !strings.Contains(joined, "WAGO_WATCH_SUPERVISOR=guardian") ||
 		!strings.Contains(joined, "WAGO_WATCH_GUEST_EXECUTABLE=") {
 		t.Fatalf("watch supervisor environment is missing its handoff: %q", joined)
 	}

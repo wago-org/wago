@@ -22,6 +22,9 @@ import (
 
 const markerEnvironment = "WAGO_WATCH_SUPERVISOR"
 const guestExecutableEnvironment = "WAGO_WATCH_GUEST_EXECUTABLE"
+const parentPIDEnvironment = "WAGO_WATCH_SUPERVISOR_PARENT"
+const guardianRole = "guardian"
+const workerRole = "worker"
 const maxDescendants = 4096
 const maxThreads = 4096
 const stopGrace = time.Second
@@ -38,12 +41,13 @@ func Environment(base []string, guest string) []string {
 		base = os.Environ()
 	}
 	result := withoutInternalEnvironment(base)
-	return append(result, markerEnvironment+"=1", guestExecutableEnvironment+"="+guest)
+	return append(result, markerEnvironment+"="+guardianRole, guestExecutableEnvironment+"="+guest)
 }
 
 // Enter starts the marked guest and exits. It returns for normal invocations.
 func Enter() {
-	if os.Getenv(markerEnvironment) != "1" {
+	role := os.Getenv(markerEnvironment)
+	if role == "" {
 		return
 	}
 	guest := os.Getenv(guestExecutableEnvironment)
@@ -51,8 +55,11 @@ func Enter() {
 		_, _ = fmt.Fprintln(os.Stderr, "wago: watch supervisor: missing guest executable")
 		os.Exit(1)
 	}
-	command := exec.Command(guest, os.Args[1:]...)
-	command.Env = withoutInternalEnvironment(os.Environ())
+	command, err := supervisorCommand(role, guest)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "wago: watch supervisor: %v\n", err)
+		os.Exit(1)
+	}
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 	code, err := Run(command)
 	if err != nil {
@@ -62,10 +69,41 @@ func Enter() {
 	os.Exit(code)
 }
 
+func supervisorCommand(role, guest string) (*exec.Cmd, error) {
+	environment := withoutInternalEnvironment(os.Environ())
+	switch role {
+	case guardianRole:
+		executable, err := os.Executable()
+		if err != nil {
+			return nil, err
+		}
+		command := exec.Command(executable, os.Args[1:]...)
+		command.Env = append(environment,
+			markerEnvironment+"="+workerRole,
+			guestExecutableEnvironment+"="+guest,
+			parentPIDEnvironment+"="+strconv.Itoa(os.Getpid()),
+		)
+		command.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
+		return command, nil
+	case workerRole:
+		expected, err := strconv.Atoi(os.Getenv(parentPIDEnvironment))
+		if err != nil || expected <= 0 || syscall.Getppid() != expected {
+			return nil, errors.New("guardian exited before worker startup")
+		}
+		command := exec.Command(guest, os.Args[1:]...)
+		command.Env = environment
+		return command, nil
+	default:
+		return nil, errors.New("invalid supervisor role")
+	}
+}
+
 func withoutInternalEnvironment(environment []string) []string {
 	result := make([]string, 0, len(environment))
 	for _, entry := range environment {
-		if strings.HasPrefix(entry, markerEnvironment+"=") || strings.HasPrefix(entry, guestExecutableEnvironment+"=") {
+		if strings.HasPrefix(entry, markerEnvironment+"=") ||
+			strings.HasPrefix(entry, guestExecutableEnvironment+"=") ||
+			strings.HasPrefix(entry, parentPIDEnvironment+"=") {
 			continue
 		}
 		result = append(result, entry)

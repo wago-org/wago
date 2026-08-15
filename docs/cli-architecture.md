@@ -212,9 +212,11 @@ packages; it does not become a third CLI role.
 the input module changes, preserving guest arguments and plugin selection made
 by the manager handoff. The runtime supervises one child process tree at a time,
 keeps file polling active while the guest runs, and waits for stable content
-before a restart. On Linux, the runtime starts the manager as a provider-free
-subreaper, and the manager starts the active runtime as its guest. This places
-the supervisor before generated plugin providers can initialize. A runtime
+before a restart. On Linux, the runtime starts two provider-free manager
+processes as a guard and a subreaper worker. The worker starts the active runtime
+as its guest. The guard cleans the tree if the worker dies. A Linux parent-death
+signal makes the worker clean the tree if the guard dies. This places
+supervision before generated plugin providers can initialize. A runtime
 started directly, without the manager handoff, rejects Linux watch mode. A
 terminal-backed watcher and its direct guest stay in the shell's foreground job
 group, so both receive terminal
