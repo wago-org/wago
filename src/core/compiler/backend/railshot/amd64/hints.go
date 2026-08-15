@@ -48,9 +48,14 @@ type funcHints struct {
 	maxControlDepth uint8
 	// inlineCallSites packs a saturated 7-bit ordinary-call count plus a high
 	// bit recording any return_call reference to this local function.
-	inlineCallSites  uint8
-	gcResolverSites  int  // conservative direct scalar/length resolver site count
-	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
+	inlineCallSites uint8
+	gcResolverSites uint32 // conservative direct scalar/length resolver site count
+	// immutableIndirectTarget is set after the module scan when this function can
+	// appear in any admitted immutable local table. A caller without this bit
+	// cannot recurse through that specialized indirect-call path. It occupies the
+	// padding recovered by narrowing the bounded resolver-site count.
+	immutableIndirectTarget bool
+	gcSharedResolver        bool // module decision: shared island beats one-site inline crossover
 
 	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
 	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set

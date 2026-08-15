@@ -305,9 +305,10 @@ type fn struct {
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
-	usesCalls bool
-	usesWide  bool
-	moduleEH  bool
+	usesCalls               bool
+	usesWide                bool
+	moduleEH                bool
+	immutableIndirectTarget bool
 	// Bounded post-call next-use state. Pinned registers are numbered 0..15,
 	// so two uint16 masks fit in the bool cluster's existing alignment padding.
 	callDeadGP uint16
@@ -1220,7 +1221,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	immutableIntGlobals := shared.ImmutableIntGlobals(m)
 	resolverSites := 0
 	for i := range allHints {
-		resolverSites += allHints[i].gcResolverSites
+		resolverSites += int(allHints[i].gcResolverSites)
 	}
 	// A one-entry address certificate can collapse a single function's repeated
 	// candidate sites to one real resolution. Compile that narrow shape inline
@@ -2149,6 +2150,13 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 			}
 		}
 	}
+	if policy.EnabledOption(optCallResultResidency) {
+		for tableIdx, table := range immutableTables {
+			if table.local {
+				markImmutableTableTargets(m, uint32(tableIdx), allHints)
+			}
+		}
+	}
 	for i := range allHints {
 		allHints[i].immutableTables = immutableTables
 		allHints[i].hasTailCall = moduleHasTailCall
@@ -2158,6 +2166,37 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		*effectOut = effects.Finish()
 	}
 	return allHints, agg, nil
+}
+
+func markImmutableTableTargets(m *wasm.Module, tableIdx uint32, hints []funcHints) {
+	mark := func(idx uint32) {
+		local := int(idx) - m.ImportedFuncCount()
+		if local >= 0 && local < len(hints) {
+			hints[local].immutableIndirectTarget = true
+		}
+	}
+	if int(tableIdx) < len(m.Tables) && m.Tables[tableIdx].Init != nil {
+		if ee, err := wasm.ParseElementExpr(*m.Tables[tableIdx].Init); err == nil && !ee.Null {
+			mark(ee.FuncIndex)
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || uint32(e.Mode.Table) != tableIdx {
+			continue
+		}
+		if e.Kind.Kind == wasm.ElemFuncs {
+			for _, idx := range e.Kind.Funcs {
+				mark(uint32(idx))
+			}
+			continue
+		}
+		for _, expr := range e.Kind.Exprs {
+			if ee, err := wasm.ParseElementExpr(expr); err == nil && !ee.Null {
+				mark(ee.FuncIndex)
+			}
+		}
+	}
 }
 
 // immutableLocalTableTarget returns the sole local function stored in tableIdx,
@@ -2511,7 +2550,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
 	localType, localSlot, localGCRefFacts, locals := f.localType, f.localSlot, f.localGCRefFacts, f.locals
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, immutableIndirectTarget: hints.immutableIndirectTarget, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects}
 	f.mergeRegResidency = policy.EnabledOption(optMergeRegResidency) &&
 		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded &&
 		!moduleEH && len(c.BodyBytes) <= maxMergeRegionBody

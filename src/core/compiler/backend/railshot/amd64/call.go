@@ -1800,7 +1800,13 @@ func (f *fn) restoreCallRemat(r callRemat) {
 }
 
 func (f *fn) keepCallResultsResident(localIdx int, remat callRemat) bool {
-	if !f.opt(optCallResultResidency) || localIdx < 0 || remat.root != nil {
+	if !f.opt(optCallResultResidency) || remat.root != nil {
+		return false
+	}
+	if localIdx == safeIndirectCallTarget {
+		return true
+	}
+	if localIdx < 0 {
 		return false
 	}
 	// On AMD64 the copy after a self-recursive call breaks a return-register
@@ -1808,6 +1814,8 @@ func (f *fn) keepCallResultsResident(localIdx int, remat callRemat) bool {
 	// fallback until a bounded renamer can choose the profitable chain locally.
 	return localIdx+f.m.ImportedFuncCount() != f.globalIdx
 }
+
+const safeIndirectCallTarget = -2
 
 func (f *fn) addIntegerResultFallbackMoves(localIdx, n int) {
 	switch {
@@ -1964,6 +1972,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		if residentResults {
 			resReg = RAX
 			f.stats.peep("call-result-resident")
+			if localIdx == safeIndirectCallTarget {
+				f.stats.peep("call-result-indirect-resident")
+			}
 		} else {
 			resReg = f.allocReg(maskOf(RAX))
 			f.a.MovReg64(resReg, RAX)
@@ -1977,6 +1988,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 			pairRes = [2]Reg{RAX, RDX}
 			f.stats.peep("call-result-resident")
 			f.stats.peep("call-result-resident")
+			if localIdx == safeIndirectCallTarget {
+				f.stats.peep("call-result-indirect-resident")
+				f.stats.peep("call-result-indirect-resident")
+			}
 		} else {
 			pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 			f.pinned = f.pinned.add(pairRes[0])
@@ -2890,7 +2905,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(idxReg)
 		f.pinned = f.pinned.add(code)
 		f.stats.peep("immutable-local-call-indirect")
-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code, false)
+		callTarget := -1
+		if !f.immutableIndirectTarget {
+			callTarget = safeIndirectCallTarget
+		}
+		returnOffset := f.emitRegisterCallVia(ft, -1, callTarget, code, false)
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}

@@ -3965,3 +3965,33 @@ The implementation and tests were removed. Dead-result lookahead should not be
 revisited without workload evidence; the real local-sink opportunity requires
 physical ownership transfer or a finite ABI result class, not dead-store
 elimination.
+
+## 2026-08-15 — AMD64 immutable-table indirect result residency
+
+The branch-free immutable local-table specialization now leaves one- and
+two-integer call results in the internal ABI result registers instead of first
+copying them to arbitrary registers. This is admitted only when the caller
+cannot appear in any immutable table accepted by the module summary. A caller
+that may be selected indirectly retains the existing copy, which preserves the
+self-recursive dependency break; generic, branch-split, imported, mutable, and
+otherwise unproven indirect calls retain their ordinary fallback as well.
+
+The reachability fact occupies recovered padding in the existing AMD64
+`funcHints`: narrowing the bounded resolver-site count to `uint32` leaves the
+structure at 200 bytes. Marking walks only already-admitted immutable table
+initializers and active elements, allocates no storage, and is skipped entirely
+when `call-result-residency` is disabled. No retained CFG, live interval, retry,
+or execution state is added.
+
+Across the exact 64-module Balanced AMD64 corpus, the rule removes 2,751 of
+6,214 attributed indirect result moves (44%). Total native code falls from
+72,261,111 to 72,252,841 bytes (-8,270); four modules shrink and none grow. Ruby
+contains 2,237 selections, Regexmatch 484, wasm3 29, and dispatch one.
+
+On a 64-call Ryzen 7 7800X3D fixture, six one-second samples improve from a
+97.08 to 96.46 ns/op median (about -0.6%), reduce the compiled function from
+6,176 to 5,982 native bytes, and remain at zero B/op and allocations. Tests
+cover polymorphic table dispatch, the self-capable fallback, enabled/disabled
+move attribution, serial/parallel byte determinism, and a 64-call native
+execution path. The full local repository suite, native AMD64 backend suite,
+and benchmark module suite pass.
