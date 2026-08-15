@@ -625,7 +625,7 @@ func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
 		var imm wasm.InstructionImmediate
 		for r.HasNext() {
 			op, err := r.Byte()
-			if err != nil || wasm.ClassifyInstructionImmediateInto(r, op, &imm) != nil {
+			if err != nil || targets.classifier.ClassifyInto(r, op, &imm) != nil {
 				target.valid = false
 				break
 			}
