@@ -83,7 +83,7 @@ Build a command module as a standalone native executable:
 
 ```sh
 wago compile app.wasm -o app
-wago compile app.wasm --target linux/arm64 -o app-linux-arm64
+wago compile --tinygo app.wasm -o app-tiny
 wago compile fib.wasm --invoke fib -o fib
 wago compile component.wasm --core 3 -p -o component
 ./fib 20
@@ -92,15 +92,20 @@ wago compile component.wasm --core 3 -p -o component
 
 By default, the module must export `_start`. Pass `--invoke <name>` to bake in a
 different exported function; executable arguments are parsed from its typed Wasm
-signature just like `wago run --invoke`. The executable embeds Wago, the Wasm
-module, and the active local or global plugin configuration, so it runs without
-a Wago installation. Use `--bare`, `--local`, or `--global` to choose the plugin
-scope. Add plugins to `wago.json` before compiling so resolution, Authorities,
-and Contract bindings stay reviewable and reproducible. `--core 3`, `--parallel`,
-and compiler flags such as `--no-inline` and `--no-deferred-bounds-checking` are
-baked into the executable.
+signature just like `wago run --invoke`. The executable embeds a native `.wago`
+artifact, Wago's runtime-only loader, and the active local or global plugin
+configuration, so it runs without a Wago installation and performs no Wasm
+codegen at startup. It does not embed the source Wasm or Railshot compiler. Use
+`--bare`, `--local`, or `--global` to choose the plugin scope. Add plugins to
+`wago.json` before compiling so resolution, Authorities, and Contract bindings
+stay reviewable and reproducible. `--core 3`, `--parallel`, and compiler flags
+such as `--no-inline` and `--no-deferred-bounds-checking` are applied while
+producing the embedded machine code.
 There is no standalone watch mode because the module is immutable once embedded.
-Cross-builds support Darwin, Linux, and Windows on AMD64 and ARM64.
+Standalone builds are native-target-only because codegen, interruption, and
+feature admission must match the runtime that executes the artifact. `--tinygo`
+uses TinyGo instead of standard Go for the final runtime link; TinyGo builds use
+the cooperative scheduler and the repository's size-oriented stripping policy.
 
 Inspect its host requirements:
 
@@ -323,12 +328,12 @@ linux/amd64, linux/arm64, and darwin/arm64; the complete set is available there
 with `--core 3`.
 
 Wago has no interpreter tier: supported modules execute as native machine code.
-Source modules can be compiled in the running process, serialized as native
-`.wago` artifacts for later loading, or embedded in standalone native
-executables. Standalone executables compile their embedded Wasm at startup;
-`.wago` artifacts instead load previously generated code for the target
-architecture and runtime configuration. Unsupported or disabled features fail
-during decode or validation.
+Source modules can be compiled in the running process or serialized as native
+`.wago` artifacts for later loading. Every `wago compile` executable embeds that
+precompiled artifact and a runtime-only loader, so it contains no source compiler
+and performs no Wasm codegen at startup. `--tinygo` selects TinyGo for the final
+link. `.wago` code is specific to the target architecture and runtime
+configuration. Unsupported or disabled features fail during decode or validation.
 
 Read the [Wago documentation](https://docs.wago.sh) for guides and reference
 material. The repository also keeps the detailed [feature matrix](FEATURES.md),

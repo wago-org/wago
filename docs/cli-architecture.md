@@ -60,8 +60,8 @@ runtime adapts strict locked selections into engine configuration. Manager and
 runtime code must not define separate `wago.json` or `wago-lock.json` models,
 and the shared project package must not import the runtime facade.
 
-`wago compile` is manager-owned because it orchestrates the Go toolchain and
-cross-target builds. Its generated module embeds the Wasm command, imports the
+`wago compile` is manager-owned because it orchestrates artifact generation and
+the Go toolchain. Its temporary helper embeds the Wasm command, imports the
 active plugins' explicit `/register` provider catalogs, and embeds their exact
 definition digests, Authority Grants, configuration, and Contract bindings. Each
 package exports an explicit provider catalog; none self-registers through
@@ -73,10 +73,22 @@ Go module and imported through their conventional `/register` package. Linked
 definitions must match the lockfile before activation. The resulting executable
 imports `cli/standalone`, not the runtime CLI. The manager
 reads the architecture-neutral settings and parallel-policy packages, while the
-generated target applies the settings through the selected runtime backend.
-GOOS/GOARCH select exactly one build-tagged Railshot backend, so an AMD64
-executable does not link ARM64 codegen and vice versa. `--watch` intentionally
-has no standalone equivalent because the embedded module cannot change.
+generated helper applies the settings through the selected runtime backend. It
+runs once under standard Go to produce `module.wago`; the manager then replaces
+it with a `wago_precompiled` entry point and performs the final link with standard
+Go or, when `--tinygo` is set, TinyGo. The final binary embeds the artifact rather
+than the source Wasm and contains the artifact loader, runtime, selected plugins,
+and runtime-owned host-call thunk emitter, but no Railshot source compiler.
+`--watch` intentionally has no standalone equivalent because the embedded module
+cannot change.
+
+Because compilation policy is platform-sensitive, standalone compilation rejects
+non-native `--target` values instead of producing an artifact under the wrong OS
+or architecture assumptions. The helper environment pins that native target
+rather than inheriting ambient cross-compilation variables. For TinyGo links its
+`wago_target_tinygo` build tag also selects the final runtime's cooperative
+interruption policy, which is distinct from the standard-Go Linux helper's
+signal-based policy.
 
 `cli/internal/handoff.Metadata` is the sole definition of launch metadata. It
 encodes and decodes the `WAGO_MANAGER_*` and `WAGO_RUNTIME_*` environment
