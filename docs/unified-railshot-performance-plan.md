@@ -1318,6 +1318,30 @@ elements the medians were 206.0 and 204.5 ns/op (-0.7%, treated as noise) as the
 fill itself dominates. Every case remains at zero B/op and allocations. The
 ARM64 backend, shared-fact, and collector suites pass.
 
+### 2026-08-15 — deferred ARM64 native constructors
+
+The AMD64 native constructor helper IDs are not portable helper
+specializations. Their Go dispatch first prepares an AMD64-only allocation
+reservation containing validated handle, chunk, epoch, type, and object-space
+state; substantial backend stubs then consume that reservation, initialize the
+object, and publish it in the required order. The non-AMD64 preparation hook is
+intentionally a no-op. Selecting those IDs from ARM64 without the matching
+runtime contract and target stubs would therefore add transition work without
+creating a native allocation path.
+
+A smaller compiler-scratch experiment was also rejected. Reusing the dynamic
+`[]wasm.ValType` signatures built for `struct.new` and `array.new_fixed` left a
+32-constructor Apple M4 Max compile fixture unchanged at 25 allocations/op in
+six samples per form: escape analysis already keeps those temporary slices off
+the heap. The buffer would only retain additional worker memory, so the
+prototype was removed.
+
+ARM64 native constructors remain deferred until one bounded constructor class
+can own the complete platform contract: reservation preparation, exact layout
+and type validation, handle/object bounds, reference validation, publication
+order, collection invalidation, fallback, and target-native execution tests.
+No production compiler or runtime state was added by this audit.
+
 ---
 
 # 1. North-star architecture
