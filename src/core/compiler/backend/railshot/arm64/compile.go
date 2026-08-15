@@ -55,6 +55,11 @@ var callEffectBoundsEnabled = os.Getenv("WAGO_ARM64_NO_CALL_EFFECT_BOUNDS") != "
 // targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
 var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
 
+// mergeRegResidencyEnabled keeps dedicated pinned locals in registers across
+// summary-proven bounded forward merges. WAGO_ARM64_NO_MERGE_REG_RESIDENCY=1
+// restores canonical slot synchronization for A/B measurement and rollback.
+var mergeRegResidencyEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_REG_RESIDENCY") != "1"
+
 // abiClassesEnabled admits effect-proven memory-touching scalar leaves into the
 // finite LeafScalar internal ABI class. The pre-existing narrower leaf contract
 // remains available when disabled.
@@ -282,6 +287,10 @@ type fn struct {
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
 	usesCalls bool
+	// mergeRegResidency admits forward structured residency only for bounded
+	// summary-proven call/barrier-free block and if bodies.
+	mergeRegResidency bool
+	mergeRegionWords  [maxMergeRegionHints / 2]uint32
 	// localFactsEnabled admits assignment-version facts only in straight-line
 	// bodies. Facts reuse an otherwise-unused byte in each localDef.
 	localFactsEnabled bool
@@ -1640,6 +1649,10 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	allHints := make([]funcHints, n)
 	localCounts := make([]int, n)
 	totalLocals := 0
+	mergeRegionFuncs := 0
+	moduleEH := m.TagCount() != 0
+	mergeRegionsEnabled := policy.EnabledOption(optMergeRegResidency) &&
+		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded && !moduleEH
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -1654,11 +1667,21 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		}
 		localCounts[i] = count
 		totalLocals += count
+		if bodyLen := len(m.Code[i].BodyBytes); mergeRegionsEnabled && bodyLen > 0 && bodyLen <= maxMergeRegionBody {
+			mergeRegionFuncs++
+		}
 	}
 	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
-	localScores := make([]uint32, totalLocals)
+	if mergeRegionFuncs > int(^uint(0)>>1)/(maxMergeRegionHints/2) {
+		return nil, nil, fmt.Errorf("function hint region storage overflow")
+	}
+	regionWords := mergeRegionFuncs * (maxMergeRegionHints / 2)
+	if totalLocals > int(^uint(0)>>1)-regionWords {
+		return nil, nil, fmt.Errorf("function hint region storage overflow")
+	}
+	localScores := make([]uint32, totalLocals+regionWords)
 	localLastGets := make([]uint32, totalLocals)
 	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
 	var globalScores []uint32
@@ -1679,21 +1702,25 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	if nGlobals > 0 && n > 0 {
 		agg = make([]int64, nGlobals)
 	}
-	moduleEH := m.TagCount() != 0
 	localAt := 0
+	lastAt := 0
 	for i := range m.Code {
 		effects.Begin(i)
 		nLocals := localCounts[i]
+		mergeWords := 0
+		if bodyLen := len(m.Code[i].BodyBytes); mergeRegionsEnabled && bodyLen > 0 && bodyLen <= maxMergeRegionBody {
+			mergeWords = maxMergeRegionHints / 2
+		}
 		var h funcHints
 		if denseGlobals {
 			globalAt := i * nGlobals
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
 		} else {
 			sparseAccum.Reset(nGlobals)
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
-		h.localLastGet = localLastGets[localAt : localAt+nLocals]
+		h.localLastGet = localLastGets[lastAt : lastAt+nLocals]
 		h.nLocals = nLocals
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
@@ -1706,7 +1733,8 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
 		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
-		localAt += nLocals
+		localAt += nLocals + mergeWords
+		lastAt += nLocals
 		moduleEH = moduleEH || h.moduleEH
 		h.globalAccum = nil
 		allHints[i] = h
@@ -2080,6 +2108,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		entryInitialized = 0
 	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.hasLoop, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableIndirectTarget: hints.immutableIndirectTarget, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.hasControlFlow}
+	f.mergeRegResidency = policy.EnabledOption(optMergeRegResidency) &&
+		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded &&
+		!hints.moduleEH && len(c.BodyBytes) <= maxMergeRegionBody
+	if f.mergeRegResidency {
+		copy(f.mergeRegionWords[:], hints.mergeRegionWords())
+	}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient

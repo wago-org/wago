@@ -3500,6 +3500,53 @@ therefore removed rather than adding scan state without a material execution or
 code-size gain. Simple-loop residency should be retried only with a distinct
 fixed backedge contract that demonstrably removes dynamic loop-body traffic.
 
+## 2026-08-15 — ARM64 bounded forward-merge register residency
+
+The same summary-owned contract now covers ARM64. It reuses the existing
+per-frame pinned-local state and the bounded forward-merge next-use masks; no
+new bytecode walk, CFG, per-operation allocation, or unbounded region storage
+was added. The four summary words are allocated only when the immutable policy
+enables this optimization for a Balanced/Speed function no larger than 4 KiB.
+Size/Embedded, EH, barriers, large bodies, and summary-cap overflow retain the
+canonical slot path.
+
+Native A/B results on an Apple M4 Max:
+
+```text
+64-module ARM64 corpus:
+    merge stores: 7186 -> 6924 (-262, -3.6%)
+    merge reloads: 21991 -> 21998 (+7)
+    native bytes: 87642360 -> 87642472 (+112 total)
+    resident hits: 292712
+
+raytrace execution, two order-balanced samples:
+    canonical median: about 229.7 us/op
+    resident median:  about 213.4 us/op
+    delta:            about -7.1%, 0 B/op, 0 allocs/op
+
+json-as execution:
+    serialize and deserialize remained within about 1%
+    zero execution allocations retained
+
+focused backend compile samples:
+    time: within about 1-2%
+    raytrace B/op: +32 bytes
+    json-as B/op: +640 bytes (+0.22%)
+    allocs/op: unchanged
+```
+
+Some large modules trade stores between nested merges rather than reducing
+every individual count, so the gate is the aggregate traffic plus measured hot
+workloads, not a requirement that every module shrink. The full repository
+suite, bench-module executable corpus, focused race suite, no-`else` false-edge
+regression, barrier tests, and fixed-cap fallback tests pass.
+
+The rollback switch is:
+
+```text
+WAGO_ARM64_NO_MERGE_REG_RESIDENCY=1
+```
+
 ## 2026-08-15 — numeric inlined-callee slot overlay
 
 Distinct numeric-only inlined callees now retain separate logical locals and

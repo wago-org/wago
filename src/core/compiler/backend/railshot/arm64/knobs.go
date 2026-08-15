@@ -23,6 +23,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("call-effect-bounds", &callEffectBoundsEnabled),
 	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+	optimization.Bind("merge-reg-residency", &mergeRegResidencyEnabled),
 	optimization.Bind("call-remat-const", &callRematConstEnabled),
 	optimization.Bind("call-remat-local", &callRematLocalEnabled),
 	optimization.Bind("call-remat-bin", &callRematBinEnabled),
@@ -90,6 +91,7 @@ var (
 	optValueFacts            = optimizationBindings.Option("value-facts")
 	optCallEffectBounds      = optimizationBindings.Option("call-effect-bounds")
 	optMergeNextUse          = optimizationBindings.Option("merge-next-use")
+	optMergeRegResidency     = optimizationBindings.Option("merge-reg-residency")
 	optCallRematConst        = optimizationBindings.Option("call-remat-const")
 	optCallRematLocal        = optimizationBindings.Option("call-remat-local")
 	optCallRematBin          = optimizationBindings.Option("call-remat-bin")

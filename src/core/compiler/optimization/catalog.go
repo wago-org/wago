@@ -255,7 +255,7 @@ var catalog = []Definition{
 	amd64("three-way-unsigned", "Unsigned three-way compares", "reuse one comparison's flags to form a negative, zero, or positive result"),
 	amd64("tee-add-carry", "Tee add carry", "reuse an addition's carry flag through an exact local.tee overflow test"),
 	amd64("widened-carry-arith", "Widened carry arithmetic", "fold a widened unsigned comparison into ADC or SBB"),
-	amd64("merge-reg-residency", "Merge register residency", "keep dedicated pinned locals resident across forward structured merges"),
+	both("merge-reg-residency", "Merge register residency", "keep dedicated pinned locals resident across forward structured merges"),
 	amd64("store8-flags", "Byte-store flags", "sink comparison results directly into byte stores"),
 	both("reg-merge", "Register merge", "keep block results in registers across joins"),
 	both("tee-sink", "Tee sinking", "sink local.tee expressions into local registers"),
