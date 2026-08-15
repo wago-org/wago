@@ -929,6 +929,14 @@ median (-2.8%), B/op fell from 40,344 to 39,960, allocations fell from 44 to 43,
 and native output fell from 7,032 to 6,840 bytes (-2.7%). Both native load
 families, disabled facts, and a nullable field near miss are tested.
 
+Typed `global.get` and `table.get` results now retain non-null reference
+contracts as well. The lowering reads the existing module type directly and
+adds no summary or retained state. An eight-pair imported-global/table fixture
+improved from a 13.884 to 13.133 us/op compile median (-5.4%), B/op fell from
+23,040 to 22,680, allocations fell from 34 to 30, and native output fell from
+1,064 to 824 bytes (-22.6%). Nullable global and table types are tested near
+misses.
+
 ---
 
 # 1. North-star architecture

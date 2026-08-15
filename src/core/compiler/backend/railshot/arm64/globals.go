@@ -97,7 +97,9 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	case gtv.Kind() == wasm.ValRef:
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)
-		f.pushReg(dst, mtI64).st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, gtv)
+		value := f.pushReg(dst, mtI64)
+		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, gtv)
+		f.applyFactsForTypedResult(value, gtv)
 	case wasm.EqualValType(gtv, wasm.I64):
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)

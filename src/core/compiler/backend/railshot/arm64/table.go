@@ -470,7 +470,11 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(entry)
 	f.release(entry)
 	f.release(tbl)
-	f.pushReg(slot, mtI64).st.gcRoot = f.tracksGCFrameRoots() && f.tableIsGCFrameRef(tableIdx)
+	value := f.pushReg(slot, mtI64)
+	value.st.gcRoot = f.tracksGCFrameRoots() && f.tableIsGCFrameRef(tableIdx)
+	if tt, ok := f.m.TableType(tableIdx); ok {
+		f.applyFactsForTypedResult(value, wasm.RefVal(tt.Ref))
+	}
 	return nil
 }
 
