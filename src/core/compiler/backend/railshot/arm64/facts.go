@@ -9,6 +9,7 @@ type valueFacts = shared.ValueFacts
 const (
 	factUpper32Zero = shared.ValueFactUpper32Zero
 	factBoolean     = shared.ValueFactBoolean
+	factNonZero     = shared.ValueFactNonZero
 	factSignExt8    = shared.ValueFactSignExt8
 	factSignExt16   = shared.ValueFactSignExt16
 	factSignExt32   = shared.ValueFactSignExt32

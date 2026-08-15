@@ -210,20 +210,34 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 	}
 	if sub >= 28 && sub <= 30 {
-		value := f.materialize(f.popValue())
+		original := f.popValue()
+		facts := original.st.facts
+		value := f.materialize(original)
 		switch sub {
 		case 28: // ref.i31
 			f.a.LslImm(value, value, 1, true)
 			if !f.a.OrrImm32(value, value, 1) {
 				panic("arm64: i31 tag immediate is not encodable")
 			}
-			f.pushReg(value, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+			result := f.pushReg(value, mtI64)
+			result.st.gcRoot = f.tracksGCFrameRoots()
+			if f.opt(optValueFacts) {
+				result.st.facts |= factNonZero
+			}
 		case 29: // i31.get_s
-			f.trapIfZero(value, false, true, trapNullReference)
+			if f.opt(optValueFacts) && facts.Has(factNonZero) {
+				f.stats.peep("gc-null-check-elide")
+			} else {
+				f.trapIfZero(value, false, true, trapNullReference)
+			}
 			f.a.AsrImm(value, value, 1, true)
 			f.pushReg(value, mtI32)
 		case 30: // i31.get_u
-			f.trapIfZero(value, false, true, trapNullReference)
+			if f.opt(optValueFacts) && facts.Has(factNonZero) {
+				f.stats.peep("gc-null-check-elide")
+			} else {
+				f.trapIfZero(value, false, true, trapNullReference)
+			}
 			f.a.LsrImm(value, value, 1, true)
 			f.pushReg(value, mtI32)
 		}
