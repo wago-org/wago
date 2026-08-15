@@ -194,6 +194,14 @@ func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
 	return true
 }
 
+func stagedTailRegisterABI(ft *wasm.CompType, staged bool) bool {
+	return sigFitsRegABI(ft) || staged && sigFitsReferenceResultRegABI(ft)
+}
+
+func (f *fn) tailCallerUsesRegisterABI() bool {
+	return f.opt(optRegABI) && stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
+}
+
 func tailResultABICompatible(a, b []wasm.ValType) bool {
 	if len(a) != len(b) {
 		return false
@@ -317,8 +325,8 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	f.stats.call("tail-direct")
 	target := int(idx) - imported
-	callerRegisterABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
-	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	callerRegisterABI := stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
+	targetRegisterABI := stagedTailRegisterABI(ft, f.stagedTailDescriptors)
 	if f.opt(optRegABI) && callerRegisterABI && targetRegisterABI {
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.Branch()
@@ -411,11 +419,50 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 		}
 		dstSlot += n
 	}
-	f.ld64(X3, SP, frResultsOff)
 	f.ld64(X2, linMemReg, -int32(abi.TrapCellPtrOffset))
 	f.a.MovReg64(X1, linMemReg)
+	if !f.tailCallerUsesRegisterABI() {
+		f.ld64(X3, SP, frResultsOff)
+		f.emitTailFrameRelease()
+		emitJump()
+		return
+	}
+
 	f.emitTailFrameRelease()
+	adapterPC := f.a.Adr(X16)
+	f.recordPCRelative(adapterPC)
+	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+		f.adapterReturnReferenced = true
+	}
+	f.cmpRR(LR, X16, true)
+	nested := f.a.Bcond(condNE)
+	f.a.LdpPost(LR, X3, SP, 16)
 	emitJump()
+
+	f.a.PatchBranch19(nested, f.a.Len())
+	f.a.SubSP64(32)
+	f.st64(SP, 0, LR)
+	f.a.LeaSP(X3, 16)
+	trampolineADR := f.a.Adr(LR)
+	f.recordPCRelative(trampolineADR)
+	emitJump()
+
+	trampoline := f.a.Len()
+	f.a.PatchAdr(trampolineADR, trampoline)
+	f.ld64(LR, SP, 0)
+	if len(ft.Results) > 0 {
+		if isFloatValType(ft.Results[0]) {
+			f.fld(0, SP, 16, wasm.EqualValType(ft.Results[0], wasm.F64))
+		} else {
+			f.ld64(X0, SP, 16)
+		}
+	}
+	if len(ft.Results) > 1 {
+		f.ld64(X1, SP, 24)
+	}
+	f.a.AddSP64(32)
+	f.a.Ret()
 }
 
 // emitTailDynamicImportJump transfers a register-ABI tail call through the
@@ -576,11 +623,8 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
 	}
-	callerRegABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(f.ft))
-	targetRegABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(ft))
-	if !callerRegABI || !targetRegABI {
-		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
-	}
+	callerRegABI := stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
+	targetRegABI := stagedTailRegisterABI(ft, f.stagedTailDescriptors)
 	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
@@ -745,7 +789,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	// original result destination from the frame header and tail-enter the target
 	// wrapper directly. Register-ABI callers still need the run-time adapter/direct
 	// distinction below because only adapter entry carries an outer X3 record.
-	if !f.opt(optRegABI) || !sigFitsRegABI(f.ft) {
+	if !f.tailCallerUsesRegisterABI() {
 		f.ld64(X3, SP, frResultsOff)
 		f.emitTailFrameRelease()
 		transfer()
@@ -814,12 +858,11 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
-	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	callerRegisterTail := stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
+	targetRegisterTail := stagedTailRegisterABI(ft, f.stagedTailDescriptors)
 	registerTail := callerRegisterTail && targetRegisterTail
-	wrapperTail := !callerRegisterTail && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
-	if !registerTail && !wrapperTail {
-		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
+	if !registerTail && funcTypeSlots(ft.Params) > abi.TailArgsSlots {
+		return fmt.Errorf("return_call_indirect: type %d requires %d wrapper argument slots, limit %d", typeIdx, funcTypeSlots(ft.Params), abi.TailArgsSlots)
 	}
 	if f.stagedTailDescriptors && f.importBindings != nil && !f.immutableLocalTable {
 		idx := f.materialize(f.popValue())
