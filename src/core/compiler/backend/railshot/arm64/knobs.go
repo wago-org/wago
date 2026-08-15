@@ -29,6 +29,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("abi-leaf-fp", &abiLeafFPEnabled),
 	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
 	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
+	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
 	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
 	optimization.Bind("gc-fixed-array-len", &fixedGCArrayLenEnabled),
@@ -94,6 +95,7 @@ var (
 	optABILeafFP             = optimizationBindings.Option("abi-leaf-fp")
 	optPreparedFPEntry       = optimizationBindings.Option("prepared-fp-entry")
 	optEntryInitElide        = optimizationBindings.Option("entry-init-elide")
+	optEntryParamPairs       = optimizationBindings.Option("entry-param-pairs")
 	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
 	optGCDeadNew             = optimizationBindings.Option("gc-dead-new")
 	optGCFixedArrayLen       = optimizationBindings.Option("gc-fixed-array-len")

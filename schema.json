@@ -83,6 +83,7 @@
               "deep-fp-pins",
               "entry-arg-pins",
               "entry-init-elide",
+              "entry-param-pairs",
               "entry-zero-pairs",
               "ext-fp-pins",
               "frame-elide",

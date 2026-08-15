@@ -4294,3 +4294,35 @@ executable corpus rows are neutral or improve, and all remain zero-allocation.
 `WAGO_ARM64_NO_ENTRY_ZERO_PAIRS=1` is the exact rollback. Tests cover the
 encoding, scalar and V128 execution, disabled policy, offset-cap fallback, and
 native-size/store attribution.
+
+## 2026-08-15 — paired ARM64 wrapper parameter homes
+
+ARM64 serialized-wrapper entries now combine two adjacent in-range scalar
+parameter copies from `serArgs` to their canonical frame slots into one offset
+`LDP` plus one offset `STP`. The streaming rule retains one pending source and
+destination offset, uses the backend's permanently reserved X16/X17 scratch
+pair, and falls back to the established `LDR`/`STR` copies at local-pin holes,
+V128 gaps, definite-assignment elisions, or either signed pair-offset limit. It
+adds no summary, per-function allocation, or general machine window.
+
+The 64-module corpus contains 712 accepted wrapper pairs in five modules: 500
+in Ruby, 100 in Script, 88 in SQLite, 20 in regexmatch, and 4 in Lua. Their final
+native images fall by 5,632 bytes in total, and no module grows. On an Apple M4
+Max fixture with 32 serialized i64 parameters, eight samples improve from an
+18.28 to 15.02 ns/op median (-17.8%), shrink the function from 456 to 392 native
+bytes, and remain at zero B/op and allocations. Focused compile medians improve
+from 8.27 to 8.07 us/op (-2.4%) with 33 allocations/op unchanged. Five
+fixed-work samples for each manifest consumer keep compile medians within 0.9%;
+ordinary B/op and allocation counts are unchanged apart from favorable
+code-buffer threshold noise in SQLite.
+
+A broader register-ABI-entry form was measured and removed. It found 16,957
+additional pairs, but scalar loads immediately following an `STP` exposed a
+penalty consistent with slower store forwarding: the focused internal-entry
+fixture regressed from a 13.76 to 14.30 ns/op median (+3.9%), and eight
+alternating JSON deserialize pairs reproduced a roughly 10% regression through
+a hot internal callee. The accepted wrapper-only boundary restores
+byte-identical code for every executable corpus module while retaining the
+independent wrapper win. Tests cover native
+execution, disabled policy, exact byte/store attribution, and offset-cap
+fallback; `WAGO_ARM64_NO_ENTRY_PARAM_PAIRS=1` is the exact rollback.
