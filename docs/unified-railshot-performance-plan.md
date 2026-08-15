@@ -1455,6 +1455,12 @@ The encoder method, policy bit, matcher, tests, and benchmarks were removed.
 ARM64 condition arithmetic should remain target-cost-specific rather than being
 enabled from AMD64 corpus demand or instruction-count reduction alone.
 
+The independently cheaper subtraction mapping was also checked:
+`x - i64.extend_i32_u(a <u b)` can use `CMP; SBC` because AArch64 clears C on
+unsigned borrow. Its full-width execution and encoding tests passed, but the
+exact bounded matcher found zero sites in the same 64 modules. That encoder,
+matcher, option, and tests were removed rather than retaining an unused rule.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
