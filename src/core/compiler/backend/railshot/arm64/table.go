@@ -559,7 +559,10 @@ func (f *fn) refIsNull() {
 	ref := f.materialize(value)
 	f.cmpImm(ref, 0, true) // was TestSelf
 	f.a.Cset32(ref, condE) // ref = (ref == 0) ? 1 : 0 (was SetccReg)
-	f.pushReg(ref, mtI32)
+	result := f.pushReg(ref, mtI32)
+	if f.opt(optValueFacts) {
+		result.st.facts = factUpper32Zero | factBoolean
+	}
 }
 
 func (f *fn) refAsNonNull() {
@@ -588,7 +591,10 @@ func (f *fn) refEq() {
 	f.pinned = f.pinned.remove(right)
 	f.release(right)
 	f.a.Cset32(left, condE) // left = (left == right) ? 1 : 0 (was SetccReg)
-	f.pushReg(left, mtI32)
+	result := f.pushReg(left, mtI32)
+	if f.opt(optValueFacts) {
+		result.st.facts = factUpper32Zero | factBoolean
+	}
 }
 
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {

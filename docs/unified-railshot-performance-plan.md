@@ -945,6 +945,13 @@ compile median (-4.1%), B/op fell from 24,832 to 24,664, allocations fell from
 37 to 34, and native output fell from 864 to 720 bytes (-16.7%). A nullable
 candidate and disabled facts are tested fallbacks.
 
+Materialized ARM64 `ref.is_null` and `ref.eq` results now carry the same boolean
+and clean-upper-half facts as ordinary comparisons. Sixteen following
+`i64.extend_i32_u` operations are removed in the focused fixture, reducing
+native output from 416 to 352 bytes (-15.4%). Six-sample compile medians were
+11.668 versus 11.672 us/op (+0.03%, treated as noise), with 26,640 B/op and 30
+allocations/op unchanged. Disabling value facts retains every extension.
+
 ---
 
 # 1. North-star architecture
