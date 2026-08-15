@@ -71,6 +71,7 @@
               "branch-fold",
               "call-effect-bounds",
               "call-next-use",
+              "call-result-residency",
               "commute-self-update",
               "compact-i32-frame",
               "deep-fp-pins",

@@ -19,12 +19,13 @@ func BenchmarkMixedFourResultRegisterABI(b *testing.B) {
 	callee := []byte{0x00, 0x41, 0x01, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x42, 0x03, 0x43, 0, 0, 0x80, 0x40, 0x0b}
 	m := modFuncs(b, funcDef{results: []wasm.ValType{wasm.I32}, body: caller}, funcDef{results: results, body: callee})
 	for _, tc := range []struct {
-		name string
-		on   bool
-	}{{"wrapper", false}, {"register", true}} {
+		name      string
+		registers bool
+		resident  bool
+	}{{"wrapper", false, false}, {"register-copy", true, false}, {"register-resident", true, true}} {
 		b.Run(tc.name, func(b *testing.B) {
 			var stats ModuleStats
-			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"reg-abi": tc.on, "inline": false}})
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"call-result-residency": tc.resident, "reg-abi": tc.registers, "inline": false}})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -74,13 +75,14 @@ func BenchmarkCompileMixedFourResultRegisterABI(b *testing.B) {
 	callee := []byte{0x00, 0x41, 0x01, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x42, 0x03, 0x43, 0, 0, 0x80, 0x40, 0x0b}
 	m := modFuncs(b, funcDef{results: []wasm.ValType{wasm.I32}, body: caller}, funcDef{results: results, body: callee})
 	for _, tc := range []struct {
-		name string
-		on   bool
-	}{{"wrapper", false}, {"register", true}} {
+		name      string
+		registers bool
+		resident  bool
+	}{{"wrapper", false, false}, {"register-copy", true, false}, {"register-resident", true, true}} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				if _, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"reg-abi": tc.on, "inline": false}}); err != nil {
+				if _, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"call-result-residency": tc.resident, "reg-abi": tc.registers, "inline": false}}); err != nil {
 					b.Fatal(err)
 				}
 			}

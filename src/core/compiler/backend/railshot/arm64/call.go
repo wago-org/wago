@@ -29,6 +29,10 @@ func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 // WAGO_ARM64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
 
+// callResultResidencyEnabled keeps direct internal GP results in X0/X1 through
+// post-call pin reloads, whose fixed destination banks exclude ABI results.
+var callResultResidencyEnabled = os.Getenv("WAGO_ARM64_NO_CALL_RESULT_RESIDENCY") != "1"
+
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
 var noStackFence = os.Getenv("WAGO_ARM64_NOFENCE") == "1"
 
@@ -1648,14 +1652,18 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		returnOffset = uint32(f.a.Len())
 	}
 
-	// A pin-preserving callee leaves the caller state untouched, so its result can
-	// remain allocator-owned in X0. Calls that reload state still copy it out first
-	// because those reload sequences may use X0 as scratch.
+	// A pin-preserving callee leaves the caller state untouched. Direct internal
+	// results can also remain allocator-owned in X0/X1: the fixed local/global pin
+	// banks reloaded below exclude the ABI result registers.
+	residentResults := f.opt(optCallResultResidency) && localIdx >= 0
 	resReg := regNone
 	if rN == 1 && resHint < 0 {
 		if preservesPins {
 			resReg = X0
 			f.stats.peep("call-result-x0")
+		} else if residentResults {
+			resReg = X0
+			f.stats.peep("call-result-resident")
 		} else {
 			resReg = f.allocReg(maskOf(X0))
 			f.a.MovReg64(resReg, X0)
@@ -1665,8 +1673,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	}
 	var pairRes [2]Reg
 	if rN == 2 {
-		if preservesPins {
+		if preservesPins || residentResults {
 			pairRes = [2]Reg{X0, X1}
+			if residentResults && !preservesPins {
+				f.stats.peepN("call-result-resident", 2)
+			}
 		} else {
 			pairRes[0] = f.allocReg(maskOf(X0, X1))
 			f.pinned = f.pinned.add(pairRes[0])
@@ -1924,12 +1935,18 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 	}
 
+	residentResults := f.opt(optCallResultResidency)
 	var gpResults [2]Reg
 	for i := uint8(0); i < resultPlan.GP; i++ {
-		gpResults[i] = f.allocReg(maskOf(X0, X1))
+		if residentResults {
+			gpResults[i] = intResultRegs[i]
+			f.stats.peep("call-result-resident")
+		} else {
+			gpResults[i] = f.allocReg(maskOf(X0, X1))
+			f.a.MovReg64(gpResults[i], intResultRegs[i])
+			f.stats.addRegisterResultMoves(1)
+		}
 		f.pinned = f.pinned.add(gpResults[i])
-		f.a.MovReg64(gpResults[i], intResultRegs[i])
-		f.stats.addRegisterResultMoves(1)
 	}
 	for i := 0; i < rN; i++ {
 		loc := resultPlan.Locations[i]

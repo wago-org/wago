@@ -1081,6 +1081,31 @@ and B/op unchanged; on Ryzen 7 7800X3D, the mixed four-result register case
 moved -0.8%, with 35 allocations/op and its ordinary B/op range unchanged.
 Native AMD64 race and full backend tests pass.
 
+### 2026-08-14 — bounded ARM64 direct-result residency
+
+Direct internal ARM64 calls now retain GP results in X0/X1 while the caller
+reloads its fixed local and global pin banks. Those banks exclude the ABI result
+registers, so the results remain pinned symbolic locations without a protective
+copy. Indirect calls, wrapper calls, and the fused pinned-local sink retain their
+existing conservative paths. The rule is an immutable per-compilation option
+with an environment kill switch, and its opt-in statistics report each removed
+copy as `call-result-resident`.
+
+On `ruby.wasm`, the bounded rule removes 75,314 of 78,303 attributed ARM64
+result moves. Total native code falls from 41,048,240 to 40,745,696 bytes
+(-302,544 bytes, -0.74%). The 16-call mixed four-result fixture falls from 420
+to 292 native bytes with unchanged zero-allocation execution; six-sample medians
+were effectively flat at 24.96 versus 24.79 ns/op. Ruby compile medians moved
+only +0.25%, with ordinary allocations and B/op unchanged; the focused compile
+fixture moved +0.6%, also with 33 allocations/op unchanged.
+
+The analogous AMD64 rule was measured and rejected rather than shipped. It
+reduced the focused fixture from 363 to 267 native bytes, but repeated isolated
+Ryzen 7 7800X3D runs slowed from a 29.94 to 30.94 ns/op median (+3.3%). Modern
+AMD64 move elimination makes these copies much cheaper than their byte count
+suggests, so AMD64 retains the existing protective copies pending a different
+selection or alignment strategy.
+
 ---
 
 # 1. North-star architecture

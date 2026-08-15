@@ -312,6 +312,7 @@ var catalog = []Definition{
 	both("v128-sink", "Vector sinking", "sink vector operations into pinned locals"),
 	arm64("shuffle-half-zip", "Halfword shuffle ZIP", "select native halfword ZIP instructions for exact shuffle masks"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
+	arm64("call-result-residency", "Direct call result residency", "retain direct internal GP results in ABI registers through safe caller-state reloads"),
 	both("inline", "Inlining", "inline eligible callees"),
 	experimentalBoth("inline-loop-callees", "Loop-call inlining", "inline callees invoked from inside loops"),
 	both("loop-precheck", "Loop prechecks", "hoist invariant bounds checks before loops"),

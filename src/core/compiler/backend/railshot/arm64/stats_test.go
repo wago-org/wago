@@ -224,7 +224,7 @@ func TestCodegenStatsLocalTrafficCausesArm64(t *testing.T) {
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
 	var registerStats ModuleStats
-	if _, err := CompileModuleWith(registerModule, CompileOptions{Stats: &registerStats, Optimizations: map[string]bool{"abi-classes": false, "inline": false, "reg-abi": true}}); err != nil {
+	if _, err := CompileModuleWith(registerModule, CompileOptions{Stats: &registerStats, Optimizations: map[string]bool{"abi-classes": false, "call-result-residency": false, "inline": false, "reg-abi": true}}); err != nil {
 		t.Fatal(err)
 	}
 	registerTraffic := registerStats.Funcs[0].CallTraffic
@@ -233,6 +233,20 @@ func TestCodegenStatsLocalTrafficCausesArm64(t *testing.T) {
 	}
 	if !strings.Contains(registerStats.String(), "call-traffic: reg-arg-move=") {
 		t.Fatalf("report omitted register call traffic:\n%s", registerStats.String())
+	}
+	var residentStats ModuleStats
+	if _, err := CompileModuleWith(registerModule, CompileOptions{Stats: &residentStats, Optimizations: map[string]bool{"abi-classes": false, "call-result-residency": true, "inline": false, "reg-abi": true}}); err != nil {
+		t.Fatal(err)
+	}
+	residentTraffic := residentStats.Funcs[0].CallTraffic
+	if residentTraffic.RegisterArgumentMoves != 1 || residentTraffic.RegisterResultMoves != 0 {
+		t.Fatalf("resident register call traffic = %+v, want one argument and no result moves", residentTraffic)
+	}
+	if got := residentStats.Funcs[0].Peephole["call-result-resident"]; got != 1 {
+		t.Fatalf("call-result-resident = %d, want 1", got)
+	}
+	if got, without := residentStats.Funcs[0].CodeBytes, registerStats.Funcs[0].CodeBytes; got >= without {
+		t.Fatalf("resident code bytes = %d, want less than %d", got, without)
 	}
 }
 
