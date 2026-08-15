@@ -226,12 +226,12 @@ by the manager handoff. The runtime supervises one child process tree at a time,
 keeps file polling active while the guest runs, and waits for stable content
 before a restart. On Linux, the runtime starts two provider-free manager
 processes as a guard and a subreaper worker. The worker starts the active runtime
-as its guest. The guard cleans the tree if the worker dies. A Linux parent-death
-signal makes the worker clean the tree if the guard dies. This places
-supervision before generated plugin providers can initialize. A runtime
-started directly, without the manager handoff, rejects Linux watch mode. A
-terminal-backed watcher and its direct guest stay in the shell's foreground job
-group, so both receive terminal
+as its guest. The guard cleans the tree if the worker dies. Close-on-exec
+lifetime pipes make each supervisor clean the tree if its parent process dies.
+This places supervision before generated plugin providers can initialize. A
+runtime started directly, without the manager handoff, rejects Linux watch mode.
+A terminal-backed watcher and its direct guest stay in the shell's foreground
+job group, so both receive terminal
 interrupts. The watcher restores terminal ownership if a guest descendant
 creates a separate foreground group. It also records bounded process identities
 and checks each identity again before signaling it. Linux subreaper ownership

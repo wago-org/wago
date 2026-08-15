@@ -7,12 +7,33 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/watchsupervisor"
+	"golang.org/x/sys/unix"
 )
+
+func configureWatchHelperForeground(t *testing.T) {
+	if os.Getenv("WAGO_WATCH_SEPARATE_FOREGROUND") != "1" {
+		return
+	}
+	if err := syscall.Setpgid(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	signal.Ignore(syscall.SIGTTOU)
+	defer signal.Reset(syscall.SIGTTOU)
+	group := syscall.Getpgrp()
+	if err := unix.IoctlSetPointerInt(int(os.Stdout.Fd()), unix.TIOCSPGRP, group); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("WAGO_WATCH_FOREGROUND_GROUP"), []byte(strconv.Itoa(group)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestWatchedStopDetectsExitBeforeWaitPublication(t *testing.T) {
 	stdin, input, err := os.Pipe()

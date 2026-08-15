@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -25,9 +26,24 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 		runWatchJobControlHelper(t)
 		return
 	}
+	for _, test := range []struct {
+		name               string
+		separateForeground bool
+	}{
+		{name: "shared foreground"},
+		{name: "separate guest foreground", separateForeground: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			testWatchSupervisorMirrorsTerminalJobControl(t, test.separateForeground)
+		})
+	}
+}
+
+func testWatchSupervisorMirrorsTerminalJobControl(t *testing.T, separateForeground bool) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "module.wasm")
 	logPath := filepath.Join(dir, "starts.log")
+	foregroundPath := filepath.Join(dir, "foreground")
 	if err := os.WriteFile(modulePath, []byte("first"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +63,12 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 		"WAGO_WATCH_MODULE="+modulePath,
 		"WAGO_WATCH_LOG="+logPath,
 	)
+	if separateForeground {
+		command.Env = append(command.Env,
+			"WAGO_WATCH_SEPARATE_FOREGROUND=1",
+			"WAGO_WATCH_FOREGROUND_GROUP="+foregroundPath,
+		)
+	}
 	command.Stdin, command.Stdout, command.Stderr = slave, slave, slave
 	command.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
 	if err := command.Start(); err != nil {
@@ -71,11 +93,15 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 	output := watchPTYOutput(master)
 	waitForWatchPTYOutput(t, output, "watching")
 	waitForWatchLog(t, logPath, 1)
+	wantForeground := command.Process.Pid
+	if separateForeground {
+		wantForeground = waitForWatchForegroundFile(t, foregroundPath)
+	}
 	if err := os.Remove(modulePath); err != nil {
 		t.Fatal(err)
 	}
 	waitForWatchPTYOutput(t, output, "watch:")
-	waitForWatchForegroundGroup(t, master, command.Process.Pid)
+	waitForWatchForegroundGroup(t, master, wantForeground)
 	foreground, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPGRP)
 	if err != nil {
 		t.Fatal(err)
@@ -87,9 +113,15 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 	if err := syscall.Kill(-command.Process.Pid, syscall.SIGCONT); err != nil {
 		t.Fatal(err)
 	}
-	waitForWatchForegroundGroup(t, master, command.Process.Pid)
-	if _, err := master.Write([]byte{0x03}); err != nil {
-		t.Fatal(err)
+	waitForWatchForegroundGroup(t, master, wantForeground)
+	if separateForeground {
+		if err := syscall.Kill(-command.Process.Pid, syscall.SIGINT); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if _, err := master.Write([]byte{0x03}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := command.Wait(); err != nil {
 		t.Fatalf("job-control helper: %v", err)
@@ -98,6 +130,27 @@ func TestWatchSupervisorMirrorsTerminalJobControl(t *testing.T) {
 	if got, want := waitForWatchLog(t, logPath, 2), []string{"first", "interrupt"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("helper log = %#v, want %#v", got, want)
 	}
+}
+
+func waitForWatchForegroundFile(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			group, parseErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			return group
+		}
+		if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("guest did not publish its foreground process group")
+	return 0
 }
 
 func runWatchJobControlHelper(t *testing.T) {

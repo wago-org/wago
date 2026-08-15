@@ -35,14 +35,15 @@ type watchedProcessInfo struct {
 }
 
 type watchedProcessTracker struct {
-	mu        sync.Mutex
-	owner     int
-	root      int
-	rootStart uint64
-	processes map[int]uint64
-	stop      func()
-	drain     func() error
-	eventErr  error
+	mu                sync.Mutex
+	owner             int
+	root              int
+	rootStart         uint64
+	processes         map[int]uint64
+	stop              func()
+	drain             func() error
+	eventErr          error
+	stoppedForeground int
 }
 
 func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
@@ -267,6 +268,11 @@ func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) 
 	if !ok || (root.state != 'T' && root.state != 't') {
 		return nil
 	}
+	foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
+	if err != nil {
+		return err
+	}
+	platform.processes.rememberStoppedForeground(foreground)
 	if err := signalWatchedDescendants(platform, syscall.SIGSTOP); err != nil {
 		return err
 	}
@@ -280,18 +286,58 @@ func continueWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) er
 	if platform.terminalFD >= 0 {
 		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
 		if err == nil && foreground == platform.foreground {
-			group, groupErr := syscall.Getpgid(command.Process.Pid)
-			if groupErr != nil && !errors.Is(groupErr, syscall.ESRCH) {
-				return groupErr
-			}
-			if groupErr == nil && group != platform.foreground {
+			group := platform.processes.stoppedForegroundGroup()
+			if group > 0 && group != platform.foreground && platform.processes.ownsProcessGroup(group) {
 				if err := setWatchedTerminalForeground(platform.terminalFD, group); err != nil {
 					return err
 				}
+				platform.processes.clearStoppedForeground(group)
+			} else {
+				platform.processes.clearStoppedForeground(group)
+				group, groupErr := syscall.Getpgid(command.Process.Pid)
+				if groupErr != nil && !errors.Is(groupErr, syscall.ESRCH) {
+					return groupErr
+				}
+				if groupErr == nil && group != platform.foreground {
+					if err := setWatchedTerminalForeground(platform.terminalFD, group); err != nil {
+						return err
+					}
+				}
 			}
+		} else if err == nil {
+			platform.processes.clearStoppedForeground(foreground)
 		}
 	}
 	return signalWatchedProcessTree(platform, command, syscall.SIGCONT)
+}
+
+func (tracker *watchedProcessTracker) rememberStoppedForeground(group int) {
+	if tracker == nil || group <= 0 {
+		return
+	}
+	tracker.mu.Lock()
+	tracker.stoppedForeground = group
+	tracker.mu.Unlock()
+}
+
+func (tracker *watchedProcessTracker) stoppedForegroundGroup() int {
+	if tracker == nil {
+		return 0
+	}
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	return tracker.stoppedForeground
+}
+
+func (tracker *watchedProcessTracker) clearStoppedForeground(group int) {
+	if tracker == nil {
+		return
+	}
+	tracker.mu.Lock()
+	if tracker.stoppedForeground == group {
+		tracker.stoppedForeground = 0
+	}
+	tracker.mu.Unlock()
 }
 
 func watchedCommandTerminal(command *exec.Cmd) (int, int, bool) {

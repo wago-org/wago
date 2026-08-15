@@ -28,3 +28,5 @@ func TestWatchedWindowsConsoleUnavailableFallsBack(t *testing.T) {
 func detachWatchHelperProcess(*exec.Cmd) {}
 
 func configureWatchTestSupervisor(*watchOptions) {}
+
+func configureWatchHelperForeground(*testing.T) {}

@@ -365,6 +365,7 @@ func TestWatchHelperProcess(t *testing.T) {
 	if os.Getenv("WAGO_WATCH_HELPER") != "1" {
 		return
 	}
+	configureWatchHelperForeground(t)
 	if os.Getenv("WAGO_WATCH_TREE") == "1" && os.Getenv("WAGO_WATCH_LEAF") != "final" {
 		command := exec.Command(os.Args[0], "-test.run=^TestWatchHelperProcess$", "-test.count=1")
 		next := "final"
