@@ -28,12 +28,18 @@ func TestSemanticOptimizationsDefaultOff(t *testing.T) {
 	config := NewRuntimeConfig()
 	for _, name := range []string{
 		"merge-reg-residency", "call-effect-bounds", "call-remat-const", "call-remat-local", "call-remat-bin",
-		"abi-classes", "abi-leaf-fp", "prepared-fp-entry", "entry-init-elide", "gc-dead-new",
+		"abi-classes", "abi-leaf-fp", "prepared-fp-entry", "gc-dead-new",
 		"merge-next-use", "call-result-residency", "inline-slot-overlay", "loop-precheck",
 	} {
 		if config.optimizations[name] {
 			t.Errorf("semantic optimization %q is enabled by default", name)
 		}
+	}
+}
+
+func TestEntryInitElisionDefaultsOn(t *testing.T) {
+	if !NewRuntimeConfig().optimizations["entry-init-elide"] {
+		t.Fatal("entry-init-elide is disabled by default")
 	}
 }
 

@@ -274,7 +274,7 @@ var catalog = []Definition{
 	experimentalBoth("abi-classes", "Internal ABI classes", "classify effect-safe direct-call register contracts"),
 	experimentalBoth("abi-leaf-fp", "FP leaf ABI", "preserve caller pin banks across bounded FP leaf calls"),
 	experimentalBoth("prepared-fp-entry", "Prepared FP/mixed entry", "mark bounded FP and mixed-bank functions for fixed prepared trampolines"),
-	experimentalBoth("entry-init-elide", "Entry initialization elision", "skip local initialization when bounded definite assignment makes the initial value unobservable"),
+	both("entry-init-elide", "Entry initialization elision", "skip local initialization when bounded definite assignment makes the initial value unobservable"),
 	arm64("entry-param-pairs", "Entry parameter pairs", "pair adjacent serialized wrapper parameter homes in function prologues"),
 	arm64("entry-zero-pairs", "Entry zero pairs", "pair adjacent declared-local zero stores in function prologues"),
 	arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),

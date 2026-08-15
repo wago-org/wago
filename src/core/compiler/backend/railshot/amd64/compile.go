@@ -214,7 +214,8 @@ var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
 // entryInitElisionEnabled skips parameter homes and declared-local zero stores
 // when the combined summary scan proves the incoming value cannot be read.
-var entryInitElisionEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_ENTRY_INIT_ELISION") == "1"
+// WAGO_AMD64_NO_ENTRY_INIT_ELISION=1 restores eager entry initialization.
+var entryInitElisionEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_INIT_ELISION") != "1"
 
 // memory32AddrZExtElimEnabled avoids a redundant self-move when the storage
 // form feeding a memory32 access already guarantees a zero upper half. Default

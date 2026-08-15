@@ -85,7 +85,7 @@ var (
 	intervalRegionPinsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_REGIONS") != "0"
 	// entryInitElisionEnabled skips zero-initialization for declared locals whose
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
-	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_ENTRY_INIT_ELISION") == "1"
+	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"
 
 	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
 	// FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
