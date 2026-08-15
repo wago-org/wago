@@ -1102,6 +1102,9 @@ func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
 	f.release(object)
 	if nullable {
 		f.a.PatchBranch19(nullDone, f.a.Len())
+		// The null edge skipped resolution, so no raw-address certificate is
+		// valid after the merge even though the non-null edge proved one.
+		f.invalidateGCResolvedObject()
 	}
 	f.pinned = f.pinned.remove(result)
 	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()

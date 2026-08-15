@@ -21,13 +21,20 @@ func gcNativeFinalCastBytesARM64() []byte {
 	nullableBody := []byte{0xd0, 0x00, 0xfb, 0x17, 0x00, 0xd1, 0x0b}
 	nullFailBody := []byte{0xd0, 0x00, 0xfb, 0x16, 0x00, 0xd1, 0x0b}
 	i31FailBody := []byte{0x41, 0x00, 0xfb, 0x1c, 0xfb, 0x16, 0x00, 0xd1, 0x0b}
+	nullableGetBody := []byte{
+		0x01, 0x01, 0x6e,
+		0xd0, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0xfb, 0x17, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x17, 0x00,
+		0xfb, 0x02, 0x00, 0x00, 0x0b,
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			structType,
 			wasmtest.FuncType(nil, nil),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(2))),
 		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.RefVal(wasm.AbsRef(wasm.HeapAny)), true, []byte{0xd0, 0x6e, 0x0b}))),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("init", byte(wasm.ExternFunc), 0),
@@ -35,10 +42,12 @@ func gcNativeFinalCastBytesARM64() []byte {
 			wasmtest.ExportEntry("nullable", byte(wasm.ExternFunc), 2),
 			wasmtest.ExportEntry("null_fail", byte(wasm.ExternFunc), 3),
 			wasmtest.ExportEntry("i31_fail", byte(wasm.ExternFunc), 4),
+			wasmtest.ExportEntry("nullable_get", byte(wasm.ExternFunc), 5),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code(initBody), append(wasmtest.ULEB(uint32(len(runBody))), runBody...), wasmtest.Code(nullableBody),
 			wasmtest.Code(nullFailBody), wasmtest.Code(i31FailBody),
+			append(wasmtest.ULEB(uint32(len(nullableGetBody))), nullableGetBody...),
 		)),
 	)
 }
@@ -71,6 +80,14 @@ func TestGCNativeFinalCastARM64(t *testing.T) {
 				if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
 					t.Fatalf("enabled=%v: %s error = %v, want TrapCastFailure", enabled, name, err)
 				}
+			}
+		}
+		if _, err := instance.Invoke("nullable_get"); err == nil {
+			t.Fatalf("enabled=%v: nullable_get succeeded, want null-reference trap", enabled)
+		} else {
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapNullReference {
+				t.Fatalf("enabled=%v: nullable_get error = %v, want TrapNullReference", enabled, err)
 			}
 		}
 		instance.Close()
