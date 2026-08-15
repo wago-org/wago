@@ -99,14 +99,15 @@ func RejectUnsupportedWithFeaturesAndFacts(m *wasm.Module, f Features, facts *Mo
 	if m == nil || facts == nil {
 		return fmt.Errorf("nil module or module facts")
 	}
-	p := supportPass{m: m, feat: f, facts: facts}
+	p := supportPass{m: m, feat: f, facts: facts, classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	return p.runWithFacts()
 }
 
 type supportPass struct {
-	m     *wasm.Module
-	feat  Features
-	facts *ModuleFacts
+	m          *wasm.Module
+	feat       Features
+	facts      *ModuleFacts
+	classifier wasm.ModuleInstructionClassifier
 }
 
 // ModuleFacts is the allocation-bounded declaration/body prepass shared by
@@ -1482,7 +1483,8 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, p.unsupported("gc instruction", imm.Kind.String()+" (gc disabled)", ctx())
 	case 0xfe:
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		var imm wasm.InstructionImmediate
+		err := p.classifier.ClassifyInto(r, op, &imm)
 		if err != nil {
 			return false, err
 		}
