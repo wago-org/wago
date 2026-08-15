@@ -232,10 +232,20 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !f.gcStructHelpers {
 			return fmt.Errorf("arm64: extern conversion requires GC helpers")
 		}
+		facts := f.s.back().st.facts
+		var err error
 		if sub == 26 {
-			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+			err = f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+		} else {
+			err = f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 		}
-		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
+		if err != nil {
+			return err
+		}
+		if facts.Has(factNonZero) {
+			f.markTopNonZeroFact()
+		}
+		return nil
 	}
 	if sub >= 28 && sub <= 30 {
 		original := f.popValue()

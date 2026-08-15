@@ -972,6 +972,16 @@ fixed-work compile samples improved from a 14.903 to 14.443 us/op median (-3.1%)
 B/op fell from 43,720 to 43,552, and allocations fell from 55 to 52. Tests cover
 the disabled-policy and nullable-cast near misses.
 
+ARM64 `any.convert_extern` and `extern.convert_any` now preserve a proven
+nonzero input across their bounded runtime identity bridge. Both runtime
+conversion directions map null only to null, so this fact survives the helper
+call even though raw reference identities and registers do not. Eight repeated
+conversions remove eight `ref.as_non_null` checks and fold eight null tests,
+reducing native output from 836 to 716 bytes (-14.4%). Six alternating
+fixed-work compile samples improved from a 10.168 to 9.637 us/op median (-5.2%),
+B/op fell from 24,904 to 24,736, and allocations fell from 49 to 46. Tests cover
+both directions, disabled facts, and nullable-input near misses.
+
 ---
 
 # 1. North-star architecture
