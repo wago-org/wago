@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,13 +53,6 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 		fatal("publish: no version — set package.version or tag the repository")
 	}
 	version = canonicalGoVersion(version)
-	commit := strings.TrimSpace(gitOutputAt(moduleRoot, "rev-list", "-n", "1", version))
-	if commit == "" {
-		fatal("publish: %s", unresolvedReleaseTagInstructions(version))
-	}
-	if !fullGitCommit(commit) {
-		fatal("publish: commit must be the full 40-character commit for tag %s", version)
-	}
 	generated, localProviders, err := generateLocalProviderCatalog(ctx, moduleRoot, metadata)
 	if err != nil {
 		fatal("publish: local provider catalog: %v", err)
@@ -80,6 +74,16 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	}
 	if !bytes.Equal(committed, generated) {
 		fatal("publish: %s is stale (run: wago plugin catalog)", committedPath)
+	}
+	commit, err := resolvePublishTag(ctx, moduleRoot, manifestPath, version, defaultPublishTagUI())
+	if errors.Is(err, errPublishCancelled) {
+		return
+	}
+	if err != nil {
+		fatal("publish: %v", err)
+	}
+	if !fullGitCommit(commit) {
+		fatal("publish: commit must be the full 40-character commit for tag %s", version)
 	}
 	download, err := downloadModuleSource(ctx, metadata.Module, version)
 	if err != nil {
