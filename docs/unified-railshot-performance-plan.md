@@ -526,9 +526,12 @@ single-arm assignment, an escaping `br_if`, block/loop conservatism, the
 64-local cap, and policy-disabled compilation are tested near misses. The scan
 frame grows by 32 bytes per recursive control level; at the existing 20,000
 level guard the static upper-bound delta is 640 KiB, below the plan's 1 MiB
-absolute gate. Full repository and focused race tests pass. AMD64 correctness
-passes under Rosetta and its Linux test binary cross-compiles; native AMD64
-timing remains pending because `hub@hub` still times out before authentication.
+absolute gate. Full repository and focused race tests pass. Native AMD64
+correctness passes on the Ryzen 7 7800X3D host. Six one-second Ruby backend
+compile samples move from a 926.29 ms disabled median to 928.70 ms enabled
+(+0.26%); B/op and allocation counts are effectively unchanged. Order-reversed
+JSON runs improve serialize from about 110.5 to 108.3 ns/op (-2.0%) and
+deserialize from 197.1 to 194.1 ns/op (-1.5%), with zero B/op and allocations.
 
 ### 2026-08-14 — retained immediate dead constructors on ARM64
 
