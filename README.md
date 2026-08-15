@@ -131,8 +131,8 @@ wago run program.wasm hello world
 
 For GitHub plugins, `owner/repository` is shorthand for the canonical
 `github.com/owner/repository` Plugin ID. When a package publishes multiple
-providers, adding its root offers to install everything or choose individual
-providers. Explicit paths such as `wago-org/wasi/p1` install that provider
+subpackages, adding its root offers to install everything or choose individual
+subpackages. Explicit paths such as `wago-org/wasi/p1` install that subpackage
 directly. `wago add` resolves the complete dependency and Contract graph,
 reviews exact scoped Authorities, pins sources and bindings in `wago-lock.json`,
 verifies the linked definitions, and atomically publishes the rebuilt runtime.
