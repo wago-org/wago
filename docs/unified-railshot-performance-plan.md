@@ -3377,3 +3377,24 @@ The rollback switch is:
 ```text
 WAGO_AMD64_NO_MERGE_REG_RESIDENCY=1
 ```
+
+### Rejected follow-up: per-block forward rescanning
+
+Extending the same contract to call-free forward `block` targets increased the
+64-module result to 31,434 fewer merge stores and 112,345 fewer native bytes,
+and a mixed `if`/`block` kernel improved from 42.5 to 41.5 ns/op with zero
+execution allocations. It was not retained because scanning forward from every
+eligible block repeated work in nested control and failed the compile gate:
+
+```text
+alternating real-module compile sample
+(regexmatch, SQLite, Ruby, esbuild; n=6 per mode):
+    geomean time: +5.04%
+    individual rows: +4.42% to +5.70%
+    B/op: unchanged
+    allocs/op: unchanged
+```
+
+Forward block residency should be reconsidered only after the combined summary
+scan can mark admissible regions once. Reintroducing per-block reader scans is
+not acceptable even though execution and native-code metrics improve.
