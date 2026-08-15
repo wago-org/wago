@@ -2,7 +2,10 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 type valueFacts = shared.ValueFacts
 
@@ -33,6 +36,23 @@ func (f *fn) applyFactsForLocal(e *elem, x int) {
 	e.st.facts = facts
 	if facts != 0 {
 		f.stats.peep("local-fact")
+	}
+}
+
+func (f *fn) applyFactsForTypedResult(e *elem, typ wasm.ValType) {
+	if e != nil && typ.Kind() == wasm.ValRef && !typ.Ref().Nullable() && f.opt(optValueFacts) {
+		e.st.facts |= factNonZero
+	}
+}
+
+func (f *fn) applyFactsForTypedResults(results []wasm.ValType) {
+	if !f.opt(optValueFacts) || len(results) == 0 {
+		return
+	}
+	e := f.s.back()
+	for i := len(results) - 1; i >= 0 && e != nil && e != f.s.head; i-- {
+		f.applyFactsForTypedResult(e, results[i])
+		e = baseOfValentBlock(e).prev
 	}
 }
 

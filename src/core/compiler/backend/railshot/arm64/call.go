@@ -1140,6 +1140,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			value = f.pushReg(res[j], rt)
 		}
 		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[j])
+		f.applyFactsForTypedResult(value, ft.Results[j])
 	}
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
@@ -1687,16 +1688,23 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		pr, _, _ := f.pinReg(resHint)
 		f.a.MovReg64(pr, X0)
 		f.markLocalDirty(resHint)
+		facts := valueFacts(0)
+		if f.opt(optValueFacts) && ft.Results[0].Kind() == wasm.ValRef && !ft.Results[0].Ref().Nullable() {
+			facts = factNonZero
+		}
+		f.setFactsForLocal(resHint, facts)
 	}
 
 	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
-		f.pushReg(resReg, mtOf(ft.Results[0]))
+		result := f.pushReg(resReg, mtOf(ft.Results[0]))
+		f.applyFactsForTypedResult(result, ft.Results[0])
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
-			f.pushReg(reg, mtOf(ft.Results[i]))
+			result := f.pushReg(reg, mtOf(ft.Results[i]))
+			f.applyFactsForTypedResult(result, ft.Results[i])
 		}
 	}
 	return returnOffset
@@ -1912,7 +1920,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 		}
 		reg := gpResults[loc.Index]
 		f.pinned = f.pinned.remove(reg)
-		f.pushReg(reg, rt)
+		result := f.pushReg(reg, rt)
+		f.applyFactsForTypedResult(result, ft.Results[i])
 	}
 }
 
@@ -2470,6 +2479,7 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 			value = f.pushReg(regs[i], typ)
 		}
 		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, results[i])
+		f.applyFactsForTypedResult(value, results[i])
 	}
 }
 
@@ -2531,6 +2541,7 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	f.tmpTypes = types
 	if !f.tracksGCFrameRoots() {
 		f.setDepthTypes(types)
+		f.applyFactsForTypedResults(results)
 		return
 	}
 	gcRoots := f.tmpGCRoots[:0]
@@ -2540,4 +2551,5 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	}
 	f.tmpGCRoots = gcRoots
 	f.setDepthTypesWithGCRoots(types, gcRoots)
+	f.applyFactsForTypedResults(results)
 }

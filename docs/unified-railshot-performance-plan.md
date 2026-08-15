@@ -911,6 +911,16 @@ eight-use parameter fixture improved from a 7.847 to 6.872 us/op compile median
 native output fell from 268 to 92 bytes (-65.7%). A nullable parameter is a
 tested near miss.
 
+ARM64 call-result placement now applies the same signature contract to register,
+mixed-bank, wrapper, wide-wrapper, and synchronous host results. Direct consumers
+and ordinary local sinks therefore retain non-null reference results without a
+result-side table; nullable signatures remain unknown. With inlining disabled,
+an eight-pair direct-call fixture improved from a 14.181 to 13.647 us/op compile
+median (-3.8%), B/op fell from 35,920 to 35,752, allocations fell from 43 to 40,
+and native output fell from 780 to 636 bytes (-18.5%). Tests cover direct
+consumption, a local round trip, disabled facts, and the nullable-result near
+miss.
+
 ---
 
 # 1. North-star architecture
