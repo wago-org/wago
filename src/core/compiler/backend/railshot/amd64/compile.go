@@ -1941,6 +1941,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	}
 	localAt := 0
 	intervalAt := 0
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := allHints[i].nLocals
 		var h funcHints
@@ -1959,7 +1960,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		h.nLocals = nLocals
 		h.inlineCallSites = allHints[i].inlineCallSites
 		var err error
-		h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs)
+		h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
@@ -2171,8 +2172,9 @@ func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
 		return nil, nil
 	}
 	agg := make([]int64, nGlobals)
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		if err := scanFuncGlobalScores(m, m.Code[i], nGlobals, func(g uint32, score int64) {
+		if err := scanFuncGlobalScores(m, &classifier, m.Code[i], nGlobals, func(g uint32, score int64) {
 			agg[g] += score
 		}); err != nil {
 			return nil, fmt.Errorf("function %d global scores: %w", i, err)

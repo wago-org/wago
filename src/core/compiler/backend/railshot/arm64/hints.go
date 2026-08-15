@@ -206,12 +206,12 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHin
 }
 
 func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0)
+	return scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, nil, 0)
 }
 
-func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, moduleHints, importedFuncs)
+		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, importedFuncs)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
 }
@@ -327,9 +327,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 	return h
 }
 
-func scanFuncGlobalScores(m *wasm.Module, fn wasm.Func, nGlobals int, add func(g uint32, score int64)) error {
+func scanFuncGlobalScores(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, fn wasm.Func, nGlobals int, add func(g uint32, score int64)) error {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesGlobalScores(m, fn.BodyBytes, nGlobals, add)
+		return scanBodyBytesGlobalScores(m, classifier, fn.BodyBytes, nGlobals, add)
 	}
 	scanBodyGlobalScores(fn.Body, nGlobals, add)
 	return nil
@@ -363,9 +363,13 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 	walk(body.Instrs, 0)
 }
 
-func scanBodyBytesGlobalScores(m *wasm.Module, body []byte, nGlobals int, add func(g uint32, score int64)) error {
+func scanBodyBytesGlobalScores(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, body []byte, nGlobals int, add func(g uint32, score int64)) error {
 	r := wasm.ReaderFrom(body)
-	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add, m: m, classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	cached := wasm.NewModuleInstructionClassifier(m, true)
+	if classifier != nil {
+		cached = *classifier
+	}
+	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add, m: m, classifier: cached}
 	term, err := s.scanExpr(0, 0, false)
 	if err != nil {
 		return err
@@ -491,13 +495,17 @@ func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGl
 }
 
 func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, 0)
+	return scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, nil, 0)
 }
 
-func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, classifier: wasm.NewModuleInstructionClassifier(m, true), moduleHints: moduleHints, importedFuncs: importedFuncs, entryPrefix: true}
+	cached := wasm.NewModuleInstructionClassifier(m, true)
+	if classifier != nil {
+		cached = *classifier
+	}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, classifier: cached, moduleHints: moduleHints, importedFuncs: importedFuncs, entryPrefix: true}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err

@@ -234,12 +234,12 @@ func scanFuncBodyIntoMemory64(fn wasm.Func, nLocals, nGlobals int, selfIdx uint3
 }
 
 func scanFuncBodyIntoMemory64WithModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
-	return scanFuncBodyIntoMemory64WithModuleCalls(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+	return scanFuncBodyIntoMemory64WithModuleCalls(fn, nLocals, nGlobals, selfIdx, h, elig, memory64, m, nil, gcTypeLayouts, gcStructHelpers, nil, 0)
 }
 
-func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoMemory64WithModuleCalls(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, moduleHints, importedFuncs)
+		return scanBodyBytesIntoMemory64WithModuleCalls(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, classifier, gcTypeLayouts, gcStructHelpers, moduleHints, importedFuncs)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers), nil
 }
@@ -417,9 +417,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 	return h
 }
 
-func scanFuncGlobalScores(m *wasm.Module, fn wasm.Func, nGlobals int, add func(g uint32, score int64)) error {
+func scanFuncGlobalScores(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, fn wasm.Func, nGlobals int, add func(g uint32, score int64)) error {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesGlobalScores(m, fn.BodyBytes, nGlobals, add)
+		return scanBodyBytesGlobalScores(m, classifier, fn.BodyBytes, nGlobals, add)
 	}
 	scanBodyGlobalScores(fn.Body, nGlobals, add)
 	return nil
@@ -453,9 +453,13 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 	walk(body.Instrs, 0)
 }
 
-func scanBodyBytesGlobalScores(m *wasm.Module, body []byte, nGlobals int, add func(g uint32, score int64)) error {
+func scanBodyBytesGlobalScores(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, body []byte, nGlobals int, add func(g uint32, score int64)) error {
 	r := wasm.ReaderFrom(body)
-	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add, m: m, classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	cached := wasm.NewModuleInstructionClassifier(m, true)
+	if classifier != nil {
+		cached = *classifier
+	}
+	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add, m: m, classifier: cached}
 	term, err := s.scanExpr(0, 0, false)
 	if err != nil {
 		return err
@@ -585,13 +589,17 @@ func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx u
 }
 
 func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) (funcHints, error) {
-	return scanBodyBytesIntoMemory64WithModuleCalls(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, gcTypeLayouts, gcStructHelpers, nil, 0)
+	return scanBodyBytesIntoMemory64WithModuleCalls(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, nil, gcTypeLayouts, gcStructHelpers, nil, 0)
 }
 
-func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, classifier: wasm.NewModuleInstructionClassifier(m, true), gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
+	cached := wasm.NewModuleInstructionClassifier(m, true)
+	if classifier != nil {
+		cached = *classifier
+	}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, classifier: cached, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err

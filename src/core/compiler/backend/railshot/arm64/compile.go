@@ -1513,6 +1513,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	}
 	moduleEH := m.TagCount() != 0
 	localAt := 0
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := localCounts[i]
 		var h funcHints
@@ -1530,7 +1531,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h.directCallRefs = allHints[i].directCallRefs
 		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		var err error
-		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, allHints, importedFuncs)
+		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, &classifier, allHints, importedFuncs)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
@@ -1684,8 +1685,9 @@ func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
 		return nil, nil
 	}
 	agg := make([]int64, nGlobals)
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		if err := scanFuncGlobalScores(m, m.Code[i], nGlobals, func(g uint32, score int64) {
+		if err := scanFuncGlobalScores(m, &classifier, m.Code[i], nGlobals, func(g uint32, score int64) {
 			agg[g] += score
 		}); err != nil {
 			return nil, fmt.Errorf("function %d global scores: %w", i, err)
