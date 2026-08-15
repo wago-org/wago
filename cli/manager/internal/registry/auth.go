@@ -298,7 +298,7 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 	}
 	if dc.Error != "" {
 		if dc.Error == "device_flow_disabled" {
-			return "", errors.New("GitHub device flow is disabled for this OAuth app — enable \"Device Flow\" in its settings")
+			return "", errors.New("GitHub device flow is disabled for this OAuth app; enable \"Device Flow\" in its settings")
 		}
 		return "", errors.New("GitHub rejected the device authorization request")
 	}
@@ -399,7 +399,7 @@ func githubDeviceTokenUsingContext(ctx context.Context, base string, openBrowser
 			case "access_denied":
 				return "", errors.New("authorization was denied on GitHub")
 			case "expired_token":
-				return "", errors.New("the code expired before you authorized it — run `wago auth login --code` again")
+				return "", errors.New("the code expired before you authorized it; run `wago auth login --code` again")
 			default:
 				return "", errors.New("GitHub returned an unknown device authorization error")
 			}

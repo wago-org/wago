@@ -490,7 +490,7 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 	if err := tidyBuildModule(dir, verbose); err != nil {
 		_, haveSrc := SourceDir()
 		if !haveSrc {
-			return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet — set WAGO_SRC to a wago checkout to build from source)", err)
+			return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet; set WAGO_SRC to a wago checkout to build from source)", err)
 		}
 		return "", false, fmt.Errorf("go mod tidy: %w", err)
 	}

@@ -189,7 +189,7 @@ func (commandEnvironment) Configure(request configoptions.Request) {
 	case configoptions.Get:
 		value, err := target.Get(request.Key)
 		if err != nil {
-			fatal("config get: %v", err)
+			ui.FatalHint("wago config list", "config get: %v", err)
 		}
 		if automation.JSON() {
 			ui.PrintJSON(map[string]any{"scope": scope, "key": settings.CanonicalKey(request.Key), "value": value})
@@ -199,7 +199,7 @@ func (commandEnvironment) Configure(request configoptions.Request) {
 	case configoptions.Set:
 		key := settings.CanonicalKey(request.Key)
 		if err := target.Set(key, request.Value, request.Experimental); err != nil {
-			fatal("config set: %v", err)
+			ui.FatalHint("wago config list", "config set: %v", err)
 		}
 		if automation.DryRun() {
 			automation.PrintPlan("change Wago default", map[string]any{"scope": scope, "path": target.Path(), "key": key, "value": request.Value})
@@ -215,14 +215,17 @@ func (commandEnvironment) Configure(request configoptions.Request) {
 		}
 		fmt.Printf("%s Set %s = %s (%s)\n", ui.Cyan("✓"), key, value, scope)
 	case configoptions.Reset:
+		if !request.All {
+			if err := target.Reset(request.Key, request.Experimental); err != nil {
+				ui.FatalHint("wago config list", "config reset: %v", err)
+			}
+		}
 		if automation.DryRun() {
 			automation.PrintPlan("reset Wago defaults", map[string]any{"scope": scope, "path": target.Path(), "key": request.Key, "all": request.All})
 			return
 		}
 		if request.All {
 			target.ResetAll()
-		} else if err := target.Reset(request.Key, request.Experimental); err != nil {
-			fatal("config reset: %v", err)
 		}
 		if err := target.Save(); err != nil {
 			fatal("config reset: %v", err)
@@ -441,7 +444,11 @@ func (commandEnvironment) RebuildPlugins(options pluginrebuild.Options) {
 
 func (e commandEnvironment) Publish(options publish.Options) {
 	if automation.DryRun() {
-		automation.PrintPlan("publish plugin", map[string]any{"manifest": options.Manifest})
+		manifest, err := registry.ValidatePublishManifest(options.Manifest)
+		if err != nil {
+			fatal("publish: %v", err)
+		}
+		automation.PrintPlan("publish plugin", map[string]any{"manifest": manifest})
 		return
 	}
 	registry.PublishContext(e.context(), registry.PublishRequest{
@@ -451,7 +458,11 @@ func (e commandEnvironment) Publish(options publish.Options) {
 
 func (e commandEnvironment) Catalog(options plugincatalog.Options) {
 	if automation.DryRun() {
-		automation.PrintPlan("generate plugin provider catalog", map[string]any{"manifest": options.Manifest, "check": options.Check})
+		manifest, err := registry.ValidatePublishManifest(options.Manifest)
+		if err != nil {
+			fatal("catalog: %v", err)
+		}
+		automation.PrintPlan("generate plugin provider catalog", map[string]any{"manifest": manifest, "check": options.Check})
 		return
 	}
 	registry.CatalogContext(e.context(), registry.CatalogRequest{Manifest: options.Manifest, Check: options.Check})

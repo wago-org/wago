@@ -2,7 +2,11 @@
 // registry credentials for the Wago manager.
 package registry
 
-import "context"
+import (
+	"context"
+
+	"github.com/wago-org/wago/cli/internal/project"
+)
 
 type LoginRequest struct {
 	Link, Code, WithToken bool
@@ -43,6 +47,16 @@ func RecordInstallContext(ctx context.Context, module, version string) {
 	recordRegistryInstallContext(ctx, module, version)
 }
 func Closest(module string) string { return closestModule(module) }
+
+// ValidatePublishManifest checks the package metadata used by catalog and
+// publish dry runs, and returns the resolved manifest path.
+func ValidatePublishManifest(path string) (string, error) {
+	if path == "" {
+		path = project.File
+	}
+	_, _, err := readPublishManifest(path)
+	return path, err
+}
 
 func LoginContext(ctx context.Context, request LoginRequest) { registryLoginContext(ctx, request) }
 func LogoutContext(ctx context.Context)                      { registryLogoutContext(ctx) }

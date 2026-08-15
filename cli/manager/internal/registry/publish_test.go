@@ -95,6 +95,13 @@ func TestParsePublishManifestUsesNestedV1PackageAndExplicitCatalogs(t *testing.T
 	}
 }
 
+func TestParsePublishManifestExplainsApplicationManifest(t *testing.T) {
+	_, _, _, err := parsePublishManifest([]byte(`{"$schema":"https://wago.sh/v1/schema.json","plugins":{}}`))
+	if err == nil || !strings.Contains(err.Error(), "configures an application") || !strings.Contains(err.Error(), "required package object") {
+		t.Fatalf("application manifest error = %v", err)
+	}
+}
+
 func TestCanonicalGoVersionAndIsolatedWorkspace(t *testing.T) {
 	for input, want := range map[string]string{
 		"0.1.0":   "v0.1.0",

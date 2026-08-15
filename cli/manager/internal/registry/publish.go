@@ -50,7 +50,7 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 		version = strings.TrimSpace(gitOutputAt(moduleRoot, "describe", "--tags", "--abbrev=0"))
 	}
 	if version == "" {
-		fatal("publish: no version — set package.version or tag the repository")
+		fatal("publish: no version; set package.version or tag the repository")
 	}
 	version = canonicalGoVersion(version)
 	generated, localProviders, err := generateLocalProviderCatalog(ctx, moduleRoot, metadata)
@@ -191,7 +191,7 @@ func parsePublishManifest(raw []byte) (map[string]any, publishMetadata, []string
 	}
 	pkg, ok := manifest["package"].(map[string]any)
 	if !ok {
-		return nil, publishMetadata{}, nil, fmt.Errorf("package must be an object")
+		return nil, publishMetadata{}, nil, fmt.Errorf("this manifest configures an application, not a publishable plugin; add the required package object to wago.json (see https://docs.wago.sh/reference/configuration)")
 	}
 	module, _ := pkg["module"].(string)
 	if err := project.ValidatePluginID(module); err != nil {
