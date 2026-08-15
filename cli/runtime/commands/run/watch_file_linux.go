@@ -8,6 +8,8 @@ import (
 	"syscall"
 )
 
+func openWatchedFile(path string) (*os.File, error) { return os.Open(path) }
+
 func metadataForWatchedFile(_ *os.File, info os.FileInfo) (watchedFileMetadata, error) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {

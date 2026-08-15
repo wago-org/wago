@@ -366,7 +366,7 @@ func TestWatchHelperProcess(t *testing.T) {
 		if next == "final" {
 			return
 		}
-		select {}
+		time.Sleep(24 * time.Hour)
 	}
 	var listener net.Listener
 	if address := os.Getenv("WAGO_WATCH_ADDRESS"); address != "" {
@@ -402,7 +402,7 @@ func TestWatchHelperProcess(t *testing.T) {
 			return
 		}
 	}
-	select {}
+	time.Sleep(24 * time.Hour)
 }
 
 func appendWatchLog(t *testing.T, value string) {

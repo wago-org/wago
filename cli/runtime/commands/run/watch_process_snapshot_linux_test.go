@@ -3,19 +3,56 @@
 package run
 
 import (
+	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
 	"syscall"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
 
+func TestWatchSupervisorContinuesAfterChildSIGINT(t *testing.T) {
+	directory := t.TempDir()
+	modulePath := directory + "/module.wasm"
+	logPath := directory + "/starts.log"
+	if err := os.WriteFile(modulePath, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- superviseWatch(ctx, watchOptions{
+			path:       modulePath,
+			interval:   15 * time.Millisecond,
+			debounce:   60 * time.Millisecond,
+			stopGrace:  250 * time.Millisecond,
+			executable: "/bin/sh",
+			arguments:  []string{"-c", `printf 'start\n' >> "$1"; kill -INT $$`, "wago-watch-signal", logPath},
+			stdin:      nil,
+			stdout:     io.Discard,
+			stderr:     io.Discard,
+		})
+	}()
+	t.Cleanup(cancel)
+	waitForActiveWatchLog(t, logPath, 1, done)
+	if err := os.WriteFile(modulePath, []byte("final"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitForActiveWatchLog(t, logPath, 2, done)
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("supervisor exit = %v, want context cancellation", err)
+	}
+}
+
 func TestWatchedProcessDescendantsScansEveryThread(t *testing.T) {
 	if os.Getenv("WAGO_WATCH_THREAD_CHILD") == "1" {
-		select {}
+		time.Sleep(24 * time.Hour)
 	}
 	type startedChild struct {
 		command *exec.Cmd

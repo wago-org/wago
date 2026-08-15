@@ -199,11 +199,7 @@ func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watche
 				return watchedProcessResult{err: monitorErr}
 			}
 			exitSignal := status.Signal()
-			result := watchedProcessResult{err: fmt.Errorf("signal: %s", exitSignal)}
-			if exitSignal == syscall.SIGINT || exitSignal == syscall.SIGQUIT {
-				result.signal = exitSignal
-			}
-			return result
+			return watchedProcessResult{err: fmt.Errorf("signal: %s", exitSignal)}
 		}
 	}
 }

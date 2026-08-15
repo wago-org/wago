@@ -130,9 +130,6 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 		case result := <-childDone:
 			child.releasePlatform()
 			child = nil
-			if result.signal != nil {
-				return &watchInterruptedError{signal: result.signal}
-			}
 			if result.err != nil {
 				writeWatchedOutput(options.stderr, "%s %v\n", ui.Red("wago:"), result.err)
 			}
@@ -222,7 +219,7 @@ type watchHashBuffer [32 << 10]byte
 var watchHashBuffers = sync.Pool{New: func() any { return new(watchHashBuffer) }}
 
 func fileStamp(path string) (watchedStamp, error) {
-	file, err := os.Open(path)
+	file, err := openWatchedFile(path)
 	if err != nil {
 		return watchedStamp{}, err
 	}
@@ -274,7 +271,7 @@ func fileStamp(path string) (watchedStamp, error) {
 }
 
 func fileMetadata(path string) (watchedFileMetadata, error) {
-	file, err := os.Open(path)
+	file, err := openWatchedFile(path)
 	if err != nil {
 		return watchedFileMetadata{}, err
 	}
@@ -297,8 +294,7 @@ type watchedChild struct {
 }
 
 type watchedProcessResult struct {
-	err    error
-	signal os.Signal
+	err error
 }
 
 func startWatchedChild(options watchOptions) (*watchedChild, error) {
