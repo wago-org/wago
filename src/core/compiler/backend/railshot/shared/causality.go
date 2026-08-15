@@ -30,8 +30,9 @@ type CallTraffic struct {
 	RegisterArgumentMoves int
 	RegisterResultMoves   int
 
-	// AMD64 argument moves are split by the lowering path that requested them.
-	// The total above remains the cross-target headline counter.
+	// Argument moves are split by the lowering path that requested them. The
+	// total above remains the cross-target headline counter. Tail-call staging is
+	// populated only where the backend can attribute the complete move sequence.
 	IntegerCallArgumentMoves int
 	MixedCallArgumentMoves   int
 	TailCallArgumentMoves    int

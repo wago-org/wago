@@ -1160,6 +1160,29 @@ measured problem and was not implemented. A future retry needs bounded
 call-site ownership transfer for a dying local, with explicit fixed-register
 pressure accounting; it must not globally pin RAX/RCX/RDX/R8.
 
+### 2026-08-15 — ARM64 argument-move causality refinement
+
+The same opt-in call ledger now partitions ARM64 ordinary register-ABI argument
+instructions between integer-only and mixed GP/FP lowering. Each exact emitted
+move, including moves used to break or combine a parallel-copy cycle, increments
+the headline total and one cause. Register-ABI tail calls already canonicalize
+arguments to frame slots and reload their target banks, so they emit no
+register-to-register argument copies and retain a zero tail-move count.
+
+This changes only nil-safe statistics calls and the fixed opt-in counters;
+generated code and ordinary compiler storage are unchanged. Tests cover both
+integer and mixed-bank attribution. Across the 64-module Balanced ARM64 corpus,
+the split records 67,755 integer-call moves and 417 mixed-call moves: 99.4% of
+the measured traffic is in the integer path. The largest integer contributors
+are Script (21,510), SQLite (11,942), Ruby (10,882), Esbuild (10,537), and
+Regexmatch (5,492). Ruby has the largest mixed count at 192.
+
+The corpus also contains only one hit for the existing generated two-swap
+machine rule, again in Ruby. A longer swap-chain rule is therefore not being
+added. As on AMD64, the next material ARM64 argument step must influence
+call-adjacent value ownership before parallel resolution rather than expand the
+resolver for rare cycles.
+
 ### 2026-08-14 — bounded AMD64 forward-merge next use
 
 Forward block and `if` merges now keep a memory-only pinned local lazy when a

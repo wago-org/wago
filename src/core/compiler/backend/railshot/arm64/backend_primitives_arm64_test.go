@@ -121,7 +121,8 @@ func TestCrossInstanceAndMixedRegisterCallLowering(t *testing.T) {
 		t.Fatalf("mixed call result stack/code = depth %d, top %#v, relocs %d, code %d", mixed.depth(), mixed.s.back(), len(mixed.relocs), len(mixed.a.B))
 	}
 
-	registerArgs := &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{}, memSizeReg: regNone}
+	registerArgStats := &CodegenStats{}
+	registerArgs := &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{}, memSizeReg: regNone, stats: registerArgStats}
 	floatArg := registerArgs.pushValue(storage{kind: stReg, typ: mtF32, reg: 3})
 	intArg := registerArgs.pushValue(storage{kind: stReg, typ: mtI64, reg: X4})
 	registerArgs.fregUser[3], registerArgs.regUser[X4] = floatArg, intArg
@@ -129,6 +130,9 @@ func TestCrossInstanceAndMixedRegisterCallLowering(t *testing.T) {
 	registerArgs.emitMixedRegisterCall(5, twoIntResults, false)
 	if registerArgs.depth() != 2 || len(registerArgs.relocs) != 1 || len(registerArgs.a.B) == 0 {
 		t.Fatalf("mixed register-arg result stack/code = depth %d, relocs %d, code %d", registerArgs.depth(), len(registerArgs.relocs), len(registerArgs.a.B))
+	}
+	if traffic := registerArgStats.CallTraffic; traffic.RegisterArgumentMoves != 2 || traffic.MixedCallArgumentMoves != 2 || traffic.IntegerCallArgumentMoves != 0 {
+		t.Fatalf("mixed register-argument causes = %+v, want two mixed moves", traffic)
 	}
 }
 

@@ -1675,20 +1675,20 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	swapChains := resolveRegMovesWindow(moves,
 		func(dst, src Reg) {
 			f.a.MovReg64(dst, src)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addIntegerCallArgumentMoves(1)
 		},
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
-			f.stats.addRegisterArgumentMoves(3)
+			f.stats.addIntegerCallArgumentMoves(3)
 		},
 		func(a, b, c Reg) {
 			f.a.MovReg64(X16, a)
 			f.a.MovReg64(a, b)
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
-			f.stats.addRegisterArgumentMoves(4)
+			f.stats.addIntegerCallArgumentMoves(4)
 		})
 	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
@@ -1921,20 +1921,20 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 	gpSwapChains := resolveRegMovesWindow(gpMoves,
 		func(dst, src Reg) {
 			f.a.MovReg64(dst, src)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addMixedCallArgumentMoves(1)
 		},
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
-			f.stats.addRegisterArgumentMoves(3)
+			f.stats.addMixedCallArgumentMoves(3)
 		},
 		func(a, b, c Reg) {
 			f.a.MovReg64(X16, a)
 			f.a.MovReg64(a, b)
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
-			f.stats.addRegisterArgumentMoves(4)
+			f.stats.addMixedCallArgumentMoves(4)
 		})
 	f.stats.peepN("machine-swap-chain", gpSwapChains)
 	for _, m := range fpMoves {
@@ -1944,7 +1944,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 	fpSwapChains := resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) {
 			f.a.FmovReg(dst, src, true)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addMixedCallArgumentMoves(1)
 		},
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
@@ -1954,7 +1954,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 			f.fst(SP, off, x, true)
 			f.a.FmovReg(x, y, true)
 			f.fld(y, SP, off, true)
-			f.stats.addRegisterArgumentMoves(1)
+			f.stats.addMixedCallArgumentMoves(1)
 		},
 		func(a, b, c Reg) {
 			if fpSwapSlot < 0 {
@@ -1965,7 +1965,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPin
 			f.a.FmovReg(a, b, true)
 			f.a.FmovReg(b, c, true)
 			f.fld(c, SP, off, true)
-			f.stats.addRegisterArgumentMoves(2)
+			f.stats.addMixedCallArgumentMoves(2)
 		})
 	f.stats.peepN("machine-swap-chain", fpSwapChains)
 	for _, da := range deferred {
