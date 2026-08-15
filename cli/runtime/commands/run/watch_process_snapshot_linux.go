@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
@@ -36,8 +37,47 @@ func waitWatchedCommandStart(*exec.Cmd) error { return nil }
 
 func resumeWatchedCommand(*exec.Cmd) error { return nil }
 
-func startWatchedProcessTracking(*watchedProcessTracker) error {
+func startWatchedProcessTracking(tracker *watchedProcessTracker) error {
+	events := make(chan os.Signal, 1)
+	stopped := make(chan struct{})
+	done := make(chan struct{})
+	signal.Notify(events, syscall.SIGCHLD)
+	tracker.stop = func() {
+		signal.Stop(events)
+		close(stopped)
+		<-done
+	}
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-events:
+				tracker.reapAdopted()
+			case <-stopped:
+				return
+			}
+		}
+	}()
 	return nil
+}
+
+func (tracker *watchedProcessTracker) reapAdopted() {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if err := tracker.refreshLocked(); err != nil && tracker.eventErr == nil {
+		tracker.eventErr = err
+	}
+	for pid, started := range tracker.processes {
+		process, ok := watchedProcess(pid)
+		if !ok || process.started != started || process.parent != tracker.owner {
+			continue
+		}
+		var status syscall.WaitStatus
+		waited, err := syscall.Wait4(pid, &status, syscall.WNOHANG, nil)
+		if waited == pid || errors.Is(err, syscall.ECHILD) {
+			delete(tracker.processes, pid)
+		}
+	}
 }
 
 func finishWatchedProcessTracking(tracker *watchedProcessTracker) {

@@ -9,12 +9,49 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
+
+func TestWatchReapsAdoptedChildrenWhileRootRuns(t *testing.T) {
+	if err := prepareWatchedProcessTracking(); err != nil {
+		t.Fatal(err)
+	}
+	owner, ok := watchedProcess(os.Getpid())
+	if !ok {
+		t.Fatal("inspect test process")
+	}
+	tracker := &watchedProcessTracker{
+		owner: os.Getpid(), root: os.Getpid(), rootStart: owner.started,
+		processes: make(map[int]uint64),
+	}
+	if err := startWatchedProcessTracking(tracker); err != nil {
+		t.Fatal(err)
+	}
+	defer tracker.close()
+	output, err := exec.Command("/bin/sh", "-c", "sleep 0.2 & echo $!").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(output)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat("/proc/" + strconv.Itoa(pid)); errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("adopted child %d was not reaped", pid)
+}
 
 func TestWatchSupervisorContinuesAfterChildSIGINT(t *testing.T) {
 	directory := t.TempDir()

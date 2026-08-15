@@ -134,8 +134,8 @@ func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 		}
 	}
 	_ = signalWatchedProcessTree(platform, command, syscall.SIGKILL)
-	finishWatchedProcessTracking(platform.processes)
 	platform.processes.close()
+	finishWatchedProcessTracking(platform.processes)
 	_ = command.Process.Release()
 }
 
