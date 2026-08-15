@@ -6,11 +6,12 @@ package arm64
 // The compact local remains authoritative and rooted; this raw address never
 // crosses an operation that could mutate the local or collector backing.
 type gcResolvedObject struct {
-	valid     bool
-	local     int
-	typeIndex uint32
-	required  uint32
-	reg       Reg
+	valid       bool
+	local       int
+	typeIndex   uint32
+	required    uint32
+	reg         Reg
+	arrayExtent bool
 }
 
 func gcLocalProvenance(e *elem) (int, bool) {

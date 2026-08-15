@@ -565,6 +565,10 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 				return f.emitNativeFinalArrayScalarGet(typeIndex, sub, scalar)
 			}
 		}
+		if sub == 11 && f.policy.EnabledOption(optGCNativeRefGet) && !f.policy.CompactNative && f.directGCArrayRefLayout(typeIndex) {
+			f.stats.peep("gc-native-final-array-ref-get")
+			return f.emitNativeFinalArrayRefGet(typeIndex)
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
@@ -1052,6 +1056,24 @@ func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directG
 	return nil
 }
 
+func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+	result := f.emitNativeArrayElementChecks(object, index, 4)
+	f.a.LoadIdx(result, object, index, int32(gc.PayloadOffset), 4, false, false)
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	f.release(object)
+	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+	return nil
+}
+
 func (f *fn) emitNativeFinalArrayScalarSet(typeIndex uint32, scalar directGCScalar) error {
 	valueElem := f.popValue()
 	var value Reg
@@ -1095,10 +1117,29 @@ func (f *fn) emitNativeArrayElementChecks(object, index Reg, size int) Reg {
 	f.ld32(length, object, 8)
 	f.cmpRR(index, length, false)
 	f.trapIf(condAE, trapBuiltin)
-	f.release(length)
 	if size > 1 {
 		f.a.LslImm64(index, index, uint8(log2u(uint64(size))))
 	}
+	if f.gcResolved.valid && f.gcResolved.reg == object {
+		if f.gcResolved.arrayExtent {
+			return length
+		}
+		// The final array length and object size are immutable. Prove the full
+		// payload extent once, then retain that certificate with the cached raw
+		// address so later indexed accesses need only their logical bounds check.
+		if size > 1 {
+			f.a.LslImm64(length, length, uint8(log2u(uint64(size))))
+		}
+		f.leaDisp(length, length, int32(gc.PayloadOffset), true)
+		objectSize := f.allocReg(maskOf(object, index, length))
+		f.ld32(objectSize, object, 4)
+		f.cmpRR(length, objectSize, true)
+		f.trapIf(condA, trapCastFailure)
+		f.release(objectSize)
+		f.gcResolved.arrayExtent = true
+		return length
+	}
+	f.release(length)
 	objectSize := f.allocReg(maskOf(object, index))
 	f.ld32(objectSize, object, 4)
 	end := f.allocReg(maskOf(object, index, objectSize))

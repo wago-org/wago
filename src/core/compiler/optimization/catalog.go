@@ -274,7 +274,7 @@ var catalog = []Definition{
 	arm64("gc-native-final-array-len", "Native final array lengths", "resolve adjacent final casts and array lengths through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-scalar-get", "Native final scalar reads", "resolve adjacent final casts and pointer-free scalar struct reads through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-scalar-set", "Native final scalar writes", "resolve final pointer-free scalar struct writes through checked collector metadata for speed-oriented output"),
-	arm64("gc-native-final-ref-get", "Native final reference reads", "resolve final collector-reference struct reads through checked collector metadata for speed-oriented output"),
+	arm64("gc-native-final-ref-get", "Native final reference reads", "resolve final collector-reference struct and array reads through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-array-scalar-get", "Native final array scalar reads", "resolve final pointer-free scalar array reads through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-array-scalar-set", "Native final array scalar writes", "resolve final pointer-free scalar array writes through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-resolve-reuse", "Native GC resolution reuse", "retain one checked object address across adjacent scalar reads from the same local"),

@@ -127,8 +127,7 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	}
 	// A B.cond site (imm19, ±1 MiB); bit0 of the site offset is 0 (4-aligned), so
 	// emitTrapStubs uses it to tag Bcond vs Branch patch ranges (§6.2).
-	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Bcond(cc)))
+	f.recordTrapSite(code, f.trapSite(f.a.Bcond(cc)))
 }
 
 // zeroBranch emits a branch on a register's zero/nonzero value. Every caller is
@@ -173,8 +172,7 @@ func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
 		f.stats.addBoundsCheck()
 	}
 	f.stats.peep("direct-zero-branch")
-	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.emitZeroBranch(reg, wide, onZero)))
+	f.recordTrapSite(code, f.trapSite(f.emitZeroBranch(reg, wide, onZero)))
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a single B to the
@@ -182,12 +180,36 @@ func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
 // emitTrapStubs patches it with PatchBranch26 (imm26, ±128 MiB) rather than the
 // PatchBranch19 range a B.cond site uses.
 func (f *fn) trapAlways(code uint32) {
+	f.recordTrapSite(code, f.trapSite(f.a.Branch()|1))
+}
+
+// recordTrapSite gives the common bounded array region one allocation instead
+// of growing the builtin-bounds slice through capacities 1, 2, 4, and 8. Exact
+// native GC checks retain eight owner-local sites and make one bounded jump to
+// 24 before falling back to ordinary growth for pathological functions.
+func (f *fn) recordTrapSite(code uint32, site trapSite) {
 	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Branch()|1))
+	sites := sc.trapSites[code]
+	if code == trapBuiltin && cap(sites) == 0 {
+		sites = make([]trapSite, 0, 8)
+	}
+	if code == trapCastFailure && len(sites) == cap(sites) && cap(sites) == len(sc.gcCastTrapSites) {
+		grown := make([]trapSite, len(sites), 24)
+		copy(grown, sites)
+		sites = grown
+	}
+	sc.trapSites[code] = append(sites, site)
 }
 
 func (f *fn) trapSite(branch int) trapSite {
-	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
+	return trapSite{branch: trapBranchOffset(branch), function: f.traceFuncIdx, pc: f.wasmPC}
+}
+
+func trapBranchOffset(branch int) uint32 {
+	if uint64(branch) > uint64(^uint32(0)) {
+		panic("arm64: trap site exceeded uint32 code offset")
+	}
+	return uint32(branch)
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -261,9 +283,9 @@ func (f *fn) emitTrapStubs() {
 				f.a.MovImm64(X17, uint64(first.pc))
 				commonJump = f.a.Branch()
 				if first.branch&1 != 0 {
-					f.a.PatchBranch26(first.branch&^1, pos)
+					f.a.PatchBranch26(int(first.branch&^1), pos)
 				} else {
-					f.a.PatchBranch19(first.branch, pos)
+					f.a.PatchBranch19(int(first.branch), pos)
 				}
 			}
 			common := f.a.Len()
@@ -271,9 +293,9 @@ func (f *fn) emitTrapStubs() {
 				f.a.MovImm64(X17, uint64(^uint32(0)))
 				for _, site := range group {
 					if site.branch&1 != 0 {
-						f.a.PatchBranch26(site.branch&^1, common)
+						f.a.PatchBranch26(int(site.branch&^1), common)
 					} else {
-						f.a.PatchBranch19(site.branch, common)
+						f.a.PatchBranch19(int(site.branch), common)
 					}
 				}
 			}
@@ -333,9 +355,9 @@ func (f *fn) emitSharedTrapStubsHead() {
 			f.a.MovImm64(X11, uint64(code))
 			for _, site := range group {
 				if site.branch&1 != 0 {
-					f.a.PatchBranch26(site.branch&^1, pos)
+					f.a.PatchBranch26(int(site.branch&^1), pos)
 				} else {
-					f.a.PatchBranch19(site.branch, pos)
+					f.a.PatchBranch19(int(site.branch), pos)
 				}
 			}
 			branch := f.a.Branch()
@@ -373,12 +395,12 @@ func (f *fn) emitSharedTrapStubs() {
 			f.a.MovImm64(X11, uint64(code))
 			for _, site := range group {
 				if site.branch&1 != 0 {
-					f.a.PatchBranch26(site.branch&^1, pos)
+					f.a.PatchBranch26(int(site.branch&^1), pos)
 				} else {
-					f.a.PatchBranch19(site.branch, pos)
+					f.a.PatchBranch19(int(site.branch), pos)
 				}
 			}
-			group[0].branch = f.a.Branch()
+			group[0].branch = trapBranchOffset(f.a.Branch())
 			f.stats.addTrapGroup()
 			start = end
 		}
@@ -394,7 +416,7 @@ func (f *fn) emitSharedTrapStubs() {
 			for end < len(sites) && sites[end].function == sites[start].function {
 				end++
 			}
-			if !f.a.PatchBranch26(sites[start].branch, f.trapBodyOff) {
+			if !f.a.PatchBranch26(int(sites[start].branch), f.trapBodyOff) {
 				panic("arm64: bounded trap body branch exceeded imm26")
 			}
 			start = end

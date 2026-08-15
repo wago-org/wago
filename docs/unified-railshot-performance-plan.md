@@ -838,6 +838,27 @@ invocation with zero B/op and allocations. Compilation improved from 10.84 to
 native output fell from 1,352 to 880 bytes because seven duplicate checked
 resolvers and eight read helpers disappeared.
 
+### 2026-08-14 — ARM64 native final array reference reads
+
+Final arrays whose elements use the collector's compact four-byte reference
+representation now lower `array.get` through the checked native object view.
+The first access validates the nullable handle, exact final type, logical index,
+and the immutable array's complete physical extent; later reads from the same
+local reuse that bounded raw-address and extent certificate. Loaded compact
+references remain exact frame roots across safepoints. Function/external
+references, non-final layouts, compact objectives, and disabled policy retain
+the helper path.
+
+Execution tests cover a valid read, an out-of-bounds trap, forced collection
+with the loaded child live across a subsequent allocation, resolver reuse, and
+the function-reference near miss. On Apple M4 Max, eight admitted reads improved
+from a 691.5 to 340.8 ns/op median (-50.7%) through prepared invocation with
+zero B/op and allocations. Compilation improved from a 10.48 to 9.57 us/op
+median (-8.7%), native output fell from 1,320 to 1,156 bytes (-12.4%), and
+compile memory increased by only 96 B/op (0.42%) and one allocation (41 to 42).
+Trap-site metadata uses packed offsets plus bounded owner-local growth, with a
+tested conservative fallback beyond the common capacities.
+
 ---
 
 # 1. North-star architecture
