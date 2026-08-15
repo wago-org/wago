@@ -46,6 +46,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
 	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
+	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
@@ -90,6 +91,7 @@ var (
 	optRegABI               = optimizationBindings.Option("reg-abi")
 	optPreparedFPEntry      = optimizationBindings.Option("prepared-fp-entry")
 	optEntryInitElide       = optimizationBindings.Option("entry-init-elide")
+	optGCDeadNew            = optimizationBindings.Option("gc-dead-new")
 	optInline               = optimizationBindings.Option("inline")
 	optInlineLoopCallees    = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck         = optimizationBindings.Option("loop-precheck")

@@ -29,6 +29,7 @@ const (
 	gcStructFinalCastGet       uint32 = 12
 	gcStructFinalCastArrayLen  uint32 = 13
 	gcFuncRefTest              uint32 = 14
+	gcStructReserveDead        uint32 = 15
 	gcArrayAllocDefault        uint32 = 16
 	gcArrayGet                 uint32 = 17
 	gcArrayGetS                uint32 = 18
@@ -45,6 +46,7 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayCheckFixed          uint32 = 39
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -227,6 +229,13 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: struct.new type %d is unavailable", typeIndex)
 		}
+		if f.deadGCImmediateDrop(r) {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, len(st.Comp.Fields)); err != nil {
+				return err
+			}
+			f.finishDeadGCImmediateDrop(r)
+			return nil
+		}
 		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
 		for _, field := range st.Comp.Fields {
 			valueType := field.Storage().Val()
@@ -246,6 +255,13 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		if _, ok := f.stagedStructType(typeIndex); !ok {
 			return fmt.Errorf("arm64: struct.new_default type %d is unavailable", typeIndex)
+		}
+		if f.deadGCImmediateDrop(r) {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, 0); err != nil {
+				return err
+			}
+			f.finishDeadGCImmediateDrop(r)
+			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -355,6 +371,13 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		valueType := field.Storage().Val()
 		if field.Storage().Packed() {
 			valueType = wasm.I32
+		}
+		if f.deadGCImmediateDrop(r) {
+			if err := f.reserveDeadGCFixedArrayConstructor(typeIndex, count); err != nil {
+				return err
+			}
+			f.finishDeadGCImmediateDrop(r)
+			return nil
 		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
 		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
@@ -936,9 +959,10 @@ func (f *fn) gcFrameLocal(index int) bool {
 
 func arm64GCHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
-		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
+		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
+		gcArrayCheckFixed:
 		return true
 	default:
 		return false

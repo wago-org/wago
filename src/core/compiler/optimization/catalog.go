@@ -267,6 +267,7 @@ var catalog = []Definition{
 	arm64("abi-leaf-fp", "FP leaf ABI", "preserve caller pin banks across bounded FP leaf calls"),
 	both("prepared-fp-entry", "Prepared FP/mixed entry", "mark bounded FP and mixed-bank functions for fixed prepared trampolines"),
 	both("entry-init-elide", "Entry initialization elision", "skip local initialization when bounded definite assignment makes the initial value unobservable"),
+	both("gc-dead-new", "Dropped GC constructors", "retain allocation and traps while omitting unreachable constructor payload population"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),

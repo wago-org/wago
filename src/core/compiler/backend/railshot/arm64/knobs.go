@@ -26,6 +26,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("abi-leaf-fp", &abiLeafFPEnabled),
 	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
 	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
+	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
 	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
@@ -70,6 +71,7 @@ var (
 	optABILeafFP             = optimizationBindings.Option("abi-leaf-fp")
 	optPreparedFPEntry       = optimizationBindings.Option("prepared-fp-entry")
 	optEntryInitElide        = optimizationBindings.Option("entry-init-elide")
+	optGCDeadNew             = optimizationBindings.Option("gc-dead-new")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
 	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")

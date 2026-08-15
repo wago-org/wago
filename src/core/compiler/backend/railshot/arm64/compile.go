@@ -65,6 +65,10 @@ var abiLeafFPEnabled = os.Getenv("WAGO_ARM64_NO_ABI_LEAF_FP") != "1"
 // wrapper/internal entry code remains identical.
 var preparedFPEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_FP_ENTRY") != "1"
 
+// deadGCNewEnabled retains the real allocation and traps of an immediately
+// dropped GC constructor while omitting unreachable payload population.
+var deadGCNewEnabled = os.Getenv("WAGO_ARM64_NO_DEAD_GC_NEW") != "1"
+
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
 // checks and the Speed/Balanced layouts are unchanged.
