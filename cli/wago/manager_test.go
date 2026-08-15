@@ -7,10 +7,33 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestManagerSuggestsRuntimeNestedTypoWithoutSelectedRuntime(t *testing.T) {
+	const helperEnvironment = "WAGO_TEST_RUNTIME_NESTED_TYPO"
+	if os.Getenv(helperEnvironment) == "1" {
+		os.Args = []string{"wago", "module", "improts", "--help"}
+		main()
+		return
+	}
+
+	t.Setenv("WAGO_HOME", t.TempDir())
+	command := exec.Command(os.Args[0], "-test.run=^TestManagerSuggestsRuntimeNestedTypoWithoutSelectedRuntime$")
+	command.Env = append(os.Environ(), helperEnvironment+"=1")
+	output, err := command.CombinedOutput()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() != 2 {
+		t.Fatalf("nested typo exit = %v, want status 2\n%s", err, output)
+	}
+	text := string(output)
+	if !strings.Contains(text, `Did you mean "imports"?`) || strings.Contains(text, "no active runtime is selected") {
+		t.Fatalf("nested typo was not diagnosed by the manager:\n%s", text)
+	}
+}
 
 func TestManagerLaunchesSelectedRunner(t *testing.T) {
 	root := t.TempDir()

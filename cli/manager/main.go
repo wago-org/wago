@@ -66,7 +66,7 @@ func Main(v string) {
 		os.Exit(2)
 	}
 	configureInvocationAutomation(args)
-	if dispatchRuntimeHelp(args) {
+	if dispatchRuntimeDiscovery(args) {
 		return
 	}
 	switch args[0] {
@@ -141,17 +141,29 @@ func managerUnknownCommand(name string) {
 	os.Exit(2)
 }
 
-// dispatchRuntimeHelp keeps command discovery available before a runtime has
-// been installed. The manager carries the runtime command schema specifically
-// so newcomers can learn how to install and use Wago without first completing
-// an installation or reaching the network.
-func dispatchRuntimeHelp(args []string) bool {
+// dispatchRuntimeDiscovery keeps command help and nested typo diagnostics
+// available before a runtime has been installed. The manager carries the
+// runtime command schema specifically so newcomers can learn how to install and
+// use Wago without first completing an installation or reaching the network.
+func dispatchRuntimeDiscovery(args []string) bool {
 	root := &command.Cmd{Name: "wago", Children: runtimeSchemaCommands()}
 	cmd := root.Child(args[0])
-	if cmd == nil || !command.InvocationWantsHelp(cmd, args[1:]) {
+	if cmd == nil {
 		return false
 	}
-	cmd.Dispatch("wago "+cmd.Name, args[1:])
+	childArgs := args[1:]
+	if command.InvocationWantsHelp(cmd, childArgs) {
+		cmd.Dispatch("wago "+cmd.Name, childArgs)
+		return true
+	}
+	if len(cmd.Children) == 0 {
+		return false
+	}
+	remaining, err := automation.ParseLeading(childArgs)
+	if err != nil || len(remaining) == 0 || strings.HasPrefix(remaining[0], "-") || cmd.Child(remaining[0]) != nil {
+		return false
+	}
+	cmd.Dispatch("wago "+cmd.Name, childArgs)
 	return true
 }
 
