@@ -105,9 +105,9 @@ var nativeGCFinalScalarSetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCA
 // through the checked collector native view in speed-oriented output.
 var nativeGCFinalRefGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_REF_GET") != "1"
 
-// nativeGCFinalRefSetEnabled resolves statically-null writes to final
+// nativeGCFinalRefSetEnabled resolves proven barrier-free writes to final
 // collector-reference struct fields and arrays through the checked collector
-// native view. Null never requires a generational write barrier.
+// native view. Null and i31 children never require a generational write barrier.
 var nativeGCFinalRefSetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_REF_SET") != "1"
 
 // nativeGCFinalArrayScalarGetEnabled resolves final pointer-free scalar array

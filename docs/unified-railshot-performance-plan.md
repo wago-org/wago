@@ -1024,27 +1024,37 @@ compile medians from 15.432 to 15.281 us/op (-1.0%). B/op and allocations were
 unchanged at 19,920/29 and 20,352/32. Disabled facts and a select with one
 unknown candidate retain their extensions.
 
-### 2026-08-14 — ARM64 native final null-reference writes
+### 2026-08-14 — ARM64 native barrier-free reference writes
 
-ARM64 now lowers statically-null `struct.set` and `array.set` operations for
-final collector-reference layouts through the checked native object view. The
-shared collector contract proves that a null child requires no generational
-write barrier, so this first write slice needs neither an ARM64 barrier stub nor
-new retained GC facts. Non-null values, function/external reference layouts,
-non-final or immutable layouts, disabled policy, and Size/Embedded objectives
-remain helper-bound. Array writes retain null-before-bounds trap order and both
-logical-index and physical-extent checks.
+ARM64 now lowers proven-null and exact-i31 `struct.set` and `array.set`
+operations for final collector-reference layouts through the checked native
+object view. The shared collector contract proves that neither child requires a
+generational write barrier. Null is recognized directly; i31 identity uses one
+previously free bit in the existing one-byte value-fact field and survives the
+established local and merge intersections. Unknown heap references,
+function/external layouts, non-final or immutable layouts, disabled policy, and
+Size/Embedded objectives remain helper-bound. Array writes retain
+null-before-bounds trap order and both logical-index and physical-extent checks.
 
-Forced minor and major collection with verification passes for 100 iterations
-under both A/B settings. On Apple M4 Max, eight struct writes improved from a
-730.3 to 279.7 ns/op median (-61.7%), while eight array writes improved from
-823.1 to 299.8 ns/op (-63.6%); both remain at zero B/op and allocations. Six
-compile samples measured +0.9% for the struct fixture and +6.8% for the array
-fixture, while B/op fell 27.2% and 32.9%; compile allocations rose from 38 to 40
-and 40 to 44. Speed-oriented native output grew by 440 and 772 bytes across the
-eight-store fixtures, so compact objectives deliberately keep the existing
-helpers. Full non-null reference stores remain deferred until ARM64 has a
-validated slow-barrier path.
+`ref.null` and `ref.i31` are now admitted inside the narrow raw-address reuse
+envelope because both are pure and cannot move collector backing. Tests pin
+eight resolver reuses, local-carried i31 provenance, disabled-fact and non-null
+near misses, and 100 forced minor/major collection iterations with heap
+verification. Full non-i31 heap-reference stores remain deferred until ARM64
+has a validated slow-barrier path.
+
+On Apple M4 Max, eight null struct writes improved from 723.5 to 271.9 ns/op
+(-62.4%), and null array writes from 819.8 to 289.5 ns/op (-64.7%), with zero
+execution B/op and allocations. Compile medians improved 31.4% and 27.8%; B/op
+fell 36.8% and 39.9%, allocations fell from 38 to 34 and 40 to 39, and native
+output fell from 1,376 to 668 bytes and 1,484 to 968 bytes.
+
+Eight i31 struct writes improved from 666.0 to 211.5 ns/op (-68.2%), and i31
+array writes from 784.6 to 238.7 ns/op (-69.6%), again with zero execution B/op
+and allocations. Compile medians improved 23.9% and 18.8%; B/op was -0.1% and
++0.6%, allocations moved from 38 to 37 and stayed at 40, and native output fell
+from 1,480 to 804 bytes and 1,588 to 1,104 bytes. Compact objectives retain the
+existing helpers.
 
 ---
 

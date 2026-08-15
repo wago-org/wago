@@ -16,6 +16,7 @@ const (
 	factSignExt8    = shared.ValueFactSignExt8
 	factSignExt16   = shared.ValueFactSignExt16
 	factSignExt32   = shared.ValueFactSignExt32
+	factI31         = shared.ValueFactI31
 )
 
 func (f *fn) factsForLocal(x int) valueFacts {

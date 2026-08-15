@@ -12,6 +12,7 @@ const (
 	ValueFactSignExt16
 	ValueFactSignExt32
 	ValueFactNonZero
+	ValueFactI31
 )
 
 func (facts ValueFacts) Has(want ValueFacts) bool { return facts&want == want }
