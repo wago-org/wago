@@ -155,7 +155,10 @@ func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
 			return false
 		}
 	}
-	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
+	// Descriptor publication uses the cross-architecture staged classifier,
+	// whose GP bank is capped at seven. Keep ARM64 aligned so eight-GP shapes
+	// retain the wrapper fallback instead of requiring an unpublished internal tag.
+	return gp < len(intArgRegs) && fp <= len(fpArgRegs)
 }
 
 func stagedTailRegisterABI(ft *wasm.CompType, staged bool) bool {
