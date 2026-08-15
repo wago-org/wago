@@ -182,6 +182,47 @@ func recursiveParameterTailModule(field wasm.ValType, results []wasm.ValType) *w
 	}
 }
 
+func nestedFunctionParameterTailModule(callbackResults, tailResults []wasm.ValType) *wasm.Module {
+	callback := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	targetBody := []wasm.Instruction{}
+	if len(tailResults) != 0 {
+		targetBody = append(targetBody, wasm.Instruction{Kind: wasm.InstrI32Const})
+	}
+	return &wasm.Module{
+		Types: []wasm.RecType{
+			tailResultFuncType(nil, callbackResults),
+			tailResultFuncType([]wasm.ValType{callback}, tailResults),
+			tailResultFuncType([]wasm.ValType{callback}, tailResults),
+		},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}, {Index: 2}},
+		Code: []wasm.Func{
+			{Body: wasm.Expr{Instrs: targetBody}},
+			{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrLocalGet, Index: 0}, {Kind: wasm.InstrReturnCall, Index: 0}}}},
+		},
+	}
+}
+
+func importedCallbackSinkTailModule(results []wasm.ValType) *wasm.Module {
+	targetBody := []wasm.Instruction{{Kind: wasm.InstrRefFunc, Index: 1}, {Kind: wasm.InstrCall, Index: 0}}
+	if len(results) != 0 {
+		targetBody = append(targetBody, wasm.Instruction{Kind: wasm.InstrI32Const})
+	}
+	return &wasm.Module{
+		Types: []wasm.RecType{
+			tailResultFuncType([]wasm.ValType{wasm.FuncRef}, nil),
+			tailResultFuncType(nil, results),
+			tailResultFuncType(nil, results),
+		},
+		Imports:   []wasm.Import{{Module: "env", Name: "callback", Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}, {Index: 2}},
+		Elements:  []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{1}}}},
+		Code: []wasm.Func{
+			{Body: wasm.Expr{Instrs: targetBody}},
+			{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrReturnCall, Index: 1}}}},
+		},
+	}
+}
+
 func TestValidateTailResultRewriteAllowsCoordinatedKnownTargets(t *testing.T) {
 	shapes := []struct {
 		name    string
@@ -325,6 +366,52 @@ func TestValidateTailResultRewriteRejectsPartialAndAdversarialTransforms(t *test
 			t.Fatalf("parameter rewrite error = %v", err)
 		}
 	})
+
+	t.Run("nested function parameter results changed", func(t *testing.T) {
+		before := nestedFunctionParameterTailModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+		after := nestedFunctionParameterTailModule(nil, nil)
+		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "changed parameters") {
+			t.Fatalf("nested function parameter rewrite error = %v", err)
+		}
+	})
+}
+
+func TestValidateTailResultRewriteRejectsImportedReferenceSinks(t *testing.T) {
+	t.Run("table", func(t *testing.T) {
+		before := directTailRewriteModule([]wasm.ValType{wasm.I32})
+		after := directTailRewriteModule(nil)
+		for _, m := range []*wasm.Module{before, after} {
+			m.Imports = []wasm.Import{{Module: "env", Name: "functions", Type: wasm.NewTableExternType(wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}})}}
+			m.Elements = []wasm.Elem{{
+				Mode: wasm.ElemMode{Kind: wasm.ElemActive, Table: 0, Offset: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Const}}}},
+				Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0}},
+			}}
+		}
+		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
+			t.Fatalf("imported table rewrite error = %v", err)
+		}
+	})
+
+	t.Run("mutable global", func(t *testing.T) {
+		before := directTailRewriteModule([]wasm.ValType{wasm.I32})
+		after := directTailRewriteModule(nil)
+		for _, m := range []*wasm.Module{before, after} {
+			m.Imports = []wasm.Import{{Module: "env", Name: "callback", Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.FuncRef, Mutable: true})}}
+			m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0}}}}
+			m.Code[0].Body.Instrs = append([]wasm.Instruction{{Kind: wasm.InstrRefFunc, Index: 0}, {Kind: wasm.InstrGlobalSet, Index: 0}}, m.Code[0].Body.Instrs...)
+		}
+		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
+			t.Fatalf("imported mutable global rewrite error = %v", err)
+		}
+	})
+
+	t.Run("callback parameter", func(t *testing.T) {
+		before := importedCallbackSinkTailModule([]wasm.ValType{wasm.I32})
+		after := importedCallbackSinkTailModule(nil)
+		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
+			t.Fatalf("imported callback rewrite error = %v", err)
+		}
+	})
 }
 
 func TestAnalyzeTailResultSitesMatchesASTAndByteBackedBodies(t *testing.T) {
@@ -351,16 +438,40 @@ func TestAnalyzeTailResultSitesMatchesASTAndByteBackedBodies(t *testing.T) {
 }
 
 func TestValidateTailResultRewriteUsesExactValidationFeatures(t *testing.T) {
-	before := directTailRewriteModule([]wasm.ValType{wasm.I32})
-	after := directTailRewriteModule(nil)
-	before.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1}}}
-	after.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1}}}
-	if err := ValidateTailResultRewrite(before, after); err == nil {
-		t.Fatal("compatibility validation unexpectedly accepted multi-memory rewrite")
-	}
-	if err := ValidateTailResultRewriteWithFeatures(before, after, wasm.ValidationFeatures{MultiMemory: true}); err != nil {
-		t.Fatalf("multi-memory result rewrite: %v", err)
-	}
+	t.Run("multi-memory", func(t *testing.T) {
+		before := directTailRewriteModule([]wasm.ValType{wasm.I32})
+		after := directTailRewriteModule(nil)
+		before.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1}}}
+		after.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1}}}
+		if err := ValidateTailResultRewrite(before, after); err == nil {
+			t.Fatal("compatibility validation unexpectedly accepted multi-memory rewrite")
+		}
+		if err := ValidateTailResultRewriteWithFeatures(before, after, wasm.ValidationFeatures{MultiMemory: true}); err != nil {
+			t.Fatalf("multi-memory result rewrite: %v", err)
+		}
+	})
+
+	t.Run("memory64 byte-backed memarg", func(t *testing.T) {
+		before := directTailRewriteModule([]wasm.ValType{wasm.I32})
+		after := directTailRewriteModule(nil)
+		for _, m := range []*wasm.Module{before, after} {
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1, Addr64: true}}}
+			m.Code[0].Body.Instrs = nil
+			m.Code[1].Body.Instrs = nil
+			m.Code[1].BodyBytes = []byte{
+				0x42, 0x00, // i64.const 0
+				0x28, 0x02, 0x80, 0x80, 0x80, 0x80, 0x10, // i32.load align=2 offset=2^32
+				0x1a,       // drop
+				0x12, 0x00, // return_call 0
+				0x0b,
+			}
+		}
+		before.Code[0].BodyBytes = []byte{0x41, 0x00, 0x0b}
+		after.Code[0].BodyBytes = []byte{0x0b}
+		if err := ValidateTailResultRewrite(before, after); err != nil {
+			t.Fatalf("memory64 result rewrite: %v", err)
+		}
+	})
 }
 
 func TestValidateTailResultRewriteCallerOnlyCovarianceNeedsNoDynamicProof(t *testing.T) {

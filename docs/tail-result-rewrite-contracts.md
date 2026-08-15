@@ -39,11 +39,15 @@ proper-tail sites must:
 
 `ValidateTailResultRewrite` performs ordinary validation itself and additionally
 checks the target-knowledge rule above. Signature comparisons include complete
-recursive/GC type graphs, not only their local type indexes. It rejects changes
-to imported, exported, or start-function signatures; changes to local functions
-that may escape through exported function-reference tables, globals, results, or
-tags; parameter rewrites; tail-site retargeting; mutable or exported tables;
-imported indirect targets; and dynamic `return_call_ref` producers.
+recursive/GC type graphs, not only their local type indexes. Parameter projections
+erase only the selected root result contract: result lists of function types
+reachable through parameters remain observable. The fence rejects changes to
+imported, exported, or start-function signatures; changes to local functions that
+may escape through imported callback parameters, mutable globals, tables, or tags,
+or through exported function-reference tables, globals, results, or tags;
+parameter rewrites; tail-site retargeting; mutable or exported tables; imported
+indirect targets; and dynamic `return_call_ref` producers. Byte-backed scans use
+the validated module's memory32 or memory64 memarg width.
 
 The helper is intentionally off the ordinary compile hot path. The current
 Railshot optimizations do not rewrite Wasm function signatures, so paying for a
@@ -62,9 +66,10 @@ go test ./src/wago -run '^TestProperTail' -count=1
 
 The frontend tests cover coordinated scalar, multivalue, SIMD, direct,
 immutable-indirect, and immediate-reference elimination; partial transforms;
-mutable tables; imported targets; typed-global references; recursive signature
-graph changes; exported function-reference escape surfaces; caller-only reference
-covariance; AST/byte-backed parity; and fuzz seeds.
+mutable tables; imported targets and reference sinks; typed-global references;
+recursive signature graphs, including nested function-result changes reached from
+parameters; exported function-reference escape surfaces; caller-only reference
+covariance; memory64 byte-backed memargs; AST/byte-backed parity; and fuzz seeds.
 
 The runtime matrix executes direct, indirect, and reference proper tails across
 Balanced, Size, and Embedded objectives. Scalar, multivalue, SIMD,

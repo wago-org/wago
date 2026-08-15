@@ -30,13 +30,14 @@ func AnalyzeTailResultSites(m *wasm.Module) ([]TailResultSite, error) {
 		return nil, fmt.Errorf("nil module")
 	}
 	imports := m.ImportedFuncCount()
+	memarg64 := moduleMemargOffset64(m)
 	var sites []TailResultSite
 	for local := range m.Code {
 		caller := uint32(imports + local)
 		ordinal := uint32(0)
 		fn := &m.Code[local]
 		if len(fn.BodyBytes) != 0 {
-			if err := scanTailResultByteBody(fn.BodyBytes, caller, &ordinal, &sites, nil); err != nil {
+			if err := scanTailResultByteBody(fn.BodyBytes, caller, &ordinal, &sites, nil, memarg64); err != nil {
 				return nil, fmt.Errorf("function %d tail-result scan: %w", caller, err)
 			}
 			continue
@@ -179,6 +180,15 @@ func validateObservableTailRewriteSignatures(before, after *wasm.Module) error {
 			return fmt.Errorf("tail-result rewrite changed start function signature")
 		}
 	}
+	if moduleImportsFunctionReferences(before) || moduleImportsFunctionReferences(after) {
+		imports := before.ImportedFuncCount()
+		for local := range before.Code {
+			function := uint32(imports + local)
+			if !functionSignatureEqual(before, function, after, function) {
+				return fmt.Errorf("tail-result rewrite changed function %d observable through imported function references", function)
+			}
+		}
+	}
 	if moduleExportsFunctionReferences(before) || moduleExportsFunctionReferences(after) {
 		imports := before.ImportedFuncCount()
 		for local := range before.Code {
@@ -189,6 +199,43 @@ func validateObservableTailRewriteSignatures(before, after *wasm.Module) error {
 		}
 	}
 	return nil
+}
+
+func moduleImportsFunctionReferences(m *wasm.Module) bool {
+	for i := range m.Imports {
+		im := m.Imports[i].Type
+		switch im.Kind {
+		case wasm.ExternTable:
+			if refTypeMayContainFunction(m, im.TableType().Ref) {
+				return true
+			}
+		case wasm.ExternGlobal:
+			global := im.GlobalType()
+			if global.Mutable && valTypeMayContainFunction(m, global.Type) {
+				return true
+			}
+		case wasm.ExternFunc:
+			typeIndex := im.FuncType()
+			if typeIndex.Rec {
+				return true
+			}
+			sig, ok := m.ResolvedTypeFunc(typeIndex.Index)
+			if !ok {
+				return true
+			}
+			for _, param := range sig.Params {
+				if valTypeMayContainFunction(m, param) {
+					return true
+				}
+			}
+		case wasm.ExternTag:
+			// Imported exception tags are host-owned payload sinks. Treat every
+			// imported tag as observable rather than depending on payload flow
+			// analysis in this transform-only fence.
+			return true
+		}
+	}
+	return false
 }
 
 func moduleExportsFunctionReferences(m *wasm.Module) bool {
@@ -232,17 +279,23 @@ func valTypeMayContainFunction(m *wasm.Module, t wasm.ValType) bool {
 	return t.Kind() == wasm.ValRef && refTypeMayContainFunction(m, t.Ref())
 }
 
-func refTypeMayContainFunction(m *wasm.Module, ref wasm.RefType) bool {
+func refTypeMayContainFunction(_ *wasm.Module, ref wasm.RefType) bool {
 	heap := ref.Heap()
 	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc
-	case wasm.HeapTypeIndex:
-		_, ok := m.TypeFunc(heap.Type().Index)
-		return ok
-	case wasm.HeapDefType:
-		kind, ok := heap.DefCompKind()
-		return !ok || kind == wasm.CompFunc
+		switch heap.Abs() {
+		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExn:
+			return true
+		default:
+			return false
+		}
+	case wasm.HeapTypeIndex, wasm.HeapDefType:
+		// A defined function is directly callable, while a defined struct or
+		// array may carry a function reference in a nested field. Proving the
+		// absence of such fields would require whole-value flow analysis, so the
+		// transform fence deliberately treats every defined reference as capable
+		// of carrying an observable function.
+		return true
 	default:
 		return true
 	}
@@ -299,23 +352,51 @@ func typeParameterContractEqual(a *wasm.Module, aType uint32, b *wasm.Module, bT
 	return ok && aKey == bKey
 }
 
-func parameterOnlyTypeKey(m *wasm.Module, typeIndex uint32) (uint64, bool) {
-	// StructuralTypeKey includes the complete recursive/GC graph. Clone only the
-	// type section and erase every function result list so the resulting key is a
-	// conservative identity for parameter contracts without touching module cache
-	// state or retaining transformed mutable storage.
+type parameterContractKey struct {
+	root   uint64
+	nested uint64
+}
+
+func parameterOnlyTypeKey(m *wasm.Module, typeIndex uint32) (parameterContractKey, bool) {
+	// The root projection preserves subtype metadata and the complete parameter
+	// graph while erasing function results. It intentionally erases every result
+	// list so a coordinated root result rewrite does not perturb recursive-group
+	// digests through an unrelated sibling.
 	types := make([]wasm.RecType, len(m.Types))
+	flatCount := uint32(0)
 	for group := range m.Types {
 		types[group] = m.Types[group]
 		types[group].SubTypes = append([]wasm.SubType(nil), m.Types[group].SubTypes...)
+		flatCount += uint32(len(types[group].SubTypes))
 		for member := range types[group].SubTypes {
 			if types[group].SubTypes[member].Comp.Kind == wasm.CompFunc {
 				types[group].SubTypes[member].Comp.Results = nil
 			}
 		}
 	}
-	projection := wasm.Module{Types: types}
-	return projection.StructuralTypeKeyChecked(typeIndex)
+	rootProjection := wasm.Module{Types: types}
+	rootKey, ok := rootProjection.StructuralTypeKeyChecked(typeIndex)
+	if !ok {
+		return parameterContractKey{}, false
+	}
+
+	// A synthetic result-less wrapper points at the original, unmodified type
+	// graph. This keeps result lists of function types reachable from parameters
+	// observable, including a recursive reference back to the selected root.
+	// Moving the wrapper to a fresh group requires flattened parameter indexes.
+	sig, ok := m.ResolvedTypeFunc(typeIndex)
+	if !ok {
+		return parameterContractKey{}, false
+	}
+	wrapper := wasm.SubType{Final: true, Comp: wasm.CompType{
+		Kind:   wasm.CompFunc,
+		Params: append([]wasm.ValType(nil), sig.Params...),
+	}}
+	fullTypes := append([]wasm.RecType(nil), m.Types...)
+	fullTypes = append(fullTypes, wasm.RecType{SubTypes: []wasm.SubType{wrapper}})
+	nestedProjection := wasm.Module{Types: fullTypes}
+	nestedKey, ok := nestedProjection.StructuralTypeKeyChecked(flatCount)
+	return parameterContractKey{root: rootKey, nested: nestedKey}, ok
 }
 
 func functionExactlyMatchesType(m *wasm.Module, function, typeIndex uint32) bool {
@@ -341,7 +422,7 @@ func functionFlowsToType(m *wasm.Module, function, typeIndex uint32) bool {
 	return m.ReferenceTypeSubtype(actual, required)
 }
 
-func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *[]TailResultSite, mutatedTables map[uint32]bool) error {
+func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *[]TailResultSite, mutatedTables map[uint32]bool, memarg64 bool) error {
 	r := wasm.NewReader(body)
 	var previous wasm.InstructionImmediate
 	for r.HasNext() {
@@ -350,7 +431,7 @@ func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *
 			return err
 		}
 		var imm wasm.InstructionImmediate
-		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+		if err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(r, op, &imm, memarg64); err != nil {
 			return err
 		}
 		markMutatedTable(imm.Kind, uint32(imm.Index), uint32(imm.Index2), mutatedTables)
@@ -436,11 +517,12 @@ func immutableLocalTableTargets(m *wasm.Module, table uint32) ([]uint32, bool) {
 		}
 	}
 	mutated := make(map[uint32]bool)
+	memarg64 := moduleMemargOffset64(m)
 	for i := range m.Code {
 		fn := &m.Code[i]
 		ordinal := uint32(0)
 		if len(fn.BodyBytes) != 0 {
-			if err := scanTailResultByteBody(fn.BodyBytes, uint32(m.ImportedFuncCount()+i), &ordinal, nil, mutated); err != nil {
+			if err := scanTailResultByteBody(fn.BodyBytes, uint32(m.ImportedFuncCount()+i), &ordinal, nil, mutated, memarg64); err != nil {
 				return nil, false
 			}
 		} else {
@@ -485,6 +567,14 @@ func immutableLocalTableTargets(m *wasm.Module, table uint32) ([]uint32, bool) {
 	}
 	slices.Sort(targets)
 	return targets, true
+}
+
+func moduleMemargOffset64(m *wasm.Module) bool {
+	if m == nil || m.MemCount() != 1 {
+		return false
+	}
+	memory, ok := m.MemoryType(0)
+	return ok && memory.Limits.Addr64
 }
 
 func collectConstRefFuncs(expr wasm.Expr, add func(uint32)) bool {
