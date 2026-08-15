@@ -223,13 +223,20 @@ func killWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) error {
 	return windows.TerminateJobObject(platform.job, 1)
 }
 
-func releaseWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) {
-	windows.CloseHandle(platform.job)
+func releaseWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) error {
+	return windows.CloseHandle(platform.job)
 }
 
 func waitWatchedProcess(_ watchedChildPlatform, command *exec.Cmd) watchedProcessResult {
-	return watchedProcessResult{err: command.Wait()}
+	err := command.Wait()
+	result := watchedProcessResult{err: err}
+	if command.ProcessState != nil {
+		result.exitCode = command.ProcessState.ExitCode()
+	}
+	return result
 }
+
+func watchedStopError(watchedProcessResult, os.Signal, bool) error { return nil }
 
 func continueWatchedProcess(watchedChildPlatform, *exec.Cmd) error { return nil }
 

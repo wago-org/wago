@@ -81,20 +81,27 @@ func (tracker *watchedProcessTracker) reapAdopted() {
 	}
 }
 
-func finishWatchedProcessTracking(tracker *watchedProcessTracker) {
-	_ = tracker.drainEvents()
+func finishWatchedProcessTracking(tracker *watchedProcessTracker) error {
+	result := tracker.drainEvents()
 	deadline := time.Now().Add(100 * time.Millisecond)
 	for {
 		tracker.reapAdopted()
+		result = errors.Join(result, tracker.currentError())
 		if tracker.processCount() == 0 {
-			return
+			return result
 		}
-		_ = tracker.signal(syscall.SIGKILL)
+		result = errors.Join(result, tracker.signal(syscall.SIGKILL))
 		if time.Now().After(deadline) {
-			return
+			return errors.Join(result, errors.New("watched process cleanup timed out"))
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+func (tracker *watchedProcessTracker) currentError() error {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	return tracker.eventErr
 }
 
 func watchedProcessDescendants(root int, tracked map[int]uint64, limit int) ([]watchedProcessInfo, error) {

@@ -115,7 +115,9 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 		select {
 		case <-ctx.Done():
 			if child != nil {
-				_ = child.stop(options.stopGrace, nil)
+				if err := child.stop(options.stopGrace, nil); err != nil {
+					return err
+				}
 				child = nil
 			}
 			return ctx.Err()
@@ -129,13 +131,18 @@ func superviseWatch(ctx context.Context, options watchOptions) error {
 				continue
 			}
 			if child != nil {
-				_ = child.stop(options.stopGrace, interrupted)
+				if err := child.stop(options.stopGrace, interrupted); err != nil {
+					return err
+				}
 				child = nil
 			}
 			return &watchInterruptedError{signal: interrupted}
 		case result := <-childDone:
-			child.releasePlatform()
+			releaseErr := child.releasePlatform()
 			child = nil
+			if releaseErr != nil {
+				return releaseErr
+			}
 			if result.err != nil {
 				writeWatchedOutput(options.stderr, "%s %v\n", ui.Red("wago:"), result.err)
 			}
@@ -293,14 +300,17 @@ func fileMetadata(path string) (watchedFileMetadata, error) {
 }
 
 type watchedChild struct {
-	command  *exec.Cmd
-	platform watchedChildPlatform
-	done     chan watchedProcessResult
-	release  sync.Once
+	command    *exec.Cmd
+	platform   watchedChildPlatform
+	done       chan watchedProcessResult
+	release    sync.Once
+	releaseErr error
 }
 
 type watchedProcessResult struct {
-	err error
+	err        error
+	exitCode   int
+	exitSignal os.Signal
 }
 
 func startWatchedChild(options watchOptions) (*watchedChild, error) {
@@ -323,33 +333,30 @@ func startWatchedChild(options watchOptions) (*watchedChild, error) {
 
 func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) error {
 	select {
-	case <-child.done:
-		child.releasePlatform()
-		return nil
+	case result := <-child.done:
+		return errors.Join(result.err, child.releasePlatform())
 	default:
 	}
 	_ = interruptWatchedProcess(child.platform, child.command, interrupt)
 	timer := time.NewTimer(grace)
 	defer timer.Stop()
 	select {
-	case <-child.done:
-		child.releasePlatform()
-		return nil
+	case result := <-child.done:
+		return errors.Join(watchedStopError(result, interrupt, false), child.releasePlatform())
 	case <-timer.C:
 	}
 	if err := killWatchedProcess(child.platform, child.command); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		_ = child.command.Process.Kill()
 		<-child.done
-		child.releasePlatform()
-		return err
+		return errors.Join(err, child.releasePlatform())
 	}
-	<-child.done
-	child.releasePlatform()
-	return nil
+	result := <-child.done
+	return errors.Join(watchedStopError(result, interrupt, true), child.releasePlatform())
 }
 
-func (child *watchedChild) releasePlatform() {
-	child.release.Do(func() { releaseWatchedProcess(child.platform, child.command) })
+func (child *watchedChild) releasePlatform() error {
+	child.release.Do(func() { child.releaseErr = releaseWatchedProcess(child.platform, child.command) })
+	return child.releaseErr
 }
 
 func withoutWatchFlags(arguments []string, flags []command.Flag) []string {

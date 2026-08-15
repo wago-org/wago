@@ -142,17 +142,22 @@ func killWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error 
 	return signalWatchedProcessTree(platform, command, syscall.SIGKILL)
 }
 
-func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
+func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error {
+	var terminalErr error
 	if platform.terminalFD >= 0 {
 		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
 		if err == nil && watchedTerminalGroupCanRestore(platform.processes, foreground) {
-			_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
+			terminalErr = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
 		}
 	}
-	_ = signalWatchedProcessTree(platform, command, syscall.SIGKILL)
+	signalErr := signalWatchedProcessTree(platform, command, syscall.SIGKILL)
 	platform.processes.close()
-	finishWatchedProcessTracking(platform.processes)
-	_ = command.Process.Release()
+	finishErr := finishWatchedProcessTracking(platform.processes)
+	releaseErr := command.Process.Release()
+	if errors.Is(releaseErr, os.ErrProcessDone) {
+		releaseErr = nil
+	}
+	return errors.Join(terminalErr, signalErr, finishErr, releaseErr)
 }
 
 func watchedTerminalGroupCanRestore(tracker *watchedProcessTracker, group int) bool {
@@ -206,7 +211,7 @@ func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watche
 				return watchedProcessResult{err: monitorErr}
 			}
 			if code := status.ExitStatus(); code != 0 {
-				return watchedProcessResult{err: fmt.Errorf("exit status %d", code)}
+				return watchedProcessResult{err: fmt.Errorf("exit status %d", code), exitCode: code}
 			}
 			return watchedProcessResult{}
 		}
@@ -215,9 +220,30 @@ func waitWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) watche
 				return watchedProcessResult{err: monitorErr}
 			}
 			exitSignal := status.Signal()
-			return watchedProcessResult{err: fmt.Errorf("signal: %s", exitSignal)}
+			return watchedProcessResult{err: fmt.Errorf("signal: %s", exitSignal), exitSignal: exitSignal}
 		}
 	}
+}
+
+func watchedStopError(result watchedProcessResult, interrupt os.Signal, forced bool) error {
+	if result.err == nil {
+		return nil
+	}
+	expected := syscall.SIGTERM
+	if value, ok := interrupt.(syscall.Signal); ok &&
+		(value == syscall.SIGHUP || value == syscall.SIGINT || value == syscall.SIGQUIT || value == syscall.SIGTERM) {
+		expected = value
+	}
+	if !forced && result.exitCode == 128+int(expected) {
+		return nil
+	}
+	if !forced && result.exitSignal == expected {
+		return nil
+	}
+	if forced && result.exitSignal == syscall.SIGKILL {
+		return nil
+	}
+	return result.err
 }
 
 func mirrorWatchedProcessStop(platform watchedChildPlatform, command *exec.Cmd) error {
