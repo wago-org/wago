@@ -1364,6 +1364,26 @@ and type validation, handle/object bounds, reference validation, publication
 order, collection invalidation, fallback, and target-native execution tests.
 No production compiler or runtime state was added by this audit.
 
+### 2026-08-15 — rejected ARM64 bitmask-to-boolean zero tests
+
+The corpus contains six adjacent SIMD `bitmask; i32.eqz` sites in
+`json-as-simd.wasm`: five `i16x8` and one `i8x16`. A bounded copied-reader
+prototype reduced lane sign bits directly and materialized the final zero-test
+boolean. On an Apple M4 Max, a 64-site i16 value-producing fixture improved
+from a 33.20 to 14.90 ns/op median (-55.1%), and its native bytes fell from
+4,808 to 1,988. Focused compilation also improved without changing B/op or
+allocations.
+
+The real consumer shape is a branch, not an integer value. Materializing 0/1 at
+the SIMD rule boundary prevents the existing compare-to-branch path from
+carrying the condition through the following `if`. In six alternating two-second
+JSON deserialization pairs, the prototype was slower in every pair (by 0.6 to
+25.3 ns/op; the largest gaps are treated as system noise), and the independent
+six-sample batch median regressed about 0.5%. The implementation, tests,
+benchmark, and policy extension were removed. A future retry must fuse through
+`if`/`br_if` as a condition token rather than stopping at a materialized
+boolean.
+
 ---
 
 # 1. North-star architecture
