@@ -216,7 +216,14 @@ func interruptWatchedProcess(_ watchedChildPlatform, command *exec.Cmd, _ os.Sig
 	if command.Process == nil {
 		return true, nil
 	}
-	return false, windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(command.Process.Pid))
+	return false, watchedWindowsInterruptError(windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(command.Process.Pid)))
+}
+
+func watchedWindowsInterruptError(err error) error {
+	if errors.Is(err, windows.ERROR_INVALID_HANDLE) || errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+		return errWatchedGracefulStopUnavailable
+	}
+	return err
 }
 
 func killWatchedProcess(platform watchedChildPlatform, _ *exec.Cmd) error {

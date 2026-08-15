@@ -317,6 +317,8 @@ type watchedProcessResult struct {
 	exitSignal os.Signal
 }
 
+var errWatchedGracefulStopUnavailable = errors.New("graceful watched-process stop unavailable")
+
 func startWatchedChild(options watchOptions) (*watchedChild, error) {
 	command := exec.Command(options.executable, options.arguments...)
 	command.Stdin, command.Stdout, command.Stderr = options.stdin, options.stdout, options.stderr
@@ -346,12 +348,17 @@ func (child *watchedChild) stop(grace time.Duration, interrupt os.Signal) (watch
 		result := <-child.done
 		return result, true, errors.Join(interruptErr, child.releasePlatform())
 	}
-	timer := time.NewTimer(grace)
-	defer timer.Stop()
-	select {
-	case result := <-child.done:
-		return result, false, errors.Join(interruptErr, watchedStopError(result, interrupt, false), child.releasePlatform())
-	case <-timer.C:
+	gracefulUnavailable := errors.Is(interruptErr, errWatchedGracefulStopUnavailable)
+	if gracefulUnavailable {
+		interruptErr = nil
+	} else {
+		timer := time.NewTimer(grace)
+		defer timer.Stop()
+		select {
+		case result := <-child.done:
+			return result, false, errors.Join(interruptErr, watchedStopError(result, interrupt, false), child.releasePlatform())
+		case <-timer.C:
+		}
 	}
 	if err := killWatchedProcess(child.platform, child.command); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		_ = child.command.Process.Kill()
