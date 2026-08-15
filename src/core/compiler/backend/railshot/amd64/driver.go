@@ -1042,6 +1042,9 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
+	if tee && f.tryTeeAddCarry(reader, x, e) {
+		return
+	}
 	if reader != nil {
 		f.activateIntervalLocal(x, reader.Offset(), false)
 	}

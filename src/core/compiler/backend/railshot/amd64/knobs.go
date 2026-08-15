@@ -14,6 +14,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("call-effect-bounds", &callEffectBoundsEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
 	optimization.Bind("three-way-unsigned", &threeWayUnsignedEnabled),
+	optimization.Bind("tee-add-carry", &teeAddCarryEnabled),
 	optimization.Bind("store8-flags", &store8FlagsEnabled),
 	optimization.Bind("reg-merge", &regMergeEnabled),
 	optimization.Bind("tee-sink", &teeLocalSinkEnabled),
@@ -65,6 +66,7 @@ var (
 	optCallEffectBounds     = optimizationBindings.Option("call-effect-bounds")
 	optSTFlags              = optimizationBindings.Option("st-flags")
 	optThreeWayUnsigned     = optimizationBindings.Option("three-way-unsigned")
+	optTeeAddCarry          = optimizationBindings.Option("tee-add-carry")
 	optStore8Flags          = optimizationBindings.Option("store8-flags")
 	optRegMerge             = optimizationBindings.Option("reg-merge")
 	optTeeSink              = optimizationBindings.Option("tee-sink")

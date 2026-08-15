@@ -97,6 +97,10 @@ var (
 	// SETA and SBB to form -1/0/1. WAGO_AMD64_NO_THREE_WAY_UNSIGNED=1 is the A/B
 	// oracle for this bounded tree rule.
 	threeWayUnsignedEnabled = os.Getenv("WAGO_AMD64_NO_THREE_WAY_UNSIGNED") != "1"
+	// teeAddCarryEnabled reuses ADD's carry flag for the exact Wasm sequence
+	// `iN.add; local.tee; local.get <add operand>; iN.lt_u` (and its optional
+	// i64.extend_i32_u). WAGO_AMD64_NO_TEE_ADD_CARRY=1 is the A/B oracle.
+	teeAddCarryEnabled = os.Getenv("WAGO_AMD64_NO_TEE_ADD_CARRY") != "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
 	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
