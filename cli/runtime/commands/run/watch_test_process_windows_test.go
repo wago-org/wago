@@ -5,3 +5,5 @@ package run
 import "os/exec"
 
 func detachWatchHelperProcess(*exec.Cmd) {}
+
+func configureWatchTestSupervisor(*watchOptions) {}

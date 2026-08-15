@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/wago-org/wago/cli/internal/watchsupervisor"
 )
 
 func TestWithoutWatchFlagsPreservesGuestArguments(t *testing.T) {
@@ -284,7 +286,7 @@ func watchTestOptions(modulePath, logPath, address string, exit bool) watchOptio
 	if address != "" {
 		environment = append(environment, "WAGO_WATCH_TREE=1", "WAGO_WATCH_DETACH=1")
 	}
-	return watchOptions{
+	options := watchOptions{
 		path:        modulePath,
 		interval:    15 * time.Millisecond,
 		debounce:    60 * time.Millisecond,
@@ -296,6 +298,8 @@ func watchTestOptions(modulePath, logPath, address string, exit bool) watchOptio
 		stdout:      io.Discard,
 		stderr:      io.Discard,
 	}
+	configureWatchTestSupervisor(&options)
+	return options
 }
 
 func waitForWatchLog(t *testing.T, path string, count int) []string {
@@ -343,7 +347,7 @@ func waitForActiveWatchLog(t *testing.T, path string, count int, done chan error
 }
 
 func TestWatchHelperProcess(t *testing.T) {
-	SuperviseWatchedChild()
+	watchsupervisor.Enter()
 	if os.Getenv("WAGO_WATCH_HELPER") != "1" {
 		return
 	}

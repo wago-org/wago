@@ -12,7 +12,6 @@ import (
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
 	"github.com/wago-org/wago/cli/internal/ui"
-	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 	"github.com/wago-org/wago/cli/runtime/internal/profile"
 	runtimeversion "github.com/wago-org/wago/cli/runtime/internal/version"
@@ -23,10 +22,6 @@ import (
 // build with no version stamped in.
 var version string
 var artifactCacheIdentity string
-
-func init() {
-	SuperviseWatchedChild()
-}
 
 func versionString() string {
 	if version == "" {
@@ -40,7 +35,6 @@ var root = buildCommandRegistry()
 
 // Main runs the runtime command matching os.Args.
 func Main(v string) {
-	SuperviseWatchedChild()
 	version = v
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {
@@ -94,12 +88,6 @@ func Main(v string) {
 	fmt.Fprintf(os.Stderr, "%s unknown command %q\n\n", red("wago:"), args[0])
 	usage(os.Stderr)
 	os.Exit(2)
-}
-
-// SuperviseWatchedChild enters Linux watch supervision before generated plugin
-// providers are constructed. It is a no-op for ordinary invocations.
-func SuperviseWatchedChild() {
-	runcmd.SuperviseWatchedChild()
 }
 
 // MainWithArtifactCacheIdentity runs the runtime CLI with an explicit build

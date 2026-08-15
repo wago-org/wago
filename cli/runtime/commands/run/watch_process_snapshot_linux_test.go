@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/watchsupervisor"
 	"golang.org/x/sys/unix"
 )
 
@@ -37,7 +38,7 @@ func TestWatchedSupervisorCleansSanitizedDaemon(t *testing.T) {
 	if os.Getenv("WAGO_WATCH_SUPERVISOR_ROOT_TEST") == "1" {
 		guest := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
 		guest.Env = append(os.Environ(), "WAGO_WATCH_SUPERVISOR_GUEST_TEST=1")
-		code, err := superviseWatchedCommand(guest, watchedSignals())
+		code, err := watchsupervisor.Run(guest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,14 +144,6 @@ func newTestWatchProcessTracker(t *testing.T, rootPID int) *watchedProcessTracke
 	return &watchedProcessTracker{
 		owner: os.Getpid(), root: rootPID, rootStart: root.started,
 		processes: make(map[int]uint64),
-	}
-}
-
-func TestWatchedSupervisorEnvironmentReplacesMarker(t *testing.T) {
-	input := []string{watchedSupervisorEnvironmentName + "=old", "WAGO_TEST=value"}
-	want := "WAGO_TEST=value\n" + watchedSupervisorEnvironmentName + "=1"
-	if got := strings.Join(watchedSupervisorEnvironment(input), "\n"); got != want {
-		t.Fatalf("watched supervisor environment = %q, want %q", got, want)
 	}
 }
 

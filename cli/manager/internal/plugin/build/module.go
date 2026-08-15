@@ -444,7 +444,6 @@ func renderMain(input Input, config Config, buildIdentity string) ([]byte, error
 	}
 	b.WriteString("\treturn wago.PluginSet{Providers: providers, Selections: selections}\n}\n\n")
 	b.WriteString("func main() {\n")
-	b.WriteString("\truntime.SuperviseWatchedChild()\n")
 	b.WriteString("\tset := pluginSet()\n")
 	b.WriteString("\tif os.Getenv(\"WAGO_INTERNAL_VALIDATE_PLUGIN_SET\") == \"1\" {\n")
 	b.WriteString("\t\tif err := wago.ValidatePluginSet(set); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }; return\n")

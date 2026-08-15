@@ -35,17 +35,22 @@ func watchModule(path, intervalValue string, arguments []string, flags []command
 	interrupts := make(chan os.Signal, len(signals))
 	signal.Notify(interrupts, signals...)
 	defer signal.Stop(interrupts)
-	err := superviseWatch(context.Background(), watchOptions{
-		path:       path,
-		interval:   interval,
-		debounce:   interval,
-		stopGrace:  watchStopGrace,
-		executable: os.Args[0],
-		arguments:  watchedChildArguments(arguments, flags),
-		stdin:      os.Stdin,
-		stdout:     os.Stdout,
-		stderr:     os.Stderr,
-		interrupts: interrupts,
+	executable, environment, err := watchedChildLaunch()
+	if err != nil {
+		ui.Fatal("watch: %v", err)
+	}
+	err = superviseWatch(context.Background(), watchOptions{
+		path:        path,
+		interval:    interval,
+		debounce:    interval,
+		stopGrace:   watchStopGrace,
+		executable:  executable,
+		arguments:   watchedChildArguments(arguments, flags),
+		environment: environment,
+		stdin:       os.Stdin,
+		stdout:      os.Stdout,
+		stderr:      os.Stderr,
+		interrupts:  interrupts,
 	})
 	var interrupted *watchInterruptedError
 	if errors.As(err, &interrupted) {

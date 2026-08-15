@@ -46,7 +46,6 @@ func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 	if err := prepareWatchedCommand(command); err != nil {
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
-	command.Env = watchedSupervisorEnvironment(command.Env)
 	unlockStart := lockWatchedCommandStart()
 	defer unlockStart()
 	if err := command.Start(); err != nil {
