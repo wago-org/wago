@@ -18,6 +18,28 @@ var vI32 = wasm.I32 // shorthand for the hand-built test bodies below
 // TestAnalyzeInlineCandidates builds a small module exercising each candidacy
 // outcome: a tiny leaf (candidate, two call sites), a recursive function
 // (non-leaf via a self call), an oversized leaf (too big), and the caller.
+func TestAnalyzeInlineCandidatesMixedMemory64Memarg(t *testing.T) {
+	body := []byte{
+		0x00,       // no locals
+		0x42, 0x00, // i64.const 0
+		0x28, 0x40, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // i32.load memory 1, offset 1<<32
+		0x1a, 0x0b, // drop; end
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01}, []byte{0x04, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AnalyzeInlineCandidates(m); err != nil {
+		t.Fatalf("analyze mixed-width module: %v", err)
+	}
+}
+
 func TestAnalyzeInlineCandidates(t *testing.T) {
 	// func 0 (caller, ()->i32): calls func 1 twice and func 2 once.
 	//   i32.const 1; i32.const 2; call 1; drop
