@@ -69,7 +69,7 @@ func TestBuildEmbedsArtifactWithoutCompiler(t *testing.T) {
 	}
 	project := t.TempDir()
 	input := filepath.Join(root, "tests", "fixtures", "wasm", "fib.wasm")
-	output := filepath.Join(project, "hello")
+	output := filepath.Join(project, DefaultOutput("hello.wasm", host))
 	t.Setenv("WAGO_SRC", root)
 	t.Setenv("WAGO_HOME", t.TempDir())
 	t.Setenv("WAGO_BARE", "1")
