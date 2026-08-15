@@ -3332,3 +3332,48 @@ fast compilation
 zero-allocation execution
 deterministic conservative fallback
 ```
+
+---
+
+# 17. Implementation ledger
+
+## 2026-08-15 — AMD64 bounded `if`-merge register residency
+
+The first Phase 2 branch-local residency slice landed for AMD64. For Balanced
+and Speed functions no larger than 4 KiB, dirty pinned locals may remain in
+their dedicated registers across an exact, bounded, call-free `if` region.
+Loops, calls, GC/bulk/atomic prefixes, oversized scans, decode uncertainty, and
+Size/Embedded objectives retain the canonical slot path. The production scan
+copies the Wasm reader, has 256-operation fuel, and allocates no storage.
+
+Native A/B results on a Ryzen 7 7800X3D:
+
+```text
+128-merge execution kernel:
+    canonical: 45.8 ns/op, 4619 native bytes, 0 B/op
+    resident:  43.9 ns/op, 3595 native bytes, 0 B/op
+    delta:     about -4.2% time, -22.2% native bytes
+
+64-module AMD64 corpus:
+    merge stores: 724139 -> 706639 (-17500, -2.4%)
+    merge reloads: 452566 -> 452644 (+78)
+    native bytes: 81438930 -> 81377313 (-61617)
+
+alternating real-module compile sample
+(regexmatch, SQLite, Ruby, esbuild; n=6 per mode):
+    geomean time: +0.26%
+    B/op: unchanged
+    allocs/op: unchanged
+```
+
+The initial implementation exposed a no-`else` false-edge stub bug in SQLite:
+the taken arm could fall through into a reload emitted only for the false edge.
+The regression test reproduces the old `f(1) = 0` result and verifies that any
+register-residency convergence code is skipped by the taken arm. Native SQLite
+initialization and query execution now pass with the optimization enabled.
+
+The rollback switch is:
+
+```text
+WAGO_AMD64_NO_MERGE_REG_RESIDENCY=1
+```
