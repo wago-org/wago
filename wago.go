@@ -116,6 +116,7 @@ type (
 	InstructionSpec                = impl.InstructionSpec
 	InvocationEvent                = impl.InvocationEvent
 	InvocationRequest              = impl.InvocationRequest
+	LeafHostFunc                   = impl.LeafHostFunc
 	LowerValue                     = impl.LowerValue
 	LoweringContext                = impl.LoweringContext
 	ManagedInstance                = impl.ManagedInstance

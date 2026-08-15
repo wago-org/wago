@@ -206,7 +206,7 @@ instances, typed values, memory, cancellation, and cleanup.
 
 ### Host Functions
 
-Host functions use one reflection-free stack form under standard Go and TinyGo:
+Host functions use reflection-free stack forms under standard Go and TinyGo:
 
 ```go
 mul := wago.HostFunc(func(_ wago.HostModule, params, results []uint64) {
@@ -221,7 +221,17 @@ inst, err := rt.Instantiate(context.Background(), mod, wago.WithImports(wago.Imp
 ```
 
 `HostModule` gives the function access to the calling instance and its linear
-memory.
+memory. Numeric callbacks that need none of those capabilities can opt into the
+smaller, non-reentrant leaf contract:
+
+```go
+mul := wago.LeafHostFunc(func(params, results []uint64) {
+	results[0] = wago.I32(wago.AsI32(params[0]) * wago.AsI32(params[1]))
+})
+```
+
+Reference signatures require `HostFunc`; `LeafHostFunc` is numeric-only and
+does not receive memory, GC, or callback-scoped re-entry access.
 
 Read [Host functions](https://docs.wago.sh/guides/host-functions) for signatures,
 memory access, errors, and capability policy. More runnable programs live in

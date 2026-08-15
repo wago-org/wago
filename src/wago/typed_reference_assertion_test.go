@@ -930,7 +930,7 @@ func proposalLimitsCompatible(actual, expected corewasm.Limits) bool {
 
 func proposalImportValueKind(value any) proposalExternKind {
 	switch value.(type) {
-	case HostFunc, *HostFuncRef, *InstanceExport:
+	case HostFunc, LeafHostFunc, *HostFuncRef, *InstanceExport:
 		return proposalExternFunc
 	case GlobalImport, *Global:
 		return proposalExternGlobal
@@ -959,6 +959,12 @@ func (s *proposalReplayState) exportedFunction(provider *proposalReplayModule, f
 		return value, nil
 	}
 	fn, ok := provider.imports[key].(HostFunc)
+	if !ok {
+		if leaf, leafOK := provider.imports[key].(LeafHostFunc); leafOK && leaf != nil {
+			fn = func(_ HostModule, params, results []uint64) { leaf(params, results) }
+			ok = true
+		}
+	}
 	if !ok || fn == nil || gfi >= len(provider.compiled.importFuncSigs) {
 		return nil, fmt.Errorf("exported imported function %q has no typed owner", field)
 	}

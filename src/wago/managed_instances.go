@@ -237,6 +237,8 @@ func managedForkImports(parent *Instance) (Imports, error) {
 		switch x := v.(type) {
 		case HostFunc:
 			imports[key] = x
+		case LeafHostFunc:
+			imports[key] = x
 		case GlobalImport:
 			if x.Global != nil {
 				return fmt.Errorf("managed fork import %q borrows a global: %w", key, ErrManagedImportLifetime)

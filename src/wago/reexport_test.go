@@ -322,6 +322,28 @@ func TestHostImportedFunctionReexportStaysFailClosed(t *testing.T) {
 	}
 }
 
+func TestLeafHostImportedFunctionReexportInvokes(t *testing.T) {
+	c, err := Compile(nil, importedFunctionReexportModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
+		"env.step": LeafHostFunc(func(params, results []uint64) { results[0] = params[0] + 1 }),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("forward", I32(41))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("leaf host reexport result = %v, want [42]", got)
+	}
+}
+
 func instantiateImportedFunctionReexport(t testing.TB) (*Runtime, *Instance, *Instance) {
 	t.Helper()
 	rt := NewRuntime()

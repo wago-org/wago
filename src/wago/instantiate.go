@@ -567,7 +567,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// while this reference keeps its native mapping live.
 	b.releaseModuleUse()
 	var hostLog, ctrl []byte
-	var syncHosts []HostFunc
+	var syncHosts []syncHostBinding
 	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
 		// log) as the import ctx. Modules that accept public funcrefs and can call
@@ -1312,8 +1312,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if gcNativeView != nil {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
 	}
+	var legacyHosts map[string]HostFunc
+	if !syncMode {
+		legacyHosts = imports.hostFuncs()
+	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: legacyHosts, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 		nativeContext:  nativeContextPtr,
 		moduleIdentity: opts.moduleIdentity,
@@ -1681,12 +1685,12 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			continue
 		}
 		switch imports[key].(type) {
-		case HostFunc, *HostFuncRef:
+		case HostFunc, LeafHostFunc, *HostFuncRef:
 			offs[uint32(fidx)] = len(blob)
 			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 		default:
 			if imports[key] != nil {
-				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
+				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers support wago.HostFunc, wago.LeafHostFunc, or *wago.HostFuncRef bindings", key, imports[key])
 			}
 		}
 	}
