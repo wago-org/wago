@@ -4482,9 +4482,7 @@ func (in *Instance) replayHostLog() (err error) {
 }
 
 func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID) (results []uint64, err error) {
-	general := importIdx >= 0 && importIdx < len(in.syncHosts) && in.syncHosts[importIdx].general != nil
-	leaf := importIdx >= 0 && importIdx < len(in.syncHosts) && in.syncHosts[importIdx].leaf != nil
-	if (!general && !leaf) || importIdx >= len(in.c.importFuncSigs) {
+	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
 	sig := in.c.importFuncSigs[importIdx]
@@ -4549,14 +4547,10 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	// the public invocation boundary.
 	suspendedGCInvocation := in.suspendGCInvocation(id)
 	defer suspendedGCInvocation.resume()
-	if leaf {
-		in.syncHosts[importIdx].leaf(params, results)
-	} else {
-		fn := in.syncHosts[importIdx].general
-		caller := in.beginHostCallScope()
-		defer caller.scope.end(caller.generation, caller.parentGeneration)
-		fn(caller, params, results)
-	}
+	fn := in.syncHosts[importIdx]
+	caller := in.beginHostCallScope()
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	fn(caller, params, results)
 	return results, nil
 }
 
@@ -4575,9 +4569,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
 		}
-		general := gfi < len(in.syncHosts) && in.syncHosts[gfi].general != nil
-		leaf := gfi < len(in.syncHosts) && in.syncHosts[gfi].leaf != nil
-		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && !general && !leaf {
+		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || in.syncHosts[gfi] == nil) {
 			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
 		slot := &in.ic[int(in.icNext)%len(in.ic)]

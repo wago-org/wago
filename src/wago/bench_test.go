@@ -1275,52 +1275,9 @@ func BenchmarkInvokeHostFuncDirect(b *testing.B) {
 	}
 }
 
-func BenchmarkInvokeLeafHostFuncDirect(b *testing.B) {
-	c := benchMustCompile(b, benchReturningImportModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": LeafHostFunc(func(p, r []uint64) { r[0] = p[0] + 1 })}})
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("g", I32(int32(i)))
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
 func BenchmarkPreparedInvokeHostFuncDirect(b *testing.B) {
 	c := benchMustCompile(b, benchReturningImportModule())
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}})
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	fn, err := in.PrepareFunction("g")
-	if err != nil {
-		b.Fatalf("PrepareFunction: %v", err)
-	}
-	if _, err := fn.Invoke(I32(1)); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := fn.Invoke(I32(int32(i)))
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
-func BenchmarkPreparedInvokeLeafHostFuncDirect(b *testing.B) {
-	c := benchMustCompile(b, benchReturningImportModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": LeafHostFunc(func(p, r []uint64) { r[0] = p[0] + 1 })}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -2246,26 +2203,6 @@ func BenchmarkInstantiateHostFuncDirect(b *testing.B) {
 	c := benchMustCompile(b, benchReturningImportModule())
 	defer c.Close()
 	imports := Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}
-	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})
-	if err != nil {
-		b.Fatalf("warm Instantiate: %v", err)
-	}
-	warm.Close()
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		in, err := Instantiate(c, InstantiateOptions{Imports: imports})
-		if err != nil {
-			b.Fatal(err)
-		}
-		in.Close()
-	}
-}
-
-func BenchmarkInstantiateLeafHostFuncDirect(b *testing.B) {
-	c := benchMustCompile(b, benchReturningImportModule())
-	defer c.Close()
-	imports := Imports{"env.f": LeafHostFunc(func(p, r []uint64) { r[0] = p[0] })}
 	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)

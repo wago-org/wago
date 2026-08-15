@@ -34,12 +34,11 @@ func valTypeCode(t wasm.ValType) byte {
 }
 
 // Imports supplies a module's imports by "module.name" key, JS-style: one
-// namespace whose values may be a HostFunc, LeafHostFunc, GlobalImport or
-// *Global, or a *Memory — mirroring the WebAssembly JS API's single imports
-// object.
+// namespace whose values may be a HostFunc, a GlobalImport or *Global, or a
+// *Memory — mirroring the WebAssembly JS API's single imports object.
 type Imports map[string]any
 
-// hostFuncs extracts capable wrappers for legacy asynchronous import wiring.
+// hostFuncs extracts the HostFunc entries (the import-function wiring).
 func (im Imports) hostFuncs() map[string]HostFunc {
 	var m map[string]HostFunc
 	for k, v := range im {
@@ -47,10 +46,6 @@ func (im Imports) hostFuncs() map[string]HostFunc {
 		switch value := v.(type) {
 		case HostFunc:
 			fn = value
-		case LeafHostFunc:
-			if value != nil {
-				fn = func(_ HostModule, params, results []uint64) { value(params, results) }
-			}
 		case *HostFuncRef:
 			if value != nil {
 				value.mu.Lock()

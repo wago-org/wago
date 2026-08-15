@@ -4236,60 +4236,6 @@ test, including release, reacquisition, and ownership restoration. The prepared
 host benchmark is retained beside the ordinary path so future boundary changes
 continue to separate export/invocation bookkeeping from the native host
 transition.
-
-## 2026-08-15 — explicit numeric leaf host class
-
-`LeafHostFunc` adds the first explicit host effect class. Its callback receives
-only the raw parameter and result slots: it has no `HostModule` capability and
-is contractually numeric and non-reentrant. Instantiation rejects every
-reference-bearing signature. Existing `HostFunc` remains the fully conservative
-default for memory, reference, collection, and callback-scoped re-entry access.
-
-Synchronous bindings use one finite two-function-word descriptor per imported
-function. The leaf dispatch calls its typed function directly and never boxes a
-48-byte callback-scoped `instanceHostModule` into an interface. Ordinary
-bindings still create the expiring generation-stamped value, preserving the
-retained-handle fail-closed contract. The `Instance` layout remains 872 bytes;
-the descriptor replaces the prior function slice rather than adding fixed
-instance state. Synchronous instances also stop building the legacy async host
-map, removing two instantiation allocations and 248 bytes on the one-import
-AMD64 fixture.
-
-Round-trip medians are:
-
-```text
-Ryzen 7 7800X3D:
-    ordinary: HostFunc 440.0 -> LeafHostFunc 346.9 ns/op (-21.2%)
-    prepared: HostFunc 373.2 -> LeafHostFunc 287.0 ns/op (-23.1%)
-
-Apple M4 Max:
-    ordinary: HostFunc 278.2 -> LeafHostFunc 235.1 ns/op (-15.5%)
-    prepared: HostFunc 241.8 -> LeafHostFunc 201.7 ns/op (-16.6%)
-
-all LeafHostFunc execution paths: 0 B/op, 0 alloc/op
-```
-
-Direct, void, imported-function re-export, and table-indirect tests cover the
-new binding. The legacy wrapper remains available for non-synchronous modules,
-while the synchronous hot path stays reflection-free and allocation-free.
-
-## 2026-08-15 — reject shared-dispatch leaf bypass
-
-A prototype recognized `LeafHostFunc` in `dispatchSynchronousHostCall` and
-called it directly after the required native-lease and GC-suspension protocol.
-This removed one intermediate dispatcher call. On the Ryzen 7 7800X3D it
-improved the prepared leaf median from 284.9 to 268.9 ns/op (-5.6%) and the
-ordinary leaf median from 345.5 to 337.1 ns/op (-2.4%).
-
-The recognition branch also occupied the shared capable-host path. Repeated
-alternating AMD64 measurements moved the ordinary `HostFunc` median from 438.4
-to 447.5 ns/op (+2.1%). ARM64 showed no repeatable prepared-leaf improvement
-and a smaller general-host regression. The prototype was rejected. Any future
-attempt must specialize dispatch at instantiation so a general-only instance
-executes byte-for-byte-equivalent routing, while retaining parked-frame roots,
-collector lease suspension, native lease release, panic restoration, and
-cross-instance context restoration for leaf callbacks.
-
 ## 2026-08-15 — AMD64 i16 bitmask zero-branch fusion
 
 AMD64 now carries the exact `i16x8.bitmask; i32.eqz; if/br_if` shape into the

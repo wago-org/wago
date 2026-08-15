@@ -82,21 +82,9 @@ type GCHostModule interface {
 // into results, with the calling instance's linear memory and externref store
 // available through HostModule. A reference occupies one opaque uint64 slot; a
 // v128 occupies two adjacent little-endian uint64 slots, matching Invoke's public
-// ABI. It binds identically under standard Go and TinyGo, with no reflection
-// anywhere on the path. LeafHostFunc is the narrower numeric-only alternative.
+// ABI. It is the single host-import type — it binds identically
+// under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
-
-// LeafHostFunc is a numeric, non-reentrant host import that does not receive a
-// HostModule capability. It may read params and write results but cannot access
-// guest memory, references, collection, or callback-scoped re-entry through
-// Wago. Signatures containing reference values are rejected at instantiation.
-// Use HostFunc whenever any of those capabilities are required.
-type LeafHostFunc func(params, results []uint64)
-
-type syncHostBinding struct {
-	general HostFunc
-	leaf    LeafHostFunc
-}
 
 // CallerResolver resolves the exact Runtime-owned instance making an active
 // synchronous host call. Its authority is identity-only: it cannot create,
@@ -649,10 +637,10 @@ func (h instanceHostModule) ExternRefValue(ref ExternRef) (any, bool) {
 	return h.in.ExternRefValue(ref)
 }
 
-// bindHostImport normalizes an Imports value into the capable HostFunc form for
-// legacy paths. There is no reflection: host imports bind identically under
-// standard Go and TinyGo. Synchronous LeafHostFunc imports are kept distinct by
-// buildSyncHosts so their hot path never manufactures a HostModule interface.
+// bindHostImport normalizes an Imports value into a HostFunc for the synchronous
+// host-call path. The only accepted host-function form is a HostFunc (the stack
+// form); any other value is an error. There is no reflection: host imports bind
+// identically under standard Go and TinyGo.
 func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 	switch f := v.(type) {
 	case HostFunc:
@@ -660,14 +648,6 @@ func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 			return nil, fmt.Errorf("host function is nil")
 		}
 		return f, nil
-	case LeafHostFunc:
-		if f == nil {
-			return nil, fmt.Errorf("leaf host function is nil")
-		}
-		if hasReferenceValType(sig.Params) || hasReferenceValType(sig.Results) {
-			return nil, fmt.Errorf("leaf host function requires a numeric-only signature")
-		}
-		return func(_ HostModule, params, results []uint64) { f(params, results) }, nil
 	case *HostFuncRef:
 		if f == nil {
 			return nil, fmt.Errorf("host funcref owner is nil")
@@ -684,16 +664,15 @@ func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 	case nil:
 		return nil, fmt.Errorf("no host function provided")
 	default:
-		return nil, fmt.Errorf("host import must be a wago.HostFunc, wago.LeafHostFunc, or *wago.HostFuncRef; got %T", v)
+		return nil, fmt.Errorf("host import must be a wago.HostFunc or *wago.HostFuncRef; got %T", v)
 	}
 }
 
-// buildSyncHosts resolves every function import of a sync-mode module to one
-// finite host class, indexed by import function index. c.Imports lists the
-// function imports in order; c.importFuncSigs holds their compile-time
-// signatures.
-func (c *Compiled) buildSyncHosts(imports Imports) ([]syncHostBinding, error) {
-	hosts := make([]syncHostBinding, len(c.Imports))
+// buildSyncHosts resolves every function import of a sync-mode module to a
+// HostFunc, indexed by import function index. c.Imports lists the function
+// imports in order; c.importFuncSigs holds their compile-time signatures.
+func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
+	hosts := make([]HostFunc, len(c.Imports))
 	for i, key := range c.Imports {
 		if i >= len(c.importFuncSigs) {
 			return nil, fmt.Errorf("import %q: missing signature", key)
@@ -714,21 +693,11 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]syncHostBinding, error) {
 		if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
 			return nil, fmt.Errorf("import %q uses %d param slot(s), %d result slot(s); synchronous host imports support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
 		}
-		if leaf, ok := imports[key].(LeafHostFunc); ok {
-			if leaf == nil {
-				return nil, fmt.Errorf("import %q: leaf host function is nil", key)
-			}
-			if hasReferenceValType(sig.Params) || hasReferenceValType(sig.Results) {
-				return nil, fmt.Errorf("import %q: leaf host function requires a numeric-only signature", key)
-			}
-			hosts[i].leaf = leaf
-			continue
-		}
 		fn, err := bindHostImport(imports[key], sig)
 		if err != nil {
 			return nil, fmt.Errorf("import %q: %w", key, err)
 		}
-		hosts[i].general = fn
+		hosts[i] = fn
 	}
 	return hosts, nil
 }
@@ -802,20 +771,13 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 				panic(missingHostFunc{importIdx: importIdx})
 			}
 		} else {
-			if int(importIdx) >= len(in.syncHosts) {
+			if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
 				panic(missingHostFunc{importIdx: importIdx})
 			}
-			if in.syncHosts[importIdx].leaf != nil {
-				in.syncHosts[importIdx].leaf(args, results)
-				return
-			}
-			if in.syncHosts[importIdx].general == nil {
-				panic(missingHostFunc{importIdx: importIdx})
-			}
-			if in.c == nil || int(importIdx) >= len(in.c.importFuncSigs) {
+			if int(importIdx) >= len(in.c.importFuncSigs) {
 				panic(invalidHostReference{err: fmt.Errorf("host import %d has no signature", importIdx)})
 			}
-			fn = in.syncHosts[importIdx].general
+			fn = in.syncHosts[importIdx]
 			sig = in.c.importFuncSigs[importIdx]
 		}
 		exactParams, exactResults, err := exactFuncSignatureView(sig, in.c.Types)

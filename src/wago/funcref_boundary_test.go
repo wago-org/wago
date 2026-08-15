@@ -403,9 +403,6 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(HostFuncRef{}); got != 128 {
 		t.Fatalf("HostFuncRef size = %d, want 128 bytes", got)
 	}
-	if got := unsafe.Sizeof(syncHostBinding{}); got != 16 {
-		t.Fatalf("syncHostBinding size = %d, want two function words", got)
-	}
 }
 
 func TestRuntimeFuncrefTokenRejectsForgedAndCrossRuntimeBeforeExecution(t *testing.T) {

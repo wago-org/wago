@@ -160,53 +160,6 @@ func TestBindHostImportRejectsNilSlotForms(t *testing.T) {
 	if _, err := bindHostImport(lf, FuncSig{}); err == nil || !strings.Contains(err.Error(), "host function is nil") {
 		t.Fatalf("want nil HostFunc error, got %v", err)
 	}
-	var leaf LeafHostFunc
-	if _, err := bindHostImport(leaf, FuncSig{}); err == nil || !strings.Contains(err.Error(), "leaf host function is nil") {
-		t.Fatalf("want nil LeafHostFunc error, got %v", err)
-	}
-	leaf = func([]uint64, []uint64) {}
-	if _, err := bindHostImport(leaf, FuncSig{Params: []ValType{ValExternRef}}); err == nil || !strings.Contains(err.Error(), "numeric-only") {
-		t.Fatalf("want reference-signature LeafHostFunc error, got %v", err)
-	}
-}
-
-func TestLeafHostFuncRoundTrip(t *testing.T) {
-	c := MustCompile(benchReturningImportModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": LeafHostFunc(func(params, results []uint64) {
-		results[0] = params[0] + 1
-	})}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	got, err := in.Invoke("g", I32(41))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || AsI32(got[0]) != 42 {
-		t.Fatalf("leaf host result = %v, want [42]", got)
-	}
-}
-
-func TestLeafHostFuncVoidRoundTrip(t *testing.T) {
-	if !requireStandardGoTestRuntime(t) {
-		return
-	}
-	c := MustCompile(voidI32ImportCallerModule())
-	calls := 0
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.log": LeafHostFunc(func(params, _ []uint64) {
-		calls += int(AsI32(params[0]))
-	})}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("g", I32(7)); err != nil {
-		t.Fatal(err)
-	}
-	if calls != 7 {
-		t.Fatalf("leaf host calls = %d, want 7", calls)
-	}
 }
 
 func TestLegacyHostFuncCompatibleImportRoundTrips(t *testing.T) {
@@ -261,26 +214,6 @@ func TestSyncHostImportInTableRunsIndirectly(t *testing.T) {
 	}
 	if AsI32(res[0]) != 42 || calls != 1 {
 		t.Fatalf("g/calls = %d/%d, want 42/1", AsI32(res[0]), calls)
-	}
-}
-
-func TestLeafHostImportInTableRunsIndirectly(t *testing.T) {
-	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
-	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}
-	c := MustCompile(tableHostImportModule(sig, body))
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": LeafHostFunc(func(params, results []uint64) {
-		results[0] = params[0] + 1
-	})}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	res, err := in.Invoke("g", I32(41))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) != 1 || AsI32(res[0]) != 42 {
-		t.Fatalf("leaf table call result = %v, want [42]", res)
 	}
 }
 
@@ -506,7 +439,7 @@ func TestHostImportThunkGeneratedForDeclarativeRefFuncOnly(t *testing.T) {
 }
 
 func TestMissingSyncHostDispatchErrors(t *testing.T) {
-	in := &Instance{syncHosts: []syncHostBinding{{}}}
+	in := &Instance{syncHosts: []HostFunc{nil}}
 	in.hostCall = in.newHostDispatch()
 	defer func() {
 		if r := recover(); r == nil {
