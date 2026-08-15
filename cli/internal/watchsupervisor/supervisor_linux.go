@@ -25,9 +25,11 @@ const markerEnvironment = "WAGO_WATCH_SUPERVISOR"
 const guestExecutableEnvironment = "WAGO_WATCH_GUEST_EXECUTABLE"
 const parentPIDEnvironment = "WAGO_WATCH_SUPERVISOR_PARENT"
 const parentLifetimeFDEnvironment = "WAGO_WATCH_PARENT_LIFETIME_FD"
+const signalRelayReadyFDEnvironment = "WAGO_WATCH_SIGNAL_RELAY_READY_FD"
 const guardianRole = "guardian"
 const workerRole = "worker"
 const probeRole = "probe"
+const signalRelayRole = "signal-relay"
 const probeResponse = "wago-watch-supervisor-v1"
 const maxDescendants = 4096
 const maxThreads = 4096
@@ -46,6 +48,86 @@ type processInfo struct {
 type ChildLifetime struct {
 	read  *os.File
 	write *os.File
+}
+
+// SignalRelay joins a guest process group and relays its terminal interrupts to
+// the watch process that started it.
+type SignalRelay struct {
+	command  *exec.Cmd
+	lifetime *ChildLifetime
+}
+
+// StartSignalRelay starts a provider-free helper in group. The helper is ready
+// to relay SIGINT and SIGQUIT before this function returns.
+func StartSignalRelay(executable string, arguments, environment []string, group int) (*SignalRelay, error) {
+	if executable == "" || group <= 0 {
+		return nil, errors.New("invalid watch signal relay")
+	}
+	readyRead, readyWrite, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	defer readyRead.Close()
+	base := environment
+	if base == nil {
+		base = os.Environ()
+	}
+	command := exec.Command(executable, arguments...)
+	command.Env = append(withoutInternalEnvironment(base),
+		markerEnvironment+"="+signalRelayRole,
+		parentPIDEnvironment+"="+strconv.Itoa(os.Getpid()),
+		signalRelayReadyFDEnvironment+"=3",
+	)
+	command.ExtraFiles = []*os.File{readyWrite}
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: group}
+	lifetime, err := BindChild(command)
+	if err != nil {
+		_ = readyWrite.Close()
+		return nil, err
+	}
+	relay := &SignalRelay{command: command, lifetime: lifetime}
+	if err := command.Start(); err != nil {
+		_ = readyWrite.Close()
+		_ = lifetime.Close()
+		return nil, err
+	}
+	lifetime.Started()
+	if err := readyWrite.Close(); err != nil {
+		_ = relay.Close()
+		return nil, err
+	}
+	if err := readyRead.SetReadDeadline(time.Now().Add(probeTimeout)); err != nil {
+		_ = relay.Close()
+		return nil, err
+	}
+	var ready [1]byte
+	if _, err := io.ReadFull(readyRead, ready[:]); err != nil || ready[0] != 1 {
+		_ = relay.Close()
+		if err == nil {
+			err = errors.New("invalid watch signal relay response")
+		}
+		return nil, fmt.Errorf("start watch signal relay: %w", err)
+	}
+	return relay, nil
+}
+
+// Close stops and reaps the signal relay.
+func (relay *SignalRelay) Close() error {
+	if relay == nil {
+		return nil
+	}
+	lifetimeErr := relay.lifetime.Close()
+	relay.lifetime = nil
+	if relay.command == nil || relay.command.Process == nil {
+		return lifetimeErr
+	}
+	killErr := relay.command.Process.Kill()
+	if errors.Is(killErr, os.ErrProcessDone) {
+		killErr = nil
+	}
+	_ = relay.command.Wait()
+	relay.command = nil
+	return errors.Join(lifetimeErr, killErr)
 }
 
 // BindChild adds a process-lifetime pipe to command.
@@ -152,6 +234,13 @@ func Enter() {
 		_, _ = fmt.Fprintln(os.Stdout, probeResponse)
 		os.Exit(0)
 	}
+	if role == signalRelayRole {
+		if err := runSignalRelay(); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "wago: watch signal relay: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	guest := os.Getenv(guestExecutableEnvironment)
 	if guest == "" {
 		_, _ = fmt.Fprintln(os.Stderr, "wago: watch supervisor: missing guest executable")
@@ -205,12 +294,64 @@ func withoutInternalEnvironment(environment []string) []string {
 		if strings.HasPrefix(entry, markerEnvironment+"=") ||
 			strings.HasPrefix(entry, guestExecutableEnvironment+"=") ||
 			strings.HasPrefix(entry, parentPIDEnvironment+"=") ||
-			strings.HasPrefix(entry, parentLifetimeFDEnvironment+"=") {
+			strings.HasPrefix(entry, parentLifetimeFDEnvironment+"=") ||
+			strings.HasPrefix(entry, signalRelayReadyFDEnvironment+"=") {
 			continue
 		}
 		result = append(result, entry)
 	}
 	return result
+}
+
+func runSignalRelay() error {
+	parent, err := strconv.Atoi(os.Getenv(parentPIDEnvironment))
+	if err != nil || parent <= 0 || syscall.Getppid() != parent {
+		return errors.New("signal relay parent exited before startup")
+	}
+	readyFD, err := strconv.Atoi(os.Getenv(signalRelayReadyFDEnvironment))
+	if err != nil || readyFD < 3 {
+		return errors.New("invalid signal relay ready descriptor")
+	}
+	ready := os.NewFile(uintptr(readyFD), "wago-watch-signal-relay-ready")
+	if ready == nil {
+		return errors.New("open signal relay ready descriptor")
+	}
+	unix.CloseOnExec(readyFD)
+	defer ready.Close()
+	lifetime, parentExited, err := monitorParentLifetime()
+	if err != nil {
+		return err
+	}
+	if lifetime == nil {
+		return errors.New("signal relay requires a parent lifetime descriptor")
+	}
+	defer lifetime.Close()
+	events := make(chan os.Signal, 2)
+	signal.Notify(events, os.Interrupt, syscall.SIGQUIT)
+	defer signal.Stop(events)
+	if _, err := ready.Write([]byte{1}); err != nil {
+		return err
+	}
+	if err := ready.Close(); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-parentExited:
+			return nil
+		case received := <-events:
+			value, ok := received.(syscall.Signal)
+			if !ok {
+				continue
+			}
+			if err := syscall.Kill(parent, value); err != nil {
+				if errors.Is(err, syscall.ESRCH) {
+					return nil
+				}
+				return err
+			}
+		}
+	}
 }
 
 // Run supervises command and returns its process exit code.

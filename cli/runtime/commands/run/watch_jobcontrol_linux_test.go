@@ -115,6 +115,12 @@ func testWatchSupervisorMirrorsTerminalJobControl(t *testing.T, separateForegrou
 	}
 	waitForWatchForegroundGroup(t, master, wantForeground)
 	if separateForeground {
+		if err := syscall.Kill(-wantForeground, syscall.SIGCONT); err != nil {
+			t.Fatal(err)
+		}
+		if err := syscall.Kill(-wantForeground, syscall.SIGINT); err != nil {
+			t.Fatal(err)
+		}
 		if err := syscall.Kill(-command.Process.Pid, syscall.SIGINT); err != nil {
 			t.Fatal(err)
 		}
@@ -123,8 +129,23 @@ func testWatchSupervisorMirrorsTerminalJobControl(t *testing.T, separateForegrou
 			t.Fatal(err)
 		}
 	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("job-control helper: %v", err)
+	commandDone := make(chan error, 1)
+	go func() { commandDone <- command.Wait() }()
+	select {
+	case err := <-commandDone:
+		if err != nil {
+			t.Fatalf("job-control helper: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		foreground, _ := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPGRP)
+		log, _ := os.ReadFile(logPath)
+		if foreground > 0 {
+			_ = syscall.Kill(-foreground, syscall.SIGKILL)
+		}
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		<-commandDone
+		finished = true
+		t.Fatalf("job-control helper did not stop after Ctrl-C: foreground=%d log=%q", foreground, log)
 	}
 	finished = true
 	if got, want := waitForWatchLog(t, logPath, 2), []string{"first", "interrupt"}; !reflect.DeepEqual(got, want) {

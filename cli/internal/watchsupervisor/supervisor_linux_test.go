@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
@@ -33,6 +34,42 @@ func TestProbeRejectsExecutableWithoutProtocol(t *testing.T) {
 	if err := Probe(executable); err == nil {
 		t.Fatal("probe accepted executable without supervisor protocol")
 	}
+}
+
+func TestSignalRelayForwardsGuestGroupInterrupt(t *testing.T) {
+	group := exec.Command("sleep", "30")
+	group.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := group.Start(); err != nil {
+		t.Fatal(err)
+	}
+	groupDone := false
+	t.Cleanup(func() {
+		if groupDone {
+			return
+		}
+		_ = group.Process.Kill()
+		_ = group.Wait()
+	})
+	relay, err := StartSignalRelay(os.Args[0], []string{"-test.run=^TestSignalRelayForwardsGuestGroupInterrupt$", "-test.count=1"}, os.Environ(), group.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relay.Close()
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt)
+	defer signal.Stop(interrupts)
+	if err := syscall.Kill(-group.Process.Pid, syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-interrupts:
+	case <-time.After(5 * time.Second):
+		t.Fatal("signal relay did not forward the guest group interrupt")
+	}
+	if err := group.Wait(); err == nil {
+		t.Fatal("guest process group ignored SIGINT")
+	}
+	groupDone = true
 }
 
 func TestRunPropagatesChildStopAndContinue(t *testing.T) {

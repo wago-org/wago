@@ -231,11 +231,12 @@ lifetime pipes make each supervisor clean the tree if its parent process dies.
 This places supervision before generated plugin providers can initialize. A
 runtime started directly, without the manager handoff, rejects Linux watch mode.
 A terminal-backed watcher and its direct guest stay in the shell's foreground
-job group, so both receive terminal
-interrupts. The watcher restores terminal ownership if a guest descendant
-creates a separate foreground group. It also records bounded process identities
-and checks each identity again before signaling it. Linux subreaper ownership
-keeps double-forked children tracked. On Windows, the extended process-start API
+job group, so both receive terminal interrupts. If a guest descendant creates a
+separate foreground group, the watcher restores that group after a stop and
+uses a provider-free helper in the group to relay terminal interrupts. It also
+records bounded process identities and checks each identity again before
+signaling it. Linux subreaper ownership keeps double-forked children tracked. On
+Windows, the extended process-start API
 puts the child in its kill-on-close job before its first instruction runs. The
 watcher mirrors terminal stop and
 continue events, and its status output remains safe when background terminal
