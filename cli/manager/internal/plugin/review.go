@@ -110,12 +110,9 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 	for _, review := range reviews {
 		key := authorityKey(review.PluginID, review.Request.Name)
 		label := review.Request.Name
-		if showPluginID {
-			label = review.PluginID + ": " + label
-		}
-		description := string(review.Request.Mode)
+		description := "(" + string(review.Request.Mode) + ")"
 		if review.Request.Reason != "" {
-			description += " — " + review.Request.Reason
+			description += " " + review.Request.Reason
 		}
 		if review.Request.Mode == project.AuthorityRequired {
 			description += "; deselecting cancels installation"
@@ -124,8 +121,12 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 		if scope := projectScopeSuffix(review.Request.Scope); scope != "" {
 			description += scope
 		}
+		group := ""
+		if showPluginID {
+			group = review.PluginID
+		}
 		items = append(items, tui.SelectItem{
-			Label: label, Description: description, On: choices[key],
+			Label: label, Description: description, On: choices[key], Group: group,
 			ConfirmOff: review.Request.Mode == project.AuthorityRequired,
 		})
 		itemKeys = append(itemKeys, key)

@@ -37,6 +37,29 @@ func TestMultiSelectFrame(t *testing.T) {
 	}
 }
 
+func TestMultiSelectFrameGroupsAndIndentsRows(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := &MultiSelect{Items: []SelectItem{
+		{Label: "host.arguments.read", Group: "github.com/wago-org/wasi", On: true},
+		{Label: "host.import.define", Group: "github.com/wago-org/wasi", On: true},
+		{Label: "instance.manage", Group: "github.com/wago-org/workers", On: true},
+		{Label: "Reject all", Reject: true},
+	}}
+	frame := m.Frame()
+	for _, want := range []string{
+		"github.com/wago-org/wasi\n  › ◉ host.arguments.read",
+		"github.com/wago-org/workers\n    ◉ instance.manage",
+		"\n  ○ Reject all",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("grouped frame missing %q:\n%s", want, frame)
+		}
+	}
+	if strings.Count(frame, "github.com/wago-org/wasi\n") != 1 {
+		t.Fatalf("plugin heading repeated:\n%s", frame)
+	}
+}
+
 func TestMultiSelectMovementClamps(t *testing.T) {
 	m := newTestSelect()
 	m.apply(keyUp) // already at top

@@ -15,6 +15,7 @@ import (
 type SelectItem struct {
 	Label       string // machine value, e.g. a capability id "wasi:stdio"
 	Description string // one-line human description (may be empty)
+	Group       string // optional section heading shared by adjacent rows
 	On          bool   // currently selected
 	Disabled    bool   // visible preview row that cannot be toggled or selected
 	Reject      bool   // exclusive visible action that clears every normal row
@@ -231,11 +232,22 @@ func (m *MultiSelect) frame() string {
 	if start > 0 {
 		fmt.Fprintf(&b, "%s\n", ui.Dim(fmt.Sprintf("  ↑ %d more", start)))
 	}
+	previousGroup := ""
 	for i := start; i < end; i++ {
 		it := m.Items[i]
+		if it.Group != "" && it.Group != previousGroup {
+			fmt.Fprintf(&b, "%s\n", ui.Bold(it.Group))
+		}
+		previousGroup = it.Group
 		cursor := "  "
+		if it.Group != "" {
+			cursor = "    "
+		}
 		if i == m.Cursor {
 			cursor = ui.Cyan("› ")
+			if it.Group != "" {
+				cursor = ui.Cyan("  › ")
+			}
 		}
 		mark := "○"
 		if it.Disabled {
