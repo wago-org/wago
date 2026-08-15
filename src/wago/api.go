@@ -4545,8 +4545,8 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	// collector lease after scalar-only validation so same-domain InvokeFromHost
 	// and CollectGC calls can proceed, then restore it before returning results to
 	// the public invocation boundary.
-	resumeGCInvocation := in.suspendGCInvocation(id)
-	defer resumeGCInvocation()
+	suspendedGCInvocation := in.suspendGCInvocation(id)
+	defer suspendedGCInvocation.resume()
 	fn := in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)

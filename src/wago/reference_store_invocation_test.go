@@ -28,6 +28,28 @@ func TestGCInvocationDomainUsesRegisteredAssociation(t *testing.T) {
 	}
 }
 
+func TestGCInvocationSuspensionAllocatesNothing(t *testing.T) {
+	collector := new(gc.Collector)
+	domain := &gcStoreDomain{collector: collector}
+	in := &Instance{gc: collector}
+	in.refStore = &referenceStore{instances: map[*Instance]*referenceStoreInstance{
+		in: {gcDomain: domain},
+	}}
+	owner := newInvocationID()
+	lease := in.lockGCInvocation(owner)
+	defer lease.unlock()
+
+	if allocs := testing.AllocsPerRun(1000, func() {
+		suspended := in.suspendGCInvocation(owner)
+		suspended.resume()
+	}); allocs != 0 {
+		t.Fatalf("GC invocation suspend/resume allocations = %v, want 0", allocs)
+	}
+	if !in.ownsGCInvocation(owner) {
+		t.Fatal("GC invocation ownership was not restored")
+	}
+}
+
 func TestReferenceStoreInvocationDomainsIgnoreUnusedImportBindings(t *testing.T) {
 	collector := new(gc.Collector)
 	domain := &gcStoreDomain{id: 1, collector: collector}

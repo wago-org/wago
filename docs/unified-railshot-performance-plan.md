@@ -4082,3 +4082,30 @@ A 32-site Ryzen 7 7800X3D benchmark was flat at about 39 ns/op in both modes,
 with zero execution allocations. Because generated-size reduction is baseline
 work and this produced no material execution gain, the rule and tests were
 removed under the execution-first admission gate.
+
+## 2026-08-15 — allocation-free GC invocation suspension
+
+Synchronous host dispatch no longer returns an escaping closure when it releases
+and later reacquires the Runtime GC invocation domains around arbitrary Go host
+code. A small value lease now carries the instance, domain view, topology,
+owner, and dynamic-domain flag and restores the identical lock/claim protocol
+through a direct method call. The zero value is the no-op fallback for start and
+construction callbacks, so the change adds no cache, goroutine, or retained
+runtime state.
+
+Allocation profiling attributed exactly one of the two host-round-trip
+allocations to the old resume closure. On the Ryzen 7 7800X3D, eight-sample
+medians changed by:
+
+```text
+ordinary Invoke:  475.5 -> 448.1 ns/op (-5.8%)
+prepared Invoke:  395.7 -> 382.2 ns/op (-3.4%)
+both paths:         96 -> 48 B/op
+both paths:          2 -> 1 alloc/op
+```
+
+The suspension operation itself is covered by a zero-allocation regression
+test, including release, reacquisition, and ownership restoration. The prepared
+host benchmark is retained beside the ordinary path so future boundary changes
+continue to separate export/invocation bookkeeping from the native host
+transition.
