@@ -269,7 +269,10 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.trapIfZero(value, false, true, trapNullReference)
 			}
 			f.a.AsrImm(value, value, 1, true)
-			f.pushReg(value, mtI32)
+			result := f.pushReg(value, mtI32)
+			if f.opt(optValueFacts) {
+				result.st.facts |= factUpper32Zero
+			}
 		case 30: // i31.get_u
 			if f.opt(optValueFacts) && facts.Has(factNonZero) {
 				f.stats.peep("gc-null-check-elide")
@@ -277,7 +280,10 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.trapIfZero(value, false, true, trapNullReference)
 			}
 			f.a.LsrImm(value, value, 1, true)
-			f.pushReg(value, mtI32)
+			result := f.pushReg(value, mtI32)
+			if f.opt(optValueFacts) {
+				result.st.facts |= factUpper32Zero
+			}
 		}
 		return nil
 	}

@@ -982,6 +982,15 @@ fixed-work compile samples improved from a 10.168 to 9.637 us/op median (-5.2%),
 B/op fell from 24,904 to 24,736, and allocations fell from 49 to 46. Tests cover
 both directions, disabled facts, and nullable-input near misses.
 
+ARM64 `i31.get_s` and `i31.get_u` now record the clean upper half guaranteed by
+their W-register shift instructions. This does not claim that the signed result
+is already sign-extended to 64 bits; it only removes a subsequent unsigned i32
+extension. A combined sixteen-get fixture removes all sixteen
+`i64.extend_i32_u` instructions and reduces native output from 500 to 436 bytes
+(-12.8%). Six alternating fixed-work compile medians were 10.077 versus
+10.067 us/op (-0.1%, treated as noise), with 22,792 B/op and 34 allocations/op
+unchanged. Disabling value facts retains every extension.
+
 ---
 
 # 1. North-star architecture
