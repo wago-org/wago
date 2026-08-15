@@ -434,6 +434,16 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				}
 			}
 		}
+		if f.policy.EnabledOption(optGCNativeRefSet) && !f.policy.CompactNative && isStaticNullReference(f.s.back()) {
+			if layout, layoutOK := f.directGCStructRefLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + 4
+				if required <= math.MaxInt32 {
+					f.stats.peep("gc-native-final-struct-ref-set-null")
+					f.stats.peep("gc-barrier-elide")
+					return f.emitNativeFinalStructRefSetNull(typeIndex, layout.Offset, uint32(required))
+				}
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -654,6 +664,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 				f.stats.peep("gc-native-final-array-scalar-set")
 				return f.emitNativeFinalArrayScalarSet(typeIndex, scalar)
 			}
+		}
+		if f.policy.EnabledOption(optGCNativeRefSet) && !f.policy.CompactNative && isStaticNullReference(f.s.back()) && f.directGCArrayRefLayout(typeIndex) {
+			f.stats.peep("gc-native-final-array-ref-set-null")
+			f.stats.peep("gc-barrier-elide")
+			return f.emitNativeFinalArrayRefSetNull(typeIndex)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -1094,6 +1109,21 @@ func (f *fn) emitNativeFinalStructScalarSet(typeIndex, fieldOffset, required uin
 	return nil
 }
 
+func isStaticNullReference(value *elem) bool {
+	return value != nil && value.kind == ekValue && value.st.kind == stConst && value.st.typ == mtI64 && value.st.cval == 0
+}
+
+func (f *fn) emitNativeFinalStructRefSetNull(typeIndex, fieldOffset, required uint32) error {
+	f.popValue()
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, true)
+	if err != nil {
+		return err
+	}
+	f.a.StoreIdx(object, ZR, ZR, int32(gc.PayloadOffset+fieldOffset), 4)
+	f.release(object)
+	return nil
+}
+
 func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directGCScalar) error {
 	indexValue := f.popValue()
 	index := f.materialize(indexValue)
@@ -1215,6 +1245,25 @@ func (f *fn) emitNativeFinalArrayScalarSet(typeIndex uint32, scalar directGCScal
 		f.pinned = f.pinned.remove(value)
 		f.release(value)
 	}
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	f.release(object)
+	return nil
+}
+
+func (f *fn) emitNativeFinalArrayRefSetNull(typeIndex uint32) error {
+	f.popValue()
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+	end := f.emitNativeArrayElementChecks(object, index, 4)
+	f.release(end)
+	f.a.StoreIdx(object, index, ZR, int32(gc.PayloadOffset), 4)
 	f.pinned = f.pinned.remove(index)
 	f.release(index)
 	f.release(object)
