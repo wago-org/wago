@@ -859,6 +859,27 @@ compile memory increased by only 96 B/op (0.42%) and one allocation (41 to 42).
 Trap-site metadata uses packed offsets plus bounded owner-local growth, with a
 tested conservative fallback beyond the common capacities.
 
+### 2026-08-14 — ARM64 native standalone final casts
+
+Standalone `ref.cast` and `ref.cast_null` operations targeting final collector
+struct or array types now validate through the checked native object view in
+speed-oriented output. The compact reference remains the semantic result;
+nullable null skips object resolution, while null in a non-null cast, i31
+values, stale handles, wrong exact types, and malformed extents preserve the
+cast-failure behavior. Open types, function types, compact objectives, and
+disabled policy retain the helper.
+
+Repeated casts from one local reuse one bounded raw-address certificate, so the
+common region emits the complete checked resolver once without retaining it
+across an unsafe opcode or safepoint. Tests cover final struct and array targets,
+nullable null, non-null null and i31 failures, forced collector verification,
+the open-type near miss, disabled policy, and compact fallback. On Apple M4 Max,
+eight standalone struct casts improved from a 414.8 to 87.9 ns/op median
+(-78.8%) through prepared invocation with zero B/op and allocations. Compilation
+improved from 14.41 to 9.77 us/op (-32.2%), B/op fell from 27,288 to 17,912
+(-34.4%), allocations fell from 49 to 44, and native output fell from 1,188 to
+596 bytes (-49.8%).
+
 ---
 
 # 1. North-star architecture

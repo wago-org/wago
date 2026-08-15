@@ -137,6 +137,12 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 				return err
 			}
+			if f.policy.EnabledOption(optGCNativeFinalCast) && !f.policy.CompactNative {
+				if f.directGCFinalType(uint32(heap)) {
+					f.stats.peep("gc-native-final-cast")
+					return f.emitNativeFinalCast(uint32(heap), sub == 23)
+				}
+			}
 		}
 		if f.gcTypeSubtypingRefTest && heap >= 0 {
 			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc {
@@ -1070,6 +1076,34 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 	f.pinned = f.pinned.remove(index)
 	f.release(index)
 	f.release(object)
+	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+	return nil
+}
+
+func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
+	original := f.popValue()
+	local, hasLocal := gcLocalProvenance(original)
+	ref := f.materialize(original)
+	result := f.allocReg(maskOf(ref))
+	f.a.MovReg64(result, ref)
+	f.pinned = f.pinned.add(result)
+	var nullDone int
+	if nullable {
+		nullDone = f.zeroBranch(result, true, true)
+	}
+	validation := f.pushReg(ref, mtI64)
+	if hasLocal {
+		validation.st.slot = local + 1
+	}
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.HeaderSize, false)
+	if err != nil {
+		return err
+	}
+	f.release(object)
+	if nullable {
+		f.a.PatchBranch19(nullDone, f.a.Len())
+	}
+	f.pinned = f.pinned.remove(result)
 	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()
 	return nil
 }

@@ -75,6 +75,16 @@ func (f *fn) directGCArrayRefLayout(typeIndex uint32) bool {
 	return ok && layout.Type.Final && layout.ElemLayout.CollectorRef && layout.ElemLayout.Size == 4
 }
 
+func (f *fn) directGCFinalType(typeIndex uint32) bool {
+	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok {
+		return layout.Type.Final
+	}
+	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompArray); ok {
+		return layout.Type.Final
+	}
+	return false
+}
+
 func (f *fn) gcTypeLayout(typeIndex uint32, kind wasm.CompTypeKind) (codegen.GCTypeLayout, bool) {
 	if int(typeIndex) >= len(f.gcTypeLayouts) {
 		return codegen.GCTypeLayout{}, false

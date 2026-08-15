@@ -84,6 +84,10 @@ var constGCStructGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONST_STRUCT_GET") != 
 // exact non-null result back to the same defined type.
 var gcConstructorCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_CONSTRUCTOR_CAST") != "1"
 
+// nativeGCFinalCastEnabled resolves standalone casts to final collector struct
+// and array types through the checked collector native view.
+var nativeGCFinalCastEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_CAST") != "1"
+
 // nativeGCFinalArrayLenEnabled resolves an adjacent final cast plus array.len
 // through the checked collector native view. The immutable per-compilation
 // policy controls admission; the existing Go helper remains the exact fallback.

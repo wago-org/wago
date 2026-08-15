@@ -271,6 +271,7 @@ var catalog = []Definition{
 	arm64("gc-fixed-array-len", "Known array lengths", "replace an immediately consumed constructor reference with its statically known length"),
 	arm64("gc-const-struct-get", "Known struct fields", "replace an immediately consumed constructor reference with its statically known numeric field"),
 	arm64("gc-constructor-cast", "Constructor casts", "elide an adjacent cast of a constructor result to its exact defined type"),
+	arm64("gc-native-final-cast", "Native final casts", "resolve standalone casts to final collector struct and array types through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-array-len", "Native final array lengths", "resolve adjacent final casts and array lengths through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-scalar-get", "Native final scalar reads", "resolve adjacent final casts and pointer-free scalar struct reads through checked collector metadata for speed-oriented output"),
 	arm64("gc-native-final-scalar-set", "Native final scalar writes", "resolve final pointer-free scalar struct writes through checked collector metadata for speed-oriented output"),

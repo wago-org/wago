@@ -30,6 +30,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("gc-fixed-array-len", &fixedGCArrayLenEnabled),
 	optimization.Bind("gc-const-struct-get", &constGCStructGetEnabled),
 	optimization.Bind("gc-constructor-cast", &gcConstructorCastEnabled),
+	optimization.Bind("gc-native-final-cast", &nativeGCFinalCastEnabled),
 	optimization.Bind("gc-native-final-array-len", &nativeGCFinalArrayLenEnabled),
 	optimization.Bind("gc-native-final-scalar-get", &nativeGCFinalScalarGetEnabled),
 	optimization.Bind("gc-native-final-scalar-set", &nativeGCFinalScalarSetEnabled),
@@ -86,6 +87,7 @@ var (
 	optGCFixedArrayLen       = optimizationBindings.Option("gc-fixed-array-len")
 	optGCConstStructGet      = optimizationBindings.Option("gc-const-struct-get")
 	optGCConstructorCast     = optimizationBindings.Option("gc-constructor-cast")
+	optGCNativeFinalCast     = optimizationBindings.Option("gc-native-final-cast")
 	optGCNativeFinalArrayLen = optimizationBindings.Option("gc-native-final-array-len")
 	optGCNativeScalarGet     = optimizationBindings.Option("gc-native-final-scalar-get")
 	optGCNativeScalarSet     = optimizationBindings.Option("gc-native-final-scalar-set")
