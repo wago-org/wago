@@ -694,6 +694,7 @@ type scratch struct {
 	localRefs               amd64.LocalRefRecorder
 	callTypesInline         [64]machineType
 	tmpCallTypes            []machineType // wide operand types retained across flush at call boundaries
+	offsetMap               shared.WideOffsetMap
 	transient
 }
 

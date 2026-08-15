@@ -560,6 +560,7 @@ type scratch struct {
 	branchNextN      uint8
 	singleBitTestN   uint8
 	deadHoleOverflow bool
+	offsetMap        shared.OffsetMap
 	transient
 }
 
