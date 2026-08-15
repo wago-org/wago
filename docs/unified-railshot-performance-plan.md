@@ -731,7 +731,8 @@ The separate ordinary `struct.get` fixture improved from 317.6 to 274.9 ns/op
 ### 2026-08-14 — bounded ARM64 native GC resolution reuse
 
 ARM64 now retains one checked raw object address across an adjacent run of
-scalar reads from the same local. The compact reference remains the rooted
+scalar reads from the same local, including reads fused through repeated exact
+final casts. The compact reference remains the rooted
 semantic identity. The raw address occupies one protected register and is
 discarded at calls, collector safepoints, local mutation, control boundaries,
 non-GC operations, and unsupported GC suboperations. The first read validates
@@ -747,6 +748,9 @@ On Apple M4 Max, eight adjacent reads improved from a 99.5 to 87.1 ns/op median
 matching compile fixture improved from 11.44 to 8.06 us/op (-29.6%), allocations
 fell from 52 to 46, B/op fell 12.8%, and native output fell from
 1,888 to 740 bytes because seven duplicate checked resolvers disappeared.
+The repeated explicit-final-cast compile fixture likewise improved from a 12.09
+to 8.43 us/op median (-30.2%), cut B/op 20.4%, removed three allocations, and
+reduced native output from 1,844 to 696 bytes.
 
 ---
 

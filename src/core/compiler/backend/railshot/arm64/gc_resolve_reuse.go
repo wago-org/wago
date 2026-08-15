@@ -48,7 +48,8 @@ func (f *fn) prepareGCResolvedFB(sub uint32) {
 		return
 	}
 	switch sub {
-	case 2, 3, 4: // struct.get, struct.get_s, struct.get_u
+	case 2, 3, 4, // struct.get, struct.get_s, struct.get_u
+		22, 23: // ref.cast, ref.cast_null; a helper fallback flushes the cache
 		return
 	default:
 		f.invalidateGCResolvedObject()
