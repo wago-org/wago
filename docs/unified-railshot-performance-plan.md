@@ -3903,3 +3903,22 @@ registration. The full local repository suite, native AMD64 backend, executable
 benchmark corpus, and regression corpus pass. The remote full-repository run is
 otherwise limited by its absent pinned `tests/spec-v3` checkout and one unrelated
 plugin go.mod fixture failure.
+
+## 2026-08-15 — reject symmetric ARM64 call-argument destinations
+
+The AMD64 direct-argument rule was prototyped unchanged on ARM64, including the
+same free-register, ownership, pin, reservation, and deterministic-fallback
+checks. Native tests passed, and the current 36-module compile corpus showed
+21,487 selections, removed exactly 21,487 attributed integer argument moves,
+and reduced emitted function bytes from 80,879,768 to 80,803,436 (-76,332,
+-0.09%). Fourteen modules shrank and none grew. The focused 64-call fixture fell
+from 904 to 648 native bytes and retained zero execution allocations.
+
+That result does not satisfy the execution gate. Eight one-second Apple M4 Max
+samples were neutral to slightly unfavorable (40.62 versus 40.72 ns/op median),
+and JSON deserialize repeatedly regressed by about 1% in both A/B orders while
+remaining allocation-free. Focused compilation was roughly neutral and kept 39
+allocations. The ARM64 implementation and option binding were therefore removed;
+`call-arg-direct` remains AMD64-only. This is a concrete example of the plan's
+rule that semantic opportunities may be shared while target instruction choices
+remain architecture-specific.
