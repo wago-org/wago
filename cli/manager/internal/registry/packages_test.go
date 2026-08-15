@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -112,5 +113,53 @@ func TestClosestModule(t *testing.T) {
 	}
 	if got := closestModule("github.com/unrelated/package"); got != "" {
 		t.Fatalf("unrelated suggestion = %q, want none", got)
+	}
+}
+
+func TestResolveInstallPackageReturnsPublishedSubpackages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(output http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/packages/github.com/acme/tools" {
+			t.Errorf("request path = %q", request.URL.Path)
+		}
+		_, _ = output.Write([]byte(`{
+			"module":"github.com/acme/tools",
+			"displayName":"Acme Tools",
+			"subpackages":[
+				{"module":"github.com/acme/tools/log","name":"Logging","description":"Write logs.","stability":"stable"},
+				{"module":"github.com/acme/tools/metrics","name":"Metrics","description":"Record metrics.","stability":"experimental"}
+			]
+		}`))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	pkg, found, err := ResolveInstallPackage(context.Background(), "github.com/acme/tools")
+	if err != nil || !found {
+		t.Fatalf("resolve = %#v, %t, %v", pkg, found, err)
+	}
+	if pkg.Name != "Acme Tools" || len(pkg.Subpackages) != 2 || pkg.Subpackages[1].Module != "github.com/acme/tools/metrics" {
+		t.Fatalf("package = %#v", pkg)
+	}
+}
+
+func TestResolveInstallPackageTreatsProviderIDAsNonPackage(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	if pkg, found, err := ResolveInstallPackage(context.Background(), "github.com/acme/tools/log"); err != nil || found || pkg.Module != "" {
+		t.Fatalf("resolve = %#v, %t, %v", pkg, found, err)
+	}
+}
+
+func TestResolveInstallPackageRejectsForeignSubpackage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(output http.ResponseWriter, _ *http.Request) {
+		_, _ = output.Write([]byte(`{"module":"github.com/acme/tools","displayName":"Tools","subpackages":[{"module":"github.com/other/package","name":"Other","description":"Other.","stability":"stable"}]}`))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	if _, _, err := ResolveInstallPackage(context.Background(), "github.com/acme/tools"); err == nil {
+		t.Fatal("accepted foreign subpackage")
 	}
 }

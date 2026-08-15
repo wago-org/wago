@@ -203,18 +203,21 @@ configuration.
 
 `wago add` performs one transaction:
 
-1. Resolve the requested plugin and transitive definitions from the registry.
-2. Compute the proposed manifest, lock graph, authority review, and build inputs
+1. Resolve package metadata. An interactive package-root install chooses either
+   the root bundle or an explicit subset of its published providers;
+   non-interactive root installs keep the root and therefore select everything.
+2. Resolve the requested plugins and transitive definitions from the registry.
+3. Compute the proposed manifest, lock graph, authority review, and build inputs
    entirely in memory.
-3. Review all new or widened required and optional Authorities in one prompt.
+4. Review all new or widened required and optional Authorities in one prompt.
    Rejecting a required Authority cancels installation.
    Non-interactive callers may author exact narrower scopes with one strict
    `--scopes` JSON object keyed by full Plugin ID and exact Authority; optional
    selection remains explicit through `--allow`, `--allow-all`, or `--deny-all`.
-4. Download and verify modules into a staging build directory.
-5. Build an explicit provider catalog, verify every definition digest, validate
+5. Download and verify modules into a staging build directory.
+6. Build an explicit provider catalog, verify every definition digest, validate
    config, and dry-run the complete Plugin Plan.
-6. Atomically publish the manifest, lockfile, and built runtime. Any error keeps
+7. Atomically publish the manifest, lockfile, and built runtime. Any error keeps
    the previous project and runtime usable.
 
 Updates use the same transaction and re-review only new or widened authority.

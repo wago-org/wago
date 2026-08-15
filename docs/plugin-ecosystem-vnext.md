@@ -16,7 +16,7 @@ self-register with `init`.
 
 | Source repository | Provider IDs | Required Plugin Authorities | Explicit requirements and Contracts |
 |---|---|---|---|
-| `github.com/wago-org/wasi` | `github.com/wago-org/wasi`, `github.com/wago-org/wasi/p1`, `github.com/wago-org/wasi/unstable` | `host.import.define` for the provider's exact WASI module, `host.arguments.read`, `host.caller.identify`, `instance.close.observe` | None. Preview 2 remains unpublished until it implements its world completely; a placeholder is not a provider. |
+| `github.com/wago-org/wasi` | root aggregate plus `/p1`, `/p2`, and `/unstable` | P1 and unstable request exact host-import, argument, caller-identity, and close-observation access; P2 requests guest arguments | The root selects every WASI provider. P2 consumes the Component Model service; package selection can install a smaller explicit subset. |
 | `github.com/wago-org/workers` | `github.com/wago-org/workers` | bounded `instance.manage`, `instance.close.observe` | Provides `github.com/wago-org/workers/service` major 1 as an interface Contract. |
 | `github.com/JairusSW/pool` | `github.com/JairusSW/pool` | None directly | Requires `github.com/wago-org/workers` with a semver range; requires Workers Contract major 1; provides `github.com/JairusSW/pool/service` major 1. |
 | `github.com/JairusSW/lease` | `github.com/JairusSW/lease` | None | Consumes every selected `github.com/JairusSW/lease/source` major 1 provider and provides `github.com/JairusSW/lease/service` major 1. Source factories and one-shot execution remain callback-scoped; discovery never requires a process-local snapshot or factory. |
