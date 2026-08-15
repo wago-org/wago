@@ -210,8 +210,12 @@ func moduleImportsFunctionReferences(m *wasm.Module) bool {
 				return true
 			}
 		case wasm.ExternGlobal:
-			global := im.GlobalType()
-			if global.Mutable && valTypeMayContainFunction(m, global.Type) {
+			// Even an immutable imported reference may name a host-owned GC object
+			// with mutable fields into which this module can store a local function.
+			// Scalar immutable funcrefs are harmless by themselves, but separating
+			// them from interior-mutable and externalized values requires flow and
+			// heap-shape analysis; fail closed for every function-capable reference.
+			if valTypeMayContainFunction(m, im.GlobalType().Type) {
 				return true
 			}
 		case wasm.ExternFunc:
@@ -284,7 +288,7 @@ func refTypeMayContainFunction(_ *wasm.Module, ref wasm.RefType) bool {
 	switch heap.Kind() {
 	case wasm.HeapAbs:
 		switch heap.Abs() {
-		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExn:
+		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExn:
 			return true
 		default:
 			return false

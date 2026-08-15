@@ -43,8 +43,10 @@ recursive/GC type graphs, not only their local type indexes. Parameter projectio
 erase only the selected root result contract: result lists of function types
 reachable through parameters remain observable. The fence rejects changes to
 imported, exported, or start-function signatures; changes to local functions that
-may escape through imported callback parameters, mutable globals, tables, or tags,
-or through exported function-reference tables, globals, results, or tags;
+may escape through imported callback parameters, globals (including immutable
+references to interior-mutable host objects), tables, or tags, or through exported
+function-reference tables, globals, results, or tags; `externref` surfaces are
+conservative because externalized GC objects may carry nested function references;
 parameter rewrites; tail-site retargeting; mutable or exported tables; imported
 indirect targets; and dynamic `return_call_ref` producers. Byte-backed scans use
 the validated module's memory32 or memory64 memarg width.

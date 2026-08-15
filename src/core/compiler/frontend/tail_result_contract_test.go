@@ -223,6 +223,26 @@ func importedCallbackSinkTailModule(results []wasm.ValType) *wasm.Module {
 	}
 }
 
+func importedReferenceCallbackTailModule(param wasm.ValType, results []wasm.ValType) *wasm.Module {
+	targetBody := []wasm.Instruction{}
+	if len(results) != 0 {
+		targetBody = append(targetBody, wasm.Instruction{Kind: wasm.InstrI32Const})
+	}
+	return &wasm.Module{
+		Types: []wasm.RecType{
+			tailResultFuncType([]wasm.ValType{param}, nil),
+			tailResultFuncType(nil, results),
+			tailResultFuncType(nil, results),
+		},
+		Imports:   []wasm.Import{{Module: "env", Name: "callback", Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}, {Index: 2}},
+		Code: []wasm.Func{
+			{Body: wasm.Expr{Instrs: targetBody}},
+			{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrReturnCall, Index: 1}}}},
+		},
+	}
+}
+
 func TestValidateTailResultRewriteAllowsCoordinatedKnownTargets(t *testing.T) {
 	shapes := []struct {
 		name    string
@@ -410,6 +430,32 @@ func TestValidateTailResultRewriteRejectsImportedReferenceSinks(t *testing.T) {
 		after := importedCallbackSinkTailModule(nil)
 		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
 			t.Fatalf("imported callback rewrite error = %v", err)
+		}
+	})
+
+	t.Run("immutable defined-reference global", func(t *testing.T) {
+		before := directTailRewriteModule([]wasm.ValType{wasm.I32})
+		after := directTailRewriteModule(nil)
+		for _, m := range []*wasm.Module{before, after} {
+			m.Types = append(m.Types, wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{
+				Kind: wasm.CompStruct,
+				Fields: []wasm.FieldType{
+					wasm.NewFieldType(wasm.StorageVal(wasm.FuncRef), wasm.Var),
+				},
+			}}}})
+			object := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 2}), false))
+			m.Imports = []wasm.Import{{Module: "env", Name: "object", Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: object})}}
+		}
+		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
+			t.Fatalf("immutable imported object rewrite error = %v", err)
+		}
+	})
+
+	t.Run("externref callback", func(t *testing.T) {
+		before := importedReferenceCallbackTailModule(wasm.ExternRef, []wasm.ValType{wasm.I32})
+		after := importedReferenceCallbackTailModule(wasm.ExternRef, nil)
+		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
+			t.Fatalf("externref callback rewrite error = %v", err)
 		}
 	})
 }
