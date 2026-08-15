@@ -83,9 +83,16 @@ func Main(v string) {
 		return
 	}
 	if automation.JSON() {
-		ui.UsageHint("wago help --json", "unknown command %q", args[0])
+		hint := "wago help --json"
+		if suggestion := command.SuggestChild(root, args[0]); suggestion != "" {
+			hint = "wago " + suggestion + " --help"
+		}
+		ui.UsageHint(hint, "unknown command %q", args[0])
 	}
 	fmt.Fprintf(os.Stderr, "%s unknown command %q\n\n", red("wago:"), args[0])
+	if suggestion := command.SuggestChild(root, args[0]); suggestion != "" {
+		fmt.Fprintf(os.Stderr, "Did you mean %q?\n\n", suggestion)
+	}
 	usage(os.Stderr)
 	os.Exit(2)
 }

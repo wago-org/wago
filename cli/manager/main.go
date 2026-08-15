@@ -66,6 +66,9 @@ func Main(v string) {
 		os.Exit(2)
 	}
 	configureInvocationAutomation(args)
+	if dispatchRuntimeHelp(args) {
+		return
+	}
 	switch args[0] {
 	case "__complete":
 		for _, candidate := range command.Complete(managerCommandRoot(), args[1:]) {
@@ -110,7 +113,46 @@ func Main(v string) {
 		cmd.Dispatch("wago "+cmd.Name, childArgs)
 		return
 	}
-	runActiveRunner(args)
+	if shouldForwardToRuntime(args[0]) {
+		runActiveRunner(args)
+		return
+	}
+	managerUnknownCommand(args[0])
+}
+
+func shouldForwardToRuntime(name string) bool {
+	return managerCommandRoot().Child(name) != nil || handoff.LooksLikeRuntimeTarget(name) || strings.HasPrefix(name, "-")
+}
+
+func managerUnknownCommand(name string) {
+	root := managerCommandRoot()
+	if automation.JSON() {
+		hint := "wago help --json"
+		if suggestion := command.SuggestChild(root, name); suggestion != "" {
+			hint = "wago " + suggestion + " --help"
+		}
+		ui.UsageHint(hint, "unknown command %q", name)
+	}
+	fmt.Fprintf(os.Stderr, "%s unknown command %q\n\n", ui.Red("wago:"), name)
+	if suggestion := command.SuggestChild(root, name); suggestion != "" {
+		fmt.Fprintf(os.Stderr, "Did you mean %q?\n\n", suggestion)
+	}
+	managerUsage(os.Stderr)
+	os.Exit(2)
+}
+
+// dispatchRuntimeHelp keeps command discovery available before a runtime has
+// been installed. The manager carries the runtime command schema specifically
+// so newcomers can learn how to install and use Wago without first completing
+// an installation or reaching the network.
+func dispatchRuntimeHelp(args []string) bool {
+	root := &command.Cmd{Name: "wago", Children: runtimeSchemaCommands()}
+	cmd := root.Child(args[0])
+	if cmd == nil || !command.InvocationWantsHelp(cmd, args[1:]) {
+		return false
+	}
+	cmd.Dispatch("wago "+cmd.Name, args[1:])
+	return true
 }
 
 // configureInvocationAutomation observes flags on runtime-owned commands before
@@ -208,7 +250,7 @@ func commandFromSpec(spec command.CommandSpec) *command.Cmd {
 		Args: spec.Arguments, PassThrough: spec.PassThrough,
 	}
 	for _, flag := range spec.Flags {
-		if flag.Name == "help" || flag.Name == "json" || flag.Name == "dry-run" || flag.Name == "no-input" || flag.Name == "locked" || flag.Name == "offline" {
+		if flag.Name == "help" || flag.Name == "help-optimizations" || flag.Name == "json" || flag.Name == "dry-run" || flag.Name == "no-input" || flag.Name == "locked" || flag.Name == "offline" {
 			continue
 		}
 		value := command.Flag{Name: flag.Name, Short: flag.Short, Bool: flag.Type == "boolean", Arg: flag.Value, Help: flag.Summary}
@@ -236,7 +278,7 @@ func commandFromSpec(spec command.CommandSpec) *command.Cmd {
 
 func runWithFirstRunInstall(args []string) {
 	if !hasActiveRunner() && automation.NoInput() {
-		ui.FailHint(1, "runtime_not_installed", "wago version install --canary --profile standard --build normal --use", "no active runtime is selected")
+		ui.FailHint(1, "runtime_not_installed", "wago version install --latest --use", "no active runtime is selected")
 	}
 	if !versioninstall.EnsureRuntime(hasActiveRunner, installRuntimeForFirstRun) {
 		return
@@ -346,7 +388,7 @@ func runActiveRunner(args []string) {
 	d := wagopaths.DirsFor(versionString())
 	path, active, profile, build, ok := managerversion.ActiveRunner(d)
 	if !ok {
-		ui.FatalHint("wago version install", "no active runtime is selected")
+		ui.FatalHint("wago version install --latest --use", "no active runtime is selected")
 	}
 	path, err := managerplugin.Resolve(path, profile, args, commandEnvironment{})
 	if err != nil {

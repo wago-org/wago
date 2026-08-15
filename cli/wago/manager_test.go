@@ -145,6 +145,44 @@ func TestManagerOwnsPluginIntrospectionHelpWithoutSelectedRuntime(t *testing.T) 
 	}
 }
 
+func TestManagerOwnsRuntimeHelpWithoutSelectedRuntime(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "run", args: []string{"run", "--help"}, want: "Usage: wago run"},
+		{name: "module group", args: []string{"module"}, want: "Usage: wago module <command>"},
+		{name: "module child", args: []string{"module", "imports", "--help"}, want: "Usage: wago module imports"},
+		{name: "build", args: []string{"build", "--help"}, want: "Usage: wago build"},
+		{name: "validate", args: []string{"validate", "--help"}, want: "Usage: wago validate"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			oldArgs, oldStdout := os.Args, os.Stdout
+			t.Cleanup(func() { os.Args, os.Stdout = oldArgs, oldStdout })
+			read, write, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.Stdout = write
+			os.Args = append([]string{"wago"}, test.args...)
+			main()
+			_ = write.Close()
+			output, err := io.ReadAll(read)
+			_ = read.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if text := string(output); !strings.Contains(text, test.want) {
+				t.Fatalf("runtime help missing %q:\n%s", test.want, text)
+			}
+		})
+	}
+}
+
 func TestManagerRunRedirectsToVersionInstallWithoutSelectedRunner(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
 	requests := make([]string, 0, 2)

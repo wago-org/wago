@@ -141,6 +141,46 @@ func TestHelpShowsShortFormForPairedBooleanFlags(t *testing.T) {
 	}
 }
 
+func TestHelpKeepsOptimizationFlagsOutOfEverydayHelp(t *testing.T) {
+	cmd := &Cmd{
+		Name:  "build",
+		Flags: []Flag{{Name: "output", Short: "o", Arg: "<file>", Help: "output path"}},
+		Knobs: []Flag{{Name: "fast", Bool: true, Help: "enable fast mode"}},
+	}
+	var output bytes.Buffer
+	cmd.PrintHelp(&output, "wago build")
+	if text := output.String(); strings.Contains(text, "--fast") || !strings.Contains(text, "--help-optimizations") {
+		t.Fatalf("everyday help did not collapse optimization flags:\n%s", text)
+	}
+	output.Reset()
+	cmd.PrintOptimizationHelp(&output, "wago build")
+	if text := output.String(); !strings.Contains(text, "Optimization flags for:") || !strings.Contains(text, "--fast") {
+		t.Fatalf("optimization help = %q", text)
+	}
+	if !InvocationWantsHelp(cmd, []string{"--help-optimizations"}) {
+		t.Fatal("optimization help was not recognized as local help")
+	}
+	if InvocationWantsHelp(&Cmd{Name: "validate"}, []string{"--help-optimizations"}) {
+		t.Fatal("command without optimization knobs accepted optimization help")
+	}
+}
+
+func TestSuggestChildFindsUnambiguousTypos(t *testing.T) {
+	root := &Cmd{Children: []*Cmd{
+		{Name: "build"},
+		{Name: "publish"},
+		{Name: "install", Aliases: []string{"add"}},
+	}}
+	for typo, want := range map[string]string{"bild": "build", "publsh": "publish", "instal": "install", "ad": "install"} {
+		if got := SuggestChild(root, typo); got != want {
+			t.Errorf("SuggestChild(%q) = %q, want %q", typo, got, want)
+		}
+	}
+	if got := SuggestChild(root, "completely-different"); got != "" {
+		t.Fatalf("unrelated suggestion = %q", got)
+	}
+}
+
 func TestAutomationFlagsAndCommandSchema(t *testing.T) {
 	automation.Reset()
 	t.Cleanup(automation.Reset)

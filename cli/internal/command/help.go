@@ -20,7 +20,8 @@ func InvocationWantsHelp(cmd *Cmd, args []string) bool {
 				return false
 			}
 		}
-		return WantsHelp(normalized, cmd.PassThrough, cmd.Flags)
+		return WantsHelp(normalized, cmd.PassThrough, cmd.Flags) ||
+			(len(cmd.Knobs) != 0 && WantsOptimizationHelp(normalized, cmd.PassThrough, cmd.AllFlags()))
 	}
 	if WantsHelp(args, true, cmd.AllFlags()) {
 		return true
@@ -30,6 +31,29 @@ func InvocationWantsHelp(cmd *Cmd, args []string) bool {
 	}
 	child := cmd.Child(args[0])
 	return child != nil && InvocationWantsHelp(child, args[1:])
+}
+
+// WantsOptimizationHelp reports whether advanced compiler help appears before
+// positional pass-through begins.
+func WantsOptimizationHelp(args []string, passThrough bool, flags []Flag) bool {
+	lookup := flagLookup(flags)
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" {
+			return false
+		}
+		if arg == "--help-optimizations" {
+			return true
+		}
+		if passThrough && (arg == "" || arg[0] != '-') {
+			return false
+		}
+		name, inline := splitFlag(arg)
+		if flag := lookup[name]; flag != nil && !flag.Bool && !inline && index+1 < len(args) {
+			index++
+		}
+	}
+	return false
 }
 
 func (c *Cmd) PrintHelp(output io.Writer, path string) {
@@ -59,6 +83,16 @@ func (c *Cmd) PrintHelp(output io.Writer, path string) {
 	if c.Long != "" {
 		fmt.Fprintf(&text, "\n%s\n", strings.TrimRight(c.Long, "\n"))
 	}
+	fmt.Fprint(output, text.String())
+}
+
+// PrintOptimizationHelp prints the advanced compiler controls separately from
+// the everyday command help.
+func (c *Cmd) PrintOptimizationHelp(output io.Writer, path string) {
+	var text strings.Builder
+	fmt.Fprintf(&text, "%s %s\n\n", ui.Bold("Optimization flags for:"), path)
+	text.WriteString("These advanced controls override Wago's tuned defaults for this build.\n")
+	writeFlags(&text, c.Knobs)
 	fmt.Fprint(output, text.String())
 }
 
@@ -108,7 +142,10 @@ func (c *Cmd) displayFlags() []Flag {
 	flags := append([]Flag(nil), c.Flags...)
 	flags = append(flags, c.automationFlags()...)
 	flags = append(flags, Flag{Name: "help", Short: "h", Bool: true, Help: "show this help"})
-	return append(flags, c.Knobs...)
+	if len(c.Knobs) != 0 {
+		flags = append(flags, Flag{Name: "help-optimizations", Bool: true, Help: "show advanced compiler optimization flags"})
+	}
+	return flags
 }
 
 func DimHelpSyntax(value string, style func(string) string) string {
