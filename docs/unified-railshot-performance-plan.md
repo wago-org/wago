@@ -991,6 +991,16 @@ extension. A combined sixteen-get fixture removes all sixteen
 10.067 us/op (-0.1%, treated as noise), with 22,792 B/op and 34 allocations/op
 unchanged. Disabling value facts retains every extension.
 
+Native final ARM64 struct and array scalar reads now reuse the shared integer-load
+fact function already used by ordinary memory loads. Packed signed reads retain
+their exact sign-extension width, while every i32 read records only the clean
+upper half guaranteed by its W-register destination. An eight-read packed-i8
+struct fixture removes all eight following unsigned extensions and reduces
+native output from 1,808 to 1,776 bytes (-1.8%). Six alternating fixed-work
+compile medians were 12.754 versus 12.793 us/op (+0.3%, treated as noise), with
+18,856 B/op and 45 allocations/op unchanged. Disabling value facts retains all
+extensions.
+
 ---
 
 # 1. North-star architecture

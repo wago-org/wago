@@ -1040,7 +1040,10 @@ func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uin
 	result := f.allocReg(maskOf(object))
 	f.a.LoadIdx(result, object, ZR, disp, scalar.size, sub == 3, scalar.typ == mtI64)
 	f.release(object)
-	f.pushReg(result, scalar.typ)
+	value := f.pushReg(result, scalar.typ)
+	if f.opt(optValueFacts) {
+		value.st.facts = shared.ValueFactsForIntLoad(scalar.size, sub == 3, scalar.typ == mtI64)
+	}
 	return nil
 }
 
@@ -1118,7 +1121,10 @@ func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directG
 	f.pinned = f.pinned.remove(index)
 	f.release(index)
 	f.release(object)
-	f.pushReg(result, scalar.typ)
+	value := f.pushReg(result, scalar.typ)
+	if f.opt(optValueFacts) {
+		value.st.facts = shared.ValueFactsForIntLoad(scalar.size, sub == 12, scalar.typ == mtI64)
+	}
 	return nil
 }
 
