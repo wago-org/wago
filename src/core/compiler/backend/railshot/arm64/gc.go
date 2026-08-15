@@ -563,6 +563,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		if f.policy.EnabledOption(optGCNativeArraySet) && !f.policy.CompactNative {
+			if scalar, ok := f.directGCArrayLayout(typeIndex); ok {
+				f.stats.peep("gc-native-final-array-scalar-set")
+				return f.emitNativeFinalArrayScalarSet(typeIndex, scalar)
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
@@ -952,22 +958,7 @@ func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directG
 		return err
 	}
 
-	length := f.allocReg(maskOf(object, index))
-	f.ld32(length, object, 8)
-	f.cmpRR(index, length, false)
-	f.trapIf(condAE, trapBuiltin)
-	f.release(length)
-
-	if scalar.size > 1 {
-		f.a.LslImm64(index, index, uint8(log2u(uint64(scalar.size))))
-	}
-	objectSize := f.allocReg(maskOf(object, index))
-	f.ld32(objectSize, object, 4)
-	end := f.allocReg(maskOf(object, index, objectSize))
-	f.leaDisp(end, index, int32(gc.PayloadOffset)+int32(scalar.size), true)
-	f.cmpRR(end, objectSize, true)
-	f.trapIf(condA, trapCastFailure)
-	f.release(objectSize)
+	end := f.emitNativeArrayElementChecks(object, index, scalar.size)
 
 	if scalar.typ.isFloat() {
 		result := f.allocFReg(0)
@@ -986,6 +977,63 @@ func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directG
 	f.release(object)
 	f.pushReg(result, scalar.typ)
 	return nil
+}
+
+func (f *fn) emitNativeFinalArrayScalarSet(typeIndex uint32, scalar directGCScalar) error {
+	valueElem := f.popValue()
+	var value Reg
+	if scalar.typ.isFloat() {
+		value = f.materializeF(valueElem)
+		f.fpinned = f.fpinned.add(value)
+	} else {
+		value = f.materialize(valueElem)
+		f.pinned = f.pinned.add(value)
+	}
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+	end := f.emitNativeArrayElementChecks(object, index, scalar.size)
+	f.release(end)
+	if scalar.typ.isFloat() {
+		f.a.StrFIdx(object, index, value, int32(gc.PayloadOffset), scalar.typ == mtF64)
+		f.fpinned = f.fpinned.remove(value)
+		f.releaseF(value)
+	} else {
+		f.a.StoreIdx(object, index, value, int32(gc.PayloadOffset), scalar.size)
+		f.pinned = f.pinned.remove(value)
+		f.release(value)
+	}
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	f.release(object)
+	return nil
+}
+
+// emitNativeArrayElementChecks validates the logical index and the physical
+// object extent, then leaves index scaled by the element width for one load or
+// store. The returned scratch register is allocator-owned.
+func (f *fn) emitNativeArrayElementChecks(object, index Reg, size int) Reg {
+	length := f.allocReg(maskOf(object, index))
+	f.ld32(length, object, 8)
+	f.cmpRR(index, length, false)
+	f.trapIf(condAE, trapBuiltin)
+	f.release(length)
+	if size > 1 {
+		f.a.LslImm64(index, index, uint8(log2u(uint64(size))))
+	}
+	objectSize := f.allocReg(maskOf(object, index))
+	f.ld32(objectSize, object, 4)
+	end := f.allocReg(maskOf(object, index, objectSize))
+	f.leaDisp(end, index, int32(gc.PayloadOffset)+int32(size), true)
+	f.cmpRR(end, objectSize, true)
+	f.trapIf(condA, trapCastFailure)
+	f.release(objectSize)
+	return end
 }
 
 // emitNativeFinalCastObject validates one exact-final compact reference and

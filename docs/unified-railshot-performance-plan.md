@@ -779,6 +779,24 @@ prepared invocation with zero B/op and allocations. Compilation improved from
 objectives retain helpers, and the growth stays within the fixture's explicit
 256-byte budget.
 
+### 2026-08-14 — ARM64 native final array scalar writes
+
+Final mutable arrays with pointer-free scalar elements now share the native
+checked-address path for `array.set`. The value and index remain protected while
+the exact object is resolved; logical bounds and physical object extent are
+checked before the store. Packed i8/i16, i32/i64, and f32/f64 stores execute
+natively, while reference/vector elements, non-final or immutable layouts,
+disabled policy, and compact objectives retain the helper. Scalar writes keep a
+same-local raw-address certificate valid because they cannot move collector
+backing or change object identity.
+
+Execution covers null and bounds traps, every admitted scalar storage class,
+and an eight-write region followed by a native read. On Apple M4 Max, that region
+improved from a 613.3 to 96.5 ns/op median (-84.3%) through prepared invocation
+with zero B/op and allocations. Compilation improved from 11.67 to 9.27 us/op
+(-20.5%), B/op fell 35.4%, and native output fell from 1,508 to 1,152 bytes;
+compile allocations increased by one (49 to 50) and remain explicitly tracked.
+
 ---
 
 # 1. North-star architecture

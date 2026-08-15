@@ -36,7 +36,7 @@ func (f *fn) prepareGCResolvedObject(op byte) {
 		return
 	}
 	switch op {
-	case 0x1a, 0x20, 0x41, 0xfb: // drop, local.get, i32.const, GC prefix
+	case 0x1a, 0x20, 0x41, 0x42, 0x43, 0x44, 0xfb: // drop, local.get, constants, GC prefix
 		return
 	default:
 		f.invalidateGCResolvedObject()
@@ -50,6 +50,7 @@ func (f *fn) prepareGCResolvedFB(sub uint32) {
 	switch sub {
 	case 2, 3, 4, // struct.get, struct.get_s, struct.get_u
 		11, 12, 13, // array.get, array.get_s, array.get_u
+		14,     // array.set
 		22, 23: // ref.cast, ref.cast_null; a helper fallback flushes the cache
 		return
 	default:

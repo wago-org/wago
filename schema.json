@@ -85,6 +85,7 @@
               "gc-fixed-array-len",
               "gc-native-final-array-len",
               "gc-native-final-array-scalar-get",
+              "gc-native-final-array-scalar-set",
               "gc-native-final-scalar-get",
               "gc-native-resolve-reuse",
               "i64-mask32",

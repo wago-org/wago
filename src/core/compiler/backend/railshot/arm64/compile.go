@@ -97,6 +97,10 @@ var nativeGCFinalScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_SCA
 // reads through the checked collector native view in speed-oriented output.
 var nativeGCFinalArrayScalarGetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_SCALAR_GET") != "1"
 
+// nativeGCFinalArrayScalarSetEnabled resolves final pointer-free scalar array
+// writes through the checked collector native view in speed-oriented output.
+var nativeGCFinalArrayScalarSetEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_FINAL_ARRAY_SCALAR_SET") != "1"
+
 // nativeGCResolveReuseEnabled retains one checked raw object address across an
 // adjacent run of scalar reads from the same local. The immutable compact
 // reference remains the semantic identity; every other operation invalidates
