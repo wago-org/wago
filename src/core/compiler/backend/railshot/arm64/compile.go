@@ -1906,7 +1906,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			f.reserved = f.reserved.add(r)
 		}
 	}
-	regABI := policy.EnabledOption(optRegABI) && sigFitsRegABI(ft)
+	regABI := policy.EnabledOption(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
 	// Only wrapper-ABI code reads frResultsOff. Register-ABI adapters preserve X3
 	// below the internal frame, while direct internal and tail paths return in
 	// registers. EH and GC frame plans retain the established fixed layout until

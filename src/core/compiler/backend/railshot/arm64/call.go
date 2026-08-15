@@ -136,6 +136,64 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	return true
 }
 
+// sigFitsReferenceResultRegABI is the staged typed-tail extension of the native
+// register ABI. It admits one funcref result in X0 with numeric parameters only.
+// The descriptor pointer remains owned by the instance's bounded descriptor arena;
+// no GC-managed reference or foreign wrapper result is admitted by this shape.
+func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Results) != 1 || ft.Results[0].Kind() != wasm.ValRef || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Params {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
+}
+
+// sigFitsTypedReferenceRegABI extends the physical register classification used
+// by return_call_ref to one-slot reference parameters/results. Ownership and GC
+// domain checks remain separate from this purely mechanical ABI predicate.
+func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Results) > 2 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Params {
+		switch {
+		case isIntValType(typ), typ.Kind() == wasm.ValRef:
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
+		return false
+	}
+	for _, typ := range ft.Results {
+		if !isIntValType(typ) && !isFloatValType(typ) && typ.Kind() != wasm.ValRef {
+			return false
+		}
+	}
+	if len(ft.Results) == 2 {
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func tailResultABICompatible(a, b []wasm.ValType) bool {
 	if len(a) != len(b) {
 		return false
@@ -259,7 +317,9 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	f.stats.call("tail-direct")
 	target := int(idx) - imported
-	if f.opt(optRegABI) && sigFitsRegABI(ft) {
+	callerRegisterABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
+	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	if f.opt(optRegABI) && callerRegisterABI && targetRegisterABI {
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.Branch()
 			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
@@ -516,6 +576,11 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
 	}
+	callerRegABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(f.ft))
+	targetRegABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(ft))
+	if !callerRegABI || !targetRegABI {
+		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
+	}
 	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
@@ -598,7 +663,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	f.release(targetContext)
 	f.release(kind)
 
-	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
+	registerTail := f.opt(optRegABI) && callerRegABI && targetRegABI
 	if registerTail {
 		f.cmpImm(X13, uint32(abi.FuncRefInternalTagValue), true)
 		wrapper := f.a.Bcond(condNE)
@@ -749,6 +814,13 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
+	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
+	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	registerTail := callerRegisterTail && targetRegisterTail
+	wrapperTail := !callerRegisterTail && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
+	if !registerTail && !wrapperTail {
+		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
+	}
 	if f.stagedTailDescriptors && f.importBindings != nil && !f.immutableLocalTable {
 		idx := f.materialize(f.popValue())
 		f.canonicalizeTableOperand(idx, tableIdx)
@@ -804,7 +876,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.stripDescriptorHomeTags(home)
 	f.cmpRR(home, linMemReg, true)
 	f.trapIf(condNE, trapTailUnsupported)
-	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
+	registerTail = f.opt(optRegABI) && registerTail
 	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
 	if registerTail {
 		wantKind = uint32(abi.FuncRefInternalTagValue)
