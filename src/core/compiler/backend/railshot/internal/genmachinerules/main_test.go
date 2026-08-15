@@ -18,7 +18,7 @@ func TestParseRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"func matchMachinePair", "machineRuleSwapChain3", "first.src == second.dst"} {
+	for _, want := range []string{"//go:build arm64", "func matchMachinePair", "machineRuleSwapChain3", "first.src == second.dst"} {
 		if !strings.Contains(string(generated), want) {
 			t.Fatalf("generated matcher does not contain %q", want)
 		}
