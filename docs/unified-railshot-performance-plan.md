@@ -1253,6 +1253,28 @@ us/op (-0.8%), and SIMD serialization from 26.76 to 26.51 us/op (-0.9%). The
 execution cases, the complete AMD64 backend, the executable corpus, and native
 race tests pass.
 
+### 2026-08-15 — AMD64 unsigned three-way compare fusion
+
+The bounded Valent selector now recognizes the exact unsigned three-way forms
+`(a > b) - (a < b)` and its reversed result when both comparisons repeat the
+same simple locals, globals, or constants. AMD64 emits one `CMP`, `SETA`, and
+`SBB result, 0`; `SETcc` preserves the comparison flags, so the final operation
+maps less/equal/greater to -1/0/1 without materializing and subtracting two
+booleans. Mutable loads are excluded because folding them would change their
+observable read count. A dedicated immutable `three-way-unsigned` policy keeps
+the ordinary lowering as an exact A/B and fallback path.
+
+An opt-in corpus probe found 54 exact sites: 21 in `bignum.wasm`, 9 in
+`regexmatch.wasm`, and 24 in `script.wasm`. Their final native images shrink by
+256, 48, and 256 bytes respectively. On the Ryzen 7 7800X3D, six serialized
+samples of a 128-site fixture improve from a 63.33 to 43.64 ns/op median
+(-31.1%); native function bytes fall from 4,193 to 3,101 (-26.0%), with zero
+execution B/op and allocations. Focused compilation improves from an 87.50 to
+76.53 us/op median (-12.5%) while retaining 31 allocations/op and approximately
+211 kB/op. Full-width i32/i64 execution, both result orientations, policy and
+near-miss cases, the AMD64 race suite, and the full repository suite pass
+natively.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
