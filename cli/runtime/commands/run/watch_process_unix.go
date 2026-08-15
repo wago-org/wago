@@ -79,7 +79,7 @@ func prepareWatchedCommand(command *exec.Cmd) error {
 	if err := prepareWatchedProcessTracking(); err != nil {
 		return err
 	}
-	attributes := &syscall.SysProcAttr{Setpgid: true}
+	attributes := &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
 	configureWatchedCommandStart(attributes)
 	if _, _, ok := watchedCommandTerminal(command); ok {
 		attributes.Setpgid = false

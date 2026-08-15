@@ -70,6 +70,121 @@ func TestWatchedSupervisorCleansSanitizedDaemon(t *testing.T) {
 	}
 }
 
+func TestWatchGuardianStopsWhenOuterWatcherDies(t *testing.T) {
+	watchsupervisor.Enter()
+	const testName = "^TestWatchGuardianStopsWhenOuterWatcherDies$"
+	switch os.Getenv("WAGO_WATCH_PARENT_ROLE") {
+	case "guest":
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_GUEST_PID"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(24 * time.Hour)
+		return
+	case "outer":
+		environment := watchsupervisor.Environment(append(os.Environ(),
+			"WAGO_WATCH_PARENT_ROLE=guest",
+			"WAGO_WATCH_GUEST_PID="+os.Getenv("WAGO_WATCH_GUEST_PID"),
+		), os.Args[0])
+		child, err := startWatchedChild(watchOptions{
+			executable:  os.Args[0],
+			arguments:   []string{"-test.run=" + testName, "-test.count=1"},
+			environment: environment,
+			stdin:       nil,
+			stdout:      io.Discard,
+			stderr:      io.Discard,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_GUARDIAN_PID"), []byte(strconv.Itoa(child.command.Process.Pid)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(24 * time.Hour)
+		return
+	}
+
+	directory := t.TempDir()
+	guardianPath := filepath.Join(directory, "guardian.pid")
+	guestPath := filepath.Join(directory, "guest.pid")
+	outer := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+	outer.Env = append(os.Environ(),
+		"WAGO_WATCH_PARENT_ROLE=outer",
+		"WAGO_WATCH_GUARDIAN_PID="+guardianPath,
+		"WAGO_WATCH_GUEST_PID="+guestPath,
+	)
+	if err := outer.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pids := []int{outer.Process.Pid}
+	t.Cleanup(func() {
+		for _, pid := range pids {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+		_ = outer.Wait()
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	var guardianPID, workerPID, guestPID int
+	var treeReady bool
+	for time.Now().Before(deadline) {
+		guardianData, guardianErr := os.ReadFile(guardianPath)
+		guestData, guestErr := os.ReadFile(guestPath)
+		if guardianErr == nil && guestErr == nil {
+			guardianPID, guardianErr = strconv.Atoi(string(guardianData))
+			guestPID, guestErr = strconv.Atoi(string(guestData))
+			guest, guestOK := watchedProcess(guestPID)
+			if guardianErr == nil && guestErr == nil && guestOK {
+				workerPID = guest.parent
+				worker, workerOK := watchedProcess(workerPID)
+				guardian, guardianOK := watchedProcess(guardianPID)
+				if workerOK && worker.parent == guardianPID && guardianOK && guardian.parent == outer.Process.Pid {
+					treeReady = true
+					break
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !treeReady {
+		t.Fatal("watch process tree did not start")
+	}
+	pids = append(pids, guardianPID, workerPID, guestPID)
+	if err := outer.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = outer.Wait()
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		alive := false
+		for _, pid := range pids[1:] {
+			state := watchProcessState(pid)
+			if state != "" && state != "Z" {
+				alive = true
+			}
+		}
+		if !alive {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("watch tree survived outer death: guardian=%s worker=%s guest=%s", watchProcessState(guardianPID), watchProcessState(workerPID), watchProcessState(guestPID))
+}
+
+func watchProcessState(pid int) string {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return ""
+	}
+	close := strings.LastIndex(string(data), ") ")
+	if close < 0 {
+		return "?"
+	}
+	fields := strings.Fields(string(data[close+2:]))
+	if len(fields) == 0 {
+		return "?"
+	}
+	return fields[0]
+}
+
 func TestWatchTrackingExcludesLateDaemon(t *testing.T) {
 	child, err := startWatchedChild(watchOptions{
 		stopGrace:  250 * time.Millisecond,
