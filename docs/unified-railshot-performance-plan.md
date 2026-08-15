@@ -1334,6 +1334,25 @@ Full-width add/sub execution, operand orientation, policy and near-miss tests,
 the affected corpus modules, the complete AMD64 backend, the repository suite,
 and native race tests pass.
 
+### 2026-08-15 — deferred general tiny if-conversion
+
+A streaming scan of all 64 benchmark modules found only 16 load-free integer
+`if (result ...)` regions whose two arms are bounded constants, local reads, or
+one local-plus-immediate operation. All 16 are synthetic `isa_ctl.wasm` cases
+already served by ARM64's narrower local-sink fast path; the production corpus
+has no candidate. Across all 1,333 checked-in Wasm artifacts, the additional
+matches are repeated regression fixtures and command-wrapper boilerplate, not a
+measured hot workload.
+
+The real small-result regions observed in Ruby put a memory load in one arm.
+Speculating that load for `CMOV`/`CSEL` would change Wasm trap behavior, so they
+remain outside the plan's initial pure, nontrapping admission class. A general
+if-converter would therefore add copied-reader parsing, dual-arm register
+pressure, and target cost policy without a production consumer. No compiler
+state was added; this item remains deferred until an opportunity counter finds
+a representative load-free workload or a separate trap-preserving predication
+scheme is justified.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
