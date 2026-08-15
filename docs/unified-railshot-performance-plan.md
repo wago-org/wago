@@ -4326,3 +4326,19 @@ byte-identical code for every executable corpus module while retaining the
 independent wrapper win. Tests cover native
 execution, disabled policy, exact byte/store attribution, and offset-cap
 fallback; `WAGO_ARM64_NO_ENTRY_PARAM_PAIRS=1` is the exact rollback.
+
+## 2026-08-15 — rejected ARM64 host-adapter argument pairs
+
+A follow-up prototype paired adjacent GP loads in register-ABI host adapters.
+The 64-module corpus exposed 6,990 argument pairs across 14 modules, but no
+adjacent GP result-store pair. The eight-parameter fixture reduced its adapter
+from 56 to 44 bytes, yet ten execution samples were neutral at 12.76 versus
+12.79 ns/op with zero B/op and allocations. The only affected executable corpus
+row, `dispatch.apply`, was also neutral: eight order-balanced baseline/candidate
+pairs had 20.05 and 20.04 ns/op medians.
+
+The option, matcher state, counters, schema entry, tests, and benchmarks were
+removed. Adapter-local instruction savings alone do not satisfy the execution
+gate, particularly when internal-entry alignment can consume part of the byte
+reduction. This rule should return only with a target workload that measures a
+repeatable boundary improvement.
