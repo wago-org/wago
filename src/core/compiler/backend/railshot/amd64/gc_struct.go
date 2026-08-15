@@ -47,7 +47,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return f.emitGCArray(sub, r)
 	}
 	if sub == 20 || sub == 21 {
-		return f.emitGCI31Test(sub, r)
+		if err := f.emitGCI31Test(sub, r); err != nil {
+			return err
+		}
+		f.markTopBooleanFact()
+		return nil
 	}
 	if sub == 22 || sub == 23 {
 		return f.emitGCI31Cast(sub, r)

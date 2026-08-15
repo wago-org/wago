@@ -15,6 +15,16 @@ const (
 	factSignExt32   = shared.ValueFactSignExt32
 )
 
+func (f *fn) markTopBooleanFact() {
+	if !f.opt(optValueFacts) {
+		return
+	}
+	e := f.s.back()
+	if e != nil && e != f.s.head && e.kind == ekValue {
+		e.st.facts |= factUpper32Zero | factBoolean
+	}
+}
+
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
 	if isCompare(op) || op == opEqz {
 		return factUpper32Zero | factBoolean

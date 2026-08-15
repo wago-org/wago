@@ -1012,6 +1012,18 @@ alternating fixed-work compile medians improved from 16.153 to 16.113 us/op
 us/op (-0.4%, treated as noise). B/op and allocations remained unchanged at
 22,136/31 and 18,368/34 respectively; disabled facts retain every extension.
 
+AMD64 `ref.test`/`ref.test_null` now publish the boolean result contract after
+every successful constant, inline, dynamic-subtype, and helper-backed lowering.
+Its eager integer `select` and compare-flags `select` paths also intersect the
+two candidate value facts alongside their existing GC-reference intersection.
+On the Ryzen 7 7800X3D, sixteen abstract function tests removed every following
+unsigned extension and reduced native output from 353 to 321 bytes (-9.1%);
+six alternating fixed-work compile medians were 16.000 versus 16.001 us/op.
+Eight boolean selects reduced output from 409 to 393 bytes (-3.9%) and improved
+compile medians from 15.432 to 15.281 us/op (-1.0%). B/op and allocations were
+unchanged at 19,920/29 and 20,352/32. Disabled facts and a select with one
+unknown candidate retain their extensions.
+
 ---
 
 # 1. North-star architecture
