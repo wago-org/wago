@@ -15,8 +15,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const procThreadAttributeJobList = 0x0002000d
-
 type watchedChildPlatform struct {
 	job windows.Handle
 }
@@ -82,7 +80,7 @@ func createWatchedProcess(command *exec.Cmd, job windows.Handle) error {
 	}
 	defer closeWatchedWindowsHandles(handles[:])
 
-	attributes, err := windows.NewProcThreadAttributeList(2)
+	attributes, err := windows.NewProcThreadAttributeList(1)
 	if err != nil {
 		return err
 	}
@@ -90,10 +88,6 @@ func createWatchedProcess(command *exec.Cmd, job windows.Handle) error {
 	if err := attributes.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), unsafe.Sizeof(handles)); err != nil {
 		return err
 	}
-	if err := attributes.Update(procThreadAttributeJobList, unsafe.Pointer(&job), unsafe.Sizeof(job)); err != nil {
-		return err
-	}
-
 	executable, err := windows.UTF16PtrFromString(command.Path)
 	if err != nil {
 		return err
@@ -130,7 +124,7 @@ func createWatchedProcess(command *exec.Cmd, job windows.Handle) error {
 		nil,
 		nil,
 		true,
-		windows.CREATE_DEFAULT_ERROR_MODE|windows.CREATE_NEW_PROCESS_GROUP|windows.CREATE_UNICODE_ENVIRONMENT|windows.EXTENDED_STARTUPINFO_PRESENT,
+		windows.CREATE_DEFAULT_ERROR_MODE|windows.CREATE_NEW_PROCESS_GROUP|windows.CREATE_SUSPENDED|windows.CREATE_UNICODE_ENVIRONMENT|windows.EXTENDED_STARTUPINFO_PRESENT,
 		&environment[0],
 		directory,
 		&startup.StartupInfo,
@@ -139,8 +133,16 @@ func createWatchedProcess(command *exec.Cmd, job windows.Handle) error {
 	if err != nil {
 		return err
 	}
-	windows.CloseHandle(info.Thread)
+	defer windows.CloseHandle(info.Thread)
 	defer windows.CloseHandle(info.Process)
+	if err := windows.AssignProcessToJobObject(job, info.Process); err != nil {
+		_ = windows.TerminateProcess(info.Process, 1)
+		return err
+	}
+	if _, err := windows.ResumeThread(info.Thread); err != nil {
+		_ = windows.TerminateJobObject(job, 1)
+		return err
+	}
 	process, err := os.FindProcess(int(info.ProcessId))
 	if err != nil {
 		_ = windows.TerminateJobObject(job, 1)

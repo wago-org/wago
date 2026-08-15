@@ -1,4 +1,4 @@
-//go:build !wago_lean
+//go:build (linux || windows) && !wago_lean
 
 package run
 

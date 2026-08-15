@@ -212,17 +212,14 @@ packages; it does not become a third CLI role.
 the input module changes, preserving guest arguments and plugin selection made
 by the manager handoff. The runtime supervises one child process tree at a time,
 keeps file polling active while the guest runs, and waits for stable content
-before a restart. On Linux and macOS, a terminal-backed watcher and its direct
-guest stay in the shell's foreground job group, so both receive terminal
+before a restart. On Linux, a terminal-backed watcher and its direct guest stay
+in the shell's foreground job group, so both receive terminal
 interrupts. The watcher restores terminal ownership if a guest descendant
 creates a separate foreground group. It also records bounded process identities
 and checks each identity again before signaling it. Linux subreaper ownership
-and macOS kernel fork events keep double-forked children tracked. On macOS, a
-trusted shell trampoline waits on an inherited pipe until event tracking is
-active, then replaces itself with the runtime in the same process. Cleanup
-therefore reaches descendants that create a new session or process group. On
-Windows, the extended process-start API puts the child in its kill-on-close job
-before its first instruction runs. The watcher mirrors terminal stop and
+keeps double-forked children tracked. On Windows, the extended process-start API
+puts the child in its kill-on-close job before its first instruction runs. The
+watcher mirrors terminal stop and
 continue events, and its status output remains safe when background terminal
 writes are disabled. It can find the controlling terminal through stdin,
 stdout, or stderr, including after a background job is foregrounded. Hangup,
@@ -230,8 +227,10 @@ interrupt, quit, and termination signals stop the child tree before the watcher
 exits. Cheap file identity, size, modification, and change metadata gates full
 content hashing. A full scan after 25 poll intervals is the bound when a file
 system does not update that metadata. The hash still detects same-size rewrites
-when modification timestamps do not change. The size-first `wago_lean` profile
-does not include watch mode; its parser rejects `--watch`.
+when modification timestamps do not change. macOS does not provide a safe public
+API to track a process that double-forks before a process-table scan. macOS and
+the size-first `wago_lean` profile therefore do not include watch mode. Their
+parsers reject `--watch`.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

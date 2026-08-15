@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && !wago_lean
+//go:build linux && !wago_lean
 
 package run
 

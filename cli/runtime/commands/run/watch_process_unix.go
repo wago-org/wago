@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && !wago_lean
+//go:build linux && !wago_lean
 
 package run
 
@@ -13,7 +13,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/wago-org/wago/cli/internal/watchstart"
 	"golang.org/x/sys/unix"
 )
 
@@ -85,11 +84,10 @@ func prepareWatchedCommand(command *exec.Cmd) error {
 		attributes.Setpgid = false
 	}
 	command.SysProcAttr = attributes
-	return watchstart.Prepare(command)
+	return nil
 }
 
 func abortWatchedCommand(command *exec.Cmd) {
-	watchstart.Abort(command)
 	restoreWatchedTerminal(command)
 }
 
