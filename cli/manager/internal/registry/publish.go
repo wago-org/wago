@@ -53,27 +53,15 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 		fatal("publish: no version; set package.version or tag the repository")
 	}
 	version = canonicalGoVersion(version)
-	generated, localProviders, err := generateLocalProviderCatalog(ctx, moduleRoot, metadata)
+	catalog, err := buildProviderCatalog(ctx, manifestPath, metadata)
 	if err != nil {
 		fatal("publish: local provider catalog: %v", err)
 	}
-	localVersion, err := catalogVersion(metadata.Version, localProviders)
-	if err != nil {
-		fatal("publish: local provider catalog: %v", err)
+	if strings.TrimPrefix(catalog.version, "v") != strings.TrimPrefix(version, "v") {
+		fatal("publish: local provider version %s does not match release %s", catalog.version, version)
 	}
-	if strings.TrimPrefix(localVersion, "v") != strings.TrimPrefix(version, "v") {
-		fatal("publish: local provider version %s does not match release %s", localVersion, version)
-	}
-	if err := validatePublishProviders(localProviders, metadata, version); err != nil {
-		fatal("publish: local provider catalog: %v", err)
-	}
-	committedPath := filepath.Join(moduleRoot, wago.ProviderCatalogFile)
-	committed, err := readRegularFile(committedPath, providerCatalogFileLimit)
-	if err != nil {
-		fatal("publish: read %s: %v (run: wago plugin catalog)", committedPath, err)
-	}
-	if !bytes.Equal(committed, generated) {
-		fatal("publish: %s is stale (run: wago plugin catalog)", committedPath)
+	if err := checkProviderCatalogCurrent(catalog); err != nil {
+		fatal("publish: %v", err)
 	}
 	commit, err := resolvePublishTag(ctx, moduleRoot, manifestPath, version, defaultPublishTagUI())
 	if errors.Is(err, errPublishCancelled) {
@@ -107,7 +95,7 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	if err != nil {
 		fatal("publish: exact source artifact %s: %v", wago.ProviderCatalogFile, err)
 	}
-	if !bytes.Equal(artifactCatalog, generated) {
+	if !bytes.Equal(artifactCatalog, catalog.generated) {
 		fatal("publish: exact source artifact %s does not match the local generated catalog", wago.ProviderCatalogFile)
 	}
 	document, err := wago.DecodeProviderCatalog(artifactCatalog)

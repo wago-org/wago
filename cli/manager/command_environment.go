@@ -444,7 +444,7 @@ func (commandEnvironment) RebuildPlugins(options pluginrebuild.Options) {
 
 func (e commandEnvironment) Publish(options publish.Options) {
 	if automation.DryRun() {
-		manifest, err := registry.ValidatePublishManifest(options.Manifest)
+		manifest, err := registry.ValidatePublishPlan(e.context(), options.Manifest)
 		if err != nil {
 			fatal("publish: %v", err)
 		}
@@ -458,7 +458,7 @@ func (e commandEnvironment) Publish(options publish.Options) {
 
 func (e commandEnvironment) Catalog(options plugincatalog.Options) {
 	if automation.DryRun() {
-		manifest, err := registry.ValidatePublishManifest(options.Manifest)
+		manifest, err := registry.ValidateCatalogPlan(e.context(), registry.CatalogRequest{Manifest: options.Manifest, Check: options.Check})
 		if err != nil {
 			fatal("catalog: %v", err)
 		}

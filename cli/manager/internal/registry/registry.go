@@ -4,6 +4,10 @@ package registry
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/wago-org/wago/cli/internal/project"
 )
@@ -48,14 +52,55 @@ func RecordInstallContext(ctx context.Context, module, version string) {
 }
 func Closest(module string) string { return closestModule(module) }
 
-// ValidatePublishManifest checks the package metadata used by catalog and
-// publish dry runs, and returns the resolved manifest path.
-func ValidatePublishManifest(path string) (string, error) {
+// ValidateCatalogPlan performs the non-writing work required by a catalog dry
+// run, including loading the provider package and checking a committed catalog
+// when requested.
+func ValidateCatalogPlan(ctx context.Context, request CatalogRequest) (string, error) {
+	path := request.Manifest
 	if path == "" {
 		path = project.File
 	}
-	_, _, err := readPublishManifest(path)
+	_, metadata, err := readPublishManifest(path)
+	if err != nil {
+		return path, err
+	}
+	catalog, err := buildProviderCatalog(ctx, path, metadata)
+	if err != nil {
+		return path, err
+	}
+	if request.Check {
+		err = checkProviderCatalogCurrent(catalog)
+	}
 	return path, err
+}
+
+// ValidatePublishPlan performs the local, non-publishing checks required by a
+// publish dry run. Authentication, tag creation, source download, and upload
+// remain execution-time work because they require remote state or mutations.
+func ValidatePublishPlan(ctx context.Context, path string) (string, error) {
+	if path == "" {
+		path = project.File
+	}
+	_, metadata, err := readPublishManifest(path)
+	if err != nil {
+		return path, err
+	}
+	version := strings.TrimSpace(metadata.Version)
+	if version == "" {
+		version = strings.TrimSpace(gitOutputAt(filepath.Dir(path), "describe", "--tags", "--abbrev=0"))
+	}
+	if version == "" {
+		return path, errors.New("no version; set package.version or tag the repository")
+	}
+	version = canonicalGoVersion(version)
+	catalog, err := buildProviderCatalog(ctx, path, metadata)
+	if err != nil {
+		return path, fmt.Errorf("local provider catalog: %w", err)
+	}
+	if strings.TrimPrefix(catalog.version, "v") != strings.TrimPrefix(version, "v") {
+		return path, fmt.Errorf("local provider version %s does not match release %s", catalog.version, version)
+	}
+	return path, checkProviderCatalogCurrent(catalog)
 }
 
 func LoginContext(ctx context.Context, request LoginRequest) { registryLoginContext(ctx, request) }

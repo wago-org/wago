@@ -223,8 +223,33 @@ func Providers() []wago.PluginProvider { return []wago.PluginProvider{{Definitio
 	if err := generateProviderCatalog(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := ValidateCatalogPlan(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidatePublishPlan(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
 	write("wago.providers.json", "{}\n")
 	if err := generateProviderCatalog(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err == nil || !strings.Contains(err.Error(), "stale") {
 		t.Fatalf("stale check error = %v", err)
+	}
+	if _, err := ValidateCatalogPlan(context.Background(), CatalogRequest{Manifest: manifest, Check: true}); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("catalog dry-run stale check error = %v", err)
+	}
+	if _, err := ValidatePublishPlan(context.Background(), manifest); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("publish dry-run stale check error = %v", err)
+	}
+	catalogPath := filepath.Join(root, wago.ProviderCatalogFile)
+	if err := os.Remove(catalogPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateCatalogPlan(context.Background(), CatalogRequest{Manifest: manifest}); err != nil {
+		t.Fatalf("catalog generation dry run = %v", err)
+	}
+	if _, err := os.Stat(catalogPath); !os.IsNotExist(err) {
+		t.Fatalf("catalog dry run wrote %s: %v", catalogPath, err)
+	}
+	if _, err := ValidatePublishPlan(context.Background(), manifest); err == nil || !strings.Contains(err.Error(), "missing or unreadable") {
+		t.Fatalf("publish dry-run missing catalog error = %v", err)
 	}
 }
