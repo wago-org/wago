@@ -3995,3 +3995,19 @@ cover polymorphic table dispatch, the self-capable fallback, enabled/disabled
 move attribution, serial/parallel byte determinism, and a 64-call native
 execution path. The full local repository suite, native AMD64 backend suite,
 and benchmark module suite pass.
+
+### Rejected follow-up: dead call-local round-trip forwarding
+
+A bounded AMD64 prototype recognized
+`call; local.set x; local.get x` and kept the call result on the operand stack
+when the existing 64-operation copied-reader model proved that the shown get was
+the local's final read before overwrite or function exit. Reads, structured
+boundaries, malformed immediates, and fuel exhaustion retained the ordinary
+result-to-local move. The implementation needed no summary or heap storage and
+passed native execution, serial/parallel determinism, later-read, and fuel-cap
+tests.
+
+The exact 64-module AMD64 corpus recorded zero selections. The scanner and
+lowering were removed. Eliminating the remaining `call -> local.set` moves needs
+a finite result ABI or bounded physical ownership transfer; another dead-local
+lookahead does not match the current workloads.
