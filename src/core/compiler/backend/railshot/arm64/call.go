@@ -360,6 +360,59 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	emitJump()
 }
 
+func (f *fn) emitTailWrapperToRegisterJump(ft *wasm.CompType, emitJump func()) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	if len(roots) < p {
+		panic("arm64 tail wrapper-to-register operand underflow")
+	}
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(X16)
+	argBase := len(types) - p
+	gp, fp := 0, 0
+	for i, typ := range ft.Params {
+		slot := slotOfLogicalTypes(types, argBase+i)
+		mt := mtOf(typ)
+		if mt.isFloat() {
+			f.fld(fpArgRegs[fp], SP, f.spillOff(slot), mt == mtF64)
+			fp++
+		} else {
+			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
+			gp++
+		}
+	}
+	f.ld64(X12, SP, frResultsOff)
+	f.emitTailFrameRelease()
+	f.a.SubSP64(32)
+	f.st64(SP, 0, LR)
+	f.st64(SP, 8, X12)
+	trampolineADR := f.a.Adr(LR)
+	f.recordPCRelative(trampolineADR)
+	emitJump()
+
+	trampoline := f.a.Len()
+	f.a.PatchAdr(trampolineADR, trampoline)
+	f.ld64(X3, SP, 8)
+	if len(ft.Results) > 0 {
+		if isFloatValType(ft.Results[0]) {
+			f.a.FStoreDisp(X3, 0, 0, wasm.EqualValType(ft.Results[0], wasm.F64))
+		} else {
+			f.st64(X3, 0, X0)
+		}
+	}
+	if len(ft.Results) > 1 {
+		f.st64(X3, 8, X1)
+	}
+	f.ld64(LR, SP, 0)
+	f.a.AddSP64(32)
+	f.a.Ret()
+}
+
 func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
@@ -674,13 +727,16 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	f.release(targetContext)
 	f.release(kind)
 
-	registerTail := f.opt(optRegABI) && callerRegABI && targetRegABI
-	if registerTail {
+	if f.opt(optRegABI) && targetRegABI {
 		f.cmpImm(X13, uint32(abi.FuncRefInternalTagValue), true)
 		wrapper := f.a.Bcond(condNE)
 		f.cmpRR(X10, linMemReg, true)
 		f.trapIf(condNE, trapTailUnsupported)
-		f.emitTailRegisterJump(ft, func() { f.a.Br(X17) })
+		if callerRegABI {
+			f.emitTailRegisterJump(ft, func() { f.a.Br(X17) })
+		} else {
+			f.emitTailWrapperToRegisterJump(ft, func() { f.a.Br(X17) })
+		}
 
 		f.a.PatchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals

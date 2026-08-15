@@ -175,33 +175,43 @@ func TestARM64WideWrapperCallerTailsToNarrowFuncrefRegisterTarget(t *testing.T) 
 		params[i] = wasm.I32
 		args[i] = ValueI32(0)
 	}
-	module := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
-			wasmtest.FuncType(params, []wasm.ValType{wasm.FuncRef}),
-		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
-		wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(1))...))),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0xd2, 0x01, 0x0b}), // target returns ref.func caller
-			wasmtest.Code([]byte{0x12, 0x00, 0x0b}), // wide wrapper caller tails to narrow target
-		)),
-	)
-	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-		t.Run(objective.String(), func(t *testing.T) {
-			compiled := compileProperTailBehavior(t, module, objective, 2)
-			in, err := instantiateCore(compiled, InstantiateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			got, err := in.Call(context.Background(), "run", args...)
-			if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
-				t.Fatalf("mixed wrapper/register proper-tail result = %v, %v", got, err)
-			}
-			if !in.FuncRefMatchesFunction(got[0].FuncRef(), 1) {
-				t.Fatalf("mixed wrapper/register proper-tail result lost function identity: %v", got)
+	for _, tail := range []struct {
+		name string
+		body []byte
+	}{
+		{name: "direct", body: []byte{0x12, 0x00, 0x0b}},
+		{name: "reference", body: []byte{0xd2, 0x00, 0x15, 0x00, 0x0b}},
+	} {
+		t.Run(tail.name, func(t *testing.T) {
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(
+					wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+					wasmtest.FuncType(params, []wasm.ValType{wasm.FuncRef}),
+				)),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(1))...))),
+				wasmtest.Section(10, wasmtest.Vec(
+					wasmtest.Code([]byte{0xd2, 0x01, 0x0b}), // target returns ref.func caller
+					wasmtest.Code(tail.body),
+				)),
+			)
+			for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+				t.Run(objective.String(), func(t *testing.T) {
+					compiled := compileProperTailBehavior(t, module, objective, 2)
+					in, err := instantiateCore(compiled, InstantiateOptions{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					got, err := in.Call(context.Background(), "run", args...)
+					if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
+						t.Fatalf("mixed wrapper/register proper-tail result = %v, %v", got, err)
+					}
+					if !in.FuncRefMatchesFunction(got[0].FuncRef(), 1) {
+						t.Fatalf("mixed wrapper/register proper-tail result lost function identity: %v", got)
+					}
+				})
 			}
 		})
 	}
