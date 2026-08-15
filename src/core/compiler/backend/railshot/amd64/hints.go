@@ -455,9 +455,11 @@ func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score
 
 func scanBodyBytesGlobalScores(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, body []byte, nGlobals int, add func(g uint32, score int64)) error {
 	r := wasm.ReaderFrom(body)
-	cached := wasm.NewModuleInstructionClassifier(m, true)
+	var cached wasm.ModuleInstructionClassifier
 	if classifier != nil {
 		cached = *classifier
+	} else {
+		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
 	s := globalScoreByteScanner{r: byteScanReader{Reader: r}, nGlobals: nGlobals, add: add, m: m, classifier: cached}
 	term, err := s.scanExpr(0, 0, false)
@@ -595,9 +597,11 @@ func scanBodyBytesIntoMemory64WithModule(body []byte, nLocals int, nGlobals int,
 func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
-	cached := wasm.NewModuleInstructionClassifier(m, true)
+	var cached wasm.ModuleInstructionClassifier
 	if classifier != nil {
 		cached = *classifier
+	} else {
+		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
 	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, entryPrefix: true, memory64: memory64, m: m, classifier: cached, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, importedFuncs: importedFuncs}
 	called, term, err := s.scanExpr(0, 0, -1, false)
