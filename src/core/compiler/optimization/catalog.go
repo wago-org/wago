@@ -291,6 +291,7 @@ var catalog = []Definition{
 	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
 	amd64("assoc-tree", "Associative tree cover", "cover high-pressure bounded associative trees with one accumulator"),
 	experimentalAMD64("bmi2-rorx", "BMI2 rotates", "use non-destructive immediate rotates on BMI2 hosts"),
+	experimentalAMD64("bmi2-shifts", "BMI2 variable shifts", "use non-destructive variable shifts without the fixed CL register on BMI2 hosts"),
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
 	amd64("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),

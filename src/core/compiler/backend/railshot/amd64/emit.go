@@ -729,7 +729,37 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		node.op = opNone
 		return dest
 	}
-
+	if f.opt(optBMI2Shifts) && (node.op == opShl || node.op == opShrU || node.op == opShrS) {
+		if dest != regNone {
+			f.pinned = f.pinned.add(dest)
+		}
+		src, srcOwned := f.materializeRead(left)
+		f.pinned = f.pinned.add(src)
+		count, countOwned := f.materializeRead(right)
+		if dest == regNone {
+			dest = f.allocReg(maskOf(src).add(count))
+		}
+		switch node.op {
+		case opShl:
+			f.a.Shlx(dest, src, count, w)
+		case opShrU:
+			f.a.Shrx(dest, src, count, w)
+		case opShrS:
+			f.a.Sarx(dest, src, count, w)
+		}
+		if srcOwned && src != dest {
+			f.release(src)
+		}
+		if countOwned && count != dest {
+			f.release(count)
+		}
+		f.pinned = f.pinned.remove(src).remove(dest)
+		f.consumeBlockBelow(node)
+		f.occupy(node, dest)
+		node.op = opNone
+		f.stats.peep("bmi2-variable-shift")
+		return dest
+	}
 	// Variable count → CL. Compute the shifted value into a scratch register that
 	// no sub-computation hard-targets — not RAX/RDX (a div/rem operand may appear
 	// in `left` or `right`) and not RCX (the count, or a nested variable shift).

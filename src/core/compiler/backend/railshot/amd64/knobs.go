@@ -28,6 +28,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
 	optimization.Bind("bmi2-rorx", &bmi2RorxEnabled),
+	optimization.Bind("bmi2-shifts", &bmi2ShiftsEnabled),
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
@@ -77,6 +78,7 @@ var (
 	optTreeOrder            = optimizationBindings.Option("tree-order")
 	optAssocTree            = optimizationBindings.Option("assoc-tree")
 	optBMI2Rorx             = optimizationBindings.Option("bmi2-rorx")
+	optBMI2Shifts           = optimizationBindings.Option("bmi2-shifts")
 	optVEXFloatMem          = optimizationBindings.Option("vex-float-mem")
 	optMultiBoundsCert      = optimizationBindings.Option("multi-bounds-cert")
 	optAddrZExtElim         = optimizationBindings.Option("addr-zext-elim")

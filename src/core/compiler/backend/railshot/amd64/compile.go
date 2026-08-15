@@ -230,6 +230,11 @@ var valueFactsEnabled = os.Getenv("WAGO_AMD64_NOPROVENANCE") != "1"
 // host CPUID confirms BMI2.
 var bmi2RorxEnabled bool
 
+// bmi2ShiftsEnabled uses BMI2's non-destructive variable shifts. It is off in
+// the backend catalog and enabled by the runtime only after host CPUID confirms
+// BMI2, sharing the compiled-module feature requirement with RORX.
+var bmi2ShiftsEnabled bool
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.

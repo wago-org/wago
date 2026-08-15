@@ -1225,6 +1225,34 @@ dedicated context-transfer trampoline. That design avoids a per-call kind guard
 and belongs with the finite dispatch-cell classification, not the shared Wasm
 callsite lowering.
 
+### 2026-08-14 — AMD64 BMI2 variable shifts
+
+The fixed-register campaign first tested a bounded relaxation of the existing
+expanded unsigned multiply-high rule. A temporary structural counter found one
+match across all 64 checked-in modules: the dedicated `xjb-mulhi.wasm` fixture,
+where the current tail-only rule already fires. The relaxation and its
+four-local liveness proof were removed; there is no corpus demand for carrying
+that machinery yet.
+
+Variable shifts are different. The same corpus contains 5,463 variable shift or
+rotate sites, and 4,999 are `shl`, signed `shr`, or unsigned `shr` operations
+eligible for BMI2. A new immutable `bmi2-shifts` policy selects SHLX, SARX, and
+SHRX after the existing host CPUID gate, avoiding the legacy RCX/CL move and
+spill path. Variable rotates retain the conservative legacy lowering; non-BMI2
+hosts reject explicit enablement, and compiled artifacts reuse the existing
+BMI2 requirement bit.
+
+On the Ryzen 7 7800X3D, six serialized samples of 128 dependent variable shifts
+improve from a 28.96 to 28.66 ns/op median (-1.0%), with zero execution B/op and
+allocations. Focused compilation improves from 30.97 to 27.55 us/op (-11.0%);
+the median remains 95,904 B/op and 28 allocations. Real JSON serialization
+improves from 22.74 to 22.46 us/op (-1.2%), deserialization from 40.07 to 39.77
+us/op (-0.8%), and SIMD serialization from 26.76 to 26.51 us/op (-0.9%). The
+64-module native total falls by 13,141 bytes, including 5,024 bytes in Ruby,
+1,248 in esbuild, 1,214 in regex, and 960 in SQLite. Encoder goldens, full-width
+execution cases, the complete AMD64 backend, the executable corpus, and native
+race tests pass.
+
 ---
 
 # 1. North-star architecture

@@ -307,7 +307,7 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 	}
 	values = defaultOptimizationCache.values
 	snapshot = defaultOptimizationCache.snapshot
-	if !forceBMI2 || values["bmi2-rorx"] {
+	if !forceBMI2 || values["bmi2-rorx"] && values["bmi2-shifts"] {
 		return values, snapshot
 	}
 	if defaultOptimizationCache.bmi2Values == nil {
@@ -316,6 +316,7 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 			bmi2Values[name] = on
 		}
 		bmi2Values["bmi2-rorx"] = true
+		bmi2Values["bmi2-shifts"] = true
 		defaultOptimizationCache.bmi2Values = bmi2Values
 	}
 	return defaultOptimizationCache.bmi2Values, snapshot
@@ -720,6 +721,9 @@ func (c *RuntimeConfig) Validate() error {
 	}
 	if c.optimizations["bmi2-rorx"] && !hostSupportsBMI2() {
 		return fmt.Errorf("wago: bmi2-rorx optimization requires BMI2 CPU support")
+	}
+	if c.optimizations["bmi2-shifts"] && !hostSupportsBMI2() {
+		return fmt.Errorf("wago: bmi2-shifts optimization requires BMI2 CPU support")
 	}
 	// SIMD remains configurable on builds whose host CPU cannot execute it so
 	// scalar modules still compile under the default config; the frontend clears
