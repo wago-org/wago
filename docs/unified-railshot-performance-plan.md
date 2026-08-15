@@ -4162,3 +4162,24 @@ attempt must specialize dispatch at instantiation so a general-only instance
 executes byte-for-byte-equivalent routing, while retaining parked-frame roots,
 collector lease suspension, native lease release, panic restoration, and
 cross-instance context restoration for leaf callbacks.
+
+## 2026-08-15 — finite leaf-only host dispatcher
+
+Instantiation now selects a dedicated dispatcher only when every ordinary host
+import is a `LeafHostFunc`. General and mixed-import instances retain the prior
+dispatcher unchanged. The leaf-only closure removes general signature,
+reference-translation, and capability-scope branches from numeric callbacks;
+atomic wait, native GC helper, and dynamically owned host-funcref dispatches
+still follow their complete existing paths.
+
+On the Ryzen 7 7800X3D, alternating committed-head measurements improved the
+prepared leaf median from 288.7 to 276.4 ns/op (-4.3%). The Apple M4 Max median
+moved from 201.5 to 199.1 ns/op (-1.2%). General HostFunc execution is
+byte-for-byte unchanged after instantiation. One-import HostFunc and
+LeafHostFunc instantiation both remain 1960 B/op and 21 allocs/op on AMD64, with
+indistinguishable approximately 8.85 us medians in the same run.
+
+The specialization adds no `Instance` field and no execution allocation. A
+native AMD64 regression test passes an owned host funcref through a module whose
+ordinary imports are all leaves, proving the specialized dispatcher retains the
+dynamic reference path rather than assuming every dispatch index is ordinary.

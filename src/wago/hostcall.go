@@ -772,6 +772,18 @@ func (t *gcHostTempTokens) release(in *Instance) {
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
+	if len(in.syncHosts) != 0 {
+		allLeaf := true
+		for i := range in.syncHosts {
+			if in.syncHosts[i].leaf == nil {
+				allLeaf = false
+				break
+			}
+		}
+		if allLeaf {
+			return in.newLeafHostDispatch()
+		}
+	}
 	return func(ctrl uintptr, importIdx uint32, args, results []uint64) {
 		if importIdx&shared.AtomicWaitDispatchBit != 0 {
 			if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
@@ -836,6 +848,69 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
+	}
+}
+
+// newLeafHostDispatch is the finite numeric-only host class. The selection is
+// made once at instantiation, leaving the capable HostFunc dispatcher unchanged.
+// Internal helpers and dynamically owned host references remain possible in a
+// leaf-importing module and therefore retain the general dispatcher semantics.
+func (in *Instance) newLeafHostDispatch() runtime.HostCall {
+	return func(ctrl uintptr, importIdx uint32, args, results []uint64) {
+		if importIdx&shared.AtomicWaitDispatchBit != 0 {
+			if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
+				panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
+			}
+			in.dispatchAtomicWaitHelper(importIdx&^shared.AtomicWaitDispatchBit, args, results)
+			return
+		}
+		if importIdx&gcStructDispatchBit != 0 {
+			if importIdx&hostFuncRefDispatchBit != 0 {
+				panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+			}
+			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
+			in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
+			return
+		}
+		if importIdx&hostFuncRefDispatchBit != 0 {
+			in.dispatchOwnedHostFuncRef(ctrl, importIdx, args, results)
+			return
+		}
+		if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx].leaf == nil {
+			panic(missingHostFunc{importIdx: importIdx})
+		}
+		in.syncHosts[importIdx].leaf(args, results)
+	}
+}
+
+func (in *Instance) dispatchOwnedHostFuncRef(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	owner := in.refStore.hostFuncRef(importIdx)
+	if owner == nil {
+		panic(missingHostFunc{importIdx: importIdx})
+	}
+	owner.mu.Lock()
+	fn, sig := owner.fn, owner.sig
+	owner.mu.Unlock()
+	if fn == nil {
+		panic(missingHostFunc{importIdx: importIdx})
+	}
+	exactParams, exactResults, err := exactFuncSignatureView(sig, in.c.Types)
+	if err != nil {
+		panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
+	}
+	var gcTemps gcHostTempTokens
+	if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, &gcTemps); err != nil {
+		gcTemps.release(in)
+		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+	}
+	defer gcTemps.release(in)
+	invocation := currentHostInvocationContext(ctrl, in)
+	caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	var mod HostModule = caller
+	fn(mod, args, results)
+	if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults); err != nil {
+		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 }
 
