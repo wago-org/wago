@@ -1306,6 +1306,30 @@ and allocations unchanged within run-to-run noise. Full-width i32/i64 execution,
 policy and single-precondition near misses, every affected corpus module, the
 complete AMD64 backend, the repository suite, and native race tests pass.
 
+### 2026-08-15 — AMD64 widened carry arithmetic
+
+The bounded Valent selector now also recognizes exact nontrapping
+`x + i64.extend_i32_u(a <u b)` and
+`x - i64.extend_i32_u(a <u b)` trees. It materializes `x` before the comparison,
+emits `CMP` last, and consumes CF directly with `ADC x,0` or `SBB x,0`. Carry on
+the left is accepted only for commutative addition. Signed comparisons,
+unsigned-greater comparisons, carry-left subtraction, trapping/deferred memory
+work, and every other shape retain ordinary lowering. The immutable
+`widened-carry-arith` policy is the A/B and rollback boundary.
+
+The checked-in corpus contains 172 exact sites after backend lowering: 126 in
+Ruby, 33 in the script artifact, 8 in Lua, and 5 in SQLite. Their combined native
+output falls by 1,274 bytes. On the Ryzen 7 7800X3D, six serialized one-second
+samples of a 128-site fixture improve from a 36.90 to 26.21 ns/op median
+(-29.0%); native function bytes fall from 2,669 to 1,773 (-33.6%), with zero
+execution B/op and allocations. Focused compilation improves from an 84.59 to
+67.88 us/op median (-19.8%), with about 211 kB/op and 33 allocations unchanged.
+Six fixed-work Ruby compile samples remain neutral at 901.38 ms disabled versus
+901.08 ms enabled (-0.03%), with B/op and allocations within run-to-run noise.
+Full-width add/sub execution, operand orientation, policy and near-miss tests,
+the affected corpus modules, the complete AMD64 backend, the repository suite,
+and native race tests pass.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
