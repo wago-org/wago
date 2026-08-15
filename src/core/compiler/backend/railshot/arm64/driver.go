@@ -70,7 +70,8 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			err = f.opReturn()
 		default:
 			if f.unreachable {
-				err = skipImmediatesWithMemory64(r, op, f.memoryAddr64(0))
+				var imm wasm.InstructionImmediate
+				err = f.classifier.ClassifyInto(r, op, &imm)
 			} else {
 				err = f.emitPlain(r, op)
 			}
