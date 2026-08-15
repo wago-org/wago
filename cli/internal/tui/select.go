@@ -18,6 +18,7 @@ type SelectItem struct {
 	On          bool   // currently selected
 	Disabled    bool   // visible preview row that cannot be toggled or selected
 	Reject      bool   // exclusive visible action that clears every normal row
+	ConfirmOff  bool   // submit immediately when this selected row is toggled off
 }
 
 // selectKey is a normalized keypress the model understands.
@@ -87,10 +88,13 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 				for i := range m.Items {
 					m.Items[i].On = i == m.Cursor
 				}
+				return true, false
 			} else {
 				m.Items[m.Cursor].On = !m.Items[m.Cursor].On
 				if m.Items[m.Cursor].On {
 					m.clearRejection()
+				} else if m.Items[m.Cursor].ConfirmOff {
+					return true, false
 				}
 			}
 		}

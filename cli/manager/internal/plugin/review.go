@@ -124,7 +124,10 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 		if scope := projectScopeSuffix(review.Request.Scope); scope != "" {
 			description += scope
 		}
-		items = append(items, tui.SelectItem{Label: label, Description: description, On: choices[key]})
+		items = append(items, tui.SelectItem{
+			Label: label, Description: description, On: choices[key],
+			ConfirmOff: review.Request.Mode == project.AuthorityRequired,
+		})
 		itemKeys = append(itemKeys, key)
 	}
 	items = append(items, tui.SelectItem{

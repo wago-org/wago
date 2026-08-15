@@ -28,7 +28,7 @@ func TestAuthorityReviewSelectorShowsRequiredAndRejectAll(t *testing.T) {
 	if !strings.Contains(selector.Title, required.PluginID) {
 		t.Fatalf("selector title = %q", selector.Title)
 	}
-	if !selector.Items[0].On || !strings.Contains(selector.Items[0].Description, "required") || !strings.Contains(selector.Items[0].Description, required.Request.Reason) || !strings.Contains(selector.Items[0].Description, "cancels installation") {
+	if !selector.Items[0].On || !selector.Items[0].ConfirmOff || !strings.Contains(selector.Items[0].Description, "required") || !strings.Contains(selector.Items[0].Description, required.Request.Reason) || !strings.Contains(selector.Items[0].Description, "cancels installation") {
 		t.Fatalf("required row = %#v", selector.Items[0])
 	}
 	if selector.Items[1].On || !strings.Contains(selector.Items[1].Description, "optional") {

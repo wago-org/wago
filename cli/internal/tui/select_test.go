@@ -93,6 +93,14 @@ func TestMultiSelectDisabledPreviewCannotBeSelected(t *testing.T) {
 	}
 }
 
+func TestMultiSelectConfirmOffSubmitsImmediately(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{{Label: "required", On: true, ConfirmOff: true}}}
+	done, cancelled := m.apply(keyToggle)
+	if !done || cancelled || m.Items[0].On {
+		t.Fatalf("required toggle = done %v, cancelled %v, row %#v", done, cancelled, m.Items[0])
+	}
+}
+
 func TestMultiSelectAcceptCancel(t *testing.T) {
 	m := newTestSelect()
 	if done, cancelled := m.apply(keyAccept); !done || cancelled {
@@ -130,7 +138,9 @@ func TestMultiSelectRejectRowIsExclusive(t *testing.T) {
 		{Label: "optional", On: true},
 		{Label: "Reject all", Reject: true},
 	}, Cursor: 2}
-	m.apply(keyToggle)
+	if done, cancelled := m.apply(keyToggle); !done || cancelled {
+		t.Fatalf("reject row should submit immediately: done=%v cancelled=%v", done, cancelled)
+	}
 	if got := m.Chosen(); got != nil || !m.Rejected() {
 		t.Fatalf("reject row left grants selected: chosen=%v rejected=%v", got, m.Rejected())
 	}
