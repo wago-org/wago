@@ -1436,6 +1436,25 @@ all 200 real widened-carry hits remain `<`/`>`. The rule, counter, encoder metho
 and tests were removed. It should return only with production-corpus demand,
 not because the isolated sequence is locally cheaper.
 
+### 2026-08-15 — rejected ARM64 widened carry increment
+
+The AMD64 widened-carry corpus demand was re-audited for ARM64. A bounded
+prototype matched the exact nontrapping
+`x + i64.extend_i32_u(a <u b)` and unsigned-greater forms and lowered them from
+`CMP; CSET; ADD` to `CMP; CSINC`. The matcher accepted commuted addition but not
+subtraction, signed/inclusive comparisons, loads, or other trapping work.
+
+The 64-module corpus contained 235 exact sites: 155 in Ruby, 34 in Script, 28
+in Lua, and 18 in SQLite. Native output fell by 1,752 bytes. The shorter
+sequence nevertheless failed the Apple M4 Max execution gate. A 128-site mixed
+less/greater fixture measured 27.35-28.23 ns/op with `CSINC` versus
+26.44-27.42 ns/op with the materialized boolean, with zero B/op and allocations
+in both modes. The reverse-order run confirmed the regression.
+
+The encoder method, policy bit, matcher, tests, and benchmarks were removed.
+ARM64 condition arithmetic should remain target-cost-specific rather than being
+enabled from AMD64 corpus demand or instruction-count reduction alone.
+
 ### 2026-08-14 — rejected ARM64 bulk-memory register pairs
 
 An ARM64 prototype replaced the 32- and 64-byte copy/fill loop bodies with
