@@ -223,18 +223,18 @@ func importedCallbackSinkTailModule(results []wasm.ValType) *wasm.Module {
 	}
 }
 
-func importedReferenceCallbackTailModule(param wasm.ValType, results []wasm.ValType) *wasm.Module {
+func importedReferenceFunctionTailModule(params, results, tailResults []wasm.ValType) *wasm.Module {
 	targetBody := []wasm.Instruction{}
-	if len(results) != 0 {
+	if len(tailResults) != 0 {
 		targetBody = append(targetBody, wasm.Instruction{Kind: wasm.InstrI32Const})
 	}
 	return &wasm.Module{
 		Types: []wasm.RecType{
-			tailResultFuncType([]wasm.ValType{param}, nil),
-			tailResultFuncType(nil, results),
-			tailResultFuncType(nil, results),
+			tailResultFuncType(params, results),
+			tailResultFuncType(nil, tailResults),
+			tailResultFuncType(nil, tailResults),
 		},
-		Imports:   []wasm.Import{{Module: "env", Name: "callback", Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}},
+		Imports:   []wasm.Import{{Module: "env", Name: "boundary", Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}},
 		FuncTypes: []wasm.TypeIdx{{Index: 1}, {Index: 2}},
 		Code: []wasm.Func{
 			{Body: wasm.Expr{Instrs: targetBody}},
@@ -451,13 +451,35 @@ func TestValidateTailResultRewriteRejectsImportedReferenceSinks(t *testing.T) {
 		}
 	})
 
-	t.Run("externref callback", func(t *testing.T) {
-		before := importedReferenceCallbackTailModule(wasm.ExternRef, []wasm.ValType{wasm.I32})
-		after := importedReferenceCallbackTailModule(wasm.ExternRef, nil)
+	t.Run("externref callback parameter", func(t *testing.T) {
+		before := importedReferenceFunctionTailModule([]wasm.ValType{wasm.ExternRef}, nil, []wasm.ValType{wasm.I32})
+		after := importedReferenceFunctionTailModule([]wasm.ValType{wasm.ExternRef}, nil, nil)
 		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
-			t.Fatalf("externref callback rewrite error = %v", err)
+			t.Fatalf("externref callback parameter rewrite error = %v", err)
 		}
 	})
+
+	t.Run("externref callback result", func(t *testing.T) {
+		before := importedReferenceFunctionTailModule(nil, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.I32})
+		after := importedReferenceFunctionTailModule(nil, []wasm.ValType{wasm.ExternRef}, nil)
+		if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through imported function references") {
+			t.Fatalf("externref callback result rewrite error = %v", err)
+		}
+	})
+}
+
+func TestValidateTailResultRewriteRejectsExportedReferenceParameters(t *testing.T) {
+	before := directTailRewriteModule([]wasm.ValType{wasm.I32})
+	after := directTailRewriteModule(nil)
+	for _, m := range []*wasm.Module{before, after} {
+		m.Types = append(m.Types, tailResultFuncType([]wasm.ValType{wasm.ExternRef}, nil))
+		m.FuncTypes = append(m.FuncTypes, wasm.TypeIdx{Index: 2})
+		m.Code = append(m.Code, wasm.Func{Body: wasm.Expr{}})
+		m.Exports = []wasm.Export{{Name: "accept", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}}}
+	}
+	if err := ValidateTailResultRewrite(before, after); err == nil || !strings.Contains(err.Error(), "observable through exported function references") {
+		t.Fatalf("exported reference parameter rewrite error = %v", err)
+	}
 }
 
 func TestAnalyzeTailResultSitesMatchesASTAndByteBackedBodies(t *testing.T) {

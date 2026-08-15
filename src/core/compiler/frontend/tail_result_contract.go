@@ -224,13 +224,8 @@ func moduleImportsFunctionReferences(m *wasm.Module) bool {
 				return true
 			}
 			sig, ok := m.ResolvedTypeFunc(typeIndex.Index)
-			if !ok {
+			if !ok || functionBoundaryMayContainReferences(m, sig) {
 				return true
-			}
-			for _, param := range sig.Params {
-				if valTypeMayContainFunction(m, param) {
-					return true
-				}
 			}
 		case wasm.ExternTag:
 			// Imported exception tags are host-owned payload sinks. Treat every
@@ -261,19 +256,25 @@ func moduleExportsFunctionReferences(m *wasm.Module) bool {
 				return true
 			}
 			sig, ok := m.ResolvedTypeFunc(typeIndex.Index)
-			if !ok {
+			if !ok || functionBoundaryMayContainReferences(m, sig) {
 				return true
-			}
-			for _, result := range sig.Results {
-				if valTypeMayContainFunction(m, result) {
-					return true
-				}
 			}
 		case wasm.ExternTag:
 			// An exported exception payload may carry a function reference. Tag
 			// lookup is intentionally avoided here: treating every exported tag as
 			// an escape keeps this transform-only fence conservative.
 			return true
+		}
+	}
+	return false
+}
+
+func functionBoundaryMayContainReferences(m *wasm.Module, sig *wasm.CompType) bool {
+	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+		for _, value := range values {
+			if valTypeMayContainFunction(m, value) {
+				return true
+			}
 		}
 	}
 	return false
