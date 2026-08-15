@@ -667,6 +667,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				binary.LittleEndian.PutUint32(funcRefTypeIDs[4*fidx:], typeID)
 			}
 		}
+		mayCarryFuncref := func(t ValType) bool { return t == ValFuncRef || t == ValAnyRef }
 		localFuncrefsMayEscape := c.tableImport != ""
 		if !localFuncrefsMayEscape {
 			for i := range c.extraTables {
@@ -682,7 +683,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for i := range c.Funcs {
 				for _, param := range c.Funcs[i].Params {
-					if param == ValFuncRef {
+					if mayCarryFuncref(param) {
 						localFuncrefsMayEscape = true
 						break
 					}
@@ -695,7 +696,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for i := range c.importFuncSigs {
 				for _, param := range c.importFuncSigs[i].Params {
-					if param == ValFuncRef {
+					if mayCarryFuncref(param) {
 						localFuncrefsMayEscape = true
 						break
 					}
@@ -707,7 +708,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for i := range c.GlobalImports {
-				if c.GlobalImports[i].Type == ValFuncRef {
+				if mayCarryFuncref(c.GlobalImports[i].Type) {
 					localFuncrefsMayEscape = true
 					break
 				}
@@ -715,7 +716,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for _, globalIdx := range c.GlobalExports {
-				if globalIdx >= 0 && globalIdx < len(c.Globals) && c.Globals[globalIdx].Type == ValFuncRef {
+				if globalIdx >= 0 && globalIdx < len(c.Globals) && mayCarryFuncref(c.Globals[globalIdx].Type) {
 					localFuncrefsMayEscape = true
 					break
 				}
@@ -728,7 +729,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					continue
 				}
 				for _, result := range c.Funcs[local].Results {
-					if result == ValFuncRef {
+					if mayCarryFuncref(result) {
 						localFuncrefsMayEscape = true
 						break
 					}
