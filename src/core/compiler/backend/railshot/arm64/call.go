@@ -141,7 +141,7 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 // The descriptor pointer remains owned by the instance's bounded descriptor arena;
 // no GC-managed reference or foreign wrapper result is admitted by this shape.
 func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
-	if ft == nil || len(ft.Results) != 1 || ft.Results[0].Kind() != wasm.ValRef || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
+	if ft == nil || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.FuncRef) || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -156,42 +156,6 @@ func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
 		}
 	}
 	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
-}
-
-// sigFitsTypedReferenceRegABI extends the physical register classification used
-// by return_call_ref to one-slot reference parameters/results. Ownership and GC
-// domain checks remain separate from this purely mechanical ABI predicate.
-func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
-	if ft == nil || len(ft.Results) > 2 {
-		return false
-	}
-	gp, fp := 0, 0
-	for _, typ := range ft.Params {
-		switch {
-		case isIntValType(typ), typ.Kind() == wasm.ValRef:
-			gp++
-		case isFloatValType(typ):
-			fp++
-		default:
-			return false
-		}
-	}
-	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
-		return false
-	}
-	for _, typ := range ft.Results {
-		if !isIntValType(typ) && !isFloatValType(typ) && typ.Kind() != wasm.ValRef {
-			return false
-		}
-	}
-	if len(ft.Results) == 2 {
-		for _, typ := range ft.Results {
-			if isFloatValType(typ) {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 func stagedTailRegisterABI(ft *wasm.CompType, staged bool) bool {

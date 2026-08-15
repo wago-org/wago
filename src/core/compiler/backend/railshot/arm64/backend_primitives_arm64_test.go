@@ -310,6 +310,25 @@ func TestAddFoldImmWrapper(t *testing.T) {
 	}
 }
 
+func TestReferenceResultRegisterABIAdmitsOnlyFuncref(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		result wasm.ValType
+		want   bool
+	}{
+		{name: "funcref", result: wasm.FuncRef, want: true},
+		{name: "externref", result: wasm.ExternRef},
+		{name: "anyref", result: wasm.AnyRef},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ft := &wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{tc.result}}
+			if got := sigFitsReferenceResultRegABI(ft); got != tc.want {
+				t.Fatalf("sigFitsReferenceResultRegABI(%v) = %v, want %v", tc.result, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReferenceAndTableSizeLoweringHelpers(t *testing.T) {
 	t.Run("ref.null", func(t *testing.T) {
 		f := &fn{a: &a64.Asm{}, s: newStack()}
