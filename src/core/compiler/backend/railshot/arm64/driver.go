@@ -728,6 +728,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 	if f.bcKind == 1 && f.bcIdx == uint32(x) {
 		f.invalidateBoundsCert()
 	}
+	facts := a.st.facts & b.st.facts
 	// Refs below the select still require x's old value; refs in its three
 	// operand blocks are consumed before the final CSEL overwrites dest.
 	f.realizeLocalRefs(x, baseOfValentBlock(a))
@@ -761,6 +762,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		f.release(aReg)
 	}
 	f.markLocalDirty(x)
+	f.setFactsForLocal(x, facts)
 	f.stats.peep("select-local-sink")
 	return true, nil
 }
@@ -979,6 +981,7 @@ func (f *fn) emitSelect() {
 	b := f.popValue()
 	a := f.popValue()
 	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
+	facts := a.st.facts & b.st.facts
 
 	// V registers have no CSEL fold worth branching around here, so for the
 	// value-copy cases we branch: skip the copy when cond != 0 (keep a). Scalar
@@ -1033,7 +1036,9 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.remove(bReg)
 	f.release(condReg)
 	f.release(bReg)
-	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
+	result := f.pushReg(aReg, mtI32OrWide(w))
+	result.st.gcRoot = gcRoot
+	result.st.facts = facts
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -1067,6 +1072,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
 	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
+	facts := aRoot.st.facts & bRoot.st.facts
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -1079,7 +1085,9 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.release(bReg)
 	f.erase(bRoot)
 	f.erase(aRoot)
-	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
+	result := f.pushReg(aReg, mtI32OrWide(w))
+	result.st.gcRoot = gcRoot
+	result.st.facts = facts
 	return true
 }
 

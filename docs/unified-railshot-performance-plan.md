@@ -937,6 +937,14 @@ improved from a 13.884 to 13.133 us/op compile median (-5.4%), B/op fell from
 1,064 to 824 bytes (-22.6%). Nullable global and table types are tested near
 misses.
 
+ARM64 `select` now intersects the two candidate value facts and carries only
+properties true on both sides into the selected register or fused local sink.
+This is constant work at the existing eager sink and does not retain control
+state. An eight-pair funcref fixture improved from a 14.259 to 13.678 us/op
+compile median (-4.1%), B/op fell from 24,832 to 24,664, allocations fell from
+37 to 34, and native output fell from 864 to 720 bytes (-16.7%). A nullable
+candidate and disabled facts are tested fallbacks.
+
 ---
 
 # 1. North-star architecture
