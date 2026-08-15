@@ -680,6 +680,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			localFuncrefsMayEscape = len(c.tableExports) != 0
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for i := range c.GlobalImports {
+				if c.GlobalImports[i].Mutable && c.GlobalImports[i].Type == ValFuncRef {
+					localFuncrefsMayEscape = true
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for _, globalIdx := range c.GlobalExports {
 				if globalIdx >= 0 && globalIdx < len(c.Globals) && c.Globals[globalIdx].Type == ValFuncRef {
 					localFuncrefsMayEscape = true
