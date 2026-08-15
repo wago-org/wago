@@ -3407,3 +3407,26 @@ alternating real-module compile sample
 Forward block residency should be reconsidered only after the combined summary
 scan can mark admissible regions once. Reintroducing per-block reader scans is
 not acceptable even though execution and native-code metrics improve.
+
+### Rejected follow-up: simple-loop merge residency
+
+A bounded prototype extended the combined region summary to admit a loop only
+when its body contained no nested structured control, call, `br_table`,
+`memory.grow`, or GC/bulk/atomic prefix. The loop header and backedge then used
+the same register-resident merge contract as forward regions. This added no
+summary storage and retained conservative fallback for every near miss.
+
+The prototype was correct on native AMD64 and recorded two resident-local hits,
+but it did not change the emitted code or the execution result:
+
+```text
+Ryzen 7 7800X3D, 1000-iteration integer loop, 10 samples:
+    canonical: 227.5-228.4 ns/op, 174 native bytes, 0 B/op
+    resident:  228.1-228.9 ns/op, 174 native bytes, 0 B/op
+```
+
+The existing loop-header reconciliation and control-boundary flushing already
+produced the same effective code for this admitted shape. The prototype was
+therefore removed rather than adding scan state without a material execution or
+code-size gain. Simple-loop residency should be retried only with a distinct
+fixed backedge contract that demonstrably removes dynamic loop-body traffic.
