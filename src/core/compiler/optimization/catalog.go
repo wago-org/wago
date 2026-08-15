@@ -323,6 +323,7 @@ var catalog = []Definition{
 	arm64("shuffle-half-zip", "Halfword shuffle ZIP", "select native halfword ZIP instructions for exact shuffle masks"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("call-result-residency", "Direct call result residency", "retain direct internal GP results in ABI registers through safe caller-state reloads"),
+	arm64("call-indirect-result-residency", "Indirect call result residency", "retain proven nonrecursive immutable-table results in ABI registers"),
 	both("inline", "Inlining", "inline eligible callees"),
 	both("inline-slot-overlay", "Inline slot overlay", "overlay non-overlapping numeric inlined-callee local regions"),
 	experimentalBoth("inline-loop-callees", "Loop-call inlining", "inline callees invoked from inside loops"),

@@ -4242,3 +4242,26 @@ The executable corpus has one matching indirect call per invocation; it remains
 neutral at about 18.9 ns/op and zero B/op with zero allocations. The full local
 repository suite and native ARM64 backend/runtime suites pass with the rule on
 by default.
+
+## 2026-08-15 — bounded ARM64 indirect-result residency
+
+ARM64 immutable-table calls now retain one or two integer results directly in
+`X0`/`X1` when the module summary proves the caller is not itself installed in
+the target table. Callers that may recurse through the table keep the existing
+copy, preserving the dependency break used by recursive kernels. The target bit
+fits existing `funcHints` padding, so the structure remains 200 bytes; table
+entry marking reuses the bounded module scan and allocates no storage.
+
+Across the five modules admitted by immutable-table specialization, the rule
+removes 2,770 indirect-result moves and 10,648 native bytes. Ruby removes 2,256
+of 2,984 moves (76%) and 8,736 bytes; regexmatch removes 484 moves and 1,808
+bytes; wasm3 removes 29 moves and 96 bytes; dispatch removes its one move and
+eight bytes. Esbuild keeps all 1,276 moves because the relevant callers can also
+be table targets. No module grows.
+
+Ten one-second Apple M4 Max samples move `dispatch.apply` from a 19.25 to
+19.03 ns/op median (-1.1%), with zero B/op and zero allocations. Five-sample
+compile medians remain within 1% on every hit module with identical B/op and
+allocation counts. `WAGO_ARM64_NO_INDIRECT_RESULT_RESIDENCY=1` is the exact
+rollback. Enabled/disabled selection, conservative target marking, native ARM64
+execution, official specs, and GC stress paths pass.

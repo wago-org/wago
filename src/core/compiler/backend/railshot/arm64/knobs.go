@@ -60,6 +60,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("shuffle-half-zip", &shuffleHalfZipEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("call-result-residency", &callResultResidencyEnabled),
+	optimization.Bind("call-indirect-result-residency", &indirectCallResultResidencyEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.Bind("inline-slot-overlay", &inlineSlotOverlayEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
@@ -123,6 +124,7 @@ var (
 	optShuffleHalfZip        = optimizationBindings.Option("shuffle-half-zip")
 	optRegABI                = optimizationBindings.Option("reg-abi")
 	optCallResultResidency   = optimizationBindings.Option("call-result-residency")
+	optIndirectResult        = optimizationBindings.Option("call-indirect-result-residency")
 	optInline                = optimizationBindings.Option("inline")
 	optInlineSlotOverlay     = optimizationBindings.Option("inline-slot-overlay")
 	optInlineLoopCallees     = optimizationBindings.Option("inline-loop-callees")

@@ -33,6 +33,10 @@ var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
 // post-call pin reloads, whose fixed destination banks exclude ABI results.
 var callResultResidencyEnabled = os.Getenv("WAGO_ARM64_NO_CALL_RESULT_RESIDENCY") != "1"
 
+// indirectCallResultResidencyEnabled keeps immutable-table call results in the
+// register result bank when the caller cannot itself be one of the targets.
+var indirectCallResultResidencyEnabled = os.Getenv("WAGO_ARM64_NO_INDIRECT_RESULT_RESIDENCY") != "1"
+
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
 var noStackFence = os.Getenv("WAGO_ARM64_NOFENCE") == "1"
 
@@ -1611,6 +1615,8 @@ func (f *fn) addIntegerResultFallbackMoves(localIdx, n int) {
 	}
 }
 
+const safeIndirectCallTarget = -2
+
 // emitRegisterCallVia emits either a direct internal BL (localIdx >= 0) or an
 // indirect BLR. Explicit operands avoid allocating a closure at every wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, localIdx int, indirect Reg) uint32 {
@@ -1729,7 +1735,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	// A pin-preserving callee leaves the caller state untouched. Direct internal
 	// results can also remain allocator-owned in X0/X1: the fixed local/global pin
 	// banks reloaded below exclude the ABI result registers.
-	residentResults := f.opt(optCallResultResidency) && localIdx >= 0
+	residentResults := f.opt(optCallResultResidency) && (localIdx >= 0 || localIdx == safeIndirectCallTarget)
 	resReg := regNone
 	if rN == 1 && resHint < 0 {
 		if preservesPins {
@@ -1738,6 +1744,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		} else if residentResults {
 			resReg = X0
 			f.stats.peep("call-result-resident")
+			if localIdx == safeIndirectCallTarget {
+				f.stats.peep("call-result-indirect-resident")
+			}
 		} else {
 			resReg = f.allocReg(maskOf(X0))
 			f.a.MovReg64(resReg, X0)
@@ -1751,6 +1760,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			pairRes = [2]Reg{X0, X1}
 			if residentResults && !preservesPins {
 				f.stats.peepN("call-result-resident", 2)
+				if localIdx == safeIndirectCallTarget {
+					f.stats.peepN("call-result-indirect-resident", 2)
+				}
 			}
 		} else {
 			pairRes[0] = f.allocReg(maskOf(X0, X1))
@@ -2267,7 +2279,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 			f.trapIf(condB, trapStackFence)
 			f.stats.peep("immutable-local-call-indirect-fence")
 		}
-		returnOffset := f.emitRegisterCallVia(ft, -1, false, -1, code)
+		callTarget := -1
+		if f.opt(optIndirectResult) && !f.immutableIndirectTarget {
+			callTarget = safeIndirectCallTarget
+		}
+		returnOffset := f.emitRegisterCallVia(ft, -1, false, callTarget, code)
 		if recordRoots {
 			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
 		}

@@ -272,10 +272,11 @@ type fn struct {
 	localFactsEnabled bool
 	// immutableLocalTable proves every non-null table-0 entry targets this module,
 	// so call_indirect can enter it directly through the internal register ABI.
-	immutableLocalTable bool
-	immutableTableType  uint64
-	immutableTableTyped bool
-	monomorphicTarget   int
+	immutableLocalTable     bool
+	immutableIndirectTarget bool
+	immutableTableType      uint64
+	immutableTableTyped     bool
+	monomorphicTarget       int
 	// preserveCallerPins marks a simple register-ABI leaf whose internal entry
 	// promises not to clobber the caller's pinned-local registers.  Direct callers
 	// can then keep their hot locals live across the call.
@@ -1731,6 +1732,9 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	if immutableLocalTable {
 		tableType, tableTyped := immutableLocalTableTypeWithPolicy(m, policy)
 		mono := immutableLocalTableTarget(m)
+		if policy.EnabledOption(optIndirectResult) {
+			markImmutableTableTargets(m, allHints)
+		}
 		for i := range allHints {
 			allHints[i].immutableLocalTable = true
 			allHints[i].immutableTableType = tableType
@@ -1742,6 +1746,37 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 		*effectOut = effects.Finish()
 	}
 	return allHints, agg, nil
+}
+
+func markImmutableTableTargets(m *wasm.Module, hints []funcHints) {
+	mark := func(idx uint32) {
+		local := int(idx) - m.ImportedFuncCount()
+		if local >= 0 && local < len(hints) {
+			hints[local].immutableIndirectTarget = true
+		}
+	}
+	if len(m.Tables) == 1 && m.Tables[0].Init != nil {
+		if ee, err := wasm.ParseElementExpr(*m.Tables[0].Init); err == nil && !ee.Null {
+			mark(ee.FuncIndex)
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
+			continue
+		}
+		if e.Kind.Kind == wasm.ElemFuncs {
+			for _, idx := range e.Kind.Funcs {
+				mark(uint32(idx))
+			}
+			continue
+		}
+		for _, expr := range e.Kind.Exprs {
+			if ee, err := wasm.ParseElementExpr(expr); err == nil && !ee.Null {
+				mark(ee.FuncIndex)
+			}
+		}
+	}
 }
 
 // immutableLocalTableTarget returns the sole local function stored in table 0,
@@ -2029,7 +2064,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !policy.EnabledOption(optEntryInitElide) || gcFrameRoots != nil && gcFrameRoots.Candidate {
 		entryInitialized = 0
 	}
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.hasLoop, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.hasControlFlow}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.hasLoop, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableIndirectTarget: hints.immutableIndirectTarget, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.hasControlFlow}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient

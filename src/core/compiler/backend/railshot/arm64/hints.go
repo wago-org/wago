@@ -60,9 +60,12 @@ type funcHints struct {
 	// same-module function and can use the internal register ABI without a
 	// run-time home-tag fork.
 	immutableLocalTable bool
-	immutableTableType  uint64
-	immutableTableTyped bool
-	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
+	// immutableIndirectTarget marks functions installed into the admitted table;
+	// they retain the copy that breaks recursive result-register dependencies.
+	immutableIndirectTarget bool
+	immutableTableType      uint64
+	immutableTableTyped     bool
+	monomorphicTarget       int // local function index when every non-null entry is identical; -1 otherwise
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.

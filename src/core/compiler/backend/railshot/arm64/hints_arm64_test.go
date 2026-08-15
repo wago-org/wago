@@ -412,6 +412,12 @@ func TestImmutableLocalTablePolymorphicCallFence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	targetHints := make([]funcHints, len(m.Code))
+	markImmutableTableTargets(m, targetHints)
+	if !targetHints[0].immutableIndirectTarget || !targetHints[1].immutableIndirectTarget || targetHints[2].immutableIndirectTarget {
+		t.Fatalf("immutable target facts = %t/%t/%t, want true/true/false",
+			targetHints[0].immutableIndirectTarget, targetHints[1].immutableIndirectTarget, targetHints[2].immutableIndirectTarget)
+	}
 	for _, tc := range []struct {
 		name string
 		on   bool
@@ -420,8 +426,9 @@ func TestImmutableLocalTablePolymorphicCallFence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var stats ModuleStats
 			_, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{
-				"immutable-poly-fastpath": tc.on,
-				"inline":                  false,
+				"immutable-poly-fastpath":        tc.on,
+				"call-indirect-result-residency": tc.on,
+				"inline":                         false,
 			}})
 			if err != nil {
 				t.Fatal(err)
@@ -431,6 +438,9 @@ func TestImmutableLocalTablePolymorphicCallFence(t *testing.T) {
 			}
 			if got := stats.Funcs[2].Peephole["immutable-local-call-indirect-fence"]; got != tc.want {
 				t.Fatalf("specialized fences = %d, want %d", got, tc.want)
+			}
+			if got := stats.Funcs[2].Peephole["call-result-indirect-resident"]; got != tc.want {
+				t.Fatalf("resident indirect results = %d, want %d", got, tc.want)
 			}
 		})
 	}
