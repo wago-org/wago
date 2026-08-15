@@ -560,6 +560,28 @@ counting. The shared
 optimization catalog now gives AMD64's existing broader implementation the same
 immutable per-compilation rollback.
 
+### 2026-08-14 — ARM64 fixed-array length producer/consumer fusion
+
+ARM64 now recognizes the exact adjacent `array.new_fixed -> array.len` shape
+through a copied Wasm reader. The constructor still evaluates every initializer,
+runs the ordinary allocating helper and safepoint, and produces a rooted
+reference. Only the immediately consumed reference and second helper transition
+are replaced by the fixed constructor count. Other GC operations, malformed
+suffixes, intervening operations, oversized helper payloads, and an immutable
+per-compilation `gc-fixed-array-len=false` selection retain the ordinary path.
+The matcher has no retained state or allocation and commits reader movement only
+for the exact two-instruction shape.
+
+The focused function falls from 300 to 244 native bytes and from two synchronous
+GC helper transitions to one. Five alternating Apple M4 Max execution samples
+improved from a 288.1 to 252.7 ns/op median (-12.3%) with zero B/op and
+allocations. Five alternating compile samples improved from 4.728 to 4.379
+us/op (-7.4%); allocations remained 31/op and median B/op was effectively flat.
+Both enabled and disabled product paths return the encoded length and retain
+exactly 100 collector allocations across 100 forced-collection invocations.
+Copied-reader match, near-miss, truncated-immediate, policy-disabled, helper-call,
+native-byte, and collector-verification tests cover the bounded fallback.
+
 ---
 
 # 1. North-star architecture

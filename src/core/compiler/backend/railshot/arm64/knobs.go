@@ -27,6 +27,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
 	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
 	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
+	optimization.Bind("gc-fixed-array-len", &fixedGCArrayLenEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
 	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
@@ -72,6 +73,7 @@ var (
 	optPreparedFPEntry       = optimizationBindings.Option("prepared-fp-entry")
 	optEntryInitElide        = optimizationBindings.Option("entry-init-elide")
 	optGCDeadNew             = optimizationBindings.Option("gc-dead-new")
+	optGCFixedArrayLen       = optimizationBindings.Option("gc-fixed-array-len")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
 	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")

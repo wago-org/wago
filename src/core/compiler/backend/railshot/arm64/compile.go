@@ -69,6 +69,11 @@ var preparedFPEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_FP_ENTRY") != "1"
 // dropped GC constructor while omitting unreachable payload population.
 var deadGCNewEnabled = os.Getenv("WAGO_ARM64_NO_DEAD_GC_NEW") != "1"
 
+// fixedGCArrayLenEnabled recognizes array.new_fixed followed immediately by
+// array.len. The allocating helper and all initializer evaluation remain; only
+// the redundant second helper transition is replaced by the encoded count.
+var fixedGCArrayLenEnabled = os.Getenv("WAGO_ARM64_NO_GC_FIXED_ARRAY_LEN") != "1"
+
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
 // checks and the Speed/Balanced layouts are unchanged.

@@ -80,6 +80,7 @@
               "frame-elide",
               "frame-elide-reghomed",
               "gc-dead-new",
+              "gc-fixed-array-len",
               "i64-mask32",
               "immutable-poly-fastpath",
               "immutable-table",

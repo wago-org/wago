@@ -413,6 +413,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			}
 			return fmt.Errorf("arm64: array.new_fixed count %d exceeds helper slot bound", count)
 		}
+		consumeLength := f.policy.EnabledOption(optGCFixedArrayLen) && consumeImmediateGCArrayLen(r)
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
 			params = append(params, valueType)
@@ -421,7 +422,16 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		if consumeLength {
+			f.dropValue()
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
+			f.stats.peep("gc-known-array-len")
+			f.stats.peep("gc-array-len-elide")
+		}
+		return nil
 	case 9, 10: // array.new_data / array.new_elem
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -568,6 +578,25 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("arm64: unsupported array opcode %d", sub)
 	}
+}
+
+// consumeImmediateGCArrayLen commits only the exact two-instruction producer /
+// consumer shape. Reading through a copied Reader makes every mismatch and
+// malformed suffix leave the production reader untouched for ordinary parsing.
+func consumeImmediateGCArrayLen(r *wasm.Reader) bool {
+	look := *r
+	op, err := look.Byte()
+	if err != nil || op != 0xfb {
+		return false
+	}
+	sub, err := look.U32()
+	if err != nil || sub != 15 {
+		return false
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("arm64: copied GC lookahead produced an invalid reader offset")
+	}
+	return true
 }
 
 func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {

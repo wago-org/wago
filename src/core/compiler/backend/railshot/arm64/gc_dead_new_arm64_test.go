@@ -100,6 +100,130 @@ func TestDeadGCConstructorObservableNearMissARM64(t *testing.T) {
 	}
 }
 
+func fixedGCArrayLenModuleARM64(t testing.TB, immediate bool) *wasm.Module {
+	t.Helper()
+	arrayType := []byte{0x5e, 0x7f, 0x01} // (array (mut i32))
+	body := []byte{
+		0x41, 0x03, 0x41, 0x04,
+		0xfb, 0x08, 0x00, 0x02, // array.new_fixed type 0, count 2
+	}
+	if immediate {
+		body = append(body, 0xfb, 0x0f) // array.len
+	} else {
+		body = append(body, 0xd4, 0xfb, 0x0f) // ref.as_non_null; array.len
+	}
+	body = append(body, 0x0b)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(arrayType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestFixedGCArrayLenARM64(t *testing.T) {
+	compile := func(enabled bool) *CodegenStats {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(fixedGCArrayLenModuleARM64(t, true), CompileOptions{
+			GCArrayHelpers: true,
+			Stats:          &stats,
+			Optimizations:  map[string]bool{"gc-fixed-array-len": enabled},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return stats.Funcs[0]
+	}
+	on, off := compile(true), compile(false)
+	if got := on.Peephole["gc-known-array-len"]; got != 1 {
+		t.Fatalf("gc-known-array-len = %d, want 1 (all: %v)", got, on.Peephole)
+	}
+	if got := off.Peephole["gc-known-array-len"]; got != 0 {
+		t.Fatalf("disabled gc-known-array-len = %d, want 0", got)
+	}
+	if on.Calls[callKindHostSync] != 1 || off.Calls[callKindHostSync] != 2 {
+		t.Fatalf("helper calls enabled/disabled = %d/%d, want 1/2", on.Calls[callKindHostSync], off.Calls[callKindHostSync])
+	}
+	if on.CodeBytes >= off.CodeBytes {
+		t.Fatalf("code bytes enabled/disabled = %d/%d, want reduction", on.CodeBytes, off.CodeBytes)
+	}
+}
+
+func TestFixedGCArrayLenNearMissARM64(t *testing.T) {
+	var stats ModuleStats
+	if _, err := CompileModuleWith(fixedGCArrayLenModuleARM64(t, false), CompileOptions{
+		GCArrayHelpers: true,
+		Stats:          &stats,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stats.Funcs[0].Peephole["gc-known-array-len"]; got != 0 {
+		t.Fatalf("non-adjacent gc-known-array-len = %d, want 0", got)
+	}
+	if got := stats.Funcs[0].Calls[callKindHostSync]; got != 2 {
+		t.Fatalf("non-adjacent helper calls = %d, want 2", got)
+	}
+}
+
+func TestConsumeImmediateGCArrayLenReaderARM64(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data []byte
+		want bool
+		off  int
+	}{
+		{name: "match", data: []byte{0xfb, 0x0f, 0x0b}, want: true, off: 2},
+		{name: "other-prefix", data: []byte{0x1a, 0x0b}, off: 0},
+		{name: "other-gc", data: []byte{0xfb, 0x0e, 0x0b}, off: 0},
+		{name: "truncated", data: []byte{0xfb, 0x80}, off: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := wasm.NewReader(tc.data)
+			if got := consumeImmediateGCArrayLen(r); got != tc.want {
+				t.Fatalf("match = %v, want %v", got, tc.want)
+			}
+			if got := r.Offset(); got != tc.off {
+				t.Fatalf("offset = %d, want %d", got, tc.off)
+			}
+		})
+	}
+}
+
+func BenchmarkFixedGCArrayLenCompileARM64(b *testing.B) {
+	m := fixedGCArrayLenModuleARM64(b, true)
+	for _, enabled := range []bool{false, true} {
+		name := "off"
+		if enabled {
+			name = "on"
+		}
+		b.Run(name, func(b *testing.B) {
+			opts := CompileOptions{
+				GCArrayHelpers: true,
+				Optimizations:  map[string]bool{"gc-fixed-array-len": enabled},
+			}
+			compiled, err := CompileModuleWith(m, opts)
+			if err != nil {
+				b.Fatal(err)
+			}
+			codeBytes := len(compiled.Code)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := CompileModuleWith(m, opts); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(codeBytes), "code-B")
+		})
+	}
+}
+
 func nestedDeadGCConstructorsModuleARM64(t testing.TB) *wasm.Module {
 	t.Helper()
 	arrayType := []byte{0x5e, 0x7f, 0x01}
