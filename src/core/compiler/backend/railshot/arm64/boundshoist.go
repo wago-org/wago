@@ -60,6 +60,10 @@ type hoistCand struct {
 // return) for hoistable memory-0 bases. The shared module-aware classifier keeps
 // scalar, SIMD, atomic, memory64, and indexed-memory immediates synchronized.
 func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elidable int, hasGrow bool) {
+	return scanLoopHoistableWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true))
+}
+
+func scanLoopHoistableWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier) (cands []hoistCand, elidable int, hasGrow bool) {
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	set := map[uint32]bool{}
@@ -68,7 +72,6 @@ func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elida
 	poison := map[uint32]bool{}
 	prevGet := int64(-1)
 	depth := 0
-	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()

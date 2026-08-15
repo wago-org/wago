@@ -728,11 +728,14 @@ func (f *fn) alignLoopHeader() {
 // br_table. The module-aware classifier keeps mixed memory-width immediates
 // synchronized. Any unexpected decode failure returns conservative facts.
 func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
+	return scanLoopBodyWithClassifier(r, wasm.NewModuleInstructionClassifier(m, true))
+}
+
+func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	setLocals = map[uint32]bool{}
 	depth := 0
-	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
@@ -796,12 +799,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
-		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r, f.m) // P6.2 + region-pin foundation (reader restored)
+		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBodyWithClassifier(r, f.classifier) // P6.2 + region-pin foundation (reader restored)
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
 		if f.opt(optLoopPrecheck) && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
-			if cands, elidable, hasGrow := scanLoopHoistable(r, f.m); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
+			if cands, elidable, hasGrow := scanLoopHoistableWithClassifier(r, f.m, f.classifier); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
 					return nil
 				}
