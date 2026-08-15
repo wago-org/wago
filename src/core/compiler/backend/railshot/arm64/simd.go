@@ -1868,6 +1868,35 @@ func (f *fn) i8x16Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
+// tryDeferBitmaskZeroBranch keeps one exact `bitmask; i32.eqz; if/br_if` shape
+// symbolic until the existing compare-to-branch path can consume it. The copied
+// reader is never committed: ordinary parsing still owns eqz and the branch.
+func (f *fn) tryDeferBitmaskZeroBranch(r *wasm.Reader, op wOp) bool {
+	if !f.opt(optSIMDWideBitmask) {
+		return false
+	}
+	look := *r
+	next, err := look.Byte()
+	if err != nil || next != 0x45 { // i32.eqz
+		return false
+	}
+	next, err = look.Byte()
+	if err != nil || (next != 0x04 && next != 0x0d) { // if / br_if
+		return false
+	}
+	operand := f.s.back()
+	if deferDepthOf(operand) >= maxDeferDepth {
+		return false
+	}
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, op, mtI32
+	node.arg0 = operand
+	node.deferDepth = 1 + deferDepthOf(operand)
+	f.s.push(node)
+	f.stats.peep("simd-bitmask-zero-branch-candidate")
+	return true
+}
+
 // tryI8x16BitmaskNonZero selects the exact adjacent
 // `i8x16.bitmask; i32.const 0; i32.ne` sequence. A full movemask is unnecessary
 // when only its zero-ness is observed: shifting each byte's sign bit into bit 0
@@ -2884,6 +2913,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 99: // i8x16.all_true
 		f.i8x16AllTrue()
 	case 100: // i8x16.bitmask
+		if f.tryDeferBitmaskZeroBranch(r, opSIMDBitmaskAny8) {
+			break
+		}
 		if f.tryI8x16BitmaskPopcnt(r) {
 			break
 		}
@@ -2894,6 +2926,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 131: // i16x8.all_true
 		f.i16x8AllTrue()
 	case 132: // i16x8.bitmask
+		if f.tryDeferBitmaskZeroBranch(r, opSIMDBitmaskAny16) {
+			break
+		}
 		if f.tryWideBitmaskConsumer(r, 16, true) || f.tryWideBitmaskConsumer(r, 16, false) {
 			break
 		}
@@ -2901,6 +2936,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 163: // i32x4.all_true
 		f.i32x4AllTrue()
 	case 164: // i32x4.bitmask
+		if f.tryDeferBitmaskZeroBranch(r, opSIMDBitmaskAny32) {
+			break
+		}
 		if f.tryWideBitmaskConsumer(r, 32, true) || f.tryWideBitmaskConsumer(r, 32, false) {
 			break
 		}
