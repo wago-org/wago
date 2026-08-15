@@ -79,6 +79,44 @@ func TestSelfUpdateSkipsMatchingManagerCommit(t *testing.T) {
 	}
 }
 
+func TestSelfUpdateSynchronizesManagedPluginBuildSource(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	managed := filepath.Join(home, ".wago")
+	executable := filepath.Join(managed, "bin", "wago")
+	source := filepath.Join(managed, "src")
+	for _, dir := range []string{filepath.Dir(executable), source} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(executable, []byte("manager"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldResolve, oldInstall, oldSync := resolveManagerUpdate, installManagerPayload, syncManagerSource
+	t.Cleanup(func() {
+		resolveManagerUpdate, installManagerPayload, syncManagerSource = oldResolve, oldInstall, oldSync
+	})
+	const resolved = "canary@2ff00ddd12345678901234567890123456789012"
+	resolveManagerUpdate = func(string, *managerprogress.Progress) (string, bool, error) {
+		return resolved, true, nil
+	}
+	installManagerPayload = func(_ string, dest string, _ bool, _ *managerprogress.Progress) error {
+		return os.WriteFile(dest, []byte("updated manager"), 0o755)
+	}
+	var syncedRef, syncedDest string
+	syncManagerSource = func(ref, dest string, _ *managerprogress.Progress) error {
+		syncedRef, syncedDest = ref, dest
+		return nil
+	}
+
+	selfUpdate("canary@old", executable, true)
+	if syncedRef != resolved || syncedDest != source {
+		t.Fatalf("source sync = (%q, %q), want (%q, %q)", syncedRef, syncedDest, resolved, source)
+	}
+}
+
 func TestSelfUninstallModePickerUsesRadioButtonsAndDefaultsFull(t *testing.T) {
 	p := selfUninstallModePicker()
 	if got := p.Selected(); got != string(Full) {

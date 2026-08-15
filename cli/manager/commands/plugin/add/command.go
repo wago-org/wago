@@ -28,7 +28,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "add", Summary: "add and enable plugins, then rebuild Wago",
-		Long:       "GitHub plugins may use owner/repository shorthand; Wago stores the canonical github.com/owner/repository Plugin ID.",
+		Long:       "GitHub plugins may use owner/repository[/subpackage] shorthand; Wago stores the canonical github.com/owner/repository[/subpackage] Plugin ID.",
 		Automation: command.DryRun,
 		Args:       "<plugin-id>[@range]...",
 		Flags: []command.Flag{
@@ -81,7 +81,7 @@ func expandGitHubPluginSpec(spec string) string {
 	if index := strings.LastIndexByte(spec, '@'); index > 0 {
 		id = spec[:index]
 	}
-	if project.ValidatePluginID(id) == nil || strings.Count(id, "/") != 1 {
+	if project.ValidatePluginID(id) == nil || !strings.Contains(id, "/") {
 		return spec
 	}
 	candidate := "github.com/" + id

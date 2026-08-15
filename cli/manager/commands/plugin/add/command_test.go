@@ -31,13 +31,23 @@ func TestCommandForwardsNonInteractiveAuthorityChoice(t *testing.T) {
 func TestCommandExpandsGitHubPluginShorthand(t *testing.T) {
 	environment := &testEnvironment{}
 	cmd := Command(environment)
-	context, err := cmd.Parse("wago add", []string{"wago-org/wasi", "wago-org/workers@^1.2.3"})
+	context, err := cmd.Parse("wago add", []string{
+		"wago-org/wasi",
+		"wago-org/wasi/p2",
+		"wago-org/workers@^1.2.3",
+		"wago-org/workers/runner@^1.2.3",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd.Run(context)
 
-	want := []string{"github.com/wago-org/wasi", "github.com/wago-org/workers@^1.2.3"}
+	want := []string{
+		"github.com/wago-org/wasi",
+		"github.com/wago-org/wasi/p2",
+		"github.com/wago-org/workers@^1.2.3",
+		"github.com/wago-org/workers/runner@^1.2.3",
+	}
 	if !reflect.DeepEqual(environment.options.Modules, want) {
 		t.Fatalf("modules = %q, want %q", environment.options.Modules, want)
 	}
