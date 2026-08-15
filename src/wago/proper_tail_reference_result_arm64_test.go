@@ -48,6 +48,35 @@ func arm64WideProperTailReferenceModule(kind properTailBehaviorKind, targetBody 
 	return wasmtest.Module(sections...)
 }
 
+func TestARM64OrdinaryCallUsesFuncrefResultRegisterABI(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd0, 0x70, 0x0b}),       // ref.null func
+			wasmtest.Code([]byte{0x10, 0x00, 0xd1, 0x0b}), // call 0; ref.is_null
+		)),
+	)
+	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+		t.Run(objective.String(), func(t *testing.T) {
+			compiled := compileProperTailBehavior(t, module, objective, 2)
+			in, err := instantiateCore(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, err := in.Call(context.Background(), "run")
+			if err != nil || len(got) != 1 || got[0].I32() != 1 {
+				t.Fatalf("ordinary funcref-result call = %v, %v; want [1]", got, err)
+			}
+		})
+	}
+}
+
 func TestARM64ProperTailReferenceResultContractsExecuteAcrossKinds(t *testing.T) {
 	cases := []struct {
 		name     string
