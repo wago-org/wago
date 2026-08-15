@@ -1310,22 +1310,26 @@ complete AMD64 backend, the repository suite, and native race tests pass.
 
 The bounded Valent selector now also recognizes exact nontrapping
 `x + i64.extend_i32_u(a <u b)` and
-`x - i64.extend_i32_u(a <u b)` trees. It materializes `x` before the comparison,
-emits `CMP` last, and consumes CF directly with `ADC x,0` or `SBB x,0`. Carry on
-the left is accepted only for commutative addition. Signed comparisons,
-unsigned-greater comparisons, carry-left subtraction, trapping/deferred memory
-work, and every other shape retain ordinary lowering. The immutable
-`widened-carry-arith` policy is the A/B and rollback boundary.
+`x - i64.extend_i32_u(a <u b)` trees, plus the corresponding unsigned-greater
+forms when both comparands are already simple nontrapping values. It materializes
+`x` before the comparison, emits `CMP` last, and consumes CF directly with
+`ADC x,0` or `SBB x,0`; greater-than reverses only the final CMP operands so CF
+represents the same predicate. Carry on the left is accepted only for
+commutative addition. Signed comparisons, non-simple greater-than comparands,
+carry-left subtraction, trapping/deferred memory work, and every other shape
+retain ordinary lowering. The immutable `widened-carry-arith` policy is the A/B
+and rollback boundary.
 
-The checked-in corpus contains 172 exact sites after backend lowering: 126 in
-Ruby, 33 in the script artifact, 8 in Lua, and 5 in SQLite. Their combined native
-output falls by 1,274 bytes. On the Ryzen 7 7800X3D, six serialized one-second
-samples of a 128-site fixture improve from a 36.90 to 26.21 ns/op median
-(-29.0%); native function bytes fall from 2,669 to 1,773 (-33.6%), with zero
-execution B/op and allocations. Focused compilation improves from an 84.59 to
-67.88 us/op median (-19.8%), with about 211 kB/op and 33 allocations unchanged.
-Six fixed-work Ruby compile samples remain neutral at 901.38 ms disabled versus
-901.08 ms enabled (-0.03%), with B/op and allocations within run-to-run noise.
+The checked-in corpus contains 200 exact sites after backend lowering: 140 in
+Ruby, 33 in the script artifact, 19 in Lua, and 8 in SQLite. Their combined native
+output falls by 1,322 bytes. On the Ryzen 7 7800X3D, six serialized one-second
+samples of a mixed LT/GT 128-site fixture improve from a 36.51 to 30.38 ns/op
+median (-16.8%); native function bytes fall from 2,669 to 2,157 (-19.2%), with
+zero execution B/op and allocations. Focused compilation improves from an 83.56
+to 67.73 us/op median (-18.9%), with about 211 kB/op and 33 allocations
+unchanged. Six fixed-work Ruby compile samples remain neutral at 905.42 ms
+disabled versus 905.84 ms enabled (+0.05%), with B/op and allocations within
+run-to-run noise.
 Full-width add/sub execution, operand orientation, policy and near-miss tests,
 the affected corpus modules, the complete AMD64 backend, the repository suite,
 and native race tests pass.
