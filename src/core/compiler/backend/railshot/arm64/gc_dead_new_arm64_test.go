@@ -171,6 +171,84 @@ func TestFixedGCArrayLenNearMissARM64(t *testing.T) {
 	}
 }
 
+func knownDynamicGCArrayLenModuleARM64(t testing.TB, constant bool) *wasm.Module {
+	t.Helper()
+	arrayType := []byte{0x5e, 0x7f, 0x01} // (array (mut i32))
+	length := []byte{0x41, 0x03}          // i32.const 3
+	params := []wasm.ValType(nil)
+	if !constant {
+		length = []byte{0x20, 0x00} // local.get 0
+		params = []wasm.ValType{wasm.I32}
+	}
+	body := []byte{0x41, 0x07} // uniform initializer
+	body = append(body, length...)
+	body = append(body, 0xfb, 0x06, 0x00, 0xfb, 0x0f)                   // array.new 0; array.len
+	body = append(body, 0x41, 0x04, 0xfb, 0x07, 0x00, 0xfb, 0x0f, 0x6a) // default length 4; len; add
+	body = append(body,
+		0x41, 0x00, 0x41, 0x02, // data offset 0, length 2
+		0xfb, 0x09, 0x00, 0x00, // array.new_data type 0, data 0
+		0xfb, 0x0f, 0x6a, // array.len; add
+		0x0b,
+	)
+	dataEntry := append([]byte{0x01}, wasmtest.ULEB(8)...)
+	dataEntry = append(dataEntry, 1, 0, 0, 0, 2, 0, 0, 0)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(arrayType, wasmtest.FuncType(params, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(11, wasmtest.Vec(dataEntry)),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestKnownDynamicGCArrayLenARM64(t *testing.T) {
+	compile := func(enabled bool) *CodegenStats {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(knownDynamicGCArrayLenModuleARM64(t, true), CompileOptions{
+			GCArrayHelpers: true,
+			Stats:          &stats,
+			Optimizations:  map[string]bool{"gc-fixed-array-len": enabled},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return stats.Funcs[0]
+	}
+	on, off := compile(true), compile(false)
+	if got := on.Peephole["gc-known-array-len"]; got != 3 {
+		t.Fatalf("gc-known-array-len = %d, want 3 (all: %v)", got, on.Peephole)
+	}
+	if got := off.Peephole["gc-known-array-len"]; got != 0 {
+		t.Fatalf("disabled gc-known-array-len = %d, want 0", got)
+	}
+	if on.Calls[callKindHostSync] != 3 || off.Calls[callKindHostSync] != 6 {
+		t.Fatalf("helper calls enabled/disabled = %d/%d, want 3/6", on.Calls[callKindHostSync], off.Calls[callKindHostSync])
+	}
+}
+
+func TestKnownDynamicGCArrayLenRejectsNonconstantARM64(t *testing.T) {
+	var stats ModuleStats
+	if _, err := CompileModuleWith(knownDynamicGCArrayLenModuleARM64(t, false), CompileOptions{
+		GCArrayHelpers: true,
+		Stats:          &stats,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stats.Funcs[0].Peephole["gc-known-array-len"]; got != 2 {
+		t.Fatalf("known lengths with one dynamic operand = %d, want 2", got)
+	}
+	if got := stats.Funcs[0].Calls[callKindHostSync]; got != 4 {
+		t.Fatalf("helper calls with one dynamic operand = %d, want 4", got)
+	}
+}
+
 func TestConsumeImmediateGCArrayLenReaderARM64(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -197,6 +275,35 @@ func TestConsumeImmediateGCArrayLenReaderARM64(t *testing.T) {
 
 func BenchmarkFixedGCArrayLenCompileARM64(b *testing.B) {
 	m := fixedGCArrayLenModuleARM64(b, true)
+	for _, enabled := range []bool{false, true} {
+		name := "off"
+		if enabled {
+			name = "on"
+		}
+		b.Run(name, func(b *testing.B) {
+			opts := CompileOptions{
+				GCArrayHelpers: true,
+				Optimizations:  map[string]bool{"gc-fixed-array-len": enabled},
+			}
+			compiled, err := CompileModuleWith(m, opts)
+			if err != nil {
+				b.Fatal(err)
+			}
+			codeBytes := len(compiled.Code)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := CompileModuleWith(m, opts); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(codeBytes), "code-B")
+		})
+	}
+}
+
+func BenchmarkKnownDynamicGCArrayLenCompileARM64(b *testing.B) {
+	m := knownDynamicGCArrayLenModuleARM64(b, true)
 	for _, enabled := range []bool{false, true} {
 		name := "off"
 		if enabled {

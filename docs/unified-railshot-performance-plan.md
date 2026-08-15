@@ -560,17 +560,20 @@ counting. The shared
 optimization catalog now gives AMD64's existing broader implementation the same
 immutable per-compilation rollback.
 
-### 2026-08-14 — ARM64 fixed-array length producer/consumer fusion
+### 2026-08-14 — ARM64 constructor-known array lengths
 
-ARM64 now recognizes the exact adjacent `array.new_fixed -> array.len` shape
-through a copied Wasm reader. The constructor still evaluates every initializer,
+ARM64 now recognizes an exact adjacent array constructor to `array.len` shape
+through a copied Wasm reader. `array.new_fixed` contributes its immediate count;
+`array.new`, `array.new_default`, and `array.new_data` contribute
+only when their existing Valent length operand is an exact i32 constant. The
+constructor still evaluates every initializer, performs segment bounds checks,
 runs the ordinary allocating helper and safepoint, and produces a rooted
 reference. Only the immediately consumed reference and second helper transition
-are replaced by the fixed constructor count. Other GC operations, malformed
-suffixes, intervening operations, oversized helper payloads, and an immutable
-per-compilation `gc-fixed-array-len=false` selection retain the ordinary path.
-The matcher has no retained state or allocation and commits reader movement only
-for the exact two-instruction shape.
+are replaced by the proven constructor count. Other GC operations, dynamic
+lengths, malformed suffixes, intervening operations, oversized helper payloads,
+and an immutable per-compilation `gc-fixed-array-len=false` selection retain the
+ordinary path. The matcher has no retained state or allocation and commits reader
+movement only for the exact producer/consumer shape.
 
 The focused function falls from 300 to 244 native bytes and from two synchronous
 GC helper transitions to one. Five alternating Apple M4 Max execution samples
@@ -581,6 +584,15 @@ Both enabled and disabled product paths return the encoded length and retain
 exactly 100 collector allocations across 100 forced-collection invocations.
 Copied-reader match, near-miss, truncated-immediate, policy-disabled, helper-call,
 native-byte, and collector-verification tests cover the bounded fallback.
+
+The three-site uniform/default/data fixture further falls from 600 to 436 native
+bytes and from six synchronous GC helpers to three. Five alternating execution
+samples improved from a 531.8 to 411.5 ns/op median (-22.6%), still with zero
+B/op and allocations. Five alternating compile samples improved from 7.065 to
+6.465 us/op (-8.5%); allocations remained 35/op and median B/op changed by only
+7 bytes. Enabled and disabled forced-collection paths both retain exactly 300
+allocations across 100 calls. A mixed fixture proves one dynamic length keeps its
+own `array.len` helper while independent constant-length sites still fuse.
 
 ---
 

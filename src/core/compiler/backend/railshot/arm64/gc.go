@@ -359,9 +359,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
+		knownLength, consumeLength := f.consumeKnownGCArrayLen(r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		return nil
 	case 7: // array.new_default
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -378,9 +383,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
 		}
+		knownLength, consumeLength := f.consumeKnownGCArrayLen(r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		return nil
 	case 8: // array.new_fixed
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -425,12 +435,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if err := f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result}); err != nil {
 			return err
 		}
-		if consumeLength {
-			f.dropValue()
-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
-			f.stats.peep("gc-known-array-len")
-			f.stats.peep("gc-array-len-elide")
-		}
+		f.finishKnownGCArrayLen(count, consumeLength)
 		return nil
 	case 9, 10: // array.new_data / array.new_elem
 		typeIndex, err := r.U32()
@@ -454,6 +459,10 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Val().Kind() == wasm.ValRef {
 			return fmt.Errorf("arm64: array.new_data type %d has reference storage", typeIndex)
 		}
+		knownLength, consumeLength := uint32(0), false
+		if sub == 9 {
+			knownLength, consumeLength = f.consumeKnownGCArrayLen(r)
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(segmentIndex)})
 		deadUse := checkedDeadGCNone
@@ -468,7 +477,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return nil
 		}
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		return nil
 	case 11, 12, 13:
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -597,6 +610,30 @@ func consumeImmediateGCArrayLen(r *wasm.Reader) bool {
 		panic("arm64: copied GC lookahead produced an invalid reader offset")
 	}
 	return true
+}
+
+func (f *fn) consumeKnownGCArrayLen(r *wasm.Reader) (uint32, bool) {
+	if !f.policy.EnabledOption(optGCFixedArrayLen) {
+		return 0, false
+	}
+	length := f.s.back()
+	if length == nil || length.kind != ekValue || length.st.kind != stConst || length.st.typ != mtI32 {
+		return 0, false
+	}
+	if !consumeImmediateGCArrayLen(r) {
+		return 0, false
+	}
+	return uint32(length.st.cval), true
+}
+
+func (f *fn) finishKnownGCArrayLen(length uint32, consume bool) {
+	if !consume {
+		return
+	}
+	f.dropValue()
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(length)})
+	f.stats.peep("gc-known-array-len")
+	f.stats.peep("gc-array-len-elide")
 }
 
 func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {

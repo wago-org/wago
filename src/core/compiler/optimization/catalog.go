@@ -268,7 +268,7 @@ var catalog = []Definition{
 	both("prepared-fp-entry", "Prepared FP/mixed entry", "mark bounded FP and mixed-bank functions for fixed prepared trampolines"),
 	both("entry-init-elide", "Entry initialization elision", "skip local initialization when bounded definite assignment makes the initial value unobservable"),
 	both("gc-dead-new", "Dropped GC constructors", "retain allocation and traps while omitting unreachable constructor payload population"),
-	arm64("gc-fixed-array-len", "Fixed array lengths", "replace an immediately consumed fixed-array reference with its statically known length"),
+	arm64("gc-fixed-array-len", "Known array lengths", "replace an immediately consumed constructor reference with its statically known length"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),
