@@ -2340,13 +2340,14 @@ func ModuleRequiresSIMD(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		for _, run := range m.Code[i].Locals.Runs {
 			if valTypeRequiresSIMD(run.Type) {
 				return true
 			}
 		}
-		if exprRequiresSIMD(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}) {
+		if exprRequiresSIMDWithClassifier(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, classifier) {
 			return true
 		}
 	}
@@ -2440,13 +2441,21 @@ func storageTypeRequiresSIMD(s wasm.StorageType) bool {
 }
 
 func exprRequiresSIMD(e wasm.Expr) bool {
+	return exprRequiresSIMDWithClassifier(e, wasm.ModuleInstructionClassifier{})
+}
+
+func exprRequiresSIMDWithClassifier(e wasm.Expr, classifier wasm.ModuleInstructionClassifier) bool {
 	if len(e.BodyBytes) != 0 {
-		return exprBytesRequireSIMD(e.BodyBytes)
+		return exprBytesRequireSIMDWithClassifier(e.BodyBytes, classifier)
 	}
 	return instrsRequireSIMD(e.Instrs)
 }
 
 func exprBytesRequireSIMD(body []byte) bool {
+	return exprBytesRequireSIMDWithClassifier(body, wasm.ModuleInstructionClassifier{})
+}
+
+func exprBytesRequireSIMDWithClassifier(body []byte, classifier wasm.ModuleInstructionClassifier) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -2486,7 +2495,8 @@ func exprBytesRequireSIMD(body []byte) bool {
 			}
 			continue
 		}
-		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return false
 		}
 	}
