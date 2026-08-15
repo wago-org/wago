@@ -64,6 +64,41 @@ func nativeGCResolveReuseModuleARM64(t testing.TB, casts bool, between ...byte) 
 	return m
 }
 
+func nativeGCArrayResolveReuseModuleARM64(t testing.TB) *wasm.Module {
+	t.Helper()
+	arrayType := []byte{0x5e, 0x7f, 0x01}
+	initBody := []byte{0x00, 0x41, 0x07, 0xfb, 0x07, 0x00, 0x24, 0x00, 0x0b}
+	runBody := []byte{0x01, 0x01, 0x63, 0x00, 0x23, 0x00, 0x21, 0x00}
+	for range 8 {
+		runBody = append(runBody,
+			0x20, 0x00,
+			0xfb, 0x16, 0x00, // ref.cast (ref type 0)
+			0xfb, 0x0f, // array.len
+		)
+	}
+	for i := 1; i < 8; i++ {
+		runBody = append(runBody, 0x6a)
+	}
+	runBody = append(runBody, 0x0b)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(arrayType, wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b})),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(initBody))), initBody...),
+			append(wasmtest.ULEB(uint32(len(runBody))), runBody...),
+		)),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func compileNativeGCResolveReuseARM64(t testing.TB, m *wasm.Module, enabled bool) (*CodegenStats, int) {
 	t.Helper()
 	metadata, err := frontend.BuildGCTypeMetadata(m)
@@ -118,6 +153,35 @@ func TestNativeGCResolveReuseAfterFinalCastsARM64(t *testing.T) {
 	}
 }
 
+func TestNativeGCResolveReuseAcrossFinalCastArrayLengthsARM64(t *testing.T) {
+	m := nativeGCArrayResolveReuseModuleARM64(t)
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		GCStructHelpers: true,
+		GCArrayHelpers:  true,
+		Stats:           &stats,
+		Optimizations: map[string]bool{
+			"gc-native-final-array-len": true,
+			"gc-native-resolve-reuse":   true,
+		},
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.CodeImage.Close()
+	if got := stats.Funcs[1].Peephole["gc-native-resolve-reuse"]; got != 7 {
+		t.Fatalf("array length resolution reuse = %d, want 7", got)
+	}
+	if got := stats.Funcs[1].Peephole["final-cast-array-len-fuse"]; got != 8 {
+		t.Fatalf("final-cast array length fusions = %d, want 8", got)
+	}
+}
+
 func TestNativeGCResolveReuseStopsAtNearMissARM64(t *testing.T) {
 	// A constructor helper is a GC safepoint: the raw address from the first
 	// field read must be discarded, after which the remaining run may cache anew.
@@ -167,6 +231,43 @@ func BenchmarkNativeGCResolveReuseCompileARM64(b *testing.B) {
 					b.ReportMetric(float64(codeBytes), "code-B")
 				})
 			}
+		})
+	}
+}
+
+func BenchmarkNativeGCArrayResolveReuseCompileARM64(b *testing.B) {
+	m := nativeGCArrayResolveReuseModuleARM64(b)
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, enabled := range []bool{false, true} {
+		name := "off"
+		if enabled {
+			name = "on"
+		}
+		b.Run(name, func(b *testing.B) {
+			opts := CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Optimizations: map[string]bool{"gc-native-final-array-len": true, "gc-native-resolve-reuse": enabled}, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeLayouts: metadata.Layouts}}}
+			compiled, err := CompileModuleWith(m, opts)
+			if err != nil {
+				b.Fatal(err)
+			}
+			codeBytes := len(compiled.Code)
+			if err := compiled.CodeImage.Close(); err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				cm, err := CompileModuleWith(m, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := cm.CodeImage.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(codeBytes), "code-B")
 		})
 	}
 }

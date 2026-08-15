@@ -752,6 +752,13 @@ The repeated explicit-final-cast compile fixture likewise improved from a 12.09
 to 8.43 us/op median (-30.2%), cut B/op 20.4%, removed three allocations, and
 reduced native output from 1,844 to 696 bytes.
 
+Repeated final-cast `array.len` uses the same certificate while loading each
+length into a separate result register, so the cached raw address is never
+overwritten. Its Apple M4 Max prepared-invocation median improved from 98.7 to
+89.8 ns/op (-9.0%) with zero B/op and allocations. The compile fixture improved
+from 11.17 to 7.96 us/op (-28.7%), cut B/op 20.5%, removed three allocations,
+and reduced native output from 1,764 to 616 bytes.
+
 ---
 
 # 1. North-star architecture

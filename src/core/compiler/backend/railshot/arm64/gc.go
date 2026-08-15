@@ -901,8 +901,18 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 	if err != nil {
 		return err
 	}
-	f.ld32(object, object, 8)
-	f.pushReg(object, mtI32)
+	result := object
+	if f.gcResolved.valid && f.gcResolved.reg == object {
+		// The cached raw address must remain intact for a following read. Use a
+		// separate result only in that bounded case; uncached single reads retain
+		// the existing in-place load.
+		result = f.allocReg(maskOf(object))
+	}
+	f.ld32(result, object, 8)
+	if result != object {
+		f.release(object)
+	}
+	f.pushReg(result, mtI32)
 	return nil
 }
 
