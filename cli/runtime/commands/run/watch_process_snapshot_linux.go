@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -92,42 +93,77 @@ func watchedProcessDescendants(owner, root int, tracked map[int]uint64, limit in
 		if !ok || current.started != parent.started {
 			continue
 		}
-		file, err := os.Open("/proc/" + strconv.Itoa(parent.pid) + "/task/" + strconv.Itoa(parent.pid) + "/children")
+		tasks, err := watchedProcessTasks(parent.pid, maxWatchedThreads)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		if err != nil {
 			return processes, err
 		}
-		scanner := bufio.NewScanner(file)
-		scanner.Split(bufio.ScanWords)
-		for scanner.Scan() {
-			pid, parseErr := strconv.Atoi(scanner.Text())
-			if parseErr != nil || seen[pid] {
+		for _, task := range tasks {
+			file, openErr := os.Open("/proc/" + strconv.Itoa(parent.pid) + "/task/" + strconv.Itoa(task) + "/children")
+			if errors.Is(openErr, os.ErrNotExist) {
 				continue
 			}
-			process, exists := watchedProcess(pid)
-			if !exists || process.parent != parent.pid {
-				continue
+			if openErr != nil {
+				return processes, openErr
 			}
-			if len(processes) >= limit {
-				_ = file.Close()
-				return processes, fmt.Errorf("watched process tree exceeds %d descendants", limit)
+			scanner := bufio.NewScanner(file)
+			scanner.Split(bufio.ScanWords)
+			for scanner.Scan() {
+				pid, parseErr := strconv.Atoi(scanner.Text())
+				if parseErr != nil || seen[pid] {
+					continue
+				}
+				process, exists := watchedProcess(pid)
+				if !exists || process.parent != parent.pid {
+					continue
+				}
+				if len(processes) >= limit {
+					_ = file.Close()
+					return processes, fmt.Errorf("watched process tree exceeds %d descendants", limit)
+				}
+				seen[pid] = true
+				processes = append(processes, process)
+				queue = append(queue, process)
 			}
-			seen[pid] = true
-			processes = append(processes, process)
-			queue = append(queue, process)
-		}
-		scanErr := scanner.Err()
-		closeErr := file.Close()
-		if scanErr != nil {
-			return processes, scanErr
-		}
-		if closeErr != nil {
-			return processes, closeErr
+			scanErr := scanner.Err()
+			closeErr := file.Close()
+			if scanErr != nil {
+				return processes, scanErr
+			}
+			if closeErr != nil {
+				return processes, closeErr
+			}
 		}
 	}
 	return processes, nil
+}
+
+func watchedProcessTasks(pid, limit int) ([]int, error) {
+	directory, err := os.Open("/proc/" + strconv.Itoa(pid) + "/task")
+	if err != nil {
+		return nil, err
+	}
+	names, readErr := directory.Readdirnames(limit + 1)
+	closeErr := directory.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if len(names) > limit {
+		return nil, fmt.Errorf("watched process exceeds %d threads", limit)
+	}
+	tasks := make([]int, 0, len(names))
+	for _, name := range names {
+		task, parseErr := strconv.Atoi(name)
+		if parseErr == nil {
+			tasks = append(tasks, task)
+		}
+	}
+	return tasks, nil
 }
 
 func watchedProcess(pid int) (watchedProcessInfo, bool) {

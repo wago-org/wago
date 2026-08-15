@@ -23,6 +23,7 @@ type watchedChildPlatform struct {
 }
 
 const maxWatchedDescendants = 4096
+const maxWatchedThreads = 4096
 
 type watchedProcessInfo struct {
 	pid, parent int
@@ -128,7 +129,7 @@ func killWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) error 
 func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 	if platform.terminalFD >= 0 {
 		foreground, err := unix.IoctlGetInt(platform.terminalFD, unix.TIOCGPGRP)
-		if err == nil && platform.processes.ownsProcessGroup(foreground) {
+		if err == nil && watchedTerminalGroupCanRestore(platform.processes, foreground) {
 			_ = setWatchedTerminalForeground(platform.terminalFD, platform.foreground)
 		}
 	}
@@ -136,6 +137,16 @@ func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) {
 	finishWatchedProcessTracking(platform.processes)
 	platform.processes.close()
 	_ = command.Process.Release()
+}
+
+func watchedTerminalGroupCanRestore(tracker *watchedProcessTracker, group int) bool {
+	if group <= 0 {
+		return false
+	}
+	if tracker != nil && tracker.ownsProcessGroup(group) {
+		return true
+	}
+	return errors.Is(syscall.Kill(-group, 0), syscall.ESRCH)
 }
 
 func restoreWatchedTerminal(command *exec.Cmd) {
