@@ -43,7 +43,7 @@ type ctrlFrame struct {
 	entryUnreach      bool
 	endReachable      bool
 	regMerge1         bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
-	mergeRegResidency bool        // exact bounded call-free if: pinned locals may retain dedicated registers at the end merge
+	mergeRegResidency bool        // summary-admitted forward block/if: pinned locals may retain dedicated registers at the end merge
 	res0              machineType // first result's machine type (valid when resultN >= 1)
 	baseTypes         []machineType
 	paramTypes        []machineType
@@ -641,7 +641,11 @@ func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
 	if fr.kind == cfFunc {
 		return
 	}
-	f.convergeEdgeTo(&fr.branchState)
+	if fr.mergeRegResidency {
+		f.convergeResidentEdgeTo(&fr.branchState)
+	} else {
+		f.convergeEdgeTo(&fr.branchState)
+	}
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
@@ -728,16 +732,13 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.ctrl = append(f.ctrl, fr)
 		return nil
 	}
+	fr.mergeRegResidency = kind != cfLoop && f.hasMergeRegion(r.Offset())
 	if kind == cfIf {
-		// A call inside either arm can fan one dirty header state into several
-		// preservation stores. Keep those regions canonical; exact bounded
-		// call-free arms retain their dedicated registers across the split.
-		if f.mergeRegResidency {
-			hasCall, exact := scanForwardControlCall(r)
-			fr.mergeRegResidency = exact && !hasCall
-		}
+		// The summary scan admits only bounded call/barrier-free regions, so the
+		// header and end merge can retain their dedicated pinned registers without
+		// another bytecode walk here.
 		if fr.mergeRegResidency {
-			f.convergeIfEdgeTo(&fr.entryState)
+			f.convergeResidentEdgeTo(&fr.entryState)
 		} else {
 			f.convergeEdgeTo(&fr.entryState)
 		}
@@ -1169,7 +1170,7 @@ func (f *fn) opElse() error {
 		f.recordGCBranchResults(fr, fr.resultN)
 		f.mergeGCRefFactsInto(&fr.branchGCFacts)
 		if fr.mergeRegResidency {
-			f.convergeIfEdgeTo(&fr.branchState)
+			f.convergeResidentEdgeTo(&fr.branchState)
 		} else {
 			f.convergeEdgeTo(&fr.branchState)
 		}
@@ -1218,8 +1219,8 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
 			deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, nil)
-			if fr.kind == cfIf && fr.mergeRegResidency {
-				f.convergeIfEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			if fr.mergeRegResidency {
+				f.convergeResidentEdgeToWithDead(&fr.branchState, deadGP, deadFP)
 			} else {
 				f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
 			}
@@ -1297,7 +1298,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.installGCRefFacts(fr.entryGCFacts)
 		f.mergeGCRefFactsInto(&fr.branchGCFacts)
 		if fr.mergeRegResidency {
-			f.convergeIfEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			f.convergeResidentEdgeToWithDead(&fr.branchState, deadGP, deadFP)
 		} else {
 			f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
 		}

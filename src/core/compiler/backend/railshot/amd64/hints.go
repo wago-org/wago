@@ -15,8 +15,10 @@ import (
 // instructions use the AST scanner.
 
 const (
-	loopWeightFactor   = 10
-	maxLoopWeightDepth = 6
+	loopWeightFactor    = 10
+	maxLoopWeightDepth  = 6
+	maxMergeRegionHints = 8
+	maxMergeRegionBody  = 4096
 )
 
 func loopWeight(depth int) int64 {
@@ -109,8 +111,59 @@ func (h *funcHints) noteControlDepth(depth int) {
 	}
 }
 
+func (h *funcHints) noteMergeRegion(start int) {
+	if start < 0 || start > maxMergeRegionBody {
+		return
+	}
+	words := h.mergeRegionWords()
+	if len(words) == 0 {
+		return
+	}
+	encoded := uint32(start + 1)
+	for i := 0; i < maxMergeRegionHints; i++ {
+		word, shift := i/2, uint((i&1)*16)
+		if words[word]>>shift&0xffff == 0 {
+			words[word] |= encoded << shift
+			return
+		}
+	}
+}
+
+func (h *funcHints) hasMergeRegion(start int) bool {
+	if start < 0 || start > maxMergeRegionBody {
+		return false
+	}
+	words := h.mergeRegionWords()
+	if len(words) == 0 {
+		return false
+	}
+	want := uint32(start + 1)
+	for i := 0; i < maxMergeRegionHints; i++ {
+		word, shift := i/2, uint((i&1)*16)
+		got := words[word] >> shift & 0xffff
+		if got == want {
+			return true
+		}
+		if got == 0 {
+			return false
+		}
+	}
+	return false
+}
+
+func (h *funcHints) mergeRegionWords() []uint32 {
+	// The local-score slice keeps its logical local-indexed length. Its bounded
+	// capacity tail belongs to merge summaries, preserving the 200-byte
+	// funcHints structure and the module scan's single dense allocation.
+	if cap(h.localScore)-len(h.localScore) < maxMergeRegionHints/2 {
+		return nil
+	}
+	return h.localScore[len(h.localScore) : len(h.localScore)+maxMergeRegionHints/2]
+}
+
 func newFuncHints(nLocals, nGlobals int) funcHints {
-	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+	localWords := make([]uint32, nLocals+maxMergeRegionHints/2)
+	h := funcHintsWithStorage(localWords[:nLocals], make([]uint32, nGlobals), make([]bool, nGlobals))
 	h.localLastGet = make([]uint32, nLocals)
 	h.nLocals = nLocals
 	return h
@@ -626,6 +679,7 @@ type byteBodyScanner struct {
 	importedFuncs   int
 	effects         *shared.FuncEffectCollector
 	callerLocal     int
+	mergeBarrierSeq uint32
 }
 
 func (s *byteBodyScanner) noteNeverReadLocals() {
@@ -679,6 +733,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x0e: // br_table: exact jump-table-data admission hint
+			s.mergeBarrierSeq++
 			n, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
@@ -702,6 +757,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
+			regionStart, barrierSeq := s.r.off(), s.mergeBarrierSeq
 			switch op {
 			case 0x02: // block
 				calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
@@ -715,6 +771,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.defWritten = entryWritten
 				s.defEscaped = outerEscaped || childEscaped
 				subHasCall = subHasCall || calls
+				if s.mergeBarrierSeq == barrierSeq {
+					s.h.noteMergeRegion(regionStart)
+				}
 			case 0x03: // loop
 				loop := s.elig.push()
 				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false)
@@ -763,8 +822,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.defWritten = thenWritten & elseWritten
 				s.defEscaped = outerEscaped || thenEscaped || elseEscaped
 				subHasCall = subHasCall || callsThen || callsElse
+				if s.mergeBarrierSeq == barrierSeq {
+					s.h.noteMergeRegion(regionStart)
+				}
 			}
 		case 0x10, 0x12: // call, return_call
+			s.mergeBarrierSeq++
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -783,6 +846,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.effects.Call(s.callerLocal, imm.Index)
 			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
+			s.mergeBarrierSeq++
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -857,6 +921,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
+			}
+			if op == 0x40 || op == 0xfb || op == 0xfc || op == 0xfe {
+				s.mergeBarrierSeq++
 			}
 			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {

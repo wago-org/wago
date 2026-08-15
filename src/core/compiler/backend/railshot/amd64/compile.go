@@ -385,6 +385,7 @@ type fn struct {
 	// bodies. Large generated functions can fan one dirty merge state into many
 	// later call sites, duplicating stores; their canonical fallback is cheaper.
 	mergeRegResidency bool
+	mergeRegionWords  [maxMergeRegionHints / 2]uint32
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
 	// Each admitted table has a finite proof that every non-null entry targets this
@@ -2000,6 +2001,7 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	allHints := make([]funcHints, n)
 	totalLocals := 0
 	intervalLocals := 0
+	mergeRegionFuncs := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	for i := range m.Code {
@@ -2022,11 +2024,21 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 			}
 			intervalLocals += count
 		}
+		if bodyLen := len(m.Code[i].BodyBytes); bodyLen > 0 && bodyLen <= maxMergeRegionBody {
+			mergeRegionFuncs++
+		}
 	}
 	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
 		return nil, nil, fmt.Errorf("function hint globals overflow")
 	}
-	localScores := make([]uint32, totalLocals)
+	if mergeRegionFuncs > int(^uint(0)>>1)/(maxMergeRegionHints/2) {
+		return nil, nil, fmt.Errorf("function hint region storage overflow")
+	}
+	regionWords := mergeRegionFuncs * (maxMergeRegionHints / 2)
+	if totalLocals > int(^uint(0)>>1)-regionWords {
+		return nil, nil, fmt.Errorf("function hint region storage overflow")
+	}
+	localScores := make([]uint32, totalLocals+regionWords)
 	localLastGets := make([]uint32, intervalLocals)
 	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
 	var globalScores []uint32
@@ -2056,13 +2068,17 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 	for i := range m.Code {
 		effects.Begin(i)
 		nLocals := allHints[i].nLocals
+		mergeWords := 0
+		if bodyLen := len(m.Code[i].BodyBytes); bodyLen > 0 && bodyLen <= maxMergeRegionBody {
+			mergeWords = maxMergeRegionHints / 2
+		}
 		var h funcHints
 		if denseGlobals {
 			globalAt := i * nGlobals
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
 		} else {
 			sparseAccum.Reset(nGlobals)
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
+			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals:localAt+nLocals+mergeWords], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
 		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), nLocals, moduleEH) {
@@ -2077,7 +2093,7 @@ func computeModuleHintsWithPolicyAndEffects(m *wasm.Module, nGlobals, importedFu
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
-		localAt += nLocals
+		localAt += nLocals + mergeWords
 		h.globalAccum = nil
 		allHints[i] = h
 		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
@@ -2498,7 +2514,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver, calleeABIClasses: calleeABIClasses, calleeEffects: calleeEffects}
 	f.mergeRegResidency = policy.EnabledOption(optMergeRegResidency) &&
 		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded &&
-		len(c.BodyBytes) <= 4096
+		!moduleEH && len(c.BodyBytes) <= maxMergeRegionBody
+	if f.mergeRegResidency {
+		copy(f.mergeRegionWords[:], hints.mergeRegionWords())
+	}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]

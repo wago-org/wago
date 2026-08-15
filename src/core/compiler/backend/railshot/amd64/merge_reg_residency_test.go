@@ -75,6 +75,51 @@ func TestMergeRegisterResidency(t *testing.T) {
 	}
 }
 
+func TestMergeRegisterResidencyForwardBlockFromSummary(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{
+			0x00,
+			0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, // x++ (dirty pin)
+			0x02, 0x40, // block
+			0x20, 0x00, 0x41, 0x01, 0x71, 0x0d, 0x00, // br_if block (x & 1)
+			0x20, 0x00, 0x41, 0x02, 0x6a, 0x21, 0x00, // x += 2
+			0x0b,
+			0x20, 0x00, // result remains below the never-taken call block
+			0x41, 0x00, 0x04, 0x40,
+			0x20, 0x00, 0x10, 0x01, 0x1a,
+			0x0b, 0x0b,
+		}},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x0b}},
+	)
+	var offStats, onStats ModuleStats
+	off, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"merge-reg-residency": false, "inline": false}, Stats: &offStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	on, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"merge-reg-residency": true, "inline": false}, Stats: &onStats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := onStats.Funcs[0].Peephole["merge-reg-resident"]; got == 0 {
+		t.Fatalf("forward block merge-reg-resident hits = 0 (all: %v)", onStats.Funcs[0].Peephole)
+	}
+	if got, before := onStats.Funcs[0].LocalTraffic.ControlMergeStores, offStats.Funcs[0].LocalTraffic.ControlMergeStores; got >= before {
+		t.Fatalf("block merge stores enabled/disabled = %d/%d, want reduction", got, before)
+	}
+	for _, n := range []uint64{0, 1, 2, 17, ^uint64(0)} {
+		want := uint64(uint32(n) + 1)
+		if uint32(want)&1 == 0 {
+			want = uint64(uint32(want) + 2)
+		}
+		if got := runCompiledAmd64u(t, off, n); got != want {
+			t.Fatalf("disabled f(%d) = %d, want %d", n, got, want)
+		}
+		if got := runCompiledAmd64u(t, on, n); got != want {
+			t.Fatalf("enabled f(%d) = %d, want %d", n, got, want)
+		}
+	}
+}
+
 func TestMergeRegisterResidencyNoElseSkipsFalseEdgeConvergence(t *testing.T) {
 	// This is the control shape used by sqlite3_malloc: a call invalidates pinned
 	// registers, the condition reloads a parameter, and the taken arm writes a
@@ -125,32 +170,50 @@ func TestMergeRegisterResidencySizeObjectiveFallsBack(t *testing.T) {
 	}
 }
 
-func TestScanForwardControlCall(t *testing.T) {
-	exhausted := make([]byte, maxMergeRegionScanOps+1)
-	for i := range exhausted {
-		exhausted[i] = 0x01 // nop
+func TestMergeRegionSummaryBoundedAndBarrierAware(t *testing.T) {
+	body := make([]byte, 0, 3*(maxMergeRegionHints+2)+1)
+	starts := make([]int, 0, maxMergeRegionHints+2)
+	for range maxMergeRegionHints + 1 {
+		body = append(body, 0x02, 0x40) // block
+		starts = append(starts, len(body))
+		body = append(body, 0x0b)
 	}
-	exhausted = append(exhausted, 0x0b)
+	// A final block contains a direct call and must never be recorded even when
+	// summary capacity is available.
+	body = append(body, 0x02, 0x40, 0x10, 0x00, 0x0b, 0x0b)
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, start := range starts[:maxMergeRegionHints] {
+		if !h.hasMergeRegion(start) {
+			t.Fatalf("missing admitted merge region at body offset %d", start)
+		}
+	}
+	if h.hasMergeRegion(starts[maxMergeRegionHints]) {
+		t.Fatal("region beyond fixed summary capacity was admitted")
+	}
+}
+
+func TestMergeRegionSummaryBarriers(t *testing.T) {
 	tests := []struct {
-		name  string
-		body  []byte
-		call  bool
-		exact bool
+		name string
+		body []byte
+		want bool
 	}{
-		{"straight", []byte{0x20, 0x00, 0x1a, 0x0b}, false, true},
-		{"direct-call", []byte{0x10, 0x00, 0x0b}, true, true},
-		{"nested-call", []byte{0x04, 0x40, 0x10, 0x00, 0x0b, 0x0b}, true, true},
-		{"nested-call-free", []byte{0x04, 0x40, 0x01, 0x0b, 0x0b}, false, true},
-		{"gc-prefix", []byte{0xfb, 0x00, 0x00, 0x0b}, true, true},
-		{"malformed", []byte{0x20}, false, false},
-		{"fuel-exhausted", exhausted, false, false},
+		{"straight", []byte{0x02, 0x40, 0x01, 0x0b, 0x0b}, true},
+		{"direct-call", []byte{0x02, 0x40, 0x10, 0x00, 0x0b, 0x0b}, false},
+		{"br-table", []byte{0x02, 0x40, 0x41, 0x00, 0x0e, 0x00, 0x00, 0x0b, 0x0b}, false},
+		{"memory-grow", []byte{0x02, 0x40, 0x40, 0x00, 0x1a, 0x0b, 0x0b}, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := wasm.NewReader(tc.body)
-			call, exact := scanForwardControlCall(r)
-			if call != tc.call || exact != tc.exact {
-				t.Fatalf("scan = call:%v exact:%v, want call:%v exact:%v", call, exact, tc.call, tc.exact)
+			h, err := scanBodyBytes(tc.body, 0, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := h.hasMergeRegion(2); got != tc.want {
+				t.Fatalf("merge region admitted = %v, want %v", got, tc.want)
 			}
 		})
 	}

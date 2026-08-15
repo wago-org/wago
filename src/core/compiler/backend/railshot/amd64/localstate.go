@@ -362,12 +362,30 @@ func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) 
 	f.convergeEdgeToWithDeadMode(target, deadGP, deadFP, true)
 }
 
-func (f *fn) convergeIfEdgeTo(target *[]locState) {
+func (f *fn) convergeResidentEdgeTo(target *[]locState) {
 	f.convergeEdgeToWithDeadMode(target, 0, 0, false)
 }
 
-func (f *fn) convergeIfEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
+func (f *fn) convergeResidentEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
 	f.convergeEdgeToWithDeadMode(target, deadGP, deadFP, false)
+}
+
+func (f *fn) hasMergeRegion(start int) bool {
+	if !f.mergeRegResidency || start < 0 || start > maxMergeRegionBody {
+		return false
+	}
+	want := uint32(start + 1)
+	for i := 0; i < maxMergeRegionHints; i++ {
+		word, shift := i/2, uint((i&1)*16)
+		got := f.mergeRegionWords[word] >> shift & 0xffff
+		if got == want {
+			return true
+		}
+		if got == 0 {
+			return false
+		}
+	}
+	return false
 }
 
 func (f *fn) convergeEdgeToWithDeadMode(target *[]locState, deadGP, deadFP regMask, fixed bool) {
@@ -458,45 +476,6 @@ func (f *fn) convergeEdgeToWithDeadMode(target *[]locState, deadGP, deadFP regMa
 }
 
 const maxMergeNextUseOps = 64
-
-const maxMergeRegionScanOps = 256
-
-// scanForwardControlCall reports whether the structured region beginning at the
-// reader's current position contains a call-like boundary before its matching
-// end. It consumes only a copied reader and fixed storage. Uncertainty is
-// conservative: large regions, GC/bulk/atomic prefixes, memory.grow, and decode
-// failures keep the canonical merge representation.
-func scanForwardControlCall(r *wasm.Reader) (hasCall, exact bool) {
-	peek := *r
-	depth := 0
-	var imm wasm.InstructionImmediate
-	for fuel := 0; fuel < maxMergeRegionScanOps; fuel++ {
-		op, err := peek.Byte()
-		if err != nil {
-			return false, false
-		}
-		if err := wasm.ClassifyInstructionImmediateInto(&peek, op, &imm); err != nil {
-			return false, false
-		}
-		switch imm.Kind {
-		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
-			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
-			return true, true
-		}
-		switch op {
-		case 0x02, 0x03, 0x04: // block / loop / if
-			depth++
-		case 0x0b: // end
-			if depth == 0 {
-				return false, true
-			}
-			depth--
-		case 0x40, 0xfb, 0xfc, 0xfe: // grow and prefixed helper/barrier families
-			return true, true
-		}
-	}
-	return false, false
-}
 
 // planForwardMergeDeadLocals returns fixed register masks for target locals
 // that arrive memory-only on the current forward edge and are overwritten or

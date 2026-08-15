@@ -3337,33 +3337,42 @@ deterministic conservative fallback
 
 # 17. Implementation ledger
 
-## 2026-08-15 — AMD64 bounded `if`-merge register residency
+## 2026-08-15 — AMD64 bounded forward-merge register residency
 
-The first Phase 2 branch-local residency slice landed for AMD64. For Balanced
-and Speed functions no larger than 4 KiB, dirty pinned locals may remain in
-their dedicated registers across an exact, bounded, call-free `if` region.
-Loops, calls, GC/bulk/atomic prefixes, oversized scans, decode uncertainty, and
-Size/Embedded objectives retain the canonical slot path. The production scan
-copies the Wasm reader, has 256-operation fuel, and allocates no storage.
+The first Phase 2 branch-local residency slice landed for AMD64. The combined
+function-summary scan records the first eight exact call/barrier-free `block`
+and `if` body offsets for Balanced and Speed functions no larger than 4 KiB.
+Lowering consults those marks without another bytecode walk and may keep dirty
+pinned locals in their dedicated registers across the forward merge. Loops,
+calls, `br_table`, GC/bulk/atomic prefixes, EH modules, summary-cap overflow,
+larger bodies, and Size/Embedded objectives retain the canonical slot path.
+
+The offsets occupy four extra words in the existing dense local-score backing,
+not the per-function structure: `funcHints` remains 200 bytes, there is still
+one module allocation, and no region operation allocates.
 
 Native A/B results on a Ryzen 7 7800X3D:
 
 ```text
-128-merge execution kernel:
-    canonical: 45.8 ns/op, 4619 native bytes, 0 B/op
-    resident:  43.9 ns/op, 3595 native bytes, 0 B/op
-    delta:     about -4.2% time, -22.2% native bytes
+eight-region mixed if/block execution kernel:
+    canonical: 11.50 ns/op, 372 native bytes, 0 B/op
+    resident:   9.93 ns/op, 324 native bytes, 0 B/op
+    delta:     about -13.7% time, -12.9% native bytes
 
 64-module AMD64 corpus:
-    merge stores: 724139 -> 706248 (-17891, -2.5%)
-    merge reloads: 452566 -> 452618 (+52)
-    native bytes: 81438930 -> 81373857 (-65073)
+    merge stores: 724139 -> 689046 (-35093, -4.8%)
+    merge reloads: 452566 -> 452625 (+59)
+    native bytes: 81438930 -> 81304913 (-134017)
 
-alternating real-module compile sample
+alternating comparison against the untouched if-only baseline
 (regexmatch, SQLite, Ruby, esbuild; n=6 per mode):
-    geomean time: +0.26%
-    B/op: unchanged
-    allocs/op: unchanged
+    geomean time: -0.39%
+    B/op: +0.45%
+    allocs/op: +0.01% (rounding; no material change)
+
+ordinary Ruby compile peak RSS, four one-shot processes:
+    median: about 108442 KiB -> 108746 KiB
+    delta:  +304 KiB (+0.28%)
 ```
 
 The initial implementation exposed a no-`else` false-edge stub bug in SQLite:
