@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -129,11 +130,83 @@ func TestRunPropagatesChildStopAndContinue(t *testing.T) {
 	t.Fatal("continued supervisor did not continue child")
 }
 
+func TestChildLifetimeSurvivesGoThreadExit(t *testing.T) {
+	const testName = "^TestChildLifetimeSurvivesGoThreadExit$"
+	if os.Getenv("WAGO_WATCH_LIFETIME_CHILD") == "1" {
+		parent, exited, err := monitorParentLifetime()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer parent.Close()
+		if err := os.WriteFile(os.Getenv("WAGO_WATCH_LIFETIME_READY"), []byte("ready"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-exited:
+			return
+		case <-time.After(5 * time.Second):
+			t.Fatal("parent lifetime pipe did not close")
+		}
+	}
+
+	readyPath := t.TempDir() + "/ready"
+	child := exec.Command(os.Args[0], "-test.run="+testName, "-test.count=1")
+	child.Env = append(os.Environ(),
+		"WAGO_WATCH_LIFETIME_CHILD=1",
+		"WAGO_WATCH_LIFETIME_READY="+readyPath,
+	)
+	lifetime, err := BindChild(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lifetime.Close()
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	lifetime.Started()
+	done := make(chan error, 1)
+	go func() { done <- child.Wait() }()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(readyPath); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := os.Stat(readyPath); err != nil {
+		t.Fatal("lifetime child did not start")
+	}
+	threadExited := make(chan struct{})
+	go func() {
+		runtime.LockOSThread()
+		close(threadExited)
+	}()
+	<-threadExited
+	runtime.GC()
+	select {
+	case err := <-done:
+		t.Fatalf("thread exit closed process lifetime pipe: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := lifetime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("child did not observe process lifetime close")
+	}
+}
+
 func TestEnvironmentReplacesInternalValues(t *testing.T) {
 	input := []string{
 		markerEnvironment + "=old",
 		"WAGO_TEST=value",
 		guestExecutableEnvironment + "=/old",
+		parentLifetimeFDEnvironment + "=9",
 	}
 	want := "WAGO_TEST=value\n" + markerEnvironment + "=" + guardianRole + "\n" + guestExecutableEnvironment + "=/guest"
 	if got := strings.Join(Environment(input, "/guest"), "\n"); got != want {

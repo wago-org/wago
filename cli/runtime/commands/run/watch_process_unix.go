@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/wago-org/wago/cli/internal/watchsupervisor"
 	"golang.org/x/sys/unix"
 )
 
@@ -20,6 +21,7 @@ type watchedChildPlatform struct {
 	terminalFD int
 	foreground int
 	processes  *watchedProcessTracker
+	lifetime   *watchsupervisor.ChildLifetime
 }
 
 const maxWatchedDescendants = 4096
@@ -44,15 +46,23 @@ type watchedProcessTracker struct {
 }
 
 func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
-	if err := prepareWatchedCommand(command); err != nil {
+	lifetime, err := prepareWatchedCommand(command)
+	if err != nil {
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
+	started := false
+	defer func() {
+		if !started {
+			_ = lifetime.Close()
+		}
+	}()
 	unlockStart := lockWatchedCommandStart()
 	defer unlockStart()
 	if err := command.Start(); err != nil {
 		abortWatchedCommand(command)
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
+	lifetime.Started()
 	if err := waitWatchedCommandStart(command); err != nil {
 		abortWatchedCommand(command)
 		_ = command.Process.Kill()
@@ -73,20 +83,22 @@ func startWatchedProcess(command *exec.Cmd) (watchedChildPlatform, error) {
 		_ = command.Wait()
 		return watchedChildPlatform{terminalFD: -1}, err
 	}
+	platform.lifetime = lifetime
+	started = true
 	return platform, nil
 }
 
-func prepareWatchedCommand(command *exec.Cmd) error {
+func prepareWatchedCommand(command *exec.Cmd) (*watchsupervisor.ChildLifetime, error) {
 	if err := prepareWatchedProcessTracking(); err != nil {
-		return err
+		return nil, err
 	}
-	attributes := &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
+	attributes := &syscall.SysProcAttr{Setpgid: true}
 	configureWatchedCommandStart(attributes)
 	if _, _, ok := watchedCommandTerminal(command); ok {
 		attributes.Setpgid = false
 	}
 	command.SysProcAttr = attributes
-	return nil
+	return watchsupervisor.BindChild(command)
 }
 
 func abortWatchedCommand(command *exec.Cmd) {
@@ -158,7 +170,7 @@ func releaseWatchedProcess(platform watchedChildPlatform, command *exec.Cmd) err
 	if errors.Is(releaseErr, os.ErrProcessDone) {
 		releaseErr = nil
 	}
-	return errors.Join(terminalErr, signalErr, finishErr, releaseErr)
+	return errors.Join(terminalErr, signalErr, finishErr, releaseErr, platform.lifetime.Close())
 }
 
 func watchedTerminalGroupCanRestore(tracker *watchedProcessTracker, group int) bool {

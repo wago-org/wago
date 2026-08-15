@@ -24,6 +24,7 @@ import (
 const markerEnvironment = "WAGO_WATCH_SUPERVISOR"
 const guestExecutableEnvironment = "WAGO_WATCH_GUEST_EXECUTABLE"
 const parentPIDEnvironment = "WAGO_WATCH_SUPERVISOR_PARENT"
+const parentLifetimeFDEnvironment = "WAGO_WATCH_PARENT_LIFETIME_FD"
 const guardianRole = "guardian"
 const workerRole = "worker"
 const probeRole = "probe"
@@ -38,6 +39,61 @@ type processInfo struct {
 	pid, parent int
 	state       byte
 	started     uint64
+}
+
+// ChildLifetime holds the parent side of a pipe inherited by a child process.
+// The child observes EOF only when this whole process exits or Close is called.
+type ChildLifetime struct {
+	read  *os.File
+	write *os.File
+}
+
+// BindChild adds a process-lifetime pipe to command.
+func BindChild(command *exec.Cmd) (*ChildLifetime, error) {
+	read, write, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	fd := 3 + len(command.ExtraFiles)
+	command.ExtraFiles = append(command.ExtraFiles, read)
+	command.Env = replaceEnvironmentField(command.Environ(), parentLifetimeFDEnvironment, strconv.Itoa(fd))
+	return &ChildLifetime{read: read, write: write}, nil
+}
+
+// Started releases the parent's copy of the inherited read side.
+func (lifetime *ChildLifetime) Started() {
+	if lifetime != nil && lifetime.read != nil {
+		_ = lifetime.read.Close()
+		lifetime.read = nil
+	}
+}
+
+// Close releases both parent-side pipe descriptors.
+func (lifetime *ChildLifetime) Close() error {
+	if lifetime == nil {
+		return nil
+	}
+	var readErr, writeErr error
+	if lifetime.read != nil {
+		readErr = lifetime.read.Close()
+		lifetime.read = nil
+	}
+	if lifetime.write != nil {
+		writeErr = lifetime.write.Close()
+		lifetime.write = nil
+	}
+	return errors.Join(readErr, writeErr)
+}
+
+func replaceEnvironmentField(environment []string, name, value string) []string {
+	prefix := name + "="
+	result := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
+		}
+	}
+	return append(result, prefix+value)
 }
 
 // Environment marks a provider-free executable as a supervisor for guest.
@@ -129,7 +185,6 @@ func supervisorCommand(role, guest string) (*exec.Cmd, error) {
 			guestExecutableEnvironment+"="+guest,
 			parentPIDEnvironment+"="+strconv.Itoa(os.Getpid()),
 		)
-		command.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
 		return command, nil
 	case workerRole:
 		expected, err := strconv.Atoi(os.Getenv(parentPIDEnvironment))
@@ -149,7 +204,8 @@ func withoutInternalEnvironment(environment []string) []string {
 	for _, entry := range environment {
 		if strings.HasPrefix(entry, markerEnvironment+"=") ||
 			strings.HasPrefix(entry, guestExecutableEnvironment+"=") ||
-			strings.HasPrefix(entry, parentPIDEnvironment+"=") {
+			strings.HasPrefix(entry, parentPIDEnvironment+"=") ||
+			strings.HasPrefix(entry, parentLifetimeFDEnvironment+"=") {
 			continue
 		}
 		result = append(result, entry)
@@ -159,21 +215,60 @@ func withoutInternalEnvironment(environment []string) []string {
 
 // Run supervises command and returns its process exit code.
 func Run(command *exec.Cmd) (int, error) {
+	parentLifetime, parentExited, err := monitorParentLifetime()
+	if err != nil {
+		return 1, err
+	}
+	if parentLifetime != nil {
+		defer parentLifetime.Close()
+	}
 	if err := prepare(); err != nil {
 		return 1, err
 	}
 	events := make(chan os.Signal, 8)
 	signal.Notify(events, os.Interrupt, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGCONT, syscall.SIGCHLD)
 	defer signal.Stop(events)
+	childLifetime, err := BindChild(command)
+	if err != nil {
+		return 1, err
+	}
+	defer childLifetime.Close()
+	select {
+	case <-parentExited:
+		return signalExitCode(syscall.SIGTERM), nil
+	default:
+	}
 	if err := command.Start(); err != nil {
 		return 1, err
 	}
+	childLifetime.Started()
 	defer command.Process.Release()
 	states := make(chan syscall.WaitStatus, 8)
 	exited := make(chan childExit, 1)
 	go waitDirectChild(command.Process.Pid, states, exited)
+	stopChild := func(received os.Signal) (int, error) {
+		timer := time.NewTimer(stopGrace)
+		select {
+		case <-exited:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+		case <-timer.C:
+			_ = command.Process.Kill()
+			<-exited
+		}
+		if cleanupErr := cleanup(); cleanupErr != nil {
+			return 1, cleanupErr
+		}
+		return signalExitCode(received), nil
+	}
 	for {
 		select {
+		case <-parentExited:
+			return stopChild(syscall.SIGTERM)
 		case result := <-exited:
 			if cleanupErr := cleanup(); cleanupErr != nil {
 				return 1, cleanupErr
@@ -213,25 +308,39 @@ func Run(command *exec.Cmd) (int, error) {
 				}
 				continue
 			}
-			timer := time.NewTimer(stopGrace)
-			select {
-			case <-exited:
-				if !timer.Stop() {
-					select {
-					case <-timer.C:
-					default:
-					}
-				}
-			case <-timer.C:
-				_ = command.Process.Kill()
-				<-exited
-			}
-			if cleanupErr := cleanup(); cleanupErr != nil {
-				return 1, cleanupErr
-			}
-			return signalExitCode(received), nil
+			return stopChild(received)
 		}
 	}
+}
+
+func monitorParentLifetime() (*os.File, <-chan struct{}, error) {
+	value := os.Getenv(parentLifetimeFDEnvironment)
+	if value == "" {
+		return nil, nil, nil
+	}
+	fd, err := strconv.Atoi(value)
+	if err != nil || fd < 3 {
+		return nil, nil, errors.New("invalid watch parent lifetime descriptor")
+	}
+	if _, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil {
+		return nil, nil, fmt.Errorf("inspect watch parent lifetime descriptor: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), "wago-watch-parent-lifetime")
+	if file == nil {
+		return nil, nil, errors.New("open watch parent lifetime descriptor")
+	}
+	unix.CloseOnExec(fd)
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		var buffer [1]byte
+		for {
+			if _, err := file.Read(buffer[:]); err != nil {
+				return
+			}
+		}
+	}()
+	return file, exited, nil
 }
 
 type childExit struct {
