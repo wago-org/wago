@@ -4030,3 +4030,22 @@ comparison produced zero changed native bytes in every module. AMD64's typed
 width at the measured consumers. The bookkeeping and tests were removed;
 architecture-neutral facts do not require symmetric target retention when one
 backend has no code-selection benefit.
+
+### Rejected follow-up: dead pinned-local argument ownership
+
+An AMD64 prototype reused the existing 64-operation post-call liveness proof to
+pass a dirty pinned local directly into the argument parallel-copy resolver when
+the local died at the call. This removed the early borrowed-local-to-scratch
+copy and still skipped the proven-dead canonical store. Reads, control
+boundaries, fuel exhaustion, disabled next-use policy, and live locals retained
+the established path. No scan, summary, or compiler storage was added.
+
+The exact 64-module corpus found 706 selections across 15 modules and reduced
+native code by 1,961 bytes; every affected module shrank and none grew. The
+native execution gate rejected it. On a 64-call Ryzen 7 7800X3D fixture, six
+one-second samples regressed from a 67.83 to 72.50 ns/op median (about +6.9%)
+despite shrinking the function from 1,701 to 1,253 bytes; both paths remained at
+zero B/op and allocations. The earlier scratch copy breaks the pinned-local
+dependency before call staging, while the shorter sequence moves that dependency
+onto the late ABI copy. The rule and tests were removed. Future call-position
+ownership work must cost dependency depth, not only moves and bytes.
