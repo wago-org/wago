@@ -18,8 +18,8 @@ const (
 	maxLoopWeightDepth  = 6
 	branchHintWeight    = 8
 	maxBranchPathWeight = int64(1 << 20)
-	maxMergeRegionHints = 8
-	maxMergeRegionBody  = 4096
+	maxMergeRegionHints = shared.MaxMergeRegionHints
+	maxMergeRegionBody  = shared.MaxMergeRegionBody
 )
 
 func loopWeight(depth int) int64 {
@@ -34,47 +34,11 @@ func loopWeight(depth int) int64 {
 }
 
 func (h *funcHints) noteMergeRegion(start int) {
-	if start < 0 || start > maxMergeRegionBody {
-		return
-	}
-	words := h.mergeRegionWords()
-	if len(words) == 0 {
-		return
-	}
-	encoded := uint32(start + 1)
-	for i := 0; i < maxMergeRegionHints; i++ {
-		word, shift := i/2, uint((i&1)*16)
-		if words[word]>>shift&0xffff == 0 {
-			words[word] |= encoded << shift
-			return
-		}
-	}
+	h.mergeRegions.Note(start)
 }
 
 func (h *funcHints) hasMergeRegion(start int) bool {
-	if start < 0 || start > maxMergeRegionBody {
-		return false
-	}
-	words := h.mergeRegionWords()
-	if len(words) == 0 {
-		return false
-	}
-	want := uint32(start + 1)
-	for i := 0; i < maxMergeRegionHints; i++ {
-		word, shift := i/2, uint((i&1)*16)
-		got := words[word] >> shift & 0xffff
-		if got == want {
-			return true
-		}
-		if got == 0 {
-			return false
-		}
-	}
-	return false
-}
-
-func (h *funcHints) mergeRegionWords() []uint32 {
-	return h.mergeRegions[:]
+	return h.mergeRegions.Has(start)
 }
 
 func weightedBranchPath(weight int64) int64 {
@@ -86,7 +50,7 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	mergeRegions      [maxMergeRegionHints / 2]uint32
+	mergeRegions      shared.MergeRegionHints
 	nLocals           int
 	hasCall           bool   // any direct or indirect call
 	callsSelf         bool   // a direct call to the function's own index
@@ -1043,11 +1007,7 @@ func (r *byteScanReader) err(code wasm.DecodeErrorCode, off int) error {
 func (r *byteScanReader) byte() (byte, error) { return r.Byte() }
 
 func shouldSkipStackFence(hasCall bool, nLocalSlots int, bodyBytesLen int) bool {
-	return !hasCall && frameHdrBytes+8*nLocalSlots+8*bodyBytesLen <= 4096
-}
-
-func stackFenceElisionValid(skip bool, finalFrameBytes int) bool {
-	return !skip || finalFrameBytes <= 4096
+	return shared.ShouldSkipStackFence(hasCall, frameHdrBytes, nLocalSlots, bodyBytesLen)
 }
 
 func instrTouchesMemory(k wasm.InstrKind) bool {

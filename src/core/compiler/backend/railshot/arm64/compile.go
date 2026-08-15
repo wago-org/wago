@@ -290,7 +290,7 @@ type fn struct {
 	// mergeRegResidency admits forward structured residency only for bounded
 	// summary-proven call/barrier-free block and if bodies.
 	mergeRegResidency bool
-	mergeRegionWords  [maxMergeRegionHints / 2]uint32
+	mergeRegionWords  shared.MergeRegionHints
 	// localFactsEnabled admits assignment-version facts only in straight-line
 	// bodies. Facts reuse an otherwise-unused byte in each localDef.
 	localFactsEnabled bool
@@ -2035,7 +2035,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
-	pinLocals, allowFenceSkip := true, true
+	retry := shared.NewCompileRetryState(true)
 	for attempts := 0; attempts < 3; attempts++ {
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
 			gcFrameRoots.Exact = true
@@ -2044,20 +2044,17 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 			gcFrameRoots.FrameBytes = 0
 			gcFrameRoots.AdapterReturnOffset = 0
 		}
-		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, pinLocals, allowFenceSkip, inlineTargets, calleeABIClasses, calleeEffects, policy, sc)
-		if errors.Is(err, errStackFenceRequired) && allowFenceSkip {
-			allowFenceSkip = false
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, retry.PinLocals, retry.AllowFenceSkip, inlineTargets, calleeABIClasses, calleeEffects, policy, sc)
+		if retry.Retry(errors.Is(err, errStackFenceRequired), errors.Is(err, errRegExhausted)) {
 			resetFuncStats(stats)
 			continue
 		}
-		if !errors.Is(err, errRegExhausted) || !pinLocals {
-			if err == nil && !pinLocals {
+		if !errors.Is(err, errRegExhausted) || !retry.PinLocals {
+			if err == nil && !retry.PinLocals {
 				stats.setUnpinnedRetry()
 			}
 			return
 		}
-		pinLocals = false
-		resetFuncStats(stats)
 	}
 	return
 }
@@ -2106,7 +2103,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded &&
 		!hints.moduleEH && len(c.BodyBytes) <= maxMergeRegionBody
 	if f.mergeRegResidency {
-		copy(f.mergeRegionWords[:], hints.mergeRegionWords())
+		f.mergeRegionWords = hints.mergeRegions
 	}
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -2374,7 +2371,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 				f.gcFrameRoots.Exact = false
 			}
 		}
-		if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+		if !shared.StackFenceElisionValid(f.skipFence, f.frameSize()) {
 			return nil, nil, 0, errStackFenceRequired
 		}
 		f.finalizePeepholes()
@@ -2395,7 +2392,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.epilogue()
 	f.emitTrapStubs()
 	f.patchFrameAdjusts()
-	if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+	if !shared.StackFenceElisionValid(f.skipFence, f.frameSize()) {
 		return nil, nil, 0, errStackFenceRequired
 	}
 	if f.gcFrameRoots != nil {

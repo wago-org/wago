@@ -386,7 +386,7 @@ type fn struct {
 	// bodies. Large generated functions can fan one dirty merge state into many
 	// later call sites, duplicating stores; their canonical fallback is cheaper.
 	mergeRegResidency bool
-	mergeRegionWords  [maxMergeRegionHints / 2]uint32
+	mergeRegionWords  shared.MergeRegionHints
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
 	// Each admitted table has a finite proof that every non-null entry targets this
@@ -2464,7 +2464,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		// generalized to pinned registers.
 		modGlobals = nil
 	}
-	allowFenceSkip := true
+	retry := shared.NewCompileRetryState(pinLocals)
 	for attempts := 0; attempts < 3; attempts++ {
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
 			gcFrameRoots.Exact = true
@@ -2473,20 +2473,17 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 			gcFrameRoots.FrameBytes = 0
 			gcFrameRoots.AdapterReturnOffset = 0
 		}
-		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, allowFenceSkip, inlineTargets, calleeABIClasses, calleeEffects, sc)
-		if errors.Is(err, errStackFenceRequired) && allowFenceSkip {
-			allowFenceSkip = false
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, retry.PinLocals, retry.AllowFenceSkip, inlineTargets, calleeABIClasses, calleeEffects, sc)
+		if retry.Retry(errors.Is(err, errStackFenceRequired), errors.Is(err, errRegExhausted)) {
 			resetFuncStats(stats)
 			continue
 		}
-		if !errors.Is(err, errRegExhausted) || !pinLocals {
-			if err == nil && !pinLocals {
+		if !errors.Is(err, errRegExhausted) || !retry.PinLocals {
+			if err == nil && !retry.PinLocals {
 				stats.setUnpinnedRetry()
 			}
 			return
 		}
-		pinLocals = false
-		resetFuncStats(stats)
 	}
 	return
 }
@@ -2558,7 +2555,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded &&
 		!moduleEH && len(c.BodyBytes) <= maxMergeRegionBody
 	if f.mergeRegResidency {
-		copy(f.mergeRegionWords[:], hints.mergeRegionWords())
+		f.mergeRegionWords = hints.mergeRegions
 	}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
@@ -2848,7 +2845,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			return nil, nil, 0, err
 		}
 		f.emitV128ConstPool()
-		if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+		if !shared.StackFenceElisionValid(f.skipFence, f.frameSize()) {
 			return nil, nil, 0, errStackFenceRequired
 		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
@@ -2881,7 +2878,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 	f.patchFrameSize()
-	if !stackFenceElisionValid(f.skipFence, f.frameSize()) {
+	if !shared.StackFenceElisionValid(f.skipFence, f.frameSize()) {
 		return nil, nil, 0, errStackFenceRequired
 	}
 	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)

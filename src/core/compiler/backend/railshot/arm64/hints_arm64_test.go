@@ -19,7 +19,7 @@ func TestFuncHintsSizeArm64(t *testing.T) {
 }
 
 func TestStackFenceElisionUsesFinalFrameArm64(t *testing.T) {
-	if !stackFenceElisionValid(true, 4096) || stackFenceElisionValid(true, 4097) || !stackFenceElisionValid(false, 1<<20) {
+	if !shared.StackFenceElisionValid(true, 4096) || shared.StackFenceElisionValid(true, 4097) || !shared.StackFenceElisionValid(false, 1<<20) {
 		t.Fatal("final-frame stack-fence validation boundary is wrong")
 	}
 }
