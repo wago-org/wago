@@ -290,6 +290,7 @@ func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool, m *wasm.Module, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper *bool) CoreFeatures {
 	var out CoreFeatures
 	r := wasm.NewReader(body)
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -435,8 +436,8 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 		if op == 0xfb {
 			probe = *r
 		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			break
 		}
 		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemStateCount, dataStateCount)
