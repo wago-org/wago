@@ -136,6 +136,11 @@ func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
 				return true
 			}
 		}
+		for _, result := range ft.Results {
+			if result.Kind() == wasm.ValRef {
+				return true
+			}
+		}
 		return false
 	}
 	isDynamicCall := func(kind wasm.InstrKind) bool {

@@ -5,7 +5,31 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestDynamicFuncrefEscapeIncludesReferenceResults(t *testing.T) {
+	targetType := wasmtest.FuncType(nil, []wasm.ValType{wasm.AnyRef})
+	callerType := wasmtest.FuncType(nil, nil)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(targetType, callerType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x00,       // unreachable supplies the polymorphic function reference
+			0x14, 0x00, // call_ref type 0
+			0x1a, // drop the returned aggregate reference
+			0x0b,
+		}))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if !compiled.dynamicFuncrefEscape {
+		t.Fatal("dynamic reference result did not mark local funcrefs as escaping")
+	}
+}
 
 func TestModuleRequiredFeaturesFindsSIMDInEveryExpressionForm(t *testing.T) {
 	simdBytes := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
