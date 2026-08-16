@@ -735,6 +735,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if local < 0 || local >= len(c.Funcs) {
 					continue
 				}
+				for _, param := range c.Funcs[local].Params {
+					if param == ValAnyRef {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
 				for _, result := range c.Funcs[local].Results {
 					if mayCarryFuncref(result) {
 						localFuncrefsMayEscape = true
