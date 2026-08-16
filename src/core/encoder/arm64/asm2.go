@@ -467,6 +467,21 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 	a.addDispX16(disp)
 	a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
 }
+
+// LoadPairIdx loads two adjacent full-width integer values from base+index+disp.
+// It returns false when disp cannot be represented by the scaled pair immediate.
+func (a *Asm) LoadPairIdx(dst, dst2, base, index Reg, disp int32, size int) bool {
+	if size != 4 && size != 8 || disp < 0 || disp%int32(size) != 0 || disp/int32(size) > 63 {
+		return false
+	}
+	a.AddShifted(X16, base, index, 0, false)
+	if size == 4 {
+		a.LdpOffset32(dst, dst2, X16, disp)
+	} else {
+		a.LdpOffset(dst, dst2, X16, disp)
+	}
+	return true
+}
 func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	if disp == 0 {
 		a.StrIdx(src, base, index, size)
