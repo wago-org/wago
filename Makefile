@@ -138,6 +138,10 @@ test-corpus: ## Corpus pipeline + differential execution in parent/child process
 	cd bench && go test -count=1 -run '^TestCorpus$$' .
 	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
+.PHONY: test-semantic-corpus
+test-semantic-corpus: ## Semantic corpus: real programs checked against exact oracles (tests/corpora)
+	go test -count=1 ./tests/semanticcorpus
+
 REGRESSION_UPSTREAM ?= $(CURDIR)/.tmp/regression-corpus-upstream
 WAST2JSON ?= wast2json
 
