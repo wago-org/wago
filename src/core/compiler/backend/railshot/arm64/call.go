@@ -2391,8 +2391,9 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.ld64(X13, X13, runtime.FuncRefContextOffset) // caller instance context
 	f.cmpRR(X12, X13, true)
 	jne := f.a.Bcond(condNE)
-	// Same instance: X1 = caller linMem, call the entry directly.
+	// Same instance: establish the complete wrapper ABI and call directly.
 	f.a.MovReg64(X1, linMemReg)
+	f.ld64(X2, linMemReg, -int32(offTrapCellPtr))
 	f.ld64(X16, linMemReg, -int32(offSpillRegion))
 	f.a.Blr(X16)
 	if recordRoots {
@@ -2416,6 +2417,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
 	f.st64(X11, -int32(offTrapCellPtr), X9)
 	f.a.MovReg64(X1, X11)
+	f.ld64(X2, X11, -int32(offTrapCellPtr))
 	f.ld64(X16, linMemReg, -int32(offSpillRegion)) // linMemReg unchanged by the pushes
 	f.a.Blr(X16)
 	if recordRoots {
