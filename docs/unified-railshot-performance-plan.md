@@ -2509,6 +2509,28 @@ safe exact reference signatures
 
 Do not dynamically generate one trampoline per signature.
 
+### Current prepared-entry proof boundaries
+
+Prepared execution has three distinct instance modes; exclusions must be stated
+against the mode they constrain rather than described as universal:
+
+| Mode | Admission and synchronization | Body/runtime state still permitted |
+| --- | --- | --- |
+| General | Guarded public invocation and the ordinary execution lease | All supported instance state and reentry protocols |
+| Private direct | Explicit-bounds instance with private native control and owned, unshared memory; serialized by `nativeExecutionMu` and refreshed before entry | Owned memory, globals, tables, function-reference descriptors, imports, and GC state |
+| Isolated direct | Private mode plus no memory, globals, tables, imports, function-reference descriptors, or GC state; the prepared handle retains the per-instance non-concurrency contract | Only state confined to the instance engine, stack, trap cell, and argument/result buffers |
+
+The compiler's per-function direct-entry bit is a separate proof. Both backends
+require a finite scalar register signature, no linear-memory access, no
+module-global pins or EH, at most 96 encoded body bytes, and at most eight
+locals. AMD64 currently also requires a call-free body; ARM64 admits internal
+calls when the module has no imports or linear memories, so table dispatch and
+GC operations remain possible. A table-backed `call_indirect` or GC-capable
+instance therefore excludes isolated entry but does not by itself exclude
+private direct prepared execution. Public-reference
+translation, collector-domain validation, trap/control refresh, and host-reentry
+handling remain active wherever their corresponding state is admitted.
+
 Also add an explicit batch API for repeated tiny calls:
 
 ```text
