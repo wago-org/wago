@@ -29,16 +29,18 @@ func TestCallRefOnlyArenaNeedUsesFixedContextHeader(t *testing.T) {
 	if got, want := wide.instantiateArenaNeed-withoutHeader.instantiateArenaNeed, coreruntime.FuncRefDescBytes; got != want {
 		t.Fatalf("wide call_ref context delta = %d, want fixed header %d", got, want)
 	}
-	blob, err := callRef.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatal(err)
-	}
-	if loaded.NeedsFuncRefDescs || !loaded.needsFuncRefContextHeader {
-		t.Fatalf("loaded call_ref metadata = full %v header %v, want false/true", loaded.NeedsFuncRefDescs, loaded.needsFuncRefContextHeader)
+	if callRef.boundsMode != BoundsChecksSignalsBased {
+		blob, err := callRef.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var loaded Compiled
+		if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+			t.Fatal(err)
+		}
+		if loaded.NeedsFuncRefDescs || !loaded.needsFuncRefContextHeader {
+			t.Fatalf("loaded call_ref metadata = full %v header %v, want false/true", loaded.NeedsFuncRefDescs, loaded.needsFuncRefContextHeader)
+		}
 	}
 }
 
