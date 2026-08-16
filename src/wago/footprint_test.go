@@ -9,7 +9,7 @@ import (
 )
 
 func TestCallRefOnlyArenaNeedUsesFixedContextHeader(t *testing.T) {
-	if CoreFeaturesV3&^coreFeaturesWago != 0 {
+	if CoreFeaturesV3&^platformCoreFeatures() != 0 {
 		t.Skip("this product does not compile the CoreFeaturesV3 typed-reference fixture")
 	}
 	targetType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
