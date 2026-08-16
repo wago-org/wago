@@ -118,6 +118,7 @@ type ModuleFacts struct {
 	MemoryGrowUsed []bool
 	MemoryExported []bool
 	UsesRefFunc    bool
+	UsesCallRef    bool
 }
 
 // NewModuleFacts allocates the four indexed fact vectors in one backing store.
@@ -380,10 +381,16 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 			switch op {
 			case 0x05, 0x0b: // else, end
 				continue
-			case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd5, 0xd6:
+			case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd5, 0xd6:
 				if _, err := r.U32(); err != nil {
 					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
 				}
+				continue
+			case 0x14, 0x15: // call_ref, return_call_ref
+				if _, err := r.U32(); err != nil {
+					return nil, fmt.Errorf("function %d facts: %w", functionIndex, err)
+				}
+				facts.UsesCallRef = true
 				continue
 			case 0xd2: // ref.func
 				if _, err := r.U32(); err != nil {
@@ -448,6 +455,8 @@ func recordModuleFact(kind wasm.InstrKind, index uint32, facts *ModuleFacts) err
 		facts.MemoryGrowUsed[index] = true
 	case wasm.InstrRefFunc:
 		facts.UsesRefFunc = true
+	case wasm.InstrCallRef, wasm.InstrReturnCallRef:
+		facts.UsesCallRef = true
 	}
 	return nil
 }

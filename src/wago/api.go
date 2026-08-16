@@ -125,6 +125,57 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return compileWithConfig(cfg, wasmBytes)
 }
 
+func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
+	typeMayCarryFuncref := func(typeIdx uint32) bool {
+		ft, ok := m.TypeFunc(typeIdx)
+		if !ok {
+			return false
+		}
+		for _, param := range ft.Params {
+			if param.Kind() == wasm.ValRef {
+				return true
+			}
+		}
+		for _, result := range ft.Results {
+			if result.Kind() == wasm.ValRef {
+				return true
+			}
+		}
+		return false
+	}
+	isDynamicCall := func(kind wasm.InstrKind) bool {
+		switch kind {
+		case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
+			return true
+		default:
+			return false
+		}
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range m.Code {
+		if body := m.Code[i].BodyBytes; len(body) != 0 {
+			r := wasm.NewReader(body)
+			var imm wasm.InstructionImmediate
+			for r.HasNext() {
+				op, err := r.Byte()
+				if err != nil || classifier.ClassifyInto(r, op, &imm) != nil {
+					break
+				}
+				if isDynamicCall(imm.Kind) && typeMayCarryFuncref(uint32(imm.Index)) {
+					return true
+				}
+			}
+			continue
+		}
+		for _, in := range m.Code[i].Body.Instrs {
+			if isDynamicCall(in.Kind) && typeMayCarryFuncref(in.Index) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
 	switch len(args) {
 	case 1:
@@ -1386,7 +1437,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if genericGCExecution || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
@@ -1673,6 +1724,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
+	// Dynamic call_ref dispatch needs only the fixed arena header: ARM64
+	// home-aware calls read its guaranteed instance-context cell even when the
+	// module has no local ref.func/table descriptor payloads of its own.
+	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i
@@ -3378,6 +3433,10 @@ func (c *Compiled) needsFuncRefDescs() bool {
 	return c.NeedsFuncRefDescs || c.hasFuncrefTable()
 }
 
+func (c *Compiled) needsFuncRefContext() bool {
+	return c.needsFuncRefContextHeader || c.needsFuncRefDescs()
+}
+
 func normalizedElemRefType(t ValType) ValType {
 	if t == ValExternRef || t == ValExnRef || t == ValAnyRef || t == ValI31Ref {
 		return t
@@ -3639,6 +3698,8 @@ func (c *Compiled) validateArenaFootprint() error {
 		if c.usesDynamicFuncRefTest() {
 			funcRefTypeIDCount = len(c.FuncTypeID)
 		}
+	} else if c.needsFuncRefContextHeader {
+		funcRefCount = 1
 	}
 	tagCount := 0
 	if c.memoryDir != nil {

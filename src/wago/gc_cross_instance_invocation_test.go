@@ -330,6 +330,9 @@ func TestMutableFuncrefCalleesWaitForProducerGCInvocationLease(t *testing.T) {
 			t.Fatal(compileErr)
 		}
 		defer code.Close()
+		if code.NeedsFuncRefDescs || !code.needsFuncRefContextHeader {
+			t.Fatalf("call_ref relay descriptor metadata = full %v header %v, want false/true", code.NeedsFuncRefDescs, code.needsFuncRefContextHeader)
+		}
 		relay, instantiateErr := instantiateCore(code, InstantiateOptions{store: store})
 		if instantiateErr != nil {
 			t.Fatal(instantiateErr)
