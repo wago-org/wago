@@ -21,12 +21,17 @@ func gcLocalProvenance(e *elem) (int, bool) {
 	switch e.st.kind {
 	case stLocalRef, stLocalReg:
 		return e.st.idx, true
-	case stReg:
-		if e.st.slot > 0 {
-			return e.st.slot - 1, true
-		}
+	}
+	if e.st.gcLocal > 0 {
+		return int(e.st.gcLocal - 1), true
 	}
 	return 0, false
+}
+
+func markGCLocalProvenance(e *elem, local int) {
+	if e != nil && e.kind == ekValue && local >= 0 && local < int(^uint16(0)) {
+		e.st.gcLocal = uint16(local + 1)
+	}
 }
 
 // prepareGCResolvedObject retains the certificate only through the narrow

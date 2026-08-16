@@ -120,17 +120,18 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	kind   storageKind
-	typ    machineType
-	reg    Reg
-	ehRoot bool // frame-relative rooted exception identity; clear its three-word record on drop
-	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
-	facts  valueFacts
-	slot   int
-	idx    int   // local/global index for stLocalRef/stGlobalRef
-	cval   int64 // constant value/bits for stConst
-	custom *coreplugins.CustomType
-	vregs  []Reg
+	kind    storageKind
+	typ     machineType
+	reg     Reg
+	ehRoot  bool // frame-relative rooted exception identity; clear its three-word record on drop
+	gcRoot  bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
+	facts   valueFacts
+	gcLocal uint16 // originating local index + 1 for GC reuse; independent of physical storage
+	slot    int
+	idx     int   // local/global index for stLocalRef/stGlobalRef
+	cval    int64 // constant value/bits for stConst
+	custom  *coreplugins.CustomType
+	vregs   []Reg
 }
 
 // elemKind tags a stack node.

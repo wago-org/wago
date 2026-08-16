@@ -24,7 +24,7 @@ func (f *fn) occupy(e *elem, r Reg) {
 	}
 	e.kind = ekValue
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
-	e.st.idx, e.st.slot = 0, 0
+	e.st.idx, e.st.slot, e.st.gcLocal = 0, 0, 0
 	putGCRefFact(&e.st, fact)
 	if hasLocal {
 		markGCLocalProvenance(e, local)

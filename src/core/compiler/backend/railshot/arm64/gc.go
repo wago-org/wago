@@ -1242,7 +1242,7 @@ func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
 	}
 	validation := f.pushReg(ref, mtI64)
 	if hasLocal {
-		validation.st.slot = local + 1
+		markGCLocalProvenance(validation, local)
 	}
 	object, err := f.emitNativeFinalCastObject(typeIndex, gc.HeaderSize, false)
 	if err != nil {
