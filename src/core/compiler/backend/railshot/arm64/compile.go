@@ -82,6 +82,12 @@ var inlineCallFreeHintsEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_CALLFREE") != "
 // function. WAGO_ARM64_NO_IMMUTABLE_TABLE=1 restores the general home-tag fork.
 var immutableLocalTableEnabled = os.Getenv("WAGO_ARM64_NO_IMMUTABLE_TABLE") != "1"
 
+// entryParamPairsEnabled packs adjacent wrapper-ABI scalar parameter homes into
+// pair loads/stores. Register-ABI entries retain scalar stores: their immediate
+// scalar-reload workloads measured slower with STP on current Apple cores.
+// The environment switch retains exact scalar lowering for A/B.
+var entryParamPairsEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_PARAM_PAIRS") != "1"
+
 // entryZeroPairsEnabled packs adjacent declared-local zero stores into one
 // offset STP. The environment switch retains exact single-store lowering for A/B.
 var entryZeroPairsEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_ZERO_PAIRS") != "1"
@@ -2607,6 +2613,8 @@ func (f *fn) prologue() {
 		paramOff += abiValSize(pt)
 	}
 	x0ParamOff := int32(-1) // a param pinned in X0 must load LAST: X0 is the args base
+	pairParams := f.opt(optEntryParamPairs)
+	pendingParam := pendingWrapperParamHome{}
 	paramOff = 0
 	for i, pt := range f.ft.Params {
 		if f.localType[i] != mtV128 {
@@ -2619,14 +2627,21 @@ func (f *fn) prologue() {
 			} else if ok && isFloat {
 				a.FLoadDisp(pr, X0, paramOff, f.localType[i] == mtF64) // pinned float param → V reg
 			} else {
-				// X16 (backend scratch) is the copy temp: X0 is the serArgs base and
-				// must stay live for the remaining param loads (amd64 used RAX here,
-				// but on arm64 that role register aliases the args base).
-				f.ld64(X16, X0, paramOff)
-				f.st64(SP, f.localOff(i), X16)
+				if pairParams {
+					pendingParam = f.queueWrapperParamHome(pendingParam, paramOff, f.localOff(i))
+				} else {
+					// X16 (backend scratch) is the copy temp: X0 is the serArgs base and
+					// must stay live for the remaining param loads (amd64 used RAX here,
+					// but on arm64 that role register aliases the args base).
+					f.ld64(X16, X0, paramOff)
+					f.st64(SP, f.localOff(i), X16)
+				}
 			}
 		}
 		paramOff += abiValSize(pt)
+	}
+	if pairParams {
+		f.flushWrapperParamHome(pendingParam)
 	}
 	if x0ParamOff >= 0 {
 		f.ld64(X0, X0, x0ParamOff)
@@ -2634,6 +2649,33 @@ func (f *fn) prologue() {
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
 	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
+}
+
+type pendingWrapperParamHome struct {
+	argOff   int32
+	localOff int32
+	valid    bool
+}
+
+func (f *fn) queueWrapperParamHome(p pendingWrapperParamHome, argOff, localOff int32) pendingWrapperParamHome {
+	if p.valid && argOff == p.argOff+8 && localOff == p.localOff+8 && p.argOff <= 504 && p.localOff <= 504 {
+		f.a.LdpOffset(X16, X17, X0, p.argOff)
+		f.a.StpOffset(X16, X17, SP, p.localOff)
+		f.stats.peep("entry-param-pair-wrapper")
+		return pendingWrapperParamHome{}
+	}
+	if p.valid {
+		f.ld64(X16, X0, p.argOff)
+		f.st64(SP, p.localOff, X16)
+	}
+	return pendingWrapperParamHome{argOff: argOff, localOff: localOff, valid: true}
+}
+
+func (f *fn) flushWrapperParamHome(p pendingWrapperParamHome) {
+	if p.valid {
+		f.ld64(X16, X0, p.argOff)
+		f.st64(SP, p.localOff, X16)
+	}
 }
 
 // zeroDeclaredLocals initializes non-parameter locals. Most functions keep the
