@@ -375,6 +375,7 @@ var catalog = []Definition{
 	arm64("store-load-fwd", "Store/load forwarding", "forward stores into loads after assembly"),
 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
 	both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
+	arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),
