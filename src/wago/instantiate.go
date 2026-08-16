@@ -708,6 +708,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 						break
 					}
 				}
+				for _, result := range c.importFuncSigs[i].Results {
+					if result == ValAnyRef {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
 				if localFuncrefsMayEscape {
 					break
 				}
