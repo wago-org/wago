@@ -79,20 +79,20 @@ func (v *moduleValidator) validateFunctions(workers int) error {
 
 func (v *moduleValidator) validateFunctionsSerial() error {
 	importedFuncs := v.m.ImportedFuncCount()
-	memarg64 := moduleMemargOffset64(v.m)
+	widths := moduleMemargWidths(v.m)
 	// Keep the reusable operand/control-stack owner in the validating frame.
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
 	for i := range v.m.Code {
-		if err := v.validateFunction(&fv, i, importedFuncs, memarg64); err != nil {
+		if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, memarg64 bool) error {
+func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) error {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
 	if localIndex >= len(v.m.FuncTypes) {
@@ -104,7 +104,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64, v.features.MultiMemory)
+		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory)
 	}
 	return fv.validateFunc(*fn, ft)
 }
@@ -116,7 +116,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 // the serial const-expression validator is no longer reachable from body checks.
 func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 	importedFuncs := v.m.ImportedFuncCount()
-	memarg64 := moduleMemargOffset64(v.m)
+	widths := moduleMemargWidths(v.m)
 	type result struct {
 		index int
 		err   error
@@ -135,7 +135,7 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 				if i >= len(v.m.Code) {
 					return
 				}
-				if err := v.validateFunction(&fv, i, importedFuncs, memarg64); err != nil {
+				if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
 					results[worker] = result{index: i, err: err}
 					return
 				}
@@ -402,7 +402,7 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 	fv.rd.reset(expr.BodyBytes)
 	var op directOp
 	for fv.rd.has() {
-		if err := fv.decodeDirectOp(&fv.rd, false, false, &op); err != nil {
+		if err := fv.decodeDirectOp(&fv.rd, fixedMemargWidths(false), false, &op); err != nil {
 			// The normal const-expression validation path reports malformed bytes;
 			// declaration collection must not change validation error ordering.
 			return

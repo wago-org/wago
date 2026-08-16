@@ -34,14 +34,14 @@ func analyzeTailResultSitesWithFeatures(m *wasm.Module, features wasm.Validation
 		return nil, fmt.Errorf("nil module")
 	}
 	imports := m.ImportedFuncCount()
-	memarg64 := moduleMemargOffset64(m)
+	classifier := wasm.NewModuleInstructionClassifier(m, features.MultiMemory)
 	var sites []TailResultSite
 	for local := range m.Code {
 		caller := uint32(imports + local)
 		ordinal := uint32(0)
 		fn := &m.Code[local]
 		if len(fn.BodyBytes) != 0 {
-			if err := scanTailResultByteBody(fn.BodyBytes, caller, &ordinal, &sites, nil, memarg64, features.MultiMemory); err != nil {
+			if err := scanTailResultByteBody(fn.BodyBytes, caller, &ordinal, &sites, nil, &classifier); err != nil {
 				return nil, fmt.Errorf("function %d tail-result scan: %w", caller, err)
 			}
 			continue
@@ -106,6 +106,24 @@ func ValidateTailResultRewriteWithFeatures(before, after *wasm.Module, features 
 		return fmt.Errorf("tail-result rewrite changed proper-tail site identity or target")
 	}
 
+	type tableProof struct {
+		targets []uint32
+		ok      bool
+	}
+	beforeClassifier := wasm.NewModuleInstructionClassifier(before, features.MultiMemory)
+	afterClassifier := wasm.NewModuleInstructionClassifier(after, features.MultiMemory)
+	beforeTableProofs := make(map[uint32]tableProof)
+	afterTableProofs := make(map[uint32]tableProof)
+	getTableProof := func(cache map[uint32]tableProof, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, table uint32) tableProof {
+		if proof, ok := cache[table]; ok {
+			return proof
+		}
+		targets, ok := immutableLocalTableTargets(m, table, classifier)
+		proof := tableProof{targets: targets, ok: ok}
+		cache[table] = proof
+		return proof
+	}
+
 	for _, site := range beforeSites {
 		if !functionParameterContractEqual(before, site.Caller, after, site.Caller) || !tailTargetParameterContractEqual(before, after, site) {
 			return fmt.Errorf("tail-result rewrite changed parameters at caller %d site %d", site.Caller, site.Ordinal)
@@ -129,12 +147,14 @@ func ValidateTailResultRewriteWithFeatures(before, after *wasm.Module, features 
 				return fmt.Errorf("return_call_ref at caller %d site %d did not rewrite its known target with type %d", site.Caller, site.Ordinal, site.Target)
 			}
 		case wasm.InstrReturnCallIndirect:
-			beforeTargets, ok := immutableLocalTableTargets(before, site.Table, features.MultiMemory)
-			if !ok {
+			beforeProof := getTableProof(beforeTableProofs, before, &beforeClassifier, site.Table)
+			beforeTargets := beforeProof.targets
+			if !beforeProof.ok {
 				return fmt.Errorf("return_call_indirect at caller %d site %d has an unknown target set", site.Caller, site.Ordinal)
 			}
-			afterTargets, ok := immutableLocalTableTargets(after, site.Table, features.MultiMemory)
-			if !ok || !slices.Equal(beforeTargets, afterTargets) {
+			afterProof := getTableProof(afterTableProofs, after, &afterClassifier, site.Table)
+			afterTargets := afterProof.targets
+			if !afterProof.ok || !slices.Equal(beforeTargets, afterTargets) {
 				return fmt.Errorf("return_call_indirect at caller %d site %d changed or lost its proven target set", site.Caller, site.Ordinal)
 			}
 			if len(beforeTargets) == 0 {
@@ -431,7 +451,7 @@ func functionFlowsToType(m *wasm.Module, function, typeIndex uint32) bool {
 	return m.ReferenceTypeSubtype(actual, required)
 }
 
-func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *[]TailResultSite, mutatedTables map[uint32]bool, memarg64, multiMemory bool) error {
+func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *[]TailResultSite, mutatedTables map[uint32]bool, classifier *wasm.ModuleInstructionClassifier) error {
 	r := wasm.NewReader(body)
 	var previous wasm.InstructionImmediate
 	for r.HasNext() {
@@ -440,7 +460,7 @@ func scanTailResultByteBody(body []byte, caller uint32, ordinal *uint32, sites *
 			return err
 		}
 		var imm wasm.InstructionImmediate
-		if err := wasm.ClassifyInstructionImmediateIntoWithFeatures(r, op, &imm, memarg64, multiMemory); err != nil {
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return err
 		}
 		markMutatedTable(imm.Kind, uint32(imm.Index), uint32(imm.Index2), mutatedTables)
@@ -515,7 +535,7 @@ func markMutatedTable(kind wasm.InstrKind, index, index2 uint32, mutated map[uin
 	}
 }
 
-func immutableLocalTableTargets(m *wasm.Module, table uint32, multiMemory bool) ([]uint32, bool) {
+func immutableLocalTableTargets(m *wasm.Module, table uint32, classifier *wasm.ModuleInstructionClassifier) ([]uint32, bool) {
 	imports := uint32(m.ImportedTableCount())
 	if table < imports || int(table) >= m.TableCount() {
 		return nil, false
@@ -526,12 +546,11 @@ func immutableLocalTableTargets(m *wasm.Module, table uint32, multiMemory bool) 
 		}
 	}
 	mutated := make(map[uint32]bool)
-	memarg64 := moduleMemargOffset64(m)
 	for i := range m.Code {
 		fn := &m.Code[i]
 		ordinal := uint32(0)
 		if len(fn.BodyBytes) != 0 {
-			if err := scanTailResultByteBody(fn.BodyBytes, uint32(m.ImportedFuncCount()+i), &ordinal, nil, mutated, memarg64, multiMemory); err != nil {
+			if err := scanTailResultByteBody(fn.BodyBytes, uint32(m.ImportedFuncCount()+i), &ordinal, nil, mutated, classifier); err != nil {
 				return nil, false
 			}
 		} else {
@@ -576,14 +595,6 @@ func immutableLocalTableTargets(m *wasm.Module, table uint32, multiMemory bool) 
 	}
 	slices.Sort(targets)
 	return targets, true
-}
-
-func moduleMemargOffset64(m *wasm.Module) bool {
-	if m == nil || m.MemCount() != 1 {
-		return false
-	}
-	memory, ok := m.MemoryType(0)
-	return ok && memory.Limits.Addr64
 }
 
 func collectConstRefFuncs(expr wasm.Expr, add func(uint32)) bool {

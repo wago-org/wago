@@ -129,6 +129,25 @@ func TestAnalyzeModuleRequirementsFusesDeclarationRefFunc(t *testing.T) {
 	}
 }
 
+func TestAnalyzeModuleRequirementsWalksPastMixedWidthMemarg(t *testing.T) {
+	body := []byte{
+		0x42, 0x00, // i64.const 0
+		0xfd, 0x00, 0x44, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // v128.load memory 1, offset 2^32
+		0x1a,       // drop
+		0x41, 0x00, // i32.const 0
+		0x40, 0x00, // memory.grow 0
+		0x1a, 0x0b,
+	}
+	m := &wasm.Module{
+		Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1, Max: 2, HasMax: true}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}},
+		Code:     []wasm.Func{{BodyBytes: body}},
+	}
+	facts := analyzeModuleRequirements(m).moduleFacts
+	if len(facts.MemoryGrowUsed) != 2 || !facts.MemoryGrowUsed[0] {
+		t.Fatalf("mixed-width requirement facts = %+v, want memory.grow 0", facts.MemoryGrowUsed)
+	}
+}
+
 func TestAnalyzeModuleRequirementsIgnoresInvalidFactIndexesBeforeValidation(t *testing.T) {
 	m := &wasm.Module{
 		Tables:   []wasm.Table{{}},

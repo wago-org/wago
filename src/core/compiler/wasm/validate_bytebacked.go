@@ -240,7 +240,7 @@ func decodeDirectModuleInner(data []byte) (*directModule, error) {
 		case secElement:
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
-			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSection(&sub, moduleMemargOffset64(&dm.m), dm.m.MemCount() > 1)
+			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, dm.m.MemCount() > 1)
 			dm.seenCode = true
 		case secData:
 			err = decodeDirectDataSection(dm, &sub)
@@ -680,6 +680,14 @@ func readDirectConstExprBytes(r *reader) (directConstExpr, error) {
 }
 
 func decodeDirectCodeSection(r *reader, memarg64, multiMemory bool) ([]Func, bool, error) {
+	return decodeDirectCodeSectionWithWidths(r, fixedMemargWidths(memarg64), multiMemory)
+}
+
+func decodeDirectCodeSectionWithModule(r *reader, m *Module, multiMemory bool) ([]Func, bool, error) {
+	return decodeDirectCodeSectionWithWidths(r, moduleMemargWidths(m), multiMemory)
+}
+
+func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemory bool) ([]Func, bool, error) {
 	n, err := r.u32()
 	if err != nil {
 		return nil, false, err
@@ -708,7 +716,7 @@ func decodeDirectCodeSection(r *reader, memarg64, multiMemory bool) ([]Func, boo
 		}
 		var exprBytes []byte
 		var bodyUsesDataCount bool
-		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, memarg64, multiMemory)
+		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, widths, multiMemory)
 		if err != nil {
 			return nil, false, err
 		}
@@ -729,7 +737,7 @@ type exprSkipFrame struct {
 // readDirectFuncExprBytes returns the raw expression bytes of one function body
 // and the (possibly grown) frame buffer so the caller can reuse it across every
 // function in the code section instead of allocating a nesting stack per body.
-func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64, multiMemory bool) ([]byte, []exprSkipFrame, bool, error) {
+func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, widths memargWidths, multiMemory bool) ([]byte, []exprSkipFrame, bool, error) {
 	start := r.off()
 	stack = stack[:0]
 	usesDataCountInstr := false
@@ -743,7 +751,7 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64, multiMe
 			return nil, stack, false, err
 		}
 		imm = InstructionImmediate{}
-		op, err := classifyExprOpAfterOpcodeWithFeatures(r, opcode, &imm, memarg64, multiMemory)
+		op, err := classifyExprOpAfterOpcodeWithWidths(r, opcode, &imm, widths, multiMemory)
 		if err != nil {
 			return nil, stack, false, err
 		}
@@ -798,7 +806,7 @@ func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstEx
 			}
 			return nil
 		}
-		if err := fv.decodeDirectOp(r, false, false, &op); err != nil {
+		if err := fv.decodeDirectOp(r, fixedMemargWidths(false), false, &op); err != nil {
 			return err
 		}
 		if op.kind != directInstr && op.kind != directEnd {
@@ -880,7 +888,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	}
 }
 
-func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, memarg64, multiMemory bool) error {
+func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool) error {
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
 	var overflow bool
@@ -905,7 +913,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, me
 			}
 			return nil
 		}
-		if err := v.decodeDirectOp(r, memarg64, multiMemory, &op); err != nil {
+		if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
 			return err
 		}
 		if err := v.stepDirectOp(&op); err != nil {
@@ -933,7 +941,7 @@ type directOp struct {
 	catches   []Catch
 }
 
-func (v *funcValidator) decodeDirectOp(r *reader, memarg64, multiMemory bool, out *directOp) error {
+func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemory bool, out *directOp) error {
 	op, err := r.byte()
 	if err != nil {
 		*out = directOp{}
@@ -1057,7 +1065,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, memarg64, multiMemory bool, ou
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
-		ma, err := decodeMemArgWithWidth(r, memarg64)
+		ma, err := decodeMemArgWithWidths(r, widths)
 		v.opExt = instrExt{MemArg: ma}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &v.opExt}}
 		return err
@@ -1122,11 +1130,11 @@ func (v *funcValidator) decodeDirectOp(r *reader, memarg64, multiMemory bool, ou
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfd:
-		in, err := decodeFDWithMemarg64Into(r, memarg64, &v.opExt)
+		in, err := decodeFDWithMemargWidthsInto(r, widths, &v.opExt)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfe:
-		in, err := decodeFEWithMemarg64(r, memarg64)
+		in, err := decodeFEWithMemargWidths(r, widths)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	default:

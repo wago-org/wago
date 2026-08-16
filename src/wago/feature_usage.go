@@ -165,12 +165,13 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 			dataStateCount = i + 1
 		}
 	}
+	bodyClassifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		for _, local := range fn.Locals.Runs {
 			out |= requiredFeaturesForValType(local.Type)
 		}
 		if len(fn.BodyBytes) != 0 {
-			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers, m, &indexedFuncRefTest, &indexedFuncRefCast, &arm64GCRefTestHelper)
+			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers, m, &indexedFuncRefTest, &indexedFuncRefCast, &arm64GCRefTestHelper, &bodyClassifier)
 		} else if len(fn.Body.Instrs) != 0 {
 			programmaticCode = true
 			instrsModuleRequirements(fn.Body.Instrs, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers)
@@ -284,12 +285,16 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 
 func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 	elemStateCount, dataStateCount := 0, 0
-	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount, nil, nil, nil, nil, nil, nil)
+	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount, nil, nil, nil, nil, nil, nil, nil)
 }
 
-func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool, m *wasm.Module, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper *bool) CoreFeatures {
+func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool, m *wasm.Module, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper *bool, classifier *wasm.ModuleInstructionClassifier) CoreFeatures {
 	var out CoreFeatures
 	r := wasm.NewReader(body)
+	if classifier == nil {
+		local := wasm.NewModuleInstructionClassifier(m, true)
+		classifier = &local
+	}
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -435,8 +440,8 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 		if op == 0xfb {
 			probe = *r
 		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			break
 		}
 		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemStateCount, dataStateCount)

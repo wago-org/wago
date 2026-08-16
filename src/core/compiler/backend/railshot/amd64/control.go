@@ -674,10 +674,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// check to elide) and not while already inside a versioned body. The hoist
 		// scan also supplies the loop-local/grow facts needed by the normal path, so
 		// eligible loops do not pay for two immediate walks.
-		memory64 := f.memoryAddr64(0)
 		valid := false
 		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
-			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistable(r, memory64)
+			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistableWithClassifier(r, f.m, f.classifier)
 			valid = scanOK
 			fr.loopSetLocals, fr.loopHasGrow = setLocals, hasGrow
 			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
@@ -686,7 +685,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				}
 			}
 		} else {
-			fr.loopSetLocals, fr.loopHasGrow, valid = scanLoopBody(r, memory64) // reader restored
+			fr.loopSetLocals, fr.loopHasGrow, valid = scanLoopBodyWithClassifier(r, f.m, f.classifier) // reader restored
 		}
 		if valid {
 			f.invalidateLoopModifiedGCRefFacts(fr.loopSetLocals)

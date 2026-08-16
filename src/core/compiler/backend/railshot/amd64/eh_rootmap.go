@@ -78,6 +78,7 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		return nil, nil
 	}
 	maps := make([]nativeabi.FunctionRootMap, 0, len(m.Code))
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for function := range m.Code {
 		ft, ok := m.LocalFuncType(function)
 		if !ok {
@@ -94,13 +95,14 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		var catchAllRoots [2]bool
 		catchAllReady := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
+		var imm wasm.InstructionImmediate
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
 				return nil, err
 			}
 			if op != 0x1f {
-				if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+				if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 					return nil, fmt.Errorf("exception root map function %d: %w", function, err)
 				}
 				continue

@@ -536,6 +536,25 @@ func TestManyGlobalHintScoresEligibilityAndModulePinning(t *testing.T) {
 	}
 }
 
+func TestGlobalScoreScannerConsumesMixedMemoryWidthImmediate(t *testing.T) {
+	body := []byte{
+		0x42, 0x00, // i64.const 0
+		0xfd, 0x00, 0x44, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // v128.load memory 1, offset 2^32
+		0x1a,       // drop
+		0x23, 0x00, // global.get 0
+		0x1a, 0x0b,
+	}
+	m := &wasm.Module{
+		Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}},
+		Globals:  []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
+		Code:     []wasm.Func{{BodyBytes: body}},
+	}
+	scores, err := computeModuleGlobalScores(m, 1)
+	if err != nil || len(scores) != 1 || scores[0] != 1 {
+		t.Fatalf("mixed-width global scores = %v, %v; want [1]", scores, err)
+	}
+}
+
 func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	global := []byte{0x7f, 0x01, 0x41, 0x00, 0x0b} // (mut i32) = 0
 	body := []byte{

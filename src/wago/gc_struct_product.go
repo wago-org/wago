@@ -204,6 +204,7 @@ func moduleUsesGCExternConversion(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	usesExpr := func(expr wasm.Expr) bool {
 		for _, in := range expr.Instrs {
 			if in.Kind == wasm.InstrAnyConvertExtern || in.Kind == wasm.InstrExternConvertAny {
@@ -216,8 +217,8 @@ func moduleUsesGCExternConversion(m *wasm.Module) bool {
 			if err != nil {
 				return false
 			}
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 				return false
 			}
 			if imm.Kind == wasm.InstrAnyConvertExtern || imm.Kind == wasm.InstrExternConvertAny {
@@ -284,6 +285,7 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 		return false
 	}
 	hasStructType := moduleHasGCStructType(m)
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		r := wasm.NewReader(m.Code[i].BodyBytes)
 		for r.HasNext() {
@@ -291,8 +293,8 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 			if err != nil {
 				return false
 			}
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 				return false
 			}
 			switch imm.Kind {
@@ -482,6 +484,7 @@ func stagedGCStructStateGraph(m *wasm.Module) string {
 
 func stagedGCStructOpcodeInventory(m *wasm.Module) ([]stagedGCStructOpcodeCount, error) {
 	counts := map[string]int{}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	walk := func(body []byte) error {
 		r := wasm.NewReader(body)
 		for r.HasNext() {
@@ -489,8 +492,8 @@ func stagedGCStructOpcodeInventory(m *wasm.Module) ([]stagedGCStructOpcodeCount,
 			if err != nil {
 				return err
 			}
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 				return err
 			}
 			if op != 0x0b {

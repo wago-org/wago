@@ -29,6 +29,14 @@ func classifyExprOpAfterOpcodeWithMemarg64(r *reader, op byte, imm *InstructionI
 }
 
 func classifyExprOpAfterOpcodeWithFeatures(r *reader, op byte, imm *InstructionImmediate, memarg64, multiMemory bool) (directOpKind, error) {
+	return classifyExprOpAfterOpcodeWithWidths(r, op, imm, fixedMemargWidths(memarg64), multiMemory)
+}
+
+func classifyExprOpAfterOpcodeWithModuleFeatures(r *reader, op byte, imm *InstructionImmediate, m *Module, multiMemory bool) (directOpKind, error) {
+	return classifyExprOpAfterOpcodeWithWidths(r, op, imm, moduleMemargWidths(m), multiMemory)
+}
+
+func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImmediate, widths memargWidths, multiMemory bool) (directOpKind, error) {
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		imm.Kind = k
 		return directInstr, nil
@@ -95,7 +103,7 @@ func classifyExprOpAfterOpcodeWithFeatures(r *reader, op byte, imm *InstructionI
 		return directTryTable, nil
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 		imm.Kind, imm.TouchesMemory = memOpcodeKind[op], true
-		return directInstr, classifyMemArgBytes(r, imm, memarg64)
+		return directInstr, classifyMemArgBytes(r, imm, widths)
 	case 0x3f, 0x40:
 		var (
 			idx uint32
@@ -144,9 +152,9 @@ func classifyExprOpAfterOpcodeWithFeatures(r *reader, op byte, imm *InstructionI
 	case 0xfc:
 		return directInstr, classifyFCBytes(r, imm)
 	case 0xfd:
-		return directInstr, classifyFDBytes(r, imm, memarg64)
+		return directInstr, classifyFDBytes(r, imm, widths)
 	case 0xfe:
-		return directInstr, classifyFEBytes(r, imm, memarg64)
+		return directInstr, classifyFEBytes(r, imm, widths)
 	default:
 		return directInstr, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
@@ -216,8 +224,8 @@ func skipRefHeapTypeBytes(r *reader) error {
 	return err
 }
 
-func classifyMemArgBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error {
-	ma, err := decodeMemArgWithWidth(r, memarg64)
+func classifyMemArgBytes(r *reader, imm *InstructionImmediate, widths memargWidths) error {
+	ma, err := decodeMemArgWithWidths(r, widths)
 	imm.MemAlign = ma.Align
 	imm.MemOffset = ma.Offset
 	if ma.Mem != nil {
@@ -459,7 +467,7 @@ func skipHeapTypeBytes(r *reader) error {
 	return err
 }
 
-func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error {
+func classifyFDBytes(r *reader, imm *InstructionImmediate, widths memargWidths) error {
 	sub, err := r.u32()
 	imm.Prefix, imm.Subopcode = 0xfd, sub
 	if err != nil {
@@ -487,7 +495,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 	if k, ok := lookupPrefixKind(fdMem[:], sub); ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
-		if err = classifyMemArgBytes(r, imm, memarg64); err != nil {
+		if err = classifyMemArgBytes(r, imm, widths); err != nil {
 			return err
 		}
 		if sub >= 84 && sub <= 91 {
@@ -504,7 +512,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
-func classifyFEBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error {
+func classifyFEBytes(r *reader, imm *InstructionImmediate, widths memargWidths) error {
 	sub, err := r.u32()
 	imm.Prefix, imm.Subopcode = 0xfe, sub
 	if err != nil {
@@ -534,17 +542,17 @@ func classifyFEBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error 
 	if k, ok := lookupPrefixKind(feMem[:], sub); ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
-		return classifyMemArgBytes(r, imm, memarg64)
+		return classifyMemArgBytes(r, imm, widths)
 	}
 	if sub >= 30 && sub <= 71 {
 		imm.Kind = InstrAtomicRmw
 		imm.TouchesMemory = true
-		return classifyMemArgBytes(r, imm, memarg64)
+		return classifyMemArgBytes(r, imm, widths)
 	}
 	if sub >= 72 && sub <= 78 {
 		imm.Kind = InstrAtomicCmpxchg
 		imm.TouchesMemory = true
-		return classifyMemArgBytes(r, imm, memarg64)
+		return classifyMemArgBytes(r, imm, widths)
 	}
 	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }

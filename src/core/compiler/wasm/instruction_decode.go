@@ -31,10 +31,18 @@ func isValTypeLead(b byte) bool {
 }
 
 func decodeExpr(r *reader, depth int) (Expr, error) {
-	return decodeExprWithMemarg64(r, depth, false)
+	return decodeExprWithMemargWidths(r, depth, fixedMemargWidths(false))
 }
 
 func decodeExprWithMemarg64(r *reader, depth int, memarg64 bool) (Expr, error) {
+	return decodeExprWithMemargWidths(r, depth, fixedMemargWidths(memarg64))
+}
+
+func decodeExprWithModule(r *reader, depth int, m *Module) (Expr, error) {
+	return decodeExprWithMemargWidths(r, depth, moduleMemargWidths(m))
+}
+
+func decodeExprWithMemargWidths(r *reader, depth int, widths memargWidths) (Expr, error) {
 	if depth > maxInstructionNestingDepth {
 		return Expr{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 	}
@@ -48,7 +56,7 @@ func decodeExprWithMemarg64(r *reader, depth int, memarg64 bool) (Expr, error) {
 			_, _ = r.byte()
 			return Expr{Instrs: instrs}, nil
 		}
-		inst, err := decodeInstructionWithMemarg64(r, depth+1, memarg64)
+		inst, err := decodeInstructionWithMemargWidths(r, depth+1, widths)
 		if err != nil {
 			return Expr{}, err
 		}
@@ -57,10 +65,14 @@ func decodeExprWithMemarg64(r *reader, depth int, memarg64 bool) (Expr, error) {
 }
 
 func decodeInstruction(r *reader, depth int) (Instruction, error) {
-	return decodeInstructionWithMemarg64(r, depth, false)
+	return decodeInstructionWithMemargWidths(r, depth, fixedMemargWidths(false))
 }
 
 func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruction, error) {
+	return decodeInstructionWithMemargWidths(r, depth, fixedMemargWidths(memarg64))
+}
+
+func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths) (Instruction, error) {
 	if depth > maxInstructionNestingDepth {
 		return Instruction{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 	}
@@ -78,10 +90,10 @@ func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruc
 			return Instruction{}, err
 		}
 		if op == 0x04 {
-			thenInstrs, elseInstrs, err := decodeIfBodies(r, depth+1, memarg64)
+			thenInstrs, elseInstrs, err := decodeIfBodies(r, depth+1, widths)
 			return Instruction{Kind: InstrIf, ext: &instrExt{BlockType: bt, Then: thenInstrs, Else: elseInstrs}}, err
 		}
-		body, err := decodeExprWithMemarg64(r, depth+1, memarg64)
+		body, err := decodeExprWithMemargWidths(r, depth+1, widths)
 		if err != nil {
 			return Instruction{}, err
 		}
@@ -129,7 +141,7 @@ func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruc
 		if err != nil {
 			return Instruction{}, err
 		}
-		body, err := decodeExprWithMemarg64(r, depth+1, memarg64)
+		body, err := decodeExprWithMemargWidths(r, depth+1, widths)
 		return Instruction{Kind: InstrTryTable, ext: &instrExt{BlockType: bt, Catches: catches, Body: body}}, err
 	case 0x20:
 		return indexInst(r, InstrLocalGet)
@@ -146,7 +158,7 @@ func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruc
 	case 0x26:
 		return indexInst(r, InstrTableSet)
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
-		ma, err := decodeMemArgWithWidth(r, memarg64)
+		ma, err := decodeMemArgWithWidths(r, widths)
 		return Instruction{Kind: memOpcodeKind[op], ext: &instrExt{MemArg: ma}}, err
 	case 0x3f:
 		return reservedZeroInst(r, InstrMemorySize)
@@ -182,15 +194,15 @@ func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruc
 	case 0xfc:
 		return decodeFC(r)
 	case 0xfd:
-		return decodeFDWithMemarg64(r, memarg64)
+		return decodeFDWithMemargWidths(r, widths)
 	case 0xfe:
-		return decodeFEWithMemarg64(r, memarg64)
+		return decodeFEWithMemargWidths(r, widths)
 	default:
 		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
 }
 
-func decodeIfBodies(r *reader, depth int, memarg64 bool) ([]Instruction, []Instruction, error) {
+func decodeIfBodies(r *reader, depth int, widths memargWidths) ([]Instruction, []Instruction, error) {
 	var thenBody, elseBody []Instruction
 	inElse := false
 	for {
@@ -210,7 +222,7 @@ func decodeIfBodies(r *reader, depth int, memarg64 bool) ([]Instruction, []Instr
 			_, _ = r.byte()
 			return thenBody, elseBody, nil
 		}
-		inst, err := decodeInstructionWithMemarg64(r, depth+1, memarg64)
+		inst, err := decodeInstructionWithMemargWidths(r, depth+1, widths)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -251,7 +263,76 @@ func readReservedZeroByte(r *reader) error {
 	return nil
 }
 
+type memargWidths struct {
+	indexed64 []uint64
+	fixed64   bool
+}
+
+func fixedMemargWidths(addr64 bool) memargWidths { return memargWidths{fixed64: addr64} }
+
+func moduleMemargWidths(m *Module) memargWidths {
+	if m == nil {
+		return memargWidths{}
+	}
+	seen, mixed := false, false
+	addr64 := false
+	count := 0
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternMem {
+			continue
+		}
+		got := m.Imports[i].Type.MemType().Limits.Addr64
+		mixed = mixed || seen && got != addr64
+		seen, addr64 = true, got
+		count++
+	}
+	for i := range m.Memories {
+		got := m.Memories[i].Limits.Addr64
+		mixed = mixed || seen && got != addr64
+		seen, addr64 = true, got
+		count++
+	}
+	if !seen {
+		return memargWidths{}
+	}
+	// Preserve the allocation-free fixed-width hot path for the overwhelmingly
+	// common single-memory and uniform-width multi-memory modules.
+	if !mixed {
+		return memargWidths{fixed64: addr64}
+	}
+	indexed64 := make([]uint64, (count+63)/64)
+	index := 0
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternMem {
+			continue
+		}
+		if m.Imports[i].Type.MemType().Limits.Addr64 {
+			indexed64[index>>6] |= uint64(1) << (uint(index) & 63)
+		}
+		index++
+	}
+	for i := range m.Memories {
+		if m.Memories[i].Limits.Addr64 {
+			indexed64[index>>6] |= uint64(1) << (uint(index) & 63)
+		}
+		index++
+	}
+	return memargWidths{indexed64: indexed64}
+}
+
+func (w memargWidths) offset64(memoryIndex uint32) bool {
+	word := memoryIndex >> 6
+	if int(word) < len(w.indexed64) {
+		return w.indexed64[word]&(uint64(1)<<(memoryIndex&63)) != 0
+	}
+	return w.fixed64
+}
+
 func decodeMemArgWithWidth(r *reader, memarg64 bool) (MemArg, error) {
+	return decodeMemArgWithWidths(r, fixedMemargWidths(memarg64))
+}
+
+func decodeMemArgWithWidths(r *reader, widths memargWidths) (MemArg, error) {
 	n, err := r.u32()
 	if err != nil {
 		return MemArg{}, err
@@ -270,7 +351,11 @@ func decodeMemArgWithWidth(r *reader, memarg64 bool) (MemArg, error) {
 	} else {
 		return ma, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
-	if memarg64 {
+	memoryIndex := uint32(0)
+	if ma.Mem != nil {
+		memoryIndex = uint32(*ma.Mem)
+	}
+	if widths.offset64(memoryIndex) {
 		off, err := r.u64()
 		ma.Offset = off
 		return ma, err
@@ -280,28 +365,6 @@ func decodeMemArgWithWidth(r *reader, memarg64 bool) (MemArg, error) {
 	return ma, err
 }
 
-func moduleMemargOffset64(m *Module) bool {
-	count := 0
-	addr64 := false
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != ExternMem {
-			continue
-		}
-		count++
-		addr64 = m.Imports[i].Type.MemType().Limits.Addr64
-		if count > 1 {
-			return false
-		}
-	}
-	for i := range m.Memories {
-		count++
-		addr64 = m.Memories[i].Limits.Addr64
-		if count > 1 {
-			return false
-		}
-	}
-	return count == 1 && addr64
-}
 func decodeCatch(r *reader) (Catch, error) {
 	b, err := r.byte()
 	if err != nil {
