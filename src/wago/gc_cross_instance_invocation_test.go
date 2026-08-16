@@ -330,6 +330,9 @@ func TestMutableFuncrefCalleesWaitForProducerGCInvocationLease(t *testing.T) {
 			t.Fatal(compileErr)
 		}
 		defer code.Close()
+		if !code.NeedsFuncRefDescs {
+			t.Fatal("call_ref relay did not retain its instance-context descriptor header")
+		}
 		relay, instantiateErr := instantiateCore(code, InstantiateOptions{store: store})
 		if instantiateErr != nil {
 			t.Fatal(instantiateErr)
