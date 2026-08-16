@@ -9,6 +9,9 @@ import (
 )
 
 func TestDynamicFuncrefEscapeIncludesReferenceResults(t *testing.T) {
+	if CoreFeaturesV3&^coreFeaturesWago != 0 {
+		t.Skip("this product does not compile the CoreFeaturesV3 typed-reference fixture")
+	}
 	targetType := wasmtest.FuncType(nil, []wasm.ValType{wasm.AnyRef})
 	callerType := wasmtest.FuncType(nil, nil)
 	module := wasmtest.Module(
