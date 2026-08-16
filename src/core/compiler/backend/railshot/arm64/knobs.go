@@ -21,6 +21,9 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("store-load-fwd", &storeLoadFwdEnabled),
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
 	optimization.Bind("value-facts", &valueFactsEnabled),
+	optimization.Bind("load-pair", &loadPairEnabled),
+	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
+	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
 	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
@@ -59,6 +62,9 @@ var (
 	optStoreLoadFwd          = optimizationBindings.Option("store-load-fwd")
 	optUXTWAdd               = optimizationBindings.Option("uxtw-add")
 	optValueFacts            = optimizationBindings.Option("value-facts")
+	optLoadPair              = optimizationBindings.Option("load-pair")
+	optEntryParamPairs       = optimizationBindings.Option("entry-param-pairs")
+	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
 	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")

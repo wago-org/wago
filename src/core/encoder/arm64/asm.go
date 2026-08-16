@@ -379,6 +379,22 @@ func (a *Asm) StpPre(rt, rt2, rn Reg, imm int32) {
 	a.word(0xA9800000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
 }
 
+// StpOffset stores rt,rt2 at [rn, #imm] without modifying rn.
+func (a *Asm) StpOffset(rt, rt2, rn Reg, imm int32) {
+	a.word(0xA9000000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// LdpOffset loads rt,rt2 from [rn, #imm] without modifying rn.
+func (a *Asm) LdpOffset(rt, rt2, rn Reg, imm int32) {
+	a.word(0xA9400000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// LdpOffset32 loads wt,wt2 from [rn, #imm] without modifying rn.
+// imm is a BYTE offset, a signed multiple of 4 in [-256, 252].
+func (a *Asm) LdpOffset32(rt, rt2, rn Reg, imm int32) {
+	a.word(0x29400000 | uint32((imm/4)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
 // LdpPost loads rt,rt2 from [rn], #imm (post-index, writes rn back).
 func (a *Asm) LdpPost(rt, rt2, rn Reg, imm int32) {
 	a.word(0xA8C00000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
