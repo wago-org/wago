@@ -681,6 +681,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			localFuncrefsMayEscape = len(c.tableExports) != 0
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for i := range c.memoryDir.ehTags {
+				typeIdx := c.memoryDir.ehTags[i].TypeIndex
+				if uint64(typeIdx) >= uint64(len(c.Types)) || c.Types[typeIdx].Kind != CompositeTypeFunction {
+					continue
+				}
+				for _, param := range c.Types[typeIdx].Params {
+					if abiType, ok := param.ABIType(c.Types); ok && mayCarryFuncref(abiType) {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
+				if localFuncrefsMayEscape {
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			localFuncrefsMayEscape = c.dynamicFuncrefEscape
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
