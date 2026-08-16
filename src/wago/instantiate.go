@@ -681,17 +681,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			localFuncrefsMayEscape = len(c.tableExports) != 0
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
-			for i := range c.Funcs {
-				for _, param := range c.Funcs[i].Params {
-					if mayCarryFuncref(param) {
-						localFuncrefsMayEscape = true
-						break
-					}
-				}
-				if localFuncrefsMayEscape {
-					break
-				}
-			}
+			localFuncrefsMayEscape = c.dynamicFuncrefEscape
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
 			for i := range c.importFuncSigs {

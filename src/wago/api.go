@@ -125,6 +125,64 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return compileWithConfig(cfg, wasmBytes)
 }
 
+func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
+	typeMayCarryFuncref := func(typeIdx uint32) bool {
+		ft, ok := m.TypeFunc(typeIdx)
+		if !ok {
+			return false
+		}
+		for _, param := range ft.Params {
+			if wasm.EqualValType(param, wasm.FuncRef) || wasm.EqualValType(param, wasm.AnyRef) {
+				return true
+			}
+		}
+		return false
+	}
+	isDynamicCall := func(kind wasm.InstrKind) bool {
+		switch kind {
+		case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
+			return true
+		default:
+			return false
+		}
+	}
+	memCount := 0
+	memarg64 := false
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternMem {
+			memCount++
+			memarg64 = m.Imports[i].Type.MemType().Limits.Addr64
+		}
+	}
+	for i := range m.Memories {
+		memCount++
+		memarg64 = m.Memories[i].Limits.Addr64
+	}
+	memarg64 = memCount == 1 && memarg64
+	for i := range m.Code {
+		if body := m.Code[i].BodyBytes; len(body) != 0 {
+			r := wasm.NewReader(body)
+			var imm wasm.InstructionImmediate
+			for r.HasNext() {
+				op, err := r.Byte()
+				if err != nil || wasm.ClassifyInstructionImmediateIntoWithFeatures(r, op, &imm, memarg64, memCount > 1) != nil {
+					break
+				}
+				if isDynamicCall(imm.Kind) && typeMayCarryFuncref(uint32(imm.Index)) {
+					return true
+				}
+			}
+			continue
+		}
+		for _, in := range m.Code[i].Body.Instrs {
+			if isDynamicCall(in.Kind) && typeMayCarryFuncref(in.Index) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
 	switch len(args) {
 	case 1:
@@ -1384,7 +1442,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if genericGCExecution || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
