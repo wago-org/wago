@@ -72,6 +72,7 @@
               "compact-i32-frame",
               "deep-fp-pins",
               "entry-arg-pins",
+              "entry-zero-pairs",
               "ext-fp-pins",
               "frame-elide",
               "frame-elide-reghomed",
