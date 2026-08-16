@@ -2,12 +2,16 @@
 
 package arm64
 
-import "testing"
+import (
+	"testing"
+
+	encoderarm64 "github.com/wago-org/wago/src/core/encoder/arm64"
+)
 
 func TestGCProvenanceDoesNotUseSpillSlot(t *testing.T) {
-	f := fn{}
+	f := fn{a: &encoderarm64.Asm{}, s: newStack(), stats: &CodegenStats{}}
 	e := elem{kind: ekValue, st: storage{kind: stSlot, typ: mtI64, slot: 1, gcRoot: true}}
-	f.occupy(&e, X0)
+	f.materialize(&e)
 	if local, ok := gcLocalProvenance(&e); ok {
 		t.Fatalf("spill slot inferred as local provenance: local %d", local)
 	}
