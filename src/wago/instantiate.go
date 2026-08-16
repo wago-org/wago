@@ -751,6 +751,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
+				if localFuncrefsMayEscape {
+					kind = abi.FuncRefEntryCrossInstanceWrapper
+				}
 				if !localFuncrefsMayEscape && internal != c.Entry[li] && (regABIEnabled && funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
 					code = uint64(base) + uint64(internal)
 					kind = abi.FuncRefEntryInternal
