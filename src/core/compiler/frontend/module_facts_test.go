@@ -65,6 +65,26 @@ func TestAnalyzeModuleFactsMixedMemory64MemargDoesNotInventFacts(t *testing.T) {
 	}
 }
 
+func TestAnalyzeModuleFactsTracksDynamicCallRefInBothForms(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fn   wasm.Func
+	}{
+		{name: "bytes", fn: wasm.Func{BodyBytes: []byte{0x14, 0x00, 0x0b}}},
+		{name: "instructions", fn: wasm.Func{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrCallRef, Index: 0}}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			facts, err := AnalyzeModuleFacts(&wasm.Module{Code: []wasm.Func{tc.fn}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !facts.UsesCallRef {
+				t.Fatal("call_ref was not recorded")
+			}
+		})
+	}
+}
+
 func TestAnalyzeModuleFactsMatchesByteAndInstructionForms(t *testing.T) {
 	byteFacts, err := AnalyzeModuleFacts(moduleFactsFixture(true))
 	if err != nil {

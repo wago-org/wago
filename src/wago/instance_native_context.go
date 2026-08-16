@@ -307,7 +307,7 @@ func (in *Instance) preparedEntryMode() preparedEntryMode {
 		}
 	}
 	if len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
-		in.c.NumImports == 0 && !in.c.NeedsFuncRefDescs {
+		in.c.NumImports == 0 && !in.c.needsFuncRefContext() {
 		return preparedEntryIsolated
 	}
 	return preparedEntryPrivate

@@ -333,12 +333,18 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 				return out
 			}
 			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+			if op == 0x14 && facts != nil {
+				facts.UsesCallRef = true
+			}
 			continue
 		case 0x15: // return_call_ref
 			if _, err := r.U32(); err != nil {
 				return out
 			}
 			out |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall
+			if facts != nil {
+				facts.UsesCallRef = true
+			}
 			continue
 		case 0x25, 0x26, 0xd2: // table.get, table.set, ref.func
 			if _, err := r.U32(); err != nil {
@@ -529,6 +535,8 @@ func recordModuleRequirementFact(kind wasm.InstrKind, index uint32, facts *front
 		}
 	case wasm.InstrRefFunc:
 		facts.UsesRefFunc = true
+	case wasm.InstrCallRef, wasm.InstrReturnCallRef:
+		facts.UsesCallRef = true
 	}
 }
 

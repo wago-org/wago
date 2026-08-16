@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	goruntime "runtime"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
@@ -666,11 +667,93 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				binary.LittleEndian.PutUint32(funcRefTypeIDs[4*fidx:], typeID)
 			}
 		}
+		mayCarryFuncref := func(t ValType) bool { return t == ValFuncRef || t == ValAnyRef }
 		localFuncrefsMayEscape := c.tableImport != ""
 		if !localFuncrefsMayEscape {
 			for i := range c.extraTables {
 				if c.extraTables[i].ImportKey != "" {
 					localFuncrefsMayEscape = true
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			localFuncrefsMayEscape = len(c.tableExports) != 0
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for i := range c.memoryDir.ehTags {
+				typeIdx := c.memoryDir.ehTags[i].TypeIndex
+				if uint64(typeIdx) >= uint64(len(c.Types)) || c.Types[typeIdx].Kind != CompositeTypeFunction {
+					continue
+				}
+				for _, param := range c.Types[typeIdx].Params {
+					if abiType, ok := param.ABIType(c.Types); ok && mayCarryFuncref(abiType) {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
+				if localFuncrefsMayEscape {
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			localFuncrefsMayEscape = c.dynamicFuncrefEscape
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for i := range c.importFuncSigs {
+				for _, param := range c.importFuncSigs[i].Params {
+					if mayCarryFuncref(param) {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
+				for _, result := range c.importFuncSigs[i].Results {
+					if result == ValAnyRef {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
+				if localFuncrefsMayEscape {
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for i := range c.GlobalImports {
+				if mayCarryFuncref(c.GlobalImports[i].Type) {
+					localFuncrefsMayEscape = true
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for _, globalIdx := range c.GlobalExports {
+				if globalIdx >= 0 && globalIdx < len(c.Globals) && mayCarryFuncref(c.Globals[globalIdx].Type) {
+					localFuncrefsMayEscape = true
+					break
+				}
+			}
+		}
+		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+			for _, fidx := range c.Exports {
+				local := fidx - c.NumImports
+				if local < 0 || local >= len(c.Funcs) {
+					continue
+				}
+				for _, param := range c.Funcs[local].Params {
+					if param == ValAnyRef {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
+				for _, result := range c.Funcs[local].Results {
+					if mayCarryFuncref(result) {
+						localFuncrefsMayEscape = true
+						break
+					}
+				}
+				if localFuncrefsMayEscape {
 					break
 				}
 			}
@@ -685,17 +768,22 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if li < len(c.InternalEntry) {
 					internal = internalEntryOffset(c.InternalEntry[li])
 				}
-				stagedTailRegABI := c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
+				regABIEnabled := !c.registerABIDisabled
+				stagedTailRegABI := regABIEnabled && c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
+				localRegABI := regABIEnabled && funcSigLocalRegABI(c.Funcs[li])
 				// Equal wrapper/internal offsets on a register-ABI function encode an
 				// intentionally wrapperless direct-only function. It cannot be a valid
 				// ref.func target; leave its unused descriptor entry invalid instead of
 				// publishing the internal ABI under a wrapper tag.
-				if internal == c.Entry[li] && (funcSigLocalRegABI(c.Funcs[li]) || stagedTailRegABI) {
+				if internal == c.Entry[li] && (localRegABI || stagedTailRegABI) {
 					continue
 				}
 				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
-				if !localFuncrefsMayEscape && internal != c.Entry[li] && (funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
+				if goruntime.GOARCH == "arm64" && localFuncrefsMayEscape {
+					kind = abi.FuncRefEntryCrossInstanceWrapper
+				}
+				if !localFuncrefsMayEscape && internal != c.Entry[li] && (regABIEnabled && funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
 					code = uint64(base) + uint64(internal)
 					kind = abi.FuncRefEntryInternal
 				}
@@ -750,6 +838,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			off := payload * runtime.FuncRefDescBytes
 			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
+	} else if c.needsFuncRefContextHeader {
+		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes)
+		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
 	}
 	var globalCells []*Global
 	var instantiationRoots gc.Slots
