@@ -146,26 +146,14 @@ func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
 			return false
 		}
 	}
-	memCount := 0
-	memarg64 := false
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind == wasm.ExternMem {
-			memCount++
-			memarg64 = m.Imports[i].Type.MemType().Limits.Addr64
-		}
-	}
-	for i := range m.Memories {
-		memCount++
-		memarg64 = m.Memories[i].Limits.Addr64
-	}
-	memarg64 = memCount == 1 && memarg64
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		if body := m.Code[i].BodyBytes; len(body) != 0 {
 			r := wasm.NewReader(body)
 			var imm wasm.InstructionImmediate
 			for r.HasNext() {
 				op, err := r.Byte()
-				if err != nil || wasm.ClassifyInstructionImmediateIntoWithFeatures(r, op, &imm, memarg64, memCount > 1) != nil {
+				if err != nil || classifier.ClassifyInto(r, op, &imm) != nil {
 					break
 				}
 				if isDynamicCall(imm.Kind) && typeMayCarryFuncref(uint32(imm.Index)) {
