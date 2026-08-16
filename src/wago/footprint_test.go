@@ -3,12 +3,21 @@ package wago
 import (
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func TestCallRefOnlyArenaNeedUsesFixedContextHeader(t *testing.T) {
-	callRef := MustCompile(parameterFuncrefRelayModule())
+	targetType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	callType := []byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(targetType, callType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x14, 0x00, 0x0b}))),
+	)
+	callRef := MustCompile(module)
 	defer callRef.Close()
 	if callRef.NeedsFuncRefDescs || !callRef.needsFuncRefContextHeader {
 		t.Fatalf("call_ref metadata = full %v header %v, want false/true", callRef.NeedsFuncRefDescs, callRef.needsFuncRefContextHeader)
