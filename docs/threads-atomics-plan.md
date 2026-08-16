@@ -405,8 +405,13 @@ passes the full operation/width matrix, end-of-memory and effective-address
 overflow checks for every write/RMW form, contention invariants, true-overlap
 rendezvous, waiter lifecycle tests, and 250 instantiate/invoke/close cycles.
 
-Race-focused waiter and lifecycle tests pass under `go test -race`. Test
-binaries cross-compile for linux, darwin, and windows on amd64 and arm64; Windows
+Race-focused waiter and lifecycle tests pass under `go test -race`. Tests that
+hold generated native code in a deliberate spin while a Go controller publishes a
+shared-memory release must reserve at least two `GOMAXPROCS`: generated code does
+not yield its P to Go's scheduler, so a one-P test process cannot run the controller.
+Every such rendezvous must also use bounded phase waits with state diagnostics rather
+than relying on the package timeout. Test binaries cross-compile for linux, darwin,
+and windows on amd64 and arm64; Windows
 does not advertise Threads, and this local run did not provide native Linux or
 Windows execution.
 

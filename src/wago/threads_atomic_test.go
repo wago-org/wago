@@ -324,6 +324,15 @@ func TestThreadsSameInstanceConcurrentInvokeSerializesScratch(t *testing.T) {
 }
 
 func TestThreadsHostGlobalAccessSerializesWithInvoke(t *testing.T) {
+	// Generated native code does not participate in Go's asynchronous scheduler.
+	// Keep one P available for the controller while the guest deliberately spins;
+	// a one-P test process would otherwise deadlock before it can publish release.
+	previousProcs := goruntime.GOMAXPROCS(0)
+	if previousProcs < 2 {
+		goruntime.GOMAXPROCS(2)
+		t.Cleanup(func() { goruntime.GOMAXPROCS(previousProcs) })
+	}
+
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedThreadedGlobalHoldModule())
 	if err != nil {
@@ -355,12 +364,13 @@ func TestThreadsHostGlobalAccessSerializesWithInvoke(t *testing.T) {
 	}()
 	signal := (*uint32)(unsafe.Pointer(&memory.Bytes()[0]))
 	release := (*uint32)(unsafe.Pointer(&memory.Bytes()[4]))
-	deadline := time.Now().Add(time.Second)
+	defer atomic.StoreUint32(release, 1)
+	deadline := time.Now().Add(5 * time.Second)
 	for atomic.LoadUint32(signal) == 0 && time.Now().Before(deadline) {
 		goruntime.Gosched()
 	}
 	if atomic.LoadUint32(signal) == 0 {
-		t.Fatal("guest did not enter hold function")
+		t.Fatalf("guest did not enter hold function within 5s: signal=%d release=%d GOMAXPROCS=%d", atomic.LoadUint32(signal), atomic.LoadUint32(release), goruntime.GOMAXPROCS(0))
 	}
 	setDone := make(chan error, 1)
 	go func() { setDone <- instance.SetGlobal("global", I32(99)) }()
@@ -370,12 +380,25 @@ func TestThreadsHostGlobalAccessSerializesWithInvoke(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 	atomic.StoreUint32(release, 1)
-	got := <-result
+	var got struct {
+		value uint64
+		err   error
+	}
+	select {
+	case got = <-result:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("guest did not observe release within 5s: signal=%d release=%d GOMAXPROCS=%d", atomic.LoadUint32(signal), atomic.LoadUint32(release), goruntime.GOMAXPROCS(0))
+	}
 	if got.err != nil || got.value != 7 {
 		t.Fatalf("hold = %d, %v; want original global 7", got.value, got.err)
 	}
-	if err := <-setDone; err != nil {
-		t.Fatal(err)
+	select {
+	case err := <-setDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("SetGlobal remained blocked after guest exit: signal=%d release=%d GOMAXPROCS=%d", atomic.LoadUint32(signal), atomic.LoadUint32(release), goruntime.GOMAXPROCS(0))
 	}
 	if value, err := instance.Global("global"); err != nil || value != I32(99) {
 		t.Fatalf("global after serialized set = %d, %v", value, err)

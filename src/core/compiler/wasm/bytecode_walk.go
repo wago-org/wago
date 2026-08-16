@@ -54,6 +54,33 @@ func ClassifyInstructionImmediateIntoWithMemarg64(r *Reader, op byte, imm *Instr
 // by validated module walkers. multiMemory changes memory.size/memory.grow from
 // the legacy reserved-zero byte to a memory index; memarg64 selects u64 offsets.
 func ClassifyInstructionImmediateIntoWithFeatures(r *Reader, op byte, imm *InstructionImmediate, memarg64, multiMemory bool) error {
+	return classifyInstructionImmediateIntoWithWidths(r, op, imm, fixedMemargWidths(memarg64), multiMemory)
+}
+
+// ModuleInstructionClassifier caches one module's memarg-width classification
+// for allocation-free bytecode walks. Construct it once per walk rather than
+// rescanning imported memories for every instruction.
+type ModuleInstructionClassifier struct {
+	widths      memargWidths
+	multiMemory bool
+}
+
+func NewModuleInstructionClassifier(m *Module, multiMemory bool) ModuleInstructionClassifier {
+	return ModuleInstructionClassifier{widths: moduleMemargWidths(m), multiMemory: multiMemory}
+}
+
+func (c ModuleInstructionClassifier) ClassifyInto(r *Reader, op byte, imm *InstructionImmediate) error {
+	return classifyInstructionImmediateIntoWithWidths(r, op, imm, c.widths, c.multiMemory)
+}
+
+// ClassifyInstructionImmediateIntoWithModuleFeatures selects each memarg offset
+// width from the memory index encoded by that instruction. It is intended for
+// one-shot classification; repeated walks should cache NewModuleInstructionClassifier.
+func ClassifyInstructionImmediateIntoWithModuleFeatures(r *Reader, op byte, imm *InstructionImmediate, m *Module, multiMemory bool) error {
+	return NewModuleInstructionClassifier(m, multiMemory).ClassifyInto(r, op, imm)
+}
+
+func classifyInstructionImmediateIntoWithWidths(r *Reader, op byte, imm *InstructionImmediate, widths memargWidths, multiMemory bool) error {
 	*imm = InstructionImmediate{}
 	if kind := simpleOpcode[op]; kind != InstrInvalid {
 		imm.Kind = kind
@@ -86,8 +113,8 @@ func ClassifyInstructionImmediateIntoWithFeatures(r *Reader, op byte, imm *Instr
 		imm.Kind = InstrF64Const
 		return err
 	}
-	ir := &reader{data: r.data, pos: r.pos}
-	_, err := classifyExprOpAfterOpcodeWithFeatures(ir, op, imm, memarg64, multiMemory)
+	ir := reader{data: r.data, pos: r.pos}
+	_, err := classifyExprOpAfterOpcodeWithWidths(&ir, op, imm, widths, multiMemory)
 	r.pos = ir.pos
 	return err
 }

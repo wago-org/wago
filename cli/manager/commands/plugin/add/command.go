@@ -28,7 +28,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "add", Summary: "add and enable plugins, then rebuild Wago",
-		Long:       "GitHub plugins may use owner/repository[/subpackage] shorthand. Package roots offer everything or selected providers interactively; --no-input installs everything.",
+		Long:       "GitHub plugins may use owner/repository[/subpackage] shorthand. Package roots offer everything or selected subpackages interactively; --no-input installs everything.",
 		Automation: command.DryRun,
 		Args:       "<plugin-id>[@range]...",
 		Flags: []command.Flag{

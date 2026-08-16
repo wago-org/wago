@@ -36,6 +36,7 @@ func (f *fn) planCallDeadLocals(r *wasm.Reader) {
 	}
 
 	peek := *r
+	var imm wasm.InstructionImmediate
 	for fuel := 0; fuel < maxCallNextUseOps; fuel++ {
 		op, err := peek.Byte()
 		if err != nil {
@@ -74,7 +75,7 @@ func (f *fn) planCallDeadLocals(r *wasm.Reader) {
 				return
 			}
 		default:
-			if err := skipImmediates(&peek, op); err != nil {
+			if err := f.classifier.ClassifyInto(&peek, op, &imm); err != nil {
 				return
 			}
 		}

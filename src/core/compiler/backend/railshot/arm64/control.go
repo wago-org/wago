@@ -724,66 +724,50 @@ func (f *fn) alignLoopHeader() {
 
 // scanLoopBody scans a loop body ahead from the reader's current position (the
 // body start, just past the blocktype) to the matching `end`, recording the
-// locals it sets and whether it grows memory, then restores the reader. Reuses
-// skipImmediates for operand skipping; br_table (not covered there) is handled
-// inline. Post-validation, so a decode error just ends the scan.
-func scanLoopBody(r *wasm.Reader, memory64 bool) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
+// locals it sets and whether it grows memory, calls, nests loops, or uses a
+// br_table. The module-aware classifier keeps mixed memory-width immediates
+// synchronized. Any unexpected decode failure returns conservative facts.
+func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
+	return scanLoopBodyWithClassifier(r, wasm.NewModuleInstructionClassifier(m, true))
+}
+
+func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
 	start := r.Offset()
+	defer func() { _ = r.JumpTo(start) }()
 	setLocals = map[uint32]bool{}
 	depth := 0
-scan:
+	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
 		if err != nil {
-			break
+			return nil, true, true, true, true
+		}
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return nil, true, true, true, true
+		}
+		switch imm.Kind {
+		case wasm.InstrLocalSet, wasm.InstrLocalTee:
+			setLocals[imm.Index] = true
+		case wasm.InstrMemoryGrow:
+			hasGrow = true
+		case wasm.InstrCall, wasm.InstrCallIndirect:
+			hasCall = true
+		case wasm.InstrBrTable:
+			hasTable = true
 		}
 		switch op {
-		case 0x02, 0x03, 0x04: // block / loop / if: skip blocktype, enter one level
-			if _, err := r.S33(); err != nil {
-				break scan
-			}
+		case 0x02, 0x03, 0x04, 0x1f:
 			if op == 0x03 {
 				hasNested = true
 			}
 			depth++
-		case 0x10, 0x11: // call / call_indirect
-			hasCall = true
-			if err := skipImmediatesWithMemory64(r, op, memory64); err != nil {
-				break scan
-			}
-		case 0x0b: // end
+		case 0x0b:
 			if depth == 0 {
-				break scan
+				return
 			}
 			depth--
-		case 0x21, 0x22: // local.set / local.tee
-			idx, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			setLocals[idx] = true
-		case 0x40: // memory.grow
-			if _, err := r.U32(); err != nil {
-				break scan
-			}
-			hasGrow = true
-		case 0x0e: // br_table: vec(labelidx) + default labelidx
-			hasTable = true
-			n, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			if err := r.SkipU32N(n + 1); err != nil {
-				break scan
-			}
-		default:
-			if err := skipImmediatesWithMemory64(r, op, memory64); err != nil {
-				break scan
-			}
 		}
 	}
-	r.JumpTo(start)
-	return
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
@@ -815,12 +799,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
-		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r, f.memoryAddr64(0)) // P6.2 + region-pin foundation (reader restored)
+		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBodyWithClassifier(r, f.classifier) // P6.2 + region-pin foundation (reader restored)
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
 		if f.opt(optLoopPrecheck) && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
-			if cands, elidable, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
+			if cands, elidable, hasGrow := scanLoopHoistableWithClassifier(r, f.m, f.classifier); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
 					return nil
 				}

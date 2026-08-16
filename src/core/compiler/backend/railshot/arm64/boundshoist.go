@@ -57,108 +57,72 @@ type hoistCand struct {
 }
 
 // scanLoopHoistable scans the loop body (reader at the body start, restored on
-// return) for hoistable bases: locals accessed as a direct memory base and never
-// set in the loop. Returns them with each one's max extent, the total number of
-// per-iteration accesses that would be elided (the check-density benefit signal),
-// and whether the loop grows memory (a grower is not versioned in v1). Post-
-// validation, so a decode error just ends the scan with what was found.
-func scanLoopHoistable(r *wasm.Reader) (cands []hoistCand, elidable int, hasGrow bool) {
+// return) for hoistable memory-0 bases. The shared module-aware classifier keeps
+// scalar, SIMD, atomic, memory64, and indexed-memory immediates synchronized.
+func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elidable int, hasGrow bool) {
+	return scanLoopHoistableWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true))
+}
+
+func scanLoopHoistableWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier) (cands []hoistCand, elidable int, hasGrow bool) {
 	start := r.Offset()
+	defer func() { _ = r.JumpTo(start) }()
 	set := map[uint32]bool{}
 	maxExt := map[uint32]int32{}
-	acc := map[uint32]int{}     // direct-access count per base
-	poison := map[uint32]bool{} // bases with a direct access this scan can't size (SIMD)
-	prevGet := int64(-1)        // local index of an immediately-preceding local.get, else -1
+	acc := map[uint32]int{}
+	poison := map[uint32]bool{}
+	prevGet := int64(-1)
 	depth := 0
-scan:
+	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
 		if err != nil {
-			break
+			return nil, 0, false
+		}
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return nil, 0, false
 		}
 		curGet := int64(-1)
-		switch op {
-		case 0x02, 0x03, 0x04: // block / loop / if
-			if _, err := r.S33(); err != nil {
-				break scan
-			}
-			depth++
-		case 0x0b: // end
-			if depth == 0 {
-				break scan
-			}
-			depth--
-		case 0x20: // local.get
-			idx, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			curGet = int64(idx)
-		case 0x21, 0x22: // local.set / local.tee
-			idx, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			set[idx] = true
-		case 0x40: // memory.grow
-			if _, err := r.U32(); err != nil {
-				break scan
-			}
+		switch imm.Kind {
+		case wasm.InstrLocalGet:
+			curGet = int64(imm.Index)
+		case wasm.InstrLocalSet, wasm.InstrLocalTee:
+			set[imm.Index] = true
+		case wasm.InstrMemoryGrow:
 			hasGrow = true
-		case 0x0e: // br_table
-			n, err := r.U32()
-			if err != nil {
-				break scan
-			}
-			if err := r.SkipU32N(n + 1); err != nil {
-				break scan
-			}
-		case 0xfd: // SIMD prefix — a v128 load/store also goes through memAddr (and so
-			// through the elide) but this scan can't size it; poison the base so it is
-			// never hoisted with an under-covered extent.
-			if prevGet >= 0 {
-				poison[uint32(prevGet)] = true
-			}
-			if err := skipImmediates(r, op); err != nil {
-				break scan
-			}
-		default:
-			if size := memAccessSize(op); size != 0 {
-				// memarg: align, offset. A direct base is a local.get immediately before.
-				if _, err := r.U32(); err != nil { // align
-					break scan
+		}
+		if prevGet >= 0 && imm.TouchesMemory {
+			base := uint32(prevGet)
+			if imm.HasMemIndex && imm.MemIndex != 0 {
+				poison[base] = true
+			} else if size := memAccessSize(op); size != 0 {
+				acc[base]++
+				if imm.MemOffset > 0x7fffffff || imm.MemOffset+uint64(size) > 0x7fffffff {
+					poison[base] = true
+				} else if ext := int32(imm.MemOffset + uint64(size)); ext > maxExt[base] {
+					maxExt[base] = ext
 				}
-				off, err := r.U32()
-				if err != nil {
-					break scan
-				}
-				if prevGet >= 0 {
-					acc[uint32(prevGet)]++
-					// The precheck's address displacement is int32; an offset near 2^32 would
-					// overflow it and check a wrong (too-small) bound, so poison instead.
-					if ext := int64(off) + int64(size); ext > 0x7FFFFFFF {
-						poison[uint32(prevGet)] = true
-					} else if int32(ext) > maxExt[uint32(prevGet)] {
-						maxExt[uint32(prevGet)] = int32(ext)
+			} else {
+				poison[base] = true
+			}
+		}
+		switch op {
+		case 0x02, 0x03, 0x04, 0x1f:
+			depth++
+		case 0x0b:
+			if depth == 0 {
+				for b, ext := range maxExt {
+					if !set[b] && !poison[b] {
+						cands = append(cands, hoistCand{base: b, extent: ext})
+						elidable += acc[b]
 					}
 				}
-			} else if err := skipImmediates(r, op); err != nil {
-				break scan
+				slices.SortFunc(cands, func(a, b hoistCand) int { return cmp.Compare(a.base, b.base) })
+				return cands, elidable, hasGrow
 			}
+			depth--
 		}
 		prevGet = curGet
 	}
-	r.JumpTo(start)
-	for b, ext := range maxExt {
-		if !set[b] && !poison[b] { // invariant, never set in the loop, all accesses sized
-			cands = append(cands, hoistCand{base: b, extent: ext})
-			elidable += acc[b]
-		}
-	}
-	// Map iteration order must not choose precheck/register order. Keep output
-	// deterministic when different functions are compiled by different workers.
-	slices.SortFunc(cands, func(a, b hoistCand) int { return cmp.Compare(a.base, b.base) })
-	return cands, elidable, hasGrow
 }
 
 // loopPrecheckMinChecks is the minimum per-iteration elided-check count for a loop
