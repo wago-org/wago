@@ -810,13 +810,55 @@ func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 		}
 		dstSlot += n
 	}
-	f.a.Load64(RCX, RSP, frResultsOff)
 	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
 	f.a.MovReg64(RSI, RBX)
+	callerRegisterABI := f.opt(optRegABI) && (sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft)))
+	if !callerRegisterABI {
+		// Wrapper-ABI frames own a stable result destination in their header.
+		// Load it before releasing the frame and transfer the original return PC.
+		f.a.Load64(RCX, RSP, frResultsOff)
+	}
 	frameSite := f.a.Len() + 3
 	f.a.AddRsp(0)
 	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+
+	if !callerRegisterABI {
+		emitJump()
+		return
+	}
+
+	// Register-ABI frames do not contain frResultsOff. After frame release, a
+	// root activation exposes the adapter's [return PC, result pointer] record;
+	// discard that continuation and let the target wrapper return directly to
+	// the adapter's caller. A nested activation instead needs a bounded result
+	// record and trampoline to restore the wrapper results into ABI registers.
+	f.a.Load64(RAX, RSP, 0)
+	leaSite := f.a.LeaRipPlaceholder(RDX)
+	f.a.PatchRel32(leaSite, f.adapterReturnOff)
+	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+		f.adapterReturnReferenced = true
+	}
+	f.a.Cmp64(RAX, RDX)
+	nested := f.a.JccPlaceholder(condNE)
+	f.a.Load64(RCX, RSP, 8)
+	f.a.AddRsp(16)
 	emitJump()
+
+	f.a.PatchRel32(nested, f.a.Len())
+	// [trampoline, result0, result1, result2, result3, pad]. The fixed record
+	// covers every scalar result shape admitted by sigFitsRegABI and preserves
+	// wrapper-entry stack alignment.
+	f.a.SubRsp(48)
+	trampolineSite := f.a.LeaRipPlaceholder(RAX)
+	f.a.Store64(RSP, 0, RAX)
+	f.a.LeaDisp(RCX, RSP, 8)
+	emitJump()
+
+	trampoline := f.a.Len()
+	f.a.PatchRel32(trampolineSite, trampoline)
+	f.loadTailRegisterResults(RSP, 0, ft.Results)
+	f.a.AddRsp(40)
+	f.a.Ret()
 }
 
 type tailDeferredArg struct {
