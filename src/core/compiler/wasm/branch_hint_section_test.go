@@ -132,6 +132,28 @@ func TestValidateBranchHintsReportsMalformedOffsetsAsInvalidSection(t *testing.T
 	}
 }
 
+func TestValidateBranchHintsConsumesMixedMemoryWidthImmediate(t *testing.T) {
+	body := []byte{
+		0x42, 0x00, // i64.const 0
+		0xfd, 0x00, 0x44, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // v128.load memory 1, offset 2^32
+		0x1a,       // drop
+		0x41, 0x01, // i32.const 1
+		0x0d, 0x00, // br_if 0
+		0x0b,
+	}
+	m := Module{
+		Memories: []MemType{{Limits: Limits{Min: 1}}, {Limits: Limits{Min: 1, Addr64: true}}},
+		Code:     []Func{{BodyBytes: body}},
+		BranchHints: []FuncBranchHints{{
+			FuncIndex: 0,
+			Hints:     []BranchHint{{Offset: 14, Likely: true}},
+		}},
+	}
+	if err := validateBranchHints(&m); err != nil {
+		t.Fatalf("mixed-width branch-hint walk: %v", err)
+	}
+}
+
 func BenchmarkDecodeModuleByteBackedBranchHint(b *testing.B) {
 	withoutHint := branchHintModule(section(secCustom, 0x01, 'x'))
 	withHint := branchHintModule(branchHintCustom(branchHintPayload(0, 3, 1)))

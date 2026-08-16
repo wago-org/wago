@@ -12,7 +12,30 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestAnalyzeInlineCandidatesMixedMemory64MemargArm64(t *testing.T) {
+	body := []byte{
+		0x00,       // no locals
+		0x42, 0x00, // i64.const 0
+		0x28, 0x40, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // i32.load memory 1, offset 1<<32
+		0x1a, 0x0b, // drop; end
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01}, []byte{0x04, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AnalyzeInlineCandidates(m); err != nil {
+		t.Fatalf("analyze mixed-width module: %v", err)
+	}
+}
 
 func TestInlineLeafExecAndStatsArm64(t *testing.T) {
 	caller := []byte{

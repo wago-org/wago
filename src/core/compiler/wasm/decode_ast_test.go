@@ -176,7 +176,6 @@ func decodeASTCodeSectionForTest(m *Module, r *reader) error {
 		return err
 	}
 	m.Code = make([]Func, 0, minIntForTest(int(n), r.left()))
-	memarg64 := moduleMemargOffset64(m)
 	for i := uint32(0); i < n; i++ {
 		size, err := r.u32()
 		if err != nil {
@@ -191,7 +190,7 @@ func decodeASTCodeSectionForTest(m *Module, r *reader) error {
 		if err != nil {
 			return err
 		}
-		expr, err := decodeExprWithMemarg64(sub, 0, memarg64)
+		expr, err := decodeExprWithModule(sub, 0, m)
 		if err != nil {
 			return err
 		}

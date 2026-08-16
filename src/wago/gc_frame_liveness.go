@@ -59,6 +59,11 @@ type gcFrameLivenessExtra struct {
 // Small functions retain the one-word dataflow path; larger functions use one
 // bounded nodes-by-words arena rather than per-node heap bitsets.
 func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64, extra *gcFrameLivenessExtra) ([]uint64, error) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	return gcFrameLocalLivenessWithClassifier(body, indexes, callMasks, extra, &classifier)
+}
+
+func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks *[]uint64, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) ([]uint64, error) {
 	if len(indexes) > shared.GCFrameRootLimit {
 		return nil, fmt.Errorf("GC local liveness tracks %d roots, limit %d", len(indexes), shared.GCFrameRootLimit)
 	}
@@ -104,7 +109,7 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64, ex
 				branchTargets = append(branchTargets, uint32(target))
 			}
 			imm.Kind = wasm.InstrBrTable
-		} else if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+		} else if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return nil, err
 		}
 
@@ -344,14 +349,19 @@ func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64, ex
 }
 
 func gcFrameBodyMayCollect(body []byte) bool {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	return gcFrameBodyMayCollectWithClassifier(body, &classifier)
+}
+
+func gcFrameBodyMayCollectWithClassifier(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return true
 		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return true
 		}
 		switch imm.Kind {
@@ -369,6 +379,11 @@ func gcFrameBodyMayCollect(body []byte) bool {
 }
 
 func gcFrameAllLiveMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra) (allocations, calls []uint64, err error) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, &classifier)
+}
+
+func gcFrameAllLiveMasksWithClassifier(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
 	if localRoots < 0 || localRoots > shared.GCFrameRootLimit {
 		return nil, nil, fmt.Errorf("GC conservative liveness tracks %d roots, limit %d", localRoots, shared.GCFrameRootLimit)
 	}
@@ -392,8 +407,8 @@ func gcFrameAllLiveMasks(body []byte, localRoots int, extra *gcFrameLivenessExtr
 			if readErr != nil {
 				return 0, 0, readErr
 			}
-			imm, readErr := wasm.ClassifyInstructionImmediate(r, op)
-			if readErr != nil {
+			var imm wasm.InstructionImmediate
+			if readErr := classifier.ClassifyInto(r, op, &imm); readErr != nil {
 				return 0, 0, readErr
 			}
 			if op == 0xfb {
@@ -428,8 +443,8 @@ func gcFrameAllLiveMasks(body []byte, localRoots int, extra *gcFrameLivenessExtr
 		if readErr != nil {
 			return nil, nil, readErr
 		}
-		imm, readErr := wasm.ClassifyInstructionImmediate(r, op)
-		if readErr != nil {
+		var imm wasm.InstructionImmediate
+		if readErr := classifier.ClassifyInto(r, op, &imm); readErr != nil {
 			return nil, nil, readErr
 		}
 		if op == 0xfb {

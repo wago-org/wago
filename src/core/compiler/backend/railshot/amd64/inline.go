@@ -126,8 +126,9 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 	importedFuncs := m.ImportedFuncCount()
 	n := len(m.Code)
 	facts := make([]inlineFacts, n)
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		f, err := scanInlineFacts(m, m.Code[i], i, importedFuncs)
+		f, err := scanInlineFacts(m, m.Code[i], i, importedFuncs, classifier)
 		if err != nil {
 			return nil, fmt.Errorf("function %d inline scan: %w", i, err)
 		}
@@ -266,7 +267,7 @@ func inlineDecision(f inlineFacts, callSites int, policy CodegenPolicy) (bool, s
 
 // scanInlineFacts collects a single local function's inline facts, from the
 // byte-backed body (the DecodeModule path) or the AST body (frontend/test path).
-func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int) (inlineFacts, error) {
+func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int, classifier wasm.ModuleInstructionClassifier) (inlineFacts, error) {
 	var f inlineFacts
 	if ft, ok := m.LocalFuncType(localIdx); ok {
 		f.params = len(ft.Params)
@@ -277,7 +278,7 @@ func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int) 
 		f.declaredLocals += int(run.Count)
 	}
 	if len(fn.BodyBytes) != 0 {
-		if err := scanInlineFactsBytes(fn.BodyBytes, &f); err != nil {
+		if err := scanInlineFactsBytesWithClassifier(fn.BodyBytes, &f, classifier); err != nil {
 			return f, err
 		}
 		return f, nil
@@ -287,6 +288,10 @@ func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int) 
 }
 
 func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
+	return scanInlineFactsBytesWithClassifier(body, f, wasm.ModuleInstructionClassifier{})
+}
+
+func scanInlineFactsBytesWithClassifier(body []byte, f *inlineFacts, classifier wasm.ModuleInstructionClassifier) error {
 	f.bodyBytes = len(body)
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
@@ -305,7 +310,7 @@ func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
 		case 0x23, 0x24: // global.get / global.set
 			f.touchesGlobal = true
 		}
-		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return err
 		}
 		if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
@@ -473,8 +478,9 @@ type inlineTarget struct {
 }
 
 type inlineTargetTable struct {
-	first   int
-	targets []inlineTarget
+	first      int
+	targets    []inlineTarget
+	classifier wasm.ModuleInstructionClassifier
 }
 
 func (ts inlineTargetTable) target(globalIdx int) *inlineTarget {
@@ -515,7 +521,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		return inlineTargetTable{}
 	}
 	importedFuncs := m.ImportedFuncCount()
-	var targets inlineTargetTable
+	targets := inlineTargetTable{classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	var typeArena []machineType
 	var zeroFactArena []shared.GCRefFact
 	for i := range m.Code {
@@ -642,7 +648,7 @@ func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
 		var imm wasm.InstructionImmediate
 		for r.HasNext() {
 			op, err := r.Byte()
-			if err != nil || wasm.ClassifyInstructionImmediateInto(r, op, &imm) != nil {
+			if err != nil || targets.classifier.ClassifyInto(r, op, &imm) != nil {
 				target.valid = false
 				break
 			}
@@ -711,7 +717,7 @@ func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, _ CodegenP
 		if err != nil {
 			return false
 		}
-		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
 			return false
 		}
 		switch imm.Kind {
@@ -745,7 +751,7 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 		if err != nil {
 			return out
 		}
-		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
 			return out
 		}
 		if imm.Kind != wasm.InstrCall {

@@ -174,6 +174,26 @@ func TestModuleRequiresSIMDScansEveryModuleComponent(t *testing.T) {
 	}
 }
 
+func TestModuleRequiresSIMDConsumesMixedMemory64Memarg(t *testing.T) {
+	body := []byte{
+		0x42, 0x00, // i64.const 0
+		0x28, 0x40, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // i32.load memory 1, offset 1<<32
+		0x1a, 0xfd, 0x0c, // drop; v128.const
+	}
+	body = append(body, make([]byte, 16)...)
+	body = append(body, 0x1a, 0x0b) // drop; end
+	m := &wasm.Module{
+		Memories: []wasm.MemType{
+			{Limits: wasm.Limits{Min: 1}},
+			{Limits: wasm.Limits{Min: 1, Addr64: true}},
+		},
+		Code: []wasm.Func{{BodyBytes: body}},
+	}
+	if !ModuleRequiresSIMD(m) {
+		t.Fatal("SIMD after mixed-width memory64 memarg was missed")
+	}
+}
+
 func TestSupportPassRejectsV128ArrayStorageWhenSIMDDisabled(t *testing.T) {
 	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{
 		Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)},

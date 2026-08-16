@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 func gcFrameLivenessBenchmarkBody(n int) []byte {
@@ -157,6 +158,22 @@ func TestGCFrameLocalLivenessWideMasks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGCFrameLocalLivenessConsumesMixedWidthMemarg(t *testing.T) {
+	m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}}}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	body := []byte{
+		0x42, 0x00, // i64.const 0
+		0xfd, 0x00, 0x44, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10, // v128.load memory 1, offset 2^32
+		0x1a,       // drop
+		0x20, 0x00, // local.get 0
+		0x1a, 0x0b,
+	}
+	var calls []uint64
+	if _, err := gcFrameLocalLivenessWithClassifier(body, []uint32{0}, &calls, nil, &classifier); err != nil {
+		t.Fatalf("mixed-width GC liveness walk: %v", err)
 	}
 }
 
