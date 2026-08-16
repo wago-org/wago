@@ -2149,7 +2149,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// bounded scan proves that its body never reads, writes, or grows memory.
 	directPreparedSig := preparedDirectIntSig(ft) || (f.opt(optPreparedFPEntry) && (preparedDirectFPSig(ft) || preparedDirectMixedSig(ft)))
 	directPrepared := policy.EnabledOption(optRegABI) && directPreparedSig && !touchesMemory && len(modGlobals) == 0 && !hints.moduleEH &&
-		m.ImportedFuncCount() == 0 && len(c.BodyBytes) <= 96 && nLocals <= 8
+		m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into

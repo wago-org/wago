@@ -325,6 +325,17 @@ func (in *Instance) preparedIsolatedEligible() bool {
 	return in.preparedEntryMode() == preparedEntryIsolated
 }
 
+// preparedMemoryOnlyIsolatedEligible identifies the one private-entry shape
+// that a function-level direct-entry proof can safely upgrade to isolated: an
+// otherwise isolated instance whose only host-visible state is owned, unshared
+// memory. The compiler's direct-entry bit must additionally prove that the
+// selected function neither touches memory nor calls another function.
+func (in *Instance) preparedMemoryOnlyIsolatedEligible() bool {
+	return in.preparedEntryMode() == preparedEntryPrivate && in.memory != nil &&
+		len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
+		in.c.NumImports == 0 && !in.c.NeedsFuncRefDescs
+}
+
 func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
 	nativeExecutionMu.Lock()
 	nativeExecutionEpoch++

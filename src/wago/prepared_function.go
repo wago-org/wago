@@ -263,10 +263,11 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
+	directPrepared := in.c.directPreparedAt(ic.li)
 	if (scalarFast || directFastCandidate) && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
 		fn.privateFast = true
-		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
-		if in.c.directPreparedAt(ic.li) {
+		fn.isolatedFast = preparedIsolatedEntryEnabled && (in.preparedIsolatedEligible() || directPrepared && in.preparedMemoryOnlyIsolatedEligible())
+		if directPrepared {
 			mixedResultFP, mixed := preparedDirectMixedSignature(sig)
 			switch {
 			case (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig):

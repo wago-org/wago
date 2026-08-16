@@ -4,6 +4,7 @@ package wago
 
 import (
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -15,12 +16,17 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x00})), // one zero-page memory
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0), wasmtest.ExportEntry("size", 0, 1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("add", 0, 0),
+			wasmtest.ExportEntry("size", 0, 1),
+			wasmtest.ExportEntry("call_size", 0, 2),
+		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x7c, 0x0b}),
 			wasmtest.Code([]byte{0x3f, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0x01, 0x0b}),
 		)),
 	)
 	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
@@ -33,6 +39,9 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if compiled.directPreparedAt(1) {
 		t.Fatal("memory.size function selected the ARM64 direct prepared entry")
 	}
+	if compiled.directPreparedAt(2) {
+		t.Fatal("function calling memory.size selected the ARM64 direct prepared entry")
+	}
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
@@ -42,10 +51,24 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if !fn.directIntFast || fn.isolatedFast {
-		t.Fatalf("direct/private selection = %v/%v, want true/false", fn.directIntFast, fn.isolatedFast)
+	if !fn.directIntFast || !fn.isolatedFast {
+		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.isolatedFast)
 	}
-	got, err := fn.Invoke2(20, 22)
+	nativeExecutionMu.Lock()
+	done := make(chan struct{})
+	var got []uint64
+	go func() {
+		got, err = fn.Invoke2(20, 22)
+		close(done)
+	}()
+	select {
+	case <-done:
+		nativeExecutionMu.Unlock()
+	case <-time.After(time.Second):
+		nativeExecutionMu.Unlock()
+		<-done
+		t.Fatal("memory-independent direct entry waited for the process-wide execution lease")
+	}
 	if err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
 	}

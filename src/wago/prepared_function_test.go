@@ -332,6 +332,56 @@ func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
 	}
 }
 
+func TestPreparedFunctionMemoryIndependentDirectEntryIsIsolated(t *testing.T) {
+	if !preparedDirectIntSupported {
+		t.Skip("architecture does not support direct prepared integer entry")
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x7c, 0x0b}))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("memory-independent function did not select direct prepared entry")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("add")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if !fn.directIntFast || !fn.isolatedFast {
+		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.isolatedFast)
+	}
+	nativeExecutionMu.Lock()
+	done := make(chan struct{})
+	var got []uint64
+	go func() {
+		got, err = fn.Invoke2(20, 22)
+		close(done)
+	}()
+	select {
+	case <-done:
+		nativeExecutionMu.Unlock()
+	case <-time.After(time.Second):
+		nativeExecutionMu.Unlock()
+		<-done
+		t.Fatal("memory-independent direct entry waited for the process-wide execution lease")
+	}
+	if err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
+	}
+}
+
 func TestInvokeScalarUsesIsolatedEntry(t *testing.T) {
 	savedInvoke := invokePrivateEntryEnabled
 	savedIsolated := preparedIsolatedEntryEnabled
