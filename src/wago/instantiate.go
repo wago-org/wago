@@ -751,7 +751,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
-				if localFuncrefsMayEscape {
+				if goruntime.GOARCH == "arm64" && localFuncrefsMayEscape {
 					kind = abi.FuncRefEntryCrossInstanceWrapper
 				}
 				if !localFuncrefsMayEscape && internal != c.Entry[li] && (regABIEnabled && funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
