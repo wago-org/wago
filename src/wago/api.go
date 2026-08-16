@@ -132,7 +132,7 @@ func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
 			return false
 		}
 		for _, param := range ft.Params {
-			if wasm.EqualValType(param, wasm.FuncRef) || wasm.EqualValType(param, wasm.AnyRef) {
+			if param.Kind() == wasm.ValRef {
 				return true
 			}
 		}
