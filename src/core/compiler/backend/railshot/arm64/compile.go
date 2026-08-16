@@ -82,6 +82,10 @@ var inlineCallFreeHintsEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_CALLFREE") != "
 // function. WAGO_ARM64_NO_IMMUTABLE_TABLE=1 restores the general home-tag fork.
 var immutableLocalTableEnabled = os.Getenv("WAGO_ARM64_NO_IMMUTABLE_TABLE") != "1"
 
+// entryZeroPairsEnabled packs adjacent declared-local zero stores into one
+// offset STP. The environment switch retains exact single-store lowering for A/B.
+var entryZeroPairsEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_ZERO_PAIRS") != "1"
+
 // immutableTableTypeEnabled removes call_indirect's dynamic type check only
 // when every possible non-null entry in the immutable local table has one
 // proven structural function type.
@@ -2642,30 +2646,75 @@ func (f *fn) zeroDeclaredLocals() {
 	}
 	if !f.lazyZero {
 		a := f.a
+		pairZeros := f.opt(optEntryZeroPairs)
+		pendingZero := int32(-1)
 		// AArch64 has a zero register (XZR): store it directly, no scratch to clear.
 		for i := f.nParams; i < f.nLocals; i++ {
 			if i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0 {
+				if pairZeros {
+					pendingZero = f.flushDeclaredZeroSlot(pendingZero)
+				}
 				f.stats.peep("entry-init-elide")
 				continue
 			}
 			if pr, _, ok := f.pinReg(i); ok && f.localType[i] == mtV128 {
+				if pairZeros {
+					pendingZero = f.flushDeclaredZeroSlot(pendingZero)
+				}
 				a.NeonEor16b(pr, pr, pr) // zero the whole 128-bit pin register
 			} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+				if pairZeros {
+					pendingZero = f.flushDeclaredZeroSlot(pendingZero)
+				}
 				a.MovImm64(pr, 0)
 			} else if ok && isFloat {
+				if pairZeros {
+					pendingZero = f.flushDeclaredZeroSlot(pendingZero)
+				}
 				a.FmovFromGpr(pr, ZR, false) // fmov d,xzr → 0.0
 			} else if f.localType[i] == mtV128 {
-				f.st64(SP, f.localOff(i), ZR)
-				f.st64(SP, f.localOff(i)+8, ZR)
+				if pairZeros {
+					pendingZero = f.queueDeclaredZeroSlot(pendingZero, f.localOff(i))
+					pendingZero = f.queueDeclaredZeroSlot(pendingZero, f.localOff(i)+8)
+				} else {
+					f.st64(SP, f.localOff(i), ZR)
+					f.st64(SP, f.localOff(i)+8, ZR)
+				}
 			} else {
-				f.st64(SP, f.localOff(i), ZR)
+				if pairZeros {
+					pendingZero = f.queueDeclaredZeroSlot(pendingZero, f.localOff(i))
+				} else {
+					f.st64(SP, f.localOff(i), ZR)
+				}
 			}
+		}
+		if pairZeros {
+			f.flushDeclaredZeroSlot(pendingZero)
 		}
 		return
 	}
 	for i := f.nParams; i < f.nLocals; i++ {
 		f.markDeclaredLocalZero(i)
 	}
+}
+
+func (f *fn) queueDeclaredZeroSlot(pending, off int32) int32 {
+	if pending >= 0 && off == pending+8 && pending <= 504 {
+		f.a.StpOffset(ZR, ZR, SP, pending)
+		f.stats.peep("entry-zero-pair")
+		return -1
+	}
+	if pending >= 0 {
+		f.st64(SP, pending, ZR)
+	}
+	return off
+}
+
+func (f *fn) flushDeclaredZeroSlot(pending int32) int32 {
+	if pending >= 0 {
+		f.st64(SP, pending, ZR)
+	}
+	return -1
 }
 
 // emitStackFenceCheck traps (StackFence → "call stack exhausted") when SP has
