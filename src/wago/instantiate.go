@@ -838,6 +838,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			off := payload * runtime.FuncRefDescBytes
 			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
+	} else if c.needsFuncRefContextHeader {
+		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes)
+		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
 	}
 	var globalCells []*Global
 	var instantiationRoots gc.Slots

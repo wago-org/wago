@@ -1076,8 +1076,9 @@ type Compiled struct {
 	// Imported calls use wrapper targets from a per-instance dispatch table. The
 	// code image is therefore complete at Compile time and independent of concrete
 	// host or cross-instance bindings.
-	dynamicImports       bool
-	dynamicFuncrefEscape bool
+	dynamicImports            bool
+	dynamicFuncrefEscape      bool
+	needsFuncRefContextHeader bool
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool

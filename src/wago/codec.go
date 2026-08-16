@@ -20,7 +20,8 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top seven bits avoids growing artifacts.
+	// low range; reserving the top eight bits avoids growing artifacts.
+	compiledFuncRefContextHeader          uint64 = 1 << 56
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
 	compiledAtomicWaitExecution           uint64 = 1 << 59
@@ -351,6 +352,9 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	}
 	if c.requiresBMI2 {
 		required |= compiledCPUFeatureBMI2
+	}
+	if c.needsFuncRefContextHeader {
+		required |= compiledFuncRefContextHeader
 	}
 	if c.dynamicFuncrefEscape {
 		required |= compiledDynamicFuncrefEscape
@@ -951,9 +955,10 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	}
 	gcExecution := required & compiledGCExecutionMask
 	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
+	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
 	if gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 {
 		nativeGCABIVersion, readErr := r.u32()
 		if readErr != nil {

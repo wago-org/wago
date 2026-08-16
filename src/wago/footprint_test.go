@@ -7,6 +7,41 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestCallRefOnlyArenaNeedUsesFixedContextHeader(t *testing.T) {
+	callRef := MustCompile(parameterFuncrefRelayModule())
+	defer callRef.Close()
+	if callRef.NeedsFuncRefDescs || !callRef.needsFuncRefContextHeader {
+		t.Fatalf("call_ref metadata = full %v header %v, want false/true", callRef.NeedsFuncRefDescs, callRef.needsFuncRefContextHeader)
+	}
+	// The header requirement must remain O(1) even for a function-heavy consumer.
+	// Full per-function descriptors would exceed the bounded arena at this count.
+	wide := *callRef
+	wide.Funcs = make([]FuncSig, 30_000)
+	wide.FuncTypeID = make([]uint64, 30_000)
+	withoutHeader := wide
+	withoutHeader.needsFuncRefContextHeader = false
+	if err := withoutHeader.validateArenaFootprint(); err != nil {
+		t.Fatalf("wide baseline footprint: %v", err)
+	}
+	if err := wide.validateArenaFootprint(); err != nil {
+		t.Fatalf("fixed call_ref context header rejected wide consumer: %v", err)
+	}
+	if got, want := wide.instantiateArenaNeed-withoutHeader.instantiateArenaNeed, coreruntime.FuncRefDescBytes; got != want {
+		t.Fatalf("wide call_ref context delta = %d, want fixed header %d", got, want)
+	}
+	blob, err := callRef.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.NeedsFuncRefDescs || !loaded.needsFuncRefContextHeader {
+		t.Fatalf("loaded call_ref metadata = full %v header %v, want false/true", loaded.NeedsFuncRefDescs, loaded.needsFuncRefContextHeader)
+	}
+}
+
 func TestFunctionImportArenaNeedUsesConcreteBindingShape(t *testing.T) {
 	compiled := MustCompile(voidI32ImportCallerModule())
 	defer compiled.Close()

@@ -1719,10 +1719,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
-	// Dynamic call_ref dispatch also needs the arena header: ARM64 home-aware
-	// calls read its guaranteed instance-context cell even when the module has no
-	// local ref.func/table descriptor payloads of its own.
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || moduleFacts.UsesCallRef || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
+	// Dynamic call_ref dispatch needs only the fixed arena header: ARM64
+	// home-aware calls read its guaranteed instance-context cell even when the
+	// module has no local ref.func/table descriptor payloads of its own.
+	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
@@ -3427,6 +3428,10 @@ func (c *Compiled) needsFuncRefDescs() bool {
 	return c.NeedsFuncRefDescs || c.hasFuncrefTable()
 }
 
+func (c *Compiled) needsFuncRefContext() bool {
+	return c.needsFuncRefContextHeader || c.needsFuncRefDescs()
+}
+
 func normalizedElemRefType(t ValType) ValType {
 	if t == ValExternRef || t == ValExnRef || t == ValAnyRef || t == ValI31Ref {
 		return t
@@ -3688,6 +3693,8 @@ func (c *Compiled) validateArenaFootprint() error {
 		if c.usesDynamicFuncRefTest() {
 			funcRefTypeIDCount = len(c.FuncTypeID)
 		}
+	} else if c.needsFuncRefContextHeader {
+		funcRefCount = 1
 	}
 	tagCount := 0
 	if c.memoryDir != nil {
