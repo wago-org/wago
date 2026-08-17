@@ -284,13 +284,16 @@ func verifyStagedRuntime(binary string) error {
 }
 
 func verifySourceChecksums(buildDir string, sources []project.PluginSource) error {
-	command := exec.Command("go", "list", "-m", "-json", "all")
+	// Reconcile the generated module before listing it. Newer Go toolchains can
+	// require a harmless go.mod normalization (for example, `go 1.22` to
+	// `go 1.22.0`) before they will report its selected modules.
+	command := exec.Command("go", "list", "-mod=mod", "-m", "-json", "all")
 	command.Dir = buildDir
 	command.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
 	automation.ConfigureCommand(command)
-	output, err := command.Output()
+	output, err := command.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("read selected module checksums: %w", err)
+		return fmt.Errorf("read selected module checksums: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
 	selected := map[string]project.PluginSource{}
