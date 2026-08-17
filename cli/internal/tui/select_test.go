@@ -116,6 +116,26 @@ func TestMultiSelectDisabledPreviewCannotBeSelected(t *testing.T) {
 	}
 }
 
+func TestMultiSelectFixedRowCannotBeSelected(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := &MultiSelect{Items: []SelectItem{{Label: "required", On: true, Fixed: true}}}
+	m.apply(keyToggle)
+	if !m.Items[0].On || !strings.Contains(m.Frame(), "✓") {
+		t.Fatalf("fixed row = %#v\n%s", m.Items[0], m.Frame())
+	}
+}
+
+func TestMultiSelectActionRowSubmitsWithoutPermissionMark(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := &MultiSelect{Items: []SelectItem{{Label: "Install 2 plugins", Action: true}}}
+	if done, cancelled := m.apply(keyToggle); !done || cancelled {
+		t.Fatalf("action row = done %v, cancelled %v", done, cancelled)
+	}
+	if frame := m.Frame(); !strings.Contains(frame, "[ Install 2 plugins ]") || strings.Contains(frame, "○ Install 2 plugins") {
+		t.Fatalf("action row frame:\n%s", frame)
+	}
+}
+
 func TestMultiSelectConfirmOffSubmitsImmediately(t *testing.T) {
 	m := &MultiSelect{Items: []SelectItem{{Label: "required", On: true, ConfirmOff: true}}}
 	done, cancelled := m.apply(keyToggle)

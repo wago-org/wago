@@ -69,7 +69,7 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 			}
 		}
 		if interactiveAuthorities {
-			if err := reviewAuthorityChoices(plan.Reviews, keys); err != nil {
+			if err := reviewAuthorityChoices(plan.Reviews, keys, len(plan.Lock.Plugins)); err != nil {
 				return project.LockDocument{}, err
 			}
 		} else if interactiveContracts {
@@ -92,82 +92,73 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 	return plan.Lock, nil
 }
 
-func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool) (*tui.MultiSelect, []string, map[string]bool) {
-	pluginIDs := map[string]bool{}
-	for _, review := range reviews {
-		pluginIDs[review.PluginID] = true
-	}
-	showPluginID := len(pluginIDs) > 1
-	title := "Authority grants"
-	if len(pluginIDs) == 1 {
-		for pluginID := range pluginIDs {
-			title += " · " + pluginID
-		}
-	}
-	items := make([]tui.SelectItem, 0, len(reviews)+1)
-	itemKeys := make([]string, 0, len(reviews))
-	requiredKeys := map[string]bool{}
-	for _, review := range reviews {
-		key := authorityKey(review.PluginID, review.Request.Name)
-		label := review.Request.Name
-		description := "(" + string(review.Request.Mode) + ")"
-		if review.Request.Reason != "" {
-			description += " " + review.Request.Reason
-		}
-		if review.Request.Mode == project.AuthorityRequired {
-			requiredKeys[key] = true
-		}
-		if scope := projectScopeSuffix(review.Request.Scope); scope != "" {
-			description += scope
-		}
-		group := ""
-		if showPluginID {
-			group = review.PluginID
-		}
-		items = append(items, tui.SelectItem{
-			Label: label, Description: description, On: choices[key], Group: group,
-			ConfirmOff: review.Request.Mode == project.AuthorityRequired,
-		})
-		itemKeys = append(itemKeys, key)
-	}
-	items = append(items, tui.SelectItem{
-		Label: "Reject all", Description: "cancel installation", Reject: true,
-	})
-	return &tui.MultiSelect{
-		Title: title, Prompt: "space toggle · enter confirm · r reject all · esc cancel", Items: items,
-	}, itemKeys, requiredKeys
+type authoritySelection struct {
+	keys     []string
+	required bool
 }
 
-func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool) error {
-	selector, itemKeys, requiredKeys := authorityReviewSelector(reviews, choices)
-	for {
-		submitted, cancelled := tui.Run(selector)
-		if !submitted || cancelled {
-			return fmt.Errorf("authority review cancelled; no changes were made")
-		}
-		missingRequired := requiredAuthorityDeselected(selector, itemKeys, requiredKeys)
-		if selector.Rejected() || missingRequired {
-			selection, ok := tui.Choose("Exit installation?", authorityExitItems())
-			if ok && selection == "cancel" {
-				return fmt.Errorf("authority review rejected; no changes were made")
-			}
-			for index, key := range itemKeys {
-				if requiredKeys[key] {
-					selector.Items[index].On = true
-				}
-			}
-			for index := range selector.Items {
-				if selector.Items[index].Reject {
-					selector.Items[index].On = false
-				}
-			}
-			continue
-		}
-		for index, key := range itemKeys {
-			choices[key] = selector.Items[index].On
-		}
-		return nil
+func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool, pluginCount int) (*tui.MultiSelect, []authoritySelection) {
+	byAuthority := map[string][]AuthorityReview{}
+	for _, review := range reviews {
+		byAuthority[review.Request.Name] = append(byAuthority[review.Request.Name], review)
 	}
+	authorities := make([]string, 0, len(byAuthority))
+	for authority := range byAuthority {
+		authorities = append(authorities, authority)
+	}
+	sort.Strings(authorities)
+
+	items := make([]tui.SelectItem, 0, len(authorities)+1)
+	selections := make([]authoritySelection, 0, len(authorities))
+	for _, authority := range authorities {
+		group := byAuthority[authority]
+		selection := authoritySelection{}
+		requesters := make([]string, 0, len(group))
+		for _, review := range group {
+			key := authorityKey(review.PluginID, review.Request.Name)
+			selection.keys = append(selection.keys, key)
+			selection.required = selection.required || review.Request.Mode == project.AuthorityRequired
+			requesters = append(requesters, shortPluginID(review.PluginID))
+		}
+		sort.Strings(requesters)
+		requesters = compactStrings(requesters)
+		on := selection.required
+		for _, key := range selection.keys {
+			on = on || choices[key]
+		}
+		description := strings.Join(requesters, ", ")
+		if reason := firstAuthorityReason(group); reason != "" {
+			description = reason + " · " + description
+		}
+		if scope := sharedAuthorityScope(group); scope != "" {
+			description += " · " + scope
+		}
+		items = append(items, tui.SelectItem{Label: authority, Description: description, On: on, Fixed: selection.required})
+		selections = append(selections, selection)
+	}
+	items = append(items,
+		tui.SelectItem{Label: fmt.Sprintf("Install %d plugins", pluginCount), Description: "approve this reviewed plan", Action: true},
+		tui.SelectItem{Label: "Cancel installation", Description: "make no changes", Action: true, Reject: true},
+	)
+	return &tui.MultiSelect{
+		Title: "Permissions", Prompt: "space choose optional grants · enter install · esc cancel", Items: items, DisableRejectShortcut: true,
+	}, selections
+}
+
+func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool, pluginCount int) error {
+	selector, selections := authorityReviewSelector(reviews, choices, pluginCount)
+	submitted, cancelled := tui.Run(selector)
+	if !submitted || cancelled || selector.Rejected() {
+		return fmt.Errorf("authority review cancelled; no changes were made")
+	}
+	for index, selection := range selections {
+		for _, key := range selection.keys {
+			if !selection.required {
+				choices[key] = selector.Items[index].On
+			}
+		}
+	}
+	return nil
 }
 
 func authorityExitItems() []tui.Item {
@@ -177,52 +168,112 @@ func authorityExitItems() []tui.Item {
 	}
 }
 
-func requiredAuthorityDeselected(selector *tui.MultiSelect, itemKeys []string, requiredKeys map[string]bool) bool {
-	for index, key := range itemKeys {
-		if requiredKeys[key] && !selector.Items[index].On {
-			return true
-		}
-	}
-	return false
+func shortPluginID(id string) string {
+	return strings.TrimPrefix(id, "github.com/wago-org/")
 }
 
-type pluginReviewGroup struct {
-	id        string
-	contracts []ContractReview
+func compactStrings(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	result := values[:1]
+	for _, value := range values[1:] {
+		if value != result[len(result)-1] {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func firstAuthorityReason(reviews []AuthorityReview) string {
+	for _, review := range reviews {
+		if review.Request.Reason != "" {
+			return review.Request.Reason
+		}
+	}
+	return ""
+}
+
+func sharedAuthorityScope(reviews []AuthorityReview) string {
+	if len(reviews) != 1 {
+		return ""
+	}
+	scope := reviews[0].Request.Scope
+	var details []string
+	if len(scope.Modules) != 0 {
+		details = append(details, "modules: "+strings.Join(scope.Modules, ", "))
+	}
+	if scope.MaxInstances != 0 || scope.MaxMemoryBytes != 0 {
+		details = append(details, "limit: "+formatAuthorityLimits(scope.MaxInstances, scope.MaxMemoryBytes))
+	}
+	return strings.Join(details, " · ")
 }
 
 func formatReviewPlan(plan ResolutionPlan) string {
-	groups := make([]pluginReviewGroup, 0)
-	indexes := make(map[string]int)
-	group := func(id string) *pluginReviewGroup {
-		if index, ok := indexes[id]; ok {
-			return &groups[index]
-		}
-		indexes[id] = len(groups)
-		groups = append(groups, pluginReviewGroup{id: id})
-		return &groups[len(groups)-1]
-	}
-	for _, review := range plan.ContractReviews {
-		current := group(review.PluginID)
-		current.contracts = append(current.contracts, review)
-	}
-
 	var output strings.Builder
-	fmt.Fprintf(&output, "%s\n", bold("Plugin security"))
-	fmt.Fprintln(&output, "  Plugins run native code inside this Wago process.")
-	fmt.Fprintln(&output, "  Authority grants constrain Wago interfaces; they are not an OS sandbox.")
-	for _, group := range groups {
-		fmt.Fprintf(&output, "\n%s\n", cyan(group.id))
-		if len(group.contracts) != 0 {
-			fmt.Fprintf(&output, "  %s\n", bold("Contracts"))
-			for _, review := range group.contracts {
-				fmt.Fprintf(&output, "    %s@%d  %s\n", review.Request.ID, review.Request.Major, dim(review.Request.Mode+" · "+review.Change))
-				fmt.Fprintf(&output, "      %s %s\n", dim("available:"), joinedOrNone(review.Available))
-				fmt.Fprintf(&output, "      %s %s -> %s\n", dim("binding:"), joinedOrNone(review.Previous), joinedOrNone(review.Proposed))
-			}
+	authorities := map[string]bool{}
+	plugins := map[string]bool{}
+	var maxInstances uint32
+	var maxMemory uint64
+	for _, review := range plan.Reviews {
+		authorities[review.Request.Name] = true
+		if review.Request.Scope.MaxInstances > maxInstances {
+			maxInstances = review.Request.Scope.MaxInstances
+		}
+		if review.Request.Scope.MaxMemoryBytes > maxMemory {
+			maxMemory = review.Request.Scope.MaxMemoryBytes
+		}
+	}
+	for id := range plan.Lock.Plugins {
+		plugins[id] = true
+	}
+	fmt.Fprintf(&output, "%s\n", bold("Security review"))
+	fmt.Fprintln(&output, "  Native code       Yes")
+	fmt.Fprintln(&output, "  OS sandbox        No")
+	fmt.Fprintf(&output, "  Plugins           %d\n", len(plugins))
+	fmt.Fprintf(&output, "  Authorities       %d distinct · %d requests\n", len(authorities), len(plan.Reviews))
+	if maxInstances != 0 || maxMemory != 0 {
+		fmt.Fprintf(&output, "  Limits            %s\n", formatAuthorityLimits(maxInstances, maxMemory))
+	}
+	fmt.Fprintln(&output, "  Plugins run native code in Wago; grants restrict Wago APIs, not the OS.")
+	if len(plan.ContractReviews) != 0 {
+		fmt.Fprintf(&output, "\n%s\n", bold("Contract"))
+		for _, review := range plan.ContractReviews {
+			fmt.Fprintf(&output, "  %s@%d → %s\n", shortPluginID(review.Request.ID), review.Request.Major, joinedOrNone(shortPluginIDs(review.Proposed)))
 		}
 	}
 	return output.String()
+}
+
+func formatAuthorityLimits(instances uint32, memory uint64) string {
+	var values []string
+	if instances != 0 {
+		values = append(values, fmt.Sprintf("%d instances", instances))
+	}
+	if memory != 0 {
+		values = append(values, formatAuthorityBytes(memory)+" memory")
+	}
+	return strings.Join(values, " · ")
+}
+
+func formatAuthorityBytes(value uint64) string {
+	for _, unit := range []struct {
+		name  string
+		value uint64
+	}{{"GiB", 1 << 30}, {"MiB", 1 << 20}, {"KiB", 1 << 10}} {
+		if value >= unit.value && value%unit.value == 0 {
+			return fmt.Sprintf("%d %s", value/unit.value, unit.name)
+		}
+	}
+	return fmt.Sprintf("%d B", value)
+}
+
+func shortPluginIDs(ids []string) []string {
+	short := make([]string, len(ids))
+	for index, id := range ids {
+		short[index] = shortPluginID(id)
+	}
+	return short
 }
 
 func joinedOrNone(values []string) string {

@@ -18,6 +18,8 @@ type SelectItem struct {
 	Group       string // optional section heading shared by adjacent rows
 	On          bool   // currently selected
 	Disabled    bool   // visible preview row that cannot be toggled or selected
+	Fixed       bool   // visible checked row that is required and cannot be changed
+	Action      bool   // visible action row that submits instead of toggling
 	Reject      bool   // exclusive visible action that clears every normal row
 	ConfirmOff  bool   // submit immediately when this selected row is toggled off
 }
@@ -117,6 +119,8 @@ type MultiSelect struct {
 	Prompt string
 	Items  []SelectItem
 	Cursor int
+	// DisableRejectShortcut keeps cancellation as an explicit visible action.
+	DisableRejectShortcut bool
 }
 
 // apply advances the model by one key. It reports whether the interaction is
@@ -134,9 +138,11 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 			m.Cursor++
 		}
 	case keyToggle:
-		if len(m.Items) > 0 && !m.Items[m.Cursor].Disabled {
+		if len(m.Items) > 0 && !m.Items[m.Cursor].Disabled && !m.Items[m.Cursor].Fixed {
 			if m.Items[m.Cursor].Reject {
 				m.rejectAll()
+				return true, false
+			} else if m.Items[m.Cursor].Action {
 				return true, false
 			} else {
 				m.Items[m.Cursor].On = !m.Items[m.Cursor].On
@@ -150,7 +156,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 	case keyAll:
 		allSelected, selectable := true, false
 		for _, item := range m.Items {
-			if item.Disabled || item.Reject {
+			if item.Disabled || item.Fixed || item.Action || item.Reject {
 				continue
 			}
 			selectable = true
@@ -161,7 +167,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 		allSelected = allSelected && selectable
 		for i := range m.Items {
-			if !m.Items[i].Disabled && !m.Items[i].Reject {
+			if !m.Items[i].Disabled && !m.Items[i].Fixed && !m.Items[i].Action && !m.Items[i].Reject {
 				m.Items[i].On = !allSelected
 			} else if m.Items[i].Reject {
 				m.Items[i].On = false
@@ -169,11 +175,14 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 	case keyClear:
 		for i := range m.Items {
-			if !m.Items[i].Disabled {
+			if !m.Items[i].Disabled && !m.Items[i].Fixed && !m.Items[i].Action {
 				m.Items[i].On = false
 			}
 		}
 	case keyReject: // clear all, then submit — a deliberate "grant nothing"
+		if m.DisableRejectShortcut {
+			return false, false
+		}
 		m.rejectAll()
 		return true, false
 	case keyAccept, keyRight:
@@ -308,9 +317,19 @@ func (m *MultiSelect) frame() string {
 				cursor = ui.Cyan("  › ")
 			}
 		}
+		if it.Action {
+			line := fmt.Sprintf("%s[ %s ]", cursor, it.Label)
+			if it.Description != "" {
+				line += "  " + ui.Dim(it.Description)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
+			continue
+		}
 		mark := "○"
 		if it.Disabled {
 			mark = ui.Dim("◌")
+		} else if it.Fixed {
+			mark = ui.Cyan("✓")
 		} else if it.On {
 			mark = ui.Cyan("◉")
 		} else if i == m.Cursor {
