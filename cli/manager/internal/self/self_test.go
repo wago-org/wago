@@ -312,6 +312,33 @@ func TestSelfUninstallTargetsCollapseCustomWagoHome(t *testing.T) {
 	}
 }
 
+func TestSelfUninstallFullRemovesSelectedWagoHomeIncludingPlugins(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "selected-wago")
+	setTestHome(t, home)
+	t.Setenv("WAGO_HOME", root)
+	dirs := wagopaths.DirsFor("canary")
+	manager := filepath.Join(root, "bin", "wago")
+	for path, body := range map[string]string{
+		manager: "manager",
+		filepath.Join(dirs.Data, projectconfig.File): "plugin manifest",
+		filepath.Join(dirs.Data, "wago-lock.json"):   "plugin lock",
+		filepath.Join(dirs.Data, "builds", "plugin"): "plugin runtime",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	selfUninstall(dirs, manager, Full, true, strings.NewReader(""), io.Discard)
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("full uninstall kept selected Wago home %s: %v", root, err)
+	}
+}
+
 func TestSelfUninstallPartialPreservesGlobalPlugins(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)

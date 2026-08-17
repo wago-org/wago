@@ -31,17 +31,11 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 	var candidates []string
 	switch mode {
 	case Full:
-		candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
-		if home, err := os.UserHomeDir(); err == nil && home != "" {
-			defaultRoot := filepath.Join(home, ".wago")
-			if pathContains(defaultRoot, executable) {
-				candidates = append(candidates, defaultRoot)
-			} else if _, err := os.Stat(defaultRoot); err == nil {
-				candidates = append(candidates, defaultRoot)
-			}
-		}
-		if root := os.Getenv("WAGO_HOME"); root != "" {
+		if root := selectedWagoRoot(dirs, executable); root != "" {
 			candidates = append(candidates, root)
+		} else {
+			// Linux's default XDG layout has no single Wago root.
+			candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
 		}
 		candidates = append(candidates, InstalledSourcePath())
 	case Partial:
@@ -77,6 +71,24 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 		}
 	}
 	return targets
+}
+
+func selectedWagoRoot(dirs wagopaths.Dirs, executable string) string {
+	if root := strings.TrimSpace(os.Getenv("WAGO_HOME")); root != "" {
+		return root
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	root := filepath.Join(home, ".wago")
+	if pathContains(root, executable) || pathContains(root, dirs.Data) {
+		return root
+	}
+	if _, err := os.Stat(root); err == nil {
+		return root
+	}
+	return ""
 }
 
 func InstalledSourcePath() string {
