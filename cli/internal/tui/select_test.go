@@ -136,6 +136,19 @@ func TestMultiSelectActionRowSubmitsWithoutPermissionMark(t *testing.T) {
 	}
 }
 
+func TestMultiSelectWrapsDescriptionsWithinRedrawWidth(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := &MultiSelect{Items: []SelectItem{{
+		Label:       "core.instance.instantiate",
+		Description: "instantiate and own the bounded core-module graph behind a component instance · component-model · limit: 64 instances · 20 GiB memory",
+	}}, Prompt: "space details · enter install · esc cancel"}
+	for _, line := range strings.Split(strings.TrimSuffix(m.Frame(), "\n"), "\n") {
+		if len(line) > 78 {
+			t.Fatalf("selector line exceeds redraw width (%d): %q", len(line), line)
+		}
+	}
+}
+
 func TestMultiSelectConfirmOffSubmitsImmediately(t *testing.T) {
 	m := &MultiSelect{Items: []SelectItem{{Label: "required", On: true, ConfirmOff: true}}}
 	done, cancelled := m.apply(keyToggle)

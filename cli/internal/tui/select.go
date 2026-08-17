@@ -339,11 +339,16 @@ func (m *MultiSelect) frame() string {
 		if it.Disabled {
 			label = ui.Dim(label)
 		}
-		line := fmt.Sprintf("%s%s %-*s", cursor, mark, labelW, label)
+		fmt.Fprintf(&b, "%s%s %-*s\n", cursor, mark, labelW, label)
 		if it.Description != "" {
-			line += "  " + ui.Dim(it.Description)
+			indent := "      "
+			if it.Group != "" {
+				indent = "        "
+			}
+			for _, line := range wrapSelectText(it.Description, 78-len(indent)) {
+				fmt.Fprintf(&b, "%s%s\n", indent, ui.Dim(line))
+			}
 		}
-		fmt.Fprintf(&b, "%s\n", line)
 	}
 	if remaining := len(m.Items) - end; remaining > 0 {
 		fmt.Fprintf(&b, "%s\n", ui.Dim(fmt.Sprintf("  ↓ %d more", remaining)))
@@ -354,6 +359,27 @@ func (m *MultiSelect) frame() string {
 	}
 	fmt.Fprintf(&b, "%s\n", ui.Dim(prompt))
 	return b.String()
+}
+
+func wrapSelectText(text string, width int) []string {
+	if width <= 0 || len(text) <= width {
+		return []string{text}
+	}
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, (len(text)+width-1)/width)
+	line := words[0]
+	for _, word := range words[1:] {
+		if len(line)+1+len(word) > width {
+			lines = append(lines, line)
+			line = word
+			continue
+		}
+		line += " " + word
+	}
+	return append(lines, line)
 }
 
 func (m *MultiSelect) Frame() string {
