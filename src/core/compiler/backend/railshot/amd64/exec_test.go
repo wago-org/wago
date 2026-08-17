@@ -92,7 +92,7 @@ func modFuncs(t testing.TB, fns ...funcDef) *wasm.Module {
 	return m
 }
 
-func TestMixedFourResultRegisterCallAMD64(t *testing.T) {
+func TestMixedFourResultWrapperCallAMD64(t *testing.T) {
 	results := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
 	caller := []byte{
 		0x04, 0x01, 0x7f, 0x01, 0x7c, 0x01, 0x7e, 0x01, 0x7d,
@@ -115,7 +115,7 @@ func TestMixedFourResultRegisterCallAMD64(t *testing.T) {
 		name, callKind string
 		opts           map[string]bool
 	}{
-		{name: "register", callKind: callKindMixed, opts: map[string]bool{"inline": false}},
+		{name: "default", callKind: callKindWrapper, opts: map[string]bool{"inline": false}},
 		{name: "fallback", callKind: callKindWrapper, opts: map[string]bool{"inline": false, "reg-abi": false}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

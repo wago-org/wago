@@ -168,9 +168,13 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/V banks. Results use a fixed
-// two-register bank each: X0/X1 for integers and V0/V1 for floats, with at most
-// four scalar results total.
+// two-register bank each: X0/X1 for integers and V0/V1 for floats. Keep the
+// cross-layer ABI bounded to at most two results; wider signatures retain the
+// established wrapper result area.
 func sigFitsRegABI(ft *wasm.CompType) bool {
+	if len(ft.Results) > 2 {
+		return false
+	}
 	if _, ok := shared.PlanScalarResults(ft.Results); !ok {
 		return false
 	}
