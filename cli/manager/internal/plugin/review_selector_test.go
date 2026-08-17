@@ -20,7 +20,7 @@ func TestAuthorityReviewSelectorShowsFixedRequiredAndCancel(t *testing.T) {
 	}
 	selector, selections := authorityReviewSelector([]AuthorityReview{required, optional}, map[string]bool{
 		authorityKey(required.PluginID, required.Request.Name): true,
-	}, 2)
+	}, "Install 2 plugins")
 
 	if len(selector.Items) != 4 || len(selections) != 2 {
 		t.Fatalf("selector rows=%d selections=%d", len(selector.Items), len(selections))
@@ -51,7 +51,7 @@ func TestAuthorityReviewSelectorDeduplicatesAuthorities(t *testing.T) {
 		{PluginID: "github.com/acme/two", Request: project.AuthorityRequest{Name: "host.arguments.read", Mode: project.AuthorityRequired}},
 		{PluginID: "github.com/acme/two", Request: project.AuthorityRequest{Name: "instance.manage", Mode: project.AuthorityOptional}},
 	}
-	selector, selections := authorityReviewSelector(reviews, map[string]bool{}, 2)
+	selector, selections := authorityReviewSelector(reviews, map[string]bool{}, "Install 2 plugins")
 	if len(selections) != 2 || len(selections[0].keys) != 2 || !selections[0].required {
 		t.Fatalf("authority selections = %#v", selections)
 	}
@@ -69,6 +69,20 @@ func TestSelectGrantPluginExpandsGitHubShorthand(t *testing.T) {
 	}
 	if got != "github.com/wago-org/wasi" {
 		t.Fatalf("selectGrantPlugin shorthand = %q", got)
+	}
+}
+
+func TestGrantPluginPickerListsInstalledPlugins(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	lock := project.NewLockDocument()
+	lock.Plugins["github.com/wago-org/wasi"] = project.LockEntry{RequestedAuthorities: []project.AuthorityRequest{{Name: "host.arguments.read"}}}
+	lock.Plugins["github.com/acme/clock"] = project.LockEntry{RequestedAuthorities: []project.AuthorityRequest{{Name: "host.arguments.read"}, {Name: "host.environment.read"}}}
+	picker := grantPluginPicker(lock)
+	frame := picker.Frame()
+	for _, want := range []string{"Choose plugin grants", "github.com/acme/clock", "wasi", "2 requested authorities", "1 requested authority"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("picker missing %q:\n%s", want, frame)
+		}
 	}
 }
 

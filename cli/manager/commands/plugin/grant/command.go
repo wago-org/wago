@@ -25,7 +25,7 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
-		Name: "grant", Summary: "review and edit a plugin's authority grants", Args: "<plugin-id>",
+		Name: "grant", Summary: "review and edit a plugin's authority grants", Args: "[plugin-id]",
 		Automation: command.DryRun,
 		Long: "--scopes accepts one strict JSON object keyed first by full Plugin ID, then by exact Authority.\n" +
 			`Example: --scopes '{"github.com/acme/plugin":{"host.import.define":{"modules":["env"]}}}'`,
@@ -37,7 +37,7 @@ func Command(environment Environment) *command.Cmd {
 			{Name: "scopes", Arg: "<json>", Help: "set exact narrower Authority scopes from one JSON document"},
 		},
 		Run: func(c *command.Ctx) {
-			name := c.One("<plugin-id>")
+			name := c.Optional("[plugin-id]")
 			selected := 0
 			for _, explicit := range []bool{c.Str("allow") != "", c.Bool("all"), c.Bool("deny-all")} {
 				if explicit {
