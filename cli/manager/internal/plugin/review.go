@@ -69,7 +69,7 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 			}
 		}
 		if interactiveAuthorities {
-			if err := reviewAuthorityChoices(plan.Reviews, keys, fmt.Sprintf("Install %d plugins", len(plan.Lock.Plugins))); err != nil {
+			if err := reviewAuthorityChoices(plan.Reviews, keys); err != nil {
 				return project.LockDocument{}, err
 			}
 		} else if interactiveContracts {
@@ -96,7 +96,7 @@ type authoritySelection struct {
 	keys []string
 }
 
-func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool, action string) (*tui.MultiSelect, []authoritySelection) {
+func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool) (*tui.PermissionForm, []authoritySelection) {
 	byAuthority := map[string][]AuthorityReview{}
 	for _, review := range reviews {
 		byAuthority[review.Request.Name] = append(byAuthority[review.Request.Name], review)
@@ -133,22 +133,43 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool,
 		}
 		sort.Strings(requesters)
 		requesters = compactStrings(requesters)
-		description := "Used by: " + strings.Join(requesters, " · ")
+		description := "used by: " + strings.Join(requesters, " · ")
 		if reason := firstAuthorityReason(group); reason != "" {
 			description = reason + "\n" + description
+		}
+		if scope := sharedAuthorityScope(group); scope != "" {
+			description += "\n" + scope
 		}
 		items = append(items, tui.SelectItem{
 			Label: authority, Description: description, On: allSelected, Partial: anySelected && !allSelected, Fixed: allRequired, Children: children,
 		})
 		selections = append(selections, selection)
 	}
-	items = append(items,
-		tui.SelectItem{Label: action, Description: "approve these reviewed grants", Action: true},
-		tui.SelectItem{Label: "Cancel installation", Description: "make no changes", Action: true, Reject: true},
-	)
-	return &tui.MultiSelect{
-		Title: "Permissions", Prompt: "space toggle · → packages · ← collapse · enter install · esc cancel", Items: items, DisableRejectShortcut: true,
-	}, selections
+	items = append(items, tui.SelectItem{Label: "Cancel installation", Description: "make no changes", Cancel: true})
+	return tui.NewPermissionForm(authorityReviewTitle(reviews), items), selections
+}
+
+func authorityReviewTitle(reviews []AuthorityReview) string {
+	direct := map[string]bool{}
+	all := map[string]bool{}
+	for _, review := range reviews {
+		id := strings.TrimPrefix(review.PluginID, "github.com/")
+		all[id] = true
+		if review.Direct {
+			direct[id] = true
+		}
+	}
+	if len(direct) == 1 {
+		for id := range direct {
+			return "Permissions for " + id
+		}
+	}
+	if len(all) == 1 {
+		for id := range all {
+			return "Permissions for " + id
+		}
+	}
+	return "Permissions"
 }
 
 func authorityPackageDetail(review AuthorityReview) string {
@@ -161,13 +182,13 @@ func authorityPackageDetail(review AuthorityReview) string {
 	return "optional"
 }
 
-func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool, action string) error {
-	selector, selections := authorityReviewSelector(reviews, choices, action)
+func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool) error {
+	selector, selections := authorityReviewSelector(reviews, choices)
 	submitted, cancelled := tui.Run(selector)
 	if !submitted || cancelled || selector.Rejected() {
 		return fmt.Errorf("authority review cancelled; no changes were made")
 	}
-	applyAuthoritySelectionChoices(selector, selections, choices)
+	applyAuthoritySelectionChoices(&selector.MultiSelect, selections, choices)
 	return nil
 }
 
@@ -483,7 +504,7 @@ func editAuthorityGrants(lock project.LockDocument, id string, requested []strin
 			}
 			reviews = append(reviews, AuthorityReview{PluginID: id, Request: request})
 		}
-		if err := reviewAuthorityChoices(reviews, choices, "Update grants"); err != nil {
+		if err := reviewAuthorityChoices(reviews, choices); err != nil {
 			return project.LockDocument{}, err
 		}
 		requested = make([]string, 0, len(entry.RequestedAuthorities))

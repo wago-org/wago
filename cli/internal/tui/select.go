@@ -20,6 +20,7 @@ type SelectItem struct {
 	Disabled    bool         // visible preview row that cannot be toggled or selected
 	Fixed       bool         // visible checked row that is required and cannot be changed
 	Action      bool         // visible action row that submits instead of toggling
+	Cancel      bool         // visible action row that cancels instead of submitting
 	Children    []SelectItem // optional nested rows, expanded with →
 	Expanded    bool
 	Partial     bool // some, but not all, nested rows are enabled
@@ -122,6 +123,11 @@ type MultiSelect struct {
 	Prompt string
 	Items  []SelectItem
 	Cursor int
+	// MaxVisibleRows limits the number of selectable rows drawn at once. Zero
+	// uses the standard picker window.
+	MaxVisibleRows int
+	// WrapNavigation moves from the first row to the last (and vice versa).
+	WrapNavigation bool
 	// DisableRejectShortcut keeps cancellation as an explicit visible action.
 	DisableRejectShortcut bool
 }
@@ -137,14 +143,21 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 	case keyUp:
 		if m.Cursor > 0 {
 			m.Cursor--
+		} else if m.WrapNavigation && len(rows) > 1 {
+			m.Cursor = len(rows) - 1
 		}
 	case keyDown:
 		if m.Cursor < len(rows)-1 {
 			m.Cursor++
+		} else if m.WrapNavigation && len(rows) > 1 {
+			m.Cursor = 0
 		}
 	case keyToggle:
 		if len(rows) > 0 && !rows[m.Cursor].item.Disabled && !rows[m.Cursor].item.Fixed {
 			item := rows[m.Cursor].item
+			if item.Cancel {
+				return true, true
+			}
 			if item.Reject {
 				m.rejectAll()
 				return true, false
@@ -184,7 +197,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 	case keyAll:
 		allSelected, selectable := true, false
 		for _, item := range m.Items {
-			if item.Disabled || item.Fixed || item.Action || item.Reject {
+			if item.Disabled || item.Fixed || item.Action || item.Cancel || item.Reject {
 				continue
 			}
 			selectable = true
@@ -195,7 +208,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 		allSelected = allSelected && selectable
 		for i := range m.Items {
-			if !m.Items[i].Disabled && !m.Items[i].Fixed && !m.Items[i].Action && !m.Items[i].Reject {
+			if !m.Items[i].Disabled && !m.Items[i].Fixed && !m.Items[i].Action && !m.Items[i].Cancel && !m.Items[i].Reject {
 				m.Items[i].On = !allSelected
 			} else if m.Items[i].Reject {
 				m.Items[i].On = false
@@ -203,7 +216,7 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 	case keyClear:
 		for i := range m.Items {
-			if !m.Items[i].Disabled && !m.Items[i].Fixed && !m.Items[i].Action {
+			if !m.Items[i].Disabled && !m.Items[i].Fixed && !m.Items[i].Action && !m.Items[i].Cancel {
 				m.Items[i].On = false
 			}
 		}
@@ -214,6 +227,9 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		m.rejectAll()
 		return true, false
 	case keyAccept:
+		if len(rows) > 0 && rows[m.Cursor].item.Cancel {
+			return true, true
+		}
 		if len(rows) > 0 && rows[m.Cursor].item.Reject && !rows[m.Cursor].item.Disabled {
 			m.rejectAll()
 		}
@@ -414,6 +430,14 @@ func (m *MultiSelect) frame() string {
 		if i == m.Cursor {
 			cursor = ui.Cyan(strings.Repeat("  ", indentDepth) + "› ")
 		}
+		if it.Cancel {
+			line := cursor + it.Label
+			if it.Description != "" {
+				line += "  " + ui.Dim(it.Description)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
+			continue
+		}
 		if it.Action {
 			line := fmt.Sprintf("%s[ %s ]", cursor, it.Label)
 			if it.Description != "" {
@@ -501,13 +525,36 @@ func (m *MultiSelect) Frame() string {
 }
 
 func multiSelectWindow(m *MultiSelect, rows []selectRow) (start, end int) {
-	if len(rows) <= pickerVisibleRows {
+	visibleRows := pickerVisibleRows
+	if m.MaxVisibleRows > 0 {
+		visibleRows = m.MaxVisibleRows
+	}
+	if len(rows) <= visibleRows {
 		return 0, len(rows)
 	}
-	start = (m.Cursor / pickerVisibleRows) * pickerVisibleRows
-	end = start + pickerVisibleRows
+	start = (m.Cursor / visibleRows) * visibleRows
+	end = start + visibleRows
 	if end > len(rows) {
 		end = len(rows)
 	}
 	return start, end
+}
+
+// PermissionForm is the compact authority-review control. It intentionally
+// shows a small, wrapping viewport so native-code capability decisions remain
+// readable even when a plugin graph requests many authorities.
+type PermissionForm struct {
+	MultiSelect
+}
+
+// NewPermissionForm creates the standard interactive authority review.
+func NewPermissionForm(title string, items []SelectItem) *PermissionForm {
+	return &PermissionForm{MultiSelect: MultiSelect{
+		Title:                 title,
+		Prompt:                "space toggle · → packages · enter submit · esc cancel",
+		Items:                 items,
+		MaxVisibleRows:        5,
+		WrapNavigation:        true,
+		DisableRejectShortcut: true,
+	}}
 }

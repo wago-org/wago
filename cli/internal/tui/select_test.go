@@ -334,7 +334,7 @@ func TestMultiSelectExpandsAndEditsNestedItems(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	m := &MultiSelect{Items: []SelectItem{{
 		Label:       "host.arguments.read",
-		Description: "Read guest arguments.\nUsed by: wasi/p1 · wasi/p2",
+		Description: "Read guest arguments.\nused by: wasi/p1 · wasi/p2",
 		Children: []SelectItem{
 			{Label: "wasi/p1", On: true, Fixed: true, Description: "required"},
 			{Label: "wasi/p2", Description: "optional"},
@@ -347,7 +347,7 @@ func TestMultiSelectExpandsAndEditsNestedItems(t *testing.T) {
 		t.Fatalf("right should expand: done=%v cancelled=%v item=%#v", done, cancelled, m.Items[0])
 	}
 	frame := m.Frame()
-	for _, want := range []string{"Used by: wasi/p1 · wasi/p2", "✓ wasi/p1", "○ wasi/p2"} {
+	for _, want := range []string{"used by: wasi/p1 · wasi/p2", "✓ wasi/p1", "○ wasi/p2"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("expanded selector missing %q:\n%s", want, frame)
 		}
@@ -383,5 +383,36 @@ func TestMultiSelectParentToggleKeepsRequiredNestedItem(t *testing.T) {
 	m.apply(keyToggle)
 	if m.Items[0].Children[1].On || !m.Items[0].Children[0].On || !m.Items[0].Partial {
 		t.Fatalf("parent disabled required item or lost partial state: %#v", m.Items[0])
+	}
+}
+
+func TestPermissionFormUsesCompactWrappingViewport(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	items := make([]SelectItem, 6)
+	for index := range items {
+		items[index] = SelectItem{Label: fmt.Sprintf("authority-%d", index)}
+	}
+	form := NewPermissionForm("Permissions for wago-org/example", items)
+	if !strings.Contains(form.Frame(), "authority-0") || strings.Contains(form.Frame(), "authority-5") {
+		t.Fatalf("permission form did not limit the first viewport:\n%s", form.Frame())
+	}
+	form.apply(keyUp)
+	if form.Cursor != len(items)-1 || !strings.Contains(form.Frame(), "authority-5") {
+		t.Fatalf("permission form did not wrap upward: cursor=%d\n%s", form.Cursor, form.Frame())
+	}
+	form.apply(keyDown)
+	if form.Cursor != 0 {
+		t.Fatalf("permission form did not wrap downward: cursor=%d", form.Cursor)
+	}
+}
+
+func TestPermissionFormCancelRowCancels(t *testing.T) {
+	form := NewPermissionForm("Permissions", []SelectItem{{Label: "authority"}, {Label: "Cancel installation", Cancel: true}})
+	form.Cursor = 1
+	if done, cancelled := form.apply(keyAccept); !done || !cancelled {
+		t.Fatalf("cancel row = done=%v cancelled=%v", done, cancelled)
+	}
+	if frame := form.Frame(); !strings.Contains(frame, "› Cancel installation") || strings.Contains(frame, "○ Cancel installation") {
+		t.Fatalf("cancel row should be plain:\n%s", frame)
 	}
 }

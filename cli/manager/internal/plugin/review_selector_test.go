@@ -20,12 +20,12 @@ func TestAuthorityReviewSelectorShowsFixedRequiredAndCancel(t *testing.T) {
 	}
 	selector, selections := authorityReviewSelector([]AuthorityReview{required, optional}, map[string]bool{
 		authorityKey(required.PluginID, required.Request.Name): true,
-	}, "Install 2 plugins")
+	})
 
-	if len(selector.Items) != 4 || len(selections) != 2 {
+	if len(selector.Items) != 3 || len(selections) != 2 {
 		t.Fatalf("selector rows=%d selections=%d", len(selector.Items), len(selections))
 	}
-	if selector.Title != "Permissions" {
+	if selector.Title != "Permissions for wago-org/wasi" {
 		t.Fatalf("selector title = %q", selector.Title)
 	}
 	if !selector.Items[0].On || !selector.Items[0].Fixed || !strings.Contains(selector.Items[0].Description, required.Request.Reason) {
@@ -34,13 +34,10 @@ func TestAuthorityReviewSelectorShowsFixedRequiredAndCancel(t *testing.T) {
 	if selector.Items[1].On || selector.Items[1].Fixed || !strings.Contains(selector.Items[1].Description, optional.Request.Reason) {
 		t.Fatalf("optional row = %#v", selector.Items[1])
 	}
-	if selector.Items[2].Label != "Install 2 plugins" || !selector.Items[2].Action {
-		t.Fatalf("install row = %#v", selector.Items[2])
+	if !selector.Items[2].Cancel || selector.Items[2].Label != "Cancel installation" || selector.Items[2].Description != "make no changes" {
+		t.Fatalf("cancel row = %#v", selector.Items[2])
 	}
-	if !selector.Items[3].Reject || selector.Items[3].Label != "Cancel installation" || selector.Items[3].Description != "make no changes" {
-		t.Fatalf("cancel row = %#v", selector.Items[3])
-	}
-	if selector.DisableRejectShortcut == false {
+	if !selector.DisableRejectShortcut || selector.MaxVisibleRows != 5 || !selector.WrapNavigation {
 		t.Fatal("authority review still enables the hidden reject-all shortcut")
 	}
 }
@@ -51,7 +48,7 @@ func TestAuthorityReviewSelectorDeduplicatesAuthorities(t *testing.T) {
 		{PluginID: "github.com/acme/two", Request: project.AuthorityRequest{Name: "host.arguments.read", Mode: project.AuthorityRequired}},
 		{PluginID: "github.com/acme/two", Request: project.AuthorityRequest{Name: "instance.manage", Mode: project.AuthorityOptional}},
 	}
-	selector, selections := authorityReviewSelector(reviews, map[string]bool{}, "Install 2 plugins")
+	selector, selections := authorityReviewSelector(reviews, map[string]bool{})
 	if len(selections) != 2 || len(selections[0].keys) != 2 || !selector.Items[0].Fixed {
 		t.Fatalf("authority selections = %#v", selections)
 	}
@@ -66,7 +63,7 @@ func TestAuthorityReviewSelectorEditsAuthorityByPackage(t *testing.T) {
 		{PluginID: "github.com/wago-org/wasi/p2", Request: project.AuthorityRequest{Name: "host.arguments.read", Mode: project.AuthorityOptional}},
 	}
 	optionalKey := authorityKey(reviews[1].PluginID, reviews[1].Request.Name)
-	selector, selections := authorityReviewSelector(reviews, map[string]bool{optionalKey: true}, "Install 2 plugins")
+	selector, selections := authorityReviewSelector(reviews, map[string]bool{optionalKey: true})
 	if len(selector.Items[0].Children) != 2 || selector.Items[0].Children[0].Label != "wasi/p1" || selector.Items[0].Children[1].Label != "wasi/p2" {
 		t.Fatalf("package rows = %#v", selector.Items[0].Children)
 	}
@@ -75,9 +72,29 @@ func TestAuthorityReviewSelectorEditsAuthorityByPackage(t *testing.T) {
 	}
 	selector.Items[0].Children[1].On = false
 	choices := map[string]bool{optionalKey: true}
-	applyAuthoritySelectionChoices(selector, selections, choices)
+	applyAuthoritySelectionChoices(&selector.MultiSelect, selections, choices)
 	if choices[optionalKey] {
 		t.Fatalf("optional package authority was not disabled: %v", choices)
+	}
+}
+
+func TestAuthorityReviewSelectorShowsUsedByAndLimit(t *testing.T) {
+	review := AuthorityReview{
+		PluginID: "github.com/wago-org/component-model",
+		Direct:   true,
+		Request: project.AuthorityRequest{
+			Name: "core.instance.instantiate", Mode: project.AuthorityOptional,
+			Reason: "instantiate the component graph", Scope: project.AuthorityScope{MaxInstances: 64, MaxMemoryBytes: 20 << 30},
+		},
+	}
+	selector, _ := authorityReviewSelector([]AuthorityReview{review}, map[string]bool{})
+	if selector.Title != "Permissions for wago-org/component-model" {
+		t.Fatalf("title = %q", selector.Title)
+	}
+	for _, want := range []string{"instantiate the component graph", "used by: component-model", "limit: 64 instances · 20 GiB memory"} {
+		if !strings.Contains(selector.Items[0].Description, want) {
+			t.Fatalf("authority description missing %q: %q", want, selector.Items[0].Description)
+		}
 	}
 }
 
