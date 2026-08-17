@@ -22,6 +22,28 @@ func TestParseTargetAndDefaultOutput(t *testing.T) {
 	}
 }
 
+func TestRequireToolchainExplainsLocalAndGlobalInstall(t *testing.T) {
+	originalFind, originalVersion := findTool, toolVersion
+	t.Cleanup(func() { findTool, toolVersion = originalFind, originalVersion })
+	findTool = func(string) (string, error) { return "", exec.ErrNotFound }
+	if err := requireToolchain("go"); err == nil || !strings.Contains(err.Error(), "~/.wago") || !strings.Contains(err.Error(), "https://go.dev/dl/") {
+		t.Fatalf("Go toolchain error = %v", err)
+	}
+	if err := requireToolchain("tinygo"); err == nil || !strings.Contains(err.Error(), "https://tinygo.org/getting-started/install/") {
+		t.Fatalf("TinyGo toolchain error = %v", err)
+	}
+}
+
+func TestRequireToolchainRejectsUnsupportedGo(t *testing.T) {
+	originalFind, originalVersion := findTool, toolVersion
+	t.Cleanup(func() { findTool, toolVersion = originalFind, originalVersion })
+	findTool = func(string) (string, error) { return "/tools/go", nil }
+	toolVersion = func(string) ([]byte, error) { return []byte("go version go1.21.9 darwin/arm64"), nil }
+	if err := requireToolchain("go"); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("unsupported Go error = %v", err)
+	}
+}
+
 func TestMainSourceBakesInvokeExport(t *testing.T) {
 	source := string(mainSource(nil, nil, "fib", 3, false, 4, map[string]bool{"inline": false}, false))
 	if !strings.Contains(source, `Invoke: "fib", Core: 3, DeferBoundsChecks: false, FunctionWorkers: 4`) ||

@@ -63,6 +63,11 @@ type Result struct {
 	Plugins int
 }
 
+var (
+	findTool    = exec.LookPath
+	toolVersion = func(path string) ([]byte, error) { return exec.Command(path, "version").Output() }
+)
+
 func DefaultOutput(input string, target Target) string {
 	extension := filepath.Ext(input)
 	output := strings.TrimSuffix(input, extension)
@@ -93,6 +98,14 @@ func Build(request Request) (Result, error) {
 	if request.TinyGo {
 		if !request.Target.supportsTinyGo() {
 			return Result{}, fmt.Errorf("TinyGo standalone executables are not supported for target %s", request.Target)
+		}
+	}
+	if err := requireToolchain("go"); err != nil {
+		return Result{}, err
+	}
+	if request.TinyGo {
+		if err := requireToolchain("tinygo"); err != nil {
+			return Result{}, err
 		}
 	}
 	if request.Core == 3 && !request.Target.supportsCore3() {
@@ -191,6 +204,43 @@ func Build(request Request) (Result, error) {
 	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
 }
 
+func requireToolchain(name string) error {
+	path, err := findTool(name)
+	if err == nil {
+		version, versionErr := toolVersion(path)
+		if versionErr == nil && (name != "go" || supportedGoVersion(string(version))) {
+			return nil
+		}
+	}
+	label, website := "Go", "https://go.dev/dl/"
+	if name == "tinygo" {
+		label, website = "TinyGo", "https://tinygo.org/getting-started/install/"
+	}
+	problem := "was not found on PATH"
+	if err == nil {
+		problem = "is unsupported or could not report its version"
+	}
+	return fmt.Errorf(`%s is required to build this executable but %s.
+
+Install it, then run this command again:
+	local (~/.wago): download the archive from %s and add its bin directory to PATH
+	global: install it with your system package manager or from %s`, label, problem, website, website)
+}
+
+func supportedGoVersion(value string) bool {
+	value = strings.TrimSpace(value)
+	fields := strings.Fields(value)
+	if len(fields) < 3 || fields[0] != "go" {
+		return false
+	}
+	version := strings.TrimPrefix(fields[2], "go")
+	major, minor := 0, 0
+	if _, err := fmt.Sscanf(version, "%d.%d", &major, &minor); err != nil {
+		return false
+	}
+	return major > 1 || major == 1 && minor >= 22
+}
+
 func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, precompiled bool) []byte {
 	providerImports = append([]string(nil), providerImports...)
 	sort.Strings(providerImports)
@@ -242,6 +292,11 @@ func runGo(dir string, environment []string, verbose bool, args ...string) error
 }
 
 func runTool(tool, dir string, environment []string, verbose bool, args ...string) error {
+	if tool == "go" || tool == "tinygo" {
+		if err := requireToolchain(tool); err != nil {
+			return err
+		}
+	}
 	command := exec.Command(tool, args...)
 	command.Dir = dir
 	command.Env = environment
