@@ -13,15 +13,18 @@ import (
 
 // selItem is one toggleable row.
 type SelectItem struct {
-	Label       string // machine value, e.g. a capability id "wasi:stdio"
-	Description string // one-line human description (may be empty)
-	Group       string // optional section heading shared by adjacent rows
-	On          bool   // currently selected
-	Disabled    bool   // visible preview row that cannot be toggled or selected
-	Fixed       bool   // visible checked row that is required and cannot be changed
-	Action      bool   // visible action row that submits instead of toggling
-	Reject      bool   // exclusive visible action that clears every normal row
-	ConfirmOff  bool   // submit immediately when this selected row is toggled off
+	Label       string       // machine value, e.g. a capability id "wasi:stdio"
+	Description string       // one-line human description (may be empty)
+	Group       string       // optional section heading shared by adjacent rows
+	On          bool         // currently selected
+	Disabled    bool         // visible preview row that cannot be toggled or selected
+	Fixed       bool         // visible checked row that is required and cannot be changed
+	Action      bool         // visible action row that submits instead of toggling
+	Children    []SelectItem // optional nested rows, expanded with →
+	Expanded    bool
+	Partial     bool // some, but not all, nested rows are enabled
+	Reject      bool // exclusive visible action that clears every normal row
+	ConfirmOff  bool // submit immediately when this selected row is toggled off
 }
 
 // selectKey is a normalized keypress the model understands.
@@ -125,32 +128,57 @@ type MultiSelect struct {
 
 // apply advances the model by one key. It reports whether the interaction is
 // finished, and if so whether it was cancelled (esc) rather than submitted.
-// Enter submits the focused action, r clears then submits rejection, movement
-// clamps at the ends, and → is an alternate submit key.
+// Enter submits the focused action, r clears then submits rejection, and
+// movement clamps at the ends. On a nested row, → expands package details and
+// ← collapses them (or returns to the parent).
 func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
+	rows := m.rows()
 	switch k {
 	case keyUp:
 		if m.Cursor > 0 {
 			m.Cursor--
 		}
 	case keyDown:
-		if m.Cursor < len(m.Items)-1 {
+		if m.Cursor < len(rows)-1 {
 			m.Cursor++
 		}
 	case keyToggle:
-		if len(m.Items) > 0 && !m.Items[m.Cursor].Disabled && !m.Items[m.Cursor].Fixed {
-			if m.Items[m.Cursor].Reject {
+		if len(rows) > 0 && !rows[m.Cursor].item.Disabled && !rows[m.Cursor].item.Fixed {
+			item := rows[m.Cursor].item
+			if item.Reject {
 				m.rejectAll()
 				return true, false
-			} else if m.Items[m.Cursor].Action {
+			} else if item.Action {
 				return true, false
 			} else {
-				m.Items[m.Cursor].On = !m.Items[m.Cursor].On
-				if m.Items[m.Cursor].On {
+				toggleSelectItem(item)
+				m.syncTreeState()
+				if item.On {
 					m.clearRejection()
-				} else if m.Items[m.Cursor].ConfirmOff {
+				} else if item.ConfirmOff {
 					return true, false
 				}
+			}
+		}
+	case keyRight:
+		if len(rows) > 0 && len(rows[m.Cursor].item.Children) != 0 {
+			rows[m.Cursor].item.Expanded = true
+		} else if !m.hasNestedItems() {
+			return true, false
+		}
+	case keyLeft:
+		if len(rows) > 0 {
+			if rows[m.Cursor].item.Expanded {
+				rows[m.Cursor].item.Expanded = false
+			} else if rows[m.Cursor].parent != nil {
+				for index, row := range m.rows() {
+					if row.item == rows[m.Cursor].parent {
+						m.Cursor = index
+						break
+					}
+				}
+			} else {
+				return true, true
 			}
 		}
 	case keyAll:
@@ -185,15 +213,91 @@ func (m *MultiSelect) apply(k selectKey) (done, cancelled bool) {
 		}
 		m.rejectAll()
 		return true, false
-	case keyAccept, keyRight:
-		if len(m.Items) > 0 && m.Items[m.Cursor].Reject && !m.Items[m.Cursor].Disabled {
+	case keyAccept:
+		if len(rows) > 0 && rows[m.Cursor].item.Reject && !rows[m.Cursor].item.Disabled {
 			m.rejectAll()
 		}
 		return true, false
-	case keyLeft, keyCancel, keyQuit:
+	case keyCancel, keyQuit:
 		return true, true
 	}
 	return false, false
+}
+
+func (m *MultiSelect) hasNestedItems() bool {
+	var nested func([]SelectItem) bool
+	nested = func(items []SelectItem) bool {
+		for index := range items {
+			if len(items[index].Children) != 0 || nested(items[index].Children) {
+				return true
+			}
+		}
+		return false
+	}
+	return nested(m.Items)
+}
+
+type selectRow struct {
+	item   *SelectItem
+	parent *SelectItem
+	depth  int
+}
+
+func (m *MultiSelect) rows() []selectRow {
+	m.syncTreeState()
+	rows := make([]selectRow, 0, len(m.Items))
+	var appendRows func(items []SelectItem, parent *SelectItem, depth int)
+	appendRows = func(items []SelectItem, parent *SelectItem, depth int) {
+		for index := range items {
+			item := &items[index]
+			rows = append(rows, selectRow{item: item, parent: parent, depth: depth})
+			if item.Expanded {
+				appendRows(item.Children, item, depth+1)
+			}
+		}
+	}
+	appendRows(m.Items, nil, 0)
+	return rows
+}
+
+func (m *MultiSelect) syncTreeState() {
+	var sync func(item *SelectItem)
+	sync = func(item *SelectItem) {
+		if len(item.Children) == 0 {
+			return
+		}
+		all, any := true, false
+		for index := range item.Children {
+			sync(&item.Children[index])
+			child := item.Children[index]
+			all = all && child.On
+			any = any || child.On || child.Partial
+		}
+		item.On, item.Partial = all, any && !all
+	}
+	for index := range m.Items {
+		sync(&m.Items[index])
+	}
+}
+
+func toggleSelectItem(item *SelectItem) {
+	if len(item.Children) == 0 {
+		item.On = !item.On
+		return
+	}
+	target := !item.On
+	var apply func(*SelectItem)
+	apply = func(child *SelectItem) {
+		if !child.Fixed && !child.Disabled && !child.Action {
+			child.On = target
+		}
+		for index := range child.Children {
+			apply(&child.Children[index])
+		}
+	}
+	for index := range item.Children {
+		apply(&item.Children[index])
+	}
 }
 
 func (m *MultiSelect) rejectAll() {
@@ -289,33 +393,26 @@ func (m *MultiSelect) frame() string {
 	if m.Title != "" {
 		fmt.Fprintf(&b, "%s\n", ui.Bold(m.Title))
 	}
-	// Align descriptions to the widest label so the two columns line up.
-	labelW := 0
-	for _, it := range m.Items {
-		if len(it.Label) > labelW {
-			labelW = len(it.Label)
-		}
-	}
-	start, end := multiSelectWindow(m)
+	rows := m.rows()
+	start, end := multiSelectWindow(m, rows)
 	if start > 0 {
 		fmt.Fprintf(&b, "%s\n", ui.Dim(fmt.Sprintf("  ↑ %d more", start)))
 	}
 	previousGroup := ""
 	for i := start; i < end; i++ {
-		it := m.Items[i]
+		row := rows[i]
+		it := *row.item
 		if it.Group != "" && it.Group != previousGroup {
 			fmt.Fprintf(&b, "%s\n", ui.Bold(it.Group))
 		}
 		previousGroup = it.Group
-		cursor := "  "
-		if it.Group != "" {
-			cursor = "    "
+		indentDepth := row.depth
+		if it.Group != "" && row.depth == 0 {
+			indentDepth++
 		}
+		cursor := strings.Repeat("  ", indentDepth+1)
 		if i == m.Cursor {
-			cursor = ui.Cyan("› ")
-			if it.Group != "" {
-				cursor = ui.Cyan("  › ")
-			}
+			cursor = ui.Cyan(strings.Repeat("  ", indentDepth) + "› ")
 		}
 		if it.Action {
 			line := fmt.Sprintf("%s[ %s ]", cursor, it.Label)
@@ -332,6 +429,8 @@ func (m *MultiSelect) frame() string {
 			mark = ui.Cyan("✓")
 		} else if it.On {
 			mark = ui.Cyan("◉")
+		} else if it.Partial {
+			mark = ui.Cyan("◐")
 		} else if i == m.Cursor {
 			mark = ui.Cyan(mark)
 		}
@@ -339,18 +438,28 @@ func (m *MultiSelect) frame() string {
 		if it.Disabled {
 			label = ui.Dim(label)
 		}
-		fmt.Fprintf(&b, "%s%s %-*s\n", cursor, mark, labelW, label)
-		if it.Description != "" {
-			indent := "      "
-			if it.Group != "" {
-				indent = "        "
+		line := fmt.Sprintf("%s%s %s", cursor, mark, label)
+		description := it.Description
+		if len(it.Children) != 0 && description != "" {
+			parts := strings.SplitN(description, "\n", 2)
+			if len(line)+len(" · ")+len(parts[0]) <= 78 {
+				line += " · " + ui.Dim(parts[0])
+				if len(parts) == 2 {
+					description = parts[1]
+				} else {
+					description = ""
+				}
 			}
-			for _, line := range wrapSelectText(it.Description, 78-len(indent)) {
+		}
+		fmt.Fprintf(&b, "%s\n", line)
+		if description != "" {
+			indent := strings.Repeat("  ", indentDepth+3)
+			for _, line := range wrapSelectText(description, 78-len(indent)) {
 				fmt.Fprintf(&b, "%s%s\n", indent, ui.Dim(line))
 			}
 		}
 	}
-	if remaining := len(m.Items) - end; remaining > 0 {
+	if remaining := len(rows) - end; remaining > 0 {
 		fmt.Fprintf(&b, "%s\n", ui.Dim(fmt.Sprintf("  ↓ %d more", remaining)))
 	}
 	prompt := m.Prompt
@@ -362,38 +471,43 @@ func (m *MultiSelect) frame() string {
 }
 
 func wrapSelectText(text string, width int) []string {
-	if width <= 0 || len(text) <= width {
-		return []string{text}
-	}
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return nil
-	}
-	lines := make([]string, 0, (len(text)+width-1)/width)
-	line := words[0]
-	for _, word := range words[1:] {
-		if len(line)+1+len(word) > width {
-			lines = append(lines, line)
-			line = word
+	var lines []string
+	for _, paragraph := range strings.Split(text, "\n") {
+		if width <= 0 || len(paragraph) <= width {
+			lines = append(lines, paragraph)
 			continue
 		}
-		line += " " + word
+		words := strings.Fields(paragraph)
+		if len(words) == 0 {
+			lines = append(lines, "")
+			continue
+		}
+		line := words[0]
+		for _, word := range words[1:] {
+			if len(line)+1+len(word) > width {
+				lines = append(lines, line)
+				line = word
+				continue
+			}
+			line += " " + word
+		}
+		lines = append(lines, line)
 	}
-	return append(lines, line)
+	return lines
 }
 
 func (m *MultiSelect) Frame() string {
 	return m.frame()
 }
 
-func multiSelectWindow(m *MultiSelect) (start, end int) {
-	if len(m.Items) <= pickerVisibleRows {
-		return 0, len(m.Items)
+func multiSelectWindow(m *MultiSelect, rows []selectRow) (start, end int) {
+	if len(rows) <= pickerVisibleRows {
+		return 0, len(rows)
 	}
 	start = (m.Cursor / pickerVisibleRows) * pickerVisibleRows
 	end = start + pickerVisibleRows
-	if end > len(m.Items) {
-		end = len(m.Items)
+	if end > len(rows) {
+		end = len(rows)
 	}
 	return start, end
 }

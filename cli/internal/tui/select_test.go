@@ -329,3 +329,59 @@ func TestMultiSelectPaginatesAtWindowBoundary(t *testing.T) {
 		t.Fatalf("multi-select did not page at boundary:\n%s", frame)
 	}
 }
+
+func TestMultiSelectExpandsAndEditsNestedItems(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := &MultiSelect{Items: []SelectItem{{
+		Label:       "host.arguments.read",
+		Description: "Read guest arguments.\nUsed by: wasi/p1 · wasi/p2",
+		Children: []SelectItem{
+			{Label: "wasi/p1", On: true, Fixed: true, Description: "required"},
+			{Label: "wasi/p2", Description: "optional"},
+		},
+	}}}
+	if strings.Contains(m.Frame(), "○ wasi/p2") {
+		t.Fatalf("collapsed selector renders package rows:\n%s", m.Frame())
+	}
+	if done, cancelled := m.apply(keyRight); done || cancelled || !m.Items[0].Expanded {
+		t.Fatalf("right should expand: done=%v cancelled=%v item=%#v", done, cancelled, m.Items[0])
+	}
+	frame := m.Frame()
+	for _, want := range []string{"Used by: wasi/p1 · wasi/p2", "✓ wasi/p1", "○ wasi/p2"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("expanded selector missing %q:\n%s", want, frame)
+		}
+	}
+	m.apply(keyDown) // required package
+	m.apply(keyDown) // optional package
+	if done, cancelled := m.apply(keyRight); done || cancelled {
+		t.Fatalf("right on a nested package row should not submit: done=%v cancelled=%v", done, cancelled)
+	}
+	m.apply(keyToggle)
+	if !m.Items[0].Children[1].On || !m.Items[0].On || m.Items[0].Partial {
+		t.Fatalf("individual package toggle = %#v", m.Items[0])
+	}
+	m.apply(keyLeft)
+	if m.Cursor != 0 {
+		t.Fatalf("left should return to parent, cursor=%d", m.Cursor)
+	}
+}
+
+func TestMultiSelectParentToggleKeepsRequiredNestedItem(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{{Label: "authority", Children: []SelectItem{
+		{Label: "required", On: true, Fixed: true},
+		{Label: "optional", On: false},
+	}}}}
+	m.rows() // synchronize initial aggregate state
+	if !m.Items[0].Partial || m.Items[0].On {
+		t.Fatalf("initial aggregate state = %#v", m.Items[0])
+	}
+	m.apply(keyToggle)
+	if !m.Items[0].Children[1].On || !m.Items[0].On || m.Items[0].Partial {
+		t.Fatalf("parent did not enable optional item: %#v", m.Items[0])
+	}
+	m.apply(keyToggle)
+	if m.Items[0].Children[1].On || !m.Items[0].Children[0].On || !m.Items[0].Partial {
+		t.Fatalf("parent disabled required item or lost partial state: %#v", m.Items[0])
+	}
+}

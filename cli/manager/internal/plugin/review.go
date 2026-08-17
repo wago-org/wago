@@ -93,8 +93,7 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 }
 
 type authoritySelection struct {
-	keys     []string
-	required bool
+	keys []string
 }
 
 func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool, action string) (*tui.MultiSelect, []authoritySelection) {
@@ -112,28 +111,35 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool,
 	selections := make([]authoritySelection, 0, len(authorities))
 	for _, authority := range authorities {
 		group := byAuthority[authority]
+		sort.Slice(group, func(i, j int) bool { return group[i].PluginID < group[j].PluginID })
 		selection := authoritySelection{}
 		requesters := make([]string, 0, len(group))
+		children := make([]tui.SelectItem, 0, len(group))
+		allRequired := true
+		allSelected, anySelected := true, false
 		for _, review := range group {
 			key := authorityKey(review.PluginID, review.Request.Name)
 			selection.keys = append(selection.keys, key)
-			selection.required = selection.required || review.Request.Mode == project.AuthorityRequired
 			requesters = append(requesters, shortPluginID(review.PluginID))
+			required := review.Request.Mode == project.AuthorityRequired
+			allRequired = allRequired && required
+			selected := required || choices[key]
+			allSelected = allSelected && selected
+			anySelected = anySelected || selected
+			children = append(children, tui.SelectItem{
+				Label: shortPluginID(review.PluginID), On: selected, Fixed: required,
+				Description: authorityPackageDetail(review),
+			})
 		}
 		sort.Strings(requesters)
 		requesters = compactStrings(requesters)
-		on := selection.required
-		for _, key := range selection.keys {
-			on = on || choices[key]
-		}
-		description := strings.Join(requesters, ", ")
+		description := "Used by: " + strings.Join(requesters, " · ")
 		if reason := firstAuthorityReason(group); reason != "" {
-			description = reason + " · " + description
+			description = reason + "\n" + description
 		}
-		if scope := sharedAuthorityScope(group); scope != "" {
-			description += " · " + scope
-		}
-		items = append(items, tui.SelectItem{Label: authority, Description: description, On: on, Fixed: selection.required})
+		items = append(items, tui.SelectItem{
+			Label: authority, Description: description, On: allSelected, Partial: anySelected && !allSelected, Fixed: allRequired, Children: children,
+		})
 		selections = append(selections, selection)
 	}
 	items = append(items,
@@ -141,8 +147,18 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool,
 		tui.SelectItem{Label: "Cancel installation", Description: "make no changes", Action: true, Reject: true},
 	)
 	return &tui.MultiSelect{
-		Title: "Permissions", Prompt: "space choose optional grants · enter install · esc cancel", Items: items, DisableRejectShortcut: true,
+		Title: "Permissions", Prompt: "space toggle · → packages · ← collapse · enter install · esc cancel", Items: items, DisableRejectShortcut: true,
 	}, selections
+}
+
+func authorityPackageDetail(review AuthorityReview) string {
+	if scope := sharedAuthorityScope([]AuthorityReview{review}); scope != "" {
+		return scope
+	}
+	if review.Request.Mode == project.AuthorityRequired {
+		return "required"
+	}
+	return "optional"
 }
 
 func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool, action string) error {
@@ -151,14 +167,16 @@ func reviewAuthorityChoices(reviews []AuthorityReview, choices map[string]bool, 
 	if !submitted || cancelled || selector.Rejected() {
 		return fmt.Errorf("authority review cancelled; no changes were made")
 	}
+	applyAuthoritySelectionChoices(selector, selections, choices)
+	return nil
+}
+
+func applyAuthoritySelectionChoices(selector *tui.MultiSelect, selections []authoritySelection, choices map[string]bool) {
 	for index, selection := range selections {
-		for _, key := range selection.keys {
-			if !selection.required {
-				choices[key] = selector.Items[index].On
-			}
+		for child, key := range selection.keys {
+			choices[key] = selector.Items[index].Children[child].On
 		}
 	}
-	return nil
 }
 
 func authorityExitItems() []tui.Item {

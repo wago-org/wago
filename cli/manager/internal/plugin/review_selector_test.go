@@ -52,11 +52,32 @@ func TestAuthorityReviewSelectorDeduplicatesAuthorities(t *testing.T) {
 		{PluginID: "github.com/acme/two", Request: project.AuthorityRequest{Name: "instance.manage", Mode: project.AuthorityOptional}},
 	}
 	selector, selections := authorityReviewSelector(reviews, map[string]bool{}, "Install 2 plugins")
-	if len(selections) != 2 || len(selections[0].keys) != 2 || !selections[0].required {
+	if len(selections) != 2 || len(selections[0].keys) != 2 || !selector.Items[0].Fixed {
 		t.Fatalf("authority selections = %#v", selections)
 	}
 	if got := selector.Items[0].Description; !strings.Contains(got, "github.com/acme/one") || !strings.Contains(got, "github.com/acme/two") {
 		t.Fatalf("deduplicated row = %#v", selector.Items[0])
+	}
+}
+
+func TestAuthorityReviewSelectorEditsAuthorityByPackage(t *testing.T) {
+	reviews := []AuthorityReview{
+		{PluginID: "github.com/wago-org/wasi/p1", Request: project.AuthorityRequest{Name: "host.arguments.read", Mode: project.AuthorityRequired}},
+		{PluginID: "github.com/wago-org/wasi/p2", Request: project.AuthorityRequest{Name: "host.arguments.read", Mode: project.AuthorityOptional}},
+	}
+	optionalKey := authorityKey(reviews[1].PluginID, reviews[1].Request.Name)
+	selector, selections := authorityReviewSelector(reviews, map[string]bool{optionalKey: true}, "Install 2 plugins")
+	if len(selector.Items[0].Children) != 2 || selector.Items[0].Children[0].Label != "wasi/p1" || selector.Items[0].Children[1].Label != "wasi/p2" {
+		t.Fatalf("package rows = %#v", selector.Items[0].Children)
+	}
+	if !selector.Items[0].Children[0].Fixed || !selector.Items[0].Children[1].On {
+		t.Fatalf("package grant state = %#v", selector.Items[0].Children)
+	}
+	selector.Items[0].Children[1].On = false
+	choices := map[string]bool{optionalKey: true}
+	applyAuthoritySelectionChoices(selector, selections, choices)
+	if choices[optionalKey] {
+		t.Fatalf("optional package authority was not disabled: %v", choices)
 	}
 }
 
