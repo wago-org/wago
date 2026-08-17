@@ -211,6 +211,12 @@ func selfUninstall(
 			fatal("self uninstall: clean PATH in %s: %v", displayPath(config), err)
 		}
 	}
+	if deferred, err := selfreplace.ScheduleTargetRemoval(executable, targets); err != nil {
+		fatal("self uninstall: schedule removal: %v", err)
+	} else if deferred {
+		fmt.Fprintln(out, cyan("✓"), "Wago cleanup will finish after the manager exits")
+		return
+	}
 	removalExecutable, err := selfreplace.StageRemoval(executable, targets)
 	if err != nil {
 		fatal("self uninstall: stage manager removal: %v", err)

@@ -5,6 +5,7 @@ package replace
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -82,6 +83,57 @@ func Remove(executable string) (bool, error) {
 		return false, nil
 	}
 	return true, scheduleMove(executable, "", moveFileDelayUntilReboot)
+}
+
+// ScheduleTargetRemoval starts a detached command interpreter that gives this
+// manager time to exit before deleting its containing Wago home.
+func ScheduleTargetRemoval(executable string, targets []string) (bool, error) {
+	contained := false
+	for _, target := range targets {
+		if !samePath(target, executable) && containsPath(target, executable) {
+			contained = true
+			break
+		}
+	}
+	if !contained {
+		return false, nil
+	}
+	script, err := os.CreateTemp("", "wago-uninstall-*.cmd")
+	if err != nil {
+		return false, err
+	}
+	scriptPath := script.Name()
+	if _, err := script.WriteString(targetRemovalScript(targets)); err != nil {
+		_ = script.Close()
+		_ = os.Remove(scriptPath)
+		return false, err
+	}
+	if err := script.Close(); err != nil {
+		_ = os.Remove(scriptPath)
+		return false, err
+	}
+	command := os.Getenv("ComSpec")
+	if command == "" {
+		command = "cmd.exe"
+	}
+	process := exec.Command(command, "/d", "/c", scriptPath)
+	process.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000008 | 0x00000200}
+	if err := process.Start(); err != nil {
+		_ = os.Remove(scriptPath)
+		return false, err
+	}
+	return true, nil
+}
+
+func targetRemovalScript(targets []string) string {
+	var script strings.Builder
+	script.WriteString("@echo off\r\ntimeout /t 2 /nobreak >nul\r\n")
+	for _, target := range targets {
+		target = strings.ReplaceAll(target, "%", "%%")
+		fmt.Fprintf(&script, "if exist \"%s\\NUL\" (rmdir /s /q \"%s\") else (del /f /q \"%s\")\r\n", target, target, target)
+	}
+	script.WriteString("del \"%~f0\"\r\n")
+	return script.String()
 }
 
 func scheduleMove(source, destination string, flags uintptr) error {
