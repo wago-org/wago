@@ -18,6 +18,8 @@ const (
 	maxLoopWeightDepth  = 6
 	branchHintWeight    = 8
 	maxBranchPathWeight = int64(1 << 20)
+	maxMergeRegionHints = shared.MaxMergeRegionHints
+	maxMergeRegionBody  = shared.MaxMergeRegionBody
 )
 
 func loopWeight(depth int) int64 {
@@ -31,6 +33,14 @@ func loopWeight(depth int) int64 {
 	return w
 }
 
+func (h *funcHints) noteMergeRegion(start int) {
+	h.mergeRegions.Note(start)
+}
+
+func (h *funcHints) hasMergeRegion(start int) bool {
+	return h.mergeRegions.Has(start)
+}
+
 func weightedBranchPath(weight int64) int64 {
 	if weight >= maxBranchPathWeight/branchHintWeight {
 		return maxBranchPathWeight
@@ -40,6 +50,7 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
+	mergeRegions      shared.MergeRegionHints
 	nLocals           int
 	hasCall           bool   // any direct or indirect call
 	callsSelf         bool   // a direct call to the function's own index
@@ -60,9 +71,12 @@ type funcHints struct {
 	// same-module function and can use the internal register ABI without a
 	// run-time home-tag fork.
 	immutableLocalTable bool
-	immutableTableType  uint64
-	immutableTableTyped bool
-	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
+	// immutableIndirectTarget marks functions installed into the admitted table;
+	// they retain the copy that breaks recursive result-register dependencies.
+	immutableIndirectTarget bool
+	immutableTableType      uint64
+	immutableTableTyped     bool
+	monomorphicTarget       int // local function index when every non-null entry is identical; -1 otherwise
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
@@ -72,9 +86,10 @@ type funcHints struct {
 	// local.get. It lets the bounded regional cache return a register as soon as
 	// that local's lifetime ends without rescanning the body during compilation.
 	localLastGet []uint32
-	// entryInitialized marks locals (up to 64) whose initial value is unobservable:
-	// either their first entry-prefix access is local.set/tee or they are never read.
-	// The prologue may skip initializing or homing those locals.
+	// entryInitialized marks locals (up to 64) whose initial value is unobservable.
+	// The byte scan tracks straight-line writes and intersects simple if arms;
+	// blocks, loops, try_table, and escaping edges reset conservatively. The prologue may
+	// skip initializing or homing those locals.
 	entryInitialized uint64
 
 	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
@@ -521,26 +536,36 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 }
 
 type byteBodyScanner struct {
-	r              byteScanReader
-	h              funcHints
-	nLocals        int
-	nGlobals       int
-	selfIdx        uint32
-	localDeclBytes uint32
-	branchHints    []wasm.BranchHint
-	elig           *globalEligibilityTracker
-	m              *wasm.Module
-	moduleHints    []funcHints
-	importedFuncs  int
-	effects        *shared.FuncEffectCollector
-	callerLocal    int
-	entryPrefix    bool
-	entrySeen      uint64
-	localRead      uint64
+	r               byteScanReader
+	h               funcHints
+	nLocals         int
+	nGlobals        int
+	selfIdx         uint32
+	localDeclBytes  uint32
+	branchHints     []wasm.BranchHint
+	elig            *globalEligibilityTracker
+	m               *wasm.Module
+	moduleHints     []funcHints
+	importedFuncs   int
+	effects         *shared.FuncEffectCollector
+	callerLocal     int
+	entryPrefix     bool
+	entrySeen       uint64
+	localRead       uint64 // initial-value reads not dominated by a definite write
+	defWritten      uint64
+	defEscaped      bool
+	mergeBarrierSeq uint32
 }
 
 func (s *byteBodyScanner) noteNeverReadLocals() {
 	s.h.entryInitialized |= shared.UnreadLocalMask(s.nLocals, s.localRead)
+}
+
+func (s *byteBodyScanner) noteConditionalEscape(kind wasm.InstrKind) {
+	switch kind {
+	case wasm.InstrBrOnNull, wasm.InstrBrOnNonNull, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
+		s.defEscaped = true
+	}
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
@@ -556,9 +581,16 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
 			s.h.hasControlFlow = true
 			s.entryPrefix = false
+			if op == 0x0e {
+				s.mergeBarrierSeq++
+			}
 			if op == 0x03 {
 				s.h.hasLoop = true
 			}
+		}
+		switch op {
+		case 0x00, 0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x0e, 0x0f: // escaping control edge
+			s.defEscaped = true
 		}
 		switch op {
 		case 0x0b: // end
@@ -572,10 +604,13 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
+			entryWritten, outerEscaped := s.defWritten, s.defEscaped
+			s.defEscaped = false
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
+			regionStart, barrierSeq := s.r.off(), s.mergeBarrierSeq
 			switch op {
 			case 0x02: // block
 				calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false, pathWeight)
@@ -585,7 +620,13 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				if term != 0x0b {
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
+				childEscaped := s.defEscaped
+				s.defWritten = entryWritten
+				s.defEscaped = outerEscaped || childEscaped
 				subHasCall = subHasCall || calls
+				if s.mergeBarrierSeq == barrierSeq {
+					s.h.noteMergeRegion(regionStart)
+				}
 			case 0x03: // loop
 				s.h.hasLoop = true
 				loop := s.elig.push()
@@ -596,6 +637,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				if term != 0x0b {
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
+				childEscaped := s.defEscaped
+				s.defWritten = entryWritten
+				s.defEscaped = outerEscaped || childEscaped
 				if calls {
 					subHasCall = true
 				} else {
@@ -617,19 +661,35 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				if err != nil {
 					return true, 0, err
 				}
+				thenWritten, thenEscaped := s.defWritten, s.defEscaped
 				callsElse := false
+				elseWritten, elseEscaped := entryWritten, false
 				if term == 0x05 {
+					s.defWritten, s.defEscaped = entryWritten, false
 					callsElse, term, err = s.scanExpr(depth+1, loopDepth, curLoop, false, elseWeight)
 					if err != nil {
 						return true, 0, err
 					}
+					elseWritten, elseEscaped = s.defWritten, s.defEscaped
 				}
 				if term != 0x0b {
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
+				if thenEscaped {
+					thenWritten = entryWritten
+				}
+				if elseEscaped {
+					elseWritten = entryWritten
+				}
+				s.defWritten = thenWritten & elseWritten
+				s.defEscaped = outerEscaped || thenEscaped || elseEscaped
 				subHasCall = subHasCall || callsThen || callsElse
+				if s.mergeBarrierSeq == barrierSeq {
+					s.h.noteMergeRegion(regionStart)
+				}
 			}
 		case 0x10, 0x12: // call, return_call
+			s.mergeBarrierSeq++
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -645,6 +705,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.effects.Call(s.callerLocal, imm.Index)
 			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
+			s.mergeBarrierSeq++
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -664,8 +725,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
 			if int(idx) < s.nLocals {
-				if op == 0x20 && idx < 64 {
-					s.localRead |= uint64(1) << idx
+				if idx < 64 {
+					bit := uint64(1) << idx
+					if op == 0x20 {
+						if s.defWritten&bit == 0 {
+							s.localRead |= bit
+						}
+					} else {
+						s.defWritten |= bit
+					}
 				}
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
@@ -705,6 +773,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.elig.add(curLoop, idx)
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
+			if op == 0x40 || op == 0xfb || op == 0xfc || op == 0xfe {
+				s.mergeBarrierSeq++
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -717,6 +788,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.moduleEH = true
 			}
+			s.noteConditionalEscape(imm.Kind)
 			if op == 0x40 && s.effects != nil {
 				s.effects.Mark(s.callerLocal, shared.EffectGrowsMemory)
 			}
@@ -738,6 +810,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
+			entryWritten, outerEscaped := s.defWritten, s.defEscaped
+			s.defEscaped = false
 			s.h.moduleEH = true
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
@@ -750,6 +824,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if term != 0x0b {
 				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
+			childEscaped := s.defEscaped
+			s.defWritten = entryWritten
+			s.defEscaped = outerEscaped || childEscaped
 			subHasCall = subHasCall || calls
 		case 0x08, 0x0a: // throw, throw_ref
 			s.h.moduleEH = true
@@ -772,6 +849,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.moduleEH = true
 			}
+			s.noteConditionalEscape(imm.Kind)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 				s.h.memOps++
@@ -929,7 +1007,7 @@ func (r *byteScanReader) err(code wasm.DecodeErrorCode, off int) error {
 func (r *byteScanReader) byte() (byte, error) { return r.Byte() }
 
 func shouldSkipStackFence(hasCall bool, nLocalSlots int, bodyBytesLen int) bool {
-	return !hasCall && frameHdrBytes+8*nLocalSlots+8*bodyBytesLen <= 4096
+	return shared.ShouldSkipStackFence(hasCall, frameHdrBytes, nLocalSlots, bodyBytesLen)
 }
 
 func instrTouchesMemory(k wasm.InstrKind) bool {

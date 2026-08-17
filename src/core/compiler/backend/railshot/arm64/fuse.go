@@ -65,6 +65,13 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 // fused compare so the subsequent branch's moveSlots reads canonical slots and no
 // flag-clobbering flush happens between the CMP and the B.cond.
 func (f *fn) flushBelow(node *elem) int {
+	return f.flushBelowExcept(node, nil)
+}
+
+// flushBelowExcept leaves one bounded integer recipe symbolic while reserving
+// its canonical slot. The call rematerializer restores that exact recipe after
+// the call rebuilds the below-argument stack; every other user passes nil.
+func (f *fn) flushBelowExcept(node, except *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
@@ -80,6 +87,10 @@ func (f *fn) flushBelow(node *elem) int {
 	for _, root := range below {
 		typ := rootMachineType(root)
 		f.stats.addFlushBelowRoot(root.kind == ekDeferred)
+		if root == except {
+			slot += typ.stackSlots()
+			continue
+		}
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue
@@ -131,6 +142,9 @@ func (f *fn) flushBelow(node *elem) int {
 // the branch, so callers flush everything below first.
 func (f *fn) condenseToFlags(node *elem) Cond {
 	f.stats.peep("cmp-branch-fuse")
+	if node.op == opEqz && isDeferredSIMDBitmaskAny(node.arg0) {
+		return f.condenseSIMDBitmaskZeroToFlags(node)
+	}
 	// eqz over a fusable compare fuses by INVERTING the branch condition rather than
 	// materializing the inner boolean (the Cset+CMP an `eqz(a<b)` otherwise
 	// costs): `eqz(a<b)` branches on !(a<b) directly. Nested eqz peels too
@@ -267,6 +281,55 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	f.consumeBlockBelow(node)
 	f.erase(node)
 	return cc
+}
+
+func isDeferredSIMDBitmaskAny(e *elem) bool {
+	if e == nil || e.kind != ekDeferred {
+		return false
+	}
+	switch e.op {
+	case opSIMDBitmaskAny8, opSIMDBitmaskAny16, opSIMDBitmaskAny32:
+		return true
+	default:
+		return false
+	}
+}
+
+// condenseSIMDBitmaskZeroToFlags emits only the information required by the
+// following branch: whether any lane sign bit is set. The outer eqz branches on
+// equality with zero, so no packed scalar mask or materialized boolean exists.
+func (f *fn) condenseSIMDBitmaskZeroToFlags(node *elem) Cond {
+	inner := node.arg0
+	v := inner.arg0
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	result := f.allocReg(0)
+	switch inner.op {
+	case opSIMDBitmaskAny8:
+		f.a.NeonUshrB(x, src, 7)
+		f.a.NeonUmaxvB(x, x)
+		f.a.NeonUmovB(result, x, 0)
+	case opSIMDBitmaskAny16:
+		f.a.NeonUshrH(x, src, 15)
+		f.a.NeonAddvH(x, x)
+		f.a.FmovToGpr(result, x, false)
+	case opSIMDBitmaskAny32:
+		f.a.NeonUshrS(x, src, 31)
+		f.a.NeonAddvS(x, x)
+		f.a.FmovToGpr(result, x, false)
+	default:
+		panic("arm64: invalid deferred SIMD bitmask reduction")
+	}
+	f.releaseF(x)
+	f.a.CmpImm32(result, 0)
+	f.release(result)
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	f.stats.peep("simd-bitmask-zero-branch")
+	return condE
 }
 
 // condenseSimpleEqzOperand consumes an eqz whose operand is already a concrete

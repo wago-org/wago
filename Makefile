@@ -112,6 +112,24 @@ test-concurrency: ## Run the deterministic runtime concurrency harness (WAGO_CON
 install-local: ## Run the installer from this checkout
 	@go run ./cli/installer install
 
+.PHONY: install-local-runtime
+install-local-runtime: ## Build this checkout and atomically replace the global manager and canary standard runtime
+	@if [ -n "$(WAGO_HOME)" ]; then root="$(WAGO_HOME)"; runtime_root="$$root/data"; else root="$(HOME)/.wago"; runtime_root="$$root"; fi; \
+		runtime_dir="$$runtime_root/versions/canary/standard/normal"; \
+		runtime="$$runtime_dir/wago-runtime$$(go env GOEXE)"; \
+		manager_dir="$$root/bin"; \
+		manager="$$manager_dir/wago$$(go env GOEXE)"; \
+		build="canary-local-$$(git rev-parse --short HEAD)"; \
+		mkdir -p "$$runtime_dir" "$$manager_dir"; \
+		staged_runtime="$$runtime_dir/.wago-runtime-local-$$$$"; \
+		staged_manager="$$manager_dir/.wago-local-$$$$"; \
+		CGO_ENABLED=0 go build -tags wago_runtime -ldflags "-s -w -X main.version=canary" -o "$$staged_runtime" ./cli/wago && \
+		CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=canary" -o "$$staged_manager" ./cli/wago && \
+		chmod 755 "$$staged_runtime" "$$staged_manager" && \
+		mv -f "$$staged_runtime" "$$runtime" && \
+		mv -f "$$staged_manager" "$$manager"; \
+		echo "installed $$build at $$manager and $$runtime"
+
 .PHONY: test-starshine
 test-starshine: ## Compile/link/instantiate a MoonBit Starshine wasm-gc artifact (STARSHINE_WASM=/path/cmd.wasm)
 	@test -n "$(STARSHINE_WASM)" || { echo "set STARSHINE_WASM=/path/to/cmd.wasm"; exit 1; }

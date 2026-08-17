@@ -45,6 +45,43 @@ func TestModuleStackArenaCapDoesNotGrowPastLegacyDefaultArm64(t *testing.T) {
 	}
 }
 
+func TestTrapSiteScratchUsesBoundedGrowthArm64(t *testing.T) {
+	sc := newScratchWithStackCap(minStackArenaCap)
+	f := fn{sc: sc}
+	for i := range 24 {
+		f.recordTrapSite(trapCastFailure, trapSite{branch: uint32(i * 4)})
+	}
+	if got := cap(sc.trapSites[trapCastFailure]); got != 24 {
+		t.Fatalf("cast-failure trap capacity = %d, want 24", got)
+	}
+	sc.reset()
+	if got := len(sc.trapSites[trapCastFailure]); got != 0 {
+		t.Fatalf("reset cast-failure trap length = %d, want 0", got)
+	}
+	if got := cap(sc.trapSites[trapCastFailure]); got != 24 {
+		t.Fatalf("reset cast-failure trap capacity = %d, want 24", got)
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		sc.trapSites[trapCastFailure] = sc.trapSites[trapCastFailure][:0]
+		for i := range 24 {
+			f.recordTrapSite(trapCastFailure, trapSite{branch: uint32(i * 4)})
+		}
+	}); allocs != 0 {
+		t.Fatalf("reused cast-failure trap allocations = %g, want 0", allocs)
+	}
+
+	sc.trapSites[trapBuiltin] = nil
+	for i := range 9 {
+		f.recordTrapSite(trapBuiltin, trapSite{branch: uint32(i * 4)})
+	}
+	if got := cap(sc.trapSites[trapBuiltin]); got != 16 {
+		t.Fatalf("builtin trap fallback capacity = %d, want 16", got)
+	}
+	if got := unsafe.Sizeof(trapSite{}); got != 12 {
+		t.Fatalf("trap-site size = %d, want 12", got)
+	}
+}
+
 func TestHintSizedModuleStackArenaExecArm64(t *testing.T) {
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x2a, 0x0b})
 	if got := runArm64(t, m); got != 42 {

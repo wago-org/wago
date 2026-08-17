@@ -158,7 +158,7 @@ func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
 	if e.kind == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.kind == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+	if e.kind == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls && !f.preserveCallerPins {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}
@@ -182,7 +182,7 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadFloatConsts(code []byte) {
-	if f.usesCalls {
+	if f.usesCalls || f.preserveCallerPins {
 		return
 	}
 	// Tally constants before reserving the two cache registers. The old first-seen

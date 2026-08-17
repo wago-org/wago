@@ -12,7 +12,14 @@ import (
 var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("call-effect-bounds", &callEffectBoundsEnabled),
+	optimization.Bind("call-remat-const", &callRematConstEnabled),
+	optimization.Bind("call-remat-local", &callRematLocalEnabled),
+	optimization.Bind("call-remat-bin", &callRematBinEnabled),
+	optimization.Bind("call-arg-direct", &callArgDirectEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
+	optimization.Bind("three-way-unsigned", &threeWayUnsignedEnabled),
+	optimization.Bind("tee-add-carry", &teeAddCarryEnabled),
+	optimization.Bind("widened-carry-arith", &widenedCarryArithmeticEnabled),
 	optimization.Bind("store8-flags", &store8FlagsEnabled),
 	optimization.Bind("reg-merge", &regMergeEnabled),
 	optimization.Bind("tee-sink", &teeLocalSinkEnabled),
@@ -21,10 +28,15 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
 	optimization.Bind("call-next-use", &callNextUseEnabled),
+	optimization.Bind("abi-classes", &abiClassesEnabled),
+	optimization.Bind("abi-leaf-fp", &abiLeafFPEnabled),
+	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+	optimization.Bind("merge-reg-residency", &mergeRegResidencyEnabled),
 	optimization.Bind("affine-lea", &affineLeaEnabled),
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
 	optimization.Bind("bmi2-rorx", &bmi2RorxEnabled),
+	optimization.Bind("bmi2-shifts", &bmi2ShiftsEnabled),
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
@@ -44,7 +56,13 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
+	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
+	optimization.Bind("call-result-residency", &callResultResidencyEnabled),
+	optimization.Bind("simd-wide-bitmask-consumer", &simdWideBitmaskConsumerEnabled),
+	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
+	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
 	optimization.Bind("inline", &inlineEnabled),
+	optimization.Bind("inline-slot-overlay", &inlineSlotOverlayEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
@@ -54,7 +72,14 @@ var optimizationBindings = optimization.NewBindings("amd64",
 var (
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optCallEffectBounds     = optimizationBindings.Option("call-effect-bounds")
+	optCallRematConst       = optimizationBindings.Option("call-remat-const")
+	optCallRematLocal       = optimizationBindings.Option("call-remat-local")
+	optCallRematBin         = optimizationBindings.Option("call-remat-bin")
+	optCallArgDirect        = optimizationBindings.Option("call-arg-direct")
 	optSTFlags              = optimizationBindings.Option("st-flags")
+	optThreeWayUnsigned     = optimizationBindings.Option("three-way-unsigned")
+	optTeeAddCarry          = optimizationBindings.Option("tee-add-carry")
+	optWidenedCarryArith    = optimizationBindings.Option("widened-carry-arith")
 	optStore8Flags          = optimizationBindings.Option("store8-flags")
 	optRegMerge             = optimizationBindings.Option("reg-merge")
 	optTeeSink              = optimizationBindings.Option("tee-sink")
@@ -63,10 +88,15 @@ var (
 	optEntryArgPins         = optimizationBindings.Option("entry-arg-pins")
 	optExtendedFPPins       = optimizationBindings.Option("ext-fp-pins")
 	optCallNextUse          = optimizationBindings.Option("call-next-use")
+	optABIClasses           = optimizationBindings.Option("abi-classes")
+	optABILeafFP            = optimizationBindings.Option("abi-leaf-fp")
+	optMergeNextUse         = optimizationBindings.Option("merge-next-use")
+	optMergeRegResidency    = optimizationBindings.Option("merge-reg-residency")
 	optAffineLEA            = optimizationBindings.Option("affine-lea")
 	optTreeOrder            = optimizationBindings.Option("tree-order")
 	optAssocTree            = optimizationBindings.Option("assoc-tree")
 	optBMI2Rorx             = optimizationBindings.Option("bmi2-rorx")
+	optBMI2Shifts           = optimizationBindings.Option("bmi2-shifts")
 	optVEXFloatMem          = optimizationBindings.Option("vex-float-mem")
 	optMultiBoundsCert      = optimizationBindings.Option("multi-bounds-cert")
 	optAddrZExtElim         = optimizationBindings.Option("addr-zext-elim")
@@ -86,7 +116,13 @@ var (
 	optV128Pins             = optimizationBindings.Option("v128-pins")
 	optV128Sink             = optimizationBindings.Option("v128-sink")
 	optRegABI               = optimizationBindings.Option("reg-abi")
+	optPreparedFPEntry      = optimizationBindings.Option("prepared-fp-entry")
+	optCallResultResidency  = optimizationBindings.Option("call-result-residency")
+	optSIMDWideBitmask      = optimizationBindings.Option("simd-wide-bitmask-consumer")
+	optEntryInitElide       = optimizationBindings.Option("entry-init-elide")
+	optGCDeadNew            = optimizationBindings.Option("gc-dead-new")
 	optInline               = optimizationBindings.Option("inline")
+	optInlineSlotOverlay    = optimizationBindings.Option("inline-slot-overlay")
 	optInlineLoopCallees    = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck         = optimizationBindings.Option("loop-precheck")
 	optStackFence           = optimizationBindings.Option("stack-fence")

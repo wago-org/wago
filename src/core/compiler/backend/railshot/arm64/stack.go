@@ -120,17 +120,18 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	kind   storageKind
-	typ    machineType
-	reg    Reg
-	ehRoot bool // frame-relative rooted exception identity; clear its three-word record on drop
-	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
-	facts  valueFacts
-	slot   int
-	idx    int   // local/global index for stLocalRef/stGlobalRef
-	cval   int64 // constant value/bits for stConst
-	custom *coreplugins.CustomType
-	vregs  []Reg
+	kind    storageKind
+	typ     machineType
+	reg     Reg
+	ehRoot  bool // frame-relative rooted exception identity; clear its three-word record on drop
+	gcRoot  bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
+	facts   valueFacts
+	gcLocal uint16 // originating local index + 1 for GC reuse; independent of physical storage
+	slot    int
+	idx     int   // local/global index for stLocalRef/stGlobalRef
+	cval    int64 // constant value/bits for stConst
+	custom  *coreplugins.CustomType
+	vregs   []Reg
 }
 
 // elemKind tags a stack node.
@@ -294,6 +295,18 @@ func (s *stack) back() *elem {
 func (s *stack) erase(e *elem) {
 	e.prev.next, e.next.prev = e.next, e.prev
 	e.prev, e.next = nil, nil
+}
+
+// replaceTopWithBlock replaces the current single top value with a previously
+// detached valent block. Call rematerialization uses this after rebuilding the
+// below-argument stack, so the original bounded tree consumes no new arena
+// nodes and preserves its producer links.
+func (s *stack) replaceTopWithBlock(base, root *elem) {
+	top := s.back()
+	prev := top.prev
+	s.erase(top)
+	prev.next, base.prev = base, prev
+	root.next, s.head.prev = s.head, root
 }
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---

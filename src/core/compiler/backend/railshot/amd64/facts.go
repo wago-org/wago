@@ -9,10 +9,21 @@ type valueFacts = shared.ValueFacts
 const (
 	factUpper32Zero = shared.ValueFactUpper32Zero
 	factBoolean     = shared.ValueFactBoolean
+	factNonZero     = shared.ValueFactNonZero
 	factSignExt8    = shared.ValueFactSignExt8
 	factSignExt16   = shared.ValueFactSignExt16
 	factSignExt32   = shared.ValueFactSignExt32
 )
+
+func (f *fn) markTopBooleanFact() {
+	if !f.opt(optValueFacts) {
+		return
+	}
+	e := f.s.back()
+	if e != nil && e != f.s.head && e.kind == ekValue {
+		e.st.facts |= factUpper32Zero | factBoolean
+	}
+}
 
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
 	if isCompare(op) || op == opEqz {

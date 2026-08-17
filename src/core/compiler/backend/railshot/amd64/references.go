@@ -15,9 +15,13 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	// spills. Preserve collector-root identity and structured semantic facts;
 	// raw resolved addresses live in separate fn state and are never copied here.
 	fact := gcRefFact(e)
+	local, hasLocal := gcLocalProvenance(e)
 	st.gcRoot = st.gcRoot || e.st.gcRoot
 	putGCRefFact(&st, fact)
 	e.st = st
+	if hasLocal {
+		markGCLocalProvenance(e, local)
+	}
 }
 
 func (f *fn) pushValue(st storage) *elem {

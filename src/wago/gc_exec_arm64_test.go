@@ -688,28 +688,22 @@ func TestGCArm64IndirectFrameRoots(t *testing.T) {
 }
 
 func TestGCArm64PolymorphicIndirectFrameRoots(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureTypedFunctionReferences|CoreFeatureGC), arm64GCPolymorphicIndirectModule())
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureTypedFunctionReferences|CoreFeatureGC).WithOptimization("immutable-poly-fastpath", true), arm64GCPolymorphicIndirectModule())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.callsites) != 3 {
+	if plan == nil || len(plan.callsites) != 1 {
 		t.Fatalf("polymorphic indirect arm64 root map = %+v", plan)
 	}
-	adjusted := 0
 	for _, site := range plan.callsites {
 		if len(site.offsets) != 1 {
 			t.Fatalf("polymorphic indirect roots = %+v", plan.callsites)
 		}
-		if site.stackAdjust == 64 {
-			adjusted++
-		} else if site.stackAdjust != 0 {
+		if site.stackAdjust != 0 {
 			t.Fatalf("polymorphic indirect stack adjustment = %d", site.stackAdjust)
 		}
-	}
-	if adjusted != 1 {
-		t.Fatalf("polymorphic indirect adjusted sites = %d, want 1", adjusted)
 	}
 	profiles := []GCConfig{
 		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},

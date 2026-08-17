@@ -28,6 +28,18 @@ func TestCatalogRegistrationIsUniqueAndArchitectureScoped(t *testing.T) {
 	}
 }
 
+func TestEntryInitElisionRemainsABaselineOptimization(t *testing.T) {
+	for _, arch := range []string{"amd64", "arm64"} {
+		definition, ok := Lookup(arch, "entry-init-elide")
+		if !ok {
+			t.Fatalf("%s entry-init-elide is not registered", arch)
+		}
+		if !definition.Default || definition.Experimental {
+			t.Fatalf("%s entry-init-elide = default %v, experimental %v; want baseline default", arch, definition.Default, definition.Experimental)
+		}
+	}
+}
+
 func TestBindingsRequireEveryArchitectureDefinition(t *testing.T) {
 	value := true
 	definitions := ForArch("amd64")

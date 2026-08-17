@@ -40,6 +40,23 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// callRematConstEnabled retains one topmost integer constant below a
+	// register-ABI call as a symbolic recipe. It is experimental and default-off;
+	// WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_CONST=1 enables the bounded A/B path.
+	callRematConstEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_CONST") == "1"
+	// callRematLocalEnabled retains one topmost integer local read below a
+	// register-ABI call. WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_LOCAL=1 enables it.
+	callRematLocalEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_LOCAL") == "1"
+	// callRematBinEnabled retains one depth-one pure integer expression below a
+	// register-ABI call. WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_BIN=1 enables it.
+	callRematBinEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_REMAT_BIN") == "1"
+	// callResultResidencyEnabled keeps direct internal GP results in RAX/RDX
+	// through disjoint caller-state reloads. It is enabled only by
+	// WAGO_AMD64_EXPERIMENTAL_CALL_RESULT_RESIDENCY=1.
+	callResultResidencyEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_CALL_RESULT_RESIDENCY") == "1"
+	// callArgDirectEnabled lowers a deferred integer argument directly into its
+	// free ABI target register. WAGO_AMD64_NO_CALL_ARG_DIRECT=1 is the A/B oracle.
+	callArgDirectEnabled = os.Getenv("WAGO_AMD64_NO_CALL_ARG_DIRECT") != "1"
 	// boundsRangeEnabled lets a first scalar load certify later fixed-offset loads
 	// in the same pure straight-line range. Kept separate for A/B measurement.
 	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"
@@ -93,6 +110,27 @@ var (
 	// storing $c with a flag-neutral SETcc after the CMP. WAGO_NO_STFLAGS=1 is the
 	// A/B oracle + kill switch for this flag-desync-sensitive path.
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
+	// threeWayUnsignedEnabled retains one unsigned comparison's flags across
+	// SETA and SBB to form -1/0/1. WAGO_AMD64_NO_THREE_WAY_UNSIGNED=1 is the A/B
+	// oracle for this bounded tree rule.
+	threeWayUnsignedEnabled = os.Getenv("WAGO_AMD64_NO_THREE_WAY_UNSIGNED") != "1"
+	// teeAddCarryEnabled reuses ADD's carry flag for the exact Wasm sequence
+	// `iN.add; local.tee; local.get <add operand>; iN.lt_u` (and its optional
+	// i64.extend_i32_u). WAGO_AMD64_NO_TEE_ADD_CARRY=1 is the A/B oracle.
+	teeAddCarryEnabled = os.Getenv("WAGO_AMD64_NO_TEE_ADD_CARRY") != "1"
+	// widenedCarryArithmeticEnabled folds an immediately widened unsigned less-
+	// than into the CF input of ADC/SBB. WAGO_AMD64_NO_WIDENED_CARRY_ARITH=1 is
+	// the A/B oracle.
+	widenedCarryArithmeticEnabled = os.Getenv("WAGO_AMD64_NO_WIDENED_CARRY_ARITH") != "1"
+	// mergeRegResidencyEnabled keeps dirty pinned locals in their dedicated
+	// registers across forward structured merges. Loop targets retain their fixed
+	// canonical contract. WAGO_AMD64_EXPERIMENTAL_MERGE_REG_RESIDENCY=1 enables
+	// the exact A/B path.
+	mergeRegResidencyEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_MERGE_REG_RESIDENCY") == "1"
+	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
+	// onto one max-sized physical scratch region. It is enabled only by
+	// WAGO_AMD64_EXPERIMENTAL_INLINE_SLOT_OVERLAY=1.
+	inlineSlotOverlayEnabled = os.Getenv("WAGO_AMD64_EXPERIMENTAL_INLINE_SLOT_OVERLAY") == "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
 	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
@@ -172,6 +210,7 @@ type CodegenStats struct {
 	NativeSize    shared.NativeFunctionSizeReport
 	Encoding      encoderamd64.EncodingStats
 	LocalTraffic  shared.LocalTraffic
+	CallTraffic   shared.CallTraffic
 	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string       `json:"finalizer_fallback,omitempty"`
@@ -298,6 +337,54 @@ func (s *CodegenStats) addCallPreservationStore() {
 func (s *CodegenStats) addCallPreservationReload() {
 	if s != nil {
 		s.LocalTraffic.CallPreservationReloads++
+	}
+}
+func (s *CodegenStats) addIntegerCallArgumentMove() {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves++
+		s.CallTraffic.IntegerCallArgumentMoves++
+	}
+}
+func (s *CodegenStats) addMixedCallArgumentMove() {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves++
+		s.CallTraffic.MixedCallArgumentMoves++
+	}
+}
+func (s *CodegenStats) addTailCallArgumentMove() {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves++
+		s.CallTraffic.TailCallArgumentMoves++
+	}
+}
+func (s *CodegenStats) addDirectResultFallbackMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.DirectResultFallbackMoves += n
+	}
+}
+func (s *CodegenStats) addRecursiveResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.RecursiveResultMoves += n
+	}
+}
+func (s *CodegenStats) addIndirectResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.IndirectResultMoves += n
+	}
+}
+func (s *CodegenStats) addLocalSinkResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.LocalSinkResultMoves += n
+	}
+}
+func (s *CodegenStats) addMixedResultFallbackMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.MixedResultFallbackMoves += n
 	}
 }
 func (s *CodegenStats) addForcedLoad() {
@@ -636,6 +723,15 @@ func (s *CodegenStats) report() string {
 			traffic.OrdinarySpillStores, traffic.OrdinarySpillReloads,
 			traffic.ControlMergeStores, traffic.ControlMergeReloads,
 			traffic.CallPreservationStores, traffic.CallPreservationReloads)
+	}
+	callTraffic := s.CallTraffic
+	if callTraffic.Any() {
+		fmt.Fprintf(&b, "    call-traffic: reg-arg-move=%d reg-result-move=%d arg-int=%d arg-mixed=%d arg-tail=%d result-direct=%d result-recursive=%d result-indirect=%d result-local=%d result-mixed=%d\n",
+			callTraffic.RegisterArgumentMoves, callTraffic.RegisterResultMoves,
+			callTraffic.IntegerCallArgumentMoves, callTraffic.MixedCallArgumentMoves,
+			callTraffic.TailCallArgumentMoves, callTraffic.DirectResultFallbackMoves,
+			callTraffic.RecursiveResultMoves, callTraffic.IndirectResultMoves,
+			callTraffic.LocalSinkResultMoves, callTraffic.MixedResultFallbackMoves)
 	}
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)

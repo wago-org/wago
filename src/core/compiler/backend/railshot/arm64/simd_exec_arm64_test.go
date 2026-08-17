@@ -559,6 +559,8 @@ func TestSIMDShuffleSwizzleExec(t *testing.T) {
 		"shuffle-zip2d":  {8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31},
 		"shuffle-zip1s":  {0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23},
 		"shuffle-zip2s":  {8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31},
+		"shuffle-zip1h":  {0, 1, 16, 17, 2, 3, 18, 19, 4, 5, 20, 21, 6, 7, 22, 23},
+		"shuffle-zip2h":  {8, 9, 24, 25, 10, 11, 26, 27, 12, 13, 28, 29, 14, 15, 30, 31},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var want [16]byte
@@ -800,6 +802,8 @@ func TestSIMDShuffleSinkAlias(t *testing.T) {
 	}{
 		{"rotate16-self-alias", i8x16Rotate16, 0, 0x33441122},
 		{"zip1s-self-alias", i8x16Zip1S, 1, 0x99aabbcc},
+		{"zip1h-self-alias", i8x16Zip1H, 0, 0xbbcc3344},
+		{"zip2h-self-alias", i8x16Zip2H, 0, 0x67893040},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := []byte{0x01, 0x02, 0x7b}

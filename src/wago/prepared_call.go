@@ -35,3 +35,8 @@ var invokePrivateEntryEnabled = os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
 // preparedDirectIntEnabled selects register-ABI entry for adapter-free integer
 // scalar leaves. WAGO_PREPARED_DIRECT_INT=0 restores the wrapper adapter.
 var preparedDirectIntEnabled = os.Getenv("WAGO_PREPARED_DIRECT_INT") != "0"
+
+// preparedDirectFPEnabled selects the fixed FP and mixed-bank register-entry
+// trampolines. It is independent from the integer family so either path can be
+// rolled back without changing ordinary prepared invocation.
+var preparedDirectFPEnabled = os.Getenv("WAGO_PREPARED_DIRECT_FP") != "0"

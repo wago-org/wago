@@ -17,3 +17,12 @@ func TestClearTrapUnlessInterrupted(t *testing.T) {
 		t.Fatalf("close interruption reset = %v, want interrupted", got)
 	}
 }
+
+func TestInstallTrapCellClearsTrapWithoutLinearMemory(t *testing.T) {
+	trap := make([]byte, TrapBufferBytes)
+	storeTrap(trap, uint32(TrapTableOutOfBounds))
+	installTrapCell(nil, trap)
+	if got := TrapCode(loadTrap(trap)); got != TrapNone {
+		t.Fatalf("trap code = %v, want none", got)
+	}
+}

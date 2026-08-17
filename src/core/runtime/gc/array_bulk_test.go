@@ -658,6 +658,19 @@ func TestArrayFillNoBarrierGuardsReferenceEdges(t *testing.T) {
 	if c.RememberedCount() != 0 || c.CardCount() != 0 {
 		t.Fatalf("null no-barrier fill created remembered metadata: %d/%d", c.RememberedCount(), c.CardCount())
 	}
+	i31 := I31New(-7)
+	if err := c.ArrayFillNoBarrier(dst, 1, RefValue(i31), 2); err != nil {
+		t.Fatal(err)
+	}
+	for index := uint32(1); index < 3; index++ {
+		got, err := c.ArrayGet(dst, index)
+		if err != nil || got.Ref != i31 {
+			t.Fatalf("i31 no-barrier fill[%d] = %+v, %v", index, got, err)
+		}
+	}
+	if c.RememberedCount() != 0 || c.CardCount() != 0 {
+		t.Fatalf("i31 no-barrier fill created remembered metadata: %d/%d", c.RememberedCount(), c.CardCount())
+	}
 	child, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)
@@ -666,7 +679,7 @@ func TestArrayFillNoBarrierGuardsReferenceEdges(t *testing.T) {
 		t.Fatal("object no-barrier fill succeeded")
 	}
 	got, err := c.ArrayGet(dst, 1)
-	if err != nil || !got.Ref.IsNull() {
+	if err != nil || got.Ref != i31 {
 		t.Fatalf("rejected no-barrier fill mutated destination: %+v, %v", got, err)
 	}
 }

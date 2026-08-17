@@ -13,9 +13,15 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 200
+	const want = 216
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
+
+func TestStackFenceElisionUsesFinalFrame(t *testing.T) {
+	if !shared.StackFenceElisionValid(true, 4096) || shared.StackFenceElisionValid(true, 4097) || !shared.StackFenceElisionValid(false, 1<<20) {
+		t.Fatal("final-frame stack-fence validation boundary is wrong")
 	}
 }
 
@@ -660,6 +666,56 @@ func TestScanBodyBytesEntryInitializedLocals(t *testing.T) {
 	}
 	if got, want := h.entryInitialized, uint64(1)<<1|uint64(1)<<2; got != want {
 		t.Fatalf("entryInitialized = %#x, want %#x", got, want)
+	}
+}
+
+func TestScanBodyBytesStructuredDefiniteAssignment(t *testing.T) {
+	body := []byte{
+		0x41, 0x01, 0x04, 0x40, // i32.const 1; if
+		0x41, 0x02, 0x21, 0x00, //   local.set 0
+		0x05, 0x41, 0x03, 0x21, 0x00, 0x0b, // else; local.set 0; end
+		0x20, 0x00, 0x1a, // local.get 0; drop
+		0x41, 0x01, 0x04, 0x40, 0x41, 0x04, 0x21, 0x01, 0x0b, // then-only local.set 1
+		0x20, 0x01, 0x1a, // local.get 1; drop
+		0x02, 0x40, 0x41, 0x05, 0x21, 0x02, 0x0b, // block-local set 2: conservative reset
+		0x20, 0x02, 0x1a, // local.get 2; drop
+		0x41, 0x01, 0x04, 0x40, // if
+		0x41, 0x00, 0x0d, 0x00, //   br_if 0 may skip the set
+		0x41, 0x06, 0x21, 0x03,
+		0x05, 0x41, 0x07, 0x21, 0x03, 0x0b,
+		0x20, 0x03, 0x1a,
+		0x41, 0x01, 0x04, 0x40, // if
+		0xd0, 0x6e, 0xd5, 0x00, //   ref.null any; br_on_null 0 may skip the set
+		0x41, 0x08, 0x21, 0x04,
+		0x05, 0x41, 0x09, 0x21, 0x04, 0x0b,
+		0x20, 0x04, 0x1a,
+		0x41, 0x01, 0x04, 0x40, // if
+		0xfb, 0x18, 0x03, 0x00, 0x6e, 0x6d, //   br_on_cast 0 may skip the set
+		0x41, 0x0a, 0x21, 0x05,
+		0x05, 0x41, 0x0b, 0x21, 0x05, 0x0b,
+		0x20, 0x05, 0x1a, 0x0b,
+	}
+	h, err := scanBodyBytes(body, 6, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := h.entryInitialized, uint64(1); got != want {
+		t.Fatalf("entryInitialized = %#x, want only both-arm local %#x", got, want)
+	}
+}
+
+func TestScanBodyBytesDefiniteAssignmentLocalCap(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x1a, // local.get 0; drop: preserve its initial value
+		0x41, 0x01, 0x21, 0x40, // local.set 64: outside the inline mask
+		0x20, 0x40, 0x1a, 0x0b, // local.get 64; drop; end
+	}
+	h, err := scanBodyBytes(body, 65, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := h.entryInitialized, ^uint64(1); got != want {
+		t.Fatalf("entryInitialized = %#x, want bounded 64-local mask %#x", got, want)
 	}
 }
 

@@ -7,7 +7,29 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
+
+func TestManifestOptimizationInventoryMatchesCompilerCatalog(t *testing.T) {
+	want := make(map[string]struct{})
+	for _, definition := range optimization.All() {
+		want[definition.Name] = struct{}{}
+		manifest := map[string]any{
+			"settings": map[string]any{"optimizations": map[string]any{definition.Name: false}},
+		}
+		if err := ValidateManifest(manifest); err != nil {
+			t.Errorf("registered optimization %q is rejected by the manifest validator: %v", definition.Name, err)
+		}
+	}
+	for name := range manifestOptimizationNames {
+		if _, ok := want[name]; !ok {
+			t.Errorf("manifest validator accepts unregistered optimization %q", name)
+		}
+	}
+	if len(manifestOptimizationNames) != len(want) {
+		t.Errorf("manifest/compiler optimization inventory size = %d/%d", len(manifestOptimizationNames), len(want))
+	}
+}
 
 func TestInitializeCreatesManifestAndPreservesFields(t *testing.T) {
 	dir := t.TempDir()

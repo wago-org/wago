@@ -4,6 +4,8 @@ package arm64
 
 import (
 	"bytes"
+	"encoding/binary"
+	"math"
 	"strings"
 	"testing"
 
@@ -215,6 +217,43 @@ func TestCodegenStatsLocalTrafficCausesArm64(t *testing.T) {
 	if callTraffic.CallPreservationStores == 0 || callTraffic.CallPreservationReloads == 0 {
 		t.Fatalf("call local traffic = %+v, want preservation store and reload", callTraffic)
 	}
+
+	registerModule := modFuncs(t,
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x10, 0x01, 0x41, 0x03, 0x6a, 0x0b}},
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x10, 0x02, 0x41, 0x01, 0x6a, 0x0b}},
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
+	)
+	var registerStats ModuleStats
+	if _, err := CompileModuleWith(registerModule, CompileOptions{Stats: &registerStats, Optimizations: map[string]bool{"abi-classes": false, "call-result-residency": false, "inline": false, "reg-abi": true}}); err != nil {
+		t.Fatal(err)
+	}
+	registerTraffic := registerStats.Funcs[0].CallTraffic
+	if registerTraffic.RegisterArgumentMoves != 1 || registerTraffic.RegisterResultMoves != 1 {
+		t.Fatalf("register call traffic = %+v, want one argument and one result move", registerTraffic)
+	}
+	if registerTraffic.IntegerCallArgumentMoves != 1 || registerTraffic.MixedCallArgumentMoves != 0 || registerTraffic.TailCallArgumentMoves != 0 {
+		t.Fatalf("register argument causes = %+v, want one integer-call move", registerTraffic)
+	}
+	if registerTraffic.DirectResultFallbackMoves != 1 {
+		t.Fatalf("register result causes = %+v, want one direct fallback move", registerTraffic)
+	}
+	if !strings.Contains(registerStats.String(), "call-traffic: reg-arg-move=") {
+		t.Fatalf("report omitted register call traffic:\n%s", registerStats.String())
+	}
+	var residentStats ModuleStats
+	if _, err := CompileModuleWith(registerModule, CompileOptions{Stats: &residentStats, Optimizations: map[string]bool{"abi-classes": false, "call-result-residency": true, "inline": false, "reg-abi": true}}); err != nil {
+		t.Fatal(err)
+	}
+	residentTraffic := residentStats.Funcs[0].CallTraffic
+	if residentTraffic.RegisterArgumentMoves != 1 || residentTraffic.RegisterResultMoves != 0 {
+		t.Fatalf("resident register call traffic = %+v, want one argument and no result moves", residentTraffic)
+	}
+	if got := residentStats.Funcs[0].Peephole["call-result-resident"]; got != 1 {
+		t.Fatalf("call-result-resident = %d, want 1", got)
+	}
+	if got, without := residentStats.Funcs[0].CodeBytes, registerStats.Funcs[0].CodeBytes; got >= without {
+		t.Fatalf("resident code bytes = %d, want less than %d", got, without)
+	}
 }
 
 func TestBoundsCertificateAcrossEffectSafeDirectCallArm64(t *testing.T) {
@@ -295,6 +334,60 @@ func TestMemoryLeafScalarABIAvoidsCallPreservationArm64(t *testing.T) {
 		got, runErr := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"abi-classes": abiClasses, "inline": false}}, 7)
 		if runErr != nil || got != 9 {
 			t.Fatalf("execute abi-classes=%t: got=%d err=%v, want 9", abiClasses, got, runErr)
+		}
+	}
+}
+
+func TestLeafFPABIAvoidsCallPreservationArm64(t *testing.T) {
+	f64 := []wasm.ValType{wasm.F64}
+	appendF64 := func(body []byte, value float64) []byte {
+		body = append(body, 0x44)
+		var bits [8]byte
+		binary.LittleEndian.PutUint64(bits[:], math.Float64bits(value))
+		return append(body, bits[:]...)
+	}
+	caller := []byte{0x00, 0x20, 0x00}
+	caller = appendF64(caller, 1)
+	caller = append(caller,
+		0xa0,       // f64.add
+		0x21, 0x00, // local.set 0
+		0x20, 0x00, // local.get 0: call argument
+	)
+	for range 3 {
+		caller = appendF64(caller, 0)
+	}
+	caller = append(caller,
+		0x10, 0x01, // call 1 with four FP arguments
+		0x1a,       // drop callee result
+		0x20, 0x00, // local.get 0: value must survive the call
+		0x0b,
+	)
+	callee := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xa0, 0x20, 0x02, 0xa0, 0x20, 0x03, 0xa0, 0x0b}
+	m := modFuncs(t,
+		funcDef{params: f64, results: f64, body: caller},
+		funcDef{params: []wasm.ValType{wasm.F64, wasm.F64, wasm.F64, wasm.F64}, results: f64, body: callee},
+	)
+	compile := func(on bool) ModuleStats {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"abi-leaf-fp": on, "inline": false}}); err != nil {
+			t.Fatal(err)
+		}
+		return stats
+	}
+	on, off := compile(true), compile(false)
+	if got := on.Funcs[1].Peephole["abi-leaf-fp"]; got != 1 {
+		t.Fatalf("abi-leaf-fp = %d, want 1", got)
+	}
+	if traffic := on.Funcs[0].LocalTraffic; traffic.CallPreservationStores != 0 || traffic.CallPreservationReloads != 0 {
+		t.Fatalf("LeafFP call traffic = %+v, want no preservation", traffic)
+	}
+	if traffic := off.Funcs[0].LocalTraffic; traffic.CallPreservationStores == 0 || traffic.CallPreservationReloads == 0 {
+		t.Fatalf("General FP call traffic = %+v, want store and reload (pinned=%d peeps=%v)", traffic, off.Funcs[0].PinnedLocals, off.Funcs[0].Peephole)
+	}
+	for _, enabled := range []bool{false, true} {
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"abi-leaf-fp": enabled, "inline": false}}, math.Float64bits(7))
+		if err != nil || math.Float64frombits(got) != 8 {
+			t.Fatalf("execute abi-leaf-fp=%t: got=%g err=%v, want 8", enabled, math.Float64frombits(got), err)
 		}
 	}
 }

@@ -47,7 +47,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return f.emitGCArray(sub, r)
 	}
 	if sub == 20 || sub == 21 {
-		return f.emitGCI31Test(sub, r)
+		if err := f.emitGCI31Test(sub, r); err != nil {
+			return err
+		}
+		f.markTopBooleanFact()
+		return nil
 	}
 	if sub == 22 || sub == 23 {
 		return f.emitGCI31Cast(sub, r)
@@ -797,7 +801,10 @@ func (f *fn) emitGCI31(sub uint32) error {
 			f.stats.peep("gc-null-check-elide")
 		}
 		f.a.ShiftImm(7, value, 1, false) // arithmetic shift sign-extends bit 30
-		f.pushReg(value, mtI32)
+		result := f.pushReg(value, mtI32)
+		if f.opt(optValueFacts) {
+			result.st.facts |= factUpper32Zero
+		}
 	case 30: // i31.get_u
 		if fact.Nullability() != shared.GCKnownNonNull {
 			f.a.TestSelf(value, true)
@@ -806,7 +813,10 @@ func (f *fn) emitGCI31(sub uint32) error {
 			f.stats.peep("gc-null-check-elide")
 		}
 		f.a.ShiftImm(5, value, 1, false)
-		f.pushReg(value, mtI32)
+		result := f.pushReg(value, mtI32)
+		if f.opt(optValueFacts) {
+			result.st.facts |= factUpper32Zero
+		}
 	default:
 		return fmt.Errorf("amd64: unsupported staged i31 opcode %d", sub)
 	}

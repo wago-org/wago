@@ -170,6 +170,21 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // and mul: compute the left operand into dest, then fold the right operand in
 // place (const→imm, memory→r/m, reg→reg).
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
+	return f.condenseBinaryMode(node, dest, false)
+}
+
+// condenseBinaryMode's requireAddCarry form guarantees that an opAdd leaves the
+// architectural carry flag from the final full-width addition live. It disables
+// flag-neutral LEA/tree covers and INC, whose carry semantics differ from ADD.
+func (f *fn) condenseBinaryMode(node *elem, dest Reg, requireAddCarry bool) Reg {
+	if !requireAddCarry {
+		if result := f.tryWidenedCarryArithmetic(node, dest); result != regNone {
+			return result
+		}
+	}
+	if result := f.tryThreeWayUnsignedCompare(node, dest); result != regNone {
+		return result
+	}
 	w := node.typ.is64()
 	left := node.arg0
 	right := node.arg1
@@ -217,7 +232,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// Scaled-index fusion: add(x, shl(y, k∈1..3)) → `lea dest,[x + y*2ᵏ]` — one
 	// instruction replacing shl+add. The common AssemblyScript array-address
 	// shape (`base + (i << log2size)`).
-	if node.op == opAdd {
+	if node.op == opAdd && !requireAddCarry {
 		if r := f.tryLeaScaledAdd(node, left, right, dest); r != regNone {
 			return r
 		}
@@ -235,8 +250,10 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 	}
 
-	if r := f.tryAssociativeTree(node, dest); r != regNone {
-		return r
+	if !requireAddCarry {
+		if r := f.tryAssociativeTree(node, dest); r != regNone {
+			return r
+		}
 	}
 
 	// A commutative self-update does not need to preserve the old destination in
@@ -337,7 +354,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		//    preceding copy for).
 		//  - in-place: reuse an owned-register left as the destination, so the op
 		//    accumulates in place with no preceding mov.
-		if node.op == opAdd && left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg) && leaRightOK(right) {
+		if node.op == opAdd && !requireAddCarry && left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg) && leaRightOK(right) {
 			dest = f.allocReg(0)
 			f.emitLeaAdd(dest, left.st.reg, right, w)
 			f.release(rightReleaseAfter)
@@ -357,7 +374,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	if node.op == opMul {
 		f.applyMul(dest, right, w)
 	} else {
-		f.applyALU(aluTable[node.op], dest, right, w)
+		f.applyALUMode(aluTable[node.op], dest, right, w, requireAddCarry)
 	}
 	f.pinned = f.pinned.remove(dest)
 	if pinnedRight != regNone {
@@ -729,7 +746,37 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		node.op = opNone
 		return dest
 	}
-
+	if f.opt(optBMI2Shifts) && (node.op == opShl || node.op == opShrU || node.op == opShrS) {
+		if dest != regNone {
+			f.pinned = f.pinned.add(dest)
+		}
+		src, srcOwned := f.materializeRead(left)
+		f.pinned = f.pinned.add(src)
+		count, countOwned := f.materializeRead(right)
+		if dest == regNone {
+			dest = f.allocReg(maskOf(src).add(count))
+		}
+		switch node.op {
+		case opShl:
+			f.a.Shlx(dest, src, count, w)
+		case opShrU:
+			f.a.Shrx(dest, src, count, w)
+		case opShrS:
+			f.a.Sarx(dest, src, count, w)
+		}
+		if srcOwned && src != dest {
+			f.release(src)
+		}
+		if countOwned && count != dest {
+			f.release(count)
+		}
+		f.pinned = f.pinned.remove(src).remove(dest)
+		f.consumeBlockBelow(node)
+		f.occupy(node, dest)
+		node.op = opNone
+		f.stats.peep("bmi2-variable-shift")
+		return dest
+	}
 	// Variable count → CL. Compute the shifted value into a scratch register that
 	// no sub-computation hard-targets — not RAX/RDX (a div/rem operand may appear
 	// in `left` or `right`) and not RCX (the count, or a nested variable shift).
@@ -1079,6 +1126,10 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 // applyALU emits `dest = dest <op> right`, folding the right operand: constants
 // as immediates, memory-resident operands as an r/m read, registers as reg-reg.
 func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
+	f.applyALUMode(enc, dest, right, w, false)
+}
+
+func (f *fn) applyALUMode(enc aluEnc, dest Reg, right *elem, w, requireAddCarry bool) {
 	switch right.st.kind {
 	case stConst:
 		// `i64.and x, 0xffffffff` is exactly a zero-extension of x's low
@@ -1090,7 +1141,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		// need a temporary register. Select this only at final emission so tree
 		// scheduling, associative covering, and higher-level SWAR recognition retain
 		// their original shapes.
-		if incDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
+		if !requireAddCarry && incDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
 			(enc == aluTable[opAdd] || enc == aluTable[opSub]) && (right.st.cval == 1 || right.st.cval == -1) {
 			increment := enc == aluTable[opAdd] && right.st.cval == 1 || enc == aluTable[opSub] && right.st.cval == -1
 			if increment {

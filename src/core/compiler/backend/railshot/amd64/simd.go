@@ -2163,6 +2163,78 @@ func (f *fn) i16x8Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
+// tryDeferI16x8BitmaskZeroBranch keeps the exact
+// `i16x8.bitmask; i32.eqz; if/br_if` shape symbolic until branch lowering can
+// consume zero-ness directly. The copied reader is never committed: ordinary
+// parsing still owns eqz and the branch.
+func (f *fn) tryDeferI16x8BitmaskZeroBranch(r *wasm.Reader) bool {
+	if !f.opt(optSIMDWideBitmask) {
+		return false
+	}
+	look := *r
+	next, err := look.Byte()
+	if err != nil || next != 0x45 { // i32.eqz
+		return false
+	}
+	next, err = look.Byte()
+	if err != nil || (next != 0x04 && next != 0x0d) { // if / br_if
+		return false
+	}
+	operand := f.s.back()
+	if deferDepthOf(operand) >= maxDeferDepth {
+		return false
+	}
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, opSIMDBitmaskAny16, mtI32
+	node.arg0 = operand
+	node.deferDepth = 1 + deferDepthOf(operand)
+	f.s.push(node)
+	f.stats.peep("simd-bitmask-zero-branch-candidate")
+	return true
+}
+
+// tryI16x8BitmaskNonZero selects the exact adjacent
+// `i16x8.bitmask; i32.const 0; i32.ne` sequence. A packed scalar mask is not
+// needed when only zero-ness is observed: arithmetic-shift every lane sign
+// across its word and test the byte movemask directly.
+func (f *fn) tryI16x8BitmaskNonZero(r *wasm.Reader) bool {
+	if !f.opt(optSIMDWideBitmask) {
+		return false
+	}
+	look := *r
+	op, err := look.Byte()
+	if err != nil || op != 0x41 { // i32.const
+		return false
+	}
+	zero, err := look.I32()
+	if err != nil || zero != 0 {
+		return false
+	}
+	op, err = look.Byte()
+	if err != nil || op != 0x47 { // i32.ne
+		return false
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("amd64: copied i16x8 bitmask lookahead produced an invalid reader offset")
+	}
+
+	v := f.popValue()
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	f.a.VPsrawImm(x, src, 15)
+	result := f.allocReg(0)
+	f.a.VPmovmskb(result, x)
+	f.releaseF(x)
+	f.a.TestSelf(result, false)
+	f.a.SetccReg(condNE, result)
+	f.pushReg(result, mtI32)
+	f.stats.peep("simd-bitmask-nonzero")
+	return true
+}
+
 func (f *fn) i32x4Bitmask() {
 	v := f.popValue()
 	x := f.materializeV128(v)
@@ -3017,6 +3089,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 131: // i16x8.all_true
 		f.i16x8AllTrue()
 	case 132: // i16x8.bitmask
+		if f.tryDeferI16x8BitmaskZeroBranch(r) {
+			break
+		}
+		if f.tryI16x8BitmaskNonZero(r) {
+			break
+		}
 		f.i16x8Bitmask()
 	case 163: // i32x4.all_true
 		f.i32x4AllTrue()

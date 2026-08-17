@@ -55,7 +55,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x05: // else
 			err = f.opElse()
 		case 0x0b: // end
-			err = f.opEnd()
+			err = f.opEnd(r)
 		case 0x0c, 0x0d: // br / br_if
 			err = f.opBr(r, op == 0x0d)
 		case 0x0e: // br_table
@@ -787,6 +787,7 @@ func (f *fn) emitSelect() {
 	a := f.popValue()
 	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
 	gcFact := shared.MergeGCRefFacts(gcRefFact(a), gcRefFact(b))
+	facts := shared.MergeValueFacts(a.st.facts, b.st.facts)
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
@@ -845,6 +846,9 @@ func (f *fn) emitSelect() {
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	result.st.gcRoot = gcRoot
 	putGCRefFact(&result.st, gcFact)
+	if f.opt(optValueFacts) {
+		result.st.facts = facts
+	}
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -879,6 +883,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// are pinned so condensing the compare's operands cannot spill them.
 	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
 	gcFact := shared.MergeGCRefFacts(gcRefFact(aRoot), gcRefFact(bRoot))
+	facts := shared.MergeValueFacts(aRoot.st.facts, bRoot.st.facts)
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -894,6 +899,9 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	result.st.gcRoot = gcRoot
 	putGCRefFact(&result.st, gcFact)
+	if f.opt(optValueFacts) {
+		result.st.facts = facts
+	}
 	return true
 }
 
@@ -1034,6 +1042,9 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
+	if tee && f.tryTeeAddCarry(reader, x, e) {
+		return
+	}
 	if reader != nil {
 		f.activateIntervalLocal(x, reader.Offset(), false)
 	}

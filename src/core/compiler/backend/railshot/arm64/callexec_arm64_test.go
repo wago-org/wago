@@ -37,6 +37,47 @@ func modFuncs(t testing.TB, fns ...funcDef) *wasm.Module {
 	return m
 }
 
+func TestMixedFourResultWrapperCallArm64(t *testing.T) {
+	results := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
+	caller := []byte{
+		0x04, 0x01, 0x7f, 0x01, 0x7c, 0x01, 0x7e, 0x01, 0x7d,
+		0x10, 0x01,
+		0x21, 0x03, 0x21, 0x02, 0x21, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x20, 0x01, 0xaa, 0x6a,
+		0x20, 0x02, 0xa7, 0x6a,
+		0x20, 0x03, 0xa8, 0x6a, 0x0b,
+	}
+	callee := []byte{
+		0x00,
+		0x41, 0x01,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40,
+		0x42, 0x03,
+		0x43, 0x00, 0x00, 0x80, 0x40,
+		0x0b,
+	}
+	m := modFuncs(t, funcDef{results: []wasm.ValType{wasm.I32}, body: caller}, funcDef{results: results, body: callee})
+	for _, tc := range []struct {
+		name, callKind string
+		opts           map[string]bool
+	}{
+		{name: "default", callKind: callKindWrapper, opts: map[string]bool{"inline": false}},
+		{name: "fallback", callKind: callKindWrapper, opts: map[string]bool{"inline": false, "reg-abi": false}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stats ModuleStats
+			if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: tc.opts}); err != nil {
+				t.Fatal(err)
+			}
+			if got := stats.Funcs[0].Calls[tc.callKind]; got != 1 {
+				t.Fatalf("%s calls = %d, want 1 (all: %v)", tc.callKind, got, stats.Funcs[0].Calls)
+			}
+		})
+	}
+	if got := runArm64(t, m); got != 10 {
+		t.Fatalf("mixed four-result call = %d, want 10", got)
+	}
+}
+
 // TestCallExec compiles a 2-function module where f(x) = g(x) + 1 and g(x) = 2x,
 // then executes f's register-ABI internal entry under qemu — exercising an
 // inter-function call (BL relocation + reg-ABI arg/result passing).

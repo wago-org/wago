@@ -16,12 +16,17 @@ const regNone Reg = 0xFF
 // node, its storage inherits the node's result type so downstream consumers
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
+	local, hasLocal := gcLocalProvenance(e)
 	f.regUser[r] = e
 	if e.kind == ekDeferred && e.typ != mtNone {
 		e.st.typ = e.typ
 	}
 	e.kind = ekValue
-	e.st.kind, e.st.reg = stReg, r
+	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
+	e.st.idx, e.st.slot, e.st.gcLocal = 0, 0, 0
+	if hasLocal {
+		markGCLocalProvenance(e, local)
+	}
 }
 
 // pushReg pushes a register-resident value of the given type onto the operand

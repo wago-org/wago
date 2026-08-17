@@ -108,6 +108,19 @@ func TestLockedPluginResolutionRequiresPinnedVersionsBeforeBuilding(t *testing.T
 	}
 }
 
+func TestVerifySourceChecksumsReconcilesGeneratedModule(t *testing.T) {
+	buildDir := t.TempDir()
+	// Go 1.26 normalizes a two-component go directive to three components and
+	// otherwise rejects `go list` before it can report the selected modules.
+	// Generated plugin modules must be reconciled before checksum verification.
+	if err := os.WriteFile(filepath.Join(buildDir, "go.mod"), []byte("module wago.local/build\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifySourceChecksums(buildDir, nil); err != nil {
+		t.Fatalf("verifySourceChecksums: %v", err)
+	}
+}
+
 func TestLockedPluginResolutionRejectsPreexistingSourceReplace(t *testing.T) {
 	const plugin = "github.com/acme/plugin"
 	manifestDir := t.TempDir()

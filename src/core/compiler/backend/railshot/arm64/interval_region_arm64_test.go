@@ -49,29 +49,52 @@ func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
 }
 
 func TestEntryInitializedLocalSkipsZeroArm64(t *testing.T) {
-	saved := entryInitElisionEnabled
-	defer func() { entryInitElisionEnabled = saved }()
 	body := []byte{
 		0x01, 0x01, 0x7f, // one i32 local
 		0x41, 0x07, 0x21, 0x00, // local[0] = 7
 		0x20, 0x00, 0x0b, // return local[0]
 	}
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
-	entryInitElisionEnabled = true
-	on := compileWithStats(t, m, false).Funcs[0]
+	var onStats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &onStats}); err != nil {
+		t.Fatal(err)
+	}
+	on := onStats.Funcs[0]
 	if got := on.Peephole["entry-init-elide"]; got != 1 {
 		t.Fatalf("entry-init-elide = %d, want 1 (all: %v)", got, on.Peephole)
 	}
 	if got := runArm64(t, m); got != 7 {
 		t.Fatalf("result = %d, want 7", got)
 	}
-	entryInitElisionEnabled = false
-	off := compileWithStats(t, m, false).Funcs[0]
+	var offStats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &offStats, Optimizations: map[string]bool{"entry-init-elide": false}}); err != nil {
+		t.Fatal(err)
+	}
+	off := offStats.Funcs[0]
 	if got := off.Peephole["entry-init-elide"]; got != 0 {
 		t.Fatalf("disabled entry-init-elide = %d, want 0", got)
 	}
-	if got := runArm64(t, m); got != 7 {
-		t.Fatalf("disabled result = %d, want 7", got)
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"entry-init-elide": false}})
+	if err != nil || got != 7 {
+		t.Fatalf("disabled result = %d, err = %v; want 7", got, err)
+	}
+}
+
+func TestStructuredDefiniteAssignmentExecArm64(t *testing.T) {
+	body := []byte{
+		0x01, 0x01, 0x7f, // one i32 local at index 1
+		0x20, 0x00, 0x04, 0x40, // local.get 0; if
+		0x41, 0x0b, 0x21, 0x01, //   local[1] = 11
+		0x05, 0x41, 0x16, 0x21, 0x01, 0x0b, // else; local[1] = 22; end
+		0x20, 0x01, 0x0b, // return local[1]
+	}
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	for _, tc := range []struct {
+		arg, want uint64
+	}{{0, 22}, {1, 11}} {
+		if got := runArm64u(t, m, tc.arg); got != tc.want {
+			t.Fatalf("arg %d: result = %d, want %d", tc.arg, got, tc.want)
+		}
 	}
 }
 

@@ -3,6 +3,8 @@
 package amd64
 
 import (
+	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -78,6 +80,105 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 		if _, ok := (&fn{immutableTables: hints[i].immutableTables}).immutableTable(0); ok {
 			t.Fatalf("function %d specialized an externally mutable exported table", i)
 		}
+	}
+}
+
+func TestImmutableLocalTableIndirectResultResidency(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x02, 0x01, 0x02}
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(i32, i32))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x00, 0x41, 0x01, 0x71, 0x11, 0x00, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount(), nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hints[0].immutableIndirectTarget || !hints[1].immutableIndirectTarget || !hints[2].immutableIndirectTarget {
+		t.Fatalf("immutable target facts = %t/%t/%t, want false/true/true", hints[0].immutableIndirectTarget, hints[1].immutableIndirectTarget, hints[2].immutableIndirectTarget)
+	}
+	compile := func(on bool) *ModuleStats {
+		var stats ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"call-result-residency": on, "inline": false}}); err != nil {
+			t.Fatal(err)
+		}
+		return &stats
+	}
+	off, on := compile(false), compile(true)
+	if got := on.Funcs[0].Peephole["call-result-indirect-resident"]; got != 1 {
+		t.Fatalf("indirect resident results = %d, want 1", got)
+	}
+	if got := on.Funcs[0].CallTraffic.IndirectResultMoves; got != 0 {
+		t.Fatalf("resident indirect result moves = %d, want 0", got)
+	}
+	if got := off.Funcs[0].CallTraffic.IndirectResultMoves; got != 1 {
+		t.Fatalf("fallback indirect result moves = %d, want 1", got)
+	}
+	serial, err := CompileModuleWith(m, CompileOptions{Workers: 1, Optimizations: map[string]bool{"call-result-residency": true, "inline": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parallel, err := CompileModuleWith(m, CompileOptions{Workers: 2, Optimizations: map[string]bool{"call-result-residency": true, "inline": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(serial.Code, parallel.Code) {
+		t.Fatal("serial and parallel immutable-indirect code differ")
+	}
+	out, err := runIndirectTail(t, m, []int{1, 2}, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint32(out); got != 6 {
+		t.Fatalf("even target result = %d, want 6", got)
+	}
+	out, err = runIndirectTail(t, m, []int{1, 2}, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint32(out); got != 8 {
+		t.Fatalf("odd target result = %d, want 8", got)
+	}
+}
+
+func TestImmutableLocalTableIndirectSelfTargetKeepsResultCopy(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x02, 0x00, 0x01}
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(i32, i32))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x02})),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"call-result-residency": true, "inline": false}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stats.Funcs[1].Peephole["call-result-indirect-resident"]; got != 0 {
+		t.Fatalf("self-capable indirect resident results = %d, want 0", got)
+	}
+	if got := stats.Funcs[1].CallTraffic.IndirectResultMoves; got != 1 {
+		t.Fatalf("self-capable indirect result moves = %d, want 1", got)
 	}
 }
 

@@ -9,9 +9,9 @@ func TestValueFactsRemainPackedAndIntersectAtMerge(t *testing.T) {
 	if got := unsafe.Sizeof(ValueFacts(0)); got != 1 {
 		t.Fatalf("ValueFacts size = %d, want 1", got)
 	}
-	left := ValueFactUpper32Zero | ValueFactBoolean | ValueFactSignExt8
-	right := ValueFactUpper32Zero | ValueFactSignExt8 | ValueFactSignExt16
-	if got, want := MergeValueFacts(left, right), ValueFactUpper32Zero|ValueFactSignExt8; got != want {
+	left := ValueFactUpper32Zero | ValueFactBoolean | ValueFactSignExt8 | ValueFactI31
+	right := ValueFactUpper32Zero | ValueFactSignExt8 | ValueFactSignExt16 | ValueFactI31
+	if got, want := MergeValueFacts(left, right), ValueFactUpper32Zero|ValueFactSignExt8|ValueFactI31; got != want {
 		t.Fatalf("merge = %#x, want %#x", got, want)
 	}
 }

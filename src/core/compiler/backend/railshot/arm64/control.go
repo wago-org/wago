@@ -42,25 +42,26 @@ const (
 
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
-	kind            ctrlKind
-	height          int // operand depth at the frame's result base
-	paramN, resultN int
-	branchN         int   // values transferred on a branch to this label
-	loopStart       int   // cfLoop: backward target byte offset
-	ends            []int // cfBlock/cfIf: forward B sites to patch to end
-	condEnds        []int // cfBlock/cfIf: forward B.cond sites (imm19) to patch to end (empty-edge br_if fast path)
-	elseSite        int   // cfIf: the false-edge B.cond site (to else/end), -1 once patched
-	hasElse         bool
-	entryUnreach    bool
-	endReachable    bool
-	regMerge1       bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
-	res0            machineType // first result's machine type (valid when resultN >= 1)
-	baseTypes       []machineType
-	paramTypes      []machineType
-	resultTypes     []machineType
-	baseGCRoots     []bool
-	paramGCRoots    []bool
-	resultGCRoots   []bool
+	kind              ctrlKind
+	height            int // operand depth at the frame's result base
+	paramN, resultN   int
+	branchN           int   // values transferred on a branch to this label
+	loopStart         int   // cfLoop: backward target byte offset
+	ends              []int // cfBlock/cfIf: forward B sites to patch to end
+	condEnds          []int // cfBlock/cfIf: forward B.cond sites (imm19) to patch to end (empty-edge br_if fast path)
+	elseSite          int   // cfIf: the false-edge B.cond site (to else/end), -1 once patched
+	hasElse           bool
+	entryUnreach      bool
+	endReachable      bool
+	regMerge1         bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
+	mergeRegResidency bool        // summary-admitted forward block/if: pinned locals may retain dedicated registers at the end merge
+	res0              machineType // first result's machine type (valid when resultN >= 1)
+	baseTypes         []machineType
+	paramTypes        []machineType
+	resultTypes       []machineType
+	baseGCRoots       []bool
+	paramGCRoots      []bool
+	resultGCRoots     []bool
 
 	// cfLoop only (P6.2 foundation): the fixed scratch-arena range containing
 	// locals set anywhere in the loop body. loopScanExact is required before using
@@ -370,6 +371,7 @@ func (f *fn) frameDepthTypes(base, suffix []machineType) []machineType {
 // all registers freed. v128 values occupy two adjacent 8-byte slots.
 func (f *fn) flush() {
 	f.stats.addFlush()
+	f.invalidateGCResolvedObject()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
@@ -673,7 +675,11 @@ func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
 	if fr.kind == cfFunc {
 		return
 	}
-	f.convergeEdgeTo(&fr.branchState)
+	if fr.mergeRegResidency {
+		f.convergeResidentEdgeTo(&fr.branchState)
+	} else {
+		f.convergeEdgeTo(&fr.branchState)
+	}
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
@@ -962,8 +968,13 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.ctrl = append(f.ctrl, fr)
 		return nil
 	}
+	fr.mergeRegResidency = kind != cfLoop && f.hasMergeRegion(r.Offset())
 	if kind == cfIf {
-		f.convergeEdgeTo(&fr.entryState) // header snapshot: else entry / cond-false edge state
+		if fr.mergeRegResidency {
+			f.convergeResidentEdgeTo(&fr.entryState)
+		} else {
+			f.convergeEdgeTo(&fr.entryState) // header snapshot: else entry / cond-false edge state
+		}
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
@@ -1529,7 +1540,11 @@ func (f *fn) opElse() error {
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
 		f.recordGCBranchResults(fr, fr.resultN)
-		f.convergeEdgeTo(&fr.branchState)
+		if fr.mergeRegResidency {
+			f.convergeResidentEdgeTo(&fr.branchState)
+		} else {
+			f.convergeEdgeTo(&fr.branchState)
+		}
 		if fr.regMerge1 {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
@@ -1548,7 +1563,7 @@ func (f *fn) opElse() error {
 	return nil
 }
 
-func (f *fn) opEnd() error {
+func (f *fn) opEnd(r *wasm.Reader) error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
 	// ctrl backing is reused across functions. Clear the popped slot so its
@@ -1597,7 +1612,12 @@ func (f *fn) opEnd() error {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
-			f.convergeEdgeTo(&fr.branchState)
+			deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, nil)
+			if fr.mergeRegResidency {
+				f.convergeResidentEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			} else {
+				f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			}
 		}
 		if fr.regMerge1 {
 			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
@@ -1617,17 +1637,34 @@ func (f *fn) opEnd() error {
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
 		// value in mergeReg), a stub on this edge converges it. The then
 		// fall-through jumps over the stub.
-		needLoads := false
+		deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, fr.entryState)
+		needConvergeCode := false
 		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
 			for x := 0; x < f.nLocals; x++ {
-				if _, _, ok := f.pinReg(x); ok && fr.branchState[x] == lsStackReg && fr.entryState[x] == lsMem {
-					needLoads = true
+				reg, isFloat, ok := f.pinReg(x)
+				if !ok {
+					continue
+				}
+				target, source := fr.branchState[x], fr.entryState[x]
+				if (target == lsStackReg || target == lsReg) && source == lsMem {
+					dead := deadGP.has(reg)
+					if isFloat {
+						dead = deadFP.has(reg)
+					}
+					if target == lsStackReg && dead {
+						continue
+					}
+					needConvergeCode = true
+					break
+				}
+				if fr.mergeRegResidency && target == lsMem && source == lsReg {
+					needConvergeCode = true
 					break
 				}
 			}
 		}
 		skip := -1
-		if (fr.regMerge1 || needLoads) && fallthroughReachable {
+		if (fr.regMerge1 || needConvergeCode) && fallthroughReachable {
 			skip = f.a.Branch()
 		}
 		f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
@@ -1642,7 +1679,11 @@ func (f *fn) opEnd() error {
 		// Converge the cond-false edge from the header snapshot into the end state
 		// (records it when this is the only end edge).
 		f.setLocalsState(fr.entryState)
-		f.convergeEdgeTo(&fr.branchState)
+		if fr.mergeRegResidency {
+			f.convergeResidentEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+		} else {
+			f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+		}
 		if skip != -1 {
 			f.a.PatchBranch26(skip, f.a.Len()) // the skip is an unconditional B (imm26)
 		}

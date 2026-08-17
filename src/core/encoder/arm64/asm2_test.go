@@ -335,6 +335,8 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"sshr v3.2d,v4.2d,#63", func(a *Asm) { a.NeonSshrD(X3, X4, 63) }, 0x4f410483},
 		{"sli v3.4s,v4.4s,#24", func(a *Asm) { a.NeonSliS(X3, X4, 24) }, 0x6f385483},
 		{"rev32 v3.8h,v4.8h", func(a *Asm) { a.NeonRev32H(X3, X4) }, 0x6e600883},
+		{"zip1 v3.8h,v4.8h,v5.8h", func(a *Asm) { a.NeonZip1H(X3, X4, X5) }, 0x4e453883},
+		{"zip2 v3.8h,v4.8h,v5.8h", func(a *Asm) { a.NeonZip2H(X3, X4, X5) }, 0x4e457883},
 		{"zip1 v3.2d,v4.2d,v5.2d", func(a *Asm) { a.NeonZip1D(X3, X4, X5) }, 0x4ec53883},
 		{"zip2 v3.2d,v4.2d,v5.2d", func(a *Asm) { a.NeonZip2D(X3, X4, X5) }, 0x4ec57883},
 		{"ext v0.16b,v1.16b,v2.16b,#13", func(a *Asm) { a.NeonExt16b(X0, X1, X2, 13) }, 0x6e026820},

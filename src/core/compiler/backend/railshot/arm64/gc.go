@@ -4,11 +4,14 @@ package arm64
 
 import (
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // GC helpers share the synchronous parked-host dispatch ABI with amd64. Keep
@@ -29,6 +32,7 @@ const (
 	gcStructFinalCastGet       uint32 = 12
 	gcStructFinalCastArrayLen  uint32 = 13
 	gcFuncRefTest              uint32 = 14
+	gcStructReserveDead        uint32 = 15
 	gcArrayAllocDefault        uint32 = 16
 	gcArrayGet                 uint32 = 17
 	gcArrayGetS                uint32 = 18
@@ -45,6 +49,11 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayFillNoBarrier       uint32 = 35
+	gcArrayCheckDefault        uint32 = 36
+	gcArrayCheckUniform        uint32 = 37
+	gcArrayCheckData           uint32 = 38
+	gcArrayCheckFixed          uint32 = 39
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -53,6 +62,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.prepareGCResolvedFB(sub)
 	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
 		return f.emitGCArray(sub, r)
@@ -74,12 +84,17 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 					matched = 1
 				}
 				f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
+				f.markTopBooleanFact()
 				return nil
 			}
 		}
 		_, targetIsFunc := f.m.TypeFunc(uint32(heap))
 		if f.gcTypeSubtypingRefTest && heap >= 0 && targetIsFunc {
-			return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
+			if err := f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable); err != nil {
+				return err
+			}
+			f.markTopBooleanFact()
+			return nil
 		}
 		if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
 			value := f.materialize(f.popValue())
@@ -98,6 +113,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.a.MovImm32(value, 0)
 			}
 			f.pushReg(value, mtI32)
+			f.markTopBooleanFact()
 			return nil
 		}
 		if !f.gcStructHelpers {
@@ -111,7 +127,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: nullableFlag})
 		f.pushValue(storage{kind: stConst, typ: mtI32}) // ref.test does not admit exact heap markers
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+		if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+			return err
+		}
+		f.markTopBooleanFact()
+		return nil
 	}
 	if sub == 24 || sub == 25 { // br_on_cast / br_on_cast_fail
 		return f.emitGCBranchCast(sub, r)
@@ -128,6 +148,18 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 				return err
 			}
+			if f.policy.EnabledOption(optGCNativeFinalCast) && !f.policy.CompactNative {
+				if f.directGCFinalType(uint32(heap)) {
+					f.stats.peep("gc-native-final-cast")
+					if err := f.emitNativeFinalCast(uint32(heap), sub == 23); err != nil {
+						return err
+					}
+					if sub == 22 {
+						f.markTopNonZeroFact()
+					}
+					return nil
+				}
+			}
 		}
 		if f.gcTypeSubtypingRefTest && heap >= 0 {
 			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc {
@@ -136,6 +168,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				ref := f.materialize(value)
 				f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, exactTarget, trapCastFailure)
 				f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+				if sub == 22 {
+					f.markTopNonZeroFact()
+				}
 				return nil
 			}
 		}
@@ -166,6 +201,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.a.PatchBranch19(done, f.a.Len())
 			}
 			f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+			if sub == 22 {
+				f.markTopNonZeroFact()
+			}
 			return nil
 		}
 		if !f.gcStructHelpers {
@@ -183,34 +221,70 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
-		return f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{anyref})
+		if err := f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{anyref}); err != nil {
+			return err
+		}
+		if sub == 22 {
+			f.markTopNonZeroFact()
+		}
+		return nil
 	}
 	if sub == 26 || sub == 27 {
 		if !f.gcStructHelpers {
 			return fmt.Errorf("arm64: extern conversion requires GC helpers")
 		}
+		facts := f.s.back().st.facts
+		var err error
 		if sub == 26 {
-			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+			err = f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+		} else {
+			err = f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 		}
-		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
+		if err != nil {
+			return err
+		}
+		if facts.Has(factNonZero) {
+			f.markTopNonZeroFact()
+		}
+		return nil
 	}
 	if sub >= 28 && sub <= 30 {
-		value := f.materialize(f.popValue())
+		original := f.popValue()
+		facts := original.st.facts
+		value := f.materialize(original)
 		switch sub {
 		case 28: // ref.i31
 			f.a.LslImm(value, value, 1, true)
 			if !f.a.OrrImm32(value, value, 1) {
 				panic("arm64: i31 tag immediate is not encodable")
 			}
-			f.pushReg(value, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+			result := f.pushReg(value, mtI64)
+			result.st.gcRoot = f.tracksGCFrameRoots()
+			if f.opt(optValueFacts) {
+				result.st.facts |= factNonZero | factI31
+			}
 		case 29: // i31.get_s
-			f.trapIfZero(value, false, true, trapNullReference)
+			if f.opt(optValueFacts) && facts.Has(factNonZero) {
+				f.stats.peep("gc-null-check-elide")
+			} else {
+				f.trapIfZero(value, false, true, trapNullReference)
+			}
 			f.a.AsrImm(value, value, 1, true)
-			f.pushReg(value, mtI32)
+			result := f.pushReg(value, mtI32)
+			if f.opt(optValueFacts) {
+				result.st.facts |= factUpper32Zero
+			}
 		case 30: // i31.get_u
-			f.trapIfZero(value, false, true, trapNullReference)
+			if f.opt(optValueFacts) && facts.Has(factNonZero) {
+				f.stats.peep("gc-null-check-elide")
+			} else {
+				f.trapIfZero(value, false, true, trapNullReference)
+			}
 			f.a.LsrImm(value, value, 1, true)
-			f.pushReg(value, mtI32)
+			result := f.pushReg(value, mtI32)
+			if f.opt(optValueFacts) {
+				result.st.facts |= factUpper32Zero
+			}
 		}
 		return nil
 	}
@@ -227,6 +301,22 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: struct.new type %d is unavailable", typeIndex)
 		}
+		nestedPayloadSafe := true
+		for _, field := range st.Comp.Fields {
+			if field.Storage().Val().Kind() == wasm.ValRef {
+				nestedPayloadSafe = false
+				break
+			}
+		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, nestedPayloadSafe); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, len(st.Comp.Fields), deadUse); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
+		knownField, consumeField := f.consumeKnownGCStructGet(typeIndex, st, false, r)
+		consumeCast := !consumeField && f.consumeExactGCConstructorCast(typeIndex, r)
 		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
 		for _, field := range st.Comp.Fields {
 			valueType := field.Storage().Val()
@@ -238,18 +328,38 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCStructGet(knownField, consumeField)
+		f.finishExactGCConstructorCast(consumeCast)
+		return nil
 	case 1: // struct.new_default
 		typeIndex, err := r.U32()
 		if err != nil {
 			return err
 		}
-		if _, ok := f.stagedStructType(typeIndex); !ok {
+		st, ok := f.stagedStructType(typeIndex)
+		if !ok {
 			return fmt.Errorf("arm64: struct.new_default type %d is unavailable", typeIndex)
 		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCStructConstructor(typeIndex, 0, deadUse); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
+		knownField, consumeField := f.consumeKnownGCStructGet(typeIndex, st, true, r)
+		consumeCast := !consumeField && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCStructGet(knownField, consumeField)
+		f.finishExactGCConstructorCast(consumeCast)
+		return nil
 	case 2, 3, 4:
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -277,6 +387,24 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("arm64: plain struct.get cannot access a packed field")
 		}
+		if f.policy.EnabledOption(optGCNativeScalarGet) && !f.policy.CompactNative {
+			if layout, scalar, layoutOK := f.directGCStructLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + uint64(scalar.size)
+				if required <= math.MaxInt32 {
+					f.stats.peep("gc-native-final-struct-scalar-get")
+					return f.emitNativeFinalStructScalarGet(typeIndex, layout.Offset, uint32(required), true, sub, scalar)
+				}
+			}
+		}
+		if sub == 2 && f.policy.EnabledOption(optGCNativeRefGet) && !f.policy.CompactNative {
+			if layout, layoutOK := f.directGCStructRefLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + 4
+				if required <= math.MaxInt32 {
+					f.stats.peep("gc-native-final-struct-ref-get")
+					return f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), true, field.Storage().Val())
+				}
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -297,6 +425,29 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		valueType := field.Storage().Val()
 		if field.Storage().Packed() {
 			valueType = wasm.I32
+		}
+		if f.policy.EnabledOption(optGCNativeScalarSet) && !f.policy.CompactNative {
+			if layout, scalar, layoutOK := f.directGCStructLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + uint64(scalar.size)
+				if required <= math.MaxInt32 {
+					f.stats.peep("gc-native-final-struct-scalar-set")
+					return f.emitNativeFinalStructScalarSet(typeIndex, layout.Offset, uint32(required), scalar)
+				}
+			}
+		}
+		if refKind := barrierFreeReferenceStore(f.s.back()); f.policy.EnabledOption(optGCNativeRefSet) && !f.policy.CompactNative && refKind != barrierFreeRefUnknown {
+			if layout, layoutOK := f.directGCStructRefLayout(typeIndex, fieldIndex); layoutOK {
+				required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + 4
+				if required <= math.MaxInt32 {
+					if refKind == barrierFreeRefNull {
+						f.stats.peep("gc-native-final-struct-ref-set-null")
+					} else {
+						f.stats.peep("gc-native-final-struct-ref-set-i31")
+					}
+					f.stats.peep("gc-barrier-elide")
+					return f.emitNativeFinalStructRefSet(typeIndex, layout.Offset, uint32(required), refKind)
+				}
+			}
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
@@ -325,9 +476,24 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); valueType.Kind() != wasm.ValRef && deadUse != checkedDeadGCNone {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+			if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
+		knownLength, consumeLength := f.consumeKnownGCArrayLen(r)
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
+		return nil
 	case 7: // array.new_default
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -336,9 +502,24 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if _, ok := f.stagedArrayType(typeIndex); !ok {
 			return fmt.Errorf("arm64: array.new_default type %d is unavailable", typeIndex)
 		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+			if err := f.callGCStructHelper(gcArrayCheckDefault, []wasm.ValType{wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
+		knownLength, consumeLength := f.consumeKnownGCArrayLen(r)
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocDefault, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
+		return nil
 	case 8: // array.new_fixed
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -356,6 +537,13 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		if deadUse := f.checkedDeadGCConstructorUse(r, valueType.Kind() != wasm.ValRef); deadUse != checkedDeadGCNone {
+			if err := f.reserveDeadGCFixedArrayConstructor(typeIndex, count, deadUse); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
 		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
 			if wasm.EqualValType(valueType, wasm.V128) {
@@ -364,6 +552,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			}
 			return fmt.Errorf("arm64: array.new_fixed count %d exceeds helper slot bound", count)
 		}
+		consumeLength := f.policy.EnabledOption(optGCFixedArrayLen) && consumeImmediateGCArrayLen(r)
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
 			params = append(params, valueType)
@@ -372,7 +562,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocFixed, params, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCArrayLen(count, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
+		return nil
 	case 9, 10: // array.new_data / array.new_elem
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -395,10 +590,31 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Val().Kind() == wasm.ValRef {
 			return fmt.Errorf("arm64: array.new_data type %d has reference storage", typeIndex)
 		}
+		knownLength, consumeLength := uint32(0), false
+		if sub == 9 {
+			knownLength, consumeLength = f.consumeKnownGCArrayLen(r)
+		}
+		consumeCast := !consumeLength && f.consumeExactGCConstructorCast(typeIndex, r)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(segmentIndex)})
+		deadUse := checkedDeadGCNone
+		if sub == 9 {
+			deadUse = f.checkedDeadGCConstructorUse(r, true)
+		}
+		if deadUse != checkedDeadGCNone {
+			if err := f.callGCStructHelper(gcArrayCheckData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+				return err
+			}
+			f.finishCheckedDeadGCConstructor(r, deadUse)
+			return nil
+		}
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		f.finishKnownGCArrayLen(knownLength, consumeLength)
+		f.finishExactGCConstructorCast(consumeCast)
+		return nil
 	case 11, 12, 13:
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -422,6 +638,16 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("arm64: plain array.get cannot access packed storage")
 		}
+		if f.policy.EnabledOption(optGCNativeArrayGet) && !f.policy.CompactNative {
+			if scalar, ok := f.directGCArrayLayout(typeIndex); ok {
+				f.stats.peep("gc-native-final-array-scalar-get")
+				return f.emitNativeFinalArrayScalarGet(typeIndex, sub, scalar)
+			}
+		}
+		if sub == 11 && f.policy.EnabledOption(optGCNativeRefGet) && !f.policy.CompactNative && f.directGCArrayRefLayout(typeIndex) {
+			f.stats.peep("gc-native-final-array-ref-get")
+			return f.emitNativeFinalArrayRefGet(typeIndex, resultType)
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
@@ -437,6 +663,21 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		valueType := field.Storage().Val()
 		if field.Storage().Packed() {
 			valueType = wasm.I32
+		}
+		if f.policy.EnabledOption(optGCNativeArraySet) && !f.policy.CompactNative {
+			if scalar, ok := f.directGCArrayLayout(typeIndex); ok {
+				f.stats.peep("gc-native-final-array-scalar-set")
+				return f.emitNativeFinalArrayScalarSet(typeIndex, scalar)
+			}
+		}
+		if refKind := barrierFreeReferenceStore(f.s.back()); f.policy.EnabledOption(optGCNativeRefSet) && !f.policy.CompactNative && refKind != barrierFreeRefUnknown && f.directGCArrayRefLayout(typeIndex) {
+			if refKind == barrierFreeRefNull {
+				f.stats.peep("gc-native-final-array-ref-set-null")
+			} else {
+				f.stats.peep("gc-native-final-array-ref-set-i31")
+			}
+			f.stats.peep("gc-barrier-elide")
+			return f.emitNativeFinalArrayRefSet(typeIndex, refKind)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -457,9 +698,18 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		helper := uint32(gcArrayFill)
+		if field.Storage().Val().Kind() == wasm.ValRef && f.opt(optGCNativeRefSet) {
+			lengthRoot := f.s.back()
+			valueRoot := baseOfValentBlock(lengthRoot).prev
+			if barrierFreeReferenceStore(valueRoot) != barrierFreeRefUnknown {
+				helper = gcArrayFillNoBarrier
+				f.stats.peep("gc-bulk-barrier-elide")
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayFill, []wasm.ValType{object, wasm.I32, valueType, wasm.I32, wasm.I32}, nil)
+		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, valueType, wasm.I32, wasm.I32}, nil)
 	case 17:
 		dstType, err := r.U32()
 		if err != nil {
@@ -510,6 +760,165 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	}
 }
 
+// consumeImmediateGCArrayLen commits only the exact two-instruction producer /
+// consumer shape. Reading through a copied Reader makes every mismatch and
+// malformed suffix leave the production reader untouched for ordinary parsing.
+func consumeImmediateGCArrayLen(r *wasm.Reader) bool {
+	look := *r
+	op, err := look.Byte()
+	if err != nil || op != 0xfb {
+		return false
+	}
+	sub, err := look.U32()
+	if err != nil || sub != 15 {
+		return false
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("arm64: copied GC lookahead produced an invalid reader offset")
+	}
+	return true
+}
+
+func (f *fn) consumeKnownGCArrayLen(r *wasm.Reader) (uint32, bool) {
+	if !f.policy.EnabledOption(optGCFixedArrayLen) {
+		return 0, false
+	}
+	length := f.s.back()
+	if length == nil || length.kind != ekValue || length.st.kind != stConst || length.st.typ != mtI32 {
+		return 0, false
+	}
+	if !consumeImmediateGCArrayLen(r) {
+		return 0, false
+	}
+	return uint32(length.st.cval), true
+}
+
+func (f *fn) finishKnownGCArrayLen(length uint32, consume bool) {
+	if !consume {
+		return
+	}
+	f.dropValue()
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(length)})
+	f.stats.peep("gc-known-array-len")
+	f.stats.peep("gc-array-len-elide")
+}
+
+type knownGCStructField struct {
+	value int64
+	typ   machineType
+}
+
+func (f *fn) consumeKnownGCStructGet(typeIndex uint32, st wasm.SubType, defaulted bool, r *wasm.Reader) (knownGCStructField, bool) {
+	if !f.policy.EnabledOption(optGCConstStructGet) {
+		return knownGCStructField{}, false
+	}
+	look := *r
+	op, err := look.Byte()
+	if err != nil || op != 0xfb {
+		return knownGCStructField{}, false
+	}
+	sub, err := look.U32()
+	if err != nil || sub < 2 || sub > 4 {
+		return knownGCStructField{}, false
+	}
+	accessType, err := look.U32()
+	if err != nil || accessType != typeIndex {
+		return knownGCStructField{}, false
+	}
+	fieldIndex, err := look.U32()
+	if err != nil || fieldIndex >= uint32(len(st.Comp.Fields)) {
+		return knownGCStructField{}, false
+	}
+	field := st.Comp.Fields[fieldIndex]
+	storageType := field.Storage()
+	if (sub == 2) == storageType.Packed() {
+		return knownGCStructField{}, false
+	}
+	known := knownGCStructField{typ: mtI32}
+	if !storageType.Packed() {
+		valueType := storageType.Val()
+		if !wasm.EqualValType(valueType, wasm.I32) && !wasm.EqualValType(valueType, wasm.I64) {
+			return knownGCStructField{}, false
+		}
+		known.typ = mtOf(valueType)
+	}
+	if !defaulted {
+		roots := f.rootsBottomToTop()
+		firstField := len(roots) - len(st.Comp.Fields)
+		if firstField < 0 {
+			return knownGCStructField{}, false
+		}
+		initializer := roots[firstField+int(fieldIndex)]
+		if initializer.kind != ekValue || initializer.st.kind != stConst {
+			return knownGCStructField{}, false
+		}
+		known.value = initializer.st.cval
+	}
+	if storageType.Packed() {
+		switch storageType.Pack() {
+		case wasm.PackI8:
+			if sub == 3 {
+				known.value = int64(int32(int8(known.value)))
+			} else {
+				known.value = int64(uint8(known.value))
+			}
+		case wasm.PackI16:
+			if sub == 3 {
+				known.value = int64(int32(int16(known.value)))
+			} else {
+				known.value = int64(uint16(known.value))
+			}
+		default:
+			return knownGCStructField{}, false
+		}
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("arm64: copied GC struct lookahead produced an invalid reader offset")
+	}
+	return known, true
+}
+
+func (f *fn) finishKnownGCStructGet(known knownGCStructField, consume bool) {
+	if !consume {
+		return
+	}
+	f.dropValue()
+	f.pushValue(storage{kind: stConst, typ: known.typ, cval: known.value})
+	f.stats.peep("gc-known-struct-get")
+	f.stats.peep("gc-struct-get-elide")
+}
+
+func (f *fn) consumeExactGCConstructorCast(typeIndex uint32, r *wasm.Reader) bool {
+	if !f.policy.EnabledOption(optGCConstructorCast) {
+		return false
+	}
+	look := *r
+	op, err := look.Byte()
+	if err != nil || op != 0xfb {
+		return false
+	}
+	sub, err := look.U32()
+	if err != nil || (sub != 22 && sub != 23) {
+		return false
+	}
+	target, _, err := readRefHeapTypeImmediate(&look)
+	if err != nil || target != int64(typeIndex) {
+		return false
+	}
+	if err := r.JumpTo(look.Offset()); err != nil {
+		panic("arm64: copied GC constructor-cast lookahead produced an invalid reader offset")
+	}
+	return true
+}
+
+func (f *fn) finishExactGCConstructorCast(consume bool) {
+	if !consume {
+		return
+	}
+	f.stats.peep("gc-ref-cast-elide")
+	f.stats.peep("gc-constructor-cast")
+}
+
 func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
 	st, ok := f.stagedStructType(typeIndex)
 	if !ok || !st.Final {
@@ -544,6 +953,26 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 	if !ok || accessType != typeIndex || (sub == 2) == field.Storage().Packed() {
 		_ = r.JumpTo(start)
 		return false, nil
+	}
+	if f.policy.EnabledOption(optGCNativeScalarGet) && !f.policy.CompactNative {
+		if layout, scalar, layoutOK := f.directGCStructLayout(typeIndex, fieldIndex); layoutOK {
+			required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + uint64(scalar.size)
+			if required <= math.MaxInt32 {
+				f.stats.peep("final-cast-struct-get-fuse")
+				f.stats.peep("gc-native-final-struct-scalar-get")
+				return true, f.emitNativeFinalStructScalarGet(typeIndex, layout.Offset, uint32(required), nullable, sub, scalar)
+			}
+		}
+	}
+	if sub == 2 && f.policy.EnabledOption(optGCNativeRefGet) && !f.policy.CompactNative {
+		if layout, layoutOK := f.directGCStructRefLayout(typeIndex, fieldIndex); layoutOK {
+			required := uint64(gc.PayloadOffset) + uint64(layout.Offset) + 4
+			if required <= math.MaxInt32 {
+				f.stats.peep("final-cast-struct-get-fuse")
+				f.stats.peep("gc-native-final-struct-ref-get")
+				return true, f.emitNativeFinalStructRefGet(typeIndex, layout.Offset, uint32(required), nullable, field.Storage().Val())
+			}
+		}
 	}
 	resultType := field.Storage().Val()
 	if field.Storage().Packed() {
@@ -584,6 +1013,11 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 		_ = r.JumpTo(start)
 		return false, nil
 	}
+	if f.policy.EnabledOption(optGCNativeFinalArrayLen) && !f.policy.CompactNative {
+		f.stats.peep("final-cast-array-len-fuse")
+		f.stats.peep("gc-native-final-array-len")
+		return true, f.emitNativeFinalCastArrayLen(typeIndex, nullable)
+	}
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 	if nullable {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
@@ -593,6 +1027,452 @@ func (f *fn) tryFuseFinalCastArrayLen(typeIndex uint32, nullable bool, r *wasm.R
 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
 	f.stats.peep("final-cast-array-len-fuse")
 	return true, f.callGCStructHelper(gcStructFinalCastArrayLen, []wasm.ValType{anyref, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+}
+
+// emitNativeFinalCastArrayLen resolves one compact reference through the
+// versioned collector native view, proves exact equality with the statically
+// final array type, and loads its length. Instantiation validates the immutable
+// view ABI and local type map; mutable collector backing is reloaded here.
+//
+// The checks deliberately mirror the Go helper's observable order: null first,
+// then i31/handle/range/type validation. ref.cast_null accepts null, but the
+// immediately fused array.len still reports a null-reference trap.
+func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error {
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.HeaderSize, nullable)
+	if err != nil {
+		return err
+	}
+	result := object
+	if f.gcResolved.valid && f.gcResolved.reg == object {
+		// The cached raw address must remain intact for a following read. Use a
+		// separate result only in that bounded case; uncached single reads retain
+		// the existing in-place load.
+		result = f.allocReg(maskOf(object))
+	}
+	f.ld32(result, object, 8)
+	if result != object {
+		f.release(object)
+	}
+	f.pushReg(result, mtI32)
+	return nil
+}
+
+func (f *fn) emitNativeFinalStructScalarGet(typeIndex, fieldOffset, required uint32, nullable bool, sub uint32, scalar directGCScalar) error {
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, nullable)
+	if err != nil {
+		return err
+	}
+	disp := int32(gc.PayloadOffset + fieldOffset)
+	if scalar.typ.isFloat() {
+		result := f.allocFReg(0)
+		f.fld(result, object, disp, scalar.typ == mtF64)
+		f.release(object)
+		f.pushFReg(result, scalar.typ)
+		return nil
+	}
+	result := f.allocReg(maskOf(object))
+	f.a.LoadIdx(result, object, ZR, disp, scalar.size, sub == 3, scalar.typ == mtI64)
+	f.release(object)
+	value := f.pushReg(result, scalar.typ)
+	if f.opt(optValueFacts) {
+		value.st.facts = shared.ValueFactsForIntLoad(scalar.size, sub == 3, scalar.typ == mtI64)
+	}
+	return nil
+}
+
+func (f *fn) emitNativeFinalStructRefGet(typeIndex, fieldOffset, required uint32, nullable bool, resultType wasm.ValType) error {
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, nullable)
+	if err != nil {
+		return err
+	}
+	result := object
+	if f.gcResolved.valid && f.gcResolved.reg == object {
+		result = f.allocReg(maskOf(object))
+	}
+	f.a.LoadIdx(result, object, ZR, int32(gc.PayloadOffset+fieldOffset), 4, false, false)
+	if result != object {
+		f.release(object)
+	}
+	value := f.pushReg(result, mtI64)
+	value.st.gcRoot = f.tracksGCFrameRoots()
+	f.applyFactsForTypedResult(value, resultType)
+	return nil
+}
+
+func (f *fn) emitNativeFinalStructScalarSet(typeIndex, fieldOffset, required uint32, scalar directGCScalar) error {
+	valueElem := f.popValue()
+	var value Reg
+	if scalar.typ.isFloat() {
+		value = f.materializeF(valueElem)
+		f.fpinned = f.fpinned.add(value)
+	} else {
+		value = f.materialize(valueElem)
+		f.pinned = f.pinned.add(value)
+	}
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, true)
+	if err != nil {
+		return err
+	}
+	disp := int32(gc.PayloadOffset + fieldOffset)
+	if scalar.typ.isFloat() {
+		f.fst(object, disp, value, scalar.typ == mtF64)
+		f.fpinned = f.fpinned.remove(value)
+		f.releaseF(value)
+	} else {
+		f.a.StoreIdx(object, ZR, value, disp, scalar.size)
+		f.pinned = f.pinned.remove(value)
+		f.release(value)
+	}
+	f.release(object)
+	return nil
+}
+
+type barrierFreeRefStore uint8
+
+const (
+	barrierFreeRefUnknown barrierFreeRefStore = iota
+	barrierFreeRefNull
+	barrierFreeRefI31
+)
+
+func barrierFreeReferenceStore(value *elem) barrierFreeRefStore {
+	if value == nil || value.kind != ekValue {
+		return barrierFreeRefUnknown
+	}
+	if value.st.kind == stConst && value.st.typ == mtI64 && value.st.cval == 0 {
+		return barrierFreeRefNull
+	}
+	if value.st.facts.Has(factI31) {
+		return barrierFreeRefI31
+	}
+	return barrierFreeRefUnknown
+}
+
+func (f *fn) emitNativeFinalStructRefSet(typeIndex, fieldOffset, required uint32, kind barrierFreeRefStore) error {
+	valueElem := f.popValue()
+	value := ZR
+	if kind != barrierFreeRefNull {
+		value = f.materialize(valueElem)
+		f.pinned = f.pinned.add(value)
+	}
+	object, err := f.emitNativeFinalCastObject(typeIndex, required, true)
+	if err != nil {
+		return err
+	}
+	f.a.StoreIdx(object, ZR, value, int32(gc.PayloadOffset+fieldOffset), 4)
+	if kind != barrierFreeRefNull {
+		f.pinned = f.pinned.remove(value)
+		f.release(value)
+	}
+	f.release(object)
+	return nil
+}
+
+func (f *fn) emitNativeFinalArrayScalarGet(typeIndex, sub uint32, scalar directGCScalar) error {
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+
+	end := f.emitNativeArrayElementChecks(object, index, scalar.size)
+
+	if scalar.typ.isFloat() {
+		result := f.allocFReg(0)
+		f.a.LdrFIdx(result, object, index, int32(gc.PayloadOffset), scalar.typ == mtF64)
+		f.release(end)
+		f.pinned = f.pinned.remove(index)
+		f.release(index)
+		f.release(object)
+		f.pushFReg(result, scalar.typ)
+		return nil
+	}
+	result := end
+	f.a.LoadIdx(result, object, index, int32(gc.PayloadOffset), scalar.size, sub == 12, scalar.typ == mtI64)
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	f.release(object)
+	value := f.pushReg(result, scalar.typ)
+	if f.opt(optValueFacts) {
+		value.st.facts = shared.ValueFactsForIntLoad(scalar.size, sub == 12, scalar.typ == mtI64)
+	}
+	return nil
+}
+
+func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32, resultType wasm.ValType) error {
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+	result := f.emitNativeArrayElementChecks(object, index, 4)
+	f.a.LoadIdx(result, object, index, int32(gc.PayloadOffset), 4, false, false)
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	f.release(object)
+	value := f.pushReg(result, mtI64)
+	value.st.gcRoot = f.tracksGCFrameRoots()
+	f.applyFactsForTypedResult(value, resultType)
+	return nil
+}
+
+func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
+	original := f.popValue()
+	local, hasLocal := gcLocalProvenance(original)
+	if hasLocal && f.gcResolved.valid && f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex {
+		ref := f.materialize(original)
+		f.stats.peep("gc-native-resolve-reuse")
+		f.stats.peep("gc-native-final-cast-elide")
+		f.pushReg(ref, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+		return nil
+	}
+	ref := f.materialize(original)
+	result := f.allocReg(maskOf(ref))
+	f.a.MovReg64(result, ref)
+	f.pinned = f.pinned.add(result)
+	var nullDone int
+	if nullable {
+		nullDone = f.zeroBranch(result, true, true)
+	}
+	validation := f.pushReg(ref, mtI64)
+	if hasLocal {
+		markGCLocalProvenance(validation, local)
+	}
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.HeaderSize, false)
+	if err != nil {
+		return err
+	}
+	f.release(object)
+	if nullable {
+		f.a.PatchBranch19(nullDone, f.a.Len())
+		// The null edge skipped resolution, so no raw-address certificate is
+		// valid after the merge even though the non-null edge proved one.
+		f.invalidateGCResolvedObject()
+	}
+	f.pinned = f.pinned.remove(result)
+	f.pushReg(result, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+	return nil
+}
+
+func (f *fn) emitNativeFinalArrayScalarSet(typeIndex uint32, scalar directGCScalar) error {
+	valueElem := f.popValue()
+	var value Reg
+	if scalar.typ.isFloat() {
+		value = f.materializeF(valueElem)
+		f.fpinned = f.fpinned.add(value)
+	} else {
+		value = f.materialize(valueElem)
+		f.pinned = f.pinned.add(value)
+	}
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+	end := f.emitNativeArrayElementChecks(object, index, scalar.size)
+	f.release(end)
+	if scalar.typ.isFloat() {
+		f.a.StrFIdx(object, index, value, int32(gc.PayloadOffset), scalar.typ == mtF64)
+		f.fpinned = f.fpinned.remove(value)
+		f.releaseF(value)
+	} else {
+		f.a.StoreIdx(object, index, value, int32(gc.PayloadOffset), scalar.size)
+		f.pinned = f.pinned.remove(value)
+		f.release(value)
+	}
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	f.release(object)
+	return nil
+}
+
+func (f *fn) emitNativeFinalArrayRefSet(typeIndex uint32, kind barrierFreeRefStore) error {
+	valueElem := f.popValue()
+	value := ZR
+	if kind != barrierFreeRefNull {
+		value = f.materialize(valueElem)
+		f.pinned = f.pinned.add(value)
+	}
+	indexValue := f.popValue()
+	index := f.materialize(indexValue)
+	f.a.MovReg32(index, index)
+	f.pinned = f.pinned.add(index)
+	object, err := f.emitNativeFinalCastObject(typeIndex, gc.PayloadOffset, true)
+	if err != nil {
+		return err
+	}
+	end := f.emitNativeArrayElementChecks(object, index, 4)
+	f.release(end)
+	f.a.StoreIdx(object, index, value, int32(gc.PayloadOffset), 4)
+	if kind != barrierFreeRefNull {
+		f.pinned = f.pinned.remove(value)
+		f.release(value)
+	}
+	f.pinned = f.pinned.remove(index)
+	f.release(index)
+	f.release(object)
+	return nil
+}
+
+// emitNativeArrayElementChecks validates the logical index and the physical
+// object extent, then leaves index scaled by the element width for one load or
+// store. The returned scratch register is allocator-owned.
+func (f *fn) emitNativeArrayElementChecks(object, index Reg, size int) Reg {
+	length := f.allocReg(maskOf(object, index))
+	f.ld32(length, object, 8)
+	f.cmpRR(index, length, false)
+	f.trapIf(condAE, trapBuiltin)
+	if size > 1 {
+		f.a.LslImm64(index, index, uint8(log2u(uint64(size))))
+	}
+	if f.gcResolved.valid && f.gcResolved.reg == object {
+		if f.gcResolved.arrayExtent {
+			return length
+		}
+		// The final array length and object size are immutable. Prove the full
+		// payload extent once, then retain that certificate with the cached raw
+		// address so later indexed accesses need only their logical bounds check.
+		if size > 1 {
+			f.a.LslImm64(length, length, uint8(log2u(uint64(size))))
+		}
+		f.leaDisp(length, length, int32(gc.PayloadOffset), true)
+		objectSize := f.allocReg(maskOf(object, index, length))
+		f.ld32(objectSize, object, 4)
+		f.cmpRR(length, objectSize, true)
+		f.trapIf(condA, trapCastFailure)
+		f.release(objectSize)
+		f.gcResolved.arrayExtent = true
+		return length
+	}
+	f.release(length)
+	objectSize := f.allocReg(maskOf(object, index))
+	f.ld32(objectSize, object, 4)
+	end := f.allocReg(maskOf(object, index, objectSize))
+	f.leaDisp(end, index, int32(gc.PayloadOffset)+int32(size), true)
+	f.cmpRR(end, objectSize, true)
+	f.trapIf(condA, trapCastFailure)
+	f.release(objectSize)
+	return end
+}
+
+// emitNativeFinalCastObject validates one exact-final compact reference and
+// returns its current object-header address. The caller must consume or release
+// the returned allocator-owned register without crossing a safepoint.
+func (f *fn) emitNativeFinalCastObject(typeIndex, required uint32, nullable bool) (Reg, error) {
+	local, hasLocal := gcLocalProvenance(f.s.back())
+	if f.opt(optGCNativeResolveReuse) && hasLocal && f.gcResolved.valid &&
+		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex &&
+		required <= f.gcResolved.required {
+		object := f.popValue()
+		if object.st.kind == stReg {
+			f.release(object.st.reg)
+		}
+		f.stats.peep("gc-native-resolve-reuse")
+		return f.gcResolved.reg, nil
+	}
+	f.invalidateGCResolvedObject()
+	checkedRequired := required
+	if f.opt(optGCNativeResolveReuse) && hasLocal {
+		// A cached struct address may feed a later, higher-offset field. Validate
+		// the immutable final layout's complete extent once so every subsequent
+		// scalar field covered by that layout can reuse the certificate.
+		if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.ObjectSize > checkedRequired {
+			checkedRequired = layout.ObjectSize
+		}
+	}
+	object := f.popValue()
+	ref := f.materialize(object)
+	if nullable {
+		f.trapIfZero(ref, false, true, trapNullReference)
+	} else {
+		f.trapIfZero(ref, false, true, trapCastFailure)
+	}
+	if !f.a.TstImm32(ref, 1) {
+		panic("arm64: compact-reference tag is not an encodable logical immediate")
+	}
+	f.trapIf(condNE, trapCastFailure)
+
+	view := f.allocReg(maskOf(ref))
+	f.ld64(view, linMemReg, -int32(abi.GCNativeViewPtrOffset))
+	domain := f.allocReg(maskOf(ref, view))
+	f.ld64(domain, view, gc.NativeInstanceViewLocalTypesOffset)
+	tmp := f.allocReg(maskOf(ref, view, domain))
+	f.a.MovImm64(tmp, uint64(typeIndex)*4)
+	f.a.LoadIdx(domain, domain, tmp, 0, 4, false, false)
+	f.release(tmp)
+
+	// Convert the compact reference to its handle index and validate it before
+	// following the current handle-table backing.
+	f.ld64(view, view, gc.NativeInstanceViewCollectorOffset)
+	f.a.LsrImm32(ref, ref, 1)
+	tmp = f.allocReg(maskOf(ref, view, domain))
+	f.ld32(tmp, view, gc.NativeViewHandleCountOffset)
+	f.cmpRR(ref, tmp, false)
+	f.trapIf(condAE, trapCastFailure)
+	f.ld64(tmp, view, gc.NativeViewHandlesOffset)
+	handle := f.allocReg(maskOf(ref, view, domain, tmp))
+	f.a.MovImm64(handle, gc.NativeHandleStride)
+	f.a.Mul64(ref, ref, handle)
+	f.a.Add64(tmp, tmp, ref) // tmp = handle entry
+
+	// Select the current heap space. Reading the packed word at offset 16 keeps
+	// the access within the 20-byte handle entry while extracting byte 18.
+	f.ld32(handle, tmp, 16)
+	f.a.LsrImm32(handle, handle, 16)
+	if !f.a.AndImm32(handle, handle, 0xff) {
+		panic("arm64: native space mask is not an encodable logical immediate")
+	}
+	f.trapIfZero(handle, false, true, trapCastFailure)
+	f.cmpImm(handle, gc.NativeSpaceCount-1, false)
+	f.trapIf(condA, trapCastFailure)
+	f.a.LslImm64(handle, handle, 4)
+	f.a.Add64(view, view, handle)
+
+	// Retain offset and size only; the handle-table entry is no longer needed.
+	f.ld32(ref, tmp, gc.NativeHandleOffsetOffset)
+	f.ld32(handle, tmp, gc.NativeHandleSizeOffset)
+	f.release(tmp)
+	tmp = f.allocReg(maskOf(ref, view, domain, handle))
+	f.ld64(tmp, view, gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset)
+	f.ld32(view, view, gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset)
+	f.cmpRR(ref, view, false)
+	f.trapIf(condA, trapCastFailure)
+	f.a.Sub32(view, view, ref)
+	f.cmpRR(handle, view, false)
+	f.trapIf(condA, trapCastFailure)
+	if checkedRequired <= 0xfff {
+		f.cmpImm(handle, checkedRequired, false)
+	} else {
+		viewRequired := f.allocReg(maskOf(ref, view, domain, handle, tmp))
+		f.a.MovImm64(viewRequired, uint64(checkedRequired))
+		f.cmpRR(handle, viewRequired, false)
+		f.release(viewRequired)
+	}
+	f.trapIf(condB, trapCastFailure)
+
+	// Exact final-type equality proves the statically selected object layout.
+	f.a.Add64(tmp, tmp, ref)
+	f.ld32(view, tmp, 0)
+	f.cmpRR(view, domain, false)
+	f.trapIf(condNE, trapCastFailure)
+	f.release(ref)
+	f.release(view)
+	f.release(domain)
+	f.release(handle)
+	if f.opt(optGCNativeResolveReuse) && hasLocal {
+		f.pinned = f.pinned.add(tmp)
+		f.gcResolved = gcResolvedObject{valid: true, local: local, typeIndex: typeIndex, required: checkedRequired, reg: tmp}
+	}
+	return tmp, nil
 }
 
 func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) error {
@@ -834,7 +1714,13 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		payload = helper
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
-	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
+	if err := f.callHostSync(int(gcStructDispatchBit|payload), ft); err != nil {
+		return err
+	}
+	if f.opt(optValueFacts) && len(results) == 1 && results[0].Kind() == wasm.ValRef && !results[0].Ref().Nullable() {
+		f.s.back().st.facts |= factNonZero
+	}
+	return nil
 }
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
@@ -936,9 +1822,10 @@ func (f *fn) gcFrameLocal(index int) bool {
 
 func arm64GCHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
-		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
+		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
+		gcArrayCheckDefault, gcArrayCheckUniform, gcArrayCheckData, gcArrayCheckFixed:
 		return true
 	default:
 		return false

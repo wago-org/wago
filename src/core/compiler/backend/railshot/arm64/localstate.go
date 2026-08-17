@@ -2,7 +2,11 @@
 
 package arm64
 
-import a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+)
 
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
 // FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING
@@ -316,6 +320,26 @@ func (f *fn) freeEndsBuf(b []int) {
 }
 
 func (f *fn) convergeEdgeTo(target *[]locState) {
+	f.convergeEdgeToWithDeadMode(target, 0, 0, true)
+}
+
+func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
+	f.convergeEdgeToWithDeadMode(target, deadGP, deadFP, true)
+}
+
+func (f *fn) convergeResidentEdgeTo(target *[]locState) {
+	f.convergeEdgeToWithDeadMode(target, 0, 0, false)
+}
+
+func (f *fn) convergeResidentEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
+	f.convergeEdgeToWithDeadMode(target, deadGP, deadFP, false)
+}
+
+func (f *fn) hasMergeRegion(start int) bool {
+	return f.mergeRegResidency && f.mergeRegionWords.Has(start)
+}
+
+func (f *fn) convergeEdgeToWithDeadMode(target *[]locState, deadGP, deadFP regMask, fixed bool) {
 	// Dirty registers and lazy zeros always materialize to the slot: every
 	// target guarantees at least "slot is current". Non-lazy functions can never
 	// contain lsConstZero and skip that complete local-array scan.
@@ -329,21 +353,27 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	if !f.usesCalls {
 		return
 	}
-	for x := 0; x < f.nLocals; x++ {
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
-			continue
-		}
-		if f.locals[x].state == lsReg {
-			f.storeLocalReg(x, reg, isFloat)
-			f.stats.addControlMergeStore()
-			f.locals[x].state = lsStackReg
+	keepRegs := f.mergeRegResidency && !fixed
+	if !keepRegs {
+		for x := 0; x < f.nLocals; x++ {
+			reg, isFloat, ok := f.pinReg(x)
+			if !ok {
+				continue
+			}
+			if f.locals[x].state == lsReg {
+				f.storeLocalReg(x, reg, isFloat)
+				f.stats.addControlMergeStore()
+				f.locals[x].state = lsStackReg
+			}
 		}
 	}
 	if *target == nil { // first edge fixes the frame's merge state
 		t := f.newLocStateBuf()
 		for x := range t {
 			t[x] = f.locals[x].state
+			if keepRegs && t[x] == lsReg {
+				f.stats.peep("merge-reg-resident")
+			}
 		}
 		*target = t
 		return
@@ -354,12 +384,83 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 		if !ok {
 			continue
 		}
-		if t[x] == lsStackReg && f.locals[x].state == lsMem {
+		source := f.locals[x].state
+		if keepRegs && t[x] == lsStackReg && source == lsReg {
+			t[x] = lsReg
+			f.stats.peep("merge-reg-resident")
+			continue
+		}
+		if keepRegs && t[x] == lsReg {
+			if source != lsMem {
+				continue
+			}
+			f.loadLocalReg(x, reg, isFloat)
+			f.stats.addControlMergeReload()
+			f.locals[x].state = lsStackReg
+			continue
+		}
+		if keepRegs && t[x] == lsMem && source == lsReg {
+			f.storeLocalReg(x, reg, isFloat)
+			f.stats.addControlMergeStore()
+			f.locals[x].state = lsStackReg
+			continue
+		}
+		if t[x] == lsStackReg && source == lsMem {
+			dead := deadGP.has(reg)
+			if isFloat {
+				dead = deadFP.has(reg)
+			}
+			if dead {
+				t[x] = lsMem
+				f.stats.peep("merge-dead-reload")
+				continue
+			}
 			f.loadLocalReg(x, reg, isFloat)
 			f.stats.addControlMergeReload()
 			f.locals[x].state = lsStackReg
 		}
 	}
+}
+
+const maxMergeNextUseOps = shared.MergeNextUseFuel
+
+// planForwardMergeDeadLocals returns fixed register masks for target locals
+// that arrive memory-only on the current forward edge and are overwritten or
+// dead before their next read after the merge. It copies the active reader and
+// uses constant storage; uncertainty, nested control, and fuel exhaustion keep
+// the existing eager edge reload.
+func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source []locState) (deadGP, deadFP regMask) {
+	if !f.opt(optMergeNextUse) || !f.usesCalls || target == nil {
+		return 0, 0
+	}
+	var candidates [64]shared.MergeLocalCandidate
+	n := 0
+	for x := 0; x < f.nLocals; x++ {
+		state := f.locals[x].state
+		if source != nil {
+			state = source[x]
+		}
+		if target[x] != lsStackReg || state != lsMem {
+			continue
+		}
+		reg, isFloat, ok := f.pinReg(x)
+		if !ok {
+			continue
+		}
+		if n == len(candidates) {
+			return 0, 0
+		}
+		candidates[n] = shared.MergeLocalCandidate{Local: uint32(x), Reg: uint8(reg), FP: isFloat}
+		n++
+	}
+	if n == 0 {
+		return 0, 0
+	}
+	gp, fp, ok := shared.ScanForwardMergeDeadLocals(r, f.localBase, candidates[:n])
+	if !ok {
+		return 0, 0
+	}
+	return regMask(gp), regMask(fp)
 }
 
 // setLocalsState installs a merge point's recorded target as the tracked state

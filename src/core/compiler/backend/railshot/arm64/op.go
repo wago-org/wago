@@ -37,6 +37,9 @@ const (
 	opSWARWiden4 // zero-extend four packed bytes to four packed u16 lanes
 	opSWARPack4  // gather the low byte of four packed u16 lanes
 	opSWARParse4 // collapse four decimal u16 lanes to one base-10 value
+	opSIMDBitmaskAny8
+	opSIMDBitmaskAny16
+	opSIMDBitmaskAny32
 
 	// Integer width conversions (unary).
 	opWrap   // i32 <- i64 (truncate low 32, zero upper)

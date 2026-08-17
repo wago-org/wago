@@ -22,7 +22,32 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
 	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("call-effect-bounds", &callEffectBoundsEnabled),
+	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+	optimization.Bind("merge-reg-residency", &mergeRegResidencyEnabled),
+	optimization.Bind("call-remat-const", &callRematConstEnabled),
+	optimization.Bind("call-remat-local", &callRematLocalEnabled),
+	optimization.Bind("call-remat-bin", &callRematBinEnabled),
 	optimization.Bind("abi-classes", &abiClassesEnabled),
+	optimization.Bind("abi-leaf-fp", &abiLeafFPEnabled),
+	optimization.Bind("prepared-fp-entry", &preparedFPEntryEnabled),
+	optimization.Bind("entry-init-elide", &entryInitElisionEnabled),
+	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
+	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
+	optimization.Bind("load-pair", &loadPairEnabled),
+	optimization.Bind("gc-dead-new", &deadGCNewEnabled),
+	optimization.Bind("gc-fixed-array-len", &fixedGCArrayLenEnabled),
+	optimization.Bind("gc-const-struct-get", &constGCStructGetEnabled),
+	optimization.Bind("gc-constructor-cast", &gcConstructorCastEnabled),
+	optimization.Bind("gc-native-final-cast", &nativeGCFinalCastEnabled),
+	optimization.Bind("gc-native-final-array-len", &nativeGCFinalArrayLenEnabled),
+	optimization.Bind("gc-native-final-scalar-get", &nativeGCFinalScalarGetEnabled),
+	optimization.Bind("gc-native-final-scalar-set", &nativeGCFinalScalarSetEnabled),
+	optimization.Bind("gc-native-final-ref-get", &nativeGCFinalRefGetEnabled),
+	optimization.Bind("gc-native-final-ref-set", &nativeGCFinalRefSetEnabled),
+	optimization.Bind("gc-native-final-array-scalar-get", &nativeGCFinalArrayScalarGetEnabled),
+	optimization.Bind("gc-native-final-array-scalar-set", &nativeGCFinalArrayScalarSetEnabled),
+	optimization.Bind("gc-native-resolve-reuse", &nativeGCResolveReuseEnabled),
+	optimization.Bind("simd-wide-bitmask-consumer", &simdWideBitmaskConsumerEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
 	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
@@ -37,8 +62,12 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
+	optimization.Bind("shuffle-half-zip", &shuffleHalfZipEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
+	optimization.Bind("call-result-residency", &callResultResidencyEnabled),
+	optimization.Bind("call-indirect-result-residency", &indirectCallResultResidencyEnabled),
 	optimization.Bind("inline", &inlineEnabled),
+	optimization.Bind("inline-slot-overlay", &inlineSlotOverlayEnabled),
 	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.Bind("loop-region-pins", &loopRegionPinsEnabled),
@@ -62,7 +91,32 @@ var (
 	optUXTWAdd               = optimizationBindings.Option("uxtw-add")
 	optValueFacts            = optimizationBindings.Option("value-facts")
 	optCallEffectBounds      = optimizationBindings.Option("call-effect-bounds")
+	optMergeNextUse          = optimizationBindings.Option("merge-next-use")
+	optMergeRegResidency     = optimizationBindings.Option("merge-reg-residency")
+	optCallRematConst        = optimizationBindings.Option("call-remat-const")
+	optCallRematLocal        = optimizationBindings.Option("call-remat-local")
+	optCallRematBin          = optimizationBindings.Option("call-remat-bin")
 	optABIClasses            = optimizationBindings.Option("abi-classes")
+	optABILeafFP             = optimizationBindings.Option("abi-leaf-fp")
+	optPreparedFPEntry       = optimizationBindings.Option("prepared-fp-entry")
+	optEntryInitElide        = optimizationBindings.Option("entry-init-elide")
+	optEntryParamPairs       = optimizationBindings.Option("entry-param-pairs")
+	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
+	optLoadPair              = optimizationBindings.Option("load-pair")
+	optGCDeadNew             = optimizationBindings.Option("gc-dead-new")
+	optGCFixedArrayLen       = optimizationBindings.Option("gc-fixed-array-len")
+	optGCConstStructGet      = optimizationBindings.Option("gc-const-struct-get")
+	optGCConstructorCast     = optimizationBindings.Option("gc-constructor-cast")
+	optGCNativeFinalCast     = optimizationBindings.Option("gc-native-final-cast")
+	optGCNativeFinalArrayLen = optimizationBindings.Option("gc-native-final-array-len")
+	optGCNativeScalarGet     = optimizationBindings.Option("gc-native-final-scalar-get")
+	optGCNativeScalarSet     = optimizationBindings.Option("gc-native-final-scalar-set")
+	optGCNativeRefGet        = optimizationBindings.Option("gc-native-final-ref-get")
+	optGCNativeRefSet        = optimizationBindings.Option("gc-native-final-ref-set")
+	optGCNativeArrayGet      = optimizationBindings.Option("gc-native-final-array-scalar-get")
+	optGCNativeArraySet      = optimizationBindings.Option("gc-native-final-array-scalar-set")
+	optGCNativeResolveReuse  = optimizationBindings.Option("gc-native-resolve-reuse")
+	optSIMDWideBitmask       = optimizationBindings.Option("simd-wide-bitmask-consumer")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
 	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")
@@ -77,8 +131,12 @@ var (
 	optV128ConstCache        = optimizationBindings.Option("v128-const-cache")
 	optV128Pins              = optimizationBindings.Option("v128-pins")
 	optV128Sink              = optimizationBindings.Option("v128-sink")
+	optShuffleHalfZip        = optimizationBindings.Option("shuffle-half-zip")
 	optRegABI                = optimizationBindings.Option("reg-abi")
+	optCallResultResidency   = optimizationBindings.Option("call-result-residency")
+	optIndirectResult        = optimizationBindings.Option("call-indirect-result-residency")
 	optInline                = optimizationBindings.Option("inline")
+	optInlineSlotOverlay     = optimizationBindings.Option("inline-slot-overlay")
 	optInlineLoopCallees     = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck          = optimizationBindings.Option("loop-precheck")
 	optLoopRegionPins        = optimizationBindings.Option("loop-region-pins")

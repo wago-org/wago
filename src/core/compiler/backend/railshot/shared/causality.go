@@ -21,3 +21,35 @@ func (t LocalTraffic) Any() bool {
 		t.ControlMergeStores != 0 || t.ControlMergeReloads != 0 ||
 		t.CallPreservationStores != 0 || t.CallPreservationReloads != 0
 }
+
+// CallTraffic attributes physical register-copy instructions emitted solely to
+// satisfy the internal register ABI. Loads, constant materialization, wrapper
+// slot traffic, and ordinary allocator copies remain outside this first slice.
+// The fixed-size counters live only in opt-in CodegenStats.
+type CallTraffic struct {
+	RegisterArgumentMoves int
+	RegisterResultMoves   int
+
+	// Argument moves are split by the lowering path that requested them. The
+	// total above remains the cross-target headline counter. Tail-call staging is
+	// populated only where the backend can attribute the complete move sequence.
+	IntegerCallArgumentMoves int
+	MixedCallArgumentMoves   int
+	TailCallArgumentMoves    int
+
+	// Result moves are partitioned by the decision that prevented the ABI result
+	// register from remaining the value's final physical location.
+	DirectResultFallbackMoves int
+	RecursiveResultMoves      int
+	IndirectResultMoves       int
+	LocalSinkResultMoves      int
+	MixedResultFallbackMoves  int
+}
+
+func (t CallTraffic) Any() bool {
+	return t.RegisterArgumentMoves != 0 || t.RegisterResultMoves != 0 ||
+		t.IntegerCallArgumentMoves != 0 || t.MixedCallArgumentMoves != 0 ||
+		t.TailCallArgumentMoves != 0 || t.DirectResultFallbackMoves != 0 ||
+		t.RecursiveResultMoves != 0 || t.IndirectResultMoves != 0 ||
+		t.LocalSinkResultMoves != 0 || t.MixedResultFallbackMoves != 0
+}

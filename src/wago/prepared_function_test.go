@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	runtimegc "github.com/wago-org/wago/src/core/runtime/gc"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -240,6 +241,46 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 	if in.preparedIsolatedEligible() {
 		t.Fatal("instance with function-reference descriptors should not be isolated")
 	}
+	in.c.NeedsFuncRefDescs = false
+
+	in.memoryDir = &instanceMemoryDirectory{}
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with a memory directory should use general entry")
+	}
+	in.memoryDir = nil
+	in.syncMode = true
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with synchronous host state should use general entry")
+	}
+	in.syncMode = false
+	in.executionFlags.Store(executionFlagNativeControlShared)
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with shared native control should use general entry")
+	}
+	in.executionFlags.Store(0)
+	in.memory = &Memory{}
+	in.ownsMem = false
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with imported memory should use general entry")
+	}
+	in.ownsMem = true
+	in.c.HasMemory = true
+	if !in.preparedPrivateEligible() || in.preparedIsolatedEligible() {
+		t.Fatal("instance-owned memory should use private, non-isolated entry")
+	}
+	sharedState := &memoryState{}
+	sharedState.set(memoryStateShared, true)
+	in.memory.state.Store(sharedState)
+	if in.preparedPrivateEligible() {
+		t.Fatal("instance with shared memory should use general entry")
+	}
+	in.memory = nil
+	in.ownsMem = false
+	in.c.HasMemory = false
+	in.gc = &runtimegc.Collector{}
+	if !in.preparedPrivateEligible() || in.preparedIsolatedEligible() {
+		t.Fatal("instance with GC state should use private, non-isolated entry")
+	}
 }
 
 func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
@@ -288,6 +329,56 @@ func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+}
+
+func TestPreparedFunctionMemoryIndependentDirectEntryIsIsolated(t *testing.T) {
+	if !preparedDirectIntSupported {
+		t.Skip("architecture does not support direct prepared integer entry")
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x7c, 0x0b}))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("memory-independent function did not select direct prepared entry")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("add")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if !fn.directIntFast || !fn.isolatedFast {
+		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.isolatedFast)
+	}
+	nativeExecutionMu.Lock()
+	done := make(chan struct{})
+	var got []uint64
+	go func() {
+		got, err = fn.Invoke2(20, 22)
+		close(done)
+	}()
+	select {
+	case <-done:
+		nativeExecutionMu.Unlock()
+	case <-time.After(time.Second):
+		nativeExecutionMu.Unlock()
+		<-done
+		t.Fatal("memory-independent direct entry waited for the process-wide execution lease")
+	}
+	if err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
 	}
 }
 

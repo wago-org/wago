@@ -82,6 +82,13 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 // fused compare so the subsequent branch's moveSlots reads canonical slots and no
 // flag-clobbering flush happens between the CMP and the Jcc.
 func (f *fn) flushBelow(node *elem) int {
+	return f.flushBelowExcept(node, nil)
+}
+
+// flushBelowExcept leaves one bounded integer recipe symbolic while reserving
+// its canonical slot. The call rematerializer restores that exact recipe after
+// the call rebuilds the below-argument stack; every other user passes nil.
+func (f *fn) flushBelowExcept(node, except *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
@@ -97,6 +104,10 @@ func (f *fn) flushBelow(node *elem) int {
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
+		if root == except {
+			slot += typ.stackSlots()
+			continue
+		}
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue
@@ -147,7 +158,16 @@ func (f *fn) flushBelow(node *elem) int {
 // comparison holds. The CMP must be the last flag-affecting instruction before
 // the branch, so callers flush everything below first.
 func (f *fn) condenseToFlags(node *elem) Cond {
-	f.stats.peep("cmp-branch-fuse")
+	return f.condenseToFlagsMode(node, true)
+}
+
+func (f *fn) condenseToFlagsMode(node *elem, branch bool) Cond {
+	if branch {
+		f.stats.peep("cmp-branch-fuse")
+	}
+	if node.op == opEqz && node.arg0 != nil && node.arg0.kind == ekDeferred && node.arg0.op == opSIMDBitmaskAny16 {
+		return f.condenseI16x8BitmaskZeroToFlags(node)
+	}
 	// eqz over a fusable compare fuses by INVERTING the branch condition rather than
 	// materializing the inner boolean (the SETcc+MOVZX+TEST an `eqz(a<b)` otherwise
 	// costs): `eqz(a<b)` branches on !(a<b) directly. Nested eqz peels too
@@ -263,6 +283,29 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	f.consumeBlockBelow(node)
 	f.erase(node)
 	return cc
+}
+
+// condenseI16x8BitmaskZeroToFlags emits only whether any i16 lane sign is set.
+// The outer eqz branches on equality, so neither a packed mask nor a boolean is
+// materialized between VPMOVMSKB and the branch.
+func (f *fn) condenseI16x8BitmaskZeroToFlags(node *elem) Cond {
+	inner := node.arg0
+	v := inner.arg0
+	src, owned := f.operandRegV128(v)
+	x := src
+	if !owned {
+		x = f.allocFReg(maskOf(src))
+	}
+	f.a.VPsrawImm(x, src, 15)
+	result := f.allocReg(0)
+	f.a.VPmovmskb(result, x)
+	f.releaseF(x)
+	f.a.TestSelf(result, false)
+	f.release(result)
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	f.stats.peep("simd-bitmask-zero-branch")
+	return condE
 }
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional jump.

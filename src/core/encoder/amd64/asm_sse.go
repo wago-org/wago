@@ -82,6 +82,10 @@ func (a *Asm) vex3RRRMap(opcodeMap, pp, op byte, dst, src1, src2 Reg) {
 }
 
 func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
+	a.vex3RRRMapWL(opcodeMap, pp, op, dst, src1, src2, false, l)
+}
+
+func (a *Asm) vex3RRRMapWL(opcodeMap, pp, op byte, dst, src1, src2 Reg, w bool, l byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
 	if dst >= 8 {
 		rBit = 0
@@ -90,7 +94,10 @@ func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
 		bBit = 0
 	}
 	vvvv := (^byte(src1)) & 0x0F
-	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)                // W=0
+	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)
+	if w {
+		byte2 |= 0x80
+	}
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
 }
@@ -141,6 +148,25 @@ func (a *Asm) Rorx(dst, src Reg, count byte, w bool) {
 	a.UsesBMI2 = true
 	a.vex3RRReservedWL(vexMap0F3A, 0b11, 0xF0, dst, src, w, 0)
 	a.emit(count)
+}
+
+// Shlx, Shrx, and Sarx emit BMI2's non-destructive variable shifts. The count
+// is read from an ordinary register rather than the legacy fixed CL register.
+func (a *Asm) Shlx(dst, src, count Reg, w bool) {
+	a.bmi2Shift(0b01, dst, src, count, w)
+}
+
+func (a *Asm) Shrx(dst, src, count Reg, w bool) {
+	a.bmi2Shift(0b11, dst, src, count, w)
+}
+
+func (a *Asm) Sarx(dst, src, count Reg, w bool) {
+	a.bmi2Shift(0b10, dst, src, count, w)
+}
+
+func (a *Asm) bmi2Shift(pp byte, dst, src, count Reg, w bool) {
+	a.UsesBMI2 = true
+	a.vex3RRRMapWL(vexMap0F38, pp, 0xF7, dst, count, src, w, 0)
 }
 
 func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool, l byte) {

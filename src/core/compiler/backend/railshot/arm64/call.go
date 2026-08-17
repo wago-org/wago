@@ -29,15 +29,21 @@ func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 // WAGO_ARM64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
 
+// callResultResidencyEnabled keeps direct internal GP results in X0/X1 through
+// post-call pin reloads, whose fixed destination banks exclude ABI results.
+var callResultResidencyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_RESULT_RESIDENCY") == "1"
+
+// indirectCallResultResidencyEnabled keeps immutable-table call results in the
+// register result bank when the caller cannot itself be one of the targets.
+var indirectCallResultResidencyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_INDIRECT_RESULT_RESIDENCY") == "1"
+
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
 var noStackFence = os.Getenv("WAGO_ARM64_NOFENCE") == "1"
 
 // immutableLocalPolyFastPath gates the polymorphic immutable-local call_indirect
-// fast path (see callIndirect). It is OFF: that path does not preserve the stack
-// fence for deeply self-recursive targets and faults instead of trapping. Set
-// WAGO_ARM64_IMMUTABLE_POLY_FASTPATH=1 only for A/B measurement of the lost
-// specialization; it reintroduces the spec call_indirect runaway crash.
-var immutableLocalPolyFastPath = os.Getenv("WAGO_ARM64_IMMUTABLE_POLY_FASTPATH") == "1"
+// fast path (see callIndirect). It is experimental and default-off; the callsite
+// performs the stack-fence check skipped by the runtime internal-entry pointer.
+var immutableLocalPolyFastPath = os.Getenv("WAGO_ARM64_EXPERIMENTAL_IMMUTABLE_POLY_FASTPATH") == "1"
 
 // noStackReg disables the WARP STACK_REG lazy local model (reverts to spill-all/
 // reload-all around calls, no branch reconcile) — A/B measurement.
@@ -60,17 +66,19 @@ type callReloc struct {
 
 // intArgRegs is the integer argument/result register order for the internal
 // register-call ABI (our own convention, not the C ABI). X0/X1 carry args/linMem;
-// X19-X23 hold pinned locals; linMemReg holds linMem. The single result returns in X0
-// (AAPCS64 return register, also arg 0).
+// X19-X23 hold pinned locals; linMemReg holds linMem. Scalar results use the
+// separate bounded result banks below.
 var intArgRegs = []Reg{X0, X1, X2, X3, X4, X5, X6, X7}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // V0..V7; single float result returns in V0.
+var intResultRegs = [2]Reg{X0, X1}
+var fpResultRegs = [2]Reg{0, 1}
 
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
 }
 
 func preparedDirectIntSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -84,6 +92,60 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 		}
 	}
 	return true
+}
+
+func preparedDirectFPSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
+// preparedDirectMixedSig admits the one static mixed-bank trampoline: either
+// the parameters use both banks, or two results use exactly one bank each.
+func preparedDirectMixedSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Params {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > 2 || fp > 2 {
+		return false
+	}
+	resultGP, resultFP := 0, 0
+	for _, typ := range ft.Results {
+		switch {
+		case isIntValType(typ):
+			resultGP++
+		case isFloatValType(typ):
+			resultFP++
+		default:
+			return false
+		}
+	}
+	if resultGP > 1 || resultFP > 1 || len(ft.Results) == 2 && (resultGP != 1 || resultFP != 1) {
+		return false
+	}
+	return gp != 0 && fp != 0 || len(ft.Results) == 2
 }
 
 func isFloatValType(t wasm.ValType) bool {
@@ -105,13 +167,15 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 }
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
-// and float params are assigned to separate GP/V banks; one result returns in
-// X0/V0, and the deliberately limited two-result form uses X0/X1 for integers.
+// and float params are assigned to separate GP/V banks. Results use a fixed
+// two-register bank each: X0/X1 for integers and V0/V1 for floats. Keep the
+// cross-layer ABI bounded to at most two results; wider signatures retain the
+// established wrapper result area.
 func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > 2 {
 		return false
 	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
+	if _, ok := shared.PlanScalarResults(ft.Results); !ok {
 		return false
 	}
 	gp, fp := 0, 0
@@ -128,12 +192,35 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
 		return false
 	}
-	for _, t := range ft.Results {
-		if !isIntValType(t) && !isFloatValType(t) {
-			return false
+	return true
+}
+
+// sigFitsIndirectTailRegABI is the descriptor/table contract currently encoded
+// by runtime table entries: one scalar result or the established two-GP form.
+// Wider mixed-bank results use the bounded wrapper restoration record instead.
+func sigFitsIndirectTailRegABI(ft *wasm.CompType) bool {
+	p, ok := shared.PlanScalarResults(ft.Results)
+	return ok && sigFitsRegABI(ft) && (p.Count <= 1 || p.FP == 0)
+}
+
+func (f *fn) loadTailRegisterResults(base Reg, off int32, results []wasm.ValType) {
+	p, ok := shared.PlanScalarResults(results)
+	if !ok {
+		// Typed-reference tails use the pre-existing one-GP descriptor ABI; they
+		// are intentionally outside the numeric v2 signature planner.
+		if len(results) == 1 && results[0].Kind() == wasm.ValRef {
+			f.ld64(intResultRegs[0], base, off)
+		}
+		return
+	}
+	for i, typ := range results {
+		loc := p.Locations[i]
+		if loc.Bank == shared.ScalarResultFP {
+			f.fld(fpResultRegs[loc.Index], base, off+int32(i*8), wasm.EqualValType(typ, wasm.F64))
+		} else {
+			f.ld64(intResultRegs[loc.Index], base, off+int32(i*8))
 		}
 	}
-	return true
 }
 
 func tailResultABICompatible(a, b []wasm.ValType) bool {
@@ -458,16 +545,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
-	if len(ft.Results) > 0 {
-		if isFloatValType(ft.Results[0]) {
-			f.fld(0, SP, 32, wasm.EqualValType(ft.Results[0], wasm.F64))
-		} else {
-			f.ld64(X0, SP, 32)
-		}
-	}
-	if len(ft.Results) > 1 {
-		f.ld64(X1, SP, 40)
-	}
+	f.loadTailRegisterResults(SP, 32, ft.Results)
 	f.a.AddSP64(64)
 	f.a.Ret()
 	f.unreachable = true
@@ -704,16 +782,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
-	if len(ft.Results) > 0 {
-		if isFloatValType(ft.Results[0]) {
-			f.fld(0, SP, 32, wasm.EqualValType(ft.Results[0], wasm.F64))
-		} else {
-			f.ld64(X0, SP, 32)
-		}
-	}
-	if len(ft.Results) > 1 {
-		f.ld64(X1, SP, 40)
-	}
+	f.loadTailRegisterResults(SP, 32, ft.Results)
 	f.a.AddSP64(64)
 	f.a.Ret()
 }
@@ -734,7 +803,8 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	if f.stagedTailDescriptors && f.importBindings != nil && !f.immutableLocalTable {
+	indirectRegABI := sigFitsIndirectTailRegABI(ft)
+	if f.stagedTailDescriptors && (!indirectRegABI || (f.importBindings != nil && !f.immutableLocalTable)) {
 		idx := f.materialize(f.popValue())
 		f.canonicalizeTableOperand(idx, tableIdx)
 		f.pinned = f.pinned.add(idx)
@@ -789,7 +859,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.stripDescriptorHomeTags(home)
 	f.cmpRR(home, linMemReg, true)
 	f.trapIf(condNE, trapTailUnsupported)
-	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
+	registerTail := f.opt(optRegABI) && indirectRegABI
 	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
 	if registerTail {
 		wantKind = uint32(abi.FuncRefInternalTagValue)
@@ -1080,6 +1150,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			value = f.pushReg(res[j], rt)
 		}
 		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[j])
+		f.applyFactsForTypedResult(value, ft.Results[j])
 	}
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
@@ -1391,7 +1462,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 			f.emitRegisterCall(localIdx, ft, resHint, preservesPins)
 		} else {
 			f.stats.call(callKindMixed)
-			f.emitMixedRegisterCall(localIdx, ft)
+			f.emitMixedRegisterCall(localIdx, ft, f.directCalleePreservesPins(localIdx))
 		}
 		finishRoots()
 		return nil
@@ -1474,6 +1545,82 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int, pres
 	f.emitRegisterCallVia(ft, resHint, preservesPins, localIdx, regNone)
 }
 
+type callRemat struct {
+	root  *elem
+	st    storage
+	index int
+	local bool
+	tree  bool
+}
+
+func (f *fn) planCallRemat(roots []*elem, p int, preservesPins bool) (r callRemat) {
+	belowN := len(roots) - p
+	if f.moduleEH || p == 0 || belowN == 0 {
+		return r
+	}
+	root := roots[belowN-1]
+	if f.opt(optCallRematBin) && root.kind == ekDeferred &&
+		(root.typ == mtI32 || root.typ == mtI64) && isBinALU(root.op) &&
+		callRematFrameLeaf(root.arg0) && callRematFrameLeaf(root.arg1) {
+		return callRemat{root: root, index: belowN - 1, tree: true}
+	}
+	if root.kind != ekValue || root.st.typ != mtI32 && root.st.typ != mtI64 {
+		return r
+	}
+	switch root.st.kind {
+	case stConst:
+		if !f.opt(optCallRematConst) {
+			return r
+		}
+		return callRemat{root: root, st: root.st, index: belowN - 1}
+	case stLocalRef, stLocalReg:
+		if !f.opt(optCallRematLocal) {
+			return r
+		}
+		st := root.st
+		if st.kind == stLocalReg && !preservesPins {
+			st.kind, st.reg = stLocalRef, regNone
+		}
+		return callRemat{root: root, st: st, index: belowN - 1, local: true}
+	default:
+		return r
+	}
+}
+
+func (f *fn) restoreCallRemat(r callRemat) {
+	if r.root == nil {
+		return
+	}
+	roots := f.rootsBottomToTop()
+	root := roots[r.index]
+	if r.tree {
+		f.s.replaceTopWithBlock(baseOfValentBlock(r.root), r.root)
+		f.stats.peep("call-remat-bin")
+		return
+	}
+	root.kind = ekValue
+	root.st = r.st // admitted integer recipes are never GC roots
+	if r.local {
+		f.stats.peep("call-remat-local")
+	} else {
+		f.stats.peep("call-remat-const")
+	}
+}
+
+func callRematFrameLeaf(e *elem) bool {
+	return e != nil && e.kind == ekValue && (e.st.kind == stConst || e.st.kind == stLocalRef)
+}
+
+func (f *fn) addIntegerResultFallbackMoves(localIdx, n int) {
+	if localIdx < 0 {
+		f.stats.addIndirectResultMoves(n)
+	} else {
+		f.stats.addDirectResultFallbackMoves(n)
+	}
+}
+
+const safeIndirectCallTarget = -2
+
 // emitRegisterCallVia emits either a direct internal BL (localIdx >= 0) or an
 // indirect BLR. Explicit operands avoid allocating a closure at every wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, localIdx int, indirect Reg) uint32 {
@@ -1484,6 +1631,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
+	remat := f.planCallRemat(allRoots, p, preservesPins)
 	if !preservesPins {
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 	}
@@ -1522,7 +1670,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	preserveBoundsCert := f.directCallPreservesBoundsCert(localIdx, resHint)
 	if p > 0 {
 		f.stats.addCallFlush()
-		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
+		f.flushBelowExcept(argRoots[0], remat.root) // operands below the args → canonical slots
 	} else {
 		f.stats.addCallFlush()
 		f.flush()
@@ -1541,17 +1689,22 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	}
 	// AArch64 has no XCHG: a register swap goes through the backend scratch X16.
 	swapChains := resolveRegMovesWindow(moves,
-		func(dst, src Reg) { f.a.MovReg64(dst, src) },
+		func(dst, src Reg) {
+			f.a.MovReg64(dst, src)
+			f.stats.addIntegerCallArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+			f.stats.addIntegerCallArgumentMoves(3)
 		},
 		func(a, b, c Reg) {
 			f.a.MovReg64(X16, a)
 			f.a.MovReg64(a, b)
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
+			f.stats.addIntegerCallArgumentMoves(4)
 		})
 	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
@@ -1569,6 +1722,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 
 	// Consume the args while preserving v128 slot widths and collector identity.
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	f.restoreCallRemat(remat)
 
 	// No environment passing: linMemReg (linMem) is a whole-module invariant and the
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
@@ -1582,30 +1736,46 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		returnOffset = uint32(f.a.Len())
 	}
 
-	// A pin-preserving callee leaves the caller state untouched, so its result can
-	// remain allocator-owned in X0. Calls that reload state still copy it out first
-	// because those reload sequences may use X0 as scratch.
+	// A pin-preserving callee leaves the caller state untouched. Direct internal
+	// results can also remain allocator-owned in X0/X1: the fixed local/global pin
+	// banks reloaded below exclude the ABI result registers.
+	residentResults := f.opt(optCallResultResidency) && (localIdx >= 0 || localIdx == safeIndirectCallTarget)
 	resReg := regNone
 	if rN == 1 && resHint < 0 {
 		if preservesPins {
 			resReg = X0
 			f.stats.peep("call-result-x0")
+		} else if residentResults {
+			resReg = X0
+			f.stats.peep("call-result-resident")
+			if localIdx == safeIndirectCallTarget {
+				f.stats.peep("call-result-indirect-resident")
+			}
 		} else {
 			resReg = f.allocReg(maskOf(X0))
 			f.a.MovReg64(resReg, X0)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 		}
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
 	if rN == 2 {
-		if preservesPins {
+		if preservesPins || residentResults {
 			pairRes = [2]Reg{X0, X1}
+			if residentResults && !preservesPins {
+				f.stats.peepN("call-result-resident", 2)
+				if localIdx == safeIndirectCallTarget {
+					f.stats.peepN("call-result-indirect-resident", 2)
+				}
+			}
 		} else {
 			pairRes[0] = f.allocReg(maskOf(X0, X1))
 			f.pinned = f.pinned.add(pairRes[0])
 			f.a.MovReg64(pairRes[0], X0)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 			pairRes[1] = f.allocReg(maskOf(X0, X1))
 			f.a.MovReg64(pairRes[1], X1)
+			f.addIntegerResultFallbackMoves(localIdx, 1)
 		}
 		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
 	}
@@ -1626,17 +1796,25 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
 		f.a.MovReg64(pr, X0)
+		f.stats.addLocalSinkResultMoves(1)
 		f.markLocalDirty(resHint)
+		facts := valueFacts(0)
+		if f.opt(optValueFacts) && ft.Results[0].Kind() == wasm.ValRef && !ft.Results[0].Ref().Nullable() {
+			facts = factNonZero
+		}
+		f.setFactsForLocal(resHint, facts)
 	}
 
 	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
-		f.pushReg(resReg, mtOf(ft.Results[0]))
+		result := f.pushReg(resReg, mtOf(ft.Results[0]))
+		f.applyFactsForTypedResult(result, ft.Results[0])
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
-			f.pushReg(reg, mtOf(ft.Results[i]))
+			result := f.pushReg(reg, mtOf(ft.Results[i]))
+			f.applyFactsForTypedResult(result, ft.Results[i])
 		}
 	}
 	return returnOffset
@@ -1679,16 +1857,23 @@ func (f *fn) directCallPreservesBoundsCert(localIdx, resHint int) bool {
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
 // GP and FP arguments are staged independently as parallel moves, so values that
 // are already resident in registers do not round-trip through canonical slots.
-func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType, preservesPins bool) {
 	p, rN := len(ft.Params), len(ft.Results)
+	resultPlan, _ := shared.PlanScalarResults(ft.Results)
+	if rN > 1 {
+		f.stats.peep("regabi-v2-result")
+	}
 	d := f.depth()
 	allRoots := f.rootsBottomToTop()
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
+	remat := f.planCallRemat(allRoots, p, preservesPins)
 
-	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	if !preservesPins {
+		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	}
 	argRoots := f.tmpRoots[:0]
 	if cap(argRoots) < p {
 		argRoots = make([]*elem, p)
@@ -1742,29 +1927,36 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	if p > 0 {
 		f.stats.addCallFlush()
-		f.flushBelow(argRoots[0])
+		f.flushBelowExcept(argRoots[0], remat.root)
 	} else {
 		f.stats.addCallFlush()
 		f.flush()
 	}
 	// Dirty locals are saved after argument values have been copied into owned
-	// registers; the mixed callee may clobber every caller pin.
-	f.spillLocalsForCall()
+	// registers unless the finite callee class reserves every caller pin.
+	if !preservesPins {
+		f.spillLocalsForCall()
+	}
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
 	gpSwapChains := resolveRegMovesWindow(gpMoves,
-		func(dst, src Reg) { f.a.MovReg64(dst, src) },
+		func(dst, src Reg) {
+			f.a.MovReg64(dst, src)
+			f.stats.addMixedCallArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+			f.stats.addMixedCallArgumentMoves(3)
 		},
 		func(a, b, c Reg) {
 			f.a.MovReg64(X16, a)
 			f.a.MovReg64(a, b)
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
+			f.stats.addMixedCallArgumentMoves(4)
 		})
 	f.stats.peepN("machine-swap-chain", gpSwapChains)
 	for _, m := range fpMoves {
@@ -1772,7 +1964,10 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	fpSwapSlot := -1
 	fpSwapChains := resolveRegMovesWindow(fpMoves,
-		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
+		func(dst, src Reg) {
+			f.a.FmovReg(dst, src, true)
+			f.stats.addMixedCallArgumentMoves(1)
+		},
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
 				fpSwapSlot = f.allocSpillSlot()
@@ -1781,6 +1976,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.fst(SP, off, x, true)
 			f.a.FmovReg(x, y, true)
 			f.fld(y, SP, off, true)
+			f.stats.addMixedCallArgumentMoves(1)
 		},
 		func(a, b, c Reg) {
 			if fpSwapSlot < 0 {
@@ -1791,6 +1987,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.a.FmovReg(a, b, true)
 			f.a.FmovReg(b, c, true)
 			f.fld(c, SP, off, true)
+			f.stats.addMixedCallArgumentMoves(2)
 		})
 	f.stats.peepN("machine-swap-chain", fpSwapChains)
 	for _, da := range deferred {
@@ -1821,36 +2018,39 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	f.restoreCallRemat(remat)
 
 	site := f.a.Bl()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
-	f.reloadLocalsForCall() // non-STACK_REG model only
-	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
-
-	if rN == 1 {
-		rt := mtOf(ft.Results[0])
-		if rt.isFloat() {
-			f.pushFReg(0, rt) // V0
-		} else {
-			resReg := f.allocReg(maskOf(X0))
-			f.a.MovReg64(resReg, X0)
-			f.pushReg(resReg, rt)
-		}
+	if !preservesPins {
+		f.reloadLocalsForCall() // non-STACK_REG model only
+		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 	}
-	if rN == 2 {
-		// Two-int register return (X0/X1): a mixed sig has float params but may
-		// still return two integers, e.g. (f64,i64,i64)->(i64,i64).
-		var pairRes [2]Reg
-		pairRes[0] = f.allocReg(maskOf(X0, X1))
-		f.pinned = f.pinned.add(pairRes[0])
-		f.a.MovReg64(pairRes[0], X0)
-		pairRes[1] = f.allocReg(maskOf(X0, X1))
-		f.a.MovReg64(pairRes[1], X1)
-		f.pinned = f.pinned.add(pairRes[1])
-		for i, reg := range pairRes {
-			f.pinned = f.pinned.remove(reg)
-			f.pushReg(reg, mtOf(ft.Results[i]))
+
+	residentResults := f.opt(optCallResultResidency)
+	var gpResults [2]Reg
+	for i := uint8(0); i < resultPlan.GP; i++ {
+		if residentResults {
+			gpResults[i] = intResultRegs[i]
+			f.stats.peep("call-result-resident")
+		} else {
+			gpResults[i] = f.allocReg(maskOf(X0, X1))
+			f.a.MovReg64(gpResults[i], intResultRegs[i])
+			f.stats.addMixedResultFallbackMoves(1)
 		}
+		f.pinned = f.pinned.add(gpResults[i])
+	}
+	for i := 0; i < rN; i++ {
+		loc := resultPlan.Locations[i]
+		rt := mtOf(ft.Results[i])
+		if loc.Bank == shared.ScalarResultFP {
+			f.pushFReg(fpResultRegs[loc.Index], rt)
+			continue
+		}
+		reg := gpResults[loc.Index]
+		f.pinned = f.pinned.remove(reg)
+		result := f.pushReg(reg, rt)
+		f.applyFactsForTypedResult(result, ft.Results[i])
 	}
 }
 
@@ -2032,7 +2232,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.trapIf(condNE, trapIndirectSig)
 	}
 
-	// With one private local immutable table and no function imports, every non-null
+	// With one private immutable table whose entries are all proven local, every non-null
 	// entry is necessarily a same-module internal entry. Avoid loading its home pointer,
 	// testing the internal-entry tag, emitting the wrapper/cross-instance path, and
 	// reconciling two compiler states. The ordinary OOB/null/type checks above are
@@ -2057,18 +2257,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	// NOTE: the polymorphic immutable-local fast path (register-ABI Blr of the
-	// entry's runtime code pointer) is disabled — it is incorrect for the stack
-	// fence. Under the register pressure of a large module it can enter a deeply
-	// self-recursive target (spec call_indirect.wast $runaway / $mutual-runaway)
-	// without the per-frame fence check tripping, so unbounded recursion faults
-	// the foreign stack (Go "split stack overflow") instead of trapping "call
-	// stack exhausted". The monomorphic fast path above (a direct call to the
-	// proven internal entry, which carries the fence) is unaffected; polymorphic
-	// entries fall through to emitIndirectCallHomeAware below, which enters the
-	// callee's offset-0 entry with the correct per-execution control words
-	// (including the stack fence). Verified: spec1 passes and spec2/3 no longer
-	// crash. Re-enable only with an entry pointer that preserves the fence.
+	// A polymorphic immutable-local entry publishes its register-ABI internal
+	// address. That address is past the target's ordinary fence prologue, so this
+	// path performs an equivalent callsite check before BLR.
 	if f.opt(optImmutablePolyFastPath) && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		home := f.allocReg(maskOf(idxReg, code))
 		f.ld64(home, idxReg, 24)
@@ -2083,7 +2274,23 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(idxReg).add(code)
 		f.release(idxReg)
 		f.stats.peep("immutable-local-call-indirect")
-		f.emitRegisterCallVia(ft, -1, false, -1, code)
+		// The runtime code pointer enters after the target's ordinary stack-fence
+		// prologue. Check at every polymorphic edge so direct/indirect recursion
+		// cycles still trap before exhausting the foreign stack.
+		if f.opt(optStackFence) {
+			f.ld64(X16, linMemReg, -int32(offStackFence))
+			f.a.CmpSP64(X16)
+			f.trapIf(condB, trapStackFence)
+			f.stats.peep("immutable-local-call-indirect-fence")
+		}
+		callTarget := -1
+		if f.opt(optIndirectResult) && !f.immutableIndirectTarget {
+			callTarget = safeIndirectCallTarget
+		}
+		returnOffset := f.emitRegisterCallVia(ft, -1, false, callTarget, code)
+		if recordRoots {
+			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		return nil
@@ -2408,6 +2615,7 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 			value = f.pushReg(regs[i], typ)
 		}
 		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, results[i])
+		f.applyFactsForTypedResult(value, results[i])
 	}
 }
 
@@ -2469,6 +2677,7 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	f.tmpTypes = types
 	if !f.tracksGCFrameRoots() {
 		f.setDepthTypes(types)
+		f.applyFactsForTypedResults(results)
 		return
 	}
 	gcRoots := f.tmpGCRoots[:0]
@@ -2478,4 +2687,5 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	}
 	f.tmpGCRoots = gcRoots
 	f.setDepthTypesWithGCRoots(types, gcRoots)
+	f.applyFactsForTypedResults(results)
 }

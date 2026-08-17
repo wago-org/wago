@@ -460,6 +460,8 @@ type inlineTarget struct {
 	localTypes     []machineType // length nLocals: the callee's local machine types
 	resultTypes    []machineType // the callee's result machine types
 	res0           machineType   // first result type (mtNone if none) — for the single-result merge
+	hasRefLocals   bool          // reference locals exclude physical-slot overlay until root maps encode exact live meaning
+	hasV128Locals  bool          // vector locals retain distinct regions in the first scalar-only overlay
 	touchesMem     bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
 	touchesGlob    bool          // the body reads or writes a global
 	hasCtrl        bool          // the body has control flow → splice through a synthetic boundary frame
@@ -567,7 +569,10 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		for _, p := range ft.Params {
 			typeArena = append(typeArena, mtOf(p))
 		}
+		hasRefLocals, hasV128Locals := false, false
 		for _, run := range m.Code[i].Locals.Runs {
+			hasRefLocals = hasRefLocals || run.Type.Kind() == wasm.ValRef
+			hasV128Locals = hasV128Locals || wasm.EqualValType(run.Type, wasm.V128)
 			for k := 0; k < int(run.Count); k++ {
 				typeArena = append(typeArena, mtOf(run.Type))
 			}
@@ -593,6 +598,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			localTypes:     lt,
 			resultTypes:    rt,
 			res0:           res0,
+			hasRefLocals:   hasRefLocals,
+			hasV128Locals:  hasV128Locals,
 			touchesMem:     facts.touchesMem,
 			touchesGlob:    facts.touchesGlobal,
 			hasCtrl:        facts.hasControlFlow,
@@ -662,15 +669,40 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 	}
 	f.inlineTargets = targets
 	f.inlineBase = make(map[int]int, len(callees))
+	overlay := f.opt(optInlineSlotOverlay) && len(callees) > 1
+	for _, t := range callees {
+		if t.hasRefLocals || t.hasV128Locals {
+			overlay = false
+			break
+		}
+	}
+	overlayBaseSlot, overlayMaxSlots := f.nLocalSlots, 0
 	for _, t := range callees {
 		base := len(f.localType)
+		baseSlot, calleeSlots := f.nLocalSlots, 0
+		if overlay {
+			baseSlot = overlayBaseSlot
+		}
 		for _, lt := range t.localTypes {
 			f.localType = append(f.localType, lt)
-			f.localSlot = append(f.localSlot, f.nLocalSlots)
-			f.nLocalSlots += lt.stackSlots()
+			f.localSlot = append(f.localSlot, baseSlot+calleeSlots)
+			calleeSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, state: lsMem})
 		}
+		if overlay {
+			if calleeSlots > overlayMaxSlots {
+				overlayMaxSlots = calleeSlots
+			}
+		} else {
+			f.nLocalSlots += calleeSlots
+		}
 		f.inlineBase[t.globalIdx] = base
+	}
+	if overlay {
+		f.nLocalSlots = overlayBaseSlot + overlayMaxSlots
+		for range len(callees) - 1 {
+			f.stats.peep("inline-slot-overlay")
+		}
 	}
 }
 

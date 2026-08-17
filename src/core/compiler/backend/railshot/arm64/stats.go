@@ -41,6 +41,20 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check â the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// callRematConstEnabled retains one topmost integer constant below a
+	// register-ABI call as a symbolic recipe. It is experimental and default-off;
+	// WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_CONST=1 enables the bounded A/B path.
+	callRematConstEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_CONST") == "1"
+	// callRematLocalEnabled retains one topmost integer local read below a
+	// register-ABI call. WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_LOCAL=1 enables it.
+	callRematLocalEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_LOCAL") == "1"
+	// callRematBinEnabled retains one depth-one pure integer expression below a
+	// register-ABI call. WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_BIN=1 enables it.
+	callRematBinEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_CALL_REMAT_BIN") == "1"
+	// inlineSlotOverlayEnabled maps distinct numeric-only inlined-callee locals
+	// onto one max-sized physical scratch region. It is enabled only by
+	// WAGO_ARM64_EXPERIMENTAL_INLINE_SLOT_OVERLAY=1.
+	inlineSlotOverlayEnabled = os.Getenv("WAGO_ARM64_EXPERIMENTAL_INLINE_SLOT_OVERLAY") == "1"
 	// stFlagsEnabled gates the stFlags tee-forward window (R1): a compare stored by
 	// `local.tee $c` and consumed by the next if/br_if/select fuses into the branch,
 	// storing $c with a flag-neutral Cset after the CMP. WAGO_NO_STFLAGS=1 is the
@@ -61,6 +75,10 @@ var (
 	// v128ShuffleSinkEnabled writes one-instruction REV32/ZIP shuffles directly
 	// into a following pinned local. The kill switch is the A/B oracle.
 	v128ShuffleSinkEnabled = os.Getenv("WAGO_ARM64_NO_V128_SHUFFLE_SINK") != "1"
+	// shuffleHalfZipEnabled selects exact i8x16.shuffle masks that are native
+	// halfword ZIP1/ZIP2 operations. WAGO_ARM64_NO_SHUFFLE_HALF_ZIP=1 is the
+	// process-default rollback; per-compilation policy remains authoritative.
+	shuffleHalfZipEnabled = os.Getenv("WAGO_ARM64_NO_SHUFFLE_HALF_ZIP") != "1"
 	// intervalRegionPinsEnabled reuses GP registers across integer-local
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.
@@ -96,6 +114,7 @@ var (
 	// moduleSharedTrapBodyEnabled lets internal functions replace byte-identical
 	// complete trap bodies with one B thunk and one module cold-island copy.
 	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY") != "1"
+	loadPairEnabled             = os.Getenv("WAGO_ARM64_NO_LOAD_PAIR") != "1"
 	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
 	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
 	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"
@@ -145,6 +164,7 @@ type CodegenStats struct {
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
 	LocalTraffic  shared.LocalTraffic
+	CallTraffic   shared.CallTraffic
 	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string `json:"finalizer_fallback,omitempty"`
@@ -297,6 +317,42 @@ func (s *CodegenStats) addCallPreservationStore() {
 func (s *CodegenStats) addCallPreservationReload() {
 	if s != nil {
 		s.LocalTraffic.CallPreservationReloads++
+	}
+}
+func (s *CodegenStats) addIntegerCallArgumentMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves += n
+		s.CallTraffic.IntegerCallArgumentMoves += n
+	}
+}
+func (s *CodegenStats) addMixedCallArgumentMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterArgumentMoves += n
+		s.CallTraffic.MixedCallArgumentMoves += n
+	}
+}
+func (s *CodegenStats) addDirectResultFallbackMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.DirectResultFallbackMoves += n
+	}
+}
+func (s *CodegenStats) addIndirectResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.IndirectResultMoves += n
+	}
+}
+func (s *CodegenStats) addLocalSinkResultMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.LocalSinkResultMoves += n
+	}
+}
+func (s *CodegenStats) addMixedResultFallbackMoves(n int) {
+	if s != nil {
+		s.CallTraffic.RegisterResultMoves += n
+		s.CallTraffic.MixedResultFallbackMoves += n
 	}
 }
 func (s *CodegenStats) addForcedLoad() {
@@ -558,6 +614,15 @@ func (s *CodegenStats) report() string {
 			traffic.OrdinarySpillStores, traffic.OrdinarySpillReloads,
 			traffic.ControlMergeStores, traffic.ControlMergeReloads,
 			traffic.CallPreservationStores, traffic.CallPreservationReloads)
+	}
+	callTraffic := s.CallTraffic
+	if callTraffic.Any() {
+		fmt.Fprintf(&b, "    call-traffic: reg-arg-move=%d reg-result-move=%d int-arg=%d mixed-arg=%d tail-arg=%d result-direct=%d result-recursive=%d result-indirect=%d result-local=%d result-mixed=%d\n",
+			callTraffic.RegisterArgumentMoves, callTraffic.RegisterResultMoves,
+			callTraffic.IntegerCallArgumentMoves, callTraffic.MixedCallArgumentMoves,
+			callTraffic.TailCallArgumentMoves, callTraffic.DirectResultFallbackMoves,
+			callTraffic.RecursiveResultMoves, callTraffic.IndirectResultMoves,
+			callTraffic.LocalSinkResultMoves, callTraffic.MixedResultFallbackMoves)
 	}
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)

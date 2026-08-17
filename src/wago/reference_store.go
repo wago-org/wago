@@ -988,7 +988,28 @@ func (in *Instance) ownsGCInvocation(owner invocationID) bool {
 	return owned
 }
 
-func (in *Instance) suspendGCInvocation(owner invocationID) func() {
+type gcInvocationSuspension struct {
+	in       *Instance
+	topology *gcDomainTopology
+	domains  gcInvocationDomainView
+	owner    invocationID
+	dynamic  bool
+	active   bool
+}
+
+func (s gcInvocationSuspension) resume() {
+	if !s.active {
+		return
+	}
+	if s.dynamic {
+		s.topology.RLock()
+		s.domains = s.in.gcInvocationDomains()
+	}
+	s.domains.lock()
+	s.domains.claim(s.owner)
+}
+
+func (in *Instance) suspendGCInvocation(owner invocationID) gcInvocationSuspension {
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
 	if dynamic {
@@ -1001,14 +1022,14 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	}
 	domains := in.gcInvocationDomains()
 	if owner == 0 || domains.len() == 0 && !dynamic {
-		return func() {}
+		return gcInvocationSuspension{}
 	}
 	if !domains.ownedBy(owner) {
 		if !domains.dynamic && domains.set == nil {
 			// Start-function and construction callbacks can run before a public
 			// invocation lease exists. Their native entry is already serialized, so
 			// there is no complete-call lease to suspend or restore.
-			return func() {}
+			return gcInvocationSuspension{}
 		}
 		panic("wago: partial Runtime GC invocation lease ownership")
 	}
@@ -1017,14 +1038,7 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	if dynamic {
 		topology.RUnlock()
 	}
-	return func() {
-		if dynamic {
-			topology.RLock()
-			domains = in.gcInvocationDomains()
-		}
-		domains.lock()
-		domains.claim(owner)
-	}
+	return gcInvocationSuspension{in: in, topology: topology, domains: domains, owner: owner, dynamic: dynamic, active: true}
 }
 
 func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -651,6 +652,104 @@ func TestInlineExecDeclaredLocalZero(t *testing.T) {
 			t.Errorf("inlined f(9) with zero local = %d, want 9", got)
 		}
 	})
+}
+
+func TestInlineNumericCalleeSlotsOverlay(t *testing.T) {
+	// The caller invokes two distinct leaf callees sequentially. Their logical
+	// locals remain distinct, but their physical scratch slots cannot be live at
+	// the same time and may share the larger callee's region.
+	caller := []byte{
+		0x00,
+		0x41, 0x05, 0x10, 0x01,
+		0x41, 0x07, 0x10, 0x02,
+		0x6a, 0x0b,
+	}
+	oneLocal := []byte{
+		0x01, 0x01, 0x7f,
+		0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b,
+	}
+	threeLocals := []byte{
+		0x01, 0x03, 0x7f,
+		0x20, 0x00, 0x20, 0x03, 0x6a, 0x0b,
+	}
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{vI32}, body: caller},
+		funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: oneLocal},
+		funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: threeLocals},
+	)
+	compile := func(on bool) (*encoderamd64.CompiledModule, CodegenStats) {
+		var ms ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{
+			Optimizations: map[string]bool{"inline": true, "inline-slot-overlay": on},
+			Stats:         &ms,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cm, *ms.Funcs[0]
+	}
+	off, offStats := compile(false)
+	on, onStats := compile(true)
+	if got := runCompiledAmd64u(t, off); got != 12 {
+		t.Fatalf("disabled result = %d, want 12", got)
+	}
+	if got := runCompiledAmd64u(t, on); got != 12 {
+		t.Fatalf("enabled result = %d, want 12", got)
+	}
+	if got := offStats.FrameBytes - onStats.FrameBytes; got != 16 {
+		t.Fatalf("frame reduction = %d bytes, want 16 (off=%d on=%d)", got, offStats.FrameBytes, onStats.FrameBytes)
+	}
+	if got := onStats.Peephole["inline-slot-overlay"]; got != 1 {
+		t.Fatalf("inline-slot-overlay hits = %d, want 1", got)
+	}
+	parallel, err := CompileModuleWith(m, CompileOptions{
+		Workers:       2,
+		Optimizations: map[string]bool{"inline": true, "inline-slot-overlay": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(on.Code, parallel.Code) {
+		t.Fatal("serial and parallel slot-overlay code differ")
+	}
+	// Size/Embedded may reorder symbolic local homes after lowering. Until that
+	// packer understands aliases, compact objectives retain distinct regions.
+	size := OptimizeSize
+	var sizeStats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{
+		Objective:     &size,
+		Optimizations: map[string]bool{"inline": true, "inline-slot-overlay": true},
+		Stats:         &sizeStats,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := sizeStats.Funcs[0].Peephole["inline-slot-overlay"]; got != 0 {
+		t.Fatalf("size inline-slot-overlay hits = %d, want 0", got)
+	}
+}
+
+func TestInlineReferenceCalleeSlotsDoNotOverlay(t *testing.T) {
+	caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x41, 0x07, 0x10, 0x02, 0x6a, 0x0b}
+	numeric := []byte{0x01, 0x01, 0x7f, 0x20, 0x00, 0x0b}
+	refLocal := []byte{0x01, 0x01, 0x6f, 0x20, 0x00, 0x0b} // one externref local
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{vI32}, body: caller},
+		funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: numeric},
+		funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: refLocal},
+	)
+	var offStats, onStats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"inline": true, "inline-slot-overlay": false}, Stats: &offStats}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"inline": true, "inline-slot-overlay": true}, Stats: &onStats}); err != nil {
+		t.Fatal(err)
+	}
+	if offStats.Funcs[0].FrameBytes != onStats.Funcs[0].FrameBytes {
+		t.Fatalf("reference-local frame changed: off=%d on=%d", offStats.Funcs[0].FrameBytes, onStats.Funcs[0].FrameBytes)
+	}
+	if got := onStats.Funcs[0].Peephole["inline-slot-overlay"]; got != 0 {
+		t.Fatalf("reference-local inline-slot-overlay hits = %d, want 0", got)
+	}
 }
 
 // TestAnalyzeInlineCandidatesUnused checks that a leaf with no call sites is

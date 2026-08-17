@@ -46,6 +46,22 @@ func properTailResultModule(kind properTailBehaviorKind, results []wasm.ValType,
 	return wasmtest.Module(sections...)
 }
 
+func properTailNestedIndirectResultModule(results []wasm.ValType, targetBody []byte) []byte {
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(targetBody),
+			wasmtest.Code([]byte{0x41, 0x00, 0x13, 0x00, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0x01, 0x0b}),
+		)),
+	}
+	return wasmtest.Module(sections...)
+}
+
 func compileProperTailBehavior(t testing.TB, module []byte, objective OptimizationObjective, workers int) *Compiled {
 	t.Helper()
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).WithOptimizationObjective(objective).WithFunctionWorkers(workers)
@@ -98,6 +114,34 @@ func TestProperTailResultContractsExecuteAcrossKindsAndObjectives(t *testing.T) 
 						})
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestProperTailIndirectMixedResultsReturnThroughNestedRegisterCaller(t *testing.T) {
+	results := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+	body := []byte{
+		0x41, 0x2a,
+		0x42, 0x09,
+		0x43, 0x00, 0x00, 0xc0, 0x3f,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x40,
+		0x0b,
+	}
+	want := []uint64{42, 9, uint64(math.Float32bits(1.5)), math.Float64bits(2.25)}
+	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+		t.Run(objective.String(), func(t *testing.T) {
+			compiled := compileProperTailBehavior(t, properTailNestedIndirectResultModule(results, body), objective, 2)
+			in, err := instantiateCore(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for i := 0; i < 10; i++ {
+				got, err := in.Invoke("run")
+				if err != nil || !reflect.DeepEqual(got, want) {
+					t.Fatalf("iteration %d: nested indirect-tail results = %#x, %v; want %#x", i, got, err, want)
+				}
 			}
 		})
 	}
