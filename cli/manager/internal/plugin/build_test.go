@@ -13,6 +13,16 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
+func TestParsePluginSpecExpandsGitHubShorthand(t *testing.T) {
+	id, constraint, err := parsePluginSpec("wago-org/wasi@^1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "github.com/wago-org/wasi" || constraint != "^1.2.3" {
+		t.Fatalf("parsePluginSpec shorthand = %q, %q; want github.com/wago-org/wasi, ^1.2.3", id, constraint)
+	}
+}
+
 func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
 	t.Setenv("WAGO_BARE", "")

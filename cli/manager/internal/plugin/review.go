@@ -518,7 +518,7 @@ func validateAuthorityScopeOverride(request project.AuthorityRequest, scope proj
 }
 
 func selectGrantPlugin(name string, lock project.LockDocument) (string, error) {
-	name = strings.TrimSpace(name)
+	name = project.ExpandGitHubPluginID(name)
 	if name != "" {
 		if err := project.ValidatePluginID(name); err != nil {
 			return "", err

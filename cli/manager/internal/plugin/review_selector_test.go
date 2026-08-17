@@ -66,6 +66,18 @@ func TestAuthorityReviewSelectorSectionsMultiplePlugins(t *testing.T) {
 	}
 }
 
+func TestSelectGrantPluginExpandsGitHubShorthand(t *testing.T) {
+	lock := project.NewLockDocument()
+	lock.Plugins["github.com/wago-org/wasi"] = project.LockEntry{}
+	got, err := selectGrantPlugin("wago-org/wasi", lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "github.com/wago-org/wasi" {
+		t.Fatalf("selectGrantPlugin shorthand = %q", got)
+	}
+}
+
 func TestAuthorityRejectionChoicesUseYesAndNo(t *testing.T) {
 	items := authorityExitItems()
 	if len(items) != 2 || items[0].Label != "No" || items[0].Value != "continue" || items[0].Description != "" {

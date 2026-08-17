@@ -120,7 +120,7 @@ func pkgRemove(name string, options pkgOpts) {
 	if err != nil {
 		fatal("plugin remove: %v", err)
 	}
-	id := strings.TrimSpace(name)
+	id := project.ExpandGitHubPluginID(name)
 	if err := project.ValidatePluginID(id); err != nil {
 		fatal("plugin remove: %v", err)
 	}
@@ -179,6 +179,7 @@ func pkgUpdate(target string, options pkgOpts) {
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
+	target = project.ExpandGitHubPluginID(target)
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
 		if err != nil {
@@ -189,7 +190,6 @@ func pkgUpdate(target string, options pkgOpts) {
 			return err
 		}
 		if target != "" {
-			target = strings.TrimSpace(target)
 			if err := project.ValidatePluginID(target); err != nil {
 				return err
 			}
@@ -438,6 +438,7 @@ func pluginRuntimeBinary() (string, bool, error) {
 func parsePluginSpec(spec string) (string, string, error) {
 	spec = strings.TrimSpace(spec)
 	id, constraint := splitPluginSpec(spec)
+	id = project.ExpandGitHubPluginID(id)
 	if err := project.ValidatePluginID(id); err != nil {
 		return "", "", err
 	}

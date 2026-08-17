@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/wago-org/wago/cli/internal/project"
 )
@@ -21,7 +20,7 @@ func Configure(request ConfigRequest) error {
 	if err != nil {
 		return err
 	}
-	id := strings.TrimSpace(request.ID)
+	id := project.ExpandGitHubPluginID(request.ID)
 	if err := project.ValidatePluginID(id); err != nil {
 		return err
 	}

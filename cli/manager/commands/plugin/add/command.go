@@ -77,16 +77,12 @@ func Command(environment Environment) *command.Cmd {
 }
 
 func expandGitHubPluginSpec(spec string) string {
+	spec = strings.TrimSpace(spec)
 	id := spec
+	constraint := ""
 	if index := strings.LastIndexByte(spec, '@'); index > 0 {
 		id = spec[:index]
+		constraint = spec[index:]
 	}
-	if project.ValidatePluginID(id) == nil || !strings.Contains(id, "/") {
-		return spec
-	}
-	candidate := "github.com/" + id
-	if project.ValidatePluginID(candidate) != nil {
-		return spec
-	}
-	return "github.com/" + spec
+	return project.ExpandGitHubPluginID(id) + constraint
 }
