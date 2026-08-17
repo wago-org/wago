@@ -127,7 +127,7 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 			allSelected = allSelected && selected
 			anySelected = anySelected || selected
 			children = append(children, tui.SelectItem{
-				Label: shortPluginID(review.PluginID), On: selected, Fixed: required,
+				Label: authorityLabel(shortPluginID(review.PluginID), required), On: selected, Fixed: required,
 				Description: authorityPackageDetail(review),
 			})
 		}
@@ -141,12 +141,19 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 			description += "\n" + scope
 		}
 		items = append(items, tui.SelectItem{
-			Label: authority, Description: description, On: allSelected, Partial: anySelected && !allSelected, Fixed: allRequired, Children: children,
+			Label: authorityLabel(authority, allRequired), Description: description, On: allSelected, Partial: anySelected && !allSelected, Fixed: allRequired, Children: children,
 		})
 		selections = append(selections, selection)
 	}
 	items = append(items, tui.SelectItem{Label: "Cancel installation", Description: "make no changes", Cancel: true})
 	return tui.NewPermissionForm(authorityReviewTitle(reviews), items), selections
+}
+
+func authorityLabel(name string, required bool) string {
+	if required {
+		return name + " (required)"
+	}
+	return name
 }
 
 func authorityReviewTitle(reviews []AuthorityReview) string {
