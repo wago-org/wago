@@ -455,14 +455,6 @@ func validateAuthorityPolicy(requests []AuthorityRequest, grants []AuthorityGran
 		}
 		granted[grant.Name] = grant
 	}
-	for name, request := range requested {
-		if request.Mode != AuthorityRequired {
-			continue
-		}
-		if _, ok := granted[name]; !ok {
-			return fmt.Errorf("required authority %q must be granted", name)
-		}
-	}
 	return nil
 }
 

@@ -15,24 +15,22 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 	if len(plan.Reviews) == 0 && len(plan.ContractReviews) == 0 && len(options.scopes) == 0 {
 		return plan.Lock, nil
 	}
-	keys, optionalKeys := map[string]bool{}, map[string]bool{}
+	keys, reviewKeys := map[string]bool{}, map[string]bool{}
 	requestedNames := map[string]bool{}
 	for _, review := range plan.Reviews {
 		key := authorityKey(review.PluginID, review.Request.Name)
 		keys[key] = review.Request.Mode == project.AuthorityRequired || review.Previous != nil
-		if review.Request.Mode == project.AuthorityOptional {
-			optionalKeys[key] = true
-		}
+		reviewKeys[key] = true
 		requestedNames[review.Request.Name] = true
 	}
 	explicit := options.authorities != nil || options.grantAll || options.denyAll
 	switch {
 	case options.grantAll:
-		for key := range optionalKeys {
+		for key := range reviewKeys {
 			keys[key] = true
 		}
 	case options.denyAll:
-		for key := range optionalKeys {
+		for key := range reviewKeys {
 			keys[key] = false
 		}
 	case options.authorities != nil:
@@ -42,18 +40,12 @@ func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocumen
 			}
 		}
 		for _, review := range plan.Reviews {
-			if review.Request.Mode == project.AuthorityOptional {
-				keys[authorityKey(review.PluginID, review.Request.Name)] = containsString(options.authorities, review.Request.Name)
-			}
+			keys[authorityKey(review.PluginID, review.Request.Name)] = containsString(options.authorities, review.Request.Name)
 		}
 	}
 	if automation.NoInput() {
-		hasOptionalReview := len(optionalKeys) != 0
-		if len(plan.Reviews) != 0 && hasOptionalReview && !explicit {
-			return project.LockDocument{}, fmt.Errorf("--no-input requires --allow, --allow-all, or --deny-all for optional authority review")
-		}
-		if len(plan.Reviews) != 0 && !hasOptionalReview && !explicit && len(options.scopes) == 0 {
-			return project.LockDocument{}, fmt.Errorf("--no-input requires --allow, --allow-all, --deny-all, or --scopes for authority review")
+		if len(plan.Reviews) != 0 && !explicit {
+			return project.LockDocument{}, fmt.Errorf("--no-input requires --allow, --allow-all, or --deny-all for authority review")
 		}
 		if len(plan.ContractReviews) != 0 && !options.acceptContracts {
 			return project.LockDocument{}, fmt.Errorf("--no-input requires --accept-contracts for exact contract-binding review")
@@ -115,19 +107,19 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 		selection := authoritySelection{}
 		requesters := make([]string, 0, len(group))
 		children := make([]tui.SelectItem, 0, len(group))
-		allRequired := true
+		pluginRequires := true
 		allSelected, anySelected := true, false
 		for _, review := range group {
 			key := authorityKey(review.PluginID, review.Request.Name)
 			selection.keys = append(selection.keys, key)
 			requesters = append(requesters, shortPluginID(review.PluginID))
 			required := review.Request.Mode == project.AuthorityRequired
-			allRequired = allRequired && required
+			pluginRequires = pluginRequires && required
 			selected := required || choices[key]
 			allSelected = allSelected && selected
 			anySelected = anySelected || selected
 			children = append(children, tui.SelectItem{
-				Label: authorityLabel(shortPluginID(review.PluginID), required), On: selected, Fixed: required,
+				Label: authorityLabel(shortPluginID(review.PluginID), required), On: selected,
 				Description: authorityPackageDetail(review),
 			})
 		}
@@ -141,7 +133,7 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 			description += "\n" + scope
 		}
 		items = append(items, tui.SelectItem{
-			Label: authorityLabel(authority, allRequired), Description: description, On: allSelected, Partial: anySelected && !allSelected, Fixed: allRequired, Children: children,
+			Label: authorityLabel(authority, pluginRequires), Description: description, On: allSelected, Partial: anySelected && !allSelected, Children: children,
 		})
 		selections = append(selections, selection)
 	}
@@ -151,7 +143,7 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 
 func authorityLabel(name string, required bool) string {
 	if required {
-		return name + " (required)"
+		return name + " (plugin requires)"
 	}
 	return name
 }
@@ -393,11 +385,15 @@ func applyReviewedAuthorities(lock *project.LockDocument, choices map[string]boo
 		entry.Grants = entry.Grants[:0]
 		for _, request := range entry.RequestedAuthorities {
 			key := authorityKey(id, request.Name)
-			if request.Mode != project.AuthorityRequired && !choices[key] {
+			selected, reviewed := choices[key]
+			if reviewed && !selected {
 				continue
 			}
 			grant, ok := current[request.Name]
 			if !ok {
+				if !reviewed {
+					continue
+				}
 				grant = project.AuthorityGrant{Name: request.Name, Scope: request.Scope}
 			}
 			entry.Grants = append(entry.Grants, grant)
@@ -527,7 +523,7 @@ func editAuthorityGrants(lock project.LockDocument, id string, requested []strin
 		if !exists || grantAll {
 			grant = project.AuthorityGrant{Name: request.Name, Scope: request.Scope}
 		}
-		selected := request.Mode == project.AuthorityRequired
+		selected := false
 		switch {
 		case grantAll:
 			selected = true

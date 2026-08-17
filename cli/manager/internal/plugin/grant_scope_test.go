@@ -99,14 +99,14 @@ func TestNonInteractiveResolutionSeparatesScopeAndOptionalSelection(t *testing.T
 	scopes := map[string]map[string]project.AuthorityScope{
 		"github.com/acme/plugin": {"host.import.define": {Modules: []string{"clock"}}},
 	}
-	if _, err := reviewResolution(plan, pkgOpts{scopes: scopes}); err == nil || !strings.Contains(err.Error(), "optional authority review") {
-		t.Fatalf("scope-only optional review error = %v", err)
+	if _, err := reviewResolution(plan, pkgOpts{scopes: scopes}); err == nil || !strings.Contains(err.Error(), "authority review") {
+		t.Fatalf("scope-only authority review error = %v", err)
 	}
-	got, err := reviewResolution(plan, pkgOpts{denyAll: true, scopes: scopes})
+	got, err := reviewResolution(plan, pkgOpts{denyAll: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if grants := got.Plugins["github.com/acme/plugin"].Grants; len(grants) != 2 || grants[0].Name != "host.import.define" || !reflect.DeepEqual(grants[0].Scope.Modules, []string{"clock"}) || grants[1].Name != "runtime.close.observe" {
+	if grants := got.Plugins["github.com/acme/plugin"].Grants; len(grants) != 1 || grants[0].Name != "runtime.close.observe" {
 		t.Fatalf("grants = %#v", grants)
 	}
 }

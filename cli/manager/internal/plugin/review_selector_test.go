@@ -7,7 +7,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/project"
 )
 
-func TestAuthorityReviewSelectorShowsFixedRequiredAndCancel(t *testing.T) {
+func TestAuthorityReviewSelectorLabelsEditablePluginRequirementAndCancel(t *testing.T) {
 	required := AuthorityReview{
 		PluginID: "github.com/wago-org/wasi",
 		Request:  project.AuthorityRequest{Name: "host.arguments.read", Mode: project.AuthorityRequired, Reason: "read argv"},
@@ -28,10 +28,10 @@ func TestAuthorityReviewSelectorShowsFixedRequiredAndCancel(t *testing.T) {
 	if selector.Title != "Permissions for wago-org/wasi" {
 		t.Fatalf("selector title = %q", selector.Title)
 	}
-	if !selector.Items[0].On || !selector.Items[0].Fixed || !strings.Contains(selector.Items[0].Description, required.Request.Reason) {
+	if !selector.Items[0].On || selector.Items[0].Fixed || !strings.Contains(selector.Items[0].Description, required.Request.Reason) {
 		t.Fatalf("required row = %#v", selector.Items[0])
 	}
-	if selector.Items[0].Label != "host.arguments.read (required)" || selector.Items[0].Children[0].Label != "wasi (required)" {
+	if selector.Items[0].Label != "host.arguments.read (plugin requires)" || selector.Items[0].Children[0].Label != "wasi (plugin requires)" {
 		t.Fatalf("required labels = %#v", selector.Items[0])
 	}
 	if selector.Items[1].On || selector.Items[1].Fixed || !strings.Contains(selector.Items[1].Description, optional.Request.Reason) {
@@ -52,7 +52,7 @@ func TestAuthorityReviewSelectorDeduplicatesAuthorities(t *testing.T) {
 		{PluginID: "github.com/acme/two", Request: project.AuthorityRequest{Name: "instance.manage", Mode: project.AuthorityOptional}},
 	}
 	selector, selections := authorityReviewSelector(reviews, map[string]bool{})
-	if len(selections) != 2 || len(selections[0].keys) != 2 || !selector.Items[0].Fixed {
+	if len(selections) != 2 || len(selections[0].keys) != 2 || selector.Items[0].Fixed {
 		t.Fatalf("authority selections = %#v", selections)
 	}
 	if got := selector.Items[0].Description; !strings.Contains(got, "github.com/acme/one") || !strings.Contains(got, "github.com/acme/two") {
@@ -67,17 +67,18 @@ func TestAuthorityReviewSelectorEditsAuthorityByPackage(t *testing.T) {
 	}
 	optionalKey := authorityKey(reviews[1].PluginID, reviews[1].Request.Name)
 	selector, selections := authorityReviewSelector(reviews, map[string]bool{optionalKey: true})
-	if len(selector.Items[0].Children) != 2 || selector.Items[0].Children[0].Label != "wasi/p1 (required)" || selector.Items[0].Children[1].Label != "wasi/p2" {
+	if len(selector.Items[0].Children) != 2 || selector.Items[0].Children[0].Label != "wasi/p1 (plugin requires)" || selector.Items[0].Children[1].Label != "wasi/p2" {
 		t.Fatalf("package rows = %#v", selector.Items[0].Children)
 	}
-	if !selector.Items[0].Children[0].Fixed || !selector.Items[0].Children[1].On {
+	if selector.Items[0].Children[0].Fixed || !selector.Items[0].Children[1].On {
 		t.Fatalf("package grant state = %#v", selector.Items[0].Children)
 	}
+	selector.Items[0].Children[0].On = false
 	selector.Items[0].Children[1].On = false
 	choices := map[string]bool{optionalKey: true}
 	applyAuthoritySelectionChoices(&selector.MultiSelect, selections, choices)
-	if choices[optionalKey] {
-		t.Fatalf("optional package authority was not disabled: %v", choices)
+	if choices[optionalKey] || choices[authorityKey(reviews[0].PluginID, reviews[0].Request.Name)] {
+		t.Fatalf("package authority was not disabled: %v", choices)
 	}
 }
 

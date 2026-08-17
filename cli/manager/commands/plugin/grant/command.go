@@ -31,9 +31,9 @@ func Command(environment Environment) *command.Cmd {
 			`Example: --scopes '{"github.com/acme/plugin":{"host.import.define":{"modules":["env"]}}}'`,
 		Flags: []command.Flag{
 			plugin.GlobalFlag(), plugin.LocalFlag(),
-			{Name: "allow", Arg: "<authority,...>", Help: "grant comma-separated optional authorities without prompting"},
-			{Name: "all", Short: "a", Bool: true, Help: "grant every requested optional authority without prompting"},
-			{Name: "deny-all", Bool: true, Help: "deny every optional authority without a prompt"},
+			{Name: "allow", Arg: "<authority,...>", Help: "grant only these comma-separated authorities without prompting"},
+			{Name: "all", Short: "a", Bool: true, Help: "grant every requested authority without prompting"},
+			{Name: "deny-all", Bool: true, Help: "deny every requested authority without a prompt"},
 			{Name: "scopes", Arg: "<json>", Help: "set exact narrower Authority scopes from one JSON document"},
 		},
 		Run: func(c *command.Ctx) {
