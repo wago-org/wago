@@ -128,6 +128,32 @@ func TestGrantPluginPickerListsInstalledPlugins(t *testing.T) {
 	}
 }
 
+func TestGrantPluginTargetsUseDependenciesWhenRootHasNoAuthorities(t *testing.T) {
+	lock := project.NewLockDocument()
+	lock.Plugins["github.com/wago-org/wasi"] = project.LockEntry{Dependencies: map[string]string{
+		"github.com/wago-org/wasi/p1": "v0.0.0",
+		"github.com/wago-org/wasi/p2": "v0.0.0",
+	}}
+	lock.Plugins["github.com/wago-org/wasi/p1"] = project.LockEntry{RequestedAuthorities: []project.AuthorityRequest{{Name: "host.arguments.read", Mode: project.AuthorityRequired, Reason: "argv"}}}
+	lock.Plugins["github.com/wago-org/wasi/p2"] = project.LockEntry{RequestedAuthorities: []project.AuthorityRequest{{Name: "host.environment.read", Mode: project.AuthorityOptional, Reason: "environment"}}}
+	targets, err := grantPluginTargets("github.com/wago-org/wasi", lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(targets, ","); got != "github.com/wago-org/wasi/p1,github.com/wago-org/wasi/p2" {
+		t.Fatalf("grant targets = %q", got)
+	}
+}
+
+func TestUnmetPluginRequirementWarningsAreNonBlocking(t *testing.T) {
+	lock := project.NewLockDocument()
+	lock.Plugins["github.com/wago-org/wasi/p1"] = project.LockEntry{RequestedAuthorities: []project.AuthorityRequest{{Name: "host.arguments.read", Mode: project.AuthorityRequired, Reason: "argv"}}}
+	warnings := unmetPluginRequirementWarnings(lock)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "wasi/p1 may not work") || !strings.Contains(warnings[0], "host.arguments.read") {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+}
+
 func TestAuthorityRejectionChoicesUseYesAndNo(t *testing.T) {
 	items := authorityExitItems()
 	if len(items) != 2 || items[0].Label != "No" || items[0].Value != "continue" || items[0].Description != "" {
