@@ -44,7 +44,7 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 type PluginSelection struct{}
 type PluginProvider struct{}
 type PluginSet struct { Providers []PluginProvider; Selections []PluginSelection }
-func ValidatePluginSet(PluginSet) error { return nil }
+func InspectPluginPlan(PluginSet) (any, error) { return nil, nil }
 `,
 		"cli/runtime/runtime.go": `package runtime
 import wago "github.com/wago-org/wago"

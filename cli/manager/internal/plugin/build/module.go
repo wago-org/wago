@@ -446,7 +446,7 @@ func renderMain(input Input, config Config, buildIdentity string) ([]byte, error
 	b.WriteString("func main() {\n")
 	b.WriteString("\tset := pluginSet()\n")
 	b.WriteString("\tif os.Getenv(\"WAGO_INTERNAL_VALIDATE_PLUGIN_SET\") == \"1\" {\n")
-	b.WriteString("\t\tif err := wago.ValidatePluginSet(set); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }; return\n")
+	b.WriteString("\t\tif _, err := wago.InspectPluginPlan(set); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }; return\n")
 	b.WriteString("\t}\n")
 	b.WriteString("\truntime.MainWithPluginSet(version, buildIdentity, set)\n")
 	b.WriteString("}\n")

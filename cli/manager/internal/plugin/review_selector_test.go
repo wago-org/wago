@@ -31,7 +31,7 @@ func TestAuthorityReviewSelectorLabelsEditablePluginRequirementAndCancel(t *test
 	if !selector.Items[0].On || selector.Items[0].Fixed || !strings.Contains(selector.Items[0].Description, required.Request.Reason) {
 		t.Fatalf("required row = %#v", selector.Items[0])
 	}
-	if selector.Items[0].Label != "host.arguments.read (plugin requires)" || selector.Items[0].Children[0].Label != "wasi (plugin requires)" {
+	if selector.Items[0].Label != "host.arguments.read (required)" || selector.Items[0].Children[0].Label != "wasi (required)" {
 		t.Fatalf("required labels = %#v", selector.Items[0])
 	}
 	if selector.Items[1].On || selector.Items[1].Fixed || !strings.Contains(selector.Items[1].Description, optional.Request.Reason) {
@@ -67,7 +67,7 @@ func TestAuthorityReviewSelectorEditsAuthorityByPackage(t *testing.T) {
 	}
 	optionalKey := authorityKey(reviews[1].PluginID, reviews[1].Request.Name)
 	selector, selections := authorityReviewSelector(reviews, map[string]bool{optionalKey: true})
-	if len(selector.Items[0].Children) != 2 || selector.Items[0].Children[0].Label != "wasi/p1 (plugin requires)" || selector.Items[0].Children[1].Label != "wasi/p2" {
+	if len(selector.Items[0].Children) != 2 || selector.Items[0].Children[0].Label != "wasi/p1 (required)" || selector.Items[0].Children[1].Label != "wasi/p2" {
 		t.Fatalf("package rows = %#v", selector.Items[0].Children)
 	}
 	if selector.Items[0].Children[0].Fixed || !selector.Items[0].Children[1].On {

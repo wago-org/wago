@@ -144,7 +144,7 @@ func authorityReviewSelector(reviews []AuthorityReview, choices map[string]bool)
 
 func authorityLabel(name string, required bool) string {
 	if required {
-		return name + " (plugin requires)"
+		return name + " (required)"
 	}
 	return name
 }
