@@ -1,0 +1,40 @@
+name: Apply host guest storage patch
+
+on:
+  push:
+    branches: [agent/host-guest-storage]
+    paths:
+      - ".github/scripts/apply_host_guest_storage.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: agent/host-guest-storage
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+      - name: Apply mechanical hostcall patch
+        run: python3 .github/scripts/apply_host_guest_storage.py
+      - name: Remove patch helper
+        run: rm .github/scripts/apply_host_guest_storage.py
+      - name: Format changed Go files
+        run: gofmt -w src/wago/hostcall.go src/wago/guest_storage.go src/wago/guest_storage_alloc.go src/core/runtime/gc/host_view.go
+      - name: Compile Wago package and tests
+        run: go test ./src/wago -run '^$'
+      - name: Commit source changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "wago: expose callback-scoped guest storage"
+          git push origin HEAD:agent/host-guest-storage
