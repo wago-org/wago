@@ -137,6 +137,23 @@ func (p *Progress) Fail(step string) {
 	p.mu.Unlock()
 }
 
+// Clear removes an active terminal status without leaving a completed line.
+// It is used immediately before an interactive control takes over the same
+// terminal area. Redirected output remains durable and is intentionally not
+// rewritten.
+func (p *Progress) Clear() {
+	if !p.tty {
+		return
+	}
+	p.stopAnimation()
+	p.mu.Lock()
+	if p.active {
+		fmt.Fprint(p.out, "\r\x1b[2K")
+		p.active = false
+	}
+	p.mu.Unlock()
+}
+
 func (p *Progress) renderSpinnerLocked() {
 	fmt.Fprintf(p.out, "\r\x1b[2K%s %s", ui.Dim(spinnerFrames[p.frame]), p.text)
 }

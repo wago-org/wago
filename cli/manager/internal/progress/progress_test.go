@@ -52,3 +52,19 @@ func TestFinishStopsSpinnerBeforeInteractiveOutput(t *testing.T) {
 		t.Fatalf("completed fetch did not advance before interactive output:\n%q", want)
 	}
 }
+
+func TestClearStopsSpinnerWithoutLeavingStatusLine(t *testing.T) {
+	var log bytes.Buffer
+	p := &Progress{out: &log, tty: true, lastPercent: -1}
+	p.Begin("Fetching packages…")
+	p.Clear()
+	log.WriteString("Install Wago version\n")
+	want := log.String()
+	time.Sleep(100 * time.Millisecond)
+	if got := log.String(); got != want {
+		t.Fatalf("spinner repainted over picker:\n%q\nwant stable:\n%q", got, want)
+	}
+	if !strings.HasSuffix(want, "\r\x1b[2KInstall Wago version\n") {
+		t.Fatalf("clear did not erase the status line before picker: %q", want)
+	}
+}

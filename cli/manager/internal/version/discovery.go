@@ -36,12 +36,17 @@ func latestStableReleaseContext(ctx context.Context) (string, error) {
 
 func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildValue, use string) {
 	discovery := newVersionBrowseDiscovery()
+	progress := managerprogress.NewProgress(os.Stderr)
+	progress.Begin("Fetching packages…")
 	if err := discovery.loadReleases(ctx); err != nil {
+		progress.Clear()
 		fatal("version browse: unable to fetch releases: %v", err)
 	}
 	if err := discovery.loadCommits(ctx); err != nil {
+		progress.Clear()
 		fatal("version browse: unable to fetch main commits: %v", err)
 	}
+	progress.Clear()
 	for {
 		choice, profile, build, ok := chooseInstallPicker(
 			discovery.releases,
@@ -60,9 +65,11 @@ func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildV
 		switch choice {
 		case pickerLoadMoreReleases:
 			history = "release"
+			progress.Begin("Fetching older packages…")
 			err = discovery.loadReleases(ctx)
 		case pickerLoadMoreCommits:
 			history = "commit"
+			progress.Begin("Fetching older packages…")
 			err = discovery.loadCommits(ctx)
 		default:
 			if choice == "latest" {
@@ -76,6 +83,7 @@ func vmBrowseContext(ctx context.Context, d wagopaths.Dirs, profileValue, buildV
 			vmInstallContext(ctx, d, choice, profile, build, use)
 			return
 		}
+		progress.Clear()
 		if errors.Is(err, context.Canceled) {
 			return
 		}
