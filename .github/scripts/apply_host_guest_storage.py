@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Apply the callback-scoped guest-storage plumbing to hostcall.go once.
 from pathlib import Path
 
 path = Path("src/wago/hostcall.go")
