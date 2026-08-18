@@ -13,7 +13,8 @@ import (
 // initialize runs while the new array is private and rooted. Its byte slice is
 // the complete logical payload and is writable even when the caller selected an
 // immutable array type. The slice expires when initialize returns. If initialize
-// fails, no public result token is created.
+// fails, no public result token is created. Wago rejects guest re-entry for the
+// duration of this operation.
 type GuestGCArrayAllocatorHostModule interface {
 	HostModule
 	NewGCArrayResult(resultIndex int, length uint32, initialize func([]byte, GuestGCArrayInfo) error) (uint64, error)
@@ -51,7 +52,12 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 		return 0, fmt.Errorf("wago: host result type %d has no Runtime-domain identity", localType)
 	}
 
-	unlockNative := lockNativeExecutionForHostAccess()
+	endBorrow, err := beginGuestStorageBorrow(h.in)
+	if err != nil {
+		return 0, err
+	}
+	defer endBorrow()
+	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	lockedDomain := h.in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
