@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -69,9 +70,9 @@ type GuestGCArrayInfo struct {
 
 // GuestStorage is a callback-scoped view of the calling Wasm instance. Every
 // slice and GuestGCRef returned by this interface expires when the surrounding
-// WithGuestStorage callback returns. Implementations keep collection/relocation
-// serialized for that complete lifetime, so multiple array views can be held at
-// once for scatter/gather validation and I/O.
+// WithGuestStorage callback returns. Implementations keep native execution and
+// collector relocation serialized for that complete lifetime, so multiple
+// array views can be held at once for scatter/gather validation and I/O.
 type GuestStorage interface {
 	MemoryInfo(index uint32) (GuestMemoryInfo, error)
 	MemoryRange(index uint32, offset, length uint64, access GuestStorageAccess) ([]byte, error)
@@ -90,6 +91,10 @@ type GuestStorage interface {
 // direct, indexed guest storage access. HostModule intentionally remains small
 // and backwards compatible; plugins opt into this interface when they need
 // multi-memory, Memory64, or Wasm GC storage.
+//
+// Wago rejects guest re-entry while WithGuestStorage is active. Re-entry could
+// otherwise grow a linear memory or run a moving collection while a host slice
+// still refers to the prior storage.
 type GuestStorageHostModule interface {
 	HostModule
 	WithGuestStorage(func(GuestStorage) error) error
@@ -99,6 +104,25 @@ type guestStorageView struct {
 	in      *Instance
 	params  []ValueTypeDescriptor
 	results []ValueTypeDescriptor
+	active  atomic.Bool
+}
+
+func (v *guestStorageView) ensureActive() error {
+	if v == nil || !v.active.Load() || v.in == nil {
+		return fmt.Errorf("wago: guest-storage view is no longer active: %w", ErrPermissionDenied)
+	}
+	return nil
+}
+
+func beginGuestStorageBorrow(in *Instance) (func(), error) {
+	if in == nil {
+		return nil, fmt.Errorf("wago: guest storage has no instance")
+	}
+	state := in.ensurePluginState()
+	if !state.guestStorageBorrow.CompareAndSwap(0, 1) {
+		return nil, fmt.Errorf("wago: guest storage is already borrowed: %w", ErrPermissionDenied)
+	}
+	return func() { state.guestStorageBorrow.Store(0) }, nil
 }
 
 func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error {
@@ -108,13 +132,21 @@ func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error 
 	if !h.valid() || h.in == nil {
 		return fmt.Errorf("wago: guest storage is outside its active host callback: %w", ErrPermissionDenied)
 	}
-	unlockNative := lockNativeExecutionForHostAccess()
+	endBorrow, err := beginGuestStorageBorrow(h.in)
+	if err != nil {
+		return err
+	}
+	defer endBorrow()
+	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	if h.in.gc != nil {
 		lockedDomain := h.in.lockGCCollector()
 		defer unlockGCCollector(lockedDomain)
 	}
-	return fn(&guestStorageView{in: h.in, params: h.exactParams, results: h.exactResults})
+	view := &guestStorageView{in: h.in, params: h.exactParams, results: h.exactResults}
+	view.active.Store(true)
+	defer view.active.Store(false)
+	return fn(view)
 }
 
 func (h staticHostModule) WithGuestStorage(fn func(GuestStorage) error) error {
@@ -124,18 +156,29 @@ func (h staticHostModule) WithGuestStorage(fn func(GuestStorage) error) error {
 	if h.in == nil {
 		return fmt.Errorf("wago: guest storage has no instance")
 	}
-	unlockNative := lockNativeExecutionForHostAccess()
+	endBorrow, err := beginGuestStorageBorrow(h.in)
+	if err != nil {
+		return err
+	}
+	defer endBorrow()
+	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	if h.in.gc != nil {
 		lockedDomain := h.in.lockGCCollector()
 		defer unlockGCCollector(lockedDomain)
 	}
-	return fn(&guestStorageView{in: h.in})
+	view := &guestStorageView{in: h.in}
+	view.active.Store(true)
+	defer view.active.Store(false)
+	return fn(view)
 }
 
 func (v *guestStorageView) memory(index uint32) (*Memory, error) {
-	if v == nil || v.in == nil || v.in.c == nil {
-		return nil, fmt.Errorf("wago: guest storage has no live instance")
+	if err := v.ensureActive(); err != nil {
+		return nil, err
+	}
+	if v.in.c == nil {
+		return nil, fmt.Errorf("wago: guest storage has no compiled metadata")
 	}
 	if uint64(index) >= uint64(v.in.c.memoryCount()) {
 		return nil, fmt.Errorf("wago: memory index %d is out of range", index)
@@ -192,10 +235,13 @@ func (v *guestStorageView) MemoryRange(index uint32, offset, length uint64, acce
 }
 
 func (v *guestStorageView) GCRef(slot uint64) (GuestGCRef, error) {
+	if err := v.ensureActive(); err != nil {
+		return GuestGCRef{}, err
+	}
 	if slot == 0 {
 		return GuestGCRef{}, nil
 	}
-	if v == nil || v.in == nil || v.in.gc == nil || v.in.refStore == nil {
+	if v.in.gc == nil || v.in.refStore == nil {
 		return GuestGCRef{}, fmt.Errorf("wago: guest has no live Wasm GC collector")
 	}
 	state := v.in.existingPublicGCState()
@@ -247,7 +293,10 @@ func guestArrayStorage(kind gc.StorageKind) (GuestGCArrayStorage, bool) {
 }
 
 func (v *guestStorageView) gcArrayInfo(ref GuestGCRef) (GuestGCArrayInfo, gc.TypeID, error) {
-	if v == nil || v.in == nil || v.in.gc == nil || v.in.c == nil {
+	if err := v.ensureActive(); err != nil {
+		return GuestGCArrayInfo{}, 0, err
+	}
+	if v.in.gc == nil || v.in.c == nil {
 		return GuestGCArrayInfo{}, 0, fmt.Errorf("wago: guest has no live Wasm GC collector")
 	}
 	if ref.ref.IsNull() {
@@ -325,21 +374,21 @@ func (v *guestStorageView) GCArrayRef(ref GuestGCRef, index uint32) (GuestGCRef,
 }
 
 func (v *guestStorageView) ImportParamType(index int) (ValueTypeDescriptor, bool) {
-	if v == nil || index < 0 || index >= len(v.params) {
+	if v == nil || !v.active.Load() || index < 0 || index >= len(v.params) {
 		return ValueTypeDescriptor{}, false
 	}
 	return v.params[index], true
 }
 
 func (v *guestStorageView) ImportResultType(index int) (ValueTypeDescriptor, bool) {
-	if v == nil || index < 0 || index >= len(v.results) {
+	if v == nil || !v.active.Load() || index < 0 || index >= len(v.results) {
 		return ValueTypeDescriptor{}, false
 	}
 	return v.results[index], true
 }
 
 func (v *guestStorageView) DefinedType(index uint32) (DefinedTypeDescriptor, bool) {
-	if v == nil || v.in == nil || v.in.c == nil || int(index) >= len(v.in.c.Types) {
+	if v == nil || !v.active.Load() || v.in == nil || v.in.c == nil || int(index) >= len(v.in.c.Types) {
 		return DefinedTypeDescriptor{}, false
 	}
 	return v.in.c.Types[index], true
