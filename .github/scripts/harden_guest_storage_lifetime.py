@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# One-shot hardening for callback-scoped guest-storage lifetime rules.
 from pathlib import Path
 
 # Bind callback-scoped GC refs to the exact GuestStorage view that created them.
