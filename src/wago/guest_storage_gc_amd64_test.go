@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -69,6 +70,7 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 	}()
 
 	var retained GuestStorage
+	var retainedRef GuestGCRef
 	if err := caller.WithGuestStorage(func(storage GuestStorage) error {
 		retained = storage
 		resultType, ok := storage.ImportResultType(0)
@@ -79,6 +81,7 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		retainedRef = ref
 		info, err := storage.GCArrayInfo(ref)
 		if err != nil {
 			return err
@@ -105,5 +108,13 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 	}
 	if _, ok := retained.ImportResultType(0); ok {
 		t.Fatal("expired GC guest-storage view still exposes import types")
+	}
+	if err := caller.WithGuestStorage(func(storage GuestStorage) error {
+		if _, err := storage.GCArrayInfo(retainedRef); err == nil || !strings.Contains(err.Error(), "different guest-storage view") {
+			return &guestStorageTestError{"GC reference crossed guest-storage views"}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

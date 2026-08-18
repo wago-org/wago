@@ -238,8 +238,16 @@ func (in *Instance) currentInvocationID() invocationID {
 
 type staticHostModule struct{ in *Instance }
 
-func (h staticHostModule) Memory() []byte   { return h.in.mem() }
-func (h staticHostModule) CollectGC() error { return h.in.CollectGC() }
+func (h staticHostModule) Memory() []byte { return h.in.mem() }
+func (h staticHostModule) CollectGC() error {
+	if h.in == nil {
+		return fmt.Errorf("wago: GC host module has no instance")
+	}
+	if state := h.in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
+		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
+	}
+	return h.in.CollectGC()
+}
 func (h staticHostModule) NewExternRef(value any) (ExternRef, error) {
 	return h.in.NewExternRef(value)
 }
@@ -622,6 +630,9 @@ func (h instanceHostModule) Memory() []byte {
 func (h instanceHostModule) CollectGC() error {
 	if !h.valid() {
 		return fmt.Errorf("wago: GC host module is outside its active callback: %w", ErrPermissionDenied)
+	}
+	if state := h.in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
+		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	if h.in.ownsGCInvocation(h.invocationID) {
 		return h.in.collectGC()

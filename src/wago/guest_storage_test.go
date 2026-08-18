@@ -90,6 +90,13 @@ func TestHostGuestStorageCallbackLifetimeAndReentry(t *testing.T) {
 			if _, err := in.InvokeFromHost(context.Background(), m, "peek"); err == nil || !strings.Contains(err.Error(), "guest storage is borrowed") {
 				return &guestStorageTestError{"re-entry during borrow was not rejected"}
 			}
+			gcModule, ok := m.(GCHostModule)
+			if !ok {
+				return &guestStorageTestError{"GC host module unavailable"}
+			}
+			if err := gcModule.CollectGC(); err == nil || !strings.Contains(err.Error(), "guest storage is borrowed") {
+				return &guestStorageTestError{"collection during borrow was not rejected"}
+			}
 			results[0] = 0
 			return nil
 		}); err != nil {

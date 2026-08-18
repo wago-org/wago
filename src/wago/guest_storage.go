@@ -54,7 +54,10 @@ const (
 // GuestGCRef is an opaque callback-scoped collector reference. Its zero value
 // is null. A value obtained from one GuestStorage view MUST NOT be retained or
 // used with another view.
-type GuestGCRef struct{ ref gc.Ref }
+type GuestGCRef struct {
+	ref  gc.Ref
+	view *guestStorageView
+}
 
 // IsNull reports whether this callback-scoped reference is null.
 func (r GuestGCRef) IsNull() bool { return r.ref.IsNull() }
@@ -239,7 +242,7 @@ func (v *guestStorageView) GCRef(slot uint64) (GuestGCRef, error) {
 		return GuestGCRef{}, err
 	}
 	if slot == 0 {
-		return GuestGCRef{}, nil
+		return GuestGCRef{view: v}, nil
 	}
 	if v.in.gc == nil || v.in.refStore == nil {
 		return GuestGCRef{}, fmt.Errorf("wago: guest has no live Wasm GC collector")
@@ -262,7 +265,7 @@ func (v *guestStorageView) GCRef(slot uint64) (GuestGCRef, error) {
 	if ref.IsNull() {
 		return GuestGCRef{}, fmt.Errorf("wago: GC reference token has no live object root")
 	}
-	return GuestGCRef{ref: ref}, nil
+	return GuestGCRef{ref: ref, view: v}, nil
 }
 
 func guestArrayStorage(kind gc.StorageKind) (GuestGCArrayStorage, bool) {
@@ -298,6 +301,9 @@ func (v *guestStorageView) gcArrayInfo(ref GuestGCRef) (GuestGCArrayInfo, gc.Typ
 	}
 	if v.in.gc == nil || v.in.c == nil {
 		return GuestGCArrayInfo{}, 0, fmt.Errorf("wago: guest has no live Wasm GC collector")
+	}
+	if ref.view != nil && ref.view != v {
+		return GuestGCArrayInfo{}, 0, fmt.Errorf("wago: GC reference belongs to a different guest-storage view: %w", ErrPermissionDenied)
 	}
 	if ref.ref.IsNull() {
 		return GuestGCArrayInfo{}, 0, fmt.Errorf("wago: null GC reference")
@@ -370,7 +376,7 @@ func (v *guestStorageView) GCArrayRef(ref GuestGCRef, index uint32) (GuestGCRef,
 	if value.Kind != gc.StorageRef && value.Kind != gc.StorageRefNull {
 		return GuestGCRef{}, errors.New("wago: GC array reference storage changed during host view")
 	}
-	return GuestGCRef{ref: value.Ref}, nil
+	return GuestGCRef{ref: value.Ref, view: v}, nil
 }
 
 func (v *guestStorageView) ImportParamType(index int) (ValueTypeDescriptor, bool) {
