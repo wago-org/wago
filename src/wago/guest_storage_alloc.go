@@ -44,8 +44,11 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	if !ok || storage == GuestGCArrayRef || storage == GuestGCArrayFuncRef || storage == GuestGCArrayExternRef {
 		return 0, fmt.Errorf("wago: host result %d is not a raw-payload GC array", resultIndex)
 	}
-	if h.in.gc == nil || h.in.refStore == nil {
-		return 0, fmt.Errorf("wago: host result %d has no live GC domain", resultIndex)
+	if h.in.gc == nil {
+		return 0, fmt.Errorf("wago: host result %d has no live GC collector", resultIndex)
+	}
+	if _, err := h.in.referenceStoreForBoundary(); err != nil {
+		return 0, fmt.Errorf("wago: host result %d reference store: %w", resultIndex, err)
 	}
 	domainType, ok := h.in.gcDomainType(localType)
 	if !ok {
