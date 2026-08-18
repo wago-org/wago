@@ -43,6 +43,9 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 	if active == nil || id == 0 {
 		return nil, fmt.Errorf("wago: re-entry requires the active host caller: %w", ErrPermissionDenied)
 	}
+	if state := active.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
+		return nil, fmt.Errorf("wago: re-entry is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
+	}
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -138,20 +141,21 @@ type hostCallWaiter struct {
 }
 
 type instancePluginState struct {
-	hostScope         hostCallScope
-	invokeMu          sync.Mutex // serializes unrelated public calls across parked host callbacks
-	nativeExecutionMu sync.Mutex // serializes native entry for an independent instance
-	invocationID      invocationID
-	close             atomic.Pointer[instanceCloseState]
-	gcConfig          *GCConfig
-	origin            InstantiateOrigin
-	gcGlobalRootCount uint8
-	gcPublic          atomic.Pointer[gcPublicState]
-	gcArrayElements   atomic.Pointer[gcArrayElementState]
-	gcRefTestTable    atomic.Pointer[gcRefTestTableState]
-	gcGlobalRoots     [3]gcGlobalRootMapping
-	tagIdentityBase   uintptr      // arena-owned bounded native u64 directory for staged EH
-	tagExports        map[int]*Tag // lazy stable identity handles for exported local tags
+	hostScope          hostCallScope
+	invokeMu           sync.Mutex // serializes unrelated public calls across parked host callbacks
+	nativeExecutionMu  sync.Mutex // serializes native entry for an independent instance
+	invocationID       invocationID
+	guestStorageBorrow atomic.Uint32
+	close              atomic.Pointer[instanceCloseState]
+	gcConfig           *GCConfig
+	origin             InstantiateOrigin
+	gcGlobalRootCount  uint8
+	gcPublic           atomic.Pointer[gcPublicState]
+	gcArrayElements    atomic.Pointer[gcArrayElementState]
+	gcRefTestTable     atomic.Pointer[gcRefTestTableState]
+	gcGlobalRoots      [3]gcGlobalRootMapping
+	tagIdentityBase    uintptr      // arena-owned bounded native u64 directory for staged EH
+	tagExports         map[int]*Tag // lazy stable identity handles for exported local tags
 }
 
 type instanceCloseState struct {
@@ -578,6 +582,8 @@ type instanceHostModule struct {
 	parentGeneration uint64
 	invocationID     invocationID
 	reservation      *pluginOperationReservation
+	exactParams      []ValueTypeDescriptor
+	exactResults     []ValueTypeDescriptor
 }
 
 func (h instanceHostModule) valid() bool {
@@ -792,6 +798,8 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		defer gcTemps.release(in)
 		invocation := currentHostInvocationContext(ctrl, in)
 		caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
+		caller.exactParams = exactParams
+		caller.exactResults = exactResults
 		defer caller.scope.end(caller.generation, caller.parentGeneration)
 		var mod HostModule = caller
 		fn(mod, args, results)
