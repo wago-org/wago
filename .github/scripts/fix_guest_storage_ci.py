@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# One-shot layout repair for the guest-storage borrow flag.
 from pathlib import Path
 
 path = Path("src/wago/hostcall.go")
