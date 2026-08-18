@@ -1,0 +1,40 @@
+name: Regenerate public facade
+
+on:
+  push:
+    branches: [agent/host-guest-storage]
+    paths:
+      - ".github/trigger-regenerate-facade"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: agent/host-guest-storage
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.22.x"
+      - name: Regenerate public facade
+        run: go generate ./...
+      - name: Format generated facade
+        run: gofmt -w wago.go
+      - name: Compile public and implementation packages
+        run: go test . ./src/wago -run '^$'
+      - name: Remove trigger
+        run: rm .github/trigger-regenerate-facade
+      - name: Commit generated facade
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "wago: regenerate public facade"
+          git push origin HEAD:agent/host-guest-storage
