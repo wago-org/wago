@@ -145,11 +145,11 @@ type instancePluginState struct {
 	invokeMu           sync.Mutex // serializes unrelated public calls across parked host callbacks
 	nativeExecutionMu  sync.Mutex // serializes native entry for an independent instance
 	invocationID       invocationID
-	guestStorageBorrow atomic.Uint32
 	close              atomic.Pointer[instanceCloseState]
 	gcConfig           *GCConfig
 	origin             InstantiateOrigin
 	gcGlobalRootCount  uint8
+	guestStorageBorrow atomic.Uint32
 	gcPublic           atomic.Pointer[gcPublicState]
 	gcArrayElements    atomic.Pointer[gcArrayElementState]
 	gcRefTestTable     atomic.Pointer[gcRefTestTableState]
