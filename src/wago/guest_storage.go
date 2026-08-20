@@ -111,6 +111,7 @@ type guestStorageView struct {
 	in      *Instance
 	params  []ValueTypeDescriptor
 	results []ValueTypeDescriptor
+	types   []DefinedTypeDescriptor
 	active  atomic.Bool
 }
 
@@ -158,7 +159,13 @@ func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error 
 		lockedDomain := h.in.lockGCCollector()
 		defer unlockGCCollector(lockedDomain)
 	}
-	view := &guestStorageView{in: h.in, params: h.exactParams, results: h.exactResults}
+	var types []DefinedTypeDescriptor
+	if h.ephemeralGCResults != nil && h.ephemeralGCResults.exactTypes != nil {
+		types = *h.ephemeralGCResults.exactTypes
+	} else if h.in.c != nil {
+		types = h.in.c.Types
+	}
+	view := &guestStorageView{in: h.in, params: h.exactParams, results: h.exactResults, types: types}
 	view.active.Store(true)
 	defer view.active.Store(false)
 	return fn(view)
@@ -385,8 +392,8 @@ func (v *guestStorageView) ImportResultType(index int) (ValueTypeDescriptor, boo
 }
 
 func (v *guestStorageView) DefinedType(index uint32) (DefinedTypeDescriptor, bool) {
-	if v == nil || !v.active.Load() || v.in == nil || v.in.c == nil || int(index) >= len(v.in.c.Types) {
+	if v == nil || !v.active.Load() || int(index) >= len(v.types) {
 		return DefinedTypeDescriptor{}, false
 	}
-	return v.in.c.Types[index], true
+	return v.types[index], true
 }
