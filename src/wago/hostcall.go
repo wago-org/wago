@@ -43,6 +43,9 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 	if active == nil || id == 0 {
 		return nil, fmt.Errorf("wago: re-entry requires the active host caller: %w", ErrPermissionDenied)
 	}
+	if active.guestStorageBorrowed() {
+		return nil, fmt.Errorf("wago: re-entry is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
+	}
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -138,20 +141,21 @@ type hostCallWaiter struct {
 }
 
 type instancePluginState struct {
-	hostScope         hostCallScope
-	invokeMu          sync.Mutex // serializes unrelated public calls across parked host callbacks
-	nativeExecutionMu sync.Mutex // serializes native entry for an independent instance
-	invocationID      invocationID
-	close             atomic.Pointer[instanceCloseState]
-	gcConfig          *GCConfig
-	origin            InstantiateOrigin
-	gcGlobalRootCount uint8
-	gcPublic          atomic.Pointer[gcPublicState]
-	gcArrayElements   atomic.Pointer[gcArrayElementState]
-	gcRefTestTable    atomic.Pointer[gcRefTestTableState]
-	gcGlobalRoots     [3]gcGlobalRootMapping
-	tagIdentityBase   uintptr      // arena-owned bounded native u64 directory for staged EH
-	tagExports        map[int]*Tag // lazy stable identity handles for exported local tags
+	hostScope          hostCallScope
+	invokeMu           sync.Mutex // serializes unrelated public calls across parked host callbacks
+	nativeExecutionMu  sync.Mutex // serializes native entry for an independent instance
+	invocationID       invocationID
+	close              atomic.Pointer[instanceCloseState]
+	gcConfig           *GCConfig
+	origin             InstantiateOrigin
+	gcGlobalRootCount  uint8
+	guestStorageBorrow atomic.Uint32
+	gcPublic           atomic.Pointer[gcPublicState]
+	gcArrayElements    atomic.Pointer[gcArrayElementState]
+	gcRefTestTable     atomic.Pointer[gcRefTestTableState]
+	gcGlobalRoots      [3]gcGlobalRootMapping
+	tagIdentityBase    uintptr      // arena-owned bounded native u64 directory for staged EH
+	tagExports         map[int]*Tag // lazy stable identity handles for exported local tags
 }
 
 type instanceCloseState struct {
@@ -234,8 +238,16 @@ func (in *Instance) currentInvocationID() invocationID {
 
 type staticHostModule struct{ in *Instance }
 
-func (h staticHostModule) Memory() []byte   { return h.in.mem() }
-func (h staticHostModule) CollectGC() error { return h.in.CollectGC() }
+func (h staticHostModule) Memory() []byte { return h.in.mem() }
+func (h staticHostModule) CollectGC() error {
+	if h.in == nil {
+		return fmt.Errorf("wago: GC host module has no instance")
+	}
+	if h.in.guestStorageBorrowed() {
+		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
+	}
+	return h.in.CollectGC()
+}
 func (h staticHostModule) NewExternRef(value any) (ExternRef, error) {
 	return h.in.NewExternRef(value)
 }
@@ -572,12 +584,15 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 
 // instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct {
-	in               *Instance
-	scope            *hostCallScope
-	generation       uint64
-	parentGeneration uint64
-	invocationID     invocationID
-	reservation      *pluginOperationReservation
+	in                 *Instance
+	scope              *hostCallScope
+	generation         uint64
+	parentGeneration   uint64
+	invocationID       invocationID
+	reservation        *pluginOperationReservation
+	exactParams        []ValueTypeDescriptor
+	exactResults       []ValueTypeDescriptor
+	ephemeralGCResults *gcHostTempTokens
 }
 
 func (h instanceHostModule) valid() bool {
@@ -616,6 +631,9 @@ func (h instanceHostModule) Memory() []byte {
 func (h instanceHostModule) CollectGC() error {
 	if !h.valid() {
 		return fmt.Errorf("wago: GC host module is outside its active callback: %w", ErrPermissionDenied)
+	}
+	if h.in.guestStorageBorrowed() {
+		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	if h.in.ownsGCInvocation(h.invocationID) {
 		return h.in.collectGC()
@@ -792,6 +810,11 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		defer gcTemps.release(in)
 		invocation := currentHostInvocationContext(ctrl, in)
 		caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
+		caller.exactParams = exactParams
+		caller.exactResults = exactResults
+		var gcResultTemps gcHostTempTokens
+		caller.ephemeralGCResults = &gcResultTemps
+		defer gcResultTemps.release(in)
 		defer caller.scope.end(caller.generation, caller.parentGeneration)
 		var mod HostModule = caller
 		fn(mod, args, results)

@@ -141,6 +141,17 @@ its reviewed limits. Public Runtime operations remain excluded until the whole
 Plugin Set has started, so unrelated callers cannot observe a partially started
 graph.
 
+Plugin loading and runtime shutdown also form one ordered transaction. Once
+loading begins, shutdown may publish the closing state immediately, but it
+defers its teardown snapshot until startup has stopped changing plugin teardown
+eligibility. A successful load publishes that boundary after every startup turn;
+a failed `Start` publishes it before rollback waits on the same shutdown result.
+Each plugin becomes eligible for `Stop` immediately before its startup turn,
+whether or not it defines a `Start` callback. Therefore a successful `Start`
+racing `Runtime.CloseContext` is stopped exactly once before closure completes,
+while a later plugin whose startup turn was never reached is not stopped.
+Neither callback runs while the runtime mutex is held.
+
 Configuration is opaque to Wago but not permissive: the registrar rejects
 unknown struct fields and trailing JSON, the provider validates its published
 JSON Schema, and `ValidateConfig` can enforce additional semantic rules.
@@ -401,3 +412,25 @@ Privileged APIs expose bounded mechanisms, not product policy. Pools, workers,
 actors, routers, metrics aggregation, retries, and caching belong in plugins.
 Core mechanisms must be useful to more than one plugin category. An unlinked
 plugin must add no runtime goroutines or allocations.
+
+## Direct guest storage from host imports
+
+A synchronous host function that needs more than the `HostModule.Memory()`
+memory-0 convenience can opt into callback-scoped guest storage.
+
+`GuestStorageHostModule.WithGuestStorage` provides checked access to arbitrary
+linear-memory indexes, Memory32/Memory64 metadata, Wasm GC arrays, nested GC
+array references, and the importing module's exact structural parameter/result
+types. `GuestGCArrayAllocatorHostModule.NewGCArrayResult` allocates the exact
+caller-selected numeric or `v128` array result type and initializes it before
+publication.
+
+Every borrowed slice and callback-scoped GC reference expires when the storage
+callback returns. Wago rejects Wasm re-entry while a direct guest-storage borrow
+is active so memory growth or moving collection cannot invalidate a live host
+view.
+
+See [Host guest-storage access](host-guest-storage.md) for the complete API,
+lifetime rules, and examples. [Facet](https://github.com/jtenner/facet-spec) is
+one motivating consumer, but these interfaces are general Wago host APIs.
+

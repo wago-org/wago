@@ -20,10 +20,14 @@ func gcCollectFrameRoots(in *Instance, public *gcPublicState, frameLayout uint8,
 // instances remain rooted for the duration of the collection.
 //
 // Instances without a live WasmGC collector return an error. Collection remains
-// serialized with native execution and collector-domain mutation.
+// serialized with native execution and collector-domain mutation, and fails with
+// ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) CollectGC() error {
 	if in == nil || in.gc == nil || in.c == nil {
 		return fmt.Errorf("wago: instance has no live WasmGC collector")
+	}
+	if in.guestStorageBorrowed() {
+		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	// Public collection is an independent operation, not a callback-scoped
 	// re-entry. Use a fresh identity instead of racing the instance's active
