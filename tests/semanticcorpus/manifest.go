@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -121,6 +122,13 @@ func LoadManifest(path string) (*Manifest, error) {
 	var m Manifest
 	if err := dec.Decode(&m); err != nil {
 		return nil, fmt.Errorf("decode manifest: %w", err)
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("decode manifest: trailing JSON value")
+		}
+		return nil, fmt.Errorf("decode manifest trailing content: %w", err)
 	}
 	if m.Schema != 1 {
 		return nil, fmt.Errorf("manifest schema = %d, want 1", m.Schema)

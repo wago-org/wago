@@ -72,10 +72,13 @@ func runInstance(compiled *wago.Compiled, mod Module, timeout time.Duration) (*o
 	}
 	defer inst.Close()
 
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	if mod.Invoke.Input != "" {
 		inputBase := uint32(0)
 		if mod.Invoke.InputPtrExport != "" {
-			inputBase, err = resolvePointer(inst, mod.Invoke.InputPtrExport)
+			inputBase, err = resolvePointerContext(ctx, inst, mod.Invoke.InputPtrExport)
 			if err != nil {
 				return nil, err
 			}
@@ -94,8 +97,6 @@ func runInstance(compiled *wago.Compiled, mod Module, timeout time.Duration) (*o
 		args[i] = wago.I32(a)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
 	results, err := inst.InvokeContext(ctx, mod.Invoke.Export, args...)
 	if err != nil {
 		return nil, fmt.Errorf("invoke %s: %w", mod.Invoke.Export, err)
@@ -104,7 +105,7 @@ func runInstance(compiled *wago.Compiled, mod Module, timeout time.Duration) (*o
 	if err := checkReturn(mod, results); err != nil {
 		return nil, err
 	}
-	mem, err := captureMemory(inst, mod)
+	mem, err := captureMemory(ctx, inst, mod)
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +131,11 @@ func checkReturn(mod Module, results []uint64) error {
 	return nil
 }
 
-func captureMemory(inst *wago.Instance, mod Module) ([][]byte, error) {
+func captureMemory(ctx context.Context, inst *wago.Instance, mod Module) ([][]byte, error) {
 	outputBase := uint32(0)
 	if mod.Invoke.OutputPtrExport != "" {
 		var err error
-		outputBase, err = resolvePointer(inst, mod.Invoke.OutputPtrExport)
+		outputBase, err = resolvePointerContext(ctx, inst, mod.Invoke.OutputPtrExport)
 		if err != nil {
 			return nil, err
 		}
@@ -192,14 +193,14 @@ func runVectorCases(compiled *wago.Compiled, mod Module, v *Vectors, timeout tim
 
 	inputOffset := v.InputOffset
 	if v.InputPtrExport != "" {
-		inputOffset, err = resolvePointer(inst, v.InputPtrExport)
+		inputOffset, err = resolvePointerContext(ctx, inst, v.InputPtrExport)
 		if err != nil {
 			return nil, err
 		}
 	}
 	outputOffset := v.OutputOffset
 	if v.OutputPtrExport != "" {
-		outputOffset, err = resolvePointer(inst, v.OutputPtrExport)
+		outputOffset, err = resolvePointerContext(ctx, inst, v.OutputPtrExport)
 		if err != nil {
 			return nil, err
 		}
@@ -236,8 +237,8 @@ func runVectorCases(compiled *wago.Compiled, mod Module, v *Vectors, timeout tim
 	return outs, nil
 }
 
-func resolvePointer(inst *wago.Instance, export string) (uint32, error) {
-	results, err := inst.Invoke(export)
+func resolvePointerContext(ctx context.Context, inst *wago.Instance, export string) (uint32, error) {
+	results, err := inst.InvokeContext(ctx, export)
 	if err != nil {
 		return 0, fmt.Errorf("resolve pointer export %s: %w", export, err)
 	}

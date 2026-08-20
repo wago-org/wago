@@ -134,3 +134,29 @@ func TestLoadManifestRejectsMalformedDocuments(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadManifestRejectsTrailingContent(t *testing.T) {
+	manifest, err := os.ReadFile(ManifestPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, suffix := range []struct {
+		name string
+		data string
+	}{
+		{name: "second-json-value", data: "\n{}\n"},
+		{name: "trailing-junk", data: "\nnot-json\n"},
+	} {
+		t.Run(suffix.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "MANIFEST.json")
+			data := append(append([]byte(nil), manifest...), suffix.data...)
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadManifest(path); err == nil {
+				t.Fatal("LoadManifest succeeded, want trailing-content error")
+			}
+		})
+	}
+}
