@@ -4,10 +4,13 @@ package wago
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func findGuestStorageArrayType(t *testing.T, compiled *Compiled, storage gc.StorageKind, mutable bool) uint32 {
@@ -23,6 +26,53 @@ func findGuestStorageArrayType(t *testing.T, compiled *Compiled, storage gc.Stor
 	}
 	t.Fatalf("no array type with storage %d mutable=%v", storage, mutable)
 	return 0
+}
+
+func guestStorageGCCollectModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0x20, 0x00, 0xfb, 0x00, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestCollectGCDuringGuestStorageFailsClosed(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), guestStorageGCCollectModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("roundtrip", 7); err != nil || len(got) != 1 || uint32(got[0]) != 7 {
+		t.Fatalf("roundtrip = %v, %v; want [7], nil", got, err)
+	}
+
+	caller := in.beginHostCallScopeReservedWithID(newInvocationID(), nil)
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	if err := caller.WithGuestStorage(func(GuestStorage) error {
+		collectErr := in.CollectGC()
+		if !errors.Is(collectErr, ErrPermissionDenied) {
+			if collectErr != nil {
+				return collectErr
+			}
+			return &guestStorageTestError{"collection during borrow was not rejected"}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatalf("collection after guest-storage borrow: %v", err)
+	}
 }
 
 func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
@@ -53,6 +103,13 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 
 	want := []byte{1, 2, 3, 4, 5}
 	token, err := caller.NewGCArrayResult(0, uint32(len(want)), func(payload []byte, info GuestGCArrayInfo) error {
+		collectErr := in.CollectGC()
+		if !errors.Is(collectErr, ErrPermissionDenied) {
+			if collectErr != nil {
+				return collectErr
+			}
+			return &guestStorageTestError{"collection during GC result initialization was not rejected"}
+		}
 		if info.Storage != GuestGCArrayI8 || info.Length != uint32(len(want)) || info.Mutable || info.TypeIndex != typeIndex {
 			return &guestStorageTestError{"exact immutable GC result metadata"}
 		}
@@ -80,6 +137,12 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 		ref, err := storage.GCRef(token)
 		if err != nil {
 			return err
+		}
+		if releaseErr := in.ReleaseGCRef(GCRef{token: token}); !errors.Is(releaseErr, ErrPermissionDenied) {
+			if releaseErr != nil {
+				return releaseErr
+			}
+			return &guestStorageTestError{"GC token release during borrow was not rejected"}
 		}
 		retainedRef = ref
 		info, err := storage.GCArrayInfo(ref)
