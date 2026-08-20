@@ -899,10 +899,13 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			f.release(t)
 		case stMemRef:
 			// arm64: a deferred load is never foldable into a CMP (memRefFoldable is
-			// always false), so materialize it and compare register-register.
-			f.loadMemRef(right.st.reg, right.st)
-			f.cmpRR(L, right.st.reg, w)
-			f.release(right.st.reg)
+			// always false), so materialize it and compare register-register. A load
+			// whose address borrows a pinned local must use a fresh destination and
+			// must not release the local's register.
+			r := f.memRefValue(right.st)
+			f.cmpRR(L, r, w)
+			f.release(r)
+			f.releaseMemRef(right.st)
 		}
 	}
 	f.pinned = f.pinned.remove(L)
