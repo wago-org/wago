@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -96,6 +97,9 @@ func TestHostGuestStorageCallbackLifetimeAndReentry(t *testing.T) {
 			}
 			if _, err := in.InvokeFromHost(context.Background(), m, "peek"); err == nil || !strings.Contains(err.Error(), "guest storage is borrowed") {
 				return &guestStorageTestError{"re-entry during borrow was not rejected"}
+			}
+			if _, err := in.Invoke("peek"); !errors.Is(err, ErrPermissionDenied) {
+				return &guestStorageTestError{"direct instance access during borrow was not rejected"}
 			}
 			gcModule, ok := m.(GCHostModule)
 			if !ok {

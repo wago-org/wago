@@ -158,6 +158,9 @@ func (in *Instance) beginInvocation() error {
 	if in == nil {
 		return fmt.Errorf("instance is nil")
 	}
+	if in.guestStorageBorrowed() {
+		return fmt.Errorf("instance access is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
+	}
 	if in.rt != nil {
 		in.rt.mu.Lock()
 		if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {

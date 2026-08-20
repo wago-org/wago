@@ -43,7 +43,7 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 	if active == nil || id == 0 {
 		return nil, fmt.Errorf("wago: re-entry requires the active host caller: %w", ErrPermissionDenied)
 	}
-	if state := active.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
+	if active.guestStorageBorrowed() {
 		return nil, fmt.Errorf("wago: re-entry is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	if ctx != nil {
@@ -243,7 +243,7 @@ func (h staticHostModule) CollectGC() error {
 	if h.in == nil {
 		return fmt.Errorf("wago: GC host module has no instance")
 	}
-	if state := h.in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
+	if h.in.guestStorageBorrowed() {
 		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	return h.in.CollectGC()
@@ -632,7 +632,7 @@ func (h instanceHostModule) CollectGC() error {
 	if !h.valid() {
 		return fmt.Errorf("wago: GC host module is outside its active callback: %w", ErrPermissionDenied)
 	}
-	if state := h.in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
+	if h.in.guestStorageBorrowed() {
 		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	if h.in.ownsGCInvocation(h.invocationID) {

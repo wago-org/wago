@@ -4083,7 +4083,8 @@ func Load(b []byte) (*Compiled, error) {
 // only in the Runtime store (or standalone private store) that issued them.
 // Calls on one Instance are serialized, including while another call is parked
 // in a host callback. A host callback that must synchronously re-enter Wasm must
-// use InvokeFromHost with the HostModule value it received.
+// use InvokeFromHost with the HostModule value it received. Direct invocation
+// fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	return in.invoke(export, args, nil)
 }
@@ -4136,6 +4137,9 @@ func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Con
 	// close the race with a concurrent Close.
 	if in.invocationState.Load()&instanceInvocationClosed != 0 {
 		return nil, fmt.Errorf("invoke %q: instance is closed", export)
+	}
+	if in.guestStorageBorrowed() {
+		return nil, fmt.Errorf("invoke %q: guest storage is borrowed: %w", export, ErrPermissionDenied)
 	}
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
