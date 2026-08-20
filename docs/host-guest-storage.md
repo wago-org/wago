@@ -198,6 +198,12 @@ opaque GC-result token machinery used by other host GC results. Normal host
 result translation then verifies the token against the import's exact result
 type before Wasm receives the reference.
 
+The returned `uint64` is an ephemeral host-result token. Write it to the
+corresponding result slot during the same host call. Wago releases this
+allocator-created token after result translation has rooted the object for the
+parked Wasm frame. Do not retain or reuse the token. Ordinary `GCRef` tokens
+supplied by other APIs keep their existing retained lifetime.
+
 The initial allocation API intentionally supports numeric and `v128` array
 payloads. Reference-array construction should use a future barrier-aware typed
 initializer rather than exposing raw reference storage.
