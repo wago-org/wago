@@ -22,6 +22,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
 	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("load-pair", &loadPairEnabled),
+	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
 	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
@@ -63,6 +64,7 @@ var (
 	optUXTWAdd               = optimizationBindings.Option("uxtw-add")
 	optValueFacts            = optimizationBindings.Option("value-facts")
 	optLoadPair              = optimizationBindings.Option("load-pair")
+	optMergeNextUse          = optimizationBindings.Option("merge-next-use")
 	optEntryParamPairs       = optimizationBindings.Option("entry-param-pairs")
 	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")

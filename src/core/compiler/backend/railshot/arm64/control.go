@@ -1401,7 +1401,7 @@ func (f *fn) opElse() error {
 	return nil
 }
 
-func (f *fn) opEnd() error {
+func (f *fn) opEnd(r *wasm.Reader) error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
 	// ctrl backing is reused across functions. Clear the popped slot so its
@@ -1447,7 +1447,8 @@ func (f *fn) opEnd() error {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
-			f.convergeEdgeTo(&fr.branchState)
+			deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, nil)
+			f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
 		}
 		if fr.regMerge1 {
 			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
@@ -1467,10 +1468,19 @@ func (f *fn) opEnd() error {
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
 		// value in mergeReg), a stub on this edge converges it. The then
 		// fall-through jumps over the stub.
+		deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, fr.entryState)
 		needLoads := false
 		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
 			for x := 0; x < f.nLocals; x++ {
-				if _, _, ok := f.pinReg(x); ok && fr.branchState[x] == lsStackReg && fr.entryState[x] == lsMem {
+				reg, isFloat, ok := f.pinReg(x)
+				if !ok || fr.branchState[x] != lsStackReg || fr.entryState[x] != lsMem {
+					continue
+				}
+				dead := deadGP.has(reg)
+				if isFloat {
+					dead = deadFP.has(reg)
+				}
+				if !dead {
 					needLoads = true
 					break
 				}
@@ -1492,7 +1502,7 @@ func (f *fn) opEnd() error {
 		// Converge the cond-false edge from the header snapshot into the end state
 		// (records it when this is the only end edge).
 		f.setLocalsState(fr.entryState)
-		f.convergeEdgeTo(&fr.branchState)
+		f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
 		if skip != -1 {
 			f.a.PatchBranch26(skip, f.a.Len()) // the skip is an unconditional B (imm26)
 		}

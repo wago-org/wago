@@ -44,6 +44,11 @@ var uxtwAddEnabled = os.Getenv("WAGO_ARM64_NOUXTW") != "1"
 // nodes. WAGO_ARM64_NOPROVENANCE=1 retains the pre-facts path for A/B checks.
 var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 
+// mergeNextUseEnabled avoids forward-edge local reloads when bounded lookahead
+// proves the local is overwritten or dead before its next read. Loop and EH
+// targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
+var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
+
 // sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
 // checks and the Speed/Balanced layouts are unchanged.
