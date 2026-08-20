@@ -141,6 +141,17 @@ its reviewed limits. Public Runtime operations remain excluded until the whole
 Plugin Set has started, so unrelated callers cannot observe a partially started
 graph.
 
+Plugin loading and runtime shutdown also form one ordered transaction. Once
+loading begins, shutdown may publish the closing state immediately, but it
+defers its teardown snapshot until startup has stopped changing plugin teardown
+eligibility. A successful load publishes that boundary after every startup turn;
+a failed `Start` publishes it before rollback waits on the same shutdown result.
+Each plugin becomes eligible for `Stop` immediately before its startup turn,
+whether or not it defines a `Start` callback. Therefore a successful `Start`
+racing `Runtime.CloseContext` is stopped exactly once before closure completes,
+while a later plugin whose startup turn was never reached is not stopped.
+Neither callback runs while the runtime mutex is held.
+
 Configuration is opaque to Wago but not permissive: the registrar rejects
 unknown struct fields and trailing JSON, the provider validates its published
 JSON Schema, and `ValidateConfig` can enforce additional semantic rules.

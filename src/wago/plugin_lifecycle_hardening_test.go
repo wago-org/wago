@@ -39,6 +39,70 @@ func TestLoadPluginsIsOneShotBeforeRuntimeUse(t *testing.T) {
 	}
 }
 
+func TestLoadPluginsCloseContextWaitsForStartAndStopsExactlyOnce(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var starts, stops atomic.Int32
+	var active atomic.Bool
+	def := testDefinition("example.com/load/close-race")
+	provider := PluginProvider{Definition: def, New: func() Plugin {
+		return pluginFunc(func(r *Registrar) error {
+			return r.Lifecycle(PluginLifecycle{
+				Start: func(context.Context) error {
+					starts.Add(1)
+					active.Store(true)
+					close(entered)
+					<-release
+					return nil
+				},
+				Stop: func(context.Context) error {
+					stops.Add(1)
+					if !active.CompareAndSwap(true, false) {
+						return errors.New("plugin stopped while inactive")
+					}
+					return nil
+				},
+			})
+		})
+	}}
+	rt := NewRuntime()
+	set := testSet(t, provider)
+	loadDone := make(chan error, 1)
+	go func() { loadDone <- rt.LoadPlugins(context.Background(), set) }()
+	<-entered
+
+	closeCtx, cancelClose := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancelClose()
+	if err := rt.CloseContext(closeCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseContext while Start was blocked = %v, want deadline", err)
+	}
+	if got := stops.Load(); got != 0 {
+		t.Fatalf("Stop ran %d time(s) before Start completed", got)
+	}
+
+	close(release)
+	if err := <-loadDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := starts.Load(); got != 1 {
+		t.Fatalf("Start ran %d time(s), want 1", got)
+	}
+	if got := stops.Load(); got != 1 {
+		t.Fatalf("Stop ran %d time(s), want 1", got)
+	}
+	if active.Load() {
+		t.Fatal("plugin remained active after CloseContext returned")
+	}
+	if err := rt.CloseContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := stops.Load(); got != 1 {
+		t.Fatalf("idempotent CloseContext ran Stop %d time(s), want 1", got)
+	}
+}
+
 func TestLoadPluginsExclusiveAndCloseWaitsForStart(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	def := testDefinition("example.com/load/exclusive")
