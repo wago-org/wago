@@ -47,8 +47,11 @@ func ScanForwardMergeDeadLocals(r *wasm.Reader, localBase int, candidates []Merg
 				return deadGP, deadFP, true
 			}
 			return 0, 0, false
-		case 0x02, 0x03, 0x04, 0x05, 0x08, 0x0a, 0x0c, 0x0d, 0x0e, 0x1f:
-			return 0, 0, false // structured or exceptional control
+		}
+		if InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) || InstructionNeedsEHFrame(op, wasm.InstrInvalid) {
+			return 0, 0, false
+		}
+		switch op {
 		case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
 			return 0, 0, false // calls may inline or transfer
 		case 0x40, 0xfb, 0xfc, 0xfe:

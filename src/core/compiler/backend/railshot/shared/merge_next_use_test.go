@@ -20,6 +20,8 @@ func TestScanForwardMergeDeadLocals(t *testing.T) {
 		{name: "read", body: []byte{0x20, 0x02, 0x21, 0x04}, wantFP: 1 << 5, wantComplete: true},
 		{name: "barrier", body: []byte{0x40, 0x00}},
 		{name: "exception barrier", body: []byte{0x08, 0x00}},
+		{name: "br_on_null barrier", body: []byte{0xd5, 0x00, 0x21, 0x02, 0x20, 0x04}},
+		{name: "br_on_non_null barrier", body: []byte{0xd6, 0x00, 0x21, 0x02, 0x20, 0x04}},
 		{name: "physical end", body: []byte{0x0b}, wantGP: 1 << 3, wantFP: 1 << 5, wantComplete: true},
 		{name: "nested end", body: []byte{0x0b}, localBase: 1},
 	} {
