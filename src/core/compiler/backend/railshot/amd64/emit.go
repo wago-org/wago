@@ -822,10 +822,13 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			if memRefFoldable(right.st, w) {
 				f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
 			} else {
-				f.loadMemRef(right.st.reg, right.st)
-				f.cmpRR(L, right.st.reg, w)
+				// A narrow/wide mismatch needs a register value. Preserve a pinned
+				// local whose register is only borrowed as the load address.
+				r := f.memRefValue(right.st)
+				f.cmpRR(L, r, w)
+				f.release(r)
 			}
-			f.release(right.st.reg)
+			f.releaseMemRef(right.st)
 		}
 	}
 	f.pinned = f.pinned.remove(L)
