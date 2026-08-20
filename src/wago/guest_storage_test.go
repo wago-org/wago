@@ -40,6 +40,13 @@ func guestStorageHostModuleBytes() []byte {
 	)
 }
 
+func TestHostGuestStorageRequiresCallbackScopedHostModule(t *testing.T) {
+	var module HostModule = staticHostModule{}
+	if _, ok := module.(GuestStorageHostModule); ok {
+		t.Fatal("static host module unexpectedly exposes callback-scoped guest storage")
+	}
+}
+
 func TestHostGuestStorageCallbackLifetimeAndReentry(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), guestStorageHostModuleBytes())
 	if err != nil {
