@@ -1191,7 +1191,6 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 			f.release(r)
 			f.releaseMemRef(right.st)
 		}
-		f.release(right.st.reg)
 	}
 }
 
