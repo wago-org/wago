@@ -1677,17 +1677,68 @@ func (s *referenceStore) registerHostFuncRef(owner *HostFuncRef) (uint32, error)
 	return uint32(len(s.externrefs)), nil
 }
 
-func (s *referenceStore) hostFuncRef(dispatch uint32) *HostFuncRef {
+func nextExternrefGeneration(generation uint32) uint32 {
+	generation++
+	if generation == 0 {
+		generation = 1
+	}
+	return generation
+}
+
+var retiredHostFuncRefDispatchBinding = &hostFuncRefDispatchBinding{}
+
+func (s *referenceStore) registerHostFuncRefBindingLocked(binding *hostFuncRefDispatchBinding) (uint32, error) {
+	if s.runtimeClosed {
+		return 0, fmt.Errorf("wago: reference store is closed")
+	}
+	for i := range s.externrefs {
+		if s.externrefs[i].value == retiredHostFuncRefDispatchBinding {
+			s.externrefs[i].generation = nextExternrefGeneration(s.externrefs[i].generation)
+			s.externrefs[i].value = binding
+			return uint32(i + 1), nil
+		}
+	}
+	if len(s.externrefs) >= int(hostFuncRefDispatchBit-1) {
+		return 0, fmt.Errorf("wago: reference store has too many host dispatch bindings")
+	}
+	s.externrefs = append(s.externrefs, externrefSlot{value: binding, generation: 1})
+	return uint32(len(s.externrefs)), nil
+}
+
+func (s *referenceStore) unregisterHostFuncRefBindingLocked(binding *hostFuncRefDispatchBinding) {
+	if binding == nil || binding.dispatchIndex == 0 || uint64(binding.dispatchIndex) > uint64(len(s.externrefs)) {
+		return
+	}
+	slot := &s.externrefs[binding.dispatchIndex-1]
+	if slot.value != binding {
+		return
+	}
+	slot.value = retiredHostFuncRefDispatchBinding
+	slot.generation = nextExternrefGeneration(slot.generation)
+}
+
+func (s *referenceStore) hostFuncRefDispatch(dispatch uint32) (*HostFuncRef, *hostFuncRefDispatchBinding) {
 	index := dispatch &^ hostFuncRefDispatchBit
 	if dispatch&hostFuncRefDispatchBit == 0 || index == 0 {
-		return nil
+		return nil, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if uint64(index) > uint64(len(s.externrefs)) {
-		return nil
+		return nil, nil
 	}
-	owner, _ := s.externrefs[index-1].value.(*HostFuncRef)
+	switch value := s.externrefs[index-1].value.(type) {
+	case *HostFuncRef:
+		return value, nil
+	case *hostFuncRefDispatchBinding:
+		return value.owner, value
+	default:
+		return nil, nil
+	}
+}
+
+func (s *referenceStore) hostFuncRef(dispatch uint32) *HostFuncRef {
+	owner, _ := s.hostFuncRefDispatch(dispatch)
 	return owner
 }
 
@@ -2097,17 +2148,18 @@ func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch ui
 	if in == nil || state == nil || in.gc == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
 		return nil
 	}
-	owner := in.refStore.hostFuncRef(dispatch)
-	if owner == nil {
+	binding, ok := in.boundHostFuncRef(dispatch)
+	if !ok {
 		return fmt.Errorf("GC host argument owner is unavailable")
 	}
+	owner := binding.owner
 	owner.mu.Lock()
-	if owner.gc == nil || owner.closed || owner.gc.collector != in.gc || owner.gc.domainID == 0 {
+	if !owner.gcCapable || owner.gc == nil || owner.closed || owner.gc.collector != in.gc || owner.gc.domainID == 0 {
 		owner.mu.Unlock()
 		return fmt.Errorf("GC host argument owner is outside the active collector domain")
 	}
-	types := owner.sig.Params // immutable for the HostFuncRef lifetime
 	owner.mu.Unlock()
+	types := binding.sig.Params
 
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)

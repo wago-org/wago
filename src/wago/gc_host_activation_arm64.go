@@ -23,8 +23,8 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintpt
 	}
 	gcBridge := false
 	if dispatch&hostFuncRefDispatchBit != 0 {
-		owner := in.refStore.hostFuncRef(dispatch)
-		if owner == nil || !owner.isGCBridge() {
+		binding, ok := in.boundHostFuncRef(dispatch)
+		if !ok || !binding.owner.isGCBridge() {
 			return gcHostActivationToken{}
 		}
 		gcBridge = true
