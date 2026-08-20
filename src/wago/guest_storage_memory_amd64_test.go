@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+func callbackScopedGuestStorageModule(in *Instance) instanceHostModule {
+	return in.beginHostCallScopeReservedWithID(newInvocationID(), nil)
+}
+
 func TestHostGuestStorageIndexedMemory(t *testing.T) {
 	compiled := stagedMultiMemoryCompile(t, localMultiMemoryExecModule())
 	in, err := Instantiate(compiled, InstantiateOptions{})
@@ -15,7 +19,8 @@ func TestHostGuestStorageIndexedMemory(t *testing.T) {
 	}
 	defer in.Close()
 
-	host := staticHostModule{in: in}
+	host := callbackScopedGuestStorageModule(in)
+	defer host.scope.end(host.generation, host.parentGeneration)
 	if err := host.WithGuestStorage(func(storage GuestStorage) error {
 		m0, err := storage.MemoryInfo(0)
 		if err != nil {
@@ -66,7 +71,8 @@ func TestHostGuestStorageMemory64MetadataAndRange(t *testing.T) {
 	}
 	defer in.Close()
 
-	host := staticHostModule{in: in}
+	host := callbackScopedGuestStorageModule(in)
+	defer host.scope.end(host.generation, host.parentGeneration)
 	if err := host.WithGuestStorage(func(storage GuestStorage) error {
 		info, err := storage.MemoryInfo(0)
 		if err != nil {
