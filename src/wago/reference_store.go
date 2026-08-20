@@ -2264,14 +2264,18 @@ func (in *Instance) clearGCRefArgumentRoots() {
 
 // ReleaseGCRef releases one non-null GC result token issued by this producer.
 // It is valid after Instance.Close while the token retains the producer's
-// collector; null releases are no-ops. Stale, foreign-store, and cross-producer
-// tokens reject without changing either owner.
+// collector; null releases are no-ops. Non-null releases fail with
+// ErrPermissionDenied while callback-scoped guest storage is borrowed. Stale,
+// foreign-store, and cross-producer tokens reject without changing either owner.
 func (in *Instance) ReleaseGCRef(ref GCRef) error {
 	if ref.token == 0 {
 		return nil
 	}
 	if in == nil {
 		return fmt.Errorf("release GC reference token on nil instance")
+	}
+	if in.guestStorageBorrowed() {
+		return fmt.Errorf("release GC reference token is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	in.lifeMu.Lock()
 	store := in.refStore

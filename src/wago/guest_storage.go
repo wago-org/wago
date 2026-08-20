@@ -98,9 +98,10 @@ type GuestStorage interface {
 // multi-memory, Memory64, or Wasm GC storage.
 //
 // Only the callback-scoped HostModule value handed to a live synchronous host
-// import implements this interface. Wago rejects guest re-entry while
-// WithGuestStorage is active. Re-entry could otherwise grow a linear memory or
-// run a moving collection while a host slice still refers to the prior storage.
+// import implements this interface. Wago rejects guest re-entry and public
+// instance operations that require overlapping native-state synchronization while
+// WithGuestStorage is active. They could otherwise grow a linear memory, move GC
+// objects, or self-deadlock while a host view still refers to the prior storage.
 type GuestStorageHostModule interface {
 	HostModule
 	WithGuestStorage(func(GuestStorage) error) error
@@ -118,6 +119,14 @@ func (v *guestStorageView) ensureActive() error {
 		return fmt.Errorf("wago: guest-storage view is no longer active: %w", ErrPermissionDenied)
 	}
 	return nil
+}
+
+func (in *Instance) guestStorageBorrowed() bool {
+	if in == nil {
+		return false
+	}
+	state := in.pluginState.Load()
+	return state != nil && state.guestStorageBorrow.Load() != 0
 }
 
 func beginGuestStorageBorrow(in *Instance) (func(), error) {
