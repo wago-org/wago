@@ -275,12 +275,14 @@ type HostFuncRef struct {
 }
 
 type hostFuncRefGCState struct {
-	collector        *gc.Collector
-	domainID         uint64
-	params           []ValueTypeDescriptor
-	results          []ValueTypeDescriptor
-	types            []DefinedTypeDescriptor
-	dispatchBindings map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding
+	collector             *gc.Collector
+	domainID              uint64
+	params                []ValueTypeDescriptor
+	results               []ValueTypeDescriptor
+	types                 []DefinedTypeDescriptor
+	inlineDispatchKey     hostFuncRefBindingKey
+	inlineDispatchBinding *hostFuncRefDispatchBinding
+	dispatchBindings      map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding
 }
 
 type hostFuncRefBindingKey struct {
@@ -452,17 +454,6 @@ func (h *HostFuncRef) validateImportLocked(store *referenceStore, sig FuncSig) e
 	return nil
 }
 
-func exactSignatureHasReferences(params, results []ValueTypeDescriptor) bool {
-	for _, values := range [][]ValueTypeDescriptor{params, results} {
-		for _, value := range values {
-			if value.Kind == ValueTypeReference {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func hostFuncRefExactSignature(sig FuncSig, c *Compiled) (params, results []ValueTypeDescriptor, needed bool, err error) {
 	if c == nil {
 		return nil, nil, false, nil
@@ -471,7 +462,7 @@ func hostFuncRefExactSignature(sig FuncSig, c *Compiled) (params, results []Valu
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return params, results, exactSignatureHasReferences(params, results), nil
+	return params, results, sig.HasTypeIndex, nil
 }
 
 func (h *HostFuncRef) validateExactBindingLocked(sig FuncSig, c *Compiled) error {
@@ -537,8 +528,8 @@ func (h *HostFuncRef) attachImporter(store *referenceStore, sig FuncSig, collect
 		if h.gc == nil {
 			h.gc = &hostFuncRefGCState{}
 		}
-		h.gc.params = append([]ValueTypeDescriptor(nil), params...)
-		h.gc.results = append([]ValueTypeDescriptor(nil), results...)
+		h.gc.params = params
+		h.gc.results = results
 		h.gc.types = c.Types
 	}
 	if gcRefs {
@@ -570,6 +561,13 @@ func (h *HostFuncRef) acquireDispatchBinding(store *referenceStore, c *Compiled,
 	if h.closed || h.store != store || h.gc == nil || h.gc.types == nil || !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
 		return 0, false, fmt.Errorf("host funcref structural signature mismatch")
 	}
+	if binding := h.gc.inlineDispatchBinding; binding != nil && h.gc.inlineDispatchKey == key {
+		if binding.refs == ^uint32(0) {
+			return 0, false, fmt.Errorf("host funcref dispatch binding has too many importers")
+		}
+		binding.refs++
+		return binding.dispatchIndex, true, nil
+	}
 	if binding := h.gc.dispatchBindings[key]; binding != nil {
 		if binding.refs == ^uint32(0) {
 			return 0, false, fmt.Errorf("host funcref dispatch binding has too many importers")
@@ -585,10 +583,15 @@ func (h *HostFuncRef) acquireDispatchBinding(store *referenceStore, c *Compiled,
 		return 0, false, err
 	}
 	binding.dispatchIndex = dispatchIndex
-	if h.gc.dispatchBindings == nil {
-		h.gc.dispatchBindings = make(map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding)
+	if h.gc.inlineDispatchBinding == nil {
+		h.gc.inlineDispatchKey = key
+		h.gc.inlineDispatchBinding = binding
+	} else {
+		if h.gc.dispatchBindings == nil {
+			h.gc.dispatchBindings = make(map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding)
+		}
+		h.gc.dispatchBindings[key] = binding
 	}
-	h.gc.dispatchBindings[key] = binding
 	return dispatchIndex, true, nil
 }
 
@@ -601,7 +604,11 @@ func (h *HostFuncRef) dispatchBinding(c *Compiled, importIndex int) (*hostFuncRe
 	if h.gc == nil {
 		return nil, false
 	}
-	binding := h.gc.dispatchBindings[hostFuncRefBindingKey{owner: h, compiled: c, importIndex: importIndex}]
+	key := hostFuncRefBindingKey{owner: h, compiled: c, importIndex: importIndex}
+	if h.gc.inlineDispatchBinding != nil && h.gc.inlineDispatchKey == key {
+		return h.gc.inlineDispatchBinding, true
+	}
+	binding := h.gc.dispatchBindings[key]
 	return binding, binding != nil
 }
 
@@ -614,7 +621,15 @@ func (h *HostFuncRef) releaseDispatchBinding(c *Compiled, importIndex int) {
 	store.mu.Lock()
 	h.mu.Lock()
 	if h.gc != nil {
-		if binding := h.gc.dispatchBindings[key]; binding != nil {
+		if binding := h.gc.inlineDispatchBinding; binding != nil && h.gc.inlineDispatchKey == key {
+			if binding.refs > 1 {
+				binding.refs--
+			} else {
+				h.gc.inlineDispatchKey = hostFuncRefBindingKey{}
+				h.gc.inlineDispatchBinding = nil
+				store.unregisterHostFuncRefBindingLocked(binding)
+			}
+		} else if binding := h.gc.dispatchBindings[key]; binding != nil {
 			if binding.refs > 1 {
 				binding.refs--
 			} else {
@@ -658,6 +673,8 @@ func (h *HostFuncRef) detachImporter() {
 		h.gc.params = nil
 		h.gc.results = nil
 		h.gc.types = nil
+		h.gc.inlineDispatchKey = hostFuncRefBindingKey{}
+		h.gc.inlineDispatchBinding = nil
 		h.gc.dispatchBindings = nil
 	}
 	h.mu.Unlock()

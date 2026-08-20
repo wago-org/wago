@@ -114,6 +114,79 @@ func hostFuncRefDuplicateExactTypeModule() []byte {
 	)
 }
 
+func hostFuncRefScalarExactTypeModule() []byte {
+	ft := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64})
+	importEntry := append(wasmtest.Name("host"), wasmtest.Name("scalar")...)
+	importEntry = append(importEntry, 0x00, 0x00)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(ft)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
+	)
+}
+
+func TestHostFuncRefPreservesIndexedScalarSignature(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	owner, err := rt.NewHostFuncRef(HostFunc(func(m HostModule, args, results []uint64) {
+		storageModule, ok := m.(GuestStorageHostModule)
+		if !ok {
+			panic(HostTrap{Err: fmt.Errorf("host module does not expose guest storage")})
+		}
+		if err := storageModule.WithGuestStorage(func(storage GuestStorage) error {
+			param, paramOK := storage.ImportParamType(0)
+			result, resultOK := storage.ImportResultType(0)
+			defined, definedOK := storage.DefinedType(0)
+			if !paramOK || param.Kind != ValueTypeI32 || !resultOK || result.Kind != ValueTypeI64 || !definedOK || defined.Kind != CompositeTypeFunction || len(defined.Params) != 1 || len(defined.Results) != 1 {
+				return fmt.Errorf("scalar exact signature = param %#v/%v result %#v/%v type %#v/%v", param, paramOK, result, resultOK, defined, definedOK)
+			}
+			return nil
+		}); err != nil {
+			panic(HostTrap{Err: err})
+		}
+		results[0] = args[0]
+	}), FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}, TypeIndex: 0, HasTypeIndex: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	compiled, err := rt.Compile(hostFuncRefScalarExactTypeModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := rt.Instantiate(context.Background(), compiled, WithImports(Imports{"host.scalar": owner}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.Call(context.Background(), "run", ValueI32(9)); err != nil || len(got) != 1 || got[0].I64() != 9 {
+		t.Fatalf("scalar owned host call = %v, %v; want [9], nil", got, err)
+	}
+	owner.mu.Lock()
+	bindings := len(owner.gc.dispatchBindings)
+	if owner.gc.inlineDispatchBinding != nil {
+		bindings++
+	}
+	owner.mu.Unlock()
+	if bindings != 1 {
+		t.Fatalf("live scalar dispatch bindings = %d, want 1", bindings)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	owner.mu.Lock()
+	bindings = len(owner.gc.dispatchBindings)
+	if owner.gc.inlineDispatchBinding != nil {
+		bindings++
+	}
+	owner.mu.Unlock()
+	if bindings != 0 {
+		t.Fatalf("scalar dispatch bindings after close = %d, want 0", bindings)
+	}
+}
+
 func TestHostFuncRefUsesImporterLocalExactSignature(t *testing.T) {
 	requireCompleteCore3Backend(t)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
