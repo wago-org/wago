@@ -15,6 +15,11 @@ import (
 // immutable array type. The slice expires when initialize returns. If initialize
 // fails, no public result token is created. Wago rejects guest re-entry for the
 // duration of this operation.
+//
+// The returned token is ephemeral to the active host call. Write it to the
+// corresponding result slot during that call. Wago releases allocator-created
+// result tokens after host-result translation has rooted the object for the
+// parked Wasm frame. Hosts MUST NOT retain or reuse the token.
 type GuestGCArrayAllocatorHostModule interface {
 	HostModule
 	NewGCArrayResult(resultIndex int, length uint32, initialize func([]byte, GuestGCArrayInfo) error) (uint64, error)
@@ -26,6 +31,12 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	}
 	if resultIndex < 0 || resultIndex >= len(h.exactResults) {
 		return 0, fmt.Errorf("wago: host result index %d is out of range", resultIndex)
+	}
+	if h.ephemeralGCResults == nil {
+		return 0, fmt.Errorf("wago: GC result allocation requires the active host dispatch: %w", ErrPermissionDenied)
+	}
+	if int(h.ephemeralGCResults.count) >= len(h.ephemeralGCResults.tokens) {
+		return 0, fmt.Errorf("wago: allocated GC host result count exceeds %d", len(h.ephemeralGCResults.tokens))
 	}
 	required := h.exactResults[resultIndex]
 	if required.Kind != ValueTypeReference || !required.Ref.Heap.Defined {
@@ -85,7 +96,14 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 			return 0, err
 		}
 	}
-	return issueHostGCResultLocked(h.in, state, ref, required, localType, domainType)
+	token, err := issueHostGCResultLocked(h.in, state, ref, required, localType, domainType)
+	if err != nil {
+		return 0, err
+	}
+	temps := h.ephemeralGCResults
+	temps.tokens[temps.count] = token
+	temps.count++
+	return token, nil
 }
 
 // issueHostGCResultLocked is the callback-allocation counterpart of
