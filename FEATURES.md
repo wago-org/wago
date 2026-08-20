@@ -138,3 +138,16 @@ The exact source-lines-652–659 M8 provider/four-import consumer pair is admitt
 ### Iteration 73 complete `gc/type-subtyping` boundary
 
 The exact M9 eight-import recursive link pair, both M10/M11 expected unlinkables, and all six non-flat exported-function assertions are now admitted and executed. Official accounting is complete at 170 commands / 45 passed modules / 29 passed assertions / 24 invalid / 8 expected unlinkables / zero gates, blocked commands, validator gaps, unexpected failures, or hidden failures. This completes the official `gc/type-subtyping.wast` file without widening unrelated Core 3 public admission.
+
+## Callback-scoped host guest storage
+
+Synchronous host imports can use optional callback-scoped APIs for zero-copy
+access to indexed linear memory and Wasm GC arrays. The API reports Memory32
+versus Memory64, bounds linear-memory ranges, preserves exact structural import
+types, supports nested GC-array traversal, and can allocate an exact
+caller-selected numeric or `v128` GC-array result.
+
+Direct views cannot outlive the host callback. Wago serializes collector/native
+mutation while a view is active and rejects Wasm re-entry during the borrow.
+See [`docs/host-guest-storage.md`](docs/host-guest-storage.md).
+
