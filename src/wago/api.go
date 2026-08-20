@@ -2338,7 +2338,7 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		if !ok {
 			if sigHasGCRefs {
 				owner, owned := imports[key].(*HostFuncRef)
-				if !owned || owner == nil || owner.gc == nil || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
+				if !owned || owner == nil || !owner.gcCapable || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
 					return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef or a same-Runtime InstanceExport", key)
 				}
 				continue

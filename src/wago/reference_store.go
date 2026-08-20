@@ -2097,17 +2097,18 @@ func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch ui
 	if in == nil || state == nil || in.gc == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
 		return nil
 	}
-	owner := in.refStore.hostFuncRef(dispatch)
-	if owner == nil {
+	binding, ok := in.boundHostFuncRef(dispatch)
+	if !ok {
 		return fmt.Errorf("GC host argument owner is unavailable")
 	}
+	owner := binding.owner
 	owner.mu.Lock()
-	if owner.gc == nil || owner.closed || owner.gc.collector != in.gc || owner.gc.domainID == 0 {
+	if !owner.gcCapable || owner.gc == nil || owner.closed || owner.gc.collector != in.gc || owner.gc.domainID == 0 {
 		owner.mu.Unlock()
 		return fmt.Errorf("GC host argument owner is outside the active collector domain")
 	}
-	types := owner.sig.Params // immutable for the HostFuncRef lifetime
 	owner.mu.Unlock()
+	types := binding.sig.Params
 
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)

@@ -270,7 +270,8 @@ type HostFuncRef struct {
 	importers     int
 	tokenLive     bool
 	closed        bool
-	gc            *hostFuncRefGCState // nil for the common non-GC host owner
+	gcCapable     bool
+	gc            *hostFuncRefGCState // lazy exact binding state; collector fields are used only when gcCapable
 }
 
 type hostFuncRefGCState struct {
@@ -329,9 +330,7 @@ func (rt *Runtime) newHostFuncRef(fn HostFunc, sig FuncSig, gcCapable, allowLoad
 			HasTypeIndex: sig.HasTypeIndex,
 		},
 	}
-	if gcCapable {
-		owner.gc = &hostFuncRefGCState{}
-	}
+	owner.gcCapable = gcCapable
 	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
 	if err != nil {
 		return nil, err
@@ -437,24 +436,56 @@ func (h *HostFuncRef) validateImportLocked(store *referenceStore, sig FuncSig) e
 	return nil
 }
 
+func exactSignatureHasReferences(params, results []ValueTypeDescriptor) bool {
+	for _, values := range [][]ValueTypeDescriptor{params, results} {
+		for _, value := range values {
+			if value.Kind == ValueTypeReference {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hostFuncRefExactSignature(sig FuncSig, c *Compiled) (params, results []ValueTypeDescriptor, needed bool, err error) {
+	if c == nil {
+		return nil, nil, false, nil
+	}
+	params, results, err = exactFuncSignatureView(sig, c.Types)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return params, results, exactSignatureHasReferences(params, results), nil
+}
+
+func (h *HostFuncRef) validateExactBindingLocked(sig FuncSig, c *Compiled) error {
+	params, results, needed, err := hostFuncRefExactSignature(sig, c)
+	if err != nil {
+		return fmt.Errorf("host funcref exact signature: %w", err)
+	}
+	if !needed {
+		return nil
+	}
+	if h.gc == nil || h.gc.types == nil || !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+		return fmt.Errorf("host funcref structural signature mismatch")
+	}
+	return nil
+}
+
 func (h *HostFuncRef) validateAttachedImporter(store *referenceStore, sig FuncSig, collector *gc.Collector, domainID uint64, c *Compiled) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if err := h.validateImportLocked(store, sig); err != nil {
 		return err
 	}
+	if err := h.validateExactBindingLocked(sig, c); err != nil {
+		return err
+	}
 	if !funcSigHasGCRefs(sig) {
 		return nil
 	}
-	if h.gc == nil || collector == nil || h.gc.collector != collector || h.gc.domainID == 0 || h.gc.domainID != domainID || c == nil {
+	if !h.gcCapable || h.gc == nil || collector == nil || h.gc.collector != collector || h.gc.domainID == 0 || h.gc.domainID != domainID {
 		return fmt.Errorf("GC host funcref belongs to a different Runtime collector domain")
-	}
-	params, results, err := exactFuncSignatureView(sig, c.Types)
-	if err != nil {
-		return fmt.Errorf("GC host funcref exact signature: %w", err)
-	}
-	if !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
-		return fmt.Errorf("GC host funcref structural signature mismatch")
 	}
 	return nil
 }
@@ -465,33 +496,43 @@ func (h *HostFuncRef) attachImporter(store *referenceStore, sig FuncSig, collect
 	if err := h.validateImportLocked(store, sig); err != nil {
 		return err
 	}
-	if funcSigHasGCRefs(sig) {
-		if h.gc == nil {
+	params, results, exactNeeded, err := hostFuncRefExactSignature(sig, c)
+	if err != nil {
+		return fmt.Errorf("host funcref exact signature: %w", err)
+	}
+	if exactNeeded && h.gc != nil && h.gc.types != nil && !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+		return fmt.Errorf("host funcref structural signature mismatch")
+	}
+	gcRefs := funcSigHasGCRefs(sig)
+	if gcRefs {
+		if !h.gcCapable {
 			return fmt.Errorf("host funcref collector-reference signature requires Runtime.NewGCHostFuncRef")
 		}
 		if collector == nil || domainID == 0 || c == nil || c.genericGCFrameRoots() == nil || !store.ownsGCCollector(collector) {
 			return fmt.Errorf("GC host funcref requires an exact live Runtime collector domain and native root maps")
 		}
-		params, results, err := exactFuncSignatureView(sig, c.Types)
-		if err != nil {
-			return fmt.Errorf("GC host funcref exact signature: %w", err)
+		if h.gc != nil && h.gc.collector != nil && (h.gc.collector != collector || h.gc.domainID != domainID) {
+			return fmt.Errorf("GC host funcref belongs to a different Runtime collector domain")
+		}
+	} else if h.gcCapable {
+		return fmt.Errorf("GC host funcref requires a collector-reference signature")
+	}
+	if exactNeeded && (h.gc == nil || h.gc.types == nil) {
+		if h.gc == nil {
+			h.gc = &hostFuncRefGCState{}
+		}
+		h.gc.params = append([]ValueTypeDescriptor(nil), params...)
+		h.gc.results = append([]ValueTypeDescriptor(nil), results...)
+		h.gc.types = c.Types
+	}
+	if gcRefs {
+		if h.gc == nil {
+			return fmt.Errorf("GC host funcref requires an exact structural signature")
 		}
 		if h.gc.collector == nil {
 			h.gc.collector = collector
 			h.gc.domainID = domainID
-			h.gc.params = append([]ValueTypeDescriptor(nil), params...)
-			h.gc.results = append([]ValueTypeDescriptor(nil), results...)
-			h.gc.types = c.Types
-		} else {
-			if h.gc.collector != collector || h.gc.domainID != domainID {
-				return fmt.Errorf("GC host funcref belongs to a different Runtime collector domain")
-			}
-			if !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
-				return fmt.Errorf("GC host funcref structural signature mismatch")
-			}
 		}
-	} else if h.gc != nil {
-		return fmt.Errorf("GC host funcref requires a collector-reference signature")
 	}
 	h.importers++
 	return nil
@@ -537,7 +578,7 @@ func (h *HostFuncRef) isGCBridge() bool {
 		return false
 	}
 	h.mu.Lock()
-	ok := h.gc != nil && !h.closed && h.gc.collector != nil && h.gc.domainID != 0
+	ok := h.gcCapable && h.gc != nil && !h.closed && h.gc.collector != nil && h.gc.domainID != 0
 	h.mu.Unlock()
 	return ok
 }
@@ -724,8 +765,9 @@ type missingHostFunc struct{ importIdx uint32 }
 type invalidHostReference struct{ err error }
 
 type gcHostTempTokens struct {
-	count  uint8
-	tokens [gcPublicSlotLimit]uint64
+	count      uint8
+	exactTypes *[]DefinedTypeDescriptor
+	tokens     [gcPublicSlotLimit]uint64
 }
 
 func (t *gcHostTempTokens) add(token uint64) error {
@@ -754,6 +796,53 @@ func (t *gcHostTempTokens) release(in *Instance) {
 	}
 }
 
+type boundHostFuncRefCall struct {
+	owner           *HostFuncRef
+	fn              HostFunc
+	sig             FuncSig
+	params, results []ValueTypeDescriptor
+	types           *[]DefinedTypeDescriptor
+}
+
+func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, bool) {
+	if in == nil || in.c == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
+		return boundHostFuncRefCall{}, false
+	}
+	owner := in.refStore.hostFuncRef(dispatch)
+	if owner == nil {
+		return boundHostFuncRefCall{}, false
+	}
+	owner.mu.Lock()
+	binding := boundHostFuncRefCall{owner: owner, fn: owner.fn, sig: owner.sig}
+	if owner.gc != nil && owner.gc.types != nil {
+		binding.params = owner.gc.params
+		binding.results = owner.gc.results
+		binding.types = &owner.gc.types
+	}
+	owner.mu.Unlock()
+	if binding.fn == nil {
+		return boundHostFuncRefCall{}, false
+	}
+	if binding.types == nil {
+		return binding, true
+	}
+	for i, key := range in.c.Imports {
+		if i >= len(in.c.importFuncSigs) || in.imports[key] != owner {
+			continue
+		}
+		params, results, err := exactFuncSignatureView(in.c.importFuncSigs[i], in.c.Types)
+		if err != nil {
+			return boundHostFuncRefCall{}, false
+		}
+		binding.sig = in.c.importFuncSigs[i]
+		binding.params = params
+		binding.results = results
+		binding.types = &in.c.Types
+		break
+	}
+	return binding, true
+}
+
 // newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
 // maps the wasm import index to the bound HostFunc and runs it with a HostModule
 // bound to this instance. It is constructed once at instantiation so hot Invoke
@@ -777,6 +866,9 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		}
 		var fn HostFunc
 		var sig FuncSig
+		var exactParams, exactResults []ValueTypeDescriptor
+		var exactTypes []DefinedTypeDescriptor
+		var exactTypesPtr *[]DefinedTypeDescriptor
 		if importIdx&hostFuncRefDispatchBit != 0 {
 			owner := in.refStore.hostFuncRef(importIdx)
 			if owner == nil {
@@ -784,9 +876,30 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			}
 			owner.mu.Lock()
 			fn, sig = owner.fn, owner.sig
+			if owner.gc != nil && owner.gc.types != nil {
+				exactParams = owner.gc.params
+				exactResults = owner.gc.results
+				exactTypesPtr = &owner.gc.types
+			}
 			owner.mu.Unlock()
 			if fn == nil {
 				panic(missingHostFunc{importIdx: importIdx})
+			}
+			if exactTypesPtr != nil {
+				for i, key := range in.c.Imports {
+					if i >= len(in.c.importFuncSigs) || in.imports[key] != owner {
+						continue
+					}
+					var err error
+					exactParams, exactResults, err = exactFuncSignatureView(in.c.importFuncSigs[i], in.c.Types)
+					if err != nil {
+						panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
+					}
+					sig = in.c.importFuncSigs[i]
+					exactTypesPtr = &in.c.Types
+					break
+				}
+				exactTypes = *exactTypesPtr
 			}
 		} else {
 			if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
@@ -797,13 +910,16 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			}
 			fn = in.syncHosts[importIdx]
 			sig = in.c.importFuncSigs[importIdx]
-		}
-		exactParams, exactResults, err := exactFuncSignatureView(sig, in.c.Types)
-		if err != nil {
-			panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
+			exactTypes = in.c.Types
+			exactTypesPtr = &in.c.Types
+			var err error
+			exactParams, exactResults, err = exactFuncSignatureView(sig, in.c.Types)
+			if err != nil {
+				panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
+			}
 		}
 		var gcTemps gcHostTempTokens
-		if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, &gcTemps); err != nil {
+		if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, exactTypes, &gcTemps); err != nil {
 			gcTemps.release(in)
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
@@ -813,18 +929,19 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		caller.exactParams = exactParams
 		caller.exactResults = exactResults
 		var gcResultTemps gcHostTempTokens
+		gcResultTemps.exactTypes = exactTypesPtr
 		caller.ephemeralGCResults = &gcResultTemps
 		defer gcResultTemps.release(in)
 		defer caller.scope.end(caller.generation, caller.parentGeneration)
 		var mod HostModule = caller
 		fn(mod, args, results)
-		if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults); err != nil {
+		if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults, exactTypes); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 	}
 }
 
-func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType, exact []ValueTypeDescriptor, gcTemps *gcHostTempTokens) error {
+func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, gcTemps *gcHostTempTokens) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -853,7 +970,7 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType,
 				if !valid {
 					return fmt.Errorf("invalid funcref argument %d", i)
 				}
-				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+				if !valueTypeSubtype(actual, actualTypes, required, exactTypes) {
 					return fmt.Errorf("funcref argument %d does not match its exact structural type", i)
 				}
 				token, err := store.issue(in, values[slot])
@@ -900,7 +1017,7 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType,
 	return nil
 }
 
-func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
+func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -932,7 +1049,7 @@ func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64,
 				if !valid {
 					return fmt.Errorf("invalid funcref token for result %d", i)
 				}
-				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+				if !valueTypeSubtype(actual, actualTypes, required, exactTypes) {
 					return fmt.Errorf("funcref result %d does not match its exact structural type", i)
 				}
 				values[slot] = descriptor
