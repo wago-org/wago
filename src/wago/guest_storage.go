@@ -95,9 +95,10 @@ type GuestStorage interface {
 // and backwards compatible; plugins opt into this interface when they need
 // multi-memory, Memory64, or Wasm GC storage.
 //
-// Wago rejects guest re-entry while WithGuestStorage is active. Re-entry could
-// otherwise grow a linear memory or run a moving collection while a host slice
-// still refers to the prior storage.
+// Only the callback-scoped HostModule value handed to a live synchronous host
+// import implements this interface. Wago rejects guest re-entry while
+// WithGuestStorage is active. Re-entry could otherwise grow a linear memory or
+// run a moving collection while a host slice still refers to the prior storage.
 type GuestStorageHostModule interface {
 	HostModule
 	WithGuestStorage(func(GuestStorage) error) error
@@ -147,30 +148,6 @@ func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error 
 		defer unlockGCCollector(lockedDomain)
 	}
 	view := &guestStorageView{in: h.in, params: h.exactParams, results: h.exactResults}
-	view.active.Store(true)
-	defer view.active.Store(false)
-	return fn(view)
-}
-
-func (h staticHostModule) WithGuestStorage(fn func(GuestStorage) error) error {
-	if fn == nil {
-		return fmt.Errorf("wago: nil guest-storage callback")
-	}
-	if h.in == nil {
-		return fmt.Errorf("wago: guest storage has no instance")
-	}
-	endBorrow, err := beginGuestStorageBorrow(h.in)
-	if err != nil {
-		return err
-	}
-	defer endBorrow()
-	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
-	defer unlockNative()
-	if h.in.gc != nil {
-		lockedDomain := h.in.lockGCCollector()
-		defer unlockGCCollector(lockedDomain)
-	}
-	view := &guestStorageView{in: h.in}
 	view.active.Store(true)
 	defer view.active.Store(false)
 	return fn(view)
