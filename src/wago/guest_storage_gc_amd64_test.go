@@ -41,6 +41,8 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 
 	caller := in.beginHostCallScopeReservedWithID(newInvocationID(), nil)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	var resultTemps gcHostTempTokens
+	caller.ephemeralGCResults = &resultTemps
 	caller.exactResults = []ValueTypeDescriptor{{
 		Kind: ValueTypeReference,
 		Ref: ReferenceTypeDescriptor{
@@ -63,11 +65,9 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 	if token == 0 {
 		t.Fatal("host GC result allocation returned a null token")
 	}
-	defer func() {
-		if err := in.ReleaseGCRef(GCRef{token: token}); err != nil {
-			t.Errorf("release host GC result: %v", err)
-		}
-	}()
+	if resultTemps.count != 1 || resultTemps.tokens[0] != token {
+		t.Fatalf("tracked host GC result = count %d token %#x, want 1/%#x", resultTemps.count, resultTemps.tokens[0], token)
+	}
 
 	var retained GuestStorage
 	var retainedRef GuestGCRef
@@ -116,5 +116,13 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+
+	resultTemps.release(in)
+	if resultTemps.count != 0 {
+		t.Fatalf("released host GC result token count = %d, want 0", resultTemps.count)
+	}
+	if err := in.ReleaseGCRef(GCRef{token: token}); err == nil || !strings.Contains(err.Error(), "invalid or stale") {
+		t.Fatalf("released host GC result token remained live: %v", err)
 	}
 }
