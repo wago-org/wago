@@ -67,17 +67,35 @@ func TestBorrowedLocalSurvivesDeferredCompareLoad(t *testing.T) {
 	}
 }
 
-func TestApplyMulPreservesBorrowedMemRefOwnership(t *testing.T) {
-	owner := &elem{}
-	f := fn{a: &x86.Asm{}}
-	f.regUser[R12] = owner
-	f.pinnedLocalMask = maskOf(R12)
-	right := &elem{kind: ekValue, st: memRefStorage(R12, 0, 4, false, false, 0)}
+func TestApplyMulMemRefOwnership(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		size   int
+		borrow int
+		want   bool
+	}{
+		{name: "borrowed/foldable", size: 4, borrow: 0, want: true},
+		{name: "borrowed/materialized", size: 1, borrow: 0, want: true},
+		{name: "owned/foldable", size: 4, borrow: -1},
+		{name: "owned/materialized", size: 1, borrow: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// regUser is a canary for release: borrowed address ownership must be
+			// untouched, while an allocator-owned address must become available.
+			owner := &elem{}
+			f := fn{a: &x86.Asm{}}
+			f.regUser[R12] = owner
+			if tc.borrow >= 0 {
+				f.pinnedLocalMask = maskOf(R12)
+			}
+			right := &elem{kind: ekValue, st: memRefStorage(R12, 0, tc.size, false, false, tc.borrow)}
 
-	f.applyMul(RAX, right, false)
+			f.applyMul(RAX, right, false)
 
-	if f.regUser[R12] != owner {
-		t.Fatal("applyMul released a borrowed memory-reference address register")
+			if got := f.regUser[R12] == owner; got != tc.want {
+				t.Fatalf("address-register ownership retained = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
