@@ -1,0 +1,42 @@
+name: Apply guest storage result-token fix
+
+on:
+  push:
+    branches: [agent/host-guest-storage]
+    paths:
+      - ".github/scripts/fix_guest_storage_result_tokens.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: agent/host-guest-storage
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.22.x"
+      - name: Apply lifetime fix
+        run: python3 .github/scripts/fix_guest_storage_result_tokens.py
+      - name: Format changed Go files
+        run: gofmt -w src/wago/hostcall.go src/wago/guest_storage_alloc.go src/wago/guest_storage_gc_amd64_test.go
+      - name: Run focused guest-storage tests
+        run: |
+          go test ./src/core/runtime/gc -run '^TestHostArrayPayload'
+          go test ./src/wago -run '^TestHostGuestStorage'
+      - name: Remove migration helper
+        run: rm .github/scripts/fix_guest_storage_result_tokens.py
+      - name: Commit lifetime fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "wago: scope allocated GC result tokens to host calls"
+          git push origin HEAD:agent/host-guest-storage
