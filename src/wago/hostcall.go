@@ -584,14 +584,15 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 
 // instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct {
-	in               *Instance
-	scope            *hostCallScope
-	generation       uint64
-	parentGeneration uint64
-	invocationID     invocationID
-	reservation      *pluginOperationReservation
-	exactParams      []ValueTypeDescriptor
-	exactResults     []ValueTypeDescriptor
+	in                 *Instance
+	scope              *hostCallScope
+	generation         uint64
+	parentGeneration   uint64
+	invocationID       invocationID
+	reservation        *pluginOperationReservation
+	exactParams        []ValueTypeDescriptor
+	exactResults       []ValueTypeDescriptor
+	ephemeralGCResults *gcHostTempTokens
 }
 
 func (h instanceHostModule) valid() bool {
@@ -811,6 +812,9 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
 		caller.exactParams = exactParams
 		caller.exactResults = exactResults
+		var gcResultTemps gcHostTempTokens
+		caller.ephemeralGCResults = &gcResultTemps
+		defer gcResultTemps.release(in)
 		defer caller.scope.end(caller.generation, caller.parentGeneration)
 		var mod HostModule = caller
 		fn(mod, args, results)
