@@ -42,12 +42,13 @@ func host(m wago.HostModule, params, results []uint64) {
 }
 ```
 
-Every slice and `GuestGCRef` returned by `GuestStorage` is valid only while the
-`WithGuestStorage` callback is active.
+Every directly borrowed slice and `GuestGCRef` returned by `GuestStorage` is
+valid only while the `WithGuestStorage` callback is active. Immutable GC-array
+reads are detached copies rather than direct borrows.
 
-The host MUST NOT retain a slice or `GuestGCRef` after the callback returns.
-Wago also makes later method calls through the expired `GuestStorage` fail
-closed.
+The host MUST NOT retain a directly borrowed slice or `GuestGCRef` after the
+callback returns. Wago also makes later method calls through the expired
+`GuestStorage` fail closed.
 
 Only one guest-storage borrow can be active for one instance at a time. A nested
 borrow fails instead of recursively taking runtime or collector locks.
@@ -137,8 +138,11 @@ bytes, info, err := storage.GCArrayBytes(
 The slice contains no collector header or allocation padding. Numeric storage is
 exposed in the runtime's canonical little-endian in-memory representation.
 
-A write borrow of an immutable array fails. A read borrow of an immutable array
-is valid.
+Mutable arrays return a zero-copy alias for both read and write access. A write
+borrow of an immutable array fails. A read of an immutable array returns a
+copy, because a Go `[]byte` cannot enforce read-only access to directly aliased
+storage. Mutating that copy cannot change guest state. Hosts should account for
+one allocation and a payload-sized copy when reading immutable arrays.
 
 Reference arrays do not expose raw bytes. Use `GCArrayRef` instead:
 

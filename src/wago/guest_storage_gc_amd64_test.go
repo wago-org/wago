@@ -96,6 +96,14 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 		if payloadInfo != info || !bytes.Equal(payload, want) {
 			return &guestStorageTestError{"borrowed immutable GC array payload"}
 		}
+		payload[0] = 0xff
+		unchanged, _, err := storage.GCArrayBytes(ref, GuestStorageRead)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(unchanged, want) {
+			return &guestStorageTestError{"immutable GC array changed through read borrow"}
+		}
 		if _, _, err := storage.GCArrayBytes(ref, GuestStorageWrite); err == nil {
 			return &guestStorageTestError{"immutable GC array accepted a write borrow"}
 		}

@@ -71,11 +71,13 @@ type GuestGCArrayInfo struct {
 	TypeIndex uint32 // producer-local flattened defined-type index
 }
 
-// GuestStorage is a callback-scoped view of the calling Wasm instance. Every
-// slice and GuestGCRef returned by this interface expires when the surrounding
-// WithGuestStorage callback returns. Implementations keep native execution and
-// collector relocation serialized for that complete lifetime, so multiple
-// array views can be held at once for scatter/gather validation and I/O.
+// GuestStorage is a callback-scoped view of the calling Wasm instance. Direct
+// slices and every GuestGCRef returned by this interface expire when the
+// surrounding WithGuestStorage callback returns. Implementations keep native
+// execution and collector relocation serialized for that complete lifetime, so
+// multiple array views can be held at once for scatter/gather validation and
+// I/O. GCArrayBytes returns a detached copy for immutable arrays because Go
+// slices cannot enforce read-only access.
 type GuestStorage interface {
 	MemoryInfo(index uint32) (GuestMemoryInfo, error)
 	MemoryRange(index uint32, offset, length uint64, access GuestStorageAccess) ([]byte, error)
@@ -331,6 +333,9 @@ func (v *guestStorageView) GCArrayBytes(ref GuestGCRef, access GuestStorageAcces
 	payload, err := v.in.gc.ArrayPayload(ref.ref)
 	if err != nil {
 		return nil, info, err
+	}
+	if !info.Mutable {
+		return append([]byte(nil), payload.Bytes...), info, nil
 	}
 	return payload.Bytes, info, nil
 }
