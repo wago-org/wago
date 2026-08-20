@@ -393,7 +393,7 @@ func TestInstantiationMarkersAndOwnedHostThunk(t *testing.T) {
 
 func TestHostFuncRefAttachmentDeduplication(t *testing.T) {
 	var attachments hostFuncRefAttachments
-	if err := attachments.attach(nil, nil, FuncSig{}, nil, 0, nil); err == nil {
+	if err := attachments.attach(nil, nil, FuncSig{}, nil, 0, nil, 0); err == nil {
 		t.Fatal("nil host funcref owner accepted")
 	}
 	rt := NewRuntime()
@@ -401,10 +401,10 @@ func TestHostFuncRefAttachmentDeduplication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := attachments.attach(owner, rt.refStore, FuncSig{}, nil, 0, nil); err != nil {
+	if err := attachments.attach(owner, rt.refStore, FuncSig{}, nil, 0, nil, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := attachments.attach(owner, rt.refStore, FuncSig{}, nil, 0, nil); err != nil {
+	if err := attachments.attach(owner, rt.refStore, FuncSig{}, nil, 0, nil, 0); err != nil {
 		t.Fatal(err)
 	}
 	if owner.importers != 1 {
@@ -417,7 +417,7 @@ func TestHostFuncRefAttachmentDeduplication(t *testing.T) {
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := (&hostFuncRefAttachments{}).attach(owner, rt.refStore, FuncSig{}, nil, 0, nil); err == nil {
+	if err := (&hostFuncRefAttachments{}).attach(owner, rt.refStore, FuncSig{}, nil, 0, nil, 0); err == nil {
 		t.Fatal("closed host funcref owner attached")
 	}
 }

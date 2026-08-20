@@ -275,11 +275,27 @@ type HostFuncRef struct {
 }
 
 type hostFuncRefGCState struct {
-	collector *gc.Collector
-	domainID  uint64
-	params    []ValueTypeDescriptor
-	results   []ValueTypeDescriptor
-	types     []DefinedTypeDescriptor
+	collector        *gc.Collector
+	domainID         uint64
+	params           []ValueTypeDescriptor
+	results          []ValueTypeDescriptor
+	types            []DefinedTypeDescriptor
+	dispatchBindings map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding
+}
+
+type hostFuncRefBindingKey struct {
+	owner       *HostFuncRef
+	compiled    *Compiled
+	importIndex int
+}
+
+type hostFuncRefDispatchBinding struct {
+	owner           *HostFuncRef
+	sig             FuncSig
+	params, results []ValueTypeDescriptor
+	types           []DefinedTypeDescriptor
+	dispatchIndex   uint32
+	refs            uint32
 }
 
 // NewHostFuncRef creates an explicitly owned host function with one exact Wasm
@@ -538,6 +554,79 @@ func (h *HostFuncRef) attachImporter(store *referenceStore, sig FuncSig, collect
 	return nil
 }
 
+func (h *HostFuncRef) acquireDispatchBinding(store *referenceStore, c *Compiled, importIndex int, sig FuncSig) (uint32, bool, error) {
+	params, results, needed, err := hostFuncRefExactSignature(sig, c)
+	if err != nil {
+		return 0, false, fmt.Errorf("host funcref exact signature: %w", err)
+	}
+	if !needed {
+		return h.dispatchIndex, false, nil
+	}
+	key := hostFuncRefBindingKey{owner: h, compiled: c, importIndex: importIndex}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed || h.store != store || h.gc == nil || h.gc.types == nil || !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+		return 0, false, fmt.Errorf("host funcref structural signature mismatch")
+	}
+	if binding := h.gc.dispatchBindings[key]; binding != nil {
+		if binding.refs == ^uint32(0) {
+			return 0, false, fmt.Errorf("host funcref dispatch binding has too many importers")
+		}
+		binding.refs++
+		return binding.dispatchIndex, true, nil
+	}
+	binding := &hostFuncRefDispatchBinding{
+		owner: h, sig: sig, params: params, results: results, types: c.Types, refs: 1,
+	}
+	dispatchIndex, err := store.registerHostFuncRefBindingLocked(binding)
+	if err != nil {
+		return 0, false, err
+	}
+	binding.dispatchIndex = dispatchIndex
+	if h.gc.dispatchBindings == nil {
+		h.gc.dispatchBindings = make(map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding)
+	}
+	h.gc.dispatchBindings[key] = binding
+	return dispatchIndex, true, nil
+}
+
+func (h *HostFuncRef) dispatchBinding(c *Compiled, importIndex int) (*hostFuncRefDispatchBinding, bool) {
+	if h == nil {
+		return nil, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.gc == nil {
+		return nil, false
+	}
+	binding := h.gc.dispatchBindings[hostFuncRefBindingKey{owner: h, compiled: c, importIndex: importIndex}]
+	return binding, binding != nil
+}
+
+func (h *HostFuncRef) releaseDispatchBinding(c *Compiled, importIndex int) {
+	if h == nil || h.store == nil {
+		return
+	}
+	store := h.store
+	key := hostFuncRefBindingKey{owner: h, compiled: c, importIndex: importIndex}
+	store.mu.Lock()
+	h.mu.Lock()
+	if h.gc != nil {
+		if binding := h.gc.dispatchBindings[key]; binding != nil {
+			if binding.refs > 1 {
+				binding.refs--
+			} else {
+				delete(h.gc.dispatchBindings, key)
+				store.unregisterHostFuncRefBindingLocked(binding)
+			}
+		}
+	}
+	h.mu.Unlock()
+	store.mu.Unlock()
+}
+
 func exactSignatureEquivalent(aParams, aResults []ValueTypeDescriptor, aTypes []DefinedTypeDescriptor, bParams, bResults []ValueTypeDescriptor, bTypes []DefinedTypeDescriptor) bool {
 	if len(aParams) != len(bParams) || len(aResults) != len(bResults) {
 		return false
@@ -569,6 +658,7 @@ func (h *HostFuncRef) detachImporter() {
 		h.gc.params = nil
 		h.gc.results = nil
 		h.gc.types = nil
+		h.gc.dispatchBindings = nil
 	}
 	h.mu.Unlock()
 }
@@ -805,40 +895,24 @@ type boundHostFuncRefCall struct {
 }
 
 func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, bool) {
-	if in == nil || in.c == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
+	if in == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
 		return boundHostFuncRefCall{}, false
 	}
-	owner := in.refStore.hostFuncRef(dispatch)
+	owner, exact := in.refStore.hostFuncRefDispatch(dispatch)
 	if owner == nil {
 		return boundHostFuncRefCall{}, false
 	}
 	owner.mu.Lock()
 	binding := boundHostFuncRefCall{owner: owner, fn: owner.fn, sig: owner.sig}
-	if owner.gc != nil && owner.gc.types != nil {
-		binding.params = owner.gc.params
-		binding.results = owner.gc.results
-		binding.types = &owner.gc.types
-	}
 	owner.mu.Unlock()
 	if binding.fn == nil {
 		return boundHostFuncRefCall{}, false
 	}
-	if binding.types == nil {
-		return binding, true
-	}
-	for i, key := range in.c.Imports {
-		if i >= len(in.c.importFuncSigs) || in.imports[key] != owner {
-			continue
-		}
-		params, results, err := exactFuncSignatureView(in.c.importFuncSigs[i], in.c.Types)
-		if err != nil {
-			return boundHostFuncRefCall{}, false
-		}
-		binding.sig = in.c.importFuncSigs[i]
-		binding.params = params
-		binding.results = results
-		binding.types = &in.c.Types
-		break
+	if exact != nil {
+		binding.sig = exact.sig
+		binding.params = exact.params
+		binding.results = exact.results
+		binding.types = &exact.types
 	}
 	return binding, true
 }
@@ -870,36 +944,22 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		var exactTypes []DefinedTypeDescriptor
 		var exactTypesPtr *[]DefinedTypeDescriptor
 		if importIdx&hostFuncRefDispatchBit != 0 {
-			owner := in.refStore.hostFuncRef(importIdx)
+			owner, exact := in.refStore.hostFuncRefDispatch(importIdx)
 			if owner == nil {
 				panic(missingHostFunc{importIdx: importIdx})
 			}
 			owner.mu.Lock()
 			fn, sig = owner.fn, owner.sig
-			if owner.gc != nil && owner.gc.types != nil {
-				exactParams = owner.gc.params
-				exactResults = owner.gc.results
-				exactTypesPtr = &owner.gc.types
-			}
 			owner.mu.Unlock()
 			if fn == nil {
 				panic(missingHostFunc{importIdx: importIdx})
 			}
-			if exactTypesPtr != nil {
-				for i, key := range in.c.Imports {
-					if i >= len(in.c.importFuncSigs) || in.imports[key] != owner {
-						continue
-					}
-					var err error
-					exactParams, exactResults, err = exactFuncSignatureView(in.c.importFuncSigs[i], in.c.Types)
-					if err != nil {
-						panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
-					}
-					sig = in.c.importFuncSigs[i]
-					exactTypesPtr = &in.c.Types
-					break
-				}
-				exactTypes = *exactTypesPtr
+			if exact != nil {
+				sig = exact.sig
+				exactParams = exact.params
+				exactResults = exact.results
+				exactTypes = exact.types
+				exactTypesPtr = &exact.types
 			}
 		} else {
 			if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {

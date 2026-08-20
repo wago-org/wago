@@ -258,7 +258,7 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 			if i >= len(b.c.importFuncSigs) {
 				return nil, fmt.Errorf("imported host funcref %q has no signature", key)
 			}
-			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], b.collector, b.gcDomainID, b.c); err != nil {
+			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], b.collector, b.gcDomainID, b.c, i); err != nil {
 				return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
 			}
 		}
@@ -1760,8 +1760,12 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			owned := false
 			if owner, ok := imports[key].(*HostFuncRef); ok && owner != nil {
 				owner.mu.Lock()
-				dispatch = hostFuncRefDispatchBit | owner.dispatchIndex
+				dispatchIndex := owner.dispatchIndex
 				owner.mu.Unlock()
+				if binding, ok := owner.dispatchBinding(c, fidx); ok {
+					dispatchIndex = binding.dispatchIndex
+				}
+				dispatch = hostFuncRefDispatchBit | dispatchIndex
 				owned = true
 			}
 			offs[uint32(fidx)] = len(blob)

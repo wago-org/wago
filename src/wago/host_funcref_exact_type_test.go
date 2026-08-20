@@ -75,6 +75,45 @@ func hostFuncRefExactTypeModule(paddingTypes int, nodeResult wasm.ValType) []byt
 	)
 }
 
+func hostFuncRefDuplicateExactTypeModule() []byte {
+	padding := wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil)
+	nodeAIndex, nodeBIndex := uint32(1), uint32(2)
+	nullNodeA := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: nodeAIndex}), false))
+	nodeA := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: nodeAIndex}), false))
+	nullNodeB := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: nodeBIndex}), false))
+	nodeB := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: nodeBIndex}), false))
+	types := [][]byte{
+		padding,
+		hostFuncRefTestFuncType([]wasm.ValType{nullNodeA}, []wasm.ValType{wasm.I32}),
+		hostFuncRefTestFuncType([]wasm.ValType{nullNodeB}, []wasm.ValType{wasm.I32}),
+		hostFuncRefTestFuncType([]wasm.ValType{nodeA}, []wasm.ValType{nodeA}),
+		hostFuncRefTestFuncType([]wasm.ValType{nodeB}, []wasm.ValType{nodeB}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	importA := append(wasmtest.Name("host"), wasmtest.Name("echo-a")...)
+	importA = append(importA, 0x00)
+	importA = append(importA, wasmtest.ULEB(3)...)
+	importB := append(wasmtest.Name("host"), wasmtest.Name("echo-b")...)
+	importB = append(importB, 0x00)
+	importB = append(importB, wasmtest.ULEB(4)...)
+	runA := []byte{0xd2, 0x02, 0x41, 0x00, 0x11, 0x03, 0x00, 0xd1, 0x0b}
+	runB := []byte{0xd2, 0x03, 0x41, 0x01, 0x11, 0x04, 0x00, 0xd1, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(importA, importB)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(5), wasmtest.ULEB(5))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x02, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run-a", 0, 4), wasmtest.ExportEntry("run-b", 0, 5))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0, 1), tableTestDeclarativeElem(2, 3))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x08, 0x0b}),
+			wasmtest.Code(runA),
+			wasmtest.Code(runB),
+		)),
+	)
+}
+
 func TestHostFuncRefUsesImporterLocalExactSignature(t *testing.T) {
 	requireCompleteCore3Backend(t)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
@@ -137,8 +176,23 @@ func TestHostFuncRefUsesImporterLocalExactSignature(t *testing.T) {
 			t.Fatalf("run importer with %d padding types = %v, %v; want [0], nil", padding, got, err)
 		}
 	}
-	if fmt.Sprint(seenTypeIndexes) != "[1 2]" {
-		t.Fatalf("callback importer-local type indexes = %v, want [1 2]", seenTypeIndexes)
+	duplicate, err := rt.Compile(hostFuncRefDuplicateExactTypeModule())
+	if err != nil {
+		t.Fatalf("compile duplicate importer bindings: %v", err)
+	}
+	defer duplicate.Close()
+	duplicateInstance, err := rt.Instantiate(context.Background(), duplicate, WithImports(Imports{"host.echo-a": owner, "host.echo-b": owner}))
+	if err != nil {
+		t.Fatalf("instantiate duplicate importer bindings: %v", err)
+	}
+	instances = append(instances, duplicateInstance)
+	for _, export := range []string{"run-a", "run-b"} {
+		if got, err := duplicateInstance.Call(context.Background(), export); err != nil || len(got) != 1 || got[0].I32() != 0 {
+			t.Fatalf("%s duplicate importer binding = %v, %v; want [0], nil", export, got, err)
+		}
+	}
+	if fmt.Sprint(seenTypeIndexes) != "[1 2 1 2]" {
+		t.Fatalf("callback importer-local type indexes = %v, want [1 2 1 2]", seenTypeIndexes)
 	}
 
 	mismatch, err := rt.Compile(hostFuncRefExactTypeModule(2, wasm.I64))

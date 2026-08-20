@@ -122,24 +122,41 @@ func detachImportedFunctions(in *Instance) {
 }
 
 type hostFuncRefAttachments struct {
-	set importDedup[*HostFuncRef]
+	set      importDedup[*HostFuncRef]
+	bindings importDedup[hostFuncRefBindingKey]
 }
 
-func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStore, sig FuncSig, collector *gc.Collector, domainID uint64, c *Compiled) error {
+func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStore, sig FuncSig, collector *gc.Collector, domainID uint64, c *Compiled, importIndex int) error {
 	if owner == nil {
 		return fmt.Errorf("host funcref owner is nil")
 	}
-	if a.set.contains(owner) {
-		return owner.validateAttachedImporter(store, sig, collector, domainID, c)
-	}
-	if err := owner.attachImporter(store, sig, collector, domainID, c); err != nil {
+	newOwner := !a.set.contains(owner)
+	if newOwner {
+		if err := owner.attachImporter(store, sig, collector, domainID, c); err != nil {
+			return err
+		}
+	} else if err := owner.validateAttachedImporter(store, sig, collector, domainID, c); err != nil {
 		return err
 	}
-	a.set.push(owner)
+	_, exact, err := owner.acquireDispatchBinding(store, c, importIndex, sig)
+	if err != nil {
+		if newOwner {
+			owner.detachImporter()
+		}
+		return err
+	}
+	if exact {
+		a.bindings.push(hostFuncRefBindingKey{owner: owner, compiled: c, importIndex: importIndex})
+	}
+	if newOwner {
+		a.set.push(owner)
+	}
 	return nil
 }
 
 func (a *hostFuncRefAttachments) detachAll() {
+	a.bindings.each(func(key hostFuncRefBindingKey) { key.owner.releaseDispatchBinding(key.compiled, key.importIndex) })
+	a.bindings.reset()
 	a.set.each((*HostFuncRef).detachImporter)
 	a.set.reset()
 }
@@ -149,11 +166,12 @@ func detachImportedHostFuncRefs(in *Instance) {
 		return
 	}
 	var seen importDedup[*HostFuncRef]
-	for _, key := range in.c.Imports {
+	for i, key := range in.c.Imports {
 		owner, ok := in.imports[key].(*HostFuncRef)
 		if !ok || owner == nil {
 			continue
 		}
+		owner.releaseDispatchBinding(in.c, i)
 		if seen.add(owner) {
 			owner.detachImporter()
 		}
