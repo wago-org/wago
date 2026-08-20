@@ -91,6 +91,7 @@
               "local-slot-order",
               "loop-precheck",
               "loop-region-pins",
+              "merge-next-use",
               "multi-bounds-cert",
               "olddest-rhs-sink",
               "reg-abi",
