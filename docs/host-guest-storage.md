@@ -44,7 +44,9 @@ func host(m wago.HostModule, params, results []uint64) {
 
 Every directly borrowed slice and `GuestGCRef` returned by `GuestStorage` is
 valid only while the `WithGuestStorage` callback is active. Immutable GC-array
-reads are detached copies rather than direct borrows.
+reads are detached copies rather than direct borrows. A handle is also bound to
+its exact Runtime, calling instance, collector domain, and `GuestStorage` view;
+using it with another view or after expiry fails closed.
 
 The host MUST NOT retain a directly borrowed slice or `GuestGCRef` after the
 callback returns. Wago also makes later method calls through the expired
@@ -101,7 +103,10 @@ use `MemoryInfo.AddressType` when its external ABI distinguishes address widths.
 ## Wasm GC arrays
 
 GC references in ordinary host-function parameter slots remain opaque Wago
-public tokens. Do not interpret the slot as a collector handle or address.
+tokens. Declarative Runtime plugin imports use temporary callback-scoped tokens;
+other public APIs retain their documented token lifetime. In neither case may a
+host interpret the slot as an internal `gc.Ref`, collector handle, object
+address, or pointer.
 
 Convert a GC-reference slot into a callback-scoped reference with:
 
@@ -138,9 +143,16 @@ bytes, info, err := storage.GCArrayBytes(
 The slice contains no collector header or allocation padding. Numeric storage is
 exposed in the runtime's canonical little-endian in-memory representation.
 
-Mutable arrays return a zero-copy alias for both read and write access. A write
-borrow of an immutable array fails. A read of an immutable array returns a
-copy, because a Go `[]byte` cannot enforce read-only access to directly aliased
+Mutable arrays return a zero-copy alias for both read and write access. The
+slice is the real collector payload, so synchronous code may pass it directly to
+`read`, `pread`, `readv`, or similar syscall wrappers while the
+`WithGuestStorage` borrow remains active. No intermediate copy and no raw pointer
+API are required. Long blocking operations hold native execution and collector
+mutation stable for the borrow; callers should prefer readiness polling and
+non-blocking I/O when that hold would be excessive.
+
+A write borrow of an immutable array fails. A read of an immutable array returns
+a copy, because a Go `[]byte` cannot enforce read-only access to directly aliased
 storage. Mutating that copy cannot change guest state. Hosts should account for
 one allocation and a payload-sized copy when reading immutable arrays.
 
@@ -214,9 +226,10 @@ initializer rather than exposing raw reference storage.
 
 ## Collector safety
 
-Wago keeps the collector domain serialized for the complete
+Wago keeps native execution and the collector domain serialized for the complete
 `WithGuestStorage` lifetime. A borrowed GC payload therefore does not move while
-the host holds its slice.
+the host holds its slice. Guest re-entry, collection, memory growth, and other
+operations that could invalidate a direct view are rejected during the borrow.
 
 The public API never exposes:
 
