@@ -7,8 +7,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlan(_ *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC {
+func newGCFrameRootPlan(_ *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
+	if !exactRoots {
 		return nil
 	}
 	return &shared.GCModuleFrameRootPlan{Diagnostic: "source compilation is unavailable in a precompiled runtime"}

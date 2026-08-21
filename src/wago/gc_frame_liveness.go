@@ -368,11 +368,38 @@ func gcFrameBodyMayCollectWithClassifier(body []byte, classifier *wasm.ModuleIns
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
 			return true
 		}
-		if op == 0xfb {
-			switch imm.Subopcode {
-			case 0, 1, 6, 7, 8, 9, 10:
-				return true
-			}
+		if gcFrameInstructionMayAllocate(op, imm) {
+			return true
+		}
+	}
+	return false
+}
+
+func gcFrameInstructionMayAllocate(op byte, imm wasm.InstructionImmediate) bool {
+	if op != 0xfb {
+		return false
+	}
+	switch imm.Subopcode {
+	case 0, 1, 6, 7, 8, 9, 10:
+		return true
+	default:
+		return false
+	}
+}
+
+func gcFrameBodyMayAllocateWithClassifier(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		if gcFrameInstructionMayAllocate(op, imm) {
+			return true
 		}
 	}
 	return false

@@ -19,8 +19,8 @@ import (
 // GC globals and collector tables, polymorphic call_indirect, and local or
 // same-domain foreign call_ref. Unsupported tail-reference ownership remains
 // fail-closed.
-func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC {
+func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
+	if !exactRoots {
 		return nil
 	}
 	reject := func(format string, args ...any) *shared.GCModuleFrameRootPlan {
@@ -46,12 +46,12 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !arm64CollectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
+			if !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
 				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
-			if !arm64CollectorFrameRefType(m, tableType) && !arm64FunctionFrameRefType(m, tableType) {
+			if !collectorFrameRefType(m, tableType) && !arm64FunctionFrameRefType(m, tableType) {
 				return reject("table import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternMem:
@@ -91,7 +91,7 @@ functions:
 		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
-			if arm64CollectorFrameRefType(m, t) {
+			if collectorFrameRefType(m, t) {
 				if len(plan.LocalOffsets) == shared.GCFrameRootLimit || slot > (math.MaxUint32-shared.ARM64FrameHeaderBytes)/8 {
 					return false
 				}
@@ -165,7 +165,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 		switch {
 		case arm64FunctionFrameRefType(m, typ):
 			tableKinds[tableIndex] = 1
-		case arm64CollectorFrameRefType(m, typ):
+		case collectorFrameRefType(m, typ):
 			tableKinds[tableIndex] = 2
 		default:
 			return false
@@ -194,7 +194,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			kind = tableKinds[e.Mode.Table]
 		} else if e.Kind.Kind == wasm.ElemFuncs || arm64FunctionFrameRefType(m, wasm.RefVal(e.Kind.Ref)) {
 			kind = 1
-		} else if arm64CollectorFrameRefType(m, wasm.RefVal(e.Kind.Ref)) {
+		} else if collectorFrameRefType(m, wasm.RefVal(e.Kind.Ref)) {
 			kind = 2
 		} else {
 			return false
@@ -225,7 +225,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			}
 			if ee.HasGlobal {
 				gt, ok := m.GlobalTypeByIndex(ee.GlobalIndex)
-				if !ok || gt.Mutable || !arm64CollectorFrameRefType(m, gt.Type) {
+				if !ok || gt.Mutable || !collectorFrameRefType(m, gt.Type) {
 					return false
 				}
 				continue
@@ -398,7 +398,7 @@ func arm64GCFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	gp, fp := 0, 0
 	for _, t := range ft.Params {
 		switch {
-		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), arm64CollectorFrameRefType(m, t), arm64FunctionFrameRefType(m, t):
+		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), collectorFrameRefType(m, t), arm64FunctionFrameRefType(m, t):
 			gp++
 		case wasm.EqualValType(t, wasm.F32), wasm.EqualValType(t, wasm.F64):
 			fp++
@@ -410,7 +410,7 @@ func arm64GCFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 		return false
 	}
 	integerResult := func(t wasm.ValType) bool {
-		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || arm64CollectorFrameRefType(m, t) || arm64FunctionFrameRefType(m, t)
+		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || collectorFrameRefType(m, t) || arm64FunctionFrameRefType(m, t)
 	}
 	for _, t := range ft.Results {
 		if !integerResult(t) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) {
@@ -436,39 +436,5 @@ func arm64FunctionFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 		return valid && kind == wasm.CompFunc
 	default:
 		return false
-	}
-}
-
-func arm64CollectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
-		return false
-	}
-	heap := t.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
-			return true
-		default:
-			return false
-		}
-	case wasm.HeapDefType:
-		kind, valid := heap.DefCompKind()
-		if !valid {
-			return true
-		}
-		return kind == wasm.CompStruct || kind == wasm.CompArray
-	case wasm.HeapTypeIndex:
-		index := heap.Type().Index
-		for _, group := range m.Types {
-			if index < uint32(len(group.SubTypes)) {
-				kind := group.SubTypes[index].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			index -= uint32(len(group.SubTypes))
-		}
-		return true
-	default:
-		return true
 	}
 }

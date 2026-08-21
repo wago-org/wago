@@ -21,17 +21,17 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
-	gcBridge := false
+	plan := in.c.genericGCFrameRoots()
+	if plan == nil {
+		return gcHostActivationToken{}
+	}
+	gcBridge := in.pluginGCHostImport(dispatch) != nil
 	if dispatch&hostFuncRefDispatchBit != 0 {
 		binding, ok := in.boundHostFuncRef(dispatch)
 		if !ok || !binding.owner.isGCBridge() {
 			return gcHostActivationToken{}
 		}
 		gcBridge = true
-	}
-	plan := in.c.genericGCFrameRoots()
-	if plan == nil {
-		return gcHostActivationToken{}
 	}
 	control := unsafe.Slice((*byte)(offHeapPtr(ctrl)), 64)
 	savedRSP := uintptr(binary.LittleEndian.Uint64(control[abi.SyncHostCallSavedNativeSPOffset:]))

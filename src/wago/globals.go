@@ -52,6 +52,10 @@ func (im Imports) hostFuncs() map[string]HostFunc {
 				fn = value.fn
 				value.mu.Unlock()
 			}
+		case *pluginHostImport:
+			if value != nil {
+				fn = value.fn
+			}
 		}
 		if fn != nil {
 			if m == nil {

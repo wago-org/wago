@@ -365,7 +365,7 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.u64(required)
 	sizes.Features += int64(len(w.buf) - start)
 	start = len(w.buf)
-	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 {
+	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
 		w.u32(c.nativeGCABIRequirement())
 	}
 	w.gcTypeDescs(c.GCTypeDescs)
@@ -959,13 +959,18 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
 	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
-	if gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 {
+	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
+	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
+		label := "native GC call-boundary"
+		if genericNativeGC {
+			label = "generic GC native"
+		}
 		nativeGCABIVersion, readErr := r.u32()
 		if readErr != nil {
-			return fmt.Errorf("generic GC native ABI version: %w", readErr)
+			return fmt.Errorf("%s ABI version: %w", label, readErr)
 		}
 		if nativeGCABIVersion != gc.NativeABIVersion {
-			return fmt.Errorf("generic GC native ABI version %d unsupported (want %d)", nativeGCABIVersion, gc.NativeABIVersion)
+			return fmt.Errorf("%s ABI version %d unsupported (want %d)", label, nativeGCABIVersion, gc.NativeABIVersion)
 		}
 		c.ensureCodeCache()
 		c.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
@@ -2149,7 +2154,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 	if err != nil {
 		return nil, err
 	}
-	if n == 0 || uint64(n) > uint64(shared.GCSafepointIDMax) {
+	if uint64(n) > uint64(shared.GCSafepointIDMax) {
 		return nil, fmt.Errorf("GC frame safepoint count %d is invalid", n)
 	}
 	rootMap.safepoints = make([]compiledGCFrameSafepoint, n)
@@ -2181,6 +2186,9 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 	callCount, err := r.countElements("GC frame callsites", 13)
 	if err != nil {
 		return nil, err
+	}
+	if n == 0 && callCount == 0 {
+		return nil, fmt.Errorf("GC frame metadata has no safepoints or callsites")
 	}
 	rootMap.callsites = make([]compiledGCFrameCallsite, callCount)
 	for i := range rootMap.callsites {
