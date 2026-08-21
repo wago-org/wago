@@ -447,7 +447,11 @@ func TestRuntimeRegressionPortResourceFootprintRemainsBounded(t *testing.T) {
 			}
 		}
 	}
-	run(8)
+	// Warm the runtime pools and the race detector's lazily mapped bookkeeping
+	// before taking the process-map baseline. Small code-size changes can otherwise
+	// make the detector add one shadow arena during the measured loop and look like
+	// a leaked Wago mapping.
+	run(64)
 	runtime.GC()
 	baseGoroutines := runtime.NumGoroutine()
 	baseFDs, baseMaps := regressionProcessResourceCounts()
