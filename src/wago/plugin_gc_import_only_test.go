@@ -10,7 +10,7 @@ import (
 )
 
 func pluginGCImportOnlyModule() []byte {
-	arrayType := []byte{0x5e, 0x78, 0x01}                  // (array (mut i8))
+	arrayType := []byte{0x5e, 0x78, 0x01}              // (array (mut i8))
 	importType := []byte{0x60, 0x00, 0x01, 0x63, 0x00} // () -> (ref null 0)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(arrayType, importType)),
