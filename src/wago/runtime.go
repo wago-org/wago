@@ -726,7 +726,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		return nil, err
 	}
 
-	imports, err := rt.resolveInstanceImports(mod.imports, cfg.imports)
+	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, cfg.imports)
 	if err != nil {
 		return nil, err
 	}
@@ -736,7 +736,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	// retained code ownership before start-time host callbacks.
 	mod.endUse()
 	usingModule = false
-	in, err := rt.instantiateWithHooksOrigin(mod, imports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation)
+	in, err := rt.instantiateWithHooksOrigin(mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation)
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
@@ -748,7 +748,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 // cloning runtime imports the module cannot use. Explicit per-call imports are
 // retained even when undeclared, preserving the low-level Imports inspection
 // behavior. Runtime imports are only retained for declared module keys.
-func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports) (Imports, error) {
+func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports) (Imports, map[uint32]struct{}, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
@@ -758,7 +758,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 			continue
 		}
 		if _, provided := rt.imports[key]; provided {
-			return nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
+			return nil, nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
 		}
 	}
 
@@ -767,6 +767,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 		capacity = available
 	}
 	var resolved Imports
+	var pluginGCImports map[uint32]struct{}
 	if len(overrides) != 0 {
 		resolved = make(Imports, capacity)
 		for key, value := range overrides {
@@ -784,7 +785,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 		}
 		if !provided {
 			if spec.Kind == ImportFunc {
-				return nil, missingImportError(spec)
+				return nil, nil, missingImportError(spec)
 			}
 			continue
 		}
@@ -792,8 +793,24 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 			resolved = make(Imports, capacity)
 		}
 		resolved[key] = value
+		if spec.Kind == ImportFunc {
+			meta := rt.importMeta[key]
+			if meta != nil {
+				declared := FuncSig{Params: meta.params, Results: meta.results}
+				actual := FuncSig{Params: spec.Params, Results: spec.Results}
+				if !funcSigEqual(declared, actual) {
+					return nil, nil, fmt.Errorf("Runtime plugin host import %q signature mismatch", key)
+				}
+				if funcSigHasGCRefs(declared) {
+					if pluginGCImports == nil {
+						pluginGCImports = make(map[uint32]struct{})
+					}
+					pluginGCImports[uint32(spec.Index)] = struct{}{}
+				}
+			}
+		}
 	}
-	return resolved, nil
+	return resolved, pluginGCImports, nil
 }
 
 func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
@@ -806,9 +823,9 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
-func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
+func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
 	iopts := InstantiateOptions{
-		Imports: imports, store: rt.refStore, runtime: rt, origin: origin,
+		Imports: imports, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
 		forceSyncHost:        forceSyncHost || rt.callerResolverActive.Load(),
 		moduleIdentity:       mod.moduleIdentity(),
 		operationReservation: reservation,

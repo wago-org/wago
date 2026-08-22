@@ -21,6 +21,7 @@ type InstantiateOptions struct {
 	runtime              *Runtime
 	origin               InstantiateOrigin
 	pluginGC             *GCConfig
+	pluginGCImports      map[uint32]struct{}
 	forceSyncHost        bool
 	afterCreate          func(*Instance) error
 	moduleIdentity       ModuleIdentity
@@ -137,7 +138,7 @@ func (b *instanceBuilder) releaseModuleUse() {
 }
 
 func (b *instanceBuilder) validateCompiled() error {
-	if err := b.c.validateImportBindings(b.imports, b.opts.store); err != nil {
+	if err := b.c.validateImportBindingsWithPluginGC(b.imports, b.opts.store, b.opts.pluginGCImports); err != nil {
 		return err
 	}
 	return b.c.validateCached()
@@ -1408,8 +1409,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
-		nativeContext:  nativeContextPtr,
-		moduleIdentity: opts.moduleIdentity,
+		nativeContext:   nativeContextPtr,
+		moduleIdentity:  opts.moduleIdentity,
+		pluginGCImports: opts.pluginGCImports,
 	}
 	independentInstances := c.independentInstances
 	if opts.hasExecutionPolicy {

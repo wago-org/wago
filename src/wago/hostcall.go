@@ -827,11 +827,6 @@ func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 			return nil, fmt.Errorf("host funcref signature mismatch")
 		}
 		return f.fn, nil
-	case *pluginHostImport:
-		if err := f.validate(f.store, sig); err != nil {
-			return nil, err
-		}
-		return f.fn, nil
 	case nil:
 		return nil, fmt.Errorf("no host function provided")
 	default:
@@ -863,13 +858,6 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
 		}
 		if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
 			return nil, fmt.Errorf("import %q uses %d param slot(s), %d result slot(s); synchronous host imports support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
-		}
-		if plugin, ok := imports[key].(*pluginHostImport); ok {
-			if err := plugin.validate(plugin.store, sig); err != nil {
-				return nil, fmt.Errorf("import %q: %w", key, err)
-			}
-			hosts[i] = plugin.fn
-			continue
 		}
 		fn, err := bindHostImport(imports[key], sig)
 		if err != nil {
@@ -923,12 +911,21 @@ type boundHostFuncRefCall struct {
 	types           *[]DefinedTypeDescriptor
 }
 
-func (in *Instance) pluginGCHostImport(dispatch uint32) *pluginHostImport {
-	if in == nil || in.c == nil || dispatch&hostFuncRefDispatchBit != 0 || uint64(dispatch) >= uint64(len(in.c.Imports)) || uint64(dispatch) >= uint64(len(in.c.importFuncSigs)) || !funcSigHasGCRefs(in.c.importFuncSigs[dispatch]) {
+func (in *Instance) pluginGCImportSet() map[uint32]struct{} {
+	if in == nil {
 		return nil
 	}
-	plugin, _ := in.imports[in.c.Imports[dispatch]].(*pluginHostImport)
-	return plugin
+	return in.pluginGCImports
+}
+
+func (in *Instance) pluginGCHostSignature(dispatch uint32) (FuncSig, bool) {
+	if in == nil || in.c == nil || dispatch&hostFuncRefDispatchBit != 0 || uint64(dispatch) >= uint64(len(in.c.Imports)) || uint64(dispatch) >= uint64(len(in.c.importFuncSigs)) || !funcSigHasGCRefs(in.c.importFuncSigs[dispatch]) {
+		return FuncSig{}, false
+	}
+	if _, ok := in.pluginGCImports[dispatch]; !ok {
+		return FuncSig{}, false
+	}
+	return in.c.importFuncSigs[dispatch], true
 }
 
 func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, bool) {

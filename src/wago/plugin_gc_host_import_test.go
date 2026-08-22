@@ -337,8 +337,8 @@ func TestPluginGCHostImportsBoundaryOnlyNulls(t *testing.T) {
 	rt, _ := newPluginGCTestRuntime(t)
 	defer rt.Close()
 
-	if _, ok := rt.imports["plugin_gc.null_result"].(*pluginHostImport); !ok {
-		t.Fatalf("GC plugin binding = %T, want private plugin marker", rt.imports["plugin_gc.null_result"])
+	if _, ok := rt.imports["plugin_gc.null_result"].(HostFunc); !ok {
+		t.Fatalf("GC plugin binding = %T, want HostFunc", rt.imports["plugin_gc.null_result"])
 	}
 	if _, ok := rt.imports["plugin_gc.scalar"].(HostFunc); !ok {
 		t.Fatalf("scalar plugin binding = %T, want HostFunc", rt.imports["plugin_gc.scalar"])
@@ -689,11 +689,11 @@ func TestPluginScalarHostImportStaysOrdinary(t *testing.T) {
 	}
 }
 
-func TestPluginGCHostImportCannotCrossRuntime(t *testing.T) {
+func TestPluginGCHostImportLosesRuntimeAuthorityWhenCopiedAsHostFunc(t *testing.T) {
 	requireCompleteCore3Backend(t)
 	first, _ := newPluginGCTestRuntime(t)
 	defer first.Close()
-	marker := first.imports["plugin_gc.create"]
+	create := first.imports["plugin_gc.create"]
 	second := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 	defer second.Close()
 	low, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), pluginGCArrayRoundTripModule(true, false))
@@ -702,13 +702,13 @@ func TestPluginGCHostImportCannotCrossRuntime(t *testing.T) {
 	}
 	defer low.Close()
 	imports := Imports{
-		"plugin_gc.create":  marker,
+		"plugin_gc.create":  create,
 		"plugin_gc.consume": first.imports["plugin_gc.consume"],
 		"plugin_gc.mutate":  first.imports["plugin_gc.mutate"],
 		"plugin_gc.collect": first.imports["plugin_gc.collect"],
 	}
-	if _, err := instantiateCore(low, InstantiateOptions{Imports: imports, store: second.refStore}); err == nil || !strings.Contains(err.Error(), "different Runtime") {
-		t.Fatalf("foreign Runtime plugin marker error = %v", err)
+	if _, err := instantiateCore(low, InstantiateOptions{Imports: imports, store: second.refStore}); err == nil || !strings.Contains(err.Error(), "cannot transfer collector references") {
+		t.Fatalf("copied plugin HostFunc error = %v", err)
 	}
 }
 

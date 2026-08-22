@@ -2163,20 +2163,14 @@ func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch ui
 		owner.mu.Unlock()
 		types = binding.sig.Params
 	} else {
-		plugin := in.pluginGCHostImport(dispatch)
-		if plugin == nil {
+		pluginSig, ok := in.pluginGCHostSignature(dispatch)
+		if !ok {
 			return nil
-		}
-		if uint64(dispatch) >= uint64(len(in.c.importFuncSigs)) {
-			return fmt.Errorf("Runtime plugin GC host import %d has no signature", dispatch)
-		}
-		if err := plugin.validate(in.refStore, in.c.importFuncSigs[dispatch]); err != nil {
-			return err
 		}
 		if !in.refStore.ownsGCCollector(in.gc) {
 			return fmt.Errorf("Runtime plugin GC host import is outside the calling instance's Runtime collector domain")
 		}
-		types = plugin.sig.Params
+		types = pluginSig.Params
 	}
 
 	lockedDomain := in.lockGCCollector()

@@ -25,7 +25,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintpt
 	if plan == nil {
 		return gcHostActivationToken{}
 	}
-	gcBridge := in.pluginGCHostImport(dispatch) != nil
+	_, gcBridge := in.pluginGCHostSignature(dispatch)
 	if dispatch&hostFuncRefDispatchBit != 0 {
 		binding, ok := in.boundHostFuncRef(dispatch)
 		if !ok || !binding.owner.isGCBridge() {

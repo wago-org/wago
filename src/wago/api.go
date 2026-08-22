@@ -2323,6 +2323,10 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // compatibility. Imported calls are already compiled; instantiation only writes
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
+	return c.validateImportBindingsWithPluginGC(imports, store, nil)
+}
+
+func (c *Compiled) validateImportBindingsWithPluginGC(imports Imports, store *referenceStore, pluginGCImports map[uint32]struct{}) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
 	privateWaitGC := store != nil && !store.private && c.needsRuntimeGCCollectorDomain() && c.usesAtomicWaitHelpers()
 	dynamicFuncrefReachability := compiledHasDynamicFuncrefReachability(c)
@@ -2340,15 +2344,16 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		}
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			_, pluginImport := pluginGCImports[uint32(i)]
 			if sigHasGCRefs {
 				switch owner := imports[key].(type) {
 				case *HostFuncRef:
 					if owner == nil || !owner.gcCapable || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
 						return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
 					}
-				case *pluginHostImport:
-					if err := owner.validate(store, c.importFuncSigs[i]); err != nil {
-						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: %w", key, err)
+				case HostFunc:
+					if owner == nil || !pluginImport || store == nil {
+						return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
 					}
 					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
 						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)

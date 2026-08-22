@@ -763,12 +763,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 		needsInstructionABI = needsInstructionABI || len(p.reg.instructions) != 0
 		for _, imp := range p.reg.imports {
 			key := imp.key()
-			fn := p.reg.callGate.wrap(imp.fn)
-			if funcSigHasGCRefs(FuncSig{Params: imp.params, Results: imp.results}) {
-				rt.imports[key] = newPluginHostImport(fn, FuncSig{Params: imp.params, Results: imp.results}, rt.refStore)
-			} else {
-				rt.imports[key] = fn
-			}
+			rt.imports[key] = p.reg.callGate.wrap(imp.fn)
 			rt.importMeta[key] = cloneRegisteredImport(imp)
 			rt.importOwner[key] = id
 			rt.moduleOwner[imp.module] = id

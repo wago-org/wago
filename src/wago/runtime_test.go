@@ -150,9 +150,9 @@ func TestResolveInstanceImportsDoesNotAllocateForUnrelatedNamespace(t *testing.T
 	}
 
 	allocs := testing.AllocsPerRun(100, func() {
-		imports, err := rt.resolveInstanceImports(nil, nil)
-		if err != nil || imports != nil {
-			t.Fatalf("resolveInstanceImports = %#v, %v, want nil, nil", imports, err)
+		imports, pluginGCImports, err := rt.resolveInstanceImports(nil, nil)
+		if err != nil || imports != nil || pluginGCImports != nil {
+			t.Fatalf("resolveInstanceImports = %#v, %#v, %v, want nil, nil, nil", imports, pluginGCImports, err)
 		}
 	})
 	if allocs != 0 {
