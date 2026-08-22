@@ -343,6 +343,8 @@ type compiledGCFrameRoots struct {
 	callsites            []compiledGCFrameCallsite
 }
 
+var importOnlyGCFrameRoots = compiledGCFrameRoots{}
+
 type gcFrameOffsetInterner struct {
 	firstHash uint64
 	first     []uint32
@@ -424,10 +426,20 @@ func (r *compiledGCFrameRoots) safepointByID(id uint32) *compiledGCFrameSafepoin
 }
 
 func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {
-	if c == nil || c.validateMemo == nil {
+	if c == nil {
 		return nil
 	}
-	return c.validateMemo.gcFrameRoots
+	if c.validateMemo != nil && c.validateMemo.gcFrameRoots != nil {
+		return c.validateMemo.gcFrameRoots
+	}
+	// A module with no local functions cannot have a parked native Wasm frame.
+	// Its exact root set is therefore empty. Keep the collector-domain admission
+	// for GC-bearing Runtime plugin imports without pretending a failed backend
+	// root-plan build is a safety error.
+	if len(c.Funcs) == 0 && c.hasCollectorReferenceCallBoundary() {
+		return &importOnlyGCFrameRoots
+	}
+	return nil
 }
 
 //lint:ignore U1000 retained for feature-gated GC global admission checks
