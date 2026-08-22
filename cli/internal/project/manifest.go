@@ -126,7 +126,7 @@ var manifestOptimizationNames = stringSet(
 	"call-next-use", "commute-self-update", "compact-i32-frame", "deep-fp-pins",
 	"entry-arg-pins", "ext-fp-pins", "frame-elide", "frame-elide-reghomed",
 	"immutable-poly-fastpath", "immutable-table", "immutable-table-type", "inline",
-	"inline-callfree", "inline-loop-callees", "leaf-scratch-pins", "legacy-fp-pins",
+	"inline-callfree", "leaf-scratch-pins", "legacy-fp-pins",
 	"legacy-gp-pins", "loop-precheck", "loop-region-pins", "multi-bounds-cert",
 	"olddest-rhs-sink", "reg-abi", "reg-merge", "small-frame", "st-flags",
 	"stack-fence", "stack-reg", "store-forward", "store-load-fwd", "store8-flags",

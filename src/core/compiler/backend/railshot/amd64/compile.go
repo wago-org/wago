@@ -151,9 +151,9 @@ var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
 // v128LocalSinkEnabled peeps `local.set/tee $x (v128bin (local.get $x) …)` into a
 // pinned v128 local and computes the op straight into x's XMM register (one
 // 3-operand VEX instruction, no accumulator copy and no result-to-pin move) — the
-// amd64 analog of arm64's v128 local sink. Default ON; WAGO_AMD64_NO_V128_SINK=1
-// disables it for A/B.
-var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
+// amd64 analog of arm64's v128 local sink. It is default-off after the broad
+// ARM64/AMD64 toggle matrix found no execution benefit. WAGO_V128_SINK=1 opts in.
+var v128LocalSinkEnabled = envDefaultOff(os.Getenv("WAGO_V128_SINK"))
 
 // v128ConstCacheEnabled reserves an XMM register for each repeated v128.const
 // value in a call-free function and materializes it once at entry, so a loop over
@@ -164,13 +164,14 @@ var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
 // callNextUseEnabled skips stores of dirty pinned locals whose next bounded
-// post-call access overwrites the local before reading it.
-var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
+// post-call access overwrites the local before reading it. It is default-off;
+// WAGO_AMD64_CALL_NEXT_USE=1 opts in for focused measurement.
+var callNextUseEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_CALL_NEXT_USE"))
 
 // affineLeaEnabled extends scaled-index LEA selection across one-level affine
 // base/index subtrees, folding their constants into the LEA displacement.
-// WAGO_AMD64_NO_AFFINE_LEA=1 disables it for A/B.
-var affineLeaEnabled = os.Getenv("WAGO_AMD64_NO_AFFINE_LEA") != "1"
+// It is default-off; WAGO_AMD64_AFFINE_LEA=1 opts in for focused measurement.
+var affineLeaEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_AFFINE_LEA"))
 
 // treeOrderEnabled lets commutative, non-trapping Valent trees choose which
 // child is evaluated first from a bounded register-need estimate. It adds no

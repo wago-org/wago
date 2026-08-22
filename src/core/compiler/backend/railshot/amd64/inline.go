@@ -38,11 +38,6 @@ const inlineMaxBodyBytes = 160
 // to estimate the saved bytes in the report, so an approximate constant is fine.
 const inlineCallSeqBytes = 24
 
-// inlineLoopCallees (WAGO_INLINE_LOOPCALLEE=1) re-enables inlining of leaf callees
-// that contain a loop. Off by default: loop-carrying bodies are a net-negative to
-// splice (see inlineClass).
-var inlineLoopCallees = os.Getenv("WAGO_INLINE_LOOPCALLEE") == "1"
-
 var inlineDeadBodyEnabled = os.Getenv("WAGO_INLINE_DEAD_BODY") != "0"
 
 var inlineMaxBytes = func() int {
@@ -195,7 +190,7 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 		return false
 	case !f.regABIIntOnly:
 		return false
-	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
+	case f.hasLoop:
 		return false
 	case f.bodyBytes > inlineMaxBytes:
 		return false
@@ -221,15 +216,14 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
-	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
+	case f.hasLoop:
 		// A leaf callee that contains a LOOP is a net-negative to splice: its loop
 		// body lands inside the caller's hot region and adds register pressure /
 		// code that outweighs the call it removes. Measured: excluding these speeds
 		// Impart's libinjection SQLi rule ~3% and sha256 ~2.7% (both big scan/hash
 		// functions), with no measurable regression elsewhere on the corpus (the
 		// straight-line and simple-branch leaf helpers — the real inline win, e.g.
-		// many_funcs, json serialize — are unaffected). Opt back in for A/B with
-		// WAGO_INLINE_LOOPCALLEE=1.
+		// many_funcs, json serialize — are unaffected).
 		return false, "leaf callee contains a loop"
 	case f.bodyBytes > inlineMaxBytes:
 		return false, fmt.Sprintf("too big (%dB > %dB)", f.bodyBytes, inlineMaxBytes)
@@ -456,6 +450,17 @@ func envDefaultOn(v string) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+// envDefaultOff parses a default-off (opt-in) boolean knob: only an explicit
+// 1/true/on/yes enables it.
+func envDefaultOff(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
 	}
 }
 

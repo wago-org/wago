@@ -160,7 +160,7 @@ affine-lea, tree-order, assoc-tree, bmi2-rorx, leaf-scratch-pins,
 vex-float-mem, multi-bounds-cert, immutable-table, immutable-table-type,
 inline-callfree, store-forward, frame-elide, frame-elide-reghomed,
 small-frame, v128-const-cache, v128-pins, v128-sink, reg-abi, inline,
-inline-loop-callees, loop-precheck, loop-region-pins,
+loop-precheck, loop-region-pins,
 immutable-poly-fastpath, legacy-fp-pins, legacy-gp-pins, stack-fence,
 stack-reg
 ```

@@ -528,6 +528,39 @@ func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
 	}
 }
 
+func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
+	wantOff := map[string]bool{
+		"loop-precheck": true,
+		"v128-sink":     true,
+	}
+	switch runtime.GOARCH {
+	case "amd64":
+		for _, name := range []string{"affine-lea", "call-next-use", "commute-self-update", "tee-spill-elide"} {
+			wantOff[name] = true
+		}
+	case "arm64":
+		wantOff["deep-fp-pins"] = true
+	}
+
+	seen := make(map[string]bool, len(wantOff))
+	for _, info := range NewRuntimeConfig().OptimizationInfos() {
+		if info.Name == "inline-loop-callees" {
+			t.Fatal("removed inline-loop-callees optimization is still exposed")
+		}
+		if wantOff[info.Name] {
+			seen[info.Name] = true
+			if info.On || info.Default {
+				t.Errorf("%s default state = on:%v catalog:%v, want both false", info.Name, info.On, info.Default)
+			}
+		}
+	}
+	for name := range wantOff {
+		if !seen[name] {
+			t.Errorf("default-off optimization %s is not exposed", name)
+		}
+	}
+}
+
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {

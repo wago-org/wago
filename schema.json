@@ -83,7 +83,6 @@
               "immutable-table-type",
               "inline",
               "inline-callfree",
-              "inline-loop-callees",
               "leaf-scratch-pins",
               "legacy-fp-pins",
               "legacy-gp-pins",

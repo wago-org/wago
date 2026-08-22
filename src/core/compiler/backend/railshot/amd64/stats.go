@@ -79,11 +79,13 @@ var (
 	// low homes during finalization. WAGO_LOCAL_SLOT_ORDER=0 is the rollback.
 	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") != "0"
 	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
-	// slot when its still-live result must be evicted from a register.
-	teeSpillElideEnabled = os.Getenv("WAGO_NO_TEE_SPILL_ELIDE") != "1"
+	// slot when its still-live result must be evicted from a register. It is
+	// default-off; WAGO_TEE_SPILL_ELIDE=1 opts in.
+	teeSpillElideEnabled = envDefaultOff(os.Getenv("WAGO_TEE_SPILL_ELIDE"))
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
-	// commutative x=f(y) op x expressions instead of spilling x first.
-	commuteSelfUpdateEnabled = os.Getenv("WAGO_NO_COMMUTE_SELF_UPDATE") != "1"
+	// commutative x=f(y) op x expressions instead of spilling x first. It is
+	// default-off; WAGO_COMMUTE_SELF_UPDATE=1 opts in.
+	commuteSelfUpdateEnabled = envDefaultOff(os.Getenv("WAGO_COMMUTE_SELF_UPDATE"))
 	// i64Mask32Enabled lowers i64.and with the low-32 mask to a 32-bit AND whose
 	// destination write implicitly zero-extends. WAGO_AMD64_NO_I64_MASK32=1 is the
 	// A/B oracle.

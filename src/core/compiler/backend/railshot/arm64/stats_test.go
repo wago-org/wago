@@ -25,6 +25,10 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 }
 
 func TestCodegenStatsPeepholesArm64(t *testing.T) {
+	saved := v128LocalSinkEnabled
+	v128LocalSinkEnabled = true
+	t.Cleanup(func() { v128LocalSinkEnabled = saved })
+
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	v128x2 := []wasm.ValType{wasm.V128, wasm.V128}

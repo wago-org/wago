@@ -44,7 +44,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
-	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
 	optimization.BindInverted("stack-reg", &noStackReg),
@@ -85,7 +84,6 @@ var (
 	optV128Sink             = optimizationBindings.Option("v128-sink")
 	optRegABI               = optimizationBindings.Option("reg-abi")
 	optInline               = optimizationBindings.Option("inline")
-	optInlineLoopCallees    = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck         = optimizationBindings.Option("loop-precheck")
 	optStackFence           = optimizationBindings.Option("stack-fence")
 	optStackReg             = optimizationBindings.Option("stack-reg")

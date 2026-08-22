@@ -115,7 +115,7 @@ var (
 	legacyGPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_GPPINS") == "1"
 	legacyFPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_FPPINS") == "1"
 	extendedFPPinsEnabled   = os.Getenv("WAGO_ARM64_NO_EXTFPPINS") != "1"
-	deepFPPinsEnabled       = os.Getenv("WAGO_ARM64_NO_DEEP_FPPINS") != "1"
+	deepFPPinsEnabled       = envDefaultOff(os.Getenv("WAGO_ARM64_DEEP_FP_PINS"))
 	threeOperandSinkEnabled = os.Getenv("WAGO_ARM64_NO3OPSINK") != "1"
 	oldDestRHSSinkEnabled   = os.Getenv("WAGO_ARM64_NO_OLDDEST_RHS") != "1"
 	callFreeX8PinEnabled    = os.Getenv("WAGO_ARM64_NO_X8PIN") != "1"
@@ -128,8 +128,10 @@ var (
 	// pinned V register — the SIMD twin of tryFbinLocalSet. It removes both the
 	// materializeV128 pre-copy of the accumulator and the setLocal result-to-pin
 	// copy, leaving one in-place vector instruction. Inert unless v128 pins are on
-	// (pinReg returns unpinned for v128 when WAGO_ARM64_NO_V128_PINS=1).
-	v128LocalSinkEnabled = os.Getenv("WAGO_ARM64_NO_V128_SINK") != "1"
+	// (pinReg returns unpinned for v128 when WAGO_ARM64_NO_V128_PINS=1). The broad
+	// ARM64/AMD64 toggle matrix found no execution benefit, so WAGO_V128_SINK=1
+	// now opts in.
+	v128LocalSinkEnabled = envDefaultOff(os.Getenv("WAGO_V128_SINK"))
 	// v128LocalPinsEnabled caches hot v128 locals in NEON V registers for the whole
 	// function, exactly like the scalar-float pin pool. Restricted to CALL-FREE
 	// functions: a wasm→wasm call only preserves the low 64 bits of the AAPCS64
