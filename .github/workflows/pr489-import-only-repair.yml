@@ -3,6 +3,9 @@ name: PR 489 import-only root repair
 on:
   push:
     branches: [agent/plugin-gc-host-imports]
+  pull_request:
+    branches: [main]
+    types: [synchronize]
 
 permissions:
   contents: write
@@ -109,6 +112,7 @@ func TestPluginGCHostImportOnlyModuleNeedsNoNativeFrameRoots(t *testing.T) {
 ''')
 
           Path('.github/workflows/pr489-import-only-repair.yml').unlink()
+          Path('.github/pr489-trigger.txt').unlink(missing_ok=True)
           PY
 
           gofmt -w src/wago/code_mapping.go src/wago/api.go src/wago/codec.go src/wago/plugin_gc_import_only_test.go
@@ -118,6 +122,6 @@ func TestPluginGCHostImportOnlyModuleNeedsNoNativeFrameRoots(t *testing.T) {
 
           git config user.name 'Joshua Tenner'
           git config user.email 'tenner.joshua@gmail.com'
-          git add src/wago/code_mapping.go src/wago/api.go src/wago/codec.go src/wago/plugin_gc_import_only_test.go .github/workflows/pr489-import-only-repair.yml
+          git add -A
           git commit -m 'runtime: admit import-only plugin GC boundaries'
           git push origin HEAD:agent/plugin-gc-host-imports
