@@ -1,0 +1,123 @@
+name: PR 489 import-only root repair
+
+on:
+  push:
+    branches: [agent/plugin-gc-host-imports]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: agent/plugin-gc-host-imports
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.22'
+          cache: false
+      - name: Apply import-only GC boundary fix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"expected text not found in {path}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              'src/wago/code_mapping.go',
+              '''// needsExactNativeGCRoots is the compile/artifact predicate. Allocating generic\n// GC instructions and collector-reference host/cross-instance boundaries can\n// both collect while native Wasm frames remain live.\nfunc (c *Compiled) needsExactNativeGCRoots() bool {\n\treturn c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())\n}''',
+              '''// needsExactNativeGCRoots is the compile/artifact predicate. Generic GC\n// execution always has local native work. A collector-reference import needs\n// frame metadata only when this module also has local Wasm functions: an\n// import-only module has no native Wasm frame to scan while host code runs.\nfunc (c *Compiled) needsExactNativeGCRoots() bool {\n\treturn c != nil && (c.usesGenericGCExecution() || len(c.Funcs) != 0 && c.hasCollectorReferenceCallBoundary())\n}''')
+
+          replace(
+              'src/wago/api.go',
+              '''\tcollectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)\n\tgcAllocationSites := moduleHasGCAllocationSites(m)\n\texactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary\n\tgcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots)''',
+              '''\tcollectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)\n\tgcAllocationSites := moduleHasGCAllocationSites(m)\n\tcollectorReferenceNativeFrames := collectorReferenceCallBoundary && len(m.Code) != 0\n\texactNativeGCRoots := genericGCExecution || collectorReferenceNativeFrames\n\tgcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots)''')
+
+          replace(
+              'src/wago/api.go',
+              '''\t\t\t\t\tif sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {\n\t\t\t\t\t\treturn fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)\n\t\t\t\t\t}''',
+              '''\t\t\t\t\tif sigTransfersCollectorObjects && c.needsExactNativeGCRoots() && c.genericGCFrameRoots() == nil {\n\t\t\t\t\t\treturn fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)\n\t\t\t\t\t}''')
+
+          replace(
+              'src/wago/codec.go',
+              '''\tif required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {\n\t\tw.u32(c.nativeGCABIRequirement())\n\t}''',
+              '''\tif required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || len(c.Funcs) != 0 && c.hasCollectorReferenceCallBoundary() {\n\t\tw.u32(c.nativeGCABIRequirement())\n\t}''')
+
+          replace(
+              'src/wago/codec.go',
+              '''\tif genericNativeGC || c.hasCollectorReferenceCallBoundary() {\n\t\tlabel := "native GC call-boundary"''',
+              '''\tif genericNativeGC || len(c.Funcs) != 0 && c.hasCollectorReferenceCallBoundary() {\n\t\tlabel := "native GC call-boundary"''')
+
+          Path('src/wago/plugin_gc_import_only_test.go').write_text(r'''//go:build !tinygo
+
+package wago
+
+import (
+    "context"
+    "testing"
+
+    "github.com/wago-org/wago/tests/wasmtest"
+)
+
+func pluginGCImportOnlyModule() []byte {
+    arrayType := []byte{0x5e, 0x78, 0x01} // (array (mut i8))
+    importType := []byte{0x60, 0x00, 0x01, 0x63, 0x00} // () -> (ref null 0)
+    return wasmtest.Module(
+        wasmtest.Section(1, wasmtest.Vec(arrayType, importType)),
+        wasmtest.Section(2, wasmtest.Vec(pluginGCImport("plugin_gc", "null_result", 1))),
+    )
+}
+
+func TestPluginGCHostImportOnlyModuleNeedsNoNativeFrameRoots(t *testing.T) {
+    requireCompleteCore3Backend(t)
+    rt, _ := newPluginGCTestRuntime(t)
+    defer rt.Close()
+
+    mod, err := rt.Compile(pluginGCImportOnlyModule())
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer mod.Close()
+
+    admission := mod.c.GCNativeRootAdmission()
+    if admission.Required || admission.Exact || admission.Callsites != 0 || admission.Safepoints != 0 {
+        t.Fatalf("import-only native root admission = %+v; want no native roots", admission)
+    }
+    if !mod.c.needsRuntimeGCCollectorDomain() {
+        t.Fatal("import-only GC plugin module did not request a Runtime GC domain")
+    }
+
+    in, err := rt.Instantiate(context.Background(), mod)
+    if err != nil {
+        t.Fatalf("import-only GC plugin module failed instantiation: %v", err)
+    }
+    defer in.Close()
+    if in.gc == nil || in.gcInvocationDomain() == nil {
+        t.Fatal("import-only GC plugin instance has no Runtime GC domain")
+    }
+}
+''')
+
+          Path('.github/workflows/pr489-import-only-repair.yml').unlink()
+          PY
+
+          gofmt -w src/wago/code_mapping.go src/wago/api.go src/wago/codec.go src/wago/plugin_gc_import_only_test.go
+          git diff --check
+          go test ./src/wago -run 'TestPluginGCHostImportOnlyModuleNeedsNoNativeFrameRoots|TestPluginGCHostImportsBoundaryOnlyNulls|TestPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite|TestPluginGCHostImportDifferentExactTypesAndDomains|TestPluginGCHostImportCodecRoundTrip|TestPluginGCHostImportValidation|TestPluginScalarHostImportStaysOrdinary' -count=1
+          go test ./src/wago -run 'TestPluginGCHostImportOnlyModuleNeedsNoNativeFrameRoots' -count=20
+
+          git config user.name 'Joshua Tenner'
+          git config user.email 'tenner.joshua@gmail.com'
+          git add src/wago/code_mapping.go src/wago/api.go src/wago/codec.go src/wago/plugin_gc_import_only_test.go .github/workflows/pr489-import-only-repair.yml
+          git commit -m 'runtime: admit import-only plugin GC boundaries'
+          git push origin HEAD:agent/plugin-gc-host-imports
