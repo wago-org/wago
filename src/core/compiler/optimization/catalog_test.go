@@ -40,7 +40,6 @@ func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
 		},
 		"arm64": {
 			"loop-precheck": true,
-			"v128-sink":     true,
 		},
 	}
 	for arch, names := range wantOff {
@@ -61,6 +60,19 @@ func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
 				t.Errorf("%s default-off optimization %s is not registered", arch, name)
 			}
 		}
+	}
+}
+
+func TestV128SinkIsAMD64Only(t *testing.T) {
+	if _, ok := Lookup("arm64", "v128-sink"); ok {
+		t.Fatal("arm64 still exposes the measured-low-value vector sink")
+	}
+	definition, ok := Lookup("amd64", "v128-sink")
+	if !ok {
+		t.Fatal("amd64 vector sink was removed before native verification")
+	}
+	if definition.Default {
+		t.Fatal("amd64 vector sink unexpectedly defaults on")
 	}
 }
 
