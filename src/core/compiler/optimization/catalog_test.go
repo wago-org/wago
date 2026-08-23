@@ -39,7 +39,6 @@ func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
 			"v128-sink":           true,
 		},
 		"arm64": {
-			"deep-fp-pins":  true,
 			"loop-precheck": true,
 			"v128-sink":     true,
 		},
@@ -62,6 +61,12 @@ func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
 				t.Errorf("%s default-off optimization %s is not registered", arch, name)
 			}
 		}
+	}
+}
+
+func TestDeepFPPinsAreRemoved(t *testing.T) {
+	if _, ok := Lookup("arm64", "deep-fp-pins"); ok {
+		t.Fatal("arm64 still exposes measured-low-value deep float pins")
 	}
 }
 
