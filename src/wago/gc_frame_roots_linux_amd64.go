@@ -34,21 +34,27 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 	if !gcFrameTablesSafe(m) {
 		return reject("table or element ownership is outside the exact native-root model")
 	}
+	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := m.FuncSignature(funcImport)
 			funcImport++
-			if !ok || !gcFrameHostCallABI(ft) {
-				return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
+			if !ok {
+				return reject("function import %d has no validated signature", funcImport-1)
+			}
+			if collectorBoundary {
+				if !gcFrameHostCallABI(ft) {
+					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
+				}
+			} else if !gcFrameReferenceCallABI(m, ft) {
+				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if global.Type.Kind() == wasm.ValRef && !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
-				// Non-collector reference globals have their own ownership systems.
-				// They add no collector roots to this frame plan.
-				continue
+			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
+				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
@@ -141,6 +147,9 @@ functions:
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
+		if !collectorBoundary && bodyUsesNativeCall(m.Code[function].BodyBytes, &classifier) && !gcFrameReferenceCallABI(m, ft) {
+			return reject("function %d exceeds the exact native caller ABI", function)
+		}
 		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
 		}
@@ -216,9 +225,6 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 		}
 		for _, expr := range e.Kind.Exprs {
 			if kind == 2 && e.Kind.Ref.Heap().Kind() == wasm.HeapAbs && e.Kind.Ref.Heap().Abs() == wasm.HeapI31 {
-				// Validation and compileElemValues already proved each expression is
-				// an exact immediate i31 or immutable global value; neither adds an
-				// independent collector root beyond the global root.
 				continue
 			}
 			ee, err := wasm.ParseElementExpr(expr)
@@ -286,6 +292,24 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool 
 	return false
 }
 
+func bodyUsesNativeCall(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+	r := wasm.NewReader(body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		if op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 {
+			return true
+		}
+	}
+	return false
+}
+
 func gcFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
 	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
 }
@@ -316,9 +340,6 @@ func gcFrameHostCallABI(ft *wasm.CompType) bool {
 	return ok && results <= 64
 }
 
-// gcFrameReferenceCallABI is the deliberately smaller register-ABI proof used
-// by dynamic typed-reference calls. Direct local and synchronous host calls use
-// wrapper/control-frame storage and are checked separately.
 func gcFrameReferenceCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
