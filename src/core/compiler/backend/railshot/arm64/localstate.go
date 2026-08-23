@@ -61,19 +61,6 @@ func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
 	if d.reg == regNone {
 		return regNone, false, false
 	}
-	// X9-X11 are also fixed scratch registers in both synchronous and async host
-	// import lowering. Those paths can reuse the registers before the ordinary
-	// call-spill point, so a call-making function in a module with function
-	// imports must keep any would-be X9-X11 local frame-resident instead. The
-	// assignment planner may still reserve the register; treating the local as
-	// unpinned here is a conservative correctness fallback that preserves the
-	// five callee-saved X19-X23 local pins and all call-free extended pinning.
-	if f.usesCalls && f.m != nil && f.m.ImportedFuncCount() != 0 {
-		switch d.reg {
-		case X9, X10, X11:
-			return regNone, false, false
-		}
-	}
 	return d.reg, d.isFloat, true
 }
 
