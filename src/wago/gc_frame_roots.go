@@ -252,7 +252,9 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	}
 	for i := range c.GlobalImports {
 		global := c.GlobalImports[i]
-		if !isGCRefValType(global.Type) {
+		switch global.Type {
+		case ValI32, ValI64, ValF32, ValF64, ValV128, ValFuncRef, ValExternRef, ValExnRef, ValAnyRef, ValI31Ref:
+		default:
 			return fmt.Errorf("GC frame-root metadata rejects global import %d", i)
 		}
 	}
@@ -379,32 +381,26 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 }
 
 func gcFramePublicCallABI(sig FuncSig) bool {
-	if len(sig.Results) > 2 {
+	slots := func(types []ValType) (int, bool) {
+		n := 0
+		for _, typ := range types {
+			switch typ {
+			case ValV128:
+				n += 2
+			case ValI32, ValI64, ValF32, ValF64, ValFuncRef, ValExternRef, ValAnyRef, ValExnRef, ValI31Ref:
+				n++
+			default:
+				return 0, false
+			}
+		}
+		return n, true
+	}
+	params, ok := slots(sig.Params)
+	if !ok || params > 64 {
 		return false
 	}
-	gp, fp := 0, 0
-	for _, t := range sig.Params {
-		switch t {
-		case ValI32, ValI64, ValAnyRef, ValI31Ref:
-			gp++
-		case ValF32, ValF64:
-			fp++
-		default:
-			return false
-		}
-	}
-	if gp > 7 || fp > 8 {
-		return false
-	}
-	integerResult := func(t ValType) bool {
-		return t == ValI32 || t == ValI64 || t == ValAnyRef || t == ValI31Ref
-	}
-	for _, t := range sig.Results {
-		if !integerResult(t) && t != ValF32 && t != ValF64 {
-			return false
-		}
-	}
-	return len(sig.Results) != 2 || (integerResult(sig.Results[0]) && integerResult(sig.Results[1]))
+	results, ok := slots(sig.Results)
+	return ok && results <= 64
 }
 
 func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
