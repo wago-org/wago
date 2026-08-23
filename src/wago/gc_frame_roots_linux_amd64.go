@@ -12,11 +12,12 @@ import (
 	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
-// newGCFrameRootPlan admits bounded local/cross-instance call graphs whose native
-// ABI is register-bounded. Functions retain a one-word path through 64 collector
-// roots and use compact flat word arenas up to shared.GCFrameRootLimit. Each
-// function gets independent compile state so railshot workers may populate maps
-// in parallel.
+// newGCFrameRootPlan admits bounded exact native-root call graphs. Direct local
+// and synchronous host calls may use the wrapper ABI, while dynamic typed-
+// reference calls retain their smaller register-ABI proof. Functions retain a
+// one-word path through 64 collector roots and use compact flat word arenas up
+// to shared.GCFrameRootLimit. Each function gets independent compile state so
+// railshot workers may populate maps in parallel.
 func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
 	if !exactRoots {
 		return nil
@@ -39,13 +40,15 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 		case wasm.ExternFunc:
 			ft, ok := m.FuncSignature(funcImport)
 			funcImport++
-			if !ok || !gcFrameCallABI(m, ft) {
-				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
+			if !ok || !gcFrameHostCallABI(ft) {
+				return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
-				return reject("global import %d has an unsupported reference ownership shape", i)
+			if global.Type.Kind() == wasm.ValRef && !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
+				// Non-collector reference globals have their own ownership systems.
+				// They add no collector roots to this frame plan.
+				continue
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
@@ -137,9 +140,6 @@ functions:
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
-		}
-		if bodyUsesNativeCall(m.Code[function].BodyBytes, &classifier) && !gcFrameCallABI(m, ft) {
-			return reject("function %d exceeds the exact native caller ABI", function)
 		}
 		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
@@ -259,7 +259,7 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
 		}
 		if op == 0x14 || op == 0x15 {
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !gcFrameCallABI(m, ft) {
+			if !ok || !gcFrameReferenceCallABI(m, ft) {
 				return true
 			}
 		}
@@ -290,25 +290,36 @@ func gcFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenes
 	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
 }
 
-func bodyUsesNativeCall(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
-	r := wasm.NewReader(body)
-	var imm wasm.InstructionImmediate
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return true
-		}
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
-			return true
-		}
-		if op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 {
-			return true
-		}
+func gcFrameHostCallABI(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
 	}
-	return false
+	slots := func(types []wasm.ValType) (int, bool) {
+		n := 0
+		for _, typ := range types {
+			switch {
+			case wasm.EqualValType(typ, wasm.V128):
+				n += 2
+			case wasm.EqualValType(typ, wasm.I32), wasm.EqualValType(typ, wasm.I64), wasm.EqualValType(typ, wasm.F32), wasm.EqualValType(typ, wasm.F64), typ.Kind() == wasm.ValRef:
+				n++
+			default:
+				return 0, false
+			}
+		}
+		return n, true
+	}
+	params, ok := slots(ft.Params)
+	if !ok || params > 64 {
+		return false
+	}
+	results, ok := slots(ft.Results)
+	return ok && results <= 64
 }
 
-func gcFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
+// gcFrameReferenceCallABI is the deliberately smaller register-ABI proof used
+// by dynamic typed-reference calls. Direct local and synchronous host calls use
+// wrapper/control-frame storage and are checked separately.
+func gcFrameReferenceCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
