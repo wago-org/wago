@@ -35,21 +35,27 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 	if !arm64GCFrameTablesSafe(m) {
 		return reject("table or element ownership is outside the exact native-root model")
 	}
+	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := m.FuncSignature(funcImport)
 			funcImport++
-			if !ok || !arm64GCFrameHostCallABI(ft) {
-				return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
+			if !ok {
+				return reject("function import %d has no validated signature", funcImport-1)
+			}
+			if collectorBoundary {
+				if !arm64GCFrameHostCallABI(ft) {
+					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
+				}
+			} else if !arm64GCFrameReferenceCallABI(m, ft) {
+				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if global.Type.Kind() == wasm.ValRef && !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
-				// Non-collector reference globals have their own ownership systems.
-				// They add no collector roots to this frame plan.
-				continue
+			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
+				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
@@ -57,10 +63,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 				return reject("table import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternMem:
-			// Linear-memory imports add no collector roots. Linking admission
-			// separately proves exact same-domain ownership.
 		case wasm.ExternTag:
-			// Tags carry no independently rooted instance storage.
 		default:
 			return reject("import %d has unsupported external kind %d", i, m.Imports[i].Type.Kind)
 		}
@@ -126,7 +129,7 @@ functions:
 				}
 			}
 		}
-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier) {
+		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		var liveMasks, callMasks []uint64
@@ -157,7 +160,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	}
 	totalFuncs := m.ImportedFuncCount() + len(m.Code)
 	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
-	tableKinds := make([]uint8, m.TableCount()) // 1=funcref, 2=collector ref
+	tableKinds := make([]uint8, m.TableCount())
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tableType, ok := m.TableType(uint32(tableIndex))
 		if !ok {
@@ -214,8 +217,6 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 		}
 		for _, expr := range e.Kind.Exprs {
 			if kind == 2 && e.Kind.Ref.Heap().Kind() == wasm.HeapAbs && e.Kind.Ref.Heap().Abs() == wasm.HeapI31 {
-				// Exact i31 element expressions are immediate or immutable-global
-				// values, not independent object roots.
 				continue
 			}
 			ee, err := wasm.ParseElementExpr(expr)
@@ -240,7 +241,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	return true
 }
 
-func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary bool) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -252,22 +253,27 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			return false
 		}
 		switch op {
-		case 0x10: // direct local or imported call
+		case 0x10:
 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
-			if int(imm.Index) < m.ImportedFuncCount() {
-				ft, ok := m.FuncSignature(imm.Index)
-				if !ok || !arm64GCFrameHostCallABI(ft) {
+			ft, ok := m.FuncSignature(imm.Index)
+			if !ok {
+				return false
+			}
+			if int(imm.Index) < m.ImportedFuncCount() && collectorBoundary {
+				if !arm64GCFrameHostCallABI(ft) {
 					return false
 				}
+			} else if !collectorBoundary && !arm64GCFrameReferenceCallABI(m, ft) {
+				return false
 			}
-		case 0x11: // dynamically validated function table
+		case 0x11:
 			ft, ok := m.TypeFunc(imm.Index)
 			if !ok || !arm64GCFrameReferenceCallABI(m, ft) {
 				return false
 			}
-		case 0x12: // direct tail call; the caller frame is discarded
+		case 0x12:
 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
@@ -275,7 +281,7 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			if !ok || !arm64GCFrameReferenceCallABI(m, ft) || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
-		case 0x13: // tail-indirect remains bounded to its backend-admitted shape
+		case 0x13:
 			if imm.Index2 != 0 || !arm64GCFunctionTableMonomorphic(m) {
 				return false
 			}
@@ -283,21 +289,21 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
-		case 0x14: // local or same-domain foreign typed function reference
+		case 0x14:
 			ft, ok := m.TypeFunc(imm.Index)
 			if !ok || !arm64GCFrameReferenceCallABI(m, ft) {
 				return false
 			}
-		case 0x15: // local or exact imported typed-reference tail call
+		case 0x15:
 			ft, ok := m.TypeFunc(imm.Index)
 			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
-		case 0xd2: // ref.func may name any validated local or imported function
+		case 0xd2:
 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
-		case 0x06, 0x07, 0x09, 0x18, 0x19: // legacy EH forms are not lowered
+		case 0x06, 0x07, 0x09, 0x18, 0x19:
 			return false
 		}
 	}
