@@ -13,12 +13,12 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// newGCFrameRootPlan admits the bounded exact arm64 collection product. It
+// newGCFrameRootPlan admits the bounded exact arm64 collection product. Direct
+// local and synchronous host calls may use the wrapper ABI. Dynamic indirect,
+// reference, and tail calls retain the smaller register-ABI proof. The plan
 // supports liveness-exact collector locals, hidden operand spills, direct and
-// recursive calls, direct host re-entry, same-domain foreign calls, mutable/shared
-// GC globals and collector tables, polymorphic call_indirect, and local or
-// same-domain foreign call_ref. Unsupported tail-reference ownership remains
-// fail-closed.
+// recursive calls, direct host re-entry, same-domain foreign calls,
+// mutable/shared GC globals and collector tables, and fixed EH payload roots.
 func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
 	if !exactRoots {
 		return nil
@@ -41,13 +41,15 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 		case wasm.ExternFunc:
 			ft, ok := m.FuncSignature(funcImport)
 			funcImport++
-			if !ok || !arm64GCFrameCallABI(m, ft) {
-				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
+			if !ok || !arm64GCFrameHostCallABI(ft) {
+				return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
-				return reject("global import %d has an unsupported reference ownership shape", i)
+			if global.Type.Kind() == wasm.ValRef && !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
+				// Non-collector reference globals have their own ownership systems.
+				// They add no collector roots to this frame plan.
+				continue
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
@@ -254,13 +256,15 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
-			ft, ok := m.FuncSignature(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) {
-				return false
+			if int(imm.Index) < m.ImportedFuncCount() {
+				ft, ok := m.FuncSignature(imm.Index)
+				if !ok || !arm64GCFrameHostCallABI(ft) {
+					return false
+				}
 			}
 		case 0x11: // dynamically validated function table
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) {
+			if !ok || !arm64GCFrameReferenceCallABI(m, ft) {
 				return false
 			}
 		case 0x12: // direct tail call; the caller frame is discarded
@@ -268,7 +272,7 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 				return false
 			}
 			ft, ok := m.FuncSignature(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
+			if !ok || !arm64GCFrameReferenceCallABI(m, ft) || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
 		case 0x13: // tail-indirect remains bounded to its backend-admitted shape
@@ -281,7 +285,7 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			}
 		case 0x14: // local or same-domain foreign typed function reference
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) {
+			if !ok || !arm64GCFrameReferenceCallABI(m, ft) {
 				return false
 			}
 		case 0x15: // local or exact imported typed-reference tail call
@@ -391,7 +395,33 @@ func arm64GCFrameCallRefABI(ft *wasm.CompType) bool {
 	return true
 }
 
-func arm64GCFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
+func arm64GCFrameHostCallABI(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	slots := func(types []wasm.ValType) (int, bool) {
+		n := 0
+		for _, typ := range types {
+			switch {
+			case wasm.EqualValType(typ, wasm.V128):
+				n += 2
+			case wasm.EqualValType(typ, wasm.I32), wasm.EqualValType(typ, wasm.I64), wasm.EqualValType(typ, wasm.F32), wasm.EqualValType(typ, wasm.F64), typ.Kind() == wasm.ValRef:
+				n++
+			default:
+				return 0, false
+			}
+		}
+		return n, true
+	}
+	params, ok := slots(ft.Params)
+	if !ok || params > 64 {
+		return false
+	}
+	results, ok := slots(ft.Results)
+	return ok && results <= 64
+}
+
+func arm64GCFrameReferenceCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
