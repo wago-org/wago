@@ -406,7 +406,7 @@ var catalog = []Definition{
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	amd64("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
-	bothOff("v128-sink", "Vector sinking", "sink vector operations into pinned locals"),
+	amd64Off("v128-sink", "Vector sinking", "sink vector operations into pinned locals"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("inline", "Inlining", "inline eligible callees"),
 	bothOff("loop-precheck", "Loop prechecks", "hoist invariant bounds checks before loops"),

@@ -58,9 +58,6 @@ var (
 	// v128DirectResultEnabled lets NEON's non-destructive destination forms read
 	// pinned locals directly instead of copying a source into an accumulator.
 	v128DirectResultEnabled = os.Getenv("WAGO_ARM64_NO_V128_DIRECT_RESULTS") != "1"
-	// v128ShuffleSinkEnabled writes one-instruction REV32/ZIP shuffles directly
-	// into a following pinned local. The kill switch is the A/B oracle.
-	v128ShuffleSinkEnabled = os.Getenv("WAGO_ARM64_NO_V128_SHUFFLE_SINK") != "1"
 	// intervalRegionPinsEnabled reuses GP registers across integer-local
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.

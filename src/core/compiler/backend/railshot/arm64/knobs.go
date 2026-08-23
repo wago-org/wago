@@ -36,7 +36,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("frame-elide-reghomed", &frameElideRegHomed),
 	optimization.Bind("small-frame", &smallFrameAdjustEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
-	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
@@ -75,7 +74,6 @@ var (
 	optFrameElideRegHomed    = optimizationBindings.Option("frame-elide-reghomed")
 	optSmallFrame            = optimizationBindings.Option("small-frame")
 	optV128Pins              = optimizationBindings.Option("v128-pins")
-	optV128Sink              = optimizationBindings.Option("v128-sink")
 	optRegABI                = optimizationBindings.Option("reg-abi")
 	optInline                = optimizationBindings.Option("inline")
 	optLoopPrecheck          = optimizationBindings.Option("loop-precheck")

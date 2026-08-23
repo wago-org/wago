@@ -531,11 +531,10 @@ func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
 func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 	wantOff := map[string]bool{
 		"loop-precheck": true,
-		"v128-sink":     true,
 	}
 	switch runtime.GOARCH {
 	case "amd64":
-		for _, name := range []string{"affine-lea", "call-next-use", "commute-self-update", "tee-spill-elide"} {
+		for _, name := range []string{"affine-lea", "call-next-use", "commute-self-update", "tee-spill-elide", "v128-sink"} {
 			wantOff[name] = true
 		}
 	}
@@ -547,6 +546,9 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 		}
 		if info.Name == "deep-fp-pins" {
 			t.Fatal("removed deep-fp-pins optimization is still exposed")
+		}
+		if runtime.GOARCH == "arm64" && info.Name == "v128-sink" {
+			t.Fatal("removed ARM64 v128-sink optimization is still exposed")
 		}
 		if wantOff[info.Name] {
 			seen[info.Name] = true

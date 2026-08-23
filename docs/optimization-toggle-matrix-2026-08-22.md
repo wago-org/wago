@@ -68,6 +68,21 @@ pin range for one call-making signature class. The backend now consistently caps
 that class at 23 pinned float registers, and the catalog, manifest/schema, binding,
 environment control, and dead conditional path are gone.
 
+### Follow-on ARM64 vector-sink removal
+
+ARM64 `v128-sink` was removed after a longer SIMD-only check. Four samples per
+state used one-second windows over `json-as-simd`, `blake-as-simd`, and
+`utf-as-simd`. Disabling the already-default-off sink changed the execution
+geomean by +0.59%; the worst row was `blake-as-simd.hashN` at +1.34% and
+`utf-as-simd.convertN` was flat at -0.02%. Compile B/op and allocations were
+unchanged; compile time across those three modules moved +1.29%.
+
+That small opt-in-only benefit did not justify 546 lines of ARM64-specific sink
+matchers, alias-handling paths, destination-specialized lowerings, environment
+controls, bindings, and tests. The deletion leaves the normal direct-result SIMD
+lowering intact. AMD64 still advertises `v128-sink` as default-off until its
+implementation receives the same native, longer-window verification.
+
 ## Environment
 
 | Architecture | Commit | CPU / OS | Go | GOMAXPROCS | Affinity | Benchtime | Samples/state |

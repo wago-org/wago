@@ -221,57 +221,7 @@ func i8x16ExtOffset(lanes [16]byte) (byte, bool) {
 }
 
 func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
-	// One-instruction shuffle forms can write a following pinned local directly.
-	// REV32, ZIP, and EXT read their complete inputs before committing the destination,
-	// so aliasing dst with either input is safe. Rotate-8 stays on the fresh-result
-	// path because its USHR+SLI sequence needs the original source twice.
 	extOffset, isExt := i8x16ExtOffset(lanes)
-	directSink := v128ShuffleSinkEnabled && (isExt || lanes == i8x16Rotate16 || lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S)
-	if directSink {
-		if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
-			f.stats.peep("v128-shuffle-sink")
-			b := f.popValue()
-			a := f.popValue()
-			s1, o1 := f.operandRegV128(a)
-			if lanes == i8x16Rotate16 {
-				f.a.NeonRev32H(dst, s1)
-				if o1 && dst != s1 {
-					f.releaseF(s1)
-				}
-				if b.st.kind == stReg {
-					f.releaseF(b.st.reg)
-				}
-				return
-			}
-			f.fpinned = f.fpinned.add(s1)
-			s2, o2 := f.operandRegV128(b)
-			f.fpinned = f.fpinned.add(s2)
-			if isExt {
-				f.a.NeonExt16b(dst, s1, s2, extOffset)
-				f.stats.peep("simd-shuffle-ext")
-			} else {
-				switch lanes {
-				case i8x16Zip1D:
-					f.a.NeonZip1D(dst, s1, s2)
-				case i8x16Zip2D:
-					f.a.NeonZip2D(dst, s1, s2)
-				case i8x16Zip1S:
-					f.a.NeonZip1S(dst, s1, s2)
-				case i8x16Zip2S:
-					f.a.NeonZip2S(dst, s1, s2)
-				}
-			}
-			f.fpinned = f.fpinned.remove(s1).remove(s2)
-			if o1 && dst != s1 {
-				f.releaseF(s1)
-			}
-			if o2 && dst != s2 {
-				f.releaseF(s2)
-			}
-		}); done || err != nil {
-			return err
-		}
-	}
 
 	// Contiguous cross-input windows are a single EXT rather than two mask
 	// constants, two TBLs, and an ORR.
@@ -401,17 +351,11 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 	return nil
 }
 
-// v128Bin lowers a two-operand v128 op. When the op is immediately consumed by
-// `local.set/tee $x` into a register-pinned v128 local, tryV128BinLocalSet emits
-// it in place into $x's V register (one instruction, no accumulator copy and no
-// result-to-pin copy). Otherwise it reads both operands in place and reuses an
-// owned operand register for the result when possible. If both operands are
-// borrowed pinned locals, a fresh destination is enough: NEON's three-register
-// form does not require copying either source first.
+// v128Bin lowers a two-operand v128 op, reading both operands in place and
+// reusing an owned operand register for the result when possible. If both
+// operands are borrowed pinned locals, NEON's three-register form needs only a
+// fresh destination and does not copy either source first.
 func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
-	if done, err := f.tryV128BinLocalSet(r, op); done || err != nil {
-		return err
-	}
 	if !v128DirectResultEnabled {
 		b := f.popValue()
 		a := f.popValue()
@@ -453,90 +397,8 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 	return nil
 }
 
-// v128BinInto emits op(dst, s1, s2) reading BOTH operands in place — dst is a
-// pinned v128 local's V register the result sinks into. No owned copy of the left
-// operand (the eager path's accumulator copy) and no trailing result-to-pin move.
-// A NEON 3-operand op reads both source registers before writing dst, so any
-// aliasing among dst/s1/s2 (e.g. the accumulator `x = x op y`, or `x = x op x`) is
-// correct. Mirrors fbinInto.
-func (f *fn) v128BinInto(dst Reg, op func(dst, s1, s2 Reg)) {
-	b := f.popValue()
-	a := f.popValue()
-	s1, o1 := f.operandRegV128(a)
-	f.fpinned = f.fpinned.add(s1)
-	s2, o2 := f.operandRegV128(b)
-	f.fpinned = f.fpinned.remove(s1)
-	op(dst, s1, s2)
-	if o1 && dst != s1 {
-		f.releaseF(s1)
-	}
-	if o2 && dst != s2 {
-		f.releaseF(s2)
-	}
-}
-
-// tryV128BinLocalSet peeps `local.set/tee $x (v128bin A B)` where $x is a
-// register-pinned v128 local and sinks the NEON op straight into $x's V register.
-// It is the SIMD twin of tryFbinLocalSet: A and B are realized into registers
-// (read in place when they are pinned locals) before the op overwrites $x, and any
-// operand-stack reference to $x BELOW this expression is realized first
-// (local.get-at-read-time). Returns done=true when it fired (and consumed the
-// local.set/tee), restoring the reader on any mismatch.
-func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) (bool, error) {
-	if !f.opt(optV128Sink) {
-		return false, nil
-	}
-	save := r.Offset()
-	nb, ok := r.Peek()
-	if !ok || (nb != 0x21 && nb != 0x22) { // local.set / local.tee
-		return false, nil
-	}
-	if _, err := r.Byte(); err != nil {
-		return false, err
-	}
-	x32, err := r.U32()
-	if err != nil {
-		return false, err
-	}
-	x := int(x32) + f.localBase
-	pr, _, pinned := f.pinReg(x)
-	if !pinned || x < 0 || x >= len(f.localType) || f.localType[x] != mtV128 {
-		if err := r.JumpTo(save); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
-	right := f.s.back()
-	if right == nil {
-		if err := r.JumpTo(save); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	// Realize refs to $x below the two operand blocks; the operands themselves are
-	// consumed in place by v128BinInto.
-	left := baseOfValentBlock(right).prev
-	f.realizeLocalRefs(x, left)
-	f.v128BinInto(pr, op)
-	f.markLocalDirty(x)
-	f.stats.peep("v128-local-sink")
-	if nb == 0x22 { // local.tee keeps the value on the stack
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
-	}
-	return true, nil
-}
-
-// v128Unary lowers a single-instruction unary v128 op (op(dst, src)). When
-// consumed by `local.set/tee $x` into a pinned v128 local, it sinks in place;
-// otherwise it materializes the operand (an owned copy for a pinned local) and
-// rewrites it.
+// v128Unary lowers a single-instruction unary v128 op (op(dst, src)).
 func (f *fn) v128Unary(r *wasm.Reader, op func(dst, src Reg)) error {
-	if done, err := f.tryV128UnaryLocalSet(r, op); done || err != nil {
-		return err
-	}
 	a := f.popValue()
 	if !v128DirectResultEnabled {
 		x := f.materializeV128(a)
@@ -557,106 +419,10 @@ func (f *fn) v128Unary(r *wasm.Reader, op func(dst, src Reg)) error {
 	return nil
 }
 
-// v128UnaryInto emits op(dst, src) reading src in place — dst is a pinned v128
-// local's V register. The op reads src before writing dst, so src==dst (the
-// `x = unop(x)` accumulator) is correct.
-func (f *fn) v128UnaryInto(dst Reg, op func(dst, src Reg)) {
-	a := f.popValue()
-	src, owned := f.operandRegV128(a)
-	op(dst, src)
-	if owned && dst != src {
-		f.releaseF(src)
-	}
-}
-
-// tryV128UnaryLocalSet is the unary companion to tryV128BinLocalSet.
-func (f *fn) tryV128UnaryLocalSet(r *wasm.Reader, op func(dst, src Reg)) (bool, error) {
-	if !f.opt(optV128Sink) {
-		return false, nil
-	}
-	save := r.Offset()
-	nb, ok := r.Peek()
-	if !ok || (nb != 0x21 && nb != 0x22) {
-		return false, nil
-	}
-	if _, err := r.Byte(); err != nil {
-		return false, err
-	}
-	x32, err := r.U32()
-	if err != nil {
-		return false, err
-	}
-	x := int(x32) + f.localBase
-	pr, _, pinned := f.pinReg(x)
-	if !pinned || x < 0 || x >= len(f.localType) || f.localType[x] != mtV128 {
-		if err := r.JumpTo(save); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
-	right := f.s.back()
-	if right == nil {
-		if err := r.JumpTo(save); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	// Realize refs to $x below the operand block; the operand is consumed in place.
-	f.realizeLocalRefs(x, baseOfValentBlock(right))
-	f.v128UnaryInto(pr, op)
-	f.markLocalDirty(x)
-	f.stats.peep("v128-local-sink")
-	if nb == 0x22 {
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
-	}
-	return true, nil
-}
-
-// v128NarrowInto sinks a two-source saturating narrow into the pinned dst:
-// low(dst)=sqxtn(a), high(dst)=sqxtn2(b). SQXTN writes dst's low half (clearing
-// the high half); SQXTN2 then writes the high half while READING dst's low half,
-// so a's narrow must land in dst first. Because that first write overwrites dst,
-// if the high source b aliases dst its value would be destroyed, so it is
-// snapshotted into a scratch register beforehand. a==dst is safe (SQXTN reads dst
-// before writing it).
-func (f *fn) v128NarrowInto(dst Reg, sqxtn, sqxtn2 func(dst, src Reg)) {
-	b := f.popValue()
-	a := f.popValue()
-	s1, o1 := f.operandRegV128(a)
-	f.fpinned = f.fpinned.add(s1)
-	s2, o2 := f.operandRegV128(b)
-	if s2 == dst {
-		// SQXTN(dst, s1) will clobber dst, which is also b's source; snapshot b.
-		t := f.allocFReg(maskOf(s1, dst))
-		f.a.NeonOrr16b(t, s2, s2)
-		if o2 {
-			f.releaseF(s2)
-		}
-		s2, o2 = t, true
-	}
-	f.fpinned = f.fpinned.remove(s1)
-	sqxtn(dst, s1)
-	sqxtn2(dst, s2)
-	if o1 && dst != s1 {
-		f.releaseF(s1)
-	}
-	if o2 && dst != s2 {
-		f.releaseF(s2)
-	}
-}
-
 func (f *fn) v128NarrowI16x8ToI8x16(r *wasm.Reader, signed bool) error {
 	sqxtn, sqxtn2 := f.a.NeonSqxtnBfromH, f.a.NeonSqxtn2BfromH
 	if !signed {
 		sqxtn, sqxtn2 = f.a.NeonSqxtunBfromH, f.a.NeonSqxtun2BfromH
-	}
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
-		f.v128NarrowInto(dst, sqxtn, sqxtn2)
-	}); done || err != nil {
-		return err
 	}
 	b := f.popValue()
 	a := f.popValue()
@@ -675,11 +441,6 @@ func (f *fn) v128NarrowI32x4ToI16x8(r *wasm.Reader, signed bool) error {
 	sqxtn, sqxtn2 := f.a.NeonSqxtnHfromS, f.a.NeonSqxtn2HfromS
 	if !signed {
 		sqxtn, sqxtn2 = f.a.NeonSqxtunHfromS, f.a.NeonSqxtun2HfromS
-	}
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
-		f.v128NarrowInto(dst, sqxtn, sqxtn2)
-	}); done || err != nil {
-		return err
 	}
 	b := f.popValue()
 	a := f.popValue()
@@ -707,11 +468,6 @@ func (f *fn) v128FloatMinMax(r *wasm.Reader, f64, isMax bool) error {
 }
 
 func (f *fn) v128FloatPMinMax(r *wasm.Reader, f64, isMax bool) error {
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
-		f.v128PMinMaxInto(dst, f64, isMax)
-	}); done || err != nil {
-		return err
-	}
 	bElem := f.popValue()
 	aElem := f.popValue()
 	xa := f.materializeV128(aElem)
@@ -735,46 +491,6 @@ func (f *fn) v128FloatPMinMax(r *wasm.Reader, f64, isMax bool) error {
 	f.releaseF(xb)
 	f.pushVReg(mask)
 	return nil
-}
-
-// v128PMinMaxInto sinks pmin/pmax (FCMP selector + BSL) into the pinned dst. The
-// selector mask lives in dst itself: FCMP(dst, xb, xa) then BSL(dst, xb, xa)
-// yields dst = (xb<a?xb:xa) with no scratch register and no result copy. BSL uses
-// dst as BOTH the selector and the output, so the operands xa/xb must survive the
-// FCMP write into dst; that holds only when neither aliases dst. When an operand
-// IS the pinned local, fall back to a scratch mask and copy the result in. The
-// exact FCMP+BSL order/predicate is preserved, so NaN and signed-zero semantics
-// (a wins equal/unordered lanes) are unchanged.
-func (f *fn) v128PMinMaxInto(dst Reg, f64, isMax bool) {
-	bElem := f.popValue()
-	aElem := f.popValue()
-	xa, oa := f.operandRegV128(aElem)
-	f.fpinned = f.fpinned.add(xa)
-	xb, ob := f.operandRegV128(bElem)
-	f.fpinned = f.fpinned.remove(xa)
-
-	pred := byte(vfcmpLtOQ)
-	if isMax {
-		pred = vfcmpGtOQ
-	}
-	if xa != dst && xb != dst {
-		f.a.NeonFcmp(dst, xb, xa, f64, pred)
-		f.a.NeonBsl16b(dst, xb, xa)
-	} else {
-		f.fpinned = f.fpinned.add(xa).add(xb)
-		mask := f.allocFReg(maskOf(xa, xb, dst))
-		f.fpinned = f.fpinned.remove(xa).remove(xb)
-		f.a.NeonFcmp(mask, xb, xa, f64, pred)
-		f.a.NeonBsl16b(mask, xb, xa)
-		f.a.NeonOrr16b(dst, mask, mask)
-		f.releaseF(mask)
-	}
-	if oa && dst != xa {
-		f.releaseF(xa)
-	}
-	if ob && dst != xb {
-		f.releaseF(xb)
-	}
 }
 
 func (f *fn) v128Bitselect() {
@@ -822,9 +538,8 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 // v128I32x4TruncSat is a unary v128 op (one v128 in, one v128 out): for f32
 // sources a single FCVTZ{S,U}; for f64 sources FCVTZ{S,U}.2D to saturating i64
 // lanes followed by a saturating narrow to the two low i32 lanes (clearing the
-// high half). Both forms read src before the first write, so it sinks through the
-// unary path (v128UnaryInto) with src==dst handled correctly. FCVTZ supplies
-// Wasm's required NaN->0 and int-min/max overflow saturation.
+// high half). FCVTZ supplies Wasm's required NaN->0 and int-min/max overflow
+// saturation.
 func (f *fn) v128I32x4TruncSat(r *wasm.Reader, f64src, signed bool) error {
 	var op func(dst, src Reg)
 	switch {
@@ -874,11 +589,6 @@ func (f *fn) v128I32x4ConvertToFloat(r *wasm.Reader, f64dst, signed bool) error 
 }
 
 func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) error {
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
-		f.v128ShiftInto(dst, op, opImm, countMask, laneSize, right)
-	}); done || err != nil {
-		return err
-	}
 	if !v128DirectResultEnabled {
 		return f.v128ShiftLegacy(op, opImm, countMask, laneSize, right)
 	}
@@ -955,49 +665,6 @@ func (f *fn) v128ShiftLegacy(op func(dst, s1, s2 Reg), opImm func(dst, src Reg, 
 	f.pushVReg(x)
 	return nil
 }
-
-// v128ShiftInto sinks a vector shift into the pinned dst: the vector operand is
-// read in place, the scalar count is masked/negated and splatted, and op(dst,
-// value, countX) writes dst. The splat register is allocated while both the
-// pinned dst (via fpinnedLocalMask) and the in-place source are protected, so it
-// can never alias either; the NEON shift reads both sources before writing dst,
-// so value==dst (the `x = x shl c` accumulator) is also correct.
-func (f *fn) v128ShiftInto(dst Reg, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) {
-	countElem := f.popValue()
-	if countElem.st.kind == stConst {
-		value := f.popValue()
-		src, owned := f.operandRegV128(value)
-		if shift := uint8(countElem.st.cval & int64(countMask)); shift != 0 {
-			opImm(dst, src, shift)
-		} else if dst != src {
-			f.a.NeonMov16b(dst, src)
-		}
-		if owned && dst != src {
-			f.releaseF(src)
-		}
-		f.stats.peep("simd-shift-imm")
-		return
-	}
-	count := f.materialize(countElem)
-	f.andImm(count, int64(countMask), false)
-	if right {
-		f.a.Sub64(count, ZR, count)
-	}
-
-	value := f.popValue()
-	src, owned := f.operandRegV128(value)
-	f.fpinned = f.fpinned.add(src)
-	countX := f.v128SplatScalar(count, laneSize)
-	f.release(count)
-	f.fpinned = f.fpinned.remove(src)
-
-	op(dst, src, countX)
-	f.releaseF(countX)
-	if owned && dst != src {
-		f.releaseF(src)
-	}
-}
-
 func (f *fn) i8x16Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
 	return f.v128Shift(r, op, opImm, 7, 1, right)
 }
@@ -1034,9 +701,6 @@ func (f *fn) i64x2Abs(r *wasm.Reader) error { return f.v128Unary(r, f.a.NeonAbsD
 // Truncating the cross products to 32 bits before summing is exact: only the low
 // 32 bits of the cross sum survive the <<32 mod 2^64.
 func (f *fn) i64x2Mul(r *wasm.Reader) error {
-	if done, err := f.tryV128Sink2LocalSet(r, f.i64x2MulInto); done || err != nil {
-		return err
-	}
 	out := f.allocFReg(0)
 	f.i64x2MulInto(out)
 	f.pushVReg(out)
@@ -1111,8 +775,7 @@ func (f *fn) i16x8ExtaddPairwiseI8x16(r *wasm.Reader, signed bool) error {
 
 // i16x8ExtmulI8x16 is a single widening-multiply op (SMULL/UMULL for the low
 // lanes, SMULL2/UMULL2 for the high lanes): one NEON instruction reading both
-// sources' relevant halves before writing dst. It sinks through the ordinary
-// binary path (v128BinInto), so aliasing dst==source is safe.
+// sources' relevant halves before writing dst.
 func (f *fn) i16x8ExtmulI8x16(r *wasm.Reader, signed, high bool) error {
 	var op func(dst, s1, s2 Reg)
 	switch {
@@ -1247,9 +910,6 @@ func (f *fn) i32x4RelaxedDotI8x16I7x16AddS() {
 }
 
 func (f *fn) i32x4DotI16x8S(r *wasm.Reader) error {
-	if done, err := f.tryV128Sink2LocalSet(r, f.i32x4DotI16x8SInto); done || err != nil {
-		return err
-	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -1268,34 +928,6 @@ func (f *fn) i32x4DotI16x8S(r *wasm.Reader) error {
 	return nil
 }
 
-// i32x4DotI16x8SInto sinks the dot product straight into the pinned local dst.
-// The two partial products land in fresh temporaries (t0, t1) so neither source is
-// clobbered; the final ADDP reads only those temporaries, so writing dst last is
-// correct even when dst aliases a source register (the `local.set $a (dot $a $b)`
-// accumulator). Both sources are fully consumed before dst is written.
-func (f *fn) i32x4DotI16x8SInto(dst Reg) {
-	b := f.popValue()
-	a := f.popValue()
-	xa, oa := f.operandRegV128(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb, ob := f.operandRegV128(b)
-	f.fpinned = f.fpinned.add(xb)
-	t0 := f.allocFReg(maskOf(xa, xb))
-	t1 := f.allocFReg(maskOf(xa, xb, t0))
-	f.a.NeonSmullSfromH(t0, xa, xb)
-	f.a.NeonSmull2SfromH(t1, xa, xb)
-	f.a.NeonAddpS(dst, t0, t1)
-	f.releaseF(t1)
-	f.releaseF(t0)
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	if ob {
-		f.releaseF(xb)
-	}
-	if oa {
-		f.releaseF(xa)
-	}
-}
-
 // i16x8Q15mulrSatS lowers directly to a single SQRDMULH. AArch64's saturating
 // rounding doubling multiply-high computes signed_saturate((a*b + 0x4000) >> 15)
 // with an infinite-precision intermediate, so the doubling of INT16_MIN*INT16_MIN
@@ -1306,95 +938,8 @@ func (f *fn) i16x8Q15mulrSatS(r *wasm.Reader) error {
 	return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonSqrdmulhH(dst, s1, s2) })
 }
 
-// tryV128Sink2LocalSet is the peep for two-operand v128 ops whose lowering is not
-// a single op(dst,s1,s2) closure — compares that need an operand swap, and
-// ne (eq followed by NOT). It mirrors tryV128BinLocalSet: when the op is
-// immediately consumed by `local.set/tee $x` into a register-pinned v128 local,
-// it realizes refs to $x below the two operand blocks and calls emit(pr) to sink
-// the op straight into $x's V register. Returns done=true when it fired.
-func (f *fn) tryV128Sink2LocalSet(r *wasm.Reader, emit func(dst Reg)) (bool, error) {
-	if !f.opt(optV128Sink) {
-		return false, nil
-	}
-	save := r.Offset()
-	nb, ok := r.Peek()
-	if !ok || (nb != 0x21 && nb != 0x22) { // local.set / local.tee
-		return false, nil
-	}
-	if _, err := r.Byte(); err != nil {
-		return false, err
-	}
-	x32, err := r.U32()
-	if err != nil {
-		return false, err
-	}
-	x := int(x32) + f.localBase
-	pr, _, pinned := f.pinReg(x)
-	if !pinned || x < 0 || x >= len(f.localType) || f.localType[x] != mtV128 {
-		if err := r.JumpTo(save); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
-	right := f.s.back()
-	if right == nil {
-		if err := r.JumpTo(save); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	// Realize refs to $x below the two operand blocks; the operands themselves are
-	// consumed in place by emit.
-	left := baseOfValentBlock(right).prev
-	f.realizeLocalRefs(x, left)
-	emit(pr)
-	f.markLocalDirty(x)
-	f.stats.peep("v128-local-sink")
-	if nb == 0x22 { // local.tee keeps the value on the stack
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
-	}
-	return true, nil
-}
-
-// v128CmpInto emits a swap-aware compare (optionally post-inverted for ne) into
-// the pinned dst, reading BOTH operands in place. A NEON compare reads both
-// source registers before writing dst, so accumulator aliasing (x = x cmp y, or
-// x cmp x) is correct. swap picks the operand order (lt/le lower to swapped
-// gt/ge); invert appends a full-width NOT (ne = not(eq)).
-func (f *fn) v128CmpInto(dst Reg, op func(dst, s1, s2 Reg), swap, invert bool) {
-	b := f.popValue()
-	a := f.popValue()
-	s1, o1 := f.operandRegV128(a)
-	f.fpinned = f.fpinned.add(s1)
-	s2, o2 := f.operandRegV128(b)
-	f.fpinned = f.fpinned.remove(s1)
-	if swap {
-		op(dst, s2, s1)
-	} else {
-		op(dst, s1, s2)
-	}
-	if o1 && dst != s1 {
-		f.releaseF(s1)
-	}
-	if o2 && dst != s2 {
-		f.releaseF(s2)
-	}
-	if invert {
-		f.a.NeonNot16b(dst, dst)
-	}
-}
-
-// v128BinNot lowers `ne` = not(eq): the compare op, then a full-width NOT. When
-// consumed by `local.set/tee $x` into a pinned v128 local it sinks both into $x's
-// register with no accumulator/result copies. The NOT is a single MVN (the
-// compare result is all-ones/all-zeros per lane, so NOT flips it to ne exactly).
+// v128BinNot lowers `ne` = not(eq): the compare op, then a full-width NOT.
 func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, false, true) }); done || err != nil {
-		return err
-	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -1409,9 +954,6 @@ func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 }
 
 func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, invert bool) error {
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, swap, invert) }); done || err != nil {
-		return err
-	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -1432,9 +974,6 @@ func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, inver
 }
 
 func (f *fn) v128UnsignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap bool) error {
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, swap, false) }); done || err != nil {
-		return err
-	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -1465,9 +1004,6 @@ func (f *fn) i64x2SignedCmp(r *wasm.Reader, cc Cond) error {
 		op, swap = f.a.NeonCmgeD, false
 	default:
 		panic("arm64: unsupported i64x2 signed compare")
-	}
-	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, swap, false) }); done || err != nil {
-		return err
 	}
 	b := f.popValue()
 	a := f.popValue()
