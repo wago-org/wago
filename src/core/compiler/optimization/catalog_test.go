@@ -65,6 +65,19 @@ func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
 	}
 }
 
+func TestV128ConstCacheIsAMD64Only(t *testing.T) {
+	if _, ok := Lookup("arm64", "v128-const-cache"); ok {
+		t.Fatal("arm64 still exposes the measured-low-value v128 constant cache")
+	}
+	definition, ok := Lookup("amd64", "v128-const-cache")
+	if !ok {
+		t.Fatal("amd64 lost its high-value v128 constant cache")
+	}
+	if !definition.Default {
+		t.Fatal("amd64 v128 constant cache no longer defaults on")
+	}
+}
+
 func TestBindingsRequireEveryArchitectureDefinition(t *testing.T) {
 	value := true
 	definitions := ForArch("amd64")
