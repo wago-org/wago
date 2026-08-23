@@ -13,6 +13,7 @@ import (
 // across a returning host call. The arm64 pin pool assigns the first five to
 // X19-X23 and may use X9-X11 for the next three. Host-call setup also uses
 // X9-X11 as fixed scratch, so those locals must be homed before scratch setup.
+// Regression for #490.
 func TestARM64HostCallPreservesExtendedPinnedLocals(t *testing.T) {
 	sig := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
 	body := []byte{
