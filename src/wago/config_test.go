@@ -538,14 +538,15 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 		for _, name := range []string{"affine-lea", "call-next-use", "commute-self-update", "tee-spill-elide"} {
 			wantOff[name] = true
 		}
-	case "arm64":
-		wantOff["deep-fp-pins"] = true
 	}
 
 	seen := make(map[string]bool, len(wantOff))
 	for _, info := range NewRuntimeConfig().OptimizationInfos() {
 		if info.Name == "inline-loop-callees" {
 			t.Fatal("removed inline-loop-callees optimization is still exposed")
+		}
+		if info.Name == "deep-fp-pins" {
+			t.Fatal("removed deep-fp-pins optimization is still exposed")
 		}
 		if wantOff[info.Name] {
 			seen[info.Name] = true

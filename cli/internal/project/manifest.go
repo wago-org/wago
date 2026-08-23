@@ -123,7 +123,7 @@ var manifestFeatureNames = stringSet(
 
 var manifestOptimizationNames = stringSet(
 	"affine-lea", "assoc-tree", "bmi2-rorx", "bounds-facts", "branch-fold",
-	"call-next-use", "commute-self-update", "compact-i32-frame", "deep-fp-pins",
+	"call-next-use", "commute-self-update", "compact-i32-frame",
 	"entry-arg-pins", "ext-fp-pins", "frame-elide", "frame-elide-reghomed",
 	"immutable-poly-fastpath", "immutable-table", "immutable-table-type", "inline",
 	"inline-callfree", "leaf-scratch-pins", "legacy-fp-pins",

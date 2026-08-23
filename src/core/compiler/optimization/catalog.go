@@ -380,7 +380,6 @@ var catalog = []Definition{
 	arm64("entry-zero-pairs", "Entry zero pairs", "pair adjacent declared-local zero stores in function prologues"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
-	arm64Off("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),
 	both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
 	amd64Off("call-next-use", "Call next-use", "skip dead pinned-local stores before calls"),
 	arm64("merge-next-use", "Merge next-use", "keep dead forward-merge locals lazy with bounded post-merge lookahead"),

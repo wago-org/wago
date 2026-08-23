@@ -70,7 +70,6 @@
               "call-next-use",
               "commute-self-update",
               "compact-i32-frame",
-              "deep-fp-pins",
               "entry-arg-pins",
               "entry-param-pairs",
               "entry-zero-pairs",

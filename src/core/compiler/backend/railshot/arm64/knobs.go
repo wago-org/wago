@@ -27,7 +27,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
-	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
 	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
 	optimization.Bind("leaf-scratch-pins", &leafScratchPinsEnabled),
 	optimization.Bind("immutable-table", &immutableLocalTableEnabled),
@@ -67,7 +66,6 @@ var (
 	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
-	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")
 	optExtendedFPPins        = optimizationBindings.Option("ext-fp-pins")
 	optLeafScratchPins       = optimizationBindings.Option("leaf-scratch-pins")
 	optImmutableTable        = optimizationBindings.Option("immutable-table")

@@ -115,7 +115,6 @@ var (
 	legacyGPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_GPPINS") == "1"
 	legacyFPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_FPPINS") == "1"
 	extendedFPPinsEnabled   = os.Getenv("WAGO_ARM64_NO_EXTFPPINS") != "1"
-	deepFPPinsEnabled       = envDefaultOff(os.Getenv("WAGO_ARM64_DEEP_FP_PINS"))
 	threeOperandSinkEnabled = os.Getenv("WAGO_ARM64_NO3OPSINK") != "1"
 	oldDestRHSSinkEnabled   = os.Getenv("WAGO_ARM64_NO_OLDDEST_RHS") != "1"
 	callFreeX8PinEnabled    = os.Getenv("WAGO_ARM64_NO_X8PIN") != "1"
@@ -2398,17 +2397,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 		// the full pool.
 		fpPinLimit = callFreePinnedFLocalRegs
 	} else if hasCall && fpPinLimit > 23 {
-		floatParams := 0
-		for _, pt := range f.ft.Params {
-			if mtOf(pt).isFloat() {
-				floatParams++
-			}
-		}
-		// V4-V7 overlap incoming FP arguments 5-8. Until the FP prologue uses a
-		// parallel mover, retain them as temporaries for that signature class.
-		if !f.opt(optDeepFPPins) || floatParams > 4 {
-			fpPinLimit = 23
-		}
+		fpPinLimit = 23
 	}
 	if !pinLocals || f.nLocals > 64 {
 		// Very wide signatures are cold ABI stress shapes, and an unpinned

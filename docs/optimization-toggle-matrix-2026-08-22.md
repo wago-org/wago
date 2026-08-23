@@ -58,6 +58,16 @@ worth retaining. Making the catalog entry AMD64-only preserves the catalog as th
 single source of truth without introducing architecture-dependent defaults for
 one shared definition.
 
+### Follow-on ARM64 deep-float-pin removal
+
+ARM64 `deep-fp-pins` was also removed rather than left as a permanent default-off
+switch. Disabling it changed aggregate execution by -0.08%, full compile time by
+-0.06%, and compile allocation bytes by effectively zero; its worst focused
+slowdown was 1.61% on `fib_iter`. The option only reopened the highest V-register
+pin range for one call-making signature class. The backend now consistently caps
+that class at 23 pinned float registers, and the catalog, manifest/schema, binding,
+environment control, and dead conditional path are gone.
+
 ## Environment
 
 | Architecture | Commit | CPU / OS | Go | GOMAXPROCS | Affinity | Benchtime | Samples/state |
