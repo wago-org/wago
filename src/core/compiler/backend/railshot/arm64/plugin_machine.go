@@ -100,7 +100,7 @@ func (c *pluginARM64Context) ReserveGP(reg a64.Reg) error {
 }
 
 func (c *pluginARM64Context) ReserveVector(reg a64.Reg) error {
-	if reg >= 32 || c.f.fpinnedLocalMask.has(reg) || c.f.fconstMask().has(reg) || c.f.v128ConstMask().has(reg) {
+	if reg >= 32 || c.f.fpinnedLocalMask.has(reg) || c.f.fconstMask().has(reg) {
 		return fmt.Errorf("arm64 plugin cannot reserve vector register %d", reg)
 	}
 	if c.vector.has(reg) {

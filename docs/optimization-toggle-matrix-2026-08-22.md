@@ -42,11 +42,21 @@ is effectively flat, while the compile-resource reduction is large and repeats
 on both machines. The focused `fannkuch` loss is the retained reason to leave
 `loop-precheck` available as an explicit opt-in instead of deleting it.
 
-ARM64 `v128-const-cache` was not changed despite passing the local removal screen:
-the catalog intentionally gives shared option names one canonical default, and
-the same optimization is a large AMD64 win. Splitting its public identity or
-allowing catalog/backend defaults to disagree would add more policy complexity
-than this trim removes.
+### Follow-on ARM64 vector-cache removal
+
+ARM64 `v128-const-cache` was removed after the default trim. Its matrix result was
+execution-neutral (-0.06% when disabled, worst slowdown +0.78%) and disabling it
+improved full compile time by 1.36%. The deletion removes the function-body
+pre-scan, fixed candidate buffer, reserved-register state and masks, allocator
+exclusions, backend binding, and cache-specific tests: 249 implementation/test
+lines removed for five small call-site simplifications.
+
+AMD64 keeps `v128-const-cache` default-on and remains the only architecture that
+advertises the option. Its measured +6.09% aggregate execution benefit and
++186.23% focused `utf-as-simd.validateN` benefit make that implementation clearly
+worth retaining. Making the catalog entry AMD64-only preserves the catalog as the
+single source of truth without introducing architecture-dependent defaults for
+one shared definition.
 
 ## Environment
 

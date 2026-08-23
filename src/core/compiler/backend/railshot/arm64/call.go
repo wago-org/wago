@@ -2621,7 +2621,7 @@ func (f *fn) wrapperResultsFitRegisters(results []wasm.ValType) bool {
 			gpAvail++
 		}
 	}
-	fpBlock := f.fpinnedLocalMask.union(f.fconstMask()).union(f.v128ConstMask())
+	fpBlock := f.fpinnedLocalMask.union(f.fconstMask())
 	fpAvail := 0
 	for _, r := range fpAllocRegs {
 		if !fpBlock.has(r) {

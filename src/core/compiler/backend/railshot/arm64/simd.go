@@ -82,18 +82,11 @@ func (f *fn) stV128(base Reg, disp int32, rt Reg) {
 	f.a.StrQ(base, disp, rt)
 }
 
-// v128ConstReg returns a fresh OWNED V register holding the 128-bit constant
-// (lo,hi). When the value was cached in a reserved register at entry (a repeated
-// const, see preloadV128Consts), the fresh register is filled with a single
-// MOV.16b copy instead of rebuilding the immediate word by word.
+// v128ConstReg returns a fresh owned V register holding the 128-bit constant.
 func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	x := f.allocFReg(0)
 	if lo == 0 && hi == 0 {
 		f.a.NeonEor16b(x, x, x)
-		return x
-	}
-	if c, ok := f.v128ConstCached(lo, hi); ok {
-		f.a.NeonMov16b(x, c)
 		return x
 	}
 	f.buildV128Const(x, lo, hi)
@@ -153,140 +146,6 @@ func v128Splat(lo, hi uint64) (value uint64, laneBytes int) {
 		return lo, 8
 	}
 	return 0, 0
-}
-
-// v128ConstReg holds a v128.const value cached in a reserved V register.
-type v128ConstReg struct {
-	lo, hi uint64
-	reg    Reg
-}
-
-// maxV128Consts bounds how many distinct repeated v128 constants are pinned in
-// reserved V registers per function. The isa_simd_reduce corpus needs one; two
-// covers dual-const loops without meaningfully shrinking the 32-entry V pool.
-const maxV128Consts = 2
-
-// v128ConstMask blocks the reserved const registers from the V allocator, exactly
-// like fconstMask for scalar-float constants.
-func (f *fn) v128ConstMask() regMask {
-	var m regMask
-	for _, c := range f.vconsts {
-		m = m.add(c.reg)
-	}
-	return m
-}
-
-// pinnedV128LocalCount counts the v128 locals held in a dedicated V register for
-// the whole function. It gauges the loop's baseline NEON register pressure, used to
-// decide whether reserving another V register for a cached const is worthwhile.
-func (f *fn) pinnedV128LocalCount() int {
-	n := 0
-	for i := range f.locals {
-		if i >= len(f.localType) {
-			break
-		}
-		if f.locals[i].reg != regNone && f.localType[i] == mtV128 {
-			n++
-		}
-	}
-	return n
-}
-
-// v128ConstCached returns the reserved register holding (lo,hi), if any.
-func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
-	for _, c := range f.vconsts {
-		if c.lo == lo && c.hi == hi {
-			return c.reg, true
-		}
-	}
-	return regNone, false
-}
-
-// preloadV128Consts scans the function body for v128.const immediates that appear
-// more than once and reserves a V register for each (up to maxV128Consts),
-// materializing the value once at entry. It mirrors preloadFloatConsts. Disabled
-// for call-making functions: a wasm→wasm call preserves only the low 64 bits of
-// the callee-saved V range, so a 128-bit reserved const could not survive a call.
-func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || !f.opt(optV128ConstCache) {
-		return
-	}
-	// Register-pressure gate. Reserving a V register for a cached const is only a win
-	// when the vector loop has spare NEON registers. Functions that pin two or more
-	// v128 locals (the coupled `local.set $a/$b` accumulator loops) already hold high
-	// v128 liveness, and funneling every use of a repeated const through one reserved
-	// register serializes the loop instead of helping (measured ~2.3x on M4 for
-	// v128.bitselect). The scalar-producing reductions this cache targets pin no v128
-	// locals, so this leaves their win intact.
-	if f.pinnedV128LocalCount() >= 2 {
-		return
-	}
-	// Tally distinct v128 consts in a small fixed buffer (no allocation on the hot
-	// compile path). Extra distinct consts beyond the buffer are ignored — only the
-	// first few candidates can win a reserved register anyway.
-	var cand [8]struct {
-		lo, hi uint64
-		n      int
-	}
-	nCand := 0
-	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return
-		}
-		if op != 0xFD { // not the SIMD prefix
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
-				return
-			}
-			continue
-		}
-		afterPrefix := r.Offset()
-		sub, err := r.U32()
-		if err != nil {
-			return
-		}
-		if sub == 12 { // v128.const: 16 immediate bytes follow
-			lo, err := r.LEU64()
-			if err != nil {
-				return
-			}
-			hi, err := r.LEU64()
-			if err != nil {
-				return
-			}
-			found := false
-			for i := 0; i < nCand; i++ {
-				if cand[i].lo == lo && cand[i].hi == hi {
-					cand[i].n++
-					found = true
-					break
-				}
-			}
-			if !found && nCand < len(cand) {
-				cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
-				nCand++
-			}
-			continue
-		}
-		// Any other SIMD op: rewind past the prefix and let the shared skipper consume
-		// the sub-opcode and its immediates.
-		if err := r.JumpTo(afterPrefix); err != nil {
-			return
-		}
-		if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
-			return
-		}
-	}
-	for i := 0; i < nCand && len(f.vconsts) < maxV128Consts; i++ {
-		if cand[i].n < 2 || (cand[i].lo == 0 && cand[i].hi == 0) {
-			continue // single-use, or the zero const (already a single EOR)
-		}
-		x := f.allocFReg(0)
-		f.buildV128Const(x, cand[i].lo, cand[i].hi)
-		f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, reg: x})
-	}
 }
 
 func (f *fn) v128Const(lo, hi uint64) {

@@ -36,7 +36,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("store-forward", &linearStoreForwardEnabled),
 	optimization.Bind("frame-elide-reghomed", &frameElideRegHomed),
 	optimization.Bind("small-frame", &smallFrameAdjustEnabled),
-	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
@@ -77,7 +76,6 @@ var (
 	optStoreForward          = optimizationBindings.Option("store-forward")
 	optFrameElideRegHomed    = optimizationBindings.Option("frame-elide-reghomed")
 	optSmallFrame            = optimizationBindings.Option("small-frame")
-	optV128ConstCache        = optimizationBindings.Option("v128-const-cache")
 	optV128Pins              = optimizationBindings.Option("v128-pins")
 	optV128Sink              = optimizationBindings.Option("v128-sink")
 	optRegABI                = optimizationBindings.Option("reg-abi")

@@ -140,11 +140,6 @@ var (
 	// register between the prologue init and the epilogue, so the full 128 bits stay
 	// live and every local.get/set becomes a register op instead of LdrQ/StrQ.
 	v128LocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_V128_PINS") != "1"
-	// v128ConstCacheEnabled reserves a V register for each repeated v128.const value
-	// so its later uses copy (MOV.16b) instead of rebuilding the 128-bit immediate.
-	// A pure codegen optimization independent of the pin/sink machinery; the kill
-	// switch exists for A/B measurement and defensive fallback.
-	v128ConstCacheEnabled = os.Getenv("WAGO_ARM64_NO_V128_CONST_CACHE") != "1"
 )
 
 // mergeReg is the canonical register a single-int-result block's value is
@@ -225,12 +220,6 @@ type fn struct {
 	fregUser [32]*elem
 	fpinned  regMask
 	fconsts  []floatConstReg
-	// vconsts caches repeated 128-bit v128.const values in reserved V registers
-	// (like fconsts for scalar floats). A const that appears more than once in a
-	// straight-line-reachable body — e.g. the loop-invariant constant reduced 16×
-	// in the isa_simd_reduce corpus — is materialized once at entry, then each use
-	// copies it with a single MOV.16b instead of rebuilding it (MovImm×2/FMOV/INS).
-	vconsts []v128ConstReg
 
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
@@ -2137,7 +2126,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	f.prologue()
 	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -2922,7 +2910,6 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	f.tmpMoves = moves[:0]
 	f.zeroDeclaredLocals()
 	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
 	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err

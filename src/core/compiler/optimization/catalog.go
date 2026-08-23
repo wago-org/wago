@@ -405,7 +405,7 @@ var catalog = []Definition{
 	amd64("accumulator-immediate", "Accumulator immediates", "use ModRM-free RAX/EAX imm32 encodings in size objectives"),
 	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
-	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),
+	amd64("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
 	bothOff("v128-sink", "Vector sinking", "sink vector operations into pinned locals"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
