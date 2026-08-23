@@ -2538,8 +2538,15 @@ func (f *fn) storeModuleGlobals(scratch Reg) {
 // Used in the prologue and to reload after a call (the callee may have changed the
 // shared global). A no-op when no globals are pinned.
 func (f *fn) derivePinnedGlobals() {
+	f.derivePinnedGlobalsIn(^regMask(0))
+}
+
+// derivePinnedGlobalsIn reloads only globals assigned to registers in regs.
+// Fixed-register sequences use it to restore their narrow scratch bank without
+// touching unrelated value pins.
+func (f *fn) derivePinnedGlobalsIn(regs regMask) {
 	for g, reg := range f.globalReg {
-		if reg == regNone || f.isModuleGlobal(g) {
+		if reg == regNone || f.isModuleGlobal(g) || !regs.has(reg) {
 			continue
 		}
 		f.ld64(reg, linMemReg, -int32(abi.GlobalsPtrOffset)) // globals array base
@@ -2558,8 +2565,13 @@ func (f *fn) derivePinnedGlobals() {
 // observes the current value. Avoids X0 (the int result register) for the
 // cell-address scratch.
 func (f *fn) storePinnedGlobals(dirtyOnly bool) {
+	f.storePinnedGlobalsIn(^regMask(0), dirtyOnly)
+}
+
+// storePinnedGlobalsIn writes only globals assigned to registers in regs.
+func (f *fn) storePinnedGlobalsIn(regs regMask, dirtyOnly bool) {
 	for g, reg := range f.globalReg {
-		if reg == regNone || f.isModuleGlobal(g) || (dirtyOnly && !f.globalDirty[g]) {
+		if reg == regNone || f.isModuleGlobal(g) || !regs.has(reg) || (dirtyOnly && !f.globalDirty[g]) {
 			continue
 		}
 		t := f.allocReg(maskOf(reg, X0))

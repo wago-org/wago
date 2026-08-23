@@ -1007,10 +1007,12 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHost)
 	p := len(ft.Params)
 	types, argSlot := f.flushSuffix(p)
-	// X9-X11 are eligible local pins as well as fixed host-log scratch. The
-	// operand flush above makes every argument slot stable, so home locals before
-	// reusing those registers. STACK_REG recovers them lazily after the call.
-	f.spillLocalsForCall()
+	// The logger does not leave native execution; only its fixed X9-X11 scratch
+	// bank needs preservation. Locals and value-pinned globals share that extended
+	// pin bank, so home both before reusing it without evicting unrelated GP/FP pins.
+	hostLogScratch := maskOf(X9, X10, X11)
+	f.spillLocalsForClobbers(hostLogScratch, 0)
+	f.storePinnedGlobalsIn(hostLogScratch, false)
 	if p > 0 {
 		f.ld32(X0, SP, f.spillOff(argSlot)) // first param
 	} else {
@@ -1028,9 +1030,10 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.a.AddImm32(X9, X9, 1) // count++
 	f.st32(X11, 0, X9)
 	f.dropFlushedSuffix(types, p)
-	// The legacy non-STACK_REG model restores pins eagerly. STACK_REG leaves
-	// them memory-resident and recovers each local on its next read.
-	f.reloadLocalsForCall()
+	f.derivePinnedGlobalsIn(hostLogScratch)
+	// The legacy non-STACK_REG model restores the selected local pins eagerly.
+	// STACK_REG leaves them memory-resident and recovers each on its next read.
+	f.reloadLocalsForClobbers(hostLogScratch, 0)
 	return nil
 }
 
