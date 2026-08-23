@@ -92,7 +92,7 @@ func pluginGCFourResultCallerModule() []byte {
 	runType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32})
 	body := []byte{
 		0x10, 0x00, // call null_result
-		0xd1,       // ref.is_null
+		0xd1, // ref.is_null
 		0x41, 0x02,
 		0x41, 0x03,
 		0x41, 0x04,
