@@ -3,7 +3,7 @@
 ╚╩╝ ╩ ╩ ╚═╝ ╚═╝</pre></h1>
 
 <p align="center">
-  A wonderfully quick, compact, and extensible WebAssembly runtime for Go
+  A pure-Go WebAssembly runtime and native compiler.
 </p>
 
 <p align="center">
@@ -13,355 +13,90 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/wago-org/wago" alt="License"></a>
 </p>
 
-> Wago is pre-release. Wago-owned codecs and format contracts use version 1; see
-> [VERSIONING.md](VERSIONING.md).
+<p align="center">
+  <a href="https://docs.wago.sh">Documentation</a> ·
+  <a href="https://docs.wago.sh/getting-started">Getting started</a> ·
+  <a href="https://plugins.wago.sh">Plugins</a> ·
+  <a href="https://wago.sh/#performance">Benchmarks</a>
+</p>
+
+Wago decodes, validates, and compiles WebAssembly directly to machine code in a
+single pass. It has no interpreter, cgo dependency, or C toolchain.
+
+Use it from the CLI or embed it as a Go library. Wago can save
+architecture-specific `.wago` artifacts, build standalone executables, and add
+host capabilities such as WASI and the Component Model through plugins.
+
+> [!WARNING]
+> Wago is pre-release. APIs and native artifact formats may change.
 
 ## Install
 
+macOS and Linux:
+
 ```sh
 curl -fsSL https://install.wago.sh/unix | sh
+wago version install
 ```
 
-On Windows, use the command for your shell:
+Windows PowerShell:
 
 ```powershell
 irm https://install.wago.sh/ps | iex
+wago version install
 ```
 
-```cmd
-curl -fsSL https://install.wago.sh/cmd | cmd
-```
+Other installation methods and release channels are covered in
+[Getting started](https://docs.wago.sh/getting-started).
 
-The bootstrap scripts download the same checksummed Go installer for their
-platform, then hand off the complete interactive installation flow. Go is only
-needed when a release manager is unavailable and must be built from source.
-
-For the Go package:
+## Run
 
 ```sh
-go get github.com/wago-org/wago
-```
-
-Read [Getting started](https://docs.wago.sh/getting-started) for installation
-details, release channels, profiles, and source builds.
-
-## Getting Started
-
-Download a small module and run an exported function:
-
-```sh
-curl -fsSLo fib.wasm \
-  https://raw.githubusercontent.com/wago-org/wago/main/tests/fixtures/wasm/fib.wasm
-wago run --invoke fib fib.wasm 20
+curl -fsSL https://wago.sh/corpora/fib.wasm -o fib.wasm
+wago fib.wasm 30
 ```
 
 ```text
-fib(20) = 6765
+fib(30) = 832040
 ```
 
-`run` is the default command:
+Precompile the module or build a standalone executable:
 
 ```sh
-wago fib.wasm 20
-wago run --core 3 --invoke main generated-wasmgc.wasm
-```
-
-On complete backends, the CLI defaults on tail calls, typed function references,
-multi-memory, memory64, and table64. WasmGC and exception handling remain opt-in:
-pass `--core 3` for the complete `CoreFeaturesV3` set, or `--core 2` for the
-strict Release 2 set.
-
-Validate or precompile a module:
-
-```sh
-wago validate fib.wasm
 wago build fib.wasm -o fib.wago
-wago run --invoke fib fib.wago 20
+wago compile --invoke fib fib.wasm -o fib
+./fib 30
 ```
-
-Build a command module as a standalone native executable:
-
-```sh
-wago compile app.wasm -o app
-wago compile --tinygo app.wasm -o app-tiny
-wago compile fib.wasm --invoke fib -o fib
-wago compile component.wasm --core 3 -p -o component
-./fib 20
-# fib(20) = 6765
-```
-
-By default, the module must export `_start`. Pass `--invoke <name>` to bake in a
-different exported function; executable arguments are parsed from its typed Wasm
-signature just like `wago run --invoke`. The executable embeds a native `.wago`
-artifact, Wago's runtime-only loader, and the active local or global plugin
-configuration, so it runs without a Wago installation and performs no Wasm
-codegen at startup. It does not embed the source Wasm or Railshot compiler. Use
-`--bare`, `--local`, or `--global` to choose the plugin scope. Add plugins to
-`wago.json` before compiling so resolution, Authorities, and Contract bindings
-stay reviewable and reproducible. `--core 3`, `--parallel`, and compiler flags
-such as `--no-inline` and `--no-deferred-bounds-checking` are applied while
-producing the embedded machine code. Run `wago compile --help-optimizations` to
-see the advanced compiler controls without crowding the everyday command help.
-There is no standalone watch mode because the module is immutable once embedded.
-Standalone builds are native-target-only because codegen, interruption, and
-feature admission must match the runtime that executes the artifact. `--tinygo`
-uses TinyGo instead of standard Go for the final runtime link; TinyGo builds use
-the cooperative scheduler and the repository's size-oriented stripping policy.
-
-Inspect its host requirements:
-
-```sh
-wago module imports fib.wasm
-wago module exports fib.wasm
-wago module capabilities fib.wasm
-```
-
-See [Run a module](https://docs.wago.sh/guides/run-a-module) for typed arguments,
-watch mode, parallel compilation, `.wago` artifacts, and runtime flags.
-
-### Run WASI
-
-Create a project and add the WASI plugin:
-
-```sh
-wago init --run
-wago add wago-org/wasi
-wago run program.wasm hello world
-```
-
-For GitHub plugins, `owner/repository` is shorthand for the canonical
-`github.com/owner/repository` Plugin ID. When a package publishes multiple
-subpackages, adding its root offers to install everything or choose individual
-subpackages. Explicit paths such as `wago-org/wasi/p1` install that subpackage
-directly. `wago add` resolves the complete dependency and Contract graph,
-reviews exact scoped Authorities, pins sources and bindings in `wago-lock.json`,
-verifies the linked definitions, and atomically publishes the rebuilt runtime.
-
-Useful plugin commands:
-
-```sh
-wago plugin list
-wago plugin list --json
-wago plugin inspect github.com/wago-org/wasi
-wago plugin tree
-wago plugin grant github.com/wago-org/wasi/p1
-wago plugin grant github.com/wago-org/wasi/p1 --scopes '{"github.com/wago-org/wasi/p1":{"host.import.define":{"modules":["wasi_snapshot_preview1"]}}}'
-wago plugin config github.com/wago-org/wasi/p1 '{"stdout":"discard"}'
-wago plugin update
-wago plugin rebuild --locked
-wago plugin remove github.com/wago-org/wasi
-```
-
-Browse packages at [plugins.wago.sh](https://plugins.wago.sh). Read
-[Use plugins](https://docs.wago.sh/guides/plugins) for local and global scopes,
-Authorities, Contracts, lockfiles, and publishing.
 
 ## Go API
 
-Compile a module, create an instance, and call an export:
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"os"
-
-	"github.com/wago-org/wago"
-)
-
-func main() {
-	wasmBytes, err := os.ReadFile("fib.wasm")
-	if err != nil {
-		panic(err)
-	}
-
-	rt := wago.NewRuntime()
-	defer rt.Close()
-
-	mod, err := rt.Compile(wasmBytes)
-	if err != nil {
-		panic(err)
-	}
-
-	ctx := context.Background()
-	inst, err := rt.Instantiate(ctx, mod)
-	if err != nil {
-		panic(err)
-	}
-	defer inst.Close()
-
-	out, err := inst.Call(ctx, "fib", wago.ValueI32(20))
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(out[0].I32()) // 6765
-}
-```
-
-Read [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for compilation,
-instances, typed values, memory, cancellation, and cleanup.
-
-### Host Functions
-
-Host functions use one reflection-free stack form under standard Go and TinyGo:
-
-```go
-mul := wago.HostFunc(func(_ wago.HostModule, params, results []uint64) {
-	a := wago.AsI32(params[0])
-	b := wago.AsI32(params[1])
-	results[0] = wago.I32(a * b)
-})
-
-inst, err := rt.Instantiate(context.Background(), mod, wago.WithImports(wago.Imports{
-	"host.mul": mul,
-}))
-```
-
-`HostModule` gives the function access to the calling instance and its linear
-memory.
-
-Read [Host functions](https://docs.wago.sh/guides/host-functions) for signatures,
-memory access, errors, and capability policy. More runnable programs live in
-[`examples/`](examples/README.md).
-
-## More Examples
-
 ```sh
-# Pick or update a runtime
-wago version install canary
-wago version switch
-wago update
-
-# Work with project plugins
-wago init
-wago add github.com/wago-org/wasi github.com/wago-org/workers
-wago plugin outdated
-wago plugin tree
-
-# Inspect and maintain Wago
-wago status
-wago config
-wago cache size
-wago cache clean
-
-# Use Wago from scripts or agents
-wago --no-input version install --canary \
-  --profile standard --build normal --use
-wago update --all --no-input --dry-run --json
-wago commands --json
+go get github.com/wago-org/wago
+go run github.com/wago-org/wago/examples/02-runtime-typed@latest
 ```
 
-Every interactive workflow has flags for one-shot use. Read the
-[configuration reference](https://docs.wago.sh/reference/configuration) or run
-`wago <command> --help` for the exact options.
-
-## Performance
-
-Wago compiles validated functions directly to native code in a single pass. The
-published benchmark suite compares Wago and wazero within each architecture on
-the same modules and machine.
-
-These numbers come from the published July 30, 2026 snapshot at Wago
-[`ff87ac3`](https://github.com/wago-org/wago/commit/ff87ac3a5868ebe074f06bf91ec61ac60c600924).
-Architectures were measured on different machines, so compare values across a
-row, not between the amd64 and arm64 tables.
-
-### amd64
-
-| Benchmark | Wago | wazero |
-| --- | ---: | ---: |
-| Compile `fib_rec` | 4 µs | 44.9 µs |
-| Instantiate `fib_rec` | 2.1 µs | 8.7 µs |
-| Host → Wasm call | 10.4 ns | 33.1 ns |
-| Wasm → host → Wasm | 148.5 ns | 440.4 ns |
-| Execute recursive fib | 370 µs | 538 µs |
-| JSON deserialize | 40 µs | 63.6 µs |
-| Execute ray tracer | 401 µs | 367 µs |
-| Compile esbuild, Go heap | 74.2 MB | 256.2 MB |
-
-### arm64
-
-| Benchmark | Wago | wazero |
-| --- | ---: | ---: |
-| Compile `fib_rec` | 3.3 µs | 25.6 µs |
-| Instantiate `fib_rec` | 550.4 ns | 8.9 µs |
-| Host → Wasm call | 18.7 ns | 23.9 ns |
-| Wasm → host → Wasm | 119.9 ns | 315.5 ns |
-| Execute recursive fib | 260 µs | 387 µs |
-| JSON deserialize | 40.4 µs | 44 µs |
-| Execute ray tracer | 275 µs | 255 µs |
-| Compile esbuild, Go heap | 82.2 MB | 262.7 MB |
-
-Go heap rows exclude guest linear memory, native code mappings, virtual-memory
-reservations, RSS, and PSS.
-
-### Whole-Process Startup
-
-Spawn-to-exit wall-clock latency, including process startup, compilation,
-instantiation, and execution:
-
-| Workload | Wago | Closest result |
-| --- | ---: | ---: |
-| json-as | 5.1 ms | wasmi 7.4 ms |
-| nbody | 30.9 ms | wasmtime 30.1 ms |
-| spectral norm | 3.7 ms | wazero 4.8 ms |
-| quicksort | 9.4 ms | wasmtime 10.8 ms |
-| ray tracer | 9.0 ms | wazero 8.8 ms |
-| SHA-256 | 2.4 ms | wazero 2.9 ms |
-
-See [wago.sh/#performance](https://wago.sh/#performance) for the full tables.
-The benchmark corpus and methodology are in [`bench/`](bench/README.md).
-
-Run them locally:
-
-```sh
-cd bench
-go test -bench . -benchmem
-```
+See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago).
 
 ## Support
 
-Wago supports the WebAssembly 1.0 core language and the implemented
-WebAssembly 2.0 release features, including multi-value, reference types, bulk
-memory, extended constant expressions, and SIMD. Native runtime paths, CI, and
-release assets cover Linux, macOS, and Windows on amd64 and arm64. Linux amd64
-is the primary performance target. Selected Core 3 families default on for
-linux/amd64, linux/arm64, and darwin/arm64; the complete set is available there
-with `--core 3`.
+Wago's native runtime supports Linux, macOS, and Windows on amd64 and arm64.
+Exact WebAssembly feature coverage varies by backend; see
+[FEATURES.md](FEATURES.md).
 
-Wago has no interpreter tier: supported modules execute as native machine code.
-Source modules can be compiled in the running process or serialized as native
-`.wago` artifacts for later loading. Every `wago compile` executable embeds that
-precompiled artifact and a runtime-only loader, so it contains no source compiler
-and performs no Wasm codegen at startup. `--tinygo` selects TinyGo for the final
-link. `.wago` code is specific to the target architecture and runtime
-configuration. Unsupported or disabled features fail during decode or validation.
+## Documentation
 
-Read the [Wago documentation](https://docs.wago.sh) for guides and reference
-material. The repository also keeps the detailed [feature matrix](FEATURES.md),
-[architecture notes](ARCHITECTURE.md), and [roadmap](ROADMAP.md).
+**Use:** [Run modules](https://docs.wago.sh/guides/run-a-module) ·
+[Embed in Go](https://docs.wago.sh/guides/embed-wago) ·
+[Host functions](https://docs.wago.sh/guides/host-functions) ·
+[Plugins](https://docs.wago.sh/guides/plugins)
 
-## Development
+**Reference:** [Examples](examples/README.md) · [Features](FEATURES.md) ·
+[Architecture](ARCHITECTURE.md) · [Benchmarks](bench/README.md) ·
+[Roadmap](ROADMAP.md)
 
-```sh
-make lint
-make test
-make test-guard
-```
-
-Run `make` to list build, test, conformance, benchmark, and release targets.
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+**Project:** [Contributing](CONTRIBUTING.md) ·
+[Issues](https://github.com/wago-org/wago/issues)
 
 ## License
 
-Wago is distributed under the [Apache License 2.0](LICENSE).
-
-## Contact
-
-- [Documentation](https://docs.wago.sh)
-- [Issues](https://github.com/wago-org/wago/issues)
-- [Plugin registry](https://plugins.wago.sh)
-- [Website](https://wago.sh)
+[Apache License 2.0](LICENSE)
