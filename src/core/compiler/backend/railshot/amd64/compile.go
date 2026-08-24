@@ -41,8 +41,11 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 
 // exactGCRefFactsEnabled propagates exact non-null reference facts through
 // locals inside conservative straight-line structured regions. It removes only
-// casts already proved by a successful prior cast or exact constructor.
-var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
+// casts already proved by a successful prior cast or exact constructor. It is
+// default-off after broad compile-resource measurement; WAGO_AMD64_GC_REF_FACTS=1
+// opts in, while the legacy NO variables remain rollback overrides.
+var exactGCRefFactsEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_GC_REF_FACTS")) &&
+	os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
 	os.Getenv("WAGO_AMD64_NO_EXACT_GC_REF_FACTS") != "1"
 
 var frameElideVoid = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE_VOID") != "1"

@@ -10,6 +10,7 @@
 - The clearest cost/benefit review target is `loop-precheck`: disabling it cuts full-compile allocation bytes by 6.38% on ARM64 and 6.09% on AMD64 and improves compile time by 5.36% / 3.05%, while broad execution changes only +0.21% / +0.11%; focused rows still lose as much as 3.72% / 2.88%, so this is a default/removal investigation, not an immediate deletion.
 - The cleanest low-consequence implementation candidates are ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. Each needs focused code-size and hit-count evidence before removal.
 - Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off; AMD64 also defaults `call-next-use`, `affine-lea`, `tee-spill-elide`, and `commute-self-update` off. The already-off `inline-loop-callees` override and its unreachable backend paths were removed.
+- Follow-up catalog audit: 14 formerly environment-only families are now public flags. Paired screening keeps the high-value SIMD/SWAR and focused register/code-selection wins on, defaults `fcmp-fuse` off on both architectures, and defaults AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in.
 - In a fresh combined-profile rerun, the new defaults changed execution by **+0.14% ARM64 / -0.01% AMD64**, while improving compile time by **8.73% / 7.99%**, compile allocation bytes by **6.38% / 6.09%**, and compile allocation counts by **2.93% / 4.37%**.
 - Percentages below are **disabled versus enabled**. Positive execution time means disabling made execution slower (the optimization helped); negative means disabling made execution faster.
 - This is a broad screening matrix, not automatic deletion authority. Correctness/safety responsibilities, native-code size, static hit counts, and focused reruns still gate removal.
@@ -102,9 +103,41 @@ and disabling `gc-ref-facts` suppresses its known-bounds and load-forwarding
 consumers. Small instruction-encoding choices remain internal instead of
 expanding the catalog with every peephole substage.
 
-These families need their own paired ARM64/AMD64 matrix before any new default
-or deletion decision. The measurements below predate their registration and
-must not be used to infer their cost or benefit.
+The newly registered families were then screened at commit `b2f30d71026d` with
+the same four-sample ABBA procedure. The complete detailed captures remain under
+`bench/results/*-new-flags`; the decision table is:
+
+| Architecture | Optimization | Exec off/on | Compile off/on | Compile B off/on | Worst execution slowdown | Decision |
+|---|---|---:|---:|---:|---:|---|
+| ARM64 | `simd-superopt` | +2.16% | +1.44% | -0.00% | +80.02% | keep on |
+| ARM64 | `swar-idioms` | +1.78% | +0.87% | -0.00% | +29.61% | keep on |
+| ARM64 | `interval-region-pins` | -0.11% | -1.31% | +0.00% | +6.72% | keep on |
+| ARM64 | `fcmp-fuse` | -0.21% | -0.92% | +0.00% | +2.46% | default off |
+| ARM64 | `magic-div` | +0.41% | -0.79% | -0.11% | +5.03% | keep on |
+| ARM64 | `shared-trap-body` | -0.31% | +0.74% | +0.00% | +0.86% | keep; size-only |
+| ARM64 | `shared-adapters` | -0.16% | +0.25% | -0.00% | +1.12% | keep; size-only |
+| ARM64 | `zero-branch` | +0.26% | +0.14% | -0.00% | +5.97% | keep on |
+| ARM64 | `mul-add-fuse` | +0.32% | +0.51% | +0.01% | +4.45% | keep on |
+| ARM64 | `entry-init-elision` | -0.12% | +0.55% | +0.01% | +3.50% | keep on |
+| ARM64 | `v128-direct-results` | +0.38% | -0.50% | -0.00% | +21.73% | keep on |
+| AMD64 | `simd-superopt` | +0.13% | +0.77% | -0.00% | +1.34% | keep on |
+| AMD64 | `swar-idioms` | +1.41% | +0.16% | -0.00% | +27.77% | keep on |
+| AMD64 | `interval-region-pins` | +0.45% | +0.47% | -0.04% | +10.21% | keep on |
+| AMD64 | `fcmp-fuse` | +0.07% | -0.09% | -0.00% | +1.33% | default off |
+| AMD64 | `magic-div` | -0.14% | -0.16% | -0.11% | +0.77% | keep shared default; ARM64 wins |
+| AMD64 | `shared-trap-body` | +0.02% | +0.02% | +0.00% | +0.68% | keep; size-only |
+| AMD64 | `shared-adapters` | +0.10% | -0.32% | +0.00% | +1.11% | keep; size-only |
+| AMD64 | `dead-gc-new` | -0.11% | +0.22% | -0.00% | +0.77% | keep pending GC workload |
+| AMD64 | `gc-ref-facts` | -0.02% | **-4.10%** | **-3.83%** | +0.81% | default off; GC opt-in |
+| AMD64 | `gc-native-alloc` | +0.05% | +0.11% | -0.00% | +0.65% | keep pending GC workload |
+
+`gc-ref-facts=false` also reduces compile allocations by **11.66%** in this
+corpus. That broad footprint result is stronger than its flat non-GC execution
+screen, but it does not erase the earlier GC-specific benefit: the documented
+MoonBit WasmGC run improved from 191.401 to 188.752 us/op with facts enabled.
+The family therefore remains available as an explicit workload choice rather
+than being deleted. Size-only trap/adapter sharing is retained because this
+matrix does not measure generated native-code bytes.
 
 ## Environment
 
