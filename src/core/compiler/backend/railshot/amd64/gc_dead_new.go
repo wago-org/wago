@@ -18,7 +18,7 @@ const (
 // operand. Nested reservations are limited to payloads whose omitted writes
 // cannot remove transitive roots before a later enclosing allocation.
 func (f *fn) checkedDeadGCConstructorUse(r *wasm.Reader, nestedPayloadSafe bool) checkedDeadGCUse {
-	if !nativeGCOptimizationsAvailable || !f.opt(optDeadGCNew) {
+	if !f.opt(optDeadGCNew) {
 		return checkedDeadGCNone
 	}
 	if op, ok := r.Peek(); ok && op == 0x1a {

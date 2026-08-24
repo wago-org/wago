@@ -126,7 +126,6 @@ func TestInlineRejectsRecursiveArm64(t *testing.T) {
 }
 
 func TestCompactInlineRequiresNativeByteProofArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
@@ -147,7 +146,6 @@ func TestCompactInlineRequiresNativeByteProofArm64(t *testing.T) {
 }
 
 func TestCompactInlinePrunesTransitiveOmissionArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	m := modFuncs(t,
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x10, 0x02, 0x0b}},
@@ -170,7 +168,6 @@ func TestCompactInlinePrunesTransitiveOmissionArm64(t *testing.T) {
 }
 
 func TestCompactInlineRetainsNestedCallPlanningArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	m := modFuncs(t,
 		// Keep arg 0 live while the single-use helper returns its result.
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x05, 0x10, 0x01, 0x6a, 0x0b}},
@@ -193,7 +190,6 @@ func TestCompactInlineRetainsNestedCallPlanningArm64(t *testing.T) {
 }
 
 func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
@@ -276,7 +272,6 @@ func TestFinalizeOmittedInlineEntriesRejectsResidualCallArm64(t *testing.T) {
 }
 
 func TestInlineDeadBodyProofRejectsTailAndLoopReferencesArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	m := modFuncs(t,
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},

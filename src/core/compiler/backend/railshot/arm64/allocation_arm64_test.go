@@ -208,7 +208,6 @@ func brTableComputedLabelsArm64(t testing.TB, labels []uint32, def uint32) *wasm
 }
 
 func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
 	m := brTableComputedLabelsArm64(t, labels, 4)
 	var stats ModuleStats
@@ -296,7 +295,6 @@ func TestExecBrTableComputedIndexArm64(t *testing.T) {
 }
 
 func TestExecBrTableCompactNativeUsesSmallerLinearFormArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	m := brTableComputedIndexArm64(t)
 	var balancedStats, sizeStats ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &balancedStats}); err != nil {

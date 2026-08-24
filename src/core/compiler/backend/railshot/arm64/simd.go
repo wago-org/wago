@@ -1104,7 +1104,7 @@ func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
 }
 
 func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
-	if !producerNeedlesAvailable || !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 83) {
+	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 83) {
 		return false
 	}
 	b := f.popValue()
@@ -1149,7 +1149,7 @@ func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
 // it to NEON BIC. Sources may alias the chosen destination: the three-register
 // instruction reads both before writing it.
 func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
-	if !producerNeedlesAvailable || !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 78) {
+	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 78) {
 		return false
 	}
 	b := f.popValue()
@@ -1254,7 +1254,7 @@ func (f *fn) i8x16Bitmask() {
 // when only its zero-ness is observed: shifting each byte's sign bit into bit 0
 // and reducing with UMAXV produces the final 0/1 boolean directly.
 func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
-	if !producerNeedlesAvailable || !f.opt(optSIMDSuperopt) {
+	if !f.opt(optSIMDSuperopt) {
 		return false
 	}
 	save := r.Offset()
@@ -1295,7 +1295,7 @@ func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
 // bits to 0/1 and sum all sixteen lanes directly instead of materializing a
 // scalar bitmask only to feed it back through the scalar popcnt sequence.
 func (f *fn) tryI8x16BitmaskPopcnt(r *wasm.Reader) bool {
-	if !producerNeedlesAvailable || !f.opt(optSIMDSuperopt) {
+	if !f.opt(optSIMDSuperopt) {
 		return false
 	}
 	save := r.Offset()

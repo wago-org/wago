@@ -3,7 +3,6 @@ package settings
 import (
 	"errors"
 	"fmt"
-	"runtime"
 
 	"github.com/wago-org/wago"
 	internalparallel "github.com/wago-org/wago/cli/internal/parallel"
@@ -87,19 +86,9 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 			}
 		}
 	}
-	var buildAvailable map[string]bool
-	if request.Arch == runtime.GOARCH {
-		buildAvailable = make(map[string]bool)
-		for _, info := range wago.NewRuntimeConfig().OptimizationInfos() {
-			buildAvailable[info.Name] = info.Available
-		}
-	}
 	for name, enabled := range request.Optimizations {
 		if _, ok := supported[name]; !ok {
 			return CompilationSelection{}, fmt.Errorf("optimization %q is unavailable on %s", name, request.Arch)
-		}
-		if enabled && buildAvailable != nil && !buildAvailable[name] {
-			return CompilationSelection{}, fmt.Errorf("optimization %q is unavailable in this build", name)
 		}
 		optimizations[name] = enabled
 	}
@@ -120,18 +109,8 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 	config := wago.NewRuntimeConfig().
 		WithDeferBoundsChecks(selection.DeferredBoundsChecking).
-		WithFunctionWorkers(selection.FunctionWorkers)
-	available := make(map[string]bool)
-	for _, info := range config.OptimizationInfos() {
-		available[info.Name] = info.Available
-	}
-	filtered := make(map[string]bool, len(selection.Optimizations))
-	for name, enabled := range selection.Optimizations {
-		if allowed, known := available[name]; known && (allowed || !enabled) {
-			filtered[name] = enabled
-		}
-	}
-	config = config.WithOptimizations(filtered)
+		WithFunctionWorkers(selection.FunctionWorkers).
+		WithOptimizations(selection.Optimizations)
 	switch selection.Core {
 	case 2:
 		config = config.WithCoreFeatures(wago.CoreFeaturesV2)

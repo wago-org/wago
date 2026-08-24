@@ -1123,9 +1123,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
-	selection = applyCompiledCapabilities(selection)
 	policy := shared.DefaultCodegenPolicy(selection)
-	if nativeCompactionAvailable && !nativeCompactionDisabled && opts.CompactNative {
+	if !nativeCompactionDisabled && opts.CompactNative {
 		policy = shared.CompactCodegenPolicy(selection)
 	}
 	guardMode := opts.ElideBoundsChecks
@@ -2352,7 +2351,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
-	if nativeGCOptimizationsAvailable && policy.EnabledOption(optGCRefFacts) {
+	if policy.EnabledOption(optGCRefFacts) {
 		if cap(f.localGCRefFacts) < nLocals {
 			f.localGCRefFacts = make([]shared.GCRefFact, nLocals)
 		} else {

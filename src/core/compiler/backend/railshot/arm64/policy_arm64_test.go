@@ -119,12 +119,6 @@ func TestNativeCompactionPolicyAndRollbackArm64(t *testing.T) {
 	if ordinary.compactNative() {
 		t.Fatal("ordinary policy unexpectedly enabled native compaction")
 	}
-	if !nativeCompactionAvailable {
-		if compact.compactNative() {
-			t.Fatal("lean build enabled unavailable native compaction")
-		}
-		return
-	}
 	if !compact.compactNative() {
 		t.Fatal("compact policy did not enable native compaction")
 	}
@@ -176,7 +170,6 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 }
 
 func TestCompactLayoutSerialParallelParityArm64(t *testing.T) {
-	requireNativeCompaction(t)
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},

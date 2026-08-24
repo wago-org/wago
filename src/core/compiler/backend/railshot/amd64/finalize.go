@@ -12,24 +12,19 @@ import (
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
-const nativeCompactionAvailable = shared.CompiledCapabilities&shared.CapabilityNativeCompaction != 0
-
 // WAGO_FINALIZE=0 retains the pre-finalizer path as a rollout oracle. The
 // identity finalizer changes no bytes; it establishes one owner for every
 // function-relative metadata offset before AMD64 relaxation can shrink code.
-var nativeFinalizerEnabled = nativeCompactionAvailable && os.Getenv("WAGO_FINALIZE") != "0"
+var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 
 // WAGO_COMPACT=1 forces bounded shrinking for measurement and rollout checks.
 // CompileOptions.CompactNative selects the same path for an individual
 // compilation; WAGO_COMPACT=0 disables it globally as a rollback oracle.
-var nativeCompactionEnabled = nativeCompactionAvailable && os.Getenv("WAGO_COMPACT") == "1"
-var nativeCompactionDisabled = nativeCompactionAvailable && os.Getenv("WAGO_COMPACT") == "0"
-var loopCompactionEnabled = nativeCompactionAvailable && os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
-var jumpTableCompactionEnabled = nativeCompactionAvailable && os.Getenv("WAGO_AMD64_NO_JUMP_TABLE_COMPACTION") != "1"
+var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
+var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
+var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
+var jumpTableCompactionEnabled = os.Getenv("WAGO_AMD64_NO_JUMP_TABLE_COMPACTION") != "1"
 var jumpTableBranchRelaxationRoundsOverride = func() int {
-	if !nativeCompactionAvailable {
-		return 0
-	}
 	switch os.Getenv("WAGO_AMD64_JUMP_TABLE_RELAX") {
 	case "0":
 		return 0
@@ -46,9 +41,6 @@ var jumpTableBranchRelaxationRoundsOverride = func() int {
 	}
 }()
 var jumpTableBranchRelaxationBudgetOverride = func() int {
-	if !nativeCompactionAvailable {
-		return 0
-	}
 	switch os.Getenv("WAGO_AMD64_JUMP_TABLE_RELAX_BUDGET") {
 	case "32":
 		return 32
@@ -63,18 +55,12 @@ var jumpTableBranchRelaxationBudgetOverride = func() int {
 	}
 }()
 var loopCompactionByteLimitOverride = func() int {
-	if !nativeCompactionAvailable {
-		return 0
-	}
 	if os.Getenv("WAGO_AMD64_LOOP_COMPACTION_LIMIT") == "16K" {
 		return 16 << 10
 	}
 	return 0
 }()
 var finalizerRel32SiteLimitOverride = func() int {
-	if !nativeCompactionAvailable {
-		return 0
-	}
 	switch os.Getenv("WAGO_AMD64_FINALIZER_REL32_SITES") {
 	case "256":
 		return 256
@@ -90,14 +76,11 @@ var finalizerRel32SiteLimitOverride = func() int {
 		return 0
 	}
 }()
-var partialHoleCompactionEnabled = nativeCompactionAvailable && os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
+var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
 
 // WAGO_FINALIZER_DELETIONS selects an older bounded compaction policy for
 // exact rollout comparisons. It can only lower the immutable policy limit.
 var finalizerDeletionLimitOverride = func() int {
-	if !nativeCompactionAvailable {
-		return 0
-	}
 	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
 	case "8":
 		return 8
@@ -117,7 +100,7 @@ var finalizerDeletionLimitOverride = func() int {
 }()
 
 func compactNativePolicy(policy CodegenPolicy) bool {
-	return nativeCompactionAvailable && !nativeCompactionDisabled && (nativeCompactionEnabled || policy.CompactNative)
+	return !nativeCompactionDisabled && (nativeCompactionEnabled || policy.CompactNative)
 }
 
 func (f *fn) compactNative() bool { return compactNativePolicy(f.policy) }
@@ -146,9 +129,6 @@ const maxAMD64LoopCompactionBytes = 64 << 10
 const maxAMD64LocalRefSites = shared.MaxWideOffsetMapDeletions
 
 func finalizerRel32Limit(policy CodegenPolicy) int {
-	if !nativeCompactionAvailable {
-		return 0
-	}
 	limit := int(policy.MaxRel32Sites)
 	if limit == 0 {
 		limit = 256
@@ -191,7 +171,7 @@ func (f *fn) jumpTableBranchRelaxationLimit() int {
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
-	if !nativeCompactionAvailable || !nativeFinalizerEnabled {
+	if !nativeFinalizerEnabled {
 		return internalOff, nil
 	}
 	oldLen := len(f.a.B)

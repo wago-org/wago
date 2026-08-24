@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && arm64 && (!wago_lean || wago_railshot_needles || wago_railshot_full)
+//go:build (linux || darwin) && arm64
 
 package arm64
 
@@ -144,9 +144,6 @@ func TestSWARMaskBranchFusionArm64(t *testing.T) {
 }
 
 func TestSingleBitMaskBranchCompactionArm64(t *testing.T) {
-	if !nativeCompactionAvailable {
-		t.Skip("native compaction is not present in this build")
-	}
 	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, singleBitMaskBranchBodyArm64())
 	before := singleBitBranchEnabled
 	t.Cleanup(func() { singleBitBranchEnabled = before })

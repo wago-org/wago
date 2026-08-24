@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
@@ -268,7 +267,7 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 		infos, capturedSnapshot := railshotOptKnobSnapshot()
 		values = make(map[string]bool, len(infos))
 		for _, info := range infos {
-			values[info.Name] = info.On && optimizationAvailableInBuild(info.Name)
+			values[info.Name] = info.On
 		}
 		defaultOptimizationCache.snapshot = capturedSnapshot
 		defaultOptimizationCache.values = values
@@ -466,7 +465,6 @@ func (c *RuntimeConfig) OptimizationInfos() []OptKnobInfo {
 		if enabled, ok := c.optimizations[infos[index].Name]; ok {
 			infos[index].On = enabled
 		}
-		infos[index].Available = optimizationAvailableInBuild(infos[index].Name)
 	}
 	return infos
 }
@@ -680,14 +678,9 @@ func (c *RuntimeConfig) Validate() error {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
 	if !c.trustedOptimizations {
-		for name, enabled := range c.optimizations {
+		for name := range c.optimizations {
 			if !optimization.Exists(runtime.GOARCH, name) {
 				return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
-			}
-			if enabled {
-				if available, tag := optimizationBuildAvailability(name); !available {
-					return fmt.Errorf("wago: %s optimization %q requires -tags %s", runtime.GOARCH, name, tag)
-				}
 			}
 		}
 	}
@@ -710,25 +703,4 @@ func (c *RuntimeConfig) Validate() error {
 		return &GuardPageUnavailableError{}
 	}
 	return nil
-}
-
-func optimizationAvailableInBuild(name string) bool {
-	available, _ := optimizationBuildAvailability(name)
-	return available
-}
-
-func optimizationBuildAvailability(name string) (bool, string) {
-	var capability shared.Capabilities
-	var tag string
-	switch name {
-	case "shared-trap-body", "shared-adapters", "local-slot-order":
-		capability, tag = shared.CapabilityNativeCompaction, "wago_railshot_compact or wago_railshot_full"
-	case "simd-superopt", "swar-idioms":
-		capability, tag = shared.CapabilityProducerNeedles, "wago_railshot_needles or wago_railshot_full"
-	case "dead-gc-new", "gc-ref-facts", "gc-native-alloc":
-		capability, tag = shared.CapabilityNativeGCOptimizations, "wago_railshot_gcopt or wago_railshot_full"
-	default:
-		return true, ""
-	}
-	return shared.CompiledCapabilities.Has(capability), tag
 }

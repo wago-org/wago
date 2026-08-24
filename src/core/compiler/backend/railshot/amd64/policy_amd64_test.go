@@ -122,15 +122,6 @@ func TestNativeCompactionPolicyAndRollbackAMD64(t *testing.T) {
 	if compactNativePolicy(ordinary) {
 		t.Fatal("ordinary policy unexpectedly enabled native compaction")
 	}
-	if !nativeCompactionAvailable {
-		if compactNativePolicy(compact) {
-			t.Fatal("lean build enabled unavailable native compaction")
-		}
-		if got := finalizerRel32Limit(compact); got != 0 {
-			t.Fatalf("lean rel32 inventory limit = %d, want 0", got)
-		}
-		return
-	}
 	if !compactNativePolicy(compact) {
 		t.Fatal("compact policy did not enable native compaction")
 	}

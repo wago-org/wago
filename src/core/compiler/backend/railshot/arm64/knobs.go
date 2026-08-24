@@ -111,10 +111,6 @@ type KnobInfo = optimization.Info
 type OptimizationSnapshot = optimization.Snapshot
 type CodegenPolicy = shared.CodegenPolicy
 
-const (
-	producerNeedlesAvailable = shared.CompiledCapabilities&shared.CapabilityProducerNeedles != 0
-)
-
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
 
 func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) { return optimizationBindings.Snapshot() }
@@ -123,22 +119,10 @@ func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }
 
-func applyCompiledCapabilities(selection optimization.Selection) optimization.Selection {
-	if !shared.CompiledCapabilities.Has(shared.CapabilityNativeCompaction) {
-		selection = selection.WithOption(optSharedTrapBody, false)
-		selection = selection.WithOption(optSharedAdapters, false)
-	}
-	if !shared.CompiledCapabilities.Has(shared.CapabilityProducerNeedles) {
-		selection = selection.WithOption(optSIMDSuperopt, false)
-		selection = selection.WithOption(optSWARIdioms, false)
-	}
-	return selection
-}
-
 func currentCodegenPolicy() CodegenPolicy {
 	selection, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
 	if err != nil {
 		panic(err)
 	}
-	return shared.DefaultCodegenPolicy(applyCompiledCapabilities(selection))
+	return shared.DefaultCodegenPolicy(selection)
 }

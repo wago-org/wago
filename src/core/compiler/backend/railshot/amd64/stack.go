@@ -353,7 +353,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.stats.peep("same-operand")
 		return
 	}
-	if producerNeedlesAvailable && op == opOr && typ == mtI64 && f.opt(optSWARIdioms) {
+	if op == opOr && typ == mtI64 && f.opt(optSWARIdioms) {
 		if source := matchSWARPack4(left, right); source != nil {
 			node := f.s.alloc()
 			node.kind, node.op, node.typ = ekDeferred, opSWARPack4, mtI64

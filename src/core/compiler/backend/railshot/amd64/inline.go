@@ -576,7 +576,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 				}
 			}
 			typeArena = make([]machineType, 0, typeCount)
-			if nativeGCOptimizationsAvailable && policy.EnabledOption(optGCRefFacts) {
+			if policy.EnabledOption(optGCRefFacts) {
 				zeroFactArena = make([]shared.GCRefFact, 0, typeCount)
 			}
 		}
@@ -584,14 +584,14 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		factStart := len(zeroFactArena)
 		for _, p := range ft.Params {
 			typeArena = append(typeArena, mtOf(p))
-			if nativeGCOptimizationsAvailable && policy.EnabledOption(optGCRefFacts) {
+			if policy.EnabledOption(optGCRefFacts) {
 				zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, p))
 			}
 		}
 		for _, run := range m.Code[i].Locals.Runs {
 			for k := 0; k < int(run.Count); k++ {
 				typeArena = append(typeArena, mtOf(run.Type))
-				if nativeGCOptimizationsAvailable && policy.EnabledOption(optGCRefFacts) {
+				if policy.EnabledOption(optGCRefFacts) {
 					zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, run.Type))
 				}
 			}
@@ -604,7 +604,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		resultEnd := len(typeArena)
 		lt := typeArena[localStart:localEnd:localEnd]
 		var zf []shared.GCRefFact
-		if nativeGCOptimizationsAvailable && policy.EnabledOption(optGCRefFacts) {
+		if policy.EnabledOption(optGCRefFacts) {
 			zf = zeroFactArena[factStart:factEnd:factEnd]
 		}
 		rt := typeArena[localEnd:resultEnd:resultEnd]

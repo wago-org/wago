@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (!wago_lean || wago_railshot_compact || wago_railshot_full)
+//go:build linux && amd64
 
 package amd64
 

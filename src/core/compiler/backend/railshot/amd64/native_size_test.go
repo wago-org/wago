@@ -1,4 +1,4 @@
-//go:build amd64 && (!wago_lean || wago_railshot_compact || wago_railshot_full)
+//go:build amd64
 
 package amd64
 

@@ -28,7 +28,6 @@ type Info struct {
 	On           bool   `json:"on"`
 	Default      bool   `json:"default"`
 	Experimental bool   `json:"experimental"`
-	Available    bool   `json:"available"`
 }
 
 // BindingSpec associates a registered optimization with the boolean currently
@@ -63,9 +62,6 @@ type Snapshot struct {
 	revision uint64
 }
 
-// Valid reports whether the snapshot was minted by a Bindings owner.
-func (s Snapshot) Valid() bool { return s.bindings != nil }
-
 // Selection is one immutable, architecture-specific optimization selection.
 // The bit index follows the owning Bindings' stable catalog order. It is safe to
 // copy into a compilation policy and read concurrently for the compilation's
@@ -97,22 +93,6 @@ func (s Selection) Enabled(name string) bool {
 // from another architecture is rejected just like an unknown string name.
 func (s Selection) EnabledOption(option Option) bool {
 	return s.bindings != nil && s.bindings == option.bindings && s.bits&option.mask != 0
-}
-
-// WithOption returns a copy with option selected on or off. An option from a
-// different architecture is ignored, matching EnabledOption's fail-closed
-// behavior. Backends use this after resolution to remove implementations that
-// are not compiled into the current product.
-func (s Selection) WithOption(option Option, on bool) Selection {
-	if s.bindings == nil || s.bindings != option.bindings {
-		return s
-	}
-	if on {
-		s.bits |= option.mask
-	} else {
-		s.bits &^= option.mask
-	}
-	return s
 }
 
 // Valid reports whether the selection was resolved by a Bindings owner.
@@ -562,6 +542,6 @@ func clone(definition Definition) Definition {
 func info(definition Definition, on bool) Info {
 	return Info{
 		Name: definition.Name, Label: definition.Label, Desc: definition.Description,
-		On: on, Default: definition.Default, Experimental: definition.Experimental, Available: true,
+		On: on, Default: definition.Default, Experimental: definition.Experimental,
 	}
 }
