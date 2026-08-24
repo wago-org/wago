@@ -187,28 +187,13 @@ func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 // pinned locals clobbered (lsMem) — the WARP save-before-call step. No reload
 // follows; the next read recovers lazily. Callers must emit this before a call.
 func (f *fn) spillLocalsForCall() {
-	f.spillLocalsForClobbers(^regMask(0), ^regMask(0))
-}
-
-// spillLocalsForClobbers applies the call-spill state transition only to locals
-// assigned to registers in the matching GP or FP clobber mask. Fixed-register
-// sequences that do not make a native call use this to preserve their actual
-// scratch bank without evicting unrelated local pins.
-func (f *fn) spillLocalsForClobbers(gpClobbers, fpClobbers regMask) {
 	for x := 0; x < f.nLocals; x++ {
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
 			continue
 		}
-		if isFloat {
-			if !fpClobbers.has(reg) {
-				continue
-			}
-		} else if !gpClobbers.has(reg) {
-			continue
-		}
 		if !f.usesCalls {
-			f.storeLocalReg(x, reg, isFloat) // old model: store selected pins; reloaded after the clobber
+			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
 			continue
 		}
 		if f.locals[x].state == lsConstZero {
@@ -218,33 +203,20 @@ func (f *fn) spillLocalsForClobbers(gpClobbers, fpClobbers regMask) {
 			f.storeLocalReg(x, reg, isFloat)
 			f.stats.peep("call-local-store")
 		}
-		f.locals[x].state = lsMem // the fixed sequence or callee clobbers the register
+		f.locals[x].state = lsMem // callee clobbers the register
 	}
 }
 
 // reloadLocalsForCall restores every pinned local after a call — only for the
 // non-STACK_REG model (usesCalls false); STACK_REG reloads lazily on read.
 func (f *fn) reloadLocalsForCall() {
-	f.reloadLocalsForClobbers(^regMask(0), ^regMask(0))
-}
-
-func (f *fn) reloadLocalsForClobbers(gpClobbers, fpClobbers regMask) {
 	if f.usesCalls {
 		return
 	}
 	for x := 0; x < f.nLocals; x++ {
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
-			continue
+		if reg, isFloat, ok := f.pinReg(x); ok {
+			f.loadLocalReg(x, reg, isFloat)
 		}
-		if isFloat {
-			if !fpClobbers.has(reg) {
-				continue
-			}
-		} else if !gpClobbers.has(reg) {
-			continue
-		}
-		f.loadLocalReg(x, reg, isFloat)
 	}
 }
 
