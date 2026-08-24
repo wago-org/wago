@@ -82,6 +82,27 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 	}
 }
 
+func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
+	names := []string{
+		"simd-superopt", "swar-idioms", "interval-region-pins", "fcmp-fuse", "magic-div",
+		"shared-trap-body", "shared-adapters", "dead-gc-new", "gc-ref-facts", "gc-native-alloc",
+	}
+	overrides := make(map[string]bool, len(names))
+	for _, name := range names {
+		overrides[name] = false
+	}
+	selection, err := optimizationBindings.ResolveSnapshot(overrides, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
+	for _, name := range names {
+		if policy.EnabledOption(optimizationBindings.Option(name)) {
+			t.Errorf("per-compile policy did not disable %s", name)
+		}
+	}
+}
+
 func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLimitOverride := finalizerDeletionLimitOverride

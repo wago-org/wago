@@ -175,12 +175,12 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	}
 	fr.baseGCRoots = gcRootFlags(roots[:fr.height])
 	fr.paramGCRoots = gcRootFlags(roots[fr.height : fr.height+fr.paramN])
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	fr.baseGCFacts = make([]shared.GCRefFact, fr.height)
 	for i, root := range roots[:fr.height] {
-		fact := gcRefFact(root)
+		fact := f.gcRefFact(root)
 		if fact.Freshness() == shared.GCFreshUnpublished {
 			fact = fact.WithFreshness(shared.GCPublished)
 		}
@@ -193,7 +193,7 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 		return
 	}
 	for i, root := range roots[fr.height : fr.height+fr.paramN] {
-		fact := gcRefFact(root)
+		fact := f.gcRefFact(root)
 		if fact.Freshness() == shared.GCFreshUnpublished {
 			fact = fact.WithFreshness(shared.GCPublished)
 		}
@@ -202,7 +202,7 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 }
 
 func (f *fn) installLoopParameterGCRefFacts(paramN int, facts []shared.GCRefFact) {
-	if !exactGCRefFactsEnabled || paramN == 0 {
+	if !f.gcRefFactsEnabled() || paramN == 0 {
 		return
 	}
 	roots := f.rootsBottomToTop()
@@ -236,7 +236,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	for i, root := range resultRoots {
 		fr.resultGCRoots[i] = fr.resultGCRoots[i] || (root.kind == ekValue && root.st.gcRoot)
 	}
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	if len(fr.resultGCFacts) < n {
@@ -244,13 +244,13 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	}
 	if !fr.resultGCFactsSet {
 		for i, root := range resultRoots {
-			fr.resultGCFacts[i] = gcRefFact(root)
+			fr.resultGCFacts[i] = f.gcRefFact(root)
 		}
 		fr.resultGCFactsSet = true
 		return
 	}
 	for i, root := range resultRoots {
-		fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], gcRefFact(root))
+		fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], f.gcRefFact(root))
 	}
 }
 
@@ -262,7 +262,7 @@ func frameGCRootFlags(base, suffix []bool) []bool {
 }
 
 func (f *fn) frameGCFacts(base, suffix []shared.GCRefFact) []shared.GCRefFact {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return nil
 	}
 	facts := f.tmpGCFacts2[:0]
@@ -303,7 +303,7 @@ func (f *fn) flush() {
 	gcFacts := f.tmpGCFacts[:0]
 	for _, root := range roots {
 		gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
-		gcFacts = append(gcFacts, gcRefFact(root))
+		gcFacts = append(gcFacts, f.gcRefFact(root))
 	}
 	f.tmpGCRoots = gcRoots
 	f.tmpGCFacts = gcFacts
@@ -426,7 +426,7 @@ func (f *fn) setDepth(l int) {
 	for _, root := range roots[:l] {
 		types = append(types, root.st.typ)
 		gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
-		gcFacts = append(gcFacts, gcRefFact(root))
+		gcFacts = append(gcFacts, f.gcRefFact(root))
 	}
 	f.tmpTypes = types
 	f.tmpGCRoots = gcRoots
@@ -548,7 +548,7 @@ func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, paramFact
 	if len(ft.Results) > 0 {
 		r0 = mtOf(ft.Results[0])
 	}
-	if exactGCRefFactsEnabled && len(ft.Params) != 0 {
+	if f.gcRefFactsEnabled() && len(ft.Params) != 0 {
 		paramFacts = make([]shared.GCRefFact, len(ft.Params))
 		for i, typ := range ft.Params {
 			paramFacts[i] = f.declaredGCRefFact(typ)
@@ -1189,7 +1189,7 @@ func (f *fn) opEnd() error {
 				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
 			}
 			fr.resultGCRoots[i] = fr.resultGCRoots[i] || fr.paramGCRoots[i]
-			if exactGCRefFactsEnabled {
+			if f.gcRefFactsEnabled() {
 				if len(fr.resultGCFacts) < fr.resultN {
 					fr.resultGCFacts = append(fr.resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(fr.resultGCFacts))...)
 				}
@@ -1200,7 +1200,7 @@ func (f *fn) opEnd() error {
 				}
 			}
 		}
-		if exactGCRefFactsEnabled && fr.resultN != 0 {
+		if f.gcRefFactsEnabled() && fr.resultN != 0 {
 			fr.resultGCFactsSet = true
 		}
 		// The cond-false edge arrives in the header-snapshot state; if then-side
@@ -1380,7 +1380,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if fi < 0 {
 		return errBadLabel
 	}
-	fact := gcRefFact(f.s.back())
+	fact := f.gcRefFact(f.s.back())
 	if fact.Nullability() == shared.GCKnownNonNull {
 		f.stats.peep("gc-null-check-elide")
 		return nil
@@ -1413,7 +1413,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	fallthroughRef := f.allocReg(0)
 	f.a.Load64(fallthroughRef, RSP, f.spillOff(refSlot))
 	result := f.pushReg(fallthroughRef, mtI64)
-	markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
+	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
 	return nil
 }
 
@@ -1426,7 +1426,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	if fi < 0 {
 		return errBadLabel
 	}
-	fact := gcRefFact(f.s.back())
+	fact := f.gcRefFact(f.s.back())
 	if fact.Nullability() == shared.GCKnownNull {
 		f.dropValue()
 		f.stats.peep("gc-null-check-elide")
@@ -1440,7 +1440,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	}
 	ref := f.materialize(f.popValue())
 	result := f.pushReg(ref, mtI64)
-	markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
+	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
 	fr := &f.ctrl[fi]
 	f.mergeGCRefFactsInto(&fr.branchGCFacts)
 	f.convergeBranchLocals(fr)

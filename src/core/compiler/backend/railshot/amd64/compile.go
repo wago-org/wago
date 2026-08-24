@@ -1270,7 +1270,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
 		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-			if sharedAdaptersEnabled {
+			if policy.EnabledOption(optSharedAdapters) {
 				adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
 			} else {
 				adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
@@ -1354,7 +1354,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				}
 				literalOffsets[i+1] = uint32(len(literalWords))
 			}
-			if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 				fnCode = trapBodyCluster.shareFunction(hostAdapters[i], codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfoAMD64(), st)
 			}
 			if !codeBuffer.CommitTail(fnCode) {
@@ -1517,12 +1517,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalStart: literalStart, literalEnd: len(ws.literals)}
 				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-					if sharedAdaptersEnabled {
+					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
-					if moduleSharedTrapBodyEnabled {
+					if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
 					}
 				}
@@ -1548,7 +1548,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
 	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-		if sharedAdaptersEnabled {
+		if policy.EnabledOption(optSharedAdapters) {
 			adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
 		} else {
 			adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
@@ -1588,7 +1588,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			literalOffsets[i+1] = uint32(len(literalWords))
 		}
 		fnCode := states[r.worker].arena[r.start:r.end]
-		if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]
@@ -1911,7 +1911,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		}
 		allHints[i].nLocals = count
 		totalLocals += count
-		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), count, moduleEH) {
+		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), count, moduleEH) {
 			if count > int(^uint(0)>>1)-intervalLocals {
 				return nil, nil, fmt.Errorf("function hint interval locals overflow")
 			}
@@ -1960,7 +1960,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
-		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), nLocals, moduleEH) {
+		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), nLocals, moduleEH) {
 			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
 			intervalAt += nLocals
 		}
@@ -2365,7 +2365,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
-	if exactGCRefFactsEnabled {
+	if policy.EnabledOption(optGCRefFacts) {
 		if cap(f.localGCRefFacts) < nLocals {
 			f.localGCRefFacts = make([]shared.GCRefFact, nLocals)
 		} else {

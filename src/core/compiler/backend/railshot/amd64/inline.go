@@ -576,7 +576,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 				}
 			}
 			typeArena = make([]machineType, 0, typeCount)
-			if exactGCRefFactsEnabled {
+			if policy.EnabledOption(optGCRefFacts) {
 				zeroFactArena = make([]shared.GCRefFact, 0, typeCount)
 			}
 		}
@@ -584,14 +584,14 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		factStart := len(zeroFactArena)
 		for _, p := range ft.Params {
 			typeArena = append(typeArena, mtOf(p))
-			if exactGCRefFactsEnabled {
+			if policy.EnabledOption(optGCRefFacts) {
 				zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, p))
 			}
 		}
 		for _, run := range m.Code[i].Locals.Runs {
 			for k := 0; k < int(run.Count); k++ {
 				typeArena = append(typeArena, mtOf(run.Type))
-				if exactGCRefFactsEnabled {
+				if policy.EnabledOption(optGCRefFacts) {
 					zeroFactArena = append(zeroFactArena, zeroGCRefFactForValType(m, run.Type))
 				}
 			}
@@ -604,7 +604,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		resultEnd := len(typeArena)
 		lt := typeArena[localStart:localEnd:localEnd]
 		var zf []shared.GCRefFact
-		if exactGCRefFactsEnabled {
+		if policy.EnabledOption(optGCRefFacts) {
 			zf = zeroFactArena[factStart:factEnd:factEnd]
 		}
 		rt := typeArena[localEnd:resultEnd:resultEnd]
@@ -690,7 +690,7 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.localSlot = append(f.localSlot, 8*f.nLocalSlots)
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
-			if exactGCRefFactsEnabled {
+			if f.gcRefFactsEnabled() {
 				fact := shared.GCRefFact{}
 				if i < len(t.localZeroFacts) {
 					fact = t.localZeroFacts[i]
@@ -846,7 +846,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 			}
 			f.locals[local].state = lsMem
 			f.invalidateGCLoadFactsForLocal(local)
-			if exactGCRefFactsEnabled && local < len(f.localGCRefFacts) {
+			if f.gcRefFactsEnabled() && local < len(f.localGCRefFacts) {
 				fact := shared.GCRefFact{}
 				if i < len(t.localZeroFacts) {
 					fact = t.localZeroFacts[i]

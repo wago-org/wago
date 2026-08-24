@@ -124,15 +124,19 @@ var manifestFeatureNames = stringSet(
 var manifestOptimizationNames = stringSet(
 	"affine-lea", "assoc-tree", "bmi2-rorx", "bounds-facts", "branch-fold",
 	"call-next-use", "commute-self-update", "compact-i32-frame",
-	"entry-arg-pins", "ext-fp-pins", "frame-elide", "frame-elide-reghomed",
+	"dead-gc-new", "entry-arg-pins", "entry-init-elision", "ext-fp-pins",
+	"fcmp-fuse", "frame-elide", "frame-elide-reghomed", "gc-native-alloc",
+	"gc-ref-facts",
 	"immutable-poly-fastpath", "immutable-table", "immutable-table-type", "inline",
-	"inline-callfree", "leaf-scratch-pins", "legacy-fp-pins",
-	"legacy-gp-pins", "loop-precheck", "loop-region-pins", "multi-bounds-cert",
+	"inline-callfree", "interval-region-pins", "leaf-scratch-pins", "legacy-fp-pins",
+	"legacy-gp-pins", "loop-precheck", "loop-region-pins", "magic-div",
+	"mul-add-fuse", "multi-bounds-cert",
 	"olddest-rhs-sink", "reg-abi", "reg-merge", "small-frame", "st-flags",
-	"stack-fence", "stack-reg", "store-forward", "store-load-fwd", "store8-flags",
-	"tee-sink", "tee-spill-elide", "three-op-sink", "tree-order", "unary-sink",
-	"uxtw-add", "v128-const-cache", "v128-pins", "v128-sink", "vex-float-mem",
-	"x8-pin",
+	"shared-adapters", "shared-trap-body", "simd-superopt", "stack-fence", "stack-reg",
+	"store-forward", "store-load-fwd", "store8-flags", "swar-idioms", "tee-sink",
+	"tee-spill-elide", "three-op-sink", "tree-order", "unary-sink", "uxtw-add",
+	"v128-const-cache", "v128-direct-results", "v128-pins", "v128-sink",
+	"vex-float-mem", "x8-pin", "zero-branch",
 )
 
 // ValidateManifest enforces the checked-in v1 schema before any project read

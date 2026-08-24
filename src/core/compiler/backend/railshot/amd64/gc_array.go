@@ -69,7 +69,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
-		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native {
+		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
 			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
 				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeUniform}
 				helper = gcArrayAllocUniformNative
@@ -189,7 +189,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocFixed)
-		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native {
+		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
 			bytes := uint64(gc.PayloadOffset) + uint64(count)*uint64(layout.elemSize)
 			bytes = (bytes + 7) &^ 7
 			if bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
@@ -222,7 +222,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
-		if layout, native := nativeGCArrayLayout(f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
 			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
 				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault}
 				helper = gcArrayAllocDefaultNative
@@ -263,7 +263,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		indexRoot := f.s.back()
 		objectRoot := baseOfValentBlock(indexRoot).prev
-		knownIndex, knownLength, boundsProven := gcKnownArrayIndexInBounds(objectRoot, indexRoot)
+		knownIndex, knownLength, boundsProven := f.gcKnownArrayIndexInBounds(objectRoot, indexRoot)
 		if f.emitDirectGCArrayGet(typeIndex, helper, knownIndex, knownLength, boundsProven) {
 			return nil
 		}
@@ -296,12 +296,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		indexRoot := baseOfValentBlock(valueRoot).prev
 		objectRoot := baseOfValentBlock(indexRoot).prev
 		f.refineGCDereferencedObject(objectRoot)
-		knownIndex, knownLength, boundsProven := gcKnownArrayIndexInBounds(objectRoot, indexRoot)
+		knownIndex, knownLength, boundsProven := f.gcKnownArrayIndexInBounds(objectRoot, indexRoot)
 		if f.emitDirectGCArraySet(typeIndex, knownIndex, knownLength, boundsProven) {
 			return nil
 		}
 		if target, found := f.stagedGCType(typeIndex); found && target.Final && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
-			barrierState := shared.SelectGCStoreBarrier(gcRefFact(objectRoot), gcRefFact(valueRoot))
+			barrierState := shared.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
 			f.publishGCStoredChild(objectRoot, valueRoot)
 			if !barrierState.NeedsBarrier() && f.emitDirectGCArrayRefSetNoBarrier(typeIndex, barrierState) {
 				return nil
@@ -320,7 +320,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
 	case 15: // array.len
 		f.refineGCDereferencedObject(f.s.back())
-		fact := gcRefFact(f.s.back())
+		fact := f.gcRefFact(f.s.back())
 		if length, known := fact.KnownArrayLength(); known && fact.Nullability() == shared.GCKnownNonNull {
 			f.dropValue()
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(length)})
@@ -368,7 +368,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.refineGCDereferencedObject(objectRoot)
 		helper := uint32(gcArrayFill)
 		if field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
-			barrierState := shared.SelectGCStoreBarrier(gcRefFact(objectRoot), gcRefFact(valueRoot))
+			barrierState := shared.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
 			f.recordGCBarrierState(barrierState)
 			f.publishGCStoredChild(objectRoot, valueRoot)
 			if !barrierState.NeedsBarrier() {

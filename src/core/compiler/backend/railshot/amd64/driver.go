@@ -84,7 +84,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 // emits the eager 0/1 boolean. The node therefore never lingers on the operand
 // stack past its immediate branch consumer.
 func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
-	if fcmpFuseEnabled {
+	if f.opt(optFCmpFuse) {
 		if next, ok := r.Peek(); ok && (next == 0x04 || next == 0x0d) {
 			f.pushFCompare(op, f64)
 			return
@@ -787,7 +787,7 @@ func (f *fn) emitSelect() {
 	b := f.popValue()
 	a := f.popValue()
 	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
-	gcFact := shared.MergeGCRefFacts(gcRefFact(a), gcRefFact(b))
+	gcFact := shared.MergeGCRefFacts(f.gcRefFact(a), f.gcRefFact(b))
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
@@ -879,7 +879,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
 	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
-	gcFact := shared.MergeGCRefFacts(gcRefFact(aRoot), gcRefFact(bRoot))
+	gcFact := shared.MergeGCRefFacts(f.gcRefFact(aRoot), f.gcRefFact(bRoot))
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -1049,7 +1049,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		if tee {
 			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}) // borrowed ref stays
 			if hasGCExactType {
-				markGCRefFact(e, gcFact)
+				f.markGCRefFact(e, gcFact)
 			}
 		} else {
 			f.erase(e)
@@ -1148,7 +1148,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			e.st.idx = x + 1
 		}
 		if hasGCExactType {
-			markGCRefFact(e, gcFact)
+			f.markGCRefFact(e, gcFact)
 		}
 	}
 }

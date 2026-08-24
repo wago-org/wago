@@ -241,10 +241,10 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	entryRoots := f.rootsBottomToTop()
 	entryGCRoots := gcRootFlags(entryRoots)
 	var entryStackFacts []shared.GCRefFact
-	if exactGCRefFactsEnabled {
+	if f.gcRefFactsEnabled() {
 		entryStackFacts = make([]shared.GCRefFact, len(entryRoots))
 		for i, root := range entryRoots {
-			entryStackFacts[i] = gcRefFact(root)
+			entryStackFacts[i] = f.gcRefFact(root)
 		}
 	}
 	entryLocalFacts := f.snapshotGCRefFacts()

@@ -1,6 +1,6 @@
 # Wago optimization toggle matrix: ARM64 and AMD64
 
-> Generated from raw benchmark captures on 2026-08-22. Each catalog optimization was measured explicitly on and off while every other option remained at its host-selected default.
+> Generated from raw benchmark captures on 2026-08-22. Each optimization registered at benchmark commit `ef129fdbb820` was measured explicitly on and off while every other option remained at its host-selected default. A later catalog-coverage follow-up is recorded below; its newly public families are not represented in the historical tables.
 
 ## Executive summary
 
@@ -82,6 +82,29 @@ matchers, alias-handling paths, destination-specialized lowerings, environment
 controls, bindings, and tests. The deletion leaves the normal direct-result SIMD
 lowering intact. AMD64 still advertises `v128-sink` as default-off until its
 implementation receives the same native, longer-window verification.
+
+### Follow-on catalog coverage
+
+The optimizer audit found substantial default-on families that had focused tests
+and environment rollback switches but no `RuntimeConfig` or `wago.json` flag.
+They are now first-class catalog entries without changing their defaults:
+
+| Scope | Newly public optimization families |
+|---|---|
+| Both architectures | `simd-superopt`, `swar-idioms`, `interval-region-pins`, `fcmp-fuse`, `magic-div`, `shared-trap-body`, `shared-adapters` |
+| ARM64 | `zero-branch`, `mul-add-fuse`, `entry-init-elision`, `v128-direct-results` |
+| AMD64 | `dead-gc-new`, `gc-ref-facts`, `gc-native-alloc` |
+
+Each boundary uses the immutable per-compilation policy rather than mutating
+package globals. Private rollout switches remain beneath the public umbrella:
+for example, disabling `shared-trap-body` also suppresses module-level sharing,
+and disabling `gc-ref-facts` suppresses its known-bounds and load-forwarding
+consumers. Small instruction-encoding choices remain internal instead of
+expanding the catalog with every peephole substage.
+
+These families need their own paired ARM64/AMD64 matrix before any new default
+or deletion decision. The measurements below predate their registration and
+must not be used to infer their cost or benefit.
 
 ## Environment
 

@@ -228,7 +228,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && final && layout.CollectorRef && layout.Size == 4 {
-				barrierState := shared.SelectGCStoreBarrier(gcRefFact(objectRoot), gcRefFact(valueRoot))
+				barrierState := shared.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
 				f.publishGCStoredChild(objectRoot, valueRoot)
 				if !barrierState.NeedsBarrier() && f.emitDirectGCStructRefSetNoBarrier(typeIndex, layout.Offset, barrierState) {
 					return nil
@@ -256,7 +256,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 		return err
 	}
 	nullable := sub == 21
-	if matched, known := f.gcRefFactMatchesHeap(gcRefFact(f.s.back()), heap, nullable); known {
+	if matched, known := f.gcRefFactMatchesHeap(f.gcRefFact(f.s.back()), heap, nullable); known {
 		f.dropValue()
 		value := int64(0)
 		if matched {
@@ -357,11 +357,11 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	castFact := gcRefFact(f.s.back())
+	castFact := f.gcRefFact(f.s.back())
 	if matched, known := f.gcRefFactMatchesTarget(castFact, heap, sub == 23, exactTarget); known {
 		if matched {
 			if sub == 22 {
-				markGCRefFact(f.s.back(), castFact.WithNullability(shared.GCKnownNonNull))
+				f.markGCRefFact(f.s.back(), castFact.WithNullability(shared.GCKnownNonNull))
 			}
 			f.stats.peep("gc-ref-cast-elide")
 			return nil
@@ -738,11 +738,11 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	fact := gcRefFact(f.s.back())
+	fact := f.gcRefFact(f.s.back())
 	if matched, known := f.gcRefFactMatchesTarget(fact, target, flags&2 != 0, exactTarget); known {
 		branchOnMatch := sub == 24
 		if matched && flags&2 == 0 {
-			markGCRefFact(f.s.back(), fact.WithNullability(shared.GCKnownNonNull))
+			f.markGCRefFact(f.s.back(), fact.WithNullability(shared.GCKnownNonNull))
 		}
 		f.stats.peep("gc-br-on-cast-fold")
 		if matched == branchOnMatch {
@@ -759,9 +759,9 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	copyReg := f.allocReg(maskOf(value))
 	f.a.MovReg64(copyReg, value)
 	original := f.pushReg(value, mtI64) // original identity for either selected edge
-	markGCRefFact(original, fact)
+	f.markGCRefFact(original, fact)
 	copyValue := f.pushReg(copyReg, mtI64) // copied helper operand
-	markGCRefFact(copyValue, fact)
+	f.markGCRefFact(copyValue, fact)
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
 	if flags&2 != 0 {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
@@ -781,14 +781,14 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) emitGCI31(sub uint32) error {
-	fact := gcRefFact(f.s.back())
+	fact := f.gcRefFact(f.s.back())
 	value := f.materialize(f.popValue())
 	switch sub {
 	case 28: // ref.i31
 		f.a.ShiftImm(4, value, 1, false) // low 31 bits << 1; 32-bit write clears the upper half
 		f.a.AluRI(1, value, 1, false)    // tag immediate with low bit 1
 		result := f.pushReg(value, mtI64)
-		markGCRefFact(result, shared.NewGCRefFact(shared.GCKnownNonNull, shared.GCHeapI31))
+		f.markGCRefFact(result, shared.NewGCRefFact(shared.GCKnownNonNull, shared.GCHeapI31))
 	case 29: // i31.get_s
 		if fact.Nullability() != shared.GCKnownNonNull {
 			f.a.TestSelf(value, true)

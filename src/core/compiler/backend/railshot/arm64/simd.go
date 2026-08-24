@@ -356,7 +356,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 // operands are borrowed pinned locals, NEON's three-register form needs only a
 // fresh destination and does not copy either source first.
 func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
-	if !v128DirectResultEnabled {
+	if !f.opt(optV128DirectResults) {
 		b := f.popValue()
 		a := f.popValue()
 		xa := f.materializeV128(a)
@@ -400,7 +400,7 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 // v128Unary lowers a single-instruction unary v128 op (op(dst, src)).
 func (f *fn) v128Unary(r *wasm.Reader, op func(dst, src Reg)) error {
 	a := f.popValue()
-	if !v128DirectResultEnabled {
+	if !f.opt(optV128DirectResults) {
 		x := f.materializeV128(a)
 		op(x, x)
 		f.pushVReg(x)
@@ -589,7 +589,7 @@ func (f *fn) v128I32x4ConvertToFloat(r *wasm.Reader, f64dst, signed bool) error 
 }
 
 func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) error {
-	if !v128DirectResultEnabled {
+	if !f.opt(optV128DirectResults) {
 		return f.v128ShiftLegacy(op, opImm, countMask, laneSize, right)
 	}
 	countElem := f.popValue()
@@ -1104,7 +1104,7 @@ func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
 }
 
 func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
-	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 83) {
+	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 83) {
 		return false
 	}
 	b := f.popValue()
@@ -1149,7 +1149,7 @@ func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
 // it to NEON BIC. Sources may alias the chosen destination: the three-register
 // instruction reads both before writing it.
 func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
-	if !simdSuperoptEnabled || !matchNextSIMDOp(r, 78) {
+	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 78) {
 		return false
 	}
 	b := f.popValue()
@@ -1254,7 +1254,7 @@ func (f *fn) i8x16Bitmask() {
 // when only its zero-ness is observed: shifting each byte's sign bit into bit 0
 // and reducing with UMAXV produces the final 0/1 boolean directly.
 func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
-	if !simdSuperoptEnabled {
+	if !f.opt(optSIMDSuperopt) {
 		return false
 	}
 	save := r.Offset()
@@ -1295,7 +1295,7 @@ func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
 // bits to 0/1 and sum all sixteen lanes directly instead of materializing a
 // scalar bitmask only to feed it back through the scalar popcnt sequence.
 func (f *fn) tryI8x16BitmaskPopcnt(r *wasm.Reader) bool {
-	if !simdSuperoptEnabled {
+	if !f.opt(optSIMDSuperopt) {
 		return false
 	}
 	save := r.Offset()
