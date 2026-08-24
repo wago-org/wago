@@ -62,10 +62,6 @@ full process-tree supervisor and periodic content scan. A lean build rejects
 `--watch` as an unknown flag instead of using a smaller supervisor that can
 leave guest processes running.
 
-`wago_lean` does not alter Railshot code generation. Railshot is the lean,
-single-pass backend; heavyweight multi-pass optimization belongs in a separate
-backend rather than behind compiler build tags.
-
 The standard-Go manager can use TinyGo for the final link of a runtime-only
 command binary:
 
