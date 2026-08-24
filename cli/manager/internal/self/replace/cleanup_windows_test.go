@@ -12,12 +12,13 @@ import (
 )
 
 func TestTargetRemovalScriptWaitsThenRemovesTargets(t *testing.T) {
-	script := targetRemovalScript([]string{`C:\Users\A%lice\.wago`, `C:\Users\A%lice\.local\bin\wago.exe`})
+	script := targetRemovalScript(1234, []string{`C:\Users\A'lice\.wago`, `C:\Users\A'lice\.local\bin\wago.exe`})
 	for _, want := range []string{
-		`timeout /t 2 /nobreak`,
-		`rmdir /s /q "C:\Users\A%%lice\.wago"`,
-		`del /f /q "C:\Users\A%%lice\.local\bin\wago.exe"`,
-		`del "%~f0"`,
+		`Wait-Process -Id 1234`,
+		`Remove-Item -LiteralPath 'C:\Users\A''lice\.wago' -Recurse -Force`,
+		`Remove-Item -LiteralPath 'C:\Users\A''lice\.local\bin\wago.exe' -Recurse -Force`,
+		`Start-Sleep -Milliseconds 250`,
+		`Remove-Item -LiteralPath $PSCommandPath -Force`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("cleanup script missing %q:\n%s", want, script)

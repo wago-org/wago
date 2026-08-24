@@ -17,6 +17,8 @@ import (
 const (
 	moveFileReplaceExisting  = 0x1
 	moveFileDelayUntilReboot = 0x4
+	createNewProcessGroup    = 0x00000200
+	createNoWindow           = 0x08000000
 )
 
 var moveFileEx = syscall.NewLazyDLL("kernel32.dll").NewProc("MoveFileExW")
@@ -85,9 +87,25 @@ func Remove(executable string) (bool, error) {
 	return true, scheduleMove(executable, "", moveFileDelayUntilReboot)
 }
 
-// ScheduleTargetRemoval starts a detached command interpreter that gives this
-// manager time to exit before deleting its containing Wago home.
+// ScheduleTargetRemoval starts a detached PowerShell process that waits for
+// this manager to exit before deleting its containing Wago home.
 func ScheduleTargetRemoval(executable string, targets []string) (bool, error) {
+	running, err := os.Executable()
+	if err != nil {
+		return false, err
+	}
+	runningInfo, err := os.Stat(running)
+	if err != nil {
+		return false, err
+	}
+	executableInfo, err := os.Stat(executable)
+	if err != nil {
+		return false, err
+	}
+	if !os.SameFile(runningInfo, executableInfo) {
+		return false, nil
+	}
+
 	contained := false
 	for _, target := range targets {
 		if !samePath(target, executable) && containsPath(target, executable) {
@@ -98,12 +116,12 @@ func ScheduleTargetRemoval(executable string, targets []string) (bool, error) {
 	if !contained {
 		return false, nil
 	}
-	script, err := os.CreateTemp("", "wago-uninstall-*.cmd")
+	script, err := os.CreateTemp("", "wago-uninstall-*.ps1")
 	if err != nil {
 		return false, err
 	}
 	scriptPath := script.Name()
-	if _, err := script.WriteString(targetRemovalScript(targets)); err != nil {
+	if _, err := script.WriteString(targetRemovalScript(os.Getpid(), targets)); err != nil {
 		_ = script.Close()
 		_ = os.Remove(scriptPath)
 		return false, err
@@ -112,27 +130,28 @@ func ScheduleTargetRemoval(executable string, targets []string) (bool, error) {
 		_ = os.Remove(scriptPath)
 		return false, err
 	}
-	command := os.Getenv("ComSpec")
-	if command == "" {
-		command = "cmd.exe"
-	}
-	process := exec.Command(command, "/d", "/c", scriptPath)
-	process.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000008 | 0x00000200}
+	process := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+	process.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow | createNewProcessGroup}
 	if err := process.Start(); err != nil {
 		_ = os.Remove(scriptPath)
 		return false, err
 	}
+	_ = process.Process.Release()
 	return true, nil
 }
 
-func targetRemovalScript(targets []string) string {
+func targetRemovalScript(parentPID int, targets []string) string {
 	var script strings.Builder
-	script.WriteString("@echo off\r\ntimeout /t 2 /nobreak >nul\r\n")
+	script.WriteString("$ErrorActionPreference = 'SilentlyContinue'\r\n")
+	fmt.Fprintf(&script, "Wait-Process -Id %d\r\n", parentPID)
 	for _, target := range targets {
-		target = strings.ReplaceAll(target, "%", "%%")
-		fmt.Fprintf(&script, "if exist \"%s\\NUL\" (rmdir /s /q \"%s\") else (del /f /q \"%s\")\r\n", target, target, target)
+		target = strings.ReplaceAll(target, "'", "''")
+		fmt.Fprintf(&script, "for ($attempt = 0; $attempt -lt 20 -and (Test-Path -LiteralPath '%s'); $attempt++) {\r\n", target)
+		fmt.Fprintf(&script, "  Remove-Item -LiteralPath '%s' -Recurse -Force\r\n", target)
+		script.WriteString("  if (Test-Path -LiteralPath '" + target + "') { Start-Sleep -Milliseconds 250 }\r\n")
+		script.WriteString("}\r\n")
 	}
-	script.WriteString("del \"%~f0\"\r\n")
+	script.WriteString("Remove-Item -LiteralPath $PSCommandPath -Force\r\n")
 	return script.String()
 }
 
