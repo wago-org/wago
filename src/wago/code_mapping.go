@@ -231,6 +231,81 @@ func (c *Compiled) usesGenericGCExecution() bool {
 	return c.stagedGCStructProduct() == stagedGCStructGeneric || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || arrayProduct == stagedGCArrayProductGeneric
 }
 
+func valueTypeTransfersCollectorObject(t ValueTypeDescriptor, types []DefinedTypeDescriptor) bool {
+	if t.Kind != ValueTypeReference {
+		return false
+	}
+	if t.Ref.Heap.Defined {
+		if int(t.Ref.Heap.TypeIndex) >= len(types) {
+			return true
+		}
+		kind := types[t.Ref.Heap.TypeIndex].Kind
+		return kind == CompositeTypeStruct || kind == CompositeTypeArray
+	}
+	switch t.Ref.Heap.Abstract {
+	case AbstractHeapAny, AbstractHeapEq, AbstractHeapStruct, AbstractHeapArray:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Compiled) importTransfersCollectorObjects(index int) bool {
+	if c == nil || index < 0 || index >= len(c.importFuncSigs) {
+		return false
+	}
+	sig := c.importFuncSigs[index]
+	params, results, err := exactFuncSignatureView(sig, c.Types)
+	if err != nil || !sig.HasTypeIndex {
+		return funcSigHasGCRefs(sig)
+	}
+	for _, typ := range params {
+		if valueTypeTransfersCollectorObject(typ, c.Types) {
+			return true
+		}
+	}
+	for _, typ := range results {
+		if valueTypeTransfersCollectorObject(typ, c.Types) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCollectorReferenceCallBoundary reports whether an imported function can
+// transfer collector objects. Exact descriptors resolve indexed and recursive
+// heap types in the importing module; raw module-local indexes are never used as
+// cross-module identities.
+func (c *Compiled) hasCollectorReferenceCallBoundary() bool {
+	if c == nil {
+		return false
+	}
+	for i := range c.importFuncSigs {
+		if c.importTransfersCollectorObjects(i) {
+			return true
+		}
+	}
+	return false
+}
+
+// needsExactNativeGCRoots is the compile/artifact predicate. Allocating generic
+// GC instructions and collector-reference host/cross-instance boundaries can
+// both collect while native Wasm frames remain live.
+func (c *Compiled) needsExactNativeGCRoots() bool {
+	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())
+}
+
+// needsRuntimeGCCollectorDomain is the instantiated-module predicate. A module
+// may need a collector solely because a Runtime-owned host import allocates or
+// inspects values selected by the caller's exact GC types.
+func (c *Compiled) needsRuntimeGCCollectorDomain() bool {
+	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())
+}
+
+func (c *Compiled) needsNativeGCABI() bool {
+	return c != nil && (c.needsExactNativeGCRoots() || c.usesGCStructHelpers() || c.usesGCArrayHelpers())
+}
+
 func (c *Compiled) nativeGCABIRequirement() uint32 {
 	if c == nil || c.codeCache == nil {
 		return 0
@@ -267,6 +342,8 @@ type compiledGCFrameRoots struct {
 	safepoints           []compiledGCFrameSafepoint
 	callsites            []compiledGCFrameCallsite
 }
+
+var importOnlyGCFrameRoots = compiledGCFrameRoots{}
 
 type gcFrameOffsetInterner struct {
 	firstHash uint64
@@ -349,10 +426,20 @@ func (r *compiledGCFrameRoots) safepointByID(id uint32) *compiledGCFrameSafepoin
 }
 
 func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {
-	if c == nil || c.validateMemo == nil {
+	if c == nil {
 		return nil
 	}
-	return c.validateMemo.gcFrameRoots
+	if c.validateMemo != nil && c.validateMemo.gcFrameRoots != nil {
+		return c.validateMemo.gcFrameRoots
+	}
+	// A module with no local functions cannot have a parked native Wasm frame.
+	// Its exact root set is therefore empty. Keep the collector-domain admission
+	// for GC-bearing Runtime plugin imports without pretending a failed backend
+	// root-plan build is a safety error.
+	if len(c.Funcs) == 0 && c.hasCollectorReferenceCallBoundary() {
+		return &importOnlyGCFrameRoots
+	}
+	return nil
 }
 
 //lint:ignore U1000 retained for feature-gated GC global admission checks

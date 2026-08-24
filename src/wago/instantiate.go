@@ -21,6 +21,7 @@ type InstantiateOptions struct {
 	runtime              *Runtime
 	origin               InstantiateOrigin
 	pluginGC             *GCConfig
+	pluginGCImports      map[uint32]struct{}
 	forceSyncHost        bool
 	afterCreate          func(*Instance) error
 	moduleIdentity       ModuleIdentity
@@ -137,7 +138,7 @@ func (b *instanceBuilder) releaseModuleUse() {
 }
 
 func (b *instanceBuilder) validateCompiled() error {
-	if err := b.c.validateImportBindings(b.imports, b.opts.store); err != nil {
+	if err := b.c.validateImportBindingsWithPluginGC(b.imports, b.opts.store, b.opts.pluginGCImports); err != nil {
 		return err
 	}
 	return b.c.validateCached()
@@ -187,7 +188,8 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 func (b *instanceBuilder) prepareCollector() error {
 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
 	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
-	if !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
+	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
+	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
 		return nil
 	}
 	gcConfig := b.opts.GC
@@ -202,7 +204,7 @@ func (b *instanceBuilder) prepareCollector() error {
 	// Until their compiler callsites publish exact GC frame roots, keep GC+Threads
 	// modules in private collector domains so a same-memory notifier never waits
 	// behind the parked invocation's Runtime-wide collector lease.
-	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCPersistentDomainSafe() && !b.c.usesAtomicWaitHelpers() {
+	if b.opts.store != nil && !b.opts.store.private && needsRuntimeDomain && b.c.sharedGCPersistentDomainSafe() && !b.c.usesAtomicWaitHelpers() {
 		preferred, err := preferredGCCollectorFromImports(b.imports, b.opts.store)
 		if err != nil {
 			return err
@@ -966,7 +968,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	var gcGlobalRoots [3]gcGlobalRootMapping
 	var gcGlobalRootCount uint8
 	var genericGCGlobalRoots []gcGlobalRootMapping
-	genericGCExecution := c.usesGenericGCExecution()
+	runtimeGCExecution := c.needsRuntimeGCCollectorDomain()
 	globalCells = make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
@@ -988,7 +990,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			} else {
 				bits, vec := g.Bits, g.V128
 				if gcInit, ok := c.gcStructGlobalInit(i); ok {
-					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+					if !runtimeGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
 						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
 					}
 					ref, slot, err := instantiateGCStructGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit)
@@ -997,14 +999,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					}
 					bits = uint64(ref)
 					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					if genericGCExecution {
+					if runtimeGCExecution {
 						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
 					} else {
 						gcGlobalRoots[gcGlobalRootCount] = mapping
 						gcGlobalRootCount++
 					}
 				} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
-					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+					if !runtimeGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
 						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
 					}
 					ref, slot, err := instantiateGCArrayGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit, funcRefDescs)
@@ -1013,7 +1015,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					}
 					bits = uint64(ref)
 					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					if genericGCExecution {
+					if runtimeGCExecution {
 						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
 					} else {
 						gcGlobalRoots[gcGlobalRootCount] = mapping
@@ -1062,7 +1064,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				// global/table root views.
 				instantiationRoots = append(instantiationRoots, compactRefRootSlot(cell.cell[:4]))
 			}
-			if b.collector != nil && genericGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
+			if b.collector != nil && runtimeGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
 				mapped := false
 				for _, mapping := range genericGCGlobalRoots {
 					if mapping.GlobalIndex == uint32(i) {
@@ -1384,7 +1386,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	var gcNativeTypes []gc.TypeID
 	var gcNativeView *gc.NativeInstanceView
-	if b.collector != nil && (genericGCExecution || c.usesGCStructHelpers() || c.usesGCArrayHelpers()) {
+	if b.collector != nil && c.needsNativeGCABI() {
 		gcNativeTypes = make([]gc.TypeID, len(c.Types))
 		for local := range gcNativeTypes {
 			domain, ok := b.gcTypeMap.domain(uint32(local))
@@ -1407,8 +1409,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
-		nativeContext:  nativeContextPtr,
-		moduleIdentity: opts.moduleIdentity,
+		nativeContext:   nativeContextPtr,
+		moduleIdentity:  opts.moduleIdentity,
+		pluginGCImports: opts.pluginGCImports,
 	}
 	independentInstances := c.independentInstances
 	if opts.hasExecutionPolicy {
@@ -1441,7 +1444,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		state.gcGlobalRoots = gcGlobalRoots
 		state.gcGlobalRootCount = gcGlobalRootCount
 	}
-	if b.collector != nil && genericGCExecution {
+	if b.collector != nil && runtimeGCExecution {
 		public := in.publicGCState()
 		public.globalRoots = genericGCGlobalRoots
 		for i, g := range c.Globals {

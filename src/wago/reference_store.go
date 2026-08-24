@@ -1888,7 +1888,7 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	arrayProduct := source.c.stagedGCArrayProduct()
 	admittedArray := arrayProduct == stagedGCArrayProductNumericDefault || arrayProduct == stagedGCArrayProductNumericFixed || arrayProduct == stagedGCArrayProductPackedData || arrayProduct == stagedGCArrayProductReferenceElements || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem
 	legacyStruct := source.c.stagedGCStructProduct() == stagedGCStructBasic
-	generic := source.c.usesGenericGCExecution() && source.c.genericGCFrameRoots() != nil
+	generic := source.c.needsExactNativeGCRoots() && source.c.genericGCFrameRoots() != nil
 	if !legacyStruct && !admittedArray && !generic {
 		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")
 	}
@@ -2145,21 +2145,33 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 
 func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch uint32, args []uint64) error {
 	state := token.state
-	if in == nil || state == nil || in.gc == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
+	if in == nil || state == nil || in.gc == nil || in.refStore == nil {
 		return nil
 	}
-	binding, ok := in.boundHostFuncRef(dispatch)
-	if !ok {
-		return fmt.Errorf("GC host argument owner is unavailable")
-	}
-	owner := binding.owner
-	owner.mu.Lock()
-	if !owner.gcCapable || owner.gc == nil || owner.closed || owner.gc.collector != in.gc || owner.gc.domainID == 0 {
+	var types []ValType
+	if dispatch&hostFuncRefDispatchBit != 0 {
+		binding, ok := in.boundHostFuncRef(dispatch)
+		if !ok {
+			return fmt.Errorf("GC host argument owner is unavailable")
+		}
+		owner := binding.owner
+		owner.mu.Lock()
+		if !owner.gcCapable || owner.gc == nil || owner.closed || owner.gc.collector != in.gc || owner.gc.domainID == 0 {
+			owner.mu.Unlock()
+			return fmt.Errorf("GC host argument owner is outside the active collector domain")
+		}
 		owner.mu.Unlock()
-		return fmt.Errorf("GC host argument owner is outside the active collector domain")
+		types = binding.sig.Params
+	} else {
+		pluginSig, ok := in.pluginGCHostSignature(dispatch)
+		if !ok {
+			return nil
+		}
+		if !in.refStore.ownsGCCollector(in.gc) {
+			return fmt.Errorf("Runtime plugin GC host import is outside the calling instance's Runtime collector domain")
+		}
+		types = pluginSig.Params
 	}
-	owner.mu.Unlock()
-	types := binding.sig.Params
 
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)

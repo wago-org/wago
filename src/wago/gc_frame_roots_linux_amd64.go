@@ -12,13 +12,14 @@ import (
 	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
-// newGCFrameRootPlan admits bounded local/cross-instance call graphs whose native
-// ABI is register-bounded. Functions retain a one-word path through 64 collector
-// roots and use compact flat word arenas up to shared.GCFrameRootLimit. Each
-// function gets independent compile state so railshot workers may populate maps
-// in parallel.
-func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC {
+// newGCFrameRootPlan admits bounded exact native-root call graphs. Direct local
+// and synchronous host calls may use the wrapper ABI, while dynamic typed-
+// reference calls retain their smaller register-ABI proof. Functions retain a
+// one-word path through 64 collector roots and use compact flat word arenas up
+// to shared.GCFrameRootLimit. Each function gets independent compile state so
+// railshot workers may populate maps in parallel.
+func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
+	if !exactRoots {
 		return nil
 	}
 	reject := func(format string, args ...any) *shared.GCModuleFrameRootPlan {
@@ -33,18 +34,26 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	if !gcFrameTablesSafe(m) {
 		return reject("table or element ownership is outside the exact native-root model")
 	}
+	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := m.FuncSignature(funcImport)
 			funcImport++
-			if !ok || !gcFrameCallABI(m, ft) {
+			if !ok {
+				return reject("function import %d has no validated signature", funcImport-1)
+			}
+			if collectorBoundary {
+				if !gcFrameHostCallABI(ft) {
+					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
+				}
+			} else if !gcFrameReferenceCallABI(m, ft) {
 				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
+			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
 				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
@@ -138,7 +147,7 @@ functions:
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		if bodyUsesNativeCall(m.Code[function].BodyBytes, &classifier) && !gcFrameCallABI(m, ft) {
+		if !collectorBoundary && bodyUsesNativeCall(m.Code[function].BodyBytes, &classifier) && !gcFrameReferenceCallABI(m, ft) {
 			return reject("function %d exceeds the exact native caller ABI", function)
 		}
 		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
@@ -216,9 +225,6 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 		}
 		for _, expr := range e.Kind.Exprs {
 			if kind == 2 && e.Kind.Ref.Heap().Kind() == wasm.HeapAbs && e.Kind.Ref.Heap().Abs() == wasm.HeapI31 {
-				// Validation and compileElemValues already proved each expression is
-				// an exact immediate i31 or immutable global value; neither adds an
-				// independent collector root beyond the global root.
 				continue
 			}
 			ee, err := wasm.ParseElementExpr(expr)
@@ -259,7 +265,7 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
 		}
 		if op == 0x14 || op == 0x15 {
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !gcFrameCallABI(m, ft) {
+			if !ok || !gcFrameReferenceCallABI(m, ft) {
 				return true
 			}
 		}
@@ -286,10 +292,6 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool 
 	return false
 }
 
-func gcFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
-	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
-}
-
 func bodyUsesNativeCall(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
@@ -308,7 +310,37 @@ func bodyUsesNativeCall(body []byte, classifier *wasm.ModuleInstructionClassifie
 	return false
 }
 
-func gcFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
+func gcFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
+	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
+}
+
+func gcFrameHostCallABI(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	slots := func(types []wasm.ValType) (int, bool) {
+		n := 0
+		for _, typ := range types {
+			switch {
+			case wasm.EqualValType(typ, wasm.V128):
+				n += 2
+			case wasm.EqualValType(typ, wasm.I32), wasm.EqualValType(typ, wasm.I64), wasm.EqualValType(typ, wasm.F32), wasm.EqualValType(typ, wasm.F64), typ.Kind() == wasm.ValRef:
+				n++
+			default:
+				return 0, false
+			}
+		}
+		return n, true
+	}
+	params, ok := slots(ft.Params)
+	if !ok || params > 64 {
+		return false
+	}
+	results, ok := slots(ft.Results)
+	return ok && results <= 64
+}
+
+func gcFrameReferenceCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
@@ -353,39 +385,5 @@ func frameFunctionRefType(m *wasm.Module, t wasm.ValType) bool {
 		return valid && kind == wasm.CompFunc
 	default:
 		return false
-	}
-}
-
-func collectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
-		return false
-	}
-	heap := t.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
-			return true
-		default:
-			return false
-		}
-	case wasm.HeapDefType:
-		kind, valid := heap.DefCompKind()
-		if !valid {
-			return true
-		}
-		return kind == wasm.CompStruct || kind == wasm.CompArray
-	case wasm.HeapTypeIndex:
-		index := heap.Type().Index
-		for _, group := range m.Types {
-			if index < uint32(len(group.SubTypes)) {
-				kind := group.SubTypes[index].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			index -= uint32(len(group.SubTypes))
-		}
-		return true
-	default:
-		return true
 	}
 }

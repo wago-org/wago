@@ -13,14 +13,14 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// newGCFrameRootPlan admits the bounded exact arm64 collection product. It
+// newGCFrameRootPlan admits the bounded exact arm64 collection product. Direct
+// local and synchronous host calls may use the wrapper ABI. Dynamic indirect,
+// reference, and tail calls retain the smaller register-ABI proof. The plan
 // supports liveness-exact collector locals, hidden operand spills, direct and
-// recursive calls, direct host re-entry, same-domain foreign calls, mutable/shared
-// GC globals and collector tables, polymorphic call_indirect, and local or
-// same-domain foreign call_ref. Unsupported tail-reference ownership remains
-// fail-closed.
-func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
-	if !genericGC {
+// recursive calls, direct host re-entry, same-domain foreign calls,
+// mutable/shared GC globals and collector tables, and fixed EH payload roots.
+func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
+	if !exactRoots {
 		return nil
 	}
 	reject := func(format string, args ...any) *shared.GCModuleFrameRootPlan {
@@ -35,30 +35,35 @@ func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRoo
 	if !arm64GCFrameTablesSafe(m) {
 		return reject("table or element ownership is outside the exact native-root model")
 	}
+	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := m.FuncSignature(funcImport)
 			funcImport++
-			if !ok || !arm64GCFrameCallABI(m, ft) {
+			if !ok {
+				return reject("function import %d has no validated signature", funcImport-1)
+			}
+			if collectorBoundary {
+				if !arm64GCFrameHostCallABI(ft) {
+					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
+				}
+			} else if !arm64GCFrameReferenceCallABI(m, ft) {
 				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !arm64CollectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
+			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
 				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
-			if !arm64CollectorFrameRefType(m, tableType) && !arm64FunctionFrameRefType(m, tableType) {
+			if !collectorFrameRefType(m, tableType) && !arm64FunctionFrameRefType(m, tableType) {
 				return reject("table import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternMem:
-			// Linear-memory imports add no collector roots. Linking admission
-			// separately proves exact same-domain ownership.
 		case wasm.ExternTag:
-			// Tags carry no independently rooted instance storage.
 		default:
 			return reject("import %d has unsupported external kind %d", i, m.Imports[i].Type.Kind)
 		}
@@ -91,7 +96,7 @@ functions:
 		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
-			if arm64CollectorFrameRefType(m, t) {
+			if collectorFrameRefType(m, t) {
 				if len(plan.LocalOffsets) == shared.GCFrameRootLimit || slot > (math.MaxUint32-shared.ARM64FrameHeaderBytes)/8 {
 					return false
 				}
@@ -124,7 +129,7 @@ functions:
 				}
 			}
 		}
-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier) {
+		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		var liveMasks, callMasks []uint64
@@ -155,7 +160,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	}
 	totalFuncs := m.ImportedFuncCount() + len(m.Code)
 	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
-	tableKinds := make([]uint8, m.TableCount()) // 1=funcref, 2=collector ref
+	tableKinds := make([]uint8, m.TableCount())
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tableType, ok := m.TableType(uint32(tableIndex))
 		if !ok {
@@ -165,7 +170,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 		switch {
 		case arm64FunctionFrameRefType(m, typ):
 			tableKinds[tableIndex] = 1
-		case arm64CollectorFrameRefType(m, typ):
+		case collectorFrameRefType(m, typ):
 			tableKinds[tableIndex] = 2
 		default:
 			return false
@@ -194,7 +199,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			kind = tableKinds[e.Mode.Table]
 		} else if e.Kind.Kind == wasm.ElemFuncs || arm64FunctionFrameRefType(m, wasm.RefVal(e.Kind.Ref)) {
 			kind = 1
-		} else if arm64CollectorFrameRefType(m, wasm.RefVal(e.Kind.Ref)) {
+		} else if collectorFrameRefType(m, wasm.RefVal(e.Kind.Ref)) {
 			kind = 2
 		} else {
 			return false
@@ -212,8 +217,6 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 		}
 		for _, expr := range e.Kind.Exprs {
 			if kind == 2 && e.Kind.Ref.Heap().Kind() == wasm.HeapAbs && e.Kind.Ref.Heap().Abs() == wasm.HeapI31 {
-				// Exact i31 element expressions are immediate or immutable-global
-				// values, not independent object roots.
 				continue
 			}
 			ee, err := wasm.ParseElementExpr(expr)
@@ -225,7 +228,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			}
 			if ee.HasGlobal {
 				gt, ok := m.GlobalTypeByIndex(ee.GlobalIndex)
-				if !ok || gt.Mutable || !arm64CollectorFrameRefType(m, gt.Type) {
+				if !ok || gt.Mutable || !collectorFrameRefType(m, gt.Type) {
 					return false
 				}
 				continue
@@ -238,7 +241,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	return true
 }
 
-func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary bool) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -250,28 +253,35 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			return false
 		}
 		switch op {
-		case 0x10: // direct local or imported call
+		case 0x10:
 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
 			ft, ok := m.FuncSignature(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) {
+			if !ok {
 				return false
 			}
-		case 0x11: // dynamically validated function table
+			if int(imm.Index) < m.ImportedFuncCount() && collectorBoundary {
+				if !arm64GCFrameHostCallABI(ft) {
+					return false
+				}
+			} else if !collectorBoundary && !arm64GCFrameReferenceCallABI(m, ft) {
+				return false
+			}
+		case 0x11:
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) {
+			if !ok || !arm64GCFrameReferenceCallABI(m, ft) {
 				return false
 			}
-		case 0x12: // direct tail call; the caller frame is discarded
+		case 0x12:
 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
 			ft, ok := m.FuncSignature(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
+			if !ok || !arm64GCFrameReferenceCallABI(m, ft) || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
-		case 0x13: // tail-indirect remains bounded to its backend-admitted shape
+		case 0x13:
 			if imm.Index2 != 0 || !arm64GCFunctionTableMonomorphic(m) {
 				return false
 			}
@@ -279,21 +289,21 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
-		case 0x14: // local or same-domain foreign typed function reference
+		case 0x14:
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !arm64GCFrameCallABI(m, ft) {
+			if !ok || !arm64GCFrameReferenceCallABI(m, ft) {
 				return false
 			}
-		case 0x15: // local or exact imported typed-reference tail call
+		case 0x15:
 			ft, ok := m.TypeFunc(imm.Index)
 			if !ok || funcTypeSlotsForRoots(ft.Params) > abi.TailArgsSlots {
 				return false
 			}
-		case 0xd2: // ref.func may name any validated local or imported function
+		case 0xd2:
 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
 				return false
 			}
-		case 0x06, 0x07, 0x09, 0x18, 0x19: // legacy EH forms are not lowered
+		case 0x06, 0x07, 0x09, 0x18, 0x19:
 			return false
 		}
 	}
@@ -391,14 +401,40 @@ func arm64GCFrameCallRefABI(ft *wasm.CompType) bool {
 	return true
 }
 
-func arm64GCFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
+func arm64GCFrameHostCallABI(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	slots := func(types []wasm.ValType) (int, bool) {
+		n := 0
+		for _, typ := range types {
+			switch {
+			case wasm.EqualValType(typ, wasm.V128):
+				n += 2
+			case wasm.EqualValType(typ, wasm.I32), wasm.EqualValType(typ, wasm.I64), wasm.EqualValType(typ, wasm.F32), wasm.EqualValType(typ, wasm.F64), typ.Kind() == wasm.ValRef:
+				n++
+			default:
+				return 0, false
+			}
+		}
+		return n, true
+	}
+	params, ok := slots(ft.Params)
+	if !ok || params > 64 {
+		return false
+	}
+	results, ok := slots(ft.Results)
+	return ok && results <= 64
+}
+
+func arm64GCFrameReferenceCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
 	gp, fp := 0, 0
 	for _, t := range ft.Params {
 		switch {
-		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), arm64CollectorFrameRefType(m, t), arm64FunctionFrameRefType(m, t):
+		case wasm.EqualValType(t, wasm.I32), wasm.EqualValType(t, wasm.I64), collectorFrameRefType(m, t), arm64FunctionFrameRefType(m, t):
 			gp++
 		case wasm.EqualValType(t, wasm.F32), wasm.EqualValType(t, wasm.F64):
 			fp++
@@ -410,7 +446,7 @@ func arm64GCFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 		return false
 	}
 	integerResult := func(t wasm.ValType) bool {
-		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || arm64CollectorFrameRefType(m, t) || arm64FunctionFrameRefType(m, t)
+		return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) || collectorFrameRefType(m, t) || arm64FunctionFrameRefType(m, t)
 	}
 	for _, t := range ft.Results {
 		if !integerResult(t) && !wasm.EqualValType(t, wasm.F32) && !wasm.EqualValType(t, wasm.F64) {
@@ -436,39 +472,5 @@ func arm64FunctionFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 		return valid && kind == wasm.CompFunc
 	default:
 		return false
-	}
-}
-
-func arm64CollectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
-		return false
-	}
-	heap := t.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
-			return true
-		default:
-			return false
-		}
-	case wasm.HeapDefType:
-		kind, valid := heap.DefCompKind()
-		if !valid {
-			return true
-		}
-		return kind == wasm.CompStruct || kind == wasm.CompArray
-	case wasm.HeapTypeIndex:
-		index := heap.Type().Index
-		for _, group := range m.Types {
-			if index < uint32(len(group.SubTypes)) {
-				kind := group.SubTypes[index].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			index -= uint32(len(group.SubTypes))
-		}
-		return true
-	default:
-		return true
 	}
 }

@@ -9,6 +9,124 @@ import (
 
 const gcNativeFrameRootLimit = shared.GCFrameRootLimit
 
+// collectorFrameRefType classifies reference types represented by the Wasm GC
+// collector. It deliberately excludes funcref, externref, and exnref. Indexed
+// heap types are resolved in the containing module, including recursive groups;
+// unresolved shapes fail closed by requesting GC handling.
+func collectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
+	if t.Kind() != wasm.ValRef {
+		return false
+	}
+	heap := t.Ref().Heap()
+	switch heap.Kind() {
+	case wasm.HeapAbs:
+		switch heap.Abs() {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+			return true
+		default:
+			return false
+		}
+	case wasm.HeapDefType:
+		kind, valid := heap.DefCompKind()
+		if !valid {
+			return true
+		}
+		return kind == wasm.CompStruct || kind == wasm.CompArray
+	case wasm.HeapTypeIndex:
+		if m == nil {
+			return true
+		}
+		index := heap.Type().Index
+		for _, group := range m.Types {
+			if index < uint32(len(group.SubTypes)) {
+				kind := group.SubTypes[index].Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+			index -= uint32(len(group.SubTypes))
+		}
+		return true
+	default:
+		return true
+	}
+}
+
+func collectorObjectFrameRefType(m *wasm.Module, t wasm.ValType) bool {
+	if t.Kind() != wasm.ValRef {
+		return false
+	}
+	heap := t.Ref().Heap()
+	switch heap.Kind() {
+	case wasm.HeapAbs:
+		switch heap.Abs() {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray:
+			return true
+		default:
+			return false
+		}
+	case wasm.HeapDefType:
+		kind, valid := heap.DefCompKind()
+		return !valid || kind == wasm.CompStruct || kind == wasm.CompArray
+	case wasm.HeapTypeIndex:
+		if m == nil {
+			return true
+		}
+		index := heap.Type().Index
+		for _, group := range m.Types {
+			if index < uint32(len(group.SubTypes)) {
+				kind := group.SubTypes[index].Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+			index -= uint32(len(group.SubTypes))
+		}
+		return true
+	default:
+		return true
+	}
+}
+
+func wasmFuncTypeTransfersCollectorRefs(m *wasm.Module, ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if collectorObjectFrameRefType(m, typ) {
+			return true
+		}
+	}
+	for _, typ := range ft.Results {
+		if collectorObjectFrameRefType(m, typ) {
+			return true
+		}
+	}
+	return false
+}
+
+func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for i := 0; i < m.ImportedFuncCount(); i++ {
+		ft, ok := m.FuncSignature(uint32(i))
+		if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
+			return true
+		}
+	}
+	return false
+}
+
+func moduleHasGCAllocationSites(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range m.Code {
+		if gcFrameBodyMayAllocateWithClassifier(m.Code[i].BodyBytes, &classifier) {
+			return true
+		}
+	}
+	return false
+}
+
 // GCNativeRootAdmission describes whether a compiled generic-GC module can
 // collect while native frames are active. Reason is populated for fail-closed
 // collection-disabled admission. MetadataBytes is the direct serialized root-map
@@ -26,7 +144,7 @@ type GCNativeRootAdmission struct {
 // GCNativeRootAdmission reports exact native-root coverage and actionable
 // fail-closed diagnostics without exposing live frames or process-local handles.
 func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
-	status := GCNativeRootAdmission{Required: c != nil && c.usesGenericGCExecution()}
+	status := GCNativeRootAdmission{Required: c != nil && c.needsExactNativeGCRoots()}
 	if c == nil {
 		status.Reason = "nil compiled module"
 		return status
@@ -34,7 +152,7 @@ func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
 	rootMap := c.genericGCFrameRoots()
 	if rootMap == nil {
 		if !status.Required {
-			status.Reason = "module does not require generic collector execution"
+			status.Reason = "module does not require exact native GC roots"
 		} else {
 			status.Reason = c.gcRootAdmissionFailure()
 		}
@@ -82,7 +200,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 	if module == nil || len(module.Functions) == 0 {
 		return false
 	}
-	totalSafepoints := 0
+	totalSafepoints, totalCallsites := 0, 0
 	var previousID uint32
 	for _, plan := range module.Functions {
 		if plan == nil {
@@ -105,6 +223,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 				return false
 			}
 			previousReturn = callsite.ReturnOffset
+			totalCallsites++
 		}
 		for i := range plan.Safepoints {
 			safepoint := &plan.Safepoints[i]
@@ -115,15 +234,15 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 			totalSafepoints++
 		}
 	}
-	return totalSafepoints != 0
+	return totalSafepoints != 0 || totalCallsites != 0
 }
 
 func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
 	if rootMap == nil {
 		return nil
 	}
-	if c == nil || !c.usesGenericGCExecution() {
-		return fmt.Errorf("GC frame-root metadata requires generic GC execution")
+	if c == nil || !c.needsExactNativeGCRoots() {
+		return fmt.Errorf("GC frame-root metadata requires exact native GC roots")
 	}
 	if !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
 		return fmt.Errorf("GC frame-root metadata requires a validated local call graph with private tables")
@@ -133,7 +252,9 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	}
 	for i := range c.GlobalImports {
 		global := c.GlobalImports[i]
-		if !isGCRefValType(global.Type) {
+		switch global.Type {
+		case ValI32, ValI64, ValF32, ValF64, ValV128, ValFuncRef, ValExternRef, ValExnRef, ValAnyRef, ValI31Ref:
+		default:
 			return fmt.Errorf("GC frame-root metadata rejects global import %d", i)
 		}
 	}
@@ -145,8 +266,11 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 			return fmt.Errorf("GC frame-root metadata rejects import %d signature", i)
 		}
 	}
-	if len(rootMap.safepoints) == 0 {
-		return fmt.Errorf("GC frame-root metadata has no safepoints")
+	if len(rootMap.safepoints) == 0 && len(rootMap.callsites) == 0 {
+		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")
+	}
+	if len(rootMap.safepoints) == 0 && c.usesGenericGCExecution() && !c.hasCollectorReferenceCallBoundary() {
+		return fmt.Errorf("generic GC frame-root metadata has no allocation safepoints")
 	}
 	var previousAdapter uint32
 	for i, off := range rootMap.adapterReturnOffsets {
@@ -257,32 +381,26 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 }
 
 func gcFramePublicCallABI(sig FuncSig) bool {
-	if len(sig.Results) > 2 {
+	slots := func(types []ValType) (int, bool) {
+		n := 0
+		for _, typ := range types {
+			switch typ {
+			case ValV128:
+				n += 2
+			case ValI32, ValI64, ValF32, ValF64, ValFuncRef, ValExternRef, ValAnyRef, ValExnRef, ValI31Ref:
+				n++
+			default:
+				return 0, false
+			}
+		}
+		return n, true
+	}
+	params, ok := slots(sig.Params)
+	if !ok || params > 64 {
 		return false
 	}
-	gp, fp := 0, 0
-	for _, t := range sig.Params {
-		switch t {
-		case ValI32, ValI64, ValAnyRef, ValI31Ref:
-			gp++
-		case ValF32, ValF64:
-			fp++
-		default:
-			return false
-		}
-	}
-	if gp > 7 || fp > 8 {
-		return false
-	}
-	integerResult := func(t ValType) bool {
-		return t == ValI32 || t == ValI64 || t == ValAnyRef || t == ValI31Ref
-	}
-	for _, t := range sig.Results {
-		if !integerResult(t) && t != ValF32 && t != ValF64 {
-			return false
-		}
-	}
-	return len(sig.Results) != 2 || (integerResult(sig.Results[0]) && integerResult(sig.Results[1]))
+	results, ok := slots(sig.Results)
+	return ok && results <= 64
 }
 
 func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {

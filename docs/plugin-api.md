@@ -156,6 +156,44 @@ Configuration is opaque to Wago but not permissive: the registrar rejects
 unknown struct fields and trailing JSON, the provider validates its published
 JSON Schema, and `ValidateConfig` can enforce additional semantic rules.
 
+## Wasm GC host imports
+
+Declarative host imports registered through `HostImports` may use the public
+`ValAnyRef` and `ValI31Ref` ABI categories. Wago validates the plugin's declared
+ABI against each importing module, but it does not turn one plugin function into
+one `HostFuncRef`.
+
+A `HostFuncRef` remains one concrete Wasm function identity with one exact
+structural signature and, for `NewGCHostFuncRef`, one bound Runtime collector
+domain. A generic plugin `HostFunc` has different ownership:
+
+- the exact parameter and result descriptors come from the calling compiled
+  module;
+- module-local defined-type indexes remain local to that module;
+- the collector and GC domain come from the calling instance; and
+- two simultaneously live modules may call the same plugin import with
+  structurally different caller-defined GC types and different Runtime GC
+  domains.
+
+Collector objects never arrive as raw collector handles or object pointers.
+Non-null object parameters are translated to temporary opaque `uint64` tokens.
+Inside the active callback, the plugin resolves a token with
+`GuestStorage.GCRef` and receives a callback-scoped `GuestGCRef`. Null and i31
+values preserve their Wasm semantics. Results may be null, an allowed i31 value,
+or a callback-scoped token created through Wago's active host APIs, including
+`GuestGCArrayAllocatorHostModule.NewGCArrayResult`. Raw compact collector
+references are rejected.
+
+GC handles, result tokens, and borrowed slices expire at their documented
+callback or `WithGuestStorage` boundary. Wago checks the Runtime, instance,
+collector domain, exact caller type, and active view. Plugins must not retain or
+forge them. Scalar-only plugin imports remain ordinary `HostFunc` bindings and
+do not acquire GC root maps, a collector, or GC token bookkeeping.
+
+See [Host guest-storage access](host-guest-storage.md) for exact type inspection,
+array allocation, and zero-copy numeric array access. Wago intentionally exposes
+no raw GC pointer API.
+
 ## Exact authorities and scopes
 
 Authority names are exact. Dots are for display grouping and do not grant a

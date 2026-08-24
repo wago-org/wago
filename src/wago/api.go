@@ -1401,7 +1401,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
-	gcFrameRoots := newGCFrameRootPlan(m, genericGCExecution)
+	collectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)
+	gcAllocationSites := moduleHasGCAllocationSites(m)
+	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
+	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
@@ -1434,7 +1437,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
 	nativeGCABIVersion := uint32(0)
-	if genericGCExecution || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
+	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
 	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
@@ -1978,7 +1981,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.flags |= compiledCacheGuardMemory
 	}
 	validGCFrameRoots := validGCModuleFrameRootPlan(gcFrameRoots)
-	if genericGCExecution && !validGCFrameRoots {
+	if validGCFrameRoots && (gcAllocationSites || genericGCExecution && !collectorReferenceCallBoundary) {
+		hasAllocationSafepoint := false
+		for _, plan := range gcFrameRoots.Functions {
+			hasAllocationSafepoint = hasAllocationSafepoint || plan != nil && len(plan.Safepoints) != 0
+		}
+		validGCFrameRoots = hasAllocationSafepoint
+	}
+	if exactNativeGCRoots && !validGCFrameRoots {
 		diagnostic := "native backend did not produce complete exact root maps"
 		if gcFrameRoots != nil && gcFrameRoots.Diagnostic != "" {
 			diagnostic = gcFrameRoots.Diagnostic
@@ -2313,38 +2323,45 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // compatibility. Imported calls are already compiled; instantiation only writes
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
+	return c.validateImportBindingsWithPluginGC(imports, store, nil)
+}
+
+func (c *Compiled) validateImportBindingsWithPluginGC(imports Imports, store *referenceStore, pluginGCImports map[uint32]struct{}) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
-	privateWaitGC := store != nil && !store.private && c.usesGenericGCExecution() && c.usesAtomicWaitHelpers()
+	privateWaitGC := store != nil && !store.private && c.needsRuntimeGCCollectorDomain() && c.usesAtomicWaitHelpers()
 	dynamicFuncrefReachability := compiledHasDynamicFuncrefReachability(c)
 	if privateWaitGC && dynamicFuncrefReachability {
 		return fmt.Errorf("dynamic funcref reachability is unsupported for modules with atomic wait helpers")
-	}
-	moduleTransfersGC := false
-	for i := range c.Imports {
-		if i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref)) {
-			moduleTransfersGC = true
-			break
-		}
 	}
 	gcSubtypeLinkProduct := c.stagedGCTypeSubtypingProduct()
 	gcSubtypeLinkConsumer := gcSubtypeLinkProduct.isLinkConsumer()
 	gcSubtypeLinkProvider := gcSubtypeLinkProduct.linkProviderProduct()
 	for i, key := range c.Imports {
-		sigHasGCRefs := i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref))
+		sigHasGCRefs := i < len(c.importFuncSigs) && funcSigHasGCRefs(c.importFuncSigs[i])
+		sigTransfersCollectorObjects := c.importTransfersCollectorObjects(i)
 		if privateWaitGC && sigHasGCRefs {
 			return fmt.Errorf("collector-reference import %q is unsupported for modules with atomic wait helpers", key)
 		}
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			_, pluginImport := pluginGCImports[uint32(i)]
 			if sigHasGCRefs {
-				owner, owned := imports[key].(*HostFuncRef)
-				if !owned || owner == nil || !owner.gcCapable || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
-					return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef or a same-Runtime InstanceExport", key)
+				switch owner := imports[key].(type) {
+				case *HostFuncRef:
+					if owner == nil || !owner.gcCapable || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
+						return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
+					}
+				case HostFunc:
+					if owner == nil || !pluginImport || store == nil {
+						return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
+					}
+					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
+						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)
+					}
+				default:
+					return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
 				}
 				continue
-			}
-			if moduleTransfersGC {
-				return fmt.Errorf("cross-instance GC modules require every function import to be a same-Runtime InstanceExport; import %q is a host boundary", key)
 			}
 			if gcSubtypeLinkConsumer {
 				return fmt.Errorf("cross-instance import %q requires the exact gc/type-subtyping link provider", key)
@@ -3217,7 +3234,7 @@ func (c *Compiled) validate() error {
 	if err := gc.ValidateTypeDescs(c.GCTypeDescs); err != nil {
 		return fmt.Errorf("compiled metadata invalid: GCTypeDescs: %w", err)
 	}
-	needsNativeGCABI := c.usesGenericGCExecution() || c.usesGCStructHelpers() || c.usesGCArrayHelpers()
+	needsNativeGCABI := c.needsNativeGCABI()
 	if needsNativeGCABI {
 		if c.nativeGCABIRequirement() != gc.NativeABIVersion {
 			return fmt.Errorf("compiled metadata invalid: native GC ABI version %d unsupported (want %d)", c.nativeGCABIRequirement(), gc.NativeABIVersion)

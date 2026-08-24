@@ -141,11 +141,13 @@ The exact M9 eight-import recursive link pair, both M10/M11 expected unlinkables
 
 ## Callback-scoped host guest storage
 
-Synchronous host imports can use optional callback-scoped APIs for zero-copy
-access to indexed linear memory and Wasm GC arrays. The API reports Memory32
-versus Memory64, bounds linear-memory ranges, preserves exact structural import
-types, supports nested GC-array traversal, and can allocate an exact
-caller-selected numeric or `v128` GC-array result.
+Synchronous host imports, including declarative Runtime plugin imports, can use
+optional callback-scoped APIs for zero-copy access to indexed linear memory and
+Wasm GC arrays. GC-aware plugin imports keep their generic Go `HostFunc` while
+exact structural types and collector domains remain per calling module and
+instance. The API reports Memory32 versus Memory64, bounds linear-memory ranges,
+preserves exact structural import types, supports nested GC-array traversal, and
+can allocate an exact caller-selected numeric or `v128` GC-array result.
 
 Direct views cannot outlive the host callback. Wago serializes collector/native
 mutation while a view is active and rejects Wasm re-entry during the borrow.

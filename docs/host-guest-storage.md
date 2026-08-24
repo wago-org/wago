@@ -21,6 +21,179 @@ are general host APIs. They are not tied to a particular guest system interface.
 [Facet 0.1 specification](https://github.com/jtenner/facet-spec/blob/main/SPEC.md)
 uses explicit memory indexes, Memory64, and typed GC-array buffer facets.
 
+## Quick start: GC arrays in a host function
+
+Use this section when a plugin host function needs to receive, modify, or return
+a Wasm GC array.
+
+The main rule is simple: **never interpret a GC-reference `uint64` slot
+itself.** Wago uses the slot as an opaque token.
+
+```text
+Wasm (ref $array)
+       |
+       v
+params[n]                  opaque token
+       |
+       v
+storage.GCRef(params[n])    checked callback handle
+       |
+       v
+storage.GCArrayBytes(...)   checked array payload
+```
+
+The token, `GuestGCRef`, and directly borrowed payload all have a limited
+lifetime. Do not retain them after the active callback or guest-storage borrow.
+
+### Register the broad host ABI
+
+A declarative plugin registers a GC-bearing import with the public reference ABI
+category. The importing Wasm module can still select a concrete array type.
+
+```go
+func (p *plugin) Register(reg *wago.Registrar) error {
+    imports, err := reg.HostImports()
+    if err != nil {
+        return err
+    }
+    module, err := imports.Module("example")
+    if err != nil {
+        return err
+    }
+
+    module.Func("fill", fill).
+        Params(wago.ValAnyRef).
+        Results(wago.ValI32)
+    return nil
+}
+```
+
+For example, Wasm can import that function with an exact caller-defined type
+such as `(ref null $bytes)` where `$bytes` is `array (mut i8)`. Wago validates
+the broad ABI and keeps the exact caller type in the active callback metadata.
+The plugin does not create one global exact type for `fill`.
+
+### Read or write a numeric GC array
+
+Resolve the opaque parameter token inside `WithGuestStorage`. Then request the
+array payload.
+
+```go
+func fill(m wago.HostModule, params, results []uint64) {
+    storageModule, ok := m.(wago.GuestStorageHostModule)
+    if !ok {
+        panic(wago.HostTrap{Err: errors.New("guest storage unavailable")})
+    }
+
+    err := storageModule.WithGuestStorage(func(storage wago.GuestStorage) error {
+        ref, err := storage.GCRef(params[0])
+        if err != nil {
+            return err
+        }
+        if ref.IsNull() {
+            return errors.New("expected a non-null array")
+        }
+
+        payload, info, err := storage.GCArrayBytes(
+            ref,
+            wago.GuestStorageWrite,
+        )
+        if err != nil {
+            return err
+        }
+        if info.Storage != wago.GuestGCArrayI8 {
+            return errors.New("expected array<i8>")
+        }
+
+        n := copy(payload, []byte("hello"))
+        results[0] = uint64(n)
+        return nil
+    })
+    if err != nil {
+        panic(wago.HostTrap{Err: err})
+    }
+}
+```
+
+For a mutable numeric array, `payload` aliases the real GC array storage. A
+synchronous syscall can therefore write directly into it:
+
+```go
+n, err := unix.Read(fd, payload)
+```
+
+There is no required intermediate buffer and no raw pointer API. Keep the
+syscall inside the active `WithGuestStorage` callback.
+
+### Return a caller-typed GC array
+
+Use `GuestGCArrayAllocatorHostModule` when the host must create a fresh array
+whose concrete type comes from the importing Wasm module.
+
+```go
+func makeBytes(m wago.HostModule, _ []uint64, results []uint64) {
+    allocator, ok := m.(wago.GuestGCArrayAllocatorHostModule)
+    if !ok {
+        panic(wago.HostTrap{Err: errors.New("GC result allocation unavailable")})
+    }
+
+    source := []byte("hello")
+    token, err := allocator.NewGCArrayResult(
+        0,
+        uint32(len(source)),
+        func(dst []byte, info wago.GuestGCArrayInfo) error {
+            if info.Storage != wago.GuestGCArrayI8 {
+                return errors.New("caller result must be array<i8>")
+            }
+            copy(dst, source)
+            return nil
+        },
+    )
+    if err != nil {
+        panic(wago.HostTrap{Err: err})
+    }
+
+    results[0] = token
+}
+```
+
+The first argument to `NewGCArrayResult` is the WebAssembly result index. It is
+not the raw slot index. Wago reads that result's exact defined array type,
+allocates it in the caller's GC domain, roots it, runs the initializer, and then
+returns an ephemeral host-result token. Write that token to the result slot in
+the same host call. Do not retain it.
+
+The initializer can write an immutable caller-selected array because the new
+object is still private and has not been published to Wasm.
+
+### Which API should I use?
+
+| Need | API |
+|---|---|
+| Inspect Memory32 vs Memory64 | `MemoryInfo` |
+| Borrow a linear-memory range | `MemoryRange` |
+| Resolve a GC parameter token | `GCRef` |
+| Inspect a GC array | `GCArrayInfo` |
+| Read or write a numeric or `v128` GC array | `GCArrayBytes` |
+| Follow one reference-array element | `GCArrayRef` |
+| Read the caller's exact parameter type | `ImportParamType` |
+| Read the caller's exact result type | `ImportResultType` |
+| Resolve a caller-defined type | `DefinedType` |
+| Allocate a caller-typed numeric or `v128` GC array result | `NewGCArrayResult` |
+
+### Common mistakes
+
+Do not:
+
+- cast a GC-reference `uint64` slot to an internal collector reference;
+- retain a `GuestGCRef`, result token, or directly borrowed slice;
+- use a `GuestGCRef` with a different `GuestStorage` view;
+- request write access to an immutable published array;
+- use `GCArrayBytes` for a reference array;
+- re-enter Wasm while `WithGuestStorage` is active.
+
+The remaining sections describe these rules and APIs in detail.
+
 ## Callback scope
 
 A synchronous host function can opt into `GuestStorageHostModule`:
@@ -44,7 +217,9 @@ func host(m wago.HostModule, params, results []uint64) {
 
 Every directly borrowed slice and `GuestGCRef` returned by `GuestStorage` is
 valid only while the `WithGuestStorage` callback is active. Immutable GC-array
-reads are detached copies rather than direct borrows.
+reads are detached copies rather than direct borrows. A handle is also bound to
+its exact Runtime, calling instance, collector domain, and `GuestStorage` view;
+using it with another view or after expiry fails closed.
 
 The host MUST NOT retain a directly borrowed slice or `GuestGCRef` after the
 callback returns. Wago also makes later method calls through the expired
@@ -101,7 +276,10 @@ use `MemoryInfo.AddressType` when its external ABI distinguishes address widths.
 ## Wasm GC arrays
 
 GC references in ordinary host-function parameter slots remain opaque Wago
-public tokens. Do not interpret the slot as a collector handle or address.
+tokens. Declarative Runtime plugin imports use temporary callback-scoped tokens;
+other public APIs retain their documented token lifetime. In neither case may a
+host interpret the slot as an internal `gc.Ref`, collector handle, object
+address, or pointer.
 
 Convert a GC-reference slot into a callback-scoped reference with:
 
@@ -138,9 +316,16 @@ bytes, info, err := storage.GCArrayBytes(
 The slice contains no collector header or allocation padding. Numeric storage is
 exposed in the runtime's canonical little-endian in-memory representation.
 
-Mutable arrays return a zero-copy alias for both read and write access. A write
-borrow of an immutable array fails. A read of an immutable array returns a
-copy, because a Go `[]byte` cannot enforce read-only access to directly aliased
+Mutable arrays return a zero-copy alias for both read and write access. The
+slice is the real collector payload, so synchronous code may pass it directly to
+`read`, `pread`, `readv`, or similar syscall wrappers while the
+`WithGuestStorage` borrow remains active. No intermediate copy and no raw pointer
+API are required. Long blocking operations hold native execution and collector
+mutation stable for the borrow; callers should prefer readiness polling and
+non-blocking I/O when that hold would be excessive.
+
+A write borrow of an immutable array fails. A read of an immutable array returns
+a copy, because a Go `[]byte` cannot enforce read-only access to directly aliased
 storage. Mutating that copy cannot change guest state. Hosts should account for
 one allocation and a payload-sized copy when reading immutable arrays.
 
@@ -214,9 +399,10 @@ initializer rather than exposing raw reference storage.
 
 ## Collector safety
 
-Wago keeps the collector domain serialized for the complete
+Wago keeps native execution and the collector domain serialized for the complete
 `WithGuestStorage` lifetime. A borrowed GC payload therefore does not move while
-the host holds its slice.
+the host holds its slice. Guest re-entry, collection, memory growth, and other
+operations that could invalidate a direct view are rejected during the borrow.
 
 The public API never exposes:
 

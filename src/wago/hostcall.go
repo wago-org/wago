@@ -911,6 +911,23 @@ type boundHostFuncRefCall struct {
 	types           *[]DefinedTypeDescriptor
 }
 
+func (in *Instance) pluginGCImportSet() map[uint32]struct{} {
+	if in == nil {
+		return nil
+	}
+	return in.pluginGCImports
+}
+
+func (in *Instance) pluginGCHostSignature(dispatch uint32) (FuncSig, bool) {
+	if in == nil || in.c == nil || dispatch&hostFuncRefDispatchBit != 0 || uint64(dispatch) >= uint64(len(in.c.Imports)) || uint64(dispatch) >= uint64(len(in.c.importFuncSigs)) || !funcSigHasGCRefs(in.c.importFuncSigs[dispatch]) {
+		return FuncSig{}, false
+	}
+	if _, ok := in.pluginGCImports[dispatch]; !ok {
+		return FuncSig{}, false
+	}
+	return in.c.importFuncSigs[dispatch], true
+}
+
 func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, bool) {
 	if in == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
 		return boundHostFuncRefCall{}, false
