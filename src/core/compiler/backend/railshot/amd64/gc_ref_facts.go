@@ -82,7 +82,9 @@ func gcRefFact(e *elem) shared.GCRefFact {
 	return shared.GCRefFactFromPacked(uint64(e.st.cval), arrayLen)
 }
 
-func (f *fn) gcRefFactsEnabled() bool { return f.opt(optGCRefFacts) }
+func (f *fn) gcRefFactsEnabled() bool {
+	return nativeGCOptimizationsAvailable && f.opt(optGCRefFacts)
+}
 
 func (f *fn) gcLoadForwarding() bool {
 	return f.gcRefFactsEnabled() && gcLoadForwardingEnabled

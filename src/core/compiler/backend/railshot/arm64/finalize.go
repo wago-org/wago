@@ -9,24 +9,29 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
+const nativeCompactionAvailable = shared.CompiledCapabilities&shared.CapabilityNativeCompaction != 0
+
 // WAGO_FINALIZE=0 is the rollout oracle for the symbolic finalization seam. The
 // default identity path retains explicit sites and remaps offsets without
 // shrinking; later relaxation changes must remain byte-for-byte comparable
 // through this switch until their corpus and metadata gates pass.
-var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
-var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
+var nativeFinalizerEnabled = nativeCompactionAvailable && os.Getenv("WAGO_FINALIZE") != "0"
+var nativeFinalizerValidate = nativeCompactionAvailable && os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 
 // WAGO_COMPACT=1 forces bounded shrinking for every objective. Size and
 // Embedded enable it through their immutable per-compilation policy;
 // WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
-var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
-var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
-var loopCompactionEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
+var nativeCompactionEnabled = nativeCompactionAvailable && os.Getenv("WAGO_COMPACT") == "1"
+var nativeCompactionDisabled = nativeCompactionAvailable && os.Getenv("WAGO_COMPACT") == "0"
+var loopCompactionEnabled = nativeCompactionAvailable && os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
 
 // WAGO_ARM64_LOOP_COMPACTION_LIMIT selects the measured rollback/experiment
 // bounds around the 32 KiB default. The immutable per-compilation policy remains
 // the upper bound.
 var arm64LoopCompactionLimit = func() int {
+	if !nativeCompactionAvailable {
+		return 0
+	}
 	switch os.Getenv("WAGO_ARM64_LOOP_COMPACTION_LIMIT") {
 	case "16K":
 		return 16 << 10
@@ -42,6 +47,9 @@ var arm64LoopCompactionLimit = func() int {
 // WAGO_FINALIZER_DELETIONS selects an older bounded Size/Embedded policy for
 // exact rollout comparisons. It can only lower the immutable policy limit.
 var finalizerDeletionLimitOverride = func() int {
+	if !nativeCompactionAvailable {
+		return 0
+	}
 	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
 	case "8":
 		return 8
@@ -116,7 +124,7 @@ func decodeFinalizerMarker(key int) (off int, marker finalizerMarker, ok bool) {
 }
 
 func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
-	if !nativeFinalizerEnabled {
+	if !nativeCompactionAvailable || !nativeFinalizerEnabled {
 		return
 	}
 	sc := f.scratchState()
@@ -193,7 +201,7 @@ func (f *fn) recordBranchNext(off int) {
 }
 
 func (f *fn) compactNative() bool {
-	return !nativeCompactionDisabled && (nativeCompactionEnabled || f.policy.CompactNative)
+	return nativeCompactionAvailable && !nativeCompactionDisabled && (nativeCompactionEnabled || f.policy.CompactNative)
 }
 
 func (f *fn) finalizerDeletionLimit() int {
@@ -216,7 +224,7 @@ func loopCompactionLimitArm64(policy CodegenPolicy) int {
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
-	if !nativeFinalizerEnabled {
+	if !nativeCompactionAvailable || !nativeFinalizerEnabled {
 		return internalOff, nil
 	}
 	if nativeFinalizerValidate {

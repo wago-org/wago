@@ -443,8 +443,30 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if baseObjective.OptimizationObjective() != OptimizeBalanced || sizeObjective.OptimizationObjective() != OptimizeSize {
 		t.Fatal("WithOptimizationObjective must be immutable and Balanced must remain the default")
 	}
+	profileValue := func(cfg *RuntimeConfig, name string) bool {
+		t.Helper()
+		for _, info := range cfg.OptimizationInfos() {
+			if info.Name == name {
+				return info.On
+			}
+		}
+		t.Fatalf("missing optimization %q", name)
+		return false
+	}
+	if profileValue(baseObjective, "loop-precheck") || !profileValue(baseObjective.WithOptimizationObjective(OptimizeSpeed), "loop-precheck") {
+		t.Fatal("Balanced/Speed loop-precheck profile selection is incorrect")
+	}
+	if profileValue(baseObjective.WithOptimizationObjective(OptimizeSpeed).WithOptimization("loop-precheck", false), "loop-precheck") {
+		t.Fatal("explicit optimization override did not win after profile selection")
+	}
 	if got := OptimizeEmbedded.String(); got != "embedded" {
 		t.Fatalf("embedded objective string = %q", got)
+	}
+	if got := baseObjective.WithFunctionWorkers(4).WithOptimizationObjective(OptimizeEmbedded).FunctionWorkers(); got != 1 {
+		t.Fatalf("Embedded workers = %d, want serial", got)
+	}
+	if got := baseObjective.WithOptimizationObjective(OptimizeEmbedded).WithFunctionWorkers(4).FunctionWorkers(); got != 4 {
+		t.Fatalf("explicit post-profile workers = %d, want 4", got)
 	}
 	if err := baseObjective.WithOptimizationObjective(OptimizationObjective(255)).Validate(); err == nil || !strings.Contains(err.Error(), "optimization objective") {
 		t.Fatalf("invalid optimization objective validation = %v", err)

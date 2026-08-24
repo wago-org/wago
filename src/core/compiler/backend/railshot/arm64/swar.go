@@ -18,7 +18,7 @@ func (f *fn) trySWARParse4(root *elem) bool {
 	if root != nil && root.kind == ekDeferred && root.op == opSWARParse4 {
 		return true
 	}
-	if !f.opt(optSWARIdioms) || root == nil || root.kind != ekDeferred || root.op != opShrU || root.typ != mtI64 ||
+	if !producerNeedlesAvailable || !f.opt(optSWARIdioms) || root == nil || root.kind != ekDeferred || root.op != opShrU || root.typ != mtI64 ||
 		!isSWARConst(root.arg1, 32) {
 		return false
 	}
@@ -92,7 +92,7 @@ func (f *fn) trySWARPack4(root *elem) bool {
 	if root != nil && root.kind == ekDeferred && root.op == opSWARPack4 {
 		return true
 	}
-	if !f.opt(optSWARIdioms) || root == nil || root.kind != ekDeferred || root.op != opOr || root.typ != mtI64 {
+	if !producerNeedlesAvailable || !f.opt(optSWARIdioms) || root == nil || root.kind != ekDeferred || root.op != opOr || root.typ != mtI64 {
 		return false
 	}
 	source := matchSWARPack4(root.arg0, root.arg1)
@@ -173,7 +173,7 @@ func matchSWARPack4(left, right *elem) *elem {
 // inputs and two scratch locals, so this first bounded form is deliberately
 // restricted to a function-tail expression where those writes are unobservable.
 func (f *fn) tryMulHighU(r *wasm.Reader, a1 int) (bool, error) {
-	if !f.opt(optSWARIdioms) || a1 < f.localBase {
+	if !producerNeedlesAvailable || !f.opt(optSWARIdioms) || a1 < f.localBase {
 		return false, nil
 	}
 	root := f.s.back()
@@ -250,7 +250,7 @@ func (f *fn) tryMulHighU(r *wasm.Reader, a1 int) (bool, error) {
 // are pure and cannot trap; the liveness scan below proves that the omitted
 // temporary-local writes cannot be observed before the local is overwritten.
 func (f *fn) trySWARWiden4(r *wasm.Reader, x int) (bool, error) {
-	if !f.opt(optSWARIdioms) || x < f.localBase {
+	if !producerNeedlesAvailable || !f.opt(optSWARIdioms) || x < f.localBase {
 		return false, nil
 	}
 	root := f.s.back()

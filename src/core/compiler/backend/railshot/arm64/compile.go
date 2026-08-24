@@ -947,6 +947,14 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			return nil, fmt.Errorf("arm64: invalid optimization objective %d", objective)
 		}
 	}
+	explicit := opts.OptimizationDeltas
+	if !opts.OptimizationSnapshot.Valid() && opts.Optimizations != nil {
+		explicit = opts.Optimizations
+	}
+	if opts.OptimizationSnapshot.Valid() {
+		selection = applyObjectiveProfile(selection, objective, explicit)
+	}
+	selection = applyCompiledCapabilities(selection)
 	policy := shared.CodegenPolicyForObjective(selection, objective)
 	if policy.FunctionAlignLog2 < 2 {
 		policy.FunctionAlignLog2 = 2

@@ -19,6 +19,7 @@ const (
 // layout, inlining, and machine-window decisions without package-global state.
 type CodegenPolicy struct {
 	Objective     OptimizationObjective
+	Capabilities  Capabilities
 	Selection     optimization.Selection
 	CompactNative bool
 
@@ -63,16 +64,19 @@ func CodegenPolicyForObjective(selection optimization.Selection, objective Optim
 		// Zero requests the target's minimum legal code alignment. Backends clamp
 		// it to their instruction/data requirements.
 		functionAlign, internalAlign, loopAlign = 0, 0, 0
-		compactNative = true
-		maxFinalizerDeletions = MaxWideOffsetMapDeletions
-		maxRel32Sites = 2048
-		maxLoopCompactionBytes = 64 << 10
-		maxJumpTableBranches = 32
-		maxJumpTableRelaxIters = 1
 		maxSizeInlineBodyBytes = 16
+		if CompiledCapabilities.Has(CapabilityNativeCompaction) {
+			compactNative = true
+			maxFinalizerDeletions = MaxWideOffsetMapDeletions
+			maxRel32Sites = 2048
+			maxLoopCompactionBytes = 64 << 10
+			maxJumpTableBranches = 32
+			maxJumpTableRelaxIters = 1
+		}
 	}
 	return CodegenPolicy{
 		Objective:              objective,
+		Capabilities:           CompiledCapabilities,
 		Selection:              selection,
 		CompactNative:          compactNative,
 		FunctionAlignLog2:      functionAlign,

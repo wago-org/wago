@@ -1,6 +1,6 @@
 # Railshot build capabilities and optimization profiles
 
-Status: architecture and migration plan
+Status: implemented, with measured scope reductions noted below
 
 Source baseline: `main` at `4799c654`
 
@@ -29,8 +29,52 @@ Safety and semantic invariants are outside all three layers.
 The governing rule is:
 
 > **Large optional systems use build flags. Cheap code-quality decisions use
-> immutable profile bits. Individual toggles exist only in development builds.
+> immutable profile bits. Individual toggles remain compatibility and experiment
+> controls, not the normal production interface.
 > Safety invariants are not flags.**
+
+## Implementation outcome
+
+The implementation kept the pieces that created a real product boundary:
+
+- `wago_lean` now omits native compaction, producer needles, and AMD64 native
+  WasmGC optimization. Each subsystem can be restored independently, or all can
+  be restored with `wago_railshot_full`.
+- the ordinary untagged build preserves the pre-migration full compiler;
+- `CodegenPolicy` carries an immutable compiled-capability mask alongside the
+  existing immutable `optimization.Selection`;
+- public Balanced, Speed, Size, and Embedded objectives resolve coherent option
+  groups, and explicit compatibility overrides win after profile selection;
+- unavailable explicitly requested options fail validation with the required
+  build tag; and
+- the superseded ARM64 beachhead was deleted, while the useful `_port` notes
+  moved to `docs/archive`.
+
+Two proposed splits were rejected after implementation experiments. Native
+codegen plugins changed the stripped lean binary by only 320 bytes because Go's
+linker already removes unused plugin lowering. A diagnostics build split cut
+across the measurement and code-neutrality tests that justify optimizer work and
+did not provide a clean independent subsystem. Both remain demand-linked or
+runtime opt-in instead of gaining build tags.
+
+Stripped CLI measurements from the implementation worktree used Go 1.26.5,
+`CGO_ENABLED=0`, `-ldflags '-s -w'`, and the
+`wago_runtime,wago_lean,wago_minimal` base tags. ARM64 was linked on the Darwin
+host; AMD64 was cross-linked for Linux:
+
+| Build | ARM64 bytes | AMD64 bytes |
+|---|---:|---:|
+| Lean | 7,411,714 | 8,024,226 |
+| + compact | 7,444,850 | 8,065,186 |
+| + needles | 7,444,738 | 8,052,898 |
+| + GC optimizer | no ARM64 subsystem | 8,089,762 |
+| Full | 7,494,386 | 8,155,298 |
+
+The full-minus-lean reduction is 82,672 bytes on ARM64 and 131,072 bytes on
+AMD64. Individual deltas are not strictly additive because linked text and
+alignment interact. Unstripped symbol checks found no `finalizeNativeCode`,
+`buildCompactionPlan`, SWAR/SIMD needle entry, or dead-GC-constructor entry
+symbols in either lean target.
 
 ## Current baseline
 
@@ -49,64 +93,24 @@ already has useful pieces of the target architecture:
   already includes the runtime build identity, target, Wasm features, bounds
   policy, optimization objective, and selected option bits.
 
-The remaining problems are ownership and product surface. The public catalog,
-runtime maps, snapshots, environment controls, and package-global backend
-booleans still define or mirror dozens of individual choices. Large systems are
-always compiled in even when a product never uses them. This plan preserves the
-existing immutable hot path while separating build availability, normal profile
-policy, and laboratory controls.
+The implementation preserves the existing immutable hot path while separating
+measured build availability from normal profile policy and compatibility
+controls. Package-global bindings remain as the catalog's legacy/default input;
+they are resolved before compilation and are not consulted by a valid function
+policy.
 
 ## Policy representation
 
-Use separate fixed-width masks for compiled capabilities and cheap lowering
-decisions:
+The implementation reuses `optimization.Selection` as the options word instead
+of introducing a duplicate `railshotOptions` type. `Selection` was already an
+immutable `uint64` with pre-resolved target-specific `Option` tokens, so another
+mask would have added conversion and synchronization risk without improving the
+hot path. `shared.Capabilities` is a separate `uint64` because build availability
+has different validation semantics from runtime selection.
 
-```go
-type railshotCapabilities uint64
-
-const (
-	capNativeCompaction railshotCapabilities = 1 << iota
-	capProducerNeedles
-	capNativeGCOptimizations
-	capCodegenPlugins
-	capDiagnostics
-)
-
-type railshotOptions uint64
-
-const (
-	optInline railshotOptions = 1 << iota
-	optLoopPrecheck
-	optAssociativeTrees
-	optNativeCompaction
-	optProducerNeedles
-	optNativeGC
-	optModuleTrapSharing
-	// Core code-quality decisions continue here.
-)
-```
-
-Every module and function compilation receives one resolved value:
-
-```go
-type CodegenPolicy struct {
-	Objective    OptimizationObjective
-	Capabilities railshotCapabilities
-	Options      railshotOptions
-	CPUFeatures  CPUFeatures
-
-	FunctionAlignLog2 uint8
-	LoopAlignLog2     uint8
-}
-```
-
-The function hot path remains a bit test:
-
-```go
-func (f *fn) enabled(option railshotOptions) bool {
-	return f.policy.Options&option != 0
-}
-```
+Every module and function compilation receives one `CodegenPolicy` containing
+the objective, compiled capabilities, immutable selection, and bounded layout
+budgets. Hot decisions remain pointer validation plus one bit test.
 
 After policy resolution, lowering and finalization must not perform a map lookup,
 acquire the catalog lock, inspect a snapshot revision, mutate an optimizer global,
@@ -152,12 +156,7 @@ Introduce these coarse positive tags:
 | `wago_railshot_compact` | Native finalization, branch relaxation, frame shrinking, local-slot packing, and size-oriented trap sharing |
 | `wago_railshot_needles` | Producer-specific SWAR/SIMD sequence recognition and bounded bytecode lookahead |
 | `wago_railshot_gcopt` | GC facts, native scalar access/allocation, dead-constructor optimization, resolver reuse, and specialized barriers |
-| `wago_codegen_plugins` | Allocator-integrated native custom-instruction and custom-value lowering |
-| `wago_codegen_debug` | Stats, explain mode, per-option overrides, kill switches, validation modes, and experimental thresholds |
-| `wago_railshot_full` | Convenience umbrella for all optional **production** Railshot capabilities |
-
-`wago_codegen_debug` stays independent of `wago_railshot_full`; a full production
-compiler should not accidentally include the optimizer laboratory.
+| `wago_railshot_full` | Convenience umbrella for all optional Railshot capabilities |
 
 Each capability uses complementary files so internal and public APIs remain
 stable:
@@ -176,12 +175,11 @@ const nativeCompactionAvailable = true
 const nativeCompactionAvailable = false
 ```
 
-Positive tags naturally make the untagged build lean. That is an intentional
-product change, not a mechanical refactor. During migration, preserve current
-untagged behavior until tagged and untagged distributions, binary-size savings,
-performance, and downstream compatibility have been measured. Change the
-untagged product only at an explicit release boundary; do not let file movement
-silently redefine the default build.
+The existing `wago_lean` product selects the disabled side of each complementary
+file. Untagged builds remain full for compatibility. Positive tags restore one
+subsystem to a lean build; `wago_railshot_full` restores all three. This keeps the
+default library behavior stable while making the existing lean/minimal runtime
+meaningfully smaller.
 
 ## Profiles
 
@@ -234,8 +232,8 @@ Size is Balanced plus byte-positive decisions. When
 - packed function alignment; and
 - strict size-positive inlining with dead standalone-body removal.
 
-Associative tree covering is allowed only when the local byte-cost model proves
-it positive.
+Associative tree covering stays off in Size until it has a local byte-cost model;
+the current register-pressure threshold is not itself proof of a byte saving.
 
 ### Embedded
 
@@ -256,13 +254,13 @@ artifact identity even when the Embedded convenience path defaults it to one.
 
 | Decision | Balanced | Speed | Size | Embedded |
 |---|---:|---:|---:|---:|
-| Associative trees | Off | On | Byte-positive only | Off |
+| Associative trees | Off | On | Off pending byte-cost proof | Off |
 | Loop prechecks | Off | On | Off | Off |
 | Native compaction | Off | Off | If available | If available |
 | Producer needles | Off | If available | Off | Off by default |
-| Native GC optimizer | Off by default | If available | Off by default | Off by default |
+| Native GC optimizer | Off | If available | Off | Off |
 | Function workers | Existing default | Existing default | Existing default | Serial |
-| Individual overrides | Debug build only | Debug build only | Debug build only | Debug build only |
+| Individual overrides | Compatibility/experiments | Compatibility/experiments | Compatibility/experiments | Compatibility/experiments |
 
 ## Capability boundaries
 
@@ -303,8 +301,8 @@ if f.enabled(optAssociativeTrees) {
 
 It has proven native-size and spill reductions on focused shapes, but the broad
 matrix does not establish a large aggregate execution win. More aggressive
-thresholds have also regressed execution. Keep it on for Speed, byte-cost it for
-Size, and leave it off for Balanced and Embedded.
+thresholds have also regressed execution. Keep it on for Speed and leave it off
+for Balanced, Size, and Embedded until Size has a real byte-cost gate.
 
 ### Producer-specific SWAR and SIMD needles
 
@@ -325,7 +323,7 @@ work, but it should not set the minimum compiler footprint for every embedder.
 The resulting products are:
 
 ```text
-untagged lean build:
+`wago_lean` build:
   generic scalar, SIMD, and SWAR codegen
 
 -tags wago_railshot_needles:
@@ -366,68 +364,29 @@ defaults by itself.
 
 ### Native codegen plugins
 
-Put allocator-integrated native custom-instruction support behind
-`wago_codegen_plugins`:
-
-- custom machine types and multi-register values;
-- YMM/ZMM and vector-register ownership;
-- plugin register allocation and reservation;
-- opaque machine fragments and encoder access;
-- plugin memory checking;
-- custom output state; and
-- plugin-aware finalizer exclusions.
-
-The current design directly participates in Railshot register ownership and raw
-machine encoding. Compiling that integration out meaningfully simplifies the
-backend for products that do not need native codegen extensions. Registration
-and handler-backed ordinary imports may remain in the core API; a custom type or
-instruction that requires native lowering receives a clear unavailable-
-capability error.
+No build capability was retained. A prototype gate removed only 320 bytes from
+the stripped ARM64 lean/minimal executable (1,104 bytes unstripped). Native
+plugin implementations are demand-linked through registered extensions, so the
+Go linker already provides nearly all of the proposed footprint benefit. The
+extra validation modes and test matrix were not justified by that result.
 
 ### Diagnostics and optimizer laboratory
 
-Put these facilities behind `wago_codegen_debug`:
-
-- `CodegenStats` and structured native-byte attribution;
-- `WAGO_EXPLAIN` reports;
-- peephole maps and candidate counters;
-- per-option environment variables and kill switches;
-- legacy algorithm selection;
-- inliner and finalizer reports;
-- finalizer validation modes; and
-- experimental thresholds and fuel overrides.
-
-The release build should compile calls out where practical. Where shared code
-would become unreadable, use zero-sized no-op implementations that inline away.
-Environment variables must be parsed once while resolving policy, never from a
-lowering hot path.
+No diagnostics build capability was retained. `CodegenStats` is the shared
+measurement substrate for code-neutrality, byte attribution, focused optimizer
+tests, and regression analysis. Splitting it made ordinary lean test coverage
+depend on a debug tag without establishing a useful standalone binary reduction.
+Collection remains runtime opt-in (`Stats`, telemetry, or `WAGO_EXPLAIN`), and
+nil sinks retain the existing no-op hot path.
 
 ## Experiment-only overrides
 
-Under `wago_codegen_debug`, retain stable fine-grained names for tests,
-benchmarks, and bisection, but parse them once into the immutable option mask.
-Prefer one grammar over dozens of environment variables:
-
-```bash
-WAGO_RAILSHOT_OPTS="+assoc-tree,-inline,+loop-precheck"
-```
-
-The equivalent CLI surface is diagnostic-only:
-
-```bash
-wago run \
-  --codegen-profile balanced \
-  --codegen-opt +assoc-tree \
-  --codegen-opt -inline
-```
-
-```go
-func parseExperimentOptions(base railshotOptions, args []string) (railshotOptions, error)
-```
-
-The existing catalog can supply generated experiment metadata, help text, and
-test inventories. It should no longer own production compiler state or require
-`RuntimeConfig` to expose every individual optimization.
+Stable fine-grained names remain available through the existing compatibility
+API and environment controls. They are resolved once into the immutable
+selection before compilation; profiles are applied first and explicit overrides
+win. Consolidating the environment grammar and deprecating public per-option
+configuration are separate API changes and were not required to create the
+measured build boundaries.
 
 ## Decisions that are not optional
 
@@ -448,13 +407,9 @@ not peer instruction-selection experiments. Move them out of the optimization
 catalog only after their supported modes have dedicated validation and artifact
 identity.
 
-CPU features are target capabilities, not preferences:
-
-```go
-if policy.CPUFeatures.Has(CPUBMI2) {
-	emitRORX(...)
-}
-```
+CPU features remain target capabilities, not preferences. Existing host checks,
+option admission, emitted-code required-feature fields, and loader validation
+continue to own that boundary; duplicating it in `CodegenPolicy` was unnecessary.
 
 An experiment may force a generic legal lowering. It may never force an
 instruction the target cannot execute.
@@ -463,16 +418,16 @@ instruction the target cannot execute.
 
 | Earlier direction | Revised treatment |
 |---|---|
-| Delete the optimization catalog | Keep metadata under debug; production consumes typed masks |
-| Delete the finalizer | Build-tag it |
-| Delete stats and explain mode | Build-tag them |
-| Delete associative trees | Select through Speed and byte-positive Size policy |
+| Delete the optimization catalog | Keep it as metadata and compatibility input; production consumes its immutable selection |
+| Delete the finalizer | Compile its work out of `wago_lean`; restore with the compact/full tags |
+| Delete stats and explain mode | Keep runtime opt-in; a build split was not worthwhile |
+| Delete associative trees | Select through Speed; defer Size until a byte-cost gate exists |
 | Delete producer needles | Put them in the optional needle build |
 | Delete GC optimization | Put native GC optimization in its own capability |
-| Delete plugin lowering | Put native plugin codegen in its own capability |
-| Delete experimental pin allocators | Keep only in the debug build until promoted or removed with evidence |
-| Delete the ARM64 beachhead | Still delete; it is historical throwaway code |
-| Delete stale ARM64 `_port` material | Move useful historical contracts to `docs/archive`, then delete the code-tree copy |
+| Delete plugin lowering | Keep demand-linked; an explicit build gate saved only 320 stripped bytes |
+| Delete experimental pin allocators | Keep as explicit experiments until promoted or removed with evidence |
+| Delete the ARM64 beachhead | Deleted as historical throwaway code |
+| Delete stale ARM64 `_port` material | Useful contracts moved to `docs/archive`; code-tree copies removed |
 
 Default-off is not a permanent cemetery. Every retained option needs an owner,
 an evidence-backed profile, or an experiment purpose. After a deprecation window,
@@ -481,7 +436,7 @@ deleted in a separate measured change.
 
 ## Artifact identity and provenance
 
-Every codegen-affecting decision must participate in automatic artifact-cache
+Every codegen-affecting decision participates in automatic artifact-cache
 identity:
 
 ```text
@@ -489,71 +444,41 @@ cache identity =
     wasm/source hash
   + compiler/runtime build identity
   + target GOOS/GOARCH
-  + effective CPU feature mask used by codegen
   + optimization objective
   + resolved options mask
-  + compiled capability mask
   + bounds mode
   + other existing codegen-affecting feature configuration
 ```
 
-The current cache already covers most of this through build identity and
-explicit objective/option/configuration fields. Add explicit capability and
-effective CPU masks so custom test identities, provenance tools, and future
-dispatch policy cannot accidentally hide a distinction behind the build hash.
-Continue storing required CPU features in the artifact and rejecting an
-incompatible host at load time.
+No additional cache fields were added. The Go build identity already includes
+build tags, so the compiled capability mask would duplicate it. The effective
+profile is already represented by objective plus option bits. CPU-dependent
+codegen choices are represented by those bits and the artifact's existing
+required-feature fields, which the loader validates. Adding a second serialized
+provenance structure would create another identity source without a current
+consumer.
 
-Record the resolved selection as build provenance:
+## Implemented sequence
 
-```go
-type CompilerProvenance struct {
-	Objective    OptimizationObjective
-	Options      uint64
-	Capabilities uint64
-	CPUFeatures  uint64
-	Target       string
-}
-```
-
-Provenance does not control execution after native code is loaded. It exists for
-reproducibility, artifact inspection, and bug reports. The loader remains
-authoritative for format, target, CPU, and semantic compatibility.
-
-## Migration order
-
-1. Preserve the existing immutable `optimization.Selection` and
-   `CodegenPolicy` baseline while adding tests that forbid hot-path maps and
-   optimizer-global mutation.
-2. Classify every current catalog entry as safety invariant, CPU feature,
-   profile option, build capability, or debug-only experiment.
-3. Introduce `railshotCapabilities` and generated availability stubs without
-   changing emitted code.
-4. Replace the production selection with typed `railshotOptions`; keep the
-   catalog as an adapter for existing configuration during migration.
-5. Define explicit Balanced, Speed, Size, and Embedded masks and test every
-   profile on both architectures.
-6. Move individual override parsing, catalog enumeration, environment kill
-   switches, and stats/explain controls behind `wago_codegen_debug`.
-7. Put finalization and physical compaction behind
-   `wago_railshot_compact`/`wago_railshot_full`.
-8. Put exact producer needles behind
-   `wago_railshot_needles`/`wago_railshot_full`.
-9. Split helper-correct WasmGC lowering from `wago_railshot_gcopt` native
-   optimization.
-10. Split handler-backed plugin imports from `wago_codegen_plugins` native
-    allocator integration.
-11. Add explicit capability/CPU fingerprints and compiler provenance to
-    artifact/cache tests and inspection.
-12. Measure the tagged product matrix, then make the untagged-default change at
-    an explicit release boundary if it meets the gates below.
+1. Preserved immutable `optimization.Selection` and added immutable compiled
+   capabilities to `CodegenPolicy`.
+2. Added complementary availability files for compaction, needles, and native
+   GC optimization.
+3. Added capability-aware defaults, profiles, explicit-override precedence, and
+   unavailable-option validation.
+4. Made disabled paths constant-fold before finalizer metadata, producer
+   recognizers, or native GC optimizer work is retained.
+5. Kept the untagged build full and made `wago_lean` the explicit lean selector.
+6. Rejected plugin, diagnostics, duplicate options-mask, cache-fingerprint, and
+   provenance additions that did not justify their extra state.
+7. Removed historical ARM64 beachhead code and archived useful port notes.
 
 ## Acceptance gates
 
 ### Correctness
 
-- Default, each individual production capability, `wago_railshot_full`, and
-  `wago_railshot_full,wago_codegen_debug` pass focused and full tests.
+- Default, each individual production capability, and `wago_railshot_full` pass
+  focused tests.
 - AMD64 and ARM64 cross-builds cover complementary enabled/disabled files.
 - Lean WasmGC passes the same semantic, root-map, safepoint, barrier, trap, and
   exception tests as the full GC optimizer build.
@@ -563,9 +488,8 @@ authoritative for format, target, CPU, and semantic compatibility.
 
 ### Footprint and compile cost
 
-- Record stripped binary and package archive size for every capability alone,
-  the lean build, and the full build; do not claim simplification without
-  measured byte savings.
+- Record stripped binary size for every capability alone, the lean build, and
+  the full build; do not claim simplification without measured byte savings.
 - Re-run compile latency, B/op, allocs/op, peak RSS, and native-byte ledgers with
   serialized timing and exact commits.
 - A disabled capability must not retain its metadata buffers, pre-scans, maps,
@@ -575,11 +499,9 @@ authoritative for format, target, CPU, and semantic compatibility.
 
 - Compare equivalent profile masks before and after the split on the broad
   corpus and the focused workloads that justified each subsystem.
-- Test that objective, resolved options, compiled capabilities, effective CPU
-  features, bounds mode, target, source, and build identity all separate cache
-  entries when they can change emitted code.
-- Verify that serialized provenance round-trips and that loaders reject
-  incompatible required CPU features and artifact formats.
+- Test that objective, resolved options, bounds mode, target, source, and build
+  identity separate cache entries. Build identity contains capability tags;
+  loaders continue rejecting incompatible required CPU features and formats.
 
 ### API and migration
 
@@ -587,7 +509,7 @@ authoritative for format, target, CPU, and semantic compatibility.
 - Document which tags official binaries use and whether the untagged library is
   lean or full for each release.
 - Remove fine-grained production configuration only with a deprecation path;
-  debug builds retain stable names for benchmark reproduction.
+  compatibility controls retain stable names for benchmark reproduction.
 
 ## Non-goals
 

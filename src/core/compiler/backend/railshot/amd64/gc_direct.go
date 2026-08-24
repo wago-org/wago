@@ -950,7 +950,7 @@ func (f *fn) emitNativeGCStubs() {
 // reference initializers are validated before publication, and the complete
 // payload is initialized before the handle's space byte becomes visible.
 func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
-	layout, ok := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, site.typeIndex)
+	layout, ok := nativeGCArrayLayout(nativeGCOptimizationsAvailable && f.opt(optGCNativeAlloc), f.m, site.typeIndex)
 	if !ok || site.mode == gcArrayNativeNone {
 		panic("amd64: invalid native array allocation layout")
 	}

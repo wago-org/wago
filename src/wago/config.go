@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
@@ -300,8 +301,9 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 		infos, capturedSnapshot := railshotOptKnobSnapshot()
 		values = make(map[string]bool, len(infos))
 		for _, info := range infos {
-			values[info.Name] = info.On
+			values[info.Name] = info.On && optimizationAvailableInBuild(info.Name)
 		}
+		applyOptimizationProfileValues(values, OptimizeBalanced, nil)
 		defaultOptimizationCache.snapshot = capturedSnapshot
 		defaultOptimizationCache.values = values
 		defaultOptimizationCache.bmi2Values = nil
@@ -363,7 +365,39 @@ func NewRuntimeConfig() *RuntimeConfig {
 func (c *RuntimeConfig) WithOptimizationObjective(objective OptimizationObjective) *RuntimeConfig {
 	n := *c
 	n.optimizationObjective = objective
+	n.optimizations = c.optimizationValues()
+	applyOptimizationProfileValues(n.optimizations, objective, n.optimizationDeltas)
+	if objective == OptimizeEmbedded {
+		n.functionWorkers = 1
+	}
 	return &n
+}
+
+func applyOptimizationProfileValues(values map[string]bool, objective OptimizationObjective, explicit map[string]bool) {
+	set := func(name string, enabled bool) {
+		if _, exists := values[name]; !exists {
+			return
+		}
+		if _, overridden := explicit[name]; overridden {
+			return
+		}
+		values[name] = enabled && optimizationAvailableInBuild(name)
+	}
+
+	speed := objective == OptimizeSpeed
+	compact := objective == OptimizeSize || objective == OptimizeEmbedded
+	set("loop-precheck", speed)
+	set("simd-superopt", speed)
+	set("swar-idioms", speed)
+	set("shared-trap-body", compact)
+	set("shared-adapters", compact)
+	if runtime.GOARCH == "amd64" {
+		set("assoc-tree", speed)
+		set("dead-gc-new", speed)
+		set("gc-ref-facts", speed)
+		set("gc-native-alloc", speed)
+		set("local-slot-order", compact)
+	}
 }
 
 // WithCoreFeatures sets the accepted WebAssembly feature set. Validated on use.
@@ -420,8 +454,8 @@ func (c *RuntimeConfig) WithOptimization(name string, enabled bool) *RuntimeConf
 	n := *c
 	n.optimizations = c.optimizationValues()
 	n.optimizations[name] = enabled
-	n.optimizationSnapshot = railshotOptimizationSnapshot{}
-	n.optimizationDeltas = nil
+	n.optimizationDeltas = c.optimizationDeltaValues()
+	n.optimizationDeltas[name] = enabled
 	n.trustedOptimizations = false
 	return &n
 }
@@ -434,8 +468,10 @@ func (c *RuntimeConfig) WithOptimizations(values map[string]bool) *RuntimeConfig
 	for name, enabled := range values {
 		n.optimizations[name] = enabled
 	}
-	n.optimizationSnapshot = railshotOptimizationSnapshot{}
-	n.optimizationDeltas = nil
+	n.optimizationDeltas = c.optimizationDeltaValues()
+	for name, enabled := range values {
+		n.optimizationDeltas[name] = enabled
+	}
 	n.trustedOptimizations = false
 	return &n
 }
@@ -506,6 +542,7 @@ func (c *RuntimeConfig) OptimizationInfos() []OptKnobInfo {
 		if enabled, ok := c.optimizations[infos[index].Name]; ok {
 			infos[index].On = enabled
 		}
+		infos[index].Available = optimizationAvailableInBuild(infos[index].Name)
 	}
 	return infos
 }
@@ -513,6 +550,14 @@ func (c *RuntimeConfig) OptimizationInfos() []OptKnobInfo {
 func (c *RuntimeConfig) optimizationValues() map[string]bool {
 	values := make(map[string]bool, len(c.optimizations))
 	for name, enabled := range c.optimizations {
+		values[name] = enabled
+	}
+	return values
+}
+
+func (c *RuntimeConfig) optimizationDeltaValues() map[string]bool {
+	values := make(map[string]bool, len(c.optimizationDeltas)+1)
+	for name, enabled := range c.optimizationDeltas {
 		values[name] = enabled
 	}
 	return values
@@ -719,9 +764,14 @@ func (c *RuntimeConfig) Validate() error {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
 	if !c.trustedOptimizations {
-		for name := range c.optimizations {
+		for name, enabled := range c.optimizations {
 			if !optimization.Exists(runtime.GOARCH, name) {
 				return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
+			}
+			if enabled {
+				if available, tag := optimizationBuildAvailability(name); !available {
+					return fmt.Errorf("wago: %s optimization %q requires -tags %s", runtime.GOARCH, name, tag)
+				}
 			}
 		}
 	}
@@ -744,4 +794,25 @@ func (c *RuntimeConfig) Validate() error {
 		return &GuardPageUnavailableError{}
 	}
 	return nil
+}
+
+func optimizationAvailableInBuild(name string) bool {
+	available, _ := optimizationBuildAvailability(name)
+	return available
+}
+
+func optimizationBuildAvailability(name string) (bool, string) {
+	var capability shared.Capabilities
+	var tag string
+	switch name {
+	case "shared-trap-body", "shared-adapters", "local-slot-order":
+		capability, tag = shared.CapabilityNativeCompaction, "wago_railshot_compact or wago_railshot_full"
+	case "simd-superopt", "swar-idioms":
+		capability, tag = shared.CapabilityProducerNeedles, "wago_railshot_needles or wago_railshot_full"
+	case "dead-gc-new", "gc-ref-facts", "gc-native-alloc":
+		capability, tag = shared.CapabilityNativeGCOptimizations, "wago_railshot_gcopt or wago_railshot_full"
+	default:
+		return true, ""
+	}
+	return shared.CompiledCapabilities.Has(capability), tag
 }

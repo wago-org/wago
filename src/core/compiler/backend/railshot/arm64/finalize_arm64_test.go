@@ -1,4 +1,4 @@
-//go:build arm64
+//go:build arm64 && (!wago_lean || wago_railshot_compact || wago_railshot_full)
 
 package arm64
 

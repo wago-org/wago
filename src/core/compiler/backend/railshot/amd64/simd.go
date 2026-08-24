@@ -2065,7 +2065,7 @@ func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
 }
 
 func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 83) {
+	if !producerNeedlesAvailable || !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 83) {
 		return false
 	}
 	b := f.popValue()
@@ -2092,7 +2092,7 @@ func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
 // immediately by v128.and. The Wasm v128.andnot opcode and VPANDN use opposite
 // source order, so VPANDN(dst,b,a) is the exact one-instruction result.
 func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 78) {
+	if !producerNeedlesAvailable || !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 78) {
 		return false
 	}
 	b := f.popValue()

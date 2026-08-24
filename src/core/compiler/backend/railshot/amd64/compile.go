@@ -1143,6 +1143,14 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			return nil, fmt.Errorf("amd64: invalid optimization objective %d", objective)
 		}
 	}
+	explicit := opts.OptimizationDeltas
+	if !opts.OptimizationSnapshot.Valid() && opts.Optimizations != nil {
+		explicit = opts.Optimizations
+	}
+	if opts.OptimizationSnapshot.Valid() {
+		selection = applyObjectiveProfile(selection, objective, explicit)
+	}
+	selection = applyCompiledCapabilities(selection)
 	policy := shared.CodegenPolicyForObjective(selection, objective)
 	guardMode := opts.ElideBoundsChecks
 	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).
@@ -2368,7 +2376,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
-	if policy.EnabledOption(optGCRefFacts) {
+	if nativeGCOptimizationsAvailable && policy.EnabledOption(optGCRefFacts) {
 		if cap(f.localGCRefFacts) < nLocals {
 			f.localGCRefFacts = make([]shared.GCRefFact, nLocals)
 		} else {

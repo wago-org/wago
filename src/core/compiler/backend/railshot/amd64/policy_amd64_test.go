@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -103,6 +104,34 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	}
 }
 
+func TestObjectiveProfilesAMD64(t *testing.T) {
+	base, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(objective OptimizationObjective, option optimization.Option, want bool) {
+		t.Helper()
+		got := applyCompiledCapabilities(applyObjectiveProfile(base, objective, nil)).EnabledOption(option)
+		if got != want {
+			t.Fatalf("%v option = %t, want %t", objective, got, want)
+		}
+	}
+	check(OptimizeBalanced, optAssocTree, false)
+	check(OptimizeSpeed, optAssocTree, true)
+	check(OptimizeSize, optAssocTree, false)
+	check(OptimizeEmbedded, optAssocTree, false)
+	check(OptimizeBalanced, optLoopPrecheck, false)
+	check(OptimizeSpeed, optLoopPrecheck, true)
+	check(OptimizeBalanced, optGCNativeAlloc, false)
+	check(OptimizeSpeed, optGCNativeAlloc, nativeGCOptimizationsAvailable)
+	check(OptimizeSize, optSharedTrapBody, nativeCompactionAvailable)
+
+	overridden := applyObjectiveProfile(base, OptimizeSpeed, map[string]bool{"loop-precheck": false})
+	if overridden.EnabledOption(optLoopPrecheck) {
+		t.Fatal("explicit loop-precheck override lost to Speed profile")
+	}
+}
+
 func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLimitOverride := finalizerDeletionLimitOverride
@@ -121,6 +150,15 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
 	if compactNativePolicy(balanced) {
 		t.Fatal("Balanced unexpectedly enabled native compaction")
+	}
+	if !nativeCompactionAvailable {
+		if compactNativePolicy(size) {
+			t.Fatal("lean build enabled unavailable native compaction")
+		}
+		if got := finalizerRel32Limit(size); got != 0 {
+			t.Fatalf("lean rel32 inventory limit = %d, want 0", got)
+		}
+		return
 	}
 	if !compactNativePolicy(size) {
 		t.Fatal("Size did not enable native compaction")

@@ -119,6 +119,9 @@ const (
 	OptimizeBalanced = shared.OptimizeBalanced
 	OptimizeSize     = shared.OptimizeSize
 	OptimizeEmbedded = shared.OptimizeEmbedded
+
+	producerNeedlesAvailable       = shared.CompiledCapabilities&shared.CapabilityProducerNeedles != 0
+	nativeGCOptimizationsAvailable = shared.CompiledCapabilities&shared.CapabilityNativeGCOptimizations != 0
 )
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
@@ -129,10 +132,50 @@ func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }
 
+func applyObjectiveProfile(selection optimization.Selection, objective OptimizationObjective, explicit map[string]bool) optimization.Selection {
+	set := func(name string, option optimization.Option, on bool) {
+		if _, overridden := explicit[name]; !overridden {
+			selection = selection.WithOption(option, on)
+		}
+	}
+
+	speed := objective == OptimizeSpeed
+	set("assoc-tree", optAssocTree, speed)
+	set("loop-precheck", optLoopPrecheck, speed)
+	set("simd-superopt", optSIMDSuperopt, speed)
+	set("swar-idioms", optSWARIdioms, speed)
+	set("dead-gc-new", optDeadGCNew, speed)
+	set("gc-ref-facts", optGCRefFacts, speed)
+	set("gc-native-alloc", optGCNativeAlloc, speed)
+	compact := objective == OptimizeSize || objective == OptimizeEmbedded
+	set("shared-trap-body", optSharedTrapBody, compact)
+	set("shared-adapters", optSharedAdapters, compact)
+	set("local-slot-order", optLocalSlotOrder, compact)
+	return selection
+}
+
+func applyCompiledCapabilities(selection optimization.Selection) optimization.Selection {
+	if !shared.CompiledCapabilities.Has(shared.CapabilityNativeCompaction) {
+		selection = selection.WithOption(optSharedTrapBody, false)
+		selection = selection.WithOption(optSharedAdapters, false)
+		selection = selection.WithOption(optLocalSlotOrder, false)
+	}
+	if !shared.CompiledCapabilities.Has(shared.CapabilityProducerNeedles) {
+		selection = selection.WithOption(optSIMDSuperopt, false)
+		selection = selection.WithOption(optSWARIdioms, false)
+	}
+	if !shared.CompiledCapabilities.Has(shared.CapabilityNativeGCOptimizations) {
+		selection = selection.WithOption(optDeadGCNew, false)
+		selection = selection.WithOption(optGCRefFacts, false)
+		selection = selection.WithOption(optGCNativeAlloc, false)
+	}
+	return selection
+}
+
 func currentCodegenPolicy() CodegenPolicy {
 	selection, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
 	if err != nil {
 		panic(err)
 	}
-	return shared.DefaultCodegenPolicy(selection)
+	return shared.DefaultCodegenPolicy(applyCompiledCapabilities(selection))
 }

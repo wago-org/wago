@@ -172,6 +172,11 @@ func TestWideOffsetMapOwnsAMD64Capacity(t *testing.T) {
 }
 
 func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
+	compactAvailable := CompiledCapabilities.Has(CapabilityNativeCompaction)
+	sizeDeletions := uint8(8)
+	if compactAvailable {
+		sizeDeletions = MaxWideOffsetMapDeletions
+	}
 	for _, test := range []struct {
 		objective     OptimizationObjective
 		wantAlign     uint8
@@ -180,8 +185,8 @@ func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
 	}{
 		{OptimizeSpeed, 4, false, 8},
 		{OptimizeBalanced, 4, false, 8},
-		{OptimizeSize, 0, true, MaxWideOffsetMapDeletions},
-		{OptimizeEmbedded, 0, true, MaxWideOffsetMapDeletions},
+		{OptimizeSize, 0, compactAvailable, sizeDeletions},
+		{OptimizeEmbedded, 0, compactAvailable, sizeDeletions},
 	} {
 		policy := CodegenPolicyForObjective(optimization.Selection{}, test.objective)
 		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign || policy.CompactNative != test.wantCompact || policy.MaxFinalizerDeletions != test.wantDeletions {

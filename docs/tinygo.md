@@ -62,6 +62,12 @@ full process-tree supervisor and periodic content scan. A lean build rejects
 `--watch` as an unknown flag instead of using a smaller supervisor that can
 leave guest processes running.
 
+`wago_lean` also omits optional Railshot native compaction, producer-specific
+SIMD/SWAR needles, and AMD64 native WasmGC optimization. Restore one subsystem
+with `wago_railshot_compact`, `wago_railshot_needles`, or
+`wago_railshot_gcopt`; add `wago_railshot_full` to restore all three. Untagged
+standard builds retain the full compiler.
+
 The standard-Go manager can use TinyGo for the final link of a runtime-only
 command binary:
 

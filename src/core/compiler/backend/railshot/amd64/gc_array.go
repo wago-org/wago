@@ -69,7 +69,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
-		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
+		if layout, native := nativeGCArrayLayout(nativeGCOptimizationsAvailable && f.opt(optGCNativeAlloc), f.m, typeIndex); native {
 			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
 				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeUniform}
 				helper = gcArrayAllocUniformNative
@@ -189,7 +189,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocFixed)
-		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
+		if layout, native := nativeGCArrayLayout(nativeGCOptimizationsAvailable && f.opt(optGCNativeAlloc), f.m, typeIndex); native {
 			bytes := uint64(gc.PayloadOffset) + uint64(count)*uint64(layout.elemSize)
 			bytes = (bytes + 7) &^ 7
 			if bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
@@ -222,7 +222,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
-		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+		if layout, native := nativeGCArrayLayout(nativeGCOptimizationsAvailable && f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
 			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
 				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault}
 				helper = gcArrayAllocDefaultNative
