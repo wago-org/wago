@@ -7,15 +7,17 @@ import (
 )
 
 func TestCompiledCapabilitiesMatchPolicy(t *testing.T) {
-	for _, objective := range []OptimizationObjective{OptimizeSpeed, OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-		policy := CodegenPolicyForObjective(optimization.Selection{}, objective)
-		if policy.Capabilities != CompiledCapabilities {
-			t.Fatalf("%v policy capabilities = %#x, want %#x", objective, policy.Capabilities, CompiledCapabilities)
+	for _, compact := range []bool{false, true} {
+		policy := DefaultCodegenPolicy(optimization.Selection{})
+		if compact {
+			policy = CompactCodegenPolicy(optimization.Selection{})
 		}
-		wantCompact := CompiledCapabilities.Has(CapabilityNativeCompaction) &&
-			(objective == OptimizeSize || objective == OptimizeEmbedded)
+		if policy.Capabilities != CompiledCapabilities {
+			t.Fatalf("compact=%t policy capabilities = %#x, want %#x", compact, policy.Capabilities, CompiledCapabilities)
+		}
+		wantCompact := compact && CompiledCapabilities.Has(CapabilityNativeCompaction)
 		if policy.CompactNative != wantCompact {
-			t.Fatalf("%v compact = %t, want %t", objective, policy.CompactNative, wantCompact)
+			t.Fatalf("compact=%t policy compact = %t, want %t", compact, policy.CompactNative, wantCompact)
 		}
 	}
 }

@@ -12,14 +12,14 @@ import (
 func BenchmarkExecBrTableCompactTargetIDsAMD64(b *testing.B) {
 	m := brTableLabelsInRAX(b, []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, 4)
 	for _, tc := range []struct {
-		name      string
-		objective OptimizationObjective
+		name    string
+		compact bool
 	}{
-		{"balanced", OptimizeBalanced},
-		{"size", OptimizeSize},
+		{"ordinary", false},
+		{"compact", true},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			cm, err := CompileModuleWith(m, CompileOptions{Objective: &tc.objective})
+			cm, err := CompileModuleWith(m, CompileOptions{CompactNative: tc.compact})
 			if err != nil {
 				b.Fatal(err)
 			}

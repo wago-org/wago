@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
-	"github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -96,7 +95,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
+	policy := shared.DefaultCodegenPolicy(selection)
 	for _, name := range names {
 		if policy.EnabledOption(optimizationBindings.Option(name)) {
 			t.Errorf("per-compile policy did not disable %s", name)
@@ -104,35 +103,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	}
 }
 
-func TestObjectiveProfilesAMD64(t *testing.T) {
-	base, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check := func(objective OptimizationObjective, option optimization.Option, want bool) {
-		t.Helper()
-		got := applyCompiledCapabilities(applyObjectiveProfile(base, objective, nil)).EnabledOption(option)
-		if got != want {
-			t.Fatalf("%v option = %t, want %t", objective, got, want)
-		}
-	}
-	check(OptimizeBalanced, optAssocTree, false)
-	check(OptimizeSpeed, optAssocTree, true)
-	check(OptimizeSize, optAssocTree, false)
-	check(OptimizeEmbedded, optAssocTree, false)
-	check(OptimizeBalanced, optLoopPrecheck, false)
-	check(OptimizeSpeed, optLoopPrecheck, true)
-	check(OptimizeBalanced, optGCNativeAlloc, false)
-	check(OptimizeSpeed, optGCNativeAlloc, nativeGCOptimizationsAvailable)
-	check(OptimizeSize, optSharedTrapBody, nativeCompactionAvailable)
-
-	overridden := applyObjectiveProfile(base, OptimizeSpeed, map[string]bool{"loop-precheck": false})
-	if overridden.EnabledOption(optLoopPrecheck) {
-		t.Fatal("explicit loop-precheck override lost to Speed profile")
-	}
-}
-
-func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
+func TestNativeCompactionPolicyAndRollbackAMD64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLimitOverride := finalizerDeletionLimitOverride
 	beforeRel32Override := finalizerRel32SiteLimitOverride
@@ -146,24 +117,24 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 	})
 
 	selection := currentCodegenPolicy().Selection
-	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
-	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
-	if compactNativePolicy(balanced) {
-		t.Fatal("Balanced unexpectedly enabled native compaction")
+	ordinary := shared.DefaultCodegenPolicy(selection)
+	compact := shared.CompactCodegenPolicy(selection)
+	if compactNativePolicy(ordinary) {
+		t.Fatal("ordinary policy unexpectedly enabled native compaction")
 	}
 	if !nativeCompactionAvailable {
-		if compactNativePolicy(size) {
+		if compactNativePolicy(compact) {
 			t.Fatal("lean build enabled unavailable native compaction")
 		}
-		if got := finalizerRel32Limit(size); got != 0 {
+		if got := finalizerRel32Limit(compact); got != 0 {
 			t.Fatalf("lean rel32 inventory limit = %d, want 0", got)
 		}
 		return
 	}
-	if !compactNativePolicy(size) {
-		t.Fatal("Size did not enable native compaction")
+	if !compactNativePolicy(compact) {
+		t.Fatal("compact policy did not enable native compaction")
 	}
-	f := fn{policy: size}
+	f := fn{policy: compact}
 	if got := f.finalizerDeletionLimit(); got != shared.MaxWideOffsetMapDeletions {
 		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, shared.MaxWideOffsetMapDeletions)
 	}
@@ -172,46 +143,45 @@ func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
 		t.Fatalf("finalizer deletion limit override = %d, want 64", got)
 	}
 	finalizerDeletionLimitOverride = 0
-	if got := finalizerRel32Limit(size); got != 2048 {
+	if got := finalizerRel32Limit(compact); got != 2048 {
 		t.Fatalf("Size rel32 site limit = %d, want 2048", got)
 	}
 	finalizerRel32SiteLimitOverride = 1536
-	if got := finalizerRel32Limit(size); got != 1536 {
+	if got := finalizerRel32Limit(compact); got != 1536 {
 		t.Fatalf("rel32 experiment limit = %d, want 1536", got)
 	}
-	if got := loopCompactionLimit(size); got != 64<<10 {
+	if got := loopCompactionLimit(compact); got != 64<<10 {
 		t.Fatalf("Size loop compaction limit = %d, want 64 KiB", got)
 	}
-	if got := (&fn{policy: size}).jumpTableBranchRelaxationIterations(); got != 1 {
+	if got := (&fn{policy: compact}).jumpTableBranchRelaxationIterations(); got != 1 {
 		t.Fatalf("Size jump-table relaxation iterations = %d, want 1", got)
 	}
-	if got := (&fn{policy: size}).jumpTableBranchRelaxationLimit(); got != 32 {
+	if got := (&fn{policy: compact}).jumpTableBranchRelaxationLimit(); got != 32 {
 		t.Fatalf("Size jump-table branch budget = %d, want 32", got)
 	}
 	finalizerRel32SiteLimitOverride = 256
 	loopCompactionByteLimitOverride = 16 << 10
-	if got := finalizerRel32Limit(size); got != 256 {
+	if got := finalizerRel32Limit(compact); got != 256 {
 		t.Fatalf("rel32 rollback limit = %d, want 256", got)
 	}
-	if got := loopCompactionLimit(size); got != 16<<10 {
+	if got := loopCompactionLimit(compact); got != 16<<10 {
 		t.Fatalf("loop rollback limit = %d, want 16 KiB", got)
 	}
 
 	nativeCompactionEnabled = true
-	if !compactNativePolicy(balanced) {
-		t.Fatal("WAGO_COMPACT=1 override did not enable Balanced compaction")
+	if !compactNativePolicy(ordinary) {
+		t.Fatal("WAGO_COMPACT=1 override did not enable compaction")
 	}
 	nativeCompactionDisabled = true
-	if compactNativePolicy(size) || compactNativePolicy(balanced) {
+	if compactNativePolicy(compact) || compactNativePolicy(ordinary) {
 		t.Fatal("WAGO_COMPACT=0 rollback did not disable compaction")
 	}
 }
 
-func TestFunctionStartPaddingObjectivesAMD64(t *testing.T) {
+func TestFunctionStartPaddingPolicyAMD64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
-	policy := func(objective OptimizationObjective) CodegenPolicy {
-		return shared.CodegenPolicyForObjective(selection, objective)
-	}
+	ordinary := shared.DefaultCodegenPolicy(selection)
+	compact := shared.CompactCodegenPolicy(selection)
 	hot := funcHints{hasLoop: true}
 	for _, test := range []struct {
 		name      string
@@ -219,33 +189,32 @@ func TestFunctionStartPaddingObjectivesAMD64(t *testing.T) {
 		bodyBytes int
 		adapter   bool
 		hints     funcHints
-		objective OptimizationObjective
+		policy    CodegenPolicy
 		want      int
 	}{
-		{name: "speed tiny", off: 3, bodyBytes: 12, objective: OptimizeSpeed, want: 13},
-		{name: "balanced tiny leaf", off: 3, bodyBytes: 12, objective: OptimizeBalanced, want: 0},
-		{name: "balanced adapter", off: 3, bodyBytes: 12, adapter: true, objective: OptimizeBalanced, want: 13},
-		{name: "balanced hot within budget", off: 12, bodyBytes: 64, hints: hot, objective: OptimizeBalanced, want: 4},
-		{name: "balanced hot over budget", off: 3, bodyBytes: 64, hints: hot, objective: OptimizeBalanced, want: 0},
-		{name: "size", off: 3, bodyBytes: 512, adapter: true, hints: hot, objective: OptimizeSize, want: 0},
+		{name: "ordinary tiny leaf", off: 3, bodyBytes: 12, policy: ordinary, want: 0},
+		{name: "ordinary adapter", off: 3, bodyBytes: 12, adapter: true, policy: ordinary, want: 13},
+		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
+		{name: "ordinary hot over budget", off: 3, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},
+		{name: "compact", off: 3, bodyBytes: 512, adapter: true, hints: hot, policy: compact, want: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := functionStartPadding(test.off, test.bodyBytes, test.adapter, test.hints, policy(test.objective)); got != test.want {
+			if got := functionStartPadding(test.off, test.bodyBytes, test.adapter, test.hints, test.policy); got != test.want {
 				t.Fatalf("padding = %d, want %d", got, test.want)
 			}
 		})
 	}
 }
 
-func TestObjectiveLayoutSerialParallelParityAMD64(t *testing.T) {
+func TestCompactLayoutSerialParallelParityAMD64(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x6a, 0x0b}},
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x03, 0x6a, 0x0b}},
 	)
-	compile := func(objective OptimizationObjective, workers int) []byte {
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: workers})
+	compile := func(compact bool, workers int) []byte {
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Workers: workers})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -254,57 +223,48 @@ func TestObjectiveLayoutSerialParallelParityAMD64(t *testing.T) {
 		}
 		return append([]byte(nil), cm.Code...)
 	}
-	balanced := compile(OptimizeBalanced, 1)
-	sizeSerial := compile(OptimizeSize, 1)
-	sizeParallel := compile(OptimizeSize, 3)
-	if !bytes.Equal(sizeSerial, sizeParallel) {
-		t.Fatal("Size layout differs between serial and parallel compilation")
+	ordinary := compile(false, 1)
+	compactSerial := compile(true, 1)
+	compactParallel := compile(true, 3)
+	if !bytes.Equal(compactSerial, compactParallel) {
+		t.Fatal("compact layout differs between serial and parallel compilation")
 	}
-	if len(sizeSerial) > len(balanced) {
-		t.Fatalf("Size output = %d bytes, Balanced = %d; want no larger Size layout", len(sizeSerial), len(balanced))
-	}
-}
-
-func TestCompileModuleRejectsInvalidObjectiveAMD64(t *testing.T) {
-	m := mod1(t, nil, nil, []byte{0x00, 0x0b})
-	objective := OptimizationObjective(255)
-	if _, err := CompileModuleWith(m, CompileOptions{Objective: &objective}); err == nil {
-		t.Fatal("invalid optimization objective was accepted")
+	if len(compactSerial) > len(ordinary) {
+		t.Fatalf("compact output = %d bytes, ordinary = %d; want no larger compact layout", len(compactSerial), len(ordinary))
 	}
 }
 
-func TestAccumulatorImmediateObjectiveAndRollbackAMD64(t *testing.T) {
+func TestAccumulatorImmediateCompactionAndRollbackAMD64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
-	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
-	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
-	embedded := shared.CodegenPolicyForObjective(selection, OptimizeEmbedded)
-	if compactAccumulatorImmediatePolicy(balanced) {
-		t.Fatal("Balanced unexpectedly enabled accumulator immediates")
+	ordinary := shared.DefaultCodegenPolicy(selection)
+	compact := shared.CompactCodegenPolicy(selection)
+	if compactAccumulatorImmediatePolicy(ordinary) {
+		t.Fatal("ordinary policy unexpectedly enabled accumulator immediates")
 	}
-	if !compactAccumulatorImmediatePolicy(size) || !compactAccumulatorImmediatePolicy(embedded) {
-		t.Fatal("Size/Embedded did not enable accumulator immediates")
+	if !compactAccumulatorImmediatePolicy(compact) {
+		t.Fatal("compaction did not enable accumulator immediates")
 	}
 	disabled, err := optimizationBindings.ResolveSnapshot(map[string]bool{"accumulator-immediate": false}, OptimizationSnapshot{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sizeDisabled := shared.CodegenPolicyForObjective(disabled, OptimizeSize)
-	if compactAccumulatorImmediatePolicy(sizeDisabled) {
+	compactDisabled := shared.CompactCodegenPolicy(disabled)
+	if compactAccumulatorImmediatePolicy(compactDisabled) {
 		t.Fatal("per-compilation rollback did not disable accumulator immediates")
 	}
 }
 
-func TestModuleCodeCapacityIsObjectiveAwareAMD64(t *testing.T) {
+func TestModuleCodeCapacityIsCompactionAwareAMD64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
-	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
-	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
+	ordinary := shared.DefaultCodegenPolicy(selection)
+	compact := shared.CompactCodegenPolicy(selection)
 	const bodyBytes = 8 << 20
-	balancedCap := moduleCodeCapacityAMD64(bodyBytes, 1000, balanced)
-	sizeCap := moduleCodeCapacityAMD64(bodyBytes, 1000, size)
-	if sizeCap >= balancedCap {
-		t.Fatalf("Size module capacity = %d, want less than Balanced %d", sizeCap, balancedCap)
+	ordinaryCap := moduleCodeCapacityAMD64(bodyBytes, 1000, ordinary)
+	compactCap := moduleCodeCapacityAMD64(bodyBytes, 1000, compact)
+	if compactCap >= ordinaryCap {
+		t.Fatalf("compact module capacity = %d, want less than ordinary %d", compactCap, ordinaryCap)
 	}
-	if got, want := moduleCodeCapacityAMD64(100, 3, size), moduleCodeCapacityAMD64(100, 3, balanced); got != want {
-		t.Fatalf("small-module Size capacity = %d, want Balanced %d", got, want)
+	if got, want := moduleCodeCapacityAMD64(100, 3, compact), moduleCodeCapacityAMD64(100, 3, ordinary); got != want {
+		t.Fatalf("small-module compact capacity = %d, want ordinary %d", got, want)
 	}
 }

@@ -49,12 +49,12 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
 var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
 
-// sharedTrapUnwindEnabled lets Size/Embedded functions replace repeated
+// sharedTrapUnwindEnabled lets compact functions replace repeated
 // terminal trap-unwind tails with one function-local cold tail. The hot trap
-// checks and the Speed/Balanced layouts are unchanged.
+// checks and ordinary layouts are unchanged.
 var sharedTrapUnwindEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_UNWIND") != "1"
 
-// sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
+// sharedAdaptersEnabled lets compact code replace byte-identical register-ABI
 // host adapters with eight-byte function-local target thunks plus one cold
 // module copy. WAGO_ARM64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
 var sharedAdaptersEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_ADAPTERS") != "1"
@@ -440,7 +440,7 @@ func alignmentPadding(off int, log2 uint8) int {
 }
 
 // functionStartPadding makes optional entry alignment a policy-owned, costed
-// choice. Balanced keeps addressable entries aligned and admits statically hot
+// choice. Ordinary code keeps addressable entries aligned and admits statically hot
 // or large bodies only when their Wasm size can amortize the exact padding.
 func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
 	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) | boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
@@ -458,12 +458,6 @@ func functionStartPaddingFlags(off, bodyBytes int, flags uint8, policy CodegenPo
 	mandatory := alignmentPadding(off, 2)
 	optional := alignmentPadding(off, policy.FunctionAlignLog2)
 	if optional == mandatory || policy.FunctionAlignLog2 <= 2 {
-		return mandatory
-	}
-	switch policy.Objective {
-	case OptimizeSpeed:
-		return optional
-	case OptimizeSize, OptimizeEmbedded:
 		return mandatory
 	}
 	if flags&layoutHostAdapter != 0 {
@@ -825,9 +819,9 @@ type CompileOptions struct {
 	// selection while retaining the same compile lock and snapshot semantics.
 	OptimizationSnapshot OptimizationSnapshot
 	OptimizationDeltas   map[string]bool
-	// Objective selects the coherent speed/size tradeoff for this compilation.
-	// nil preserves the public Balanced default.
-	Objective *OptimizationObjective
+	// CompactNative enables the internal bounded native-compaction path. It is
+	// intended for measurements and rollout validation, not as a profile.
+	CompactNative bool
 
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
@@ -940,22 +934,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
-	objective := OptimizeBalanced
-	if opts.Objective != nil {
-		objective = *opts.Objective
-		if objective > OptimizeEmbedded {
-			return nil, fmt.Errorf("arm64: invalid optimization objective %d", objective)
-		}
-	}
-	explicit := opts.OptimizationDeltas
-	if !opts.OptimizationSnapshot.Valid() && opts.Optimizations != nil {
-		explicit = opts.Optimizations
-	}
-	if opts.OptimizationSnapshot.Valid() {
-		selection = applyObjectiveProfile(selection, objective, explicit)
-	}
 	selection = applyCompiledCapabilities(selection)
-	policy := shared.CodegenPolicyForObjective(selection, objective)
+	policy := shared.DefaultCodegenPolicy(selection)
+	if nativeCompactionAvailable && !nativeCompactionDisabled && opts.CompactNative {
+		policy = shared.CompactCodegenPolicy(selection)
+	}
 	if policy.FunctionAlignLog2 < 2 {
 		policy.FunctionAlignLog2 = 2
 	}
@@ -1060,7 +1043,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		var directPrepared []uint64
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
-		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		if policy.CompactNative {
 			if policy.EnabledOption(optSharedAdapters) {
 				adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
 			} else {
@@ -1118,7 +1101,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if hostAdapters[i] {
 				trapBodyCluster.reset()
 			}
-			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
 				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfo(), st)
 			}
 			if sc.directPrepared {
@@ -1222,7 +1205,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
-				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
 					} else {
@@ -1248,7 +1231,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var directPrepared []uint64
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
-	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+	if policy.CompactNative {
 		if policy.EnabledOption(optSharedAdapters) {
 			adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
 		} else {
@@ -1282,7 +1265,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if r.layoutFlags&layoutHostAdapter != 0 {
 			trapBodyCluster.reset()
 		}
-		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]
@@ -1323,7 +1306,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 }
 
 // finalizeOmittedInlineEntries closes the module-layout seam for standalone
-// bodies proved unreachable by Size inlining. Any surviving relocation fails
+// bodies proved unreachable by compact inlining. Any surviving relocation fails
 // closed. Entry metadata remains structurally valid by aliasing omitted logical
 // functions to one retained internal entry; the proof guarantees it is never
 // observed by Wasm or the host.
@@ -1847,9 +1830,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
-		(policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded)
+		!policy.CompactNative
 	sc.asm.DisableCompactMoveImmediate32 = !compactMoveImmediate32Enabled ||
-		(policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded)
+		!policy.CompactNative
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
 	f := &sc.fnState

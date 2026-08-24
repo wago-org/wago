@@ -29,11 +29,10 @@ func TestSizePrefersLowRegisterForHotLeafLocalAMD64(t *testing.T) {
 	}
 	body = append(body, 0x0b)
 	m := mod1(t, i32, i32, body)
-	size := OptimizeSize
 	compile := func(enabled bool) (int, *ModuleStats) {
 		compactLowPinEnabled = enabled
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

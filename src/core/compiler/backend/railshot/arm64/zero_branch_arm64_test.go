@@ -43,6 +43,7 @@ func TestDirectZeroBranchEncodingArm64(t *testing.T) {
 }
 
 func TestZeroBranchIfArm64(t *testing.T) {
+	requireNativeCompaction(t)
 	i32 := []wasm.ValType{wasm.I32}
 	// local.get 0; if (result i32) 11 else 22 end
 	body := []byte{0x00, 0x20, 0x00, 0x04, 0x7f, 0x41, 0x0b, 0x05, 0x41, 0x16, 0x0b, 0x0b}
@@ -56,11 +57,10 @@ func TestZeroBranchIfArm64(t *testing.T) {
 
 	before := zeroBranchEnabled
 	t.Cleanup(func() { zeroBranchEnabled = before })
-	compileSize := func(enabled bool) *CodegenStats {
+	compileCompact := func(enabled bool) *CodegenStats {
 		zeroBranchEnabled = enabled
-		size := OptimizeSize
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,8 +70,8 @@ func TestZeroBranchIfArm64(t *testing.T) {
 		return stats.Funcs[0]
 	}
 	zeroBranchEnabled = false
-	long := compileSize(false)
-	short := compileSize(true)
+	long := compileCompact(false)
+	short := compileCompact(true)
 	if got := long.CodeBytes - short.CodeBytes; got != 4 {
 		t.Fatalf("CMP+B.cond delta = %d bytes, want 4", got)
 	}
@@ -81,6 +81,7 @@ func TestZeroBranchIfArm64(t *testing.T) {
 }
 
 func TestZeroBranchBrIfArm64(t *testing.T) {
+	requireNativeCompaction(t)
 	i32 := []wasm.ValType{wasm.I32}
 	// block; local.get 0; br_if 0; return 11; end; return 22
 	body := []byte{0x00, 0x02, 0x40, 0x20, 0x00, 0x0d, 0x00, 0x41, 0x0b, 0x0f, 0x0b, 0x41, 0x16, 0x0b}
@@ -94,11 +95,10 @@ func TestZeroBranchBrIfArm64(t *testing.T) {
 
 	before := zeroBranchEnabled
 	t.Cleanup(func() { zeroBranchEnabled = before })
-	compileSize := func(enabled bool) *CodegenStats {
+	compileCompact := func(enabled bool) *CodegenStats {
 		zeroBranchEnabled = enabled
-		size := OptimizeSize
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,8 +107,8 @@ func TestZeroBranchBrIfArm64(t *testing.T) {
 		}
 		return stats.Funcs[0]
 	}
-	long := compileSize(false)
-	short := compileSize(true)
+	long := compileCompact(false)
+	short := compileCompact(true)
 	if got := long.CodeBytes - short.CodeBytes; got != 4 {
 		t.Fatalf("CMP+B.cond delta = %d bytes, want 4", got)
 	}

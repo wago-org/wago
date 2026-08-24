@@ -28,7 +28,4 @@ func TestLeanOptimizationCapabilities(t *testing.T) {
 	if err := cfg.WithOptimization("swar-idioms", false).Validate(); err != nil {
 		t.Fatalf("disabling unavailable needle: %v", err)
 	}
-	if err := cfg.WithOptimizationObjective(OptimizeSize).Validate(); err != nil {
-		t.Fatalf("capability-aware Size profile: %v", err)
-	}
 }

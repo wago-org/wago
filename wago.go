@@ -145,7 +145,6 @@ type (
 	OffsetInit                      = impl.OffsetInit
 	OperationIdentity               = impl.OperationIdentity
 	OptKnobInfo                     = impl.OptKnobInfo
-	OptimizationObjective           = impl.OptimizationObjective
 	PackedType                      = impl.PackedType
 	PassiveDataInit                 = impl.PassiveDataInit
 	Plugin                          = impl.Plugin
@@ -305,10 +304,6 @@ const (
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
 	NoPluginOverrides                          = impl.NoPluginOverrides
-	OptimizeBalanced                           = impl.OptimizeBalanced
-	OptimizeEmbedded                           = impl.OptimizeEmbedded
-	OptimizeSize                               = impl.OptimizeSize
-	OptimizeSpeed                              = impl.OptimizeSpeed
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
 	PluginPhaseAuthorize                       = impl.PluginPhaseAuthorize

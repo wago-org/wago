@@ -19,9 +19,8 @@ func benchCompileModuleWorkers(m *wasm.Module, workers int) (*benchCompiledModul
 	return &benchCompiledModule{Code: cm.Code, Entry: cm.Entry}, nil
 }
 
-func benchCompileModuleSize(m *wasm.Module) (*benchCompiledModule, error) {
-	objective := railshot.OptimizeSize
-	cm, err := railshot.CompileModuleWith(m, railshot.CompileOptions{Workers: 1, Objective: &objective})
+func benchCompileModuleCompact(m *wasm.Module) (*benchCompiledModule, error) {
+	cm, err := railshot.CompileModuleWith(m, railshot.CompileOptions{Workers: 1, CompactNative: true})
 	if err != nil {
 		return nil, err
 	}

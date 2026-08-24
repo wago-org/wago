@@ -1817,10 +1817,10 @@ const brTableJumpMin = 5
 
 // brTableCompactPlan chooses byte target IDs plus five-byte direct-jump vector
 // entries only when their exact data bytes beat the dense i32-offset table.
-// The compact Size/Embedded dispatch retains the same instruction count as the
+// The compact dispatch retains the same instruction count as the
 // dense form but adds one predictable direct branch after the indirect jump.
 func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
-	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded {
+	if !f.policy.CompactNative {
 		return false, 0, nil
 	}
 	sc := f.sc

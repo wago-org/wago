@@ -75,7 +75,7 @@ func TestModuleLiteralLedgerCountsCrossFunctionDuplicatesAMD64(t *testing.T) {
 	}
 }
 
-func TestSizeObjectiveSharesModuleLiteralsAMD64(t *testing.T) {
+func TestCompactNativeSharesModuleLiteralsAMD64(t *testing.T) {
 	want := math.Float64bits(3.75)
 	body := []byte{0x00, 0x44} // f64.const 1.5
 	body = binary.LittleEndian.AppendUint64(body, math.Float64bits(1.5))
@@ -96,15 +96,14 @@ func TestSizeObjectiveSharesModuleLiteralsAMD64(t *testing.T) {
 		defer balanced.CodeImage.Close()
 	}
 	if got, unique, duplicate := balancedStats.NativeSize.LiteralPoolBytes, balancedStats.NativeSize.LiteralPoolUniqueBytes, balancedStats.NativeSize.LiteralPoolDuplicateBytes; got != 32 || unique != 16 || duplicate != 16 {
-		t.Fatalf("Balanced literals = physical:%d unique:%d duplicate:%d, want 32/16/16", got, unique, duplicate)
+		t.Fatalf("ordinary literals = physical:%d unique:%d duplicate:%d, want 32/16/16", got, unique, duplicate)
 	}
 
-	objective := OptimizeSize
 	beforeIsland := moduleLiteralIslandEnabled
 	moduleLiteralIslandEnabled = false
 	t.Cleanup(func() { moduleLiteralIslandEnabled = beforeIsland })
 	var rollbackStats ModuleStats
-	rollback, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: &rollbackStats})
+	rollback, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: &rollbackStats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,14 +115,14 @@ func TestSizeObjectiveSharesModuleLiteralsAMD64(t *testing.T) {
 	}
 	moduleLiteralIslandEnabled = true
 	var sizeStats ModuleStats
-	sizeSerial, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: &sizeStats})
+	sizeSerial, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: &sizeStats})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sizeSerial.CodeImage != nil {
 		defer sizeSerial.CodeImage.Close()
 	}
-	sizeParallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
+	sizeParallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}

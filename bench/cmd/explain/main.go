@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	go run ./cmd/explain [-guard] [-objective balanced|speed|size|embedded] [module.wasm]
+//	go run ./cmd/explain [-guard] [-compact] [module.wasm]
 //
 // With no path it defaults to corpus/json-as.wasm. -guard selects guard-page
 // (bounds-elided) mode instead of explicit bounds. Equivalent to setting
@@ -24,7 +24,7 @@ import (
 
 func main() {
 	guard := flag.Bool("guard", false, "guard-page (bounds-elided) mode instead of explicit bounds")
-	objective := flag.String("objective", "balanced", "codegen objective: balanced, speed, size, or embedded")
+	compact := flag.Bool("compact", false, "enable bounded native compaction")
 	flag.Parse()
 
 	path := filepath.Join("corpus", "json-as.wasm")
@@ -43,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	stats, err := compileExplain(m, *guard, *objective)
+	stats, err := compileExplain(m, *guard, *compact)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "compile:", err)
 		os.Exit(1)
@@ -53,6 +53,6 @@ func main() {
 	if *guard {
 		mode = "guard-page"
 	}
-	fmt.Printf("# %s  (%s, objective=%s)\n", path, mode, *objective)
+	fmt.Printf("# %s  (%s, compact=%t)\n", path, mode, *compact)
 	fmt.Print(stats)
 }

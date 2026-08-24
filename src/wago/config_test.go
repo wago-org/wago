@@ -438,52 +438,6 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if workers.FunctionWorkers() != 4 || NewRuntimeConfig().FunctionWorkers() != 1 {
 		t.Fatal("WithFunctionWorkers must be immutable and observable; default must remain serial")
 	}
-	baseObjective := NewRuntimeConfig()
-	sizeObjective := baseObjective.WithOptimizationObjective(OptimizeSize)
-	if baseObjective.OptimizationObjective() != OptimizeBalanced || sizeObjective.OptimizationObjective() != OptimizeSize {
-		t.Fatal("WithOptimizationObjective must be immutable and Balanced must remain the default")
-	}
-	profileValue := func(cfg *RuntimeConfig, name string) bool {
-		t.Helper()
-		for _, info := range cfg.OptimizationInfos() {
-			if info.Name == name {
-				return info.On
-			}
-		}
-		t.Fatalf("missing optimization %q", name)
-		return false
-	}
-	if profileValue(baseObjective, "loop-precheck") || !profileValue(baseObjective.WithOptimizationObjective(OptimizeSpeed), "loop-precheck") {
-		t.Fatal("Balanced/Speed loop-precheck profile selection is incorrect")
-	}
-	if profileValue(baseObjective.WithOptimizationObjective(OptimizeSpeed).WithOptimization("loop-precheck", false), "loop-precheck") {
-		t.Fatal("explicit optimization override did not win after profile selection")
-	}
-	if got := OptimizeEmbedded.String(); got != "embedded" {
-		t.Fatalf("embedded objective string = %q", got)
-	}
-	if got := baseObjective.WithFunctionWorkers(4).WithOptimizationObjective(OptimizeEmbedded).FunctionWorkers(); got != 1 {
-		t.Fatalf("Embedded workers = %d, want serial", got)
-	}
-	if got := baseObjective.WithOptimizationObjective(OptimizeEmbedded).WithFunctionWorkers(4).FunctionWorkers(); got != 4 {
-		t.Fatalf("explicit post-profile workers = %d, want 4", got)
-	}
-	if err := baseObjective.WithOptimizationObjective(OptimizationObjective(255)).Validate(); err == nil || !strings.Contains(err.Error(), "optimization objective") {
-		t.Fatalf("invalid optimization objective validation = %v", err)
-	}
-	balancedCode, err := baseObjective.Compile(benchAddOneModule())
-	if err != nil {
-		t.Fatalf("compile Balanced objective: %v", err)
-	}
-	t.Cleanup(func() { _ = balancedCode.Close() })
-	sizeCode, err := sizeObjective.Compile(benchAddOneModule())
-	if err != nil {
-		t.Fatalf("compile Size objective: %v", err)
-	}
-	t.Cleanup(func() { _ = sizeCode.Close() })
-	if sizeCode.CodeSize() >= balancedCode.CodeSize() {
-		t.Fatalf("public objective did not reach layout policy: Size=%d, Balanced=%d", sizeCode.CodeSize(), balancedCode.CodeSize())
-	}
 	if got := NewRuntimeConfig().WithCompileWorkers(3); got.CompileWorkers() != 3 || got.FunctionWorkers() != 3 {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
 	}
@@ -518,8 +472,8 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "objective: balanced") {
-		t.Fatalf("config String missing bounds mode, objective, or serial default policy: %q", s)
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") {
+		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
 	}
 }
 

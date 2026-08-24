@@ -601,7 +601,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
 	f.a.PatchRel32(leaSite, f.adapterReturnOff)
-	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
 	f.a.Cmp64(RAX, RDX)
@@ -686,7 +686,7 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
 	f.a.PatchRel32(leaSite, f.adapterReturnOff)
-	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
 	f.a.Cmp64(RAX, RDX)
@@ -2359,7 +2359,7 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
 	f.a.PatchRel32(leaSite, f.adapterReturnOff)
-	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
 	f.a.Cmp64(RAX, RDX)

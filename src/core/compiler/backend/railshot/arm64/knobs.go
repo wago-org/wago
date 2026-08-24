@@ -109,15 +109,9 @@ var (
 
 type KnobInfo = optimization.Info
 type OptimizationSnapshot = optimization.Snapshot
-type OptimizationObjective = shared.OptimizationObjective
 type CodegenPolicy = shared.CodegenPolicy
 
 const (
-	OptimizeSpeed    = shared.OptimizeSpeed
-	OptimizeBalanced = shared.OptimizeBalanced
-	OptimizeSize     = shared.OptimizeSize
-	OptimizeEmbedded = shared.OptimizeEmbedded
-
 	producerNeedlesAvailable = shared.CompiledCapabilities&shared.CapabilityProducerNeedles != 0
 )
 
@@ -128,23 +122,6 @@ func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) { return optimizationB
 func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings.CurrentSnapshot() }
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }
-
-func applyObjectiveProfile(selection optimization.Selection, objective OptimizationObjective, explicit map[string]bool) optimization.Selection {
-	set := func(name string, option optimization.Option, on bool) {
-		if _, overridden := explicit[name]; !overridden {
-			selection = selection.WithOption(option, on)
-		}
-	}
-
-	speed := objective == OptimizeSpeed
-	compact := objective == OptimizeSize || objective == OptimizeEmbedded
-	set("loop-precheck", optLoopPrecheck, speed)
-	set("simd-superopt", optSIMDSuperopt, speed)
-	set("swar-idioms", optSWARIdioms, speed)
-	set("shared-trap-body", optSharedTrapBody, compact)
-	set("shared-adapters", optSharedAdapters, compact)
-	return selection
-}
 
 func applyCompiledCapabilities(selection optimization.Selection) optimization.Selection {
 	if !shared.CompiledCapabilities.Has(shared.CapabilityNativeCompaction) {

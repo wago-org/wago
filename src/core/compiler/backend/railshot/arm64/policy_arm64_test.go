@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
-	"github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -97,7 +96,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
+	policy := shared.DefaultCodegenPolicy(selection)
 	for _, name := range names {
 		if policy.EnabledOption(optimizationBindings.Option(name)) {
 			t.Errorf("per-compile policy did not disable %s", name)
@@ -105,32 +104,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 	}
 }
 
-func TestObjectiveProfilesArm64(t *testing.T) {
-	base, err := optimizationBindings.ResolveSnapshot(nil, OptimizationSnapshot{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check := func(objective OptimizationObjective, option optimization.Option, want bool) {
-		t.Helper()
-		got := applyCompiledCapabilities(applyObjectiveProfile(base, objective, nil)).EnabledOption(option)
-		if got != want {
-			t.Fatalf("%v option = %t, want %t", objective, got, want)
-		}
-	}
-	check(OptimizeBalanced, optLoopPrecheck, false)
-	check(OptimizeSpeed, optLoopPrecheck, true)
-	check(OptimizeBalanced, optSIMDSuperopt, false)
-	check(OptimizeSpeed, optSIMDSuperopt, producerNeedlesAvailable)
-	check(OptimizeSize, optSharedTrapBody, nativeCompactionAvailable)
-	check(OptimizeEmbedded, optSharedTrapBody, nativeCompactionAvailable)
-
-	overridden := applyObjectiveProfile(base, OptimizeSpeed, map[string]bool{"loop-precheck": false})
-	if overridden.EnabledOption(optLoopPrecheck) {
-		t.Fatal("explicit loop-precheck override lost to Speed profile")
-	}
-}
-
-func TestNativeCompactionObjectiveAndRollbackArm64(t *testing.T) {
+func TestNativeCompactionPolicyAndRollbackArm64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLimitOverride := finalizerDeletionLimitOverride
 	nativeCompactionEnabled, nativeCompactionDisabled = false, false
@@ -140,44 +114,43 @@ func TestNativeCompactionObjectiveAndRollbackArm64(t *testing.T) {
 	})
 
 	selection := currentCodegenPolicy().Selection
-	balanced := fn{policy: shared.CodegenPolicyForObjective(selection, OptimizeBalanced)}
-	size := fn{policy: shared.CodegenPolicyForObjective(selection, OptimizeSize)}
-	if balanced.compactNative() {
-		t.Fatal("Balanced unexpectedly enabled native compaction")
+	ordinary := fn{policy: shared.DefaultCodegenPolicy(selection)}
+	compact := fn{policy: shared.CompactCodegenPolicy(selection)}
+	if ordinary.compactNative() {
+		t.Fatal("ordinary policy unexpectedly enabled native compaction")
 	}
 	if !nativeCompactionAvailable {
-		if size.compactNative() {
+		if compact.compactNative() {
 			t.Fatal("lean build enabled unavailable native compaction")
 		}
 		return
 	}
-	if !size.compactNative() {
-		t.Fatal("Size did not enable native compaction")
+	if !compact.compactNative() {
+		t.Fatal("compact policy did not enable native compaction")
 	}
-	if got := size.finalizerDeletionLimit(); got != maxFinalizerDeletions {
-		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, maxFinalizerDeletions)
+	if got := compact.finalizerDeletionLimit(); got != maxFinalizerDeletions {
+		t.Fatalf("compact finalizer deletion limit = %d, want %d", got, maxFinalizerDeletions)
 	}
 	finalizerDeletionLimitOverride = 64
-	if got := size.finalizerDeletionLimit(); got != 64 {
+	if got := compact.finalizerDeletionLimit(); got != 64 {
 		t.Fatalf("finalizer deletion limit override = %d, want 64", got)
 	}
 	finalizerDeletionLimitOverride = 0
 
 	nativeCompactionEnabled = true
-	if !balanced.compactNative() {
-		t.Fatal("WAGO_COMPACT=1 override did not enable Balanced compaction")
+	if !ordinary.compactNative() {
+		t.Fatal("WAGO_COMPACT=1 override did not enable compaction")
 	}
 	nativeCompactionDisabled = true
-	if size.compactNative() || balanced.compactNative() {
+	if compact.compactNative() || ordinary.compactNative() {
 		t.Fatal("WAGO_COMPACT=0 rollback did not disable compaction")
 	}
 }
 
-func TestFunctionStartPaddingObjectivesArm64(t *testing.T) {
+func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
-	policy := func(objective OptimizationObjective) CodegenPolicy {
-		return shared.CodegenPolicyForObjective(selection, objective)
-	}
+	ordinary := shared.DefaultCodegenPolicy(selection)
+	compact := shared.CompactCodegenPolicy(selection)
 	hot := funcHints{hasLoop: true}
 	for _, test := range []struct {
 		name      string
@@ -185,45 +158,45 @@ func TestFunctionStartPaddingObjectivesArm64(t *testing.T) {
 		bodyBytes int
 		adapter   bool
 		hints     funcHints
-		objective OptimizationObjective
+		policy    CodegenPolicy
 		want      int
 	}{
-		{name: "speed tiny", off: 4, bodyBytes: 12, objective: OptimizeSpeed, want: 12},
-		{name: "balanced tiny leaf", off: 4, bodyBytes: 12, objective: OptimizeBalanced, want: 0},
-		{name: "balanced adapter", off: 4, bodyBytes: 12, adapter: true, objective: OptimizeBalanced, want: 12},
-		{name: "balanced hot within budget", off: 12, bodyBytes: 64, hints: hot, objective: OptimizeBalanced, want: 4},
-		{name: "balanced hot over budget", off: 4, bodyBytes: 64, hints: hot, objective: OptimizeBalanced, want: 0},
-		{name: "size", off: 4, bodyBytes: 512, adapter: true, hints: hot, objective: OptimizeSize, want: 0},
+		{name: "ordinary tiny leaf", off: 4, bodyBytes: 12, policy: ordinary, want: 0},
+		{name: "ordinary adapter", off: 4, bodyBytes: 12, adapter: true, policy: ordinary, want: 12},
+		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
+		{name: "ordinary hot over budget", off: 4, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},
+		{name: "compact", off: 4, bodyBytes: 512, adapter: true, hints: hot, policy: compact, want: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := functionStartPadding(test.off, test.bodyBytes, test.adapter, test.hints, policy(test.objective)); got != test.want {
+			if got := functionStartPadding(test.off, test.bodyBytes, test.adapter, test.hints, test.policy); got != test.want {
 				t.Fatalf("padding = %d, want %d", got, test.want)
 			}
 		})
 	}
 }
 
-func TestObjectiveLayoutSerialParallelParityArm64(t *testing.T) {
+func TestCompactLayoutSerialParallelParityArm64(t *testing.T) {
+	requireNativeCompaction(t)
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x6a, 0x0b}},
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x03, 0x6a, 0x0b}},
 	)
-	compile := func(objective OptimizationObjective, workers int) []byte {
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: workers})
+	compile := func(compact bool, workers int) []byte {
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Workers: workers})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return append([]byte(nil), cm.Code...)
 	}
-	balanced := compile(OptimizeBalanced, 1)
-	sizeSerial := compile(OptimizeSize, 1)
-	sizeParallel := compile(OptimizeSize, 3)
-	if !bytes.Equal(sizeSerial, sizeParallel) {
-		t.Fatal("Size layout differs between serial and parallel compilation")
+	ordinary := compile(false, 1)
+	compactSerial := compile(true, 1)
+	compactParallel := compile(true, 3)
+	if !bytes.Equal(compactSerial, compactParallel) {
+		t.Fatal("compact layout differs between serial and parallel compilation")
 	}
-	if len(sizeSerial) >= len(balanced) {
-		t.Fatalf("Size output = %d bytes, Balanced = %d; want smaller Size layout", len(sizeSerial), len(balanced))
+	if len(compactSerial) >= len(ordinary) {
+		t.Fatalf("compact output = %d bytes, ordinary = %d; want smaller compact layout", len(compactSerial), len(ordinary))
 	}
 }
