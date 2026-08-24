@@ -101,7 +101,7 @@ claiming that every opcode spelling is a separate optimization.
 - ARM64 direct coverage is in `*_arm64_test.go` files beside the backend. In
   particular, native smoke, integer/float, memory/bulk-memory, calls,
   constant-division, stats, and substantial NEON execution tests exist.
-- `src/core/compiler/backend/railshot/arm64/_port/ENCODER_TODO.md` is historical
+- `docs/archive/arm64-encoder-todo.md` is historical
   porting inventory, not a live status source. Check the encoder and tests before
   marking an item incomplete solely because it appears there.
 - A row marked **Implemented** should retain an ARM64 execution test. A row marked
