@@ -3,7 +3,7 @@
 ╚╩╝ ╩ ╩ ╚═╝ ╚═╝</pre></h1>
 
 <p align="center">
-  A WebAssembly runtime and native compiler written in Go.
+  A wonderfully quick, compact, and extensible WebAssembly runtime for Go
 </p>
 
 <p align="center">
