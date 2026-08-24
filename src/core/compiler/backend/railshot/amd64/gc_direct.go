@@ -46,8 +46,8 @@ type nativeGCArrayAllocLayout struct {
 	pointerFree bool
 }
 
-func nativeGCArrayLayout(m *wasm.Module, typeIndex uint32) (nativeGCArrayAllocLayout, bool) {
-	if !nativeGCStructAllocEnabled {
+func nativeGCArrayLayout(enabled bool, m *wasm.Module, typeIndex uint32) (nativeGCArrayAllocLayout, bool) {
+	if !enabled {
 		return nativeGCArrayAllocLayout{}, false
 	}
 	st, found := nativeGCFlatType(m, typeIndex)
@@ -78,9 +78,6 @@ func nativeGCArrayLayout(m *wasm.Module, typeIndex uint32) (nativeGCArrayAllocLa
 }
 
 func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativeGCStructAllocField, objectSize, objectAlign uint32, pointerFree bool, ok bool) {
-	if !nativeGCStructAllocEnabled {
-		return nil, 0, 0, false, false
-	}
 	st, found := nativeGCFlatType(m, typeIndex)
 	if !found || !st.Final || st.Comp.Kind != wasm.CompStruct {
 		return nil, 0, 0, false, false
@@ -953,7 +950,7 @@ func (f *fn) emitNativeGCStubs() {
 // reference initializers are validated before publication, and the complete
 // payload is initialized before the handle's space byte becomes visible.
 func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
-	layout, ok := nativeGCArrayLayout(f.m, site.typeIndex)
+	layout, ok := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, site.typeIndex)
 	if !ok || site.mode == gcArrayNativeNone {
 		panic("amd64: invalid native array allocation layout")
 	}

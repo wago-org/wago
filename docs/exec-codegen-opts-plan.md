@@ -115,9 +115,10 @@ the 82 KB fn#96 tokenizer) — a fast A/B loop without the asbuilder/node pipeli
   landed but never bench-validated). Splicing a loop body into a hot caller adds
   register pressure that outweighs the removed call.
 
-**Fix (landed):** `inlineClass` now excludes leaf callees that contain a loop
-(`inline.go`; opt back in with `WAGO_INLINE_LOOPCALLEE=1`). Straight-line and
-simple-branch leaf helpers — the real inline win — are unaffected.
+**Fix (landed):** `inlineClass` now excludes leaf callees that contain a loop.
+The later cross-architecture matrix found no reason to retain the experimental
+opt-in, so loop-carrying leaf callees remain excluded. Straight-line and simple-
+branch leaf helpers — the real inline win — are unaffected.
 
 | workload (guard-page) | before | after | Δ |
 |---|--:|--:|--:|
@@ -195,4 +196,3 @@ LOC + IV edge-case tests), **not** a quick peephole — it warrants its own spec
 session, which is why it was scoped here rather than rushed. The versioning machinery
 (`boundshoist.go`), the fast/slow trap-exact safety proof, and the param-loop support
 (trivially re-addable, shown safe above) are all already in place for it.
-

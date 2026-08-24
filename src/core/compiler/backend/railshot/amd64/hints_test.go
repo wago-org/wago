@@ -480,7 +480,7 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("computeFuncHints %d: %v", i, err)
 		}
-		if !intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), want.nLocals, false) {
+		if !intervalRegionHintStorageEligible(true, len(m.Code[i].BodyBytes), want.nLocals, false) {
 			want.localLastGet = nil
 		}
 		if !reflect.DeepEqual(allHints[i], want) {

@@ -32,9 +32,10 @@ import (
 // writes visible). Explicit-bounds mode only (guard mode has no inline check to
 // elide). V1 is memory32-only and excludes functions with candidate native GC root
 // plans because their call/allocation liveness streams are linear in original Wasm
-// order. Defaults on; set WAGO_LOOP_PRECHECK=0/off/false to disable it for A/B runs.
+// order. Defaults off because duplicating loop bodies costs compile memory; set
+// WAGO_LOOP_PRECHECK=1/on/true to opt in.
 
-var loopPrecheckEnabled = envDefaultOn(os.Getenv("WAGO_LOOP_PRECHECK"))
+var loopPrecheckEnabled = envDefaultOff(os.Getenv("WAGO_LOOP_PRECHECK"))
 
 // memAccessSize returns the byte width a memarg load/store opcode accesses, or 0
 // if op is not a plain (non-SIMD) linear-memory load/store.
@@ -240,10 +241,10 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	entryRoots := f.rootsBottomToTop()
 	entryGCRoots := gcRootFlags(entryRoots)
 	var entryStackFacts []shared.GCRefFact
-	if exactGCRefFactsEnabled {
+	if f.gcRefFactsEnabled() {
 		entryStackFacts = make([]shared.GCRefFact, len(entryRoots))
 		for i, root := range entryRoots {
-			entryStackFacts[i] = gcRefFact(root)
+			entryStackFacts[i] = f.gcRefFact(root)
 		}
 	}
 	entryLocalFacts := f.snapshotGCRefFacts()

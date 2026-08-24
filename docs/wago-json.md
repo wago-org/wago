@@ -68,7 +68,7 @@ locks transitive requirements from published Plugin Definitions.
       "simd": false
     },
     "optimizations": {
-      "inline-loop-callees": true
+      "loop-precheck": true
     },
     "runtime": {
       "parallel": "auto",

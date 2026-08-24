@@ -195,7 +195,7 @@ func (f *fn) emitTrapStubs() {
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
 	sizeObjective := f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded
 	groups := 0
-	if (sharedTrapUnwindEnabled || sharedTrapBodyEnabled) && sizeObjective {
+	if (sharedTrapUnwindEnabled || f.opt(optSharedTrapBody)) && sizeObjective {
 		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 			sites := f.scratchState().trapSites[code]
 			if len(sites) == 0 {
@@ -214,7 +214,7 @@ func (f *fn) emitTrapStubs() {
 	// group-to-tail transfer inside B's signed imm26 range; otherwise retain the
 	// established local-record/shared-unwind path.
 	sharedBodyInRange := int64(f.a.Len())+int64(groups)*52+64 < 128<<20
-	if sharedTrapBodyEnabled && sizeObjective && groups >= 2 && sharedBodyInRange {
+	if f.opt(optSharedTrapBody) && sizeObjective && groups >= 2 && sharedBodyInRange {
 		if moduleSharedTrapBodyEnabled {
 			f.emitSharedTrapStubs()
 		} else {

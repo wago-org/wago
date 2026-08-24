@@ -58,9 +58,6 @@ var (
 	// v128DirectResultEnabled lets NEON's non-destructive destination forms read
 	// pinned locals directly instead of copying a source into an accumulator.
 	v128DirectResultEnabled = os.Getenv("WAGO_ARM64_NO_V128_DIRECT_RESULTS") != "1"
-	// v128ShuffleSinkEnabled writes one-instruction REV32/ZIP shuffles directly
-	// into a following pinned local. The kill switch is the A/B oracle.
-	v128ShuffleSinkEnabled = os.Getenv("WAGO_ARM64_NO_V128_SHUFFLE_SINK") != "1"
 	// intervalRegionPinsEnabled reuses GP registers across integer-local
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.
@@ -70,8 +67,9 @@ var (
 	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"
 
 	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
-	// FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
-	fcmpFuseEnabled = os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
+	// FCMP + CSET + branch). It is default-off after paired screening;
+	// WAGO_FCMP_FUSE=1 opts in and WAGO_NO_FCMP_FUSE=1 rolls it back.
+	fcmpFuseEnabled = envDefaultOff(os.Getenv("WAGO_FCMP_FUSE")) && os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
 	// zeroBranchEnabled selects CBZ/CBNZ for flag-dead i32 control tests instead
 	// of materializing NZCV with CMP before B.cond. The kill switch is the A/B
 	// oracle for the one-word lowering.

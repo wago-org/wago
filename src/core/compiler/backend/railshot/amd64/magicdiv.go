@@ -22,7 +22,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 
 	// Decide whether we can handle this divisor before emitting anything, so a
 	// bail-out leaves the operand stack untouched for the idiv fallback.
-	if !strengthReducible(c, w, signed) {
+	if !strengthReducibleWithMagic(c, w, signed, f.opt(optMagicDiv)) {
 		return regNone, false
 	}
 
@@ -69,6 +69,10 @@ var (
 // and x%±1). Power-of-2 divisors are always reducible; non-power-of-2 needs the
 // (gated) magic path.
 func strengthReducible(c int64, w, signed bool) bool {
+	return strengthReducibleWithMagic(c, w, signed, magicDivEnabled)
+}
+
+func strengthReducibleWithMagic(c int64, w, signed, magic bool) bool {
 	if c == 0 {
 		return false
 	}
@@ -92,9 +96,9 @@ func strengthReducible(c int64, w, signed bool) bool {
 		return true // power of two (or, unsigned, d == 1)
 	}
 	if signed {
-		return magicDivSignedEnabled
+		return magic && magicDivSignedEnabled
 	}
-	return magicDivEnabled
+	return magic
 }
 
 // divConstUnsigned rewrites res (holding the W-bit dividend) to res / d or res % d
