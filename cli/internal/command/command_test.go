@@ -38,11 +38,11 @@ func TestParseAndHelpRecognition(t *testing.T) {
 		t.Fatal("boolean inline value accepted")
 	}
 
-	if WantsHelp([]string{"module.wasm", "--help"}, true, leaf.Flags) {
-		t.Fatal("guest --help treated as command help")
+	if !WantsHelp([]string{"module.wasm", "--help"}, true, leaf.Flags) {
+		t.Fatal("help after positional was missed")
 	}
 	if !WantsHelp([]string{"--help", "module.wasm"}, true, leaf.Flags) ||
-		WantsHelp([]string{"--", "--help"}, false, leaf.Flags) {
+		WantsHelp([]string{"module.wasm", "--", "--help"}, true, leaf.Flags) {
 		t.Fatal("help recognition mismatch")
 	}
 	if !WantsHelp([]string{"-o", "result", "--help"}, true, leaf.Flags) {
@@ -55,6 +55,29 @@ func TestParseAndHelpRecognition(t *testing.T) {
 	group := &Cmd{Name: "root", Children: []*Cmd{{Name: "child", Aliases: []string{"c"}}}}
 	if group.Child("child") == nil || group.Child("c") == nil || group.Child("missing") != nil {
 		t.Fatal("child lookup mismatch")
+	}
+}
+
+func TestPassThroughRecognizesInterspersedCommandFlags(t *testing.T) {
+	cmd := &Cmd{
+		Name:        "run",
+		PassThrough: true,
+		Flags:       []Flag{{Name: "global", Short: "g", Bool: true}},
+	}
+	ctx, err := cmd.Parse("wago run", []string{"module.wasm", "--guest", "--global"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ctx.Bool("global") || strings.Join(ctx.Args, ",") != "module.wasm,--guest" {
+		t.Fatalf("interspersed flags = global %v args %v", ctx.Bool("global"), ctx.Args)
+	}
+
+	ctx, err = cmd.Parse("wago run", []string{"module.wasm", "--", "--global"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Bool("global") || strings.Join(ctx.Args, ",") != "module.wasm,--global" {
+		t.Fatalf("separated guest flags = global %v args %v", ctx.Bool("global"), ctx.Args)
 	}
 }
 
@@ -104,8 +127,11 @@ func TestInvocationWantsHelpFollowsCommandTree(t *testing.T) {
 	if !InvocationWantsHelp(root, []string{"run", "-o", "result", "--help"}) {
 		t.Fatal("nested help after a flag value was missed")
 	}
-	if InvocationWantsHelp(root, []string{"run", "module.wasm", "--help"}) {
-		t.Fatal("guest help after pass-through was intercepted")
+	if !InvocationWantsHelp(root, []string{"run", "module.wasm", "--help"}) {
+		t.Fatal("help after positional was missed")
+	}
+	if InvocationWantsHelp(root, []string{"run", "module.wasm", "--", "--help"}) {
+		t.Fatal("guest help after separator was intercepted")
 	}
 	root.Run = func(*Ctx) {}
 	if InvocationWantsHelp(root, nil) {
@@ -249,7 +275,13 @@ func TestConfigureAutomationHonorsPassThroughBoundary(t *testing.T) {
 	if !automation.JSON() || !automation.Offline() {
 		t.Fatalf("leading automation options = %#v", automation.Current())
 	}
-	if automation.NoInput() {
-		t.Fatal("guest --no-input after the module path was consumed")
+	if !automation.NoInput() {
+		t.Fatal("--no-input after the module path was missed")
+	}
+
+	automation.Reset()
+	ConfigureAutomation(run, []string{"module.wasm", "--", "--json", "--no-input"})
+	if automation.JSON() || automation.NoInput() {
+		t.Fatalf("guest automation options after separator were consumed: %#v", automation.Current())
 	}
 }

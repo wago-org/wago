@@ -277,8 +277,11 @@ func TestCommandHelpBypassesPluginRuntime(t *testing.T) {
 	if !command.InvocationWantsHelp(root.Child("run"), []string{"--local", "--help"}) {
 		t.Fatal("run help before the module was not recognized")
 	}
-	if command.InvocationWantsHelp(root.Child("run"), []string{"module.wasm", "--help"}) {
-		t.Fatal("guest help after the module was intercepted")
+	if !command.InvocationWantsHelp(root.Child("run"), []string{"module.wasm", "--help"}) {
+		t.Fatal("run help after the module was missed")
+	}
+	if command.InvocationWantsHelp(root.Child("run"), []string{"module.wasm", "--", "--help"}) {
+		t.Fatal("guest help after the separator was intercepted")
 	}
 }
 

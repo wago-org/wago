@@ -148,8 +148,16 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	t.Setenv("WAGO_LOCAL", "")
 	t.Setenv("WAGO_BARE", "")
 	applyTestPluginScope(t, []string{"run", "module.wasm", "--global"})
+	if !projectconfig.Truthy("WAGO_GLOBAL") {
+		t.Fatal("--global after module path did not select global plugins")
+	}
+
+	t.Setenv("WAGO_GLOBAL", "")
+	t.Setenv("WAGO_LOCAL", "")
+	t.Setenv("WAGO_BARE", "")
+	applyTestPluginScope(t, []string{"run", "module.wasm", "--", "--global"})
 	if projectconfig.Truthy("WAGO_GLOBAL") {
-		t.Fatal("guest argument after module path changed plugin scope")
+		t.Fatal("guest --global after separator changed plugin scope")
 	}
 
 	t.Setenv("WAGO_GLOBAL", "")
