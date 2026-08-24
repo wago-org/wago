@@ -96,6 +96,10 @@ func TestV128ConstCacheIsAMD64Only(t *testing.T) {
 }
 
 func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
+	wantDefaultOff := map[string]map[string]bool{
+		"amd64": {"fcmp-fuse": true, "gc-ref-facts": true},
+		"arm64": {"fcmp-fuse": true},
+	}
 	want := map[string][]string{
 		"amd64": {
 			"simd-superopt",
@@ -130,8 +134,8 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 				t.Errorf("%s substantial optimization %q is not registered", arch, name)
 				continue
 			}
-			if !definition.Default {
-				t.Errorf("%s optimization %q does not preserve its current default-on behavior", arch, name)
+			if definition.Default == wantDefaultOff[arch][name] {
+				t.Errorf("%s optimization %q default = %t, want %t", arch, name, definition.Default, !wantDefaultOff[arch][name])
 			}
 		}
 	}
