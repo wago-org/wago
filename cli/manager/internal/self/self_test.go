@@ -339,6 +339,61 @@ func TestSelfUninstallFullRemovesSelectedWagoHomeIncludingPlugins(t *testing.T) 
 	}
 }
 
+func TestSelfUninstallFullRemovesCustomInstallationDirectory(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "state")
+	installDir := filepath.Join(home, "custom-bin")
+	setTestHome(t, home)
+	t.Setenv("WAGO_HOME", root)
+	dirs := wagopaths.DirsFor("canary")
+	manager := filepath.Join(installDir, "wago")
+	for path, body := range map[string]string{
+		manager:                         "manager",
+		filepath.Join(root, "leftover"): "state",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	selfUninstall(dirs, manager, Full, true, strings.NewReader(""), io.Discard)
+	for _, path := range []string{root, installDir} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("full uninstall kept %s: %v", path, err)
+		}
+	}
+}
+
+func TestSelfUninstallFullPreservesSharedInstallationDirectory(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "state")
+	installDir := filepath.Join(home, "shared-bin")
+	setTestHome(t, home)
+	t.Setenv("WAGO_HOME", root)
+	dirs := wagopaths.DirsFor("canary")
+	manager := filepath.Join(installDir, "wago")
+	sibling := filepath.Join(installDir, "another-command")
+	for _, path := range []string{manager, sibling, filepath.Join(root, "leftover")} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(filepath.Base(path)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	selfUninstall(dirs, manager, Full, true, strings.NewReader(""), io.Discard)
+	if _, err := os.Stat(manager); !os.IsNotExist(err) {
+		t.Fatalf("full uninstall kept manager %s: %v", manager, err)
+	}
+	if body, err := os.ReadFile(sibling); err != nil || string(body) != "another-command" {
+		t.Fatalf("full uninstall changed shared install directory sibling: %q, %v", body, err)
+	}
+}
+
 func TestSelfUninstallPartialPreservesGlobalPlugins(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)

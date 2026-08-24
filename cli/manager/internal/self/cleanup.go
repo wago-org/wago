@@ -188,6 +188,28 @@ func RemoveManagedPath(path string) error {
 	return os.RemoveAll(clean)
 }
 
+func removeEmptyInstallationDir(path string) error {
+	clean := filepath.Clean(path)
+	if !safeManagedPath(clean) {
+		return fmt.Errorf("refusing unsafe path %q", path)
+	}
+	entries, err := os.ReadDir(clean)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil || len(entries) != 0 {
+		return err
+	}
+	if err := os.Remove(clean); err != nil && !os.IsNotExist(err) {
+		// A concurrent writer owns the directory now; preserve its contents.
+		if entries, readErr := os.ReadDir(clean); readErr == nil && len(entries) != 0 {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func hasInstallerShellBlock(data []byte) bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSuffix(line, "\r")
