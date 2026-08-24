@@ -20,8 +20,8 @@
   <a href="https://wago.sh/#performance">Benchmarks</a>
 </p>
 
-Wago decodes, validates, and compiles WebAssembly directly to machine code in a
-single pass. It has no interpreter, cgo dependency, or C toolchain.
+Wago decodes, validates, and compiles WebAssembly to native machine code. It has
+no interpreter, cgo dependency, or C toolchain.
 
 Use it from the CLI or embed it as a Go library. Wago can save
 architecture-specific `.wago` artifacts, build standalone executables, and add
