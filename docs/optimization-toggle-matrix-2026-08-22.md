@@ -11,7 +11,7 @@
 - The cleanest low-consequence implementation candidates are ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. Each needs focused code-size and hit-count evidence before removal.
 - Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off; AMD64 also defaults `call-next-use`, `affine-lea`, `tee-spill-elide`, and `commute-self-update` off. The already-off `inline-loop-callees` override and its unreachable backend paths were removed.
 - Follow-up catalog audit: 14 formerly environment-only families are now public flags. Paired screening keeps the high-value SIMD/SWAR and focused register/code-selection wins on, defaults `fcmp-fuse` off on both architectures, and defaults AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in.
-- In a fresh combined-profile rerun, the new defaults changed execution by **+0.14% ARM64 / -0.01% AMD64**, while improving compile time by **8.73% / 7.99%**, compile allocation bytes by **6.38% / 6.09%**, and compile allocation counts by **2.93% / 4.37%**.
+- In an exact original-commit versus current-commit rerun, the complete branch changed execution by **-0.10% ARM64 / +0.14% AMD64**, while improving compile time by **5.22% / 4.04%**, compile allocation bytes by **6.38% / 9.69%**, and compile allocation counts by **2.93% / 15.51%**.
 - Percentages below are **disabled versus enabled**. Positive execution time means disabling made execution slower (the optimization helped); negative means disabling made execution faster.
 - This is a broad screening matrix, not automatic deletion authority. Correctness/safety responsibilities, native-code size, static hit counts, and focused reruns still gate removal.
 
@@ -23,20 +23,25 @@ through the existing runtime/project optimization map.
 
 | Architecture | Newly default-off options | Removed surface |
 |---|---|---|
-| ARM64 | `deep-fp-pins`, `loop-precheck`, `v128-sink` | `inline-loop-callees` |
-| AMD64 | `affine-lea`, `call-next-use`, `commute-self-update`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees` |
+| ARM64 | `deep-fp-pins`, `fcmp-fuse`, `loop-precheck` | `inline-loop-callees`, `v128-const-cache`, `v128-sink` |
+| AMD64 | `affine-lea`, `call-next-use`, `commute-self-update`, `fcmp-fuse`, `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees` |
 
-The bundle was then measured against the exact former defaults from the same
-modified source: the old-default profile explicitly re-enabled every option in
-the table above, while the new-default profile used an unmodified
-`NewRuntimeConfig`. Four samples per profile ran in ABBA-balanced order with the
-same corpus, one compile worker, `GOMAXPROCS=1`, 100 ms benchmark windows, and
-AMD64 pinned to CPU 0.
+The final bundle was measured using two separately compiled benchmark binaries:
+one at original commit `ef129fdbb820`, and one at current commit `20936e8621bc`.
+Both used an unmodified `NewRuntimeConfig`, so the result includes the actual
+default path without explicit-override setup costs. Four samples per commit ran
+in ABBA-balanced order with the same corpus, one compile worker,
+`GOMAXPROCS=1`, 100 ms benchmark windows, and AMD64 pinned to CPU 0.
+
+This commit-to-commit run supersedes the earlier same-source combined-profile
+figures. That earlier method re-enabled the old defaults with public overrides
+but left the new profile unmodified, putting only the old profile through the
+non-default configuration path and confounding small-module compile timing.
 
 | Architecture | Execution time | Full compile time | Compile B/op | Compile allocs/op | Worst execution row |
 |---|---:|---:|---:|---:|---|
-| ARM64 | +0.14% | **-8.73%** | **-6.38%** | **-2.93%** | `fannkuch.run` +3.06% |
-| AMD64 | -0.01% | **-7.99%** | **-6.09%** | **-4.37%** | `fannkuch.run` +2.85% |
+| ARM64 | -0.10% | **-5.22%** | **-6.38%** | **-2.93%** | `fannkuch.run` +2.80% |
+| AMD64 | +0.14% | **-4.04%** | **-9.69%** | **-15.51%** | `fannkuch.run` +2.67% |
 
 These percentages are **new default versus old default**. The execution geomean
 is effectively flat, while the compile-resource reduction is large and repeats
