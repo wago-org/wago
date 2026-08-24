@@ -3,7 +3,7 @@
 ╚╩╝ ╩ ╩ ╚═╝ ╚═╝</pre></h1>
 
 <p align="center">
-  A pure-Go WebAssembly runtime and native compiler.
+  A WebAssembly runtime and native compiler written in Go.
 </p>
 
 <p align="center">
@@ -20,36 +20,40 @@
   <a href="https://wago.sh/#performance">Benchmarks</a>
 </p>
 
-Wago decodes, validates, and compiles WebAssembly to native machine code. It has
-no interpreter, cgo dependency, or C toolchain.
+Wago is a WebAssembly runtime for Go. It compiles Wasm to native machine code
+and runs it without cgo, a C toolchain, or an interpreter.
 
-Use it from the CLI or embed it as a Go library. Wago can save
-architecture-specific `.wago` artifacts, build standalone executables, and add
-host capabilities such as WASI and the Component Model through plugins.
+Use the CLI to run `.wasm` files, save precompiled `.wago` artifacts, or build
+standalone executables. Use the Go package to embed the same runtime in your
+application. Host integrations such as WASI and the Component Model are provided
+through plugins.
 
-> [!WARNING]
-> Wago is pre-release. APIs and native artifact formats may change.
+> [!NOTE]
+> Wago is still pre-release. APIs and `.wago` artifacts may change.
 
 ## Install
 
-macOS and Linux:
+On macOS and Linux:
 
 ```sh
 curl -fsSL https://install.wago.sh/unix | sh
 wago version install
 ```
 
-Windows PowerShell:
+On Windows, in PowerShell:
 
 ```powershell
 irm https://install.wago.sh/ps | iex
 wago version install
 ```
 
-Other installation methods and release channels are covered in
-[Getting started](https://docs.wago.sh/getting-started).
+These commands install the Wago manager, then install a runtime. See
+[Getting started](https://docs.wago.sh/getting-started) for other installation
+methods, release channels, and source builds.
 
-## Run
+## Run a module
+
+Download a small Fibonacci module and run it:
 
 ```sh
 curl -fsSL https://wago.sh/corpora/fib.wasm -o fib.wasm
@@ -60,41 +64,64 @@ wago fib.wasm 30
 fib(30) = 832040
 ```
 
-Precompile the module or build a standalone executable:
+Save it as a precompiled artifact:
 
 ```sh
 wago build fib.wasm -o fib.wago
+wago fib.wago 30
+```
+
+Or build a standalone executable:
+
+```sh
 wago compile --invoke fib fib.wasm -o fib
 ./fib 30
 ```
 
-## Go API
+## Use Wago from Go
+
+Add Wago to your module:
 
 ```sh
 go get github.com/wago-org/wago
+```
+
+Run the small typed API example:
+
+```sh
 go run github.com/wago-org/wago/examples/02-runtime-typed@latest
 ```
 
-See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago).
+The example compiles a module, creates an instance, and calls an export. See
+[Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the complete guide.
 
-## Support
+## Add host capabilities
 
-Wago's native runtime supports Linux, macOS, and Windows on amd64 and arm64.
-Exact WebAssembly feature coverage varies by backend; see
-[FEATURES.md](FEATURES.md).
+Wago keeps host integrations outside the core runtime. For example, add WASI to
+a project with:
 
-## Documentation
+```sh
+wago init
+wago add wago-org/wasi
+```
 
-**Use:** [Run modules](https://docs.wago.sh/guides/run-a-module) ·
-[Embed in Go](https://docs.wago.sh/guides/embed-wago) ·
-[Host functions](https://docs.wago.sh/guides/host-functions) ·
-[Plugins](https://docs.wago.sh/guides/plugins)
+See [Use plugins](https://docs.wago.sh/guides/plugins) or browse the
+[plugin registry](https://plugins.wago.sh).
 
-**Reference:** [Examples](examples/README.md) · [Features](FEATURES.md) ·
+## Platforms
+
+Wago currently supports Linux, macOS, and Windows on amd64 and arm64. WebAssembly
+feature support varies by backend; see the [feature matrix](FEATURES.md) for the
+exact coverage.
+
+## Learn more
+
+Most usage and implementation details live in the
+[documentation](https://docs.wago.sh).
+
+[Examples](examples/README.md) · [Features](FEATURES.md) ·
 [Architecture](ARCHITECTURE.md) · [Benchmarks](bench/README.md) ·
-[Roadmap](ROADMAP.md)
-
-**Project:** [Contributing](CONTRIBUTING.md) ·
+[Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) ·
 [Issues](https://github.com/wago-org/wago/issues)
 
 ## License
