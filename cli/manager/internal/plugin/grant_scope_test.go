@@ -99,13 +99,14 @@ func TestNonInteractiveResolutionSeparatesScopeAndOptionalSelection(t *testing.T
 	scopes := map[string]map[string]project.AuthorityScope{
 		"github.com/acme/plugin": {"host.import.define": {Modules: []string{"clock"}}},
 	}
-	if _, err := reviewResolution(plan, pkgOpts{scopes: scopes}); err == nil || !strings.Contains(err.Error(), "authority review") {
+	if _, err := reviewResolvedPluginPlan(plan, pkgOpts{scopes: scopes}); err == nil || !strings.Contains(err.Error(), "authority review") {
 		t.Fatalf("scope-only authority review error = %v", err)
 	}
-	got, err := reviewResolution(plan, pkgOpts{denyAll: true})
+	reviewed, err := reviewResolvedPluginPlan(plan, pkgOpts{denyAll: true})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := reviewed.Lock
 	if grants := got.Plugins["github.com/acme/plugin"].Grants; len(grants) != 1 || grants[0].Name != "runtime.close.observe" {
 		t.Fatalf("grants = %#v", grants)
 	}
@@ -114,12 +115,13 @@ func TestNonInteractiveResolutionSeparatesScopeAndOptionalSelection(t *testing.T
 func TestReviewResolutionAppliesScopesBeforeLockValidation(t *testing.T) {
 	lock := scopedGrantLock()
 	plan := ResolutionPlan{Lock: lock}
-	got, err := reviewResolution(plan, pkgOpts{scopes: map[string]map[string]project.AuthorityScope{
+	reviewed, err := reviewResolvedPluginPlan(plan, pkgOpts{scopes: map[string]map[string]project.AuthorityScope{
 		"github.com/acme/plugin": {"host.import.define": {Modules: []string{"clock"}}},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := reviewed.Lock
 	if modules := got.Plugins["github.com/acme/plugin"].Grants[0].Scope.Modules; !reflect.DeepEqual(modules, []string{"clock"}) {
 		t.Fatalf("modules = %v", modules)
 	}

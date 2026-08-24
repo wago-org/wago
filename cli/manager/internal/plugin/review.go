@@ -11,80 +11,6 @@ import (
 	"github.com/wago-org/wago/cli/internal/tui"
 )
 
-func reviewResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocument, error) {
-	if len(plan.Reviews) == 0 && len(plan.ContractReviews) == 0 && len(options.scopes) == 0 {
-		return plan.Lock, nil
-	}
-	keys, reviewKeys := map[string]bool{}, map[string]bool{}
-	requestedNames := map[string]bool{}
-	for _, review := range plan.Reviews {
-		key := authorityKey(review.PluginID, review.Request.Name)
-		keys[key] = review.Request.Mode == project.AuthorityRequired || review.Previous != nil
-		reviewKeys[key] = true
-		requestedNames[review.Request.Name] = true
-	}
-	explicit := options.authorities != nil || options.grantAll || options.denyAll
-	switch {
-	case options.grantAll:
-		for key := range reviewKeys {
-			keys[key] = true
-		}
-	case options.denyAll:
-		for key := range reviewKeys {
-			keys[key] = false
-		}
-	case options.authorities != nil:
-		for _, name := range options.authorities {
-			if !requestedNames[name] {
-				return project.LockDocument{}, fmt.Errorf("no reviewed plugin requests authority %q", name)
-			}
-		}
-		for _, review := range plan.Reviews {
-			keys[authorityKey(review.PluginID, review.Request.Name)] = containsString(options.authorities, review.Request.Name)
-		}
-	}
-	if automation.NoInput() {
-		if len(plan.Reviews) != 0 && !explicit {
-			return project.LockDocument{}, fmt.Errorf("--no-input requires --allow, --allow-all, or --deny-all for authority review")
-		}
-		if len(plan.ContractReviews) != 0 && !options.acceptContracts {
-			return project.LockDocument{}, fmt.Errorf("--no-input requires --accept-contracts for exact contract-binding review")
-		}
-	}
-	interactiveAuthorities := len(plan.Reviews) != 0 && !explicit && !automation.NoInput()
-	interactiveContracts := len(plan.ContractReviews) != 0 && !options.acceptContracts && !automation.NoInput()
-	if interactiveAuthorities || interactiveContracts {
-		fmt.Printf("\n%s\n", formatReviewPlan(plan))
-		if interactiveContracts {
-			if err := reviewContractChoices(&plan); err != nil {
-				return project.LockDocument{}, err
-			}
-		}
-		if interactiveAuthorities {
-			if err := reviewAuthorityChoices(plan.Reviews, keys); err != nil {
-				return project.LockDocument{}, err
-			}
-		} else if interactiveContracts {
-			selector := &tui.MultiSelect{Title: "Approve this reviewed plugin plan", Prompt: "enter accept · space decline · esc cancel", Items: []tui.SelectItem{{Label: "Apply this plan", Description: "publish the staged manifest, lock graph, and runtime together", On: true}}}
-			_, cancelled := tui.Run(selector)
-			if cancelled || !selector.Items[0].On {
-				return project.LockDocument{}, fmt.Errorf("plugin review cancelled; no changes were made")
-			}
-		}
-	}
-	if len(plan.Reviews) != 0 {
-		applyReviewedAuthorities(&plan.Lock, keys)
-	}
-	if err := applyAuthorityScopeOverrides(&plan.Lock, options.scopes); err != nil {
-		return project.LockDocument{}, err
-	}
-	if err := project.ValidateLock(plan.Lock); err != nil {
-		return project.LockDocument{}, err
-	}
-	warnUnmetPluginRequirements(plan.Lock)
-	return plan.Lock, nil
-}
-
 type authoritySelection struct {
 	keys []string
 }
@@ -384,33 +310,6 @@ func reviewContractChoices(plan *ResolutionPlan) error {
 	return nil
 }
 
-func applyReviewedAuthorities(lock *project.LockDocument, choices map[string]bool) {
-	for id, entry := range lock.Plugins {
-		current := map[string]project.AuthorityGrant{}
-		for _, grant := range entry.Grants {
-			current[grant.Name] = grant
-		}
-		entry.Grants = entry.Grants[:0]
-		for _, request := range entry.RequestedAuthorities {
-			key := authorityKey(id, request.Name)
-			selected, reviewed := choices[key]
-			if reviewed && !selected {
-				continue
-			}
-			grant, ok := current[request.Name]
-			if !ok {
-				if !reviewed {
-					continue
-				}
-				grant = project.AuthorityGrant{Name: request.Name, Scope: request.Scope}
-			}
-			entry.Grants = append(entry.Grants, grant)
-		}
-		sort.Slice(entry.Grants, func(i, j int) bool { return entry.Grants[i].Name < entry.Grants[j].Name })
-		lock.Plugins[id] = entry
-	}
-}
-
 func authorityKey(pluginID, authority string) string { return pluginID + "\x00" + authority }
 
 func projectScopeSuffix(scope project.AuthorityScope) string {
@@ -471,11 +370,11 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 		if targetErr != nil {
 			return targetErr
 		}
-		lock, editErr := editAuthorityGrantTargets(lock, targets, requested, grantAll, denyAll, scopes, "Permissions for "+strings.TrimPrefix(id, "github.com/"))
+		reviewed, editErr := reviewAuthorityGrantTargets(lock, targets, requested, grantAll, denyAll, scopes, "Permissions for "+strings.TrimPrefix(id, "github.com/"))
 		if editErr != nil {
 			return editErr
 		}
-		warnings = unmetPluginRequirementWarnings(lock)
+		lock, warnings = reviewed.Lock, reviewed.Warnings
 		buildDir, err := buildDirFor(useGlobal)
 		if err != nil {
 			return err
@@ -491,8 +390,8 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 	fmt.Printf("%s updated reviewed authority grants\n", cyan("✓"))
 }
 
-func warnUnmetPluginRequirements(lock project.LockDocument) {
-	for _, warning := range unmetPluginRequirementWarnings(lock) {
+func printPluginPlanWarnings(warnings []string) {
+	for _, warning := range warnings {
 		fmt.Printf("warning: %s\n", warning)
 	}
 }
@@ -535,16 +434,21 @@ func editAuthorityGrants(lock project.LockDocument, id string, requested []strin
 }
 
 func editAuthorityGrantTargets(lock project.LockDocument, ids, requested []string, grantAll, denyAll bool, scopes map[string]map[string]project.AuthorityScope, title string) (project.LockDocument, error) {
+	reviewed, err := reviewAuthorityGrantTargets(lock, ids, requested, grantAll, denyAll, scopes, title)
+	return reviewed.Lock, err
+}
+
+func reviewAuthorityGrantTargets(lock project.LockDocument, ids, requested []string, grantAll, denyAll bool, scopes map[string]map[string]project.AuthorityScope, title string) (reviewedPluginPlan, error) {
 	targets := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		if _, ok := lock.Plugins[id]; !ok {
-			return project.LockDocument{}, fmt.Errorf("plugin %q is not in the lock graph", id)
+			return reviewedPluginPlan{}, fmt.Errorf("plugin %q is not in the lock graph", id)
 		}
 		targets[id] = true
 	}
 	for pluginID := range scopes {
 		if !targets[pluginID] {
-			return project.LockDocument{}, fmt.Errorf("plugin grant cannot apply --scopes entry that targets plugin %s", pluginID)
+			return reviewedPluginPlan{}, fmt.Errorf("plugin grant cannot apply --scopes entry that targets plugin %s", pluginID)
 		}
 	}
 	allowed := map[string]project.AuthorityRequest{}
@@ -555,7 +459,7 @@ func editAuthorityGrantTargets(lock project.LockDocument, ids, requested []strin
 	}
 	for _, authority := range requested {
 		if _, ok := allowed[authority]; !ok {
-			return project.LockDocument{}, fmt.Errorf("selected plugins do not request authority %q", authority)
+			return reviewedPluginPlan{}, fmt.Errorf("selected plugins do not request authority %q", authority)
 		}
 	}
 	choices := map[string]bool{}
@@ -582,36 +486,13 @@ func editAuthorityGrantTargets(lock project.LockDocument, ids, requested []strin
 	}
 	if requested == nil && !grantAll && !denyAll && len(scopes) == 0 && !automation.NoInput() {
 		if err := reviewAuthorityChoicesWithTitle(reviews, choices, title); err != nil {
-			return project.LockDocument{}, err
+			return reviewedPluginPlan{}, err
 		}
 	}
-	for id := range targets {
-		entry := lock.Plugins[id]
-		current := map[string]project.AuthorityGrant{}
-		for _, grant := range entry.Grants {
-			current[grant.Name] = grant
-		}
-		entry.Grants = nil
-		for _, request := range entry.RequestedAuthorities {
-			if !choices[authorityKey(id, request.Name)] {
-				continue
-			}
-			grant, ok := current[request.Name]
-			if !ok || grantAll {
-				grant = project.AuthorityGrant{Name: request.Name, Scope: request.Scope}
-			}
-			entry.Grants = append(entry.Grants, grant)
-		}
-		sort.Slice(entry.Grants, func(i, j int) bool { return entry.Grants[i].Name < entry.Grants[j].Name })
-		lock.Plugins[id] = entry
-	}
-	if err := applyAuthorityScopeOverrides(&lock, scopes); err != nil {
-		return project.LockDocument{}, err
-	}
-	if err := project.ValidateLock(lock); err != nil {
-		return project.LockDocument{}, err
-	}
-	return lock, nil
+	return (pluginPlanReview{
+		lock: lock, reviews: reviews, choices: choices, scopes: scopes, targets: targets,
+		applyAuthorities: true, resetSelectedScopes: grantAll,
+	}).finish()
 }
 
 func grantPluginTargets(id string, lock project.LockDocument) ([]string, error) {
