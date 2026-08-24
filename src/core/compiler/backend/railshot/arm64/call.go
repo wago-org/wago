@@ -1007,13 +1007,19 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHost)
 	p := len(ft.Params)
 	types, argSlot := f.flushSuffix(p)
+	// The logger does not leave native execution; only its fixed X9-X11 scratch
+	// bank needs preservation. Locals and value-pinned globals share that extended
+	// pin bank, so home both before reusing it without evicting unrelated GP/FP pins.
+	hostLogScratch := maskOf(X9, X10, X11)
+	f.spillLocalsForClobbers(hostLogScratch, 0)
+	f.storePinnedGlobalsIn(hostLogScratch, false)
 	if p > 0 {
 		f.ld32(X0, SP, f.spillOff(argSlot)) // first param
 	} else {
 		f.a.MovImm64(X0, 0) // zero (no flag side effect on arm64)
 	}
-	// Scratch entirely in X0/X9/X10/X11: a host call clobbers no wasm register
-	// state, so pinned locals (which live in X19-X23) stay untouched.
+	// The extended pin bank has already been homed, so X0/X9/X10/X11 are free
+	// for the async host-log sequence below.
 	f.ld64(X11, linMemReg, -int32(offCustomCtx)) // X11 = host-call log
 	f.ld32(X9, X11, 0)                           // count
 	f.a.AddShifted(X10, X11, X9, 3, false)       // entry = log + count*8
@@ -1024,6 +1030,10 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.a.AddImm32(X9, X9, 1) // count++
 	f.st32(X11, 0, X9)
 	f.dropFlushedSuffix(types, p)
+	f.derivePinnedGlobalsIn(hostLogScratch)
+	// The legacy non-STACK_REG model restores the selected local pins eagerly.
+	// STACK_REG leaves them memory-resident and recovers each on its next read.
+	f.reloadLocalsForClobbers(hostLogScratch, 0)
 	return nil
 }
 
@@ -1132,7 +1142,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
-	f.flush()                   // operands to canonical slot-width slots
+	f.flush() // operands to canonical slot-width slots
+	// X9-X11 are part of the extended local-pin bank. Home every dirty pin before
+	// globals, control-frame setup, or argument marshalling reuses those registers.
+	f.spillLocalsForCall()
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
 	if !internalGC {
 		// Internal GC helpers cannot observe or mutate numeric module-global cells,
@@ -1165,7 +1178,6 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		argSlot += mt.stackSlots()
 		ctrlSlot += mt.stackSlots()
 	}
-	f.spillLocalsForCall()
 	f.a.MovImm64(X16, uint64(uint32(importIdx)))
 	f.st32(X11, hcImportIdx, X16)
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
