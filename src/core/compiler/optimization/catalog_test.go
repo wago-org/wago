@@ -95,6 +95,58 @@ func TestV128ConstCacheIsAMD64Only(t *testing.T) {
 	}
 }
 
+func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
+	want := map[string][]string{
+		"amd64": {
+			"simd-superopt",
+			"swar-idioms",
+			"interval-region-pins",
+			"fcmp-fuse",
+			"magic-div",
+			"shared-trap-body",
+			"shared-adapters",
+			"dead-gc-new",
+			"gc-ref-facts",
+			"gc-native-alloc",
+		},
+		"arm64": {
+			"simd-superopt",
+			"swar-idioms",
+			"interval-region-pins",
+			"fcmp-fuse",
+			"magic-div",
+			"shared-trap-body",
+			"shared-adapters",
+			"zero-branch",
+			"mul-add-fuse",
+			"entry-init-elision",
+			"v128-direct-results",
+		},
+	}
+	for arch, names := range want {
+		for _, name := range names {
+			definition, ok := Lookup(arch, name)
+			if !ok {
+				t.Errorf("%s substantial optimization %q is not registered", arch, name)
+				continue
+			}
+			if !definition.Default {
+				t.Errorf("%s optimization %q does not preserve its current default-on behavior", arch, name)
+			}
+		}
+	}
+	for _, name := range []string{"dead-gc-new", "gc-ref-facts", "gc-native-alloc"} {
+		if _, ok := Lookup("arm64", name); ok {
+			t.Errorf("arm64 exposes amd64-only optimization %q", name)
+		}
+	}
+	for _, name := range []string{"zero-branch", "mul-add-fuse", "entry-init-elision", "v128-direct-results"} {
+		if _, ok := Lookup("amd64", name); ok {
+			t.Errorf("amd64 exposes arm64-only optimization %q", name)
+		}
+	}
+}
+
 func TestBindingsRequireEveryArchitectureDefinition(t *testing.T) {
 	value := true
 	definitions := ForArch("amd64")
