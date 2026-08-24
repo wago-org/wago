@@ -312,31 +312,6 @@ func reviewContractChoices(plan *ResolutionPlan) error {
 
 func authorityKey(pluginID, authority string) string { return pluginID + "\x00" + authority }
 
-func projectScopeSuffix(scope project.AuthorityScope) string {
-	fields := projectScopeText(scope)
-	if fields == "" {
-		return ""
-	}
-	return " [" + fields + "]"
-}
-
-func projectScopeText(scope project.AuthorityScope) string {
-	var fields []string
-	if len(scope.Modules) != 0 {
-		fields = append(fields, "modules="+strings.Join(scope.Modules, ","))
-	}
-	if scope.MaxInstances != 0 {
-		fields = append(fields, fmt.Sprintf("maxInstances=%d", scope.MaxInstances))
-	}
-	if scope.MaxMemoryBytes != 0 {
-		fields = append(fields, fmt.Sprintf("maxMemoryBytes=%d", scope.MaxMemoryBytes))
-	}
-	if len(fields) == 0 {
-		return ""
-	}
-	return strings.Join(fields, "; ")
-}
-
 func containsString(values []string, value string) bool {
 	for _, item := range values {
 		if item == value {
