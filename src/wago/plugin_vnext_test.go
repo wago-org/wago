@@ -217,6 +217,9 @@ func TestAuthorityExactGrantsAndHostScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	set.Selections[0].Grants = nil
+	if _, err := InspectPluginPlan(set); err != nil {
+		t.Fatalf("inspect declined required grant=%v", err)
+	}
 	if err := NewRuntime().LoadPlugins(context.Background(), set); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("missing grant=%v", err)
 	}

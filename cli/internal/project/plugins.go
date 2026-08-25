@@ -265,3 +265,22 @@ func ValidatePluginID(id string) error {
 	}
 	return nil
 }
+
+// ExpandGitHubPluginID expands an owner/repository[/subpackage] CLI shorthand
+// to its canonical GitHub import path. Invalid and already-qualified IDs are
+// left unchanged so the normal validation error remains actionable.
+func ExpandGitHubPluginID(id string) string {
+	id = strings.TrimSpace(id)
+	if ValidatePluginID(id) == nil || !strings.Contains(id, "/") {
+		return id
+	}
+	host, _, _ := strings.Cut(id, "/")
+	if strings.Contains(host, ".") {
+		return id
+	}
+	candidate := "github.com/" + id
+	if ValidatePluginID(candidate) != nil {
+		return id
+	}
+	return candidate
+}

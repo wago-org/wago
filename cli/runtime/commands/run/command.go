@@ -39,10 +39,11 @@ func Command(environment Environment) *command.Cmd {
 		Name: "run", Summary: "compile and execute a WebAssembly module (default)",
 		Args: "<file> [args...]", Flags: flags, Knobs: knobs, PassThrough: true,
 		Normalize: func(args []string) ([]string, error) {
-			return NormalizeParallelArgs(args, parserFlags, true)
+			return NormalizeParallelArgs(args, parserFlags, false)
 		},
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
+			"Wago flags may appear before or after <file>; use -- before colliding guest flags.\n" +
 			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
 			"or --core 3 for the complete release. Use -p for\n" +
 			"adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to force a\n" +

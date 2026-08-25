@@ -9,7 +9,7 @@ import (
 )
 
 // InvocationWantsHelp reports whether args request help for cmd or one of its
-// descendants without crossing a positional pass-through seam.
+// descendants without crossing an explicit guest-argument separator.
 func InvocationWantsHelp(cmd *Cmd, args []string) bool {
 	if len(cmd.Children) == 0 {
 		normalized := args
@@ -23,7 +23,7 @@ func InvocationWantsHelp(cmd *Cmd, args []string) bool {
 		return WantsHelp(normalized, cmd.PassThrough, cmd.Flags) ||
 			(len(cmd.Knobs) != 0 && WantsOptimizationHelp(normalized, cmd.PassThrough, cmd.AllFlags()))
 	}
-	if WantsHelp(args, true, cmd.AllFlags()) {
+	if wantsLeadingHelp(args, cmd.AllFlags()) {
 		return true
 	}
 	if len(args) == 0 {
@@ -33,9 +33,27 @@ func InvocationWantsHelp(cmd *Cmd, args []string) bool {
 	return child != nil && InvocationWantsHelp(child, args[1:])
 }
 
+func wantsLeadingHelp(args []string, flags []Flag) bool {
+	lookup := flagLookup(flags)
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" || arg == "" || arg[0] != '-' {
+			return false
+		}
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+		name, inline := splitFlag(arg)
+		if flag := lookup[name]; flag != nil && !flag.Bool && !inline && index+1 < len(args) {
+			index++
+		}
+	}
+	return false
+}
+
 // WantsOptimizationHelp reports whether advanced compiler help appears before
-// positional pass-through begins.
-func WantsOptimizationHelp(args []string, passThrough bool, flags []Flag) bool {
+// the explicit guest-argument separator.
+func WantsOptimizationHelp(args []string, _ bool, flags []Flag) bool {
 	lookup := flagLookup(flags)
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
@@ -44,9 +62,6 @@ func WantsOptimizationHelp(args []string, passThrough bool, flags []Flag) bool {
 		}
 		if arg == "--help-optimizations" {
 			return true
-		}
-		if passThrough && (arg == "" || arg[0] != '-') {
-			return false
 		}
 		name, inline := splitFlag(arg)
 		if flag := lookup[name]; flag != nil && !flag.Bool && !inline && index+1 < len(args) {

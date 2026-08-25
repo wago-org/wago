@@ -59,9 +59,6 @@ func TestLockAuthorityPolicyFailsClosed(t *testing.T) {
 		{"unknown", func(e *LockEntry) {
 			e.RequestedAuthorities = []AuthorityRequest{{Name: "host.*", Mode: AuthorityOptional, Reason: "too broad"}}
 		}, "unknown requested authority"},
-		{"required denied", func(e *LockEntry) {
-			e.RequestedAuthorities = []AuthorityRequest{{Name: "runtime.close.observe", Mode: AuthorityRequired, Reason: "flush state"}}
-		}, "must be granted"},
 		{"host wildcard", func(e *LockEntry) {
 			e.RequestedAuthorities = []AuthorityRequest{{Name: "host.import.define", Mode: AuthorityOptional, Reason: "imports", Scope: AuthorityScope{Modules: []string{"*"}}}}
 		}, "unique exact module names"},
@@ -80,6 +77,16 @@ func TestLockAuthorityPolicyFailsClosed(t *testing.T) {
 				t.Fatalf("EncodeLock error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestRequiredAuthorityMayBeDeclined(t *testing.T) {
+	document := NewLockDocument()
+	entry := testLockEntry(true, "github.com/acme/plugin", map[string]string{})
+	entry.RequestedAuthorities = []AuthorityRequest{{Name: "runtime.close.observe", Mode: AuthorityRequired, Reason: "flush state"}}
+	document.Plugins["github.com/acme/plugin"] = entry
+	if err := ValidateLock(document); err != nil {
+		t.Fatalf("declined required authority: %v", err)
 	}
 }
 

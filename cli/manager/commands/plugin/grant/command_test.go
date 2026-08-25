@@ -44,6 +44,19 @@ func TestGrantForwardsExactScopeOverrides(t *testing.T) {
 	}
 }
 
+func TestGrantAllowsPickingAPluginWhenNoIDIsSupplied(t *testing.T) {
+	environment := &testEnvironment{}
+	cmd := Command(environment)
+	context, err := cmd.Parse("wago plugin grant", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Run(context)
+	if environment.options.Name != "" {
+		t.Fatalf("name = %q, want picker selection", environment.options.Name)
+	}
+}
+
 func (environment *testEnvironment) Grant(options Options) {
 	environment.options = options
 }

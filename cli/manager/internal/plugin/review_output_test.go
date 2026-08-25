@@ -6,7 +6,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/project"
 )
 
-func TestFormatReviewPlanGroupsContractChangesByPlugin(t *testing.T) {
+func TestFormatReviewPlanSummarizesSecurityAndContracts(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	plan := ResolutionPlan{
 		Reviews: []AuthorityReview{
@@ -42,22 +42,19 @@ func TestFormatReviewPlanGroupsContractChangesByPlugin(t *testing.T) {
 			},
 		},
 	}
+	plan.Lock = project.NewLockDocument()
+	plan.Lock.Plugins["github.com/wago-org/wasi"] = project.LockEntry{}
 
-	want := `Plugin security
-  Plugins run native code inside this Wago process.
-  Authority grants constrain Wago interfaces; they are not an OS sandbox.
+	want := `Security review
+  Native code       Yes
+  OS sandbox        No
+  Plugins           1
+  Authorities       2 distinct · 2 requests
+  Plugins run native code in Wago; grants restrict Wago APIs, not the OS.
 
-github.com/wago-org/wasi
-  Contracts
-    github.com/wago-org/stdio@1  optional · changed
-      available: github.com/wago-org/stdio-native
-      binding: none -> none
-
-github.com/acme/clock
-  Contracts
-    github.com/acme/time@1  required · changed
-      available: github.com/acme/new-clock
-      binding: github.com/acme/old-clock -> github.com/acme/new-clock
+Contract
+  stdio@1 → none
+  github.com/acme/time@1 → github.com/acme/new-clock
 `
 	if got := formatReviewPlan(plan); got != want {
 		t.Fatalf("review plan:\n%s\nwant:\n%s", got, want)

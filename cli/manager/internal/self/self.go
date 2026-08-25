@@ -211,7 +211,19 @@ func selfUninstall(
 			fatal("self uninstall: clean PATH in %s: %v", displayPath(config), err)
 		}
 	}
-	removalExecutable, err := selfreplace.StageRemoval(executable, targets)
+	if deferred, err := selfreplace.ScheduleTargetRemoval(executable, targets); err != nil {
+		fatal("self uninstall: schedule removal: %v", err)
+	} else if deferred {
+		fmt.Fprintln(out, cyan("✓"), "Wago cleanup will finish after the manager exits")
+		return
+	}
+	stageTargets := targets
+	installationDir := ""
+	if mode == Full {
+		installationDir = filepath.Dir(executable)
+		stageTargets = append(append([]string(nil), targets...), installationDir)
+	}
+	removalExecutable, err := selfreplace.StageRemoval(executable, stageTargets)
 	if err != nil {
 		fatal("self uninstall: stage manager removal: %v", err)
 	}
@@ -226,6 +238,11 @@ func selfUninstall(
 	deferred, err := selfreplace.Remove(removalExecutable)
 	if err != nil {
 		fatal("self uninstall: remove %s: %v", displayPath(executable), err)
+	}
+	if installationDir != "" {
+		if err := removeEmptyInstallationDir(installationDir); err != nil {
+			fatal("self uninstall: remove empty installation directory %s: %v", displayPath(installationDir), err)
+		}
 	}
 	if deferred {
 		fmt.Fprintln(out, cyan("✓"), "Wago cleanup complete; the manager will be removed after restart")

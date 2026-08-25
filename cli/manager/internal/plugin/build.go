@@ -93,13 +93,14 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		}
 		progress.Finish("Fetched plugins")
 		progress.Title("Checking permissions")
-		lock, err := reviewResolution(plan, options)
+		reviewed, err := reviewResolvedPluginPlan(plan, options)
 		if err != nil {
 			return err
 		}
+		printPluginPlanWarnings(reviewed.Warnings)
 		progress.Finish("Permissions checked")
 		progress.Begin("Building plugin runtime")
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, options.verbose)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose)
 	})
 	if err != nil {
 		progress.Fail("Plugin install failed")
@@ -120,7 +121,7 @@ func pkgRemove(name string, options pkgOpts) {
 	if err != nil {
 		fatal("plugin remove: %v", err)
 	}
-	id := strings.TrimSpace(name)
+	id := project.ExpandGitHubPluginID(name)
 	if err := project.ValidatePluginID(id); err != nil {
 		fatal("plugin remove: %v", err)
 	}
@@ -150,10 +151,12 @@ func pkgRemove(name string, options pkgOpts) {
 			if err != nil {
 				return err
 			}
-			lock, err = reviewRemovalResolution(plan, options)
+			reviewed, err := reviewRemovalResolution(plan, options)
 			if err != nil {
 				return err
 			}
+			printPluginPlanWarnings(reviewed.Warnings)
+			lock = reviewed.Lock
 		}
 		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
 	})
@@ -163,11 +166,11 @@ func pkgRemove(name string, options pkgOpts) {
 	fmt.Printf("removed %s\n", dim(id))
 }
 
-func reviewRemovalResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocument, error) {
+func reviewRemovalResolution(plan ResolutionPlan, options pkgOpts) (reviewedPluginPlan, error) {
 	if len(plan.Reviews) != 0 {
-		return project.LockDocument{}, fmt.Errorf("removal changes authority requests; run `wago plugin update` to review the new graph")
+		return reviewedPluginPlan{}, fmt.Errorf("removal changes authority requests; run `wago plugin update` to review the new graph")
 	}
-	return reviewResolution(plan, options)
+	return reviewResolvedPluginPlan(plan, options)
 }
 
 func pkgUpdate(target string, options pkgOpts) {
@@ -179,6 +182,7 @@ func pkgUpdate(target string, options pkgOpts) {
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
+	target = project.ExpandGitHubPluginID(target)
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
 		if err != nil {
@@ -189,7 +193,6 @@ func pkgUpdate(target string, options pkgOpts) {
 			return err
 		}
 		if target != "" {
-			target = strings.TrimSpace(target)
 			if err := project.ValidatePluginID(target); err != nil {
 				return err
 			}
@@ -209,11 +212,12 @@ func pkgUpdate(target string, options pkgOpts) {
 		if err != nil {
 			return err
 		}
-		lock, err := reviewResolution(plan, options)
+		reviewed, err := reviewResolvedPluginPlan(plan, options)
 		if err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, options.verbose)
+		printPluginPlanWarnings(reviewed.Warnings)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose)
 	})
 	if err != nil {
 		fatal("plugin update: %v", err)
@@ -284,13 +288,16 @@ func verifyStagedRuntime(binary string) error {
 }
 
 func verifySourceChecksums(buildDir string, sources []project.PluginSource) error {
-	command := exec.Command("go", "list", "-m", "-json", "all")
+	// Reconcile the generated module before listing it. Newer Go toolchains can
+	// require a harmless go.mod normalization (for example, `go 1.22` to
+	// `go 1.22.0`) before they will report its selected modules.
+	command := exec.Command("go", "list", "-mod=mod", "-m", "-json", "all")
 	command.Dir = buildDir
 	command.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
 	automation.ConfigureCommand(command)
-	output, err := command.Output()
+	output, err := command.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("read selected module checksums: %w", err)
+		return fmt.Errorf("read selected module checksums: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
 	selected := map[string]project.PluginSource{}
@@ -435,6 +442,7 @@ func pluginRuntimeBinary() (string, bool, error) {
 func parsePluginSpec(spec string) (string, string, error) {
 	spec = strings.TrimSpace(spec)
 	id, constraint := splitPluginSpec(spec)
+	id = project.ExpandGitHubPluginID(id)
 	if err := project.ValidatePluginID(id); err != nil {
 		return "", "", err
 	}

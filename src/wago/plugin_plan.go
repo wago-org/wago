@@ -503,13 +503,6 @@ func validateGrants(def PluginDefinition, grants []AuthorityGrant) error {
 			return fmt.Errorf("grant %q widens its request", grant.Name)
 		}
 	}
-	for _, request := range def.Authorities {
-		if request.Mode == AuthorityRequired {
-			if _, ok := seen[request.Name]; !ok {
-				return fmt.Errorf("required authority %q was not granted: %w", request.Name, ErrPermissionDenied)
-			}
-		}
-	}
 	return nil
 }
 

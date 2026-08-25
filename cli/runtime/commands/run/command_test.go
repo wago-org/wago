@@ -18,7 +18,7 @@ import (
 type testEnvironment struct{}
 
 func (testEnvironment) ProfileFlags() []command.Flag {
-	return []command.Flag{{Name: "local", Bool: true}}
+	return []command.Flag{{Name: "local", Bool: true}, {Name: "global", Short: "g", Bool: true}}
 }
 func (testEnvironment) LoadRuntime(cfg *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
 	return wago.NewRuntime(wago.WithRuntimeConfig(cfg), wago.WithGuestArguments(guestArgs))
@@ -77,7 +77,8 @@ func TestHelpCollapsesBooleanPairs(t *testing.T) {
 		t.Fatalf("run help did not collapse advanced optimization help:\n%s", text)
 	}
 	if !strings.Contains(text, "--parallel, -p [workers]") ||
-		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
+		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") ||
+		!strings.Contains(text, "use -- before colliding guest flags") {
 		t.Fatalf("run help did not document function parallelism:\n%s", text)
 	}
 	output.Reset()
@@ -99,6 +100,21 @@ func TestHelpRecognitionAfterSeparatedParallelism(t *testing.T) {
 	normalized, err := cmd.Normalize([]string{"-p", "8", "--help"})
 	if err != nil || !command.WantsHelp(normalized, cmd.PassThrough, cmd.Flags) {
 		t.Fatalf("help after separated parallelism was missed: normalized=%v err=%v", normalized, err)
+	}
+}
+
+func TestRunRecognizesFlagsAfterModulePath(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	args, err := cmd.Normalize([]string{"module.wasm", "--global"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := cmd.Parse("wago run", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ctx.Bool("global") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
+		t.Fatalf("file --global parsed as global=%v args=%v", ctx.Bool("global"), ctx.Args)
 	}
 }
 
@@ -224,8 +240,20 @@ func TestRunParallelFlagForms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if ctx.Str("parallel") != "8" || len(ctx.Args) != 1 {
+		t.Fatalf("parallel after module was missed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
+	}
+
+	args, err = cmd.Normalize([]string{"module.wasm", "--", "-p8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err = cmd.Parse("wago run", args)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ctx.Str("parallel") != "" || len(ctx.Args) != 2 || ctx.Args[1] != "-p8" {
-		t.Fatalf("guest -p8 was consumed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
+		t.Fatalf("guest -p8 after separator was consumed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
 	}
 }
 

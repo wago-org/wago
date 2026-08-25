@@ -13,6 +13,16 @@ import (
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
+func TestParsePluginSpecExpandsGitHubShorthand(t *testing.T) {
+	id, constraint, err := parsePluginSpec("wago-org/wasi@^1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "github.com/wago-org/wasi" || constraint != "^1.2.3" {
+		t.Fatalf("parsePluginSpec shorthand = %q, %q; want github.com/wago-org/wasi, ^1.2.3", id, constraint)
+	}
+}
+
 func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
 	t.Setenv("WAGO_BARE", "")
@@ -34,7 +44,7 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 type PluginSelection struct{}
 type PluginProvider struct{}
 type PluginSet struct { Providers []PluginProvider; Selections []PluginSelection }
-func ValidatePluginSet(PluginSet) error { return nil }
+func InspectPluginPlan(PluginSet) (any, error) { return nil, nil }
 `,
 		"cli/runtime/runtime.go": `package runtime
 import wago "github.com/wago-org/wago"
@@ -105,6 +115,19 @@ func TestLockedPluginResolutionRequiresPinnedVersionsBeforeBuilding(t *testing.T
 	}
 	if _, err := os.Stat(buildDir); !os.IsNotExist(err) {
 		t.Fatalf("locked resolution touched build state: %v", err)
+	}
+}
+
+func TestVerifySourceChecksumsReconcilesGeneratedModule(t *testing.T) {
+	buildDir := t.TempDir()
+	// Go 1.26 normalizes a two-component go directive to three components and
+	// otherwise rejects `go list` before it can report the selected modules.
+	// Generated plugin modules must be reconciled before checksum verification.
+	if err := os.WriteFile(filepath.Join(buildDir, "go.mod"), []byte("module wago.local/build\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifySourceChecksums(buildDir, nil); err != nil {
+		t.Fatalf("verifySourceChecksums: %v", err)
 	}
 }
 

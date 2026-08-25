@@ -75,7 +75,8 @@ after `Stop` has had a chance to cancel admitted work.
 ## Authority rules for ecosystem APIs
 
 Definitions request the largest scope the release can support. Consumers may
-narrow any scope. `required` means an Authority grant must exist; `optional`
+narrow any scope. `required` means the plugin needs an Authority for its intended
+behavior; users may still decline it. `optional`
 means it may be omitted entirely. Registration must either adapt to the actual
 grant or fail before commit with a path-specific error.
 

@@ -137,6 +137,22 @@ func TestValidatePluginIDRejectsRelativeAndNonCanonical(t *testing.T) {
 	}
 }
 
+func TestExpandGitHubPluginID(t *testing.T) {
+	for input, want := range map[string]string{
+		"wago-org/wasi":                    "github.com/wago-org/wasi",
+		"wago-org/wasi/providers/preview1": "github.com/wago-org/wasi/providers/preview1",
+		" github.com/wago-org/wasi ":       "github.com/wago-org/wasi",
+		"github.com/wago-org":              "github.com/wago-org",
+		"gitlab.com/wago-org/wasi":         "gitlab.com/wago-org/wasi",
+		"wago-org":                         "wago-org",
+		"wago org/wasi":                    "wago org/wasi",
+	} {
+		if got := ExpandGitHubPluginID(input); got != want {
+			t.Errorf("ExpandGitHubPluginID(%q) = %q; want %q", input, got, want)
+		}
+	}
+}
+
 func TestValidateConstraintUsesFullRangeGrammar(t *testing.T) {
 	for _, valid := range []string{"*", ">=1.0.0 <2.0.0", "1.2.x || >=3.0.0", "1.2.3 - 2.0.0", "^1.2.3"} {
 		if err := ValidateConstraint(valid); err != nil {

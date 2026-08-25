@@ -35,9 +35,9 @@ func Command(environment Environment) *command.Cmd {
 			plugin.GlobalFlag(), plugin.LocalFlag(),
 			{Name: "force", Short: "f", Bool: true, Help: "ignore the build cache / fetch the latest version"},
 			{Name: "verbose", Short: "v", Bool: true, Help: "stream the underlying go output"},
-			{Name: "allow", Arg: "<authority,...>", Help: "grant these optional authorities without prompting"},
-			{Name: "allow-all", Bool: true, Help: "grant every requested optional authority without prompting"},
-			{Name: "deny-all", Bool: true, Help: "deny every optional authority without prompting"},
+			{Name: "allow", Arg: "<authority,...>", Help: "grant only these requested authorities without prompting"},
+			{Name: "allow-all", Bool: true, Help: "grant every requested authority without prompting"},
+			{Name: "deny-all", Bool: true, Help: "deny every requested authority without prompting"},
 			{Name: "accept-contracts", Bool: true, Help: "accept the proposed exact contract bindings without prompting"},
 			{Name: "scopes", Arg: "<json>", Help: "set narrower scopes by Plugin ID and exact Authority"},
 		},
@@ -77,16 +77,12 @@ func Command(environment Environment) *command.Cmd {
 }
 
 func expandGitHubPluginSpec(spec string) string {
+	spec = strings.TrimSpace(spec)
 	id := spec
+	constraint := ""
 	if index := strings.LastIndexByte(spec, '@'); index > 0 {
 		id = spec[:index]
+		constraint = spec[index:]
 	}
-	if project.ValidatePluginID(id) == nil || !strings.Contains(id, "/") {
-		return spec
-	}
-	candidate := "github.com/" + id
-	if project.ValidatePluginID(candidate) != nil {
-		return spec
-	}
-	return "github.com/" + spec
+	return project.ExpandGitHubPluginID(id) + constraint
 }
