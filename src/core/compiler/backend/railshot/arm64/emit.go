@@ -1553,7 +1553,7 @@ func fitsShiftedAddSubImmediate(v int64) bool {
 
 func (f *fn) shiftedAddSubImmediate(v int64) bool {
 	return shiftedAddSubImmediateEnabled &&
-		(f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
+		f.policy.CompactNative &&
 		fitsShiftedAddSubImmediate(v)
 }
 

@@ -86,7 +86,7 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesArm64(t *testing.T) {
 	}
 }
 
-func TestSizeObjectiveSharesAdapterTailsArm64(t *testing.T) {
+func TestCompactNativeSharesAdapterTailsArm64(t *testing.T) {
 	before := sharedAdaptersEnabled
 	sharedAdaptersEnabled = false
 	t.Cleanup(func() { sharedAdaptersEnabled = before })
@@ -96,9 +96,8 @@ func TestSizeObjectiveSharesAdapterTailsArm64(t *testing.T) {
 		funcDef{nil, i32, []byte{0x00, 0x41, 0x02, 0x0b}},
 	)
 	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
-	size := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +107,7 @@ func TestSizeObjectiveSharesAdapterTailsArm64(t *testing.T) {
 	if stats.NativeSize.AccountedBytes() != len(cm.Code) {
 		t.Fatalf("accounted bytes = %d, code = %d", stats.NativeSize.AccountedBytes(), len(cm.Code))
 	}
-	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &size, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,12 +119,12 @@ func TestSizeObjectiveSharesAdapterTailsArm64(t *testing.T) {
 			t.Fatalf("function %d adapter tail = %d, want branch size %d", i, fn.NativeSize.HostAdapterTailBytes, sharedAdapterTailBranchBytes)
 		}
 	}
-	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}); err != nil || got != 1 {
+	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true}); err != nil || got != 1 {
 		t.Fatalf("shared adapter tail execution = %d, %v; want 1, nil", got, err)
 	}
 }
 
-func TestSizeObjectiveSharesWholeAdaptersArm64(t *testing.T) {
+func TestCompactNativeSharesWholeAdaptersArm64(t *testing.T) {
 	before := sharedAdaptersEnabled
 	t.Cleanup(func() { sharedAdaptersEnabled = before })
 	i32 := []wasm.ValType{wasm.I32}
@@ -134,16 +133,14 @@ func TestSizeObjectiveSharesWholeAdaptersArm64(t *testing.T) {
 		funcDef{nil, i32, []byte{0x00, 0x41, 0x02, 0x0b}},
 	)
 	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
-	size := OptimizeSize
-
 	sharedAdaptersEnabled = false
-	local, err := CompileModuleWith(m, CompileOptions{Objective: &size})
+	local, err := CompileModuleWith(m, CompileOptions{CompactNative: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sharedAdaptersEnabled = true
 	var stats ModuleStats
-	shared, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	shared, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,14 +155,14 @@ func TestSizeObjectiveSharesWholeAdaptersArm64(t *testing.T) {
 	if stats.NativeSize.AccountedBytes() != len(shared.Code) || stats.NativeSize.ModuleOtherBytes == 0 {
 		t.Fatalf("shared adapter accounting = %#v, code=%d", stats.NativeSize, len(shared.Code))
 	}
-	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &size, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(parallel.Code, shared.Code) {
 		t.Fatal("serial and parallel shared-adapter layouts differ")
 	}
-	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}); err != nil || got != 1 {
+	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true}); err != nil || got != 1 {
 		t.Fatalf("shared adapter execution = %d, %v; want 1, nil", got, err)
 	}
 }

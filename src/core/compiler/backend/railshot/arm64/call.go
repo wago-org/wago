@@ -457,7 +457,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
-	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
 	f.cmpRR(LR, X16, true)
@@ -570,7 +570,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
-	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
 	f.cmpRR(LR, X16, true)
@@ -828,7 +828,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
-	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
 	f.cmpRR(LR, X16, true)
@@ -1269,8 +1269,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 // a per-instance mapping; the same code is instance-independent (it reads the log
 // pointer from X1 at run time).
 func HostIndirectThunk(importIdx uint32) []byte {
-	// This standalone thunk has no compilation objective. Preserve the Balanced
-	// encoding; module functions opt into logical MOVs through their policy.
+	// Preserve the ordinary encoding; module functions opt into logical MOVs
+	// through their policy.
 	a := &a64.Asm{DisableLogicalMoveImmediate: true}
 	a.Load32(X9, X0, 0)               // X9 = first arg (i32; a harmless slot read for 0-param funcs)
 	a.SubImm64(X10, X1, offCustomCtx) // X10 = &host-call log (X1 = linMem in the wrapper ABI)
@@ -1305,8 +1305,8 @@ func HostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) [
 }
 
 func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHome bool) []byte {
-	// This standalone thunk has no compilation objective. Preserve the Balanced
-	// encoding; module functions opt into logical MOVs through their policy.
+	// Preserve the ordinary encoding; module functions opt into logical MOVs
+	// through their policy.
 	a := &a64.Asm{DisableLogicalMoveImmediate: true}
 	// The host-call round trip preserves only callee-saved registers recorded by
 	// hostCallStub. Save the caller's linMemReg (active linMem), the wrapper result

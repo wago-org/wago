@@ -74,7 +74,7 @@ type OffsetMap struct {
 	deleted     [MaxOffsetMapDeletions]uint32
 }
 
-// WideOffsetMap is the AMD64 Size/Embedded map. Large x86 functions retain
+// WideOffsetMap is the AMD64 compaction map. Large x86 functions retain
 // substantially more five-byte branch-fold holes than ARM64 functions, so the
 // wider backend pays for a larger bounded map without imposing that stack cost
 // on ARM64 or the shared identity path.

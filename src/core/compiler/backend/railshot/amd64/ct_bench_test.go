@@ -112,7 +112,6 @@ func BenchmarkCTCodegen(b *testing.B) {
 }
 
 func BenchmarkCTCodegenSize(b *testing.B) {
-	objective := OptimizeSize
 	for _, name := range ctModules {
 		data := ctRead(b, name)
 		m, err := frontend.DecodeValidate(data)
@@ -124,7 +123,7 @@ func BenchmarkCTCodegenSize(b *testing.B) {
 			b.SetBytes(int64(len(data)))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1})
+				cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1})
 				if err != nil {
 					b.Fatal(err)
 				}

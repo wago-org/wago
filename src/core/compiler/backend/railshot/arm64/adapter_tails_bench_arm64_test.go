@@ -18,14 +18,14 @@ func BenchmarkExecSharedAdapterTailArm64(b *testing.B) {
 	)
 	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
 	for _, tc := range []struct {
-		name      string
-		objective OptimizationObjective
+		name    string
+		compact bool
 	}{
-		{"balanced", OptimizeBalanced},
-		{"size", OptimizeSize},
+		{"ordinary", false},
+		{"compact", true},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			cm, err := CompileModuleWith(m, CompileOptions{Objective: &tc.objective})
+			cm, err := CompileModuleWith(m, CompileOptions{CompactNative: tc.compact})
 			if err != nil {
 				b.Fatal(err)
 			}

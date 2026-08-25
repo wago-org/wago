@@ -55,7 +55,7 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 		mask = uint64(uint32(c))
 	}
 	cc := condE
-	if singleBitMaskTestEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) && mask&(mask-1) == 0 {
+	if singleBitMaskTestEnabled && f.policy.CompactNative && mask&(mask-1) == 0 {
 		f.a.BtImm(x, uint8(bits.TrailingZeros64(mask)), w)
 		cc = condAE // BT copies the selected bit to CF; AE means CF=0.
 		f.stats.peep("single-bit-mask-test")

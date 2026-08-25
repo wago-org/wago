@@ -59,7 +59,7 @@ type rcxZeroSite struct {
 }
 
 func (f *fn) rcxZero32Placeholder() rcxZeroSite {
-	if directJecxzEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+	if directJecxzEnabled && f.policy.CompactNative {
 		f.stats.peep("direct-jecxz")
 		return rcxZeroSite{off: f.a.JcxzPlaceholder(false), compact: true}
 	}
@@ -180,7 +180,7 @@ func (f *fn) emitTrapStubs() {
 		}
 	}
 	if f.opt(optSharedTrapBody) && groups >= 3 &&
-		(f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		f.policy.CompactNative {
 		f.emitSharedTrapStubs(groups)
 		f.stats.peep("shared-trap-body")
 		return

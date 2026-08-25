@@ -132,9 +132,8 @@ func TestSizeSingleBitMaskTest(t *testing.T) {
 	t.Cleanup(func() { singleBitMaskTestEnabled = before })
 	compile := func(enabled bool) (*encoderamd64.CompiledModule, *ModuleStats) {
 		singleBitMaskTestEnabled = enabled
-		size := OptimizeSize
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

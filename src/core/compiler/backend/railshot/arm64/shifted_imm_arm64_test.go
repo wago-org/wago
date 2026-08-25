@@ -8,16 +8,16 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestSizeShiftedAddImmediateArm64(t *testing.T) {
+func TestCompactShiftedAddImmediateArm64(t *testing.T) {
 	// local.get 0; i64.const 4096; i64.add
 	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64},
 		[]byte{0x00, 0x20, 0x00, 0x42, 0x80, 0x20, 0x7c, 0x0b})
 	before := shiftedAddSubImmediateEnabled
 	t.Cleanup(func() { shiftedAddSubImmediateEnabled = before })
-	compile := func(objective OptimizationObjective, enabled bool) *ModuleStats {
+	compile := func(compact, enabled bool) *ModuleStats {
 		shiftedAddSubImmediateEnabled = enabled
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Stats: stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -27,22 +27,21 @@ func TestSizeShiftedAddImmediateArm64(t *testing.T) {
 		return stats
 	}
 
-	balanced := compile(OptimizeBalanced, true).Funcs[0]
-	rollback := compile(OptimizeSize, false).Funcs[0]
-	compact := compile(OptimizeSize, true).Funcs[0]
-	if balanced.Peephole["shifted-add-sub-immediate"] != 0 {
-		t.Fatalf("Balanced unexpectedly selected shifted immediate: %v", balanced.Peephole)
+	ordinary := compile(false, true).Funcs[0]
+	rollback := compile(true, false).Funcs[0]
+	compact := compile(true, true).Funcs[0]
+	if ordinary.Peephole["shifted-add-sub-immediate"] != 0 {
+		t.Fatalf("ordinary path unexpectedly selected shifted immediate: %v", ordinary.Peephole)
 	}
 	if got := compact.Peephole["shifted-add-sub-immediate"]; got != 1 {
-		t.Fatalf("Size shifted-immediate hits = %d, want 1", got)
+		t.Fatalf("compact shifted-immediate hits = %d, want 1", got)
 	}
 	if compact.CodeBytes > rollback.CodeBytes {
 		t.Fatalf("shifted-immediate code = %d bytes, rollback = %d; want no growth", compact.CodeBytes, rollback.CodeBytes)
 	}
 
 	shiftedAddSubImmediateEnabled = true
-	size := OptimizeSize
-	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}, 7)
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true}, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +53,7 @@ func TestSizeShiftedAddImmediateArm64(t *testing.T) {
 	compare := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32},
 		[]byte{0x00, 0x20, 0x00, 0x42, 0x80, 0x20, 0x51, 0x0b})
 	stats := &ModuleStats{}
-	cm, err := CompileModuleWith(compare, CompileOptions{Objective: &size, Stats: stats, Workers: 1})
+	cm, err := CompileModuleWith(compare, CompileOptions{CompactNative: true, Stats: stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,9 +61,9 @@ func TestSizeShiftedAddImmediateArm64(t *testing.T) {
 		defer cm.CodeImage.Close()
 	}
 	if got := stats.Funcs[0].Peephole["shifted-add-sub-immediate"]; got != 1 {
-		t.Fatalf("Size shifted compare hits = %d, want 1", got)
+		t.Fatalf("compact shifted compare hits = %d, want 1", got)
 	}
-	got, err = runArm64WrapperWithOptions(t, compare, CompileOptions{Objective: &size}, 4096)
+	got, err = runArm64WrapperWithOptions(t, compare, CompileOptions{CompactNative: true}, 4096)
 	if err != nil {
 		t.Fatal(err)
 	}

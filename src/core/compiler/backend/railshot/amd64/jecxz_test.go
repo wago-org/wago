@@ -24,9 +24,8 @@ func TestSizeDirectJecxzBulkTails(t *testing.T) {
 			m := modMem(t, 1, params, nil, test.body)
 			compile := func(enabled bool) *CodegenStats {
 				directJecxzEnabled = enabled
-				size := OptimizeSize
 				stats := &ModuleStats{}
-				cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats, Workers: 1})
+				cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats, Workers: 1})
 				if err != nil {
 					t.Fatal(err)
 				}

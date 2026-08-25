@@ -1671,7 +1671,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.moveBranchValues(fr, d, a)
 	}
 	if f.a.Len() == mark {
-		if f.opt(optZeroBranch) && emptyZeroBranchEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		if f.opt(optZeroBranch) && emptyZeroBranchEnabled && f.policy.CompactNative {
 			f.a.B = f.a.B[:testAt]
 			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
 				f.stats.peep("zero-branch")
@@ -2126,12 +2126,12 @@ func align4(n int) int { return (n + 3) &^ 3 }
 
 // brTableCompactPlan returns a byte target-ID table plus a vector of unique
 // direct-branch vector only when its exact bytes beat the dense i32 table. It is
-// intentionally Size/Embedded only: the compact form adds one predictable
+// intentionally compaction-only: the compact form adds one predictable
 // direct branch after the indirect dispatch.
 func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
 	// The aligned target-ID table precedes the branch vector and is added with
 	// an unshifted 12-bit immediate, so its offset must not exceed 4095.
-	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || align4(len(labels)) > 4095 {
+	if !f.policy.CompactNative || align4(len(labels)) > 4095 {
 		return false, 0, nil
 	}
 	var seen [4]uint64
@@ -2173,8 +2173,8 @@ func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) 
 	return true, uniqueN, stubAt
 }
 
-// brTableUseJump keeps the O(1) dispatch threshold for Speed and Balanced, but
-// makes Size and Embedded account for the exact fixed dispatch bytes and the
+// brTableUseJump keeps the O(1) dispatch threshold for ordinary code, but the
+// compaction path accounts for the exact fixed dispatch bytes and the
 // minimum four-byte branch tail eliminated for every duplicate target. Case
 // setup can only make sharing more profitable, so this bounded calculation
 // never chooses a jump table that is larger than the linear form.
@@ -2182,7 +2182,7 @@ func brTableUseJump(labels []uint32, def uint32, policy CodegenPolicy) bool {
 	if len(labels) < brTableJumpMin {
 		return false
 	}
-	if policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded {
+	if !policy.CompactNative {
 		return true
 	}
 	// At seven labels the fixed dispatch and table bytes break even with the

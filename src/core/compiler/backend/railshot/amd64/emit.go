@@ -17,10 +17,10 @@ type aluEnc struct {
 
 // unitAdjust emits a one-step register adjustment. INC/DEC preserve every flag
 // these direct backend sites consume (ZF, or no flags at all), while saving one
-// byte over ADD/SUB r,1. Keep the choice Size/Embedded-only so Balanced retains
+// byte over ADD/SUB r,1. Keep the choice compaction-only so ordinary code retains
 // its measured flag-writing and front-end behavior.
 func (f *fn) unitAdjust(reg Reg, w, increment bool) {
-	if incDecEnabled && directIncDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+	if incDecEnabled && directIncDecEnabled && f.policy.CompactNative {
 		if increment {
 			f.a.Inc(reg, w)
 		} else {
@@ -1077,7 +1077,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		// need a temporary register. Select this only at final emission so tree
 		// scheduling, associative covering, and higher-level SWAR recognition retain
 		// their original shapes.
-		if incDecEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
+		if incDecEnabled && f.policy.CompactNative &&
 			(enc == aluTable[opAdd] || enc == aluTable[opSub]) && (right.st.cval == 1 || right.st.cval == -1) {
 			increment := enc == aluTable[opAdd] && right.st.cval == 1 || enc == aluTable[opSub] && right.st.cval == -1
 			if increment {

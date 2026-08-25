@@ -149,9 +149,8 @@ func TestSingleBitMaskBranchCompactionArm64(t *testing.T) {
 	t.Cleanup(func() { singleBitBranchEnabled = before })
 	compile := func(enabled bool) *CodegenStats {
 		singleBitBranchEnabled = enabled
-		size := OptimizeSize
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

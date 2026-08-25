@@ -111,15 +111,7 @@ var (
 
 type KnobInfo = optimization.Info
 type OptimizationSnapshot = optimization.Snapshot
-type OptimizationObjective = shared.OptimizationObjective
 type CodegenPolicy = shared.CodegenPolicy
-
-const (
-	OptimizeSpeed    = shared.OptimizeSpeed
-	OptimizeBalanced = shared.OptimizeBalanced
-	OptimizeSize     = shared.OptimizeSize
-	OptimizeEmbedded = shared.OptimizeEmbedded
-)
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
 

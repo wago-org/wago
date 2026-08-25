@@ -25,25 +25,19 @@ func TestInlineBrOnNullPreservesCallerContinuation(t *testing.T) {
 			wasmtest.Code([]byte{0x23, 0x00, 0xd5, 0x00, 0x1a, 0x0b}),
 		)),
 	)
-	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-		t.Run(objective.String(), func(t *testing.T) {
-			config := NewRuntimeConfig().
-				WithCoreFeatures(CoreFeaturesV3).
-				WithOptimizationObjective(objective)
-			compiled, err := Compile(config, module)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer compiled.Close()
-			instance, err := Instantiate(compiled, InstantiateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer instance.Close()
-			got, err := instance.Invoke("run")
-			if err != nil || len(got) != 1 || uint32(got[0]) != 1 {
-				t.Fatalf("run = %v, %v; want [1]", got, err)
-			}
-		})
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	compiled, err := Compile(config, module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run")
+	if err != nil || len(got) != 1 || uint32(got[0]) != 1 {
+		t.Fatalf("run = %v, %v; want [1]", got, err)
 	}
 }

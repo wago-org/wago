@@ -17,9 +17,9 @@ import (
 // function-relative metadata offset before AMD64 relaxation can shrink code.
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 
-// WAGO_COMPACT=1 forces bounded shrinking for every objective. Size and
-// Embedded enable it through their immutable per-compilation policy;
-// WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
+// WAGO_COMPACT=1 forces bounded shrinking for measurement and rollout checks.
+// CompileOptions.CompactNative selects the same path for an individual
+// compilation; WAGO_COMPACT=0 disables it globally as a rollback oracle.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_COMPACTION") != "1"
@@ -78,7 +78,7 @@ var finalizerRel32SiteLimitOverride = func() int {
 }()
 var partialHoleCompactionEnabled = os.Getenv("WAGO_AMD64_NO_PARTIAL_HOLE_COMPACTION") != "1"
 
-// WAGO_FINALIZER_DELETIONS selects an older bounded Size/Embedded policy for
+// WAGO_FINALIZER_DELETIONS selects an older bounded compaction policy for
 // exact rollout comparisons. It can only lower the immutable policy limit.
 var finalizerDeletionLimitOverride = func() int {
 	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
@@ -526,7 +526,7 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 	var deletedBranches [(maxAMD64FinalizerRel32Sites + 63) / 64]uint64
 	// Compact target-ID tables address a fixed-width rel32 jump vector, and the
 	// large switch functions admitted by explicit fragments made full branch
-	// relaxation exceed the Size compile-time gate. Keep every branch in a jump-
+	// relaxation exceed the compact compile-time gate. Keep every branch in a jump-
 	// table function at its emitted width while still remapping it around frame
 	// and dead-hole deletions.
 	jumpTableRelaxIterations := f.jumpTableBranchRelaxationIterations()

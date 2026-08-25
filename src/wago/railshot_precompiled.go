@@ -17,14 +17,12 @@ import (
 type railshotImportBinding = shared.ImportBinding
 type railshotKnobInfo = optimization.Info
 type railshotOptimizationSnapshot = optimization.Snapshot
-type railshotOptimizationObjective = shared.OptimizationObjective
 type railshotModuleStats struct{}
 
 type railshotCompileOptions struct {
 	Optimizations          map[string]bool
 	OptimizationSnapshot   railshotOptimizationSnapshot
 	OptimizationDeltas     map[string]bool
-	Objective              *railshotOptimizationObjective
 	Workers                int
 	ElideBoundsChecks      bool
 	NoBoundsFacts          bool
