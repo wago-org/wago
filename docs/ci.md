@@ -36,9 +36,13 @@ per-case timeout and the official SIMD proposal corpus. Their guard-page cells
 additionally run `make test-guard`. A separate mandatory Linux amd64/arm64
 **Core v2 conformance** matrix initializes the pinned `tests/spec-v2` submodule
 and runs `make spec2`; it is included in the final `CI` aggregate, so it cannot
-be replaced by a skipped ordinary wrapper or an informational report. This is a
-tooling distinction, not a second test suite: `make spec2` selects package tests
-that ordinary `go test ./...` also discovers. All six targets run the shared
+be replaced by a skipped ordinary wrapper or an informational report. A separate
+mandatory **Core v3 conformance** matrix runs `make spec3` and
+`make spec3-signals` on Linux amd64, Linux arm64, and Darwin arm64. The final
+`CI` aggregate depends on the complete Core v3 matrix as well, so any failed or
+cancelled explicit- or signal-bounds cell makes the branch-protection check fail.
+This is a tooling distinction, not a second test suite: `make spec2` selects
+package tests that ordinary `go test ./...` also discovers. All six targets run the shared
 single-P, parallel-fault, unrelated-fault chaining, public API, and
 corpus-differential guard-page gates. Windows runs the equivalent Go commands
 directly from PowerShell rather than through Make.
@@ -75,7 +79,13 @@ reject incomplete Core 3 families before decoding or native lowering.
 The main-push coverage job runs the WebAssembly 1.0, 2.0, and 3.0 suites and
 uploads their report fragments with the merged coverage profile. The final `CI`
 aggregation job is the stable branch-protection check and fails if any required
-matrix cell or supporting job fails.
+matrix cell or supporting job fails or is cancelled. Every top-level job in
+`.github/workflows/ci.yml` other than the aggregate itself must appear in its
+`needs` set; `tests/cipolicy` enforces that policy so a newly added qualification
+job cannot silently bypass branch protection. Path-gated jobs remain aggregate
+dependencies and may report `skipped` when their documented condition does not
+apply—for example, coverage on pull requests—but no independent top-level CI job
+is merely informational.
 
 The change detector reports documentation and code changes independently. Every
 change runs `make docs-check`, because a code-only refactor can remove a source
