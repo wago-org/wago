@@ -103,6 +103,7 @@ test: ## Build and run the test suite (host)
 	go test -count=1 ./...
 	go test -count=1 -tags wago_runtime ./cli/...
 	tests/scripts/build-release-assets.sh
+	tests/scripts/release-qualification.sh
 
 .PHONY: test-concurrency
 test-concurrency: ## Run the deterministic runtime concurrency harness (WAGO_CONCURRENCY_SEED=...)

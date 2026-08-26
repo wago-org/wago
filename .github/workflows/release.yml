@@ -1,27 +1,144 @@
-name: Publish release
+name: Qualify and publish stable release
 
-# Version tags publish a standard-Go CLI plus Normal and Tiny builds of every
-# runtime profile for each successful target.
+# Stable publication is an explicit operation. A version tag does not trigger
+# publication. The workflow accepts one immutable main-branch commit, verifies
+# its complete CI qualification record, builds and smoke-tests the release files
+# once, records their hashes, and publishes those same files.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to stamp into the binary (e.g. v0.1.0); defaults to the ref name"
-        required: false
+        description: "Stable version tag (for example v1.0.0)"
+        required: true
+        type: string
+      source_sha:
+        description: "Full 40-character main commit SHA that passed CI"
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: write
+
+concurrency:
+  group: stable-release-${{ inputs.version }}
+  cancel-in-progress: false
 
 env:
   GO_VERSION: "1.22"
   TINYGO_VERSION: "0.41.1"
 
 jobs:
+  prepare:
+    name: Verify exact source qualification
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.inputs.outputs.version }}
+      source_sha: ${{ steps.inputs.outputs.source_sha }}
+      ci_run_id: ${{ steps.ci.outputs.run_id }}
+      ci_run_attempt: ${{ steps.ci.outputs.run_attempt }}
+      qualification_artifact: ${{ steps.names.outputs.qualification_artifact }}
+    steps:
+      - name: Validate immutable release inputs
+        id: inputs
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          [[ "$WORKFLOW_REF" == "refs/heads/main" ]] || {
+            echo "::error::stable qualification must be dispatched from the main workflow"
+            exit 1
+          }
+          version=$REQUESTED_VERSION
+          source_sha=$(printf '%s' "$REQUESTED_SOURCE_SHA" | tr 'A-F' 'a-f')
+          [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo "::error::stable version must have the form vMAJOR.MINOR.PATCH"
+            exit 1
+          }
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::source_sha must be one full commit SHA"
+            exit 1
+          }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.inputs.outputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Verify source is the requested main commit
+        env:
+          SOURCE_SHA: ${{ steps.inputs.outputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main || {
+            echo "::error::$SOURCE_SHA is not reachable from main"
+            exit 1
+          }
+      - name: Resolve successful CI run for the exact SHA
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.inputs.outputs.source_sha }}
+        run: |
+          run_id=$(gh api --method GET \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs" \
+            -f head_sha="$SOURCE_SHA" -f branch=main -f event=push \
+            -f status=completed -f per_page=100 \
+            --jq "[.workflow_runs[] |
+              select(.head_sha == \"$SOURCE_SHA\" and .head_branch == \"main\" and
+                     .event == \"push\" and .conclusion == \"success\")] |
+              sort_by(.run_attempt, .id) | last | .id")
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::no successful CI push run exists for $SOURCE_SHA"
+            exit 1
+          }
+          run_attempt=$(gh api "repos/${{ github.repository }}/actions/runs/$run_id" \
+            --jq "select(.head_sha == \"$SOURCE_SHA\" and .head_branch == \"main\" and
+                         .event == \"push\" and .status == \"completed\" and
+                         .conclusion == \"success\") | .run_attempt")
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::CI run $run_id is not an exact successful source qualification"
+            exit 1
+          }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+      - name: Download exact CI qualification record
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.ci.outputs.run_id }}
+          github-token: ${{ github.token }}
+          name: stable-source-qualification-${{ steps.inputs.outputs.source_sha }}-${{ steps.ci.outputs.run_attempt }}
+          path: qualification
+      - name: Verify complete CI qualification record
+        run: |
+          scripts/release-qualification.sh verify-ci \
+            qualification/ci-qualification.json \
+            "${{ github.repository }}" \
+            "${{ steps.inputs.outputs.source_sha }}" \
+            "${{ steps.ci.outputs.run_id }}" \
+            "${{ steps.ci.outputs.run_attempt }}"
+      - name: Name verified qualification artifact
+        id: names
+        run: |
+          echo "qualification_artifact=stable-ci-qualification-${{ steps.inputs.outputs.source_sha }}-${{ steps.ci.outputs.run_id }}-${{ steps.ci.outputs.run_attempt }}" >> "$GITHUB_OUTPUT"
+      - name: Preserve verified qualification record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.names.outputs.qualification_artifact }}
+          path: qualification/ci-qualification.json
+          if-no-files-found: error
+          retention-days: 90
+
   build:
-    name: Build release (${{ matrix.goos }}/${{ matrix.goarch }})
-    continue-on-error: ${{ matrix.best_effort }}
+    name: Build and smoke stable release (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -30,36 +147,32 @@ jobs:
             goos: linux
             goarch: amd64
             target: linux-amd64
-            best_effort: false
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             target: linux-arm64
-            best_effort: false
           - runner: macos-15-intel
             goos: darwin
             goarch: amd64
             target: darwin-amd64
-            best_effort: false
           - runner: macos-15
             goos: darwin
             goarch: arm64
             target: darwin-arm64
-            best_effort: false
           - runner: windows-2025
             goos: windows
             goarch: amd64
             target: windows-amd64
-            best_effort: false
           - runner: windows-11-arm
             goos: windows
             goarch: arm64
             target: windows-arm64
-            best_effort: false
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -71,18 +184,23 @@ jobs:
       - name: Install lld
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
-      - name: Build CLI and runtime profiles
+      - name: Build release files once
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          WAGO_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-        run: |
-          scripts/build-release-assets.sh
-      - name: Upload release files
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          WAGO_VERSION: ${{ needs.prepare.outputs.version }}
+        run: scripts/build-release-assets.sh
+      - name: Verify checksums and required files
+        shell: bash
+        run: scripts/verify-channel-assets.sh . "${{ matrix.target }}"
+      - name: Smoke-test the files that will be published
+        shell: bash
+        run: scripts/smoke-release-assets.sh . "${{ matrix.target }}" "${{ needs.prepare.outputs.version }}"
+      - name: Upload qualified release files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: release-${{ matrix.target }}
+          name: stable-release-${{ matrix.target }}
           path: |
             wago-${{ matrix.target }}
             wago-${{ matrix.target }}.sha256
@@ -91,58 +209,154 @@ jobs:
             wago-runtime-*-${{ matrix.target }}
             wago-runtime-*-${{ matrix.target }}.sha256
           if-no-files-found: error
+          retention-days: 90
 
-  publish:
-    name: Publish release files
-    needs: build
+  manifest:
+    name: Record qualified release manifest
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Download release files
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          pattern: release-*
+          ref: ${{ needs.prepare.outputs.source_sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Download qualified release files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: stable-release-*
           merge-multiple: true
           path: release
-      - name: Verify available release files
+      - name: Download verified CI qualification
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.prepare.outputs.qualification_artifact }}
+          path: qualification
+      - name: Create and verify release manifest
         run: |
           scripts/verify-channel-assets.sh release
-      - name: Publish tagged GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
+          scripts/release-qualification.sh create-release \
+            release "${{ needs.prepare.outputs.version }}" \
+            "${{ needs.prepare.outputs.source_sha }}" \
+            "${{ needs.prepare.outputs.ci_run_id }}" \
+            "${{ needs.prepare.outputs.ci_run_attempt }}" \
+            qualification/ci-qualification.json \
+            manifest/release-manifest.json
+          scripts/release-qualification.sh verify-release \
+            manifest/release-manifest.json release \
+            "${{ github.repository }}" \
+            "${{ needs.prepare.outputs.version }}" \
+            "${{ needs.prepare.outputs.source_sha }}" \
+            "${{ needs.prepare.outputs.ci_run_id }}" \
+            "${{ needs.prepare.outputs.ci_run_attempt }}"
+      - name: Upload immutable release manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stable-release-manifest
+          path: |
+            manifest/release-manifest.json
+            manifest/release-manifest.json.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    name: Publish exactly qualified stable files
+    needs: [prepare, build, manifest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Download qualified release files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: stable-release-*
+          merge-multiple: true
+          path: release
+      - name: Verify files and manifest again before publication
+        run: |
+          scripts/verify-channel-assets.sh release
+          scripts/release-qualification.sh verify-release \
+            release/release-manifest.json release \
+            "${{ github.repository }}" \
+            "${{ needs.prepare.outputs.version }}" \
+            "${{ needs.prepare.outputs.source_sha }}" \
+            "${{ needs.prepare.outputs.ci_run_id }}" \
+            "${{ needs.prepare.outputs.ci_run_attempt }}"
+      - name: Create or verify immutable stable tag
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         run: |
-          mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
-          notes=$(sed -n '1,$p' .github/release-asset-naming.md)
-          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "${{ github.ref_name }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"
-            existing=$(gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" --json body --jq .body)
-            case "$existing" in
-              *"Which file should I download?"*) notes="$existing" ;;
-              *) notes=$(printf '%s\n\n%s\n' "$existing" "$notes") ;;
-            esac
-            gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --notes "$notes"
-          else
-            gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --verify-tag --generate-notes --notes "$notes" "${assets[@]}"
+          if gh release view "$VERSION" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::stable release $VERSION already exists; refusing to replace it"
+            exit 1
           fi
+          if gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" >/dev/null 2>&1; then
+            target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
+              --jq 'select(.object.type == "commit") | .object.sha')
+            if [ "$target" != "$SOURCE_SHA" ]; then
+              echo "::error::existing tag $VERSION does not point directly to qualified commit $SOURCE_SHA"
+              exit 1
+            fi
+          else
+            gh api --method POST "repos/${{ github.repository }}/git/refs" \
+              -f ref="refs/tags/$VERSION" -f sha="$SOURCE_SHA" >/dev/null
+          fi
+          target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
+            --jq 'select(.object.type == "commit") | .object.sha')
+          test "$target" = "$SOURCE_SHA"
+      - name: Publish qualified GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          CI_RUN_ID: ${{ needs.prepare.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ needs.prepare.outputs.ci_run_attempt }}
+        run: |
+          manifest_sha=$(awk '$2 == "release-manifest.json" {print $1}' release/release-manifest.json.sha256)
+          {
+            printf 'Qualified stable release from commit `%s`.\n\n' "$SOURCE_SHA"
+            printf -- '- Source commit: `%s`\n' "$SOURCE_SHA"
+            printf -- '- Complete CI qualification: `%s/actions/runs/%s` (attempt `%s`)\n' \
+              '${{ github.server_url }}/${{ github.repository }}' "$CI_RUN_ID" "$CI_RUN_ATTEMPT"
+            printf -- '- Release manifest SHA-256: `%s`\n\n' "$manifest_sha"
+            sed -n '1,$p' .github/release-asset-naming.md
+          } >release-notes.md
+          mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
+          assets+=(release/release-manifest.json release/release-manifest.json.sha256)
+          gh release create "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --verify-tag \
+            --title "$VERSION" \
+            --generate-notes \
+            --notes-file release-notes.md \
+            --draft \
+            "${assets[@]}"
+          target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
+            --jq 'select(.object.type == "commit") | .object.sha')
+          test "$target" = "$SOURCE_SHA"
+          gh release edit "$VERSION" --repo "${{ github.repository }}" --draft=false
+          target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
+            --jq 'select(.object.type == "commit") | .object.sha')
+          test "$target" = "$SOURCE_SHA"
       - name: Create documentation synchronization token
         id: docs-sync-token
-        if: startsWith(github.ref, 'refs/tags/') && vars.DOCS_SYNC_APP_ID != ''
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        if: vars.DOCS_SYNC_APP_ID != ''
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v1
         with:
           app-id: ${{ vars.DOCS_SYNC_APP_ID }}
           private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
           owner: wago-org
           repositories: docs
       - name: Synchronize stable documentation
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           DOCS_SYNC_TOKEN: ${{ steps.docs-sync-token.outputs.token }}
-        run: scripts/dispatch-docs-release.sh release "${{ github.ref_name }}" "$(git rev-parse HEAD)"
-      - name: Upload manual build artifacts
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: wago-release-files
-          path: release
-          if-no-files-found: error
+        run: scripts/dispatch-docs-release.sh release "${{ needs.prepare.outputs.version }}" "${{ needs.prepare.outputs.source_sha }}"
