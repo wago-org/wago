@@ -242,14 +242,17 @@ func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	ci := string(ciWorkflow)
+	ciAggregate := workflowJobBlocks(ci)["ci-ok"]
 	for _, required := range []string{
+		`actions/checkout@11d5960a326750d5838078e36cf38b85af677262`,
+		`ref: ${{ github.sha }}`,
 		`Record exact main-branch qualification`,
 		`CI_NEEDS: ${{ toJSON(needs) }}`,
 		`stable-source-qualification-${{ github.sha }}-${{ github.run_attempt }}`,
 		`scripts/release-qualification.sh record-ci stable-qualification/ci-qualification.json`,
 	} {
-		if !strings.Contains(ci, required) {
-			t.Errorf("CI workflow is missing stable qualification record %q", required)
+		if !strings.Contains(ciAggregate, required) {
+			t.Errorf("CI aggregate job is missing stable qualification record %q", required)
 		}
 	}
 }
