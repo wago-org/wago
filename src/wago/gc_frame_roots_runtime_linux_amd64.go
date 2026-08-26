@@ -12,7 +12,9 @@ import (
 )
 
 func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoots {
-	return gcCollectFrameRoots(in, public, gcNativeFrameLayoutAMD64, false)
+	// Public entries return through enterNative into Go after the outermost
+	// generated frame. That external return is the valid end of the root chain.
+	return gcCollectFrameRoots(in, public, gcNativeFrameLayoutAMD64, true)
 }
 
 // gcHelperRoots publishes exact-typed collector-reference locals from the
