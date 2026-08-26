@@ -613,7 +613,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, tinygo, coverage, size]
+    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, core-v3, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

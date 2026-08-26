@@ -83,6 +83,114 @@ func TestRollingReleaseWorkflowsUseImmutableTagsAndTargets(t *testing.T) {
 	}
 }
 
+func TestAggregateCIRequiresEveryWorkflowJob(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	aggregate, ok := jobs["ci-ok"]
+	if !ok {
+		t.Fatal("CI workflow has no ci-ok aggregate job")
+	}
+	needs := workflowJobNeeds(t, aggregate)
+	for job := range jobs {
+		if job == "ci-ok" {
+			continue
+		}
+		if _, ok := needs[job]; !ok {
+			t.Errorf("ci-ok aggregate does not depend on workflow job %q", job)
+		}
+	}
+	for need := range needs {
+		if _, ok := jobs[need]; !ok {
+			t.Errorf("ci-ok aggregate depends on unknown workflow job %q", need)
+		}
+	}
+	for _, required := range []string{
+		"if: always()",
+		"join(needs.*.result",
+		`[ "$r" = "failure" ]`,
+		`[ "$r" = "cancelled" ]`,
+	} {
+		if !strings.Contains(aggregate, required) {
+			t.Errorf("ci-ok aggregate is missing fail-closed result handling %q", required)
+		}
+	}
+}
+
+func workflowJobBlocks(workflow string) map[string]string {
+	lines := strings.Split(workflow, "\n")
+	jobLine := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$`)
+	blocks := make(map[string]string)
+	inJobs := false
+	current := ""
+	start := 0
+	for i, line := range lines {
+		if !inJobs {
+			if line == "jobs:" {
+				inJobs = true
+			}
+			continue
+		}
+		match := jobLine.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		if current != "" {
+			blocks[current] = strings.Join(lines[start:i], "\n")
+		}
+		current = match[1]
+		start = i
+	}
+	if current != "" {
+		blocks[current] = strings.Join(lines[start:], "\n")
+	}
+	return blocks
+}
+
+func workflowJobNeeds(t *testing.T, job string) map[string]struct{} {
+	t.Helper()
+	lines := strings.Split(job, "\n")
+	for i, line := range lines {
+		const prefix = "    needs:"
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+			return splitWorkflowNeeds(strings.TrimSuffix(strings.TrimPrefix(value, "["), "]"))
+		}
+		if value != "" {
+			return splitWorkflowNeeds(value)
+		}
+		needs := make(map[string]struct{})
+		for _, item := range lines[i+1:] {
+			if !strings.HasPrefix(item, "      - ") {
+				break
+			}
+			name := strings.TrimSpace(strings.TrimPrefix(item, "      - "))
+			if name != "" {
+				needs[name] = struct{}{}
+			}
+		}
+		return needs
+	}
+	t.Fatal("ci-ok aggregate job has no needs declaration")
+	return nil
+}
+
+func splitWorkflowNeeds(value string) map[string]struct{} {
+	needs := make(map[string]struct{})
+	for _, item := range strings.Split(value, ",") {
+		name := strings.TrimSpace(item)
+		if name != "" {
+			needs[name] = struct{}{}
+		}
+	}
+	return needs
+}
+
 func TestWindowsWABTInstallIsPinnedAndVerified(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
 	if err != nil {
