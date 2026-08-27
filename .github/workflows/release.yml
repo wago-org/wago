@@ -135,6 +135,7 @@ jobs:
           path: qualification/ci-qualification.json
           if-no-files-found: error
           retention-days: 90
+          overwrite: true
 
   build:
     name: Build and smoke stable release (${{ matrix.goos }}/${{ matrix.goarch }})
@@ -210,6 +211,7 @@ jobs:
             wago-runtime-*-${{ matrix.target }}.sha256
           if-no-files-found: error
           retention-days: 90
+          overwrite: true
 
   manifest:
     name: Record qualified release manifest
@@ -260,6 +262,7 @@ jobs:
             manifest/release-manifest.json.sha256
           if-no-files-found: error
           retention-days: 90
+          overwrite: true
 
   publish:
     name: Publish exactly qualified stable files
@@ -290,14 +293,26 @@ jobs:
             "${{ needs.prepare.outputs.ci_run_id }}" \
             "${{ needs.prepare.outputs.ci_run_attempt }}"
       - name: Create or verify immutable stable tag
+        id: stable
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         run: |
-          if gh release view "$VERSION" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "::error::stable release $VERSION already exists; refusing to replace it"
-            exit 1
+          resume_draft=false
+          release_state=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
+            --json isDraft,tagName --jq '[.isDraft, .tagName] | @tsv' 2>/dev/null || true)
+          if [ -n "$release_state" ]; then
+            read -r is_draft tag_name <<<"$release_state"
+            if [ "$is_draft" != "true" ]; then
+              echo "::error::published stable release $VERSION already exists; refusing to replace it"
+              exit 1
+            fi
+            if [ "$tag_name" != "$VERSION" ]; then
+              echo "::error::existing draft release does not identify stable tag $VERSION"
+              exit 1
+            fi
+            resume_draft=true
           fi
           if gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" >/dev/null 2>&1; then
             target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
@@ -313,6 +328,7 @@ jobs:
           target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
             --jq 'select(.object.type == "commit") | .object.sha')
           test "$target" = "$SOURCE_SHA"
+          echo "resume_draft=$resume_draft" >> "$GITHUB_OUTPUT"
       - name: Publish qualified GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -320,8 +336,12 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           CI_RUN_ID: ${{ needs.prepare.outputs.ci_run_id }}
           CI_RUN_ATTEMPT: ${{ needs.prepare.outputs.ci_run_attempt }}
+          RESUME_DRAFT: ${{ steps.stable.outputs.resume_draft }}
         run: |
           manifest_sha=$(awk '$2 == "release-manifest.json" {print $1}' release/release-manifest.json.sha256)
+          generated_notes=$(gh api --method POST \
+            "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="$VERSION" -f target_commitish="$SOURCE_SHA" --jq .body)
           {
             printf 'Qualified stable release from commit `%s`.\n\n' "$SOURCE_SHA"
             printf -- '- Source commit: `%s`\n' "$SOURCE_SHA"
@@ -329,21 +349,48 @@ jobs:
               '${{ github.server_url }}/${{ github.repository }}' "$CI_RUN_ID" "$CI_RUN_ATTEMPT"
             printf -- '- Release manifest SHA-256: `%s`\n\n' "$manifest_sha"
             sed -n '1,$p' .github/release-asset-naming.md
+            printf '\n%s\n' "$generated_notes"
           } >release-notes.md
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           assets+=(release/release-manifest.json release/release-manifest.json.sha256)
-          gh release create "$VERSION" \
-            --repo "${{ github.repository }}" \
-            --verify-tag \
-            --title "$VERSION" \
-            --generate-notes \
-            --notes-file release-notes.md \
-            --draft \
-            "${assets[@]}"
+          if [ "$RESUME_DRAFT" = "true" ]; then
+            release_state=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
+              --json isDraft --jq .isDraft)
+            if [ "$release_state" != "true" ]; then
+              echo "::error::stable release $VERSION became published before draft recovery"
+              exit 1
+            fi
+            gh release upload "$VERSION" --repo "${{ github.repository }}" \
+              --clobber "${assets[@]}"
+            gh release edit "$VERSION" --repo "${{ github.repository }}" \
+              --title "$VERSION" --notes-file release-notes.md
+          else
+            gh release create "$VERSION" \
+              --repo "${{ github.repository }}" \
+              --verify-tag \
+              --title "$VERSION" \
+              --notes-file release-notes.md \
+              --draft \
+              "${assets[@]}"
+          fi
+          is_draft=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
+            --json isDraft --jq .isDraft)
+          test "$is_draft" = "true"
           target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
             --jq 'select(.object.type == "commit") | .object.sha')
           test "$target" = "$SOURCE_SHA"
+          expected_assets=$(for asset in "${assets[@]}"; do basename "$asset"; done | sort)
+          actual_assets=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
+            --json assets --jq '.assets[].name' | sort)
+          if [ "$actual_assets" != "$expected_assets" ]; then
+            echo "::error::draft release assets do not exactly match the qualified manifest"
+            diff -u <(printf '%s\n' "$expected_assets") <(printf '%s\n' "$actual_assets") || true
+            exit 1
+          fi
           gh release edit "$VERSION" --repo "${{ github.repository }}" --draft=false
+          release_state=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
+            --json isDraft --jq .isDraft)
+          test "$release_state" = "false"
           target=$(gh api "repos/${{ github.repository }}/git/ref/tags/$VERSION" \
             --jq 'select(.object.type == "commit") | .object.sha')
           test "$target" = "$SOURCE_SHA"

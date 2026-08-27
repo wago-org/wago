@@ -214,6 +214,13 @@ func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
 		`needs: [prepare, build, manifest]`,
 		`ref: ${{ needs.prepare.outputs.source_sha }}`,
 		`existing tag $VERSION does not point directly to qualified commit $SOURCE_SHA`,
+		`published stable release $VERSION already exists; refusing to replace it`,
+		`--json isDraft,tagName`,
+		`RESUME_DRAFT: ${{ steps.stable.outputs.resume_draft }}`,
+		`gh release upload "$VERSION" --repo "${{ github.repository }}"`,
+		`stable release $VERSION became published before draft recovery`,
+		`draft release assets do not exactly match the qualified manifest`,
+		`releases/generate-notes`,
 		`--verify-tag`,
 		`--draft`,
 		`--draft=false`,
@@ -222,9 +229,6 @@ func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
 		if !strings.Contains(release, required) {
 			t.Errorf("stable release workflow is missing exact qualification policy %q", required)
 		}
-	}
-	if strings.Contains(release, "--clobber") {
-		t.Fatal("stable publication must not replace previously published assets")
 	}
 	jobs := workflowJobBlocks(release)
 	if !strings.Contains(jobs["build"], "scripts/build-release-assets.sh") {
@@ -235,6 +239,15 @@ func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
 	}
 	if strings.Contains(jobs["publish"], "scripts/build-release-assets.sh") {
 		t.Fatal("stable publish job rebuilds release assets after qualification")
+	}
+	if !strings.Contains(jobs["publish"], `if [ "$RESUME_DRAFT" = "true" ]; then`) ||
+		!strings.Contains(jobs["publish"], `--clobber "${assets[@]}"`) {
+		t.Fatal("stable publication does not restrict asset replacement to a resumable draft")
+	}
+	for _, job := range []string{"prepare", "build", "manifest"} {
+		if !strings.Contains(jobs[job], "overwrite: true") {
+			t.Errorf("stable %s artifacts cannot be replaced safely by a workflow retry", job)
+		}
 	}
 
 	ciWorkflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))

@@ -121,12 +121,15 @@ files. Each native matrix cell verifies checksums and the embedded version,
 then executes a scalar Wasm module and reloads one generated `.wago` artifact
 with every Normal or Tiny runtime file that cell will publish. The manifest job
 records the source SHA, CI run ID and attempt, exact CI job results, and the
-name, byte size, and SHA-256
-hash of every release file. Publication downloads those already tested files; it does not
-rebuild or replace them. It verifies the manifest again, creates or accepts only
-a lightweight version tag that points directly to the qualified SHA, refuses to
-replace an existing GitHub Release, and publishes the manifest with the files.
-A manually created or moved `v*` tag does not start publication and cannot reuse
+name, byte size, and SHA-256 hash of every release file. Publication downloads
+those already tested files; it does not rebuild or replace them. It verifies the
+manifest again and creates or accepts
+only a lightweight version tag that points directly to the qualified SHA. A
+retry may overwrite this workflow run's internal per-target artifacts or resume
+a matching draft release, but it re-verifies the complete manifest and exact
+draft asset-name set before publication. An already published GitHub Release is
+never replaced. A manually created or moved `v*` tag does not start publication
+and cannot reuse
 a qualification record for another commit.
 
 Every target publishes a standard-Go CLI plus Normal builds of the Standard and
