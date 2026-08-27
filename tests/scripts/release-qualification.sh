@@ -104,7 +104,23 @@ fi
 exit 1
 EOF
 done
+broken_tiny="$smoke/wago-runtime-standard-tiny-linux-amd64"
+cat >"$broken_tiny" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "--json" && "\${2:-}" == "--version" ]]; then
+  printf '{"release":"$version"}\n'
+  exit 0
+fi
+exit 1
+EOF
 chmod +x "$smoke"/*
+if "$repository_root/scripts/smoke-release-assets.sh" \
+  "$smoke" linux-amd64 "$version" >/dev/null 2>&1; then
+  echo "nonfunctional published Tiny runtime unexpectedly passed smoke testing" >&2
+  exit 1
+fi
+cp "$smoke/wago-runtime-standard-normal-linux-amd64" "$broken_tiny"
 "$repository_root/scripts/smoke-release-assets.sh" \
   "$smoke" linux-amd64 "$version"
 

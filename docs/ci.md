@@ -117,10 +117,11 @@ release. The CI policy test also requires every top-level job to remain in the
 aggregate dependency set.
 
 Only after source qualification does the stable workflow build the release
-files. Each native matrix cell verifies checksums, checks the embedded version,
-executes a scalar Wasm module, creates a `.wago` artifact with the candidate
-runtime, and executes that artifact. The manifest job records the source SHA,
-CI run ID and attempt, exact CI job results, and the name, byte size, and SHA-256
+files. Each native matrix cell verifies checksums and the embedded version,
+then executes a scalar Wasm module and reloads one generated `.wago` artifact
+with every Normal or Tiny runtime file that cell will publish. The manifest job
+records the source SHA, CI run ID and attempt, exact CI job results, and the
+name, byte size, and SHA-256
 hash of every release file. Publication downloads those already tested files; it does not
 rebuild or replace them. It verifies the manifest again, creates or accepts only
 a lightweight version tag that points directly to the qualified SHA, refuses to

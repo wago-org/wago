@@ -42,8 +42,18 @@ grep -Eq '"managerVersion"[[:space:]]*:[[:space:]]*"'"$version_pattern"'"' <<<"$
   exit 1
 }
 
+runtimes=("$standard" "$minimal")
+for runtime in "$release_dir"/wago-runtime-*-tiny-"$target"; do
+  [[ -e "$runtime" ]] || continue
+  [[ -s "$runtime" && ! -L "$runtime" ]] || {
+    echo "invalid smoke-test runtime: $runtime" >&2
+    exit 1
+  }
+  runtimes+=("$runtime")
+done
+
 fixture="$repository_root/tests/fixtures/wasm/fib.wasm"
-for runtime in "$standard" "$minimal"; do
+for runtime in "${runtimes[@]}"; do
   runtime_version=$("$runtime" --json --version)
   grep -Eq '"release"[[:space:]]*:[[:space:]]*"'"$version_pattern"'"' <<<"$runtime_version" || {
     echo "$(basename "$runtime") does not report release version $version" >&2
@@ -62,17 +72,10 @@ artifact="$scratch/fib.wago"
   echo "release runtime did not produce a .wago artifact" >&2
   exit 1
 }
-output=$("$standard" run --invoke fib "$artifact" 20)
-[[ "$output" == "fib(20) = 6765" ]] || {
-  echo "release runtime .wago smoke output: $output" >&2
-  exit 1
-}
-
-for runtime in "$release_dir"/wago-runtime-*-tiny-"$target"; do
-  [[ -e "$runtime" ]] || continue
-  runtime_version=$("$runtime" --json --version)
-  grep -Eq '"release"[[:space:]]*:[[:space:]]*"'"$version_pattern"'"' <<<"$runtime_version" || {
-    echo "$(basename "$runtime") does not report release version $version" >&2
+for runtime in "${runtimes[@]}"; do
+  output=$("$runtime" run --invoke fib "$artifact" 20)
+  [[ "$output" == "fib(20) = 6765" ]] || {
+    echo "$(basename "$runtime") .wago smoke output: $output" >&2
     exit 1
   }
 done
