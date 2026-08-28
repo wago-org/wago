@@ -17,6 +17,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.2'
+          cache: false
+
       - name: Fetch source branches
         run: |
           git fetch --force origin \
@@ -30,10 +36,25 @@ jobs:
             refs/remotes/origin/jairus/dragline-mvp
           git bundle verify /tmp/wago.bundle
 
+      - name: Download module dependencies
+        run: |
+          go mod download
+          (cd bench && go mod download)
+          gomodcache=$(go env GOMODCACHE)
+          tar -C "$(dirname "$gomodcache")" -czf /tmp/go-mod-cache.tar.gz "$(basename "$gomodcache")"
+
       - name: Upload git bundle
         uses: actions/upload-artifact@v4
         with:
           name: wago-agent-bundle
           path: /tmp/wago.bundle
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload Go module cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: wago-agent-go-mod-cache
+          path: /tmp/go-mod-cache.tar.gz
           compression-level: 0
           retention-days: 1
