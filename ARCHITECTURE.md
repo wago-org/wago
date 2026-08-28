@@ -313,10 +313,12 @@ read-only diagnostic stream; callers never receive a mutable alias:
 
 `Compiled` serializes to a compact versioned **`.wago` blob** through either the
 slice APIs (`MarshalBinary`/`UnmarshalBinary`) or bounded streaming APIs
-(`WriteTo`/`ReadFromWithLimits`). `Load` accepts
-either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
-load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
-malformed metadata before any memory is mapped. The codec persists the
+(`WriteTo`/`ReadFromWithLimits`). `Load` accepts untrusted raw Wasm and compiles
+it; `LoadTrustedArtifact` performs the fast native-code reload only for
+authenticated or locally produced `.wago` bytes. `IsCompiled` distinguishes the
+formats, but callers must choose the trust boundary explicitly. `validate()`
+hardens artifact metadata before mapping, but cannot sandbox hostile native code.
+The codec persists the
 binding-independent imported-call shape, so modules with function imports can be
 serialized before host or instance targets are known; live addresses and store
 identity are installed only during instantiation. See the codec-version comment
