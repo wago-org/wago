@@ -325,6 +325,46 @@ func TestRuntimeDirectInstanceAggregateLimits(t *testing.T) {
 	}
 }
 
+func TestRuntimeFailedRetainedInstanceKeepsAggregateReservation(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(1, 0)))
+	defer rt.Close()
+	shared, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(watToWasmCA(t, `(module
+		(import "owner" "shared" (table $imported 1 1 funcref))
+		(table $local 1 1 funcref)
+		(func $f)
+		(elem (table $imported) (i32.const 0) func $f)
+		(elem (table $local) (i32.const 1) func $f))`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	instantiate := func() (*Instance, error) {
+		return rt.Instantiate(context.Background(), mod, WithImports(Imports{"owner.shared": shared}))
+	}
+	if in, err := instantiate(); err == nil || in != nil || !strings.Contains(err.Error(), "table 1") {
+		t.Fatalf("failed retained instance = %v, %v; want local-table bounds error", in, err)
+	}
+	if rt.directInstanceCount != 1 || len(rt.instanceReservations) != 1 {
+		t.Fatalf("retained aggregate reservation = %d instances, %d records; want 1, 1", rt.directInstanceCount, len(rt.instanceReservations))
+	}
+	if in, err := instantiate(); err == nil || in != nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("second instance = %v, %v; want aggregate limit rejection", in, err)
+	}
+	if err := shared.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if rt.directInstanceCount != 0 || rt.instanceReservations != nil {
+		t.Fatalf("released aggregate reservation = %d instances, %#v records; want 0, nil", rt.directInstanceCount, rt.instanceReservations)
+	}
+}
+
 func TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting(t *testing.T) {
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(1, 0)))
 	defer rt.Close()

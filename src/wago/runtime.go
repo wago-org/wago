@@ -65,9 +65,10 @@ type Runtime struct {
 }
 
 type runtimeInstanceReservation struct {
-	rt     *Runtime
-	memory uint64
-	once   sync.Once
+	rt         *Runtime
+	memory     uint64
+	registered atomic.Bool
+	once       sync.Once
 }
 
 func (r *runtimeInstanceReservation) release() {
@@ -333,6 +334,7 @@ func (rt *Runtime) registerInstance(in *Instance, reservation *runtimeInstanceRe
 			rt.instanceReservations = make(map[*Instance]*runtimeInstanceReservation)
 		}
 		rt.instanceReservations[in] = reservation
+		reservation.registered.Store(true)
 	}
 	return nil
 }
@@ -793,7 +795,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		return nil, err
 	}
 	defer func() {
-		if reservation != nil {
+		if reservation != nil && !reservation.registered.Load() {
 			reservation.release()
 		}
 	}()
@@ -812,9 +814,6 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
-	}
-	if err == nil {
-		reservation = nil
 	}
 	return in, err
 }
