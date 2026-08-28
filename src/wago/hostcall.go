@@ -70,6 +70,8 @@ type ExternRefHostModule interface {
 	// ExternRefValue resolves a token from the calling instance's compatible
 	// store. Forged, stale, and incompatible-store tokens return false.
 	ExternRefValue(ExternRef) (any, bool)
+	// ReleaseExternRef releases a token after it is no longer reachable by Wasm.
+	ReleaseExternRef(ExternRef) bool
 }
 
 // GCHostModule is the optional exact-collection surface implemented by HostModule
@@ -253,6 +255,9 @@ func (h staticHostModule) NewExternRef(value any) (ExternRef, error) {
 }
 func (h staticHostModule) ExternRefValue(ref ExternRef) (any, bool) {
 	return h.in.ExternRefValue(ref)
+}
+func (h staticHostModule) ReleaseExternRef(ref ExternRef) bool {
+	return h.in.ReleaseExternRef(ref)
 }
 
 // HostFuncRef is an explicit Runtime/store ownership handle for a host function
@@ -801,6 +806,12 @@ func (h instanceHostModule) ExternRefValue(ref ExternRef) (any, bool) {
 		return nil, false
 	}
 	return h.in.ExternRefValue(ref)
+}
+func (h instanceHostModule) ReleaseExternRef(ref ExternRef) bool {
+	if !h.valid() {
+		return false
+	}
+	return h.in.ReleaseExternRef(ref)
 }
 
 // bindHostImport normalizes an Imports value into a HostFunc for the synchronous

@@ -38,6 +38,24 @@ func (rt *Runtime) ExternRefValue(ref ExternRef) (any, bool) {
 	return rt.refStore.resolveExternref(ref.token)
 }
 
+// ReleaseExternRef releases the host value retained by ref. It returns false
+// for a stale, forged, or foreign token. The caller must first remove the token
+// from every Wasm table, global, and other location that may still use it.
+func (rt *Runtime) ReleaseExternRef(ref ExternRef) bool {
+	if ref.IsNull() {
+		return true
+	}
+	if rt == nil || rt.refStore == nil {
+		return false
+	}
+	operation, err := rt.beginOperation("ReleaseExternRef", false)
+	if err != nil {
+		return false
+	}
+	defer operation.end()
+	return rt.refStore.releaseExternref(ref.token)
+}
+
 // NewExternRef registers value in this instance's reference store. Runtime
 // instances use their shared runtime store; standalone instances create a lazy
 // private store whose tokens are incompatible with other standalone instances.
@@ -67,6 +85,18 @@ func (in *Instance) ExternRefValue(ref ExternRef) (any, bool) {
 		return nil, false
 	}
 	return in.refStore.resolveExternref(ref.token)
+}
+
+// ReleaseExternRef releases an externref from this instance's compatible store.
+// The token must no longer be reachable by Wasm. Stale and foreign tokens fail.
+func (in *Instance) ReleaseExternRef(ref ExternRef) bool {
+	if ref.IsNull() {
+		return true
+	}
+	if in == nil || in.refStore == nil || in.rt != nil && in.rt.isClosed() {
+		return false
+	}
+	return in.refStore.releaseExternref(ref.token)
 }
 
 func (in *Instance) validExternrefToken(token uint64) bool {
