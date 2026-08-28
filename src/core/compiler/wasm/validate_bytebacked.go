@@ -1201,36 +1201,8 @@ func (v *funcValidator) directStartTryTable(bt BlockType, catches []Catch) error
 		return err
 	}
 	for _, c := range catches {
-		lt, err := v.label(uint32(c.Label))
-		if err != nil {
+		if err := v.validateCatchPayload(c); err != nil {
 			return err
-		}
-		var payload []ValType
-		if c.Kind == CatchTag || c.Kind == CatchRef {
-			if int(c.Tag) >= v.m.TagCount() {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			ft, ok := v.tagFuncType(uint32(c.Tag))
-			if !ok {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			payload = append(payload, ft.Params...)
-		}
-		if c.Kind == CatchRef || c.Kind == CatchAllRef {
-			// Reference catches materialize a non-null exception reference. The
-			// target label may widen it to nullable exnref, but not vice versa.
-			payload = append(payload, RefVal(Ref(false, AbsHeap(HeapExn), false)))
-		}
-		if c.Kind == CatchAll && len(lt) != 0 {
-			return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
-		}
-		if len(payload) != len(lt) {
-			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-		}
-		for i := range payload {
-			if !v.subtype(payload[i], lt[i]) {
-				return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-			}
 		}
 	}
 	return v.directPushCtrl(ctrlTry, ins, outs)
