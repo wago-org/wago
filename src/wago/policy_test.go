@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/tests/wasmtest"
 )
@@ -58,6 +59,18 @@ func TestPolicyCapabilityAllowDeny(t *testing.T) {
 		t.Fatalf("instantiate with zero policy: %v", err)
 	}
 	in.Close()
+}
+
+func TestPolicyRejectsUnenforcedInvokeDuration(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxInvokeDuration: time.Millisecond})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with unenforced invoke duration = %v, want ErrPermissionDenied", err)
+	}
 }
 
 func TestPolicyMemoryLimit(t *testing.T) {
