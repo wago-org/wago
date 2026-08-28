@@ -133,6 +133,17 @@ func TestExternrefHostImportRoundTripsObjects(t *testing.T) {
 	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
 		"env.echo": HostFunc(func(m HostModule, params, results []uint64) {
 			calls++
+			hostRefs, ok := m.(ExternRefHostModule)
+			if !ok {
+				t.Fatalf("host module %T does not expose externref lifecycle", m)
+			}
+			temporary := issueExternref(t, hostRefs, "temporary")
+			if !hostRefs.ReleaseExternRef(temporary) {
+				t.Fatal("host callback could not release temporary externref")
+			}
+			if _, ok := hostRefs.ExternRefValue(temporary); ok {
+				t.Fatal("released host-callback externref still resolved")
+			}
 			ref := ValueOf(ValExternRef, params[0]).ExternRef()
 			if got := resolveExternref(t, m, ref); got != inputObject {
 				t.Fatalf("host resolved %#v, want original input object", got)

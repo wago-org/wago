@@ -246,6 +246,9 @@ func TestHostFuncRefValidationAndLifecycleHelpers(t *testing.T) {
 	if _, ok := expired.ExternRefValue(ExternRef{}); ok {
 		t.Fatal("expired host module resolved externref")
 	}
+	if expired.ReleaseExternRef(ExternRef{}) {
+		t.Fatal("expired host module released externref")
+	}
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
