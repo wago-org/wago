@@ -113,6 +113,9 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 			return module, nil
 		}
 		if sizes.Total > limit {
+			if err := cache.pruneIfDue(time.Now()); err != nil {
+				cache.report(err)
+			}
 			return module, nil
 		}
 	}
@@ -227,7 +230,7 @@ func (cache Cache) prune() error {
 		total += entry.size
 		return nil
 	}
-	err := scanCacheFiles(cache.Dir, true, visit)
+	err := scanCacheFiles(cache.Dir, visit)
 	if err != nil || total <= limit {
 		return err
 	}
@@ -250,8 +253,7 @@ func cacheEntryNewer(left, right cacheEntry) bool {
 
 // scanCacheFiles uses File.ReadDir batches instead of os.ReadDir or WalkDir,
 // both of which read and sort a complete directory before yielding entries.
-// Automatic cache paths have one shard directory, so deeper trees are ignored.
-func scanCacheFiles(dir string, descend bool, visit func(string, os.FileInfo) error) error {
+func scanCacheFiles(dir string, visit func(string, os.FileInfo) error) error {
 	directory, err := os.Open(dir)
 	if err != nil {
 		return err
@@ -269,10 +271,8 @@ func scanCacheFiles(dir string, descend bool, visit func(string, os.FileInfo) er
 				return err
 			}
 			if info.IsDir() {
-				if descend {
-					if err := scanCacheFiles(path, false, visit); err != nil {
-						return err
-					}
+				if err := scanCacheFiles(path, visit); err != nil {
+					return err
 				}
 				continue
 			}

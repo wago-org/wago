@@ -121,6 +121,16 @@ func TestCacheHitRetriesPrune(t *testing.T) {
 func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	cache := Cache{Dir: dir, MaxBytes: 5}
+	nestedOld := filepath.Join(dir, "legacy", "nested", "old.wago")
+	if err := os.MkdirAll(filepath.Dir(nestedOld), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nestedOld, []byte("123"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(nestedOld, time.Unix(1, 0), time.Unix(1, 0)); err != nil {
+		t.Fatal(err)
+	}
 	for i, name := range []string{"old.wago", "middle.wago", "new.wago"} {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte("123"), 0o600); err != nil {
@@ -140,6 +150,9 @@ func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
 	}
 	if len(entries) != 1 || filepath.Base(entries[0]) != "new.wago" {
 		t.Fatalf("remaining cache entries = %v, want newest only", entries)
+	}
+	if _, err := os.Stat(nestedOld); !os.IsNotExist(err) {
+		t.Fatalf("nested overflow entry remains: %v", err)
 	}
 }
 
@@ -291,6 +304,10 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 func TestLoadOrCompileSkipsArtifactLargerThanCache(t *testing.T) {
 	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a"), MaxBytes: 1}
+	stale := filepath.Join(cache.Dir, "stale.wago")
+	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
 	defer rt.Close()
 
