@@ -19,11 +19,27 @@ type cacheRoot struct {
 }
 
 func openCacheRoot(path string) (*cacheRoot, error) {
-	file, err := os.Open(path)
+	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
 	}
-	finalPath, err := finalHandlePath(windows.Handle(file.Fd()))
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+		windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return nil, err
+	}
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		windows.CloseHandle(handle)
+		return nil, err
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+		windows.CloseHandle(handle)
+		return nil, errors.New("cache root is a reparse point")
+	}
+	file := os.NewFile(uintptr(handle), path)
+	finalPath, err := finalHandlePath(handle)
 	if err != nil {
 		file.Close()
 		return nil, err
