@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago"
 )
 
 func TestReadBoundsModuleInput(t *testing.T) {
@@ -25,9 +27,22 @@ func TestReadBoundsModuleInput(t *testing.T) {
 	}
 }
 
+func TestInputLimitDistinguishesSourceAndArtifact(t *testing.T) {
+	if got := inputLimit([]byte("\x00asm\x01")); got != MaxBytes {
+		t.Fatalf("Wasm input limit = %d, want %d", got, MaxBytes)
+	}
+	if got := inputLimit([]byte("WAGO\x01")); got != MaxArtifactBytes {
+		t.Fatalf("artifact input limit = %d, want %d", got, MaxArtifactBytes)
+	}
+	limits := wago.DefaultArtifactLimits()
+	if want := limits.MaxCodeBytes + limits.MaxMetadataBytes + 64; MaxArtifactBytes != want {
+		t.Fatalf("artifact input limit = %d, decoder allowance %d", MaxArtifactBytes, want)
+	}
+}
+
 func TestReadStreamReturnsExactSizedResult(t *testing.T) {
 	want := "pipe payload"
-	got, err := readStream("pipe", strings.NewReader(want))
+	got, err := readStream("pipe", strings.NewReader(want), MaxBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
