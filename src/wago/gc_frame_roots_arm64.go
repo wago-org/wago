@@ -4,7 +4,6 @@ package wago
 
 import (
 	"fmt"
-	"math"
 
 	railarm64 "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -45,7 +44,11 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 			if !ok {
 				return reject("function import %d has no validated signature", funcImport-1)
 			}
-			if collectorBoundary {
+			// Reference-free imports use the parked synchronous wrapper and need
+			// not also fit the internal register ABI. Preserve the existing
+			// collector-boundary path so reference ownership and root handling
+			// remain coupled to that module-level proof.
+			if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
 				if !arm64GCFrameHostCallABI(ft) {
 					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
 				}
@@ -97,7 +100,7 @@ functions:
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
-				if len(plan.LocalOffsets) == shared.GCFrameRootLimit || slot > (math.MaxUint32-shared.ARM64FrameHeaderBytes)/8 {
+				if len(plan.LocalOffsets) == shared.GCFrameTrackedLocalLimit {
 					return false
 				}
 				plan.LocalIndexes = append(plan.LocalIndexes, local)
@@ -116,7 +119,7 @@ functions:
 				if !mayCollect {
 					continue functions
 				}
-				return reject("function %d exceeds %d collector roots or the frame-offset bound", function, shared.GCFrameRootLimit)
+				return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 			}
 		}
 		for _, run := range m.Code[function].Locals.Runs {
@@ -125,7 +128,7 @@ functions:
 					if !mayCollect {
 						continue functions
 					}
-					return reject("function %d exceeds %d collector roots or the frame-offset bound", function, shared.GCFrameRootLimit)
+					return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 				}
 			}
 		}
@@ -135,12 +138,23 @@ functions:
 		var liveMasks, callMasks []uint64
 		var maskExtra gcFrameLivenessExtra
 		if arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) {
+			if len(plan.LocalIndexes) > shared.GCFrameRootLimit {
+				return reject("function %d has %d simultaneously live collector locals, limit %d", function, len(plan.LocalIndexes), shared.GCFrameRootLimit)
+			}
 			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
 		} else {
 			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
+		}
+		var maximumLive int
+		plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, maximumLive, err = gcFrameCompactLiveLocals(plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, &maskExtra)
+		if err != nil {
+			return reject("function %d exact local liveness: %v", function, err)
+		}
+		if maximumLive > shared.GCFrameRootLimit {
+			return reject("function %d has %d simultaneously live collector locals, limit %d", function, maximumLive, shared.GCFrameRootLimit)
 		}
 		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
@@ -261,12 +275,14 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			if !ok {
 				return false
 			}
-			if int(imm.Index) < m.ImportedFuncCount() && collectorBoundary {
-				if !arm64GCFrameHostCallABI(ft) {
+			if int(imm.Index) < m.ImportedFuncCount() {
+				if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
+					if !arm64GCFrameHostCallABI(ft) {
+						return false
+					}
+				} else if !arm64GCFrameReferenceCallABI(m, ft) {
 					return false
 				}
-			} else if !collectorBoundary && !arm64GCFrameReferenceCallABI(m, ft) {
-				return false
 			}
 		case 0x11:
 			ft, ok := m.TypeFunc(imm.Index)

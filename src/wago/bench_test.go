@@ -2409,8 +2409,8 @@ func BenchmarkBulkMemoryARM64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer in.Close()
-			for i := range in.Memory().Bytes() {
-				in.Memory().Bytes()[i] = byte(i)
+			for i := range in.Memory().UnsafeBytes() {
+				in.Memory().UnsafeBytes()[i] = byte(i)
 			}
 			for _, n := range []uint64{64, 256, 4096} {
 				b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {

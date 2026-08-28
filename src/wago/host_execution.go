@@ -69,6 +69,10 @@ func registerHostControl(in *Instance) error {
 	if _, loaded := hostControlInstances.LoadOrStore(ptr, in); loaded {
 		return fmt.Errorf("duplicate synchronous host control frame %x", ptr)
 	}
+	if err := coreruntime.RegisterHostCtrlFrame(in.ctrl); err != nil {
+		hostControlInstances.Delete(ptr)
+		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
+	}
 	return nil
 }
 
@@ -80,6 +84,7 @@ func unregisterHostControl(in *Instance) {
 	if current, ok := hostControlInstances.Load(ptr); ok && current == in {
 		hostControlInstances.Delete(ptr)
 	}
+	coreruntime.UnregisterHostCtrlFrame(in.ctrl)
 }
 
 func offHeapSlicePtr(b []byte) uintptr {
@@ -234,7 +239,7 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		in.lifeMu.Unlock()
 		return nil, fmt.Errorf("acquire host re-entry engine: %w", err)
 	}
-	ctrl := make([]byte, coreruntime.HostCtrlFrameBytes)
+	ctrl := make([]byte, len(in.ctrl))
 	if err := coreruntime.InitHostCtrlFrame(ctrl); err != nil {
 		_ = coreruntime.ReleaseEngine(eng)
 		in.lifeMu.Unlock()

@@ -1129,7 +1129,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		ExtendedConstGlobals: features.ExtendedConstGlobals,
 		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
 	}
-	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, validationFeatures, workers, wasm.ValidationLimits{MaxFunctionLocals: cfg.maxFunctionLocals}); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
 		// Compile must still fail clearly as unsupported rather than mislabeling a
@@ -1413,7 +1413,15 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if cfg.gcCodeTelemetry {
 		gcCodeStats = new(railshotModuleStats)
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	syncHostSlots := wruntime.MaxHostArity
+	usesGCHelpers := gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers()
+	if usesGCHelpers {
+		syncHostSlots, err = gcSyncHostSlotCapacity(gcMetadata.Descs)
+		if err != nil {
+			return nil, fmt.Errorf("compile: %w", err)
+		}
+	}
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1439,7 +1447,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
@@ -3611,8 +3619,12 @@ func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
 		if !def.HasMax {
 			// The exact Wasm type remains unbounded in metadata. Policy and managed-
 			// instance accounting charge the finite implementation reservation used
-			// by instantiation, matching the existing memory32 resource model.
-			pages = 65535
+			// by instantiation. Only staged memory 0 is capped one page below the
+			// full 2^16-page reservation used by memory32 and secondary memories.
+			pages = 1 << 16
+			if i == 0 && def.Addr64 && def.ImportKey == "" {
+				pages = 65535
+			}
 		}
 		if pages > ^uint64(0)/pageBytes {
 			return 0, fmt.Errorf("memory %d maximum %d pages overflows bytes", i, pages)
@@ -3756,7 +3768,21 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	hostCallBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
-		hostCallBytes = wruntime.HostCtrlFrameBytes
+		syncHostSlots := wruntime.MaxHostArity
+		if c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+			syncHostSlots, err = gcSyncHostSlotCapacity(c.GCTypeDescs)
+			if err != nil {
+				return fmt.Errorf("compiled metadata invalid: %w", err)
+			}
+			if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
+				return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
+			}
+		}
+		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
+		if err != nil {
+			return fmt.Errorf("compiled metadata invalid: %w", err)
+		}
+		c.syncHostSlots = uint16(syncHostSlots)
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
@@ -3792,6 +3818,9 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	c.maxParamSlots = maxParams
 	c.maxResultSlots = maxResults
+	if c.syncHostSlots == 0 {
+		c.syncHostSlots = uint16(wruntime.MaxHostArity)
+	}
 	c.instantiateArenaNeed = need
 	return nil
 }
@@ -3991,9 +4020,9 @@ func (c *Compiled) validateSerializableLocked() error {
 	return c.validateCodecMetadata()
 }
 
-// ReadFrom streams one sectioned ".wago" artifact using bounded default
-// allocations. Native code is read directly into its RW image and sealed in
-// place on first instantiation.
+// ReadFrom streams one trusted sectioned ".wago" artifact using bounded default
+// allocations. Artifacts contain unsandboxed host-native code. Native code is
+// read directly into its RW image and sealed in place on first instantiation.
 func (c *Compiled) ReadFrom(r io.Reader) (int64, error) {
 	return c.ReadFromWithLimits(r, DefaultArtifactLimits())
 }
@@ -4028,9 +4057,10 @@ func (c *Compiled) ReadFromWithLimits(r io.Reader, limits ArtifactLimits) (int64
 	return n, nil
 }
 
-// UnmarshalBinary loads a ".wago" blob produced by MarshalBinary. It may
-// replace receiver state before instantiation; replacement is rejected while
-// instances of the receiver are live.
+// UnmarshalBinary loads a trusted ".wago" blob produced by MarshalBinary. The
+// artifact contains executable native code and is not a sandboxed Wasm input.
+// It may replace receiver state before instantiation; replacement is rejected
+// while instances of the receiver are live.
 func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if !IsCompiled(data) {
 		return fmt.Errorf("not a wago module")
@@ -4078,14 +4108,24 @@ func finishDecodedCompiled(decoded *Compiled) error {
 // IsCompiled reports whether b is a precompiled wago module (vs raw wasm).
 func IsCompiled(b []byte) bool { return len(b) >= 5 && string(b[:4]) == wagoMagic }
 
-// Load returns a *Compiled from either a precompiled ".wago" blob or raw wasm
-// (which it compiles).
+// Load compiles raw Wasm. It rejects native-code .wago artifacts so format
+// autodetection cannot silently cross the Wasm trust boundary.
 func Load(b []byte) (*Compiled, error) {
 	if IsCompiled(b) {
-		c := &Compiled{}
-		return c, c.UnmarshalBinary(b)
+		return nil, fmt.Errorf("wago: Load refuses native-code artifacts; use LoadTrustedArtifact only for authenticated or locally produced bytes")
 	}
 	return Compile(nil, b)
+}
+
+// LoadTrustedArtifact decodes a precompiled .wago artifact. Artifacts contain
+// raw host-native executable code and MUST be authenticated or produced in the
+// same trusted environment; validation cannot make hostile native code safe.
+func LoadTrustedArtifact(b []byte) (*Compiled, error) {
+	if !IsCompiled(b) {
+		return nil, fmt.Errorf("wago: trusted artifact input is not a .wago module")
+	}
+	c := &Compiled{}
+	return c, c.UnmarshalBinary(b)
 }
 
 // Invoke marshals slot-based arguments/results around one native WasmWrapper

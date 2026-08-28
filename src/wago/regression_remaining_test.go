@@ -36,7 +36,7 @@ func TestRuntimeRegressionPortReusedMemoryIsZeroed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory := first.Memory().Bytes()
+	memory := first.Memory().UnsafeBytes()
 	for i := range memory {
 		memory[i] = 0xfe
 	}
@@ -53,7 +53,7 @@ func TestRuntimeRegressionPortReusedMemoryIsZeroed(t *testing.T) {
 	if second.jm != reused {
 		t.Fatalf("JobMemory cache did not reuse the dirtied mapping: first=%p second=%p", reused, second.jm)
 	}
-	for i, b := range second.Memory().Bytes() {
+	for i, b := range second.Memory().UnsafeBytes() {
 		if b != 0 {
 			t.Fatalf("reused memory byte %d = %#x, want zero", i, b)
 		}
@@ -136,7 +136,7 @@ func TestRuntimeRegressionPortFailedInstantiationMemoryDoesNotLeak(t *testing.T)
 	if after.jm != reused {
 		t.Fatalf("failed instantiation did not return the primed mapping: prime=%p after=%p", reused, after.jm)
 	}
-	for i, b := range after.Memory().Bytes() {
+	for i, b := range after.Memory().UnsafeBytes() {
 		if b != 0 {
 			t.Fatalf("memory byte %d after failed instantiation = %#x, want zero", i, b)
 		}

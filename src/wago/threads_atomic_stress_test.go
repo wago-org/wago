@@ -58,7 +58,7 @@ func TestThreadsAtomicRMWContentionReturnsExactCounter(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := atomic.LoadUint32((*uint32)(unsafe.Pointer(&memory.Bytes()[0]))); got != goroutines*increments {
+	if got := atomic.LoadUint32((*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[0]))); got != goroutines*increments {
 		t.Fatalf("contended RMW counter = %d, want %d", got, goroutines*increments)
 	}
 }
@@ -73,7 +73,7 @@ func TestThreadsAtomicCmpxchgContentionReturnsExactCounter(t *testing.T) {
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	cell := (*uint32)(unsafe.Pointer(&memory.Bytes()[0]))
+	cell := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[0]))
 	instances := make([]*Instance, goroutines)
 	for i := range instances {
 		instances[i], err = Instantiate(compiled, Imports{"env.memory": memory})
@@ -131,7 +131,7 @@ func TestThreadsAtomicWaitNotifyBarrier(t *testing.T) {
 	defer waitCode.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	phase := (*uint32)(unsafe.Pointer(&memory.Bytes()[4]))
+	phase := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[4]))
 	type pair struct{ add, wait *Instance }
 	instances := make([]pair, participants)
 	for i := range instances {

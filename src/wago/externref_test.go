@@ -133,6 +133,17 @@ func TestExternrefHostImportRoundTripsObjects(t *testing.T) {
 	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
 		"env.echo": HostFunc(func(m HostModule, params, results []uint64) {
 			calls++
+			hostRefs, ok := m.(ExternRefHostModule)
+			if !ok {
+				t.Fatalf("host module %T does not expose externref lifecycle", m)
+			}
+			temporary := issueExternref(t, hostRefs, "temporary")
+			if !hostRefs.ReleaseExternRef(temporary) {
+				t.Fatal("host callback could not release temporary externref")
+			}
+			if _, ok := hostRefs.ExternRefValue(temporary); ok {
+				t.Fatal("released host-callback externref still resolved")
+			}
 			ref := ValueOf(ValExternRef, params[0]).ExternRef()
 			if got := resolveExternref(t, m, ref); got != inputObject {
 				t.Fatalf("host resolved %#v, want original input object", got)
@@ -310,6 +321,53 @@ func TestExternrefGenerationAndStoreTeardown(t *testing.T) {
 	}
 	if _, ok := rt.ExternRefValue(ref); ok {
 		t.Fatal("released runtime token still resolved")
+	}
+}
+
+func TestRuntimeExternrefExplicitReleaseReusesSlot(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	first, err := rt.NewExternRef("first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rt.ReleaseExternRef(first) {
+		t.Fatal("release live externref failed")
+	}
+	if rt.ReleaseExternRef(first) {
+		t.Fatal("released externref accepted twice")
+	}
+	if _, ok := rt.ExternRefValue(first); ok {
+		t.Fatal("released externref still resolved")
+	}
+	second, err := rt.NewExternRef("second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.refStore.externrefs) != 1 {
+		t.Fatalf("externref slots = %d, want reuse at high-water mark 1", len(rt.refStore.externrefs))
+	}
+	if value, ok := rt.ExternRefValue(second); !ok || value != "second" {
+		t.Fatalf("reused externref = %v, %v", value, ok)
+	}
+	if _, ok := rt.ExternRefValue(first); ok {
+		t.Fatal("stale token resolved after slot reuse")
+	}
+}
+
+func TestRuntimeExternrefReleaseUsesSlotOwnershipNotPayloadType(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	payload := &HostFuncRef{}
+	ref, err := rt.NewExternRef(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rt.ReleaseExternRef(ref) {
+		t.Fatal("release of user-owned HostFuncRef payload failed")
+	}
+	if _, ok := rt.ExternRefValue(ref); ok {
+		t.Fatal("released HostFuncRef payload still resolved")
 	}
 }
 

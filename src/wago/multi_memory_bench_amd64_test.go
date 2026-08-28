@@ -199,7 +199,7 @@ func BenchmarkStagedMultiMemorySIMDLoad(b *testing.B) {
 	if err != nil {
 		b.Fatalf("export memory 1: %v", err)
 	}
-	copy(m1.Bytes()[32:], []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+	copy(m1.UnsafeBytes()[32:], []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

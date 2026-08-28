@@ -239,7 +239,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 			t.Fatalf("trapping data segment wrote partial bytes: load(327670) = %d", got)
 		}
 
-		mem1.Bytes()[0] = 0
+		mem1.UnsafeBytes()[0] = 0
 		unsafeContextCompiled := stagedMultiMemoryCompile(t, modules[3])
 		if _, err := instantiateCore(unsafeContextCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}}); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
 			unsafeContextCompiled.Close()

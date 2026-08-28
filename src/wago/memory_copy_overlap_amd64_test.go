@@ -42,7 +42,7 @@ func TestMemoryCopyBackwardVectorTiers(t *testing.T) {
 			}
 			defer instance.Close()
 
-			memory := instance.Memory().Bytes()
+			memory := instance.Memory().UnsafeBytes()
 			for i := 0; i <= n; i++ {
 				memory[i] = byte(i*31 + 7)
 			}

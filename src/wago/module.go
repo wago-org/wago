@@ -3,6 +3,7 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -16,6 +17,9 @@ type Module struct {
 	c       *Compiled
 	imports []ImportSpec
 	reqCaps []Capability
+	// importIdentities is populated only when a declared component contains a
+	// dot and the flat binding namespace can therefore be ambiguous.
+	importIdentities map[string]importBindingKey
 
 	identity             atomic.Pointer[moduleIdentityToken]
 	ownsCompiled         bool
@@ -282,6 +286,38 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		}
 	}
 	return m
+}
+
+// indexDeclaredImportIdentities rejects distinct structured import names that
+// the low-level flat Imports namespace cannot represent independently. It keeps
+// the resulting index only when dotted components make alternate splits
+// possible, so per-instance exact overrides can be checked in linear time.
+func indexDeclaredImportIdentities(specs []ImportSpec) (map[string]importBindingKey, error) {
+	ambiguous := false
+	for _, spec := range specs {
+		if strings.Contains(spec.Module, ".") || strings.Contains(spec.Name, ".") {
+			ambiguous = true
+			break
+		}
+	}
+	if !ambiguous {
+		return nil, nil
+	}
+
+	flatIdentities := make(map[string]importBindingKey, len(specs))
+	for _, spec := range specs {
+		identity := importBindingKey{module: spec.Module, name: spec.Name}
+		key := spec.Key()
+		if previous, ok := flatIdentities[key]; ok && previous != identity {
+			return nil, importIdentityCollisionError(previous, identity)
+		}
+		flatIdentities[key] = identity
+	}
+	return flatIdentities, nil
+}
+
+func importIdentityCollisionError(previous, identity importBindingKey) error {
+	return fmt.Errorf("wago: imports %q.%q and %q.%q share flattened key %q and cannot be bound safely", previous.module, previous.name, identity.module, identity.name, identity.module+"."+identity.name)
 }
 
 // registeredImportMatches prevents the legacy flat binding namespace from

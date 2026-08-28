@@ -100,7 +100,7 @@ import (
 var artifact []byte
 
 func main() {
-	compiled, err := wago.Load(artifact)
+	compiled, err := wago.LoadTrustedArtifact(artifact)
 	if err != nil {
 		panic(err)
 	}

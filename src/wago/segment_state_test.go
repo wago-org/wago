@@ -70,7 +70,7 @@ func segmentStateCompiledVariants(t *testing.T, mod []byte) []*Compiled {
 		if err != nil {
 			t.Fatalf("MarshalBinary: %v", err)
 		}
-		loaded, err := Load(blob)
+		loaded, err := LoadTrustedArtifact(blob)
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -92,7 +92,7 @@ func TestActiveDataSegmentStartsDroppedForBulkInstructions(t *testing.T) {
 			}
 			defer inst.Close()
 
-			if got := inst.Memory().Bytes()[0]; got != 'x' {
+			if got := inst.Memory().UnsafeBytes()[0]; got != 'x' {
 				t.Fatalf("active data byte = %#x, want %#x", got, byte('x'))
 			}
 			if _, err := inst.Invoke("init", I32(0)); err != nil {

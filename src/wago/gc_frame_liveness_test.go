@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func gcFrameLivenessBenchmarkBody(n int) []byte {
@@ -161,6 +162,70 @@ func TestGCFrameLocalLivenessWideMasks(t *testing.T) {
 	}
 }
 
+func TestGCFrameLocalLivenessCompactsDeadDeclaredRoots(t *testing.T) {
+	const roots = 1138
+	indexes := make([]uint32, roots)
+	offsets := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i], offsets[i] = uint32(i), uint32(16+i*8)
+	}
+	body := []byte{0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x0b}
+	var calls []uint64
+	var extra gcFrameLivenessExtra
+	allocations, err := gcFrameLocalLiveness(body, indexes, &calls, &extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexes, offsets, allocations, calls, maximum, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, calls, &extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if maximum != 1 || len(indexes) != 1 || indexes[0] != 0 || len(offsets) != 1 || len(extra.words) != 0 {
+		t.Fatalf("compacted roots: maximum=%d indexes=%v offsets=%v extra=%d", maximum, indexes, offsets, len(extra.words))
+	}
+	plan := shared.GCFrameRootPlan{LocalOffsets: offsets, LiveLocalMasks: allocations, LiveCallLocalMasks: calls, LiveMaskExtraWords: extra.words}
+	if !plan.ValidLiveMasks() || !plan.LocalLiveAt(0, 0) {
+		t.Fatalf("compacted plan = %+v", plan)
+	}
+}
+
+func TestGCFrameLocalLivenessCompactsDisjointWideRoots(t *testing.T) {
+	const roots = 4096
+	indexes, offsets, allocations, extra := gcFrameDisjointRootMasks(roots)
+	indexes, offsets, allocations, _, maximum, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(indexes) != roots || len(offsets) != roots || maximum != 1 {
+		t.Fatalf("compacted disjoint roots: indexes=%d offsets=%d maximum=%d", len(indexes), len(offsets), maximum)
+	}
+	plan := shared.GCFrameRootPlan{LocalOffsets: offsets, LiveLocalMasks: allocations, LiveMaskExtraWords: extra.words}
+	for _, root := range []int{0, 63, 64, roots - 1} {
+		if !plan.LocalLiveAt(root, root) {
+			t.Fatalf("site %d lost its only live root", root)
+		}
+	}
+}
+
+func TestGCFrameLocalLivenessCompactionRejectsTooManyLiveRootsBeforeRebuild(t *testing.T) {
+	const roots = shared.GCFrameRootLimit + 1
+	indexes := make([]uint32, roots)
+	offsets := make([]uint32, roots)
+	allocations := []uint64{^uint64(0)}
+	extra := gcFrameLivenessExtra{words: make([]uint64, (roots+63)/64-1)}
+	for i := range indexes {
+		indexes[i], offsets[i] = uint32(i), uint32(i*8)
+	}
+	for i := range extra.words {
+		extra.words[i] = ^uint64(0)
+	}
+	extra.words[len(extra.words)-1] = 1
+	_, _, _, _, _, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
+	if err == nil || !strings.Contains(err.Error(), "1025 simultaneously live collector locals, limit 1024") {
+		t.Fatalf("wide simultaneous-root compaction error = %v", err)
+	}
+}
+
 func TestGCFrameLocalLivenessConsumesMixedWidthMemarg(t *testing.T) {
 	m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}}}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
@@ -185,6 +250,29 @@ func TestGCFrameLocalLivenessRejectsUnrepresentableBrTable(t *testing.T) {
 	}
 }
 
+func TestGCFrameLocalLivenessDeduplicatesRepeatedWideBranchTable(t *testing.T) {
+	const roots, targets = 30_000, 100_000
+	indexes := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i] = uint32(i)
+	}
+	if _, err := gcFrameLocalLiveness(gcFrameRepeatedBranchTableBody(targets), indexes, nil, nil); err != nil {
+		t.Fatalf("repeated-target br_table liveness: %v", err)
+	}
+}
+
+func TestGCFrameLocalLivenessBudgetsDistinctWideBranchTableEdges(t *testing.T) {
+	const roots, targets = 8192, 30_000
+	indexes := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i] = uint32(i)
+	}
+	_, err := gcFrameLocalLiveness(gcFrameDistinctBranchTableBody(targets), indexes, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "graph exceeds 8388608 bitmap-word implementation limit") {
+		t.Fatalf("distinct-target br_table liveness error = %v", err)
+	}
+}
+
 func TestGCFrameLocalLivenessAllocationBudget(t *testing.T) {
 	if got := unsafe.Sizeof(gcLiveNode{}); got != 32 {
 		t.Fatalf("gcLiveNode size = %d, want 32 bytes", got)
@@ -201,6 +289,30 @@ func TestGCFrameLocalLivenessAllocationBudget(t *testing.T) {
 	})
 	if allocs > 100 {
 		t.Fatalf("GC frame liveness allocations = %.0f, want at most 100", allocs)
+	}
+}
+
+func TestGCFrameLocalLivenessArenaBudget(t *testing.T) {
+	const words = (1138 + 63) / 64
+	boundary := maxGCFrameLivenessArenaBytes / 8 / words
+	if !gcFrameLivenessArenaFits(boundary, words) {
+		t.Fatal("liveness arena rejected its exact 64 MiB boundary")
+	}
+	if gcFrameLivenessArenaFits(boundary+1, words) {
+		t.Fatal("liveness arena accepted a byte above its 64 MiB boundary")
+	}
+	if !gcFrameLivenessWorkFits(1, boundary-1, words) {
+		t.Fatal("liveness work rejected its exact 64 MiB-equivalent boundary")
+	}
+	if gcFrameLivenessWorkFits(1, boundary, words) {
+		t.Fatal("liveness work accepted one unit above its 64 MiB-equivalent boundary")
+	}
+}
+
+func TestGCFrameConservativeLivenessRejectsWideRootsBeforeSiteAllocation(t *testing.T) {
+	_, _, err := gcFrameAllLiveMasks([]byte{0x0b}, shared.GCFrameRootLimit+1, nil)
+	if err == nil || !strings.Contains(err.Error(), "conservative liveness tracks 1025") {
+		t.Fatalf("wide conservative root error = %v", err)
 	}
 }
 
@@ -225,6 +337,61 @@ func BenchmarkGCFrameLocalLivenessRootCounts(b *testing.B) {
 	}
 }
 
+func BenchmarkGCFrameLocalLivenessSparseDeclaredRoots(b *testing.B) {
+	const roots = 1138
+	indexes := make([]uint32, roots)
+	offsets := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i], offsets[i] = uint32(i), uint32(16+i*8)
+	}
+	body := []byte{0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x0b}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		var calls []uint64
+		var extra gcFrameLivenessExtra
+		allocations, err := gcFrameLocalLiveness(body, indexes, &calls, &extra)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_, compacted, _, _, maximum, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, calls, &extra)
+		if err != nil || len(compacted) != 1 || maximum != 1 {
+			b.Fatalf("sparse compaction offsets=%d maximum=%d err=%v", len(compacted), maximum, err)
+		}
+	}
+}
+
+func BenchmarkGCFrameCompactDisjointWideRoots(b *testing.B) {
+	const roots = 10_000
+	indexes, offsets, allocations, extra := gcFrameDisjointRootMasks(roots)
+	b.ReportAllocs()
+	b.ReportMetric(float64(len(extra.words)*8), "input-arena-bytes")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var err error
+		indexes, offsets, allocations, _, _, err = gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func gcFrameDisjointRootMasks(roots int) (indexes, offsets []uint32, allocations []uint64, extra gcFrameLivenessExtra) {
+	indexes = make([]uint32, roots)
+	offsets = make([]uint32, roots)
+	allocations = make([]uint64, roots)
+	extraPerSite := (roots+63)/64 - 1
+	extra.words = make([]uint64, roots*extraPerSite)
+	for root := 0; root < roots; root++ {
+		indexes[root], offsets[root] = uint32(root), uint32(16+root*8)
+		if root < 64 {
+			allocations[root] = uint64(1) << uint(root)
+		} else {
+			extra.words[root*extraPerSite+root/64-1] = uint64(1) << uint(root%64)
+		}
+	}
+	return
+}
+
 func BenchmarkGCFrameLocalLiveness(b *testing.B) {
 	body := gcFrameLivenessBenchmarkBody(16 * 1024)
 	b.ReportAllocs()
@@ -239,4 +406,47 @@ func BenchmarkGCFrameLocalLiveness(b *testing.B) {
 			b.Fatalf("mask counts = %d allocations, %d calls; want 1024, 0", len(masks), len(callMasks))
 		}
 	}
+}
+
+func BenchmarkGCFrameLocalLivenessRepeatedWideBranchTable(b *testing.B) {
+	const roots, targets = 30_000, 250_000
+	indexes := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i] = uint32(i)
+	}
+	body := gcFrameRepeatedBranchTableBody(targets)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.ReportMetric(targets, "raw-edges/op")
+	for i := 0; i < b.N; i++ {
+		if _, err := gcFrameLocalLiveness(body, indexes, nil, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func gcFrameRepeatedBranchTableBody(targets int) []byte {
+	body := make([]byte, 0, targets+16)
+	body = append(body, 0x02, 0x40, 0x41, 0x00, 0x0e) // block; i32.const 0; br_table
+	body = append(body, wasmtest.ULEB(uint32(targets-1))...)
+	for i := 0; i < targets; i++ { // vector targets plus the default target
+		body = append(body, 0x00)
+	}
+	return append(body, 0x0b, 0x0b)
+}
+
+func gcFrameDistinctBranchTableBody(targets int) []byte {
+	body := make([]byte, 0, targets*6)
+	for i := 0; i < targets; i++ {
+		body = append(body, 0x02, 0x40) // block
+	}
+	body = append(body, 0x41, 0x00, 0x0e) // i32.const 0; br_table
+	body = append(body, wasmtest.ULEB(uint32(targets-1))...)
+	for depth := 0; depth < targets; depth++ { // vector targets plus default
+		body = append(body, wasmtest.ULEB(uint32(depth))...)
+	}
+	for i := 0; i < targets; i++ {
+		body = append(body, 0x0b)
+	}
+	return append(body, 0x0b)
 }

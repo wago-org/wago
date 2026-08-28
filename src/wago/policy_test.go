@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -60,6 +62,18 @@ func TestPolicyCapabilityAllowDeny(t *testing.T) {
 	in.Close()
 }
 
+func TestPolicyRejectsUnenforcedInvokeDuration(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxInvokeDuration: time.Millisecond})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with unenforced invoke duration = %v, want ErrPermissionDenied", err)
+	}
+}
+
 func TestPolicyMemoryLimit(t *testing.T) {
 	rt := NewRuntime()
 	mod := memoryModule(t, 2, 4) // min 2 pages, max 4 pages -> 256 KiB max
@@ -77,6 +91,17 @@ func TestPolicyMemoryLimit(t *testing.T) {
 		t.Fatalf("instantiate within memory limit: %v", err)
 	}
 	in.Close()
+}
+
+func TestDeclaredMemoryMaxBytesChargesFullNoMaxMemory32Reservation(t *testing.T) {
+	c := &Compiled{HasMemory: true, MemMinPages: 1}
+	got, err := c.declaredMemoryMaxBytes()
+	if err != nil {
+		t.Fatalf("declaredMemoryMaxBytes: %v", err)
+	}
+	if want := uint64(1) << 32; got != want {
+		t.Fatalf("no-max memory32 reservation = %d bytes, want %d", got, want)
+	}
 }
 
 func TestPolicyChecksEveryLocalTable(t *testing.T) {
@@ -98,6 +123,43 @@ func TestPolicyChecksEveryLocalTable(t *testing.T) {
 		t.Fatalf("instantiate within table limit: %v", err)
 	}
 	in.Close()
+}
+
+func TestPolicyTableLimitChecksAllocatedCapacity(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	declaredWasm := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(
+		append([]byte{0x70, 0x01, 0x01}, wasmtest.ULEB(3)...),
+	)))
+	mod, err := rt.Compile(declaredWasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with maximum above table policy = %v, want ErrPermissionDenied", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 3}))
+	if err != nil {
+		t.Fatalf("instantiate at declared table maximum: %v", err)
+	}
+	in.Close()
+
+	unboundedWasm := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(
+			tableTestRefNullFunc(), tableTestI32Const(1), tableTestBulk(15, 0),
+		)))),
+	)
+	unbounded, err := rt.Compile(unboundedWasm)
+	if err != nil {
+		t.Fatalf("compile no-max table: %v", err)
+	}
+	if err := applyPolicy(unbounded, Policy{MaxTableEntries: 1023}); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("no-max table with 1024-entry runtime capacity = %v, want ErrPermissionDenied", err)
+	}
 }
 
 func TestPolicyChecksImportedAndLocalTablesIndependently(t *testing.T) {
@@ -123,6 +185,44 @@ func TestPolicyChecksImportedAndLocalTablesIndependently(t *testing.T) {
 	importTooLarge := compile(3, 1)
 	if _, err := rt.Instantiate(context.Background(), importTooLarge, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("instantiate with oversized imported table minimum = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestPolicyTableLimitChecksResolvedImportCapacity(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	producerMod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", 1, 0))),
+	))
+	if err != nil {
+		t.Fatalf("compile provider: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerMod)
+	if err != nil {
+		t.Fatalf("instantiate provider: %v", err)
+	}
+	defer producer.Close()
+	table, err := producer.ExportedTable("table")
+	if err != nil {
+		t.Fatalf("export provider table: %v", err)
+	}
+	if capacity, ok := table.runtimeCapacity(); !ok || capacity != 1024 {
+		t.Fatalf("provider table capacity = %d, %v; want 1024, true", capacity, ok)
+	}
+
+	consumerMod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "table", 1, 0))),
+	))
+	if err != nil {
+		t.Fatalf("compile consumer: %v", err)
+	}
+	_, err = rt.Instantiate(context.Background(), consumerMod,
+		WithImports(Imports{"env.table": table}),
+		WithPolicy(Policy{MaxTableEntries: 2}),
+	)
+	if !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with oversized resolved table = %v, want ErrPermissionDenied", err)
 	}
 }
 

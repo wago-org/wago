@@ -36,6 +36,7 @@ type referenceStore struct {
 	gcByToken     map[uint64]gcRefTokenEntry
 	externKey     uint64
 	externSeed    uint32
+	externFree    uint32
 	externrefs    []externrefSlot
 	gcDomains     *gcDomainTopology
 }
@@ -728,7 +729,10 @@ type gcPublicState struct {
 type externrefSlot struct {
 	value      any
 	generation uint32
+	nextFree   uint32
 }
+
+const externrefInternalSlot = ^uint32(0)
 
 func newReferenceStore(private bool) *referenceStore {
 	return &referenceStore{private: private, runtimeClosed: private}
@@ -1673,7 +1677,7 @@ func (s *referenceStore) registerHostFuncRef(owner *HostFuncRef) (uint32, error)
 		return 0, fmt.Errorf("wago: reference store has too many live objects")
 	}
 	s.liveObjects++
-	s.externrefs = append(s.externrefs, externrefSlot{value: owner})
+	s.externrefs = append(s.externrefs, externrefSlot{value: owner, nextFree: externrefInternalSlot})
 	return uint32(len(s.externrefs)), nil
 }
 
@@ -1701,7 +1705,7 @@ func (s *referenceStore) registerHostFuncRefBindingLocked(binding *hostFuncRefDi
 	if len(s.externrefs) >= int(hostFuncRefDispatchBit-1) {
 		return 0, fmt.Errorf("wago: reference store has too many host dispatch bindings")
 	}
-	s.externrefs = append(s.externrefs, externrefSlot{value: binding, generation: 1})
+	s.externrefs = append(s.externrefs, externrefSlot{value: binding, generation: 1, nextFree: externrefInternalSlot})
 	return uint32(len(s.externrefs)), nil
 }
 
@@ -2473,7 +2477,7 @@ func (s *referenceStore) issueExternref(value any) (uint64, error) {
 	if s.runtimeClosed && !s.private {
 		return 0, fmt.Errorf("wago: reference store is closed")
 	}
-	if uint64(len(s.externrefs)) >= uint64(^uint32(0)) {
+	if s.externFree == 0 && uint64(len(s.externrefs)) >= uint64(^uint32(0)) {
 		return 0, fmt.Errorf("wago: externref store is full")
 	}
 	if s.externKey == 0 {
@@ -2484,23 +2488,59 @@ func (s *referenceStore) issueExternref(value any) (uint64, error) {
 		s.externKey = key
 		s.externSeed = uint32(key>>32) | 1
 	}
-	index := uint32(len(s.externrefs)) + 1
-	generation := s.externSeed + index - 1
-	if generation == 0 {
-		generation = 1
-	}
-	for {
-		raw := uint64(generation)<<32 | uint64(index)
-		token := bits.RotateLeft64(raw^s.externKey, 17)
-		if token != 0 {
-			s.externrefs = append(s.externrefs, externrefSlot{value: value, generation: generation})
-			return token, nil
-		}
-		generation++
+	var index uint32
+	if s.externFree != 0 {
+		index = s.externFree
+		slot := &s.externrefs[index-1]
+		s.externFree = slot.nextFree
+		slot.nextFree = 0
+		slot.value = value
+	} else {
+		index = uint32(len(s.externrefs)) + 1
+		generation := s.externSeed + index - 1
 		if generation == 0 {
 			generation = 1
 		}
+		s.externrefs = append(s.externrefs, externrefSlot{value: value, generation: generation})
 	}
+	slot := &s.externrefs[index-1]
+	for {
+		raw := uint64(slot.generation)<<32 | uint64(index)
+		token := bits.RotateLeft64(raw^s.externKey, 17)
+		if token != 0 {
+			return token, nil
+		}
+		slot.generation = nextExternrefGeneration(slot.generation)
+	}
+}
+
+type releasedExternrefMarker struct{ reserved byte }
+
+var releasedExternrefValue = &releasedExternrefMarker{}
+
+func (s *referenceStore) releaseExternref(token uint64) bool {
+	if token == 0 {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.externKey == 0 {
+		return false
+	}
+	raw := bits.RotateLeft64(token, -17) ^ s.externKey
+	index, generation := uint32(raw), uint32(raw>>32)
+	if index == 0 || uint64(index) > uint64(len(s.externrefs)) {
+		return false
+	}
+	slot := &s.externrefs[index-1]
+	if slot.generation != generation || slot.value == releasedExternrefValue || slot.nextFree == externrefInternalSlot {
+		return false
+	}
+	slot.value = releasedExternrefValue
+	slot.generation = nextExternrefGeneration(slot.generation)
+	slot.nextFree = s.externFree
+	s.externFree = index
+	return true
 }
 
 func (s *referenceStore) resolveExternref(token uint64) (any, bool) {
@@ -2577,6 +2617,7 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 	s.externrefs = nil
 	s.externKey = 0
 	s.externSeed = 0
+	s.externFree = 0
 	if topology := s.gcDomains; topology != nil {
 		for domain := topology.first; domain != nil; domain = domain.next {
 			entries.collectors = append(entries.collectors, domain.collector)

@@ -173,11 +173,11 @@ func TestImportedMemoryShared(t *testing.T) {
 	if _, err := in.Invoke("store", I32(8), I32(0xCAFE)); err != nil {
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(mem.Bytes()[8:]); got != 0xCAFE {
+	if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[8:]); got != 0xCAFE {
 		t.Fatalf("host sees mem[8] = %#x, want 0xCAFE", got)
 	}
 	// host writes -> wasm observes.
-	binary.LittleEndian.PutUint32(mem.Bytes()[16:], 0x1234)
+	binary.LittleEndian.PutUint32(mem.UnsafeBytes()[16:], 0x1234)
 	r, err := in.Invoke("load", I32(16))
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestMemoryGrowExported(t *testing.T) {
 	if prev := AsI32(r[0]); prev != 1 {
 		t.Fatalf("memory.grow returned %d, want previous count 1", prev)
 	}
-	if got := len(in.Memory().Bytes()); got != 5*65536 {
+	if got := len(in.Memory().UnsafeBytes()); got != 5*65536 {
 		t.Fatalf("after grow, Bytes() len = %d, want %d", got, 5*65536)
 	}
 }
@@ -388,7 +388,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 	if _, err := in.Invoke("store", I32(4), I32(0x55AA)); err != nil {
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(mem.Bytes()[4:]); got != 0x55AA {
+	if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[4:]); got != 0x55AA {
 		t.Fatalf("host sees mem[4] = %#x, want 0x55AA", got)
 	}
 }

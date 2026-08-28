@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -397,7 +398,10 @@ func TestCompiledRoundtrip(t *testing.T) {
 	if !IsCompiled(blob) {
 		t.Fatal("blob not recognized as compiled")
 	}
-	c2, err := Load(blob) // load precompiled, no recompile
+	if loaded, err := Load(blob); err == nil || loaded != nil || !strings.Contains(err.Error(), "refuses native-code artifacts") {
+		t.Fatalf("ambiguous Load artifact = %v, %v; want trust-boundary rejection", loaded, err)
+	}
+	c2, err := LoadTrustedArtifact(blob) // load precompiled, no recompile
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,6 +416,17 @@ func TestCompiledRoundtrip(t *testing.T) {
 	}
 	if AsI32(res[0]) != 832040 {
 		t.Fatalf("fib(30) from blob = %d, want 832040", AsI32(res[0]))
+	}
+}
+
+func TestLoadCompilesRawWasm(t *testing.T) {
+	compiled, err := Load(fibWasm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if len(compiled.Entry) == 0 {
+		t.Fatal("raw Wasm was not compiled")
 	}
 }
 
@@ -472,7 +487,7 @@ func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load compiled: %v", err)
 	}
@@ -490,7 +505,7 @@ func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
 func TestCompiledUnsupportedVersionsRejected(t *testing.T) {
 	for _, version := range []byte{0, wagoVersion + 1} {
 		blob := []byte{'W', 'A', 'G', 'O', version}
-		if _, err := Load(blob); err == nil {
+		if _, err := LoadTrustedArtifact(blob); err == nil {
 			t.Fatalf("Load compiled version %d succeeded, want error", version)
 		}
 	}

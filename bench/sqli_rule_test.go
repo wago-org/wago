@@ -50,7 +50,7 @@ func newASString(tb testing.TB, in *wago.Instance, s string) uint64 {
 		tb.Fatalf("__new: %v", err)
 	}
 	ptr := r[0]
-	mem := in.Memory().Bytes()
+	mem := in.Memory().UnsafeBytes()
 	for i := 0; i < len(s); i++ {
 		mem[ptr+uint64(2*i)] = s[i]
 		mem[ptr+uint64(2*i)+1] = 0

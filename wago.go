@@ -263,6 +263,7 @@ const (
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
 	CoreFeaturesV3                             = impl.CoreFeaturesV3
+	DefaultMaxFunctionLocals                   = impl.DefaultMaxFunctionLocals
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
@@ -303,6 +304,7 @@ const (
 	ImportTag                                  = impl.ImportTag
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
+	MaxFunctionLocalsLimit                     = impl.MaxFunctionLocalsLimit
 	NoPluginOverrides                          = impl.NoPluginOverrides
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
@@ -435,6 +437,8 @@ func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
+func LoadTrustedArtifact(b []byte) (*Compiled, error) { return impl.LoadTrustedArtifact(b) }
+
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
 func NewBits(width int32, littleEndian []byte) (Bits, error) {
@@ -526,6 +530,10 @@ func ValueOf(t ValType, bits uint64) Value { return impl.ValueOf(t, bits) }
 func WithGC(gc GCConfig) InstantiateOption { return impl.WithGC(gc) }
 
 func WithGuestArguments(args []string) RuntimeOption { return impl.WithGuestArguments(args) }
+
+func WithImport(module string, name string, value any) InstantiateOption {
+	return impl.WithImport(module, name, value)
+}
 
 func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return impl.WithImportOverridePolicy(p)

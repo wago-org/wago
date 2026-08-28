@@ -62,7 +62,7 @@ func TestArm64LinearStoreLoadForwardingSemantics(t *testing.T) {
 	}
 
 	const untouched = uint64(0x8877665544332211)
-	binary.LittleEndian.PutUint64(in.Memory().Bytes()[16:24], untouched)
+	binary.LittleEndian.PutUint64(in.Memory().UnsafeBytes()[16:24], untouched)
 	got, err = in.Invoke("changedAddress", I32(0), I32(16), stored)
 	if err != nil {
 		t.Fatalf("changedAddress: %v", err)

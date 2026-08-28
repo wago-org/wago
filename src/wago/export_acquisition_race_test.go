@@ -50,7 +50,7 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		rt, in, _ := newExportAcquisitionFixture(t)
 		defer rt.Close()
 		memory := in.Memory()
-		if memory == nil || len(memory.Bytes()) != 1<<16 {
+		if memory == nil || len(memory.UnsafeBytes()) != 1<<16 {
 			t.Fatal("Instance.Memory acquisition was not usable")
 		}
 		memoryImporter := mustCompileWat(rt, t, `(module (import "env" "memory" (memory 1 1)))`)
@@ -69,14 +69,14 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		closeDone := make(chan error, 1)
 		go func() { closeDone <- in.Close() }()
 		<-gatePublished
-		if got := memory.Bytes(); got != nil {
+		if got := memory.UnsafeBytes(); got != nil {
 			t.Fatalf("Instance.Memory Bytes after close gate length = %d, want nil", len(got))
 		}
 		close(releaseClose)
 		if err := <-closeDone; err != nil {
 			t.Fatalf("Close: %v", err)
 		}
-		if got := memory.Bytes(); got != nil {
+		if got := memory.UnsafeBytes(); got != nil {
 			t.Fatalf("Instance.Memory Bytes after physical close length = %d, want nil", len(got))
 		}
 	})
@@ -106,7 +106,7 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ExportedMemory: %v", err)
 		}
-		if table.Size() != 1 || global.Get() != 42 || len(memory.Bytes()) != 1<<16 {
+		if table.Size() != 1 || global.Get() != 42 || len(memory.UnsafeBytes()) != 1<<16 {
 			t.Fatal("acquired exports were not usable before close")
 		}
 
@@ -127,7 +127,7 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		if got := global.Get(); got != 0 {
 			t.Fatalf("global Get after close gate = %d, want fail-closed zero", got)
 		}
-		if got := memory.Bytes(); got != nil {
+		if got := memory.UnsafeBytes(); got != nil {
 			t.Fatalf("memory Bytes after close gate length = %d, want nil", len(got))
 		}
 		if _, err := rt.Instantiate(context.Background(), consumerCode, WithImports(Imports{"env.f": fn})); err == nil || !strings.Contains(err.Error(), "closed") {
@@ -148,7 +148,7 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		if err := global.Set(9); err == nil || !strings.Contains(err.Error(), "closed") {
 			t.Fatalf("global Set after physical close error = %v, want closed", err)
 		}
-		if got := memory.Bytes(); got != nil {
+		if got := memory.UnsafeBytes(); got != nil {
 			t.Fatalf("memory Bytes after physical close length = %d, want nil", len(got))
 		}
 		if got := in.Memory(); got != nil {

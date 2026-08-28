@@ -25,7 +25,7 @@ func exactImportIdentityModule(includeTag bool) []byte {
 	}
 	imports := [][]byte{
 		entry("a.b", "c", 0x00, 0x00), // function, type 0
-		entry("a", "b.c", 0x00, 0x00), // same legacy key, distinct identity
+		entry("a", "bc", 0x00, 0x00),
 		entry("", "empty.module", 0x00, 0x00),
 		entry("empty.name", "", 0x00, 0x00),
 		entry("nul\x00.mod", "field\x00.name", 0x00, 0x00),
@@ -45,7 +45,7 @@ func exactImportIdentityModule(includeTag bool) []byte {
 func exactImportIdentities(includeTag bool) []importIdentity {
 	identities := []importIdentity{
 		{module: "a.b", name: "c", kind: ImportFunc},
-		{module: "a", name: "b.c", kind: ImportFunc},
+		{module: "a", name: "bc", kind: ImportFunc},
 		{module: "", name: "empty.module", kind: ImportFunc},
 		{module: "empty.name", name: "", kind: ImportFunc},
 		{module: "nul\x00.mod", name: "field\x00.name", kind: ImportFunc},
@@ -182,14 +182,128 @@ func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
 		t.Fatalf("colliding plugin binding error = %v, want ErrMissingImport", err)
 	}
 
-	// Explicit flat Imports remain a deliberate compatibility boundary: callers
-	// supplying one directly chose the legacy namespace themselves.
-	instance, err := rt.Instantiate(context.Background(), module, WithImports(Imports{flatKey: HostFunc(func(HostModule, []uint64, []uint64) {})}))
+	if instance, err := rt.Instantiate(context.Background(), module, WithImports(Imports{flatKey: HostFunc(func(HostModule, []uint64, []uint64) {})})); err == nil || instance != nil || !strings.Contains(err.Error(), "use WithImport") {
+		t.Fatalf("ambiguous flat override = %v, %v; want exact-import error", instance, err)
+	}
+
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("a.b", "c", HostFunc(func(HostModule, []uint64, []uint64) {})))
 	if err != nil {
-		t.Fatalf("explicit legacy override: %v", err)
+		t.Fatalf("exact override: %v", err)
 	}
 	if err := instance.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRuntimeRejectsCollidingExactImportIdentities(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	moduleBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(
+			importEntry("a.b", "c", 0, 0),
+			importEntry("a", "b.c", 0, 0),
+		)),
+	)
+	if module, err := rt.Compile(moduleBytes); err == nil || module != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
+		t.Fatalf("colliding declared imports = %v, %v; want rejection", module, err)
+	}
+}
+
+func TestRuntimeRejectsExactOverrideCollidingWithDeclaration(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("a.b", "c", 0, 0))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if instance, err := rt.Instantiate(context.Background(), module,
+		WithImport("a", "b.c", HostFunc(func(HostModule, []uint64, []uint64) {})),
+	); err == nil || instance != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
+		t.Fatalf("colliding exact override = %v, %v; want rejection", instance, err)
+	}
+}
+
+func TestRuntimeRejectsCollidingUndeclaredExactOverrides(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if instance, err := rt.Instantiate(context.Background(), module,
+		WithImport("a.b", "c", new(int)),
+		WithImport("a", "b.c", new(int)),
+	); err == nil || instance != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
+		t.Fatalf("colliding undeclared exact overrides = %v, %v; want rejection", instance, err)
+	}
+}
+
+func TestRuntimeRetainsUndeclaredExactImport(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	marker := new(int)
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("unused.mod", "value.name", marker))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got := instance.Imports()["unused.mod.value.name"]; got != marker {
+		t.Fatalf("undeclared exact import = %v, want %p", got, marker)
+	}
+}
+
+func TestRuntimeReservedExactOverrideIgnoresCollidingIdentity(t *testing.T) {
+	const flatKey = "wago_timer.a.b"
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.imports[flatKey] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.importMeta[flatKey] = &registeredImport{module: "wago_timer.a", name: "b"}
+	module, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("wago_timer"), wasmtest.Name("a.b")...), 0x00, 0x00))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("wago_timer", "a.b", HostFunc(func(HostModule, []uint64, []uint64) {})))
+	if err != nil {
+		t.Fatalf("exact override of distinct reserved identity: %v", err)
+	}
+	instance.Close()
+}
+
+func TestRuntimeRejectsMixedExactAndFlatOverride(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	first := HostFunc(func(HostModule, []uint64, []uint64) {})
+	second := HostFunc(func(HostModule, []uint64, []uint64) {})
+	for _, opts := range [][]InstantiateOption{
+		{WithImport("env", "f", first), WithImports(Imports{"env.f": second})},
+		{WithImports(Imports{"env.f": first}), WithImport("env", "f", second)},
+	} {
+		if instance, err := rt.Instantiate(context.Background(), module, opts...); err == nil || instance != nil || !strings.Contains(err.Error(), "both WithImport and WithImports") {
+			t.Fatalf("mixed override = %v, %v; want explicit rejection", instance, err)
+		}
 	}
 }
 

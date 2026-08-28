@@ -242,7 +242,7 @@ func TestCompiledCodecLoadedReferenceExecution(t *testing.T) {
 			if err != nil {
 				t.Fatalf("MarshalBinary: %v", err)
 			}
-			loaded, err := Load(blob)
+			loaded, err := LoadTrustedArtifact(blob)
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
