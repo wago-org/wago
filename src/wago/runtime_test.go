@@ -201,6 +201,26 @@ func TestResolveInstanceImportsDottedFieldsDoNotAllocateCollisionMap(t *testing.
 	}
 }
 
+func TestResolveInstanceImportsMatchingExactIdentityDoesNotAllocateCollisionMap(t *testing.T) {
+	rt := NewRuntime()
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	allocations := func(module string) float64 {
+		specs := []ImportSpec{{Module: module, Name: "f", Kind: ImportFunc}}
+		exact := map[importBindingKey]any{{module: module, name: "f"}: fn}
+		return testing.AllocsPerRun(100, func() {
+			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, exact)
+			if err != nil || len(imports) != 1 || pluginGCImports != nil {
+				panic(fmt.Sprintf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err))
+			}
+		})
+	}
+	plain := allocations("env")
+	dotted := allocations("env.prod")
+	if dotted > plain {
+		t.Fatalf("matching dotted identity allocations = %.0f, plain identity = %.0f", dotted, plain)
+	}
+}
+
 func TestRuntimeReservedUnusedOverrideRejected(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()

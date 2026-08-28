@@ -795,23 +795,23 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
 		}
 	}
-	needsCollisionCheck := false
-	if len(specs)+len(exactOverrides) > 1 {
-		for _, spec := range specs {
-			if strings.Contains(spec.Module, ".") {
-				needsCollisionCheck = true
-				break
-			}
-		}
-		if !needsCollisionCheck {
-			for identity := range exactOverrides {
-				if strings.Contains(identity.module, ".") {
-					needsCollisionCheck = true
-					break
-				}
-			}
+	var firstIdentity importBindingKey
+	haveIdentity, distinctIdentities, dottedModule := false, false, false
+	considerIdentity := func(identity importBindingKey) {
+		dottedModule = dottedModule || strings.Contains(identity.module, ".")
+		if !haveIdentity {
+			firstIdentity, haveIdentity = identity, true
+		} else if identity != firstIdentity {
+			distinctIdentities = true
 		}
 	}
+	for _, spec := range specs {
+		considerIdentity(importBindingKey{module: spec.Module, name: spec.Name})
+	}
+	for identity := range exactOverrides {
+		considerIdentity(identity)
+	}
+	needsCollisionCheck := distinctIdentities && dottedModule
 	if needsCollisionCheck {
 		flatIdentities := make(map[string]importBindingKey, len(specs)+len(exactOverrides))
 		checkIdentity := func(key string, identity importBindingKey) error {
