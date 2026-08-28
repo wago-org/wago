@@ -3,6 +3,20 @@
 // encoding remain in the architecture packages.
 package shared
 
+// MaxNativeFrameBytes matches the execution stack's fence margin. Inbound
+// cross-instance wrappers reserve 64 bytes before entering the target, so the
+// generated body frame must leave that space inside the checked headroom.
+const (
+	MaxNativeFrameBytes       = 256 << 10
+	MaxNativeInboundCallBytes = 64
+)
+
+// NativeFrameFitsStackFence reports whether a body frame plus fixed entry
+// overhead fits inside the already-checked stack-fence headroom.
+func NativeFrameFitsStackFence(frameBytes, entryOverhead int) bool {
+	return frameBytes >= 0 && entryOverhead >= 0 && entryOverhead <= MaxNativeFrameBytes && frameBytes <= MaxNativeFrameBytes-entryOverhead
+}
+
 // StackArenaCapacity estimates operand nodes for one function. An opcode-based
 // hint avoids reserving nodes for immediate bytes while a body-size floor keeps
 // malformed or incomplete hints from causing allocation cliffs.
