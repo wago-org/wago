@@ -614,7 +614,7 @@ func testExtendedConstElementFixture(t *testing.T, id string) {
 	if err != nil {
 		t.Fatalf("marshal extended-const fixture %s: %v", id, err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("load extended-const fixture %s: %v", id, err)
 	}

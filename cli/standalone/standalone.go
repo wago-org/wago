@@ -49,7 +49,7 @@ func executeArtifact(artifact []byte, plugins wago.PluginSet, options Options, a
 		return err
 	}
 	defer runtime.Close()
-	compiled, err := wago.Load(artifact)
+	compiled, err := wago.LoadTrustedArtifact(artifact)
 	if err != nil {
 		return err
 	}

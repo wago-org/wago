@@ -38,7 +38,7 @@ func TestFacadeForwards(t *testing.T) {
 	if !IsCompiled(encoded) {
 		t.Fatal("IsCompiled false for encoded module")
 	}
-	if _, err := Load(encoded); err != nil {
+	if _, err := LoadTrustedArtifact(encoded); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	for _, g := range []*Global{

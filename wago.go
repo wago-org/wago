@@ -435,6 +435,8 @@ func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
+func LoadTrustedArtifact(b []byte) (*Compiled, error) { return impl.LoadTrustedArtifact(b) }
+
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
 func NewBits(width int32, littleEndian []byte) (Bits, error) {

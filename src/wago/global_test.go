@@ -263,7 +263,7 @@ func TestExtendedConstExpressionsExecuteAndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary extended const module: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load extended const module: %v", err)
 	}
