@@ -176,18 +176,6 @@ func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
 	return true
 }
 
-func (c *Compiled) functionImportRequiresGCDomain(key string) bool {
-	if c == nil {
-		return false
-	}
-	for i, candidate := range c.Imports {
-		if candidate == key && i < len(c.importFuncSigs) && funcSigHasGCRefs(c.importFuncSigs[i]) {
-			return true
-		}
-	}
-	return false
-}
-
 func preferredGCCollectorFromImports(c *Compiled, imports Imports, store *referenceStore) (*gc.Collector, error) {
 	var collector *gc.Collector
 	consider := func(candidate *Instance) error {
@@ -203,17 +191,26 @@ func preferredGCCollectorFromImports(c *Compiled, imports Imports, store *refere
 		collector = candidate.gc
 		return nil
 	}
-	for key, value := range imports {
-		switch v := value.(type) {
-		case *InstanceExport:
-			// A scalar-only native call transfers no collector ownership. Its
-			// caller and producer may therefore keep independent domains and GC
-			// policies even though the function is linked cross-instance.
-			if v != nil && c.functionImportRequiresGCDomain(key) {
+	// Function imports are index-aligned with their signatures. Walk them once
+	// so large import sets remain linear instead of rescanning the complete key
+	// list for every InstanceExport in the imports map.
+	if c != nil {
+		for i, key := range c.Imports {
+			if i >= len(c.importFuncSigs) || !funcSigHasGCRefs(c.importFuncSigs[i]) {
+				continue
+			}
+			v, ok := imports[key].(*InstanceExport)
+			if ok && v != nil {
 				if err := consider(v.inst); err != nil {
 					return nil, err
 				}
 			}
+		}
+	}
+	for _, value := range imports {
+		switch v := value.(type) {
+		case *InstanceExport:
+			// Function owners were handled by the index-aligned pass above.
 		case *Global:
 			if v != nil && v.owner != nil {
 				if err := consider(v.owner.instance); err != nil {

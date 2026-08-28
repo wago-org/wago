@@ -33,9 +33,10 @@ func TestGCTypeMappingRejectsConflictingCanonicalTypes(t *testing.T) {
 
 func TestPreferredGCCollectorIgnoresReferenceFreeFunctionImports(t *testing.T) {
 	store := &referenceStore{}
-	collector := new(gc.Collector)
-	producer := &Instance{gc: collector, refStore: store}
-	imports := Imports{"env.call": &InstanceExport{inst: producer}}
+	foreignStore := &referenceStore{}
+	scalarCollector := new(gc.Collector)
+	scalarProvider := &Instance{gc: scalarCollector, refStore: foreignStore}
+	imports := Imports{"env.call": &InstanceExport{inst: scalarProvider}}
 
 	scalar := &Compiled{
 		Imports:        []string{"env.call"},
@@ -49,15 +50,21 @@ func TestPreferredGCCollectorIgnoresReferenceFreeFunctionImports(t *testing.T) {
 		t.Fatalf("scalar-only import selected collector %p; want an independent domain", got)
 	}
 
+	referenceCollector := new(gc.Collector)
+	referenceProvider := &Instance{gc: referenceCollector, refStore: store}
+	imports["env.reference"] = &InstanceExport{inst: referenceProvider}
 	reference := &Compiled{
-		Imports:        []string{"env.call"},
-		importFuncSigs: []FuncSig{{Results: []ValType{ValAnyRef}}},
+		Imports: []string{"env.call", "env.reference"},
+		importFuncSigs: []FuncSig{
+			{Results: []ValType{ValI64, ValI64, ValF32, ValF32, ValV128, ValI32}},
+			{Results: []ValType{ValAnyRef}},
+		},
 	}
 	got, err = preferredGCCollectorFromImports(reference, imports, store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != collector {
-		t.Fatalf("collector-reference import selected collector %p; want %p", got, collector)
+	if got != referenceCollector {
+		t.Fatalf("collector-reference import selected collector %p; want %p", got, referenceCollector)
 	}
 }
