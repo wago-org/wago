@@ -251,6 +251,29 @@ func TestRuntimeReservedExactOverrideIgnoresCollidingIdentity(t *testing.T) {
 	instance.Close()
 }
 
+func TestRuntimeRejectsMixedExactAndFlatOverride(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	first := HostFunc(func(HostModule, []uint64, []uint64) {})
+	second := HostFunc(func(HostModule, []uint64, []uint64) {})
+	for _, opts := range [][]InstantiateOption{
+		{WithImport("env", "f", first), WithImports(Imports{"env.f": second})},
+		{WithImports(Imports{"env.f": first}), WithImport("env", "f", second)},
+	} {
+		if instance, err := rt.Instantiate(context.Background(), module, opts...); err == nil || instance != nil || !strings.Contains(err.Error(), "both WithImport and WithImports") {
+			t.Fatalf("mixed override = %v, %v; want explicit rejection", instance, err)
+		}
+	}
+}
+
 func TestCompiledCodecBoundsDecodedImportDirectoryAllocation(t *testing.T) {
 	const count = 3
 	var prefix [binary.MaxVarintLen64]byte

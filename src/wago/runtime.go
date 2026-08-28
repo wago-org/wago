@@ -771,6 +771,12 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
+	for identity := range exactOverrides {
+		key := identity.module + "." + identity.name
+		if _, duplicated := overrides[key]; duplicated {
+			return nil, nil, fmt.Errorf("wago: import %q.%q is configured by both WithImport and WithImports", identity.module, identity.name)
+		}
+	}
 	for key := range overrides {
 		module := importModule(key)
 		if !isReserved(module) || rt.overridePolicy == AllowTestOverrides {
