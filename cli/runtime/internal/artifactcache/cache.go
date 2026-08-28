@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -184,9 +183,10 @@ func (cache Cache) report(err error) {
 }
 
 type cacheEntry struct {
-	path    string
-	size    int64
-	modTime time.Time
+	path         string
+	relativePath string
+	size         int64
+	modTime      time.Time
 }
 
 type cacheEntryHeap []cacheEntry
@@ -239,16 +239,21 @@ func (cache Cache) prune() error {
 	if limit < 0 || cache.Dir == "" {
 		return nil
 	}
+	root, err := openCacheRoot(cache.Dir)
+	if err != nil {
+		return err
+	}
+	defer root.close()
 	var total int64
 	entries := make(cacheEntryHeap, 0, maxPruneEntries)
 	remove := func(entry cacheEntry) error {
-		if err := os.Remove(entry.path); err != nil && !os.IsNotExist(err) {
+		if err := root.remove(entry.relativePath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		return nil
 	}
-	visit := func(path string, info os.FileInfo) error {
-		entry := cacheEntry{path: path, size: info.Size(), modTime: info.ModTime()}
+	visit := func(relativePath, path string, info os.FileInfo) error {
+		entry := cacheEntry{path: path, relativePath: relativePath, size: info.Size(), modTime: info.ModTime()}
 		if len(entries) < maxPruneEntries {
 			pushCacheEntry(&entries, entry)
 			total += entry.size
@@ -267,7 +272,7 @@ func (cache Cache) prune() error {
 		total += entry.size
 		return nil
 	}
-	err := scanCacheFiles(cache.Dir, 0, visit)
+	err = root.scan(visit)
 	if err != nil || total <= limit {
 		return err
 	}
@@ -290,46 +295,6 @@ func cacheEntryNewer(left, right cacheEntry) bool {
 
 func cacheEntryOlder(left, right cacheEntry) bool {
 	return cacheEntryNewer(right, left)
-}
-
-// scanCacheFiles uses File.Readdir batches instead of os.ReadDir or WalkDir,
-// both of which read and sort a complete directory before yielding entries.
-func scanCacheFiles(dir string, depth int, visit func(string, os.FileInfo) error) error {
-	if depth > maxCacheDirectoryDepth {
-		return errors.New("cache directory nesting exceeds limit")
-	}
-	directory, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	for {
-		entries, readErr := directory.Readdir(128)
-		for _, info := range entries {
-			if info.Mode()&os.ModeSymlink != 0 {
-				continue
-			}
-			name := info.Name()
-			path := filepath.Join(dir, name)
-			if info.IsDir() {
-				if err := scanCacheFiles(path, depth+1, visit); err != nil {
-					return err
-				}
-				continue
-			}
-			if info.Mode().IsRegular() && info.Size() >= 0 && len(name) >= 5 && name[len(name)-5:] == ".wago" {
-				if err := visit(path, info); err != nil {
-					return err
-				}
-			}
-		}
-		if readErr == io.EOF {
-			return nil
-		}
-		if readErr != nil {
-			return readErr
-		}
-	}
 }
 
 func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool) {

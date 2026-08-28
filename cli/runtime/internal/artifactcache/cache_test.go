@@ -156,6 +156,23 @@ func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
 	}
 }
 
+func TestCachePruneRemovesArtifactLargerThanLimit(t *testing.T) {
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "nested", "large.wago")
+	if err := os.Mkdir(filepath.Dir(artifact), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(artifact, []byte("large"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Cache{Dir: dir, MaxBytes: 1}).prune(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(artifact); !os.IsNotExist(err) {
+		t.Fatalf("oversize artifact remains: %v", err)
+	}
+}
+
 func TestCachePruneBoundsEntryIndex(t *testing.T) {
 	dir := t.TempDir()
 	old := time.Unix(1, 0)
