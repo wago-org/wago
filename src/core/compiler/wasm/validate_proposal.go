@@ -103,36 +103,8 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 		return err
 	}
 	for _, c := range in.Catches() {
-		lt, err := v.label(uint32(c.Label))
-		if err != nil {
+		if err := v.validateCatchPayload(c); err != nil {
 			return err
-		}
-		var payload []ValType
-		if c.Kind == CatchTag || c.Kind == CatchRef {
-			if int(c.Tag) >= v.m.TagCount() {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			ft, ok := v.tagFuncType(uint32(c.Tag))
-			if !ok {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			payload = append(payload, ft.Params...)
-		}
-		if c.Kind == CatchRef || c.Kind == CatchAllRef {
-			// Reference catches materialize a non-null exception reference. The
-			// target label may widen it to nullable exnref, but not vice versa.
-			payload = append(payload, RefVal(Ref(false, AbsHeap(HeapExn), false)))
-		}
-		if c.Kind == CatchAll && len(lt) != 0 {
-			return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
-		}
-		if len(payload) != len(lt) {
-			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-		}
-		for i := range payload {
-			if !v.subtype(payload[i], lt[i]) {
-				return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-			}
 		}
 	}
 	if err := v.pushCtrl(ctrlTry, ins, outs); err != nil {
@@ -150,6 +122,49 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 		v.unreachable()
 	}
 	return err
+}
+
+func (v *funcValidator) validateCatchPayload(c Catch) error {
+	lt, err := v.label(uint32(c.Label))
+	if err != nil {
+		return err
+	}
+	var params []ValType
+	if c.Kind == CatchTag || c.Kind == CatchRef {
+		if int(c.Tag) >= v.m.TagCount() {
+			return v.verr(ErrUnknownTag, "catch")
+		}
+		ft, ok := v.tagFuncType(uint32(c.Tag))
+		if !ok {
+			return v.verr(ErrUnknownTag, "catch")
+		}
+		params = ft.Params
+	}
+	hasRef := c.Kind == CatchRef || c.Kind == CatchAllRef
+	if c.Kind == CatchAll && len(lt) != 0 {
+		return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
+	}
+	payloadLen := len(params)
+	if hasRef {
+		payloadLen++
+	}
+	if payloadLen != len(lt) {
+		return v.verr(ErrTypeMismatch, "catch payload label mismatch")
+	}
+	for i := range params {
+		if !v.subtype(params[i], lt[i]) {
+			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
+		}
+	}
+	if hasRef {
+		// Reference catches materialize a non-null exception reference. The target
+		// label may widen it to nullable exnref, but not vice versa.
+		exn := RefVal(Ref(false, AbsHeap(HeapExn), false))
+		if !v.subtype(exn, lt[len(params)]) {
+			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
+		}
+	}
+	return nil
 }
 
 func (v *moduleValidator) tagFuncType(idx uint32) (*CompType, bool) {

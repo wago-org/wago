@@ -806,6 +806,30 @@ func TestDirectStartTryTableCatchPayloads(t *testing.T) {
 	}
 }
 
+func TestTryTableCatchValidationDoesNotCopyTagParameters(t *testing.T) {
+	params := make([]ValType, 256)
+	for i := range params {
+		params[i] = I32
+	}
+	m := &Module{Types: []RecType{ft(params, nil)}, Tags: []TagType{{Type: TypeIdx{Index: 0}}}}
+	fv := coverageFuncValidator(m, params)
+	catch := Catch{Kind: CatchTag, Tag: 0, Label: 0}
+	if err := fv.validateCatchPayload(catch); err != nil {
+		t.Fatalf("warm catch validation: %v", err)
+	}
+	var validationErr error
+	if allocs := testing.AllocsPerRun(100, func() {
+		for i := 0; i < 100; i++ {
+			validationErr = fv.validateCatchPayload(catch)
+		}
+	}); allocs != 0 {
+		t.Fatalf("catch validation allocations = %.2f, want 0", allocs)
+	}
+	if validationErr != nil {
+		t.Fatalf("catch validation: %v", validationErr)
+	}
+}
+
 func TestValidatorCoverageModuleLevelNegativeBranches(t *testing.T) {
 	t.Run("table init expression type mismatch", func(t *testing.T) {
 		m := &Module{Tables: []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}, Init: &Expr{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapExtern)}}}}}}}
