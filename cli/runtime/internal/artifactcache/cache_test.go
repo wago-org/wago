@@ -289,7 +289,7 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 
 	injected := errors.New("injected cache publication failure")
 	oldPublish := publishArtifact
-	publishArtifact = func(string, *wago.Compiled) error { return injected }
+	publishArtifact = func(string, *wago.Compiled, int64) error { return injected }
 	t.Cleanup(func() { publishArtifact = oldPublish })
 
 	module, err := cache.LoadOrCompile(source, config, rt)
@@ -304,6 +304,8 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 func TestLoadOrCompileSkipsArtifactLargerThanCache(t *testing.T) {
 	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a"), MaxBytes: 1}
+	var reported error
+	cache.ReportError = func(err error) { reported = err }
 	stale := filepath.Join(cache.Dir, "stale.wago")
 	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
@@ -311,31 +313,33 @@ func TestLoadOrCompileSkipsArtifactLargerThanCache(t *testing.T) {
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
 	defer rt.Close()
 
-	calls := 0
-	oldPublish := publishArtifact
-	publishArtifact = func(string, *wago.Compiled) error {
-		calls++
-		return nil
-	}
-	t.Cleanup(func() { publishArtifact = oldPublish })
-
 	module, err := cache.LoadOrCompile(constantModule(), config, rt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer module.Close()
-	if calls != 0 {
-		t.Fatalf("oversized artifact publication calls = %d, want 0", calls)
+	if reported != nil {
+		t.Fatalf("oversized artifact reported cache error: %v", reported)
 	}
-	entries, err := filepath.Glob(filepath.Join(cache.Dir, "*.wago"))
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("oversized artifact cache entries = %v, %v; want none", entries, err)
+	path, ok := cache.path(constantModule(), config)
+	if !ok {
+		t.Fatal("cache key unavailable")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("oversized artifact was published: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale oversized cache entry remains: %v", err)
 	}
 }
 
-func TestLoadOrCompileOversizedArtifactTreatsMissingCacheAsEmpty(t *testing.T) {
+func TestLoadOrCompileOversizedArtifactMaintainsMissingCache(t *testing.T) {
 	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 	cache := Cache{Dir: filepath.Join(t.TempDir(), "missing"), Identity: []byte("runtime-a"), MaxBytes: 1}
+	path, ok := cache.path(constantModule(), config)
+	if !ok {
+		t.Fatal("cache key unavailable")
+	}
 	var reported error
 	cache.ReportError = func(err error) { reported = err }
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
@@ -349,8 +353,11 @@ func TestLoadOrCompileOversizedArtifactTreatsMissingCacheAsEmpty(t *testing.T) {
 	if reported != nil {
 		t.Fatalf("missing empty cache reported maintenance error: %v", reported)
 	}
-	if _, err := os.Stat(cache.Dir); !os.IsNotExist(err) {
-		t.Fatalf("oversized artifact created cache root: %v", err)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("oversized artifact was published: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(cache.Dir, cachePruneMarker)); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("missing cache maintenance marker = %v, %v", info, err)
 	}
 }
 
