@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/internal/atomicfile"
@@ -24,12 +25,29 @@ import (
 type Cache struct {
 	Dir      string
 	Identity []byte
+	// MaxBytes caps regular .wago files below Dir. Zero uses DefaultMaxBytes.
+	MaxBytes int64
 	// ReportError observes best-effort publication failures. When nil, failures
 	// are reported on stderr so persistent cache misses are diagnosable.
 	ReportError func(error)
 }
 
 const cacheKeyFormat = 2
+
+// DefaultMaxBytes bounds the automatic CLI artifact cache at 512 MiB.
+const DefaultMaxBytes int64 = 512 << 20
+
+// maxPruneEntries bounds both cache file count and prune's in-memory index.
+const maxPruneEntries = 4096
+
+// maxCacheDirectoryDepth bounds descriptors retained by recursive batched scans.
+// Generated cache entries use one shard level; deeper trees are corruption.
+const maxCacheDirectoryDepth = 8
+
+const (
+	cachePruneInterval = 5 * time.Minute
+	cachePruneMarker   = ".wago-prune"
+)
 
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
@@ -73,6 +91,9 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	cacheable = cacheable && cacheableGeneration
 	if cacheable {
 		if compiled, hit := loadArtifact(path); hit {
+			if err := cache.pruneIfDue(time.Now()); err != nil {
+				cache.report(err)
+			}
 			return prepared.Adopt(compiled)
 		}
 	}
@@ -82,16 +103,206 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 		return nil, err
 	}
 	if !cacheable {
+		if err := cache.pruneIfDue(time.Now()); err != nil {
+			cache.report(err)
+		}
+		return module, nil
+	}
+	limit := cache.MaxBytes
+	if limit == 0 {
+		limit = DefaultMaxBytes
+	}
+	sizes, err := module.Compiled().ArtifactSectionSizes()
+	if err != nil {
+		cache.report(err)
+		return module, nil
+	}
+	if !artifactFitsCache(sizes, limit) {
+		if err := cache.pruneIfDue(time.Now()); err != nil {
+			cache.report(err)
+		}
 		return module, nil
 	}
 	if err := publishArtifact(path, module.Compiled()); err != nil {
-		if cache.ReportError != nil {
-			cache.ReportError(err)
-		} else {
-			fmt.Fprintf(os.Stderr, "wago: artifact cache publication failed: %v\n", err)
-		}
+		cache.report(err)
+	} else if err := cache.pruneAndMark(); err != nil {
+		cache.report(err)
 	}
 	return module, nil
+}
+
+func artifactFitsCache(sizes wago.ArtifactSectionSizes, maxBytes int64) bool {
+	limits := wago.DefaultArtifactLimits()
+	return sizes.Code <= limits.MaxCodeBytes && sizes.Metadata <= limits.MaxMetadataBytes &&
+		(maxBytes < 0 || sizes.Total <= maxBytes)
+}
+
+func (cache Cache) pruneIfDue(now time.Time) error {
+	if cache.MaxBytes < 0 || cache.Dir == "" {
+		return nil
+	}
+	marker := filepath.Join(cache.Dir, cachePruneMarker)
+	info, err := os.Lstat(marker)
+	if err == nil {
+		if info.Mode().IsRegular() {
+			age := now.Sub(info.ModTime())
+			if age >= 0 && age < cachePruneInterval {
+				return nil
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	info, err = os.Stat(cache.Dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("cache root %s is not a directory", cache.Dir)
+	}
+	return cache.pruneAndMark()
+}
+
+func (cache Cache) pruneAndMark() error {
+	if err := cache.prune(); err != nil {
+		return err
+	}
+	if cache.MaxBytes < 0 || cache.Dir == "" {
+		return nil
+	}
+	marker := filepath.Join(cache.Dir, cachePruneMarker)
+	if info, err := os.Lstat(marker); err == nil && !info.Mode().IsRegular() {
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return atomicfile.ReplaceFile(marker, atomicfile.Options{Mode: 0o600}, func(io.Writer) error { return nil })
+}
+
+func (cache Cache) report(err error) {
+	if cache.ReportError != nil {
+		cache.ReportError(err)
+	} else {
+		fmt.Fprintf(os.Stderr, "wago: artifact cache maintenance failed: %v\n", err)
+	}
+}
+
+type cacheEntry struct {
+	path         string
+	relativePath string
+	size         int64
+	modTime      time.Time
+}
+
+type cacheEntryHeap []cacheEntry
+
+func pushCacheEntry(entries *cacheEntryHeap, entry cacheEntry) {
+	h := append(*entries, entry)
+	for child := len(h) - 1; child > 0; {
+		parent := (child - 1) / 2
+		if !cacheEntryOlder(h[child], h[parent]) {
+			break
+		}
+		h[parent], h[child] = h[child], h[parent]
+		child = parent
+	}
+	*entries = h
+}
+
+func popOldestCacheEntry(entries *cacheEntryHeap) cacheEntry {
+	h := *entries
+	oldest := h[0]
+	last := len(h) - 1
+	h[0] = h[last]
+	h[last] = cacheEntry{}
+	h = h[:last]
+	for parent := 0; ; {
+		left := parent*2 + 1
+		if left >= len(h) {
+			break
+		}
+		child := left
+		right := left + 1
+		if right < len(h) && cacheEntryOlder(h[right], h[left]) {
+			child = right
+		}
+		if !cacheEntryOlder(h[child], h[parent]) {
+			break
+		}
+		h[parent], h[child] = h[child], h[parent]
+		parent = child
+	}
+	*entries = h
+	return oldest
+}
+
+func (cache Cache) prune() error {
+	limit := cache.MaxBytes
+	if limit == 0 {
+		limit = DefaultMaxBytes
+	}
+	if limit < 0 || cache.Dir == "" {
+		return nil
+	}
+	root, err := openCacheRoot(cache.Dir)
+	if err != nil {
+		return err
+	}
+	defer root.close()
+	var total int64
+	entries := make(cacheEntryHeap, 0, maxPruneEntries)
+	remove := func(entry cacheEntry) error {
+		if err := root.remove(entry.relativePath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	visit := func(relativePath, path string, info os.FileInfo) error {
+		entry := cacheEntry{path: path, relativePath: relativePath, size: info.Size(), modTime: info.ModTime()}
+		if len(entries) < maxPruneEntries {
+			pushCacheEntry(&entries, entry)
+			total += entry.size
+			return nil
+		}
+		oldest := entries[0]
+		if !cacheEntryNewer(entry, oldest) {
+			return remove(entry)
+		}
+		if err := remove(oldest); err != nil {
+			return err
+		}
+		popOldestCacheEntry(&entries)
+		total -= oldest.size
+		pushCacheEntry(&entries, entry)
+		total += entry.size
+		return nil
+	}
+	err = root.scan(visit)
+	if err != nil || total <= limit {
+		return err
+	}
+	for total > limit && len(entries) != 0 {
+		entry := popOldestCacheEntry(&entries)
+		if err := remove(entry); err != nil {
+			return err
+		}
+		total -= entry.size
+	}
+	return nil
+}
+
+func cacheEntryNewer(left, right cacheEntry) bool {
+	if left.modTime.Equal(right.modTime) {
+		return left.path > right.path
+	}
+	return left.modTime.After(right.modTime)
+}
+
+func cacheEntryOlder(left, right cacheEntry) bool {
+	return cacheEntryNewer(right, left)
 }
 
 func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool) {

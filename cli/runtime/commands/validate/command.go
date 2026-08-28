@@ -3,7 +3,6 @@ package validate
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -11,6 +10,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
+	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 	"github.com/wago-org/wago/internal/functionworkers"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -33,7 +33,7 @@ func run(c *command.Ctx) {
 	if len(c.Args) != 1 {
 		ui.Usage("validate: need exactly one <file>")
 	}
-	src, err := os.ReadFile(c.Args[0])
+	src, err := modulefile.Read(c.Args[0])
 	if err != nil {
 		ui.Fatal("%v", err)
 	}

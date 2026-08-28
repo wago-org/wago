@@ -3967,14 +3967,13 @@ func (c *Compiled) ArtifactSectionSizes() (ArtifactSectionSizes, error) {
 	if err := c.validateSerializableLocked(); err != nil {
 		return ArtifactSectionSizes{}, err
 	}
-	metadata, result, err := marshalCompiledMetadataMeasured(c)
+	result, err := measureCompiledMetadata(c)
 	if err != nil {
 		return ArtifactSectionSizes{}, err
 	}
-	framing := int64(6 + 2 + compiledUvarintLen(uint64(len(c.code))) + compiledUvarintLen(uint64(len(metadata))))
+	framing := int64(6 + 2 + compiledUvarintLen(uint64(len(c.code))) + compiledUvarintLen(uint64(result.Metadata)))
 	result.Framing = framing
 	result.Code = int64(len(c.code))
-	result.Metadata = int64(len(metadata))
 	result.Total = result.Framing + result.Code + result.Metadata
 	return result, nil
 }

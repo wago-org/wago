@@ -14,6 +14,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
+	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 )
 
 type Environment interface {
@@ -81,7 +82,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 		automation.PrintPlan("build artifact", plan)
 		return
 	}
-	source, err := os.ReadFile(input)
+	source, err := modulefile.Read(input)
 	if err != nil {
 		ui.Fatal("build: %v", err)
 	}

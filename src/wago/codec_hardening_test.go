@@ -62,6 +62,45 @@ func TestCompiledWriteToMatchesMarshalBinary(t *testing.T) {
 	}
 }
 
+func TestArtifactSectionSizesDoesNotMaterializeMetadata(t *testing.T) {
+	const payloadBytes = 8 << 20
+	c := &Compiled{PassiveData: []PassiveDataInit{{Bytes: make([]byte, payloadBytes)}}}
+	defer c.Close()
+	sizes, err := c.ArtifactSectionSizes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sizes.Data < payloadBytes || sizes.Metadata < payloadBytes {
+		t.Fatalf("large metadata sizes = data %d metadata %d, want at least %d", sizes.Data, sizes.Metadata, payloadBytes)
+	}
+	var measured ArtifactSectionSizes
+	if allocs := testing.AllocsPerRun(10, func() {
+		measured, err = c.ArtifactSectionSizes()
+	}); allocs != 0 {
+		t.Fatalf("ArtifactSectionSizes allocations = %.1f, want 0", allocs)
+	}
+	if err != nil || measured != sizes {
+		t.Fatalf("repeated artifact sizing = %+v, %v; want %+v", measured, err, sizes)
+	}
+}
+
+func TestCountOnlyStringMapDoesNotAllocate(t *testing.T) {
+	values := make(map[string]int, 4096)
+	for i := 0; i < 4096; i++ {
+		values[fmt.Sprintf("export-%04d", i)] = i
+	}
+	w := compiledWriter{countOnly: true}
+	if allocs := testing.AllocsPerRun(10, func() {
+		w.count = 0
+		w.stringIntMap(values)
+	}); allocs != 0 {
+		t.Fatalf("count-only string map allocations = %.1f, want 0", allocs)
+	}
+	if w.count == 0 {
+		t.Fatal("count-only string map measured no bytes")
+	}
+}
+
 func TestCompiledReadFromLoadsCodeImageDirectly(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {

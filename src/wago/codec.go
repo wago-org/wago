@@ -265,12 +265,24 @@ func marshalCompiledMetadata(c *Compiled) ([]byte, error) {
 }
 
 func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes, error) {
-	w := compiledWriter{buf: make([]byte, 0, 256)}
+	return encodeCompiledMetadataMeasured(c, false)
+}
+
+func measureCompiledMetadata(c *Compiled) (ArtifactSectionSizes, error) {
+	_, sizes, err := encodeCompiledMetadataMeasured(c, true)
+	return sizes, err
+}
+
+func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, ArtifactSectionSizes, error) {
+	w := compiledWriter{countOnly: countOnly}
+	if !countOnly {
+		w.buf = make([]byte, 0, 256)
+	}
 	var sizes ArtifactSectionSizes
-	start := 0
+	start := int64(0)
 	mark := func(dst *int64) {
-		*dst = int64(len(w.buf) - start)
-		start = len(w.buf)
+		*dst = w.length() - start
+		start = w.length()
 	}
 	w.intSlice(c.Entry)
 	w.internalEntrySlice(c.InternalEntry)
@@ -333,8 +345,8 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.stringIntMap(c.memoryExportMap())
 	mark(&sizes.Memories)
 	w.bool(c.dynamicImports)
-	sizes.Features = int64(len(w.buf) - start)
-	start = len(w.buf)
+	sizes.Features = w.length() - start
+	start = w.length()
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
@@ -363,8 +375,8 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 		required |= compiledRegisterABIDisabled
 	}
 	w.u64(required)
-	sizes.Features += int64(len(w.buf) - start)
-	start = len(w.buf)
+	sizes.Features += w.length() - start
+	start = w.length()
 	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
 		w.u32(c.nativeGCABIRequirement())
 	}
@@ -376,15 +388,44 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 		w.gcFrameRoots(rootMap)
 	}
 	mark(&sizes.GC)
+	sizes.Metadata = w.length()
 	return w.buf, sizes, nil
 }
 
 type compiledWriter struct {
-	buf []byte
-	tmp [binary.MaxVarintLen64]byte
+	buf       []byte
+	tmp       [binary.MaxVarintLen64]byte
+	count     int64
+	countOnly bool
 }
 
-func (w *compiledWriter) u8(v byte) { w.buf = append(w.buf, v) }
+func (w *compiledWriter) length() int64 {
+	if w.countOnly {
+		return w.count
+	}
+	return int64(len(w.buf))
+}
+
+func (w *compiledWriter) appendBytes(p []byte) {
+	if w.countOnly {
+		w.count += int64(len(p))
+	} else {
+		w.buf = append(w.buf, p...)
+	}
+}
+
+func (w *compiledWriter) appendString(s string) {
+	if w.countOnly {
+		w.count += int64(len(s))
+	} else {
+		w.buf = append(w.buf, s...)
+	}
+}
+
+func (w *compiledWriter) u8(v byte) {
+	w.tmp[0] = v
+	w.appendBytes(w.tmp[:1])
+}
 func (w *compiledWriter) bool(v bool) {
 	if v {
 		w.u8(1)
@@ -394,30 +435,32 @@ func (w *compiledWriter) bool(v bool) {
 }
 func (w *compiledWriter) uvar(v uint64) {
 	n := binary.PutUvarint(w.tmp[:], v)
-	w.buf = append(w.buf, w.tmp[:n]...)
+	w.appendBytes(w.tmp[:n])
 }
 func (w *compiledWriter) ivar(v int) {
 	n := binary.PutVarint(w.tmp[:], int64(v))
-	w.buf = append(w.buf, w.tmp[:n]...)
+	w.appendBytes(w.tmp[:n])
 }
 func (w *compiledWriter) u32(v uint32) {
-	w.buf = binary.LittleEndian.AppendUint32(w.buf, v)
+	binary.LittleEndian.PutUint32(w.tmp[:4], v)
+	w.appendBytes(w.tmp[:4])
 }
 func (w *compiledWriter) u64(v uint64) {
-	w.buf = binary.LittleEndian.AppendUint64(w.buf, v)
+	binary.LittleEndian.PutUint64(w.tmp[:8], v)
+	w.appendBytes(w.tmp[:8])
 }
 func (w *compiledWriter) bytes(b []byte) {
 	w.uvar(uint64(len(b)))
-	w.buf = append(w.buf, b...)
+	w.appendBytes(b)
 }
 func (w *compiledWriter) section(id byte, payload []byte) {
 	w.u8(id)
 	w.uvar(uint64(len(payload)))
-	w.buf = append(w.buf, payload...)
+	w.appendBytes(payload)
 }
 func (w *compiledWriter) str(s string) {
 	w.uvar(uint64(len(s)))
-	w.buf = append(w.buf, s...)
+	w.appendString(s)
 }
 func (w *compiledWriter) stringSlice(v []string) {
 	w.uvar(uint64(len(v)))
@@ -486,12 +529,19 @@ func (w *compiledWriter) memories(c *Compiled) {
 }
 
 func (w *compiledWriter) stringIntMap(m map[string]int) {
+	w.uvar(uint64(len(m)))
+	if w.countOnly {
+		for k, v := range m {
+			w.str(k)
+			w.ivar(v)
+		}
+		return
+	}
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	w.uvar(uint64(len(keys)))
 	for _, k := range keys {
 		w.str(k)
 		w.ivar(m[k])
@@ -710,7 +760,7 @@ func (w *compiledWriter) globals(v []GlobalDef, c *Compiled) error {
 			w.u8(0)
 			w.u64(g.Bits)
 			if g.Type == ValV128 {
-				w.buf = append(w.buf, g.V128[:]...)
+				w.appendBytes(g.V128[:])
 			}
 		}
 	}
