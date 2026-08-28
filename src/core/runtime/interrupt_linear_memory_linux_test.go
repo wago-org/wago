@@ -7,23 +7,47 @@ import (
 	"testing"
 )
 
-func TestBindTrapCellRegistersInterruptLinearMemory(t *testing.T) {
+func TestJobMemoryLifecycleRegistersInterruptLinearMemory(t *testing.T) {
 	jm, err := NewJobMemory(65536)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base := jm.LinMemBase()
-	if err := jm.BindTrapCell(make([]byte, TrapBufferBytes)); err != nil {
-		t.Fatal(err)
-	}
 	if !interruptLinearMemoryRegistered(base) {
-		t.Fatal("bound linear memory was not published to interrupt handler")
+		t.Fatal("created linear memory was not published to interrupt handler")
 	}
 	if err := jm.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if interruptLinearMemoryRegistered(base) {
 		t.Fatal("closed linear memory remained published")
+	}
+}
+
+func TestInterruptLinearMemoryRegistrationScansPastHoles(t *testing.T) {
+	const first, second = uintptr(1), uintptr(2)
+	if err := registerInterruptLinearMemory(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerInterruptLinearMemory(second); err != nil {
+		t.Fatal(err)
+	}
+	unregisterInterruptLinearMemory(first)
+	if err := registerInterruptLinearMemory(second); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for i := uint32(0); i < atomic.LoadUint32(&interruptLinearMemoryLimit); i++ {
+		if atomic.LoadUintptr(&interruptLinearMemories[i]) == second {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("second base registrations = %d, want 1", count)
+	}
+	unregisterInterruptLinearMemory(second)
+	if interruptLinearMemoryRegistered(second) {
+		t.Fatal("second base remained registered")
 	}
 }
 

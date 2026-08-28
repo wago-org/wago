@@ -61,37 +61,44 @@ func registerInterruptLinearMemory(linMem uintptr) error {
 	}
 	interruptLinearMemoryMu.Lock()
 	defer interruptLinearMemoryMu.Unlock()
-	for i := range interruptLinearMemories {
-		if atomic.LoadUintptr(&interruptLinearMemories[i]) == linMem {
+	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+	firstHole := -1
+	for i := 0; i < limit; i++ {
+		registered := atomic.LoadUintptr(&interruptLinearMemories[i])
+		if registered == linMem {
 			return nil
 		}
-		if atomic.LoadUintptr(&interruptLinearMemories[i]) == 0 {
-			atomic.StoreUintptr(&interruptLinearMemories[i], linMem)
-			limit := uint32(i + 1)
-			if limit > atomic.LoadUint32(&interruptLinearMemoryLimit) {
-				atomic.StoreUint32(&interruptLinearMemoryLimit, limit)
-			}
-			return nil
+		if registered == 0 && firstHole < 0 {
+			firstHole = i
 		}
 	}
-	return fmt.Errorf("interrupt linear-memory table full (%d)", maxInterruptLinearMemories)
+	if firstHole < 0 {
+		if limit == len(interruptLinearMemories) {
+			return fmt.Errorf("interrupt linear-memory table full (%d)", maxInterruptLinearMemories)
+		}
+		firstHole = limit
+	}
+	atomic.StoreUintptr(&interruptLinearMemories[firstHole], linMem)
+	if firstHole == limit {
+		atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit+1))
+	}
+	return nil
 }
 
 func unregisterInterruptLinearMemory(linMem uintptr) {
 	interruptLinearMemoryMu.Lock()
 	defer interruptLinearMemoryMu.Unlock()
-	for i := range interruptLinearMemories {
+	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+	for i := 0; i < limit; i++ {
 		if atomic.LoadUintptr(&interruptLinearMemories[i]) != linMem {
 			continue
 		}
 		atomic.StoreUintptr(&interruptLinearMemories[i], 0)
-		limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
-		for limit > 0 && atomic.LoadUintptr(&interruptLinearMemories[limit-1]) == 0 {
-			limit--
-		}
-		atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit))
-		return
 	}
+	for limit > 0 && atomic.LoadUintptr(&interruptLinearMemories[limit-1]) == 0 {
+		limit--
+	}
+	atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit))
 }
 
 //lint:ignore U1000 referenced from interrupt_linux_{amd64,arm64}.s

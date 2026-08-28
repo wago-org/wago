@@ -86,6 +86,10 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	}
 	j := &JobMemory{mem: mem, linOff: basedataSize, linLen: reserveBytes}
 	j.reset(initialBytes, maxBytes, reserveBytes, false)
+	if err := j.registerInterruptLinearMemory(); err != nil {
+		_ = j.Close()
+		return nil, err
+	}
 	return j, nil
 }
 
@@ -249,11 +253,6 @@ func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)
 func (j *JobMemory) BindTrapCell(trap []byte) error {
 	if len(trap) < 4 {
 		return fmt.Errorf("trap cell requires at least 4 bytes")
-	}
-	if interruptLinearMemoryRegister != nil {
-		if err := interruptLinearMemoryRegister(j.LinMemBase()); err != nil {
-			return err
-		}
 	}
 	binary.LittleEndian.PutUint32(trap, 0)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
@@ -464,6 +463,13 @@ var guardReleaseHook func(j *JobMemory) bool
 
 var interruptLinearMemoryRegister func(uintptr) error
 var interruptLinearMemoryUnregister func(uintptr)
+
+func (j *JobMemory) registerInterruptLinearMemory() error {
+	if interruptLinearMemoryRegister == nil {
+		return nil
+	}
+	return interruptLinearMemoryRegister(j.LinMemBase())
+}
 
 func (j *JobMemory) Close() error {
 	if interruptLinearMemoryUnregister != nil {

@@ -67,6 +67,10 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 		_, _, _ = syscall.Syscall(syscall.SYS_MUNMAP, base, guardReserveBytes, 0)
 		return nil, err
 	}
+	if err := j.registerInterruptLinearMemory(); err != nil {
+		_ = j.Close()
+		return nil, err
+	}
 	return j, nil
 }
 
