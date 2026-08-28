@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wago-org/wago"
@@ -40,6 +41,10 @@ const DefaultMaxBytes int64 = 512 << 20
 
 // maxPruneEntries bounds both cache file count and prune's in-memory index.
 const maxPruneEntries = 4096
+
+const cacheHitPruneInterval = 64
+
+var cacheHitPruneCount atomic.Uint64
 
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
@@ -83,8 +88,13 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	cacheable = cacheable && cacheableGeneration
 	if cacheable {
 		if compiled, hit := loadArtifact(path); hit {
-			if err := cache.prune(); err != nil {
-				cache.report(err)
+			// Retry missed maintenance on the first process hit and periodically
+			// thereafter without turning every warm load into a full cache scan.
+			hits := cacheHitPruneCount.Add(1)
+			if hits == 1 || hits%cacheHitPruneInterval == 0 {
+				if err := cache.prune(); err != nil {
+					cache.report(err)
+				}
 			}
 			return prepared.Adopt(compiled)
 		}

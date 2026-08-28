@@ -91,6 +91,8 @@ func TestCacheHitRetriesPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache.MaxBytes = info.Size()
+	previousHits := cacheHitPruneCount.Swap(0)
+	t.Cleanup(func() { cacheHitPruneCount.Store(previousHits) })
 	module, err = cache.LoadOrCompile(constantModule(), config, rt)
 	if err != nil {
 		t.Fatal(err)
