@@ -26,6 +26,7 @@ type InstantiateOptions struct {
 	afterCreate          func(*Instance) error
 	moduleIdentity       ModuleIdentity
 	operationReservation *pluginOperationReservation
+	runtimeReservation   *runtimeInstanceReservation
 	independentInstances bool
 	hasExecutionPolicy   bool
 }
@@ -1498,7 +1499,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if opts.runtime != nil {
 		in.beginConstruction(opts.operationReservation)
-		if err := opts.runtime.registerInstance(in); err != nil {
+		if err := opts.runtime.registerInstance(in, opts.runtimeReservation); err != nil {
 			in.endConstruction()
 			return nil, err
 		}

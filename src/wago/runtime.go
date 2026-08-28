@@ -40,7 +40,10 @@ type Runtime struct {
 	moduleCloseOperations uint64
 	closeState            *runtimeCloseState
 	instances             map[*Instance]uint64
+	instanceReservations  map[*Instance]*runtimeInstanceReservation
 	instanceSequence      uint64
+	directInstanceCount   uint32
+	directInstanceMemory  uint64
 	cfg                   *RuntimeConfig
 	overridePolicy        ImportOverridePolicy
 	managedActive         atomic.Bool
@@ -59,6 +62,29 @@ type Runtime struct {
 	capOrder     []Capability
 	instructions map[string]*registeredInstruction
 	pluginRuns   []registeredPluginRun
+}
+
+type runtimeInstanceReservation struct {
+	rt         *Runtime
+	memory     uint64
+	registered atomic.Bool
+	once       sync.Once
+}
+
+func (r *runtimeInstanceReservation) release() {
+	if r == nil || r.rt == nil {
+		return
+	}
+	r.once.Do(func() {
+		r.rt.mu.Lock()
+		if r.rt.directInstanceCount == 0 || r.memory > r.rt.directInstanceMemory {
+			r.rt.mu.Unlock()
+			panic("wago: direct instance reservation underflow")
+		}
+		r.rt.directInstanceCount--
+		r.rt.directInstanceMemory -= r.memory
+		r.rt.mu.Unlock()
+	})
 }
 
 type runtimeState uint8
@@ -292,7 +318,7 @@ func (rt *Runtime) beginOperationKind(label string, allowLoading, compile bool) 
 	return runtimeOperation{rt: rt, compile: compile, active: true}, nil
 }
 
-func (rt *Runtime) registerInstance(in *Instance) error {
+func (rt *Runtime) registerInstance(in *Instance, reservation *runtimeInstanceReservation) error {
 	if rt == nil || in == nil {
 		return fmt.Errorf("wago: cannot register a nil runtime instance")
 	}
@@ -303,6 +329,13 @@ func (rt *Runtime) registerInstance(in *Instance) error {
 	}
 	rt.instanceSequence++
 	rt.instances[in] = rt.instanceSequence
+	if reservation != nil {
+		if rt.instanceReservations == nil {
+			rt.instanceReservations = make(map[*Instance]*runtimeInstanceReservation)
+		}
+		rt.instanceReservations[in] = reservation
+		reservation.registered.Store(true)
+	}
 	return nil
 }
 
@@ -337,7 +370,39 @@ func (rt *Runtime) unregisterInstance(in *Instance) {
 	}
 	rt.mu.Lock()
 	delete(rt.instances, in)
+	reservation := rt.instanceReservations[in]
+	delete(rt.instanceReservations, in)
+	if len(rt.instanceReservations) == 0 {
+		rt.instanceReservations = nil
+	}
 	rt.mu.Unlock()
+	reservation.release()
+}
+
+func (rt *Runtime) reserveDirectInstance(mod *Module, origin InstantiateOrigin) (*runtimeInstanceReservation, error) {
+	limits := rt.cfg.instanceLimits
+	if origin != InstantiateDirect || limits == nil || (limits.maxInstances == 0 && limits.maxMemoryBytes == 0) {
+		return nil, nil
+	}
+	var memory uint64
+	if limits.maxMemoryBytes != 0 {
+		var err error
+		memory, err = managedMemoryReservation(mod)
+		if err != nil {
+			return nil, fmt.Errorf("wago: module memory limits: %v: %w", err, ErrPermissionDenied)
+		}
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if limits.maxInstances != 0 && rt.directInstanceCount >= limits.maxInstances {
+		return nil, fmt.Errorf("wago: runtime instance limit %d reached: %w", limits.maxInstances, ErrPermissionDenied)
+	}
+	if limits.maxMemoryBytes != 0 && memory > limits.maxMemoryBytes-rt.directInstanceMemory {
+		return nil, fmt.Errorf("wago: aggregate direct instance memory %d + %d exceeds limit %d: %w", rt.directInstanceMemory, memory, limits.maxMemoryBytes, ErrPermissionDenied)
+	}
+	rt.directInstanceCount++
+	rt.directInstanceMemory += memory
+	return &runtimeInstanceReservation{rt: rt, memory: memory}, nil
 }
 
 func (rt *Runtime) beginModuleCloseCallbacks() (*hookRegistry, func()) {
@@ -725,6 +790,15 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if err := applyPolicy(mod, cfg.policy); err != nil {
 		return nil, err
 	}
+	reservation, err := rt.reserveDirectInstance(mod, origin)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if reservation != nil && !reservation.registered.Load() {
+			reservation.release()
+		}
+	}()
 
 	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, cfg.imports)
 	if err != nil {
@@ -739,7 +813,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	// retained code ownership before start-time host callbacks.
 	mod.endUse()
 	usingModule = false
-	in, err := rt.instantiateWithHooksOrigin(mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation)
+	in, err := rt.instantiateWithHooksOrigin(mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation, reservation)
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
@@ -826,12 +900,13 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
-func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
+func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation, runtimeReservation *runtimeInstanceReservation) (*Instance, error) {
 	iopts := InstantiateOptions{
 		Imports: imports, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
 		forceSyncHost:        forceSyncHost || rt.callerResolverActive.Load(),
 		moduleIdentity:       mod.moduleIdentity(),
 		operationReservation: reservation,
+		runtimeReservation:   runtimeReservation,
 		independentInstances: mod.independentInstances,
 		hasExecutionPolicy:   true,
 	}
@@ -1237,6 +1312,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 	rt.managedActive.Store(false)
 	rt.callerResolverActive.Store(false)
 	rt.instances = map[*Instance]uint64{}
+	rt.instanceReservations = nil
 	rt.instanceSequence = 0
 	rt.mu.Unlock()
 	return err

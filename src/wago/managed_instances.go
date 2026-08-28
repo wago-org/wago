@@ -217,7 +217,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 		gc = *state.gcConfig
 	}
 	pluginGCImports := parent.pluginGCImportSet()
-	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, pluginGCImports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation)
+	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, pluginGCImports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation, nil)
 	if err != nil {
 		m.mu.Lock()
 		m.live--
