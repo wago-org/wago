@@ -101,7 +101,7 @@ func TestPolicyChecksEveryLocalTable(t *testing.T) {
 	in.Close()
 }
 
-func TestPolicyTableLimitChecksDeclaredMaximum(t *testing.T) {
+func TestPolicyTableLimitChecksAllocatedCapacity(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	declaredWasm := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(

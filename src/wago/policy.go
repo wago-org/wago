@@ -65,14 +65,15 @@ func applyPolicy(mod *Module, p Policy) error {
 	}
 	if p.MaxTableEntries > 0 {
 		for i := 0; i < mod.c.tableCount(); i++ {
-			maximum := uint64(mod.c.tableRuntimeCapacity(i))
-			if declared, ok := mod.c.tableImportAt(i); ok && declared.HasMax {
-				maximum = declared.Max
-			} else if def := mod.c.tableDef(i); def.HasMax {
-				maximum = def.Max
+			capacity := uint64(mod.c.tableRuntimeCapacity(i))
+			if declared, ok := mod.c.tableImportAt(i); ok {
+				// Imported tables allocate in their provider. Admission can charge
+				// only the minimum this module requires, not the provider's declared
+				// maximum, which may be sparse table64 metadata.
+				capacity = declared.Min
 			}
-			if maximum > uint64(p.MaxTableEntries) {
-				return fmt.Errorf("module table %d maximum %d exceeds policy limit %d: %w", i, maximum, p.MaxTableEntries, ErrPermissionDenied)
+			if capacity > uint64(p.MaxTableEntries) {
+				return fmt.Errorf("module table %d capacity %d exceeds policy limit %d: %w", i, capacity, p.MaxTableEntries, ErrPermissionDenied)
 			}
 		}
 	}
