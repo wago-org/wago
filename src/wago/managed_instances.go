@@ -340,10 +340,20 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
-	if ctx.Done() != nil {
-		stopCancel := in.startCancellationWatch(ctx, in.trap)
-		defer stopCancel()
+	if ctx.Done() == nil {
+		// Keep the common non-cancelable path identical to the original dispatch:
+		// Go 1.22 otherwise retains the context through the trap translation call
+		// and adds a heap allocation even though no watcher can ever fire.
+		if in.syncMode {
+			return in.callNativeSync(base)
+		}
+		if err := in.callNativeAsync(base, false); err != nil {
+			return err
+		}
+		return in.replayHostLog()
 	}
+	stopCancel := in.startCancellationWatch(ctx, in.trap)
+	defer stopCancel()
 	if in.syncMode {
 		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))
 	}
