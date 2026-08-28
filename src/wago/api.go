@@ -3991,9 +3991,9 @@ func (c *Compiled) validateSerializableLocked() error {
 	return c.validateCodecMetadata()
 }
 
-// ReadFrom streams one sectioned ".wago" artifact using bounded default
-// allocations. Native code is read directly into its RW image and sealed in
-// place on first instantiation.
+// ReadFrom streams one trusted sectioned ".wago" artifact using bounded default
+// allocations. Artifacts contain unsandboxed host-native code. Native code is
+// read directly into its RW image and sealed in place on first instantiation.
 func (c *Compiled) ReadFrom(r io.Reader) (int64, error) {
 	return c.ReadFromWithLimits(r, DefaultArtifactLimits())
 }
@@ -4028,9 +4028,10 @@ func (c *Compiled) ReadFromWithLimits(r io.Reader, limits ArtifactLimits) (int64
 	return n, nil
 }
 
-// UnmarshalBinary loads a ".wago" blob produced by MarshalBinary. It may
-// replace receiver state before instantiation; replacement is rejected while
-// instances of the receiver are live.
+// UnmarshalBinary loads a trusted ".wago" blob produced by MarshalBinary. The
+// artifact contains executable native code and is not a sandboxed Wasm input.
+// It may replace receiver state before instantiation; replacement is rejected
+// while instances of the receiver are live.
 func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if !IsCompiled(data) {
 		return fmt.Errorf("not a wago module")
@@ -4078,14 +4079,24 @@ func finishDecodedCompiled(decoded *Compiled) error {
 // IsCompiled reports whether b is a precompiled wago module (vs raw wasm).
 func IsCompiled(b []byte) bool { return len(b) >= 5 && string(b[:4]) == wagoMagic }
 
-// Load returns a *Compiled from either a precompiled ".wago" blob or raw wasm
-// (which it compiles).
+// Load compiles raw Wasm. It rejects native-code .wago artifacts so format
+// autodetection cannot silently cross the Wasm trust boundary.
 func Load(b []byte) (*Compiled, error) {
 	if IsCompiled(b) {
-		c := &Compiled{}
-		return c, c.UnmarshalBinary(b)
+		return nil, fmt.Errorf("wago: Load refuses native-code artifacts; use LoadTrustedArtifact only for authenticated or locally produced bytes")
 	}
 	return Compile(nil, b)
+}
+
+// LoadTrustedArtifact decodes a precompiled .wago artifact. Artifacts contain
+// raw host-native executable code and MUST be authenticated or produced in the
+// same trusted environment; validation cannot make hostile native code safe.
+func LoadTrustedArtifact(b []byte) (*Compiled, error) {
+	if !IsCompiled(b) {
+		return nil, fmt.Errorf("wago: trusted artifact input is not a .wago module")
+	}
+	c := &Compiled{}
+	return c, c.UnmarshalBinary(b)
 }
 
 // Invoke marshals slot-based arguments/results around one native WasmWrapper

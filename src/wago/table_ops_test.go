@@ -366,7 +366,7 @@ func TestFuncrefTableInitializerExpressionSurvivesCompiledCodec(t *testing.T) {
 		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -1224,7 +1224,7 @@ func TestTableGrowCapacitySurvivesCompiledCodec(t *testing.T) {
 		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -2000,7 +2000,7 @@ func TestCompiledCodecPreservesTableImport(t *testing.T) {
 		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -2336,7 +2336,7 @@ func TestCompiledCodecPreservesMinOnlyTableImportAndAcceptsLargerHostTable(t *te
 		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -3395,7 +3395,7 @@ func TestCompiledCodecPreservesPassiveNullElementPayloads(t *testing.T) {
 		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -3480,7 +3480,7 @@ func TestCompiledCodecMinOnlyTableImportRejectsBelowMinAfterLoad(t *testing.T) {
 		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

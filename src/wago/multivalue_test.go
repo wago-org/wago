@@ -124,7 +124,7 @@ func TestMultiValueDefaultConfigControlCallsAndCodec(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MarshalBinary: %v", err)
 		}
-		c, err = Load(blob)
+		c, err = LoadTrustedArtifact(blob)
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -199,7 +199,7 @@ func TestMultiValueBranchPayloadsAndTypedCall(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MarshalBinary: %v", err)
 		}
-		c, err = Load(blob)
+		c, err = LoadTrustedArtifact(blob)
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}

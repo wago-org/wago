@@ -29,7 +29,7 @@ func main() {
 	fmt.Printf("precompiled blob: %d bytes, is-wago-blob=%v\n", len(blob), wago.IsCompiled(blob))
 
 	// Later, in a fresh process: Load accepts a blob or raw wasm transparently.
-	loaded, err := wago.Load(blob)
+	loaded, err := wago.LoadTrustedArtifact(blob)
 	if err != nil {
 		panic(err)
 	}

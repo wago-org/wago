@@ -388,7 +388,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatal(err)
 	}

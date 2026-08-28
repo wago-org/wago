@@ -17,7 +17,7 @@ func TestPassiveDataMemoryInitAndDrop(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MarshalBinary: %v", err)
 		}
-		c, err = Load(blob)
+		c, err = LoadTrustedArtifact(blob)
 		if err != nil {
 			t.Fatalf("Load compiled blob: %v", err)
 		}

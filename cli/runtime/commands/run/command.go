@@ -25,7 +25,10 @@ type Environment interface {
 }
 
 func Command(environment Environment) *command.Cmd {
-	flags := []command.Flag{{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"}}
+	flags := []command.Flag{
+		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
+		{Name: "allow-native-artifact", Help: "execute a trusted .wago native-code artifact"},
+	}
 	flags = append(flags, watchFlags()...)
 	flags = append(flags,
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
@@ -41,7 +44,8 @@ func Command(environment Environment) *command.Cmd {
 		Normalize: func(args []string) ([]string, error) {
 			return NormalizeParallelArgs(args, parserFlags, false)
 		},
-		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
+		Long: "<file> is raw .wasm. Trusted precompiled .wago native code requires --allow-native-artifact.\n" +
+			"Never enable that flag for an untrusted artifact. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
 			"Wago flags may appear before or after <file>; use -- before colliding guest flags.\n" +
 			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
@@ -85,7 +89,7 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	config := selection.RuntimeConfig()
 	runtime := cmd.environment.LoadRuntime(config, positionals)
 	defer runtime.Close()
-	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache())
+	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache(), ctx.Bool("allow-native-artifact"))
 	compiled := module.Compiled()
 	export := mustResolveExport(compiled, ctx.Str("invoke"))
 
