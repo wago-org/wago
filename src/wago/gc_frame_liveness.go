@@ -74,6 +74,10 @@ type gcFrameLivenessExtra struct {
 // collecting site and returns the maximum population live at any one site.
 // Masks remain site-major and exact; the returned local slices preserve their
 // original frame order.
+// Keep this large compile-time helper out of newGCFrameRootPlan. TinyGo's size
+// optimizer otherwise inlines it and grows the minimal runtime substantially.
+//
+//go:noinline
 func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []uint64, extra *gcFrameLivenessExtra) ([]uint32, []uint32, []uint64, []uint64, int, error) {
 	if len(indexes) != len(offsets) {
 		return nil, nil, nil, nil, 0, fmt.Errorf("GC local liveness index/offset count mismatch")
