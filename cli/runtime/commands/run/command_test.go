@@ -118,6 +118,26 @@ func TestRunRecognizesFlagsAfterModulePath(t *testing.T) {
 	}
 }
 
+func TestRunParsesNativeArtifactOptInAsBoolean(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	for _, args := range [][]string{
+		{"--allow-native-artifact", "module.wago"},
+		{"module.wago", "--allow-native-artifact"},
+	} {
+		normalized, err := cmd.Normalize(args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err := cmd.Parse("wago run", normalized)
+		if err != nil {
+			t.Fatalf("parse %v: %v", args, err)
+		}
+		if !ctx.Bool("allow-native-artifact") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wago" {
+			t.Fatalf("parse %v = opt-in %v, args %v", args, ctx.Bool("allow-native-artifact"), ctx.Args)
+		}
+	}
+}
+
 func TestFriendlyInstantiationErrorIsProviderNeutral(t *testing.T) {
 	for _, importName := range []string{"wasi_snapshot_preview1.fd_write", "acme_host.render"} {
 		err := fmt.Errorf(`module imports %q, but nothing provides it: %w`, importName, wago.ErrMissingImport)

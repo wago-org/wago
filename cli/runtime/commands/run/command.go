@@ -27,7 +27,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	flags := []command.Flag{
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "allow-native-artifact", Help: "execute a trusted .wago native-code artifact"},
+		{Name: "allow-native-artifact", Bool: true, Help: "execute a trusted .wago native-code artifact"},
 	}
 	flags = append(flags, watchFlags()...)
 	flags = append(flags,
