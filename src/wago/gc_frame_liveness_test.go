@@ -231,6 +231,17 @@ func TestGCFrameLocalLivenessAllocationBudget(t *testing.T) {
 	}
 }
 
+func TestGCFrameLocalLivenessArenaBudget(t *testing.T) {
+	const words = (1138 + 63) / 64
+	boundary := maxGCFrameLivenessArenaBytes / 8 / words
+	if !gcFrameLivenessArenaFits(boundary, words) {
+		t.Fatal("liveness arena rejected its exact 64 MiB boundary")
+	}
+	if gcFrameLivenessArenaFits(boundary+1, words) {
+		t.Fatal("liveness arena accepted a byte above its 64 MiB boundary")
+	}
+}
+
 func BenchmarkGCFrameLocalLivenessRootCounts(b *testing.B) {
 	for _, roots := range []int{64, 65, 128, 256, 1024} {
 		b.Run(fmt.Sprintf("roots=%d", roots), func(b *testing.B) {

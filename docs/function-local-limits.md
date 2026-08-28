@@ -28,14 +28,15 @@ limited to 1,024 exact roots. A function may consequently declare more than
 with 1,025 live collector locals fails closed with an actionable admission
 diagnostic.
 
-The liveness bitmap is compile-only. Its main arena is capped at 512 MiB for an
-adversarial combination of body size and configured locals, while serialized
-metadata contains only final site offset vectors of at most 1,024 entries. The
-common path through 64 roots retains one-word masks.
+The liveness bitmap is compile-only. Its main arena is capped at 64 MiB for an
+adversarial combination of body size and configured locals. The CFG omits
+instructions that cannot affect local liveness or control flow before sizing
+that arena, and serialized metadata contains only final site offset vectors of
+at most 1,024 entries. The common path through 64 roots retains one-word masks.
 
 On the Ryzen 7 8845HS development host, the permanent 1,138-declared/one-live
-analysis benchmark measured a warmed median of 17.9 us, 29,728 B/op, and 13
-allocations. The existing dense 1,024-root benchmark measured 290.7-293.2 us,
-445,268-445,269 B/op, and 11 allocations. These are compile-time costs; runtime
+analysis benchmark measured a warmed median of 17.2 us, 29,408 B/op, and 13
+allocations. The existing dense 1,024-root benchmark measured 160.8-164.2 us,
+224,082-224,084 B/op, and 10 allocations. These are compile-time costs; runtime
 safepoint lookup and the final one-root metadata vector do not retain the
 declaration-wide bitmap.
