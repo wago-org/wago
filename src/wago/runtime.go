@@ -730,6 +730,9 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if err != nil {
 		return nil, err
 	}
+	if err := applyResolvedTablePolicy(mod.c, imports, cfg.policy); err != nil {
+		return nil, err
+	}
 
 	// Lifecycle callbacks may close their Module. End the inspection lease before
 	// callbacks; low-level instantiation acquires a fresh lease and transfers it to

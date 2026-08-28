@@ -68,14 +68,38 @@ func applyPolicy(mod *Module, p Policy) error {
 	}
 	if p.MaxTableEntries > 0 {
 		for i := 0; i < mod.c.tableCount(); i++ {
-			size := mod.c.tableMinimum(i)
-			if uint64(size) > uint64(p.MaxTableEntries) {
-				return fmt.Errorf("module table %d size %d exceeds policy limit %d: %w", i, size, p.MaxTableEntries, ErrPermissionDenied)
+			capacity := uint64(mod.c.tableRuntimeCapacity(i))
+			if declared, ok := mod.c.tableImportAt(i); ok {
+				// Imported tables allocate in their provider. Admission can charge
+				// only the minimum this module requires, not the provider's declared
+				// maximum, which may be sparse table64 metadata.
+				capacity = declared.Min
+			}
+			if capacity > uint64(p.MaxTableEntries) {
+				return fmt.Errorf("module table %d capacity %d exceeds policy limit %d: %w", i, capacity, p.MaxTableEntries, ErrPermissionDenied)
 			}
 		}
 	}
 	if p.MaxTags > 0 && mod.c.memoryDir != nil && uint32(len(mod.c.memoryDir.ehTags)) > p.MaxTags {
 		return fmt.Errorf("module tag count %d exceeds policy limit %d: %w", len(mod.c.memoryDir.ehTags), p.MaxTags, ErrPermissionDenied)
+	}
+	return nil
+}
+
+func applyResolvedTablePolicy(c *Compiled, imports Imports, p Policy) error {
+	if p.MaxTableEntries == 0 {
+		return nil
+	}
+	for i := 0; i < c.tableImportCount(); i++ {
+		declared, _ := c.tableImportAt(i)
+		table, ok := imports.table(declared.Key)
+		if !ok {
+			continue
+		}
+		capacity, ok := table.runtimeCapacity()
+		if ok && capacity > p.MaxTableEntries {
+			return fmt.Errorf("module imported table %d capacity %d exceeds policy limit %d: %w", i, capacity, p.MaxTableEntries, ErrPermissionDenied)
+		}
 	}
 	return nil
 }
