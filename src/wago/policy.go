@@ -22,8 +22,8 @@ type Policy struct {
 	// MaxTags caps the number of declared/imported exception tags. 0 means unbounded.
 	MaxTags uint32
 
-	// MaxInvokeDuration bounds a single invocation. Accepted but not yet enforced
-	// by the low-level call path; reserved.
+	// MaxInvokeDuration bounds a single invocation. The low-level call path does
+	// not yet implement this bound, so nonzero values are rejected at admission.
 	MaxInvokeDuration time.Duration
 }
 
@@ -49,6 +49,9 @@ func (p Policy) allows(cap Capability) bool {
 // requires must be permitted, and its declared limits must fit. It returns an
 // error wrapping ErrPermissionDenied on violation. The zero Policy passes.
 func applyPolicy(mod *Module, p Policy) error {
+	if p.MaxInvokeDuration != 0 {
+		return fmt.Errorf("maximum invoke duration is not supported by the low-level call path: %w", ErrPermissionDenied)
+	}
 	for _, cap := range mod.RequiredCapabilities() {
 		if !p.allows(cap) {
 			return fmt.Errorf("module requires capability %q which the policy does not allow: %w", cap, ErrPermissionDenied)
