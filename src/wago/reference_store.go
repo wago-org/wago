@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -257,6 +258,23 @@ func (v gcInvocationDomainView) lock() {
 	for i := 0; i < v.len(); i++ {
 		v.at(i).invocationMu.Lock()
 	}
+}
+
+func (v gcInvocationDomainView) lockContext(ctx context.Context) error {
+	if ctx == nil || ctx.Done() == nil {
+		v.lock()
+		return nil
+	}
+	locked := 0
+	for ; locked < v.len(); locked++ {
+		if err := lockMutexContext(ctx, &v.at(locked).invocationMu); err != nil {
+			for i := locked - 1; i >= 0; i-- {
+				v.at(i).invocationMu.Unlock()
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func (v gcInvocationDomainView) unlock() {
@@ -923,6 +941,19 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 }
 
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
+	lease, err := in.lockGCInvocationContext(nil, owner)
+	if err != nil {
+		panic("wago: context-free GC invocation lock failed")
+	}
+	return lease
+}
+
+func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocationID) (gcInvocationLease, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return gcInvocationLease{}, err
+		}
+	}
 	if owner == 0 {
 		owner = newInvocationID()
 	}
@@ -935,19 +966,20 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if topology == nil {
 			panic("wago: dynamic Runtime GC invocation has no topology")
 		}
-		topology.RLock()
+		if err := readLockContext(ctx, &topology.RWMutex); err != nil {
+			return gcInvocationLease{}, err
+		}
 	}
 	domains := in.gcInvocationDomains()
 	if domains.len() == 0 {
 		if dynamic {
-			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}
+			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}, nil
 		}
-		return gcInvocationLease{}
+		return gcInvocationLease{}, nil
 	}
 	// A native cross-instance call reuses the public root's invocation identity.
 	// The root pre-acquires the transitive, globally ordered domain set, so a
-	// target reached through its retained imports borrows the already-held lease
-	// instead of recursively locking the same non-reentrant mutexes.
+	// target reached through its retained imports borrows the already-held lease.
 	first := domains.at(0)
 	first.invocationState.Lock()
 	borrowed := first.invocationOwner == owner
@@ -959,15 +991,23 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if dynamic {
 			topology.RUnlock()
 		}
-		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}
+		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}, nil
 	}
-	domains.lock()
+	if err := domains.lockContext(ctx); err != nil {
+		if dynamic {
+			topology.RUnlock()
+		}
+		return gcInvocationLease{}, err
+	}
 	domains.claim(owner)
-	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}
+	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}, nil
 }
 
 func (l gcInvocationLease) unlock() {
 	if !l.acquired {
+		return
+	}
+	if consumeAbandonedGCInvocation(l.in, l.owner) {
 		return
 	}
 	domains := l.domains
@@ -992,7 +1032,15 @@ func (in *Instance) ownsGCInvocation(owner invocationID) bool {
 	return owned
 }
 
-func (in *Instance) suspendGCInvocation(owner invocationID) func() {
+type gcInvocationResume func(context.Context) error
+
+func (resume gcInvocationResume) withoutContext() {
+	if err := resume(nil); err != nil {
+		panic("wago: context-free GC invocation resume failed")
+	}
+}
+
+func (in *Instance) suspendGCInvocationContext(owner invocationID) gcInvocationResume {
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
 	if dynamic {
@@ -1005,14 +1053,14 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	}
 	domains := in.gcInvocationDomains()
 	if owner == 0 || domains.len() == 0 && !dynamic {
-		return func() {}
+		return func(context.Context) error { return nil }
 	}
 	if !domains.ownedBy(owner) {
 		if !domains.dynamic && domains.set == nil {
 			// Start-function and construction callbacks can run before a public
 			// invocation lease exists. Their native entry is already serialized, so
 			// there is no complete-call lease to suspend or restore.
-			return func() {}
+			return func(context.Context) error { return nil }
 		}
 		panic("wago: partial Runtime GC invocation lease ownership")
 	}
@@ -1021,13 +1069,23 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	if dynamic {
 		topology.RUnlock()
 	}
-	return func() {
+	return func(ctx context.Context) error {
 		if dynamic {
-			topology.RLock()
+			if err := readLockContext(ctx, &topology.RWMutex); err != nil {
+				markGCInvocationAbandoned(in, owner)
+				return err
+			}
 			domains = in.gcInvocationDomains()
 		}
-		domains.lock()
+		if err := domains.lockContext(ctx); err != nil {
+			if dynamic {
+				topology.RUnlock()
+			}
+			markGCInvocationAbandoned(in, owner)
+			return err
+		}
 		domains.claim(owner)
+		return nil
 	}
 }
 

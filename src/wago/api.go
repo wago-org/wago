@@ -4505,8 +4505,8 @@ func nativeCancellationSupported() bool {
 func noOpCancellationWatch() {}
 
 func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []byte) func() {
-	if !nativeCancellationSupported() || cancel == nil || len(activeTrap) < 4 {
-		return func() {}
+	if !nativeCancellationSupported() || cancel == nil || cancel.Done() == nil || len(activeTrap) < 4 {
+		return noOpCancellationWatch
 	}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
@@ -4668,8 +4668,8 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	// collector lease after scalar-only validation so same-domain InvokeFromHost
 	// and CollectGC calls can proceed, then restore it before returning results to
 	// the public invocation boundary.
-	resumeGCInvocation := in.suspendGCInvocation(id)
-	defer resumeGCInvocation()
+	resumeGCInvocation := in.suspendGCInvocationContext(id)
+	defer resumeGCInvocation.withoutContext()
 	fn := in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)

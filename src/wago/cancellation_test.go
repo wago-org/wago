@@ -59,6 +59,162 @@ func TestCallContextInterruptsNativeLoop(t *testing.T) {
 	}
 }
 
+func TestRuntimeInstantiateContextInterruptsNativeStartLoop(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(8, wasmtest.ULEB(0)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b}),
+		)),
+	)
+	rt := NewRuntime()
+	defer rt.Close()
+	compiled, err := rt.Compile(mod)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if in, err := rt.Instantiate(ctx, compiled); in != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("infinite start instantiate = %v, %v; want nil, context deadline", in, err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("start cancellation took %v, want bounded interruption", elapsed)
+	}
+}
+
+func TestStartCancellationWatchBackgroundAllocFree(t *testing.T) {
+	in := &Instance{trap: make([]byte, 4)}
+	if got := testing.AllocsPerRun(100, func() {
+		in.startCancellationWatch(context.Background(), in.trap)()
+	}); got != 0 {
+		t.Fatalf("background cancellation watch allocations = %v, want 0", got)
+	}
+}
+
+func TestInstantiateContextChecksImportedStartBeforeDispatch(t *testing.T) {
+	compiled := MustCompile(importedStartModule())
+	defer compiled.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	calls := 0
+	in, err := Instantiate(compiled, InstantiateOptions{
+		Context: ctx,
+		Imports: Imports{"env.start": HostFunc(func(HostModule, []uint64, []uint64) {
+			calls++
+		})},
+	})
+	if in != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled imported start = %v, %v; want nil, context cancellation", in, err)
+	}
+	if calls != 0 {
+		t.Fatalf("canceled imported start ran %d time(s), want 0", calls)
+	}
+}
+
+func TestRuntimeInstantiateContextCancelsNativeEntryWait(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(8, wasmtest.ULEB(0)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithIndependentInstanceExecution(false)))
+	defer rt.Close()
+	compiled, err := rt.Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nativeExecutionMu.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		in, instantiateErr := rt.Instantiate(ctx, compiled)
+		if in != nil {
+			_ = in.Close()
+		}
+		done <- instantiateErr
+	}()
+	select {
+	case err := <-done:
+		nativeExecutionMu.Unlock()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("native-entry wait error = %v, want context deadline", err)
+		}
+	case <-time.After(time.Second):
+		nativeExecutionMu.Unlock()
+		<-done
+		t.Fatal("instantiation did not cancel while the native-entry lease was held")
+	}
+}
+
+func TestRuntimeInstantiateContextCancelsHostResumeWait(t *testing.T) {
+	void := wasmtest.FuncType(nil, nil)
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("block")...), 0x00, 0x00)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(void)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(8, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithIndependentInstanceExecution(false)))
+	defer rt.Close()
+	compiled, err := rt.Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostEntered := make(chan struct{})
+	leaseHeld := make(chan struct{})
+	releaseLease := make(chan struct{})
+	competitorDone := make(chan struct{})
+	go func() {
+		defer close(competitorDone)
+		select {
+		case <-hostEntered:
+		case <-releaseLease:
+			return
+		}
+		nativeExecutionMu.Lock()
+		close(leaseHeld)
+		<-releaseLease
+		nativeExecutionMu.Unlock()
+	}()
+	defer func() {
+		close(releaseLease)
+		<-competitorDone
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		in, instantiateErr := rt.Instantiate(ctx, compiled, WithImports(Imports{
+			"env.block": HostFunc(func(HostModule, []uint64, []uint64) {
+				close(hostEntered)
+				<-leaseHeld
+			}),
+		}))
+		if in != nil {
+			_ = in.Close()
+		}
+		done <- instantiateErr
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("host-resume wait error = %v, want context deadline", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("instantiation did not cancel while host resume waited for the native lease")
+	}
+}
+
 // TestInvokeContextInterruptsHostCallLoop guards the runaway-guest guard itself:
 // a guest that calls a host import on every loop iteration must be interruptible
 // by context, and must not be pre-empted by any fixed host-call re-entry cap. The

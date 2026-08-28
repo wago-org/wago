@@ -1208,6 +1208,14 @@ type HostExit struct{ Code int32 }
 // Wago recovers HostTrap at the native boundary and returns Err to the caller.
 type HostTrap struct{ Err error }
 
+// hostResumeCanceled unwinds a synchronous native call after host dispatch
+// released its execution lease but cancellation prevented reacquisition.
+type hostResumeCanceled struct{ err error }
+
+// hostResumeAborted records that synchronous host dispatch unwound without
+// reacquiring the execution lease, while preserving the original panic value.
+type hostResumeAborted struct{ cause any }
+
 // ExitError is returned by Invoke when a host function requested termination via
 // panic(HostExit{...}). A zero code is a normal exit.
 type ExitError struct{ Code int32 }
@@ -1228,17 +1236,29 @@ func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (er
 }
 
 func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []byte, waitParent context.Context) (err error) {
-	locked, err := in.beginNativeEntry()
+	locked, err := in.beginNativeEntryContext(waitParent)
 	if err != nil {
 		return err
 	}
-	defer locked.unlockExecution()
+	executionHeld := true
+	defer func() {
+		if executionHeld {
+			locked.unlockExecution()
+		}
+	}()
 	stopWaitContext := in.publishAtomicWaitContext(waitParent)
 	defer stopWaitContext()
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
+			if aborted, ok := r.(hostResumeAborted); ok {
+				executionHeld = false
+				r = aborted.cause
+			}
 			switch trap := r.(type) {
+			case hostResumeCanceled:
+				err = trap.err
+				return
 			case HostTrap:
 				if trap.Err == nil {
 					err = fmt.Errorf("wago: host trapped without an error")
@@ -1298,6 +1318,13 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	}
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
+	}
+	if waitParent != nil && waitParent.Done() != nil {
+		ctrl := offHeapSlicePtr(in.ctrl)
+		invocation := currentHostInvocationContext(ctrl, in)
+		invocation.wait = waitParent
+		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
+		defer restoreInvocationContext()
 	}
 	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, in.dispatchSynchronousHostCall)
 	goruntime.KeepAlive(in)

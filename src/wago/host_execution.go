@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
@@ -23,6 +24,7 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 type hostInvocationContext struct {
 	id          invocationID
 	reservation *pluginOperationReservation
+	wait        context.Context
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
@@ -47,7 +49,7 @@ func activeHostInvocationContext(in *Instance) hostInvocationContext {
 }
 
 func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() {
-	if ctrl == 0 || next.id == 0 {
+	if ctrl == 0 || next.id == 0 && next.wait == nil {
 		return func() {}
 	}
 	previous, loaded := hostInvocationContexts.Load(ctrl)
@@ -172,7 +174,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
 		leaseOwner = root
 	}
-	resumeGCInvocation := leaseOwner.suspendGCInvocation(id)
+	resumeGCInvocation := leaseOwner.suspendGCInvocationContext(id)
 	var localMu *sync.Mutex
 	var epoch uint64
 	if active.usesIndependentExecution() {
@@ -188,12 +190,32 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
-		resumeGCInvocation()
-		if localMu != nil {
-			localMu.Lock()
-		} else {
-			nativeExecutionMu.Lock()
+		resumeHeld := false
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if resumeHeld {
+					panic(recovered)
+				}
+				panic(hostResumeAborted{cause: recovered})
+			}
+		}()
+		if err := resumeGCInvocation(invocation.wait); err != nil {
+			active.clearGCHostResultRoots(activation)
+			panic(hostResumeCanceled{err: err})
 		}
+		resumeMu := localMu
+		if resumeMu == nil {
+			resumeMu = &nativeExecutionMu
+		}
+		if err := lockMutexContext(invocation.wait, resumeMu); err != nil {
+			// The outer native boundary must not unlock a lease that this host
+			// transition released and could not reacquire. Collector ownership is
+			// restored above, so it is safe to discard the abandoned activation's
+			// explicit roots before unwinding past the native frame.
+			active.clearGCHostResultRoots(activation)
+			panic(hostResumeCanceled{err: err})
+		}
+		resumeHeld = true
 		active.clearGCHostResultRoots(activation)
 		// Public calls on one instance are serialized, but synchronous host code
 		// may re-enter the parked instance while its local lease is released.
