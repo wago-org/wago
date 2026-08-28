@@ -7,12 +7,23 @@ const branchTableInlineLabelWords = 4
 
 type branchTableLabelSet struct {
 	inline [branchTableInlineLabelWords]uint64
-	deep   []uint64
+	deep   *[]branchTableLabelWord
 	depth  uint32
+	epoch  uint32
 }
 
-func newBranchTableLabelSet(depth int) branchTableLabelSet {
-	return branchTableLabelSet{depth: uint32(depth)}
+type branchTableLabelWord struct {
+	bits  uint64
+	epoch uint32
+}
+
+func (v *funcValidator) newBranchTableLabelSet() branchTableLabelSet {
+	v.branchTableEpoch++
+	if v.branchTableEpoch == 0 {
+		clear(v.branchTableLabels)
+		v.branchTableEpoch = 1
+	}
+	return branchTableLabelSet{deep: &v.branchTableLabels, depth: uint32(len(v.ctrls)), epoch: v.branchTableEpoch}
 }
 
 func (s *branchTableLabelSet) mark(label uint32) bool {
@@ -28,14 +39,19 @@ func (s *branchTableLabelSet) mark(label uint32) bool {
 		// fallback for direct helper use without allocating from invalid input.
 		return true
 	}
-	if s.deep == nil {
+	if len(*s.deep) == 0 {
 		words := (s.depth + 63) >> 6
-		s.deep = make([]uint64, words-branchTableInlineLabelWords)
+		*s.deep = make([]branchTableLabelWord, words-branchTableInlineLabelWords)
 	}
 	word -= branchTableInlineLabelWords
 	mask := uint64(1) << bit
-	fresh := s.deep[word]&mask == 0
-	s.deep[word] |= mask
+	entry := &(*s.deep)[word]
+	if entry.epoch != s.epoch {
+		entry.bits = 0
+		entry.epoch = s.epoch
+	}
+	fresh := entry.bits&mask == 0
+	entry.bits |= mask
 	return fresh
 }
 
@@ -174,7 +190,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		payloadHeight := len(v.vals)
-		checked := newBranchTableLabelSet(len(v.ctrls))
+		checked := v.newBranchTableLabelSet()
 		checked.mark(in.Index)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)

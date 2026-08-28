@@ -909,6 +909,11 @@ type funcValidator struct {
 	// instrExt per memory/br_table/select/ref.null or payload-bearing SIMD
 	// instruction.
 	opExt instrExt
+	// branchTableLabels is a lazily allocated, per-validator epoch bitmap. Deep
+	// br_table instructions reuse it so repeated short tables at maximum control
+	// depth do not allocate in proportion to the nesting depth.
+	branchTableLabels []branchTableLabelWord
+	branchTableEpoch  uint32
 }
 
 func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
