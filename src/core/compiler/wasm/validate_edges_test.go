@@ -211,8 +211,8 @@ func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 		t.Fatal("label remained marked in a later table")
 	}
 
-	// A reused validator must clear stale frame stamps on compact epoch rollover.
-	v.branchTableEpoch = ^uint16(0)
+	// A reused synthetic validator must clear stale frame stamps on epoch rollover.
+	v.branchTableEpoch = ^uint32(0)
 	v.ctrls[0].branchTableEpoch = 1
 	v.beginBranchTable()
 	if v.branchTableEpoch != 1 || v.ctrls[0].branchTableEpoch != 0 {
@@ -237,9 +237,9 @@ func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 }
 
 func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
-	wantValidator, wantFrame := uintptr(672), uintptr(96)
+	wantValidator, wantFrame := uintptr(656), uintptr(80)
 	if unsafe.Sizeof(uintptr(0)) == 4 {
-		wantValidator, wantFrame = 412, 48
+		wantValidator, wantFrame = 412, 44
 	}
 	if got := unsafe.Sizeof(funcValidator{}); got != wantValidator {
 		t.Fatalf("funcValidator size = %d, want %d", got, wantValidator)
