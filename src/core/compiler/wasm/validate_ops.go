@@ -39,9 +39,11 @@ func (s *branchTableLabelSet) mark(label uint32) bool {
 		// fallback for direct helper use without allocating from invalid input.
 		return true
 	}
-	if len(*s.deep) == 0 {
-		words := (s.depth + 63) >> 6
-		*s.deep = make([]branchTableLabelWord, words-branchTableInlineLabelWords)
+	words := int((s.depth+63)>>6) - branchTableInlineLabelWords
+	if len(*s.deep) < words {
+		grown := make([]branchTableLabelWord, words)
+		copy(grown, *s.deep)
+		*s.deep = grown
 	}
 	word -= branchTableInlineLabelWords
 	mask := uint64(1) << bit

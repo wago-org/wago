@@ -219,9 +219,15 @@ func TestBranchTableLabelSetDeduplicatesWithoutAllocation(t *testing.T) {
 	}
 	// The first deep label allocates one bounded scratch bitmap. Subsequent deep
 	// tables reuse it and distinguish visits by epoch without clearing it.
-	reused := funcValidator{ctrls: make([]ctrlFrame, maxInstructionNestingDepth)}
+	reused := funcValidator{ctrls: make([]ctrlFrame, branchTableInlineLabelWords*64+1)}
 	first := reused.newBranchTableLabelSet()
 	first.mark(branchTableInlineLabelWords * 64)
+	// A later function or table may be deeper than the first allocation.
+	reused.ctrls = make([]ctrlFrame, maxInstructionNestingDepth)
+	grown := reused.newBranchTableLabelSet()
+	if !grown.mark(maxInstructionNestingDepth - 1) {
+		t.Fatal("grown deep label was not marked")
+	}
 	if allocs := testing.AllocsPerRun(100, func() {
 		local := reused.newBranchTableLabelSet()
 		for i := 0; i < 1000; i++ {
