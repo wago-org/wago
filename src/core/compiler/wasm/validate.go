@@ -186,6 +186,12 @@ type moduleValidator struct {
 	compCache       map[uint32]compCacheEntry
 	compCacheFrozen bool
 
+	// Type-section indexes are built once and reused by GC subtype validation.
+	// Without them, every flat or recursive-group lookup rescans preceding groups.
+	typeIndexReady bool
+	flatSubTypes   []moduleSubTypeRef
+	typeGroupBases []int
+
 	// constFV is serial module-validation scratch for global/table/data offsets
 	// and element initializer expressions. Function-body validation never reaches
 	// it: table.init reads the element type metadata validated in this phase.
