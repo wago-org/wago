@@ -313,6 +313,37 @@ func TestExternrefGenerationAndStoreTeardown(t *testing.T) {
 	}
 }
 
+func TestRuntimeExternrefExplicitReleaseReusesSlot(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	first, err := rt.NewExternRef("first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rt.ReleaseExternRef(first) {
+		t.Fatal("release live externref failed")
+	}
+	if rt.ReleaseExternRef(first) {
+		t.Fatal("released externref accepted twice")
+	}
+	if _, ok := rt.ExternRefValue(first); ok {
+		t.Fatal("released externref still resolved")
+	}
+	second, err := rt.NewExternRef("second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.refStore.externrefs) != 1 {
+		t.Fatalf("externref slots = %d, want reuse at high-water mark 1", len(rt.refStore.externrefs))
+	}
+	if value, ok := rt.ExternRefValue(second); !ok || value != "second" {
+		t.Fatalf("reused externref = %v, %v", value, ok)
+	}
+	if _, ok := rt.ExternRefValue(first); ok {
+		t.Fatal("stale token resolved after slot reuse")
+	}
+}
+
 func TestExternrefCodecCarriesStructureButNoStoreIdentity(t *testing.T) {
 	c := compileExplicitArtifact(t, externrefControlModule())
 	blob, err := c.MarshalBinary()
