@@ -206,6 +206,13 @@ func TestManagedVoidTableDispatch(t *testing.T) {
 	if err := owned.InvokeVoidTable(context.Background(), 0); err != nil {
 		t.Fatalf("InvokeVoidTable: %v", err)
 	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		if err := owned.InvokeVoidTable(context.Background(), 0); err != nil {
+			panic(err)
+		}
+	}); allocs != 0 {
+		t.Fatalf("background InvokeVoidTable allocations = %.0f, want 0", allocs)
+	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := owned.InvokeVoidTable(canceled, 0); err != context.Canceled {

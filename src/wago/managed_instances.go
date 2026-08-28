@@ -340,8 +340,10 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
-	stopCancel := in.startCancellationWatch(ctx, in.trap)
-	defer stopCancel()
+	if ctx.Done() != nil {
+		stopCancel := in.startCancellationWatch(ctx, in.trap)
+		defer stopCancel()
+	}
 	if in.syncMode {
 		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))
 	}
