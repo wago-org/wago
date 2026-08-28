@@ -1,0 +1,39 @@
+name: Agent export repository bundle
+
+on:
+  push:
+    branches:
+      - agent/export-dragline-544
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exporter branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch source branches
+        run: |
+          git fetch --force origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/jairus/dragline-mvp:refs/remotes/origin/jairus/dragline-mvp
+
+      - name: Create git bundle
+        run: |
+          git bundle create /tmp/wago.bundle \
+            refs/remotes/origin/main \
+            refs/remotes/origin/jairus/dragline-mvp
+          git bundle verify /tmp/wago.bundle
+
+      - name: Upload git bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: wago-agent-bundle
+          path: /tmp/wago.bundle
+          compression-level: 0
+          retention-days: 1
