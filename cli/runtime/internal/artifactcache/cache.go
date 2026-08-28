@@ -100,6 +100,9 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 		return nil, err
 	}
 	if !cacheable {
+		if err := cache.pruneIfDue(time.Now()); err != nil {
+			cache.report(err)
+		}
 		return module, nil
 	}
 	limit := cache.MaxBytes
@@ -143,6 +146,16 @@ func (cache Cache) pruneIfDue(now time.Time) error {
 		}
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	info, err = os.Stat(cache.Dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("cache root %s is not a directory", cache.Dir)
 	}
 	return cache.pruneAndMark()
 }

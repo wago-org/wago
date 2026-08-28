@@ -333,6 +333,27 @@ func TestLoadOrCompileSkipsArtifactLargerThanCache(t *testing.T) {
 	}
 }
 
+func TestLoadOrCompileOversizedArtifactTreatsMissingCacheAsEmpty(t *testing.T) {
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: filepath.Join(t.TempDir(), "missing"), Identity: []byte("runtime-a"), MaxBytes: 1}
+	var reported error
+	cache.ReportError = func(err error) { reported = err }
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+
+	module, err := cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if reported != nil {
+		t.Fatalf("missing empty cache reported maintenance error: %v", reported)
+	}
+	if _, err := os.Stat(cache.Dir); !os.IsNotExist(err) {
+		t.Fatalf("oversized artifact created cache root: %v", err)
+	}
+}
+
 type cachePlugin func(*wago.Registrar) error
 
 func (f cachePlugin) Register(reg *wago.Registrar) error { return f(reg) }
@@ -477,6 +498,14 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 	if err := seedRuntime.Close(); err != nil {
 		t.Fatal(err)
 	}
+	seedPath, ok := cache.path(source, base)
+	if !ok {
+		t.Fatal("seed cache key unavailable")
+	}
+	cache.MaxBytes = 1
+	if err := os.Remove(filepath.Join(cache.Dir, cachePruneMarker)); err != nil {
+		t.Fatal(err)
+	}
 
 	telemetry := base.WithGCCodeTelemetry(true)
 	var compileCalls int
@@ -502,6 +531,9 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 	}
 	if _, ok := module.Compiled().GCNativeCodeTelemetry(); !ok {
 		t.Fatal("fresh telemetry compile did not retain requested attribution")
+	}
+	if _, err := os.Stat(seedPath); !os.IsNotExist(err) {
+		t.Fatalf("non-cacheable compile left oversized cache entry: %v", err)
 	}
 	if err := module.Close(); err != nil {
 		t.Fatal(err)
