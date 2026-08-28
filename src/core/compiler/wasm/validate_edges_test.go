@@ -3,6 +3,7 @@ package wasm
 import (
 	"errors"
 	"testing"
+	"unsafe"
 )
 
 func ft(params, results []ValType) RecType {
@@ -188,6 +189,64 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 		}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
+}
+
+func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
+	v := funcValidator{ctrls: make([]ctrlFrame, maxInstructionNestingDepth)}
+	v.beginBranchTable()
+	if !v.markBranchTableLabel(17) {
+		t.Fatal("first label was already present")
+	}
+	for i := 0; i < 100_000; i++ {
+		if v.markBranchTableLabel(17) {
+			t.Fatalf("duplicate label %d reported fresh", i)
+		}
+	}
+	deep := uint32(maxInstructionNestingDepth - 1)
+	if !v.markBranchTableLabel(deep) || v.markBranchTableLabel(deep) {
+		t.Fatal("maximum-depth label was not deduplicated")
+	}
+	v.beginBranchTable()
+	if !v.markBranchTableLabel(17) {
+		t.Fatal("label remained marked in a later table")
+	}
+
+	// A reused synthetic validator must clear stale frame stamps on epoch rollover.
+	v.branchTableEpoch = ^uint32(0)
+	v.ctrls[0].branchTableEpoch = 1
+	v.beginBranchTable()
+	if v.branchTableEpoch != 1 || v.ctrls[0].branchTableEpoch != 0 {
+		t.Fatal("epoch rollover did not clear active frame stamps")
+	}
+
+	indices := make([]uint32, 1_000)
+	for i := range indices {
+		indices[i] = uint32(i % maxInstructionNestingDepth)
+	}
+	in := Instruction{Kind: InstrBrTable, Index: 0, ext: &instrExt{Indices: indices}}
+	vals := []val{{t: I32}}
+	if allocs := testing.AllocsPerRun(100, func() {
+		v.vals = vals
+		v.ctrls[len(v.ctrls)-1].unreachable = false
+		if err := v.step(&in); err != nil {
+			panic(err)
+		}
+	}); allocs != 0 {
+		t.Fatalf("branch-table validation allocations = %.2f, want 0", allocs)
+	}
+}
+
+func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
+	wantValidator, wantFrame := uintptr(656), uintptr(80)
+	if unsafe.Sizeof(uintptr(0)) == 4 {
+		wantValidator, wantFrame = 412, 44
+	}
+	if got := unsafe.Sizeof(funcValidator{}); got != wantValidator {
+		t.Fatalf("funcValidator size = %d, want %d", got, wantValidator)
+	}
+	if got := unsafe.Sizeof(ctrlFrame{}); got != wantFrame {
+		t.Fatalf("ctrlFrame size = %d, want %d", got, wantFrame)
+	}
 }
 
 func TestValidateModuleLevelIndexes(t *testing.T) {

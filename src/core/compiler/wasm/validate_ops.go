@@ -1,5 +1,26 @@
 package wasm
 
+// beginBranchTable advances the generation used to stamp distinct target
+// frames. A decoded code section cannot contain enough instructions to exhaust
+// uint32. The overflow branch defensively resets the active frame set.
+func (v *funcValidator) beginBranchTable() {
+	v.branchTableEpoch++
+	if v.branchTableEpoch == 0 {
+		for i := range v.ctrls {
+			v.ctrls[i].branchTableEpoch = 0
+		}
+		v.branchTableEpoch = 1
+	}
+}
+
+// markBranchTableLabel is called only after label has been bounds-checked.
+func (v *funcValidator) markBranchTableLabel(label uint32) bool {
+	f := &v.ctrls[len(v.ctrls)-1-int(label)]
+	fresh := f.branchTableEpoch != v.branchTableEpoch
+	f.branchTableEpoch = v.branchTableEpoch
+	return fresh
+}
+
 // step validates one already-decoded instruction. in is taken by pointer: the
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
@@ -135,10 +156,15 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		payloadHeight := len(v.vals)
+		v.beginBranchTable()
+		v.markBranchTableLabel(in.Index)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
 				return err
+			}
+			if !v.markBranchTableLabel(l) {
+				continue
 			}
 			if len(lt) != len(dt) {
 				return v.verr(ErrTypeMismatch, "br_table label arity")

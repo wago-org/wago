@@ -873,10 +873,8 @@ const (
 )
 
 type ctrlFrame struct {
-	kind        ctrlKind
-	in, out     []ValType
-	height      int
-	unreachable bool
+	in, out []ValType
+	height  int
 	// initHeight is the local-initialization log watermark at control entry.
 	// Initializations performed inside a block do not escape that block; an
 	// else arm likewise restarts from the if entry state.
@@ -887,7 +885,12 @@ type ctrlFrame struct {
 	// the operand-stack height at the end of the then-arm (after its results were
 	// re-pushed) so the else-arm end can confirm both arms leave the same shape.
 	ifThenHeight int
-	ifSeenElse   bool
+	// branchTableEpoch marks whether this exact label frame has already been
+	// checked by the current br_table.
+	branchTableEpoch uint32
+	kind             ctrlKind
+	unreachable      bool
+	ifSeenElse       bool
 }
 
 type funcValidator struct {
@@ -910,8 +913,11 @@ type funcValidator struct {
 	// the function body, not with an attacker-controlled declared local count.
 	initializedLocals map[uint32]struct{}
 	localInitLog      []uint32
-	constOnly         bool
 	constGlobalLimit  int // globals below this absolute index are visible to a const expression
+	// branchTableEpoch is packed before constOnly. Each
+	// funcValidator owns its control frames, including under parallel validation.
+	branchTableEpoch uint32
+	constOnly        bool
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader
