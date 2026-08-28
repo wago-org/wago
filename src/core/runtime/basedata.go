@@ -250,6 +250,11 @@ func (j *JobMemory) BindTrapCell(trap []byte) error {
 	if len(trap) < 4 {
 		return fmt.Errorf("trap cell requires at least 4 bytes")
 	}
+	if interruptLinearMemoryRegister != nil {
+		if err := interruptLinearMemoryRegister(j.LinMemBase()); err != nil {
+			return err
+		}
+	}
 	binary.LittleEndian.PutUint32(trap, 0)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	return nil
@@ -457,7 +462,13 @@ var guardOwnerHook func(reserveBase, ownerLinMem uintptr)
 // configurations, where Close is the correct fallback).
 var guardReleaseHook func(j *JobMemory) bool
 
+var interruptLinearMemoryRegister func(uintptr) error
+var interruptLinearMemoryUnregister func(uintptr)
+
 func (j *JobMemory) Close() error {
+	if interruptLinearMemoryUnregister != nil {
+		interruptLinearMemoryUnregister(j.LinMemBase())
+	}
 	if j.reserveBase != 0 { // guard-page reservation
 		if guardCloseHook != nil {
 			guardCloseHook(j.reserveBase)

@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	maxInterruptRequests    = 64
-	maxExecutableCodeRanges = 4096
-	interruptDeadlineRetry  = 50 * time.Microsecond
+	maxInterruptRequests       = 64
+	maxExecutableCodeRanges    = 4096
+	maxInterruptLinearMemories = 4096
+	interruptDeadlineRetry     = 50 * time.Microsecond
 )
 
 // interruptRequest is published only while a cold interruption request is
@@ -36,15 +37,62 @@ type executableCodeRange struct {
 }
 
 var (
-	interruptRequests        [maxInterruptRequests]interruptRequest
-	executableCodeRanges     [maxExecutableCodeRanges]executableCodeRange
-	executableCodeRangeLimit uint32
-	executableCodeMu         sync.Mutex
+	interruptRequests          [maxInterruptRequests]interruptRequest
+	executableCodeRanges       [maxExecutableCodeRanges]executableCodeRange
+	executableCodeRangeLimit   uint32
+	executableCodeMu           sync.Mutex
+	interruptLinearMemories    [maxInterruptLinearMemories]uintptr
+	interruptLinearMemoryLimit uint32
+	interruptLinearMemoryMu    sync.Mutex
 
 	interruptInstallOnce sync.Once
 	interruptInstallErr  error
 	interruptSignal      uint32
 )
+
+func init() {
+	interruptLinearMemoryRegister = registerInterruptLinearMemory
+	interruptLinearMemoryUnregister = unregisterInterruptLinearMemory
+}
+
+func registerInterruptLinearMemory(linMem uintptr) error {
+	if linMem == 0 {
+		return fmt.Errorf("register interrupt linear memory: zero base")
+	}
+	interruptLinearMemoryMu.Lock()
+	defer interruptLinearMemoryMu.Unlock()
+	for i := range interruptLinearMemories {
+		if atomic.LoadUintptr(&interruptLinearMemories[i]) == linMem {
+			return nil
+		}
+		if atomic.LoadUintptr(&interruptLinearMemories[i]) == 0 {
+			atomic.StoreUintptr(&interruptLinearMemories[i], linMem)
+			limit := uint32(i + 1)
+			if limit > atomic.LoadUint32(&interruptLinearMemoryLimit) {
+				atomic.StoreUint32(&interruptLinearMemoryLimit, limit)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("interrupt linear-memory table full (%d)", maxInterruptLinearMemories)
+}
+
+func unregisterInterruptLinearMemory(linMem uintptr) {
+	interruptLinearMemoryMu.Lock()
+	defer interruptLinearMemoryMu.Unlock()
+	for i := range interruptLinearMemories {
+		if atomic.LoadUintptr(&interruptLinearMemories[i]) != linMem {
+			continue
+		}
+		atomic.StoreUintptr(&interruptLinearMemories[i], 0)
+		limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+		for limit > 0 && atomic.LoadUintptr(&interruptLinearMemories[limit-1]) == 0 {
+			limit--
+		}
+		atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit))
+		return
+	}
+}
 
 //lint:ignore U1000 referenced from interrupt_linux_{amd64,arm64}.s
 var interruptTrapPC uintptr

@@ -48,6 +48,18 @@ range_next:
 interrupt_match:
 	MOVD	392(R7), R11               // saved X26 = linMem
 	CBZ	R11, handler_return
+	MOVD	$·interruptLinearMemories(SB), R9
+	MOVWU	·interruptLinearMemoryLimit(SB), R12
+	CBZ	R12, handler_return
+linmem_loop:
+	MOVD	0(R9), R13
+	CMP	R13, R11
+	BEQ	linmem_match
+	ADD	$8, R9
+	SUB	$1, R12
+	CBNZ	R12, linmem_loop
+	RET
+linmem_match:
 	MOVD	-104(R11), R10             // active trap pointer
 	MOVD	$·interruptRequests(SB), R9
 	MOVD	$64, R12

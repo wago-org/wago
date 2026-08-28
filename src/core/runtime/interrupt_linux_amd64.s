@@ -45,6 +45,18 @@ interrupt_match:
 	MOVQ	128(R8), AX                 // saved RBX = linMem
 	TESTQ	AX, AX
 	JZ	handler_return
+	LEAQ	·interruptLinearMemories(SB), R9
+	MOVL	·interruptLinearMemoryLimit(SB), R12
+	TESTQ	R12, R12
+	JZ	handler_return
+linmem_loop:
+	CMPQ	0(R9), AX
+	JE	linmem_match
+	ADDQ	$8, R9
+	DECQ	R12
+	JNZ	linmem_loop
+	RET
+linmem_match:
 	MOVQ	-104(AX), R10               // active trap pointer
 	LEAQ	·interruptRequests(SB), R9
 	MOVQ	$64, R12
