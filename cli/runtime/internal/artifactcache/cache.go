@@ -2,10 +2,10 @@
 package artifactcache
 
 import (
-	"container/heap"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -191,24 +191,44 @@ type cacheEntry struct {
 
 type cacheEntryHeap []cacheEntry
 
-func (h cacheEntryHeap) Len() int { return len(h) }
-func (h cacheEntryHeap) Less(i, j int) bool {
-	if h[i].modTime.Equal(h[j].modTime) {
-		return h[i].path < h[j].path
+func pushCacheEntry(entries *cacheEntryHeap, entry cacheEntry) {
+	h := append(*entries, entry)
+	for child := len(h) - 1; child > 0; {
+		parent := (child - 1) / 2
+		if !cacheEntryOlder(h[child], h[parent]) {
+			break
+		}
+		h[parent], h[child] = h[child], h[parent]
+		child = parent
 	}
-	return h[i].modTime.Before(h[j].modTime)
+	*entries = h
 }
-func (h cacheEntryHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
-func (h *cacheEntryHeap) Push(value interface{}) {
-	*h = append(*h, value.(cacheEntry))
-}
-func (h *cacheEntryHeap) Pop() interface{} {
-	old := *h
-	last := len(old) - 1
-	value := old[last]
-	old[last] = cacheEntry{}
-	*h = old[:last]
-	return value
+
+func popOldestCacheEntry(entries *cacheEntryHeap) cacheEntry {
+	h := *entries
+	oldest := h[0]
+	last := len(h) - 1
+	h[0] = h[last]
+	h[last] = cacheEntry{}
+	h = h[:last]
+	for parent := 0; ; {
+		left := parent*2 + 1
+		if left >= len(h) {
+			break
+		}
+		child := left
+		right := left + 1
+		if right < len(h) && cacheEntryOlder(h[right], h[left]) {
+			child = right
+		}
+		if !cacheEntryOlder(h[child], h[parent]) {
+			break
+		}
+		h[parent], h[child] = h[child], h[parent]
+		parent = child
+	}
+	*entries = h
+	return oldest
 }
 
 func (cache Cache) prune() error {
@@ -230,7 +250,7 @@ func (cache Cache) prune() error {
 	visit := func(path string, info os.FileInfo) error {
 		entry := cacheEntry{path: path, size: info.Size(), modTime: info.ModTime()}
 		if len(entries) < maxPruneEntries {
-			heap.Push(&entries, entry)
+			pushCacheEntry(&entries, entry)
 			total += entry.size
 			return nil
 		}
@@ -241,9 +261,9 @@ func (cache Cache) prune() error {
 		if err := remove(oldest); err != nil {
 			return err
 		}
-		heap.Pop(&entries)
+		popOldestCacheEntry(&entries)
 		total -= oldest.size
-		heap.Push(&entries, entry)
+		pushCacheEntry(&entries, entry)
 		total += entry.size
 		return nil
 	}
@@ -252,7 +272,7 @@ func (cache Cache) prune() error {
 		return err
 	}
 	for total > limit && len(entries) != 0 {
-		entry := heap.Pop(&entries).(cacheEntry)
+		entry := popOldestCacheEntry(&entries)
 		if err := remove(entry); err != nil {
 			return err
 		}
@@ -268,11 +288,15 @@ func cacheEntryNewer(left, right cacheEntry) bool {
 	return left.modTime.After(right.modTime)
 }
 
-// scanCacheFiles uses File.ReadDir batches instead of os.ReadDir or WalkDir,
+func cacheEntryOlder(left, right cacheEntry) bool {
+	return cacheEntryNewer(right, left)
+}
+
+// scanCacheFiles uses File.Readdir batches instead of os.ReadDir or WalkDir,
 // both of which read and sort a complete directory before yielding entries.
 func scanCacheFiles(dir string, depth int, visit func(string, os.FileInfo) error) error {
 	if depth > maxCacheDirectoryDepth {
-		return fmt.Errorf("cache directory nesting exceeds limit %d at %s", maxCacheDirectoryDepth, dir)
+		return errors.New("cache directory nesting exceeds limit")
 	}
 	directory, err := os.Open(dir)
 	if err != nil {
@@ -280,23 +304,20 @@ func scanCacheFiles(dir string, depth int, visit func(string, os.FileInfo) error
 	}
 	defer directory.Close()
 	for {
-		entries, readErr := directory.ReadDir(128)
-		for _, entry := range entries {
-			if entry.Type()&os.ModeSymlink != 0 {
+		entries, readErr := directory.Readdir(128)
+		for _, info := range entries {
+			if info.Mode()&os.ModeSymlink != 0 {
 				continue
 			}
-			path := filepath.Join(dir, entry.Name())
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
+			name := info.Name()
+			path := filepath.Join(dir, name)
 			if info.IsDir() {
 				if err := scanCacheFiles(path, depth+1, visit); err != nil {
 					return err
 				}
 				continue
 			}
-			if info.Mode().IsRegular() && info.Size() >= 0 && filepath.Ext(path) == ".wago" {
+			if info.Mode().IsRegular() && info.Size() >= 0 && len(name) >= 5 && name[len(name)-5:] == ".wago" {
 				if err := visit(path, info); err != nil {
 					return err
 				}

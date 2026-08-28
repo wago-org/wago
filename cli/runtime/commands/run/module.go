@@ -14,17 +14,13 @@ import (
 )
 
 func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache) *wago.Module {
-	input, err := modulefile.OpenSourceOrArtifact(file)
+	source, artifact, artifactFile, size, err := modulefile.ReadSourceOrOpenArtifact(file)
 	if err != nil {
 		ui.Fatal("%v", err)
 	}
-	defer input.Close()
-	if input.IsArtifact() {
-		size, regular := input.Size()
-		if !regular {
-			size = -1
-		}
-		compiled, err := loadCompiledArtifactReader(input, size)
+	if artifact != nil {
+		defer artifactFile.Close()
+		compiled, err := loadCompiledArtifactReader(artifact, size)
 		if err != nil {
 			ui.Fatal("%v", err)
 		}
@@ -33,10 +29,6 @@ func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runti
 			ui.Fatal("%v", err)
 		}
 		return module
-	}
-	source, err := input.ReadSource()
-	if err != nil {
-		ui.Fatal("%v", err)
 	}
 	module, err := cache.LoadOrCompile(source, config, runtime)
 	if err != nil {

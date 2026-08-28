@@ -77,7 +77,7 @@ func TestReadUsesExactSizedResult(t *testing.T) {
 	}
 }
 
-func TestOpenSourceOrArtifactStreamsRegularArtifact(t *testing.T) {
+func TestReadSourceOrOpenArtifactStreamsRegularArtifact(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "large.wago")
 	file, err := os.Create(path)
 	if err != nil {
@@ -95,19 +95,19 @@ func TestOpenSourceOrArtifactStreamsRegularArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	input, err := OpenSourceOrArtifact(path)
+	source, artifact, artifactFile, size, err := ReadSourceOrOpenArtifact(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer input.Close()
-	if !input.IsArtifact() {
-		t.Fatal("compiled artifact was classified as source")
+	defer artifactFile.Close()
+	if source != nil || artifact == nil {
+		t.Fatalf("compiled artifact classification = source %d bytes, reader %v", len(source), artifact)
 	}
-	if size, ok := input.Size(); !ok || size != MaxBytes+1 {
-		t.Fatalf("artifact size = %d, %v; want %d, true", size, ok, MaxBytes+1)
+	if size != MaxBytes+1 {
+		t.Fatalf("artifact size = %d, want %d", size, MaxBytes+1)
 	}
 	prefix := make([]byte, 5)
-	if _, err := io.ReadFull(input, prefix); err != nil || string(prefix) != "WAGO\x01" {
+	if _, err := io.ReadFull(artifact, prefix); err != nil || string(prefix) != "WAGO\x01" {
 		t.Fatalf("streamed artifact prefix = %q, %v", prefix, err)
 	}
 }
