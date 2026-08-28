@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago"
 )
@@ -55,6 +56,31 @@ func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
 	matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".wago-*"))
 	if err != nil || len(matches) != 0 {
 		t.Fatalf("temporary artifacts remain: %v (err %v)", matches, err)
+	}
+}
+
+func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	cache := Cache{Dir: dir, MaxBytes: 5}
+	for i, name := range []string{"old.wago", "middle.wago", "new.wago"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("123"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		when := time.Unix(int64(i+1), 0)
+		if err := os.Chtimes(path, when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := cache.prune(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, "*.wago"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || filepath.Base(entries[0]) != "new.wago" {
+		t.Fatalf("remaining cache entries = %v, want newest only", entries)
 	}
 }
 

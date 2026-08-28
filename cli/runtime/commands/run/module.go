@@ -1,16 +1,15 @@
 package run
 
 import (
-	"os"
-
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/internal/wasmcall"
 	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
+	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 )
 
 func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache) *wago.Module {
-	source, err := os.ReadFile(file)
+	source, err := modulefile.Read(file)
 	if err != nil {
 		ui.Fatal("%v", err)
 	}

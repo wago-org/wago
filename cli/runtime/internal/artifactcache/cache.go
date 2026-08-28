@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/internal/atomicfile"
@@ -24,12 +26,17 @@ import (
 type Cache struct {
 	Dir      string
 	Identity []byte
+	// MaxBytes caps regular .wago files below Dir. Zero uses DefaultMaxBytes.
+	MaxBytes int64
 	// ReportError observes best-effort publication failures. When nil, failures
 	// are reported on stderr so persistent cache misses are diagnosable.
 	ReportError func(error)
 }
 
 const cacheKeyFormat = 2
+
+// DefaultMaxBytes bounds the automatic CLI artifact cache at 512 MiB.
+const DefaultMaxBytes int64 = 512 << 20
 
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
@@ -85,13 +92,74 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 		return module, nil
 	}
 	if err := publishArtifact(path, module.Compiled()); err != nil {
-		if cache.ReportError != nil {
-			cache.ReportError(err)
-		} else {
-			fmt.Fprintf(os.Stderr, "wago: artifact cache publication failed: %v\n", err)
-		}
+		cache.report(err)
+	} else if err := cache.prune(); err != nil {
+		cache.report(err)
 	}
 	return module, nil
+}
+
+func (cache Cache) report(err error) {
+	if cache.ReportError != nil {
+		cache.ReportError(err)
+	} else {
+		fmt.Fprintf(os.Stderr, "wago: artifact cache maintenance failed: %v\n", err)
+	}
+}
+
+type cacheEntry struct {
+	path    string
+	size    int64
+	modTime time.Time
+}
+
+func (cache Cache) prune() error {
+	limit := cache.MaxBytes
+	if limit == 0 {
+		limit = DefaultMaxBytes
+	}
+	if limit < 0 || cache.Dir == "" {
+		return nil
+	}
+	var total int64
+	var entries []cacheEntry
+	err := filepath.WalkDir(cache.Dir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() || filepath.Ext(path) != ".wago" {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() || info.Size() < 0 {
+			return nil
+		}
+		total += info.Size()
+		entries = append(entries, cacheEntry{path: path, size: info.Size(), modTime: info.ModTime()})
+		return nil
+	})
+	if err != nil || total <= limit {
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].modTime.Equal(entries[j].modTime) {
+			return entries[i].path < entries[j].path
+		}
+		return entries[i].modTime.Before(entries[j].modTime)
+	})
+	for _, entry := range entries {
+		if total <= limit {
+			break
+		}
+		if err := os.Remove(entry.path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		total -= entry.size
+	}
+	return nil
 }
 
 func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool) {
