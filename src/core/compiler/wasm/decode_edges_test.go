@@ -36,6 +36,17 @@ func TestDecodeRejectsHugeVectorLengthWithoutLargeAllocation(t *testing.T) {
 	}
 }
 
+func TestReaderBytesRejectsOverflowingRange(t *testing.T) {
+	r := newReader([]byte{0, 1})
+	if _, err := r.byte(); err != nil {
+		t.Fatalf("advance reader: %v", err)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if _, err := r.bytes(maxInt); err == nil {
+		t.Fatal("overflowing byte range accepted")
+	}
+}
+
 func TestDecodeRejectsSectionOrderDuplicateAndTrailingPayload(t *testing.T) {
 	t.Run("section order", func(t *testing.T) {
 		_, err := DecodeModule(module(section(secFunction, 0x00), section(secType, 0x00)))

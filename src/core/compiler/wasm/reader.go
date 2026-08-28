@@ -36,7 +36,7 @@ func (r *reader) byte() (byte, error) {
 	return b, nil
 }
 func (r *reader) bytes(n int) ([]byte, error) {
-	if n < 0 || r.pos+n > len(r.data) {
+	if n < 0 || n > len(r.data)-r.pos {
 		return nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
 	}
 	b := r.data[r.pos : r.pos+n]
