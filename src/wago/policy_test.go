@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -98,6 +99,43 @@ func TestPolicyChecksEveryLocalTable(t *testing.T) {
 		t.Fatalf("instantiate within table limit: %v", err)
 	}
 	in.Close()
+}
+
+func TestPolicyTableLimitChecksDeclaredMaximum(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	declaredWasm := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(
+		append([]byte{0x70, 0x01, 0x01}, wasmtest.ULEB(3)...),
+	)))
+	mod, err := rt.Compile(declaredWasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with maximum above table policy = %v, want ErrPermissionDenied", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 3}))
+	if err != nil {
+		t.Fatalf("instantiate at declared table maximum: %v", err)
+	}
+	in.Close()
+
+	unboundedWasm := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(
+			tableTestRefNullFunc(), tableTestI32Const(1), tableTestBulk(15, 0),
+		)))),
+	)
+	unbounded, err := rt.Compile(unboundedWasm)
+	if err != nil {
+		t.Fatalf("compile no-max table: %v", err)
+	}
+	if err := applyPolicy(unbounded, Policy{MaxTableEntries: 1023}); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("no-max table with 1024-entry runtime capacity = %v, want ErrPermissionDenied", err)
+	}
 }
 
 func TestPolicyChecksImportedAndLocalTablesIndependently(t *testing.T) {

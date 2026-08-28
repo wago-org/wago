@@ -65,9 +65,14 @@ func applyPolicy(mod *Module, p Policy) error {
 	}
 	if p.MaxTableEntries > 0 {
 		for i := 0; i < mod.c.tableCount(); i++ {
-			size := mod.c.tableMinimum(i)
-			if uint64(size) > uint64(p.MaxTableEntries) {
-				return fmt.Errorf("module table %d size %d exceeds policy limit %d: %w", i, size, p.MaxTableEntries, ErrPermissionDenied)
+			maximum := uint64(mod.c.tableRuntimeCapacity(i))
+			if declared, ok := mod.c.tableImportAt(i); ok && declared.HasMax {
+				maximum = declared.Max
+			} else if def := mod.c.tableDef(i); def.HasMax {
+				maximum = def.Max
+			}
+			if maximum > uint64(p.MaxTableEntries) {
+				return fmt.Errorf("module table %d maximum %d exceeds policy limit %d: %w", i, maximum, p.MaxTableEntries, ErrPermissionDenied)
 			}
 		}
 	}
