@@ -22,14 +22,14 @@ func TestInstallLinuxSignalHandlersPublishesDistinctChainTargets(t *testing.T) {
 			}
 			old.handler = 0x1111
 			old.mask = 0x11
-			old.flags = _SA_RESTART
+			old.flags = _SA_RESTART | _SA_EXPOSE_TAGBITS
 		case 2:
 			if sig != uintptr(syscall.SIGBUS) || installed != nil || old == nil {
 				t.Fatalf("read SIGBUS call = sig %d act %p old %p", sig, installed, old)
 			}
 			old.handler = 0x2222
 			old.mask = 0x22
-			old.flags = _SA_NODEFER
+			old.flags = _SA_NODEFER | _SA_EXPOSE_TAGBITS
 		case 3, 4:
 			if installed == nil || old != nil || installed == &act || installed.handler != act.handler {
 				t.Fatalf("install call %d = act %p old %p", calls, installed, old)
@@ -38,7 +38,7 @@ func TestInstallLinuxSignalHandlersPublishesDistinctChainTargets(t *testing.T) {
 			if calls == 4 {
 				wantMask, wantFlag = 0x22, _SA_NODEFER
 			}
-			if installed.mask != wantMask || installed.flags&wantFlag == 0 {
+			if installed.mask != wantMask || installed.flags&wantFlag == 0 || installed.flags&_SA_EXPOSE_TAGBITS == 0 {
 				t.Fatalf("install call %d lost prior mask/flags: %+v", calls, installed)
 			}
 			if guardOldSEGVHandler != 0x1111 || guardOldBUSHandler != 0x2222 {

@@ -111,11 +111,12 @@ type kernelSigaction struct {
 }
 
 const (
-	_SA_SIGINFO   = 0x00000004
-	_SA_ONSTACK   = 0x08000000
-	_SA_RESTART   = 0x10000000
-	_SA_NODEFER   = 0x40000000
-	_SA_RESETHAND = 0x80000000
+	_SA_SIGINFO        = 0x00000004
+	_SA_EXPOSE_TAGBITS = 0x00000800
+	_SA_ONSTACK        = 0x08000000
+	_SA_RESTART        = 0x10000000
+	_SA_NODEFER        = 0x40000000
+	_SA_RESETHAND      = 0x80000000
 )
 
 func rtSigaction(sig uintptr, act, old *kernelSigaction) error {
@@ -148,8 +149,8 @@ func installLinuxSignalHandlers(act *kernelSigaction, call func(uintptr, *kernel
 	segvAct, busAct := *act, *act
 	segvAct.mask = oldSEGV.mask
 	busAct.mask = oldBUS.mask
-	segvAct.flags |= oldSEGV.flags & (_SA_RESTART | _SA_NODEFER)
-	busAct.flags |= oldBUS.flags & (_SA_RESTART | _SA_NODEFER)
+	segvAct.flags |= oldSEGV.flags & (_SA_EXPOSE_TAGBITS | _SA_RESTART | _SA_NODEFER)
+	busAct.flags |= oldBUS.flags & (_SA_EXPOSE_TAGBITS | _SA_RESTART | _SA_NODEFER)
 
 	guardOldSEGVHandler = oldSEGV.handler
 	guardOldBUSHandler = oldBUS.handler
