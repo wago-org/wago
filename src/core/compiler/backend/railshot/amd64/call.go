@@ -1008,8 +1008,16 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	paramSlots := funcTypeSlots(ft.Params)
 	resultSlots := funcTypeSlots(ft.Results)
-	if paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots {
-		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host imports support at most %d slots in each direction", importIdx, paramSlots, resultSlots, maxSyncHostSlots)
+	wide := paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots
+	// The shared native allocation stubs publish their fast-path result in the
+	// inline frame. Keep them for small helpers in a wide-capacity module, but a
+	// call that actually uses the extension must take the checked Go helper path.
+	if wide {
+		nativeStructType = 0
+		nativeArray = gcArrayAllocStubSite{}
+	}
+	if paramSlots > f.syncHostSlots || resultSlots > f.syncHostSlots {
+		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host frame supports at most %d slots in each direction", importIdx, paramSlots, resultSlots, f.syncHostSlots)
 	}
 
 	roots := f.rootsBottomToTop()
@@ -1049,6 +1057,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// two adjacent little-endian uint64 slots, exactly like Invoke and cross-
 	// instance wrapper calls.
 	f.a.Load64(R8, RBX, -offCustomCtx) // R8 = control frame
+	argsOffset, resultsOffset := int32(hcArgs), int32(hcResults)
+	if wide {
+		f.a.LeaDisp(R8, R8, hcWideBase)
+		argsOffset = hcWideArgs
+		resultsOffset = hcWideArgs + int32(f.syncHostSlots)*8
+	}
 	argSlot, ctrlSlot := 0, 0
 	if p > 0 {
 		argSlot = slotOf[d-p]
@@ -1058,14 +1072,14 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		if mt.isV128() {
 			x := f.allocFReg(0)
 			f.a.VMovdquLoadDisp(x, RSP, f.spillOff(argSlot))
-			f.a.VMovdquStoreDisp(R8, hcArgs+int32(ctrlSlot)*8, x)
+			f.a.VMovdquStoreDisp(R8, argsOffset+int32(ctrlSlot)*8, x)
 			f.releaseF(x)
 		} else if mt.is64() {
 			f.a.Load64(RAX, RSP, f.spillOff(argSlot))
-			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
+			f.a.Store64(R8, argsOffset+int32(ctrlSlot)*8, RAX)
 		} else {
 			f.a.Load32(RAX, RSP, f.spillOff(argSlot)) // zero-extends into RAX
-			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
+			f.a.Store64(R8, argsOffset+int32(ctrlSlot)*8, RAX)
 		}
 		argSlot += mt.stackSlots()
 		ctrlSlot += mt.stackSlots()
@@ -1090,9 +1104,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		f.stats.call("gcnativearray")
 		nativeAllocDone = f.a.JccPlaceholder(condNE)
 	}
+	if wide {
+		f.a.Load64(R8, RBX, -offCustomCtx)
+	}
 	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
-	// re-entry loop copies back only the real result count. Both are <= 64.
+	// re-entry loop copies back only the real result count. Both fit uint16.
 	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16))
 
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
@@ -1115,6 +1132,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// Read results out of the control frame onto the operand stack, honoring
 	// slot-width result layout for v128 and mixed scalar/vector signatures.
 	f.a.Load64(R8, RBX, -offCustomCtx) // reload ctrl (clobbered by the round trip)
+	if wide {
+		f.a.LeaDisp(R8, R8, hcWideBase)
+	}
 	res := f.tmpRegs[:0]
 	if cap(res) < rN {
 		res = make([]Reg, 0, rN)
@@ -1134,18 +1154,18 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		switch {
 		case rt.isV128():
 			res[j] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[j], R8, hcResults+int32(ctrlSlot)*8)
+			f.a.VMovdquLoadDisp(res[j], R8, resultsOffset+int32(ctrlSlot)*8)
 			f.fpinned = f.fpinned.add(res[j]) // keep across the remaining loads
 		case rt.isFloat():
 			tmp := f.allocReg(0)
-			f.a.Load64(tmp, R8, hcResults+int32(ctrlSlot)*8)
+			f.a.Load64(tmp, R8, resultsOffset+int32(ctrlSlot)*8)
 			res[j] = f.allocFReg(0)
 			f.a.MovGprToXmm(res[j], tmp, true)
 			f.release(tmp)
 			f.fpinned = f.fpinned.add(res[j])
 		default:
 			res[j] = f.allocReg(0)
-			f.a.Load64(res[j], R8, hcResults+int32(ctrlSlot)*8)
+			f.a.Load64(res[j], R8, resultsOffset+int32(ctrlSlot)*8)
 			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
 		}
 		ctrlSlot += rt.stackSlots()
@@ -1276,12 +1296,14 @@ const (
 // (offCustomCtx) for its control frame. These MUST match
 // src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=64).
 const (
-	hcTrampoline     = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
-	hcImportIdx      = 64  // u32: native -> Go
-	hcNArgs          = 68  // u32: low 16 bits = param slots, high 16 bits = result slots
-	hcArgs           = 72  // [64]u64: native -> Go
-	hcResults        = 584 // [64]u64: Go -> native (== hcArgs + 64*8)
-	maxSyncHostSlots = 64  // must match runtime.MaxHostArity / maxHostArity
+	hcTrampoline           = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
+	hcImportIdx            = 64  // u32: native -> Go
+	hcNArgs                = 68  // u32: low 16 bits = param slots, high 16 bits = result slots
+	hcArgs                 = 72  // [64]u64: native -> Go
+	hcResults              = 584 // [64]u64: Go -> native (== hcArgs + 64*8)
+	hcWideBase             = hcResults + maxSyncHostSlots*8
+	hcWideArgs       int32 = 8  // extension magic/capacity header
+	maxSyncHostSlots       = 64 // must match runtime.MaxHostArity / maxHostArity
 )
 
 var instanceContextOffsets = [...]int32{

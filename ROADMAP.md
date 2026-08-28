@@ -559,6 +559,10 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   globals after successful helper-free invocation sequences.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
+- [x] Admit large GC struct helpers through a module-derived synchronous host
+  frame extension: 404-slot reference constructors retain exact initializer
+  roots, AMD64/ARM64 share the u16 check, codec reload recomputes capacity, and
+  ordinary modules retain the 64-slot inline frame and unchanged `Compiled` size.
 
 Measured details and regression coverage are in
 [`docs/wasm3-hardening-2026-08.md`](docs/wasm3-hardening-2026-08.md).

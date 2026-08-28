@@ -3,11 +3,13 @@
 package amd64
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -81,6 +83,33 @@ func TestGCLayoutMetadataMatchesLegacyDerivation(t *testing.T) {
 		}
 	}); allocs != 0 {
 		t.Fatalf("precomputed native allocation plan allocs = %v, want 0", allocs)
+	}
+}
+
+func TestWideCapacityKeepsSmallHelperCodeIdentical(t *testing.T) {
+	m := gcLayoutHeavyCompileModule(t, 1)
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compile := func(slots int) []byte {
+		cm, err := CompileModuleWith(m, CompileOptions{
+			GCStructHelpers: true,
+			SyncHostSlots:   slots,
+			Codegen:         codegen.Options{Module: codegen.ModuleInfo{GCTypeLayouts: metadata.Layouts}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cm.Code
+	}
+	inline := compile(64)
+	wideCapacity := compile(404)
+	if !bytes.Equal(inline, wideCapacity) {
+		t.Fatalf("small helper code changed under wide capacity: inline=%d bytes, wide=%d bytes", len(inline), len(wideCapacity))
+	}
+	if _, err := CompileModuleWith(&wasm.Module{}, CompileOptions{SyncHostSlots: coreruntime.MaxSyncHostSlots + 1}); err == nil {
+		t.Fatal("capacity above uint16 was accepted")
 	}
 }
 

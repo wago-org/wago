@@ -1,9 +1,20 @@
 package runtime
 
 import (
+	"encoding/binary"
 	"strings"
 	"testing"
+	"unsafe"
 )
+
+type inlineOnlyEngineLayout struct {
+	stack       []byte
+	stackTop    uintptr
+	preparedInt tinygoPreparedIntState
+	inUse       bool
+	args        [maxHostArity]uint64
+	results     [maxHostArity]uint64
+}
 
 func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
 	base, err := InstantiateArenaNeed(InstantiateFootprint{})
@@ -19,6 +30,47 @@ func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
 	}
 	if _, err := InstantiateArenaNeed(InstantiateFootprint{HostCallBytes: -1}); err == nil {
 		t.Fatal("negative host control-frame footprint unexpectedly accepted")
+	}
+}
+
+func TestHostCtrlFrameWideCapacityKeepsInlineLayout(t *testing.T) {
+	if got, want := unsafe.Sizeof(Engine{}), unsafe.Sizeof(inlineOnlyEngineLayout{}); got != want {
+		t.Fatalf("Engine size = %d, prior inline-only layout = %d", got, want)
+	}
+	if got, err := HostCtrlFrameBytesForSlots(maxHostArity); err != nil || got != HostCtrlFrameBytes {
+		t.Fatalf("64-slot frame = %d, %v; want %d", got, err, HostCtrlFrameBytes)
+	}
+	const wide = 404
+	got, err := HostCtrlFrameBytesForSlots(wide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := HostCtrlFrameBytes + hostCtrlExtensionHead + wide*16
+	if got != want {
+		t.Fatalf("404-slot frame = %d, want %d", got, want)
+	}
+	if _, err := HostCtrlFrameBytesForSlots(MaxSyncHostSlots + 1); err == nil {
+		t.Fatal("capacity above uint16 was accepted")
+	}
+	ctrl := make([]byte, got)
+	const lastInlineResult = uint64(0xfeedfacecafebeef)
+	binary.LittleEndian.PutUint64(ctrl[hcResults+(maxHostArity-1)*8:], lastInlineResult)
+	if err := InitHostCtrlFrame(ctrl); err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint64(ctrl[hcResults+(maxHostArity-1)*8:]); got != lastInlineResult {
+		t.Fatalf("wide-frame initialization retained native pointer in inline result slot: %#x", got)
+	}
+	args, results, capacity, err := hostCtrlWideCallAreas(ctrl, wide, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capacity != wide || len(args) != wide*8 || len(results) != wide*8 {
+		t.Fatalf("extended areas = capacity %d, bytes %d/%d", capacity, len(args), len(results))
+	}
+	binary.LittleEndian.PutUint32(ctrl[HostCtrlFrameBytes+4:], wide+1)
+	if _, _, _, err := hostCtrlWideCallAreas(ctrl, wide, 1); err == nil || !strings.Contains(err.Error(), "requires") {
+		t.Fatalf("mismatched extension layout error = %v", err)
 	}
 }
 

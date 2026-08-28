@@ -165,7 +165,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	need := c.instantiateArenaNeed
 	baselineHostBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
-		baselineHostBytes = runtime.HostCtrlFrameBytes
+		baselineHostBytes = c.hostCtrlFrameBytes()
 	} else if len(c.Imports) > 0 {
 		baselineHostBytes = runtime.HostCallLogBytes
 	}
@@ -174,7 +174,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 		// Runtime instantiation always installs the synchronous control frame,
 		// including for modules without function imports: public funcref calls and
 		// nested runtime entry share the same parked-host context.
-		actualHostBytes = runtime.HostCtrlFrameBytes
+		actualHostBytes = c.hostCtrlFrameBytes()
 	} else {
 		for _, key := range c.Imports {
 			if _, cross := imports[key].(*InstanceExport); !cross {
@@ -577,7 +577,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		// log) as the import ctx. Modules that accept public funcrefs and can call
 		// them indirectly also need this frame so an owned host descriptor remains
 		// callable after crossing from another instance.
-		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
+		ctrl = ar.AllocNoZero(c.hostCtrlFrameBytes())
 		if err := runtime.InitHostCtrlFrame(ctrl); err != nil {
 			return nil, fmt.Errorf("instantiate: initialize host control frame: %w", err)
 		}
