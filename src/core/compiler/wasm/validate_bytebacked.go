@@ -57,27 +57,33 @@ type DecodedByteBackedModule struct {
 // path. It is a convenience for benchmarks and internal tests that need a
 // single call around explicit decode then validate phases.
 func ValidateByteBackedModule(data []byte) error {
-	return validateByteBackedModule(data, 1, ValidationFeatures{})
+	return validateByteBackedModule(data, 1, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateByteBackedModuleWithWorkers is ValidateByteBackedModule with bounded
 // parallel function-body validation. workers <= 1 retains serial behavior.
 func ValidateByteBackedModuleWithWorkers(data []byte, workers int) error {
-	return validateByteBackedModule(data, workers, ValidationFeatures{})
+	return validateByteBackedModule(data, workers, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateByteBackedModuleWithFeatures is the explicit-feature variant of
 // ValidateByteBackedModule.
 func ValidateByteBackedModuleWithFeatures(data []byte, features ValidationFeatures) error {
-	return validateByteBackedModule(data, 1, features)
+	return validateByteBackedModule(data, 1, features, defaultValidationLimits)
 }
 
-func validateByteBackedModule(data []byte, workers int, features ValidationFeatures) error {
+// ValidateByteBackedModuleWithConfig is the explicit feature, worker, and
+// resource-limit variant of ValidateByteBackedModule.
+func ValidateByteBackedModuleWithConfig(data []byte, features ValidationFeatures, workers int, limits ValidationLimits) error {
+	return validateByteBackedModule(data, workers, features, limits)
+}
+
+func validateByteBackedModule(data []byte, workers int, features ValidationFeatures, limits ValidationLimits) error {
 	dm, err := DecodeModuleByteBacked(data)
 	if err != nil {
 		return err
 	}
-	return validateDecodedByteBackedModule(dm, workers, features)
+	return validateDecodedByteBackedModule(dm, workers, features, limits)
 }
 
 // DecodeModuleByteBacked decodes data without materializing the structured
@@ -100,27 +106,33 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 // DecodeModuleByteBacked without requiring a structured function-body
 // instruction tree.
 func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
-	return validateDecodedByteBackedModule(dm, 1, ValidationFeatures{})
+	return validateDecodedByteBackedModule(dm, 1, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateDecodedByteBackedModuleWithWorkers is
 // ValidateDecodedByteBackedModule with bounded parallel function-body
 // validation. Errors remain ordered by function index.
 func ValidateDecodedByteBackedModuleWithWorkers(dm *DecodedByteBackedModule, workers int) error {
-	return validateDecodedByteBackedModule(dm, workers, ValidationFeatures{})
+	return validateDecodedByteBackedModule(dm, workers, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateDecodedByteBackedModuleWithFeatures validates a decoded compact module
 // under explicitly staged release features.
 func ValidateDecodedByteBackedModuleWithFeatures(dm *DecodedByteBackedModule, features ValidationFeatures) error {
-	return validateDecodedByteBackedModule(dm, 1, features)
+	return validateDecodedByteBackedModule(dm, 1, features, defaultValidationLimits)
 }
 
-func validateDecodedByteBackedModule(dm *DecodedByteBackedModule, workers int, features ValidationFeatures) error {
+// ValidateDecodedByteBackedModuleWithConfig validates decoded byte-backed
+// metadata with explicit feature, worker, and resource-limit policy.
+func ValidateDecodedByteBackedModuleWithConfig(dm *DecodedByteBackedModule, features ValidationFeatures, workers int, limits ValidationLimits) error {
+	return validateDecodedByteBackedModule(dm, workers, features, limits)
+}
+
+func validateDecodedByteBackedModule(dm *DecodedByteBackedModule, workers int, features ValidationFeatures, limits ValidationLimits) error {
 	if dm == nil || dm.Module == nil {
 		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil byte-backed module"}
 	}
-	return validateModuleWithWorkersAndFeatures(dm.Module, &dm.direct, workers, features)
+	return validateModuleWithWorkersFeaturesAndLimits(dm.Module, &dm.direct, workers, features, limits)
 }
 
 func (dm *directModule) populateCodeBodies() {
@@ -878,8 +890,8 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	if overflow {
 		return v.verr(ErrInvalidLimitRange, "local count overflow")
 	}
-	if v.localCount > maxFunctionLocals {
-		return v.verr(ErrInvalidLimitRange, "local count exceeds implementation limit")
+	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
+		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
 	for _, run := range body.locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {

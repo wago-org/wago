@@ -434,6 +434,19 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().WithFunctionWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
 		t.Fatalf("negative function workers should fail validation, got %v", err)
 	}
+	if got := NewRuntimeConfig().MaxFunctionLocals(); got != 4096 {
+		t.Fatalf("default max function locals = %d, want 4096", got)
+	}
+	if err := NewRuntimeConfig().WithMaxFunctionLocals(0).Validate(); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
+		t.Fatalf("zero max function locals should fail validation, got %v", err)
+	}
+	if err := NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit + 1).Validate(); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
+		t.Fatalf("oversized max function locals should fail validation, got %v", err)
+	}
+	maximumLocals := NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit)
+	if maximumLocals.MaxFunctionLocals() != 65535 || NewRuntimeConfig().MaxFunctionLocals() != DefaultMaxFunctionLocals {
+		t.Fatal("WithMaxFunctionLocals must be immutable and accept the uint16 maximum")
+	}
 	workers := NewRuntimeConfig().WithFunctionWorkers(4)
 	if workers.FunctionWorkers() != 4 || NewRuntimeConfig().FunctionWorkers() != 1 {
 		t.Fatal("WithFunctionWorkers must be immutable and observable; default must remain serial")
@@ -472,8 +485,40 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") {
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "maxFunctionLocals: 4096") {
 		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
+	}
+}
+
+func functionLocalLimitModule(params, locals uint32, typ wasm.ValType) []byte {
+	paramTypes := make([]wasm.ValType, params)
+	for i := range paramTypes {
+		paramTypes[i] = typ
+	}
+	body := []byte{0x01}
+	body = append(body, wasmtest.ULEB(locals)...)
+	body = append(body, wasm.MustEncodeValType(typ), 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(paramTypes, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestMaxFunctionLocalsCountsParametersAndPreservesStackFence(t *testing.T) {
+	module := functionLocalLimitModule(1, 1, wasm.I32)
+	if _, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(1), module); err == nil || !strings.Contains(err.Error(), "parameter and local count exceeds configured limit") {
+		t.Fatalf("combined parameter/local limit error = %v", err)
+	}
+	if compiled, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(2), module); err != nil {
+		t.Fatalf("combined parameter/local boundary: %v", err)
+	} else {
+		compiled.Close()
+	}
+
+	_, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit), functionLocalLimitModule(0, MaxFunctionLocalsLimit, wasm.V128))
+	if err == nil || !strings.Contains(err.Error(), "exceeds stack-fence headroom") {
+		t.Fatalf("uint16 maximum must retain native stack-fence rejection, got %v", err)
 	}
 }
 

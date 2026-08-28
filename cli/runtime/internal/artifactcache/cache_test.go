@@ -351,8 +351,8 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 }
 
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
-	if cacheKeyFormat != 2 {
-		t.Fatalf("cache key format = %d, want objective-free version 2", cacheKeyFormat)
+	if cacheKeyFormat != 3 {
+		t.Fatalf("cache key format = %d, want local-limit-aware version 3", cacheKeyFormat)
 	}
 	source := constantModule()
 	dir := t.TempDir()
@@ -364,6 +364,7 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	bounds := base.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	deferredOff := base.WithDeferBoundsChecks(false)
 	memoryLimit := base.WithMemoryLimitPages(base.MemoryLimitPages() - 1)
+	localLimit := base.WithMaxFunctionLocals(base.MaxFunctionLocals() - 1)
 
 	basePath, ok := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, base)
 	if !ok {
@@ -375,6 +376,7 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	boundsPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, bounds)
 	deferredPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, deferredOff)
 	memoryPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryLimit)
+	localPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, localLimit)
 	runtimePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-b")}).path(source, base)
 	sourcePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(append(source, 0), base)
 	if basePath == featurePath {
@@ -397,6 +399,9 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	}
 	if basePath == memoryPath {
 		t.Fatal("memory limit did not change artifact key")
+	}
+	if basePath == localPath {
+		t.Fatal("function local limit did not change artifact key")
 	}
 	if basePath == sourcePath {
 		t.Fatal("source bytes did not change artifact key")

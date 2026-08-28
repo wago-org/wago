@@ -153,7 +153,7 @@ func TestValidateModuleWithWorkersTableInitElementExprRace(t *testing.T) {
 
 	t.Run("function phase does not revalidate initializers", func(t *testing.T) {
 		m := tableInitExprModule(AbsRef(HeapFunc), false)
-		v := &moduleValidator{m: m, funcIndex: -1}
+		v := &moduleValidator{m: m, funcIndex: -1, limits: defaultValidationLimits}
 		if err := v.validateModule(); err != nil {
 			t.Fatalf("module validation: %v", err)
 		}
@@ -167,7 +167,7 @@ func TestValidateModuleWithWorkersTableInitElementExprRace(t *testing.T) {
 
 	t.Run("defensive metadata errors", func(t *testing.T) {
 		m := tableInitExprModule(AbsRef(HeapFunc), false)
-		fv := funcValidator{moduleValidator: &moduleValidator{m: m}, funcIndex: 7}
+		fv := funcValidator{moduleValidator: &moduleValidator{m: m, limits: defaultValidationLimits}, funcIndex: 7}
 		if _, err := fv.elemRefType(uint32(len(m.Elements))); !isValidationCode(err, ErrUnknownTable) {
 			t.Fatalf("out-of-range element error = %v", err)
 		}
@@ -223,7 +223,7 @@ func TestValidateDecodedByteBackedModuleWithWorkersTableInitElementExprRace(t *t
 		if err != nil {
 			t.Fatalf("decode: %v", err)
 		}
-		v := &moduleValidator{m: dm.Module, funcIndex: -1, direct: &dm.direct}
+		v := &moduleValidator{m: dm.Module, funcIndex: -1, direct: &dm.direct, limits: defaultValidationLimits}
 		if err := v.validateModule(); err != nil {
 			t.Fatalf("module validation: %v", err)
 		}
@@ -237,7 +237,7 @@ func TestValidateDecodedByteBackedModuleWithWorkersTableInitElementExprRace(t *t
 
 	t.Run("defensive metadata errors", func(t *testing.T) {
 		direct := &directValidationEnv{elements: []directElem{{kind: ElemKindKind(0xff)}}}
-		fv := funcValidator{moduleValidator: &moduleValidator{m: &Module{}, direct: direct}, funcIndex: 7}
+		fv := funcValidator{moduleValidator: &moduleValidator{m: &Module{}, direct: direct, limits: defaultValidationLimits}, funcIndex: 7}
 		if _, err := fv.directElemRefType(1); !isValidationCode(err, ErrUnknownTable) {
 			t.Fatalf("out-of-range direct element error = %v", err)
 		}

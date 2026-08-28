@@ -16,13 +16,29 @@ type ValidationFeatures struct {
 	GCConstExpr          bool // internal staged admission for GC allocation/conversion constant expressions
 }
 
+// ValidationLimits bounds implementation resources consumed by one module.
+// MaxFunctionLocals counts function parameters and declared locals together;
+// zero selects DefaultMaxFunctionLocals.
+type ValidationLimits struct {
+	MaxFunctionLocals uint32
+}
+
+// DefaultMaxFunctionLocals is the ordinary validation ceiling for the total
+// parameter-plus-local count of one function.
+const DefaultMaxFunctionLocals uint32 = 4096
+
+// MaximumFunctionLocals is the largest configurable validation ceiling.
+const MaximumFunctionLocals uint32 = 1<<16 - 1
+
+var defaultValidationLimits = ValidationLimits{MaxFunctionLocals: DefaultMaxFunctionLocals}
+
 // ValidateModule validates module-level indexes and typechecks function bodies.
 // The default path consumes raw BodyBytes produced by DecodeModule instead of a
 // structured function-body instruction tree. Programmatically constructed tests
 // may still supply Func.Body instructions when BodyBytes is empty. The default
 // preserves the WebAssembly 2.0 single-memory validation boundary.
 func ValidateModule(m *Module) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, 1, ValidationFeatures{})
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, 1, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateModuleWithWorkers is ValidateModule with bounded function-body
@@ -32,27 +48,39 @@ func ValidateModule(m *Module) error {
 // function count. If multiple functions are invalid, the lowest function index
 // wins regardless of completion order.
 func ValidateModuleWithWorkers(m *Module, workers int) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, workers, ValidationFeatures{})
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateModuleWithFeatures validates a module under explicitly staged release
 // features. Unsupported execution remains the frontend's responsibility.
 func ValidateModuleWithFeatures(m *Module, features ValidationFeatures) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, 1, features)
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, 1, features, defaultValidationLimits)
 }
 
 // ValidateModuleWithFeaturesAndWorkers combines explicitly staged validation
 // features with bounded function-body parallelism.
 func ValidateModuleWithFeaturesAndWorkers(m *Module, features ValidationFeatures, workers int) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, workers, features)
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, features, defaultValidationLimits)
 }
 
-func validateModuleWithWorkersAndFeatures(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures) error {
+// ValidateModuleWithConfig validates a module with explicit feature, worker,
+// and resource-limit policy.
+func ValidateModuleWithConfig(m *Module, features ValidationFeatures, workers int, limits ValidationLimits) error {
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, features, limits)
+}
+
+func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits) error {
+	if limits.MaxFunctionLocals == 0 {
+		limits = defaultValidationLimits
+	}
+	if limits.MaxFunctionLocals > MaximumFunctionLocals {
+		return &ValidationError{Code: ErrInvalidLimitRange, Func: -1, Detail: "configured function local limit exceeds 65535"}
+	}
 	// Keep the serial validation owner in this frame. TinyGo's conservative
 	// collector can otherwise lose a short-lived heap validator while nested
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
-	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features}
+	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features, limits: limits}
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
@@ -170,6 +198,7 @@ type moduleValidator struct {
 	funcIndex int
 	direct    *directValidationEnv
 	features  ValidationFeatures
+	limits    ValidationLimits
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -207,12 +236,6 @@ const (
 	maxTable32Limit  = uint64(1<<32 - 1)
 	maxMemory32Pages = uint64(1 << 16)
 	maxMemory64Pages = uint64(1 << 48)
-	// A generated prologue may reserve its frame before checking the next stack
-	// fence, whose guaranteed headroom is 256 KiB. At the worst-case 16 bytes per
-	// v128 local, 2^13 locals consume 128 KiB and leave the other half for frame
-	// headers and operand spills, instead of letting locals alone overrun the
-	// pre-check region.
-	maxFunctionLocals = uint64(1 << 13)
 )
 
 func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
@@ -969,8 +992,8 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	if overflow {
 		return v.verr(ErrInvalidLimitRange, "local count overflow")
 	}
-	if v.localCount > maxFunctionLocals {
-		return v.verr(ErrInvalidLimitRange, "local count exceeds implementation limit")
+	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
+		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
