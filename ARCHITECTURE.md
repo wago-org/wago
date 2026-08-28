@@ -481,7 +481,7 @@ same context slot.
 ## 12. Memory model
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
-`Instance.Memory().Bytes()` — writes are visible in both directions without
+`Instance.Memory().UnsafeBytes()` — writes are visible in both directions without
 copying. Explicit mode checks the current size cached in basedata; supported
 platforms can instead use guard-page reservations. `memory.grow` raises the
 logical size within a stable pre-reserved mapping, preserving the native base.

@@ -31,13 +31,13 @@ func TestPassiveDataMemoryInitAndDrop(t *testing.T) {
 	if _, err := in.Invoke("init", I32(10), I32(1), I32(3)); err != nil {
 		t.Fatalf("memory.init: %v", err)
 	}
-	if got := string(in.Memory().Bytes()[10:13]); got != "ell" {
+	if got := string(in.Memory().UnsafeBytes()[10:13]); got != "ell" {
 		t.Fatalf("memory.init copied %q, want ell", got)
 	}
 	if _, err := in.Invoke("init", I32(20), I32(0), I32(5)); err != nil {
 		t.Fatalf("second memory.init before drop: %v", err)
 	}
-	if got := string(in.Memory().Bytes()[20:25]); got != "hello" {
+	if got := string(in.Memory().UnsafeBytes()[20:25]); got != "hello" {
 		t.Fatalf("second memory.init copied %q, want hello", got)
 	}
 	if _, err := in.Invoke("drop"); err != nil {

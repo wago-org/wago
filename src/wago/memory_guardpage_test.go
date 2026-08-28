@@ -39,7 +39,7 @@ func TestGuardedImportedGrownMemoryAcceptsActiveData(t *testing.T) {
 		t.Fatalf("instantiate consumer after grow: %v", err)
 	}
 	defer consumer.Close()
-	if got := memory.Bytes()[4*65536]; got != 'x' {
+	if got := memory.UnsafeBytes()[4*65536]; got != 'x' {
 		t.Fatalf("active data byte = %q, want x", got)
 	}
 }
@@ -75,11 +75,11 @@ func TestImportedMemoryGuardPage(t *testing.T) {
 	if _, err := in.Invoke("store", I32(8), I32(0xCAFE)); err != nil {
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(mem.Bytes()[8:]); got != 0xCAFE {
+	if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[8:]); got != 0xCAFE {
 		t.Fatalf("host sees mem[8] = %#x, want 0xCAFE", got)
 	}
 	// host write -> wasm observes.
-	binary.LittleEndian.PutUint32(mem.Bytes()[16:], 0x1234)
+	binary.LittleEndian.PutUint32(mem.UnsafeBytes()[16:], 0x1234)
 	if r, err := in.Invoke("load", I32(16)); err != nil || AsI32(r[0]) != 0x1234 {
 		t.Fatalf("wasm load = %#x err=%v, want 0x1234", AsI32(r[0]), err)
 	}

@@ -176,7 +176,7 @@ func TestFuzzRegressionCorpus(t *testing.T) {
 				_ = c.Close()
 				t.Fatalf("instantiate %d: %v", i, err)
 			}
-			memories = append(memories, append([]byte(nil), in.Memory().Bytes()...))
+			memories = append(memories, append([]byte(nil), in.Memory().UnsafeBytes()...))
 			_ = in.Close()
 			_ = c.Close()
 		}
@@ -552,7 +552,7 @@ func assertFuzzMemorySHA(t *testing.T, in *Instance, wantLen int, want string) {
 	if in.Memory() == nil {
 		t.Fatal("module has no memory")
 	}
-	b := in.Memory().Bytes()
+	b := in.Memory().UnsafeBytes()
 	if len(b) != wantLen {
 		t.Fatalf("memory length = %d, want %d", len(b), wantLen)
 	}

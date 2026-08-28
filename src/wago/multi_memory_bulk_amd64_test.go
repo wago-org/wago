@@ -79,46 +79,46 @@ func exerciseIndexedBulkMemory(t *testing.T, in *Instance) {
 	if err != nil {
 		t.Fatalf("export m1: %v", err)
 	}
-	if got := string(m1.Bytes()[4:6]); got != "A1" {
+	if got := string(m1.UnsafeBytes()[4:6]); got != "A1" {
 		t.Fatalf("active memory-1 data = %q, want A1", got)
 	}
 	if _, err := in.Invoke("init1", I32(10), I32(1), I32(3)); err != nil {
 		t.Fatalf("memory.init 1: %v", err)
 	}
-	if got := string(m1.Bytes()[10:13]); got != "ell" {
+	if got := string(m1.UnsafeBytes()[10:13]); got != "ell" {
 		t.Fatalf("memory.init bytes = %q, want ell", got)
 	}
-	copy(m0.Bytes()[20:24], "zero")
+	copy(m0.UnsafeBytes()[20:24], "zero")
 	if _, err := in.Invoke("copy10", I32(30), I32(20), I32(4)); err != nil {
 		t.Fatalf("memory.copy 0->1: %v", err)
 	}
-	if got := string(m1.Bytes()[30:34]); got != "zero" {
+	if got := string(m1.UnsafeBytes()[30:34]); got != "zero" {
 		t.Fatalf("memory.copy 0->1 bytes = %q", got)
 	}
 	if _, err := in.Invoke("copy01", I32(40), I32(30), I32(4)); err != nil {
 		t.Fatalf("memory.copy 1->0: %v", err)
 	}
-	if got := string(m0.Bytes()[40:44]); got != "zero" {
+	if got := string(m0.UnsafeBytes()[40:44]); got != "zero" {
 		t.Fatalf("memory.copy 1->0 bytes = %q", got)
 	}
-	copy(m1.Bytes()[50:56], "abcdef")
+	copy(m1.UnsafeBytes()[50:56], "abcdef")
 	if _, err := in.Invoke("copy11", I32(52), I32(50), I32(6)); err != nil {
 		t.Fatalf("overlap memory.copy 1->1: %v", err)
 	}
-	if got := string(m1.Bytes()[50:58]); got != "ababcdef" {
+	if got := string(m1.UnsafeBytes()[50:58]); got != "ababcdef" {
 		t.Fatalf("overlap memory.copy bytes = %q, want ababcdef", got)
 	}
 	if _, err := in.Invoke("fill1", I32(70), I32('x'), I32(5)); err != nil {
 		t.Fatalf("memory.fill 1: %v", err)
 	}
-	if got := string(m1.Bytes()[70:75]); got != "xxxxx" {
+	if got := string(m1.UnsafeBytes()[70:75]); got != "xxxxx" {
 		t.Fatalf("memory.fill bytes = %q", got)
 	}
-	before := append([]byte(nil), m1.Bytes()[80:84]...)
+	before := append([]byte(nil), m1.UnsafeBytes()[80:84]...)
 	if _, err := in.Invoke("copy10", I32(65534), I32(20), I32(4)); err == nil {
 		t.Fatal("out-of-bounds cross-memory copy unexpectedly succeeded")
 	}
-	if !bytes.Equal(m1.Bytes()[80:84], before) {
+	if !bytes.Equal(m1.UnsafeBytes()[80:84], before) {
 		t.Fatal("trapping cross-memory copy changed unrelated destination bytes")
 	}
 	if _, err := in.Invoke("drop"); err != nil {

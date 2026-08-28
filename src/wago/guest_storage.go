@@ -198,7 +198,7 @@ func (v *guestStorageView) MemoryInfo(index uint32) (GuestMemoryInfo, error) {
 	if err != nil {
 		return GuestMemoryInfo{}, err
 	}
-	bytes := memory.Bytes()
+	bytes := memory.UnsafeBytes()
 	if bytes == nil && memory.jobMemory() == nil {
 		return GuestMemoryInfo{}, fmt.Errorf("wago: memory index %d is closed", index)
 	}
@@ -218,7 +218,7 @@ func (v *guestStorageView) MemoryRange(index uint32, offset, length uint64, acce
 	if err != nil {
 		return nil, err
 	}
-	bytes := memory.Bytes()
+	bytes := memory.UnsafeBytes()
 	if bytes == nil && memory.jobMemory() == nil {
 		return nil, fmt.Errorf("wago: memory index %d is closed", index)
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 // Memory is a linear-memory object the host can create and import into a module,
-// mirroring JS WebAssembly.Memory. The host owns it: read and write Bytes(), and
+// mirroring JS WebAssembly.Memory. The host owns it: access UnsafeBytes(), and
 // Close() it when no instance importing it is still in use.
 //
 // The handle stays two pointers wide. Ordinary instance-owned memories keep the
@@ -133,13 +133,19 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 	return m, nil
 }
 
-// Bytes returns the zero-copy linear-memory view shared with wasm, at the
-// current (possibly grown) size. It uses the host-facing accessor so it stays
-// valid after a memory.grow in guard-page mode — where the Go-side j.mem slice is
-// capped at the initial commit while the grown pages live in the reservation.
-// CurrentBytes would panic there (slice bounds beyond the initial commit); this
-// mirrors what Instance.Read/Write already use via mem().
-func (m *Memory) Bytes() []byte {
+// UnsafeBytes returns the zero-copy linear-memory view shared with wasm, at the
+// current (possibly grown) size. The returned slice is valid only while the
+// Memory and its owner instance remain open, and Close must not race any access.
+// Retaining or using it after Close is unsafe because the off-heap mapping may
+// be recycled for another instance. Prefer Instance.Read and Instance.Write
+// when a retained or close-safe view is required.
+//
+// It uses the host-facing accessor so it stays valid after a memory.grow in
+// guard-page mode — where the Go-side j.mem slice is capped at the initial commit
+// while the grown pages live in the reservation. CurrentBytes would panic there
+// (slice bounds beyond the initial commit); this mirrors what Instance.Read/Write
+// already use via mem().
+func (m *Memory) UnsafeBytes() []byte {
 	if m == nil {
 		return nil
 	}

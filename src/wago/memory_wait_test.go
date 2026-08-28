@@ -15,7 +15,7 @@ func TestMemoryWaitMismatchAndZeroTimeoutDoNotRetainState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	atomic.StoreUint32((*uint32)(unsafe.Pointer(&m.Bytes()[0])), 7)
+	atomic.StoreUint32((*uint32)(unsafe.Pointer(&m.UnsafeBytes()[0])), 7)
 	if got, err := m.wait32(context.Background(), 0, 8, -1); err != nil || got != memoryWaitNotEqual {
 		t.Fatalf("mismatch = %d, %v", got, err)
 	}
