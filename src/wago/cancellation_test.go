@@ -152,6 +152,69 @@ func TestRuntimeInstantiateContextCancelsNativeEntryWait(t *testing.T) {
 	}
 }
 
+func TestRuntimeInstantiateContextCancelsHostResumeWait(t *testing.T) {
+	void := wasmtest.FuncType(nil, nil)
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("block")...), 0x00, 0x00)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(void)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(8, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithIndependentInstanceExecution(false)))
+	defer rt.Close()
+	compiled, err := rt.Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostEntered := make(chan struct{})
+	leaseHeld := make(chan struct{})
+	releaseLease := make(chan struct{})
+	competitorDone := make(chan struct{})
+	go func() {
+		defer close(competitorDone)
+		select {
+		case <-hostEntered:
+		case <-releaseLease:
+			return
+		}
+		nativeExecutionMu.Lock()
+		close(leaseHeld)
+		<-releaseLease
+		nativeExecutionMu.Unlock()
+	}()
+	defer func() {
+		close(releaseLease)
+		<-competitorDone
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		in, instantiateErr := rt.Instantiate(ctx, compiled, WithImports(Imports{
+			"env.block": HostFunc(func(HostModule, []uint64, []uint64) {
+				close(hostEntered)
+				<-leaseHeld
+			}),
+		}))
+		if in != nil {
+			_ = in.Close()
+		}
+		done <- instantiateErr
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("host-resume wait error = %v, want context deadline", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("instantiation did not cancel while host resume waited for the native lease")
+	}
+}
+
 // TestInvokeContextInterruptsHostCallLoop guards the runaway-guest guard itself:
 // a guest that calls a host import on every loop iteration must be interruptible
 // by context, and must not be pre-empted by any fixed host-call re-entry cap. The
