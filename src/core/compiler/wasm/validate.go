@@ -201,6 +201,10 @@ const (
 	maxTable32Limit  = uint64(1<<32 - 1)
 	maxMemory32Pages = uint64(1 << 16)
 	maxMemory64Pages = uint64(1 << 48)
+	// The native stack reserves 4 MiB. Keeping the local index space at or below
+	// 2^17 leaves at least half of that reservation for v128 locals plus frame
+	// headers, operand spills, and the stack fence.
+	maxFunctionLocals = uint64(1 << 17)
 )
 
 func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
@@ -944,6 +948,9 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	v.localCount, overflow = LocalCount(ft.Params, fn.Locals.Runs)
 	if overflow {
 		return v.verr(ErrInvalidLimitRange, "local count overflow")
+	}
+	if v.localCount > maxFunctionLocals {
+		return v.verr(ErrInvalidLimitRange, "local count exceeds implementation limit")
 	}
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {

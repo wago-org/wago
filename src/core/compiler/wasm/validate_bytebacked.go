@@ -896,6 +896,9 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	if overflow {
 		return v.verr(ErrInvalidLimitRange, "local count overflow")
 	}
+	if v.localCount > maxFunctionLocals {
+		return v.verr(ErrInvalidLimitRange, "local count exceeds implementation limit")
+	}
 	for _, run := range body.locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err

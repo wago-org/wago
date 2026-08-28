@@ -63,6 +63,24 @@ func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsFunctionLocalCountAboveNativeFrameLimit(t *testing.T) {
+	m := modWithFunc(nil, nil)
+	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: uint32(maxFunctionLocals + 1), Type: I32}}}
+	expectValidateErr(t, m, ErrInvalidLimitRange)
+
+	localRun := append(u32(uint32(maxFunctionLocals+1)), byte(0x7f))
+	body := append([]byte{0x01}, localRun...)
+	body = append(body, 0x0b)
+	code := append(u32(uint32(len(body))), body...)
+	data := module(
+		section(secType, 0x01, 0x60, 0x00, 0x00),
+		section(secFunction, 0x01, 0x00),
+		section(secCode, append([]byte{0x01}, code...)...),
+	)
+	err := ValidateByteBackedModule(data)
+	expectValidationCode(t, err, ErrInvalidLimitRange)
+}
+
 func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 	for _, effect := range simdLoads {
 		k := effect.kind
