@@ -102,6 +102,20 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	if !cacheable {
 		return module, nil
 	}
+	limit := cache.MaxBytes
+	if limit == 0 {
+		limit = DefaultMaxBytes
+	}
+	if limit >= 0 {
+		sizes, err := module.Compiled().ArtifactSectionSizes()
+		if err != nil {
+			cache.report(err)
+			return module, nil
+		}
+		if sizes.Total > limit {
+			return module, nil
+		}
+	}
 	if err := publishArtifact(path, module.Compiled()); err != nil {
 		cache.report(err)
 	} else if err := cache.pruneAndMark(); err != nil {

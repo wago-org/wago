@@ -288,6 +288,34 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	}
 }
 
+func TestLoadOrCompileSkipsArtifactLargerThanCache(t *testing.T) {
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a"), MaxBytes: 1}
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+
+	calls := 0
+	oldPublish := publishArtifact
+	publishArtifact = func(string, *wago.Compiled) error {
+		calls++
+		return nil
+	}
+	t.Cleanup(func() { publishArtifact = oldPublish })
+
+	module, err := cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if calls != 0 {
+		t.Fatalf("oversized artifact publication calls = %d, want 0", calls)
+	}
+	entries, err := filepath.Glob(filepath.Join(cache.Dir, "*.wago"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("oversized artifact cache entries = %v, %v; want none", entries, err)
+	}
+}
+
 type cachePlugin func(*wago.Registrar) error
 
 func (f cachePlugin) Register(reg *wago.Registrar) error { return f(reg) }
