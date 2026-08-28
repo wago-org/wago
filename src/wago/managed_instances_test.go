@@ -264,6 +264,11 @@ func TestManagedVoidTableValidationRejectsNullAndWrongSignature(t *testing.T) {
 }
 
 func TestManagedInvokeVoidTableContextInterruptsNativeLoop(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		// TinyGo's cooperative scheduler cannot run a context timer while native
+		// Wasm owns the thread; its interruption coverage uses external signals.
+		return
+	}
 	ext := &managedTestExtension{}
 	rt := NewRuntime()
 	defer rt.Close()
