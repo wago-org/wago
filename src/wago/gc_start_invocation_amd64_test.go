@@ -140,3 +140,81 @@ func TestGCAllocatingLocalStartCancelsInvocationLeaseWait(t *testing.T) {
 		t.Fatal("instantiation did not cancel while the GC invocation lease was held")
 	}
 }
+
+func TestGCAllocatingLocalStartCancelsResumeLeaseWait(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcAllocatingHostStartModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	gcCfg := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
+	first, err := instantiateCore(compiled, InstantiateOptions{
+		GC:      gcCfg,
+		store:   store,
+		Imports: Imports{"env.started": HostFunc(func(HostModule, []uint64, []uint64) {})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+
+	hostEntered := make(chan struct{})
+	leaseHeld := make(chan struct{})
+	releaseLease := make(chan struct{})
+	competitorDone := make(chan struct{})
+	go func() {
+		defer close(competitorDone)
+		select {
+		case <-hostEntered:
+		case <-releaseLease:
+			return
+		}
+		lease := first.lockGCInvocation(newInvocationID())
+		close(leaseHeld)
+		<-releaseLease
+		lease.unlock()
+	}()
+	defer func() {
+		close(releaseLease)
+		<-competitorDone
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	var startedInstance *Instance
+	go func() {
+		second, instantiateErr := instantiateCore(compiled, InstantiateOptions{
+			Context: ctx,
+			GC:      gcCfg,
+			store:   store,
+			Imports: Imports{"env.started": HostFunc(func(caller HostModule, _ []uint64, _ []uint64) {
+				startedInstance = caller.(instanceHostModule).in
+				close(hostEntered)
+				<-leaseHeld
+			})},
+		})
+		if second != nil {
+			_ = second.Close()
+		}
+		done <- instantiateErr
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("GC resume-lease wait error = %v, want context deadline", err)
+		}
+		nativeActiveMu.Lock()
+		for activation, count := range abandonedGCInvocations {
+			if activation.in == startedInstance && count != 0 {
+				nativeActiveMu.Unlock()
+				t.Fatalf("abandoned GC invocation count = %d after unwind, want 0", count)
+			}
+		}
+		nativeActiveMu.Unlock()
+	case <-time.After(time.Second):
+		t.Fatal("instantiation did not cancel while host resume waited for the GC lease")
+	}
+}

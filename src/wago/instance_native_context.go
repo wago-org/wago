@@ -23,6 +23,8 @@ var (
 	nativeExecutionEpoch    uint64 // guarded by nativeExecutionMu; advances on every public native entry
 	nativeActiveMu          sync.Mutex
 	nativeActive            = map[nativeActivation]uint32{}
+	abandonedGCInvocations  map[nativeActivation]uint32
+	abandonedGCInvocationN  atomic.Uint32
 	invocationReservationMu sync.Mutex
 	invocationReservations  = map[nativeActivation]*pluginOperationReservation{}
 )
@@ -75,6 +77,39 @@ func isNativeActive(in *Instance, id invocationID) bool {
 	active := id != 0 && nativeActive[nativeActivation{in: in, id: id}] != 0
 	nativeActiveMu.Unlock()
 	return active
+}
+
+func markGCInvocationAbandoned(in *Instance, id invocationID) {
+	activation := nativeActivation{in: in, id: id}
+	nativeActiveMu.Lock()
+	if abandonedGCInvocations == nil {
+		abandonedGCInvocations = make(map[nativeActivation]uint32)
+	}
+	abandonedGCInvocations[activation]++
+	abandonedGCInvocationN.Add(1)
+	nativeActiveMu.Unlock()
+}
+
+func consumeAbandonedGCInvocation(in *Instance, id invocationID) bool {
+	if abandonedGCInvocationN.Load() == 0 {
+		return false
+	}
+	activation := nativeActivation{in: in, id: id}
+	nativeActiveMu.Lock()
+	count := abandonedGCInvocations[activation]
+	if count == 1 {
+		delete(abandonedGCInvocations, activation)
+		if len(abandonedGCInvocations) == 0 {
+			abandonedGCInvocations = nil
+		}
+	} else if count > 1 {
+		abandonedGCInvocations[activation] = count - 1
+	}
+	if count != 0 {
+		abandonedGCInvocationN.Add(^uint32(0))
+	}
+	nativeActiveMu.Unlock()
+	return count != 0
 }
 
 func (in *Instance) swapInvocationReservation(next *pluginOperationReservation) *pluginOperationReservation {
@@ -133,6 +168,24 @@ func lockMutexContext(ctx context.Context, mu *sync.Mutex) error {
 		default:
 		}
 		if mu.TryLock() {
+			return nil
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+}
+
+func readLockContext(ctx context.Context, mu *sync.RWMutex) error {
+	if ctx == nil || ctx.Done() == nil {
+		mu.RLock()
+		return nil
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if mu.TryRLock() {
 			return nil
 		}
 		time.Sleep(100 * time.Microsecond)

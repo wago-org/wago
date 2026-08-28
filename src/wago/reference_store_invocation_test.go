@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -185,6 +186,48 @@ func TestDynamicInvocationDomainInspectionHoldsTopologyReadLease(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("topology writer did not resume after inspection read lease release")
 	}
+}
+
+func TestDynamicGCInvocationResumeCancellationReleasesBookkeeping(t *testing.T) {
+	domain := &gcStoreDomain{id: 1, collector: new(gc.Collector)}
+	in := &Instance{c: &Compiled{}, gc: domain.collector}
+	in.executionFlags.Store(executionFlagDynamicGCDomain | executionFlagImportedGCDomain)
+	topology := &gcDomainTopology{first: domain, last: domain, n: 1}
+	store := &referenceStore{
+		gcDomains: topology,
+		instances: map[*Instance]*referenceStoreInstance{
+			in: {gcDomain: domain, dynamicInvocationDomains: true},
+		},
+	}
+	in.refStore = store
+
+	owner := newInvocationID()
+	lease := in.lockGCInvocation(owner)
+	resume := in.suspendGCInvocationContext(owner)
+	topology.Lock()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := resume(ctx); err != context.Canceled {
+		topology.Unlock()
+		t.Fatalf("dynamic GC resume error = %v, want context cancellation", err)
+	}
+	topology.Unlock()
+	lease.unlock()
+
+	nativeActiveMu.Lock()
+	remaining := abandonedGCInvocations[nativeActivation{in: in, id: owner}]
+	nativeActiveMu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("abandoned GC invocation count = %d after unwind, want 0", remaining)
+	}
+	if !domain.invocationMu.TryLock() {
+		t.Fatal("canceled dynamic GC resume retained the domain lease")
+	}
+	domain.invocationMu.Unlock()
+	if !topology.TryRLock() {
+		t.Fatal("canceled dynamic GC resume retained the topology lease")
+	}
+	topology.RUnlock()
 }
 
 func TestForeignRuntimeStaticGCProducerImportRejectedForDynamicConsumer(t *testing.T) {

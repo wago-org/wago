@@ -1005,6 +1005,9 @@ func (l gcInvocationLease) unlock() {
 	if !l.acquired {
 		return
 	}
+	if consumeAbandonedGCInvocation(l.in, l.owner) {
+		return
+	}
 	domains := l.domains
 	if l.dynamic {
 		domains = l.in.gcInvocationDomains()
@@ -1027,7 +1030,15 @@ func (in *Instance) ownsGCInvocation(owner invocationID) bool {
 	return owned
 }
 
-func (in *Instance) suspendGCInvocation(owner invocationID) func() {
+type gcInvocationResume func(context.Context) error
+
+func (resume gcInvocationResume) withoutContext() {
+	if err := resume(nil); err != nil {
+		panic("wago: context-free GC invocation resume failed")
+	}
+}
+
+func (in *Instance) suspendGCInvocationContext(owner invocationID) gcInvocationResume {
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
 	if dynamic {
@@ -1040,14 +1051,14 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	}
 	domains := in.gcInvocationDomains()
 	if owner == 0 || domains.len() == 0 && !dynamic {
-		return func() {}
+		return func(context.Context) error { return nil }
 	}
 	if !domains.ownedBy(owner) {
 		if !domains.dynamic && domains.set == nil {
 			// Start-function and construction callbacks can run before a public
 			// invocation lease exists. Their native entry is already serialized, so
 			// there is no complete-call lease to suspend or restore.
-			return func() {}
+			return func(context.Context) error { return nil }
 		}
 		panic("wago: partial Runtime GC invocation lease ownership")
 	}
@@ -1056,13 +1067,23 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	if dynamic {
 		topology.RUnlock()
 	}
-	return func() {
+	return func(ctx context.Context) error {
 		if dynamic {
-			topology.RLock()
+			if err := readLockContext(ctx, &topology.RWMutex); err != nil {
+				markGCInvocationAbandoned(in, owner)
+				return err
+			}
 			domains = in.gcInvocationDomains()
 		}
-		domains.lock()
+		if err := domains.lockContext(ctx); err != nil {
+			if dynamic {
+				topology.RUnlock()
+			}
+			markGCInvocationAbandoned(in, owner)
+			return err
+		}
 		domains.claim(owner)
+		return nil
 	}
 }
 

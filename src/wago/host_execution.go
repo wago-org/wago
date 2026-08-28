@@ -174,7 +174,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
 		leaseOwner = root
 	}
-	resumeGCInvocation := leaseOwner.suspendGCInvocation(id)
+	resumeGCInvocation := leaseOwner.suspendGCInvocationContext(id)
 	var localMu *sync.Mutex
 	var epoch uint64
 	if active.usesIndependentExecution() {
@@ -199,7 +199,9 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 				panic(hostResumeAborted{cause: recovered})
 			}
 		}()
-		resumeGCInvocation()
+		if err := resumeGCInvocation(invocation.wait); err != nil {
+			panic(hostResumeCanceled{err: err})
+		}
 		resumeMu := localMu
 		if resumeMu == nil {
 			resumeMu = &nativeExecutionMu
