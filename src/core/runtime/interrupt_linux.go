@@ -43,6 +43,7 @@ var (
 	executableCodeMu           sync.Mutex
 	interruptLinearMemories    [maxInterruptLinearMemories]uintptr
 	interruptLinearMemoryLimit uint32
+	interruptLinearMemoryState uint32
 	interruptLinearMemoryMu    sync.Mutex
 
 	interruptInstallOnce sync.Once
@@ -88,6 +89,16 @@ func registerInterruptLinearMemory(linMem uintptr) error {
 func unregisterInterruptLinearMemory(linMem uintptr) {
 	interruptLinearMemoryMu.Lock()
 	defer interruptLinearMemoryMu.Unlock()
+	// Set the writer gate before clearing entries. Signal readers that entered
+	// earlier remain counted; later readers observe the gate and do not inspect
+	// the registry. Reopening the gate publishes the cleared slots before Close
+	// proceeds to unmap the memory.
+	for {
+		state := atomic.LoadUint32(&interruptLinearMemoryState)
+		if atomic.CompareAndSwapUint32(&interruptLinearMemoryState, state, state|interruptLinearMemoryWriter) {
+			break
+		}
+	}
 	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
 	for i := 0; i < limit; i++ {
 		if atomic.LoadUintptr(&interruptLinearMemories[i]) != linMem {
@@ -99,7 +110,16 @@ func unregisterInterruptLinearMemory(linMem uintptr) {
 		limit--
 	}
 	atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit))
+	for atomic.LoadUint32(&interruptLinearMemoryState)&interruptLinearMemoryReaders != 0 {
+		goruntime.Gosched()
+	}
+	atomic.StoreUint32(&interruptLinearMemoryState, 0)
 }
+
+const (
+	interruptLinearMemoryWriter  uint32 = 1 << 31
+	interruptLinearMemoryReaders        = interruptLinearMemoryWriter - 1
+)
 
 //lint:ignore U1000 referenced from interrupt_linux_{amd64,arm64}.s
 var interruptTrapPC uintptr

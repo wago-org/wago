@@ -3,8 +3,10 @@
 package runtime
 
 import (
+	goruntime "runtime"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestJobMemoryLifecycleRegistersInterruptLinearMemory(t *testing.T) {
@@ -21,6 +23,43 @@ func TestJobMemoryLifecycleRegistersInterruptLinearMemory(t *testing.T) {
 	}
 	if interruptLinearMemoryRegistered(base) {
 		t.Fatal("closed linear memory remained published")
+	}
+}
+
+func TestUnregisterWaitsForSignalReaders(t *testing.T) {
+	const base = uintptr(3)
+	if err := registerInterruptLinearMemory(base); err != nil {
+		t.Fatal(err)
+	}
+	// Model a handler that acquired its reader slot before Close took the gate.
+	atomic.StoreUint32(&interruptLinearMemoryState, 1)
+	done := make(chan struct{})
+	go func() {
+		unregisterInterruptLinearMemory(base)
+		close(done)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for atomic.LoadUint32(&interruptLinearMemoryState)&interruptLinearMemoryWriter == 0 && time.Now().Before(deadline) {
+		goruntime.Gosched()
+	}
+	if atomic.LoadUint32(&interruptLinearMemoryState)&interruptLinearMemoryWriter == 0 {
+		atomic.AddUint32(&interruptLinearMemoryState, ^uint32(0))
+		<-done
+		t.Fatal("unregister did not close the signal-reader gate")
+	}
+	select {
+	case <-done:
+		t.Fatal("unregister returned while a signal reader was active")
+	default:
+	}
+	atomic.AddUint32(&interruptLinearMemoryState, ^uint32(0))
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("unregister did not resume after the signal reader left")
+	}
+	if interruptLinearMemoryRegistered(base) {
+		t.Fatal("base remained registered after reader quiescence")
 	}
 }
 

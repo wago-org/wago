@@ -48,9 +48,16 @@ range_next:
 interrupt_match:
 	MOVD	392(R7), R11               // saved X26 = linMem
 	CBZ	R11, handler_return
+	MOVD	$·interruptLinearMemoryState(SB), R17
+reader_acquire:
+	LDAXRW	(R17), R14
+	TBNZ	$31, R14, handler_return    // Close has blocked new registry readers
+	ADDW	$1, R14, R15
+	STLXRW	R15, (R17), R13
+	CBNZ	R13, reader_acquire
 	MOVD	$·interruptLinearMemories(SB), R9
 	MOVWU	·interruptLinearMemoryLimit(SB), R12
-	CBZ	R12, handler_return
+	CBZ	R12, reader_release
 linmem_loop:
 	MOVD	0(R9), R13
 	CMP	R13, R11
@@ -58,7 +65,7 @@ linmem_loop:
 	ADD	$8, R9
 	SUB	$1, R12
 	CBNZ	R12, linmem_loop
-	RET
+	B	reader_release
 linmem_match:
 	MOVD	-104(R11), R10             // active trap pointer
 	MOVD	$·interruptRequests(SB), R9
@@ -70,7 +77,7 @@ request_loop:
 	ADD	$16, R9
 	SUB	$1, R12
 	CBNZ	R12, request_loop
-	RET
+	B	reader_release
 request_match:
 	MOVW	$12, R16
 	MOVW	R16, (R10)                 // TrapInterrupted
@@ -79,6 +86,12 @@ request_match:
 	MOVD	R11, 256(R7)               // saved X9 = linMem for landing pad
 	MOVD	·interruptTrapPC(SB), R11
 	MOVD	R11, 440(R7)               // saved PC = landing pad
+	B	reader_release
+reader_release:
+	LDAXRW	(R17), R14
+	SUBW	$1, R14, R15
+	STLXRW	R15, (R17), R13
+	CBNZ	R13, reader_release
 	RET
 
 // The rewritten context resumes with X9 naming active linear memory. The
