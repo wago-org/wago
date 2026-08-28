@@ -176,7 +176,19 @@ func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
 	return true
 }
 
-func preferredGCCollectorFromImports(imports Imports, store *referenceStore) (*gc.Collector, error) {
+func (c *Compiled) functionImportRequiresGCDomain(key string) bool {
+	if c == nil {
+		return false
+	}
+	for i, candidate := range c.Imports {
+		if candidate == key && i < len(c.importFuncSigs) && funcSigHasGCRefs(c.importFuncSigs[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func preferredGCCollectorFromImports(c *Compiled, imports Imports, store *referenceStore) (*gc.Collector, error) {
 	var collector *gc.Collector
 	consider := func(candidate *Instance) error {
 		if candidate == nil || candidate.gc == nil {
@@ -191,10 +203,13 @@ func preferredGCCollectorFromImports(imports Imports, store *referenceStore) (*g
 		collector = candidate.gc
 		return nil
 	}
-	for _, value := range imports {
+	for key, value := range imports {
 		switch v := value.(type) {
 		case *InstanceExport:
-			if v != nil {
+			// A scalar-only native call transfers no collector ownership. Its
+			// caller and producer may therefore keep independent domains and GC
+			// policies even though the function is linked cross-instance.
+			if v != nil && c.functionImportRequiresGCDomain(key) {
 				if err := consider(v.inst); err != nil {
 					return nil, err
 				}
