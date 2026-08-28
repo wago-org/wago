@@ -65,7 +65,7 @@ func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
 
 func TestValidateRejectsFunctionLocalCountAboveNativeFrameLimit(t *testing.T) {
 	m := modWithFunc(nil, nil)
-	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: uint32(maxFunctionLocals + 1), Type: I32}}}
+	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: uint32(maxFunctionLocals + 1), Type: V128}}}
 	expectValidateErr(t, m, ErrInvalidLimitRange)
 
 	localRun := append(u32(uint32(maxFunctionLocals+1)), byte(0x7f))
