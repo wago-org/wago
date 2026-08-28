@@ -881,10 +881,11 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		return id
 	}
 	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
-	for i, off := range plan.LocalOffsets {
-		if plan.LocalLiveAt(siteIndex, i) {
-			offsets = append(offsets, off)
-		}
+	if !plan.VisitLiveLocals(siteIndex, false, func(root int) {
+		offsets = append(offsets, plan.LocalOffsets[root])
+	}) {
+		plan.Exact = false
+		return id
 	}
 	hidden := len(roots) - paramCount
 	slot := 0

@@ -1,6 +1,9 @@
 package shared
 
-import "sort"
+import (
+	"math/bits"
+	"sort"
+)
 
 // AMD64FrameHeaderBytes and ARM64FrameHeaderBytes are the stable local-slot
 // bases used by the railshot native frames. Root-map producers and consumers
@@ -150,6 +153,50 @@ func (p *GCFrameRootPlan) CallLocalLiveAt(site, root int) bool {
 		return false
 	}
 	return rootMaskContains(p.LiveCallLocalMasks, p.LiveMaskExtraWords[start:], extra, site, root)
+}
+
+// VisitLiveLocals calls visit with each retained-slice index live at one
+// allocation or call site. It iterates set mask bits, so sparse sites do work
+// proportional to their live population instead of all retained locals.
+func (p *GCFrameRootPlan) VisitLiveLocals(site int, call bool, visit func(root int)) bool {
+	if p == nil || visit == nil || len(p.LocalIndexes) != len(p.LocalOffsets) {
+		return false
+	}
+	masks := p.LiveLocalMasks
+	extraPerSite := p.rootMaskExtraWordsPerSite()
+	extraStart := 0
+	if call {
+		masks = p.LiveCallLocalMasks
+		extraStart = len(p.LiveLocalMasks) * extraPerSite
+	}
+	if site < 0 || site >= len(masks) {
+		return false
+	}
+	visitWord := func(word int, value uint64) bool {
+		for value != 0 {
+			bit := bits.TrailingZeros64(value)
+			value &= value - 1
+			root := word*64 + bit
+			if root >= len(p.LocalOffsets) {
+				return false
+			}
+			visit(root)
+		}
+		return true
+	}
+	if !visitWord(0, masks[site]) {
+		return false
+	}
+	base := extraStart + site*extraPerSite
+	if base < 0 || base+extraPerSite > len(p.LiveMaskExtraWords) {
+		return false
+	}
+	for word := 1; word <= extraPerSite; word++ {
+		if !visitWord(word, p.LiveMaskExtraWords[base+word-1]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *GCModuleFrameRootPlan) Function(index int) *GCFrameRootPlan {
