@@ -767,9 +767,8 @@ func (f *fn) allLocalsRegisterHomed() bool {
 
 func (f *fn) patchFrameAdjusts() error {
 	size := f.frameSize()
-	headroom := nativeFrameStackFenceHeadroom(f.usesCalls)
-	if size < 0 || size > headroom {
-		return fmt.Errorf("arm64: native frame %d bytes exceeds stack-fence headroom %d", size, headroom)
+	if err := f.validateFrameSize(size); err != nil {
+		return err
 	}
 	addSites := append(f.tailFrameSites, f.addRspAt)
 	if f.stats != nil {
@@ -806,6 +805,14 @@ func (f *fn) patchFrameAdjusts() error {
 	f.a.PatchMovImm(f.subRspAt, uint32(size))
 	for _, at := range addSites {
 		f.a.PatchMovImm(at, uint32(size))
+	}
+	return nil
+}
+
+func (f *fn) validateFrameSize(size int) error {
+	headroom := nativeFrameStackFenceHeadroom(f.usesCalls)
+	if size < 0 || size > headroom {
+		return fmt.Errorf("arm64: native frame %d bytes exceeds stack-fence headroom %d", size, headroom)
 	}
 	return nil
 }
@@ -2096,6 +2103,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
+	// Reject an already-oversized locals/header frame before emitting any
+	// SP-relative homes whose architecture encoding has a smaller displacement.
+	// Operand spills can only grow this frame and remain checked after lowering.
+	if err := f.validateFrameSize(f.frameSize()); err != nil {
+		return nil, nil, 0, err
+	}
 
 	if regABI {
 		internalOff, err := f.emitRegABI(c, hostAdapter)
