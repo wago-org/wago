@@ -55,6 +55,23 @@ func TestValidateGCSubtypeMetadata(t *testing.T) {
 		}}}}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
+
+	t.Run("multiple direct supertypes are rejected", func(t *testing.T) {
+		m := &Module{Types: []RecType{
+			openStructType(nil),
+			openStructType(nil),
+			openStructType(nil, TypeIdx{Index: 0}, TypeIdx{Index: 1}),
+		}}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+
+	t.Run("forward recursive supertype is rejected", func(t *testing.T) {
+		m := &Module{Types: []RecType{{SubTypes: []SubType{
+			{Final: false, Supers: []TypeIdx{{Index: 1, Rec: true}}, Comp: CompType{Kind: CompStruct}},
+			{Final: false, Comp: CompType{Kind: CompStruct}},
+		}}}}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 }
 
 func TestRefTestAcceptsDefinedSiblingTypes(t *testing.T) {
