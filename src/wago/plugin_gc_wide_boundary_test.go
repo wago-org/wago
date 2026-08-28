@@ -50,6 +50,11 @@ func (pluginGCWideBoundaryTestPlugin) Register(reg *Registrar) error {
 		params[i] = ValI32
 	}
 	module.Func("scalar_11", func(HostModule, []uint64, []uint64) {}).Params(params...)
+	module.Func("wide_scalar_results", func(_ HostModule, params, results []uint64) {
+		for i := range results {
+			results[i] = uint64(i) + params[0]
+		}
+	}).Params(ValI32).Results(ValI32, ValI32, ValI64, ValI64, ValI32, ValI64, ValI32, ValI64, ValI32, ValI32)
 	return nil
 }
 
@@ -105,6 +110,63 @@ func pluginGCFourResultCallerModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+}
+
+func pluginGCWideScalarResultModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01} // (struct (field (mut i32)))
+	wideScalarType := wasmtest.FuncType(
+		[]wasm.ValType{wasm.I32},
+		[]wasm.ValType{wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I32},
+	)
+	runType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	body := []byte{
+		0x41, 0x00, // i32.const 0
+		0x10, 0x00, // call wide_scalar_results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a, // drop ten scalar results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a,
+		0xfb, 0x01, 0x00, 0x1a, // struct.new_default 0; drop
+		0x41, 0x07, // i32.const 7
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wideScalarType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(pluginGCImport("plugin_gc_wide", "wide_scalar_results", 1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+// This architecture-neutral regression runs in the mandatory native amd64 and
+// arm64 suites. The module itself has no collector-reference import boundary:
+// its wide import is scalar-only, while struct.new_default still requires exact
+// roots for collection in the calling native frame.
+func TestPluginGCWideScalarHostImportUsesSynchronousABI(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	rt := newPluginGCWideBoundaryRuntime(t)
+	defer rt.Close()
+
+	mod, err := rt.Compile(pluginGCWideScalarResultModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	admission := mod.c.GCNativeRootAdmission()
+	if !admission.Required || !admission.Exact || admission.Callsites == 0 || admission.Safepoints == 0 {
+		t.Fatalf("wide scalar host root admission = %+v", admission)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.Call(context.Background(), "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].I32() != 7 {
+		t.Fatalf("run = %v; want i32(7)", values)
+	}
 }
 
 func TestPluginGCHostBoundaryWideWrapperABI(t *testing.T) {
