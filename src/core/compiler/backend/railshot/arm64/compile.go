@@ -767,8 +767,9 @@ func (f *fn) allLocalsRegisterHomed() bool {
 
 func (f *fn) patchFrameAdjusts() error {
 	size := f.frameSize()
-	if !shared.NativeFrameFitsStackFence(size) {
-		return fmt.Errorf("arm64: native frame %d bytes exceeds stack-fence headroom %d", size, shared.MaxNativeFrameBytes)
+	headroom := nativeFrameStackFenceHeadroom(f.usesCalls)
+	if size < 0 || size > headroom {
+		return fmt.Errorf("arm64: native frame %d bytes exceeds stack-fence headroom %d", size, headroom)
 	}
 	addSites := append(f.tailFrameSites, f.addRspAt)
 	if f.stats != nil {
@@ -807,6 +808,16 @@ func (f *fn) patchFrameAdjusts() error {
 		f.a.PatchMovImm(at, uint32(size))
 	}
 	return nil
+}
+
+func nativeFrameStackFenceHeadroom(usesCalls bool) int {
+	headroom := shared.MaxNativeFrameBytes
+	if usesCalls {
+		// A call-making frame first saves FP/LR below SP, before reserving the
+		// patched body frame and reaching its next stack-fence check.
+		headroom -= 16
+	}
+	return headroom
 }
 
 // ImportBinding is shared by both Railshot architectures.
