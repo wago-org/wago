@@ -164,22 +164,18 @@ func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 	if f.gcFrameRoots == nil || !f.lazyZero {
 		return
 	}
-	for i, index := range f.gcFrameRoots.LocalIndexes {
-		live := f.gcFrameRoots.LocalLiveAt(site, i)
-		if call {
-			live = f.gcFrameRoots.CallLocalLiveAt(site, i)
-		}
-		if !live {
-			continue
-		}
+	if !f.gcFrameRoots.VisitLiveLocals(site, call, func(root int) {
+		index := f.gcFrameRoots.LocalIndexes[root]
 		x := int(index)
 		if x < 0 || x >= f.nLocals {
 			f.gcFrameRoots.Exact = false
-			continue
+			return
 		}
 		if f.locals[x].state == lsConstZero {
 			f.materializeZeroLocal(x, true)
 		}
+	}) {
+		f.gcFrameRoots.Exact = false
 	}
 }
 

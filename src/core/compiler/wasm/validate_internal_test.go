@@ -63,12 +63,12 @@ func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsFunctionLocalCountAboveNativeFrameLimit(t *testing.T) {
+func TestValidateFunctionLocalCountDefaultAndCustomLimits(t *testing.T) {
 	m := modWithFunc(nil, nil)
-	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: uint32(maxFunctionLocals + 1), Type: V128}}}
+	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: DefaultMaxFunctionLocals + 1, Type: V128}}}
 	expectValidateErr(t, m, ErrInvalidLimitRange)
 
-	localRun := append(u32(uint32(maxFunctionLocals+1)), byte(0x7f))
+	localRun := append(u32(DefaultMaxFunctionLocals+1), byte(0x7f))
 	body := append([]byte{0x01}, localRun...)
 	body = append(body, 0x0b)
 	code := append(u32(uint32(len(body))), body...)
@@ -79,6 +79,30 @@ func TestValidateRejectsFunctionLocalCountAboveNativeFrameLimit(t *testing.T) {
 	)
 	err := ValidateByteBackedModule(data)
 	expectValidationCode(t, err, ErrInvalidLimitRange)
+
+	for _, count := range []uint32{DefaultMaxFunctionLocals, MaximumFunctionLocals} {
+		limits := ValidationLimits{MaxFunctionLocals: count}
+		ast := modWithFunc(nil, nil)
+		ast.Code[0].Locals = Locals{Runs: []LocalRun{{Count: count, Type: I32}}}
+		if err := ValidateModuleWithConfig(ast, ValidationFeatures{}, 1, limits); err != nil {
+			t.Fatalf("AST local boundary %d: %v", count, err)
+		}
+		localRun := append(u32(count), byte(0x7f))
+		body := append([]byte{0x01}, localRun...)
+		body = append(body, 0x0b)
+		code := append(u32(uint32(len(body))), body...)
+		encoded := module(
+			section(secType, 0x01, 0x60, 0x00, 0x00),
+			section(secFunction, 0x01, 0x00),
+			section(secCode, append([]byte{0x01}, code...)...),
+		)
+		if err := ValidateByteBackedModuleWithConfig(encoded, ValidationFeatures{}, 1, limits); err != nil {
+			t.Fatalf("byte-backed local boundary %d: %v", count, err)
+		}
+	}
+	if err := ValidateModuleWithConfig(modWithFunc(nil, nil), ValidationFeatures{}, 1, ValidationLimits{MaxFunctionLocals: MaximumFunctionLocals + 1}); err == nil {
+		t.Fatal("validation accepted a configured local limit above uint16")
+	}
 }
 
 func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {

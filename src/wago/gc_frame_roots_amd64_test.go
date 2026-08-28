@@ -758,6 +758,45 @@ func gcFrameRootLimitModule(count uint32) []byte {
 	)
 }
 
+func gcSparseLiveFrameRootModule(count uint32) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
+	locals = append(locals, 0x63, 0x00)
+	body := append(locals,
+		0xfb, 0x01, 0x00, 0x1a, // struct.new_default; drop
+		0x20, 0x00, 0x1a, // local.get 0; drop: only this local crosses collection
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func gcDisjointLiveFrameRootModule(count uint32) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
+	locals = append(locals, 0x63, 0x00)
+	body := locals
+	for i := uint32(0); i < count; i++ {
+		body = append(body, 0xfb, 0x01, 0x00, 0x21) // new default; local.set i
+		body = append(body, wasmtest.ULEB(i)...)
+		body = append(body, 0xfb, 0x01, 0x00, 0x1a) // collect while only i is live
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(i)...)
+		body = append(body, 0x1a) // local.get i; drop
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func gcRepeatedFrameRootModule(count uint32) []byte {
 	structType := []byte{0x5f, 0x01, 0x7b, 0x01}
 	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
@@ -1022,11 +1061,49 @@ func TestGCNativeRootAdmissionDiagnostic(t *testing.T) {
 	}
 	defer compiled.Close()
 	status := compiled.GCNativeRootAdmission()
-	if !status.Required || status.Exact || !strings.Contains(status.Reason, "exceeds 1024 collector roots") {
+	if !status.Required || status.Exact || !strings.Contains(status.Reason, "exceeds 1024 simultaneously live collector roots") {
 		t.Fatalf("oversized root admission = %+v", status)
 	}
 	if compiled.genericGCFrameRoots() != nil {
 		t.Fatal("oversized root module retained exact root maps")
+	}
+}
+
+func TestGCNativeRootAdmissionCompactsDeadDeclaredLocals(t *testing.T) {
+	const declaredRoots = 1138
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcSparseLiveFrameRootModule(declaredRoots))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 1 {
+		t.Fatalf("%d-declared-root admission = %+v", declaredRoots, status)
+	}
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.safepoints) != 1 || len(plan.safepoints[0].offsets) != 1 {
+		t.Fatalf("compacted native root plan = %+v", plan)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGCNativeRootAdmissionAllowsWideDisjointLiveUnion(t *testing.T) {
+	const declaredRoots = shared.GCFrameRootLimit + 1
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcDisjointLiveFrameRootModule(declaredRoots))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if !status.Exact || status.Safepoints != 2*declaredRoots || status.MaximumRoots != 1 {
+		t.Fatalf("%d-root disjoint-union admission = %+v", declaredRoots, status)
 	}
 }
 

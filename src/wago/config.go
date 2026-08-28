@@ -10,6 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // CoreFeatures is a bit set of WebAssembly Core specification features. A
@@ -237,6 +238,7 @@ type RuntimeConfig struct {
 	optimizationDeltas   map[string]bool
 	trustedOptimizations bool
 	maxMemoryPages       uint32
+	maxFunctionLocals    uint32 // total function parameters plus declared locals
 	boundsChecks         BoundsCheckMode
 	noDeferBounds        bool // disable skipping of provably-redundant bounds checks (default: enabled)
 	functionWorkers      int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
@@ -251,6 +253,14 @@ type runtimeInstanceLimits struct {
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
+
+// DefaultMaxFunctionLocals is the default ceiling for one function's combined
+// parameter and declared-local count. MaxFunctionLocalsLimit is the largest
+// configurable ceiling; native frame-size safety remains independently checked.
+const (
+	DefaultMaxFunctionLocals = wasm.DefaultMaxFunctionLocals
+	MaxFunctionLocalsLimit   = wasm.MaximumFunctionLocals
+)
 
 var defaultOptimizationCache struct {
 	sync.Mutex
@@ -323,6 +333,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		optimizationDeltas:   optimizationDeltas,
 		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,
+		maxFunctionLocals:    DefaultMaxFunctionLocals,
 		boundsChecks:         bounds,
 		functionWorkers:      1,
 		independentInstances: true,
@@ -418,6 +429,16 @@ func (c *RuntimeConfig) WithOptimizations(values map[string]bool) *RuntimeConfig
 func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
 	n := *c
 	n.maxMemoryPages = pages
+	return &n
+}
+
+// WithMaxFunctionLocals sets the maximum combined parameter and declared-local
+// count for one function. Valid values are 1 through 65,535. This bounds
+// validation/compiler bookkeeping; native frame-size checks may reject a lower
+// count when its slots and spills exceed the stack fence.
+func (c *RuntimeConfig) WithMaxFunctionLocals(locals uint32) *RuntimeConfig {
+	n := *c
+	n.maxFunctionLocals = locals
 	return &n
 }
 
@@ -519,6 +540,10 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 
+// MaxFunctionLocals reports the configured combined parameter and declared-
+// local ceiling for one function.
+func (c *RuntimeConfig) MaxFunctionLocals() uint32 { return c.maxFunctionLocals }
+
 // GCCodeTelemetry reports whether fresh compilation should retain code-neutral
 // WasmGC native-byte attribution. Serialized artifacts do not contain it.
 func (c *RuntimeConfig) GCCodeTelemetry() bool { return c.gcCodeTelemetry }
@@ -555,8 +580,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, functionWorkers: %d, independentInstances: %t}",
-		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.functionWorkers, c.independentInstances)
+	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, functionWorkers: %d, independentInstances: %t}",
+		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.functionWorkers, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
@@ -689,6 +714,9 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 // surfacing a bad config early (e.g. at startup). A feature flag is never a
 // silent no-op.
 func (c *RuntimeConfig) Validate() error {
+	if c.maxFunctionLocals == 0 || c.maxFunctionLocals > MaxFunctionLocalsLimit {
+		return fmt.Errorf("wago: max function locals must be between 1 and %d, got %d", MaxFunctionLocalsLimit, c.maxFunctionLocals)
+	}
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}

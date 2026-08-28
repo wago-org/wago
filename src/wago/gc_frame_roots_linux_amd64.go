@@ -4,7 +4,6 @@ package wago
 
 import (
 	"fmt"
-	"math"
 
 	railamd64 "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -15,9 +14,10 @@ import (
 // newGCFrameRootPlan admits bounded exact native-root call graphs. Direct local
 // and synchronous host calls may use the wrapper ABI, while dynamic typed-
 // reference calls retain their smaller register-ABI proof. Functions retain a
-// one-word path through 64 collector roots and use compact flat word arenas up
-// to shared.GCFrameRootLimit. Each function gets independent compile state so
-// railshot workers may populate maps in parallel.
+// one-word path through 64 tracked collector locals and use compact flat word
+// arenas for larger configured populations. Dead-at-all-sites locals are
+// removed before the per-site shared.GCFrameRootLimit is enforced. Each
+// function gets independent compile state so workers may populate maps in parallel.
 func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
 	if !exactRoots {
 		return nil
@@ -108,7 +108,7 @@ functions:
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
-				if len(plan.LocalOffsets) == shared.GCFrameRootLimit || slot > (math.MaxUint32-shared.AMD64FrameHeaderBytes)/8 {
+				if len(plan.LocalOffsets) == shared.GCFrameTrackedLocalLimit {
 					return false
 				}
 				plan.LocalIndexes = append(plan.LocalIndexes, local)
@@ -127,7 +127,7 @@ functions:
 				if !mayCollect {
 					continue functions
 				}
-				return reject("function %d exceeds %d collector roots or the frame-offset bound", function, shared.GCFrameRootLimit)
+				return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 			}
 		}
 		for _, run := range m.Code[function].Locals.Runs {
@@ -136,7 +136,7 @@ functions:
 					if !mayCollect {
 						continue functions
 					}
-					return reject("function %d exceeds %d collector roots or the frame-offset bound", function, shared.GCFrameRootLimit)
+					return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 				}
 			}
 		}
@@ -144,12 +144,23 @@ functions:
 		var maskExtra gcFrameLivenessExtra
 		var err error
 		if bodyUsesEH(m.Code[function].BodyBytes, &classifier) {
+			if len(plan.LocalIndexes) > shared.GCFrameRootLimit {
+				return reject("function %d has %d simultaneously live collector locals, limit %d", function, len(plan.LocalIndexes), shared.GCFrameRootLimit)
+			}
 			liveMasks, callMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
 		} else {
 			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
+		}
+		var maximumLive int
+		plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, maximumLive, err = gcFrameCompactLiveLocals(plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, &maskExtra)
+		if err != nil {
+			return reject("function %d exact local liveness: %v", function, err)
+		}
+		if maximumLive > shared.GCFrameRootLimit {
+			return reject("function %d has %d simultaneously live collector locals, limit %d", function, maximumLive, shared.GCFrameRootLimit)
 		}
 		if !collectorBoundary && bodyUsesNativeCall(m.Code[function].BodyBytes, &classifier) && !gcFrameReferenceCallABI(m, ft) {
 			return reject("function %d exceeds the exact native caller ABI", function)
