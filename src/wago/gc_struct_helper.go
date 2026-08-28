@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -13,22 +14,23 @@ import (
 // bit 31, and ordinary Wasm import indexes use neither. The amd64 backend mirrors
 // these compile-only constants.
 const (
-	gcStructDispatchBit       uint32 = 1 << 30
-	gcStructAllocDefault             = 1
-	gcStructGet                      = 2
-	gcStructSet                      = 3
-	gcStructGetS                     = 4
-	gcStructGetU                     = 5
-	gcStructRefTest                  = 6
+	gcStructDispatchBit       uint32 = codegen.GCHelperDispatchBit
+	gcStructAllocDefault             = codegen.GCHelperStructAllocDefault
+	gcStructGet                      = codegen.GCHelperStructGet
+	gcStructSet                      = codegen.GCHelperStructSet
+	gcStructGetS                     = codegen.GCHelperStructGetS
+	gcStructGetU                     = codegen.GCHelperStructGetU
+	gcStructRefTest                  = codegen.GCHelperRefTest
 	gcStructTableSet                 = 7
-	gcAnyConvertExtern               = 8
-	gcExternConvertAny               = 9
-	gcStructRefCast                  = 10
-	gcStructAllocOne                 = 11
+	gcAnyConvertExtern               = codegen.GCHelperAnyConvertExtern
+	gcExternConvertAny               = codegen.GCHelperExternConvertAny
+	gcStructRefCast                  = codegen.GCHelperRefCast
+	gcStructAllocOne                 = codegen.GCHelperStructAlloc
 	gcStructFinalCastGet             = 12
 	gcStructFinalCastArrayLen        = 13
 	gcFuncRefTest                    = 14
-	gcStructReserveDead              = 15
+	gcStructReserveDead              = codegen.GCHelperStructReserveDead
+	gcStructSetNoBarrier             = codegen.GCHelperStructSetNoBarrier
 )
 
 type gcStructHelperError struct{ err error }
@@ -64,11 +66,19 @@ func gcHelperMayAllocate(helper uint32) bool {
 	}
 }
 
+// gcHelperUsesStructDispatcher is the single family boundary for parked
+// helper routing and diagnostic accounting. Most struct helpers occupy the
+// original low-ID range, but later additions must not be misclassified merely
+// because their stable IDs follow the array-helper range.
+func gcHelperUsesStructDispatcher(helper uint32) bool {
+	return helper < gcArrayAllocDefault || helper == gcStructSetNoBarrier
+}
+
 //lint:ignore U1000 used by builds with wago_gcstats enabled
 func gcHelperMayMutate(helper uint32) bool {
 	switch helper {
-	case gcStructSet, gcStructTableSet,
-		gcArraySet, gcArrayDropElem, gcArrayFill, gcArrayCopy,
+	case gcStructSet, gcStructSetNoBarrier, gcStructTableSet,
+		gcArraySet, gcArraySetNoBarrier, gcArrayDropElem, gcArrayFill, gcArrayCopy,
 		gcArrayInitData, gcArrayInitElem:
 		return true
 	default:
@@ -317,7 +327,20 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.test helper arity = %d/%d, want 4/at-least-1", len(args), len(results))})
 		}
-		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0, args[3] != 0)
+		heap, nullable, exact := int64(args[1]), args[2] != 0, args[3] != 0
+		if in.isFunctionRefTarget(heap) {
+			matched, err := in.functionRefMatches(args[0], heap, nullable, exact)
+			if err != nil {
+				panic(gcStructHelperError{err: err})
+			}
+			if matched {
+				results[0] = 1
+			} else {
+				results[0] = 0
+			}
+			break
+		}
+		target, err := in.gcDynamicRefTarget(heap, nullable, exact)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -339,8 +362,19 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc ref.cast helper arity = %d/%d, want 4/at-least-1", len(args), len(results))})
 		}
-		exact := args[3] != 0
-		if value, handled, err := in.gcDefinedRefCast(args[0], int64(args[1]), args[2] != 0, exact); handled {
+		heap, nullable, exact := int64(args[1]), args[2] != 0, args[3] != 0
+		if in.isFunctionRefTarget(heap) {
+			matched, err := in.functionRefMatches(args[0], heap, nullable, exact)
+			if err != nil {
+				panic(gcStructHelperError{err: err})
+			}
+			if !matched {
+				panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
+			}
+			results[0] = args[0]
+			break
+		}
+		if value, handled, err := in.gcDefinedRefCast(args[0], heap, nullable, exact); handled {
 			if errors.Is(err, gc.ErrCastFailure) {
 				panic(gcStructHelperTrap{code: coreruntime.TrapCastFailure})
 			}
@@ -350,7 +384,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			results[0] = value
 			break
 		}
-		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0, exact)
+		target, err := in.gcDynamicRefTarget(heap, nullable, exact)
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -526,7 +560,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: err})
 		}
 		results[0] = value
-	case gcStructSet:
+	case gcStructSet, gcStructSetNoBarrier:
 		if len(args) < 4 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct set helper arity = %d, want at least 4", len(args))})
 		}
@@ -548,7 +582,15 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcStructHelperError{err: fmt.Errorf("gc struct set type %d has no Runtime-domain identity", typeID)})
 		}
 		exact := int(typeID) < len(in.c.Types) && in.c.Types[typeID].Final
-		actual, matched, err := in.gc.StructSetTyped(ref, required, exact, fieldID, structValue(typeID, fieldID, args[1:1+valueSlots]))
+		value := structValue(typeID, fieldID, args[1:1+valueSlots])
+		var actual gc.TypeID
+		var matched bool
+		var err error
+		if helper == gcStructSetNoBarrier {
+			actual, matched, err = in.gc.StructSetTypedNoBarrier(ref, required, exact, fieldID, value)
+		} else {
+			actual, matched, err = in.gc.StructSetTyped(ref, required, exact, fieldID, value)
+		}
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
@@ -595,6 +637,41 @@ func (in *Instance) gcDefinedRefCast(bits uint64, heap int64, nullable, exact bo
 		return 0, true, gc.ErrCastFailure
 	}
 	return bits, true, nil
+}
+
+func (in *Instance) isFunctionRefTarget(heap int64) bool {
+	return heap == -16 || heap == -13 || heap >= 0 && in != nil && in.c != nil && uint64(heap) < uint64(len(in.c.Types)) && in.c.Types[heap].Kind == CompositeTypeFunction
+}
+
+func (in *Instance) functionRefMatches(bits uint64, heap int64, nullable, exact bool) (bool, error) {
+	if !in.isFunctionRefTarget(heap) {
+		return false, fmt.Errorf("function reference target heap %d is unavailable", heap)
+	}
+	if bits == 0 {
+		return nullable, nil
+	}
+	if heap == -13 { // nofunc
+		return false, nil
+	}
+	actual, actualTypes, ok := in.attachedFuncrefExactType(bits)
+	if !ok && in.refStore != nil {
+		actual, actualTypes, ok = in.refStore.descriptorFuncrefExactType(in, bits)
+	}
+	if !ok {
+		return false, nil
+	}
+	if heap == -16 { // func
+		return true, nil
+	}
+	targetType := uint32(heap)
+	want := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: targetType}}}
+	if !valueTypeSubtype(actual, actualTypes, want, in.c.Types) {
+		return false, nil
+	}
+	if !exact {
+		return true, nil
+	}
+	return valueTypeSubtype(want, in.c.Types, actual, actualTypes), nil
 }
 
 func (in *Instance) gcDynamicRefTarget(heap int64, nullable, exact bool) (gc.RefTestTarget, error) {

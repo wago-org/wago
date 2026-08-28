@@ -43,6 +43,25 @@ type compiledCodeCache struct {
 	gcI31Product           stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
 	flags                  compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
 	stagedFeatures         CoreFeatures                 // exact admission is compile-only; codec reload restores generic GC requirements
+	functionCounters       bool                         // persisted experimental Railshot entry instrumentation
+	tierable               bool                         // persisted stable wrapper-entry boundary
+	sourceHashAvailable    bool                         // sourceHash is an exact compiler/codec identity
+	sourceHash             [32]byte                     // exact Wasm source identity for collected profiles
+}
+
+func (c *Compiled) hasFunctionCounters() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.functionCounters
+}
+
+func (c *Compiled) profileSourceHash() [32]byte {
+	if c == nil || c.codeCache == nil {
+		return [32]byte{}
+	}
+	return c.codeCache.sourceHash
+}
+
+func (c *Compiled) isTierable() bool {
+	return c != nil && c.codeCache != nil && c.codeCache.tierable
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -292,14 +311,16 @@ func (c *Compiled) hasCollectorReferenceCallBoundary() bool {
 // GC instructions and collector-reference host/cross-instance boundaries can
 // both collect while native Wasm frames remain live.
 func (c *Compiled) needsExactNativeGCRoots() bool {
-	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())
+	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() ||
+		c.validateMemo != nil && c.validateMemo.gcFrameRoots != nil ||
+		c.codeCache != nil && c.codeCache.flags&compiledCacheGCRootFailureMask != 0)
 }
 
 // needsRuntimeGCCollectorDomain is the instantiated-module predicate. A module
 // may need a collector solely because a Runtime-owned host import allocates or
 // inspects values selected by the caller's exact GC types.
 func (c *Compiled) needsRuntimeGCCollectorDomain() bool {
-	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())
+	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.validateMemo != nil && c.validateMemo.gcFrameRoots != nil)
 }
 
 func (c *Compiled) needsNativeGCABI() bool {

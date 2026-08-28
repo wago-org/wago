@@ -1,5 +1,7 @@
 package shared
 
+import "github.com/wago-org/wago/src/core/compiler/codegen"
+
 // AMD64FrameHeaderBytes and ARM64FrameHeaderBytes are the stable local-slot
 // bases used by the railshot native frames. Root-map producers and consumers
 // must use the matching architecture value.
@@ -18,26 +20,23 @@ const (
 	// GCHelperIDBits reserves the low dispatch bits for the stable helper ID.
 	// Remaining low-30-bit payload bits identify an allocating safepoint; bits
 	// 30-31 remain the existing GC and host-funcref dispatch tags.
-	GCHelperIDBits     = 8
-	GCHelperIDMask     = uint32(1<<GCHelperIDBits) - 1
-	GCSafepointIDShift = GCHelperIDBits
-	GCSafepointIDMax   = uint32(1<<(30-GCSafepointIDShift)) - 1
+	GCHelperIDBits     = codegen.GCHelperIDBits
+	GCHelperIDMask     = codegen.GCHelperIDMask
+	GCSafepointIDShift = codegen.GCSafepointIDShift
+	GCSafepointIDMax   = codegen.GCSafepointIDMax
 
 	// GCFrameRootLimit bounds exact roots in one native frame. The compiler keeps
 	// a one-word fast path through 64 roots, a two-word path through 128 roots,
 	// and uses one flat word arena for larger masks up to this limit.
-	GCFrameRootLimit = 1024
+	GCFrameRootLimit = codegen.GCFrameRootLimit
 )
 
 func EncodeGCDispatch(helper, safepoint uint32) (uint32, bool) {
-	if helper > GCHelperIDMask || safepoint > GCSafepointIDMax {
-		return 0, false
-	}
-	return helper | safepoint<<GCSafepointIDShift, true
+	return codegen.EncodeGCHelperDispatch(helper, safepoint)
 }
 
 func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
-	return payload & GCHelperIDMask, payload >> GCSafepointIDShift
+	return codegen.DecodeGCHelperDispatch(payload)
 }
 
 // GCFrameSafepointPlan names the direct mutable native slots visible at one

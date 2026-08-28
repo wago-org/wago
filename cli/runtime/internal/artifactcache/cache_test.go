@@ -351,8 +351,8 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 }
 
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
-	if cacheKeyFormat != 2 {
-		t.Fatalf("cache key format = %d, want objective-free version 2", cacheKeyFormat)
+	if cacheKeyFormat != 7 {
+		t.Fatalf("cache key format = %d, want objective-aware version 7", cacheKeyFormat)
 	}
 	source := constantModule()
 	dir := t.TempDir()
@@ -364,6 +364,12 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	bounds := base.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	deferredOff := base.WithDeferBoundsChecks(false)
 	memoryLimit := base.WithMemoryLimitPages(base.MemoryLimitPages() - 1)
+	dragline := base.WithCompiler(wago.CompilerDragline)
+	fallback := dragline.WithCompilerFallback(wago.CompilerFallbackRailshot)
+	sizeObjective := base.WithOptimizationObjective(wago.OptimizeSize)
+	native := base.WithCompilerTarget(wago.TargetNative)
+	profile := &wago.CompilerProfile{Version: 1, ModuleHash: sha256.Sum256(source), Source: "static", Phase: "startup", FunctionCounts: []uint64{1}}
+	profiled := base.WithCompilerProfile(profile)
 
 	basePath, ok := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, base)
 	if !ok {
@@ -375,6 +381,11 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	boundsPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, bounds)
 	deferredPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, deferredOff)
 	memoryPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryLimit)
+	draglinePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, dragline)
+	fallbackPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, fallback)
+	sizePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, sizeObjective)
+	nativePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, native)
+	profiledPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, profiled)
 	runtimePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-b")}).path(source, base)
 	sourcePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(append(source, 0), base)
 	if basePath == featurePath {
@@ -385,6 +396,12 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	}
 	if basePath == optimizationPath {
 		t.Fatal("optimization selection did not change artifact key")
+	}
+	if basePath == nativePath {
+		t.Fatal("compiler target identity did not change artifact key")
+	}
+	if basePath == profiledPath {
+		t.Fatal("compiler profile identity did not change artifact key")
 	}
 	if basePath != workersPath {
 		t.Fatal("function-worker scheduling policy changed artifact key")
@@ -397,6 +414,15 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	}
 	if basePath == memoryPath {
 		t.Fatal("memory limit did not change artifact key")
+	}
+	if basePath == draglinePath {
+		t.Fatal("compiler engine did not change artifact key")
+	}
+	if draglinePath == fallbackPath {
+		t.Fatal("compiler fallback policy did not change artifact key")
+	}
+	if basePath == sizePath {
+		t.Fatal("optimization objective did not change artifact key")
 	}
 	if basePath == sourcePath {
 		t.Fatal("source bytes did not change artifact key")

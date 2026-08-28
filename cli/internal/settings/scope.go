@@ -21,6 +21,7 @@ const (
 type localLayer struct {
 	Features      map[string]bool `json:"features,omitempty"`
 	Optimizations map[string]bool `json:"optimizations,omitempty"`
+	Experimental  map[string]bool `json:"experimental,omitempty"`
 	Runtime       *runtimeLayer   `json:"runtime,omitempty"`
 }
 
@@ -187,6 +188,9 @@ func validateLayer(layer localLayer) error {
 	if err := ValidateOptimizationValues(layer.Optimizations); err != nil {
 		return err
 	}
+	if err := ValidateExperimentalValues(layer.Experimental); err != nil {
+		return err
+	}
 	if layer.Runtime != nil && layer.Runtime.Parallel != nil {
 		if err := ValidateParallel(*layer.Runtime.Parallel); err != nil {
 			return err
@@ -202,6 +206,10 @@ func applyLayer(config *Config, layer localLayer) {
 	}
 	for name, value := range layer.Optimizations {
 		setting, _ := Lookup("optimizations." + name)
+		setting.SetValue(config, value)
+	}
+	for name, value := range layer.Experimental {
+		setting, _ := Lookup("experimental." + name)
 		setting.SetValue(config, value)
 	}
 	if layer.Runtime == nil {
@@ -226,11 +234,16 @@ func diffLayer(config, base Config) localLayer {
 					layer.Features = map[string]bool{}
 				}
 				layer.Features[name] = value
-			} else {
+			} else if setting.kind == optimizationSettingKind {
 				if layer.Optimizations == nil {
 					layer.Optimizations = map[string]bool{}
 				}
 				layer.Optimizations[name] = value
+			} else {
+				if layer.Experimental == nil {
+					layer.Experimental = map[string]bool{}
+				}
+				layer.Experimental[name] = value
 			}
 		}
 	}
@@ -249,7 +262,7 @@ func diffLayer(config, base Config) localLayer {
 }
 
 func layerEmpty(layer localLayer) bool {
-	return len(layer.Features) == 0 && len(layer.Optimizations) == 0 &&
+	return len(layer.Features) == 0 && len(layer.Optimizations) == 0 && len(layer.Experimental) == 0 &&
 		(layer.Runtime == nil || (layer.Runtime.Parallel == nil && layer.Runtime.DeferredBoundsChecking == nil))
 }
 
@@ -262,6 +275,10 @@ func cloneConfig(config Config) Config {
 	clone.Optimizations = make(map[string]bool, len(config.Optimizations))
 	for name, value := range config.Optimizations {
 		clone.Optimizations[name] = value
+	}
+	clone.Experimental = make(map[string]bool, len(config.Experimental))
+	for name, value := range config.Experimental {
+		clone.Experimental[name] = value
 	}
 	return clone
 }

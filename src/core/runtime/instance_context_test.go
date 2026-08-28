@@ -30,12 +30,20 @@ func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
 	binary.LittleEndian.PutUint64(buf[InstanceContextTailHomeOffset:], 13)
 	binary.LittleEndian.PutUint64(buf[InstanceContextTailTargetCtxOffset:], 17)
 	binary.LittleEndian.PutUint64(buf[InstanceContextGCNativeViewOffset:], 19)
+	binary.LittleEndian.PutUint64(buf[InstanceContextProfileCountersOffset:], 23)
+	binary.LittleEndian.PutUint64(buf[InstanceContextTierEntriesOffset:], 29)
 	jm.BindInstanceContextBytes(buf)
 	if got := binary.LittleEndian.Uint64(buf[InstanceContextGCDomainOffset:]); got != 7 {
 		t.Fatalf("binding pointer context rewrote GC domain metadata: %d", got)
 	}
 	if got := jm.GCNativeViewPtr(); got != 19 {
 		t.Fatalf("binding native context GC view = %d, want 19", got)
+	}
+	if got := jm.ProfileCountersPtr(); got != 23 {
+		t.Fatalf("binding native context profile counters = %d, want 23", got)
+	}
+	if got := jm.TierEntriesPtr(); got != 29 {
+		t.Fatalf("binding native context tier entries = %d, want 29", got)
 	}
 }
 
@@ -52,11 +60,13 @@ func TestBindInstanceContextBytesAcceptsUnalignedSource(t *testing.T) {
 		binary.LittleEndian.PutUint64(src[i*8:], uint64(i+1))
 	}
 	binary.LittleEndian.PutUint64(src[InstanceContextGCNativeViewOffset:], 10)
+	binary.LittleEndian.PutUint64(src[InstanceContextProfileCountersOffset:], 11)
+	binary.LittleEndian.PutUint64(src[InstanceContextTierEntriesOffset:], 12)
 	jm.BindInstanceContextBytes(src)
 	want := InstanceContext{
 		CustomCtx: 1, TablePtr: 2, FuncRefDescPtr: 3, PassiveElemPtr: 4,
 		GlobalsPtr: 5, PassiveDataPtr: 6, TableDirPtr: 7, MemoryDirPtr: 8,
-		ImportDispatch: 9,
+		ImportDispatch: 9, ProfileCounters: 11, TierEntries: 12,
 	}
 	if got := jm.CaptureInstanceContext(); got != want {
 		t.Fatalf("InstanceContext = %+v, want %+v", got, want)

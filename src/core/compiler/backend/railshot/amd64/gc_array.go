@@ -5,7 +5,7 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -31,10 +31,10 @@ const (
 	gcArrayAllocUniformNative  uint32 = 33
 	gcArrayAllocFixedNative    uint32 = 34
 	gcArrayFillNoBarrier       uint32 = 35
-	gcArrayCheckDefault        uint32 = 36
-	gcArrayCheckUniform        uint32 = 37
-	gcArrayCheckData           uint32 = 38
-	gcArrayCheckFixed          uint32 = 39
+	gcArrayCheckDefault        uint32 = codegen.GCHelperArrayCheckDefault
+	gcArrayCheckUniform        uint32 = codegen.GCHelperArrayCheckUniform
+	gcArrayCheckData           uint32 = codegen.GCHelperArrayCheckData
+	gcArrayCheckFixed          uint32 = codegen.GCHelperArrayCheckFixed
 )
 
 func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
@@ -301,19 +301,19 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return nil
 		}
 		if target, found := f.stagedGCType(typeIndex); found && target.Final && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
-			barrierState := shared.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
+			barrierState := codegen.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
 			f.publishGCStoredChild(objectRoot, valueRoot)
 			if !barrierState.NeedsBarrier() && f.emitDirectGCArrayRefSetNoBarrier(typeIndex, barrierState) {
 				return nil
 			}
 			f.gcOpcodeBarrier = true
-			f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+			f.recordGCBarrierState(codegen.GCBarrierSlowBarrier)
 			return f.emitNativeCardSafeArrayRefSet(typeIndex, valueType)
 		}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			f.publishGCStoredChild(objectRoot, valueRoot)
 			f.gcOpcodeBarrier = true
-			f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+			f.recordGCBarrierState(codegen.GCBarrierSlowBarrier)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -321,7 +321,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	case 15: // array.len
 		f.refineGCDereferencedObject(f.s.back())
 		fact := f.gcRefFact(f.s.back())
-		if length, known := fact.KnownArrayLength(); known && fact.Nullability() == shared.GCKnownNonNull {
+		if length, known := fact.KnownArrayLength(); known && fact.Nullability() == codegen.GCKnownNonNull {
 			f.dropValue()
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(length)})
 			f.stats.peep("gc-known-array-len")
@@ -368,7 +368,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.refineGCDereferencedObject(objectRoot)
 		helper := uint32(gcArrayFill)
 		if field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
-			barrierState := shared.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
+			barrierState := codegen.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
 			f.recordGCBarrierState(barrierState)
 			f.publishGCStoredChild(objectRoot, valueRoot)
 			if !barrierState.NeedsBarrier() {
@@ -378,7 +378,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 				f.gcOpcodeBarrier = true
 			}
 		} else {
-			f.recordGCBarrierState(shared.GCBarrierNoBarrier)
+			f.recordGCBarrierState(codegen.GCBarrierNoBarrier)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))

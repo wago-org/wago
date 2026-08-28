@@ -414,6 +414,27 @@ type ModuleStats struct {
 	NativeSize       shared.NativeSizeReport
 }
 
+// QualityDebt returns target-neutral signals for selecting future Dragline
+// work. It does not guess at speedup or alter compilation policy.
+func (ms *ModuleStats) QualityDebt() shared.QualityDebtReport {
+	if ms == nil {
+		return shared.QualityDebtReport{}
+	}
+	report := shared.QualityDebtReport{Functions: make([]shared.FunctionQualityDebt, 0, len(ms.Funcs))}
+	for _, stats := range ms.Funcs {
+		if stats == nil {
+			continue
+		}
+		report.Functions = append(report.Functions, shared.FunctionQualityDebt{
+			Function: uint32(stats.FuncIdx), FrameBytes: uint32(stats.FrameBytes),
+			Spills: uint32(stats.Spills), Reloads: uint32(stats.Reloads), Flushes: uint32(stats.Flushes),
+			BoundsChecks: uint32(stats.BoundsChecks), CallShuffles: uint32(stats.CallFlushes),
+			HelperTransitions: uint32(shared.HelperTransitionCount(stats.Calls)), NativeBytes: uint32(stats.CodeBytes),
+		})
+	}
+	return report
+}
+
 // NativeFunctionSizeReport and NativeSizeReport are shared by both Railshot
 // targets. The aliases keep this architecture package's structured stats API
 // self-contained for callers such as bench/cmd/explain.

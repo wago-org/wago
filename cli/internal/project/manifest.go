@@ -139,6 +139,8 @@ var manifestOptimizationNames = stringSet(
 	"vex-float-mem", "x8-pin", "zero-branch",
 )
 
+var manifestExperimentalNames = stringSet("dragline")
+
 // ValidateManifest enforces the checked-in v1 schema before any project read
 // or transaction. The manifest remains a generic map so unrelated v1 fields
 // survive plugin updates, but unknown or malformed fields fail closed.
@@ -176,13 +178,13 @@ func validateManifestSettings(raw any) error {
 	if err != nil {
 		return err
 	}
-	if err := rejectUnknown(settings, "settings", "features", "optimizations", "runtime"); err != nil {
+	if err := rejectUnknown(settings, "settings", "features", "optimizations", "experimental", "runtime"); err != nil {
 		return err
 	}
 	for _, field := range []struct {
 		name    string
 		allowed map[string]struct{}
-	}{{"features", manifestFeatureNames}, {"optimizations", manifestOptimizationNames}} {
+	}{{"features", manifestFeatureNames}, {"optimizations", manifestOptimizationNames}, {"experimental", manifestExperimentalNames}} {
 		rawValues, ok := settings[field.name]
 		if !ok {
 			continue

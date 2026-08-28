@@ -167,6 +167,24 @@ func TestElementExpressionAndDecodeErrors(t *testing.T) {
 	}
 }
 
+func TestStructFieldResolvesRecursiveTypeIndex(t *testing.T) {
+	field := NewFieldType(StorageVal(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 0, Rec: true}), false))), Const)
+	m := &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct, Fields: []FieldType{field}}}}}}}
+	got, ok := m.StructField(0, 0)
+	want := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 0}), false))
+	if !ok || got.Mut() != Const || !EqualValType(got.Storage().Val(), want) {
+		t.Fatalf("resolved field = %#v, %v; want %s", got, ok, want)
+	}
+	if _, ok := m.StructField(0, 1); ok {
+		t.Fatal("out-of-range struct field accepted")
+	}
+	array := &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompArray, Array: field}}}}}}
+	got, ok = array.ArrayField(0)
+	if !ok || got.Mut() != Const || !EqualValType(got.Storage().Val(), want) {
+		t.Fatalf("resolved array field = %#v, %v; want %s", got, ok, want)
+	}
+}
+
 func TestReaderExportedCursorHelpers(t *testing.T) {
 	r := NewReader([]byte{1, 0x81, 1, 4, 3, 2, 1, 9})
 	if b, ok := r.Peek(); !ok || b != 1 || r.Offset() != 0 {

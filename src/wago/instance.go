@@ -26,6 +26,7 @@ type Instance struct {
 	jm                      *runtime.JobMemory
 	memory                  *Memory // the memory object (owned or host-imported)
 	ar                      *runtime.Arena
+	profile                 *instanceRailshotProfile // nil unless experimental collection is enabled
 	base                    uintptr
 	hosts                   map[string]HostFunc
 	imports                 Imports // the imports as provided to Instantiate

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -470,16 +471,16 @@ type inlineTarget struct {
 	valid          bool
 	globalIdx      int // global function index (what a `call` immediate names)
 	localDeclBytes uint32
-	body           []byte             // the callee's expression bytecode (ends in the terminating `end`)
-	params         int                // param count (callee locals 0..params-1)
-	nLocals        int                // params + declared locals
-	localTypes     []machineType      // length nLocals: the callee's local machine types
-	localZeroFacts []shared.GCRefFact // facts after zeroing each reusable inline local
-	resultTypes    []machineType      // the callee's result machine types
-	res0           machineType        // first result type (mtNone if none) — for the single-result merge
-	touchesMem     bool               // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
-	hasCtrl        bool               // the body has control flow → splice through a synthetic boundary frame
-	omitStandalone bool               // module layout may omit this unreachable standalone body
+	body           []byte              // the callee's expression bytecode (ends in the terminating `end`)
+	params         int                 // param count (callee locals 0..params-1)
+	nLocals        int                 // params + declared locals
+	localTypes     []machineType       // length nLocals: the callee's local machine types
+	localZeroFacts []codegen.GCRefFact // facts after zeroing each reusable inline local
+	resultTypes    []machineType       // the callee's result machine types
+	res0           machineType         // first result type (mtNone if none) — for the single-result merge
+	touchesMem     bool                // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	hasCtrl        bool                // the body has control flow → splice through a synthetic boundary frame
+	omitStandalone bool                // module layout may omit this unreachable standalone body
 }
 
 type inlineTargetTable struct {
@@ -528,7 +529,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	importedFuncs := m.ImportedFuncCount()
 	targets := inlineTargetTable{classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	var typeArena []machineType
-	var zeroFactArena []shared.GCRefFact
+	var zeroFactArena []codegen.GCRefFact
 	for i := range m.Code {
 		body := m.Code[i].BodyBytes
 		if len(body) == 0 {
@@ -577,7 +578,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			}
 			typeArena = make([]machineType, 0, typeCount)
 			if policy.EnabledOption(optGCRefFacts) {
-				zeroFactArena = make([]shared.GCRefFact, 0, typeCount)
+				zeroFactArena = make([]codegen.GCRefFact, 0, typeCount)
 			}
 		}
 		localStart := len(typeArena)
@@ -603,7 +604,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		}
 		resultEnd := len(typeArena)
 		lt := typeArena[localStart:localEnd:localEnd]
-		var zf []shared.GCRefFact
+		var zf []codegen.GCRefFact
 		if policy.EnabledOption(optGCRefFacts) {
 			zf = zeroFactArena[factStart:factEnd:factEnd]
 		}
@@ -691,7 +692,7 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 			if f.gcRefFactsEnabled() {
-				fact := shared.GCRefFact{}
+				fact := codegen.GCRefFact{}
 				if i < len(t.localZeroFacts) {
 					fact = t.localZeroFacts[i]
 				}
@@ -847,7 +848,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 			f.locals[local].state = lsMem
 			f.invalidateGCLoadFactsForLocal(local)
 			if f.gcRefFactsEnabled() && local < len(f.localGCRefFacts) {
-				fact := shared.GCRefFact{}
+				fact := codegen.GCRefFact{}
 				if i < len(t.localZeroFacts) {
 					fact = t.localZeroFacts[i]
 				}

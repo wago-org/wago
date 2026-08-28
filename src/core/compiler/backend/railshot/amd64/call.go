@@ -1263,11 +1263,11 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 // and backend/railshot/amd64: a scratch cell to carry the indirect code pointer across the
 // flush, and the indirect-call table descriptor pointer.
 const (
-	offTrapReentry = 24 // handler-jump re-entry SP (set per native entry)
-	offCustomCtx   = 40 // host-call log pointer / sync host-call control frame
-	offSpillRegion = 48 // 8B scratch
-	offStackFence  = 72 // low stack bound for the fence check
-	offTablePtr    = 80 // table descriptor pointer
+	offTrapReentry = 24                              // handler-jump re-entry SP (set per native entry)
+	offCustomCtx   = abi.SyncHostCustomContextOffset // host-call log pointer / sync host-call control frame
+	offSpillRegion = 48                              // 8B scratch
+	offStackFence  = 72                              // low stack bound for the fence check
+	offTablePtr    = 80                              // table descriptor pointer
 	// offTrapCellPtr (== abi.TrapCellPtrOffset) is defined in memory.go.
 )
 
@@ -1276,12 +1276,12 @@ const (
 // (offCustomCtx) for its control frame. These MUST match
 // src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=64).
 const (
-	hcTrampoline     = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
-	hcImportIdx      = 64  // u32: native -> Go
-	hcNArgs          = 68  // u32: low 16 bits = param slots, high 16 bits = result slots
-	hcArgs           = 72  // [64]u64: native -> Go
-	hcResults        = 584 // [64]u64: Go -> native (== hcArgs + 64*8)
-	maxSyncHostSlots = 64  // must match runtime.MaxHostArity / maxHostArity
+	hcTrampoline     = abi.SyncHostTrampolineOffset // u64: hostCallStub address (published per-instance by CallWithHost)
+	hcImportIdx      = abi.SyncHostImportIndexOffset
+	hcNArgs          = abi.SyncHostArityOffset
+	hcArgs           = abi.SyncHostArgsOffset
+	hcResults        = abi.SyncHostResultsOffset
+	maxSyncHostSlots = abi.SyncHostMaxSlots
 )
 
 var instanceContextOffsets = [...]int32{
@@ -1303,6 +1303,10 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	}
 	f.a.Load64(RAX, src, runtime.InstanceContextGCNativeViewOffset)
 	f.a.Store64(dst, -int32(abi.GCNativeViewPtrOffset), RAX)
+	f.a.Load64(RAX, src, runtime.InstanceContextProfileCountersOffset)
+	f.a.Store64(dst, -int32(abi.ProfileCountersPtrOffset), RAX)
+	f.a.Load64(RAX, src, runtime.InstanceContextTierEntriesOffset)
+	f.a.Store64(dst, -int32(abi.TierEntriesPtrOffset), RAX)
 }
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to

@@ -203,6 +203,18 @@ func (a *Asm) Fcvtzs(rd, rn Reg, f64src, dstWide bool) {
 	a.word(base | r(rn)<<5 | r(rd))
 }
 
+// Fcvtzu converts float to unsigned integer with round-toward-zero semantics.
+func (a *Asm) Fcvtzu(rd, rn Reg, f64src, dstWide bool) {
+	base := uint32(0x1E390000)
+	if dstWide {
+		base |= 0x80000000
+	}
+	if f64src {
+		base |= 0x00400000
+	}
+	a.word(base | r(rn)<<5 | r(rd))
+}
+
 // Scvtf converts signed int→float. f64 selects dest precision, srcWide selects an
 // X (64-bit) vs W (32-bit) source.
 func (a *Asm) Scvtf(rd, rn Reg, f64, srcWide bool) {
@@ -316,6 +328,60 @@ func (a *Asm) LdrIdx(rt, rn, rm Reg, size int, signed, wideDest bool) {
 // StrIdx stores the low `size` bytes of rt to [rn + rm] (unscaled byte offset).
 func (a *Asm) StrIdx(rt, rn, rm Reg, size int) {
 	a.word(0x38206800 | sizeField(size) | r(rm)<<16 | r(rn)<<5 | r(rt))
+}
+
+// LoadPreIndex loads from base+disp and writes that effective address back to
+// base. The signed unscaled immediate is useful when a reserved scratch base
+// makes writeback semantically invisible and a scaled displacement cannot
+// represent the byte offset.
+func (a *Asm) LoadPreIndex(dst, base Reg, disp int32, size int, signed, wideDest bool) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	opc := uint32(1)
+	if signed {
+		opc = 3
+		if wideDest {
+			opc = 2
+		}
+	}
+	a.word(0x38000c00 | sizeField(size) | opc<<22 | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(dst))
+	return true
+}
+
+// StorePreIndex stores to base+disp and writes that effective address back to
+// the reserved scratch base.
+func (a *Asm) StorePreIndex(base, src Reg, disp int32, size int) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	a.word(0x38000c00 | sizeField(size) | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(src))
+	return true
+}
+
+// LoadPostIndex loads from base, then adds disp to the reserved scratch base.
+func (a *Asm) LoadPostIndex(dst, base Reg, disp int32, size int, signed, wideDest bool) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	opc := uint32(1)
+	if signed {
+		opc = 3
+		if wideDest {
+			opc = 2
+		}
+	}
+	a.word(0x38000400 | sizeField(size) | opc<<22 | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(dst))
+	return true
+}
+
+// StorePostIndex stores to base, then adds disp to the reserved scratch base.
+func (a *Asm) StorePostIndex(base, src Reg, disp int32, size int) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	a.word(0x38000400 | sizeField(size) | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(src))
+	return true
 }
 
 // --- Loads / stores: scalar-FP + vector scaled-immediate offset ---
@@ -482,6 +548,38 @@ func (a *Asm) LoadPairIdx(dst, dst2, base, index Reg, disp int32, size int) bool
 	}
 	return true
 }
+
+// StorePairIdx stores two adjacent full-width integer values to
+// base+index+disp. It returns false when disp cannot be represented by the
+// scaled pair immediate.
+func (a *Asm) StorePairIdx(base, index, src, src2 Reg, disp int32, size int) bool {
+	if size != 4 && size != 8 || disp < 0 || disp%int32(size) != 0 || disp/int32(size) > 63 {
+		return false
+	}
+	a.AddShifted(X16, base, index, 0, false)
+	if size == 4 {
+		a.StpOffset32(src, src2, X16, disp)
+	} else {
+		a.StpOffset(src, src2, X16, disp)
+	}
+	return true
+}
+
+// LoadPairFPIdx loads two adjacent scalar floating-point values from
+// base+index+disp. size is 4 for S registers or 8 for D registers.
+func (a *Asm) LoadPairFPIdx(dst, dst2, base, index Reg, disp int32, size int) bool {
+	if size != 4 && size != 8 || disp < 0 || disp%int32(size) != 0 || disp/int32(size) > 63 {
+		return false
+	}
+	a.AddShifted(X16, base, index, 0, false)
+	if size == 4 {
+		a.LdpOffsetF32(dst, dst2, X16, disp)
+	} else {
+		a.LdpOffsetF64(dst, dst2, X16, disp)
+	}
+	return true
+}
+
 func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	if disp == 0 {
 		a.StrIdx(src, base, index, size)
@@ -688,6 +786,9 @@ func (a *Asm) NeonUminvS(dst, src Reg)  { a.word(0x6EB1A800 | r(src)<<5 | r(dst)
 func (a *Asm) NeonAddvH(dst, src Reg)   { a.word(0x4E71B800 | r(src)<<5 | r(dst)) } // ADDV h, Vn.8h
 func (a *Asm) NeonAddvS(dst, src Reg)   { a.word(0x4EB1B800 | r(src)<<5 | r(dst)) } // ADDV s, Vn.4s
 func (a *Asm) NeonBsl16b(dst, n, m Reg) { a.word(0x6E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonBit16b(dst, n, mask Reg) {
+	a.word(0x6EA01C00 | r(mask)<<16 | r(n)<<5 | r(dst))
+}
 
 // --- NEON 16-byte logical ops (float sign-bit manipulation) + float spill aliases ---
 

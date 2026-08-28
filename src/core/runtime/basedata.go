@@ -40,6 +40,8 @@ const (
 	offEHTagDirPtr            = abi.EHTagDirPtrOffset
 	offTailArgs               = abi.TailArgsOffset
 	offGCNativeViewPtr        = abi.GCNativeViewPtrOffset
+	offProfileCountersPtr     = abi.ProfileCountersPtrOffset
+	offTierEntriesPtr         = abi.TierEntriesPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -278,15 +280,17 @@ func (j *JobMemory) HasTrapCell(trap []byte) bool {
 // excludes linear-memory size/growth state and per-invocation trap/stack fields,
 // which belong to the shared Memory backing and active Engine call respectively.
 type InstanceContext struct {
-	CustomCtx      uintptr
-	TablePtr       uintptr
-	FuncRefDescPtr uintptr
-	PassiveElemPtr uintptr
-	GlobalsPtr     uintptr
-	PassiveDataPtr uintptr
-	TableDirPtr    uintptr
-	MemoryDirPtr   uintptr
-	ImportDispatch uintptr
+	CustomCtx       uintptr
+	TablePtr        uintptr
+	FuncRefDescPtr  uintptr
+	PassiveElemPtr  uintptr
+	GlobalsPtr      uintptr
+	PassiveDataPtr  uintptr
+	TableDirPtr     uintptr
+	MemoryDirPtr    uintptr
+	ImportDispatch  uintptr
+	ProfileCounters uintptr
+	TierEntries     uintptr
 }
 
 const (
@@ -302,22 +306,30 @@ const (
 	// InstanceContextGCNativeViewOffset carries the per-instance checked GC
 	// metadata pointer for context switches over shared linear-memory basedata.
 	InstanceContextGCNativeViewOffset = 13 * 8
-	InstanceContextBytes              = 14 * 8
+	// InstanceContextProfileCountersOffset carries the instance-owned native
+	// function-counter slab across shared-memory and cross-instance entry.
+	InstanceContextProfileCountersOffset = 14 * 8
+	// InstanceContextTierEntriesOffset carries the stable wrapper-entry table
+	// across shared-memory and cross-instance entry.
+	InstanceContextTierEntriesOffset = 15 * 8
+	InstanceContextBytes             = 16 * 8
 )
 
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
 // installed in basedata.
 func (j *JobMemory) CaptureInstanceContext() InstanceContext {
 	return InstanceContext{
-		CustomCtx:      uintptr(j.getU64(offCustomCtx)),
-		TablePtr:       uintptr(j.getU64(offTablePtr)),
-		FuncRefDescPtr: uintptr(j.getU64(offFuncRefDescPtr)),
-		PassiveElemPtr: uintptr(j.getU64(offPassiveElemPtr)),
-		GlobalsPtr:     uintptr(j.getU64(offGlobalsPtr)),
-		PassiveDataPtr: uintptr(j.getU64(offPassiveDataPtr)),
-		TableDirPtr:    uintptr(j.getU64(offTableDirPtr)),
-		MemoryDirPtr:   uintptr(j.getU64(offMemoryDirPtr)),
-		ImportDispatch: uintptr(j.getU64(offImportDispatchPtr)),
+		CustomCtx:       uintptr(j.getU64(offCustomCtx)),
+		TablePtr:        uintptr(j.getU64(offTablePtr)),
+		FuncRefDescPtr:  uintptr(j.getU64(offFuncRefDescPtr)),
+		PassiveElemPtr:  uintptr(j.getU64(offPassiveElemPtr)),
+		GlobalsPtr:      uintptr(j.getU64(offGlobalsPtr)),
+		PassiveDataPtr:  uintptr(j.getU64(offPassiveDataPtr)),
+		TableDirPtr:     uintptr(j.getU64(offTableDirPtr)),
+		MemoryDirPtr:    uintptr(j.getU64(offMemoryDirPtr)),
+		ImportDispatch:  uintptr(j.getU64(offImportDispatchPtr)),
+		ProfileCounters: uintptr(j.getU64(offProfileCountersPtr)),
+		TierEntries:     uintptr(j.getU64(offTierEntriesPtr)),
 	}
 }
 
@@ -333,6 +345,8 @@ func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
 	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
 	j.putU64(offMemoryDirPtr, uint64(ctx.MemoryDirPtr))
 	j.putU64(offImportDispatchPtr, uint64(ctx.ImportDispatch))
+	j.putU64(offProfileCountersPtr, uint64(ctx.ProfileCounters))
+	j.putU64(offTierEntriesPtr, uint64(ctx.TierEntries))
 }
 
 // CaptureInstanceContextBytes stores the current context in a stable off-heap
@@ -346,6 +360,8 @@ func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
 		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
 	}
 	clear(dst[InstanceContextGCDomainOffset:InstanceContextBytes])
+	binary.LittleEndian.PutUint64(dst[InstanceContextProfileCountersOffset:], uint64(ctx.ProfileCounters))
+	binary.LittleEndian.PutUint64(dst[InstanceContextTierEntriesOffset:], uint64(ctx.TierEntries))
 }
 
 // BindInstanceContextBytes restores a context captured by
@@ -356,7 +372,7 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	}
 	// These basedata destinations are naturally uint64-aligned. Store directly
 	// into the already bounds-checked basedata image instead of constructing an
-	// InstanceContext and taking ten separate slice/method bounds paths on every
+	// InstanceContext and taking separate slice/method bounds paths on every
 	// native entry. Source loads stay byte-based because callers may supply an
 	// arbitrarily aligned context slice.
 	base := unsafe.Pointer(&j.mem[j.linOff-basedataSize])
@@ -370,6 +386,8 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	*(*uint64)(unsafe.Add(base, basedataSize-offMemoryDirPtr)) = binary.LittleEndian.Uint64(src[56:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[64:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offGCNativeViewPtr)) = binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offProfileCountersPtr)) = binary.LittleEndian.Uint64(src[InstanceContextProfileCountersOffset:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offTierEntriesPtr)) = binary.LittleEndian.Uint64(src[InstanceContextTierEntriesOffset:])
 }
 
 // ClearEHHandler removes any native-stack handler left behind when a non-EH
@@ -422,6 +440,18 @@ func (j *JobMemory) SetEHTagDirPtr(v uintptr) { j.putU64(offEHTagDirPtr, uint64(
 
 // SetGCNativeViewPtr writes the versioned checked collector metadata view.
 func (j *JobMemory) SetGCNativeViewPtr(v uintptr) { j.putU64(offGCNativeViewPtr, uint64(v)) }
+
+// SetProfileCountersPtr writes the opt-in dense function-counter slab pointer.
+func (j *JobMemory) SetProfileCountersPtr(v uintptr) { j.putU64(offProfileCountersPtr, uint64(v)) }
+
+// ProfileCountersPtr returns the currently bound dense function-counter slab.
+func (j *JobMemory) ProfileCountersPtr() uintptr { return uintptr(j.getU64(offProfileCountersPtr)) }
+
+// SetTierEntriesPtr writes the opt-in stable wrapper-entry table pointer.
+func (j *JobMemory) SetTierEntriesPtr(v uintptr) { j.putU64(offTierEntriesPtr, uint64(v)) }
+
+// TierEntriesPtr returns the currently bound stable wrapper-entry table.
+func (j *JobMemory) TierEntriesPtr() uintptr { return uintptr(j.getU64(offTierEntriesPtr)) }
 
 // GCNativeViewPtr returns the installed checked collector metadata view.
 func (j *JobMemory) GCNativeViewPtr() uintptr { return uintptr(j.getU64(offGCNativeViewPtr)) }

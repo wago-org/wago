@@ -29,6 +29,7 @@ type railshotCompileOptions struct {
 	ImportBindings         []railshotImportBinding
 	SyncHostCalls          bool
 	Interruptible          bool
+	FunctionCounters       bool
 	MemoryPressureAt       int
 	MemoryPressure         func()
 	GCTypeSubtypingRefTest bool

@@ -711,6 +711,42 @@ func (c *Collector) StructSetTyped(ref Ref, required TypeID, exact bool, field u
 	return actual, true, c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
 }
 
+// StructSetTypedNoBarrier performs the same complete dynamic type, field, and
+// value validation as StructSetTyped, but admits only values that cannot create
+// a collector edge. It is the runtime guardrail for a compiler-proven null or
+// i31 store.
+func (c *Collector) StructSetTypedNoBarrier(ref Ref, required TypeID, exact bool, field uint32, value Value) (actual TypeID, matched bool, err error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return 0, false, err
+	}
+	actual = d.ID
+	matched, err = c.typeDescSubtype(d, required, exact)
+	if err != nil || !matched {
+		return actual, matched, err
+	}
+	if d.Kind != KindStruct {
+		return actual, true, errors.New("gc: not struct")
+	}
+	if field >= uint32(len(d.Fields)) {
+		return actual, true, errors.New("gc: field out of range")
+	}
+	f := d.Fields[field]
+	if err := checkValueCompatible(f.Kind, value); err != nil {
+		return actual, true, err
+	}
+	if isCollectorRefKind(f.Kind) {
+		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(f.Kind)); err != nil {
+			return actual, true, err
+		}
+		if value.Ref.IsObj() {
+			return actual, true, errors.New("gc: barrier-free struct.set cannot store an object reference")
+		}
+		c.noteBarrierState(runtimeBarrierNoBarrier)
+	}
+	return actual, true, c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
+}
+
 func (c *Collector) typeDescSubtype(dynamic TypeDesc, required TypeID, exact bool) (bool, error) {
 	if exact {
 		if dynamic.ID == required {
@@ -836,6 +872,37 @@ func (c *Collector) ArraySetTyped(ref Ref, required TypeID, exact bool, index ui
 		return actual, true, err
 	}
 	return actual, true, c.storeArrayValue(ref, d, index, value)
+}
+
+// ArraySetTypedNoBarrier is the array counterpart to
+// StructSetTypedNoBarrier. Bounds and subtype failures remain identical to the
+// ordinary helper path, and object references fail closed before mutation.
+func (c *Collector) ArraySetTypedNoBarrier(ref Ref, required TypeID, exact bool, index uint32, value Value) (actual TypeID, matched bool, err error) {
+	d, err := c.refDesc(ref)
+	if err != nil {
+		return 0, false, err
+	}
+	actual = d.ID
+	matched, err = c.typeDescSubtype(d, required, exact)
+	if err != nil || !matched {
+		return actual, matched, err
+	}
+	if d.Kind != KindArray {
+		return actual, true, errors.New("gc: not array")
+	}
+	if index >= c.header(ref).Aux {
+		return actual, true, errors.New("gc: index out of range")
+	}
+	if err := c.validateArrayStore(d, value); err != nil {
+		return actual, true, err
+	}
+	if isCollectorRefKind(d.Elem) {
+		if value.Ref.IsObj() {
+			return actual, true, errors.New("gc: barrier-free array.set cannot store an object reference")
+		}
+		c.noteBarrierState(runtimeBarrierNoBarrier)
+	}
+	return actual, true, c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }
 
 // ArrayFill preflights the complete destination range and value before making

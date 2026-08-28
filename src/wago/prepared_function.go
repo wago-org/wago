@@ -106,7 +106,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	fn := &PreparedFunction{
 		in:                  in,
 		export:              export,
-		entry:               in.base + uintptr(in.c.Entry[ic.li]),
+		entry:               in.wrapperEntry(ic.li),
 		paramSlots:          ic.paramSlots,
 		resultSlots:         ic.resultSlots,
 		scalarWideMask:      scalarWideMask,
@@ -120,7 +120,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
-	if scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
+	if !in.tierable() && scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
 		fn.privateFast = true
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {

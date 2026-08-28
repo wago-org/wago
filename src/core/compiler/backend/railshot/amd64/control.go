@@ -5,7 +5,7 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -50,9 +50,9 @@ type ctrlFrame struct {
 	baseGCRoots      []bool
 	paramGCRoots     []bool
 	resultGCRoots    []bool
-	baseGCFacts      []shared.GCRefFact
-	paramGCFacts     []shared.GCRefFact
-	resultGCFacts    []shared.GCRefFact
+	baseGCFacts      []codegen.GCRefFact
+	paramGCFacts     []codegen.GCRefFact
+	resultGCFacts    []codegen.GCRefFact
 	resultGCFactsSet bool
 
 	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
@@ -69,8 +69,8 @@ type ctrlFrame struct {
 	// state for an if without else.
 	branchState   []locState
 	entryState    []locState
-	branchGCFacts []shared.GCRefFact
-	entryGCFacts  []shared.GCRefFact
+	branchGCFacts []codegen.GCRefFact
+	entryGCFacts  []codegen.GCRefFact
 
 	// cfTry only: one of a bounded set of fixed six-slot native-stack records
 	// plus an ordered compile-time catch dispatch table. Scalar exceptions carry
@@ -178,15 +178,15 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	if !f.gcRefFactsEnabled() {
 		return
 	}
-	fr.baseGCFacts = make([]shared.GCRefFact, fr.height)
+	fr.baseGCFacts = make([]codegen.GCRefFact, fr.height)
 	for i, root := range roots[:fr.height] {
 		fact := f.gcRefFact(root)
-		if fact.Freshness() == shared.GCFreshUnpublished {
-			fact = fact.WithFreshness(shared.GCPublished)
+		if fact.Freshness() == codegen.GCFreshUnpublished {
+			fact = fact.WithFreshness(codegen.GCPublished)
 		}
 		fr.baseGCFacts[i] = fact
 	}
-	fr.paramGCFacts = make([]shared.GCRefFact, fr.paramN)
+	fr.paramGCFacts = make([]codegen.GCRefFact, fr.paramN)
 	if fr.kind == cfLoop {
 		// opBlock replaces these slots with facts reconstructed from the declared
 		// loop parameter ValTypes. Never copy first-entry dynamic facts here.
@@ -194,14 +194,14 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	}
 	for i, root := range roots[fr.height : fr.height+fr.paramN] {
 		fact := f.gcRefFact(root)
-		if fact.Freshness() == shared.GCFreshUnpublished {
-			fact = fact.WithFreshness(shared.GCPublished)
+		if fact.Freshness() == codegen.GCFreshUnpublished {
+			fact = fact.WithFreshness(codegen.GCPublished)
 		}
 		fr.paramGCFacts[i] = fact
 	}
 }
 
-func (f *fn) installLoopParameterGCRefFacts(paramN int, facts []shared.GCRefFact) {
+func (f *fn) installLoopParameterGCRefFacts(paramN int, facts []codegen.GCRefFact) {
 	if !f.gcRefFactsEnabled() || paramN == 0 {
 		return
 	}
@@ -211,7 +211,7 @@ func (f *fn) installLoopParameterGCRefFacts(paramN int, facts []shared.GCRefFact
 	}
 	for i, root := range roots[len(roots)-paramN:] {
 		if root.kind == ekValue && root.st.gcRoot {
-			fact := shared.GCRefFact{}
+			fact := codegen.GCRefFact{}
 			if i < len(facts) {
 				fact = facts[i]
 			}
@@ -240,7 +240,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		return
 	}
 	if len(fr.resultGCFacts) < n {
-		fr.resultGCFacts = make([]shared.GCRefFact, n)
+		fr.resultGCFacts = make([]codegen.GCRefFact, n)
 	}
 	if !fr.resultGCFactsSet {
 		for i, root := range resultRoots {
@@ -250,7 +250,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		return
 	}
 	for i, root := range resultRoots {
-		fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], f.gcRefFact(root))
+		fr.resultGCFacts[i] = codegen.MergeGCRefFacts(fr.resultGCFacts[i], f.gcRefFact(root))
 	}
 }
 
@@ -261,7 +261,7 @@ func frameGCRootFlags(base, suffix []bool) []bool {
 	return flags
 }
 
-func (f *fn) frameGCFacts(base, suffix []shared.GCRefFact) []shared.GCRefFact {
+func (f *fn) frameGCFacts(base, suffix []codegen.GCRefFact) []codegen.GCRefFact {
 	if !f.gcRefFactsEnabled() {
 		return nil
 	}
@@ -361,7 +361,7 @@ func (f *fn) flush() {
 // their owners. Wide multi-value signatures are cold ABI stress shapes, so a
 // bounded extra copy is preferable to making every ordinary flush pay for a
 // parallel-move algorithm.
-func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, gcFacts []shared.GCRefFact) bool {
+func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, gcFacts []codegen.GCRefFact) bool {
 	const wideFlushSlots = 64
 
 	types := f.tmpFlushTypes[:0]
@@ -442,7 +442,7 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.setDepthTypesWithGCInfo(types, gcRoots, nil)
 }
 
-func (f *fn) setDepthTypesWithGCInfo(types []machineType, gcRoots []bool, gcFacts []shared.GCRefFact) {
+func (f *fn) setDepthTypesWithGCInfo(types []machineType, gcRoots []bool, gcFacts []codegen.GCRefFact) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0
 	for i, typ := range types {
@@ -509,7 +509,7 @@ func valByteMT(b byte) machineType {
 
 // blockType decodes a block's parameter and result types, the static semantic
 // facts declared for its parameters, and the first result's machine type.
-func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, paramFacts []shared.GCRefFact, res0 machineType, err error) {
+func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, paramFacts []codegen.GCRefFact, res0 machineType, err error) {
 	b, ok := r.Peek()
 	if !ok {
 		return nil, nil, nil, mtNone, fmt.Errorf("eof in blocktype")
@@ -549,7 +549,7 @@ func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, paramFact
 		r0 = mtOf(ft.Results[0])
 	}
 	if f.gcRefFactsEnabled() && len(ft.Params) != 0 {
-		paramFacts = make([]shared.GCRefFact, len(ft.Params))
+		paramFacts = make([]codegen.GCRefFact, len(ft.Params))
 		for i, typ := range ft.Params {
 			paramFacts[i] = f.declaredGCRefFact(typ)
 		}
@@ -1191,10 +1191,10 @@ func (f *fn) opEnd() error {
 			fr.resultGCRoots[i] = fr.resultGCRoots[i] || fr.paramGCRoots[i]
 			if f.gcRefFactsEnabled() {
 				if len(fr.resultGCFacts) < fr.resultN {
-					fr.resultGCFacts = append(fr.resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(fr.resultGCFacts))...)
+					fr.resultGCFacts = append(fr.resultGCFacts, make([]codegen.GCRefFact, fr.resultN-len(fr.resultGCFacts))...)
 				}
 				if fr.resultGCFactsSet {
-					fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], fr.paramGCFacts[i])
+					fr.resultGCFacts[i] = codegen.MergeGCRefFacts(fr.resultGCFacts[i], fr.paramGCFacts[i])
 				} else {
 					fr.resultGCFacts[i] = fr.paramGCFacts[i]
 				}
@@ -1381,11 +1381,11 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 		return errBadLabel
 	}
 	fact := f.gcRefFact(f.s.back())
-	if fact.Nullability() == shared.GCKnownNonNull {
+	if fact.Nullability() == codegen.GCKnownNonNull {
 		f.stats.peep("gc-null-check-elide")
 		return nil
 	}
-	if fact.Nullability() == shared.GCKnownNull {
+	if fact.Nullability() == codegen.GCKnownNull {
 		f.dropValue()
 		f.branchToFrame(fi)
 		f.unreachable = true
@@ -1413,7 +1413,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	fallthroughRef := f.allocReg(0)
 	f.a.Load64(fallthroughRef, RSP, f.spillOff(refSlot))
 	result := f.pushReg(fallthroughRef, mtI64)
-	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
+	f.markGCRefFact(result, fact.WithNullability(codegen.GCKnownNonNull))
 	return nil
 }
 
@@ -1427,12 +1427,12 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 		return errBadLabel
 	}
 	fact := f.gcRefFact(f.s.back())
-	if fact.Nullability() == shared.GCKnownNull {
+	if fact.Nullability() == codegen.GCKnownNull {
 		f.dropValue()
 		f.stats.peep("gc-null-check-elide")
 		return nil
 	}
-	if fact.Nullability() == shared.GCKnownNonNull {
+	if fact.Nullability() == codegen.GCKnownNonNull {
 		f.branchToFrame(fi)
 		f.unreachable = true
 		f.stats.peep("gc-null-check-elide")
@@ -1440,7 +1440,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	}
 	ref := f.materialize(f.popValue())
 	result := f.pushReg(ref, mtI64)
-	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
+	f.markGCRefFact(result, fact.WithNullability(codegen.GCKnownNonNull))
 	fr := &f.ctrl[fi]
 	f.mergeGCRefFactsInto(&fr.branchGCFacts)
 	f.convergeBranchLocals(fr)

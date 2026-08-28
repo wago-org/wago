@@ -525,6 +525,14 @@ func (a *Asm) MovReg64(dst, src Reg) {
 	a.emit(a.rex(true, src >= 8, false, dst >= 8), 0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
 }
 
+// MovReg32 copies a 32-bit register and zeroes the destination's upper half.
+func (a *Asm) MovReg32(dst, src Reg) {
+	if dst >= 8 || src >= 8 {
+		a.emit(a.rex(false, src >= 8, false, dst >= 8))
+	}
+	a.emit(0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
+}
+
 // Xchg64 exchanges the contents of two 64-bit registers (xchg r/m64, r64).
 func (a *Asm) Xchg64(x, y Reg) {
 	a.emit(a.rex(true, x >= 8, false, y >= 8), 0x87, 0xC0|((byte(x)&7)<<3)|byte(y&7))
@@ -693,6 +701,8 @@ func (a *Asm) BtImm(r Reg, bit uint8, w bool) {
 type Cond byte
 
 const (
+	CondO  Cond = 0x0 // signed overflow
+	CondNO Cond = 0x1
 	CondE  Cond = 0x4 // ==
 	CondNE Cond = 0x5
 	CondB  Cond = 0x2 // unsigned <
@@ -781,6 +791,15 @@ func (a *Asm) ImulRM(dst, base Reg, disp int32, w bool) {
 	}
 	a.emit(0x0F, 0xAF)
 	a.baseAddr(byte(dst), base, disp)
+}
+
+// ImulRR emits the two-operand signed multiply dst *= src. The low Wasm result
+// bits are identical for signed and unsigned multiplication.
+func (a *Asm) ImulRR(dst, src Reg, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(a.rex(w, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, 0xAF, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
 }
 
 func (a *Asm) ImulRI(dst Reg, imm int32, w bool) {
@@ -1025,6 +1044,16 @@ func (a *Asm) LockXaddIdx32(base, index, src Reg, disp int32) {
 	}
 	a.emit(0x0F, 0xC1)
 	a.sibAddr(src, base, index, disp)
+}
+
+// LockInc64 atomically increments a naturally aligned 64-bit memory operand.
+// Unlike XADD it needs no source register, which makes it suitable for entry
+// instrumentation before register-ABI arguments have been homed.
+func (a *Asm) LockInc64(base Reg, disp int32) {
+	a.emit(0xF0)
+	a.emit(a.rex(true, false, false, base >= 8))
+	a.emit(0xFF)
+	a.baseAddr(0, base, disp)
 }
 
 func (a *Asm) LockXaddIdx(base, index, src Reg, disp int32, size int) {

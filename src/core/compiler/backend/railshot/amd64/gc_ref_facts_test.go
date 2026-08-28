@@ -5,7 +5,7 @@ package amd64
 import (
 	"testing"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -62,7 +62,7 @@ func TestFinalGCParameterFactsResolveRecursiveGroupIndex(t *testing.T) {
 			{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{recParam}}},
 		}},
 	}}
-	f := fn{m: m, localGCRefFacts: make([]shared.GCRefFact, 1)}
+	f := fn{m: m, localGCRefFacts: make([]codegen.GCRefFact, 1)}
 	f.seedFinalGCParameterTypes([]wasm.ValType{recParam}, 1, 2)
 	if got, ok := f.localGCRefFacts[0].ExactType(); !ok || got != 1 {
 		t.Fatalf("recursive final parameter fact = %d,%v, want flattened type 1", got, ok)
@@ -128,17 +128,17 @@ func TestGCHeapClassMatchTruthTable(t *testing.T) {
 	targets := []wasm.AbsHeapType{wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapFunc, wasm.HeapExtern}
 	for _, tc := range []struct {
 		name   string
-		source shared.GCHeapClass
+		source codegen.GCHeapClass
 		want   string // 1=true, 0=false, ?=unknown in target order above
 	}{
-		{name: "unknown", source: shared.GCHeapUnknown, want: "???????"},
-		{name: "any-upper-bound", source: shared.GCHeapAny, want: "1????00"},
-		{name: "eq-upper-bound", source: shared.GCHeapEq, want: "11???00"},
-		{name: "i31-exact-family", source: shared.GCHeapI31, want: "1110000"},
-		{name: "struct-exact-family", source: shared.GCHeapStruct, want: "1101000"},
-		{name: "array-exact-family", source: shared.GCHeapArray, want: "1100100"},
-		{name: "func-exact-family", source: shared.GCHeapFunc, want: "0000010"},
-		{name: "extern-exact-family", source: shared.GCHeapExtern, want: "0000001"},
+		{name: "unknown", source: codegen.GCHeapUnknown, want: "???????"},
+		{name: "any-upper-bound", source: codegen.GCHeapAny, want: "1????00"},
+		{name: "eq-upper-bound", source: codegen.GCHeapEq, want: "11???00"},
+		{name: "i31-exact-family", source: codegen.GCHeapI31, want: "1110000"},
+		{name: "struct-exact-family", source: codegen.GCHeapStruct, want: "1101000"},
+		{name: "array-exact-family", source: codegen.GCHeapArray, want: "1100100"},
+		{name: "func-exact-family", source: codegen.GCHeapFunc, want: "0000010"},
+		{name: "extern-exact-family", source: codegen.GCHeapExtern, want: "0000001"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for i, target := range targets {
@@ -181,7 +181,7 @@ func TestExactGCReferenceFactUsesCanonicalTypeEquivalence(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := fn{m: m}
-	fact := shared.ExactGCRefFact(1, 1, shared.GCHeapStruct)
+	fact := codegen.ExactGCRefFact(1, 1, codegen.GCHeapStruct)
 	if matched, known := f.gcRefFactMatchesTarget(fact, 0, false, true); !known || !matched {
 		t.Fatalf("equivalent exact type match = %v/%v, want true/known", matched, known)
 	}
@@ -189,22 +189,22 @@ func TestExactGCReferenceFactUsesCanonicalTypeEquivalence(t *testing.T) {
 
 func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 	enableGCRefFacts(t)
-	left := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
-		WithFreshness(shared.GCFreshUnpublished).
+	left := codegen.ExactGCRefFact(3, 11, codegen.GCHeapArray).
+		WithFreshness(codegen.GCFreshUnpublished).
 		WithKnownArrayLength(7)
-	f := fn{localGCRefFacts: []shared.GCRefFact{left, left}}
+	f := fn{localGCRefFacts: []codegen.GCRefFact{left, left}}
 	joined := f.snapshotGCRefFacts()
-	f.localGCRefFacts[0] = shared.ExactGCRefFact(4, 12, shared.GCHeapArray).WithKnownArrayLength(9)
+	f.localGCRefFacts[0] = codegen.ExactGCRefFact(4, 12, codegen.GCHeapArray).WithKnownArrayLength(9)
 	f.mergeGCRefFactsInto(&joined)
-	if _, exact := joined[0].ExactType(); exact || joined[0].Identity() != 0 || joined[0].HeapClass() != shared.GCHeapArray {
+	if _, exact := joined[0].ExactType(); exact || joined[0].Identity() != 0 || joined[0].HeapClass() != codegen.GCHeapArray {
 		t.Fatalf("contradictory join retained exact identity: %+v", joined[0])
 	}
 	if _, known := joined[0].KnownArrayLength(); known {
 		t.Fatalf("contradictory join retained array length: %+v", joined[0])
 	}
-	f.installGCRefFacts([]shared.GCRefFact{left, left})
+	f.installGCRefFacts([]codegen.GCRefFact{left, left})
 	f.invalidateLoopModifiedGCRefFacts(map[uint32]bool{0: true})
-	if !f.localGCRefFacts[0].IsZero() || f.localGCRefFacts[1].IsZero() || f.localGCRefFacts[1].Freshness() != shared.GCPublished {
+	if !f.localGCRefFacts[0].IsZero() || f.localGCRefFacts[1].IsZero() || f.localGCRefFacts[1].Freshness() != codegen.GCPublished {
 		t.Fatalf("loop subset invalidation/publication = %+v", f.localGCRefFacts)
 	}
 	f.freeGCRefFactBuf(joined)
@@ -213,8 +213,8 @@ func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 func TestLoopHeaderClearsMutableFieldForwarding(t *testing.T) {
 	enableGCRefFacts(t)
 	f := fn{
-		localGCRefFacts: []shared.GCRefFact{
-			shared.ExactGCRefFact(0, 1, shared.GCHeapStruct).WithFreshness(shared.GCFreshUnpublished),
+		localGCRefFacts: []codegen.GCRefFact{
+			codegen.ExactGCRefFact(0, 1, codegen.GCHeapStruct).WithFreshness(codegen.GCFreshUnpublished),
 			{},
 		},
 		gcLastField: gcStructFieldFact{valid: true, fromStore: true, local: -1, resultLocal: -1, identity: 1},
@@ -223,7 +223,7 @@ func TestLoopHeaderClearsMutableFieldForwarding(t *testing.T) {
 	if f.gcLastField.valid {
 		t.Fatal("mutable constructor field forwarding survived loop header")
 	}
-	if got := f.localGCRefFacts[0].Freshness(); got != shared.GCPublished {
+	if got := f.localGCRefFacts[0].Freshness(); got != codegen.GCPublished {
 		t.Fatalf("loop-invariant freshness = %v, want published", got)
 	}
 
@@ -242,7 +242,7 @@ func TestDisabledGCReferenceFactsDoNotAllocateSnapshots(t *testing.T) {
 	saved := exactGCRefFactsEnabled
 	exactGCRefFactsEnabled = false
 	defer func() { exactGCRefFactsEnabled = saved }()
-	f := fn{localGCRefFacts: make([]shared.GCRefFact, 1024)}
+	f := fn{localGCRefFacts: make([]codegen.GCRefFact, 1024)}
 	if got := f.snapshotGCRefFacts(); got != nil {
 		t.Fatalf("disabled snapshot = %v, want nil", got)
 	}
@@ -359,8 +359,8 @@ func TestTeeSpillElisionDoesNotReuseGCReferenceHome(t *testing.T) {
 	f := fn{a: &encoderamd64.Asm{}, s: newStack(), stats: stats}
 	e := f.pushValue(storage{kind: stReg, typ: mtI64, reg: RAX, gcRoot: true})
 	f.regUser[RAX] = e
-	want := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
-		WithNullability(shared.GCKnownNonNull).
+	want := codegen.ExactGCRefFact(3, 11, codegen.GCHeapArray).
+		WithNullability(codegen.GCKnownNonNull).
 		WithKnownArrayLength(17)
 	putGCRefFact(&e.st, want)
 

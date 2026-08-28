@@ -20,8 +20,17 @@ func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoot
 // function's stable post-prologue frame base. Exact direct callsites use the
 // saved LR above each callee frame record to continue through recursive callers.
 func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32) gc.RootSet {
-	plan := in.c.genericGCFrameRoots()
-	if plan == nil || ctrl == 0 {
+	if ctrl == 0 {
+		return gc.EmptyRoots{}
+	}
+	control := unsafe.Slice((*byte)(offHeapPtr(ctrl)), abi.ARM64SyncHostCallSavedBytes)
+	returnPC := uintptr(binary.LittleEndian.Uint64(control[abi.ARM64SyncHostCallSavedLROffset:]))
+	compiled, codeBase := in.compilerGenerationForPC(returnPC)
+	if compiled == nil {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 helper return PC %#x has no compiler generation", returnPC)})
+	}
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil {
 		return gc.EmptyRoots{}
 	}
 	safepoint := plan.safepointByID(safepointID)
@@ -55,8 +64,8 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.frameBytes = frameBytes
 	state.frameRoots.frameLayout = gcNativeFrameLayoutARM64 // saved LR follows saved FP above the frame reserve
 	state.frameRoots.allowExternalReturn = true             // non-register public entries return directly to enterNative
-	state.frameRoots.codeBase = in.base
-	state.frameRoots.codeBytes = uintptr(len(in.c.code))
+	state.frameRoots.codeBase = codeBase
+	state.frameRoots.codeBytes = uintptr(len(compiled.code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state

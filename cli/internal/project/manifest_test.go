@@ -125,6 +125,16 @@ func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 	}
 }
 
+func TestManifestValidationAcceptsDraglineExperimentalOptIn(t *testing.T) {
+	manifest := map[string]any{
+		"$schema":  SchemaURI,
+		"settings": map[string]any{"experimental": map[string]any{"dragline": true}},
+	}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func validTestPackage() map[string]any {
 	return map[string]any{
 		"module": "github.com/acme/example", "version": "1.2.3", "name": "Example",

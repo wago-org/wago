@@ -28,6 +28,7 @@ type boolSettingKind uint8
 const (
 	featureSettingKind boolSettingKind = iota + 1
 	optimizationSettingKind
+	experimentalSettingKind
 )
 
 // Name returns the setting name without its canonical section prefix.
@@ -35,19 +36,26 @@ func (setting BoolSetting) Name() string { return setting.name }
 
 // Value reads this setting from config without exposing its storage section.
 func (setting BoolSetting) Value(config Config) bool {
-	if setting.kind == featureSettingKind {
+	switch setting.kind {
+	case featureSettingKind:
 		return config.Features[setting.name]
+	case experimentalSettingKind:
+		return config.Experimental[setting.name]
+	default:
+		return config.Optimizations[setting.name]
 	}
-	return config.Optimizations[setting.name]
 }
 
 // SetValue writes this setting to config without exposing its storage section.
 func (setting BoolSetting) SetValue(config *Config, enabled bool) {
-	if setting.kind == featureSettingKind {
+	switch setting.kind {
+	case featureSettingKind:
 		config.Features[setting.name] = enabled
-		return
+	case experimentalSettingKind:
+		config.Experimental[setting.name] = enabled
+	default:
+		config.Optimizations[setting.name] = enabled
 	}
-	config.Optimizations[setting.name] = enabled
 }
 
 func Features() []BoolSetting {
@@ -83,7 +91,7 @@ func OptimizationCatalog() []BoolSetting {
 }
 
 func Experimental() []BoolSetting {
-	var result []BoolSetting
+	result := []BoolSetting{draglineSetting()}
 	for _, feature := range wago.FeatureInfos() {
 		if feature.Experimental {
 			result = append(result, featureSetting(feature))
@@ -109,6 +117,7 @@ func StableOptimizations() []BoolSetting {
 
 func AllBoolean() []BoolSetting {
 	items := append(allFeatures(), Optimizations()...)
+	items = append(items, draglineSetting())
 	sort.Slice(items, func(i, j int) bool { return items[i].Key < items[j].Key })
 	return items
 }
@@ -131,7 +140,7 @@ func CanonicalKey(key string) string {
 	}
 	var match string
 	for _, setting := range allKnownBoolean() {
-		if strings.TrimPrefix(setting.Key, "features.") == key || strings.TrimPrefix(setting.Key, "optimizations.") == key {
+		if setting.name == key {
 			if match != "" && match != setting.Key {
 				return key
 			}
@@ -155,7 +164,18 @@ func allFeatures() []BoolSetting {
 
 func allKnownBoolean() []BoolSetting {
 	items := append(allFeatures(), OptimizationCatalog()...)
+	items = append(items, draglineSetting())
 	return items
+}
+
+func draglineSetting() BoolSetting {
+	available := runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64"
+	return BoolSetting{
+		Key: "experimental.dragline", Label: "Dragline compiler",
+		Description: "optimizing compiler preview for the supported scalar subset",
+		Default:     false, Experimental: true, Available: available,
+		kind: experimentalSettingKind, name: "dragline",
+	}
 }
 
 func featureSetting(info wago.FeatureInfo) BoolSetting {
@@ -180,6 +200,9 @@ func validateValues(kind boolSettingKind, values map[string]bool) error {
 	if kind == optimizationSettingKind {
 		prefix = "optimizations."
 		label = "optimization"
+	} else if kind == experimentalSettingKind {
+		prefix = "experimental."
+		label = "experimental"
 	}
 	for name, enabled := range values {
 		setting, ok := Lookup(prefix + name)
@@ -201,13 +224,19 @@ func ValidateOptimizationValues(values map[string]bool) error {
 	return validateValues(optimizationSettingKind, values)
 }
 
+func ValidateExperimentalValues(values map[string]bool) error {
+	return validateValues(experimentalSettingKind, values)
+}
+
 // SchemaNames returns registered setting names grouped by manifest section.
 func SchemaNames() map[string][]string {
-	result := map[string][]string{"features": {}, "optimizations": {}}
+	result := map[string][]string{"features": {}, "optimizations": {}, "experimental": {}}
 	for _, setting := range allKnownBoolean() {
 		section := "optimizations"
 		if setting.kind == featureSettingKind {
 			section = "features"
+		} else if setting.kind == experimentalSettingKind {
+			section = "experimental"
 		}
 		result[section] = append(result[section], setting.name)
 	}

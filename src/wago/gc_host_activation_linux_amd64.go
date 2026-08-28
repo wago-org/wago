@@ -21,8 +21,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
-	plan := in.c.genericGCFrameRoots()
-	if plan == nil {
+	if in.c == nil || in.c.genericGCFrameRoots() == nil {
 		return gcHostActivationToken{}
 	}
 	_, gcBridge := in.pluginGCHostSignature(dispatch)
@@ -38,21 +37,9 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 	if savedRSP == 0 || savedRSP > ^uintptr(0)-abi.AMD64CallReturnAddressBytes {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation has invalid saved RSP %#x", savedRSP)})
 	}
-	findCallsite := func(pc uintptr) int {
-		if pc < in.base || pc-in.base >= uintptr(len(in.c.code)) {
-			return -1
-		}
-		rel := uint32(pc - in.base)
-		for i := range plan.callsites {
-			if plan.callsites[i].returnOffset == rel {
-				return i
-			}
-		}
-		return -1
-	}
 	returnSlot := savedRSP
 	retPC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnSlot)), 8)))
-	callsite := findCallsite(retPC)
+	plan, codeBase, codeBytes, callsite := in.gcCompilerCallsite(retPC)
 	if callsite < 0 {
 		// Dynamic/ref-call host paths can add one or more bounded wrapper records
 		// above the host stub. Scan only the fixed wrapper envelope and accept a
@@ -69,8 +56,8 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 		for off := uintptr(8); off <= limit; off += 8 {
 			candidateSlot := savedRSP + off
 			candidatePC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(candidateSlot)), 8)))
-			if candidate := findCallsite(candidatePC); candidate >= 0 {
-				returnSlot, retPC, callsite = candidateSlot, candidatePC, candidate
+			if candidatePlan, candidateBase, candidateBytes, candidate := in.gcCompilerCallsite(candidatePC); candidate >= 0 {
+				returnSlot, retPC, plan, codeBase, codeBytes, callsite = candidateSlot, candidatePC, candidatePlan, candidateBase, candidateBytes, candidate
 				break
 			}
 		}
@@ -98,14 +85,14 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 		}
 		activation.base = returnSlot + abi.AMD64CallReturnAddressBytes + uintptr(plan.callsites[callsite].stackAdjust)
 		activation.callsite = uint32(callsite)
+		activation.rootPlan = plan
+		activation.codeBase = codeBase
+		activation.codeBytes = codeBytes
 	}
 	for i := range activation.savedControl {
 		activation.savedControl[i] = binary.LittleEndian.Uint64(control[i*8:])
 	}
 	state.hostActivationCount++
-	state.hostRootPlan = plan
-	state.hostCodeBase = in.base
-	state.hostCodeBytes = uintptr(len(in.c.code))
 	return gcHostActivationToken{state: state, index: index}
 }
 
@@ -126,9 +113,4 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
 	}
 	*activation = gcHostActivation{}
 	state.hostActivationCount--
-	if state.hostActivationCount == 0 {
-		state.hostRootPlan = nil
-		state.hostCodeBase = 0
-		state.hostCodeBytes = 0
-	}
 }
