@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -110,11 +109,20 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	if limit == 0 {
 		limit = DefaultMaxBytes
 	}
-	if err := publishArtifact(path, module.Compiled(), limit); errors.Is(err, errArtifactExceedsCacheLimit) {
-		if err := cache.pruneIfDue(time.Now()); err != nil {
+	if limit >= 0 {
+		sizes, err := module.Compiled().ArtifactSectionSizes()
+		if err != nil {
 			cache.report(err)
+			return module, nil
 		}
-	} else if err != nil {
+		if sizes.Total > limit {
+			if err := cache.pruneIfDue(time.Now()); err != nil {
+				cache.report(err)
+			}
+			return module, nil
+		}
+	}
+	if err := publishArtifact(path, module.Compiled()); err != nil {
 		cache.report(err)
 	} else if err := cache.pruneAndMark(); err != nil {
 		cache.report(err)
@@ -432,8 +440,6 @@ func writeUint64(h interface{ Write([]byte) (int, error) }, value uint64) {
 	h.Write(encoded[:])
 }
 
-var errArtifactExceedsCacheLimit = errors.New("compiled artifact exceeds cache limit")
-
 var publishArtifact = writeAtomic
 
 func loadArtifact(path string) (*wago.Compiled, bool) {
@@ -479,25 +485,9 @@ func loadOpenedArtifact(path string, file *os.File, opened os.FileInfo) (*wago.C
 	return compiled, true
 }
 
-type artifactLimitWriter struct {
-	target    io.Writer
-	remaining int64
-}
-
-func (writer *artifactLimitWriter) Write(p []byte) (int, error) {
-	if writer.remaining >= 0 && int64(len(p)) > writer.remaining {
-		return 0, errArtifactExceedsCacheLimit
-	}
-	n, err := writer.target.Write(p)
-	if writer.remaining >= 0 {
-		writer.remaining -= int64(n)
-	}
-	return n, err
-}
-
-func writeAtomic(path string, compiled *wago.Compiled, limit int64) error {
+func writeAtomic(path string, compiled *wago.Compiled) error {
 	return atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
-		_, err := compiled.WriteTo(&artifactLimitWriter{target: writer, remaining: limit})
+		_, err := compiled.WriteTo(writer)
 		return err
 	})
 }
