@@ -114,6 +114,9 @@ func (e *Engine) StackTop() uintptr {
 // consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
 // carry no trap protocol at all (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
+	if err := validateTrapCell(trap); err != nil {
+		return err
+	}
 	installTrapCell(linMem, trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
@@ -130,12 +133,22 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 // is consumed and cleared before returning, re-establishing the invariant for
 // the next call.
 func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte) error {
+	if err := validateTrapCell(trap); err != nil {
+		return err
+	}
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
 		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 			storeTrap(trap, 0)
 			return trapErrorFromBuffer(tc, trap)
 		}
+	}
+	return nil
+}
+
+func validateTrapCell(trap []byte) error {
+	if len(trap) < 4 {
+		return fmt.Errorf("jit: trap cell has %d bytes, need at least 4", len(trap))
 	}
 	return nil
 }
