@@ -2626,7 +2626,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.emitNativeGCStubs()
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
-	f.patchFrameSize()
+	if err := f.patchFrameSize(); err != nil {
+		return nil, nil, 0, err
+	}
 	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)
 	if _, err := f.finalizeNativeCode(0); err != nil {
 		return nil, nil, 0, err
@@ -3324,7 +3326,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 	f.finalizeBranchFolds()
 
 	f.elideRegisterOnlyFrame() // register-homed call-free leaf → frameSize 0
-	f.patchFrameSize()
+	if err := f.patchFrameSize(); err != nil {
+		return 0, err
+	}
 	if hostAdapter {
 		a.PatchRel32(adapterCall, internalOff)
 		if f.stats != nil {
@@ -3336,8 +3340,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 	return internalOff, nil
 }
 
-func (f *fn) patchFrameSize() {
-	size := uint32(f.frameSize())
+func (f *fn) patchFrameSize() error {
+	frameBytes := f.frameSize()
+	if !shared.NativeFrameFitsStackFence(frameBytes) {
+		return fmt.Errorf("amd64: native frame %d bytes exceeds stack-fence headroom %d", frameBytes, shared.MaxNativeFrameBytes)
+	}
+	size := uint32(frameBytes)
 	if f.stats != nil {
 		sites := len(f.sc.tailFrameSites) + 2
 		f.stats.NativeSize.FrameAdjustmentBytes += 7 * sites
@@ -3354,6 +3362,7 @@ func (f *fn) patchFrameSize() {
 	for _, site := range f.sc.tailFrameSites {
 		f.a.PatchU32(site, size)
 	}
+	return nil
 }
 
 // epilogue: copy results from their canonical slots to the results buffer, clear

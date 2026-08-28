@@ -3,6 +3,17 @@
 // encoding remain in the architecture packages.
 package shared
 
+// MaxNativeFrameBytes matches the execution stack's fence margin. Every frame
+// must fit inside that already-checked headroom so subtracting the next frame
+// cannot leave the mapped foreign stack before its prologue checks the fence.
+const MaxNativeFrameBytes = 256 << 10
+
+// NativeFrameFitsStackFence reports whether one frame fits inside the checked
+// headroom maintained by the runtime stack fence.
+func NativeFrameFitsStackFence(frameBytes int) bool {
+	return frameBytes >= 0 && frameBytes <= MaxNativeFrameBytes
+}
+
 // StackArenaCapacity estimates operand nodes for one function. An opcode-based
 // hint avoids reserving nodes for immediate bytes while a body-size floor keeps
 // malformed or incomplete hints from causing allocation cliffs.

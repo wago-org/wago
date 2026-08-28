@@ -765,8 +765,11 @@ func (f *fn) allLocalsRegisterHomed() bool {
 	return true
 }
 
-func (f *fn) patchFrameAdjusts() {
+func (f *fn) patchFrameAdjusts() error {
 	size := f.frameSize()
+	if !shared.NativeFrameFitsStackFence(size) {
+		return fmt.Errorf("arm64: native frame %d bytes exceeds stack-fence headroom %d", size, shared.MaxNativeFrameBytes)
+	}
 	addSites := append(f.tailFrameSites, f.addRspAt)
 	if f.stats != nil {
 		sites := len(addSites) + 1
@@ -797,12 +800,13 @@ func (f *fn) patchFrameAdjusts() {
 			f.a.PatchU32(at+4, nop)
 			f.a.PatchU32(at+8, nop)
 		}
-		return
+		return nil
 	}
 	f.a.PatchMovImm(f.subRspAt, uint32(size))
 	for _, at := range addSites {
 		f.a.PatchMovImm(at, uint32(size))
 	}
+	return nil
 }
 
 // ImportBinding is shared by both Railshot architectures.
@@ -2111,7 +2115,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.epilogue()
 	f.emitTrapStubs()
-	f.patchFrameAdjusts()
+	if err := f.patchFrameAdjusts(); err != nil {
+		return nil, nil, 0, err
+	}
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
 		if f.gcCallsiteIndex != len(f.gcFrameRoots.LiveCallLocalMasks) {
@@ -2910,7 +2916,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	f.emitTrapStubs()
 
 	f.elideRegisterOnlyFrame()
-	f.patchFrameAdjusts()
+	if err := f.patchFrameAdjusts(); err != nil {
+		return 0, err
+	}
 	if hostAdapter {
 		f.a.PatchBranch26(adapterCall, internalOff)
 		if f.stats != nil {
