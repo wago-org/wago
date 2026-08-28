@@ -1008,7 +1008,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	paramSlots := funcTypeSlots(ft.Params)
 	resultSlots := funcTypeSlots(ft.Results)
-	wide := paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots
+	internalGCHelper := uint32(importIdx)&gcStructDispatchBit != 0
+	slotLimit := maxSyncHostSlots
+	if internalGCHelper {
+		slotLimit = f.syncHostSlots
+	}
+	wide := internalGCHelper && (paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots)
 	// The shared native allocation stubs publish their fast-path result in the
 	// inline frame. Keep them for small helpers in a wide-capacity module, but a
 	// call that actually uses the extension must take the checked Go helper path.
@@ -1016,8 +1021,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		nativeStructType = 0
 		nativeArray = gcArrayAllocStubSite{}
 	}
-	if paramSlots > f.syncHostSlots || resultSlots > f.syncHostSlots {
-		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host frame supports at most %d slots in each direction", importIdx, paramSlots, resultSlots, f.syncHostSlots)
+	if paramSlots > slotLimit || resultSlots > slotLimit {
+		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host frame supports at most %d slots in each direction", importIdx, paramSlots, resultSlots, slotLimit)
 	}
 
 	roots := f.rootsBottomToTop()

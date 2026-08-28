@@ -1143,9 +1143,14 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	paramSlots := funcTypeSlots(ft.Params)
 	resultSlots := funcTypeSlots(ft.Results)
-	wide := paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots
-	if paramSlots > f.syncHostSlots || resultSlots > f.syncHostSlots {
-		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host frame supports at most %d slots in each direction", importIdx, paramSlots, resultSlots, f.syncHostSlots)
+	internalGCHelper := uint32(importIdx)&gcStructDispatchBit != 0
+	slotLimit := maxSyncHostSlots
+	if internalGCHelper {
+		slotLimit = f.syncHostSlots
+	}
+	wide := internalGCHelper && (paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots)
+	if paramSlots > slotLimit || resultSlots > slotLimit {
+		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host frame supports at most %d slots in each direction", importIdx, paramSlots, resultSlots, slotLimit)
 	}
 
 	roots := f.rootsBottomToTop()
