@@ -512,10 +512,7 @@ func decodeImports(r *reader) ([]Import, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	imports := make([]Import, 0, capHint)
 	compact := false
 	for uint32(len(imports)) < n {

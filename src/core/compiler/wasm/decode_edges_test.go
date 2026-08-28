@@ -47,6 +47,26 @@ func TestReaderBytesRejectsOverflowingRange(t *testing.T) {
 	}
 }
 
+func TestVectorCapacityHintIsBoundedBeforeElementsDecode(t *testing.T) {
+	const maxInitialVecElements = 1024
+	for _, tc := range []struct {
+		name      string
+		count     uint32
+		remaining int
+		want      int
+	}{
+		{name: "count", count: 7, remaining: 1 << 20, want: 7},
+		{name: "remaining bytes", count: 100, remaining: 9, want: 9},
+		{name: "malformed input bound", count: 1 << 20, remaining: 2 << 20, want: maxInitialVecElements},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := boundedVecCap(tc.count, tc.remaining); got != tc.want {
+				t.Fatalf("boundedVecCap(%d, %d) = %d, want %d", tc.count, tc.remaining, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDecodeRejectsSectionOrderDuplicateAndTrailingPayload(t *testing.T) {
 	t.Run("section order", func(t *testing.T) {
 		_, err := DecodeModule(module(section(secFunction, 0x00), section(secType, 0x00)))

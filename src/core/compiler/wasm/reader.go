@@ -127,15 +127,7 @@ func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The declared vector length is attacker-controlled. Do not use it as a
-	// capacity hint directly: a tiny malformed payload can otherwise request a
-	// multi-gigabyte allocation before the first element read discovers EOF. Keep
-	// the hint in int space until n has been proven smaller, so this is safe on
-	// 32-bit Go as well as amd64.
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	out := make([]T, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		v, err := fn(r)
@@ -145,5 +137,20 @@ func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// boundedVecCap avoids multiplying an attacker-controlled byte count by the
+// in-memory size of a decoded element before any element has been validated.
+// Valid larger vectors grow normally after this modest initial allocation.
+func boundedVecCap(n uint32, remainingBytes int) int {
+	const maxInitialVecElements = 1024
+	capHint := remainingBytes
+	if capHint > maxInitialVecElements {
+		capHint = maxInitialVecElements
+	}
+	if uint64(n) < uint64(capHint) {
+		capHint = int(n)
+	}
+	return capHint
 }
 func ptr[T any](v T) *T { return &v }
