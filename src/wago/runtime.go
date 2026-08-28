@@ -6,6 +6,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -783,18 +784,39 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 		if !isReserved(identity.module) || rt.overridePolicy == AllowTestOverrides {
 			continue
 		}
-		if _, provided := rt.imports[identity.module+"."+identity.name]; provided {
+		key := identity.module + "." + identity.name
+		if _, provided := rt.imports[key]; provided && registeredImportMatches(rt.importMeta[key], identity.module, identity.name) {
 			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
 		}
 	}
-	flatIdentities := make(map[string]importBindingKey, len(specs))
-	for _, spec := range specs {
-		key := spec.Key()
-		identity := importBindingKey{module: spec.Module, name: spec.Name}
-		if previous, ok := flatIdentities[key]; ok && previous != identity {
-			return nil, nil, fmt.Errorf("wago: imports %q.%q and %q.%q share flattened key %q and cannot be bound safely", previous.module, previous.name, identity.module, identity.name, key)
+	needsCollisionCheck := len(exactOverrides) != 0
+	if !needsCollisionCheck && len(specs) > 1 {
+		for _, spec := range specs {
+			if strings.Contains(spec.Module, ".") || strings.Contains(spec.Name, ".") {
+				needsCollisionCheck = true
+				break
+			}
 		}
-		flatIdentities[key] = identity
+	}
+	if needsCollisionCheck {
+		flatIdentities := make(map[string]importBindingKey, len(specs)+len(exactOverrides))
+		checkIdentity := func(key string, identity importBindingKey) error {
+			if previous, ok := flatIdentities[key]; ok && previous != identity {
+				return fmt.Errorf("wago: imports %q.%q and %q.%q share flattened key %q and cannot be bound safely", previous.module, previous.name, identity.module, identity.name, key)
+			}
+			flatIdentities[key] = identity
+			return nil
+		}
+		for _, spec := range specs {
+			if err := checkIdentity(spec.Key(), importBindingKey{module: spec.Module, name: spec.Name}); err != nil {
+				return nil, nil, err
+			}
+		}
+		for identity := range exactOverrides {
+			if err := checkIdentity(identity.module+"."+identity.name, identity); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 
 	capacity := len(overrides) + len(exactOverrides) + len(specs)
@@ -854,6 +876,12 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 				}
 			}
 		}
+	}
+	for identity, value := range exactOverrides {
+		if resolved == nil {
+			resolved = make(Imports, capacity)
+		}
+		resolved[identity.module+"."+identity.name] = value
 	}
 	return resolved, pluginGCImports, nil
 }

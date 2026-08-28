@@ -211,6 +211,46 @@ func TestRuntimeRejectsCollidingExactImportIdentities(t *testing.T) {
 	}
 }
 
+func TestRuntimeRetainsUndeclaredExactImport(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	marker := new(int)
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("unused.mod", "value.name", marker))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got := instance.Imports()["unused.mod.value.name"]; got != marker {
+		t.Fatalf("undeclared exact import = %v, want %p", got, marker)
+	}
+}
+
+func TestRuntimeReservedExactOverrideIgnoresCollidingIdentity(t *testing.T) {
+	const flatKey = "wago_timer.a.b"
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.imports[flatKey] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.importMeta[flatKey] = &registeredImport{module: "wago_timer.a", name: "b"}
+	module, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("wago_timer"), wasmtest.Name("a.b")...), 0x00, 0x00))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("wago_timer", "a.b", HostFunc(func(HostModule, []uint64, []uint64) {})))
+	if err != nil {
+		t.Fatalf("exact override of distinct reserved identity: %v", err)
+	}
+	instance.Close()
+}
+
 func TestCompiledCodecBoundsDecodedImportDirectoryAllocation(t *testing.T) {
 	const count = 3
 	var prefix [binary.MaxVarintLen64]byte

@@ -160,6 +160,23 @@ func TestResolveInstanceImportsDoesNotAllocateForUnrelatedNamespace(t *testing.T
 	}
 }
 
+func TestResolveInstanceImportsOrdinaryImportDoesNotAllocateCollisionMap(t *testing.T) {
+	rt := NewRuntime()
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.imports["env.f"] = fn
+	rt.importMeta["env.f"] = &registeredImport{module: "env", name: "f", fn: fn}
+	specs := []ImportSpec{{Module: "env", Name: "f", Kind: ImportFunc}}
+	allocs := testing.AllocsPerRun(100, func() {
+		imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil)
+		if err != nil || len(imports) != 1 || imports["env.f"] == nil || pluginGCImports != nil {
+			t.Fatalf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err)
+		}
+	})
+	if allocs != 3 {
+		t.Fatalf("resolveInstanceImports allocations = %v, want 3 without a collision map", allocs)
+	}
+}
+
 func TestRuntimeReservedUnusedOverrideRejected(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
