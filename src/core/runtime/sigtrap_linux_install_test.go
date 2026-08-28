@@ -21,14 +21,25 @@ func TestInstallLinuxSignalHandlersPublishesDistinctChainTargets(t *testing.T) {
 				t.Fatalf("read SIGSEGV call = sig %d act %p old %p", sig, installed, old)
 			}
 			old.handler = 0x1111
+			old.mask = 0x11
+			old.flags = _SA_RESTART | _SA_EXPOSE_TAGBITS
 		case 2:
 			if sig != uintptr(syscall.SIGBUS) || installed != nil || old == nil {
 				t.Fatalf("read SIGBUS call = sig %d act %p old %p", sig, installed, old)
 			}
 			old.handler = 0x2222
+			old.mask = 0x22
+			old.flags = _SA_NODEFER | _SA_EXPOSE_TAGBITS
 		case 3, 4:
-			if installed != &act || old != nil {
+			if installed == nil || old != nil || installed == &act || installed.handler != act.handler {
 				t.Fatalf("install call %d = act %p old %p", calls, installed, old)
+			}
+			wantMask, wantFlag := uint64(0x11), uint64(_SA_RESTART)
+			if calls == 4 {
+				wantMask, wantFlag = 0x22, _SA_NODEFER
+			}
+			if installed.mask != wantMask || installed.flags&wantFlag == 0 || installed.flags&_SA_EXPOSE_TAGBITS == 0 {
+				t.Fatalf("install call %d lost prior mask/flags: %+v", calls, installed)
 			}
 			if guardOldSEGVHandler != 0x1111 || guardOldBUSHandler != 0x2222 {
 				t.Fatalf("chain targets were not published before install: %#x/%#x", guardOldSEGVHandler, guardOldBUSHandler)
@@ -62,11 +73,11 @@ func TestInstallLinuxSignalHandlersRollsBackSIGSEGV(t *testing.T) {
 			old.handler = 0x2222
 			old.flags = 0x34
 		case 3:
-			if sig != uintptr(syscall.SIGSEGV) || installed != &act {
+			if sig != uintptr(syscall.SIGSEGV) || installed == nil || installed.handler != act.handler {
 				t.Fatalf("SIGSEGV install = sig %d act %p", sig, installed)
 			}
 		case 4:
-			if sig != uintptr(syscall.SIGBUS) || installed != &act {
+			if sig != uintptr(syscall.SIGBUS) || installed == nil || installed.handler != act.handler {
 				t.Fatalf("SIGBUS install = sig %d act %p", sig, installed)
 			}
 			return busErr
@@ -84,6 +95,20 @@ func TestInstallLinuxSignalHandlersRollsBackSIGSEGV(t *testing.T) {
 	}
 	if calls != 5 || guardOldSEGVHandler != 0 || guardOldBUSHandler != 0 {
 		t.Fatalf("rollback calls/targets = %d %#x/%#x", calls, guardOldSEGVHandler, guardOldBUSHandler)
+	}
+}
+
+func TestInstallLinuxSignalHandlersRejectsOneShotPredecessor(t *testing.T) {
+	act := kernelSigaction{handler: 0x9000}
+	err := installLinuxSignalHandlers(&act, func(sig uintptr, _ *kernelSigaction, old *kernelSigaction) error {
+		old.handler = 0x1111
+		if sig == uintptr(syscall.SIGSEGV) {
+			old.flags = _SA_RESETHAND
+		}
+		return nil
+	})
+	if err == nil {
+		t.Fatal("one-shot predecessor was accepted")
 	}
 }
 

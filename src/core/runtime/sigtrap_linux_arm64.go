@@ -111,8 +111,12 @@ type kernelSigaction struct {
 }
 
 const (
-	_SA_SIGINFO = 0x00000004
-	_SA_ONSTACK = 0x08000000
+	_SA_SIGINFO        = 0x00000004
+	_SA_EXPOSE_TAGBITS = 0x00000800
+	_SA_ONSTACK        = 0x08000000
+	_SA_RESTART        = 0x10000000
+	_SA_NODEFER        = 0x40000000
+	_SA_RESETHAND      = 0x80000000
 )
 
 func rtSigaction(sig uintptr, act, old *kernelSigaction) error {
@@ -139,15 +143,23 @@ func installLinuxSignalHandlers(act *kernelSigaction, call func(uintptr, *kernel
 	if oldBUS.handler <= 1 {
 		return fmt.Errorf("install SIGBUS handler: previous disposition %#x is not chainable", oldBUS.handler)
 	}
+	if oldSEGV.flags&_SA_RESETHAND != 0 || oldBUS.flags&_SA_RESETHAND != 0 {
+		return fmt.Errorf("install signal handlers: one-shot prior disposition is not chainable")
+	}
+	segvAct, busAct := *act, *act
+	segvAct.mask = oldSEGV.mask
+	busAct.mask = oldBUS.mask
+	segvAct.flags |= oldSEGV.flags & (_SA_EXPOSE_TAGBITS | _SA_RESTART | _SA_NODEFER)
+	busAct.flags |= oldBUS.flags & (_SA_EXPOSE_TAGBITS | _SA_RESTART | _SA_NODEFER)
 
 	guardOldSEGVHandler = oldSEGV.handler
 	guardOldBUSHandler = oldBUS.handler
-	if err := call(uintptr(syscall.SIGSEGV), act, nil); err != nil {
+	if err := call(uintptr(syscall.SIGSEGV), &segvAct, nil); err != nil {
 		guardOldSEGVHandler = 0
 		guardOldBUSHandler = 0
 		return fmt.Errorf("install SIGSEGV handler: %w", err)
 	}
-	if err := call(uintptr(syscall.SIGBUS), act, nil); err != nil {
+	if err := call(uintptr(syscall.SIGBUS), &busAct, nil); err != nil {
 		rollback := call(uintptr(syscall.SIGSEGV), &oldSEGV, nil)
 		guardOldSEGVHandler = 0
 		guardOldBUSHandler = 0
