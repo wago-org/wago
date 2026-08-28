@@ -84,6 +84,23 @@ func TestArtifactSectionSizesDoesNotMaterializeMetadata(t *testing.T) {
 	}
 }
 
+func TestCountOnlyStringMapDoesNotAllocate(t *testing.T) {
+	values := make(map[string]int, 4096)
+	for i := 0; i < 4096; i++ {
+		values[fmt.Sprintf("export-%04d", i)] = i
+	}
+	w := compiledWriter{countOnly: true}
+	if allocs := testing.AllocsPerRun(10, func() {
+		w.count = 0
+		w.stringIntMap(values)
+	}); allocs != 0 {
+		t.Fatalf("count-only string map allocations = %.1f, want 0", allocs)
+	}
+	if w.count == 0 {
+		t.Fatal("count-only string map measured no bytes")
+	}
+}
+
 func TestCompiledReadFromLoadsCodeImageDirectly(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {

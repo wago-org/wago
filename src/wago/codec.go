@@ -529,12 +529,19 @@ func (w *compiledWriter) memories(c *Compiled) {
 }
 
 func (w *compiledWriter) stringIntMap(m map[string]int) {
+	w.uvar(uint64(len(m)))
+	if w.countOnly {
+		for k, v := range m {
+			w.str(k)
+			w.ivar(v)
+		}
+		return
+	}
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	w.uvar(uint64(len(keys)))
 	for _, k := range keys {
 		w.str(k)
 		w.ivar(m[k])
