@@ -19,6 +19,16 @@ const MaxArtifactBytes int64 = (1 << 30) + (256 << 20) + 64
 
 // Read reads path without accepting more than MaxBytes.
 func Read(path string) ([]byte, error) {
+	return read(path, false)
+}
+
+// ReadSourceOrArtifact reads a run-command input, selecting the larger decoder
+// ceiling only when the input carries Wago's compiled-artifact magic.
+func ReadSourceOrArtifact(path string) ([]byte, error) {
+	return read(path, true)
+}
+
+func read(path string, allowArtifact bool) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -29,17 +39,20 @@ func Read(path string) ([]byte, error) {
 		return nil, err
 	}
 	if info.Mode().IsRegular() {
-		var prefix [5]byte
-		n, readErr := io.ReadFull(file, prefix[:])
-		if readErr != nil && !errors.Is(readErr, io.EOF) && !errors.Is(readErr, io.ErrUnexpectedEOF) {
-			return nil, readErr
+		limit := MaxBytes
+		if allowArtifact {
+			var prefix [5]byte
+			n, readErr := io.ReadFull(file, prefix[:])
+			if readErr != nil && !errors.Is(readErr, io.EOF) && !errors.Is(readErr, io.ErrUnexpectedEOF) {
+				return nil, readErr
+			}
+			limit = inputLimit(prefix[:n])
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
+				return nil, err
+			}
 		}
-		limit := inputLimit(prefix[:n])
 		if info.Size() > limit {
 			return nil, fmt.Errorf("module %q is %d bytes; CLI limit is %d bytes", path, info.Size(), limit)
-		}
-		if _, err := file.Seek(0, io.SeekStart); err != nil {
-			return nil, err
 		}
 		// Reserve one sentinel byte so growth after Stat is detected without
 		// io.ReadAll's geometric over-allocation.
@@ -56,6 +69,9 @@ func Read(path string) ([]byte, error) {
 			return nil, fmt.Errorf("module %q changed size while being read", path)
 		}
 		return data[:n:n], nil
+	}
+	if !allowArtifact {
+		return readStream(path, file, MaxBytes)
 	}
 	buffered := bufio.NewReaderSize(file, 5)
 	prefix, _ := buffered.Peek(5)

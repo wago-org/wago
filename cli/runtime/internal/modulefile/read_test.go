@@ -19,11 +19,15 @@ func TestReadBoundsModuleInput(t *testing.T) {
 		file.Close()
 		t.Fatal(err)
 	}
+	if _, err := file.WriteAt([]byte("WAGO\x01"), 0); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if data, err := Read(path); err == nil || data != nil || !strings.Contains(err.Error(), "CLI limit") {
-		t.Fatalf("oversized read = %d bytes, %v", len(data), err)
+		t.Fatalf("oversized source read = %d bytes, %v", len(data), err)
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 )
 
 func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache) *wago.Module {
-	source, err := modulefile.Read(file)
+	source, err := modulefile.ReadSourceOrArtifact(file)
 	if err != nil {
 		ui.Fatal("%v", err)
 	}

@@ -60,6 +60,49 @@ func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
 	}
 }
 
+func TestCacheHitRetriesPrune(t *testing.T) {
+	dir := t.TempDir()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: dir, Identity: []byte("runtime-a")}
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+
+	module, err := cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path, ok := cache.path(constantModule(), config)
+	if !ok {
+		t.Fatal("cache key unavailable")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(dir, "old.wago")
+	if err := os.WriteFile(old, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Unix(1, 0)
+	if err := os.Chtimes(old, when, when); err != nil {
+		t.Fatal(err)
+	}
+	cache.MaxBytes = info.Size()
+	module, err = cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("stale overflow entry remains after cache hit: %v", err)
+	}
+}
+
 func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	cache := Cache{Dir: dir, MaxBytes: 5}

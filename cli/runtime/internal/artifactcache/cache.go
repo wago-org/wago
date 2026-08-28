@@ -83,6 +83,9 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	cacheable = cacheable && cacheableGeneration
 	if cacheable {
 		if compiled, hit := loadArtifact(path); hit {
+			if err := cache.prune(); err != nil {
+				cache.report(err)
+			}
 			return prepared.Adopt(compiled)
 		}
 	}
