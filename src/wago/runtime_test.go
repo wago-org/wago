@@ -289,6 +289,38 @@ func TestRuntimeImportModuleCollision(t *testing.T) {
 	}
 }
 
+func TestRuntimeDirectInstanceAggregateLimits(t *testing.T) {
+	const pageBytes = uint64(65536)
+	cfg := NewRuntimeConfig().WithInstanceLimits(2, pageBytes)
+	rt := NewRuntime(WithRuntimeConfig(cfg))
+	defer rt.Close()
+	mod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	first, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second, err := rt.Instantiate(context.Background(), mod); err == nil || second != nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("second instance = %v, %v; want aggregate memory rejection", second, err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("instantiate after release: %v", err)
+	}
+	defer second.Close()
+	if rt.directInstanceCount != 1 || rt.directInstanceMemory != pageBytes {
+		t.Fatalf("aggregate usage = %d instances, %d bytes", rt.directInstanceCount, rt.directInstanceMemory)
+	}
+}
+
 func TestRuntimeMinWagoTooNew(t *testing.T) {
 	rt := NewRuntime()
 	err := rt.Use(tripleExt{minWago: "999.0.0"})
