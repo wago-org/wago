@@ -319,10 +319,7 @@ func decodeDirectTableSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Tables = make([]Table, 0, capHint)
 	dm.direct.tableHasInit = make([]bool, 0, capHint)
 	dm.direct.tableInits = make([]directConstExpr, 0, capHint)
@@ -362,10 +359,7 @@ func decodeDirectGlobalSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Globals = make([]Global, 0, capHint)
 	dm.direct.globalInits = make([]directConstExpr, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -388,10 +382,7 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Data = make([]Data, 0, capHint)
 	dm.direct.dataOffsets = make([]directConstExpr, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -452,10 +443,7 @@ func decodeDirectElementSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Elements = make([]Elem, 0, capHint)
 	dm.direct.elements = make([]directElem, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -616,10 +604,7 @@ func readDirectFuncIdxSummary(r *reader, de *directElem) error {
 		return err
 	}
 	de.elemLen = n
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	de.funcs = make([]FuncIdx, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		x, err := r.u32()
@@ -641,10 +626,7 @@ func readDirectConstExprVec(r *reader) ([]directConstExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	exprs := make([]directConstExpr, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		e, err := readDirectConstExprBytes(r)
@@ -695,10 +677,7 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
 	if err != nil {
 		return nil, false, err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	out := make([]Func, 0, capHint)
 	var sub reader
 	var frames []exprSkipFrame
