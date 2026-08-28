@@ -156,7 +156,6 @@ type instancePluginState struct {
 	gcGlobalRoots      [3]gcGlobalRootMapping
 	tagIdentityBase    uintptr      // arena-owned bounded native u64 directory for staged EH
 	tagExports         map[int]*Tag // lazy stable identity handles for exported local tags
-	runtimeReservation *runtimeInstanceReservation
 }
 
 type instanceCloseState struct {

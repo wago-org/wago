@@ -312,6 +312,9 @@ func TestRuntimeDirectInstanceAggregateLimits(t *testing.T) {
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if rt.instanceReservations != nil {
+		t.Fatalf("released instance reservation remains indexed: %#v", rt.instanceReservations)
+	}
 	second, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		t.Fatalf("instantiate after release: %v", err)

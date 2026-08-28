@@ -40,6 +40,7 @@ type Runtime struct {
 	moduleCloseOperations uint64
 	closeState            *runtimeCloseState
 	instances             map[*Instance]uint64
+	instanceReservations  map[*Instance]*runtimeInstanceReservation
 	instanceSequence      uint64
 	directInstanceCount   uint32
 	directInstanceMemory  uint64
@@ -316,7 +317,7 @@ func (rt *Runtime) beginOperationKind(label string, allowLoading, compile bool) 
 	return runtimeOperation{rt: rt, compile: compile, active: true}, nil
 }
 
-func (rt *Runtime) registerInstance(in *Instance) error {
+func (rt *Runtime) registerInstance(in *Instance, reservation *runtimeInstanceReservation) error {
 	if rt == nil || in == nil {
 		return fmt.Errorf("wago: cannot register a nil runtime instance")
 	}
@@ -327,6 +328,12 @@ func (rt *Runtime) registerInstance(in *Instance) error {
 	}
 	rt.instanceSequence++
 	rt.instances[in] = rt.instanceSequence
+	if reservation != nil {
+		if rt.instanceReservations == nil {
+			rt.instanceReservations = make(map[*Instance]*runtimeInstanceReservation)
+		}
+		rt.instanceReservations[in] = reservation
+	}
 	return nil
 }
 
@@ -361,10 +368,13 @@ func (rt *Runtime) unregisterInstance(in *Instance) {
 	}
 	rt.mu.Lock()
 	delete(rt.instances, in)
-	rt.mu.Unlock()
-	if state := in.pluginState.Load(); state != nil {
-		state.runtimeReservation.release()
+	reservation := rt.instanceReservations[in]
+	delete(rt.instanceReservations, in)
+	if len(rt.instanceReservations) == 0 {
+		rt.instanceReservations = nil
 	}
+	rt.mu.Unlock()
+	reservation.release()
 }
 
 func (rt *Runtime) reserveDirectInstance(mod *Module, origin InstantiateOrigin) (*runtimeInstanceReservation, error) {
@@ -1300,6 +1310,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 	rt.managedActive.Store(false)
 	rt.callerResolverActive.Store(false)
 	rt.instances = map[*Instance]uint64{}
+	rt.instanceReservations = nil
 	rt.instanceSequence = 0
 	rt.mu.Unlock()
 	return err
