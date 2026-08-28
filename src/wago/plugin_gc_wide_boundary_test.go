@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -166,6 +167,40 @@ func TestPluginGCWideScalarHostImportUsesSynchronousABI(t *testing.T) {
 	}
 	if len(values) != 1 || values[0].I32() != 7 {
 		t.Fatalf("run = %v; want i32(7)", values)
+	}
+}
+
+func TestGCWideDynamicCallRefRetainsRegisterABIProof(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	wideType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32})
+	runType := wasmtest.FuncType(nil, nil)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wideType, runType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target", 0, 0), // declares target for ref.func
+			wasmtest.ExportEntry("run", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x01, 0x41, 0x02, 0x41, 0x03, 0x0b}),
+			wasmtest.Code([]byte{
+				0xd2, 0x00, // ref.func 0
+				0x14, 0x01, // call_ref type 1
+				0x1a, 0x1a, 0x1a,
+				0xfb, 0x01, 0x00, 0x1a, // collecting allocation remains present
+				0x0b,
+			}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	admission := compiled.GCNativeRootAdmission()
+	if !admission.Required || admission.Exact || !strings.Contains(admission.Reason, "unsupported native call or frame shape") {
+		t.Fatalf("wide dynamic call_ref root admission = %+v", admission)
 	}
 }
 

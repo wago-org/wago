@@ -101,6 +101,23 @@ func wasmFuncTypeTransfersCollectorRefs(m *wasm.Module, ft *wasm.CompType) bool 
 	return false
 }
 
+func wasmFuncTypeReferenceFree(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if typ.Kind() == wasm.ValRef {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() == wasm.ValRef {
+			return false
+		}
+	}
+	return true
+}
+
 func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil {
 		return false
