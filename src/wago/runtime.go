@@ -6,7 +6,6 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -537,6 +536,9 @@ func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 
 func (p *PreparedCompile) finishCompile(c *Compiled) (*Module, error) {
 	mod := buildModule(c, p.bindings)
+	if err := validateDeclaredImportIdentities(mod.imports); err != nil {
+		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
+	}
 	if len(p.hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: p.compilation, Module: moduleView(mod), SourceDigest: DigestModuleSource(p.source)}
 		for _, fn := range p.hooks.afterCompile {
@@ -621,6 +623,9 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
 	}
 	mod := buildModule(c, bindings)
+	if err := validateDeclaredImportIdentities(mod.imports); err != nil {
+		return nil, emitCompileError(hooks, compilation, err)
+	}
 	if len(hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: compilation, Module: moduleView(mod)}
 		for _, fn := range hooks.afterCompile {
@@ -795,40 +800,16 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
 		}
 	}
-	var firstIdentity importBindingKey
-	haveIdentity, distinctIdentities, dottedModule := false, false, false
-	considerIdentity := func(identity importBindingKey) {
-		dottedModule = dottedModule || strings.Contains(identity.module, ".")
-		if !haveIdentity {
-			firstIdentity, haveIdentity = identity, true
-		} else if identity != firstIdentity {
-			distinctIdentities = true
-		}
-	}
-	for _, spec := range specs {
-		considerIdentity(importBindingKey{module: spec.Module, name: spec.Name})
-	}
 	for identity := range exactOverrides {
-		considerIdentity(identity)
-	}
-	needsCollisionCheck := distinctIdentities && dottedModule
-	if needsCollisionCheck {
-		flatIdentities := make(map[string]importBindingKey, len(specs)+len(exactOverrides))
-		checkIdentity := func(key string, identity importBindingKey) error {
-			if previous, ok := flatIdentities[key]; ok && previous != identity {
-				return fmt.Errorf("wago: imports %q.%q and %q.%q share flattened key %q and cannot be bound safely", previous.module, previous.name, identity.module, identity.name, key)
-			}
-			flatIdentities[key] = identity
-			return nil
-		}
 		for _, spec := range specs {
-			if err := checkIdentity(spec.Key(), importBindingKey{module: spec.Module, name: spec.Name}); err != nil {
-				return nil, nil, err
+			declared := importBindingKey{module: spec.Module, name: spec.Name}
+			if identity != declared && flattenedImportIdentitiesEqual(identity, declared) {
+				return nil, nil, importIdentityCollisionError(declared, identity)
 			}
 		}
-		for identity := range exactOverrides {
-			if err := checkIdentity(identity.module+"."+identity.name, identity); err != nil {
-				return nil, nil, err
+		for other := range exactOverrides {
+			if identity != other && flattenedImportIdentitiesEqual(identity, other) {
+				return nil, nil, importIdentityCollisionError(other, identity)
 			}
 		}
 	}
@@ -898,6 +879,28 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 		resolved[identity.module+"."+identity.name] = value
 	}
 	return resolved, pluginGCImports, nil
+}
+
+func flattenedImportIdentitiesEqual(a, b importBindingKey) bool {
+	aLen := len(a.module) + 1 + len(a.name)
+	if aLen != len(b.module)+1+len(b.name) {
+		return false
+	}
+	byteAt := func(identity importBindingKey, index int) byte {
+		if index < len(identity.module) {
+			return identity.module[index]
+		}
+		if index == len(identity.module) {
+			return '.'
+		}
+		return identity.name[index-len(identity.module)-1]
+	}
+	for i := 0; i < aLen; i++ {
+		if byteAt(a, i) != byteAt(b, i) {
+			return false
+		}
+	}
+	return true
 }
 
 func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {

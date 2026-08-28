@@ -3,6 +3,7 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -282,6 +283,42 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		}
 	}
 	return m
+}
+
+// validateDeclaredImportIdentities rejects distinct structured import names
+// that the low-level flat Imports namespace cannot represent independently.
+// Run this once when the runtime wrapper is constructed, rather than rebuilding
+// collision state for every instance.
+func validateDeclaredImportIdentities(specs []ImportSpec) error {
+	var firstIdentity importBindingKey
+	haveIdentity, distinctIdentities, dottedModule := false, false, false
+	for _, spec := range specs {
+		identity := importBindingKey{module: spec.Module, name: spec.Name}
+		dottedModule = dottedModule || strings.Contains(identity.module, ".")
+		if !haveIdentity {
+			firstIdentity, haveIdentity = identity, true
+		} else if identity != firstIdentity {
+			distinctIdentities = true
+		}
+	}
+	if !distinctIdentities || !dottedModule {
+		return nil
+	}
+
+	flatIdentities := make(map[string]importBindingKey, len(specs))
+	for _, spec := range specs {
+		identity := importBindingKey{module: spec.Module, name: spec.Name}
+		key := spec.Key()
+		if previous, ok := flatIdentities[key]; ok && previous != identity {
+			return importIdentityCollisionError(previous, identity)
+		}
+		flatIdentities[key] = identity
+	}
+	return nil
+}
+
+func importIdentityCollisionError(previous, identity importBindingKey) error {
+	return fmt.Errorf("wago: imports %q.%q and %q.%q share flattened key %q and cannot be bound safely", previous.module, previous.name, identity.module, identity.name, identity.module+"."+identity.name)
 }
 
 // registeredImportMatches prevents the legacy flat binding namespace from

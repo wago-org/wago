@@ -25,7 +25,7 @@ func exactImportIdentityModule(includeTag bool) []byte {
 	}
 	imports := [][]byte{
 		entry("a.b", "c", 0x00, 0x00), // function, type 0
-		entry("a", "b.c", 0x00, 0x00), // same legacy key, distinct identity
+		entry("a", "bc", 0x00, 0x00),
 		entry("", "empty.module", 0x00, 0x00),
 		entry("empty.name", "", 0x00, 0x00),
 		entry("nul\x00.mod", "field\x00.name", 0x00, 0x00),
@@ -45,7 +45,7 @@ func exactImportIdentityModule(includeTag bool) []byte {
 func exactImportIdentities(includeTag bool) []importIdentity {
 	identities := []importIdentity{
 		{module: "a.b", name: "c", kind: ImportFunc},
-		{module: "a", name: "b.c", kind: ImportFunc},
+		{module: "a", name: "bc", kind: ImportFunc},
 		{module: "", name: "empty.module", kind: ImportFunc},
 		{module: "empty.name", name: "", kind: ImportFunc},
 		{module: "nul\x00.mod", name: "field\x00.name", kind: ImportFunc},
@@ -198,16 +198,49 @@ func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
 func TestRuntimeRejectsCollidingExactImportIdentities(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
-	module, err := rt.Compile(exactImportIdentityModule(false))
+	moduleBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(
+			importEntry("a.b", "c", 0, 0),
+			importEntry("a", "b.c", 0, 0),
+		)),
+	)
+	if module, err := rt.Compile(moduleBytes); err == nil || module != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
+		t.Fatalf("colliding declared imports = %v, %v; want rejection", module, err)
+	}
+}
+
+func TestRuntimeRejectsExactOverrideCollidingWithDeclaration(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("a.b", "c", 0, 0))),
+	))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer module.Close()
 	if instance, err := rt.Instantiate(context.Background(), module,
-		WithImport("a.b", "c", HostFunc(func(HostModule, []uint64, []uint64) {})),
 		WithImport("a", "b.c", HostFunc(func(HostModule, []uint64, []uint64) {})),
 	); err == nil || instance != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
-		t.Fatalf("colliding exact imports = %v, %v; want rejection", instance, err)
+		t.Fatalf("colliding exact override = %v, %v; want rejection", instance, err)
+	}
+}
+
+func TestRuntimeRejectsCollidingUndeclaredExactOverrides(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if instance, err := rt.Instantiate(context.Background(), module,
+		WithImport("a.b", "c", new(int)),
+		WithImport("a", "b.c", new(int)),
+	); err == nil || instance != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
+		t.Fatalf("colliding undeclared exact overrides = %v, %v; want rejection", instance, err)
 	}
 }
 
