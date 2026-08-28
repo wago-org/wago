@@ -193,7 +193,7 @@ func (j *JobMemory) CurrentPages() uint32 { return j.getU32(offLinMemWasmSize) }
 func (j *JobMemory) MaxPages() uint32     { return j.getU32(offMaxLinMemPages) }
 
 // CurrentBytes returns the host-facing view of linear memory at its current
-// (possibly grown) logical size — what Memory.Bytes exposes.
+// (possibly grown) logical size — what Memory.UnsafeBytes exposes.
 func (j *JobMemory) CurrentBytes() []byte {
 	n := j.curBytes()
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]

@@ -226,11 +226,11 @@ func TestIndexedMemory64FloatUsesSelectedBaseAndFullWidthBounds(t *testing.T) {
 			}
 			var m0Bits, m1Bits uint64
 			if width == 4 {
-				m0Bits = uint64(binary.LittleEndian.Uint32(m0.Bytes()[17:]))
-				m1Bits = uint64(binary.LittleEndian.Uint32(m1.Bytes()[17:]))
+				m0Bits = uint64(binary.LittleEndian.Uint32(m0.UnsafeBytes()[17:]))
+				m1Bits = uint64(binary.LittleEndian.Uint32(m1.UnsafeBytes()[17:]))
 			} else {
-				m0Bits = binary.LittleEndian.Uint64(m0.Bytes()[17:])
-				m1Bits = binary.LittleEndian.Uint64(m1.Bytes()[17:])
+				m0Bits = binary.LittleEndian.Uint64(m0.UnsafeBytes()[17:])
+				m1Bits = binary.LittleEndian.Uint64(m1.UnsafeBytes()[17:])
 			}
 			if m0Bits != 0 || m1Bits != tc.bits {
 				t.Fatalf("selected base bits m0=%#x m1=%#x, want 0/%#x", m0Bits, m1Bits, tc.bits)
@@ -318,11 +318,11 @@ func TestStagedMultiMemoryScalarWidthsAndGrow(t *testing.T) {
 		if got := tableTestCallI32(t, in, "size1"); got != 2 {
 			t.Fatalf("grown memory.size 1 = %d, want 2", got)
 		}
-		if len(m1.Bytes()) != 2*65536 || len(alias.Bytes()) != 2*65536 {
-			t.Fatalf("exported alias lengths = %d,%d, want %d", len(m1.Bytes()), len(alias.Bytes()), 2*65536)
+		if len(m1.UnsafeBytes()) != 2*65536 || len(alias.UnsafeBytes()) != 2*65536 {
+			t.Fatalf("exported alias lengths = %d,%d, want %d", len(m1.UnsafeBytes()), len(alias.UnsafeBytes()), 2*65536)
 		}
-		if m1.Bytes()[65536] != 0 {
-			t.Fatalf("grown page first byte = %d, want zero", m1.Bytes()[65536])
+		if m1.UnsafeBytes()[65536] != 0 {
+			t.Fatalf("grown page first byte = %d, want zero", m1.UnsafeBytes()[65536])
 		}
 		if _, err := in.Invoke("store1", I32(65536), I32(0x55aa)); err != nil {
 			t.Fatalf("store in grown page: %v", err)
@@ -334,7 +334,7 @@ func TestStagedMultiMemoryScalarWidthsAndGrow(t *testing.T) {
 			if got := tableTestCallI32(t, in, "size1"); got != 2 {
 				t.Fatalf("size after failed grow = %d, want 2", got)
 			}
-			if len(m1.Bytes()) != 2*65536 || binary.LittleEndian.Uint32(m1.Bytes()[65536:]) != 0x55aa {
+			if len(m1.UnsafeBytes()) != 2*65536 || binary.LittleEndian.Uint32(m1.UnsafeBytes()[65536:]) != 0x55aa {
 				t.Fatalf("failed grow changed exported memory state")
 			}
 		}
@@ -369,8 +369,8 @@ func TestStagedMultiMemoryScalarWidthsAndGrow(t *testing.T) {
 		if err := in.Close(); err != nil {
 			t.Fatalf("close: %v", err)
 		}
-		if len(m1.Bytes()) != 2*65536 {
-			t.Fatalf("host import length after close = %d, want %d", len(m1.Bytes()), 2*65536)
+		if len(m1.UnsafeBytes()) != 2*65536 {
+			t.Fatalf("host import length after close = %d, want %d", len(m1.UnsafeBytes()), 2*65536)
 		}
 	})
 
@@ -416,7 +416,7 @@ func TestStagedMultiMemoryLocalAndImportedExecution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("export memory 1: %v", err)
 		}
-		if got := binary.LittleEndian.Uint32(m1.Bytes()[32:]); got != 0x12345678 {
+		if got := binary.LittleEndian.Uint32(m1.UnsafeBytes()[32:]); got != 0x12345678 {
 			t.Fatalf("exported memory-1 bytes = %#x", got)
 		}
 	})
@@ -441,7 +441,7 @@ func TestStagedMultiMemoryLocalAndImportedExecution(t *testing.T) {
 		if err := in.Close(); err != nil {
 			t.Fatalf("close imported-memory instance: %v", err)
 		}
-		if got := binary.LittleEndian.Uint32(m1.Bytes()[32:]); got != 0x12345678 {
+		if got := binary.LittleEndian.Uint32(m1.UnsafeBytes()[32:]); got != 0x12345678 {
 			t.Fatalf("imported memory-1 bytes = %#x", got)
 		}
 	})

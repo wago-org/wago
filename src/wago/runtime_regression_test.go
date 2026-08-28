@@ -156,7 +156,7 @@ func TestCompiledModuleInstantiationIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("instantiate %d: %v", i, err)
 		}
-		if got := binary.LittleEndian.Uint64(in.Memory().Bytes()[1:]); got != 0 {
+		if got := binary.LittleEndian.Uint64(in.Memory().UnsafeBytes()[1:]); got != 0 {
 			_ = in.Close()
 			t.Fatalf("instance %d inherited memory value %d", i, got)
 		}
@@ -164,7 +164,7 @@ func TestCompiledModuleInstantiationIsolation(t *testing.T) {
 			_ = in.Close()
 			t.Fatalf("instance %d store: %v", i, err)
 		}
-		if got := binary.LittleEndian.Uint64(in.Memory().Bytes()[1:]); got != 1000 {
+		if got := binary.LittleEndian.Uint64(in.Memory().UnsafeBytes()[1:]); got != 1000 {
 			_ = in.Close()
 			t.Fatalf("instance %d memory value = %d, want 1000", i, got)
 		}
@@ -213,7 +213,7 @@ func TestHostFunctionSeesCallerMemory(t *testing.T) {
 		t.Fatalf("store_int result = %v, err %v", got, err)
 	}
 	want := []byte{0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0}
-	if mem := in.Memory().Bytes()[:10]; string(mem) != string(want) {
+	if mem := in.Memory().UnsafeBytes()[:10]; string(mem) != string(want) {
 		t.Fatalf("memory prefix = %x, want %x", mem, want)
 	}
 }
@@ -411,7 +411,7 @@ func TestARM64UremRegalloc(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	self := in.Memory().Bytes()[0x100000:]
+	self := in.Memory().UnsafeBytes()[0x100000:]
 	binary.LittleEndian.PutUint32(self[8:], 8)
 	binary.LittleEndian.PutUint32(self[12:], 2)
 	binary.LittleEndian.PutUint32(self[16:], 1)

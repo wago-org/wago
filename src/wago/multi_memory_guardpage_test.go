@@ -50,7 +50,7 @@ func TestSignalIndexedMemoryGrowCommitsWholeWasmPageThroughPrimaryOwner(t *testi
 	if err != nil {
 		t.Fatalf("export memory1: %v", err)
 	}
-	if got := len(memory1.Bytes()); got != 2*65536 {
+	if got := len(memory1.UnsafeBytes()); got != 2*65536 {
 		t.Fatalf("grown indexed guarded memory length = %d, want %d", got, 2*65536)
 	}
 }

@@ -53,7 +53,7 @@ func TestHostMediatedCrossInstanceCallRestoresCallerMemoryContext(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	calleeMemory.Bytes()[1000+6159], calleeMemory.Bytes()[10000+6159] = 9, 8
+	calleeMemory.UnsafeBytes()[1000+6159], calleeMemory.UnsafeBytes()[10000+6159] = 9, 8
 
 	caller, err = rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
 		(import "env" "ping" (func $ping))
@@ -94,8 +94,8 @@ func TestHostMediatedCrossInstanceCallRestoresCallerMemoryContext(t *testing.T) 
 	if len(got) != 1 || AsI32(got[0]) != 0 {
 		t.Fatalf("run = %v, want caller memory byte 0", got)
 	}
-	if calleeMemory.Bytes()[10000+6159] != 8 {
-		t.Fatalf("callee memory was modified after returning to caller: byte = %d", calleeMemory.Bytes()[10000+6159])
+	if calleeMemory.UnsafeBytes()[10000+6159] != 8 {
+		t.Fatalf("callee memory was modified after returning to caller: byte = %d", calleeMemory.UnsafeBytes()[10000+6159])
 	}
 }
 
@@ -161,7 +161,7 @@ func TestCrossInstanceImportedTablePreservesFourArguments(t *testing.T) {
 		t.Fatalf("result = %v, want 33", got)
 	}
 	for i, want := range []uint32{11, 22, 33, 44} {
-		if got := binary.LittleEndian.Uint32(mem.Bytes()[i*4:]); got != want {
+		if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[i*4:]); got != want {
 			t.Fatalf("argument %d = %d, want %d", i, got, want)
 		}
 	}

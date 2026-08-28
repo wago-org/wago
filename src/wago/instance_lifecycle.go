@@ -406,8 +406,9 @@ func (in *Instance) releaseResources() {
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the
-// host-imported one). Use Memory().Bytes() for the zero-copy byte view. A close
-// that wins the acquisition race returns nil instead of a dangling object.
+// host-imported one). Use Memory().UnsafeBytes() for an explicitly unsafe
+// zero-copy byte view. A close that wins the acquisition race returns nil
+// instead of a dangling object.
 func (in *Instance) Memory() *Memory {
 	if in == nil || in.c == nil || in.c.memoryCount() == 0 || in.memory == nil || in.beginInvocation() != nil {
 		return nil

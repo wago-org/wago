@@ -278,7 +278,7 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	if old := AsI32(result[0]); old != 0 {
 		t.Fatalf("atomic add old value = %d, want 0", old)
 	}
-	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 7 {
+	if got := binary.LittleEndian.Uint32(memory.UnsafeBytes()[:4]); got != 7 {
 		t.Fatalf("shared memory value = %d, want 7", got)
 	}
 }
@@ -362,8 +362,8 @@ func TestThreadsHostGlobalAccessSerializesWithInvoke(t *testing.T) {
 			err   error
 		}{value, err}
 	}()
-	signal := (*uint32)(unsafe.Pointer(&memory.Bytes()[0]))
-	release := (*uint32)(unsafe.Pointer(&memory.Bytes()[4]))
+	signal := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[0]))
+	release := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[4]))
 	defer atomic.StoreUint32(release, 1)
 	deadline := time.Now().Add(5 * time.Second)
 	for atomic.LoadUint32(signal) == 0 && time.Now().Before(deadline) {
@@ -481,7 +481,7 @@ func TestThreadsAtomicLoadStoreAndFenceExecute(t *testing.T) {
 	if _, err := instance.Invoke("store", I32(-559038737)); err != nil { // 0xdeadbeef
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 0xdeadbeef {
+	if got := binary.LittleEndian.Uint32(memory.UnsafeBytes()[:4]); got != 0xdeadbeef {
 		t.Fatalf("host memory = %#x", got)
 	}
 	result, err := instance.Invoke("load")
@@ -522,7 +522,7 @@ func TestThreadsAtomicLoadStoreWidthAndExtensionMatrix(t *testing.T) {
 			defer memory.Close()
 			const initial = uint64(0xaabbccddeeff0011)
 			const value = uint64(0x1122334455667788)
-			binary.LittleEndian.PutUint64(memory.Bytes()[:8], initial)
+			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], initial)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -532,7 +532,7 @@ func TestThreadsAtomicLoadStoreWidthAndExtensionMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantMemory := initial&^tc.mask | value&tc.mask
-			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]); got != wantMemory {
+			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]); got != wantMemory {
 				t.Fatalf("memory = %#x, want %#x", got, wantMemory)
 			}
 			result, err := instance.Invoke("load")
@@ -571,7 +571,7 @@ func TestThreadsAtomicRMWOperationAndWidthMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer memory.Close()
-			binary.LittleEndian.PutUint64(memory.Bytes()[:8], tc.old)
+			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], tc.old)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -584,7 +584,7 @@ func TestThreadsAtomicRMWOperationAndWidthMatrix(t *testing.T) {
 			if got := result[0]; got != tc.old&tc.memMask {
 				t.Fatalf("old = %#x, want %#x", got, tc.old&tc.memMask)
 			}
-			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.memMask; got != tc.want {
+			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]) & tc.memMask; got != tc.want {
 				t.Fatalf("memory = %#x, want %#x", got, tc.want)
 			}
 		})
@@ -616,7 +616,7 @@ func TestThreadsAtomicCmpxchgSuccessFailureAndWidths(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer memory.Close()
-			binary.LittleEndian.PutUint64(memory.Bytes()[:8], tc.old)
+			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], tc.old)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -626,14 +626,14 @@ func TestThreadsAtomicCmpxchgSuccessFailureAndWidths(t *testing.T) {
 			if err != nil || result[0] != tc.old&tc.mask {
 				t.Fatalf("failed cmpxchg old = %v, %v", result, err)
 			}
-			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.mask; got != tc.old&tc.mask {
+			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]) & tc.mask; got != tc.old&tc.mask {
 				t.Fatalf("failed cmpxchg changed memory to %#x", got)
 			}
 			result, err = instance.Invoke("cmpxchg", tc.old, 0x12345678)
 			if err != nil || result[0] != tc.old&tc.mask {
 				t.Fatalf("successful cmpxchg old = %v, %v", result, err)
 			}
-			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.mask; got != 0x12345678&tc.mask {
+			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]) & tc.mask; got != 0x12345678&tc.mask {
 				t.Fatalf("successful cmpxchg memory = %#x", got)
 			}
 		})
@@ -662,7 +662,7 @@ func TestThreadsAtomicRMWRejectsUnalignedAddressBeforeWrite(t *testing.T) {
 	if !errors.As(err, &trap) || trap.Code != TrapAtomicUnaligned {
 		t.Fatalf("unaligned add error = %v, want atomic alignment trap", err)
 	}
-	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 0 {
+	if got := binary.LittleEndian.Uint32(memory.UnsafeBytes()[:4]); got != 0 {
 		t.Fatalf("memory changed on alignment trap: %d", got)
 	}
 }
@@ -715,10 +715,10 @@ func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer memory.Close()
-			for i := range memory.Bytes() {
-				memory.Bytes()[i] = byte(i*131 + 17)
+			for i := range memory.UnsafeBytes() {
+				memory.UnsafeBytes()[i] = byte(i*131 + 17)
 			}
-			want := append([]byte(nil), memory.Bytes()...)
+			want := append([]byte(nil), memory.UnsafeBytes()...)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -735,7 +735,7 @@ func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
 				if !errors.As(err, &trap) || (trap.Code != TrapLinMemOutOfBounds && trap.Code != TrapLinkedMemOutOfBounds) {
 					t.Fatalf("address %#x error = %v, want memory bounds trap", address, err)
 				}
-				if !bytes.Equal(memory.Bytes(), want) {
+				if !bytes.Equal(memory.UnsafeBytes(), want) {
 					t.Fatalf("address %#x mutated memory before trapping", address)
 				}
 			}
@@ -786,10 +786,10 @@ func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
 			t.Fatalf("concurrent native call: %v", err)
 		}
 	}
-	if arrivals := binary.LittleEndian.Uint32(memory.Bytes()[0:4]); arrivals != 2 {
+	if arrivals := binary.LittleEndian.Uint32(memory.UnsafeBytes()[0:4]); arrivals != 2 {
 		t.Fatalf("arrivals = %d, want 2", arrivals)
 	}
-	if completions := binary.LittleEndian.Uint32(memory.Bytes()[4:8]); completions != 2 {
+	if completions := binary.LittleEndian.Uint32(memory.UnsafeBytes()[4:8]); completions != 2 {
 		t.Fatalf("completions = %d, want 2", completions)
 	}
 }
@@ -849,14 +849,14 @@ func TestThreadsAtomicWaitNotifyExecutesAcrossInstances(t *testing.T) {
 		t.Fatal("notified Wasm wait did not resume")
 	}
 
-	binary.LittleEndian.PutUint32(memory.Bytes()[:4], 7)
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[:4], 7)
 	if out, err = waiter.Invoke("wait32", I32(0), I32(8), I64(-1)); err != nil || AsI32(out[0]) != int32(memoryWaitNotEqual) {
 		t.Fatalf("mismatched wait32 = %v, %v", out, err)
 	}
 	if out, err = waiter.Invoke("wait32", I32(0), I32(7), I64(0)); err != nil || AsI32(out[0]) != int32(memoryWaitTimedOut) {
 		t.Fatalf("zero-timeout wait32 = %v, %v", out, err)
 	}
-	binary.LittleEndian.PutUint64(memory.Bytes()[8:16], 0x1122334455667788)
+	binary.LittleEndian.PutUint64(memory.UnsafeBytes()[8:16], 0x1122334455667788)
 	if out, err = waiter.Invoke("wait64", I32(8), I64(0x1122334455667788), I64(0)); err != nil || AsI32(out[0]) != int32(memoryWaitTimedOut) {
 		t.Fatalf("zero-timeout wait64 = %v, %v", out, err)
 	}

@@ -74,7 +74,7 @@ func TestRuntimeConcurrencyGCAtomicWaitNotify(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	marker := (*uint32)(unsafe.Pointer(&memory.Bytes()[4]))
+	marker := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[4]))
 	atomic.StoreUint32(marker, 0)
 	waitDone := make(chan invokeResult, 1)
 	go func() {
@@ -723,11 +723,11 @@ func (h *concurrencyHarness) testThreads(t *testing.T) {
 	if t.Failed() {
 		return
 	}
-	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != want {
+	if got := binary.LittleEndian.Uint32(memory.UnsafeBytes()[:4]); got != want {
 		t.Fatalf("shared atomic total = %d, want %d", got, want)
 	}
 
-	marker := (*uint32)(unsafe.Pointer(&memory.Bytes()[4]))
+	marker := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[4]))
 	atomic.StoreUint32(marker, 0)
 	ctx, cancel := h.deadlineContext()
 	defer cancel()
@@ -799,7 +799,7 @@ func (h *concurrencyHarness) testThreads(t *testing.T) {
 	if err := memory.Close(); err != nil {
 		t.Fatalf("close shared memory after consumers: %v", err)
 	}
-	if memory.Bytes() != nil {
+	if memory.UnsafeBytes() != nil {
 		t.Fatal("closed shared memory retained a host-visible byte view")
 	}
 	h.record("threads complete close-order=%v", order)

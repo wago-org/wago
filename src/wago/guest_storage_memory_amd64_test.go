@@ -95,7 +95,7 @@ func TestHostGuestStorageMemory64MetadataAndRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint64(memory.Bytes()[64:72]); got != 0x0102030405060708 {
+	if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[64:72]); got != 0x0102030405060708 {
 		t.Fatalf("memory64 host write = %#x", got)
 	}
 }

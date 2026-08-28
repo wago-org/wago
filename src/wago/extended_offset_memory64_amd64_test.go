@@ -43,7 +43,7 @@ func TestMemory64ActiveOffsetUsesLocalImmutableI64Global(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := in.Memory().Bytes()[4]; got != 'x' {
+	if got := in.Memory().UnsafeBytes()[4]; got != 'x' {
 		t.Fatalf("memory[4] = %d, want %d", got, 'x')
 	}
 }
