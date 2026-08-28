@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/ui"
@@ -35,8 +36,13 @@ func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runti
 
 func loadCompiledArtifact(source []byte) (*wago.Compiled, error) {
 	compiled := new(wago.Compiled)
-	if _, err := compiled.ReadFromWithLimits(bytes.NewReader(source), wago.DefaultArtifactLimits()); err != nil {
+	read, err := compiled.ReadFromWithLimits(bytes.NewReader(source), wago.DefaultArtifactLimits())
+	if err != nil {
 		return nil, err
+	}
+	if read != int64(len(source)) {
+		_ = compiled.Close()
+		return nil, fmt.Errorf("trailing %d byte(s) after compiled sections", int64(len(source))-read)
 	}
 	return compiled, nil
 }

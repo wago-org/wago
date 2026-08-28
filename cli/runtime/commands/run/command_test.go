@@ -183,6 +183,10 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}).Compiled(), "f"); got != "f" {
 		t.Fatalf("loaded export = %q", got)
 	}
+	withTrailing := append(append([]byte(nil), encoded...), 0)
+	if compiled, err := loadCompiledArtifact(withTrailing); err == nil || compiled != nil || !strings.Contains(err.Error(), "trailing 1 byte") {
+		t.Fatalf("artifact with trailing byte = %v, %v; want rejection", compiled, err)
+	}
 }
 
 func TestLoadCompiledArtifactEnforcesSectionLimits(t *testing.T) {
