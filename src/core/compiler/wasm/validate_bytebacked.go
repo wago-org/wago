@@ -293,7 +293,6 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 			return err
 		}
 		dm.m.NameSec = ns
-		dm.m.RawNameSecPayload = append([]byte(nil), payload...)
 		dm.seenName = true
 	}
 	if name == branchHintSectionName {
@@ -307,7 +306,11 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		dm.m.BranchHints = hints
 		dm.seenBranchHints = true
 	}
-	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
+	ownedPayload := append([]byte(nil), payload...)
+	if name == "name" {
+		dm.m.RawNameSecPayload = ownedPayload
+	}
+	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: ownedPayload})
 	return nil
 }
 

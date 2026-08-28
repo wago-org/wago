@@ -66,9 +66,12 @@ func decodeSection(m *Module, r *reader, id byte) error {
 				return err
 			}
 			m.NameSec = ns
-			m.RawNameSecPayload = append([]byte(nil), payload...)
 		}
-		m.Customs = append(m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
+		ownedPayload := append([]byte(nil), payload...)
+		if name == "name" {
+			m.RawNameSecPayload = ownedPayload
+		}
+		m.Customs = append(m.Customs, CustomSec{Name: name, Data: ownedPayload})
 	case secType:
 		v, err := readVec(r, decodeRecType)
 		if err != nil {
