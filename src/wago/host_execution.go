@@ -200,6 +200,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 			}
 		}()
 		if err := resumeGCInvocation(invocation.wait); err != nil {
+			active.clearGCHostResultRoots(activation)
 			panic(hostResumeCanceled{err: err})
 		}
 		resumeMu := localMu

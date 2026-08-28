@@ -28,6 +28,23 @@ func gcAllocatingHostStartModule() []byte {
 	)
 }
 
+func gcAllocatingRefHostModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	hostType := wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef})
+	runType := wasmtest.FuncType(nil, nil)
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("echo")...)
+	importEntry = append(importEntry, byte(wasm.ExternFunc), 0x01)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, hostType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x01, 0xfb, 0x00, 0x00, 0x10, 0x00, 0x1a, 0x0b}),
+		)),
+	)
+}
+
 func TestGCAllocatingLocalStartWaitsForInvocationLease(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcAllocatingHostStartModule())
 	if err != nil {
@@ -216,5 +233,100 @@ func TestGCAllocatingLocalStartCancelsResumeLeaseWait(t *testing.T) {
 		nativeActiveMu.Unlock()
 	case <-time.After(time.Second):
 		t.Fatal("instantiation did not cancel while host resume waited for the GC lease")
+	}
+}
+
+func TestGCHostResumeCancellationClearsExplicitRoots(t *testing.T) {
+	type hostBlock struct {
+		entered chan struct{}
+		rooted  chan uint8
+		resume  chan struct{}
+	}
+
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	rt := NewRuntime(WithRuntimeConfig(cfg))
+	defer rt.Close()
+	blocks := make(chan hostBlock, 1)
+	owner, err := rt.NewGCHostFuncRef(HostFunc(func(caller HostModule, args, results []uint64) {
+		block := <-blocks
+		state := caller.(instanceHostModule).in.existingPublicGCState()
+		state.mu.Lock()
+		rooted := state.hostArgumentRootCount[0]
+		state.mu.Unlock()
+		block.rooted <- rooted
+		results[0] = args[0]
+		close(block.entered)
+		<-block.resume
+	}), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	mod, err := rt.Compile(gcAllocatingRefHostModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	in, err := rt.Instantiate(context.Background(), mod,
+		WithImports(Imports{"env.echo": owner}),
+		WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	for attempt := 0; attempt < gcHostActivationLimit+1; attempt++ {
+		block := hostBlock{entered: make(chan struct{}), rooted: make(chan uint8, 1), resume: make(chan struct{})}
+		blocks <- block
+		leaseHeld := make(chan struct{})
+		releaseLease := make(chan struct{})
+		competitorDone := make(chan struct{})
+		go func() {
+			defer close(competitorDone)
+			<-block.entered
+			lease := in.lockGCInvocation(newInvocationID())
+			close(leaseHeld)
+			<-releaseLease
+			lease.unlock()
+		}()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			_, callErr := in.Call(ctx, "run")
+			done <- callErr
+		}()
+		rooted := <-block.rooted
+		<-leaseHeld
+		close(block.resume)
+		cancel()
+		var callErr error
+		select {
+		case callErr = <-done:
+		case <-time.After(time.Second):
+			close(releaseLease)
+			<-competitorDone
+			t.Fatalf("attempt %d: call did not cancel while the resume lease was held", attempt)
+		}
+		close(releaseLease)
+		<-competitorDone
+
+		state := in.existingPublicGCState()
+		state.mu.Lock()
+		argumentCount, resultCount := state.hostArgumentRootCount[0], state.hostResultRootCount[0]
+		argumentMade, resultMade := state.hostArgumentRootsMade[0], state.hostResultRootsMade[0]
+		state.mu.Unlock()
+		if rooted != 1 {
+			t.Fatalf("attempt %d: rooted GC host arguments = %d, want 1", attempt, rooted)
+		}
+		if !errors.Is(callErr, context.Canceled) {
+			t.Fatalf("attempt %d: GC resume-lease wait error = %v, want context cancellation", attempt, callErr)
+		}
+		if argumentCount != 0 || resultCount != 0 {
+			t.Fatalf("attempt %d: leaked GC host roots: arguments=%d results=%d", attempt, argumentCount, resultCount)
+		}
+		if argumentMade != 1 || resultMade != 1 {
+			t.Fatalf("attempt %d: exercised GC host root slots: arguments=%d results=%d, want 1 each", attempt, argumentMade, resultMade)
+		}
 	}
 }
