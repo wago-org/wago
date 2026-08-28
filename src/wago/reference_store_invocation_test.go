@@ -188,6 +188,43 @@ func TestDynamicInvocationDomainInspectionHoldsTopologyReadLease(t *testing.T) {
 	}
 }
 
+func TestDynamicGCInvocationInitialTopologyWaitCancels(t *testing.T) {
+	domain := &gcStoreDomain{id: 1, collector: new(gc.Collector)}
+	in := &Instance{c: &Compiled{}, gc: domain.collector}
+	in.executionFlags.Store(executionFlagDynamicGCDomain | executionFlagImportedGCDomain)
+	topology := &gcDomainTopology{first: domain, last: domain, n: 1}
+	in.refStore = &referenceStore{
+		gcDomains: topology,
+		instances: map[*Instance]*referenceStoreInstance{
+			in: {gcDomain: domain, dynamicInvocationDomains: true},
+		},
+	}
+
+	topology.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := in.lockGCInvocationContext(ctx, newInvocationID())
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		topology.Unlock()
+		if err != context.DeadlineExceeded {
+			t.Fatalf("dynamic topology wait error = %v, want context deadline", err)
+		}
+	case <-time.After(time.Second):
+		topology.Unlock()
+		<-done
+		t.Fatal("dynamic topology wait did not observe context cancellation")
+	}
+	if !domain.invocationMu.TryLock() {
+		t.Fatal("canceled initial topology wait acquired the GC domain")
+	}
+	domain.invocationMu.Unlock()
+}
+
 func TestDynamicGCInvocationResumeCancellationReleasesBookkeeping(t *testing.T) {
 	domain := &gcStoreDomain{id: 1, collector: new(gc.Collector)}
 	in := &Instance{c: &Compiled{}, gc: domain.collector}

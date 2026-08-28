@@ -966,7 +966,9 @@ func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocatio
 		if topology == nil {
 			panic("wago: dynamic Runtime GC invocation has no topology")
 		}
-		topology.RLock()
+		if err := readLockContext(ctx, &topology.RWMutex); err != nil {
+			return gcInvocationLease{}, err
+		}
 	}
 	domains := in.gcInvocationDomains()
 	if domains.len() == 0 {

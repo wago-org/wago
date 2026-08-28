@@ -194,6 +194,71 @@ func TestImportedFunctionReexportUsesCallerInvocationLease(t *testing.T) {
 	}
 }
 
+func TestImportedFunctionReexportContextCancelsHostResumeWait(t *testing.T) {
+	if !nativeCancellationSupported() {
+		t.Skip("native cancellation requires amd64 or arm64")
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithIndependentInstanceExecution(false)))
+	defer rt.Close()
+	producerMod, err := rt.Compile(reexportBlockingProducerModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	hostEntered := make(chan struct{})
+	leaseHeld := make(chan struct{})
+	releaseLease := make(chan struct{})
+	competitorDone := make(chan struct{})
+	go func() {
+		defer close(competitorDone)
+		select {
+		case <-hostEntered:
+		case <-releaseLease:
+			return
+		}
+		nativeExecutionMu.Lock()
+		close(leaseHeld)
+		<-releaseLease
+		nativeExecutionMu.Unlock()
+	}()
+	defer func() {
+		close(releaseLease)
+		<-competitorDone
+	}()
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{
+		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) {
+			close(hostEntered)
+			<-leaseHeld
+		}),
+	}))
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("run")
+	if err != nil {
+		t.Fatalf("Export producer run: %v", err)
+	}
+	relayMod, err := rt.Compile(voidImportedFunctionReexportModule())
+	if err != nil {
+		t.Fatalf("Compile relay: %v", err)
+	}
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.spin": target}))
+	if err != nil {
+		t.Fatalf("Instantiate relay: %v", err)
+	}
+	defer relay.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if _, err := relay.InvokeContext(ctx, "spin"); err != context.DeadlineExceeded {
+		t.Fatalf("delegated host-resume wait error = %v, want context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("delegated host-resume cancellation took %v, want bounded exit", elapsed)
+	}
+}
+
 func TestImportedFunctionReexportIssuesFirstFuncrefAfterProducerClose(t *testing.T) {
 	rt := NewRuntime()
 	producerMod, err := rt.Compile(funcrefCallableProducerModule())

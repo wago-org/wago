@@ -49,7 +49,7 @@ func activeHostInvocationContext(in *Instance) hostInvocationContext {
 }
 
 func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() {
-	if ctrl == 0 || next.id == 0 {
+	if ctrl == 0 || next.id == 0 && next.wait == nil {
 		return func() {}
 	}
 	previous, loaded := hostInvocationContexts.Load(ctrl)
