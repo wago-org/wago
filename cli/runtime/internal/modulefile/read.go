@@ -2,6 +2,7 @@
 package modulefile
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,17 +18,29 @@ func Read(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	if info, err := file.Stat(); err != nil {
-		return nil, err
-	} else if info.Size() > MaxBytes {
-		return nil, fmt.Errorf("module %q is %d bytes; CLI limit is %d bytes", path, info.Size(), MaxBytes)
-	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxBytes+1))
+	info, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(data)) > MaxBytes {
+	if info.Size() > MaxBytes {
+		return nil, fmt.Errorf("module %q is %d bytes; CLI limit is %d bytes", path, info.Size(), MaxBytes)
+	}
+	readLimit := MaxBytes + 1
+	if info.Mode().IsRegular() {
+		// Reserve one sentinel byte so growth after Stat is detected without
+		// io.ReadAll's geometric over-allocation.
+		readLimit = info.Size() + 1
+	}
+	data := make([]byte, int(readLimit))
+	n, err := io.ReadFull(file, data)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, err
+	}
+	if int64(n) > MaxBytes {
 		return nil, fmt.Errorf("module %q exceeds CLI limit of %d bytes", path, MaxBytes)
 	}
-	return data, nil
+	if info.Mode().IsRegular() && int64(n) > info.Size() {
+		return nil, fmt.Errorf("module %q changed size while being read", path)
+	}
+	return data[:n:n], nil
 }

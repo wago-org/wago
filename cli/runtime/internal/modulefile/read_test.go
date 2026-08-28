@@ -24,3 +24,21 @@ func TestReadBoundsModuleInput(t *testing.T) {
 		t.Fatalf("oversized read = %d bytes, %v", len(data), err)
 	}
 }
+
+func TestReadUsesExactSizedResult(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "module.wasm")
+	want := []byte("wasm payload")
+	if err := os.WriteFile(path, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("Read = %q, want %q", got, want)
+	}
+	if cap(got) != len(got) {
+		t.Fatalf("result capacity = %d, want exact length %d", cap(got), len(got))
+	}
+}

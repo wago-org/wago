@@ -38,6 +38,9 @@ const cacheKeyFormat = 2
 // DefaultMaxBytes bounds the automatic CLI artifact cache at 512 MiB.
 const DefaultMaxBytes int64 = 512 << 20
 
+// maxPruneEntries bounds both cache file count and prune's in-memory index.
+const maxPruneEntries = 4096
+
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -135,6 +138,14 @@ func (cache Cache) prune() error {
 			return err
 		}
 		if !info.Mode().IsRegular() || info.Size() < 0 {
+			return nil
+		}
+		if len(entries) == maxPruneEntries {
+			// Cache entries are regenerable. Removing overflow during the walk
+			// keeps even a directory full of zero-length files memory-bounded.
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
 			return nil
 		}
 		total += info.Size()

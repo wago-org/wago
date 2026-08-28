@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -81,6 +82,26 @@ func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
 	}
 	if len(entries) != 1 || filepath.Base(entries[0]) != "new.wago" {
 		t.Fatalf("remaining cache entries = %v, want newest only", entries)
+	}
+}
+
+func TestCachePruneBoundsEntryIndex(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < maxPruneEntries+1; i++ {
+		path := filepath.Join(dir, fmt.Sprintf("%04d.wago", i))
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := (Cache{Dir: dir}).prune(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, "*.wago"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != maxPruneEntries {
+		t.Fatalf("remaining cache entries = %d, want %d", len(entries), maxPruneEntries)
 	}
 }
 
