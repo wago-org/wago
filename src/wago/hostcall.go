@@ -52,11 +52,8 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 			return nil, err
 		}
 	}
-	var cancel context.Context
-	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
-		cancel = ctx
-	}
-	results, err = in.invokeWithToken(export, args, cancel, id, false, false, reservation)
+	contexts := invocationContextSetFor(ctx)
+	results, err = in.invokeWithToken(export, args, contexts, id, false, false, reservation)
 	return results, contextInterruptError(ctx, err)
 }
 

@@ -318,6 +318,62 @@ func TestCallerResolverInvocationContextParentCancellationAndTrap(t *testing.T) 
 	})
 }
 
+func TestCallerResolverInvocationContextWithoutNativeInterruption(t *testing.T) {
+	state := new(invocationContextTestState)
+	rt := newInvocationContextTestRuntime(t, state)
+	defer rt.Close()
+	module, err := rt.Compile(invocationContextImportModule("outer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	deadline := time.Now().Add(time.Hour)
+	parent, cancel := context.WithDeadline(context.Background(), deadline)
+	entered := make(chan struct{})
+	var callbackErr error
+	var deadlineOK bool
+	state.outer = func(caller HostModule, _, _ []uint64) {
+		ctx, err := state.resolver.InvocationContext(caller)
+		if err != nil {
+			callbackErr = err
+			close(entered)
+			return
+		}
+		got, ok := ctx.Deadline()
+		deadlineOK = ok && got.Equal(deadline)
+		close(entered)
+		<-ctx.Done()
+		callbackErr = ctx.Err()
+	}
+	callDone := make(chan error, 1)
+	go func() {
+		_, err := in.invokeEntry("call", nil, invocationContextSet{callback: parent}, false)
+		callDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("host callback did not enter")
+	}
+	cancel()
+	select {
+	case err := <-callDone:
+		if err != nil {
+			t.Fatalf("invoke without native interruption: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("callback context did not observe cancellation")
+	}
+	if callbackErr != context.Canceled || !deadlineOK {
+		t.Fatalf("callback context = %v, deadline %v; want canceled with parent deadline", callbackErr, deadlineOK)
+	}
+}
+
 func TestCallerResolverInvocationContextBackgroundEntries(t *testing.T) {
 	tests := []struct {
 		name string
