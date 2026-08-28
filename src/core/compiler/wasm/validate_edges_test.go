@@ -211,9 +211,8 @@ func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 		t.Fatal("label remained marked in a later table")
 	}
 
-	// Rollover is unreachable for a size-bounded decoded module, but a reused
-	// programmatic validator must still clear stale frame stamps.
-	v.branchTableEpoch = ^uint32(0)
+	// A reused validator must clear stale frame stamps on compact epoch rollover.
+	v.branchTableEpoch = ^uint16(0)
 	v.ctrls[0].branchTableEpoch = 1
 	v.beginBranchTable()
 	if v.branchTableEpoch != 1 || v.ctrls[0].branchTableEpoch != 0 {
@@ -238,14 +237,15 @@ func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 }
 
 func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
-	if unsafe.Sizeof(uintptr(0)) != 8 {
-		t.Skip("64-bit validator layout")
+	wantValidator, wantFrame := uintptr(672), uintptr(96)
+	if unsafe.Sizeof(uintptr(0)) == 4 {
+		wantValidator, wantFrame = 412, 48
 	}
-	if got := unsafe.Sizeof(funcValidator{}); got != 672 {
-		t.Fatalf("funcValidator size = %d, want 672", got)
+	if got := unsafe.Sizeof(funcValidator{}); got != wantValidator {
+		t.Fatalf("funcValidator size = %d, want %d", got, wantValidator)
 	}
-	if got := unsafe.Sizeof(ctrlFrame{}); got != 96 {
-		t.Fatalf("ctrlFrame size = %d, want 96", got)
+	if got := unsafe.Sizeof(ctrlFrame{}); got != wantFrame {
+		t.Fatalf("ctrlFrame size = %d, want %d", got, wantFrame)
 	}
 }
 

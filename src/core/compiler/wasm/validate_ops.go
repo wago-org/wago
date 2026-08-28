@@ -1,8 +1,8 @@
 package wasm
 
 // beginBranchTable advances the generation used to stamp distinct target
-// frames. The code-section size bounds make rollover unreachable for decoded
-// modules, but clearing active frames keeps programmatically built modules safe.
+// frames. A compact generation preserves the control-frame layout on 32-bit
+// targets; its rare rollover clears the bounded active control stack.
 func (v *funcValidator) beginBranchTable() {
 	v.branchTableEpoch++
 	if v.branchTableEpoch == 0 {

@@ -878,7 +878,7 @@ type ctrlFrame struct {
 	ifSeenElse   bool
 	// branchTableEpoch uses existing tail padding to mark whether this exact
 	// label frame has already been checked by the current br_table.
-	branchTableEpoch uint32
+	branchTableEpoch uint16
 }
 
 type funcValidator struct {
@@ -904,7 +904,7 @@ type funcValidator struct {
 	constOnly         bool
 	// branchTableEpoch fits in the padding before constGlobalLimit. Each
 	// funcValidator owns its control frames, including under parallel validation.
-	branchTableEpoch uint32
+	branchTableEpoch uint16
 	constGlobalLimit int // globals below this absolute index are visible to a const expression
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
