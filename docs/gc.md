@@ -95,7 +95,9 @@ unchanged. Runtime presents the appended 6,464 argument/result bytes directly
 to the helper, so wide transitions add no Go allocation or copy scratch. Codec
 reload derives the same capacity from immutable GC descriptors and never
 persists live contents; the extension address is derived from the off-heap frame
-base, so native state retains no Go pointer. Fully initialized reference
+base, so native state retains no Go pointer. Only wide instances acquire a
+length-registry entry; the ordinary per-instance heap footprint is unchanged.
+Fully initialized reference
 constructors continue to classify every initializer word through the reusable
 typed root scratch before collection.
 

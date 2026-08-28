@@ -60,6 +60,9 @@ func RegisterHostCtrlFrame(ctrl []byte) error {
 	if _, err := hostCtrlFrameCapacity(ctrl); err != nil {
 		return err
 	}
+	if len(ctrl) == ctrlFrameSize {
+		return nil
+	}
 	ptr := slicePtr(ctrl)
 	if ptr == 0 {
 		return fmt.Errorf("jit: host control frame is empty")
@@ -72,6 +75,9 @@ func RegisterHostCtrlFrame(ctrl []byte) error {
 
 // UnregisterHostCtrlFrame removes a frame registered at instance activation.
 func UnregisterHostCtrlFrame(ctrl []byte) {
+	if len(ctrl) == ctrlFrameSize {
+		return
+	}
 	if ptr := slicePtr(ctrl); ptr != 0 {
 		registeredHostCtrlFrames.Delete(ptr)
 	}

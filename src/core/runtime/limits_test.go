@@ -74,6 +74,49 @@ func TestHostCtrlFrameWideCapacityKeepsInlineLayout(t *testing.T) {
 	}
 }
 
+func TestHostCtrlFrameRegistrationOnlyTracksWideLengths(t *testing.T) {
+	inline := make([]byte, HostCtrlFrameBytes)
+	if err := InitHostCtrlFrame(inline); err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterHostCtrlFrame(inline); err != nil {
+		t.Fatal(err)
+	}
+	inlinePtr := slicePtr(inline)
+	if _, loaded := registeredHostCtrlFrames.Load(inlinePtr); loaded {
+		t.Fatal("ordinary control frame acquired a length-registry entry")
+	}
+	UnregisterHostCtrlFrame(inline)
+
+	const slots = 404
+	wideBytes, err := HostCtrlFrameBytesForSlots(slots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wide := make([]byte, wideBytes)
+	if err := InitHostCtrlFrame(wide); err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterHostCtrlFrame(wide); err != nil {
+		t.Fatal(err)
+	}
+	widePtr := slicePtr(wide)
+	t.Cleanup(func() { UnregisterHostCtrlFrame(wide) })
+	if got, loaded := registeredHostCtrlFrames.Load(widePtr); !loaded || got.(int) != wideBytes {
+		t.Fatalf("wide registry entry = %v, %v; want %d", got, loaded, wideBytes)
+	}
+	if got := len(hostCtrlFrame(widePtr)); got != wideBytes {
+		t.Fatalf("registered wide frame length = %d, want %d", got, wideBytes)
+	}
+	UnregisterHostCtrlFrame(wide)
+	if _, loaded := registeredHostCtrlFrames.Load(widePtr); loaded {
+		t.Fatal("wide control-frame registration survived cleanup")
+	}
+	if got := len(hostCtrlFrame(widePtr)); got != HostCtrlFrameBytes {
+		t.Fatalf("unregistered frame length = %d, want inline fallback %d", got, HostCtrlFrameBytes)
+	}
+}
+
 func TestInstantiateArenaNeedAccountsDynamicFuncrefTypeIDs(t *testing.T) {
 	base, err := InstantiateArenaNeed(InstantiateFootprint{})
 	if err != nil {
